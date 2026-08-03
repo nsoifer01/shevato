@@ -43,7 +43,7 @@
   <meta name="theme-color" content="#0e1116">
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
-  <link rel="stylesheet" href="css/styles.css?v=39">
+  <link rel="stylesheet" href="css/styles.css?v=55">
 </head>
 <body class="tp-page">
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
@@ -82,6 +82,11 @@
                label says that rather than naming two of the four -->
           <button data-act="rename-trip">⚙️ Trip settings</button>
           <button data-act="duplicate-trip">📄 Duplicate trip</button>
+          <!-- the same copy with every booking fact stripped off it (prices,
+               codes, deadlines, who paid), landing on the trip dialog to be
+               given its new dates. Disabled on a shared trip by the same
+               allow-list every other writing row obeys (SHARED_MENU_ACTS) -->
+          <button data-act="duplicate-template">🧩 Duplicate as template</button>
           <button data-act="essentials">🆘 Trip essentials</button>
           <button data-act="packing">🎒 Packing list</button>
           <div class="sep"></div>
@@ -130,6 +135,10 @@
       <button class="btn" id="routeBtn" title="How to get from A to B">🧭 Route</button>
       <button class="btn" id="visaBtn" title="Visa requirements for the countries on this trip">🛂 Visas</button>
       <button class="btn" id="assistBtn" title="Plan with an AI assistant">🤖 Assistant</button>
+      <!-- deliberately NOT in .tb-pair: that group is hidden on a shared trip,
+           and the shortcut list is worth the same to a visitor as to the owner -->
+      <button class="icon-btn tb-help" type="button" id="shortcutsBtn" title="Keyboard shortcuts (?)"
+              aria-label="Keyboard shortcuts" aria-haspopup="dialog">?</button>
     </div>
     <span class="tb-sep" aria-hidden="true"></span>
     <div class="tb-pair" role="group" aria-label="Undo and redo">
@@ -466,11 +475,28 @@
               </select>
             </div>
           </div>
-          <div class="field" id="fTripBudget">
-            <label for="inTripBudget">Budget <small>(optional)</small></label>
-            <input type="number" id="inTripBudget" min="0" step="0.01" inputmode="decimal" placeholder="e.g. 3000">
-            <div class="err">A budget cannot be negative.</div>
+          <div class="field is-wide" id="fTripBudget">
+            <label for="inTripBudgetFrom">Budget <small>(optional)</small></label>
+            <!-- one value in two boxes, so one .input-group frame: the "to" box
+                 alone is the plain ceiling this app has always had, and the
+                 "from" box only adds a lower end to it -->
+            <div class="input-group budget-range">
+              <input type="number" id="inTripBudgetFrom" min="0" step="0.01" inputmode="decimal" placeholder="e.g. 3000" aria-label="Budget from (optional)">
+              <span class="ig-sep" aria-hidden="true">to</span>
+              <input type="number" id="inTripBudgetTo" min="0" step="0.01" inputmode="decimal" placeholder="e.g. 5000" aria-label="Budget to (optional)">
+            </div>
+            <div class="err" id="tripBudgetErr">A budget cannot be negative.</div>
+            <div class="hint">A trip does not need a budget: leave both blank. Fill "to" on its own for a simple ceiling, or both for a range.</div>
           </div>
+        </div>
+        <!-- template mode only (see syncTripStartField): a trip just copied as a
+             template is asked when it happens THIS time, and every date moves by
+             the same delta. Hidden, disabled and blank on every other trip. -->
+        <div class="field" id="fTripStart" hidden>
+          <label for="inTripStart">Starts on <small>(optional)</small></label>
+          <input type="date" id="inTripStart" min="2000-01-01" max="2100-12-31" disabled>
+          <div class="hint" id="tripStartHint"></div>
+          <div class="err" id="tripStartErr"></div>
         </div>
         <div class="field" id="fTripTravelers">
           <label for="inTripTravelers">Travelers <small>(optional, comma-separated, up to 6)</small></label>
@@ -517,12 +543,19 @@
     </div>
     <div class="m-body">
       <section class="m-section">
+        <!-- both the filter and the "who's this for" picker are BUILT by
+             renderPacking, never merely hidden: a trip that names fewer than two
+             travellers has no trace of either in the DOM (see renderPacking) -->
+        <div class="pk-filter" id="packingFilterWrap"></div>
         <div class="pk-list" id="packingList"></div>
-        <form class="pk-add" id="packingAddForm">
-          <div class="field">
-            <input id="packingAddInput" maxlength="80" placeholder="Add something else..." aria-label="Add a packing row" autocomplete="off">
+        <form class="pk-add-form" id="packingAddForm">
+          <div class="pk-add">
+            <div class="field">
+              <input id="packingAddInput" maxlength="80" placeholder="Add something else..." aria-label="Add a packing row" autocomplete="off">
+            </div>
+            <button type="submit" class="btn primary">Add</button>
           </div>
-          <button type="submit" class="btn primary">Add</button>
+          <div class="pk-who" id="packingWhoWrap"></div>
         </form>
         <p class="hint">This list belongs to this trip and is saved with it. Nothing is added after the first open, so it is yours to shape.</p>
       </section>
@@ -679,6 +712,55 @@
   </form>
 </div>
 
+<!-- keyboard shortcuts help: static, read-only, and identical on a shared trip.
+     It reads no state and writes none, so it is markup rather than a render. -->
+<div class="overlay" id="shortcutsOverlay">
+  <div class="modal small" role="dialog" aria-modal="true" aria-labelledby="shortcutsTitle" tabindex="-1">
+    <div class="m-head">
+      <span class="m-icon" aria-hidden="true">⌨️</span>
+      <h2 id="shortcutsTitle">Keyboard shortcuts</h2>
+    </div>
+    <div class="m-body">
+      <section class="m-section">
+        <dl class="ks-list">
+          <div class="ks-row">
+            <dt><kbd>N</kbd></dt>
+            <dd>Add an item. Not offered on a shared trip, which you cannot edit.</dd>
+          </div>
+          <div class="ks-row">
+            <dt><kbd>Ctrl</kbd> <span aria-hidden="true">+</span> <kbd>Z</kbd></dt>
+            <dd>Undo the last change, 50 steps deep (<kbd>⌘</kbd> in place of <kbd>Ctrl</kbd> on a Mac).</dd>
+          </div>
+          <div class="ks-row">
+            <dt><kbd>Ctrl</kbd> <span aria-hidden="true">+</span> <kbd>Y</kbd></dt>
+            <dd>Redo. <kbd>Ctrl</kbd> <span aria-hidden="true">+</span> <kbd>Shift</kbd> <span aria-hidden="true">+</span> <kbd>Z</kbd> does the same.</dd>
+          </div>
+          <div class="ks-row">
+            <dt><kbd>Esc</kbd></dt>
+            <dd>Close the topmost layer, one press per layer: an open dialog first, then the assistant, then the search or trip menu.</dd>
+          </div>
+          <div class="ks-row">
+            <dt><kbd>Enter</kbd> <span aria-hidden="true">/</span> <kbd>Space</kbd></dt>
+            <dd>On a focused night-coverage cell: jump to the item covering that night.</dd>
+          </div>
+          <div class="ks-row">
+            <dt><kbd>Tab</kbd></dt>
+            <dd>Move between controls. While a dialog is open, focus stays inside it.</dd>
+          </div>
+          <div class="ks-row">
+            <dt><kbd>?</kbd></dt>
+            <dd>Open this list. Typing into a text field never triggers it.</dd>
+          </div>
+        </dl>
+        <p class="hint">Views have addresses too: ending the URL with <code>#timeline</code>, <code>#days</code> or <code>#map</code> opens straight into that view, and the view you switch to is kept there so a refresh comes back to it.</p>
+      </section>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" data-close>Close</button>
+    </div>
+  </div>
+</div>
+
 <input type="file" id="importFile" accept="application/json,.json" hidden>
 <div class="toasts" id="toasts"></div>
 
@@ -766,7 +848,7 @@
     }
   </script>
 
-  <script src="js/trip-logic.js?v=23"></script>
-  <script src="js/app.js?v=43"></script>
+  <script src="js/trip-logic.js?v=32"></script>
+  <script src="js/app.js?v=56"></script>
 </body>
 </html>

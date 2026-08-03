@@ -60,6 +60,53 @@ const TripLogic = (() => {
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   }
 
+  // Moving a whole trip in time. Two callers now ask for it ("Shift entire
+  // trip", and a template being given a new start date), so the arithmetic and
+  // the refusal live here rather than in whichever dialog was written first.
+  //
+  // shiftFits is asked BEFORE anything moves: a shift big enough to push a date
+  // past DATE_MAX would otherwise only surface afterwards, on a trip whose dates
+  // are already wrecked. A date that is out of range ALREADY is left alone - it
+  // arrived that way by import or share link, computeIssues names it, and
+  // refusing to shift it would freeze the whole trip.
+  function shiftFits(items, days) {
+    const leaves = d => isDateInRange(d) && !isDateInRange(addDays(d, days));
+    return !(Array.isArray(items) ? items : []).some(it => leaves(it.startDate) || leaves(it.endDate));
+  }
+
+  // Mutates in place (the caller owns the trip) and answers with how many items
+  // actually moved, which is what the undo label counts. A blank or broken end
+  // date stays exactly as it is.
+  function applyDayShift(items, days) {
+    let moved = 0;
+    for (const it of (Array.isArray(items) ? items : [])) {
+      if (isIsoDate(it.startDate)) { it.startDate = addDays(it.startDate, days); moved++; }
+      if (isIsoDate(it.endDate)) it.endDate = addDays(it.endDate, days);
+    }
+    return moved;
+  }
+
+  // The day the plan begins: the earliest start date on it, ignoring status
+  // (tripStats drops cancelled items, which is right for a budget and wrong for
+  // "which date do I move from"). Null when nothing on the trip is dated.
+  function firstItemDate(items) {
+    let first = null;
+    for (const it of (Array.isArray(items) ? items : [])) {
+      if (it && isIsoDate(it.startDate) && (!first || it.startDate < first)) first = it.startDate;
+    }
+    return first;
+  }
+
+  // The same move expressed as a destination instead of a number of days: how
+  // far the whole trip travels when its FIRST dated item is asked to land on
+  // `toDate`. Every other date keeps its spacing, which is the entire point of
+  // a template. Null when there is no date to measure from or to.
+  function startDateShift(items, toDate) {
+    const from = firstItemDate(items);
+    if (!from || !isIsoDate(toDate)) return null;
+    return { from, days: diffDays(from, toDate) };
+  }
+
   // ---------- items ----------
   const isStay = it => it.type === 'stay';
 
@@ -83,9 +130,20 @@ const TripLogic = (() => {
   }
   const overnightTransit = items => (items || []).filter(isTransitSpan);
 
+  // The traveller's own answer to "which of these two comes first", used only
+  // where the clock has none: it sits AFTER the date and the time in the key, so
+  // no manual order can ever contradict a real time, and BEFORE the type, which
+  // is the arbitrary tiebreak it exists to replace. An item with no `order`
+  // reads as ORDER_MAX, so a trip nobody has reordered sorts byte-for-byte the
+  // way it always did.
+  const ORDER_MAX = 999;
+  const orderPart = it => (Number.isInteger(it.order) && it.order >= 0 && it.order < ORDER_MAX
+    ? String(it.order).padStart(3, '0')
+    : String(ORDER_MAX));
+
   function sortKey(it) {
     const t = TYPE_ORDER[it.type] !== undefined ? TYPE_ORDER[it.type] : 9;
-    return `${it.startDate || '9999-99-99'}|${it.startTime || '99:99'}|${t}|${it.createdAt || ''}`;
+    return `${it.startDate || '9999-99-99'}|${it.startTime || '99:99'}|${orderPart(it)}|${t}|${it.createdAt || ''}`;
   }
   // 0 on an identical key, not 1. Every sort here used `sortKey(a) < sortKey(b)
   // ? -1 : 1`, which reports "b comes first" for two items that are equal. That
@@ -99,6 +157,107 @@ const TripLogic = (() => {
     return ka < kb ? -1 : ka > kb ? 1 : 0;
   }
   function sortedItems(trip) { return [...trip.items].sort(bySortKey); }
+
+  // ---------- manual order inside a tie ----------
+  // Two items TIE when nothing chronological separates them: the same date and
+  // the same clock time, "no time at all" included. Those, and only those, may
+  // be dragged past one another, which is what keeps a manual order from ever
+  // claiming a 09:00 museum happens after a 14:00 train.
+  //
+  // Stays are out of every group. Their rows are drawn at ASSUMED check-in and
+  // check-out positions rather than at a time anybody typed (see
+  // ASSUMED_CHECKIN_TIME), and the same booking appears twice in a day, so
+  // "above this row" would not name one place in the data to store.
+  const tieKey = it => `${it.startDate}|${it.startTime || ''}`;
+  const tieEligible = it => !!it && !isStay(it) && isIsoDate(it.startDate);
+
+  // Every tie of two or more, keyed by date|time, each in the order it renders.
+  function tieGroups(items) {
+    const map = new Map();
+    for (const it of (items || [])) {
+      if (!tieEligible(it)) continue;
+      const k = tieKey(it);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(it);
+    }
+    for (const [k, list] of map) {
+      if (list.length < 2) map.delete(k);
+      else list.sort(bySortKey);
+    }
+    return map;
+  }
+
+  // Which rows may carry a drag handle: a lone item has nothing to be ordered
+  // against, so it gets none and the view renders exactly as it did before.
+  function reorderableIds(items) {
+    const out = new Set();
+    for (const list of tieGroups(items).values()) for (const it of list) out.add(it.id);
+    return out;
+  }
+
+  // The group one item belongs to, in render order; [] when it ties with nobody.
+  function tieGroupOf(items, id) {
+    for (const list of tieGroups(items).values()) {
+      if (list.some(it => it.id === id)) return list;
+    }
+    return [];
+  }
+
+  // Writes 0..n-1 onto `ids` in the order given (what a drop or an arrow key
+  // just decided) and then tidies every group, so the caller stores one edit
+  // rather than one per row. Mutates in place, like applyDayShift; answers
+  // whether anything actually changed, so a drop back where it started is not
+  // filed as an undo step.
+  function applyManualOrder(items, ids) {
+    const byId = new Map((items || []).map(it => [it.id, it]));
+    let changed = false;
+    (Array.isArray(ids) ? ids : []).forEach((id, i) => {
+      const it = byId.get(id);
+      if (!it || !tieEligible(it) || it.order === i) return;
+      it.order = i;
+      changed = true;
+    });
+    return normalizeOrders(items) || changed;
+  }
+
+  // Housekeeping after an add, a delete or a date change: a group that has been
+  // ordered is renumbered 0..n-1 so the numbers stay small and gap-free, a group
+  // nobody has touched keeps no `order` key at all, and an item left with nobody
+  // to tie with loses the field entirely rather than carrying a dead number into
+  // an export or a share link.
+  function normalizeOrders(items) {
+    const list = items || [];
+    let changed = false;
+    const grouped = new Set();
+    for (const g of tieGroups(list).values()) {
+      const ordered = g.some(it => Number.isInteger(it.order));
+      g.forEach((it, i) => {
+        grouped.add(it.id);
+        if (!ordered || it.order === i) return;
+        it.order = i;
+        changed = true;
+      });
+    }
+    for (const it of list) {
+      if (!grouped.has(it.id) && it.order !== undefined) { delete it.order; changed = true; }
+    }
+    return changed;
+  }
+
+  // The keyboard half of the drag: one step up or down inside the item's own
+  // tie. False when there is nowhere to go (top of the group, bottom of it, or
+  // an item that ties with nobody), which is also the answer that stops a
+  // pointless save.
+  function moveInTie(items, id, delta) {
+    const group = tieGroupOf(items, id);
+    const from = group.findIndex(it => it.id === id);
+    if (from < 0) return false;
+    const to = from + delta;
+    if (to < 0 || to >= group.length) return false;
+    const ids = group.map(it => it.id);
+    ids.splice(to, 0, ids.splice(from, 1)[0]);
+    return applyManualOrder(items, ids);
+  }
 
   // consecutive stays in different places = a travel leg for the route helper
   function tripLegs(trip) {
@@ -176,6 +335,24 @@ const TripLogic = (() => {
   function finishGap(run) {
     const nightsCount = diffDays(run.start, run.end) + 1;
     return { start: run.start, end: addDays(run.end, 1), nights: nightsCount };
+  }
+
+  // What the Add-item form opens on when a "no stay covers these nights"
+  // warning offers to fill the hole itself: a stay spanning EXACTLY the range
+  // coverageGaps reported, check-in on the first uncovered night and check-out
+  // the morning after the last one. The dialog and the warning that opened it
+  // therefore read the same range by construction rather than by agreement.
+  function stayPrefillForGap(gap) {
+    if (!gap || !isIsoDate(gap.start) || !isIsoDate(gap.end)) return null;
+    const nightsCount = diffDays(gap.start, gap.end);
+    if (nightsCount <= 0) return null;
+    return { type: 'stay', startDate: gap.start, endDate: gap.end, nights: nightsCount };
+  }
+
+  // The first contiguous uncovered range, i.e. the one the topmost gap warning
+  // is about. coverageGaps walks the calendar forwards, so [0] is the earliest.
+  function firstStayPrefill(gaps) {
+    return stayPrefillForGap((Array.isArray(gaps) ? gaps : [])[0]);
   }
 
   // ---------- derived totals ----------
@@ -2040,10 +2217,13 @@ const TripLogic = (() => {
   const ASSUMED_CHECKOUT_TIME = '11:00';
   const ASSUMED_CHECKIN_TIME = '15:00';
 
+  // Same shape as sortKey, and the manual order sits in the same place: after
+  // the clock, before the type. A stay carries no order (it is in no tie group),
+  // so its assumed check-in / check-out position is untouched.
   function eventSortKey(ev) {
     const t = ev.sortTime || '99:99';
     const typeOrd = TYPE_ORDER[ev.item.type] !== undefined ? TYPE_ORDER[ev.item.type] : 9;
-    return `${t}|${typeOrd}|${EVENT_KIND_ORDER[ev.kind]}|${ev.item.createdAt || ''}`;
+    return `${t}|${orderPart(ev.item)}|${typeOrd}|${EVENT_KIND_ORDER[ev.kind]}|${ev.item.createdAt || ''}`;
   }
 
   // The stay that tells you which city a given date belongs to: the bed you
@@ -2080,6 +2260,50 @@ const TripLogic = (() => {
   function parseTravelOrigin(title) {
     const m = /^(.*?)\s+to\s+.+$/i.exec(String(title || '').trim());
     return m ? stripPlaceCode(m[1]) : '';
+  }
+
+  // Arrival half of the same shape, split on the LAST " to " so "Tokyo to
+  // Kyoto to Osaka" arrives in Osaka. Keeps the raw text for a chip label
+  // ("Keflavik (KEF)"), the stripped city for a geocode fallback, and the
+  // IATA-style code when one rides in the parentheses, which is what lets the
+  // bundled airports table place the point exactly.
+  function parseTravelArrival(title) {
+    const m = /^.+\s+to\s+(.+)$/i.exec(String(title || '').trim());
+    if (!m) return null;
+    const raw = m[1].trim();
+    const city = stripPlaceCode(raw);
+    const code = /\(([A-Za-z]{3})\)/.exec(raw);
+    if (!city && !code) return null;
+    return { label: raw, city, iata: code ? code[1].toUpperCase() : '' };
+  }
+
+  // The arrival that OPENS a day: the last flight/transport leg to land on
+  // `date` (an overnight leg via its endDate, a same-day leg via its only
+  // date) with a parseable "A to B" title and a real arrival clock time -
+  // a timeless leg cannot be ordered against the day and claims nothing.
+  // The rule stands ONLY when nothing located happens before that arrival:
+  // a morning of activities followed by an evening flight out still measures
+  // from the morning's own anchor, never from an airport nobody has reached
+  // yet. Stay check-ins never block, because the leg into town precedes the
+  // bed by construction; that check-in is exactly the stop whose chip should
+  // read "airport to hotel".
+  function dayArrival(items, date) {
+    const list = (Array.isArray(items) ? items : []).filter(it => it && it.status !== 'cancelled');
+    const legs = list
+      .filter(it => it.type === 'flight' || it.type === 'transport')
+      .map(it => ({
+        it,
+        arrival: parseTravelArrival(it.title),
+        time: it.endDate ? (it.endDate === date ? (it.endTime || '') : null)
+          : (it.startDate === date ? (it.endTime || it.startTime || '') : null),
+      }))
+      .filter(l => l.arrival && l.time);
+    if (!legs.length) return null;
+    const last = legs.sort((a, b) => (a.time < b.time ? -1 : 1))[legs.length - 1];
+    const blocked = list.some(it => !isStay(it) && it.type !== 'flight' && it.type !== 'transport'
+      && it.startDate === date && it.startTime && it.startTime < last.time
+      && !!(String(it.location || '').trim() || String(it.mapsQuery || '').trim()));
+    return blocked ? null : { item: last.it, ...last.arrival };
   }
 
   // Items that start on this date, in the order they happen.
@@ -2354,6 +2578,163 @@ const TripLogic = (() => {
     return tempSpan(summary.lo, summary.hi);
   }
 
+  // ---------- near-term forecast ----------
+  // Open-Meteo's free, keyless forecast reaches 16 days out, counting today.
+  // A trip day past that horizon has no forecast to show and keeps the climate
+  // figure above, which is the honest answer for a date that far out anyway.
+  const FORECAST_DAYS = 16;
+  // A forecast is worthless within hours, so a cached one expires; the climate
+  // cache has no such limit because a 5-year average of a past month is fixed.
+  const FORECAST_TTL_MS = 3 * 60 * 60 * 1000;
+
+  function forecastEligible(date, today) {
+    if (!isIsoDate(date) || !isIsoDate(today)) return false;
+    const d = diffDays(today, date);
+    return d >= 0 && d < FORECAST_DAYS;
+  }
+
+  // Per place+DATE, unlike weatherKey's place+month: a forecast describes one
+  // day, so sharing the climate key would let Tuesday's forecast answer for
+  // every day of the month.
+  function forecastKey(placeKey, date) {
+    const p = String(placeKey == null ? '' : placeKey).trim().toLowerCase();
+    return `${p}|${String(date == null ? '' : date)}`;
+  }
+
+  function forecastFresh(rec, now) {
+    if (!rec || typeof rec.at !== 'number') return false;
+    const age = now - rec.at;
+    return age >= 0 && age < FORECAST_TTL_MS;
+  }
+
+  // Drops every expired entry from a persisted forecast store. Applied on load
+  // so yesterday's numbers can never paint a chip labelled "Forecast".
+  function freshForecasts(cache, now) {
+    const out = {};
+    if (!cache || typeof cache !== 'object') return out;
+    for (const key of Object.keys(cache)) {
+      if (forecastFresh(cache[key], now)) out[key] = cache[key];
+    }
+    return out;
+  }
+
+  // One Open-Meteo forecast `daily` block -> { [date]: { lo, hi, pop, code, rh } }.
+  // One response covers a whole run of days for one place, so a single request
+  // fills as many per-date cache entries as the trip has near-term days.
+  // A day missing either temperature is dropped rather than half-reported;
+  // the condition code and the humidity are optional and land as null.
+  //
+  // `relative_humidity_2m_mean` is a DAILY variable the forecast endpoint
+  // serves directly (verified against api.open-meteo.com), so the humidity
+  // costs nothing beyond one more name in the same `daily=` list: no hourly
+  // block to download and average on the client.
+  function summarizeForecast(daily) {
+    const out = {};
+    const times = (daily && Array.isArray(daily.time)) ? daily.time : [];
+    const mins = (daily && daily.temperature_2m_min) || [];
+    const maxs = (daily && daily.temperature_2m_max) || [];
+    const pops = (daily && daily.precipitation_probability_max) || [];
+    const codes = (daily && daily.weather_code) || [];
+    const hums = (daily && daily.relative_humidity_2m_mean) || [];
+    const num = v => {
+      if (v == null || v === '') return null;
+      const n = Number(v);
+      return Number.isNaN(n) ? null : n;
+    };
+    for (let i = 0; i < times.length; i++) {
+      const date = times[i];
+      if (!isIsoDate(date)) continue;
+      const lo = num(mins[i]), hi = num(maxs[i]);
+      if (lo == null || hi == null) continue;
+      const pop = num(pops[i]);
+      const code = num(codes[i]);
+      const rh = num(hums[i]);
+      out[date] = {
+        lo: Math.round(lo), hi: Math.round(hi),
+        pop: pop == null ? null : Math.round(pop),
+        code: code == null ? null : Math.round(code),
+        rh: rh == null ? null : Math.round(rh),
+      };
+    }
+    return out;
+  }
+
+  // ---------- forecast conditions (WMO weather codes) ----------
+  // Open-Meteo answers with WMO code 4677, whose 100 values collapse into the
+  // seven a traveller actually acts on. The word is what the tooltip says out
+  // loud; the glyph alone would be a picture with no text equivalent.
+  const FORECAST_CONDITIONS = {
+    clear: { icon: '☀️', word: 'clear' },
+    partly: { icon: '🌤️', word: 'partly cloudy' },
+    cloudy: { icon: '☁️', word: 'overcast' },
+    fog: { icon: '🌫️', word: 'fog' },
+    rain: { icon: '🌧️', word: 'rain' },
+    snow: { icon: '🌨️', word: 'snow' },
+    thunder: { icon: '⛈️', word: 'thunderstorms' },
+  };
+
+  function forecastConditionKey(code) {
+    if (code == null || Number.isNaN(Number(code))) return '';
+    const c = Math.round(Number(code));
+    if (c === 0) return 'clear';
+    if (c === 1 || c === 2) return 'partly';
+    if (c === 3) return 'cloudy';
+    if (c === 45 || c === 48) return 'fog';
+    if (c >= 51 && c <= 67) return 'rain';       // drizzle and rain, freezing included
+    if (c >= 71 && c <= 77) return 'snow';       // snowfall and snow grains
+    if (c >= 80 && c <= 82) return 'rain';       // rain showers
+    if (c === 85 || c === 86) return 'snow';     // snow showers
+    if (c >= 95 && c <= 99) return 'thunder';
+    return '';
+  }
+
+  // The icon for a cached forecast record. The code is the answer whenever the
+  // API sent one; without it (an old entry, a response missing the field) the
+  // condition is derived from what the record DOES carry, and a record carrying
+  // nothing to derive from gets no icon at all rather than a made-up sun.
+  function forecastCondition(rec) {
+    if (!rec) return null;
+    const key = forecastConditionKey(rec.code);
+    if (key) return { key, ...FORECAST_CONDITIONS[key] };
+    if (rec.pop == null) return null;
+    if (rec.pop >= 50) {
+      const cold = rec.hi != null && rec.hi <= 1;
+      return { key: cold ? 'snow' : 'rain', ...FORECAST_CONDITIONS[cold ? 'snow' : 'rain'] };
+    }
+    if (rec.pop > 0) return { key: 'partly', ...FORECAST_CONDITIONS.partly };
+    return { key: 'clear', ...FORECAST_CONDITIONS.clear };
+  }
+
+  // What the chip itself prints, as separate pieces so the markup can mark each
+  // one up (and tooltip each one) on its own. Rain is only worth a figure when
+  // there is a chance of it: "0%" is noise on a chip this small, and the
+  // tooltip still states it. Humidity is absent, not blank, when unknown.
+  function forecastChipParts(rec) {
+    if (!rec || rec.lo == null || rec.hi == null) return null;
+    const cond = forecastCondition(rec);
+    return {
+      icon: cond ? cond.icon : '',
+      condition: cond ? cond.word : '',
+      temp: tempSpan(rec.lo, rec.hi),
+      rain: (rec.pop != null && rec.pop > 0) ? `${rec.pop}%` : '',
+      humidity: rec.rh == null ? '' : `${rec.rh}%`,
+    };
+  }
+
+  // The forecast twin of weatherLine. Says "Forecast", never "Typically", so a
+  // chip carrying a real forecast can never be read as the climate caveat, and
+  // spells the chip's glyph and its two percentages out in words: on the chip
+  // they are an icon and two figures, and only this sentence says which is
+  // which.
+  function forecastLine(place, rec) {
+    if (!rec || rec.lo == null || rec.hi == null) return '';
+    const cond = forecastCondition(rec);
+    return `Forecast ${tempSpan(rec.lo, rec.hi)} in ${place}` +
+      (cond ? `, ${cond.word}` : '') +
+      (rec.pop == null ? '' : `, ${rec.pop}% chance of rain`) +
+      (rec.rh == null ? '' : `, ${rec.rh}% average humidity`);
+  }
+
   // ---------- documents pocket guards ----------
   const MAX_DOC_BYTES = 2 * 1024 * 1024;
   const MAX_DOCS_PER_ITEM = 10;
@@ -2418,6 +2799,10 @@ const TripLogic = (() => {
     const keep = v => !(v == null || v === '');
     const slim = { name: trip.name, currency: trip.currency, items: [] };
     if (trip.budget != null) slim.budget = trip.budget;
+    // the floor rides along only when there is a ceiling for it to sit under,
+    // which is the same rule the import sanitizer applies on the far side. A
+    // trip with a plain ceiling produces byte for byte the payload it always did
+    if (trip.budget != null && trip.budgetFrom != null) slim.budgetFrom = trip.budgetFrom;
     if (Array.isArray(trip.visaExtras) && trip.visaExtras.length) slim.visaExtras = trip.visaExtras;
     // travellers ride along: the person you share a trip with IS the other
     // traveller on it, so a copy that quietly lost the cost split would be worse
@@ -2438,7 +2823,12 @@ const TripLogic = (() => {
       // bookBy and payment ride the same list, and so pay the same way: both are
       // empty on almost every item, `keep` drops them there, and a trip that
       // never used either produces byte-for-byte the payload it did before.
-      for (const k of ['type', 'title', 'location', 'startDate', 'endDate', 'startTime', 'endTime', 'status', 'cost', 'costCurrency', 'estCost', 'estCostCurrency', 'costNote', 'confirmation', 'bookBy', 'payment', 'details', 'mapsQuery']) {
+      // `order` rides along for the same reason the rest do: a hand-set
+      // same-day order is a decision the traveller made, and a copy that
+      // silently reshuffled the day would be worse than no copy. It is only
+      // present on a day somebody actually reordered, so a link from a trip
+      // nobody has dragged is byte-for-byte what it was.
+      for (const k of ['type', 'title', 'location', 'startDate', 'endDate', 'startTime', 'endTime', 'status', 'cost', 'costCurrency', 'estCost', 'estCostCurrency', 'costNote', 'confirmation', 'bookBy', 'payment', 'details', 'mapsQuery', 'order']) {
         if (keep(it[k])) out[k] = it[k];
       }
       // who owes this cost travels with the item; the far side clamps it to the
@@ -2579,7 +2969,14 @@ const TripLogic = (() => {
     const meals = p.meals || {};
     const styles = p.styles || {};
     const mealNames = ['breakfast', 'lunch', 'dinner'].filter(k => meals[k] !== false);
-    const budget = PLAN_BUDGETS[p.budget] || PLAN_BUDGETS[2];
+    // The picker sends an ARRAY of tiers now: several tiers are a range the
+    // model may span ("mid-range or upscale"), and an EMPTY array is the
+    // traveller declining to talk about money at all, so the request then says
+    // nothing about it. A bare number (or anything else legacy) keeps the old
+    // behaviour exactly: that one tier, or mid-range when unrecognisable.
+    const budgetSel = Array.isArray(p.budget)
+      ? [...new Set(p.budget.map(Number).filter(n => PLAN_BUDGETS[n]))].sort((a, b) => a - b)
+      : [PLAN_BUDGETS[p.budget] ? Number(p.budget) : 2];
     const wake = fmt12h(p.wakeTime || '08:00') || fmt12h('08:00');
     const back = fmt12h(p.returnTime || '22:00') || fmt12h('22:00');
     const activities = planRange(p.activities === undefined ? 3 : p.activities);
@@ -2591,15 +2988,15 @@ const TripLogic = (() => {
 
     if (activities) {
       const s = stylePhrase(styles.activities);
-      lines.push(`I would like ${activities} activities${s ? `, leaning ${s}` : ''}.`);
+      lines.push(`I would like ${activities} activities${s ? `, leaning ${s}` : ''}, and give me 2 options for each one.`);
     }
     if (mealNames.length) {
       const s = stylePhrase(styles.meals);
-      lines.push(`Plan ${joinWords(mealNames, 'and')}${s ? `, leaning ${s}` : ''}, and give me 2-3 options for each one.`);
+      lines.push(`Plan ${joinWords(mealNames, 'and')}${s ? `, leaning ${s}` : ''}, and give me 3 options for each one.`);
     }
     if (drinks) {
       const s = stylePhrase(styles.drinks);
-      lines.push(`Include ${drinks} ${s ? `${s} drinks` : 'drinks'} stops, and give me 2-3 options for each one.`);
+      lines.push(`Include ${drinks} ${s ? `${s} drinks` : 'drinks'} stops, and give me 3 options for each one.`);
     }
     // Silence reads as permission: with no exclusion the model fills a "plan my
     // day" request with the slots the traveller switched off. Skipped types are
@@ -2615,7 +3012,9 @@ const TripLogic = (() => {
       lines.push(`${only}Do not suggest ${joinWords(off, 'or')}.`);
     }
 
-    lines.push(`Keep the whole day ${budget}.`);
+    if (budgetSel.length) {
+      lines.push(`Keep the whole day ${joinWords(budgetSel.map(n => PLAN_BUDGETS[n]), 'or')}.`);
+    }
 
     // Only worth saying when there is something to name: a bare "do not repeat"
     // with an empty list reads like a bug and wastes prompt space.
@@ -2639,9 +3038,11 @@ const TripLogic = (() => {
   }
 
   // ---------- assistant: alternative sets ----------
-  // Meal and drinks proposals arrive as 2-3 candidates sharing one `group` id so
-  // the UI can offer a single choice instead of stacking three dinners. Anything
-  // ungrouped (or alone in its group) stays a plain single card.
+  // Meal and drinks proposals arrive as 3 candidates sharing one `group` id, and
+  // every other activity as 2, so the UI can offer a single choice instead of
+  // stacking three dinners or two museums. Anything ungrouped (or alone in its
+  // group) stays a plain single card, which is what transport, local hops,
+  // stays and notes always are.
   function groupProposals(proposals) {
     const list = Array.isArray(proposals) ? proposals : [];
     const counts = new Map();
@@ -2734,6 +3135,265 @@ const TripLogic = (() => {
     return out;
   }
 
+  // ---------- distances: venue coordinates, day chains, shortest route ----------
+  // Every figure here is straight-line haversine math (distKm) over coordinates
+  // the app ALREADY holds: the venue cache the Places lookup seeds, the Photon
+  // fallback the hotel picker's service answers, and the city-level geocode
+  // cache. Nothing in this section reaches the network, and nothing in the app
+  // is allowed to look a place up merely to print a distance.
+
+  // Google Maps Platform's Maps Service Specific Terms 14.3 expressly permit
+  // caching latitude/longitude, and only for 30 days (the same rule the server
+  // side notes in lib/tp-places-lookup.mjs), so a stored venue coordinate
+  // expires on that schedule. The cap bounds a long trip's worth of venues; the
+  // oldest write goes first, which is also the entry closest to expiring.
+  const VENUE_TTL_MS = 30 * 86400000;
+  const VENUE_CACHE_MAX = 300;
+
+  // A coordinate pair only counts when BOTH halves are real numbers in range.
+  // Number('') is 0, a genuine point in the Gulf of Guinea, so a missing value
+  // has to become NaN before it is tested (the same trap normalizePlaceRow hit).
+  function validCoord(lat, lon) {
+    const a = numOrNaN(lat), b = numOrNaN(lon);
+    return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a) <= 90 && Math.abs(b) <= 180;
+  }
+
+  function venueFresh(rec, now) {
+    if (!rec || typeof rec.at !== 'number' || !validCoord(rec.lat, rec.lon)) return false;
+    const age = now - rec.at;
+    return age >= 0 && age < VENUE_TTL_MS;
+  }
+
+  // Applied when the persisted store is read: malformed and expired entries are
+  // dropped rather than served, and only the newest VENUE_CACHE_MAX survive.
+  function normalizeVenueCache(cache, now) {
+    const out = {};
+    if (!cache || typeof cache !== 'object') return out;
+    const keys = Object.keys(cache).filter(k => k && venueFresh(cache[k], now));
+    keys.sort((a, b) => (cache[b].at - cache[a].at) || (a < b ? -1 : 1));
+    for (const k of keys.slice(0, VENUE_CACHE_MAX)) {
+      out[k] = { lat: Number(cache[k].lat), lon: Number(cache[k].lon), at: cache[k].at };
+    }
+    return out;
+  }
+
+  // `at` is the last time this venue was written, so the eviction below is
+  // least-recently-refreshed first. Mutates and returns the same object: the
+  // caller persists it as one blob.
+  function rememberVenue(cache, key, coord, now) {
+    const k = String(key == null ? '' : key).trim();
+    if (!k || !coord || !validCoord(coord.lat, coord.lon)) return cache;
+    cache[k] = { lat: Number(coord.lat), lon: Number(coord.lon), at: now };
+    const keys = Object.keys(cache);
+    if (keys.length > VENUE_CACHE_MAX) {
+      keys.sort((a, b) => (cache[a].at - cache[b].at) || (a < b ? -1 : 1));
+      for (const old of keys.slice(0, keys.length - VENUE_CACHE_MAX)) delete cache[old];
+    }
+    return cache;
+  }
+
+  // tp-places returns the resolved place's coordinates alongside its rating
+  // (`location` is a lower billing tier than `rating`, so the response costs
+  // exactly what it did before). Only the coordinates are read here: they are
+  // the one part of a Places response the terms allow us to store.
+  function placesLocationUpdates(results) {
+    const out = [];
+    for (const r of Array.isArray(results) ? results : []) {
+      if (!r || typeof r.query !== 'string') continue;
+      const key = placeCacheKey(r.query);
+      if (!key || !validCoord(r.lat, r.lon)) continue;
+      out.push({ key, lat: Number(r.lat), lon: Number(r.lon) });
+    }
+    return out;
+  }
+
+  // One Photon feature collection -> the venue's coordinates, or null. Photon
+  // answers every query with SOMETHING, so an unchecked top hit would happily
+  // pin "Ichiran Shibuya" on a random Shibuya street corner and print a
+  // confident distance to it. The name has to account for the query (or the
+  // query for the name) before the point is trusted.
+  function pickVenueFeature(query, json) {
+    const q = foldPlace(query);
+    if (!q) return null;
+    const head = foldPlace(q.split(',')[0]);
+    const feats = (json && Array.isArray(json.features)) ? json.features : [];
+    for (const f of feats) {
+      const p = (f && f.properties) || null;
+      const coords = (f && f.geometry && Array.isArray(f.geometry.coordinates)) ? f.geometry.coordinates : [];
+      if (!p || !p.name || !validCoord(coords[1], coords[0])) continue;
+      const name = foldPlace(p.name);
+      if (!name) continue;
+      if (!q.includes(name) && !name.includes(head)) continue;
+      return { name: String(p.name).trim(), lat: Number(coords[1]), lon: Number(coords[0]) };
+    }
+    return null;
+  }
+
+  // A point is only usable when it carries real coordinates; everything else
+  // (an unlocated row, a proposal whose venue nothing resolved) is skipped
+  // rather than guessed at.
+  function distancePoint(p) {
+    if (!p || !validCoord(p.lat, p.lon)) return null;
+    return { id: p.id, key: p.key || '', label: p.label || '', lat: Number(p.lat), lon: Number(p.lon) };
+  }
+
+  // Two points close enough that a leg between them would be a lie: they came
+  // from the same cache entry, or they are the same spot to within 50 m, which
+  // is also where the rounding below starts printing "0.0 km".
+  const SAME_SPOT_KM = 0.05;
+  function sameSpot(a, b) {
+    if (!a || !b) return false;
+    if (a.key && b.key && a.key === b.key) return true;
+    return distKm(a, b) < SAME_SPOT_KM;
+  }
+
+  // Where a day starts, as a SPEC rather than a point: the stay covering the
+  // day (whose own coordinates the hotel picker may have recorded, else its
+  // city), and failing that the city dayMorningCity already names on the chip.
+  // The caller resolves it against its caches, which is why this stays pure.
+  function dayAnchor(items, date, isResolved) {
+    // A day that opens with an arrival measures from where you LAND: the
+    // first chip then answers "how far from the airport (or station) to the
+    // first stop", which is the leg an arrival day actually starts with. An
+    // "(KEF)"-style code is placed exactly by the bundled airports table (the
+    // caller resolves `iata`); a code-less arrival falls back to its city.
+    const arr = dayArrival(items, date);
+    if (arr) return { source: 'arrival', item: arr.item, label: arr.label, city: arr.city, iata: arr.iata };
+    const host = dayHostStay(items, date);
+    if (host) {
+      return { source: 'stay', item: host, label: displayTitle(host), city: String(host.location || '').trim() };
+    }
+    const m = dayMorningCity(items, date, isResolved);
+    return m.city ? { source: 'city', item: null, label: m.city, city: m.city } : null;
+  }
+
+  // The day's chain of leg distances: the first located stop measures from the
+  // anchor, every later one from the stop before it. Rules, in order:
+  //   - a `skip` stop (a check-OUT row, which repeats a booking that started
+  //     earlier, exactly as the cost and Maps cells are suppressed there) is
+  //     not a leg and does not become the next origin;
+  //   - a stop with no coordinates is passed over, so the chain measures from
+  //     the last stop that DID resolve rather than breaking;
+  //   - a leg between two identical points (both ends fell back to the same
+  //     city centroid, or to the same cached venue) is dropped, because
+  //     "0.0 km" is a fake fact, not a distance.
+  function dayDistanceChain(anchor, stops) {
+    const legs = [];
+    let prev = distancePoint(anchor);
+    for (const stop of Array.isArray(stops) ? stops : []) {
+      if (!stop || stop.skip) continue;
+      const here = distancePoint(stop);
+      if (!here) continue;
+      if (prev && !sameSpot(prev, here)) {
+        legs.push({ id: here.id, km: distKm(prev, here), from: prev.label || '', to: here.label || '' });
+      }
+      prev = here;
+    }
+    return legs;
+  }
+
+  // Above this many stops an exact answer stops being worth the wait: 8 stops
+  // is 40,320 orders (a millisecond), 12 would be 479 million.
+  const ROUTE_EXACT_MAX = 8;
+
+  // The order to walk a day's recommendations in, always starting from the
+  // anchor (the hotel, or the place just accepted) and visiting every located
+  // stop once. Exact by exhaustive search up to ROUTE_EXACT_MAX, greedy
+  // nearest-neighbour above it. Ties break toward the input order in both
+  // branches, so the same set of cards always numbers the same way.
+  function shortestRoute(anchor, stops) {
+    const start = distancePoint(anchor);
+    const pts = (Array.isArray(stops) ? stops : []).map(distancePoint).filter(Boolean);
+    if (!start || !pts.length) return null;
+    const nodes = [start, ...pts];
+    const d = nodes.map(a => nodes.map(b => distKm(a, b)));
+    const n = pts.length;
+    let seq, km;
+    if (n <= ROUTE_EXACT_MAX) {
+      const best = { order: null, km: Infinity };
+      const used = new Array(n).fill(false);
+      const order = [];
+      const walk = (at, sofar) => {
+        // >=, not >: an order that only TIES the best one found so far is
+        // abandoned, so the winner is the first one in input order.
+        if (sofar >= best.km) return;
+        if (order.length === n) { best.km = sofar; best.order = order.slice(); return; }
+        for (let i = 0; i < n; i++) {
+          if (used[i]) continue;
+          used[i] = true; order.push(i);
+          walk(i + 1, sofar + d[at][i + 1]);
+          order.pop(); used[i] = false;
+        }
+      };
+      walk(0, 0);
+      seq = best.order || pts.map((_, i) => i);
+      km = best.km === Infinity ? 0 : best.km;
+    } else {
+      const left = pts.map((_, i) => i);
+      seq = []; km = 0;
+      let at = 0;
+      while (left.length) {
+        let pick = 0;
+        for (let i = 1; i < left.length; i++) {
+          if (d[at][left[i] + 1] < d[at][left[pick] + 1]) pick = i;
+        }
+        km += d[at][left[pick] + 1];
+        at = left[pick] + 1;
+        seq.push(left[pick]);
+        left.splice(pick, 1);
+      }
+    }
+    return { stops: seq.map(i => pts[i]), km };
+  }
+
+  // One card, one stop. A plain proposal contributes its own place; an
+  // alternative set is ONE decision about ONE slot (three dinners are not three
+  // dinners to walk to), so it contributes the option currently selected in it,
+  // which is the first option until the traveller picks another. Flipping that
+  // selection re-runs this and can reorder the whole route, which is the point.
+  //
+  // A card whose SELECTED option has no coordinates drops out rather than
+  // falling back to a sibling that does: the route would then name a venue the
+  // traveller did not choose. `id` rides through so the caller can put the order
+  // pill back on the card the stop came from.
+  function routeStops(cards) {
+    const out = [];
+    for (const card of Array.isArray(cards) ? cards : []) {
+      if (!card) continue;
+      const opts = Array.isArray(card.options) ? card.options : [];
+      if (!opts.length) continue;
+      const i = Number.isInteger(card.selected) && card.selected >= 0 && card.selected < opts.length
+        ? card.selected : 0;
+      const p = distancePoint(opts[i]);
+      if (p) out.push({ ...p, id: card.id });
+    }
+    return out;
+  }
+
+  // ---------- distance wording ----------
+  // Both units, in the order and the shape the route dialog already prints them
+  // ("1,240 km / 771 mi"), with one decimal below 10 so a walk across a
+  // neighbourhood does not round to a useless whole number.
+  const KM_TO_MI = 0.621371;
+  function fmtKmMi(km) {
+    const one = n => (n < 10 ? (Math.round(n * 10) / 10).toFixed(1) : Math.round(n).toLocaleString('en-US'));
+    return `${one(km)} km / ${one(km * KM_TO_MI)} mi`;
+  }
+  // The chip itself is a tilde and the two units; the honesty (straight line,
+  // and from WHERE) has no room there and rides in the tooltip, the same split
+  // weatherRange and weatherLine already use.
+  const distanceChipLabel = km => `~${fmtKmMi(km)}`;
+  function distanceChipTitle(km, from) {
+    const origin = String(from == null ? '' : from).trim();
+    return `${fmtKmMi(km)} straight-line${origin ? ` from ${origin}` : ''}, not a walking route.`;
+  }
+  // "Shortest route: Hotel Gracery > teamLab > Ichiran · ~5.4 km / 3.4 mi total"
+  function routeFooterText(anchorLabel, labels, km) {
+    const names = [String(anchorLabel == null ? '' : anchorLabel).trim() || 'Start',
+      ...(Array.isArray(labels) ? labels : []).map(l => String(l == null ? '' : l).trim() || '(no title)')];
+    return `Shortest route: ${names.join(' > ')} · ~${fmtKmMi(km)} total`;
+  }
+
   // ---------- money: reading a price out of untrusted JSON ----------
   // Import, share links and the model all hand over arbitrary JSON, and a bare
   // `!isNaN(x) && x >= 0` check lets far too much through: `true` becomes $1.00
@@ -2788,6 +3448,65 @@ const TripLogic = (() => {
     // name what actually happened instead.
     if (t < 0) return 'refund';
     return unconvertedCount > 0 ? 'partial' : 'ok';
+  }
+
+  // ---------- money: the budget range ----------
+  // A budget is optional, and when there is one it is a CEILING. `trip.budget`
+  // stays exactly that ceiling, so the verdict above, the fill bar and every
+  // saved trip, share link and export from before ranges existed keep working
+  // untouched and nothing migrates. A range only adds an optional floor
+  // underneath it, `trip.budgetFrom`, present only when somebody set one. The
+  // floor is display only: no total is ever judged for coming in UNDER it.
+  //
+  // The legal states, and nothing else:
+  //   both blank -> no budget at all (no chip, no bar, no budget wording)
+  //   only "to"  -> the plain ceiling this app has always had
+  //   both       -> a range, floor <= ceiling
+  // A floor with no ceiling is refused rather than quietly promoted to one: a
+  // number typed as "at least" must never come back as "at most".
+  function readBudgetRange(rawFrom, rawTo) {
+    const from = parseMoney(rawFrom);
+    const to = parseMoney(rawTo);
+    if (!from.ok || !to.ok) return { ok: false, error: 'A budget must be a number.' };
+    // parseMoney stopped rejecting negatives when refunds became legal. A
+    // budget is a ceiling, not a transaction, so both ends are checked here.
+    if ((from.value != null && from.value < 0) || (to.value != null && to.value < 0)) {
+      return { ok: false, error: 'A budget cannot be negative.' };
+    }
+    if (to.value == null) {
+      if (from.value != null) return { ok: false, error: 'A budget needs an upper figure. Fill "to", or leave both blank for no budget.' };
+      return { ok: true, error: '', from: null, to: null };
+    }
+    if (from.value != null && from.value > to.value) {
+      return { ok: false, error: 'The lower figure cannot be above the upper one.' };
+    }
+    return { ok: true, error: '', from: from.value, to: to.value };
+  }
+
+  // The same rule for data this app did not just watch somebody type: a trip
+  // read back from storage, an imported file, a share link. Only the FLOOR is
+  // ever dropped, never the ceiling everything else reads, and the caller is
+  // handed a reason so an import can say what it refused.
+  function normalizeBudgetFrom(rawFrom, budget) {
+    if (rawFrom == null || rawFrom === '') return { value: null, reason: '' };
+    const from = parseMoney(rawFrom);
+    if (!from.ok) return { value: null, reason: from.reason };
+    if (from.value < 0) return { value: null, reason: 'cannot be negative' };
+    if (budget == null || budget === '') return { value: null, reason: 'has no upper figure to sit under' };
+    if (from.value > Number(budget)) return { value: null, reason: 'is above the upper figure' };
+    return { value: from.value, reason: '' };
+  }
+
+  // What the budget chip states after "of": nothing at all without a budget,
+  // the ceiling alone for a plain ceiling (byte for byte what the chip said
+  // before ranges existed), and "FROM-TO" for a range. The glued hyphen is the
+  // app's own range separator (see tempSpan); both ends are non-negative by
+  // then, so it cannot be read as a sign. `fmt` is the caller's currency
+  // formatter, so this owns the wording and never a currency table.
+  function budgetFigure(from, to, fmt) {
+    if (to == null || to === '') return '';
+    const top = fmt(to);
+    return from == null || from === '' ? top : `${fmt(from)}-${top}`;
   }
 
   // ---------- money: refunds ----------
@@ -3442,11 +4161,15 @@ const TripLogic = (() => {
     + 'entirely. No link is better than a link to the wrong place.';
 
   const ASSIST_GROUPS = 'For each meal slot and each drinks slot the traveller asked for (and only '
-    + 'those), propose 2-3 candidates and give '
+    + 'those), propose EXACTLY 3 candidates and give '
     + 'every candidate of that slot the same "group" value on its action, for example '
     + '{"op":"add","group":"dinner-2026-12-31","item":{...}}, so the traveller picks one of them. '
     + 'Use a distinct group per slot ("breakfast-2026-12-31", "lunch-2026-12-31", '
-    + '"drinks-2026-12-31"). Do NOT group activities or transport: those are single proposals.';
+    + '"drinks-2026-12-31"). '
+    + 'For every OTHER activity you suggest (a sight, a museum, a walk, a tour), propose EXACTLY 2 '
+    + 'candidates for that one slot, grouped the same way under a group id of their own, for '
+    + 'example "activity-2026-12-31-morning": one slot, two options, the traveller picks one. '
+    + 'Transport, local hops, stays and notes are NEVER grouped: each of those is a single proposal.';
 
   // The item types are the app's storage schema and cannot grow beyond these
   // six, so meals and drinks ride on `activity` with the kind spelled out in
@@ -3594,6 +4317,14 @@ const TripLogic = (() => {
   //   est           an assistant-style estimate (never counted in any total)
   //   note          costNote
   //   maps          mapsQuery
+  //
+  // Every template also carries its OWN `startOffset`: how many days after
+  // today its first day falls. They are deliberately spread rather than shared,
+  // so the library shows a trip that starts TODAY (mid-trip chips, "Day 1 of 7",
+  // the near-term forecast chip), one a week out, one a fortnight out, one a
+  // month out, and the rest fanned across the next half year. Everything stays
+  // relative to the current date, so no sample ever rots into the past.
+  // SAMPLE_START_OFFSET is only the fallback for a template that names none.
   const SAMPLE_START_OFFSET = 45;
 
   // Added to every template so the sample always says what it is. Untimed on
@@ -3610,6 +4341,7 @@ const TripLogic = (() => {
       // 7 days, road trip, few stops and long drives. The splurge end of the
       // budget spread.
       id: 'iceland',
+      startOffset: 0,
       label: 'Iceland (Reykjavik and Akureyri)',
       summary: 'Red-eye from Boston, three nights in Reykjavik, the long drive north to Akureyri',
       keywords: ['iceland', 'reykjavik', 'akureyri', 'keflavik'],
@@ -3636,6 +4368,7 @@ const TripLogic = (() => {
     {
       // 8 days, city and coast, an even moderate pace throughout.
       id: 'portugal',
+      startOffset: 7,
       label: 'Portugal (Lisbon and Porto)',
       summary: 'Fly in from Dublin, four nights in Lisbon, train up to Porto',
       keywords: ['portugal', 'lisbon', 'lisboa', 'porto', 'oporto', 'sintra', 'algarve'],
@@ -3671,6 +4404,7 @@ const TripLogic = (() => {
       // overnight camp: the fixture keeps exactly two stays so the intercity
       // leg and the night coverage stay unambiguous.
       id: 'morocco',
+      startOffset: 14,
       label: 'Morocco (Marrakesh and Fez)',
       summary: 'Fly in from Paris, four nights in Marrakesh, train across to Fez',
       keywords: ['morocco', 'marrakesh', 'marrakech', 'fez', 'fes', 'casablanca', 'tangier'],
@@ -3705,6 +4439,7 @@ const TripLogic = (() => {
     {
       // 9 days, mainland then island, moderate throughout.
       id: 'greece',
+      startOffset: 21,
       label: 'Greece (Athens and Santorini)',
       summary: 'Fly in from London, four nights in Athens, ferry out to Santorini',
       keywords: ['greece', 'athens', 'santorini', 'oia', 'mykonos', 'crete'],
@@ -3742,6 +4477,7 @@ const TripLogic = (() => {
       // trips rather than stays: both are about half an hour out, and nobody
       // moves hotels for that.
       id: 'netherlands',
+      startOffset: 30,
       label: 'Netherlands (Amsterdam and Rotterdam)',
       summary: 'Overnight from Toronto, four nights in Amsterdam, rail day trips to Utrecht and Leiden',
       keywords: ['netherlands', 'amsterdam', 'rotterdam', 'utrecht', 'leiden', 'the hague'],
@@ -3781,6 +4517,7 @@ const TripLogic = (() => {
     {
       // 10 days, art and food, moderate with one heavy museum day.
       id: 'italy',
+      startOffset: 45,
       label: 'Italy (Rome and Florence)',
       summary: 'Overnight from New York, four nights in Rome, fast train to Florence',
       keywords: ['italy', 'rome', 'roma', 'florence', 'firenze', 'tuscany', 'venice'],
@@ -3820,6 +4557,7 @@ const TripLogic = (() => {
       // all, still covered by the Hvar stay, so the coverage bar stays full and
       // the app shows no warning for an empty day.
       id: 'croatia',
+      startOffset: 60,
       label: 'Croatia (Split and Hvar)',
       summary: 'Fly in from Vienna, four nights in Split, catamaran to Hvar for five slow nights',
       keywords: ['croatia', 'split', 'hvar', 'dubrovnik', 'dalmatia', 'zagreb'],
@@ -3849,6 +4587,7 @@ const TripLogic = (() => {
     {
       // 11 days, deliberately PACKED: several days carry four or five things.
       id: 'peru',
+      startOffset: 75,
       label: 'Peru (Lima and Cusco)',
       summary: 'Fly in from Miami, three busy nights in Lima, then a week of ruins out of Cusco',
       keywords: ['peru', 'lima', 'cusco', 'cuzco', 'machu picchu', 'andes'],
@@ -3899,6 +4638,7 @@ const TripLogic = (() => {
     {
       // 12 days, PACKED, and the rail is the spine of it.
       id: 'japan',
+      startOffset: 90,
       label: 'Japan (Tokyo and Kyoto)',
       summary: 'Fly in from Seoul, five nights in Tokyo, Shinkansen to Kyoto for six more',
       keywords: ['japan', 'tokyo', 'kyoto', 'osaka', 'nippon'],
@@ -3955,6 +4695,7 @@ const TripLogic = (() => {
       // intercity `transport` leg: the two travel types side by side, each for
       // the reason the type exists.
       id: 'israel',
+      startOffset: 120,
       label: 'Israel (Tel Aviv and Jerusalem)',
       summary: 'Fly in from Athens, five nights in Tel Aviv, fast train up to Jerusalem',
       keywords: ['israel', 'tel aviv', 'jerusalem', 'haifa', 'ramat gan', 'beer sheva'],
@@ -4005,6 +4746,7 @@ const TripLogic = (() => {
       // guesthouses, single-figure meals and a domestic hop that costs less
       // than one Iceland dinner.
       id: 'vietnam',
+      startOffset: 150,
       label: 'Vietnam (Hanoi and Da Nang)',
       summary: 'Fly in from Hong Kong, five nights in Hanoi, down the coast to Da Nang on a backpacker budget',
       keywords: ['vietnam', 'hanoi', 'da nang', 'danang', 'hoi an', 'saigon', 'ho chi minh'],
@@ -4051,6 +4793,7 @@ const TripLogic = (() => {
       // followed by seven that are mostly beach, two of them with nothing
       // scheduled at all.
       id: 'thailand',
+      startOffset: 180,
       label: 'Thailand (Bangkok and Krabi)',
       summary: 'Fly in from Singapore, a packed week in Bangkok, then a slow week on the Krabi coast',
       keywords: ['thailand', 'bangkok', 'chiang mai', 'phuket', 'krabi', 'railay', 'siam'],
@@ -4131,7 +4874,12 @@ const TripLogic = (() => {
   // its deliberate short-to-long order (see SAMPLE_SHAPES in the tests).
   const sampleTripOptions = () => SAMPLE_TRIPS.map(t => ({
     id: t.id, label: t.label, place: t.label.replace(/\s*\(.*$/, ''), summary: t.summary,
+    startOffset: sampleStartOffset(t),
   })).sort((a, b) => a.label.localeCompare(b.label));
+
+  // A template's own offset, or the shared fallback for one that names none.
+  const sampleStartOffset = tpl => (tpl && Number.isInteger(tpl.startOffset) && tpl.startOffset >= 0)
+    ? tpl.startOffset : SAMPLE_START_OFFSET;
 
   function expandSampleItem(spec, tplId, base, index, createdAt, currency) {
     const it = {
@@ -4156,8 +4904,9 @@ const TripLogic = (() => {
   }
 
   // Builds one template into a real item list. Every date is relative to
-  // `today` so a sample never rots into the past, and the ids are deterministic
-  // so a regression run can name a row. Returns null for an unknown id.
+  // `today` (shifted by the template's own startOffset) so a sample never rots
+  // into the past, and the ids are deterministic so a regression run can name a
+  // row. Returns null for an unknown id.
   function buildSampleTrip(id, opts) {
     const tpl = sampleTrip(id);
     if (!tpl) return null;
@@ -4165,7 +4914,7 @@ const TripLogic = (() => {
     const today = isIsoDate(o.today) ? o.today : new Date().toISOString().slice(0, 10);
     const currency = /^[A-Z]{3}$/.test(o.currency || '') ? o.currency : 'USD';
     const createdAt = o.createdAt || `${today}T00:00:00.000Z`;
-    const base = addDays(today, SAMPLE_START_OFFSET);
+    const base = addDays(today, sampleStartOffset(tpl));
     const specs = [SAMPLE_NOTE, ...tpl.items];
     return {
       id: tpl.id,
@@ -4251,6 +5000,148 @@ const TripLogic = (() => {
     // later date than it left.
     if (items.some(isTransitSpan)) out.push('Something warm to sleep in transit');
     return out;
+  }
+
+  // ---------- per-traveller packing rows ----------
+  // A packing row may say who it is for, exactly the way an item says who a cost
+  // is for (see assignedTravelers): the tag is a list of roster names on `who`,
+  // and an EMPTY tag means Everyone. The control is only ever offered on a trip
+  // that names two or more travellers, so on a solo trip every row reads as
+  // Everyone and the list is byte for byte the list it was before this existed.
+  //
+  // Canonicalised against the roster on every read, so a name the trip no longer
+  // carries cannot keep a row hidden from the person actually packing it.
+  function packingWho(row, names) {
+    const canon = new Map((Array.isArray(names) ? names : []).map(n => [n.toLowerCase(), n]));
+    const out = [];
+    if (Array.isArray(row && row.who)) {
+      for (const raw of row.who) {
+        const c = canon.get(String(raw == null ? '' : raw).trim().toLowerCase());
+        if (c && !out.includes(c)) out.push(c);
+      }
+    }
+    return out;
+  }
+
+  // Which rows a filter shows. No filter is the whole trip's list; a name shows
+  // that person's rows AND every Everyone row, because the shared toothpaste is
+  // on their list too. A filter naming somebody off the roster falls back to the
+  // whole list rather than to an empty one.
+  function packingRowsFor(rows, who, names) {
+    const list = (Array.isArray(rows) ? rows : []).filter(Boolean);
+    const key = String(who == null ? '' : who).trim().toLowerCase();
+    if (!key || !(Array.isArray(names) ? names : []).some(n => n.toLowerCase() === key)) return list;
+    return list.filter(r => {
+      const tag = packingWho(r, names);
+      return !tag.length || tag.some(n => n.toLowerCase() === key);
+    });
+  }
+
+  // "{done} of {total} packed" counts the rows the filter is showing, so asking
+  // for one person answers "am I packed", not "is the trip packed".
+  function packingProgress(rows, who, names) {
+    const list = packingRowsFor(rows, who, names);
+    return { done: list.filter(r => r.done === true).length, total: list.length };
+  }
+
+  // Taking a name off the roster costs the same on the packing list as it does
+  // on "paid by", so the dialog has to say so before it is saved: which names
+  // the rows still spell, how many rows the save would DELETE, and how many it
+  // would only retag.
+  //
+  // Both counts are measured by RUNNING the edit on a copy, so neither can
+  // drift from what saving does. `untagged` therefore also counts a row that
+  // merely loses a tag which has stopped meaning anything (a roster falling to
+  // one person leaves nobody to tag a row for). `names` is what the sentence
+  // names, and an empty `names` is the dialog saying nothing at all: a
+  // respelling carries every row over and is not worth a warning.
+  function packingRosterDrops(rows, names) {
+    const keep = new Set((Array.isArray(names) ? names : []).map(n => n.toLowerCase()));
+    const tagged = (Array.isArray(rows) ? rows : []).filter(r => r && Array.isArray(r.who));
+    const dropped = new Map();
+    for (const r of tagged) {
+      for (const raw of r.who) {
+        const who = String(raw == null ? '' : raw).trim();
+        if (!who || keep.has(who.toLowerCase())) continue;
+        const rec = dropped.get(who.toLowerCase()) || { name: who, count: 0 };
+        rec.count++;
+        dropped.set(who.toLowerCase(), rec);
+      }
+    }
+    const copy = tagged.map(r => ({ who: r.who.slice() }));
+    return { ...applyPackingRoster(copy, names), names: [...dropped.values()] };
+  }
+
+  // And then applies it, in place - to the array as well as to the rows, so the
+  // caller must hand over the trip's own packing array and not a filtered copy
+  // of it. A respelling (case, or a rename that keeps the person) follows the
+  // roster; anyone dropped from it takes their tag with them.
+  //
+  // A row that named ONLY people who are gone GOES with them: it was their row,
+  // not the trip's, and keeping it as an Everyone row quietly hands one
+  // person's retainer to whoever is left. A row that still names somebody keeps
+  // those names, and one left naming everybody (or naming nobody to begin with)
+  // falls back to Everyone rather than disappearing off every filter.
+  function applyPackingRoster(rows, names) {
+    const roster = Array.isArray(names) ? names : [];
+    const canon = new Map(roster.map(n => [n.toLowerCase(), n]));
+    const list = Array.isArray(rows) ? rows : [];
+    let removed = 0;
+    let untagged = 0;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const r = list[i];
+      if (!r || !Array.isArray(r.who)) continue;
+      const before = r.who.join('\n');
+      const named = r.who.some(raw => String(raw == null ? '' : raw).trim());
+      const next = [];
+      for (const raw of r.who) {
+        const c = canon.get(String(raw == null ? '' : raw).trim().toLowerCase());
+        if (c && !next.includes(c)) next.push(c);
+      }
+      // it was somebody's row, and that somebody is off the trip
+      if (named && !next.length) { list.splice(i, 1); removed++; continue; }
+      if (next.length && next.length < roster.length) r.who = next;
+      else delete r.who;
+      if ((r.who || []).join('\n') !== before) untagged++;
+    }
+    return { removed, untagged };
+  }
+
+  // ---------- reusable trip templates ----------
+  // "Duplicate as template" keeps the SHAPE of a trip - what happens, in what
+  // order, how many days apart - and drops every fact that was true of the
+  // BOOKING rather than of the plan. Anything left behind is a lie the next time
+  // round: last year's price, last year's confirmation code, a deadline that has
+  // already passed, and a bill split with whoever came that time.
+  //
+  // Dates are deliberately NOT cleared here. A template with no dates has no
+  // shape left, so the copy keeps the source's dates and the trip dialog offers
+  // to move all of them at once (see startDateShift).
+  const TEMPLATE_CLEARED = [
+    'cost', 'costCurrency', 'costNote', 'estCost', 'estCostCurrency',
+    'confirmation', 'bookBy', 'payment', 'paidBy', 'travelers', 'splitAmounts',
+  ];
+
+  function templateItem(item) {
+    const out = {};
+    for (const k of Object.keys(item || {})) {
+      if (TEMPLATE_CLEARED.includes(k)) continue;
+      out[k] = item[k];
+    }
+    // every row is a thing to arrange again, so the whole template opens as work
+    // to do rather than as a trip that is somehow already booked
+    out.status = 'to-book';
+    return out;
+  }
+
+  // Ids are left exactly as they are: the app hands out fresh ones (which is
+  // also what leaves the copy's attached documents behind, since those are
+  // stored against the item id), and a pure function that minted them could not
+  // be tested twice.
+  function tripAsTemplate(trip) {
+    const copy = JSON.parse(JSON.stringify(trip));
+    copy.items = (Array.isArray(copy.items) ? copy.items : []).filter(Boolean).map(templateItem);
+    return copy;
   }
 
   // ---------- booking-confirmation extraction ----------
@@ -5164,8 +6055,13 @@ const TripLogic = (() => {
 
   return {
     isIsoDate, toUtc, diffDays, addDays, localDateIso,
+    shiftFits, applyDayShift, firstItemDate, startDateShift,
     isStay, nights, sortKey, bySortKey, sortedItems, tripLegs,
+    tieKey, tieGroups, tieGroupOf, reorderableIds, applyManualOrder, normalizeOrders, moveInTie, ORDER_MAX,
+    stayPrefillForGap, firstStayPrefill,
     nextUpEvent, NEXT_UP_WINDOW_MIN, defaultPackingItems,
+    packingWho, packingRowsFor, packingProgress, packingRosterDrops, applyPackingRoster,
+    templateItem, tripAsTemplate, TEMPLATE_CLEARED,
     isTransitType, isTransitSpan, overnightTransit,
     validateItem, coverageGaps, tripStats, overlappingTrips, MAX_TRIP_DAYS, DATE_MIN, DATE_MAX, isDateInRange,
     ISLANDISH, distKm, flagEmoji, compass, fmtDur, modeOptions,
@@ -5196,15 +6092,24 @@ const TripLogic = (() => {
     departureOrigin, suggestedPassport, passportAssumptionParts,
     coveringStay, timelineGroups,
     defaultPlanDay, planDayGroups, weatherKey, summarizeClimate, weatherLine, weatherRange, pickMonthSamples, docGuard,
+    FORECAST_DAYS, FORECAST_TTL_MS, forecastEligible, forecastKey, forecastFresh, freshForecasts, summarizeForecast, forecastLine,
+    FORECAST_CONDITIONS, forecastConditionKey, forecastCondition, forecastChipParts,
     extractTripActions, validateTripAction, buildAssistPackage, buildAssistSystemPrompt,
     fitAssistContext, ASSIST_DETAILS_BUDGET, ASSIST_TRUNCATED_NOTE,
     buildPlanRequest, groupProposals, linkifySegments,
     parseMarkdown, parseMarkdownInline,
     normalizePlaceQuery, placeCacheKey, planPlacesLookup, placesCacheUpdates,
+    VENUE_TTL_MS, VENUE_CACHE_MAX, venueFresh, normalizeVenueCache, rememberVenue,
+    placesLocationUpdates, pickVenueFeature, validCoord,
+    SAME_SPOT_KM, sameSpot, distancePoint, dayAnchor, dayDistanceChain,
+    parseTravelArrival, dayArrival,
+    ROUTE_EXACT_MAX, shortestRoute, routeStops, fmtKmMi, distanceChipLabel, distanceChipTitle, routeFooterText,
     mapsSearchUrl, assistMapsLink, itemMapsQuery, displayTitle, showsCostBadge, isFoodOrDrink, isEstimatedCost, costDisplayParts, mealTitlePrefixes,
     hasEstimate, displayCostOf, parseMoney, roundMoney, budgetVerdict, refundParts,
+    readBudgetRange, normalizeBudgetFrom, budgetFigure,
     mealKind, isLongDetails,
-    matchSampleTrip, normalizeTripName, sampleTrip, sampleTripOptions, buildSampleTrip, SAMPLE_START_OFFSET,
+    matchSampleTrip, normalizeTripName, sampleTrip, sampleTripOptions, buildSampleTrip,
+    SAMPLE_START_OFFSET, sampleStartOffset,
   };
 })();
 

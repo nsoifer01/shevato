@@ -143,7 +143,10 @@ test('buildSystemInstruction carries the agenda and grouping rules from trip-log
   assert.match(sys, /Never introduce a slot type the traveller did not request/);
   assert.doesNotMatch(sys, /breakfast AND lunch AND dinner/);
   assert.match(sys, /Return to hotel/);
-  assert.match(sys, /Do NOT group activities or transport/);
+  // 3 candidates per meal slot, 2 per activity slot, singles for everything else
+  assert.match(sys, /propose EXACTLY 3 candidates/);
+  assert.match(sys, /propose EXACTLY 2 candidates for that one slot/);
+  assert.match(sys, /Transport, local hops, stays and notes are NEVER grouped/);
   assert.match(sys, /limited to flight, transport, local, activity, stay and note/);
   // tier 3 must inherit the between-cities vs within-a-city split too
   assert.match(sys, /"local" for getting around WITHIN one city/);
