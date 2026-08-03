@@ -1,6 +1,184 @@
 {
   "updates": [
     {
+      "builtAt": "2026-08-03T09:35:02.058Z",
+      "totals": {
+        "seasons": 66130,
+        "delta": 8
+      },
+      "shapeCounts": {
+        "mid-peak": 4633,
+        "rebound": 10082,
+        "rising": 2899,
+        "slow-burn": 4377,
+        "big-finale": 12100,
+        "u-shaped": 3092,
+        "rollercoaster": 14055,
+        "saved-best-for-last": 1539,
+        "front-loaded": 3464,
+        "declining": 1871,
+        "bad-finale": 4651,
+        "consistent": 2620,
+        "shape-drift": 1637
+      },
+      "shapeDeltas": {
+        "rebound": 5,
+        "rising": -9,
+        "slow-burn": 6,
+        "big-finale": 7,
+        "rollercoaster": -4,
+        "saved-best-for-last": 3,
+        "front-loaded": -1,
+        "declining": 3,
+        "bad-finale": 5,
+        "consistent": -4,
+        "shape-drift": -2
+      },
+      "added": [
+        {
+          "seriesId": "tt4504724",
+          "title": "Markiplier",
+          "season": 1,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt42006748",
+          "title": "House of Stassi",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt21806310",
+          "title": "Breaking Bear",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4855286",
+          "title": "Moses and the Ten Commandments",
+          "season": 2,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt19845624",
+          "title": "Tervo & Halme tosisuomalaisuutta etsimässä",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt31019576",
+          "title": "Mökkinaapurit",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38224299",
+          "title": "That Thrifting Show",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39381272",
+          "title": "Flip the Frog",
+          "season": 3,
+          "seasonYear": 1932
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt43658562",
+          "title": "Asirlik Gece",
+          "season": 1,
+          "from": 3.9,
+          "to": 7.93,
+          "delta": 4.03
+        },
+        {
+          "seriesId": "tt2400629",
+          "title": "Coke Studio Pakistan",
+          "season": 2,
+          "from": 5.17,
+          "to": 6.36,
+          "delta": 1.19
+        },
+        {
+          "seriesId": "tt39381272",
+          "title": "Flip the Frog",
+          "season": 1,
+          "from": 4.5,
+          "to": 5.4,
+          "delta": 0.9
+        },
+        {
+          "seriesId": "tt38821672",
+          "title": "Phoenix",
+          "season": 1,
+          "from": 6.45,
+          "to": 5.72,
+          "delta": -0.73
+        },
+        {
+          "seriesId": "tt14363574",
+          "title": "Advokado",
+          "season": 1,
+          "from": 5.18,
+          "to": 5.88,
+          "delta": 0.7
+        },
+        {
+          "seriesId": "tt38119083",
+          "title": "Last Summer",
+          "season": 1,
+          "from": 8.93,
+          "to": 8.26,
+          "delta": -0.67
+        },
+        {
+          "seriesId": "tt0437741",
+          "title": "Project Runway",
+          "season": 22,
+          "from": 3.67,
+          "to": 4.33,
+          "delta": 0.66
+        },
+        {
+          "seriesId": "tt31806050",
+          "title": "Kaulitz & Kaulitz",
+          "season": 3,
+          "from": 6.9,
+          "to": 7.55,
+          "delta": 0.65
+        },
+        {
+          "seriesId": "tt3010520",
+          "title": "Turbo FAST",
+          "season": 2,
+          "from": 5.18,
+          "to": 5.78,
+          "delta": 0.6
+        },
+        {
+          "seriesId": "tt36626299",
+          "title": "4 Elements: The Fire",
+          "season": 1,
+          "from": 9.2,
+          "to": 8.6,
+          "delta": -0.6
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 21544,
+        "avgRating": 1124,
+        "seriesRating": 405,
+        "shapes": 216,
+        "poster": 2,
+        "overview": 7,
+        "episodeCount": 95,
+        "providers": 1
+      }
+    },
+    {
       "builtAt": "2026-08-02T08:37:02.549Z",
       "totals": {
         "seasons": 66122,
@@ -7297,183 +7475,6 @@
         "poster": 22,
         "overview": 9,
         "providers": 2
-      }
-    },
-    {
-      "builtAt": "2026-07-06T09:49:50.434Z",
-      "totals": {
-        "seasons": 65663,
-        "delta": 8
-      },
-      "shapeCounts": {
-        "mid-peak": 4634,
-        "rebound": 10042,
-        "rising": 2921,
-        "slow-burn": 4346,
-        "big-finale": 11987,
-        "u-shaped": 3069,
-        "rollercoaster": 14025,
-        "saved-best-for-last": 1521,
-        "front-loaded": 3437,
-        "declining": 1857,
-        "bad-finale": 4640,
-        "consistent": 2598,
-        "shape-drift": 1608
-      },
-      "shapeDeltas": {
-        "mid-peak": 4,
-        "rebound": -5,
-        "rising": -3,
-        "slow-burn": 1,
-        "big-finale": -5,
-        "u-shaped": 5,
-        "rollercoaster": 4,
-        "saved-best-for-last": -1,
-        "front-loaded": 1,
-        "declining": 3,
-        "bad-finale": 5,
-        "consistent": -1,
-        "shape-drift": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt37376067",
-          "title": "Reckless",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt3909734",
-          "title": "The 90s: The Decade That Connected Us",
-          "season": 1,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt4071414",
-          "title": "Young Guns Go for It",
-          "season": 1,
-          "seasonYear": 1999
-        },
-        {
-          "seriesId": "tt12740746",
-          "title": "Britain by Narrowboat",
-          "season": 1,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt43636687",
-          "title": "Amdré e Seus Amigos",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1058776",
-          "title": "Pink Panther and Pals",
-          "season": 2,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt16607152",
-          "title": "Masyanya",
-          "season": 1,
-          "seasonYear": 2001
-        },
-        {
-          "seriesId": "tt17361756",
-          "title": "Survival of the Thickest",
-          "season": 3,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt12872744",
-          "title": "Darcey & Stacey",
-          "season": 4,
-          "from": 7.33,
-          "to": 6.45,
-          "delta": -0.88
-        },
-        {
-          "seriesId": "tt28315535",
-          "title": "Haus Kummerveldt",
-          "season": 1,
-          "from": 5.63,
-          "to": 4.83,
-          "delta": -0.8
-        },
-        {
-          "seriesId": "tt6581428",
-          "title": "Booba",
-          "season": 4,
-          "from": 5.6,
-          "to": 6.39,
-          "delta": 0.79
-        },
-        {
-          "seriesId": "tt34498121",
-          "title": "Thukra Ke Mera Pyaar",
-          "season": 2,
-          "from": 4.44,
-          "to": 5.15,
-          "delta": 0.71
-        },
-        {
-          "seriesId": "tt15135124",
-          "title": "Sin novedad",
-          "season": 1,
-          "from": 8.2,
-          "to": 7.5,
-          "delta": -0.7
-        },
-        {
-          "seriesId": "tt6581428",
-          "title": "Booba",
-          "season": 3,
-          "from": 5.04,
-          "to": 5.64,
-          "delta": 0.6
-        },
-        {
-          "seriesId": "tt5323298",
-          "title": "Naagin",
-          "season": 7,
-          "from": 9.3,
-          "to": 8.76,
-          "delta": -0.54
-        },
-        {
-          "seriesId": "tt12872744",
-          "title": "Darcey & Stacey",
-          "season": 3,
-          "from": 4.96,
-          "to": 4.54,
-          "delta": -0.42
-        },
-        {
-          "seriesId": "tt28995977",
-          "title": "If I Were Luísa Sonza",
-          "season": 1,
-          "from": 5.07,
-          "to": 5.47,
-          "delta": 0.4
-        },
-        {
-          "seriesId": "tt12423408",
-          "title": "In Search of the Automatic House",
-          "season": 14,
-          "from": 8.93,
-          "to": 8.55,
-          "delta": -0.38
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 15730,
-        "avgRating": 621,
-        "seriesRating": 228,
-        "shapes": 106,
-        "episodeCount": 47
       }
     }
   ]
