@@ -121,7 +121,14 @@ function fromDetails(query, place) {
   const name = (place && place.name) || '';
   const { score, confident } = matchConfidence(query, name);
   if (!confident) return { query, status: 'no_match', reason: 'low_confidence' };
-  if (typeof place.rating !== 'number') return { query, status: 'no_match', reason: 'unrated' };
+  // The coordinates ride along on every CONFIDENT match, rated or not: they
+  // came from the same billed Place Details call, they are the one field the
+  // caching terms permit the client to store, and an unrated hole-in-the-wall
+  // still has a position worth measuring a walk against. A low-confidence hit
+  // is a DIFFERENT business, so it gets no coordinates for the same reason it
+  // gets no rating.
+  const at = coords(place);
+  if (typeof place.rating !== 'number') return { query, status: 'no_match', reason: 'unrated', ...at };
   return {
     query,
     status: 'ok',
@@ -130,7 +137,18 @@ function fromDetails(query, place) {
     userRatingCount: typeof place.userRatingCount === 'number' ? place.userRatingCount : 0,
     mapsUri: place.mapsUri || '',
     confidence: score,
+    ...at,
   };
+}
+
+// Absent, non-numeric or out-of-range coordinates simply do not travel: the
+// client then falls back to its own lookup rather than trusting a bad point.
+function coords(place) {
+  const lat = place && place.lat, lon = place && place.lon;
+  if (typeof lat !== 'number' || typeof lon !== 'number') return {};
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return {};
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return {};
+  return { lat, lon };
 }
 
 // Resolve a whole batch. Queries run in parallel (the batch is capped at 12 by

@@ -7,7 +7,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 43;
+  const TP_BUILD = 56;
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   const TYPE_META = {
@@ -45,13 +45,20 @@
   const TRAVEL_TYPES = { flight: 1, transport: 1, local: 1 };
   const PENCIL_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
   const TRASH_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+  // the six-dot grip every list in every app uses for "drag me": drawn rather
+  // than typed, because the ⠿ braille character renders as a box on Android
+  const GRIP_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18" r="1.7"/><circle cx="15" cy="18" r="1.7"/></svg>';
 
   // Pure logic (dates, validation, coverage, stats, route math) lives in
   // js/trip-logic.js so the node:test suite can exercise it directly.
   const {
     isIsoDate, toUtc, diffDays, addDays, localDateIso,
+    shiftFits, applyDayShift, firstItemDate, startDateShift,
     isStay, nights, sortKey, sortedItems, tripLegs,
+    tieKey, reorderableIds, applyManualOrder, normalizeOrders, moveInTie, ORDER_MAX, stayPrefillForGap,
     nextUpEvent, defaultPackingItems,
+    packingWho, packingRowsFor, packingProgress, packingRosterDrops, applyPackingRoster,
+    tripAsTemplate,
     validateItem, coverageGaps, tripStats, overlappingTrips, MAX_TRIP_DAYS, DATE_MIN, DATE_MAX, isDateInRange,
     ISLANDISH, distKm, flagEmoji, compass, fmtDur, modeOptions,
     routeBadges, routeFlags, routeTips, routeLinks, modeLink, ROUTE_HONESTY,
@@ -71,16 +78,20 @@
     dayCards, dayMorningCity, emptyDayNote, departureOrigin, suggestedPassport, passportAssumptionParts, defaultPlanDay, planDayGroups, overnightTransit,
     timelineGroups, mealKind, isFoodOrDrink, isLongDetails, mealTitlePrefixes, itemMapsQuery, displayTitle,
     weatherKey, summarizeClimate, weatherLine, weatherRange, pickMonthSamples, docGuard,
+    FORECAST_DAYS, forecastEligible, forecastKey, forecastFresh, freshForecasts, summarizeForecast, forecastLine, forecastChipParts,
     extractTripActions, validateTripAction, buildAssistPackage, buildAssistSystemPrompt,
     buildPlanRequest, groupProposals, linkifySegments, parseMarkdown,
     placeCacheKey, planPlacesLookup, placesCacheUpdates, mapsSearchUrl, assistMapsLink, costDisplayParts,
+    normalizeVenueCache, rememberVenue, placesLocationUpdates, pickVenueFeature,
+    dayAnchor, dayDistanceChain, shortestRoute, routeStops, distanceChipLabel, distanceChipTitle, routeFooterText,
     hasEstimate, displayCostOf, parseMoney, roundMoney, budgetVerdict, refundParts,
+    readBudgetRange, normalizeBudgetFrom, budgetFigure,
     matchSampleTrip, sampleTripOptions, buildSampleTrip,
   } = window.TripLogic;
 
   // ---------- state ----------
   let db = loadDb();
-  const ui = { search: '', filterType: '', filterStatus: '', filterTraveler: '', editingId: null, shiftTarget: null, tripModalMode: 'new', confirmAction: null, flashId: null, view: 'timeline' };
+  const ui = { search: '', filterType: '', filterStatus: '', filterTraveler: '', packingFilter: '', editingId: null, shiftTarget: null, tripModalMode: 'new', confirmAction: null, flashId: null, view: 'timeline' };
 
   // ---------- timeline collapse state ----------
   // Which stays and which days inside them the traveller has opened. Kept OUT
@@ -286,6 +297,12 @@
       if (typeof t.name !== 'string' || !t.name) t.name = 'Untitled trip';
       if (!/^[A-Z]{3}$/.test(t.currency || '')) t.currency = 'USD';
       t.budget = parseMoney(t.budget).value;
+      // the ceiling is the number everything reads, so only the optional lower
+      // end is ever dropped here: junk, negative, above the ceiling, or a floor
+      // left behind by a budget somebody since cleared
+      const budgetFrom = normalizeBudgetFrom(t.budgetFrom, t.budget).value;
+      if (budgetFrom != null) t.budgetFrom = budgetFrom;
+      else delete t.budgetFrom;
       if (!Array.isArray(t.items)) t.items = [];
       if (!Array.isArray(t.visaExtras)) t.visaExtras = [];
       t.visaExtras = t.visaExtras.filter(c => typeof c === 'string' && /^[A-Z]{2}$/.test(c));
@@ -299,6 +316,10 @@
         if (typeof it.endDate !== 'string') it.endDate = '';
         if (typeof it.endTime !== 'string') it.endTime = '';
         if (it.mapsQuery != null && typeof it.mapsQuery !== 'string') delete it.mapsQuery;
+        // the manual same-day position: a small whole number or nothing at all.
+        // A "3" or a 1e9 out of hand-edited storage would sort as a string and
+        // drag a row somewhere nobody put it.
+        if (it.order != null && !(Number.isInteger(it.order) && it.order >= 0 && it.order < ORDER_MAX)) delete it.order;
         // same money reader as the import path: storage is untrusted JSON too,
         // and a `true` or an Infinity already sitting there must not survive
         if (it.cost != null) it.cost = parseMoney(it.cost).value;
@@ -741,6 +762,20 @@
   }
 
   function applyView() {
+    // An empty plan has nothing to draw on the day grid or the map: its whole
+    // UI (the example loader) lives in the Timeline's empty state. So the two
+    // tabs switch OFF rather than opening blank panels, and a view carried in
+    // from before (deleting a trip while on #map, then loading an example)
+    // is walked back to Timeline - the same landing submitTripForm already
+    // picks for a brand-new trip. syncViewHash below rewrites the fragment.
+    const t = activeTrip();
+    const empty = !t || !t.items.length;
+    if (empty && ui.view !== 'timeline') ui.view = 'timeline';
+    for (const id of ['#viewDays', '#viewMap']) {
+      const b = $(id);
+      b.disabled = empty;
+      b.title = empty ? 'Nothing to show yet: add an item first' : '';
+    }
     const v = ui.view;
     $('#board').style.display = v === 'timeline' ? '' : 'none';
     $('#mapBox').classList.toggle('on', v === 'map');
@@ -809,7 +844,9 @@
       // with nothing to jump to stays exactly as inert as it looks, so tabbing
       // through the strip stops only where a stop actually does something.
       const jump = id ? ` data-goto="${id}" tabindex="0" role="button" aria-label="${esc(tip)}"` : '';
-      cells.push(`<div class="cell ${cls}" title="${esc(tip)}"${jump}></div>`);
+      // the night each cell stands for, so the gap warning's "show" can light up
+      // exactly the nights it is talking about
+      cells.push(`<div class="cell ${cls}" data-date="${d}" title="${esc(tip)}"${jump}></div>`);
     }
     $('#strip').innerHTML = cells.join('');
     const nightWord = n => `${n} ${n === 1 ? 'night' : 'nights'}`;
@@ -817,9 +854,18 @@
     $('#stripDates').innerHTML = `<span>${fmtDate(s.start)}</span><span>${strapline}</span><span>${fmtDate(s.spanCapped ? s.renderEnd : s.end)}</span>`;
   }
 
+  // Chrome sizes a select's native popup to its longest option text with an
+  // inset on the LEFT only, so a long name ("Netherlands (Amsterdam and
+  // Rotterdam)") ends flush against the popup's right edge - and no CSS
+  // reliably reaches that popup. Two no-break spaces ON the option text are
+  // measured into the popup's width and become the missing right padding;
+  // the closed box never shows them (short names end before them, long names
+  // ellipsize inside the box's own padding first).
+  const OPTION_PAD = '  ';
+
   function renderTripSelect() {
     const sel = $('#tripSelect');
-    sel.innerHTML = db.trips.map(t => `<option value="${t.id}" ${t.id === db.activeTripId ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
+    sel.innerHTML = db.trips.map(t => `<option value="${t.id}" ${t.id === db.activeTripId ? 'selected' : ''}>${esc(t.name)}${OPTION_PAD}</option>`).join('');
     // Truncation contract: anything this app clips must be recoverable on hover
     // or long-press, the same way the day-card city chips already are. The
     // select clips at 260px, so it carries the full name as its own title.
@@ -881,11 +927,15 @@
     }
     if (trip.budget != null) {
       const verdict = budgetVerdict(money.confirmed.total, trip.budget, missing);
+      // A budget can be a range, and its TOP is trip.budget, so the verdict and
+      // the bar are unchanged: only the figure the chip prints gains a lower
+      // end, and only on a trip that set one.
+      const figure = budgetFigure(trip.budgetFrom, trip.budget, n => fmtMoney(trip, n));
       // 'refund' means refunds outweigh spend so far. It is not a warning, and
       // "of $3,000" is meaningless against it, so the chip says what happened.
       const body = verdict === 'refund'
-        ? `${moneyHtml(trip, money.confirmed.total, undefined, 'total')} <small>budget ${esc(fmtMoney(trip, trip.budget))}</small>`
-        : `${esc(fmtMoney(trip, money.confirmed.total))} <small>of ${esc(fmtMoney(trip, trip.budget))}</small>`;
+        ? `${moneyHtml(trip, money.confirmed.total, undefined, 'total')} <small>budget ${esc(figure)}</small>`
+        : `${esc(fmtMoney(trip, money.confirmed.total))} <small>of ${esc(figure)}</small>`;
       chips.push(chip('Budget', body + short(missing), (verdict === 'ok' || verdict === 'refund') ? 'ok-chip' : 'warn-chip', spentShare(money.confirmed.total, trip.budget)));
     }
     const warnCount = issues.length;
@@ -911,7 +961,13 @@
 
   function renderIssues(issues) {
     const box = $('#issuesBox');
-    if (!issues.length) { box.hidden = true; return; }
+    // Cleared, not just hidden: a stale "Add stay"/"show" button left behind
+    // here would still answer a click (wrong gap index, or an index that no
+    // longer exists) if the box were ever unhidden again with no fresh
+    // computeIssues() call in between, e.g. a script or extension reading
+    // #issuesList directly while the box sits hidden between issue-free
+    // renders.
+    if (!issues.length) { box.hidden = true; $('#issuesList').innerHTML = ''; return; }
     box.hidden = false;
     const errs = issues.filter(i => i.level === 'error').length;
     const warns = issues.length - errs;
@@ -925,11 +981,45 @@
     // iss.html - are <button>, not <a>. They navigate inside the app rather
     // than to a URL, so as href-less anchors they were unfocusable: neither
     // could be reached with Tab or fired with Enter.
-    $('#issuesList').innerHTML = issues.map((iss, idx) => `
+    $('#issuesList').innerHTML = issues.map((iss, idx) => {
+      // A gap warning names NIGHTS, not an item, so it never had an id to jump
+      // to: its "show" lights up the very cells the night strip is already
+      // drawing for those nights. "Add stay" then opens the Add-item form on
+      // exactly that range (see stayPrefillForGap), which is the retyping this
+      // panel used to leave to the traveller. Both are owner-only: a read-only
+      // shared view can add nothing, so it is offered nothing.
+      const acts = [];
+      if (iss.ids.length) acts.push(`<button type="button" class="issue-jump" data-jump="${esc(iss.ids[0])}">show</button>`);
+      else if (iss.gap) acts.push(`<button type="button" class="issue-jump" data-gap-show="${idx}">show</button>`);
+      if (iss.gap && !sharedMode && stayPrefillForGap(iss.gap)) {
+        acts.push(`<button type="button" class="issue-jump issue-add-stay" data-add-stay="${idx}">Add stay</button>`);
+      }
+      return `
       <li>
         <span class="tag ${iss.level === 'error' ? 'err' : 'warn'}">${iss.level === 'error' ? 'ERROR' : 'WARN'}</span>
-        <span>${iss.html || esc(iss.text)}${iss.ids.length ? ` <button type="button" class="issue-jump" data-jump="${esc(iss.ids[0])}">show</button>` : ''}</span>
-      </li>`).join('');
+        <span>${iss.html || esc(iss.text)}${acts.length ? ' ' + acts.join(' · ') : ''}</span>
+      </li>`;
+    }).join('');
+  }
+
+  // "show" on a gap warning: the nights it names, lit in the strip that already
+  // draws them. There is no row to flash (that is the whole point of the
+  // warning), so the highlight is temporary and clears itself rather than
+  // leaving a second, permanent-looking state on the strip.
+  let gapFlashTimer = null;
+  function flashGapNights(gap) {
+    const box = $('#stripBox');
+    if (!gap || !box || box.hidden) return;
+    const cells = [...$('#strip').children];
+    for (const cell of cells) {
+      const d = cell.dataset.date;
+      cell.classList.toggle('is-flash', !!d && d >= gap.start && d < gap.end);
+    }
+    box.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    clearTimeout(gapFlashTimer);
+    gapFlashTimer = setTimeout(() => {
+      for (const cell of [...$('#strip').children]) cell.classList.remove('is-flash');
+    }, 2600);
   }
 
   const filtersActive = () => !!(ui.search || ui.filterType || ui.filterStatus || ui.filterTraveler);
@@ -1182,7 +1272,7 @@
       // naming a trip "Tokyo 2027" and hitting the button just works.
       const picked = matchSampleTrip(trip.name) || sampleTripOptions()[0].id;
       const opts = sampleTripOptions()
-        .map(o => `<option value="${esc(o.id)}"${o.id === picked ? ' selected' : ''}>${esc(o.label)}</option>`).join('');
+        .map(o => `<option value="${esc(o.id)}"${o.id === picked ? ' selected' : ''}>${esc(o.label)}${OPTION_PAD}</option>`).join('');
       board.innerHTML = `
         <div class="empty">
           <div class="big">🗺️</div>
@@ -1616,8 +1706,7 @@
           <span class="c-date">${dates}</span>${time}${n ? `<span class="c-nights">${n} night${n === 1 ? '' : 's'}</span>` : ''}
         </div>
         <div class="c-main">
-          <div class="c-title">${esc(displayTitle(it))}<span class="tp-clip" data-clip-for="${it.id}" title="Has attached documents" hidden>📎</span></div>
-          ${it.location ? `<div class="c-loc">${esc(it.location)}</div>` : ''}
+          <div class="c-title">${esc(displayTitle(it))}<span class="tp-clip" data-clip-for="${it.id}" title="Has attached documents" hidden>📎</span>${it.location ? `<span class="c-loc">${esc(it.location)}</span>` : ''}</div>
           ${refTagHtml(it)}
           ${detailsHtml(it)}
         </div>
@@ -1723,7 +1812,7 @@
     return `<span class="dc-cost${refund}">${est}${moneyHtml(trip, amount, digits, 'item')}</span>`;
   }
 
-  function dayEventHtml(ev, trip, issueById) {
+  function dayEventHtml(ev, trip, issueById, tieIds) {
     const it = ev.item;
     const look = rowLook(it);
     const issueLevel = issueById && issueById[it.id];
@@ -1731,8 +1820,9 @@
     const isStayRow = ev.kind === 'checkin' || ev.kind === 'checkout';
     const tag = ev.kind === 'checkin' ? 'Check in' : (ev.kind === 'checkout' ? 'Check out' : '');
     // A check-out row names the place you are leaving; the location line would
-    // just repeat the city you are still standing in.
-    const loc = (it.location && ev.kind !== 'checkout') ? `<div class="dc-loc">${esc(it.location)}</div>` : '';
+    // just repeat the city you are still standing in. A span, not a div: the
+    // city rides INLINE after the title now, so a short row is one line.
+    const loc = (it.location && ev.kind !== 'checkout') ? `<span class="dc-loc">${esc(it.location)}</span>` : '';
     // the code rides on the check-in row only, for the same reason cost and the
     // Maps link do: a checkout row is the same booking a second time
     const ref = ev.kind === 'checkout' ? '' : refTagHtml(it);
@@ -1764,6 +1854,16 @@
     // from there would.
     const edit = sharedMode ? '' :
       `<button class="row-btn dc-edit" data-act="edit" data-id="${it.id}" title="Edit ${esc(it.title)}" aria-label="Edit ${esc(it.title)}">${PENCIL_SVG}</button>`;
+    // The grip only exists where reordering MEANS something: a row that ties
+    // with at least one other (same date, same clock time, "no time" included).
+    // Everywhere else the row is drawn exactly as it was before this existed -
+    // no handle, no data-tie, nothing for a drag to catch on - so a date or a
+    // time can never be contradicted by a drag that had no business starting.
+    const tie = (!sharedMode && tieIds && tieIds.has(it.id)) ? tieKey(it) : '';
+    const grip = tie
+      ? `<button type="button" class="row-btn dc-grip" data-grip="${it.id}" title="Drag to reorder, or press the up and down arrow keys"`
+        + ` aria-label="Reorder ${esc(displayTitle(it))}: drag, or press the up and down arrow keys">${GRIP_SVG}</button>`
+      : '';
     const travelCls = TRAVEL_TYPES[it.type] ? ' is-travel' : '';
     // Status is the rail dot's colour AND the colour the time reads in, so the
     // four statuses stay legible at a glance without a pill on every row. The
@@ -1773,7 +1873,12 @@
     // day), so they share one line rather than one slot.
     const tags = (tag ? `<span class="dc-tag">${tag}</span>` : '')
       + (cancelled ? '<span class="dc-tag is-cancelled">Cancelled</span>' : '');
-    return `<div class="dc-event ${look.cls}${travelCls}${isStayRow ? ' is-stay' : ''}${issueCls} ${sm.cls} ${cancelled ? 'is-cancelled' : ''}">
+    // What the distance pass needs to place this row, on the row itself. A
+    // check-out row carries none of it, so it can neither get a leg chip nor
+    // become the origin of the next one: it is the same booking a second time,
+    // exactly as it is for the cost and Maps cells above.
+    const dist = ev.kind === 'checkout' ? '' : itemDistAttrs(it);
+    return `<div class="dc-event ${look.cls}${travelCls}${isStayRow ? ' is-stay' : ''}${issueCls} ${sm.cls} ${cancelled ? 'is-cancelled' : ''}"${tie ? ` data-id="${it.id}" data-tie="${esc(tie)}"` : ''}${dist}>
       <div class="dc-rail">
         <span class="dc-dot" role="img" aria-label="${esc(sm.label)}" title="${esc(sm.label)}"></span>
         ${when ? `<span class="dc-when">${when}</span>` : ''}
@@ -1783,12 +1888,11 @@
           <span class="dc-ico" role="img" aria-label="${esc(look.label)}" title="${esc(look.label)}">${look.icon}</span>
           <div class="dc-label">
             ${tags}
-            <div class="dc-title">${esc(displayTitle(it))}${clip}</div>
-            ${loc}
+            <div class="dc-title">${esc(displayTitle(it))}${clip}${loc}</div>
             ${ref}
           </div>
           <div class="dc-facts">${cost}${maps}</div>
-          <div class="dc-btns">${edit}${del}</div>
+          <div class="dc-btns">${grip}${edit}${del}</div>
         </div>
         ${details}
       </div>
@@ -1805,7 +1909,7 @@
     const city = card.city || '';
     const title = card.citySource === 'stay' ? `Staying in ${city}` : city;
     return `<span class="dc-chip" data-city="${esc(city)}"${city ? ` title="${esc(title)}"` : ' hidden'}>
-      <span class="dc-chip-city">${esc(city)}</span><span class="dc-chip-sep" hidden></span><span class="dc-chip-temp"></span>
+      <span class="dc-chip-city">${esc(city)}</span><span class="dc-chip-sep" hidden></span><span class="dc-chip-icon" hidden></span><span class="dc-chip-temp"></span><span class="dc-chip-rain" hidden></span><span class="dc-chip-rh" hidden></span><span class="dc-chip-tag" hidden></span>
     </span>`;
   }
 
@@ -1813,11 +1917,11 @@
   // belongs to a stay that began earlier, so it is not "an event on this day".
   const dayClearCount = card => card.events.filter(ev => ev.kind !== 'checkout').length + card.untimed.length;
 
-  function dayCardHtml(card, isToday, trip, issueById) {
+  function dayCardHtml(card, isToday, trip, issueById, tieIds) {
     const parts = [];
-    if (card.events.length) parts.push(card.events.map(ev => dayEventHtml(ev, trip, issueById)).join(''));
+    if (card.events.length) parts.push(card.events.map(ev => dayEventHtml(ev, trip, issueById, tieIds)).join(''));
     if (card.untimed.length) {
-      parts.push(`<div class="dc-untimed"><span class="dc-untimed-label">No time set</span>${card.untimed.map(ev => dayEventHtml(ev, trip, issueById)).join('')}</div>`);
+      parts.push(`<div class="dc-untimed"><span class="dc-untimed-label">No time set</span>${card.untimed.map(ev => dayEventHtml(ev, trip, issueById, tieIds)).join('')}</div>`);
     }
     // A day with nothing on it still has a bed if a stay spans it, and saying
     // "No plans yet" there would be false (see emptyDayNote).
@@ -1829,8 +1933,23 @@
             <button class="row-btn" data-act="add-day" data-date="${card.date}" title="Add an item on this day" aria-label="Add an item on ${esc(fmtDate(card.date))}">+</button>
             <button class="row-btn" data-act="duplicate-day" data-date="${card.date}"${canClear ? '' : ' disabled'} title="${canClear ? 'Copy every item on this day to another date' : 'Nothing on this day to copy'}" aria-label="Copy everything on ${esc(fmtDate(card.date))} to another date">📄</button>
             ${canClear ? `<button class="row-btn danger" data-act="clear-day" data-date="${card.date}" title="Delete every item on this day" aria-label="Delete every item on ${esc(fmtDate(card.date))}">${TRASH_SVG}</button>` : ''}`;
+    // Where the day's chain of distances starts: the stay covering it (its own
+    // coordinates when it came from the hotel picker, else its city), or the
+    // morning city the chip already names. Stamped like the rows, so the pass
+    // reads the DOM and the caches and nothing else.
+    // An 'arrival' anchor is a travel leg, not a place: its query and name
+    // rungs would be nonsense ("Boston (BOS) to Keflavik (KEF)" is nothing a
+    // venue cache or geocoder should be asked), so it stamps only its city
+    // fallback plus the IATA code the airports table resolves exactly.
+    const a = dayAnchor(trip.items, card.date, geoResolved);
+    const place = a && a.item && a.source !== 'arrival';
+    const anchor = a
+      ? ` data-anchor-q="${esc(place ? itemMapsQuery(a.item) : '')}" data-anchor-name="${esc(place ? a.label : '')}"`
+        + ` data-anchor-city="${esc(a.city)}" data-anchor-label="${esc(a.label)}"`
+        + (a.iata ? ` data-anchor-iata="${esc(a.iata)}"` : '')
+      : '';
     return `
-      <section class="day-card ${isToday ? 'is-today' : ''}" data-date="${card.date}" aria-label="${esc(fmtDate(card.date))}">
+      <section class="day-card ${isToday ? 'is-today' : ''}" data-date="${card.date}" aria-label="${esc(fmtDate(card.date))}"${anchor}>
         <header class="dc-head">
           <span class="dc-daynum" aria-label="Day ${card.dayNumber} of ${card.totalDays}" title="Day ${card.dayNumber} of ${card.totalDays}">
             <b>${card.dayNumber}</b><small>/${card.totalDays}</small>
@@ -2082,16 +2201,115 @@
     // (see revealWeatherNote): a trip whose days resolve no city, or whose
     // cities have no climate record, showed a caveat and a licence credit for
     // data that was nowhere on the screen.
+    // The forecast sentence is a hidden span inside the SAME note, revealed
+    // only once a "Forecast" chip has actually been painted (see
+    // revealWeatherNote): a trip with no day inside the forecast horizon reads
+    // exactly the line it always did, and the one Open-Meteo credit covers both
+    // sources rather than a second uncredited one being introduced.
     const wx = '<div class="days-note days-wx" id="daysWx" hidden>Temperatures are typical for that month across the last '
-      + WEATHER_YEARS + ' years of records, not a forecast. Weather data by '
+      + WEATHER_YEARS + ' years of records, not a forecast.'
+      + '<span id="daysWxFc" hidden> Chips marked Forecast are the exception: inside ' + FORECAST_DAYS
+      + ' days of today the card shows the actual forecast for that day instead.</span>'
+      + ' Weather data by '
       + '<a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0).</div>';
-    box.innerHTML = note + cards.map(c => dayCardHtml(c, phase.phase === 'during' && c.date === today, trip, issueById)).join('') + wx;
+    // Which rows may be dragged, computed once for the whole trip. NOT offered
+    // while a filter is on: a group half of whose rows are hidden cannot be put
+    // in an order the traveller can see, and dropping a row "at the top" of the
+    // three rows left on screen would silently renumber the two that are not.
+    const tieIds = filtering ? null : reorderableIds(trip.items);
+    box.innerHTML = note + cards.map(c => dayCardHtml(c, phase.phase === 'during' && c.date === today, trip, issueById, tieIds)).join('') + wx;
     // Same one batched lookup as the timeline: paints from the shared session
     // cache instantly, so switching into the days view never refetches a key the
     // board already resolved.
     hydrateRatings(box);
     loadWeatherForDays();
     refreshDocIndicators();
+    // Cache-first and idempotent: every chip it can draw comes out of the venue
+    // and geocode caches, and only what is genuinely missing (and on screen) is
+    // queued for a lookup.
+    refreshDistances();
+  }
+
+  // ---------- reordering a day's tied rows ----------
+  // Pointer events, not HTML5 drag-and-drop: the day card is the surface people
+  // use on a phone, and dragstart/drop never fire for a finger. The grip carries
+  // touch-action:none so the same gesture drags the row instead of scrolling the
+  // page under it.
+  //
+  // Nothing outside the dragged row's own tie group is a drop target, so a drag
+  // that wanders onto another day (or onto a row with a different clock time)
+  // moves nothing and the row stays where it started - the "snaps back" the
+  // group boundary promises, done by never letting it leave in the first place.
+  let dragCtx = null;
+
+  // The rendered rows of one group, in the order they are on screen right now.
+  function tieRowsOf(row) {
+    const card = row.closest('.day-card');
+    if (!card) return [row];
+    return [...card.querySelectorAll('.dc-event[data-tie]')].filter(r => r.dataset.tie === row.dataset.tie);
+  }
+
+  function beginRowDrag(e) {
+    if (sharedMode || dragCtx || e.button > 0) return;
+    const grip = e.target.closest('.dc-grip');
+    const row = grip && grip.closest('.dc-event[data-tie]');
+    if (!row) return;
+    // or the pointer press selects the row's text while the drag runs
+    e.preventDefault();
+    dragCtx = { row, ids: tieRowsOf(row).map(r => r.dataset.id) };
+    row.classList.add('is-dragging');
+    document.body.classList.add('tp-reordering');
+    window.addEventListener('pointermove', onRowDragMove);
+    window.addEventListener('pointerup', endRowDrag);
+    window.addEventListener('pointercancel', cancelRowDrag);
+  }
+
+  function onRowDragMove(e) {
+    if (!dragCtx) return;
+    // the row under the POINTER, not a delta on the row being dragged: the rows
+    // are different heights (a note with three lines of details next to a bare
+    // title), so only a real hit test knows which one is being crossed
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const over = el && el.closest('.dc-event[data-tie]');
+    if (!over || over === dragCtx.row || over.dataset.tie !== dragCtx.row.dataset.tie) return;
+    const box = over.getBoundingClientRect();
+    const above = e.clientY < box.top + box.height / 2;
+    over.parentNode.insertBefore(dragCtx.row, above ? over : over.nextSibling);
+  }
+
+  function stopRowDrag() {
+    window.removeEventListener('pointermove', onRowDragMove);
+    window.removeEventListener('pointerup', endRowDrag);
+    window.removeEventListener('pointercancel', cancelRowDrag);
+    document.body.classList.remove('tp-reordering');
+    const ctx = dragCtx;
+    dragCtx = null;
+    if (ctx) ctx.row.classList.remove('is-dragging');
+    return ctx;
+  }
+
+  // A cancelled drag (Escape, a pointer the browser took away) re-renders from
+  // the data, which is what puts the half-moved row back where it belongs.
+  function cancelRowDrag() {
+    if (stopRowDrag()) renderDays();
+  }
+
+  function endRowDrag() {
+    const ctx = stopRowDrag();
+    if (!ctx) return;
+    const ids = tieRowsOf(ctx.row).map(r => r.dataset.id);
+    // dropped where it was picked up: not an edit, so not a save and not an
+    // undo step the traveller would have to press twice to get past
+    if (ids.join(' ') === ctx.ids.join(' ')) return;
+    commitOrder(ids);
+  }
+
+  // One save for the whole group, so Undo takes the day back to the order it
+  // was in rather than walking the rows back one at a time.
+  function commitOrder(ids) {
+    if (!applyManualOrder(activeTrip().items, ids)) return;
+    save('Order updated');
+    render();
   }
 
   // ---------- typical weather (Open-Meteo archive, cached) ----------
@@ -2108,6 +2326,11 @@
   // not a forecast) lives in the tooltip, which is the whole point of splitting
   // weatherRange out of weatherLine.
   function writeWeatherSlot(chip, place, rec) {
+    // A near-term day already showing a real forecast keeps it: the archive
+    // request for the same chip was fired anyway (it is the fallback if the
+    // forecast never lands) and can settle second, so without this the
+    // 5-year average would quietly overwrite the better answer.
+    if (chip.dataset.forecastShown === '1') return;
     const range = weatherRange(rec);
     if (!range) return;
     chip.querySelector('.dc-chip-temp').textContent = range;
@@ -2122,9 +2345,12 @@
   // so the note appears the moment the data does rather than waiting for an
   // unrelated re-render. The note is absent while the day view is empty or
   // filtered to nothing, which is why this checks before it writes.
-  function revealWeatherNote() {
+  function revealWeatherNote(withForecast) {
     const el = $('#daysWx');
     if (el) el.hidden = false;
+    if (!withForecast) return;
+    const fc = $('#daysWxFc');
+    if (fc) fc.hidden = false;
   }
   function applyWeather(key, place, rec) {
     document.querySelectorAll('#daysList .dc-chip').forEach(chip => {
@@ -2137,6 +2363,9 @@
   // is read back off the chip, so it is byte-for-byte the one being displayed.
   function loadWeatherForDays() {
     const pairs = new Map();
+    const forecastJobs = new Map();
+    const today = todayIso();
+    const now = Date.now();
     document.querySelectorAll('#daysList .day-card').forEach(card => {
       const date = card.dataset.date;
       const place = (card.querySelector('.dc-chip').dataset.city || '').trim();
@@ -2149,9 +2378,29 @@
       if (!pairs.has(key)) pairs.set(key, { place, month, key, date });
       const cached = weatherCache[key];
       if (cached) writeWeatherSlot(chip, place, cached);
+      // A day inside Open-Meteo's forecast horizon gets the real thing on top
+      // of the climate figure. Everything further out is left exactly as it has
+      // always been: the archive lookup above is untouched, so it is also the
+      // fallback when the forecast request fails or times out.
+      // Offline the card shows the climate chip and nothing else, cached
+      // forecast or not: a stored forecast cannot be checked or refreshed with
+      // no connection, and "what it is typically like" is the honest answer
+      // then. navigator.onLine is the same signal ensureWeather gates on.
+      if (!navigator.onLine || !forecastEligible(date, today)) return;
+      const id = place.toLowerCase();
+      const fKey = forecastKey(id, date);
+      chip.dataset.forecastKey = fKey;
+      const fCached = forecastCache[fKey];
+      if (forecastFresh(fCached, now)) { writeForecastSlot(chip, place, fCached); return; }
+      if (!forecastJobs.has(id)) forecastJobs.set(id, { id, place, dates: [] });
+      forecastJobs.get(id).dates.push(date);
     });
     for (const pair of pairs.values()) {
       if (!weatherCache[pair.key]) ensureWeather(pair);
+    }
+    for (const job of forecastJobs.values()) {
+      job.dates = [...new Set(job.dates)].sort();
+      ensureForecast(job);
     }
   }
 
@@ -2209,6 +2458,122 @@
       // tried again later in the session
       .finally(() => weatherInflight.delete(key));
     weatherInflight.set(key, p);
+  }
+
+  // ---------- near-term forecast (Open-Meteo forecast, cached per place+date) ----------
+  // Its own store, deliberately NOT trip-planner:weather:v2. That cache holds
+  // 5-year climate normals keyed by place+MONTH and never goes off; a forecast
+  // is about one specific day and is stale within hours, so the two could not
+  // share a key or an expiry without one of them lying. Expired entries are
+  // dropped at load rather than served.
+  // v2: the record grew a condition code and a humidity figure, and the chip
+  // renders all of them. A v1 entry carries neither, so under the v1 key it
+  // would paint a chip missing its icon and its humidity for up to three hours;
+  // a new key retires them outright and the next render refetches.
+  const FORECAST_CACHE_KEY = 'trip-planner:forecast:v2';
+  let forecastCache = {};
+  try {
+    forecastCache = freshForecasts(JSON.parse(localStorage.getItem(FORECAST_CACHE_KEY) || '{}'), Date.now());
+  } catch { forecastCache = {}; }
+  // Keyed by place (one request covers that place's whole near-term run), so a
+  // second render mid-flight joins the in-flight call instead of repeating it.
+  const forecastInflight = new Map();
+
+  // The forecast twin of writeWeatherSlot. Same range formatting, but the chip
+  // carries a condition icon, the rain and humidity figures, a visible
+  // "Forecast" tag and its own tooltip wording, so a real forecast is never
+  // mistaken for the typical-for-this-month figure.
+  //
+  // The two percentages answer different questions and must not be read as one
+  // number twice, so they take different markers: an umbrella for the chance of
+  // rain, a droplet for the humidity in the air. Each also carries its own
+  // tooltip, and the chip's tooltip spells both out in words.
+  function writeForecastSlot(chip, place, rec) {
+    const parts = forecastChipParts(rec);
+    if (!parts) return;
+    chip.querySelector('.dc-chip-temp').textContent = parts.temp;
+    chip.querySelector('.dc-chip-sep').hidden = !chip.querySelector('.dc-chip-city').textContent;
+    const icon = chip.querySelector('.dc-chip-icon');
+    icon.textContent = parts.icon;
+    icon.title = parts.condition;
+    icon.hidden = !parts.icon;
+    const rain = chip.querySelector('.dc-chip-rain');
+    rain.textContent = parts.rain;
+    rain.title = parts.rain ? `${parts.rain} chance of rain` : '';
+    rain.hidden = !parts.rain;
+    const rh = chip.querySelector('.dc-chip-rh');
+    rh.textContent = parts.humidity;
+    rh.title = parts.humidity ? `${parts.humidity} average humidity` : '';
+    rh.hidden = !parts.humidity;
+    const tag = chip.querySelector('.dc-chip-tag');
+    tag.textContent = 'Forecast';
+    tag.hidden = false;
+    chip.title = `${forecastLine(place, rec)}. The forecast for this day, not a typical-for-the-month average.`;
+    chip.dataset.forecastShown = '1';
+    chip.hidden = false;
+    // the header cannot fit badge + date + a labelled chip + four actions on a
+    // phone, so the card says it carries a pill and the stylesheet gives the
+    // header a second line at that width (see .day-card.has-forecast)
+    const card = chip.closest('.day-card');
+    if (card) card.classList.add('has-forecast');
+    revealWeatherNote(true);
+  }
+
+  function applyForecast(key, place, rec) {
+    document.querySelectorAll('#daysList .dc-chip').forEach(chip => {
+      if (chip.dataset.forecastKey === key) writeForecastSlot(chip, chip.dataset.weatherPlace || place, rec);
+    });
+  }
+
+  // One request per PLACE spanning its whole near-term run, not one per day: a
+  // week in Tokyo is a single call whose response fills seven cache entries.
+  // Bounded by the same 12s budget as the archive call above, and failing
+  // silently on purpose: the historical chip is already on screen, so there is
+  // no blank slot and no spinner to clear.
+  function ensureForecast(job) {
+    const { id, place, dates } = job;
+    if (!dates.length || forecastInflight.has(id) || !navigator.onLine) return;
+    const p = (async () => {
+      const hit = await geocode(place);
+      if (!hit.ok) return null;
+      const url = 'https://api.open-meteo.com/v1/forecast'
+        + `?latitude=${hit.lat}&longitude=${hit.lon}`
+        + `&start_date=${dates[0]}&end_date=${dates[dates.length - 1]}`
+        // weather_code and relative_humidity_2m_mean are both DAILY variables
+        // on this endpoint, so the icon and the humidity ride along in the one
+        // request that was already being made: no hourly block to average.
+        + '&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code,relative_humidity_2m_mean&timezone=auto';
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), WEATHER_TIMEOUT);
+      let data;
+      try {
+        const res = await fetch(url, { signal: ctrl.signal });
+        if (!res.ok) throw new Error('http ' + res.status);
+        data = await res.json();
+      } finally { clearTimeout(timer); }
+      const byDate = summarizeForecast(data && data.daily);
+      const at = Date.now();
+      const painted = [];
+      for (const date of dates) {
+        const rec = byDate[date];
+        if (!rec) continue;
+        const key = forecastKey(id, date);
+        forecastCache[key] = { at, lo: rec.lo, hi: rec.hi, pop: rec.pop, code: rec.code, rh: rec.rh };
+        painted.push({ key, rec: forecastCache[key] });
+      }
+      if (!painted.length) return null;
+      try { localStorage.setItem(FORECAST_CACHE_KEY, JSON.stringify(forecastCache)); } catch { /* best effort */ }
+      return painted;
+    })()
+      .then(painted => {
+        if (painted && ui.view === 'days') painted.forEach(hit => applyForecast(hit.key, place, hit.rec));
+        return painted;
+      })
+      // offline / geocode miss / bad response / timed out: the historical chip
+      // stands as the answer for that day, so there is nothing to undo here
+      .catch(() => { /* fall back to the climate chip already painted */ })
+      .finally(() => forecastInflight.delete(id));
+    forecastInflight.set(id, p);
   }
 
   // ---------- documents pocket (IndexedDB, device-local) ----------
@@ -2436,20 +2801,26 @@
   // self. The list is the one gate the form and an import both check against.
   const PAYMENT_METHODS = ['cash', 'card', 'prepaid'];
 
-  function openItemModal(itemId, presetDate) {
+  // `preset` is either the date a day card's + button was pressed on, or a
+  // whole opening shape (type and both dates) for a form somebody else filled
+  // in - today that is the gap warning's "Add stay". It applies to a NEW item
+  // only: an edit opens on what the item actually says.
+  function openItemModal(itemId, preset) {
     ui.editingId = itemId;
+    const pre = typeof preset === 'string' ? { startDate: preset } : (preset || {});
     const it = itemId ? activeTrip().items.find(x => x.id === itemId) : null;
+    const preStay = !it && pre.type === 'stay';
     $('#itemModalTitle').textContent = it ? 'Edit item' : 'Add item';
     $('#itemSaveBtn').textContent = it ? 'Save changes' : 'Add item';
-    setModalType(it ? it.type : 'flight');
+    setModalType(it ? it.type : (TYPE_META[pre.type] ? pre.type : 'flight'));
     $('#inTitle').value = it ? it.title : '';
     // A rating belongs to the row a traveller picked in THIS form, never to a
     // saved item, so opening any item starts without one.
     clearStayRating();
     syncFlightPickers(it);
     $('#inLocation').value = it ? (it.location || '') : '';
-    $('#inStart').value = it ? (it.startDate || '') : (presetDate || '');
-    $('#inEnd').value = it && it.type === 'stay' ? (it.endDate || '') : '';
+    $('#inStart').value = it ? (it.startDate || '') : (pre.startDate || '');
+    $('#inEnd').value = it && it.type === 'stay' ? (it.endDate || '') : (preStay ? (pre.endDate || '') : '');
     $('#inArrDate').value = it && it.type !== 'stay' ? (it.endDate || '') : '';
     $('#inArrTime').value = it ? (it.endTime || '') : '';
     $('#inTime').value = it ? (it.startTime || '') : '';
@@ -2756,6 +3127,13 @@
     // the Maps field is not user-editable, so carry it across an edit instead
     // of silently dropping it
     if (prev.mapsQuery) it.mapsQuery = prev.mapsQuery;
+    // A hand-set position belongs to the day and the time it was set on, so it
+    // rides an edit that kept both and is dropped by one that moved the item:
+    // a row dragged to the top of Tuesday morning has no place in Wednesday's
+    // list, and carrying the number there would jump it above rows nobody
+    // ordered against it.
+    if (Number.isInteger(prev.order) && prev.startDate === it.startDate
+      && (prev.startTime || '') === (it.startTime || '')) it.order = prev.order;
     // Who's this for. The control only exists with 2+ travellers, so when it is
     // absent (solo trip, or the read-only shared view) the previous assignment
     // is carried rather than blanked. All-checked and none-checked both collapse
@@ -2881,6 +3259,9 @@
       it.createdAt = new Date().toISOString();
       trip.items.push(it);
     }
+    // the same save tidies the manual order: the group this item joined or left
+    // is renumbered, and a row now tying with nobody drops the field entirely
+    normalizeOrders(trip.items);
     save(ui.editingId ? 'Item updated' : 'Item added');
     closeOverlays();
     ui.flashId = it.id;
@@ -2944,14 +3325,10 @@
     }
     // A date that is out of range ALREADY is left alone: it arrived that way by
     // import or share link, computeIssues names it, and refusing to shift it
-    // would freeze the whole trip.
-    const leavesRange = d => isDateInRange(d) && !isDateInRange(addDays(d, days));
-    if (targets.some(it => leavesRange(it.startDate) || leavesRange(it.endDate))) { shiftError(rangeMsg); return; }
-    let moved = 0;
-    for (const it of targets) {
-      if (isIsoDate(it.startDate)) { it.startDate = addDays(it.startDate, days); moved++; }
-      if (isIsoDate(it.endDate)) it.endDate = addDays(it.endDate, days);
-    }
+    // would freeze the whole trip. Both halves live in trip-logic, so a
+    // template's new start date moves dates the same way this does.
+    if (!shiftFits(targets, days)) { shiftError(rangeMsg); return; }
+    const moved = applyDayShift(targets, days);
     save(`Shifted ${moved} item${moved === 1 ? '' : 's'} by ${days > 0 ? '+' : ''}${days} day${Math.abs(days) === 1 ? '' : 's'}`);
     closeOverlays();
     if (ui.shiftTarget) ui.flashId = ui.shiftTarget;
@@ -2979,9 +3356,10 @@
   // this cannot warn about a respelling that will in fact be carried over.
   function syncTravelerWarning() {
     const el = $('#tripTravelersWarn');
-    const t = ui.tripModalMode === 'rename' ? activeTrip() : null;
+    const t = ui.tripModalMode === 'new' ? null : activeTrip();
     if (!t) { el.hidden = true; el.textContent = ''; return; }
-    const keep = new Set(normalizeTravelers($('#inTripTravelers').value.split(',')).map(n => n.toLowerCase()));
+    const next = normalizeTravelers($('#inTripTravelers').value.split(','));
+    const keep = new Set(next.map(n => n.toLowerCase()));
     // lower-cased name -> { name as the items spell it, how many items name it }
     const dropped = new Map();
     for (const it of t.items) {
@@ -2993,31 +3371,70 @@
       rec.count++;
       dropped.set(key, rec);
     }
+    // The packing list pays the same price under the same rule, so it is counted
+    // here rather than in a second warning the traveller has to notice
+    // separately - and a row that was ONLY for somebody leaving is deleted, not
+    // handed to everyone else, so the two costs are counted apart. t.packing
+    // rather than packingRows(t), because that is the array submitTripForm
+    // hands to the same function: same input, same numbers.
+    const pk = packingRosterDrops(t.packing, next);
+    for (const rec of pk.names) if (!dropped.has(rec.name.toLowerCase())) dropped.set(rec.name.toLowerCase(), { name: rec.name, count: 0 });
     if (!dropped.size) { el.hidden = true; el.textContent = ''; return; }
     const recs = [...dropped.values()];
     const n = recs.reduce((a, r) => a + r.count, 0);
+    // one name leaving can be named; two or more cannot, because a deleted row
+    // may have been tagged to any mix of them
+    const leaving = recs.length === 1 ? recs[0].name : 'them';
+    const what = [];
+    if (n) what.push(`clears "paid by" on ${n} item${n === 1 ? '' : 's'}`);
+    if (pk.removed) what.push(`deletes ${pk.removed} packing row${pk.removed === 1 ? '' : 's'} that ${pk.removed === 1 ? 'was' : 'were'} only for ${leaving}`);
+    if (pk.untagged) what.push(pk.removed ? `untags ${pk.untagged} more` : `untags ${pk.untagged} packing row${pk.untagged === 1 ? '' : 's'}`);
+    const which = what.length > 1 ? `${what.slice(0, -1).join(', ')} and ${what[what.length - 1]}` : what[0];
     el.textContent = `Saving removes ${recs.map(r => r.name).join(', ')} from this trip,`
-      + ` which clears "paid by" on ${n} item${n === 1 ? '' : 's'}.`
-      + ' The costs stay; only who paid for them is forgotten.';
+      + (what.length ? ` which ${which}.` : '.')
+      + (n ? ' The costs stay; only who paid for them is forgotten.' : '')
+      + (pk.untagged ? ' The untagged rows stay on the list, for whoever is left.' : '');
     el.hidden = false;
   }
 
+  // mode: 'new' (empty form), 'rename' (Trip settings), or 'template' (Trip
+  // settings on a trip that was just copied from a template, which is the one
+  // mode that offers to move every date at once and opens on that field).
   function openTripModal(mode) {
     ui.tripModalMode = mode;
     const t = activeTrip();
+    const existing = mode !== 'new' && t;
     $('#tripModalTitle').textContent = mode === 'new' ? 'New trip' : 'Trip settings';
     $('#tripSaveBtn').textContent = mode === 'new' ? 'Create trip' : 'Save';
     $('#tripNameList').innerHTML = sampleTripOptions().map(o => `<option value="${esc(o.place)}">`).join('');
-    $('#inTripName').value = mode === 'rename' && t ? t.name : '';
+    $('#inTripName').value = existing ? t.name : '';
     syncTripNameHint();
-    $('#inTripCurrency').value = mode === 'rename' && t ? (t.currency || 'USD') : 'USD';
-    $('#inTripBudget').value = mode === 'rename' && t && t.budget != null ? t.budget : '';
-    $('#inTripTravelers').value = mode === 'rename' && t && Array.isArray(t.travelers) ? t.travelers.join(', ') : '';
+    $('#inTripCurrency').value = existing ? (t.currency || 'USD') : 'USD';
+    $('#inTripBudgetTo').value = existing && t.budget != null ? t.budget : '';
+    $('#inTripBudgetFrom').value = existing && t.budgetFrom != null ? t.budgetFrom : '';
+    $('#inTripTravelers').value = existing && Array.isArray(t.travelers) ? t.travelers.join(', ') : '';
     syncTravelerWarning();
+    syncTripStartField();
     $('#fTripName').classList.remove('invalid');
     $('#fTripBudget').classList.remove('invalid');
+    $('#fTripStart').classList.remove('invalid');
     openOverlay('#tripOverlay');
-    $('#inTripName').focus();
+    // a template's whole reason for existing is the new dates, so that is the
+    // field the dialog opens on; every other mode still opens on the name
+    if (mode === 'template' && !$('#fTripStart').hidden) $('#inTripStart').focus();
+    else $('#inTripName').focus();
+  }
+
+  // The "Starts on" field exists only in template mode. Trip settings on any
+  // other trip is the dialog it has always been, with no trace of it in the DOM.
+  function syncTripStartField() {
+    const f = $('#fTripStart');
+    const t = activeTrip();
+    const from = ui.tripModalMode === 'template' && t ? firstItemDate(t.items) : null;
+    f.hidden = !from;
+    $('#inTripStart').value = '';
+    $('#inTripStart').disabled = !from;
+    if (from) $('#tripStartHint').textContent = `Copied from ${fmtDate(from)}. Pick the new first day and every date moves with it, keeping the same gaps. Leave it blank to keep these dates.`;
   }
 
   function submitTripForm(e) {
@@ -3030,19 +3447,36 @@
     $('#fTripBudget').classList.remove('invalid');
     if (!name) { $('#fTripName').classList.add('invalid'); return; }
     const currency = $('#inTripCurrency').value;
-    const rawBudget = $('#inTripBudget').value.trim();
-    const budget = parseMoney(rawBudget).value;
-    // parseMoney stopped rejecting negatives when refunds became legal, and
-    // #tripForm now carries novalidate like #itemForm, so its native min="0"
-    // never fires on a typed value and this is what refuses a negative budget.
-    // A budget is a ceiling, not a transaction, so it is checked here.
-    if (budget != null && budget < 0) { $('#fTripBudget').classList.add('invalid'); return; }
+    // #tripForm carries novalidate like #itemForm, so the inputs' native min="0"
+    // never fires on a typed value and this is the whole budget gate: a
+    // negative end, a floor above the ceiling, or a floor with no ceiling.
+    const range = readBudgetRange($('#inTripBudgetFrom').value.trim(), $('#inTripBudgetTo').value.trim());
+    if (!range.ok) { $('#tripBudgetErr').textContent = range.error; $('#fTripBudget').classList.add('invalid'); return; }
+    const budget = range.to;
+    const budgetFrom = range.from;
+    $('#fTripStart').classList.remove('invalid');
+    // A template's new start date is checked BEFORE anything is written, for the
+    // same reason "Shift entire trip" checks its own: a half-applied move leaves
+    // a trip whose dates are wrong in a way nothing on screen explains.
+    let plan = null;
+    if (ui.tripModalMode === 'template' && !$('#fTripStart').hidden && $('#inTripStart').value) {
+      const to = $('#inTripStart').value;
+      plan = startDateShift(activeTrip().items, to);
+      if (!plan || !isDateInRange(to)) { tripStartError(`Use a date between ${DATE_MIN} and ${DATE_MAX}.`); return; }
+      if (!shiftFits(activeTrip().items, plan.days)) {
+        tripStartError(`Starting on ${fmtDate(to)} would move dates outside the calendar. Use a date between ${DATE_MIN} and ${DATE_MAX}.`);
+        return;
+      }
+    }
     // trimmed, deduped, capped at 6 by the one gate in trip-logic; an empty list
     // leaves the trip with no `travelers` key at all, so a solo trip is byte for
     // byte the trip it was before this field existed
     const travelers = normalizeTravelers($('#inTripTravelers').value.split(','));
     if (ui.tripModalMode === 'new') {
       const t = { id: uid(), name, currency, budget, items: [] };
+      // only a trip that set a lower end carries the key at all, so a plain
+      // ceiling (and no budget) stores byte for byte what it always did
+      if (budgetFrom != null) t.budgetFrom = budgetFrom;
       if (travelers.length) t.travelers = travelers;
       db.trips.push(t);
       db.activeTripId = t.id;
@@ -3054,6 +3488,8 @@
       const t = activeTrip();
       if ((t.currency || 'USD') !== currency) stampCostCurrencies(t, t.currency || 'USD');
       t.name = name; t.currency = currency; t.budget = budget;
+      if (budgetFrom != null) t.budgetFrom = budgetFrom;
+      else delete t.budgetFrom;
       if (travelers.length) t.travelers = travelers;
       else delete t.travelers;
       // Editing the roster must not leave items pointing at a payer who is no
@@ -3066,10 +3502,26 @@
         if (payer) it.paidBy = payer;
         else delete it.paidBy;
       }
+      // and neither can a packing row stay tagged for somebody the trip no
+      // longer names: it keeps whoever is left, and a row that named ONLY people
+      // who are gone goes with them. t.packing itself, because deleting a row
+      // means splicing the trip's own array - and because it is what
+      // syncTravelerWarning just counted, so the warning cannot promise one
+      // thing and this do another
+      applyPackingRoster(t.packing, travelers);
+      if (ui.packingFilter && !travelers.includes(ui.packingFilter)) ui.packingFilter = '';
+      // the dates move last, so a refused shift above cannot have already
+      // renamed the trip
+      if (plan && plan.days) applyDayShift(t.items, plan.days);
     }
     save(ui.tripModalMode === 'new' ? `Trip "${name}" created` : 'Trip updated');
     closeOverlays();
     render();
+  }
+
+  function tripStartError(msg) {
+    $('#fTripStart').classList.add('invalid');
+    $('#tripStartErr').textContent = msg;
   }
 
   function duplicateTrip() {
@@ -3081,6 +3533,25 @@
     db.trips.push(copy);
     db.activeTripId = copy.id;
     save('Trip duplicated'); render();
+  }
+
+  // The other half of Duplicate: the same trip with every booking fact stripped
+  // off it (tripAsTemplate), landed on the trip dialog so the one thing a
+  // template is missing - when it happens - can be answered immediately. The
+  // source trip is not read again after the copy is taken, so it cannot change.
+  // Fresh item ids are what leave the source's attached documents behind: those
+  // are stored in IndexedDB against the item id, never on the item.
+  function duplicateAsTemplate() {
+    const t = activeTrip();
+    const copy = tripAsTemplate(t);
+    copy.id = uid();
+    copy.name = `${t.name} (template)`;
+    copy.items.forEach(it => { it.id = uid(); });
+    db.trips.push(copy);
+    db.activeTripId = copy.id;
+    save('Template created');
+    render();
+    openTripModal('template');
   }
 
   // ---------- trip essentials ----------
@@ -3368,6 +3839,11 @@
     const notes = drops || [];
     const budget = parseMoney(t.budget);
     if (!budget.ok) notes.push(`Trip budget ${budget.reason}, so it was left unset.`);
+    // the optional lower end of a budget range, refused on its own terms: the
+    // ceiling above is what every total is judged against, so a bad floor never
+    // takes it down with it
+    const budgetFrom = normalizeBudgetFrom(t.budgetFrom, budget.value);
+    if (budgetFrom.reason) notes.push(`The lower end of the trip budget ${budgetFrom.reason}, so it was left unset.`);
     // clamp to 6 trimmed unique names FIRST: the item sanitizer needs the final
     // list to reject an item assigned to someone the trip does not name
     const travelers = normalizeTravelers(t.travelers);
@@ -3379,6 +3855,11 @@
       visaExtras: (Array.isArray(t.visaExtras) ? t.visaExtras : []).filter(c => typeof c === 'string' && /^[A-Z]{2}$/.test(c)),
       items: t.items.map(raw => sanitizeItem(raw, notes, travelers)).filter(Boolean),
     };
+    // an incoming file's numbering is trusted as an ORDER and never as the exact
+    // numbers: each ordered group is renumbered 0..n-1 here, and a number left
+    // on an item that ties with nobody is dropped
+    normalizeOrders(nt.items);
+    if (budgetFrom.value != null) nt.budgetFrom = budgetFrom.value;
     if (travelers.length) nt.travelers = travelers;
     // the emergency/insurance/medical block is trip-level, so a JSON export and
     // a full backup both carry it and re-importing one has to hand it back. A
@@ -3400,7 +3881,14 @@
         const text = r && typeof r.text === 'string' ? r.text.trim().slice(0, 80) : '';
         if (!text) { unreadable++; continue; }
         if (rows.length === 200) { overflow++; continue; }
-        rows.push({ id: uid(), text, done: r.done === true });
+        const row = { id: uid(), text, done: r.done === true };
+        // who the row is for rides along, clamped to the roster this import just
+        // settled on: a name the file made up cannot smuggle a seventh traveller
+        // onto the trip, and a row tagged for everybody is stored as untagged
+        // exactly as the dialog would have stored it
+        const who = packingWho(r, travelers);
+        if (travelers.length >= 2 && who.length && who.length < travelers.length) row.who = who;
+        rows.push(row);
       }
       nt.packing = rows;
       if (unreadable) notes.push(`Packing list: ${unreadable} row${unreadable === 1 ? '' : 's'} had no text, so ${unreadable === 1 ? 'it was' : 'they were'} left out.`);
@@ -3453,6 +3941,11 @@
       createdAt: new Date().toISOString(),
     };
     if (PAYMENT_METHODS.includes(raw.payment)) out.payment = raw.payment;
+    // A hand-set same-day order round-trips: an export or a share link that
+    // reshuffled the day it describes would be a worse copy than none. Anything
+    // that is not a small whole number is dropped, and the group it lands in is
+    // renumbered by the caller's normalizeOrders pass.
+    if (Number.isInteger(raw.order) && raw.order >= 0 && raw.order < ORDER_MAX) out.order = raw.order;
     if (/^[A-Z]{3}$/.test(raw.costCurrency || '')) out.costCurrency = raw.costCurrency;
     else if (out.cost != null) out.costCurrency = undefined; // stamped by the caller with the trip currency
     // an imported or shared itinerary keeps its suggested prices, still uncounted
@@ -4016,6 +4509,326 @@
       })
       .catch(() => job.resolve({ ok: false, reason: 'network' }))
       .finally(() => { clearTimeout(timer); setTimeout(() => { geoBusy = false; pumpGeo(); }, 1100); });
+  }
+
+  // ---------- venue coordinates (the ladder behind every distance chip) ----------
+  // City centroids come from the geocode cache above. A venue - a restaurant, a
+  // museum, the hotel itself - needs a finer point than "Tokyo", and it must
+  // never come from Nominatim: that queue is one request a second and its usage
+  // policy forbids bulk. So venue points come from two sources that are already
+  // paid for or already open:
+  //   1. the tp-places ratings call, which now returns the resolved place's
+  //      coordinates from the Place Details response it already pays for;
+  //   2. Photon (the hotel picker's service), lazily, only for venues on rows
+  //      that are actually on screen and that (1) did not cover.
+  // Both land in one persistent, capped store, never synced (the sync key list
+  // is an allowlist and this key is not on it) and expiring on the 30-day
+  // schedule Google's caching terms allow for coordinates.
+  const VENUE_GEO_KEY = 'trip-planner:venuegeo:v1';
+  let venueCache = {};
+  try { venueCache = normalizeVenueCache(JSON.parse(localStorage.getItem(VENUE_GEO_KEY) || '{}'), Date.now()); }
+  catch { venueCache = {}; }
+  function saveVenueCache() {
+    try { localStorage.setItem(VENUE_GEO_KEY, JSON.stringify(venueCache)); } catch { /* cache is best-effort */ }
+  }
+  function rememberVenuePoint(key, coord) {
+    rememberVenue(venueCache, key, coord, Date.now());
+  }
+
+  // Photon is a free, shared, unpaid service: the hotel picker debounces at
+  // 320ms and never fires under three characters for exactly that reason.
+  // Distances ask it for whole rows at a time, so the traffic is bounded three
+  // ways - two at once, six started per repaint, and a session ceiling - and a
+  // resolved venue is then cached for 30 days, so a returning traveller's trip
+  // costs nothing at all.
+  const VENUE_CONCURRENCY = 2;
+  const VENUE_PASS_MAX = 6;
+  const VENUE_SESSION_MAX = 40;
+  // A repaint runs before the ratings batch it races has landed, and the Places
+  // answer is the better one (it is the place the card links to). Waiting a
+  // beat means the common case never asks Photon at all.
+  const VENUE_LOOKUP_DELAY = 1500;
+  const venueQueue = [];
+  const venueQueued = new Set();
+  const venueMisses = new Set();
+  let venueBusy = 0;
+  let venueLookups = 0;
+  let venueTimer = 0;
+
+  function queueVenueLookups(queries) {
+    if (!navigator.onLine) return;
+    let added = 0;
+    for (const q of queries) {
+      if (added >= VENUE_PASS_MAX || venueLookups + venueQueue.length >= VENUE_SESSION_MAX) break;
+      const key = placeCacheKey(q);
+      if (!key || venueCache[key] || venueQueued.has(key) || venueMisses.has(key)) continue;
+      // the ratings call is in flight for this exact venue and answers with a
+      // better point; asking Photon too would be the same lookup twice
+      if (placesInFlight.has(key)) continue;
+      venueQueued.add(key);
+      venueQueue.push({ key, query: q });
+      added++;
+    }
+    if (!venueQueue.length || venueTimer) return;
+    venueTimer = setTimeout(() => { venueTimer = 0; pumpVenue(); }, VENUE_LOOKUP_DELAY);
+  }
+
+  function pumpVenue() {
+    while (venueBusy < VENUE_CONCURRENCY && venueQueue.length) {
+      const job = venueQueue.shift();
+      if (venueCache[job.key]) { venueQueued.delete(job.key); continue; }
+      venueBusy++;
+      venueLookups++;
+      fetchVenuePoint(job).finally(() => {
+        venueBusy--;
+        venueQueued.delete(job.key);
+        pumpVenue();
+      });
+    }
+  }
+
+  // Not the hotel picker's request: no tourism tag filter (a ramen counter is
+  // not lodging) and no shared abort controller (these run in parallel with
+  // each other and with whatever the traveller is typing). A miss is remembered
+  // for the session so a row that Photon cannot place is asked once.
+  function fetchVenuePoint(job) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 7000);
+    return fetch(`${HOTEL_API}?q=${encodeURIComponent(job.query)}&limit=5&lang=en`, { signal: ctrl.signal })
+      .then(r => { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+      .then(json => {
+        const hit = pickVenueFeature(job.query, json);
+        if (!hit) { venueMisses.add(job.key); return; }
+        rememberVenuePoint(job.key, hit);
+        saveVenueCache();
+        scheduleDistanceRepaint();
+      })
+      // offline, rate-limited or simply unfindable: the row keeps whatever the
+      // city centroid gave it, which is usually no chip at all
+      .catch(() => { /* leave the row without a chip */ })
+      .finally(() => clearTimeout(timer));
+  }
+
+  // The ladder itself, cache-only in every rung: venue coordinates, then the
+  // hotel's own coordinates when the traveller picked the stay from the hotel
+  // picker (rememberPickedHotel seeds the geocode cache under the hotel NAME),
+  // then the city centroid. null when nothing locates it, which renders as no
+  // chip rather than a guess.
+  function venuePoint(query) {
+    const key = placeCacheKey(query);
+    const rec = key && venueCache[key];
+    return rec ? { key: 'v:' + key, lat: rec.lat, lon: rec.lon } : null;
+  }
+  function cityPoint(name) {
+    const key = String(name || '').trim().toLowerCase();
+    const hit = key && geoCache[key];
+    return hit && Number.isFinite(hit.lat) ? { key: 'c:' + key, lat: hit.lat, lon: hit.lon } : null;
+  }
+  // `name` is the hotel-picker rung and is only ever passed for a stay: an
+  // activity called "Kyoto" must not borrow the city's centroid through it.
+  function placePoint({ query, name, city }) {
+    return venuePoint(query) || (name ? cityPoint(name) : null) || cityPoint(city);
+  }
+
+  // ---------- distance chips (Days rows + assistant cards) ----------
+  // Every chip is painted from the caches only, so the pass is idempotent and a
+  // re-render with a warm cache issues no request at all. What a row or a card
+  // needs to locate itself is STAMPED on the element when it renders (see
+  // itemDistAttrs), which is what lets this be a pure read of the DOM plus the
+  // caches: it can run again after any lookup lands without the caller having
+  // to hold on to the data the view was built from.
+  function distAttrs(query, name, city, label) {
+    return ` data-dist-q="${esc(query || '')}" data-dist-name="${esc(name || '')}"`
+      + ` data-dist-city="${esc(city || '')}" data-dist-label="${esc(label || '')}"`;
+  }
+  // The hotel-picker rung is only offered to a stay: it looks the TITLE up in
+  // the geocode cache, which is a hotel's own doorstep for a stay and a
+  // coincidence for anything else.
+  function itemDistAttrs(it) {
+    return distAttrs(itemMapsQuery(it), isStay(it) ? displayTitle(it) : '', (it.location || '').trim(), displayTitle(it));
+  }
+  // The airports table is the precise rung for an "(KEF)"-style arrival
+  // anchor: exact coordinates, no geocoder, and the file already ships with
+  // the app (it is in the service worker's precache, so this works offline
+  // too). Until the rows are loaded the city rung answers instead, and
+  // paintDayDistances kicks the load off and repaints when it lands.
+  function airportPointByIata(code) {
+    if (!code || !airportRows) return null;
+    const row = airportRows.find(r => r.iata === code);
+    return row && Number.isFinite(row.lat) && Number.isFinite(row.lon)
+      ? { key: 'a:' + code, lat: row.lat, lon: row.lon } : null;
+  }
+
+  function readPoint(el, kind) {
+    if (!el) return null;
+    const d = el.dataset;
+    const anchor = kind === 'anchor';
+    const label = anchor ? d.anchorLabel : d.distLabel;
+    if (label === undefined) return null;
+    if (anchor && d.anchorIata) {
+      const ap = airportPointByIata(d.anchorIata);
+      if (ap) return { ...ap, label };
+    }
+    const p = placePoint({
+      query: anchor ? d.anchorQ : d.distQ,
+      name: anchor ? d.anchorName : d.distName,
+      city: anchor ? d.anchorCity : d.distCity,
+    });
+    return p ? { ...p, label } : null;
+  }
+  // A venue worth asking Photon about: it has a query of its own and no cached
+  // point yet. Collected while painting, so only rows that are on screen right
+  // now can ever cause a lookup.
+  function wantVenue(list, query) {
+    if (query && !venueCache[placeCacheKey(query)]) list.push(query);
+  }
+
+  function writeDistChip(row, leg) {
+    const facts = row.querySelector('.dc-facts');
+    if (!facts) return;
+    let chip = facts.querySelector('.dc-dist');
+    if (!leg) { if (chip) chip.remove(); return; }
+    if (!chip) {
+      chip = document.createElement('span');
+      chip.className = 'dc-dist';
+      // between the price and the Maps button: it is a fact about the row, not
+      // an action, so it sits with the price rather than after the button
+      facts.insertBefore(chip, facts.querySelector('.tp-maps-link'));
+    }
+    chip.textContent = distanceChipLabel(leg.km);
+    chip.title = distanceChipTitle(leg.km, leg.from);
+  }
+
+  let airportKickoff = false;
+  function paintDayDistances(wanted) {
+    document.querySelectorAll('#daysList .day-card').forEach(cardEl => {
+      // an arrival-day anchor needs the airports table; load it once on the
+      // first card that asks and repaint when it lands. On a failed load the
+      // kickoff flag stays set - retrying on every paint would loop - and the
+      // city rung keeps answering for the rest of the session.
+      if (cardEl.dataset.anchorIata && !airportRows && !airportKickoff) {
+        airportKickoff = true;
+        loadAirports().then(() => { if (airportRows) refreshDistances(); });
+      }
+      wantVenue(wanted, cardEl.dataset.anchorQ);
+      const anchor = readPoint(cardEl, 'anchor');
+      const rows = [...cardEl.querySelectorAll('.dc-event[data-dist-label]')];
+      const stops = rows.map((row, i) => {
+        wantVenue(wanted, row.dataset.distQ);
+        const p = readPoint(row, 'dist');
+        return p ? { ...p, id: i } : { id: i };
+      });
+      const legs = new Map(dayDistanceChain(anchor, stops).map(l => [l.id, l]));
+      rows.forEach((row, i) => writeDistChip(row, legs.get(i)));
+    });
+  }
+
+  // The point the assistant's chips measure from: the focus day's own anchor
+  // (its covering stay, else its morning city) until the traveller accepts
+  // something, and after that the place they just accepted, so the next chips
+  // answer "how far from where I have now decided to be".
+  let assistAcceptedPoint = null;
+  function assistAnchorPoint() {
+    if (assistAcceptedPoint) return assistAcceptedPoint;
+    const trip = activeTrip();
+    if (!trip || !isIsoDate(assistFocusDate)) return null;
+    const spec = dayAnchor(trip.items, assistFocusDate, geoResolved);
+    if (!spec) return null;
+    // an 'arrival' spec is a travel leg, not a place: the airport rung (or
+    // its city fallback) locates it, never the venue/name rungs
+    const p = (spec.iata && airportPointByIata(spec.iata))
+      || (spec.item && spec.source !== 'arrival'
+        ? placePoint({ query: itemMapsQuery(spec.item), name: displayTitle(spec.item), city: spec.city })
+        : cityPoint(spec.city));
+    return p ? { ...p, label: spec.label } : null;
+  }
+
+  // Scoped to the assistant's own log on purpose: the booking-import dialog
+  // renders the SAME proposal cards, and a flight read off a confirmation
+  // measured from the assistant's focus-day hotel would be a number about
+  // nothing. Its cards carry the (empty, hidden) slot and no chip.
+  function paintAssistDistances(wanted) {
+    const anchor = assistAnchorPoint();
+    document.querySelectorAll('#assistMessages .ap-dist').forEach(el => {
+      wantVenue(wanted, el.dataset.distQ);
+      const p = readPoint(el, 'dist');
+      // one leg through the same builder the day chain uses, so a recommendation
+      // at the hotel's own address is suppressed by the same rule
+      const leg = p ? dayDistanceChain(anchor, [{ ...p, id: 0 }])[0] : null;
+      if (!leg) { el.textContent = ''; el.removeAttribute('title'); return; }
+      el.textContent = distanceChipLabel(leg.km);
+      el.title = distanceChipTitle(leg.km, leg.from);
+    });
+    paintAssistRoutes(anchor);
+  }
+
+  // The order pill and the footer are painted together and removed together:
+  // they are one statement, and half of it (a numbered card with no route line,
+  // or a route naming a card that has since been accepted) would be worse than
+  // neither. An alternative set is ONE stop, taken at the option currently
+  // selected in it: picking one of three dinners is a choice about the same
+  // slot, not three stops on a walk.
+  function addOrderPill(card, n, anchorLabel) {
+    const op = card.querySelector('.ap-op');
+    if (!op) return;
+    const pill = document.createElement('span');
+    pill.className = 'ap-order';
+    pill.textContent = String(n);
+    pill.title = `Stop ${n} on the shortest route from ${anchorLabel}`;
+    op.insertBefore(pill, op.firstChild);
+  }
+
+  function paintAssistRoutes(anchor) {
+    document.querySelectorAll('#assistMessages .assist-proposals').forEach(box => {
+      box.querySelectorAll('.ap-order').forEach(el => el.remove());
+      box.querySelectorAll('.assist-route').forEach(el => el.remove());
+      if (!anchor) return;
+      const byDate = new Map();
+      box.querySelectorAll('.assist-proposal[data-op="add"]').forEach(card => {
+        // an accepted or stale card has had its body replaced, so its slots are
+        // gone and it drops out of the route by construction
+        const slots = card.classList.contains('assist-set')
+          ? [...card.querySelectorAll('.as-opt')]
+          : [card];
+        if (!slots.length) return;
+        const date = card.dataset.date || '';
+        if (!byDate.has(date)) byDate.set(date, []);
+        const group = byDate.get(date);
+        group.push({
+          card,
+          options: slots.map(el => readPoint(el.querySelector('.ap-dist'), 'dist')),
+          // nothing picked yet: the set stands at its first option, which is
+          // what its cards are already ordered by
+          selected: Math.max(0, slots.findIndex(el => el.querySelector('input[type="radio"]:checked'))),
+        });
+      });
+      for (const group of byDate.values()) {
+        const stops = routeStops(group.map((e, i) => ({ id: i, options: e.options, selected: e.selected })));
+        if (stops.length < 2) continue;
+        const route = shortestRoute(anchor, stops);
+        if (!route) continue;
+        route.stops.forEach((s, i) => addOrderPill(group[s.id].card, i + 1, anchor.label));
+        const footer = document.createElement('div');
+        footer.className = 'assist-route';
+        footer.textContent = routeFooterText(anchor.label, route.stops.map(s => s.label), route.km);
+        group[stops[stops.length - 1].id].card.after(footer);
+      }
+    });
+  }
+
+  // The one entry point: paint everything from the caches, then ask for the
+  // venues the painting found missing. Called after every render of the days
+  // grid or a batch of proposals, and again whenever a lookup lands.
+  function refreshDistances() {
+    const wanted = [];
+    paintDayDistances(wanted);
+    paintAssistDistances(wanted);
+    queueVenueLookups(wanted);
+  }
+  let distTimer = 0;
+  function scheduleDistanceRepaint() {
+    if (distTimer) return;
+    distTimer = setTimeout(() => { distTimer = 0; refreshDistances(); }, 60);
   }
 
   // ---------- combobox primitive (shared by the city and airport pickers) ----------
@@ -5105,6 +5918,7 @@
       $('#assistMessages').innerHTML = '';
       assistActions.clear();
       assistFocusDate = null;
+      assistAcceptedPoint = null;
       setupCollapsed = false;
     }
     if (focusDate && isIsoDate(focusDate)) assistFocusDate = focusDate;
@@ -5185,6 +5999,7 @@
       $('#assistMessages').innerHTML = '';
       assistActions.clear();
       assistFocusDate = null;
+      assistAcceptedPoint = null;
       delete panel.dataset.focusDate;
       planMemory.clear(); // another trip's day prefs must not leak into this one
       renderFocusChip();
@@ -5763,7 +6578,7 @@
       date, activities: 3, drinks: 0,
       meals: { breakfast: true, lunch: true, dinner: true },
       styles: { activities: [], drinks: [], meals: [] },
-      wakeTime: '08:00', returnTime: '22:00', repeatOk: false, budget: 2, note: '',
+      wakeTime: '08:00', returnTime: '22:00', repeatOk: false, budget: [2], note: '',
     };
   }
 
@@ -5887,6 +6702,23 @@
     </div>`;
   }
 
+  // Budget is optional and can be a RANGE: each tier toggles independently
+  // (tap $$ and $$$ for "$$-$$$", tap a lone tier off for "no preference"),
+  // so this is a pick-many like the style tags, but it keeps the segmented
+  // track look so the row still reads as one control among the pick-one rows.
+  // An empty pick sends a request that says nothing about money.
+  const planBudgetSel = b => (Array.isArray(b) ? b : [b]).filter(n => BUDGET_LABELS[n]);
+  function planBudgetRow(picked) {
+    const sel = planBudgetSel(picked);
+    const segs = [1, 2, 3, 4].map(v =>
+      `<button type="button" class="pl-seg-b${sel.includes(v) ? ' on' : ''}" aria-pressed="${sel.includes(v)}"
+        data-plan-budget="${v}">${BUDGET_LABELS[v]}</button>`).join('');
+    return `<div class="pl-row">
+      <div class="pl-label" id="pl-budget-lbl">Budget <small>optional</small></div>
+      <div class="pl-seg" role="group" aria-labelledby="pl-budget-lbl">${segs}</div>
+    </div>`;
+  }
+
   // The custom time sits on the label line and the quick picks fill the track
   // below it: at 390px the four picks plus a time field cannot share one row.
   function planTimeRow(label, key, picks, current) {
@@ -5922,7 +6754,7 @@
           ${planTimeRow('Back by', 'return', RETURN_PICKS, p.returnTime)}
           ${timesOk ? '' : '<div class="pl-err" role="alert">Return time must be after wake time</div>'}
           ${planSegRow('Places', 'repeat', [['0', 'New places only'], ['1', 'Repeating is fine']], p.repeatOk ? '1' : '0', v => `data-plan-repeat="${v}"`, true)}
-          ${planSegRow('Budget', 'budget', [[1, '$'], [2, '$$'], [3, '$$$'], [4, '$$$$']], p.budget, v => `data-plan-budget="${v}"`)}
+          ${planBudgetRow(p.budget)}
           <div class="pl-row pl-row-wide">
             <div class="pl-row-top">
               <label class="pl-label" for="planNote">Anything else? <small>optional</small></label>
@@ -5946,7 +6778,15 @@
     const meals = PLAN_MEALS.filter(m => p.meals[m]);
     if (meals.length) bits.push(meals.length === 3 ? 'all meals' : meals.join(' + '));
     if (p.drinks) bits.push(`${PLAN_RANGE_LABEL[p.drinks] || p.drinks} drinks`);
-    bits.push(BUDGET_LABELS[p.budget] || BUDGET_LABELS[2]);
+    // one tier reads as itself, an unbroken run as a range ("$$-$$$"), a
+    // gapped pick spelled out ("$ or $$$"); no pick at all says nothing
+    const bSel = planBudgetSel(p.budget);
+    if (bSel.length) {
+      const run = bSel[bSel.length - 1] - bSel[0] === bSel.length - 1;
+      bits.push(bSel.length === 1 ? BUDGET_LABELS[bSel[0]]
+        : run ? `${BUDGET_LABELS[bSel[0]]}-${BUDGET_LABELS[bSel[bSel.length - 1]]}`
+          : bSel.map(n => BUDGET_LABELS[n]).join(' or '));
+    }
     return bits.join(' · ');
   }
 
@@ -5989,7 +6829,11 @@
     else if (d.planMeal) planPrefs.meals[d.planMeal] = !planPrefs.meals[d.planMeal];
     else if (d.planTime) planPrefs[d.planTime === 'wake' ? 'wakeTime' : 'returnTime'] = d.planVal;
     else if (d.planRepeat) planPrefs.repeatOk = d.planRepeat === '1';
-    else if (d.planBudget) planPrefs.budget = Number(d.planBudget);
+    else if (d.planBudget) {
+      const v = Number(d.planBudget);
+      const cur = planBudgetSel(planPrefs.budget);
+      planPrefs.budget = cur.includes(v) ? cur.filter(x => x !== v) : [...cur, v].sort((a, b) => a - b);
+    }
     renderPlanner();
   }
 
@@ -6014,10 +6858,14 @@
 
   function setAssistFocus(date) {
     assistFocusDate = (date && isIsoDate(date)) ? date : null;
+    // A different day starts from that day's own bed again: the place accepted
+    // on the previous day is not where this one begins.
+    assistAcceptedPoint = null;
     const panel = $('#assistPanel');
     if (assistFocusDate) panel.dataset.focusDate = assistFocusDate; else delete panel.dataset.focusDate;
     renderFocusChip();
     renderPlanner();
+    refreshDistances();
   }
 
   function togglePlanPreview() {
@@ -6224,6 +7072,16 @@
     let data;
     try { data = await res.json(); } catch { return false; }
     for (const u of placesCacheUpdates(data && data.results)) placesCache.set(u.key, u.entry);
+    // The same response carries the place's coordinates (see the field-mask
+    // note in tp-places.mjs). They cost nothing extra and they are the top rung
+    // of the distance ladder, so a venue this call resolves is never looked up
+    // a second time anywhere else.
+    const located = placesLocationUpdates(data && data.results);
+    if (located.length) {
+      for (const u of located) rememberVenuePoint(u.key, u);
+      saveVenueCache();
+      scheduleDistanceRepaint();
+    }
     return true;
   }
 
@@ -6261,6 +7119,7 @@
     // One request for the whole reply, not one per card and never one per
     // candidate: a full day of proposals is 1-2 batched calls.
     hydrateRatings(container);
+    refreshDistances();
   }
 
   // A proposal card follows the same estimate rule as the timeline: a tilde and
@@ -6274,6 +7133,20 @@
     const { tilde, digits } = costDisplayParts(d);
     return tilde + (shown.currency ? fmtMoneyIn(shown.currency, shown.amount, digits) : fmtMoney(trip, shown.amount, digits));
   }
+
+  // A proposal is not an item yet, so its distance attributes are read off the
+  // fields it WOULD create. A remove proposal carries no fields and therefore
+  // no chip: it is a place leaving the plan, not one to walk to. No hotel-name
+  // rung either, since nothing the model suggests has been through the picker.
+  function proposalDistAttrs(p) {
+    const f = p.fields;
+    if (!f) return '';
+    const query = itemMapsQuery({ type: f.type, title: f.title, location: f.location, mapsQuery: p.display.mapsQuery });
+    const city = String(f.location || '').trim();
+    if (!query && !city) return '';
+    return distAttrs(query, '', city, f.title || '');
+  }
+  const proposalDistHtml = p => `<span class="ap-dist"${proposalDistAttrs(p)}></span>`;
 
   // ---------- alternative sets ----------
   // Two or more adds sharing a `group` are one decision, not several: the
@@ -6299,19 +7172,39 @@
             ${detail ? `<span class="as-detail">${esc(detail)}</span>` : ''}
           </span>
         </label>
+        ${proposalDistHtml(p)}
         ${ratingSlotHtml(d.mapsQuery)}
         ${assistMapsLinkHtml(d.mapsQuery)}
       </div>`;
+  }
+
+  // The heading is the SLOT, not an explanation: "Lunch · 1:00 PM" (the group
+  // id's leading word plus the slot's time), because the "Pick one" tag and
+  // the two buttons below already say everything the old "3 options for the
+  // same slot: lunch-2026-10-01. Choose one, or skip the slot." sentence
+  // spelled out - and a raw group id is plumbing no traveller should read.
+  function alternativeSetLead(entry) {
+    const slotWord = (String(entry.group || '').match(/^[a-z]+/i) || [])[0];
+    if (!slotWord) return `Pick one of ${entry.candidates.length}`;
+    const slotTime = entry.candidates[0].display.startTime;
+    return `${slotWord[0].toUpperCase() + slotWord.slice(1)}${slotTime ? ' · ' + fmtTime(slotTime) : ''}`;
   }
 
   function alternativeSetCard(entry, trip) {
     const card = document.createElement('div');
     card.className = 'assist-proposal assist-set';
     card.dataset.setGroup = entry.group;
+    // A set is one stop on the day's route (at whichever option is selected), so
+    // it carries the same op and day attributes the single cards do. Every
+    // candidate in a set is an add for the same slot, so the first one's date is
+    // the set's date.
+    card.dataset.op = 'add';
+    const setDate = entry.candidates[0].display.startDate;
+    if (isIsoDate(setDate)) card.dataset.date = setDate;
     const name = 'apset-' + (++assistPropSeq);
     card.innerHTML = `
       <div class="ap-op">Pick one</div>
-      <div class="as-lead">${entry.candidates.length} options for the same slot${entry.group ? ': ' + esc(entry.group) : ''}. Choose one, or skip the slot.</div>
+      <div class="as-lead as-title">${esc(alternativeSetLead(entry))}</div>
       <div class="as-options" role="radiogroup" aria-label="Choose one option">
         ${entry.candidates.map(p => setOptionHtml(p, name, trip)).join('')}
       </div>
@@ -6332,6 +7225,9 @@
     card.className = 'assist-proposal';
     card.dataset.op = p.op;
     card.dataset.proposalId = pid;
+    // the day this card would land on: the shortest-route footer is per day,
+    // and one reply can cover several
+    if (isIsoDate(d.startDate)) card.dataset.date = d.startDate;
     const meta = [isIsoDate(d.startDate) ? fmtDate(d.startDate) : '', d.startTime ? fmtTime(d.startTime) : ''].filter(Boolean).join(' · ');
     const costStr = proposalCostStr(d, trip);
     const maps = assistMapsLinkHtml(d.mapsQuery);
@@ -6344,6 +7240,7 @@
       <div class="ap-title">${esc(d.title || '(no title)')}</div>
       ${meta ? `<div class="ap-meta">${esc(meta)}</div>` : ''}
       ${costStr ? `<div class="ap-cost">${esc(costStr)}</div>` : ''}
+      ${proposalDistHtml(p)}
       ${ratingSlotHtml(d.mapsQuery)}
       ${maps}
       <div class="ap-actions">
@@ -6446,7 +7343,13 @@
     if (!res.ok) { assistActions.delete(pid); markProposalStale(card); return; }
     const p = res.proposal;
     if (p.op === 'add') {
-      trip.items.push(proposalToItem(p, trip));
+      const added = proposalToItem(p, trip);
+      trip.items.push(added);
+      // The traveller has now decided to be here, so this is where the rest of
+      // the day's recommendations are measured from. Only a place that actually
+      // resolved moves the anchor; an unlocatable add leaves it where it was.
+      const point = placePoint({ query: itemMapsQuery(added), name: '', city: (added.location || '').trim() });
+      if (point) assistAcceptedPoint = { ...point, label: added.title || '' };
     } else if (p.op === 'update') {
       const it = trip.items.find(x => x.id === p.targetId);
       if (!it) { assistActions.delete(pid); markProposalStale(card); return; }
@@ -6467,6 +7370,9 @@
     render();
     assistActions.delete(pid);
     markProposalDone(card, p.op);
+    // the accepted card leaves the route and every remaining chip re-measures
+    // from the new anchor, without a reload
+    refreshDistances();
   }
 
   // ---------- "Up next" chip ----------
@@ -6520,10 +7426,22 @@
     const trip = activeTrip();
     if (!trip) return;
     ensurePacking(trip);
+    // a filter left pointing at somebody who is no longer on the trip would open
+    // the dialog on a list with rows missing and nothing saying why
+    if (ui.packingFilter && !packingNames().includes(ui.packingFilter)) ui.packingFilter = '';
     openOverlay('#packingOverlay');
     renderPacking();
     syncUndoButtons();
   }
+
+  // The whole per-traveller half of this dialog turns on ONE reading: a trip
+  // that names two or more people. Below that, packingNames() is empty, every
+  // row reads as Everyone, and neither the filter nor the picker is built at
+  // all, so the list is the list it always was.
+  const packingNames = () => {
+    const names = normalizeTravelers(activeTrip().travelers);
+    return names.length >= 2 ? names : [];
+  };
 
   function packingCountText(rows) {
     return `${rows.filter(r => r.done).length} of ${rows.length} packed`;
@@ -6532,21 +7450,95 @@
   function renderPacking() {
     const trip = activeTrip();
     if (!trip) return;
-    const rows = packingRows(trip);
-    $('#packingCount').textContent = packingCountText(rows);
-    $('#packingList').innerHTML = rows.length ? rows.map(r => `
+    const names = packingNames();
+    const all = packingRows(trip);
+    const shown = packingRowsFor(all, ui.packingFilter, names);
+    $('#packingCount').textContent = packingCountText(shown);
+    renderPackingFilter(names, all);
+    renderPackingWho(names);
+    $('#packingList').innerHTML = shown.length ? shown.map(r => {
+      const who = packingWho(r, names);
+      return `
       <div class="pk-row${r.done ? ' is-done' : ''}">
         <label class="pk-check">
           <input type="checkbox" data-pk="${esc(r.id)}"${r.done ? ' checked' : ''}>
           <span class="pk-text">${esc(r.text)}</span>
         </label>
+        ${who.length ? `<span class="pk-who-tag" title="Only for ${esc(who.join(', '))}">${esc(who.join(', '))}</span>` : ''}
         <button type="button" class="pk-del" data-pk-del="${esc(r.id)}" title="Remove this row" aria-label="Remove ${esc(r.text)}">✕</button>
-      </div>`).join('') : `
+      </div>`;
+    }).join('') : packingEmptyHtml(all.length);
+  }
+
+  // Two different emptinesses, and saying "nothing on the list" for the second
+  // would be a lie about a list that has rows on it.
+  function packingEmptyHtml(total) {
+    if (total && ui.packingFilter) return `
+      <div class="m-empty">
+        <span class="me-ico" aria-hidden="true">🎒</span>
+        <span class="me-title">Nothing for ${esc(ui.packingFilter)} yet</span>
+        <span>Rows for everyone show up here too - there are none of those either.</span>
+      </div>`;
+    return `
       <div class="m-empty">
         <span class="me-ico" aria-hidden="true">🎒</span>
         <span class="me-title">Nothing on the list</span>
         <span>Add whatever you do not want to forget. It stays with this trip.</span>
       </div>`;
+  }
+
+  // Rebuilt rather than repopulated, like the toolbar's traveller filter: the
+  // roster can change under an open dialog (undo, or a sync from another
+  // device). The select is only replaced when its options actually differ, so a
+  // repaint cannot take focus out of the control being used.
+  function renderPackingFilter(names, rows) {
+    const wrap = $('#packingFilterWrap');
+    // the signature is cleared with the markup, or a roster that leaves and
+    // comes back the same would keep the emptied wrapper
+    if (!names.length) { wrap.innerHTML = ''; delete wrap.dataset.sig; ui.packingFilter = ''; return; }
+    if (ui.packingFilter && !names.includes(ui.packingFilter)) ui.packingFilter = '';
+    const counts = new Map(names.map(n => [n, packingProgress(rows, n, names)]));
+    const sig = names.join('\n') + '|' + names.map(n => `${counts.get(n).done}/${counts.get(n).total}`).join(',');
+    if (wrap.dataset.sig !== sig) {
+      wrap.dataset.sig = sig;
+      const whole = packingProgress(rows, '', names);
+      wrap.innerHTML = `<label class="pk-filter-lbl" for="packingFilter">Show</label>`
+        + `<span class="sel-wrap"><select id="packingFilter" class="pk-filter-sel">`
+        + `<option value="">Everyone's list (${whole.done}/${whole.total})</option>`
+        + names.map(n => `<option value="${esc(n)}">${esc(n)} (${counts.get(n).done}/${counts.get(n).total})</option>`).join('')
+        + `</select></span>`;
+    }
+    $('#packingFilter').value = ui.packingFilter;
+  }
+
+  // "Who's this for" on the ADD form, the same checkbox-per-traveller control
+  // the item modal uses. Nothing ticked is Everyone, which is what a row that
+  // was never tagged already means.
+  function renderPackingWho(names) {
+    const wrap = $('#packingWhoWrap');
+    if (!names.length) { wrap.innerHTML = ''; delete wrap.dataset.names; return; }
+    // rebuilt only when the roster itself changes, so a repaint cannot untick
+    // the boxes under somebody halfway through adding a row
+    if (wrap.dataset.names === names.join('\n')) return;
+    wrap.dataset.names = names.join('\n');
+    wrap.innerHTML = `
+      <fieldset class="who-for pk-who-for">
+        <legend>Who's this for <small>(optional)</small></legend>
+        <div class="who-list">
+          ${names.map(n => `<label class="who-chk"><input type="checkbox" data-pk-who value="${esc(n)}">${esc(n)}</label>`).join('')}
+        </div>
+        <div class="hint">Leave all unchecked and the row is for everyone.</div>
+      </fieldset>`;
+  }
+
+  // Which names the add form has ticked, in roster order. Everybody ticked is
+  // Everyone, exactly as it is on an item, so it persists as no tag at all.
+  function pickedPackingWho() {
+    const names = packingNames();
+    if (!names.length) return [];
+    const picked = [...document.querySelectorAll('#packingWhoWrap input[data-pk-who]:checked')]
+      .map(c => c.value).filter(n => names.includes(n));
+    return picked.length < names.length ? picked : [];
   }
   // An undo or a remote change repaints through render(), and the dialog can be
   // open while that happens.
@@ -6563,9 +7555,22 @@
     // updated in place rather than re-rendered: rebuilding the list would throw
     // away the checkbox the keyboard is standing on
     box.closest('.pk-row').classList.toggle('is-done', row.done);
-    $('#packingCount').textContent = packingCountText(packingRows(activeTrip()));
+    // both counters read the same rows the list is showing, and the select's
+    // per-person tallies are rebuilt with them: focus is on this checkbox, not
+    // in the select, so replacing it takes nobody's place
+    const names = packingNames();
+    const all = packingRows(activeTrip());
+    $('#packingCount').textContent = packingCountText(packingRowsFor(all, ui.packingFilter, names));
+    renderPackingFilter(names, all);
     save();
     syncUndoButtons();
+  });
+
+  $('#packingFilterWrap').addEventListener('change', e => {
+    if (!e.target.closest('#packingFilter')) return;
+    ui.packingFilter = e.target.value;
+    renderPacking();
+    $('#packingFilter').focus();
   });
 
   $('#packingList').addEventListener('click', e => {
@@ -6586,8 +7591,15 @@
     const input = $('#packingAddInput');
     const text = input.value.trim();
     if (!text) { input.focus(); return; }
-    activeTrip().packing.push({ id: uid(), text, done: false });
+    const row = { id: uid(), text, done: false };
+    const who = pickedPackingWho();
+    // absent rather than empty, so a row for everyone is byte for byte the row
+    // this list has always stored
+    if (who.length) row.who = who;
+    activeTrip().packing.push(row);
     input.value = '';
+    // the picker is NOT cleared: adding three things for the same person is the
+    // normal way this gets used, and re-ticking a name each time is the cost
     save(`Added "${text}"`, undo);
     renderPacking();
     syncUndoButtons();
@@ -6656,6 +7668,9 @@
   $('#routeBtn').addEventListener('click', () => openRouteModal('', ''));
   $('#visaBtn').addEventListener('click', openVisaModal);
   $('#assistBtn').addEventListener('click', () => openAssist(null));
+  // openOverlay/closeOverlays own the focus contract, so the shortcut list gets
+  // Escape, backdrop click, the Close button and focus-back-to-opener for free.
+  $('#shortcutsBtn').addEventListener('click', () => openOverlay('#shortcutsOverlay'));
   $('#assistCloseBtn').addEventListener('click', closeAssist);
   $('#assistMinBtn').addEventListener('click', () => {
     setAssistMinimized(!$('#assistPanel').classList.contains('is-min'));
@@ -6719,10 +7734,13 @@
     if (act === 'skip-set') {
       for (const pid of setPids(card)) assistActions.delete(pid);
       card.remove();
+      refreshDistances();
       return;
     }
     const pid = card.dataset.proposalId;
-    if (act === 'reject-proposal') { assistActions.delete(pid); card.remove(); }
+    // a dismissed card is one stop fewer, so the route line recomputes (and
+    // disappears once fewer than two located recommendations are left)
+    if (act === 'reject-proposal') { assistActions.delete(pid); card.remove(); refreshDistances(); }
     else if (act === 'accept-proposal') acceptProposal(pid, card);
   }
   $('#assistMessages').addEventListener('click', onProposalClick);
@@ -6733,6 +7751,27 @@
     const card = radio.closest('.assist-proposal');
     card.querySelector('[data-act="accept-set"]').disabled = false;
     card.querySelectorAll('.as-opt').forEach(o => o.classList.toggle('picked', o.contains(radio)));
+    // the set now stands at a different venue, so the day's route order, its
+    // numbered pills and its total are all recomputed from the new pick
+    refreshDistances();
+  });
+  $('#daysList').addEventListener('pointerdown', beginRowDrag);
+  // The keyboard half of the grip, and the reason this is not a mouse-only
+  // feature: the same one-step move a drag makes, on the arrow keys the handle's
+  // own label promises. render() rebuilds the day list, so focus is handed to
+  // the grip's replacement afterwards (preventScroll, or the page jumps back to
+  // the row we just moved away from), exactly as the night strip does.
+  $('#daysList').addEventListener('keydown', e => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    const grip = e.target.closest('.dc-grip');
+    if (!grip || sharedMode) return;
+    e.preventDefault();
+    const id = grip.dataset.grip;
+    if (!moveInTie(activeTrip().items, id, e.key === 'ArrowDown' ? 1 : -1)) return;
+    save('Order updated');
+    render();
+    const next = [...document.querySelectorAll('#daysList .dc-grip')].find(g => g.dataset.grip === id);
+    if (next) next.focus({ preventScroll: true });
   });
   $('#daysList').addEventListener('click', e => {
     if (e.target.closest('[data-act="clear-filters"]')) { clearFilters(); return; }
@@ -6985,6 +8024,7 @@
     if (act === 'new-trip') openTripModal('new');
     else if (act === 'rename-trip') openTripModal('rename');
     else if (act === 'duplicate-trip') duplicateTrip();
+    else if (act === 'duplicate-template') duplicateAsTemplate();
     else if (act === 'essentials') openEssentialsModal();
     else if (act === 'packing') openPackingModal();
     else if (act === 'import-booking') openImportBookingModal();
@@ -7067,6 +8107,17 @@
     // the timeline, so the view has to come along or "show" flashes a row inside
     // a hidden board and burns ui.flashId doing it
     if (a) { ui.view = 'timeline'; ui.flashId = a.dataset.jump; render(); return; }
+    // the gap pair: light up the uncovered nights, or open the Add-item form
+    // already filled in for them. Both read the gap off the issue list this
+    // panel was drawn from, so neither can name a range the warning does not.
+    const gapShow = e.target.closest('button[data-gap-show]');
+    if (gapShow) { flashGapNights((currentIssues[Number(gapShow.dataset.gapShow)] || {}).gap); return; }
+    const addStay = e.target.closest('button[data-add-stay]');
+    if (addStay && !sharedMode) {
+      const pre = stayPrefillForGap((currentIssues[Number(addStay.dataset.addStay)] || {}).gap);
+      if (pre) openItemModal(null, pre);
+      return;
+    }
     // the overlapping-trip warning names the other trip; the name switches to
     // it, exactly as picking it from #tripSelect does - filters untouched
     const t = e.target.closest('button[data-trip]');
@@ -7141,8 +8192,11 @@
   document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeOverlays));
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-      // one keypress dismisses one layer, topmost first: modals (z 90), then
-      // the assistant panel (80), then the header popovers (search 41, menu 40)
+      // one keypress dismisses one layer, topmost first: a row being dragged
+      // (nothing is stored until it is dropped, so this abandons it), then
+      // modals (z 90), then the assistant panel (80), then the header popovers
+      // (search 41, menu 40)
+      if (dragCtx) { cancelRowDrag(); return; }
       if (document.querySelector('.overlay.open')) { closeOverlays(); return; }
       if (!$('#assistPanel').hidden) { closeAssist(); return; }
       if ($('#tripSearch').classList.contains('open')) { closeTripSearch(); return; }
@@ -7174,6 +8228,15 @@
     // added would appear on screen and exist nowhere.
     if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey && !sharedMode && !e.target.closest('input, textarea, select')) {
       openItemModal(null);
+      return;
+    }
+    // "?" opens the shortcut list itself. Same field guard as "n" above (a
+    // question mark typed into a search box must reach the box), but NOT gated
+    // on sharedMode: it reads nothing and writes nothing, so a visitor gets the
+    // same list. preventDefault stops Firefox's quick-find on "?".
+    if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.target.closest('input, textarea, select')) {
+      e.preventDefault();
+      openOverlay('#shortcutsOverlay');
     }
   });
 

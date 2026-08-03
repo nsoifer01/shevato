@@ -8,6 +8,14 @@
 [functions]
   node_bundler = "esbuild"
 
+# Local dev only (netlify dev); no effect on deploys. Pins the dev server
+# to one address instead of a random port per run, serving the repo root
+# like production does. 8888 on purpose: 8080 stays free for the plain
+# static server workflow.
+[dev]
+  port = 8888
+  publish = "."
+
 # The site homepage lives at /home.html; "/" must be a clean edge 301 so
 # Google indexes the real homepage. force = true makes this win over the
 # committed index.html stub (which previously served at "/" carrying a

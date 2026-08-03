@@ -202,3 +202,31 @@ test('the rating TTL stays inside a day, unlike the place ID TTL', () => {
   assert.ok(RATING_TTL_MS <= 86400000);
   assert.ok(PLACE_ID_TTL_MS > RATING_TTL_MS);
 });
+
+test('coordinates ride along on a confident match, rated or not', async () => {
+  // `location` is an Essentials field on a request already billed at
+  // Enterprise for the rating, so this costs nothing extra; it is what lets the
+  // client show how far a venue is from the hotel without a second lookup.
+  const s = spies({ place: { name: 'Ichiran Shibuya', rating: 4.2, userRatingCount: 10, mapsUri: 'u', lat: 35.6595, lon: 139.7005 } });
+  const ok = (await run(['Ichiran Shibuya Tokyo'], memCache(), s)).results[0];
+  assert.equal(ok.status, 'ok');
+  assert.equal(ok.lat, 35.6595);
+  assert.equal(ok.lon, 139.7005);
+
+  // an unrated venue is still a real place with a real position
+  const un = spies({ place: { name: 'Ichiran Shibuya', rating: null, userRatingCount: 0, mapsUri: 'u', lat: 35.6595, lon: 139.7005 } });
+  const unrated = (await run(['Ichiran Shibuya Tokyo'], memCache(), un)).results[0];
+  assert.equal(unrated.status, 'no_match');
+  assert.equal(unrated.reason, 'unrated');
+  assert.equal(unrated.lat, 35.6595);
+
+  // a low-confidence hit is a DIFFERENT business: no rating, and no position
+  const wrong = spies({ place: { name: 'Gonpachi Nishi-Azabu', rating: 4.5, userRatingCount: 900, mapsUri: 'u', lat: 35.66, lon: 139.72 } });
+  const bad = (await run(['Ichiran Shibuya Tokyo'], memCache(), wrong)).results[0];
+  assert.equal(bad.reason, 'low_confidence');
+  assert.equal('lat' in bad, false);
+
+  // and a place whose coordinates are absent or impossible simply travels without
+  const junk = spies({ place: { name: 'Ichiran Shibuya', rating: 4.2, userRatingCount: 10, mapsUri: 'u', lat: 999, lon: 0 } });
+  assert.equal('lat' in (await run(['Ichiran Shibuya Tokyo'], memCache(), junk)).results[0], false);
+});

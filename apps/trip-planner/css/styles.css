@@ -139,6 +139,11 @@
   select.trip-select {
     background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
     padding: 8px 34px 8px 12px; font-weight: 600; min-width: 170px; max-width: 260px;
+    /* a name longer than the box ("Netherlands (Amsterdam and Rotterdam)")
+       must ellipsize INSIDE the padding, not run under the chevron to the
+       border: without this, Chrome clips select text at the edge and the
+       right side reads as having no padding at all */
+    text-overflow: ellipsis; white-space: nowrap; overflow: hidden;
     appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239aa7ba' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
     background-repeat: no-repeat; background-position: right 12px center;
@@ -379,7 +384,13 @@
     font-size: 16px; font-weight: 700; line-height: 1.3; letter-spacing: -0.005em;
     color: var(--text); overflow-wrap: anywhere;
   }
-  .c-loc { font-size: 12.5px; font-weight: 500; color: var(--text-dim); overflow-wrap: anywhere; }
+  /* Inline after the title, exactly like the day view's .dc-loc: one line
+     ("Hotel Borg  📍 Reykjavik") instead of a second. inline-block for the
+     same reason - a cancelled title's line-through cannot enter it. */
+  .c-loc {
+    display: inline-block; font-size: 12.5px; font-weight: 500; color: var(--text-dim);
+    overflow-wrap: anywhere; margin-left: 8px; vertical-align: baseline;
+  }
   .c-loc::before { content: "\1F4CD"; margin-right: 5px; font-size: 10.5px; opacity: 0.75; }
   .c-details { margin-top: 5px; color: var(--text-dim); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 
@@ -698,6 +709,9 @@
     width: auto; max-width: 260px; appearance: none; -webkit-appearance: none;
     background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
     padding: 8px 34px 8px 12px; font-weight: 600; color: var(--text); height: 100%;
+    /* same as .trip-select: a long example label ellipsizes inside the
+       padding instead of running to the border under the chevron */
+    text-overflow: ellipsis; white-space: nowrap; overflow: hidden;
   }
   .trip-planner-app select.sample-select:hover { border-color: var(--accent); }
   .empty .sample-note { margin: 16px 0 0; font-size: 12.5px; color: var(--text-dim); }
@@ -901,6 +915,15 @@
   }
   .input-group .btn:hover { background: var(--bg-raised); }
   .input-group > .sel-wrap::after { right: 12px; }
+  /* the budget pair: two boxes holding ONE optional range, so the word between
+     them is a label and not a third control (no divider rules around it), and
+     the two boxes always split the frame evenly however narrow it gets */
+  .budget-range > input { flex: 1 1 0; min-width: 0; }
+  .budget-range > * + * { border-left: 0; }
+  .budget-range .ig-sep {
+    display: flex; align-items: center; flex: none; padding: 0 2px;
+    font-size: var(--m-help); font-weight: 600; color: var(--text-dim);
+  }
 
   /* segmented control. ONE track style for the item type picker here and the
      assistant's own pickers, so the app never grows a second look for
@@ -1188,6 +1211,13 @@
   .trip-planner-app .tp-maps-link .tpm-label { color: var(--text) !important; }
   .trip-planner-app .tp-maps-link .tpm-count { color: var(--text-dim) !important; }
   .trip-planner-app .tp-maps-link .tpm-star { color: var(--amber) !important; }
+  /* the distance chips, the route line and the order pill all state facts the
+     app computed, so they pin their own tones against main.css's sitewide
+     content colors rather than inheriting whatever wins on the page */
+  .trip-planner-app .dc-dist,
+  .trip-planner-app .ap-dist,
+  .trip-planner-app .assist-route { color: var(--text-dim) !important; }
+  .trip-planner-app .ap-order { color: #fff !important; }
   .trip-planner-app button:disabled { color: var(--text-faint) !important; }
   /* main.css also flashes rgba-red backgrounds on :hover:active */
   .trip-planner-app button:hover:active { background-color: transparent; }
@@ -1217,6 +1247,10 @@
     color: var(--text);
   }
   .view-switch button:hover { color: var(--text); background: var(--accent-soft); }
+  /* a switched-off tab (empty plan: Days and Map have nothing to draw, see
+     applyView) reads dimmed and dead, and hover must not light it back up */
+  .view-switch button:disabled { opacity: 0.45; cursor: default; }
+  .view-switch button:disabled:hover { background: none; }
   /* the active tab stays white-on-blue in EVERY state */
   .trip-planner-app .view-switch button.on,
   .trip-planner-app .view-switch button.on:hover,
@@ -1241,6 +1275,14 @@
      it - the one pair of cells a traveller most needs to tell apart. */
   .strip .cell[data-goto] { cursor: pointer; }
   .strip .cell[data-goto]:hover { transform: scaleY(1.35); }
+  /* "show" on a "no stay covers these nights" warning: the nights it names,
+     lit for a couple of seconds. A ring rather than a fill, because the fill is
+     the hatched no-stay pattern that warning is ABOUT and replacing it would
+     hide the very thing being pointed at. */
+  .strip .cell.is-flash {
+    box-shadow: 0 0 0 2px var(--red), 0 0 0 5px color-mix(in srgb, var(--red) 28%, transparent);
+    transform: scaleY(1.35);
+  }
   .cell.cv-booked { background: var(--green); }
   .cell.cv-decide { background: var(--purple); }
   .cell.cv-to-book { background: var(--amber); }
@@ -1562,6 +1604,11 @@
     background: var(--bg-card); border: 1px solid var(--border-soft); border-radius: var(--radius);
     display: flex; flex-direction: column; overflow: hidden;
     transition: border-color .15s, box-shadow .15s;
+    /* same reasoning as dcitem on the rows: the auto-fill grid hands the SAME
+       viewport 400px cards or 700px ones, and whether a forecast header can
+       collapse to a single line is a question about THIS card's width, not
+       the window's (see the daycard container query in the desktop block) */
+    container-type: inline-size; container-name: daycard;
   }
   .day-card:hover { border-color: var(--border); box-shadow: var(--shadow-sm); }
   .day-card.is-today { border-color: var(--accent); }
@@ -1609,6 +1656,67 @@
   .dc-chip-sep { flex: none; width: 1px; align-self: stretch; margin: 1px 1px; background: currentColor; opacity: 0.28; }
   .dc-chip-temp { white-space: pre; flex: none; }
   .dc-chip-temp:not(:empty)::before { content: "\1F324\FE0F"; margin-right: 4px; font-size: 10.5px; }
+  /* Forecast-only slots. The condition glyph REPLACES the decorative sun above
+     (see the [data-forecast-shown] rule below), so a forecast chip carries one
+     weather picture, not two. The two percentages are different questions - the
+     chance of getting rained on, and how heavy the air is - so they take
+     different markers (umbrella / droplet) rather than sitting as two bare
+     numbers; each span also carries its own tooltip, and the chip's tooltip
+     says both in words. The colour is the chip's own (inherited --accent), so
+     the sitewide !important button rules never reach them. */
+  .dc-chip-icon, .dc-chip-rain, .dc-chip-rh { flex: none; white-space: nowrap; color: inherit; }
+  .dc-chip-icon[hidden], .dc-chip-rain[hidden], .dc-chip-rh[hidden] { display: none; }
+  .dc-chip-icon { font-size: 11px; }
+  .dc-chip-rain::before { content: "\2614"; margin-right: 3px; font-size: 10px; }
+  .dc-chip-rh::before { content: "\1F4A7"; margin-right: 3px; font-size: 10px; }
+  .dc-chip-rh { opacity: 0.85; }
+  /* "Forecast" only ever appears on a chip showing a real near-term forecast;
+     the historical chip carries no tag at all, so the absence of this pill is
+     what says "typical for the month" without spending any width on saying it */
+  .dc-chip-tag {
+    flex: none; font-size: 8.5px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
+    padding: 1px 4px; border-radius: 999px;
+    /* --accent-fill, not --accent: white only clears contrast on the filled
+       token (see its definition), and this pill is a filled surface */
+    background: var(--accent-fill); color: #fff;
+  }
+  .dc-chip-tag[hidden] { display: none; }
+  /* .dc-head never wraps (see above), so the city is what gives way when the
+     chip runs out of room - and the pill costs about what the pin and the sun
+     do together, which was enough to ellipsize "Tokyo" down to nothing. A chip
+     carrying the pill drops the two glyphs instead, exactly the trade the phone
+     breakpoint already makes for the same reason. */
+  .dc-chip[data-forecast-shown="1"] .dc-chip-city::before,
+  .dc-chip[data-forecast-shown="1"] .dc-chip-temp:not(:empty)::before { content: none; }
+  /* A forecast chip is the widest thing this header ever carries: a condition
+     icon, the range, two percentages and the pill. One nowrap row cannot hold
+     all of it next to four actions at real card widths (562px in the
+     two-column desktop grid, 320-390 on phones), so a card carrying one gets
+     a taller header with ONE hierarchy: the day badge anchors the left edge
+     spanning the full height, the weekday/date and the chip form a single
+     left-aligned block in the middle (same left edge, a 4px gap, date
+     hugging down and chip hugging up so they read as one unit rather than a
+     row plus a stray line under it), and the action cluster sits vertically
+     centered opposite that whole block. Nothing floats on a row of its own.
+     Cards without a forecast keep the single nowrap row they have always
+     had. */
+  .day-card.has-forecast .dc-head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'num head acts'
+      'num chip acts';
+    align-items: center; column-gap: 9px; row-gap: 4px;
+  }
+  .day-card.has-forecast .dc-daynum { grid-area: num; }
+  .day-card.has-forecast .dc-headings { grid-area: head; justify-self: start; align-self: end; }
+  .day-card.has-forecast .dc-acts { grid-area: acts; justify-self: end; margin-left: 0; }
+  /* the hairline separated the date from a chip sitting BESIDE it; in the
+     stacked block it would read as a stray 20px tick between columns */
+  .day-card.has-forecast .dc-vr { display: none; }
+  .day-card.has-forecast .dc-chip {
+    grid-area: chip; justify-self: start; align-self: start; min-width: 0; max-width: 100%;
+  }
   .dc-acts { display: flex; align-items: center; gap: 8px; flex: none; margin-left: auto; }
   /* A 14px glyph is the right SIZE and the wrong TARGET. The GLYPH stays 14px
      and the box around it grows to 34px, which costs nothing at rest because
@@ -1626,6 +1734,59 @@
     min-width: 32px; min-height: 32px;
   }
   .dc-acts .row-btn::after, .dc-btns .row-btn::after { content: ""; position: absolute; inset: -4px; }
+  /* The header cluster runs a size below the in-row buttons (28px box against
+     32): four of them sit against the date-and-weather block on a forecast
+     card, and at 34px they crowded the chip's column into ellipsizing the
+     city. The overlay still carries the hit test to 36px and the 8px gap is
+     still exactly two overlays wide, so nothing steals a neighbour's edge.
+     The phone does not take this size: its media block restates a 44px floor
+     for .dc-acts .row-btn at the same specificity (a bare .row-btn floor
+     loses to these two classes, media query or not). */
+  .dc-acts .row-btn { padding: 7px; min-width: 28px; min-height: 28px; }
+  /* Desktop only - the tablet range (561-900px) keeps its thumb-size bordered
+     buttons and the phone its 44px targets: four separate ghost glyphs adrift
+     at the end of a wide header read as scattered, so above 900px they gather
+     into ONE object, a quiet segmented pill on the card's own surface tone.
+     That gives the right side enough visual weight to balance the
+     date-and-weather block opposite it without shouting. The buttons inside
+     shrink a step further and go round to match the pill; their hit-test
+     overlay shrinks to half the 2px gap, so adjacent buttons still meet
+     without stealing each other's edge (coordinate-verified below). */
+  @media (min-width: 901px) {
+    .dc-head .dc-acts {
+      gap: 2px; padding: 2px; border-radius: 999px;
+      background: var(--bg-card); border: 1px solid var(--border-soft);
+    }
+    .dc-head .dc-acts .row-btn { padding: 5px; min-width: 24px; min-height: 24px; border-radius: 999px; font-size: 13px; }
+    .dc-head .dc-acts .row-btn::after { inset: -1px; }
+    /* One line when the card itself is wide enough. A forecast header's two
+       rows exist for one reason - the chip cannot fit beside the date and the
+       actions - and on a 545px+ card, with the 24px pill above and the chip a
+       step tighter, it can. So the header collapses to the exact single-row
+       height of a card without a forecast, and adjacent cards in the grid stop
+       disagreeing about how tall a header is. The chip keeps min-width: 0, so
+       an unusually long city name ellipsizes rather than reopening the second
+       row; below 545px of CARD width (auto-fill can hand out narrow cards at
+       any viewport) the stacked block above stays. */
+    @container daycard (min-width: 545px) {
+      .day-card.has-forecast .dc-head {
+        grid-template-columns: auto auto minmax(0, 1fr) auto;
+        grid-template-areas: 'num head chip acts';
+        row-gap: 0; column-gap: 6px; padding: 8px 8px 8px 9px;
+      }
+      .day-card.has-forecast .dc-daynum { min-width: 0; }
+      .day-card.has-forecast .dc-headings { align-self: center; }
+      /* the same trades the phone block makes for the same reason (a full chip
+         beside fixed neighbours): a step tighter everywhere and the tag in
+         mixed case, so "Reykjavik" survives on a 562px two-column card instead
+         of ellipsizing to "Re..." - measured, not guessed */
+      .day-card.has-forecast .dc-chip { align-self: center; font-size: 11px; gap: 3px; padding: 3px 6px; }
+      .day-card.has-forecast .dc-chip-sep { margin: 0; }
+      .day-card.has-forecast .dc-chip-tag { font-size: 8px; letter-spacing: 0; text-transform: none; padding: 1px 3px; }
+      .day-card.has-forecast .dc-chip-rain::before,
+      .day-card.has-forecast .dc-chip-rh::before { margin-right: 2px; }
+    }
+  }
   /* A day with nothing of its own on it keeps the copy button in place (the
      header must not reshuffle from card to card), but the button must not light
      up under the pointer like a live one. The sitewide button rules are !important,
@@ -1671,6 +1832,14 @@
     flex: none; width: 10px; height: 10px; border-radius: 50%;
     background: var(--dc-dot); box-shadow: 0 0 0 3px color-mix(in srgb, var(--dc-dot) 20%, transparent);
   }
+  /* An activity (a sight, a lunch, a drinks stop) is a PLAN; a flight, a stay
+     or a transfer is a BOOKING. Both keep the status colour - the dot's label
+     and the legend stay true - but a plan draws as a ring where a booking is
+     a filled disc, so a day of to-book lunches and museums no longer reads as
+     one solid amber wall indistinguishable from the bookings that actually
+     need chasing. */
+  .dc-event.tp-t-activity .dc-dot,
+  .dc-event.tp-t-meal .dc-dot { background: transparent; border: 2.5px solid var(--dc-dot); }
   /* the connector: dot to dot, so the day reads as one thread rather than as
      loose cards. A hairline, not a bar: the thread is context, and at 2px in
      --border it competed with the dots it exists to join. It starts below this
@@ -1754,7 +1923,16 @@
      3.1:1 on this surface; this lands at 4.9:1, so a step of softness costs no
      legibility (see the --text-faint audit note further down). */
   .dc-title { font-size: 13.5px; font-weight: 700; line-height: 1.3; color: var(--text); }
-  .dc-loc { font-size: 12px; font-weight: 500; color: var(--text-dim); margin-top: 1px; }
+  /* The city rides on the TITLE line ("Lunch: Konoba Hvaranin  📍 Split"),
+     not on a line of its own: the row reads in one pass and short rows stay
+     one line tall. inline-block on purpose - a cancelled title's line-through
+     propagates through plain inline children and cannot be switched off
+     there, but it never enters an inline-block, so the city stays unstruck
+     exactly as it was when it lived on its own line. */
+  .dc-loc {
+    display: inline-block; font-size: 12px; font-weight: 500; color: var(--text-dim);
+    margin-left: 7px; vertical-align: baseline;
+  }
   .dc-loc::before { content: "\1F4CD"; margin-right: 4px; font-size: 10px; opacity: 0.75; }
   .dc-details {
     margin-top: 4px; font-size: 11.5px; line-height: 1.5; overflow-wrap: anywhere;
@@ -1769,6 +1947,16 @@
   }
   .dc-cost small { font-weight: 500; color: var(--text-dim); }
   .dc-cost.is-note { font-weight: 600; color: var(--text-dim); }
+  /* How far this stop is from the one before it. Same 24px box as the price and
+     the Maps pill so the row of facts stays one line of controls, but DASHED and
+     unfilled on purpose: it is an estimate (a straight line, not a walking
+     route), and it must not read as solid as the price next to it. */
+  .dc-dist {
+    display: inline-flex; align-items: center; min-height: 24px;
+    font-size: 11px; font-weight: 600; white-space: nowrap;
+    color: var(--text-dim); background: transparent;
+    border: 1px dashed var(--border); border-radius: 999px; padding: 2px 8px;
+  }
   /* Maps is an action, so it rides beside the price as a bordered button, not
      as a blue word under the description. Deliberately quieter than it was: a
      shorter pill, tighter sides and a border at 22% of the accent, because a
@@ -1832,9 +2020,22 @@
      happens to end with; they read muted until the row is hovered or one takes
      focus. They are never hover-GATED: the day card is the surface people use
      on a phone, where there is no hover at all. */
-  .dc-edit, .dc-del { flex: none; opacity: 0.55; transition: opacity .12s; }
-  .dc-event:hover .dc-edit, .dc-event:hover .dc-del,
-  .dc-edit:focus, .dc-del:focus { opacity: 1; }
+  .dc-edit, .dc-del, .dc-grip { flex: none; opacity: 0.55; transition: opacity .12s; }
+  .dc-event:hover .dc-edit, .dc-event:hover .dc-del, .dc-event:hover .dc-grip,
+  .dc-edit:focus, .dc-del:focus, .dc-grip:focus { opacity: 1; }
+  /* The reorder handle, on the rows that tie with another row on the same day
+     and only those (see reorderableIds). touch-action:none is what makes the
+     same gesture drag the row on a phone instead of scrolling the day list out
+     from under it, and it is why the drag is built on pointer events rather
+     than HTML5 drag-and-drop, which no finger has ever fired. */
+  .dc-grip { cursor: grab; touch-action: none; }
+  .dc-grip:active { cursor: grabbing; }
+  .dc-event.is-dragging { opacity: 0.55; }
+  .dc-event.is-dragging .dc-item { box-shadow: 0 0 0 1.5px var(--accent); }
+  /* while a row is being dragged, a pointer crossing the rows must not paint a
+     text selection across half the day */
+  body.tp-reordering { user-select: none; -webkit-user-select: none; }
+  body.tp-reordering .dc-grip { cursor: grabbing; }
   /* ONE surface for every row. A tinted fill per type made a hotel read as a
      different KIND of card from the museum below it - a lighter slab that
      looked like a state - when the only thing it said was already said twice
@@ -2382,6 +2583,35 @@
     color: var(--text); white-space: nowrap;
     padding-left: 7px; border-left: 1px solid var(--border);
   }
+  /* ---------- distance chip + shortest-route footer ----------
+     The chip answers "how far is this from where I am now" on every
+     recommendation, and the footer answers "in what order should I do them".
+     Both are estimates over straight lines, so both stay quiet: dashed and
+     dimmed, never competing with the title or the rating. */
+  .ap-dist {
+    align-self: flex-start; display: inline-flex; align-items: center;
+    font-size: 11.5px; font-weight: 600; white-space: nowrap; color: var(--text-dim);
+    border: 1px dashed var(--border); border-radius: 999px; padding: 2px 9px;
+  }
+  .ap-dist:empty { display: none; }
+  .as-opt .ap-dist { margin-left: 28px; }
+  /* The route position, on the card it belongs to. The NUMBER carries the
+     meaning: the accent fill is a second, redundant cue, so the ordering
+     survives any color vision and any monochrome print. */
+  .ap-order {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; border-radius: 999px; flex: none;
+    font-size: 10.5px; font-weight: 800; line-height: 1; letter-spacing: 0;
+    /* --accent-fill, not --accent: this is a FILLED surface carrying white
+       text, and white on --accent is only 3.2:1 (see the token comment) */
+    background: var(--accent-fill);
+  }
+  .ap-op { display: flex; align-items: center; gap: 6px; }
+  .assist-route {
+    font-size: 12px; line-height: 1.45; color: var(--text-dim);
+    border-top: 1px dashed var(--border); padding-top: 7px; margin-top: -2px;
+    overflow-wrap: anywhere;
+  }
   .ap-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
   .assist-proposal .assist-accept { padding: 6px 14px; font-size: 13px; }
   .ap-reason { font-size: 13px; color: var(--text); }
@@ -2393,6 +2623,8 @@
      stack of cards inside a card. */
   .assist-set { gap: 8px; }
   .as-lead { font-size: 12.5px; color: var(--text-dim); line-height: 1.45; }
+  /* the set heading is a title ("Lunch · 1:00 PM"), not an explanation */
+  .as-lead.as-title { font-size: 13.5px; font-weight: 700; color: var(--text); }
   .as-options {
     display: flex; flex-direction: column; gap: 0;
     border: 1px solid var(--border-soft); border-radius: 10px; overflow: hidden;
@@ -2510,6 +2742,12 @@
     .dc-btns { gap: 10px; }
     .dc-btns .row-btn { min-width: 32px; min-height: 32px; }
     .dc-btns .row-btn::after { inset: -6px; }
+    /* The header cluster's desktop/tablet 28px box (.dc-acts .row-btn, two
+       classes) outranks the one-class 44px floor above, so the phone floor is
+       restated at the same specificity here. Real slabs, not overlays: the
+       header has the room, which is also why its ::after is switched off
+       below. */
+    .dc-acts .row-btn { min-width: 44px; min-height: 44px; }
     /* the facts get the full width of the card - the title indent is worth less
        here than the 36px it costs, which is the difference between a review
        count that reads and one that ellipsizes - and when the price and a rated
@@ -2518,6 +2756,7 @@
     .dc-facts { gap: 6px; }
     .dc-facts .tp-maps-link { flex: 1 1 auto; min-height: 44px; padding: 0 12px; font-size: 11.5px; }
     .dc-cost { padding: 5px 9px; }
+    .dc-dist { padding: 5px 9px; }
     /* the header keeps full 44px slabs (it has the room), so its overlays would
        only collide with each other */
     .dc-acts .row-btn::after { content: none; }
@@ -2536,6 +2775,19 @@
        leave the chip ~115px, and a pin and a sun cost 22 of them */
     .dc-chip { font-size: 10px; padding: 3px 5px; gap: 3px; }
     .dc-chip-city::before, .dc-chip-temp:not(:empty)::before { content: none; }
+    .dc-chip-tag { font-size: 8.5px; padding: 1px 4px; letter-spacing: 0; text-transform: none; }
+    /* The middle column of the forecast-header grid is too narrow on a phone
+       (four 44px targets leave it ~150px against ~200px of chip content), so
+       the chip's row runs under the actions too: it keeps the same left edge
+       as the date above it - the attachment the block is built on - and gains
+       the width to hold name, range, both percentages and the pill at 320px,
+       with the city still ellipsizing first if a long name runs out of room.
+       The actions ride up to the first row, beside the date. */
+    .day-card.has-forecast .dc-head {
+      grid-template-areas:
+        'num head acts'
+        'num chip chip';
+    }
     .dc-acts { gap: 0; }
     /* status is a label first and a control second: WCAG 2.2 target size with
        room to spare, without a 44px amber slab dominating every card */
@@ -3212,6 +3464,10 @@
     background: none; color: var(--accent) !important;
   }
   .trip-planner-app .issues li .issue-jump[data-trip] { font-weight: 700; }
+  /* "Add stay" sits next to "show" on a gap warning and does something much
+     bigger than jumping, so it is the heavier of the two rather than a second
+     identical link the eye cannot tell apart */
+  .trip-planner-app .issues li .issue-add-stay { font-weight: 700; }
 
   /* C2: the "that item is hidden by your filters" toast is a whole sentence
      plus an action, which is the first toast wide enough to expose how .toasts
@@ -3308,4 +3564,84 @@
      as the neutral guidance above it. .modal [hidden] already hides it. */
   .trip-planner-app .roster-warn {
     margin-top: 5px; color: var(--amber); font-weight: 600;
+  }
+
+/* ===== Round 7: keyboard shortcut help ===== */
+
+  /* The "?" affordance rides in the tools group rather than the undo/redo pair
+     (which a shared trip hides). The glyph needs a little more weight than an
+     SVG icon to read at the same size. */
+  .tb-help { font-weight: 800; font-size: 14px; min-width: 34px; }
+
+  /* Two columns: the keys, then what they do. A <dl> of key/description pairs
+     is exactly what this is, and the row wrapper keeps each pair together
+     when the dialog narrows. */
+  .ks-list { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+  .ks-row {
+    display: flex; align-items: baseline; gap: 12px;
+    border-bottom: 1px solid var(--border-soft); padding-bottom: 8px;
+  }
+  .ks-row:last-child { border-bottom: 0; padding-bottom: 0; }
+  .ks-row dt { flex: none; width: 122px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .ks-row dd { margin: 0; flex: 1 1 auto; min-width: 0; font-size: 13.5px; color: var(--text-dim); }
+  .ks-row dt span { color: var(--text-faint); font-size: 11px; }
+  /* main.css styles <code> for prose blocks; a key cap is its own thing */
+  .trip-planner-app .ks-list kbd {
+    font: 600 11.5px/1 var(--tp-font); color: var(--text);
+    background: var(--bg-raised); border: 1px solid var(--border);
+    border-bottom-width: 2px; border-radius: 6px; padding: 4px 6px;
+    white-space: nowrap; display: inline-block;
+  }
+  @media (max-width: 560px) {
+    .ks-row { flex-direction: column; gap: 5px; }
+    .ks-row dt { width: auto; }
+  }
+
+/* ===== Round 7: per-traveller packing rows ===== */
+
+  /* Every rule below paints something that only EXISTS on a trip naming two or
+     more travellers: renderPacking builds neither the filter nor the picker
+     below that, so :empty collapses both wrappers and a solo trip's dialog is
+     the dialog it has always been, to the pixel. */
+  .pk-filter { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .pk-filter:empty, .pk-who:empty { display: none; }
+  /* main.css gives every bare <label> a 1rem bottom margin */
+  .pk-filter-lbl { margin: 0; flex: none; font-size: var(--m-label); font-weight: 650; color: var(--text); }
+  .pk-filter .sel-wrap { flex: 1 1 auto; min-width: 0; }
+  /* the same control the modal's own .field selects are, spelled out because
+     this one is not inside a .field. `background` shorthand, not
+     background-color: it is what drops main.css's sitewide chevron data-URI,
+     which would otherwise print a second arrow next to .sel-wrap's own. */
+  .trip-planner-app select.pk-filter-sel {
+    width: 100%; appearance: none; -webkit-appearance: none;
+    min-height: var(--m-ctl-h); height: auto;
+    background: var(--bg-soft); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--m-ctl-radius);
+    padding: 9px 34px 9px var(--m-ctl-px);
+    font-size: 14px; font-weight: 600; text-overflow: ellipsis;
+  }
+  .trip-planner-app select.pk-filter-sel:hover:not(:focus) {
+    border-color: color-mix(in srgb, var(--text-dim) 45%, var(--border));
+  }
+  .trip-planner-app select.pk-filter-sel:focus {
+    border-color: var(--accent); outline: none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+
+  /* Who a row is for, on the row. Only a row tagged for SOME of the travellers
+     carries one: "everyone" is the default, and a chip on every row saying so
+     would be noise on the one screen that has to be scannable. */
+  .pk-who-tag {
+    flex: none; max-width: 108px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.01em;
+    color: var(--accent); background: var(--accent-soft);
+    border-radius: 999px; padding: 2px 8px;
+  }
+  .pk-row.is-done .pk-who-tag { opacity: 0.55; }
+
+  /* the add form's own "who's this for", the item modal's control verbatim */
+  .pk-who .who-for { margin-top: 10px; }
+  @media (max-width: 560px) {
+    .pk-filter { flex-wrap: wrap; }
+    .pk-who-tag { max-width: 84px; }
   }

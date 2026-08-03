@@ -145,6 +145,153 @@ test('tripLegs finds consecutive stays in different places, skipping cancelled',
   assert.equal(legs[0].toId, 'k');
 });
 
+// ---------- manual order inside a tie ----------
+// A drag handle is a promise that two rows are interchangeable, so the group it
+// is offered on has to be exactly the set of rows the comparator cannot
+// separate: same date, same clock time. Anything wider would let a drag claim a
+// 09:00 museum happens after a 14:00 train, which is the one thing a manual
+// order must never be able to say.
+const at = '2027-01-01T00:00:00.000Z';
+function act(id, title, startDate, startTime = '', extra = {}) {
+  return { id, type: 'activity', title, location: '', status: 'booked', startDate, startTime, endDate: '', createdAt: at, ...extra };
+}
+
+test('tieGroups collects same date + same time, and nothing else', () => {
+  const items = [
+    act('m', 'Museum', '2027-01-16', '09:00'),
+    act('g', 'Gallery', '2027-01-16', '09:00'),
+    act('t', 'Train museum', '2027-01-16', '14:00'),   // same day, different clock
+    act('n1', 'Walk', '2027-01-16'),                    // same day, no time
+    act('n2', 'Read', '2027-01-16'),
+    act('x', 'Museum', '2027-01-17', '09:00'),          // same time, different day
+  ];
+  const groups = L.tieGroups(items);
+  assert.deepEqual([...groups.keys()].sort(), ['2027-01-16|', '2027-01-16|09:00']);
+  assert.deepEqual(groups.get('2027-01-16|09:00').map(i => i.id), ['m', 'g']);
+  assert.deepEqual(groups.get('2027-01-16|').map(i => i.id), ['n1', 'n2']);
+  // the 14:00 row, and both rows that tie with nobody, get no handle at all
+  assert.deepEqual([...L.reorderableIds(items)].sort(), ['g', 'm', 'n1', 'n2']);
+});
+
+test('a stay is never in a tie group: its rows sit at assumed times', () => {
+  const items = [
+    stay('s', 'Tokyo', '2027-01-16', '2027-01-18'),
+    act('a', 'Museum', '2027-01-16'),
+    act('b', 'Dinner', '2027-01-16'),
+  ];
+  assert.equal(L.reorderableIds(items).has('s'), false);
+  assert.deepEqual(L.tieGroupOf(items, 's'), []);
+  assert.deepEqual(L.tieGroupOf(items, 'a').map(i => i.id), ['a', 'b']);
+});
+
+test('an undated item ties with nobody', () => {
+  const items = [act('a', 'Someday', ''), act('b', 'Also someday', '')];
+  assert.equal(L.reorderableIds(items).size, 0);
+});
+
+test('applyManualOrder stores the dropped order and sortedItems honours it', () => {
+  const items = [
+    act('a', 'Breakfast', '2027-01-16'),
+    act('b', 'Museum', '2027-01-16'),
+    act('c', 'Dinner', '2027-01-16'),
+  ];
+  assert.deepEqual(L.sortedItems({ items }).map(i => i.id), ['a', 'b', 'c']);
+  assert.equal(L.applyManualOrder(items, ['c', 'a', 'b']), true);
+  assert.deepEqual(L.sortedItems({ items }).map(i => i.id), ['c', 'a', 'b']);
+  assert.deepEqual(items.map(i => i.order), [1, 2, 0]);
+  // dropping a row back where it was is not an edit, so it never becomes a save
+  assert.equal(L.applyManualOrder(items, ['c', 'a', 'b']), false);
+});
+
+test('a manual order never outranks a date or a clock time', () => {
+  const items = [
+    act('early', 'Museum', '2027-01-16', '09:00', { order: 5 }),
+    act('late', 'Train', '2027-01-16', '14:00', { order: 0 }),
+    act('next', 'Beach', '2027-01-17', '', { order: 0 }),
+  ];
+  assert.deepEqual(L.sortedItems({ items }).map(i => i.id), ['early', 'late', 'next']);
+});
+
+test('an untouched trip sorts byte-for-byte as it did before ordering existed', () => {
+  const items = [
+    act('c0', 'Breakfast', '2027-01-16', '09:00'),
+    act('c1', 'Museum', '2027-01-16', '09:00'),
+    act('c2', 'Dinner', '2027-01-16', '09:00'),
+  ];
+  // no order key anywhere: every key is identical, so the sort is the stable
+  // input order the old comparator produced
+  assert.equal(new Set(items.map(L.sortKey)).size, 1);
+  assert.deepEqual(L.sortedItems({ items }).map(i => i.id), ['c0', 'c1', 'c2']);
+  assert.equal(items.some(i => 'order' in i), false);
+});
+
+test('moveInTie walks a row one step and stops at both ends of its group', () => {
+  const items = [
+    act('a', 'Breakfast', '2027-01-16'),
+    act('b', 'Museum', '2027-01-16'),
+    act('c', 'Dinner', '2027-01-16'),
+  ];
+  assert.equal(L.moveInTie(items, 'c', -1), true);
+  assert.deepEqual(L.sortedItems({ items }).map(i => i.id), ['a', 'c', 'b']);
+  assert.equal(L.moveInTie(items, 'c', -1), true);
+  assert.deepEqual(L.sortedItems({ items }).map(i => i.id), ['c', 'a', 'b']);
+  assert.equal(L.moveInTie(items, 'c', -1), false);   // already the first row
+  assert.equal(L.moveInTie(items, 'b', 1), false);    // already the last row
+  assert.deepEqual(L.sortedItems({ items }).map(i => i.id), ['c', 'a', 'b']);
+});
+
+test('moveInTie refuses an item that ties with nobody', () => {
+  const items = [act('a', 'Museum', '2027-01-16', '09:00'), act('b', 'Train', '2027-01-16', '14:00')];
+  assert.equal(L.moveInTie(items, 'a', 1), false);
+  assert.equal(L.moveInTie(items, 'missing', 1), false);
+  assert.equal(items.some(i => 'order' in i), false);
+});
+
+test('normalizeOrders renumbers an ordered group and leaves an untouched one alone', () => {
+  const items = [
+    act('a', 'Breakfast', '2027-01-16', '', { order: 4 }),
+    act('b', 'Museum', '2027-01-16', '', { order: 9 }),
+    act('c', 'Coffee', '2027-01-17'),
+    act('d', 'Walk', '2027-01-17'),
+  ];
+  assert.equal(L.normalizeOrders(items), true);
+  assert.deepEqual(items.map(i => i.order), [0, 1, undefined, undefined]);
+  assert.equal(L.normalizeOrders(items), false);   // idempotent
+});
+
+test('normalizeOrders drops a number left on a row that now ties with nobody', () => {
+  const items = [
+    act('a', 'Breakfast', '2027-01-16', '', { order: 0 }),
+    act('b', 'Museum', '2027-01-16', '', { order: 1 }),
+  ];
+  // the traveller deletes one of the pair (or moves it to another day)
+  items.splice(1, 1);
+  assert.equal(L.normalizeOrders(items), true);
+  assert.equal('order' in items[0], false);
+});
+
+test('normalizeOrders fits a newly added row into an ordered day, last', () => {
+  const items = [
+    act('a', 'Breakfast', '2027-01-16', '', { order: 1 }),
+    act('b', 'Museum', '2027-01-16', '', { order: 0 }),
+  ];
+  items.push(act('c', 'Dinner', '2027-01-16'));   // added after the reorder
+  assert.equal(L.normalizeOrders(items), true);
+  assert.deepEqual(L.sortedItems({ items }).map(i => i.id), ['b', 'a', 'c']);
+  assert.deepEqual(items.map(i => i.order), [1, 0, 2]);
+});
+
+test('a shared link carries the manual order and only when there is one', () => {
+  const ordered = { name: 'T', currency: 'USD', items: [
+    act('a', 'Breakfast', '2027-01-16', '', { order: 1 }),
+    act('b', 'Museum', '2027-01-16', '', { order: 0 }),
+  ] };
+  const slim = L.slimTripForShare(ordered);
+  assert.deepEqual(slim.items.map(i => i.order), [1, 0]);
+  const plain = L.slimTripForShare({ name: 'T', currency: 'USD', items: [act('a', 'Breakfast', '2027-01-16')] });
+  assert.equal('order' in plain.items[0], false);
+});
+
 // ---------- validation ----------
 
 test('validateItem requires title and valid start date', () => {
@@ -571,6 +718,59 @@ test('old stored data typed `transport` behaves exactly as before', () => {
 test('coverageGaps returns nothing for a fully covered trip or no stays', () => {
   assert.deepEqual(L.coverageGaps([]), []);
   assert.deepEqual(L.coverageGaps([stay('a', 'Tokyo', '2027-01-01', '2027-01-05')]), []);
+});
+
+// ---------- a gap warning that fills itself in ----------
+// The whole point of the "Add stay" control is that the traveller does not
+// retype dates the app already knows: the form has to open on EXACTLY the range
+// coverageGaps reported, or the dialog and the warning that opened it are two
+// different claims about the same nights.
+
+test('stayPrefillForGap opens a stay on exactly the uncovered range', () => {
+  const gaps = L.coverageGaps([
+    stay('a', 'Tokyo', '2027-01-01', '2027-01-05'),
+    stay('b', 'Kyoto', '2027-01-08', '2027-01-11'),
+  ]);
+  assert.deepEqual(gaps, [{ start: '2027-01-05', end: '2027-01-08', nights: 3 }]);
+  assert.deepEqual(L.stayPrefillForGap(gaps[0]), {
+    type: 'stay', startDate: '2027-01-05', endDate: '2027-01-08', nights: 3,
+  });
+});
+
+test('stayPrefillForGap on a single uncovered night is a one-night stay', () => {
+  const gaps = L.coverageGaps([
+    stay('a', 'Tokyo', '2027-01-01', '2027-01-05'),
+    stay('b', 'Kyoto', '2027-01-06', '2027-01-09'),
+  ]);
+  const pre = L.stayPrefillForGap(gaps[0]);
+  assert.equal(pre.startDate, '2027-01-05');
+  assert.equal(pre.endDate, '2027-01-06');
+  assert.equal(pre.nights, 1);
+  // and it passes the form's own validator, so the prefilled dialog can be
+  // saved without the traveller touching a field
+  assert.deepEqual(L.validateItem({ ...pre, title: 'Somewhere', cost: null }), {});
+});
+
+test('firstStayPrefill takes the EARLIEST hole when a trip has several', () => {
+  const gaps = L.coverageGaps([
+    stay('a', 'Tokyo', '2027-01-01', '2027-01-03'),
+    stay('b', 'Kyoto', '2027-01-05', '2027-01-07'),
+    stay('c', 'Osaka', '2027-01-09', '2027-01-11'),
+  ]);
+  assert.equal(gaps.length, 2);
+  assert.deepEqual(L.firstStayPrefill(gaps), {
+    type: 'stay', startDate: '2027-01-03', endDate: '2027-01-05', nights: 2,
+  });
+  // the second line offers its own hole, never the first one again
+  assert.equal(L.stayPrefillForGap(gaps[1]).startDate, '2027-01-07');
+});
+
+test('stayPrefillForGap refuses anything that is not a range of nights', () => {
+  assert.equal(L.stayPrefillForGap(null), null);
+  assert.equal(L.stayPrefillForGap({ start: '2027-01-05', end: '2027-01-05', nights: 0 }), null);
+  assert.equal(L.stayPrefillForGap({ start: 'not a date', end: '2027-01-08' }), null);
+  assert.equal(L.firstStayPrefill([]), null);
+  assert.equal(L.firstStayPrefill(null), null);
 });
 
 // ---------- trip stats ----------
@@ -1710,6 +1910,38 @@ test('dayCards puts timeless items in their own group at the bottom', () => {
   assert.equal(day.empty, false);
 });
 
+// The day card is where the handle lives, so a manual order that the comparator
+// honours but dayCards does not would be a drag that snaps back on every
+// render. Both of the card's lists sort through the same key.
+test('dayCards renders a hand-set order, in both the timed and untimed lists', () => {
+  const trip = { items: [
+    timedItem('idea', 'activity', 'Maybe the market', '2027-03-01', ''),
+    timedItem('idea2', 'note', 'Buy stamps', '2027-03-01', ''),
+    timedItem('museum', 'activity', 'Museum', '2027-03-01', '10:00'),
+    timedItem('coffee', 'activity', 'Coffee', '2027-03-01', '10:00'),
+  ] };
+  assert.equal(L.applyManualOrder(trip.items, ['idea2', 'idea']), true);
+  assert.equal(L.applyManualOrder(trip.items, ['coffee', 'museum']), true);
+  const day = L.dayCards(trip)[0];
+  assert.deepEqual(day.untimed.map(e => e.item.id), ['idea2', 'idea']);
+  assert.deepEqual(day.events.map(e => e.item.id), ['coffee', 'museum']);
+});
+
+// A stay carries no order, so the assumed check-in position it is drawn at
+// cannot be shoved around by a neighbour that has been reordered.
+test('dayCards keeps a stay row where its assumed time puts it', () => {
+  const trip = { items: [
+    stay('h', 'Rome', '2027-03-01', '2027-03-04'),
+    timedItem('a', 'activity', 'Museum', '2027-03-01', '09:00'),
+    timedItem('b', 'activity', 'Coffee', '2027-03-01', '09:00'),
+    timedItem('c', 'activity', 'Dinner', '2027-03-01', '19:00'),
+  ] };
+  const before = L.dayCards(trip)[0].events.map(e => e.item.id);
+  assert.deepEqual(before, ['a', 'b', 'h', 'c']);   // check-in sits at 15:00
+  L.applyManualOrder(trip.items, ['b', 'a']);
+  assert.deepEqual(L.dayCards(trip)[0].events.map(e => e.item.id), ['b', 'a', 'h', 'c']);
+});
+
 // ---------- the day picker's dropdown ----------
 
 test('the day picker lands on today while the trip is running', () => {
@@ -2016,6 +2248,170 @@ test('weatherRange is the bare range, with no forecast wording and no place', ()
   assert.match(L.weatherLine('Ittoqqortoormiit', { lo: -12, hi: -7, wet: false }), /Typically -12 to -7°C in Ittoqqortoormiit/);
   assert.equal(L.weatherRange({ lo: null, hi: 12 }), '');
   assert.equal(L.weatherRange(null), '');
+});
+
+// ---------- near-term forecast ----------
+
+// The whole point of the second weather source is that it applies to a NARROW
+// window and nothing else: one day past the horizon must keep the historical
+// chip, or the app would be labelling a 5-year average "Forecast".
+test('forecastEligible spans today through the 16th day and stops there', () => {
+  const today = '2027-03-10';
+  assert.equal(L.forecastEligible('2027-03-10', today), true);   // today
+  assert.equal(L.forecastEligible('2027-03-25', today), true);   // +15, the last day Open-Meteo answers for
+  assert.equal(L.forecastEligible('2027-03-26', today), false);  // +16, one past the horizon
+  assert.equal(L.forecastEligible('2027-03-09', today), false);  // yesterday: history, not forecast
+  assert.equal(L.forecastEligible('2028-03-10', today), false);
+  assert.equal(L.forecastEligible('', today), false);
+  assert.equal(L.forecastEligible('2027-03-10', ''), false);
+  assert.equal(L.forecastEligible('2027-13-40', today), false);
+});
+
+test('forecastKey keys per place and DATE, never colliding with the climate key', () => {
+  assert.equal(L.forecastKey('Tokyo', '2027-03-10'), 'tokyo|2027-03-10');
+  assert.equal(L.forecastKey('  Rome ', '2027-12-01'), 'rome|2027-12-01');
+  // two days of the same month must be two entries; weatherKey deliberately
+  // collapses them into one, which is why the caches cannot be shared
+  assert.notEqual(L.forecastKey('tokyo', '2027-03-10'), L.forecastKey('tokyo', '2027-03-11'));
+  assert.notEqual(L.forecastKey('tokyo', '2027-03-10'), L.weatherKey('tokyo', 3));
+});
+
+test('summarizeForecast reads one daily block into per-date records', () => {
+  const byDate = L.summarizeForecast({
+    time: ['2027-03-10', '2027-03-11'],
+    temperature_2m_min: [3.4, -2.6],
+    temperature_2m_max: [11.6, 1.2],
+    precipitation_probability_max: [40, 0],
+    weather_code: [61, 71],
+    relative_humidity_2m_mean: [78.4, 63],
+  });
+  assert.deepEqual(byDate['2027-03-10'], { lo: 3, hi: 12, pop: 40, code: 61, rh: 78 });
+  assert.deepEqual(byDate['2027-03-11'], { lo: -3, hi: 1, pop: 0, code: 71, rh: 63 });
+});
+
+// The condition and the humidity are extras on a request that was already
+// being made, so a response without them must still produce a usable record
+// rather than dropping the day.
+test('summarizeForecast leaves the condition and humidity null when the API omits them', () => {
+  const byDate = L.summarizeForecast({
+    time: ['2027-03-10'],
+    temperature_2m_min: [3],
+    temperature_2m_max: [11],
+    precipitation_probability_max: [40],
+  });
+  assert.deepEqual(byDate['2027-03-10'], { lo: 3, hi: 11, pop: 40, code: null, rh: null });
+});
+
+// A half-read day would render a chip labelled "Forecast" over a nonsense
+// range, which is worse than the historical figure it would be replacing.
+test('summarizeForecast drops a day missing either temperature and survives junk', () => {
+  const byDate = L.summarizeForecast({
+    time: ['2027-03-10', '2027-03-11', 'not-a-date'],
+    temperature_2m_min: [3, null],
+    temperature_2m_max: [11, 9],
+    precipitation_probability_max: [null, 20],
+  });
+  assert.deepEqual(Object.keys(byDate), ['2027-03-10']);
+  assert.equal(byDate['2027-03-10'].pop, null);
+  assert.deepEqual(L.summarizeForecast(null), {});
+  assert.deepEqual(L.summarizeForecast({ time: 'nope' }), {});
+});
+
+// A forecast that outlives its window is a stale claim under a "Forecast"
+// label; the climate cache has no expiry precisely because it cannot go stale.
+test('forecastFresh and freshForecasts expire a cached forecast', () => {
+  const now = 1_700_000_000_000;
+  assert.equal(L.forecastFresh({ at: now, lo: 3, hi: 11 }, now), true);
+  assert.equal(L.forecastFresh({ at: now - (L.FORECAST_TTL_MS - 1) }, now), true);
+  assert.equal(L.forecastFresh({ at: now - L.FORECAST_TTL_MS }, now), false);
+  assert.equal(L.forecastFresh({ at: now + 60_000 }, now), false); // clock moved back
+  assert.equal(L.forecastFresh({ lo: 3, hi: 11 }, now), false);
+  assert.equal(L.forecastFresh(null, now), false);
+  const kept = L.freshForecasts({
+    'tokyo|2027-03-10': { at: now - 1000, lo: 3, hi: 11, pop: 40 },
+    'tokyo|2027-03-11': { at: now - L.FORECAST_TTL_MS - 1, lo: 4, hi: 12, pop: 10 },
+    'rome|2027-03-10': { lo: 8, hi: 16, pop: null },
+  }, now);
+  assert.deepEqual(Object.keys(kept), ['tokyo|2027-03-10']);
+  assert.deepEqual(L.freshForecasts(null, now), {});
+});
+
+test('forecastLine says Forecast and never Typically', () => {
+  const line = L.forecastLine('Tokyo', { lo: 3, hi: 11, pop: 40, code: 3 });
+  assert.match(line, /^Forecast 3-11°C in Tokyo, overcast, 40% chance of rain$/);
+  // below zero spells the join out, exactly as the climate line does
+  assert.match(L.forecastLine('Tromso', { lo: -6, hi: -1, pop: null }), /^Forecast -6 to -1°C in Tromso$/);
+  assert.doesNotMatch(line, /Typically|typical/);
+  assert.equal(L.forecastLine('Tokyo', { lo: null, hi: 11, pop: 40 }), '');
+  assert.equal(L.forecastLine('Tokyo', null), '');
+});
+
+// The chip shows a glyph and two bare percentages; only the tooltip can say
+// which picture and which number mean what, so it must spell all three out.
+test('forecastLine spells the icon, the rain figure and the humidity out in words', () => {
+  const line = L.forecastLine('Tokyo', { lo: 24, hi: 34, pop: 69, code: 3, rh: 70 });
+  assert.equal(line, 'Forecast 24-34°C in Tokyo, overcast, 69% chance of rain, 70% average humidity');
+  // an old record with neither extra reads exactly as it did before
+  assert.equal(L.forecastLine('Tokyo', { lo: 3, hi: 11, pop: null }), 'Forecast 3-11°C in Tokyo');
+  // 0% is stated in the tooltip even though the chip drops the figure
+  assert.match(L.forecastLine('Lima', { lo: 15, hi: 20, pop: 0, code: 0 }), /clear, 0% chance of rain$/);
+});
+
+// ---------- forecast conditions (WMO codes) ----------
+// The mapping is what turns Open-Meteo's 100 codes into the seven pictures the
+// chip owns. A code landing on the wrong bucket is a chip claiming snow on a
+// drizzly day, so every boundary is pinned.
+test('forecastConditionKey maps the WMO code table onto the seven conditions', () => {
+  const cases = [
+    [0, 'clear'], [1, 'partly'], [2, 'partly'], [3, 'cloudy'],
+    [45, 'fog'], [48, 'fog'],
+    [51, 'rain'], [61, 'rain'], [67, 'rain'],
+    [71, 'snow'], [77, 'snow'],
+    [80, 'rain'], [82, 'rain'],
+    [85, 'snow'], [86, 'snow'],
+    [95, 'thunder'], [99, 'thunder'],
+  ];
+  for (const [code, key] of cases) assert.equal(L.forecastConditionKey(code), key, `code ${code}`);
+  // gaps in the table are not guessed at
+  for (const code of [4, 44, 50, 68, 70, 79, 83, 90, 100, -1]) {
+    assert.equal(L.forecastConditionKey(code), '', `code ${code}`);
+  }
+  assert.equal(L.forecastConditionKey(null), '');
+  assert.equal(L.forecastConditionKey('nope'), '');
+});
+
+test('every condition key owns exactly one icon and one word', () => {
+  const keys = Object.keys(L.FORECAST_CONDITIONS);
+  assert.deepEqual(keys.sort(), ['clear', 'cloudy', 'fog', 'partly', 'rain', 'snow', 'thunder']);
+  const icons = keys.map(k => L.FORECAST_CONDITIONS[k].icon);
+  assert.equal(new Set(icons).size, icons.length, 'two conditions share an icon');
+  for (const k of keys) assert.ok(L.FORECAST_CONDITIONS[k].word.trim(), k);
+});
+
+test('forecastCondition falls back to the precipitation figures when no code was served', () => {
+  assert.equal(L.forecastCondition({ lo: 3, hi: 11, pop: 40, code: 61 }).key, 'rain');
+  // no code: derived, and a freezing day derives snow rather than rain
+  assert.equal(L.forecastCondition({ lo: 12, hi: 19, pop: 80 }).key, 'rain');
+  assert.equal(L.forecastCondition({ lo: -8, hi: -2, pop: 80 }).key, 'snow');
+  assert.equal(L.forecastCondition({ lo: 12, hi: 19, pop: 20 }).key, 'partly');
+  assert.equal(L.forecastCondition({ lo: 12, hi: 19, pop: 0 }).key, 'clear');
+  // nothing to derive from: no icon rather than an invented sun
+  assert.equal(L.forecastCondition({ lo: 12, hi: 19, pop: null }), null);
+  assert.equal(L.forecastCondition(null), null);
+});
+
+test('forecastChipParts prints rain only above 0% and humidity only when served', () => {
+  const wet = L.forecastChipParts({ lo: 24, hi: 34, pop: 69, code: 95, rh: 70 });
+  assert.deepEqual(wet, { icon: '⛈️', condition: 'thunderstorms', temp: '24-34°C', rain: '69%', humidity: '70%' });
+  // a dry day carries no rain figure at all: "0%" is noise on a chip this small
+  const dry = L.forecastChipParts({ lo: 15, hi: 22, pop: 0, code: 0, rh: 45 });
+  assert.equal(dry.rain, '');
+  assert.equal(dry.icon, '☀️');
+  assert.equal(dry.humidity, '45%');
+  // no humidity served: absent, never an empty figure next to its marker
+  assert.equal(L.forecastChipParts({ lo: 15, hi: 22, pop: 30, code: 3 }).humidity, '');
+  assert.equal(L.forecastChipParts({ lo: null, hi: 22, pop: 30 }), null);
+  assert.equal(L.forecastChipParts(null), null);
 });
 
 // ---------- documents pocket guards ----------
@@ -2410,7 +2806,7 @@ for (const [name, build] of [
     assert.match(build(), /Never introduce a slot type the traveller did not request/);
   });
 
-  test(`${name} scopes the 2-3 candidates rule to the slots the traveller asked for`, () => {
+  test(`${name} scopes the meal-candidates rule to the slots the traveller asked for`, () => {
     assert.match(build(), /meal slot and each drinks slot the traveller asked for \(and only those\)/);
   });
 
@@ -2466,12 +2862,23 @@ for (const [name, build] of [
     assert.match(s, /No link is better than a link to the wrong place/);
   });
 
-  test(`${name} asks for 2-3 grouped candidates for meals and drinks only`, () => {
+  // A single take-it-or-leave-it museum card is a worse offer than a choice of
+  // two, and three dinners is the count the picker's own request line asks for.
+  test(`${name} asks for exactly 3 grouped candidates per meal or drinks slot`, () => {
     const s = build();
-    assert.match(s, /propose 2-3 candidates/);
+    assert.match(s, /propose EXACTLY 3 candidates/);
     assert.match(s, /"group"/);
     assert.match(s, /dinner-2026-12-31/);
-    assert.match(s, /Do NOT group activities or transport/);
+  });
+
+  test(`${name} asks for a 2-option group per activity and singles for everything else`, () => {
+    const s = build();
+    assert.match(s, /For every OTHER activity you suggest/);
+    assert.match(s, /propose EXACTLY 2 candidates for that one slot/);
+    assert.match(s, /group id of their own/);
+    assert.match(s, /Transport, local hops, stays and notes are NEVER grouped/);
+    // the old blanket ban on grouping activities is exactly what this replaced
+    assert.doesNotMatch(s, /Do NOT group activities/);
   });
 
   test(`${name} keeps the six item types and carries the kind in a title prefix`, () => {
@@ -2554,6 +2961,36 @@ test('groupProposals degrades a one-member group to a single card', () => {
   // One candidate is not a choice, so it must not render as a chooser.
   const out = L.groupProposals([{ id: 'only', group: 'lunch' }]);
   assert.deepEqual(out, [{ type: 'single', proposal: { id: 'only', group: 'lunch' } }]);
+});
+
+// Activities are grouped now too (2 options a slot), so the whole path from a
+// raw reply to rendered cards has to treat an activity group exactly as it
+// treats a dinner group: no warning, no special case, no dropped option.
+test('a 3-option meal set and a 2-option activity set both validate and group cleanly', () => {
+  const trip = tripWith([]);
+  const raw = [
+    { op: 'add', group: 'dinner-2027-05-01', item: { type: 'activity', title: 'Dinner: A', startDate: '2027-05-01', startTime: '19:00', mapsQuery: 'A Tokyo' } },
+    { op: 'add', group: 'dinner-2027-05-01', item: { type: 'activity', title: 'Dinner: B', startDate: '2027-05-01', startTime: '19:00' } },
+    { op: 'add', group: 'dinner-2027-05-01', item: { type: 'activity', title: 'Dinner: C', startDate: '2027-05-01', startTime: '19:00' } },
+    { op: 'add', group: 'activity-2027-05-01-morning', item: { type: 'activity', title: 'Meiji Shrine', startDate: '2027-05-01', startTime: '10:00' } },
+    { op: 'add', group: 'activity-2027-05-01-morning', item: { type: 'activity', title: 'teamLab Planets', startDate: '2027-05-01', startTime: '10:00' } },
+    { op: 'add', item: { type: 'local', title: 'Return to hotel', startDate: '2027-05-01', startTime: '22:00' } },
+  ];
+  const proposals = raw.map((a, i) => {
+    const r = L.validateTripAction(a, trip);
+    assert.equal(r.ok, true, `action ${i} was rejected: ${r.reason}`);
+    return { ...r.proposal, pid: 'p' + i };
+  });
+  assert.equal(proposals[3].group, 'activity-2027-05-01-morning');
+  assert.equal('group' in proposals[5], false, 'a local hop is never grouped');
+  const entries = L.groupProposals(proposals);
+  assert.deepEqual(entries.map(e => e.type), ['set', 'set', 'single']);
+  assert.deepEqual(entries.map(e => (e.type === 'set' ? e.candidates.length : 1)), [3, 2, 1]);
+  assert.equal(entries[1].group, 'activity-2027-05-01-morning');
+  // accepting takes exactly one option out of a set: the pids are distinct and
+  // each candidate is a whole proposal of its own
+  assert.deepEqual(entries[1].candidates.map(p => p.pid), ['p3', 'p4']);
+  assert.deepEqual(entries[1].candidates.map(p => p.display.title), ['Meiji Shrine', 'teamLab Planets']);
 });
 
 test('groupProposals keeps distinct groups apart and handles an empty list', () => {
@@ -2647,7 +3084,12 @@ test('buildPlanRequest turning off one meal removes only that word', () => {
 test('buildPlanRequest with no meals at all asks for no meal options', () => {
   const out = L.buildPlanRequest(planPrefs({ meals: { breakfast: false, lunch: false, dinner: false } }), emptyTrip());
   assert.doesNotMatch(askedFor(out), /breakfast|lunch|dinner/);
-  assert.doesNotMatch(out, /options/);
+  // the activities line asks for its own two options; nothing else may
+  const optionLines = out.split('\n').filter(l => l.includes('options'));
+  assert.deepEqual(optionLines, ['I would like 2-3 activities, and give me 2 options for each one.']);
+  assert.doesNotMatch(L.buildPlanRequest(planPrefs({
+    activities: 0, drinks: 0, meals: { breakfast: false, lunch: false, dinner: false },
+  }), emptyTrip()), /options/);
 });
 
 test('buildPlanRequest joins two style chips of one type with " or "', () => {
@@ -2683,6 +3125,48 @@ test('buildPlanRequest maps each budget level to exactly one price word, used on
       if (Number(other) !== level) assert.doesNotMatch(out, new RegExp(word));
     }
   }
+});
+
+// The picker sends the budget as an ARRAY now: one tier behaves like the old
+// number, several tiers are a range the model may span, and an empty array is
+// "no preference" - the request then says nothing about money at all.
+test('buildPlanRequest: a one-tier budget array reads exactly like the old number', () => {
+  const arr = L.buildPlanRequest(planPrefs({ budget: [3] }), emptyTrip());
+  const num = L.buildPlanRequest(planPrefs({ budget: 3 }), emptyTrip());
+  assert.equal(arr, num);
+  assert.ok(arr.includes('Keep the whole day upscale.'), arr);
+});
+
+test('buildPlanRequest: a multi-tier budget joins the price words with or', () => {
+  const out = L.buildPlanRequest(planPrefs({ budget: [2, 3] }), emptyTrip());
+  assert.ok(out.includes('Keep the whole day mid-range or upscale.'), out);
+  const three = L.buildPlanRequest(planPrefs({ budget: [1, 2, 3] }), emptyTrip());
+  assert.ok(three.includes('Keep the whole day budget-friendly, mid-range or upscale.'), three);
+});
+
+test('buildPlanRequest: multi-tier budgets sort and dedupe before wording', () => {
+  const out = L.buildPlanRequest(planPrefs({ budget: [3, 2, 3] }), emptyTrip());
+  assert.ok(out.includes('Keep the whole day mid-range or upscale.'), out);
+});
+
+test('buildPlanRequest: an empty budget array says nothing about money', () => {
+  const out = L.buildPlanRequest(planPrefs({ budget: [] }), emptyTrip());
+  assert.doesNotMatch(out, /Keep the whole day/);
+  assert.doesNotMatch(out, /budget-friendly|mid-range|upscale|splurge-worthy/);
+});
+
+test('buildPlanRequest: junk inside a budget array is dropped, not defaulted', () => {
+  const out = L.buildPlanRequest(planPrefs({ budget: [9, 'x'] }), emptyTrip());
+  assert.doesNotMatch(out, /Keep the whole day/);
+  const mixed = L.buildPlanRequest(planPrefs({ budget: [9, 4] }), emptyTrip());
+  assert.ok(mixed.includes('Keep the whole day splurge-worthy.'), mixed);
+});
+
+test('buildPlanRequest: a missing or unrecognisable non-array budget still defaults to mid-range', () => {
+  const missing = planPrefs({});
+  delete missing.budget;
+  assert.ok(L.buildPlanRequest(missing, emptyTrip()).includes('Keep the whole day mid-range.'));
+  assert.ok(L.buildPlanRequest(planPrefs({ budget: 99 }), emptyTrip()).includes('Keep the whole day mid-range.'));
 });
 
 test('buildPlanRequest lists existing activities as places not to repeat', () => {
@@ -2723,12 +3207,15 @@ test('buildPlanRequest caps the request at 900 characters and keeps the note', (
   assert.ok(out.includes('2-3 activities'));
 });
 
-test('buildPlanRequest asks for 2-3 options for every active meal and drinks slot', () => {
+test('buildPlanRequest asks for 3 options per meal and drinks slot and 2 per activity', () => {
   const out = L.buildPlanRequest(planPrefs({ drinks: 3 }), emptyTrip());
   const mealLine = out.split('\n').find(l => l.includes('breakfast'));
   const drinksLine = out.split('\n').find(l => l.includes('drinks'));
-  assert.ok(mealLine.includes('2-3 options'), mealLine);
-  assert.ok(drinksLine.includes('2-3 options'), drinksLine);
+  const activityLine = out.split('\n').find(l => l.includes('activities'));
+  assert.ok(mealLine.includes('3 options'), mealLine);
+  assert.ok(drinksLine.includes('3 options'), drinksLine);
+  // an activity is a choice between two, not a single take-it-or-leave-it card
+  assert.ok(activityLine.includes('2 options'), activityLine);
   // drinks off means no drinks request line, only the exclusion
   assert.doesNotMatch(askedFor(L.buildPlanRequest(planPrefs({ drinks: 0 }), emptyTrip())), /drinks/);
 });
@@ -2769,7 +3256,7 @@ test('buildPlanRequest states breakfast as the only thing to plan for the report
   assert.equal(out, [
     'Plan my day for 2026-12-31.',
     'I am ready to head out at 6:30 AM and want to be back at my hotel by 8:00 PM.',
-    'Plan breakfast, and give me 2-3 options for each one.',
+    'Plan breakfast, and give me 3 options for each one.',
     'Only plan breakfast. Do not suggest activities, lunch, dinner or drinks.',
     'Keep the whole day splurge-worthy.',
   ].join('\n'));
@@ -3345,6 +3832,47 @@ test('the example library covers a real spread of destinations', () => {
   }
 });
 
+// A dozen examples that all started 45 days out showed one thing: a trip in the
+// middle distance. The offsets are spread so the library also shows a trip
+// happening TODAY (day-of chips, the near-term forecast chip), one next week,
+// one in a fortnight and one in a month, without any of them being hardcoded.
+test('the example offsets are spread across the next half year and include today, a week, a fortnight and a month', () => {
+  const offsets = samples.map(s => s.opt.startOffset);
+  for (const off of offsets) assert.ok(Number.isInteger(off) && off >= 0, `bad offset ${off}`);
+  for (const required of [0, 7, 14, 30]) {
+    assert.ok(offsets.includes(required), `no example starts ${required} days from today`);
+  }
+  assert.equal(new Set(offsets).size, offsets.length, 'two examples share a start offset');
+  assert.ok(Math.max(...offsets) >= 120, 'nothing is planned far out');
+});
+
+test('each template carries its own start offset rather than the shared fallback', () => {
+  for (const { opt } of samples) {
+    const tpl = L.sampleTrip(opt.id);
+    assert.equal(tpl.startOffset, opt.startOffset, `${opt.id} does not own its offset`);
+    assert.equal(L.sampleStartOffset(tpl), opt.startOffset);
+    const trip = L.buildSampleTrip(opt.id, { today: SAMPLE_TODAY });
+    assert.equal(L.tripStats(trip).start, L.addDays(SAMPLE_TODAY, opt.startOffset));
+  }
+  // a template that names none still builds, on the documented fallback
+  assert.equal(L.sampleStartOffset({}), L.SAMPLE_START_OFFSET);
+  assert.equal(L.sampleStartOffset({ startOffset: -3 }), L.SAMPLE_START_OFFSET);
+  assert.equal(L.sampleStartOffset(null), L.SAMPLE_START_OFFSET);
+});
+
+// The dropdown in the empty state and the trip-name datalist both render
+// sampleTripOptions() in the order it returns them, so the A-to-Z promise in
+// the README is this function's, and it is asserted rather than assumed.
+test('sampleTripOptions lists the examples alphabetically by label', () => {
+  const labels = L.sampleTripOptions().map(o => o.label);
+  assert.deepEqual(labels, [...labels].sort((a, b) => a.localeCompare(b)));
+  assert.deepEqual(labels.map(l => l.replace(/\s*\(.*$/, '')), L.sampleTripOptions().map(o => o.place));
+  // the offsets are deliberately NOT the sort key: alphabetical order must not
+  // quietly become chronological order
+  const offsets = L.sampleTripOptions().map(o => o.startOffset);
+  assert.notDeepEqual(offsets, [...offsets].sort((a, b) => a - b));
+});
+
 test('buildSampleTrip rejects an unknown destination', () => {
   assert.equal(L.buildSampleTrip('atlantis', { today: SAMPLE_TODAY }), null);
   assert.equal(L.buildSampleTrip('', { today: SAMPLE_TODAY }), null);
@@ -3378,12 +3906,14 @@ for (const { opt, trip } of samples) {
 
   test(`example ${opt.id}: dates are relative to today and the trip runs 7 to 14 days`, () => {
     const stats = L.tripStats(trip);
-    assert.equal(stats.start, L.addDays(SAMPLE_TODAY, L.SAMPLE_START_OFFSET));
+    assert.equal(stats.start, L.addDays(SAMPLE_TODAY, opt.startOffset));
     const days = L.diffDays(stats.start, stats.end) + 1;
     assert.ok(days >= 7 && days <= 14, `${opt.id} runs ${days} days`);
     assert.equal(days, SAMPLE_SHAPES[opt.id].days, `${opt.id} does not run the length it declares`);
     for (const it of items) {
-      assert.ok(it.startDate > SAMPLE_TODAY, `${it.title} is not in the future`);
+      // >=, not >: the offset-0 template starts TODAY on purpose, which is the
+      // whole point of spreading the offsets. Nothing may fall behind today.
+      assert.ok(it.startDate >= SAMPLE_TODAY, `${it.title} is in the past`);
     }
     // shifting "today" shifts the whole itinerary: nothing is hardcoded
     const later = L.buildSampleTrip(opt.id, { today: L.addDays(SAMPLE_TODAY, 10) });
@@ -3951,6 +4481,115 @@ test('budgetVerdict never says within budget on an incomplete total', () => {
 test('budgetVerdict says nothing when there is no budget', () => {
   assert.equal(L.budgetVerdict(300, null, 0), '');
   assert.equal(L.budgetVerdict(300, '', 2), '');
+});
+
+// ---------- the budget range ----------
+// A budget is optional and, when it exists, the CEILING is trip.budget. The
+// range only adds an optional floor, so nothing that judges money changes.
+
+test('readBudgetRange accepts the three states a budget is allowed to be', () => {
+  // no budget at all is a real answer, not a blank waiting to be filled
+  assert.deepEqual(L.readBudgetRange('', ''), { ok: true, error: '', from: null, to: null });
+  // the plain ceiling this app has always had
+  assert.deepEqual(L.readBudgetRange('', '3000'), { ok: true, error: '', from: null, to: 3000 });
+  // and the range
+  assert.deepEqual(L.readBudgetRange('3000', '5000'), { ok: true, error: '', from: 3000, to: 5000 });
+  // a one-point range is still a range: from <= to is the only rule
+  assert.deepEqual(L.readBudgetRange('3000', '3000'), { ok: true, error: '', from: 3000, to: 3000 });
+});
+
+test('readBudgetRange rounds both ends to the cent, like every other amount', () => {
+  // stored and shown have to agree here for the same reason parseMoney rounds
+  const r = L.readBudgetRange('2999.995', '5000.004');
+  assert.deepEqual([r.from, r.to], [3000, 5000]);
+});
+
+test('readBudgetRange refuses a lower figure above the upper one', () => {
+  const r = L.readBudgetRange('5000', '3000');
+  assert.equal(r.ok, false);
+  assert.match(r.error, /lower figure/i);
+  // and nothing is handed back for the caller to save by accident
+  assert.equal(r.to, undefined);
+});
+
+test('readBudgetRange refuses a negative at either end, as a budget always has', () => {
+  // parseMoney allows negatives because a REFUND is legal money; a budget is a
+  // ceiling, not a transaction
+  assert.equal(L.readBudgetRange('', '-1').ok, false);
+  assert.equal(L.readBudgetRange('-1', '3000').ok, false);
+  assert.equal(L.readBudgetRange('', '-1').error, 'A budget cannot be negative.');
+});
+
+test('readBudgetRange refuses a floor with no ceiling instead of promoting it', () => {
+  // a number typed as "at least 3000" must never come back as "at most 3000":
+  // there is nothing to judge a total against, so the traveller is asked
+  const r = L.readBudgetRange('3000', '');
+  assert.equal(r.ok, false);
+  assert.match(r.error, /upper figure/i);
+});
+
+test('readBudgetRange refuses junk at either end rather than inventing a number', () => {
+  assert.equal(L.readBudgetRange('', 'lots').ok, false);
+  assert.equal(L.readBudgetRange('some', '5000').ok, false);
+  assert.equal(L.readBudgetRange('', true).ok, false);
+});
+
+test('a budget range is judged and drawn against its TOP, never its floor', () => {
+  // the whole point of keeping trip.budget as the ceiling: every existing
+  // consumer of it keeps its meaning when a floor appears underneath
+  const r = L.readBudgetRange('3000', '5000');
+  assert.equal(L.budgetVerdict(4000, r.to, 0), 'ok');
+  assert.equal(L.budgetVerdict(5100, r.to, 0), 'over');
+  // 4000 is over the FLOOR and that is not a warning about anything
+  assert.equal(L.budgetVerdict(4000, r.to, 1), 'partial');
+});
+
+test('budgetFigure prints the ceiling alone when there is no floor', () => {
+  const fmt = n => `$${Number(n).toFixed(2)}`;
+  // byte for byte what the chip said before ranges existed
+  assert.equal(L.budgetFigure(null, 3000, fmt), '$3000.00');
+  assert.equal(L.budgetFigure('', 3000, fmt), '$3000.00');
+});
+
+test('budgetFigure prints both ends of a range, each formatted as money', () => {
+  const fmt = n => `$${Number(n).toFixed(2)}`;
+  assert.equal(L.budgetFigure(3000, 5000, fmt), '$3000.00-$5000.00');
+});
+
+test('budgetFigure says nothing at all when there is no budget', () => {
+  const fmt = n => `$${Number(n).toFixed(2)}`;
+  assert.equal(L.budgetFigure(null, null, fmt), '');
+  assert.equal(L.budgetFigure(3000, null, fmt), '');
+  assert.equal(L.budgetFigure(3000, '', fmt), '');
+});
+
+test('normalizeBudgetFrom keeps a floor that is one and drops one that is not', () => {
+  assert.deepEqual(L.normalizeBudgetFrom(3000, 5000), { value: 3000, reason: '' });
+  assert.deepEqual(L.normalizeBudgetFrom(null, 5000), { value: null, reason: '' });
+  assert.equal(L.normalizeBudgetFrom('lots', 5000).value, null);
+  assert.equal(L.normalizeBudgetFrom(-5, 5000).value, null);
+  // a floor above the ceiling, and a floor left behind by a budget somebody
+  // cleared, are both stale data that would render as a nonsense chip
+  assert.equal(L.normalizeBudgetFrom(6000, 5000).value, null);
+  assert.equal(L.normalizeBudgetFrom(3000, null).value, null);
+  // every drop is explained, so an import can tell the traveller what it refused
+  for (const args of [['lots', 5000], [-5, 5000], [6000, 5000], [3000, null]]) {
+    assert.notEqual(L.normalizeBudgetFrom(args[0], args[1]).reason, '');
+  }
+});
+
+test('a share link carries the lower end of a budget range but never invents one', () => {
+  const items = [{ id: 'x', type: 'note', title: 'n', startDate: '2027-01-01', status: 'to-book' }];
+  const ranged = L.slimTripForShare({ name: 'T', currency: 'USD', budget: 5000, budgetFrom: 3000, items });
+  assert.equal(ranged.budget, 5000);
+  assert.equal(ranged.budgetFrom, 3000);
+  // a plain ceiling produces byte for byte the payload it always did
+  const ceiling = L.slimTripForShare({ name: 'T', currency: 'USD', budget: 5000, items });
+  assert.equal(ceiling.budgetFrom, undefined);
+  // and a floor with no ceiling is not a budget, so it does not ride along
+  const orphan = L.slimTripForShare({ name: 'T', currency: 'USD', budget: null, budgetFrom: 3000, items });
+  assert.equal(orphan.budget, undefined);
+  assert.equal(orphan.budgetFrom, undefined);
 });
 
 test('roundMoney stores the number the row actually shows', () => {
@@ -4620,6 +5259,305 @@ test('a trip with a flight and an overnight leg seeds seven rows, all distinct',
   assert.equal(new Set(seed).size, 7);
   // and the seed says nothing about a destination or a season it cannot know
   assert.equal(seed.some(t => /adapter|swimwear|thermal|sunscreen/i.test(t)), false);
+});
+
+// ---------- per-traveller packing rows ----------
+// The rule under all of these: an untagged row is EVERYONE'S row. That is what
+// every list stored before the tag existed, so a solo trip and an old trip both
+// have to keep reading exactly as they did.
+
+const pkRow = (id, text, who, done = false) => (who ? { id, text, who, done } : { id, text, done });
+const PAIR = ['Alex', 'Sam'];
+
+test('packingWho canonicalises a tag against the roster and reads an untagged row as everyone', () => {
+  assert.deepEqual(L.packingWho(pkRow('a', 'Boots'), PAIR), []);
+  assert.deepEqual(L.packingWho(pkRow('a', 'Boots', []), PAIR), []);
+  // the roster's spelling wins over the row's, so a case-only rename is not a
+  // different person
+  assert.deepEqual(L.packingWho(pkRow('a', 'Boots', ['alex']), PAIR), ['Alex']);
+  assert.deepEqual(L.packingWho(pkRow('a', 'Boots', ['Sam', 'Sam']), PAIR), ['Sam']);
+  // a name the trip does not carry cannot keep a row off the list it belongs on
+  assert.deepEqual(L.packingWho(pkRow('a', 'Boots', ['Jordan']), PAIR), []);
+  assert.deepEqual(L.packingWho(pkRow('a', 'Boots', ['Sam']), []), []);
+  assert.deepEqual(L.packingWho(null, PAIR), []);
+});
+
+test('a traveller filter shows their rows AND everyone rows, never somebody else\'s', () => {
+  const rows = [
+    pkRow('a', 'Passport'),
+    pkRow('b', 'Contact lenses', ['Alex']),
+    pkRow('c', 'Retainer', ['Sam']),
+    pkRow('d', 'Chargers', ['Alex', 'Sam']),
+  ];
+  assert.deepEqual(L.packingRowsFor(rows, 'Alex', PAIR).map(r => r.id), ['a', 'b', 'd']);
+  assert.deepEqual(L.packingRowsFor(rows, 'sam', PAIR).map(r => r.id), ['a', 'c', 'd']);
+  // no filter is the whole trip's list, and so is a filter naming somebody who
+  // is no longer on the roster: a stale select must not empty the dialog
+  assert.deepEqual(L.packingRowsFor(rows, '', PAIR).map(r => r.id), ['a', 'b', 'c', 'd']);
+  assert.deepEqual(L.packingRowsFor(rows, 'Jordan', PAIR).map(r => r.id), ['a', 'b', 'c', 'd']);
+  assert.deepEqual(L.packingRowsFor(null, 'Alex', PAIR), []);
+});
+
+test('the packed counter counts the rows the filter is showing, not the trip', () => {
+  const rows = [
+    pkRow('a', 'Passport', null, true),
+    pkRow('b', 'Contact lenses', ['Alex'], true),
+    pkRow('c', 'Retainer', ['Sam']),
+    pkRow('d', 'Chargers', ['Alex']),
+  ];
+  assert.deepEqual(L.packingProgress(rows, '', PAIR), { done: 2, total: 4 });
+  assert.deepEqual(L.packingProgress(rows, 'Alex', PAIR), { done: 2, total: 3 });
+  assert.deepEqual(L.packingProgress(rows, 'Sam', PAIR), { done: 1, total: 2 });
+  // a solo trip has no filter to apply, so it always counts the whole list
+  assert.deepEqual(L.packingProgress(rows, 'Alex', []), { done: 2, total: 4 });
+});
+
+test('taking a name off the roster is counted BEFORE it is applied, in rows', () => {
+  const rows = [
+    pkRow('a', 'Passport'),
+    pkRow('b', 'Contact lenses', ['Alex']),
+    pkRow('c', 'Retainer', ['Sam']),
+    pkRow('d', 'Chargers', ['Alex', 'Sam']),
+  ];
+  const drops = L.packingRosterDrops(rows, ['Alex', 'Jordan']);
+  // the retainer was Sam's row and leaves with Sam; the chargers were shared, so
+  // they stay and keep the name that is still on the trip
+  assert.equal(drops.removed, 1);
+  assert.equal(drops.untagged, 1);
+  // and the sentence needs the name as the ROWS spell it
+  assert.deepEqual(drops.names, [{ name: 'Sam', count: 2 }]);
+  // a respelling carries every row over, so there is nobody to warn about
+  assert.deepEqual(L.packingRosterDrops(rows, ['alex', 'SAM']).names, []);
+  assert.deepEqual(L.packingRosterDrops(rows, ['alex', 'SAM']).removed, 0);
+  // clearing the roster outright removes everybody, so every row that was one
+  // person's row goes too - which is exactly what the warning then says
+  const cleared = L.packingRosterDrops(rows, []);
+  assert.deepEqual(cleared.names, [{ name: 'Alex', count: 2 }, { name: 'Sam', count: 2 }]);
+  assert.equal(cleared.removed, 3);
+});
+
+test('the warning counts what saving actually does, not what it means to do', () => {
+  // the counts are taken by running the edit on a copy, so they cannot promise
+  // one number and do another. Dropping to ONE traveller retires the tag
+  // entirely, which costs Alex's row its tag even though Alex is the one who
+  // stayed, while Sam's row goes with Sam.
+  const rows = [pkRow('b', 'Contact lenses', ['Alex']), pkRow('c', 'Retainer', ['Sam'])];
+  const before = JSON.stringify(rows);
+  const drops = L.packingRosterDrops(rows, ['Alex']);
+  assert.equal(drops.removed, 1);
+  assert.equal(drops.untagged, 1);
+  assert.deepEqual(drops.names, [{ name: 'Sam', count: 1 }]);
+  // counting is a read: the dialog is still open and nothing has been saved
+  assert.equal(JSON.stringify(rows), before);
+  // and the save then does exactly the numbers it promised
+  assert.deepEqual(L.applyPackingRoster(rows, ['Alex']), { removed: drops.removed, untagged: drops.untagged });
+  assert.deepEqual(rows.map(r => r.id), ['b']);
+});
+
+test('the warning cannot disagree with the save on any roster shrink', () => {
+  // the one property the dialog rests on: whatever mix of rows a trip carries,
+  // "removes N, untags M" is the same N and M the save then performs, and the
+  // list shrinks by exactly N
+  const build = () => [
+    pkRow('a', 'Passport'),
+    pkRow('b', 'Contact lenses', ['Alex']),
+    pkRow('c', 'Retainer', ['Sam']),
+    pkRow('d', 'Chargers', ['Alex', 'Sam']),
+    pkRow('e', 'Trail shoes', ['Sam', 'Jordan']),
+    pkRow('f', 'Passport wallet', ['Jordan']),
+  ];
+  for (const roster of [['Alex', 'Jordan'], ['Alex'], ['Alex', 'Sam', 'Jordan'], []]) {
+    const counted = L.packingRosterDrops(build(), roster);
+    const rows = build();
+    const applied = L.applyPackingRoster(rows, roster);
+    assert.deepEqual(applied, { removed: counted.removed, untagged: counted.untagged });
+    assert.equal(rows.length, 6 - counted.removed);
+  }
+});
+
+test('a packing row tagged only to the leaver is deleted, never kept for everyone', () => {
+  // Sam leaves a three-person trip. Sam's retainer is not suddenly the trip's
+  // retainer, so it goes; the shared charger stays under the names still on the
+  // roster; and a row nobody was ever tagged to is not touched at all.
+  const rows = [
+    pkRow('a', 'Passport'),
+    pkRow('b', 'Retainer', ['Sam']),
+    pkRow('c', 'Chargers', ['Sam', 'Alex']),
+    pkRow('d', 'Contact lenses', ['Alex']),
+  ];
+  const everyone = { ...rows[0] };
+  assert.deepEqual(L.applyPackingRoster(rows, ['Alex', 'Jordan']), { removed: 1, untagged: 1 });
+  assert.deepEqual(rows.map(r => r.id), ['a', 'c', 'd']);
+  assert.deepEqual(rows[0], everyone);            // untouched: it was everyone's already
+  assert.deepEqual(rows[1].who, ['Alex']);        // mixed tag keeps whoever is left
+  assert.deepEqual(rows[2].who, ['Alex']);
+  // and the deleted row is gone from the list, not hidden behind a filter
+  assert.deepEqual(L.packingRowsFor(rows, 'Alex', ['Alex', 'Jordan']).map(r => r.id), ['a', 'c', 'd']);
+  assert.deepEqual(L.packingRowsFor(rows, 'Jordan', ['Alex', 'Jordan']).map(r => r.id), ['a']);
+});
+
+test('a row already packed is deleted with its traveller like any other', () => {
+  // ticking the box records that it is in the bag, not that the row is load
+  // bearing: it cannot outlive the only person it was ever for
+  const rows = [pkRow('a', 'Retainer', ['Sam'], true), pkRow('b', 'Passport', null, true)];
+  assert.deepEqual(L.applyPackingRoster(rows, ['Alex', 'Jordan']), { removed: 1, untagged: 0 });
+  assert.deepEqual(rows.map(r => r.id), ['b']);
+  assert.deepEqual(L.packingProgress(rows, '', ['Alex', 'Jordan']), { done: 1, total: 1 });
+});
+
+test('applying the roster re-spells the tags it keeps and drops the ones it cannot', () => {
+  const rows = [
+    pkRow('a', 'Passport'),
+    pkRow('b', 'Contact lenses', ['alex']),
+    pkRow('c', 'Retainer', ['Sam']),
+    pkRow('d', 'Chargers', ['Alex', 'Sam']),
+  ];
+  assert.deepEqual(L.applyPackingRoster(rows, ['Alex', 'Jordan']), { removed: 1, untagged: 2 });
+  assert.equal(rows[0].who, undefined);          // untouched: it was everyone's already
+  assert.deepEqual(rows[1].who, ['Alex']);       // re-spelled to the roster
+  assert.deepEqual(rows[2].who, ['Alex']);       // Sam is gone; Alex still has the chargers
+  assert.deepEqual(rows.map(r => r.id), ['a', 'b', 'd']);
+  // a row naming EVERYBODY is the same row as one naming nobody, and is stored
+  // as untagged so a traveller joining later is not silently left off it
+  const all = [pkRow('e', 'Snacks', ['Alex', 'Sam'])];
+  assert.deepEqual(L.applyPackingRoster(all, PAIR), { removed: 0, untagged: 1 });
+  assert.equal(all[0].who, undefined);
+  // and an empty tag was Everyone all along, so it is normalised, never deleted
+  const blank = [pkRow('f', 'Snacks', [])];
+  assert.deepEqual(L.applyPackingRoster(blank, PAIR), { removed: 0, untagged: 0 });
+  assert.deepEqual(blank.map(r => r.id), ['f']);
+  assert.equal(blank[0].who, undefined);
+});
+
+test('dropping to a solo roster leaves the packing list with no tags at all', () => {
+  // below two travellers the app offers no tag control anywhere, so a tag left
+  // behind would be invisible state deciding what a filter shows later. Alex's
+  // row survives untagged because Alex is who is left; Sam's row leaves with Sam.
+  const rows = [pkRow('a', 'Boots', ['Alex']), pkRow('b', 'Retainer', ['Sam'])];
+  L.applyPackingRoster(rows, ['Alex']);
+  assert.deepEqual(rows.map(r => r.id), ['a']);
+  assert.equal(rows[0].who, undefined);
+  assert.deepEqual(L.packingProgress(rows, '', []), { done: 0, total: 1 });
+});
+
+// ---------- reusable trip templates ----------
+// A template keeps the SHAPE and drops the booking. Everything below is a fact
+// that was true of one trip and would be a lie about the next one.
+
+function bookedTrip() {
+  return {
+    id: 't1', name: 'Kyoto in spring', currency: 'JPY', budget: 4000, budgetFrom: 3000, travelers: ['Alex', 'Sam'],
+    packing: [{ id: 'p1', text: 'Passport', done: true }],
+    items: [
+      {
+        id: 'i1', type: 'flight', title: 'BOS to KIX', location: 'Boston', status: 'booked',
+        startDate: '2026-04-02', endDate: '2026-04-03', startTime: '18:30',
+        cost: 980, costCurrency: 'USD', costNote: 'each', estCost: 1100, estCostCurrency: 'USD',
+        confirmation: 'XY7Q2R', bookBy: '2026-01-15', payment: 'card',
+        paidBy: 'Alex', travelers: ['Alex'], splitAmounts: { Alex: 980 },
+        details: 'Aisle seats', mapsQuery: 'Logan Airport',
+      },
+      {
+        id: 'i2', type: 'stay', title: 'Machiya near Gion', location: 'Kyoto', status: 'decide',
+        startDate: '2026-04-03', endDate: '2026-04-09', cost: 1200, confirmation: 'HTL-88', paidBy: 'Sam',
+      },
+    ],
+  };
+}
+
+test('a template keeps the plan and clears every booking fact on it', () => {
+  const tpl = L.tripAsTemplate(bookedTrip());
+  // the shape: same items, same titles, same types, same dates
+  assert.deepEqual(tpl.items.map(i => i.title), ['BOS to KIX', 'Machiya near Gion']);
+  assert.deepEqual(tpl.items.map(i => i.type), ['flight', 'stay']);
+  assert.deepEqual(tpl.items.map(i => i.startDate), ['2026-04-02', '2026-04-03']);
+  assert.equal(tpl.items[0].startTime, '18:30');
+  assert.equal(tpl.items[0].details, 'Aisle seats');
+  assert.equal(tpl.items[0].location, 'Boston');
+  // and none of the booking
+  for (const it of tpl.items) {
+    assert.equal(it.status, 'to-book');
+    for (const k of L.TEMPLATE_CLEARED) assert.equal(k in it, false, `${it.title} still carries ${k}`);
+  }
+  // the trip's own settings are not a booking fact, so they survive, and a
+  // budget travels as the whole range it was set as
+  assert.equal(tpl.currency, 'JPY');
+  assert.equal(tpl.budget, 4000);
+  assert.equal(tpl.budgetFrom, 3000);
+  assert.deepEqual(tpl.travelers, ['Alex', 'Sam']);
+});
+
+test('the cost column of a template is BLANK, estimates included', () => {
+  // a leftover estCost renders as "~$1,100" in the same cell the cost would
+  // have used, so clearing `cost` alone would leave last year's price on screen
+  const it = L.tripAsTemplate(bookedTrip()).items[0];
+  assert.equal(L.displayCostOf(it), null);
+  assert.equal(L.hasEstimate(it), false);
+  // and with nothing to show, nothing is shown as an estimate either
+  assert.equal(L.costDisplayParts(it).est, false);
+  assert.equal(L.costDisplayParts(it).tilde, '');
+});
+
+test('building a template does not touch the trip it was built from', () => {
+  const source = bookedTrip();
+  const before = JSON.stringify(source);
+  L.tripAsTemplate(source);
+  assert.equal(JSON.stringify(source), before);
+});
+
+// ---------- moving a whole trip in time ----------
+// One piece of arithmetic behind two dialogs: "Shift entire trip" (a number of
+// days) and a template being given a new start date (a destination). They must
+// not be able to disagree about what moves or about what is refused.
+
+test('the first dated item is the day the plan begins, whatever order it is stored in', () => {
+  assert.equal(L.firstItemDate([
+    { id: 'a', startDate: '2026-04-09' },
+    { id: 'b', startDate: '2026-04-02' },
+    { id: 'c', startDate: '' },
+  ]), '2026-04-02');
+  // an undated trip has no anchor to measure a shift from
+  assert.equal(L.firstItemDate([{ id: 'a', startDate: '' }]), null);
+  assert.equal(L.firstItemDate([]), null);
+  assert.equal(L.firstItemDate(null), null);
+});
+
+test('a new start date is the same move as a shift, expressed as a destination', () => {
+  const items = [{ id: 'a', startDate: '2026-04-02' }, { id: 'b', startDate: '2026-04-09' }];
+  assert.deepEqual(L.startDateShift(items, '2027-04-02'), { from: '2026-04-02', days: 365 });
+  assert.deepEqual(L.startDateShift(items, '2026-03-30'), { from: '2026-04-02', days: -3 });
+  // the same date is not a move, and the dialog treats a 0-day delta as "keep
+  // these dates" rather than as an edit
+  assert.equal(L.startDateShift(items, '2026-04-02').days, 0);
+  assert.equal(L.startDateShift(items, 'not-a-date'), null);
+  assert.equal(L.startDateShift([], '2027-04-02'), null);
+});
+
+test('a shift moves both dates on every item and keeps the gaps between them', () => {
+  const items = [
+    { id: 'a', startDate: '2026-04-02', endDate: '2026-04-03' },
+    { id: 'b', startDate: '2026-04-03', endDate: '2026-04-09' },
+    { id: 'c', startDate: '', endDate: '' },
+  ];
+  const plan = L.startDateShift(items, '2027-05-10');
+  assert.equal(L.applyDayShift(items, plan.days), 2);
+  assert.equal(items[0].startDate, '2027-05-10');
+  assert.equal(items[1].startDate, '2027-05-11');
+  assert.equal(items[1].endDate, '2027-05-17');
+  // the spacing is what a template is FOR: 7 nights before, 7 nights after
+  assert.equal(L.diffDays(items[1].startDate, items[1].endDate), 6);
+  assert.equal(items[2].startDate, '');
+});
+
+test('a shift that would leave the calendar is refused before anything moves', () => {
+  const items = [{ id: 'a', startDate: '2100-12-30', endDate: '2100-12-31' }];
+  assert.equal(L.shiftFits(items, 1), false);
+  assert.equal(L.shiftFits(items, -1), true);
+  assert.equal(L.shiftFits([{ id: 'a', startDate: '2000-01-02' }], -2), false);
+  // a date that is out of range ALREADY arrived by import or share link: it is
+  // left alone rather than freezing every other date on the trip
+  assert.equal(L.shiftFits([{ id: 'a', startDate: '1998-06-01' }], 5), true);
+  assert.equal(L.shiftFits([{ id: 'a', startDate: '' }], 5), true);
 });
 
 // ---------- booking deadlines ----------
@@ -5696,4 +6634,326 @@ test('HOTEL_TAGS is the single source for the query and the row label', () => {
   assert.deepEqual([...L.HOTEL_TAGS.keys()], ['hotel', 'hostel', 'guest_house', 'motel', 'apartment']);
   assert.equal(L.HOTEL_TAGS.get('guest_house'), 'Guest house');
   for (const key of L.HOTEL_TAGS.keys()) assert.ok(L.HOTEL_KIND_BONUS.has(key), `${key} needs a kind bonus`);
+});
+
+// ---------- distances: venue cache, day chains, shortest route ----------
+
+// Coordinates are laid out on the equator on purpose: 0.01 degrees of longitude
+// there is 1.1120 km, so every figure below is a number a human can check by
+// hand rather than a value copied back out of the implementation.
+const KM_PER_UNIT = 1.11195;
+const pt = (units) => ({ lat: 0, lon: units * 0.01 });
+const NOW = Date.UTC(2027, 0, 16);
+
+test('normalizeVenueCache drops junk, expired and over-cap entries', () => {
+  const raw = {
+    good: { lat: 35.6, lon: 139.7, at: NOW - 1000 },
+    stale: { lat: 35.6, lon: 139.7, at: NOW - L.VENUE_TTL_MS - 1 },
+    // Number('') is 0, a real point in the Gulf of Guinea: a coordinate that
+    // was never written must not survive as one that was
+    empty: { lat: '', lon: '', at: NOW },
+    offEarth: { lat: 120, lon: 20, at: NOW },
+    noStamp: { lat: 1, lon: 1 },
+    fromTheFuture: { lat: 1, lon: 1, at: NOW + 86400000 },
+  };
+  assert.deepEqual(Object.keys(L.normalizeVenueCache(raw, NOW)), ['good']);
+  assert.deepEqual(L.normalizeVenueCache(null, NOW), {});
+  assert.deepEqual(L.normalizeVenueCache('nope', NOW), {});
+
+  const many = {};
+  for (let i = 0; i < L.VENUE_CACHE_MAX + 20; i++) many['v' + i] = { lat: 1, lon: 1, at: NOW - i };
+  const capped = L.normalizeVenueCache(many, NOW);
+  assert.equal(Object.keys(capped).length, L.VENUE_CACHE_MAX);
+  assert.ok(capped.v0, 'the newest entry survives');
+  assert.ok(!capped['v' + (L.VENUE_CACHE_MAX + 10)], 'the oldest entries are dropped');
+});
+
+test('rememberVenue evicts the least recently written venue at the cap', () => {
+  const cache = {};
+  for (let i = 0; i < L.VENUE_CACHE_MAX; i++) L.rememberVenue(cache, 'v' + i, { lat: 1, lon: 1 }, NOW + i);
+  assert.equal(Object.keys(cache).length, L.VENUE_CACHE_MAX);
+  L.rememberVenue(cache, 'newcomer', { lat: 35.6, lon: 139.7 }, NOW + 9999);
+  assert.equal(Object.keys(cache).length, L.VENUE_CACHE_MAX);
+  assert.ok(!cache.v0, 'the oldest write is the one that goes');
+  assert.deepEqual(cache.newcomer, { lat: 35.6, lon: 139.7, at: NOW + 9999 });
+  // a bad write changes nothing rather than storing a point in the ocean
+  L.rememberVenue(cache, 'bad', { lat: '', lon: '' }, NOW);
+  L.rememberVenue(cache, '', { lat: 1, lon: 1 }, NOW);
+  assert.ok(!cache.bad);
+  assert.equal(Object.keys(cache).length, L.VENUE_CACHE_MAX);
+});
+
+test('placesLocationUpdates stores the coordinates the ratings call returned', () => {
+  const out = L.placesLocationUpdates([
+    { query: 'Ichiran Shibuya, Tokyo', status: 'ok', rating: 4.2, lat: 35.6595, lon: 139.7005 },
+    // an unrated but confidently matched venue still carries a position
+    { query: 'Tiny Bar, Tokyo', status: 'no_match', reason: 'unrated', lat: 35.68, lon: 139.76 },
+    // a wrong business (low confidence) is sent without one, and a generic
+    // query never reached Google at all
+    { query: 'Ramen Shop', status: 'no_match', reason: 'generic_query' },
+    { query: 'Somewhere', status: 'ok', rating: 4, lat: 999, lon: 0 },
+    { status: 'ok', lat: 1, lon: 1 },
+    null,
+  ]);
+  assert.deepEqual(out, [
+    { key: 'ichiran shibuya, tokyo', lat: 35.6595, lon: 139.7005 },
+    { key: 'tiny bar, tokyo', lat: 35.68, lon: 139.76 },
+  ]);
+  // the key is the SAME one the rating cache uses, so one venue is one entry
+  assert.equal(out[0].key, L.placeCacheKey('  Ichiran Shibuya,  Tokyo '));
+});
+
+test('pickVenueFeature refuses a top hit the query does not account for', () => {
+  const feat = (name, lon) => ({
+    geometry: { type: 'Point', coordinates: [lon, 35.6] },
+    properties: { name },
+  });
+  // Photon answers everything with something: "Shibuya Crossing" is not Ichiran
+  const wrong = { features: [feat('Shibuya Crossing', 139.7)] };
+  assert.equal(L.pickVenueFeature('Ichiran Shibuya, Tokyo', wrong), null);
+  // the venue named in the query, further down the list, is the one taken
+  const mixed = { features: [feat('Shibuya Crossing', 139.7), feat('Ichiran', 139.701)] };
+  assert.deepEqual(L.pickVenueFeature('Ichiran Shibuya, Tokyo', mixed), { name: 'Ichiran', lat: 35.6, lon: 139.701 });
+  // and the other direction: the feature name is longer than the query head
+  const longer = { features: [feat('teamLab Planets TOKYO DMM', 139.79)] };
+  assert.equal(L.pickVenueFeature('teamLab Planets TOKYO, Toyosu', longer).lat, 35.6);
+  assert.equal(L.pickVenueFeature('', mixed), null);
+  assert.equal(L.pickVenueFeature('x', null), null);
+  assert.equal(L.pickVenueFeature('x', { features: 'nope' }), null);
+});
+
+test('dayAnchor starts the day at its covering stay, else at the morning city', () => {
+  const items = [
+    stay('s1', 'Tokyo', '2027-01-16', '2027-01-19'),
+    { id: 'a1', type: 'activity', title: 'teamLab', location: 'Tokyo', startDate: '2027-01-20', startTime: '10:00', status: 'to-book' },
+  ];
+  const inStay = L.dayAnchor(items, '2027-01-17');
+  assert.equal(inStay.source, 'stay');
+  assert.equal(inStay.item.id, 's1');
+  assert.equal(inStay.label, 'Tokyo hotel');
+  assert.equal(inStay.city, 'Tokyo');
+  // no bed that day: the anchor is the city the day-card chip already names
+  const noStay = L.dayAnchor(items, '2027-01-20');
+  assert.equal(noStay.source, 'city');
+  assert.equal(noStay.item, null);
+  assert.equal(noStay.label, 'Tokyo');
+  assert.equal(L.dayAnchor([], '2027-01-20'), null);
+});
+
+test('parseTravelArrival takes the LAST "to" half, with label, city and code', () => {
+  assert.deepEqual(L.parseTravelArrival('Boston (BOS) to Keflavik (KEF)'),
+    { label: 'Keflavik (KEF)', city: 'Keflavik', iata: 'KEF' });
+  assert.deepEqual(L.parseTravelArrival('Tokyo to Kyoto to Osaka'),
+    { label: 'Osaka', city: 'Osaka', iata: '' });
+  assert.deepEqual(L.parseTravelArrival('Reykjavik to Akureyri'),
+    { label: 'Akureyri', city: 'Akureyri', iata: '' });
+  assert.equal(L.parseTravelArrival('Airport bus to the Riva').city, 'the Riva');
+  assert.equal(L.parseTravelArrival('Just a title'), null);
+  assert.equal(L.parseTravelArrival(''), null);
+});
+
+// The arrival that opens a day: an overnight flight claims the day it LANDS
+// on, a same-day leg its only day, and anything located earlier that day
+// (a morning in the departure city) switches the rule off entirely.
+test('dayArrival finds the leg that opens the day and yields to earlier plans', () => {
+  const flight = { id: 'f1', type: 'flight', title: 'Boston (BOS) to Keflavik (KEF)',
+    startDate: '2027-01-16', startTime: '21:30', endDate: '2027-01-17', endTime: '06:45', status: 'booked' };
+  const hotel = stay('s1', 'Reykjavik', '2027-01-17', '2027-01-20');
+  // the overnight leg claims its LANDING day, not its takeoff day
+  assert.equal(L.dayArrival([flight, hotel], '2027-01-16'), null);
+  const arr = L.dayArrival([flight, hotel], '2027-01-17');
+  assert.equal(arr.item.id, 'f1');
+  assert.equal(arr.iata, 'KEF');
+  assert.equal(arr.city, 'Keflavik');
+  // a stay check-in never blocks; a located activity BEFORE the arrival does
+  const early = { id: 'a1', type: 'activity', title: 'Breakfast: somewhere', location: 'Boston',
+    startDate: '2027-01-17', startTime: '05:00', status: 'to-book' };
+  assert.equal(L.dayArrival([flight, hotel, early], '2027-01-17'), null);
+  // a located activity AFTER the arrival is exactly the point, and blocks nothing
+  const later = { ...early, id: 'a2', startTime: '10:00', location: 'Reykjavik' };
+  assert.equal(L.dayArrival([flight, hotel, later], '2027-01-17').item.id, 'f1');
+  // a same-day leg claims its own day via its end (or start) time
+  const train = { id: 't1', type: 'transport', title: 'Reykjavik to Akureyri',
+    startDate: '2027-01-20', startTime: '09:00', endTime: '16:30', status: 'booked' };
+  assert.equal(L.dayArrival([train], '2027-01-20').city, 'Akureyri');
+  // a timeless leg cannot be ordered against the day and claims nothing
+  const timeless = { id: 't2', type: 'transport', title: 'A to B', startDate: '2027-01-21', status: 'booked' };
+  assert.equal(L.dayArrival([timeless], '2027-01-21'), null);
+  // cancelled legs never anchor anything
+  assert.equal(L.dayArrival([{ ...flight, status: 'cancelled' }], '2027-01-17'), null);
+});
+
+test('dayAnchor prefers the day-opening arrival over the covering stay', () => {
+  const flight = { id: 'f1', type: 'flight', title: 'Boston (BOS) to Keflavik (KEF)',
+    startDate: '2027-01-16', startTime: '21:30', endDate: '2027-01-17', endTime: '06:45', status: 'booked' };
+  const hotel = stay('s1', 'Reykjavik', '2027-01-17', '2027-01-20');
+  const a = L.dayAnchor([flight, hotel], '2027-01-17');
+  assert.equal(a.source, 'arrival');
+  assert.equal(a.item.id, 'f1');
+  assert.equal(a.label, 'Keflavik (KEF)');
+  assert.equal(a.iata, 'KEF');
+  // the next morning there is no arrival, so the stay anchors as always
+  assert.equal(L.dayAnchor([flight, hotel], '2027-01-18').source, 'stay');
+});
+
+test('dayDistanceChain measures from the anchor, then from each located stop', () => {
+  const legs = L.dayDistanceChain(
+    { key: 'hotel', label: 'Hotel Gracery', ...pt(0) },
+    [
+      { id: 'a', key: 'a', label: 'Museum', ...pt(1) },
+      { id: 'b', key: 'b', label: 'Ramen', ...pt(3) },
+    ],
+  );
+  assert.equal(legs.length, 2);
+  assert.equal(legs[0].id, 'a');
+  assert.equal(legs[0].from, 'Hotel Gracery');
+  assert.ok(Math.abs(legs[0].km - KM_PER_UNIT) < 0.01, 'first leg measures from the anchor');
+  // the second leg measures from the row before it, not from the hotel again
+  assert.equal(legs[1].from, 'Museum');
+  assert.ok(Math.abs(legs[1].km - 2 * KM_PER_UNIT) < 0.01);
+});
+
+test('dayDistanceChain skips checkout rows and rows nothing locates', () => {
+  const legs = L.dayDistanceChain(
+    { key: 'hotel', label: 'Hotel', ...pt(0) },
+    [
+      // a check-OUT row is the same booking a second time: no chip, and it does
+      // not become the origin of the next leg either
+      { id: 'out', key: 'hotel', label: 'Hotel', skip: true, ...pt(0) },
+      { id: 'unlocated', label: 'Wander around' },
+      { id: 'a', key: 'a', label: 'Museum', ...pt(2) },
+      { id: 'b', key: 'b', label: 'Ramen', ...pt(3) },
+    ],
+  );
+  assert.deepEqual(legs.map(l => l.id), ['a', 'b']);
+  // the unlocatable row did not break the chain: 'a' still measures from the hotel
+  assert.equal(legs[0].from, 'Hotel');
+  assert.ok(Math.abs(legs[0].km - 2 * KM_PER_UNIT) < 0.01);
+  assert.equal(legs[1].from, 'Museum');
+});
+
+test('dayDistanceChain drops a leg between two identical points, never "0.0 km"', () => {
+  const centroid = { ...pt(5) };
+  const legs = L.dayDistanceChain(
+    { key: 'c:tokyo', label: 'Tokyo', ...centroid },
+    [
+      // both fell back to the same city centroid
+      { id: 'a', key: 'c:tokyo', label: 'Lunch', ...centroid },
+      // a different cache entry that happens to sit on the same spot
+      { id: 'b', key: 'v:cafe', label: 'Cafe', ...centroid },
+      { id: 'c', key: 'v:far', label: 'Museum', ...pt(6) },
+    ],
+  );
+  assert.deepEqual(legs.map(l => l.id), ['c']);
+  assert.equal(legs[0].from, 'Cafe', 'the suppressed stops still advance the origin');
+  assert.ok(L.sameSpot({ key: 'x', ...pt(0) }, { key: 'y', lat: 0, lon: 0.0002 }), '22 m apart is the same spot');
+  assert.ok(!L.sameSpot({ key: 'x', ...pt(0) }, { key: 'y', ...pt(1) }));
+});
+
+test('shortestRoute beats the greedy order on a hand-computed fixture', () => {
+  // On a line through the anchor: one stop 1.1 units east, two stops 1 and 2
+  // units west. Nearest-first walks west first and pays 1 + 1 + 3.1 = 5.1 units;
+  // the shortest walk takes the east stop first: 1.1 + 2.1 + 1 = 4.2 units.
+  const route = L.shortestRoute({ label: 'Hotel', ...pt(0) }, [
+    { id: 'west1', label: 'W1', ...pt(-1) },
+    { id: 'west2', label: 'W2', ...pt(-2) },
+    { id: 'east', label: 'E', ...pt(1.1) },
+  ]);
+  assert.deepEqual(route.stops.map(s => s.id), ['east', 'west1', 'west2']);
+  assert.ok(Math.abs(route.km - 4.2 * KM_PER_UNIT) < 0.02, `expected ~4.67 km, got ${route.km}`);
+});
+
+test('shortestRoute keeps the anchor as the start and breaks ties by input order', () => {
+  const anchor = { label: 'Hotel', ...pt(0) };
+  // mirror images: both orders cost the same, so the first-listed card is #1
+  const tie = L.shortestRoute(anchor, [
+    { id: 'east', label: 'E', ...pt(1) },
+    { id: 'west', label: 'W', ...pt(-1) },
+  ]);
+  assert.deepEqual(tie.stops.map(s => s.id), ['east', 'west']);
+  const flipped = L.shortestRoute(anchor, [
+    { id: 'west', label: 'W', ...pt(-1) },
+    { id: 'east', label: 'E', ...pt(1) },
+  ]);
+  assert.deepEqual(flipped.stops.map(s => s.id), ['west', 'east']);
+  // a stop nothing located is not in the route, and an anchorless day has none
+  const partial = L.shortestRoute(anchor, [{ id: 'ok', label: 'A', ...pt(2) }, { id: 'nowhere', label: 'B' }]);
+  assert.deepEqual(partial.stops.map(s => s.id), ['ok']);
+  assert.equal(L.shortestRoute(null, [{ id: 'ok', label: 'A', ...pt(2) }]), null);
+  assert.equal(L.shortestRoute(anchor, []), null);
+});
+
+test('shortestRoute falls back to nearest-neighbour past the exact ceiling', () => {
+  // 9 collinear stops (one past ROUTE_EXACT_MAX), shuffled: on a line the greedy
+  // walk IS the optimum, so the fallback is still checkable by hand.
+  const spread = [4, 1, 9, 3, 7, 2, 8, 5, 6];
+  const route = L.shortestRoute({ label: 'Hotel', ...pt(0) },
+    spread.map(u => ({ id: 'p' + u, label: 'P' + u, ...pt(u) })));
+  assert.equal(route.stops.length, 9);
+  assert.deepEqual(route.stops.map(s => s.id), [1, 2, 3, 4, 5, 6, 7, 8, 9].map(u => 'p' + u));
+  assert.ok(Math.abs(route.km - 9 * KM_PER_UNIT) < 0.05);
+});
+
+// One card is one stop. A three-option dinner set is one dinner, so the route
+// must count it once, at the venue the traveller currently has picked.
+test('routeStops counts an alternative set once, at its selected option', () => {
+  const cards = [
+    { id: 'museum', options: [{ key: 'v:museum', label: 'Museum', ...pt(2) }], selected: 0 },
+    {
+      id: 'dinner',
+      options: [
+        { key: 'v:near', label: 'Dinner A', ...pt(1) },
+        { key: 'v:far', label: 'Dinner B', ...pt(9) },
+        { key: 'v:mid', label: 'Dinner C', ...pt(5) },
+      ],
+      selected: 0,
+    },
+  ];
+  const first = L.routeStops(cards);
+  assert.deepEqual(first.map(s => s.id), ['museum', 'dinner']);
+  assert.deepEqual(first.map(s => s.label), ['Museum', 'Dinner A']);
+  // flipping the pick moves the stop, and the route reorders around it: with
+  // Dinner A at 1 unit the walk is hotel > dinner > museum; with Dinner B at 9
+  // it is hotel > museum > dinner
+  const anchor = { label: 'Hotel', ...pt(0) };
+  assert.deepEqual(L.shortestRoute(anchor, first).stops.map(s => s.id), ['dinner', 'museum']);
+  const flipped = L.routeStops([cards[0], { ...cards[1], selected: 1 }]);
+  assert.deepEqual(flipped.map(s => s.label), ['Museum', 'Dinner B']);
+  const route = L.shortestRoute(anchor, flipped);
+  assert.deepEqual(route.stops.map(s => s.id), ['museum', 'dinner']);
+  assert.ok(route.km > L.shortestRoute(anchor, first).km, 'the far option is a longer walk');
+});
+
+test('routeStops skips a card whose selected option has no coordinates', () => {
+  // never a silent fallback to a sibling: the route would then name a venue the
+  // traveller did not choose
+  const set = {
+    id: 'drinks',
+    options: [{ label: 'Nowhere Bar' }, { key: 'v:bar', label: 'Bar B', ...pt(3) }],
+    selected: 0,
+  };
+  assert.deepEqual(L.routeStops([set]), []);
+  assert.deepEqual(L.routeStops([{ ...set, selected: 1 }]).map(s => s.label), ['Bar B']);
+  // an out-of-range or missing selection stands at the first option
+  assert.deepEqual(L.routeStops([{ id: 'x', options: [{ key: 'v:a', label: 'A', ...pt(1) }], selected: 7 }]).map(s => s.label), ['A']);
+  assert.deepEqual(L.routeStops([{ id: 'x', options: [{ key: 'v:a', label: 'A', ...pt(1) }] }]).map(s => s.label), ['A']);
+  // an accepted set has had its options removed from the card
+  assert.deepEqual(L.routeStops([{ id: 'gone', options: [] }]), []);
+  assert.deepEqual(L.routeStops([null, undefined]), []);
+  assert.deepEqual(L.routeStops(null), []);
+});
+
+test('distance wording prints both units and names where it measured from', () => {
+  // the route dialog's own convention: km first, miles second
+  assert.equal(L.fmtKmMi(1.2), '1.2 km / 0.7 mi');
+  assert.equal(L.fmtKmMi(0.34), '0.3 km / 0.2 mi');
+  assert.equal(L.fmtKmMi(1240), '1,240 km / 771 mi');
+  assert.equal(L.distanceChipLabel(1.24), '~1.2 km / 0.8 mi');
+  assert.equal(L.distanceChipTitle(1.24, 'Hotel Gracery Shinjuku'),
+    '1.2 km / 0.8 mi straight-line from Hotel Gracery Shinjuku, not a walking route.');
+  assert.equal(L.routeFooterText('Hotel', ['B', 'A', 'C'], 5.4), 'Shortest route: Hotel > B > A > C · ~5.4 km / 3.4 mi total');
+  // UI copy carries no em dash anywhere in this app
+  for (const s of [L.distanceChipTitle(2, 'X'), L.routeFooterText('H', ['A'], 2), L.fmtKmMi(3)]) {
+    assert.ok(!s.includes('—'), `em dash in "${s}"`);
+  }
 });

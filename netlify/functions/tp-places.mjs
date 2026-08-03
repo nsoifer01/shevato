@@ -31,10 +31,12 @@
 // OWNER TIER (optional): add "ownerToken":"<64+ random chars>" to that same
 // config JSON, then on your own browsers run
 //   localStorage.setItem('trip-planner:places:ownerToken', '<the token>')
-// in the devtools console once. Requests carrying the matching token are
+// in the devtools console once (per origin: shevato.com and localhost each
+// keep their own localStorage). Requests carrying the matching token are
 // governed by OWNER_LIMITS (10x public, separate buckets) instead of
 // DEFAULT_LIMITS; see the isOwner block below. Rotate or revoke by rewriting
-// the blob.
+// the blob. For `netlify dev`, whose local blob store is empty, put the same
+// token in .env as TP_PLACES_OWNER_TOKEN (see the isOwner block).
 //
 // The CLI must be linked to the site that actually serves shevato.com before
 // running those commands; the blob store is per-site, so writing it while
@@ -76,7 +78,11 @@ const SEARCH_FIELD_MASK = 'places.id';
 // displayName and googleMapsUri are Pro fields, rating and userRatingCount are
 // Enterprise; billed once at Enterprise. displayName is not decoration, it is
 // the input to the match check that stops a wrong rating being shown.
-const DETAILS_FIELD_MASK = 'displayName,googleMapsUri,rating,userRatingCount';
+// `location` is an Essentials field, i.e. BELOW every other field already in
+// this mask, so the request stays billed at Enterprise and the price of a
+// lookup does not move. It is what lets the client show how far a venue is
+// from the hotel without a second, separately-billed geocode.
+const DETAILS_FIELD_MASK = 'displayName,googleMapsUri,rating,userRatingCount,location';
 
 export default async function handler(req) {
   // (1) Origin/Referer guard first: only our own site and local dev.
@@ -111,7 +117,11 @@ export default async function handler(req) {
   // public limits, so a prober can never learn from a response that an owner
   // tier exists at all. The token is a bearer secret with no user identity
   // behind it, which is why OWNER_LIMITS is still a hard ceiling.
-  const isOwner = ownerTokenMatches(clamped.ownerToken, cfg.ownerToken);
+  // The env fallback is the same LOCAL DEVELOPMENT AFFORDANCE as TP_PLACES_KEY
+  // above: `netlify dev`'s empty local blob store left the owner tier
+  // unreachable on localhost, dropping the owner into the public 30/hour
+  // bucket after two example trips. Inert in production for the same reason.
+  const isOwner = ownerTokenMatches(clamped.ownerToken, cfg.ownerToken || process.env.TP_PLACES_OWNER_TOKEN);
   const limits = isOwner ? OWNER_LIMITS : DEFAULT_LIMITS;
   const tier = isOwner ? 'owner' : 'public';
 
@@ -253,11 +263,16 @@ async function fetchDetails(key, placeId) {
   const data = await res.json();
   // Flattened here so the cached blob holds our shape, not Google's: a schema
   // change upstream then cannot silently poison a month of cache entries.
+  // lat/lon rather than Google's lat/lng, because lat/lon is what every
+  // coordinate in this app is called, all the way down to the haversine.
+  const loc = data.location || {};
   return {
     name: (data.displayName && data.displayName.text) || '',
     rating: typeof data.rating === 'number' ? data.rating : null,
     userRatingCount: typeof data.userRatingCount === 'number' ? data.userRatingCount : 0,
     mapsUri: typeof data.googleMapsUri === 'string' ? data.googleMapsUri : '',
+    lat: typeof loc.latitude === 'number' ? loc.latitude : null,
+    lon: typeof loc.longitude === 'number' ? loc.longitude : null,
   };
 }
 
