@@ -36,7 +36,6 @@
     SELECTED: 'maptapRivalsSelectedRivalId',
     MATRIX_SEL: 'maptapRivalsMatrixSelection',
     MATRIX_SORT: 'maptapRivalsMatrixSort',
-    SEASONS: 'maptapRivalsSeasons',
     // Per-ISO-date cache of the day's 5 puzzle lat/lng pairs. Values are
     // stored under `KEY.DAILY_CITIES_PREFIX + isoDate`. Only coordinates
     // are persisted — never names or trivia from the daily file.
@@ -150,6 +149,10 @@
     getMyTotal, getTheirTotal, parseMapTapScore, mapTapHistoryToRounds,
     resultOf, resultLoc, stdDev, average, streaks, linearTrend, projectNext,
     rivalryScoreFromGames,
+    isoWeekId, monthId, periodRecords, runningRivalPeriodRecords, periodTallyText,
+    accumulatePositionHits,
+    accumulateFinishPositions, avgPositionColors,
+    compareNamesCI, compareWinPctDesc,
   } = window.MapTapStats;
 
   // Presentation-only labels stay here (not needed by the stats module).
@@ -195,7 +198,6 @@
   const state = {
     rivals: load(KEY.RIVALS, []),
     games: load(KEY.GAMES, []),
-    seasons: load(KEY.SEASONS, []),
     me: loadString(KEY.ME, 'Me'),
     myMapTap: loadString(KEY.MY_MAPTAP, ''),
     myIcon: loadString(KEY.MY_ICON, '🧍'),
@@ -210,7 +212,10 @@
     matrixSelection: load(KEY.MATRIX_SEL, null), // string[] of rivalIds, or null = "all"
     matrixSort: loadString(KEY.MATRIX_SORT, 'name'), // 'name' | 'win' | 'avg' row order
     matrixTab: 'record',           // overridden by URL hash on first paint
-    lbSort: 'winpct',              // sortable column key, e.g. 'winpct' | 'rivalry'
+    recordsUnit: 'week',           // Records view bucket: 'week' | 'month'
+    recordsSort: 'winpct',         // per-rival split order: 'winpct' | 'name'
+    recordsPage: 1,                // Records period-card page (in-memory only)
+    lbSort: 'rival',               // sortable column key, e.g. 'winpct' | 'rivalry'
     lbDir: 1,                      // 1 = column's natural order, -1 = reversed (toggled by re-clicking the header)
     historyFilters: { rival: 'all', result: 'all' },
     historyPage: 1,
@@ -239,7 +244,6 @@
 
   function persistRivals() { save(KEY.RIVALS, state.rivals); }
   function persistGames() { save(KEY.GAMES, state.games); }
-  function persistSeasons() { save(KEY.SEASONS, state.seasons); }
   function persistSettings() { save(KEY.SETTINGS, state.settings); }
   function persistMe() { saveString(KEY.ME, state.me); }
   function persistMyIcon() { saveString(KEY.MY_ICON, state.myIcon); }
@@ -696,7 +700,7 @@
     else if (view === 'rival') renderRival();
     else if (view === 'leaderboard') renderLeaderboard();
     else if (view === 'matrix') renderMatrix();
-    else if (view === 'seasons') renderSeasons();
+    else if (view === 'records') renderRecords();
     else if (view === 'history') renderHistory();
 
     syncUrlHash();
@@ -713,7 +717,7 @@
   //   #matrix | #matrix/<subtab>
   // We use replaceState so the URL updates silently without polluting the
   // back/forward history; hashchange handles users pasting or editing the URL.
-  const KNOWN_VIEWS = new Set(['dashboard', 'rival', 'leaderboard', 'matrix', 'seasons', 'history']);
+  const KNOWN_VIEWS = new Set(['dashboard', 'rival', 'leaderboard', 'matrix', 'records', 'history']);
 
   function viewHash() {
     if (state.view === 'matrix') {
@@ -765,6 +769,8 @@
       setView('dashboard');
       return;
     }
+    // Seasons became the automatic Records view; keep old links working.
+    if (view === 'seasons') { setView('records'); return; }
     if (KNOWN_VIEWS.has(view)) { setView(view); return; }
     setView('dashboard');
   }
@@ -888,7 +894,7 @@
     else if (state.view === 'dashboard') renderDashboard();
     else if (state.view === 'leaderboard') renderLeaderboard();
     else if (state.view === 'matrix') renderMatrix();
-    else if (state.view === 'seasons') renderSeasons();
+    else if (state.view === 'records') renderRecords();
     else if (state.view === 'history') renderHistory();
   }
 
@@ -896,7 +902,7 @@
   function refreshRivalSelects() {
     const opts = state.rivals
       .slice()
-      .sort((a, b) => a.name.localeCompare(b.name))
+      .sort((a, b) => compareNamesCI(a.name, b.name))
       .map(r => `<option value="${r.id}">${escapeHtml(r.name)}</option>`)
       .join('');
 
@@ -950,7 +956,7 @@
     else if (state.view === 'rival') renderRival();
     else if (state.view === 'leaderboard') renderLeaderboard();
     else if (state.view === 'matrix') renderMatrix();
-    else if (state.view === 'seasons') renderSeasons();
+    else if (state.view === 'records') renderRecords();
     else if (state.view === 'history') renderHistory();
   }
 
@@ -1061,105 +1067,11 @@
     ]);
   }
 
-  // ---------- seasons ----------
-
-  function seasonStats(season) {
-    const today = todayISO();
-    let filtered = state.games.filter(g =>
-      g.date >= season.startDate && g.date <= season.endDate
-    );
-    if (season.rivalId) filtered = filtered.filter(g => g.rivalId === season.rivalId);
-    // Season goals are about your record vs. the rival — rival-only days
-    // (they played, you didn't) shouldn't count toward gamesPlayed or W/L.
-    filtered = filtered.filter(bothPlayed);
-
-    const gamesPlayed = filtered.length;
-    let wins = 0, losses = 0, ties = 0;
-    for (const g of filtered) {
-      const r = resultOf(g);
-      if (r === 'W') wins++;
-      else if (r === 'L') losses++;
-      else ties++;
-    }
-    const decidedGames = wins + losses;
-    const winPct = decidedGames > 0 ? (wins / decidedGames) * 100 : 0;
-
-    return { gamesPlayed, wins, losses, ties, winPct };
-  }
-
-  function seasonVerdict(season, stats) {
-    const { wins, losses, gamesPlayed, winPct } = stats;
-    if (season.goalType === 'winPct') {
-      return (wins + losses) > 0 && winPct >= season.goalValue;
-    }
-    if (season.goalType === 'wins') return wins >= season.goalValue;
-    if (season.goalType === 'minGames') return gamesPlayed >= season.goalValue;
-    return false;
-  }
-
-  function seasonGoalText(season) {
-    if (season.goalType === 'winPct') return `Win ${season.goalValue}% or more`;
-    if (season.goalType === 'wins') return `Win ${season.goalValue} game${season.goalValue === 1 ? '' : 's'}`;
-    if (season.goalType === 'minGames') return `Play at least ${season.goalValue} game${season.goalValue === 1 ? '' : 's'}`;
-    return '';
-  }
-
-  function seasonCurrentStat(season, stats) {
-    if (season.goalType === 'winPct') return stats.winPct;
-    if (season.goalType === 'wins') return stats.wins;
-    if (season.goalType === 'minGames') return stats.gamesPlayed;
-    return 0;
-  }
-
-  function seasonOnTrack(season, stats) {
-    if (stats.gamesPlayed === 0) return null;
-    const today = todayISO();
-    const totalDays = daysBetween(season.startDate, season.endDate) + 1;
-    const daysDone = Math.min(totalDays, daysBetween(season.startDate, today) + 1);
-    const progress = Math.max(0, Math.min(1, daysDone / totalDays));
-
-    const current = seasonCurrentStat(season, stats);
-    if (season.goalType === 'winPct') {
-      return current >= season.goalValue;
-    }
-    const expected = season.goalValue * progress;
-    return current >= expected;
-  }
-
-  function seasonDateRange(season) {
-    return fmtDateShort(season.startDate) + ' to ' + fmtDateShort(season.endDate);
-  }
-
-  // Story-first one-liner for a season card / the dashboard banner. Always
-  // dash-free; phrasing varies by bucket and goal type.
-  function seasonHeadline(season, stats, bucket) {
-    const goalV = Number(season.goalValue);
-    if (bucket === 'upcoming') {
-      const days = Math.max(1, daysBetween(todayISO(), season.startDate));
-      return `Starts in ${days} day${days === 1 ? '' : 's'}`;
-    }
-    const cur = seasonCurrentStat(season, stats);
-    if (season.goalType === 'winPct') {
-      if ((stats.wins + stats.losses) === 0) {
-        return bucket === 'past' ? 'No decided games this season' : 'No decided games yet';
-      }
-      const pct = stats.winPct.toFixed(0);
-      if (bucket === 'past') {
-        return stats.winPct >= goalV
-          ? `Won ${pct}% vs the ${goalV}% target`
-          : `Fell short at ${pct}% vs the ${goalV}% target`;
-      }
-      return `Winning ${pct}% vs the ${goalV}% target`;
-    }
-    const noun = season.goalType === 'wins' ? 'win' : 'game';
-    const nounS = `${noun}${goalV === 1 ? '' : 's'}`;
-    if (bucket === 'past') {
-      return cur >= goalV
-        ? `Goal met: ${cur} of ${goalV} ${nounS}`
-        : `Fell short: ${cur} of ${goalV} ${nounS}`;
-    }
-    return `${cur} of ${goalV} ${nounS} so far`;
-  }
+  // ---------- weekly / monthly records ----------
+  // Records are derived, never authored: periodRecords buckets the game log
+  // into ISO weeks (Monday to Sunday) or calendar months. Only head-to-head
+  // days carry a result, so rival-only and solo days sit these out exactly
+  // the way resultOf treats them everywhere else.
 
   function rivalLabel(rivalId) {
     if (!rivalId) return 'All rivals';
@@ -1167,320 +1079,271 @@
     return r ? r.name : 'Unknown rival';
   }
 
-  function makeSeasonProgressBar(fraction, cls) {
-    const pct = Math.min(1, Math.max(0, fraction));
-    return el('div', { class: 'season-progress-wrap' }, [
-      el('div', { class: 'season-progress-bar' }, [
-        el('span', { class: 'season-progress-fill ' + (cls || ''), style: `width:${(pct * 100).toFixed(1)}%` }),
-      ]),
-    ]);
+  function currentPeriodId(unit) {
+    return unit === 'month' ? monthId(todayISO()) : isoWeekId(todayISO());
   }
 
-  function makeSeasonCard(season, bucket) {
-    const stats = seasonStats(season);
-    const isActive = bucket === 'active';
-    const isPast = bucket === 'past';
-    const isUpcoming = bucket === 'upcoming';
-
-    // Status drives the card's accent: met/on-track green, behind amber,
-    // missed red, upcoming neutral.
-    const passed = isPast ? seasonVerdict(season, stats) : null;
-    const onTrack = isActive ? seasonOnTrack(season, stats) : null;
-    const statusCls =
-      isPast ? (passed ? ' season-card-good' : ' season-card-bad')
-      : isActive ? (onTrack === null ? '' : onTrack ? ' season-card-good' : ' season-card-warn')
-      : '';
-    const card = el('article', { class: 'season-card season-card-' + bucket + statusCls });
-
-    // Header row
-    const head = el('div', { class: 'season-card-head' });
-    head.appendChild(el('div', { class: 'season-card-title' }, [
-      el('span', { class: 'season-card-name' }, season.name),
-      el('span', { class: 'season-card-dates' }, seasonDateRange(season)),
-    ]));
-    const headRight = el('div', { class: 'season-card-head-right' });
-    head.appendChild(headRight);
-
-    if (isPast) {
-      headRight.appendChild(el('span', {
-        class: 'season-verdict-pill ' + (passed ? 'is-pass' : 'is-fail'),
-      }, passed ? 'Passed' : 'Failed'));
+  // One human line per period, year included: "Aug 3 to Aug 9, 2026" or
+  // "August 2026". A week straddling New Year carries both years so the jump
+  // is obvious ("Dec 28, 2025 to Jan 3, 2026").
+  function periodTitle(rec) {
+    if (rec.unit === 'month') {
+      return new Date(rec.start + 'T00:00:00')
+        .toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
     }
+    const startYear = rec.start.slice(0, 4);
+    const endYear = rec.end.slice(0, 4);
+    return startYear === endYear
+      ? `${fmtDateShort(rec.start)} to ${fmtDateShort(rec.end)}, ${endYear}`
+      : `${fmtDateShort(rec.start)}, ${startYear} to ${fmtDateShort(rec.end)}, ${endYear}`;
+  }
 
-    if ((isActive || isUpcoming)) {
-      headRight.appendChild(el('button', {
-        type: 'button',
-        class: 'icon-btn icon-btn-danger season-delete-btn',
-        title: 'Delete season',
-        'aria-label': 'Delete season',
-        html: ICON_TRASH,
-        onclick: () => deleteSeason(season.id),
-      }));
-    }
+  // The ISO week number, read straight off the period id ('2026-W32' -> '#32')
+  // rather than recomputed, so the label can never drift from the bucket the
+  // card was built from. Monthly ids carry no week, so they get nothing.
+  function weekNumber(rec) {
+    const m = rec.unit === 'week' && /-W(\d{2})$/.exec(rec.id);
+    return m ? Number(m[1]) : null;
+  }
 
-    card.appendChild(head);
+  // "3W · 2L", plus the ties only when there were any. Same rule as the
+  // running per-rival tally, so a card never carries a column of zeroes.
+  function wltText(rec) {
+    const base = `${rec.wins}W · ${rec.losses}L`;
+    return rec.ties ? `${base} · ${rec.ties}T` : base;
+  }
 
-    // Story-first headline, then the meta line.
-    card.appendChild(el('div', { class: 'season-card-headline' },
-      seasonHeadline(season, stats, bucket)));
-    card.appendChild(el('div', { class: 'season-card-meta' }, [
-      el('span', { class: 'season-card-meta-item' }, rivalLabel(season.rivalId)),
-      el('span', { class: 'season-card-meta-sep' }, '·'),
-      el('span', { class: 'season-card-meta-item' }, seasonGoalText(season)),
+  function winPctText(rec) {
+    return rec.decided > 0 ? `${rec.winPct.toFixed(0)}% win` : 'no decided games';
+  }
+
+  // Verdict for a period: ahead, behind, or level. Empty when nothing was
+  // decided, so a week of pure ties stays neutral.
+  function recordTone(rec) {
+    if (!rec || !rec.decided) return '';
+    if (rec.wins > rec.losses) return 'good';
+    if (rec.wins < rec.losses) return 'bad';
+    return 'even';
+  }
+
+  // Green above 50%, red below, neutral at exactly 50 or with nothing
+  // decided. `wins > losses` is the same statement as `winPct > 50`, so the
+  // percentage and the card's verdict edge can never disagree.
+  function pctToneClass(rec) {
+    const tone = recordTone(rec);
+    return tone === 'good' ? ' is-good' : tone === 'bad' ? ' is-bad' : '';
+  }
+
+  // Running record against one rival, as it stood at the end of this period.
+  function periodTallyTitle(rec, name, tally) {
+    const unit = rec.unit === 'month' ? 'month' : 'week';
+    const won = `${tally.won} ${unit}${tally.won === 1 ? '' : 's'}`;
+    return `${name}: ${won} won, ${tally.lost} lost` +
+      (tally.tied ? `, ${tally.tied} tied` : '') +
+      `, counting every ${unit} you played them up to and including this one`;
+  }
+
+  function makeRecordCard(rec, isCurrent, running) {
+    const tone = recordTone(rec);
+    const week = weekNumber(rec);
+    const card = el('article', {
+      class: 'record-card' + (tone ? ' record-card-' + tone : '') +
+             (isCurrent ? ' is-current' : ''),
+    });
+
+    card.appendChild(el('div', { class: 'record-card-head' }, [
+      el('div', { class: 'record-card-title' }, [
+        el('span', { class: 'record-card-name' }, periodTitle(rec)),
+        week
+          ? el('span', {
+              class: 'record-week-num',
+              title: `ISO week ${week} of ${rec.id.slice(0, 4)}`,
+            }, `#${week}`)
+          : null,
+        isCurrent
+          ? el('span', { class: 'record-current-pill' },
+              rec.unit === 'month' ? 'This month' : 'This week')
+          : null,
+      ]),
+      el('div', { class: 'record-card-head-right' }, [
+        el('span', { class: 'record-card-wlt' }, wltText(rec)),
+        el('span', { class: 'record-card-stats' }, [
+          el('span', { class: 'record-stat-num' }, String(rec.games)),
+          el('span', { class: 'record-stat-label' }, ' game' + (rec.games === 1 ? '' : 's')),
+          el('span', { class: 'record-stat-sep' }, '·'),
+          el('span', { class: 'record-stat-pct' + pctToneClass(rec) }, winPctText(rec)),
+        ]),
+      ]),
     ]));
 
-    if (isUpcoming) return card;
-
-    // Stats row
-    const wld = `${stats.wins}W · ${stats.losses}L · ${stats.ties}T`;
-    const winPctStr = (stats.wins + stats.losses) > 0
-      ? stats.winPct.toFixed(0) + '% win'
-      : 'no decided games';
-
-    card.appendChild(el('div', { class: 'season-card-stats' }, [
-      el('span', { class: 'season-stat-num' }, String(stats.gamesPlayed)),
-      el('span', { class: 'season-stat-label' }, ' game' + (stats.gamesPlayed === 1 ? '' : 's')),
-      el('span', { class: 'season-stat-sep' }, '·'),
-      el('span', { class: 'season-stat-wld' }, wld),
-      el('span', { class: 'season-stat-sep' }, '·'),
-      el('span', { class: 'season-stat-pct' }, winPctStr),
-    ]));
-
-    // Progress toward goal. Guard the divisor: a persisted/imported season
-    // with goalValue 0 or non-numeric must not yield width:NaN%.
-    const goalV = Number(season.goalValue);
-    const goalSafe = Number.isFinite(goalV) && goalV > 0;
-    const currentVal = seasonCurrentStat(season, stats);
-    let progressFraction = 0;
-    if (goalSafe) {
-      progressFraction = (season.goalType === 'winPct' ? stats.winPct : currentVal) / goalV;
-    }
-
-    const progressLabel = season.goalType === 'winPct'
-      ? `${stats.winPct.toFixed(0)}% / ${goalSafe ? goalV : '?'}%`
-      : `${currentVal} / ${goalSafe ? goalV : '?'}`;
-
-    const barCls = progressFraction >= 1 ? 'is-done' : '';
-    card.appendChild(el('div', { class: 'season-progress-row' }, [
-      el('span', { class: 'season-progress-label' }, progressLabel),
-      makeSeasonProgressBar(progressFraction, barCls),
-    ]));
-
-    // On-track indicator (active only)
-    if (isActive && onTrack !== null) {
-      card.appendChild(el('div', {
-        class: 'season-track-pill ' + (onTrack ? 'is-on-track' : 'is-behind'),
-      }, onTrack ? 'On track' : 'Behind'));
-    }
+    // Per-rival split. Best win % first by default so the period's strongest
+    // and weakest matchups read straight off the card; the toolbar control
+    // switches every card to plain ABC, which also breaks win-% ties.
+    const byName = (a, b) => compareNamesCI(rivalLabel(a.rivalId), rivalLabel(b.rivalId));
+    const order = state.recordsSort === 'name'
+      ? byName
+      : (a, b) => compareWinPctDesc(a, b) || byName(a, b);
+    const rivals = el('ul', { class: 'record-rivals' });
+    rec.byRival
+      .slice()
+      .sort(order)
+      .forEach(r => {
+        const name = rivalLabel(r.rivalId);
+        const tally = running ? running[r.rivalId] : null;
+        rivals.appendChild(el('li', { class: 'record-rival' }, [
+          el('span', { class: 'record-rival-name' }, [
+            el('span', { class: 'record-rival-label' }, name),
+            tally
+              ? el('span', {
+                  class: 'record-rival-run',
+                  title: periodTallyTitle(rec, name, tally),
+                }, `(${periodTallyText(tally)})`)
+              : null,
+          ]),
+          el('span', { class: 'record-rival-wlt' }, wltText(r)),
+          el('span', { class: 'record-rival-pct' + pctToneClass(r) },
+            r.decided > 0 ? `${r.winPct.toFixed(0)}%` : '-'),
+        ]));
+      });
+    card.appendChild(rivals);
 
     return card;
   }
 
-  function deleteSeason(id) {
-    const season = state.seasons.find(s => s.id === id);
-    if (!season) return;
-    openDeleteSeasonModal(season);
+  // Six period cards a page. Switching bucket or rival order rewrites what
+  // every card says, so both send the reader back to the newest page.
+  const RECORDS_PAGE_SIZE = 6;
+
+  function setRecordsUnit(unit) {
+    if (state.recordsUnit === unit) return;
+    state.recordsUnit = unit;
+    state.recordsPage = 1;
+    renderRecords();
   }
 
-  // Delete-season confirmation modal — same pattern as the delete-game and
-  // clear-games modals: Cancel gets initial focus; backdrop/X/Escape close
-  // without deleting; focus returns to the trigger afterwards.
-  function openDeleteSeasonModal(season) {
-    const modal = $('#delete-season-modal');
-    $('#delete-season-body').textContent =
-      `${season.name} (${seasonDateRange(season)}). This cannot be undone.`;
-    state.pendingDeleteSeasonId = season.id;
-    state.deleteSeasonLastFocus = document.activeElement;
-    modal.hidden = false;
-    setTimeout(() => $('#delete-season-cancel').focus(), 30);
+  function setRecordsSort(sort) {
+    if (state.recordsSort === sort) return;
+    state.recordsSort = sort;
+    state.recordsPage = 1;
+    renderRecords();
   }
 
-  function closeDeleteSeasonModal() {
-    $('#delete-season-modal').hidden = true;
-    state.pendingDeleteSeasonId = null;
-    const prev = state.deleteSeasonLastFocus;
-    state.deleteSeasonLastFocus = null;
-    if (prev && document.body.contains(prev)) setTimeout(() => prev.focus(), 0);
-  }
-
-  function confirmDeleteSeason() {
-    const id = state.pendingDeleteSeasonId;
-    closeDeleteSeasonModal();
-    if (!id) return;
-    state.seasons = state.seasons.filter(s => s.id !== id);
-    persistSeasons();
-    renderSeasons();
-    renderActiveSeasonBanner();
-    if (state.view === 'dashboard') renderDashboard();
-  }
-
-  function renderSeasons() {
-    const body = $('#seasons-body');
+  function renderRecords() {
+    const body = $('#records-body');
     if (!body) return;
     body.innerHTML = '';
 
-    const today = todayISO();
-
-    if (state.seasons.length === 0) {
-      body.appendChild(el('div', { class: 'empty-state seasons-empty' }, [
-        el('p', {}, 'No seasons yet. Create your first season to start tracking a time-boxed challenge.'),
-        el('button', { type: 'button', class: 'btn btn-ghost', style: 'margin-top:.75rem', onclick: openSeasonModal }, '+ Create your first season'),
-      ]));
-      return;
-    }
-
-    const active = state.seasons.filter(s => s.startDate <= today && s.endDate >= today);
-    const upcoming = state.seasons.filter(s => s.startDate > today);
-    const past = state.seasons.filter(s => s.endDate < today);
-
-    function makeGroup(title, items, bucket) {
-      if (!items.length) return null;
-      const section = el('section', { class: 'seasons-group' });
-      section.appendChild(el('h3', { class: 'seasons-group-title' }, title));
-      items.forEach(s => section.appendChild(makeSeasonCard(s, bucket)));
-      return section;
-    }
-
-    const activeSection = makeGroup('Active', active, 'active');
-    const upcomingSection = makeGroup('Upcoming', upcoming, 'upcoming');
-    const pastSection = makeGroup('Past', past, 'past');
-
-    if (activeSection) body.appendChild(activeSection);
-    if (upcomingSection) body.appendChild(upcomingSection);
-    if (pastSection) body.appendChild(pastSection);
-  }
-
-  // ---------- season modal ----------
-  function openSeasonModal() {
-    const modal = $('#season-modal');
-    const nameInput = $('#season-name');
-    const startInput = $('#season-start');
-    const endInput = $('#season-end');
-    const rivalSelect = $('#season-rival');
-    const errorEl = $('#season-modal-error');
-
-    // Populate rival dropdown
-    rivalSelect.innerHTML = '<option value="">All rivals</option>';
-    state.rivals
-      .slice()
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .forEach(r => {
-        rivalSelect.appendChild(el('option', { value: r.id }, r.name));
-      });
-
-    // Defaults
-    const today = todayISO();
-    nameInput.value = '';
-    startInput.value = today;
-    endInput.value = addDaysISO(today, 30);
-    rivalSelect.value = '';
-    document.querySelector('input[name="season-goal-type"][value="winPct"]').checked = true;
-    errorEl.hidden = true;
-    errorEl.textContent = '';
-
-    modal.hidden = false;
-    setTimeout(() => nameInput.focus(), 30);
-  }
-
-  function closeSeasonModal() {
-    $('#season-modal').hidden = true;
-  }
-
-  function saveSeasonFromModal() {
-    const name = $('#season-name').value.trim();
-    const startDate = $('#season-start').value;
-    const endDate = $('#season-end').value;
-    const rivalId = $('#season-rival').value || null;
-    const goalType = document.querySelector('input[name="season-goal-type"]:checked')?.value;
-    const errorEl = $('#season-modal-error');
-
-    const goalValInput = {
-      winPct: $('#season-goal-winpct'),
-      wins: $('#season-goal-wins'),
-      minGames: $('#season-goal-mingames'),
-    }[goalType];
-    const goalValue = goalValInput ? Number(goalValInput.value) : 0;
-
-    errorEl.hidden = true;
-
-    if (!name) {
-      errorEl.textContent = 'Season name is required.';
-      errorEl.hidden = false;
-      $('#season-name').focus();
-      return;
-    }
-    if (!startDate || !endDate) {
-      errorEl.textContent = 'Start and end dates are required.';
-      errorEl.hidden = false;
-      return;
-    }
-    if (startDate > endDate) {
-      errorEl.textContent = 'Start date must be on or before end date.';
-      errorEl.hidden = false;
-      return;
-    }
-    if (!goalValue || goalValue <= 0) {
-      errorEl.textContent = 'Goal value must be greater than 0.';
-      errorEl.hidden = false;
-      return;
-    }
-    if (goalType === 'winPct' && goalValue > 100) {
-      errorEl.textContent = 'Win % goal must be between 1 and 100.';
-      errorEl.hidden = false;
-      return;
-    }
-
-    state.seasons.push({
-      id: uid(),
-      name,
-      rivalId,
-      startDate,
-      endDate,
-      goalType,
-      goalValue,
-      createdAt: Date.now(),
+    const unit = state.recordsUnit;
+    $$('.records-toggle-btn').forEach(btn => {
+      const active = btn.dataset.recordsUnit === unit;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
-    persistSeasons();
-    closeSeasonModal();
-    renderSeasons();
-    if (state.view === 'dashboard') renderDashboard();
+    const sortSelect = $('#records-sort-select');
+    if (sortSelect) sortSelect.value = state.recordsSort;
+
+    const records = periodRecords(state.games, unit);
+    if (!records.length) {
+      body.appendChild(el('div', { class: 'empty-state records-empty' }, [
+        el('p', {}, `No head-to-head games yet. Log a day against a rival and your ${unit === 'month' ? 'monthly' : 'weekly'} record shows up here on its own.`),
+      ]));
+      renderRecordsPagination(1);
+      return;
+    }
+
+    const totalPages = Math.max(1, Math.ceil(records.length / RECORDS_PAGE_SIZE));
+    if (state.recordsPage > totalPages) state.recordsPage = totalPages;
+    if (state.recordsPage < 1) state.recordsPage = 1;
+    const startIdx = (state.recordsPage - 1) * RECORDS_PAGE_SIZE;
+
+    // Every card needs the running per-rival tally as it stood at the end of
+    // its own period, so the replay runs over the full history once, not per
+    // visible page.
+    const running = runningRivalPeriodRecords(records);
+    const currentId = currentPeriodId(unit);
+    records
+      .slice(startIdx, startIdx + RECORDS_PAGE_SIZE)
+      .forEach(rec => body.appendChild(
+        makeRecordCard(rec, rec.id === currentId, running[rec.id])));
+
+    renderRecordsPagination(totalPages);
   }
 
-  // Dashboard active-season banner
-  function renderActiveSeasonBanner() {
-    const wrap = $('#dash-active-season-banner');
+  // Prev / Next plus "Page X of Y", built from the same .pagination shell and
+  // colour-pinned .page-btn styling the history footer uses. One page of
+  // periods needs no controls at all, so the whole nav goes away.
+  function renderRecordsPagination(totalPages) {
+    const nav = $('#records-pagination');
+    if (!nav) return;
+    if (totalPages <= 1) { nav.hidden = true; return; }
+    nav.hidden = false;
+    $('#records-pagination-meta').textContent = `Page ${state.recordsPage} of ${totalPages}`;
+
+    const pager = $('#records-pager');
+    pager.innerHTML = '';
+    pager.hidden = false;
+    const go = (n) => { state.recordsPage = n; renderRecords(); };
+    pager.appendChild(pageButton('Prev', state.recordsPage - 1, state.recordsPage <= 1, go));
+    pager.appendChild(pageButton('Next', state.recordsPage + 1, state.recordsPage >= totalPages, go));
+  }
+
+  // Dashboard current-form banner: this week's and this month's overall record,
+  // and a way into the full Records view.
+  function makeBannerLine(label, rec) {
+    const tone = recordTone(rec);
+    return el('span', { class: 'record-dash-banner-line' }, [
+      el('span', { class: 'record-dash-banner-period' }, label),
+      el('span', { class: 'record-dash-banner-figures' }, [
+        rec
+          ? el('span', { class: 'record-dash-banner-wlt' + (tone ? ' is-' + tone : '') },
+              wltText(rec))
+          : el('span', { class: 'record-dash-banner-empty' }, 'No games yet'),
+        rec && rec.decided > 0
+          ? el('span', { class: 'record-dash-banner-pct' + pctToneClass(rec) },
+              `${rec.winPct.toFixed(0)}%`)
+          : null,
+      ]),
+    ]);
+  }
+
+  function renderRecordBanner() {
+    const wrap = $('#dash-record-banner');
     if (!wrap) return;
     wrap.innerHTML = '';
-    const today = todayISO();
-    const active = state.seasons.filter(s => s.startDate <= today && s.endDate >= today);
-    if (!active.length) { wrap.hidden = true; return; }
 
-    const season = active[0];
-    const stats = seasonStats(season);
-    // Inclusive count — on the season's final day this reads "1 day left",
-    // not "0 days left" (the old off-by-one).
-    const daysLeft = Math.max(0, daysBetween(today, season.endDate) + 1);
-    const onTrack = seasonOnTrack(season, stats);
-    const trackText = onTrack === null ? '' : (onTrack ? ' · On track' : ' · Behind');
-    const statusCls = onTrack === null ? '' : (onTrack ? ' is-on-track' : ' is-behind');
+    const weeks = periodRecords(state.games, 'week');
+    if (!weeks.length) { wrap.hidden = true; return; }
+
+    const today = todayISO();
+    const week = weeks.find(w => w.id === isoWeekId(today));
+    const month = periodRecords(state.games, 'month').find(m => m.id === monthId(today));
 
     wrap.hidden = false;
-    const banner = el('div', { class: 'season-dash-banner' + statusCls, onclick: () => setView('seasons') }, [
-      el('div', { class: 'season-dash-banner-left' }, [
-        el('span', { class: 'season-dash-banner-name' }, season.name + ' is active'),
-        el('span', { class: 'season-dash-banner-headline' }, seasonHeadline(season, stats, 'active')),
-        el('span', { class: 'season-dash-banner-meta' }, `${daysLeft} day${daysLeft === 1 ? '' : 's'} left${trackText}`),
+    wrap.appendChild(el('button', {
+      type: 'button',
+      class: 'record-dash-banner',
+      'aria-label': 'Open the Records view',
+      onclick: () => setView('records'),
+    }, [
+      el('span', { class: 'record-dash-banner-left' }, [
+        el('span', { class: 'record-dash-banner-label' }, 'Current form'),
+        el('span', { class: 'record-dash-banner-lines' }, [
+          makeBannerLine('This week', week),
+          makeBannerLine('This month', month),
+        ]),
       ]),
-      el('span', { class: 'season-dash-banner-arrow' }, '→'),
-    ]);
-    wrap.appendChild(banner);
+      el('span', { class: 'record-dash-banner-cta' }, [
+        el('span', { class: 'record-dash-banner-cta-text' }, 'All records'),
+        el('span', { class: 'record-dash-banner-arrow', 'aria-hidden': 'true' }, '→'),
+      ]),
+    ]));
   }
 
   // ---------- dashboard view ----------
   function renderDashboard() {
     renderProfileCard();
     renderPasteSection();
-    renderActiveSeasonBanner();
+    renderRecordBanner();
     renderDashSummary();
     renderTodaysPredictions();
     renderRivalGrid();
@@ -1540,6 +1403,204 @@
       scores: Array.isArray(g.theirScores) ? g.theirScores : null,
       total:  Array.isArray(g.theirScores) ? getTheirTotal(g) : null,
     };
+  }
+
+  // ---------- predicted-position accuracy ----------
+  // How often the predictor put a player in the position they actually
+  // finished in, as "hits / eligible days". Back-testing re-runs the
+  // predictor for each past day with asOfISO set to that day, so a day's
+  // prediction only ever sees rounds older than itself.
+  //
+  // A day is eligible for a player when its 5 puzzle cities are known, the
+  // player has enough pre-cutoff history to be predicted, and the player
+  // actually played. Paste-imported days carry no cities and are eligible
+  // for nobody, which is why a player can have a prediction today and still
+  // show no badge.
+  //
+  // The whole pass is O(days x players x history) haversine work, so it is
+  // memoized twice: per (player, date) inside a pass, and per game-log
+  // fingerprint across renders. The day cap keeps the cost linear as the
+  // history grows instead of quadratic.
+  const POSITION_HIT_MAX_DAYS = 180;
+  const MY_PLAYER_KEY = '@me';
+  const positionHitCache = { signature: null, records: null, preds: new Map() };
+
+  // Fingerprint of everything the back-test reads. MapTap syncs backfill
+  // existing games in place, so counting the score arrays matters as much
+  // as the game count; todayISO keeps the window honest past midnight.
+  function predictionHistorySignature() {
+    let games = 0, withCities = 0, withMine = 0, withTheirs = 0, latest = '';
+    for (const g of state.games) {
+      games++;
+      if (Array.isArray(g.cities)) withCities++;
+      if (Array.isArray(g.myScores)) withMine++;
+      if (Array.isArray(g.theirScores)) withTheirs++;
+      if (g.date > latest) latest = g.date;
+    }
+    return [games, withCities, withMine, withTheirs, latest,
+            state.rivals.map(r => r.id).join(','), todayISO()].join('|');
+  }
+
+  // A past day's 5 puzzle cities: synced games carry them inline, and the
+  // daily-cities cache covers days whose games were logged without them.
+  function citiesForPastDay(iso, fromGames) {
+    const inline = fromGames.get(iso);
+    if (inline) return inline;
+    try {
+      const cached = JSON.parse(localStorage.getItem(KEY.DAILY_CITIES_PREFIX + iso) || 'null');
+      if (cached && Array.isArray(cached.cities) && cached.cities.length === N_LOCS) {
+        return cached.cities;
+      }
+    } catch (_) { /* corrupted cache entry: treat the day as unknown */ }
+    return null;
+  }
+
+  function memoPredictedTotal(playerKey, iso, rounds, cities) {
+    const cacheKey = playerKey + '|' + iso;
+    if (positionHitCache.preds.has(cacheKey)) return positionHitCache.preds.get(cacheKey);
+    const pred = predictRoundsForPlayer(rounds, cities, iso);
+    const total = pred ? predTotalFromScores(pred.scores) : null;
+    positionHitCache.preds.set(cacheKey, total);
+    return total;
+  }
+
+  function computePositionHitRecords() {
+    const today = todayISO();
+    const citiesByDate = new Map();
+    const dates = new Set();
+    for (const g of state.games) {
+      if (!g.date || g.date >= today) continue;
+      dates.add(g.date);
+      if (!citiesByDate.has(g.date) &&
+          Array.isArray(g.cities) && g.cities.length === N_LOCS) {
+        citiesByDate.set(g.date, g.cities);
+      }
+    }
+
+    const players = [{
+      key: MY_PLAYER_KEY,
+      name: state.me || 'You',
+      rounds: myProfileRounds(),
+      actualTotal: iso => actualScoresForDay(iso).mineTotal,
+    }];
+    state.rivals.forEach(r => players.push({
+      key: r.id,
+      name: r.name,
+      rounds: rivalRounds(r.id),
+      actualTotal: iso => actualScoresForRivalDay(r.id, iso).total,
+    }));
+
+    const days = [];
+    for (const iso of Array.from(dates).sort().slice(-POSITION_HIT_MAX_DAYS)) {
+      const cities = citiesForPastDay(iso, citiesByDate);
+      if (!cities) continue;
+      const entries = [];
+      for (const player of players) {
+        const predictedTotal = memoPredictedTotal(player.key, iso, player.rounds, cities);
+        if (predictedTotal == null) continue;
+        entries.push({
+          key: player.key,
+          name: player.name,
+          predictedTotal,
+          actualTotal: player.actualTotal(iso),
+        });
+      }
+      if (entries.length) days.push(entries);
+    }
+    return accumulatePositionHits(days);
+  }
+
+  function positionHitRecords() {
+    const signature = predictionHistorySignature();
+    if (positionHitCache.signature !== signature) {
+      positionHitCache.signature = signature;
+      positionHitCache.preds.clear();
+      positionHitCache.records = computePositionHitRecords();
+    }
+    return positionHitCache.records;
+  }
+
+  // Compact accuracy badge for a prediction row. A player with no eligible
+  // day gets no badge at all rather than a meaningless "0%". The chip shows
+  // the rate because that is what compares across players with different
+  // amounts of history; the raw hits-of-days count lives in the tooltip.
+  function makeHitBadge(record) {
+    if (!record || !record.eligible) return null;
+    const pct = Math.round((record.hits / record.eligible) * 100);
+    const title = `Finished in the predicted position on ${record.hits} of ` +
+      `${record.eligible} past day${record.eligible === 1 ? '' : 's'} with a prediction ` +
+      `(${pct}%)`;
+    const hot = record.hits * 2 >= record.eligible;
+    return el('span', {
+      class: 'pred-hit-badge' + (hot ? ' is-hot' : ''),
+      title,
+      'aria-label': title,
+    }, [
+      el('span', { class: 'pred-hit-label' }, 'Spot-on'),
+      el('span', { class: 'pred-hit-num' }, `${pct}%`),
+    ]);
+  }
+
+  // ---------- average finishing position ----------
+  // Where a player usually lands on a day, by actual daily total, across every
+  // past day at least two tracked players logged a score. Solo days award no
+  // position, and this needs nothing but totals, so paste-imported days count
+  // exactly like synced ones (unlike the Spot-on record above, which needs the
+  // day's cities). Cheap enough to recompute per game-log fingerprint.
+  const finishPositionCache = { signature: null, records: null };
+
+  function computeFinishPositionRecords() {
+    const today = todayISO();
+    const live = new Set(state.rivals.map(r => r.id));
+    const byDate = new Map();
+    for (const g of state.games) {
+      if (!g.date || g.date >= today || !live.has(g.rivalId)) continue;
+      let day = byDate.get(g.date);
+      if (!day) { day = new Map(); byDate.set(g.date, day); }
+      // Your own scores repeat across every rival you played that day, so the
+      // first game carrying them settles your total for the day.
+      if (iPlayed(g) && !day.has(MY_PLAYER_KEY)) day.set(MY_PLAYER_KEY, getMyTotal(g));
+      if (theyPlayed(g)) day.set(g.rivalId, getTheirTotal(g));
+    }
+
+    const days = [];
+    byDate.forEach(day => {
+      const entries = [];
+      day.forEach((total, key) => entries.push({ key, total }));
+      days.push(entries);
+    });
+    return accumulateFinishPositions(days);
+  }
+
+  function finishPositionRecords() {
+    const signature = predictionHistorySignature();
+    if (finishPositionCache.signature !== signature) {
+      finishPositionCache.signature = signature;
+      finishPositionCache.records = computeFinishPositionRecords();
+    }
+    return finishPositionCache.records;
+  }
+
+  // Share of the field a player beats on an average day, beside their name.
+  // Plain text with a tooltip, never a control. A percentage rather than the
+  // raw position because a position is only readable next to the field size
+  // it came from; the raw average finish stays in the tooltip. A player with
+  // no qualifying day gets nothing. `color` ranks the number against the other
+  // rows on screen (green highest, red lowest) and is null when there is
+  // nothing to rank it against.
+  function makeAvgPosition(record, color) {
+    if (!record || !record.days) return null;
+    const pct = Math.round(record.share * 100);
+    const title = `Beats ${pct}% of the field on an average day. ` +
+      `Average finish ${record.avg.toFixed(1)} across ${record.days} ` +
+      `day${record.days === 1 ? '' : 's'}.`;
+    return el('span', { class: 'pred-avg-pos', title, 'aria-label': title }, [
+      el('span', { class: 'pred-avg-label' }, 'avg'),
+      el('span', {
+        class: 'pred-avg-num',
+        style: color ? `color:${color};` : null,
+      }, `${pct}%`),
+    ]);
   }
 
   // SVG icon helpers — tiny stroke glyphs used as score-cell adornments
@@ -1613,10 +1674,16 @@
     ]);
   }
 
-  function makePredictionRow({ label, predictedScores, actualScores, predictedTotal, actualTotal, isYou, accentColor }) {
+  function makePredictionRow({ label, predictedScores, actualScores, predictedTotal, actualTotal, isYou, accentColor, hitRecord, avgPosition, avgColor }) {
     const cls = ['pred-row'];
     if (isYou) cls.push('pred-row-you');
-    const cells = [el('div', { class: 'pred-label' }, label)];
+    const cells = [el('div', { class: 'pred-label' }, [
+      el('span', { class: 'pred-label-line' }, [
+        el('span', { class: 'pred-label-name' }, label),
+        makeAvgPosition(avgPosition, avgColor),
+      ]),
+      makeHitBadge(hitRecord),
+    ])];
     cells.push(el('div', { class: 'pred-cell pred-predicted' },
       predictedTotal != null ? String(predictedTotal) : '—'));
     cells.push(el('div', { class: 'pred-cell pred-actual' },
@@ -1798,6 +1865,8 @@
     // players who already played rank first by actual score, everyone
     // else follows by predicted score (actual is the #1 sort key,
     // predicted the #2). Name is the final tie-break.
+    const hitRecords = positionHitRecords();
+    const avgPositions = finishPositionRecords();
     const rows = [];
     rows.push({
       label: `${state.myIcon || '🧍'} ${state.me || 'You'}`,
@@ -1808,6 +1877,8 @@
       actualTotal:     myActuals.mineTotal,
       isYou: true,
       accentColor: 'var(--accent-2)',
+      hitRecord: hitRecords[MY_PLAYER_KEY] || null,
+      avgPosition: avgPositions[MY_PLAYER_KEY] || null,
     });
 
     let predictedCount = myPred ? 1 : 0;
@@ -1825,17 +1896,27 @@
         actualTotal:     act.total,
         isYou: false,
         accentColor: r.color,
+        hitRecord: hitRecords[r.id] || null,
+        avgPosition: avgPositions[r.id] || null,
       });
     });
+
+    // Rank the field-share percentages against each other. The ramp anchors
+    // green at its lowest input, so the shares go in negated: the biggest
+    // share becomes the smallest number and takes the green end. Scoped to the
+    // rows on screen, so it recomputes whenever the day or roster changes.
+    const avgColors = avgPositionColors(
+      rows.map(r => (r.avgPosition ? -r.avgPosition.share : null)));
+    rows.forEach((r, i) => { r.avgColor = avgColors[i]; });
 
     rows.sort((a, b) => {
       const aPlayed = a.actualTotal != null, bPlayed = b.actualTotal != null;
       if (aPlayed !== bPlayed) return aPlayed ? -1 : 1;
       if (aPlayed) return (b.actualTotal - a.actualTotal) ||
                           ((b.predictedTotal ?? -1) - (a.predictedTotal ?? -1)) ||
-                          a.sortName.localeCompare(b.sortName);
+                          compareNamesCI(a.sortName, b.sortName);
       return ((b.predictedTotal ?? -1) - (a.predictedTotal ?? -1)) ||
-             a.sortName.localeCompare(b.sortName);
+             compareNamesCI(a.sortName, b.sortName);
     });
     rows.forEach(r => body.appendChild(makePredictionRow(r)));
 
@@ -1890,7 +1971,7 @@
 
     state.rivals
       .slice()
-      .sort((a, b) => a.name.localeCompare(b.name))
+      .sort((a, b) => compareNamesCI(a.name, b.name))
       .forEach(r => wrap.appendChild(makePasteRivalRow(r)));
 
     // Restore "mine" textarea from preserved state
@@ -2215,11 +2296,11 @@
     }
 
     // Refresh the dashboard tiles + summary so saved games land immediately.
-    // The active-season banner counts these games too — without this it
-    // showed stale progress until the next full dashboard render.
+    // The current-form banner counts these games too. Without this it showed
+    // a stale record until the next full dashboard render.
     renderDashSummary();
     renderRivalGrid();
-    renderActiveSeasonBanner();
+    renderRecordBanner();
   }
 
   function renderDashSummary() {
@@ -2528,13 +2609,9 @@
   function renderRivalGrid() {
     const grid = $('#rival-grid');
     grid.innerHTML = '';
-    const sorted = state.rivals.slice().sort((a, b) => {
-      // Most-played rivalries first; ties broken alphabetically.
-      const sa = rivalSummary(a);
-      const sb = rivalSummary(b);
-      if (sb.total !== sa.total) return sb.total - sa.total;
-      return a.name.localeCompare(b.name);
-    });
+    // Alphabetical, case-insensitive: every rival list outside the Records
+    // view reads ABC, so a card sits in the same place whatever the week did.
+    const sorted = state.rivals.slice().sort((a, b) => compareNamesCI(a.name, b.name));
 
     sorted.forEach(r => grid.appendChild(makeRivalCard(rivalSummary(r))));
 
@@ -2982,9 +3059,12 @@
           renderRival();
         },
       });
-      state.rivals.forEach(r => {
-        switcher.appendChild(el('option', { value: r.id, selected: r.id === rival.id || undefined }, r.name));
-      });
+      state.rivals
+        .slice()
+        .sort((a, b) => compareNamesCI(a.name, b.name))
+        .forEach(r => {
+          switcher.appendChild(el('option', { value: r.id, selected: r.id === rival.id || undefined }, r.name));
+        });
       actions.appendChild(switcher);
     }
     const syncBtn = el('button', {
@@ -4072,7 +4152,7 @@
     // Comparator per sortable column. Numeric columns sort descending;
     // "rival" sorts A→Z. Ties fall back to games played, then name.
     const LB_SORTS = {
-      rival:   (a, b) => a.rival.name.localeCompare(b.rival.name),
+      rival:   (a, b) => compareNamesCI(a.rival.name, b.rival.name),
       games:   (a, b) => b.total - a.total,
       wins:    (a, b) => b.wins - a.wins,
       losses:  (a, b) => b.losses - a.losses,
@@ -4089,9 +4169,9 @@
     // state.lbDir to -1, which reverses just the primary key; the games/name
     // tie-breakers stay stable so equal rows keep a predictable order.
     const dir = state.lbDir === -1 ? -1 : 1;
-    const cmp = LB_SORTS[state.lbSort] || LB_SORTS.winpct;
+    const cmp = LB_SORTS[state.lbSort] || LB_SORTS.rival;
     summaries.sort((a, b) =>
-      dir * cmp(a, b) || b.total - a.total || a.rival.name.localeCompare(b.rival.name));
+      dir * cmp(a, b) || b.total - a.total || compareNamesCI(a.rival.name, b.rival.name));
 
     // Update sort-active state on the column headers. aria-sort reflects the
     // actual direction (the ::after caret follows aria-sort in CSS), so the
@@ -4458,7 +4538,7 @@
     if (!state.rivals.length) return;
     state.rivals
       .slice()
-      .sort((a, b) => a.name.localeCompare(b.name))
+      .sort((a, b) => compareNamesCI(a.name, b.name))
       .forEach(r => {
         const selected = isMatrixRivalSelected(r.id);
         const chip = el('button', {
@@ -4562,12 +4642,12 @@
 
     const sortKey = state.matrixSort || 'name';
     const sortedRivalParts = rivalParts.slice().sort((a, b) => {
-      if (sortKey === 'win') return winRateOf(b) - winRateOf(a) || a.label.localeCompare(b.label);
+      if (sortKey === 'win') return winRateOf(b) - winRateOf(a) || compareNamesCI(a.label, b.label);
       if (sortKey === 'avg') {
         const av = avgFor(a), bv = avgFor(b);
-        return (bv == null ? -Infinity : bv) - (av == null ? -Infinity : av) || a.label.localeCompare(b.label);
+        return (bv == null ? -Infinity : bv) - (av == null ? -Infinity : av) || compareNamesCI(a.label, b.label);
       }
-      return a.label.localeCompare(b.label);
+      return compareNamesCI(a.label, b.label);
     });
     const participants = [you, ...sortedRivalParts];
 
@@ -5494,7 +5574,7 @@
       else if (state.view === 'rival') renderRival();
       else if (state.view === 'leaderboard') renderLeaderboard();
       else if (state.view === 'matrix') renderMatrix();
-      else if (state.view === 'seasons') renderSeasons();
+      else if (state.view === 'records') renderRecords();
       else if (state.view === 'history') renderHistory();
     } catch (err) {
       setRivalSyncStatus(rivalId, 'err', err.message || 'sync failed');
@@ -5725,7 +5805,7 @@
       sel.appendChild(el('option', { value: 'skip' }, 'Skip'));
       sel.appendChild(el('option', { value: 'me' }, 'Me'));
       // existing rivals
-      state.rivals.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach(r => {
+      state.rivals.slice().sort((a, b) => compareNamesCI(a.name, b.name)).forEach(r => {
         sel.appendChild(el('option', { value: 'rival:' + r.id }, `Rival: ${r.name}`));
       });
       // new rival from sender's name
@@ -5947,7 +6027,7 @@
     else if (state.view === 'rival') renderRival();
     else if (state.view === 'leaderboard') renderLeaderboard();
     else if (state.view === 'matrix') renderMatrix();
-    else if (state.view === 'seasons') renderSeasons();
+    else if (state.view === 'records') renderRecords();
     else if (state.view === 'history') renderHistory();
   }
 
@@ -5989,7 +6069,7 @@
     else if (state.view === 'rival') renderRival();
     else if (state.view === 'leaderboard') renderLeaderboard();
     else if (state.view === 'matrix') renderMatrix();
-    else if (state.view === 'seasons') renderSeasons();
+    else if (state.view === 'records') renderRecords();
     else if (state.view === 'history') renderHistory();
   }
 
@@ -6036,7 +6116,7 @@
         else if (state.view === 'rival') renderRival();
         else if (state.view === 'leaderboard') renderLeaderboard();
         else if (state.view === 'matrix') renderMatrix();
-        else if (state.view === 'seasons') renderSeasons();
+        else if (state.view === 'records') renderRecords();
         else if (state.view === 'history') renderHistory();
       } catch (e) {
         alert('Could not parse backup file.');
@@ -6057,7 +6137,6 @@
     if (!e.key) return;
     if (e.key === KEY.RIVALS) state.rivals = load(KEY.RIVALS, []);
     else if (e.key === KEY.GAMES) state.games = load(KEY.GAMES, []);
-    else if (e.key === KEY.SEASONS) state.seasons = load(KEY.SEASONS, []);
     else if (e.key === KEY.ME) {
       state.me = loadString(KEY.ME, 'Me');
       const me = $('#my-name'); if (me) me.value = state.me;
@@ -6080,7 +6159,7 @@
     else if (state.view === 'rival') renderRival();
     else if (state.view === 'leaderboard') renderLeaderboard();
     else if (state.view === 'matrix') renderMatrix();
-    else if (state.view === 'seasons') renderSeasons();
+    else if (state.view === 'records') renderRecords();
     else if (state.view === 'history') renderHistory();
   }
 
@@ -6102,15 +6181,15 @@
     $('#add-rival-btn').addEventListener('click', () => openRivalModal(null));
     $('#dash-empty-add-btn').addEventListener('click', () => openRivalModal(null));
 
-    // Seasons
-    $('#new-season-btn').addEventListener('click', openSeasonModal);
-    $('#season-modal').querySelectorAll('[data-close="season-modal"]').forEach(node => {
-      node.addEventListener('click', closeSeasonModal);
+    // Records period toggle + per-rival sort
+    $$('.records-toggle-btn').forEach(btn => {
+      btn.addEventListener('click', () => setRecordsUnit(btn.dataset.recordsUnit));
     });
-    $('#season-save-btn').addEventListener('click', saveSeasonFromModal);
-    $('#season-name').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); saveSeasonFromModal(); }
-    });
+    const recordsSortSelect = $('#records-sort-select');
+    if (recordsSortSelect) {
+      recordsSortSelect.value = state.recordsSort;
+      recordsSortSelect.addEventListener('change', (e) => setRecordsSort(e.target.value));
+    }
 
     // Rival modal close — scoped to #rival-modal so it doesn't also fire
     // for clicks on the WhatsApp import modal.
@@ -6132,20 +6211,13 @@
       node.addEventListener('click', closeClearGamesModal);
     });
     $('#clear-games-confirm').addEventListener('click', confirmClearGames);
-    // Delete-season confirmation modal
-    $('#delete-season-modal').querySelectorAll('[data-close="delete-season-modal"]').forEach(node => {
-      node.addEventListener('click', closeDeleteSeasonModal);
-    });
-    $('#delete-season-confirm').addEventListener('click', confirmDeleteSeason);
 
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
       if (!$('#wa-modal').hidden) closeWhatsAppModal();
       else if (!$('#delete-game-modal').hidden) closeDeleteGameModal();
       else if (!$('#clear-games-modal').hidden) closeClearGamesModal();
-      else if (!$('#delete-season-modal').hidden) closeDeleteSeasonModal();
       else if (!$('#rival-modal').hidden) closeRivalModal();
-      else if (!$('#season-modal').hidden) closeSeasonModal();
     });
 
     // settings strip
