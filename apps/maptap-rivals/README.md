@@ -10,7 +10,7 @@ MapTap.gg has no built-in social layer, so this app *is* the rivalry layer. The 
 - **Games** (`maptapRivalsGames`) — one record per day you played a given rival: `{ id, rivalId, date, note, myScores[5], theirScores[5], myScore, theirScore }`. Each of MapTap's 5 rounds is a raw 0–100 score; round weights `[1, 1, 2, 3, 3]` roll up to a 0–1000 daily total. Older games stored as totals only (no per-round array) still count toward records and streaks but are skipped from per-round breakdowns.
 - **You** — your display name (`maptapRivalsMe`), icon (`maptapRivalsMyIcon`), and optional MapTap profile (`maptapRivalsMyProfile`).
 
-Seasons, the matrix selection, and the currently focused rival are persisted under their own keys. Everything is computed on demand from the games list — there are no precomputed stats in storage.
+The matrix selection and the currently focused rival are persisted under their own keys. Everything else, weekly and monthly records included, is computed on demand from the games list; there are no precomputed stats in storage.
 
 ## Features
 
@@ -19,15 +19,16 @@ Seasons, the matrix selection, and the currently focused rival are persisted und
 | Add/edit rivals | Create a named rival with an accent color and icon (and an optional MapTap username); edit or delete from a modal. |
 | Paste daily scores | A collapsible entry panel: paste your MapTap result, and a row per rival shows a live win/loss/tie preview against your score before you save the day's games. |
 | MapTap profile auto-sync | Link your MapTap profile (and a rival's username) to pull game history automatically from the public MapTap profile endpoint instead of pasting. |
-| Dashboard | A rival grid of summary cards (record, streak, averages) with an at-a-glance summary strip and a "today's predictions" card when the day's puzzle data is available. |
+| Dashboard | A rival grid of summary cards (record, streak, averages) in alphabetical order, with an at-a-glance summary strip, a current-form banner, and a "today's predictions" card when the day's puzzle data is available. |
+| Predictions accuracy | Each row of the predictions card carries the share of the field the player beats on an average day ("avg 78%", the mean of `(N - rank) / (N - 1)` over every past day at least two tracked players logged a score, so first is always 100% and last always 0% whatever the field size, ties sharing fractional rank credit and solo days excluded, with the raw average finish and day count in the tooltip) plus a "Spot-on" badge giving the share of days they finished exactly where the predictor put them ("Spot-on 83%", with the raw "5 of 6 past days" count in the tooltip). |
 | Per-rival dashboard | A focused head-to-head view: stat cards, score-over-time and win-distribution and score-differential charts (Chart.js), recent-games table with pagination, and narrative callouts. |
 | Outbound maptap.gg links | In the history and recent-games tables, dates link to that day's puzzle page (`maptap.gg/history/...`) and score numbers link to the player's profile (`maptap.gg/u/...`) when that player has a linked username. |
 | Round-by-round breakdown | Per-round (location) stats, win-rate-per-round chart, a last-10-games round heatmap, carry/choke insights, and a calendar heatmap of game history. |
 | Continent breakdown | Per-continent stats for games that carry synced geo data. |
 | Win/loss/tie + streaks | Computes wins, losses, ties, win %, current and longest streaks, biggest win/loss margins, and best/worst scores per rival. |
-| Leaderboard | A sortable table ranking every rival by win %, games, W/L/T, a blended rivalry score, average margin, current streak, and recent form. |
+| Leaderboard | A sortable table listing every rival alphabetically by default, re-rankable by win %, games, W/L/T, a blended rivalry score, average margin, current streak, and recent form. |
 | Confusion matrix | A cross-participant grid comparing you against each selected rival, and rival-vs-rival on days you played both, with selectable metrics. |
-| Rivalry seasons | Time-boxed challenges with a goal (win %, total wins, or minimum games) scoped to all rivals or one, tracked against progress. |
+| Weekly / monthly records | The game log bucketed automatically into ISO calendar weeks (Monday to Sunday) and calendar months: overall W-L-T, win %, games played, and a per-rival split for each period, newest first, with the current period marked. Weekly cards carry their ISO week number next to the date range ("#32"). Each rival row also carries the running count of periods won-lost(-tied) against them up to that period, e.g. "Gal (3-5-1)". Win percentages read green above 50, red below, neutral at exactly 50. The split sorts by win % (best first) or by name, and the period cards paginate 6 to a page. A dashboard banner shows this week's and this month's record. No setup, nothing to maintain. |
 | Full game history | Every game across all rivals in one table, filterable by rival and result (win/loss/tie), with pagination. |
 | WhatsApp import | Import paired games from a WhatsApp chat `.txt` export by mapping chat senders to rivals, with a preview before committing. |
 | Export / import / clear | Download a JSON backup, import one, or clear all logged games (rivals and settings are kept). |
@@ -44,7 +45,7 @@ python3 -m http.server 8000
 
 ## Running tests
 
-The scoring and stats core (weighted daily totals, the predicted-total reconciliation that keeps the predictions card's total equal to the sum of its per-round chips, side-presence, the MapTap paste parser, results, streaks, averages, trend/projection, and the composite rivalry score) lives in `js/stats.js` as a pure module so it can be unit-tested without a DOM or Firebase. `app.js` loads that module and binds its functions, so the tests exercise the same code the app runs.
+The scoring and stats core (weighted daily totals, the predicted-total reconciliation that keeps the predictions card's total equal to the sum of its per-round chips, side-presence, the MapTap paste parser, results, streaks, averages, trend/projection, the composite rivalry score, ISO week / calendar month bucketing for the Records view, the running per-rival period tally behind each rival row's "(won-lost-tied)" figure, the predicted-position accuracy ranking behind the predictions card's "Spot-on" badge, the fractional daily finishing positions and the field-share percentages behind its "avg" figure, and the name / win-% comparators the rival lists sort with) lives in `js/stats.js` as a pure module so it can be unit-tested without a DOM or Firebase. `app.js` loads that module and binds its functions, so the tests exercise the same code the app runs.
 
 ```sh
 npm run test:maptap

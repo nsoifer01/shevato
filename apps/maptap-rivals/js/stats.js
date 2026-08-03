@@ -299,6 +299,364 @@
     return volume * 50 * (recencyWinRate + recencyMarginRate);
   }
 
+  // ---------- calendar period bucketing ----------
+  // Every helper below works off the 'YYYY-MM-DD' string through Date.UTC so
+  // the bucket never depends on the browser's timezone. `new Date('2026-08-02')`
+  // parses as UTC midnight and then reports the *previous* day from getDate()
+  // west of Greenwich, which would misfile a Monday game into the prior week.
+
+  const DAY_MS = 86400000;
+
+  function parseDateISO(iso) {
+    if (typeof iso !== 'string') return null;
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+    if (!m) return null;
+    const year = Number(m[1]), month = Number(m[2]), day = Number(m[3]);
+    const ms = Date.UTC(year, month - 1, day);
+    const back = new Date(ms);
+    // Rejects impossible dates that Date.UTC silently rolls over (2026-02-30).
+    if (back.getUTCFullYear() !== year || back.getUTCMonth() !== month - 1 ||
+        back.getUTCDate() !== day) return null;
+    return { year, month, day, ms };
+  }
+
+  function isoFromMs(ms) { return new Date(ms).toISOString().slice(0, 10); }
+
+  // Monday of the ISO week containing `iso`.
+  function isoWeekStart(iso) {
+    const p = parseDateISO(iso);
+    if (!p) return null;
+    const back = (new Date(p.ms).getUTCDay() + 6) % 7; // Mon = 0 ... Sun = 6
+    return isoFromMs(p.ms - back * DAY_MS);
+  }
+
+  // Sunday of the ISO week containing `iso`.
+  function isoWeekEnd(iso) {
+    const start = isoWeekStart(iso);
+    return start ? isoFromMs(parseDateISO(start).ms + 6 * DAY_MS) : null;
+  }
+
+  // ISO-8601 week id, 'YYYY-Www'. The week-numbering year is the year of that
+  // week's Thursday, so 2021-01-01 (a Friday) belongs to '2020-W53'.
+  function isoWeekId(iso) {
+    const start = isoWeekStart(iso);
+    if (!start) return null;
+    const thursdayMs = parseDateISO(start).ms + 3 * DAY_MS;
+    const year = new Date(thursdayMs).getUTCFullYear();
+    const week = Math.floor((thursdayMs - Date.UTC(year, 0, 1)) / (7 * DAY_MS)) + 1;
+    return `${year}-W${String(week).padStart(2, '0')}`;
+  }
+
+  function monthId(iso) {
+    const p = parseDateISO(iso);
+    return p ? iso.slice(0, 7) : null;
+  }
+
+  function monthStart(iso) {
+    const p = parseDateISO(iso);
+    return p ? isoFromMs(Date.UTC(p.year, p.month - 1, 1)) : null;
+  }
+
+  // Day 0 of the following month is the last day of this one.
+  function monthEnd(iso) {
+    const p = parseDateISO(iso);
+    return p ? isoFromMs(Date.UTC(p.year, p.month, 0)) : null;
+  }
+
+  // { id, start, end } for the calendar week or month holding `iso`.
+  function periodBounds(iso, unit) {
+    if (unit === 'month') {
+      const id = monthId(iso);
+      return id ? { id, start: monthStart(iso), end: monthEnd(iso) } : null;
+    }
+    const id = isoWeekId(iso);
+    return id ? { id, start: isoWeekStart(iso), end: isoWeekEnd(iso) } : null;
+  }
+
+  function blankRecord() {
+    return { games: 0, wins: 0, losses: 0, ties: 0, decided: 0, winPct: 0 };
+  }
+
+  function tallyRecord(rec, result) {
+    rec.games += 1;
+    if (result === 'W') rec.wins += 1;
+    else if (result === 'L') rec.losses += 1;
+    else rec.ties += 1;
+  }
+
+  // Win % counts decided games only, matching how the app has always read a
+  // W/L record: a week of nothing but ties is "no decided games", not 0%.
+  function finishRecord(rec) {
+    rec.decided = rec.wins + rec.losses;
+    rec.winPct = rec.decided > 0 ? (rec.wins / rec.decided) * 100 : 0;
+    return rec;
+  }
+
+  // Bucket the game log into calendar weeks ('week') or months ('month').
+  // Only head-to-head days count: rival-only and solo days carry no W/L
+  // semantics, exactly like resultOf treats them. Returns newest period
+  // first; `byRival` is each rival's record inside that period, biggest
+  // sample first with the rival id as a stable tie-break.
+  function periodRecords(games, unit) {
+    const byPeriod = new Map();
+    for (const g of Array.isArray(games) ? games : []) {
+      if (!g || !bothPlayed(g)) continue;
+      const bounds = periodBounds(g.date, unit);
+      if (!bounds) continue;
+      let period = byPeriod.get(bounds.id);
+      if (!period) {
+        period = Object.assign({ id: bounds.id, unit: unit === 'month' ? 'month' : 'week',
+                                 start: bounds.start, end: bounds.end,
+                                 rivals: new Map() }, blankRecord());
+        byPeriod.set(bounds.id, period);
+      }
+      const result = resultOf(g);
+      tallyRecord(period, result);
+      let rival = period.rivals.get(g.rivalId);
+      if (!rival) {
+        rival = Object.assign({ rivalId: g.rivalId }, blankRecord());
+        period.rivals.set(g.rivalId, rival);
+      }
+      tallyRecord(rival, result);
+    }
+
+    return Array.from(byPeriod.values())
+      .map(period => {
+        const byRival = Array.from(period.rivals.values())
+          .map(finishRecord)
+          .sort((a, b) => b.games - a.games ||
+                          String(a.rivalId).localeCompare(String(b.rivalId)));
+        delete period.rivals;
+        period.byRival = byRival;
+        return finishRecord(period);
+      })
+      .sort((a, b) => b.start.localeCompare(a.start));
+  }
+
+  // ---------- running period record vs one rival ----------
+
+  // Which way one period went against one rival: you out-won them, they
+  // out-won you, or you split it. Ties inside the period never decide it, so
+  // a period of nothing but ties is a tied period. A period you never played
+  // that rival in is not a period at all, and returns null.
+  function periodOutcomeVsRival(rivalRecord) {
+    if (!rivalRecord || !rivalRecord.games) return null;
+    if (rivalRecord.wins > rivalRecord.losses) return 'won';
+    if (rivalRecord.wins < rivalRecord.losses) return 'lost';
+    return 'tied';
+  }
+
+  // Periods won / lost / tied against each rival, replayed oldest period
+  // first and snapshotted at every period, so a card can show the record as
+  // it stood at the end of its own period ("Gal (63-54-1)"). Takes the
+  // periodRecords() output in any order and returns
+  // { [periodId]: { [rivalId]: { won, lost, tied } } }; a rival absent from a
+  // period keeps the tally it already had, it does not reset or disappear.
+  function runningRivalPeriodRecords(periods) {
+    const ordered = (Array.isArray(periods) ? periods : [])
+      .filter(p => p && p.id)
+      .slice()
+      .sort((a, b) => String(a.start).localeCompare(String(b.start)));
+    const running = new Map();
+    const out = {};
+    for (const period of ordered) {
+      for (const rivalRecord of period.byRival || []) {
+        const outcome = periodOutcomeVsRival(rivalRecord);
+        if (!outcome) continue;
+        let tally = running.get(rivalRecord.rivalId);
+        if (!tally) {
+          tally = { won: 0, lost: 0, tied: 0 };
+          running.set(rivalRecord.rivalId, tally);
+        }
+        tally[outcome] += 1;
+      }
+      const snapshot = {};
+      running.forEach((tally, rivalId) => {
+        snapshot[rivalId] = Object.assign({}, tally);
+      });
+      out[period.id] = snapshot;
+    }
+    return out;
+  }
+
+  // "9-8" until a period is drawn, "63-54-1" after: the tied component only
+  // shows up once there is one to show.
+  function periodTallyText(tally) {
+    if (!tally) return '';
+    return tally.tied
+      ? `${tally.won}-${tally.lost}-${tally.tied}`
+      : `${tally.won}-${tally.lost}`;
+  }
+
+  // ---------- predicted-position accuracy ----------
+  // Entries are one day's players: { key, name, predictedTotal, actualTotal }.
+  // `key` identifies the player (rival id, or a sentinel for the user) and
+  // `actualTotal` is null when that player did not play the day.
+
+  // Player keys ordered by `scoreKey` descending, name as the tie-break, so
+  // the index in the returned array is the player's rank for that day. This
+  // mirrors the Today's-predictions leaderboard sort.
+  function rankByScore(entries, scoreKey) {
+    return (Array.isArray(entries) ? entries : [])
+      .filter(e => e && Number.isFinite(e[scoreKey]))
+      .slice()
+      .sort((a, b) => b[scoreKey] - a[scoreKey] ||
+                      String(a.name || '').localeCompare(String(b.name || '')))
+      .map(e => e.key);
+  }
+
+  // Which players hit their predicted finishing position on this day.
+  // Both rankings are taken over the same set: players with a computable
+  // prediction who actually played. A predicted player who sat the day out
+  // holds no predicted slot, so he cannot make the players ranked below him
+  // structurally unable to hit.
+  // Players without a prediction, or who sat the day out, are absent from
+  // the result and so count toward nobody's eligible days.
+  function positionHitsForDay(entries) {
+    const played = (Array.isArray(entries) ? entries : [])
+      .filter(e => e && Number.isFinite(e.predictedTotal) && Number.isFinite(e.actualTotal));
+    const predictedOrder = rankByScore(played, 'predictedTotal');
+    const actualOrder = rankByScore(played, 'actualTotal');
+    const out = {};
+    for (const entry of played) {
+      out[entry.key] = predictedOrder.indexOf(entry.key) === actualOrder.indexOf(entry.key);
+    }
+    return out;
+  }
+
+  // Accumulate per-player { hits, eligible } over a list of days, each day
+  // being its own entries array. Players with no eligible day are absent
+  // from the result, which is what lets the UI skip the badge entirely
+  // instead of rendering a meaningless "0/0".
+  function accumulatePositionHits(days) {
+    const out = {};
+    for (const entries of Array.isArray(days) ? days : []) {
+      const hits = positionHitsForDay(entries);
+      for (const key of Object.keys(hits)) {
+        if (!out[key]) out[key] = { hits: 0, eligible: 0 };
+        out[key].eligible += 1;
+        if (hits[key]) out[key].hits += 1;
+      }
+    }
+    return out;
+  }
+
+  // ---------- daily finishing positions ----------
+  // Entries are one day's players: { key, total }, where a non-finite total
+  // means that player did not play. Position is 1-based over the players who
+  // did play, ranked by actual daily total, so paste-imported days (no cities,
+  // no prediction) count exactly like synced ones.
+  //
+  // Equal totals share the mean of the ranks they span: two players tied for
+  // first are both 1.5, never an arbitrary first and second decided by name.
+  // A day with fewer than two players yields nothing at all - finishing first
+  // out of one is not a position, it is just showing up.
+  function finishPositionsForDay(entries) {
+    const played = (Array.isArray(entries) ? entries : [])
+      .filter(e => e && Number.isFinite(e.total));
+    if (played.length < 2) return {};
+    const ordered = played.slice().sort((a, b) => b.total - a.total);
+    const out = {};
+    let i = 0;
+    while (i < ordered.length) {
+      let j = i;
+      while (j + 1 < ordered.length && ordered[j + 1].total === ordered[i].total) j++;
+      const shared = ((i + 1) + (j + 1)) / 2;
+      for (let k = i; k <= j; k++) out[ordered[k].key] = shared;
+      i = j + 1;
+    }
+    return out;
+  }
+
+  // Share of the field a player beat on a day: (N - R) / (N - 1) for their
+  // fractional rank R among the N players who played. First is always 1 and
+  // last is always 0 whatever N is, so being last of three reads exactly as
+  // badly as being last of ten - which raw positions cannot express, since
+  // "3rd" flatters a small field and punishes a big one. A day where everyone
+  // ties lands the whole field on 0.5.
+  function fieldSharesForDay(entries) {
+    const positions = finishPositionsForDay(entries);
+    const keys = Object.keys(positions);
+    const n = keys.length;
+    const out = {};
+    for (const key of keys) out[key] = (n - positions[key]) / (n - 1);
+    return out;
+  }
+
+  // Accumulate per-player { days, sum, avg, shareSum, share } over a list of
+  // days, each day being its own entries array. `share` is the headline figure
+  // (mean daily share of the field beaten, 0..1); `avg` is the mean raw
+  // finishing position, kept for the tooltip. Players with no qualifying day
+  // are absent from the result, which is what lets the UI skip the figure
+  // instead of rendering a meaningless "avg 0%".
+  function accumulateFinishPositions(days) {
+    const out = {};
+    for (const entries of Array.isArray(days) ? days : []) {
+      const positions = finishPositionsForDay(entries);
+      const shares = fieldSharesForDay(entries);
+      for (const key of Object.keys(positions)) {
+        if (!out[key]) out[key] = { days: 0, sum: 0, avg: 0, shareSum: 0, share: 0 };
+        out[key].days += 1;
+        out[key].sum += positions[key];
+        out[key].shareSum += shares[key];
+      }
+    }
+    for (const key of Object.keys(out)) {
+      out[key].avg = out[key].sum / out[key].days;
+      out[key].share = out[key].shareSum / out[key].days;
+    }
+    return out;
+  }
+
+  // Comparative color for a set of figures shown side by side. The lowest
+  // value anchors green, the highest anchors red, so a caller whose metric is
+  // better-when-higher (the field-share percentage) negates its values before
+  // passing them in; everything between is a linear RGB blend through a yellow
+  // midpoint: the lower half of the range walks green -> yellow, the upper
+  // half yellow -> red. Fewer than two averages, or a set where every average
+  // is identical, has nothing to compare against and yields null throughout so
+  // the caller keeps its neutral color instead of inventing a ranking.
+  const AVG_POS_RAMP = [[74, 222, 128], [250, 204, 21], [248, 113, 113]];
+
+  function avgPositionColor(t) {
+    const c = Math.min(1, Math.max(0, t));
+    const leg = c <= 0.5 ? 0 : 1;
+    const from = AVG_POS_RAMP[leg];
+    const to = AVG_POS_RAMP[leg + 1];
+    const local = (c - leg * 0.5) / 0.5;
+    const ch = i => Math.round(from[i] + (to[i] - from[i]) * local);
+    return `rgb(${ch(0)}, ${ch(1)}, ${ch(2)})`;
+  }
+
+  function avgPositionColors(values) {
+    const list = Array.isArray(values) ? values : [];
+    const nums = list.filter(v => Number.isFinite(v));
+    if (nums.length < 2) return list.map(() => null);
+    const min = Math.min(...nums);
+    const max = Math.max(...nums);
+    if (max === min) return list.map(() => null);
+    return list.map(v => Number.isFinite(v) ? avgPositionColor((v - min) / (max - min)) : null);
+  }
+
+  // ---------- ordering ----------
+  // Case-insensitive name order, used by every rival list outside the Records
+  // view. Names differing only in case fall back to the raw comparison so the
+  // order stays stable instead of flipping between renders.
+  function compareNamesCI(a, b) {
+    const as = String(a == null ? '' : a);
+    const bs = String(b == null ? '' : b);
+    return as.toLowerCase().localeCompare(bs.toLowerCase()) || as.localeCompare(bs);
+  }
+
+  // Best win % first, for the Records per-rival split. A record with nothing
+  // decided (all ties, or no games) has no win % to rank on and sorts below a
+  // genuine 0% rather than sharing the bottom with it.
+  function compareWinPctDesc(a, b) {
+    const av = a && a.decided > 0 ? a.winPct : -1;
+    const bv = b && b.decided > 0 ? b.winPct : -1;
+    return bv - av;
+  }
+
   const api = {
     // constants
     N_LOCS, WEIGHTS, MAX_RAW, MONTHS,
@@ -310,6 +668,17 @@
     // results / aggregates
     resultOf, resultLoc, stdDev, average, streaks, linearTrend, projectNext,
     rivalryScoreFromGames,
+    // calendar periods
+    parseDateISO, isoWeekStart, isoWeekEnd, isoWeekId,
+    monthId, monthStart, monthEnd, periodBounds, periodRecords,
+    periodOutcomeVsRival, runningRivalPeriodRecords, periodTallyText,
+    // predicted-position accuracy
+    rankByScore, positionHitsForDay, accumulatePositionHits,
+    // finishing positions
+    finishPositionsForDay, fieldSharesForDay, accumulateFinishPositions,
+    avgPositionColor, avgPositionColors,
+    // ordering
+    compareNamesCI, compareWinPctDesc,
   };
 
   if (typeof module !== 'undefined' && module.exports) {

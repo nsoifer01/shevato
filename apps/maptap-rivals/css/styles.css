@@ -985,14 +985,95 @@ body.maptap-rivals-app textarea:focus {
 }
 .pred-row-head .pred-cell { text-align: right; color: var(--muted-2); font-family: inherit; }
 .pred-row-you { background: var(--accent-soft); }
+/* Player cell: name on top, accuracy badge under it. Column layout keeps the
+   badge from eating into the Predicted / Actual / Δ columns. */
 .pred-label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.18rem;
+  min-width: 0;
   font-weight: 600;
   color: var(--text);
+  letter-spacing: -0.005em;
+}
+/* Name line: name plus the average finishing position. Wraps rather than
+   squeezing, so a long name pushes "avg 1.3" onto its own line instead of
+   eating the name down to an ellipsis stub. */
+.pred-label-line {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.1rem 0.4rem;
+  max-width: 100%;
+  min-width: 0;
+}
+.pred-label-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  letter-spacing: -0.005em;
 }
+
+/* Average finishing position. Plain text with a tooltip, never a control:
+   nothing here takes focus, hover or a click. */
+.pred-avg-pos {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  font-family: inherit;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: help;
+}
+.pred-avg-label { text-transform: uppercase; color: var(--muted-2); }
+.pred-avg-num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.76rem;
+  letter-spacing: 0;
+  color: var(--text);
+}
+
+/* Historical accuracy chip: how often the predictor put this player in the
+   position they actually finished in. Absent when nothing is back-testable. */
+.pred-hit-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 100%;
+  padding: 0.14rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-3);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.35;
+  white-space: nowrap;
+  cursor: help;
+}
+.pred-hit-badge.is-hot {
+  border-color: rgba(74, 222, 128, 0.30);
+  background: var(--good-soft);
+  color: var(--good);
+}
+.pred-hit-num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.66rem;
+  letter-spacing: 0;
+  color: var(--text);
+}
+.pred-hit-badge.is-hot .pred-hit-num { color: var(--good); }
 .pred-cell {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -1062,6 +1143,10 @@ body.maptap-rivals-app textarea:focus {
    off the right edge. Tighten the minimums so all four columns fit. */
 @media (max-width: 360px) {
   .pred-row { grid-template-columns: minmax(74px, 1.1fr) repeat(3, minmax(42px, 1fr)); gap: 0.3rem; }
+  /* A bare percentage here would read as a win rate, so the word stays and
+     the chip shrinks around it instead. */
+  .pred-hit-badge { padding: 0.1rem 0.32rem; gap: 0.2rem; font-size: 0.55rem; letter-spacing: 0.03em; }
+  .pred-hit-num { font-size: 0.6rem; }
 }
 
 /* Wraps a player row + its per-round chip strip into one visual block
@@ -4267,241 +4352,520 @@ body.maptap-rivals-app select option {
   .matrix-form-dot { width: 0.55rem; height: 0.55rem; }
 }
 
-/* ---------- Seasons view ---------- */
+/* ---------- Records view ---------- */
 
-.seasons-toolbar {
+.records-toolbar {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 0.75rem;
   padding: 0.5rem 0 1rem;
 }
 
-.seasons-group {
-  margin-bottom: 1.75rem;
+.records-toolbar-title { max-width: 52ch; }
+
+.records-sub {
+  margin: 0.3rem 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
 }
 
-.seasons-group-title {
+/* Toolbar right side: the rival-sort dropdown and the Weekly | Monthly pills
+   sit together and wrap as one unit under the title on narrow screens. */
+.records-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+/* Per-rival sort control, same markup pattern as the matrix row sort. main.css
+   makes every <label> a 1rem block with a bottom margin and every <select> a
+   full-width 3.25rem-tall gray field with its own chevron, so the shell and the
+   field both pin their own box, colours and arrow. */
+.records-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0.2rem 0.3rem 0.2rem 0.7rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
   font-size: 0.72rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  line-height: 1;
   color: var(--muted);
-  margin: 0 0 0.6rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
-.season-card {
+.records-sort:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-3);
+}
+
+.records-sort:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.records-sort-label {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  user-select: none;
+  white-space: nowrap;
+}
+
+.records-sort-select {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-block;
+  box-sizing: border-box;
+  width: auto;
+  height: 2rem;
+  margin: 0;
+  padding: 0 1.25rem 0 0.5rem;
+  border: 0;
+  border-radius: 999px;
+  background-color: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 2rem;
+  cursor: pointer;
+  outline: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 0.6rem) calc(50% - 1px),
+    calc(100% - 0.44rem) calc(50% - 1px);
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+}
+
+/* main.css rings every focused select in its red (`select:focus` outranks a
+   plain class), so kill it here: the lit ring belongs to the shell above. */
+.records-sort-select:focus,
+.records-sort-select:focus-visible {
+  border: 0;
+  box-shadow: none;
+}
+
+/* Weekly | Monthly segmented control. Sitewide main.css paints every button
+   gray (#555 !important + inset ring), red on hover, and forces a 3.25rem
+   line-height, so this control pins its own box and colours the same way
+   .pager .page-btn does. */
+.records-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.records-toggle-btn,
+.records-toggle-btn:hover {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2rem;
+  line-height: 1;
+  padding: 0 0.95rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted) !important;
+  box-shadow: none !important;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.records-toggle-btn:hover {
+  background: var(--surface-3) !important;
+  color: var(--text) !important;
+}
+
+/* main.css tints `button:hover:active` red, which outranks the :hover pin
+   above. Every pinned control in this app repeats the press colour. */
+.records-toggle-btn:hover:active { background-color: var(--surface-3); }
+.records-toggle-btn.is-active:hover:active { background-color: var(--accent-soft); }
+
+.records-toggle-btn:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft) !important;
+}
+
+.records-toggle-btn.is-active,
+.records-toggle-btn.is-active:hover {
+  background: var(--accent-soft) !important;
+  border-color: var(--accent-strong);
+  color: var(--accent-2) !important;
+  font-weight: 700;
+}
+
+/* Period card. The left edge carries the verdict for the period: green when
+   you finished ahead, red when behind, neutral when level or undecided. */
+.record-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  /* Status accent rides the left edge: green = met/on-track, amber = behind,
-     red = missed, neutral = upcoming/no signal. */
   border-left: 3px solid var(--border-strong);
   border-radius: var(--radius);
-  padding: 0.9rem 1rem;
-  margin-bottom: 0.65rem;
+  padding: 0.95rem 1.15rem 0.85rem;
+  margin-bottom: 0.75rem;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16);
 }
 
-.season-card-active {
-  border-color: var(--accent-strong);
-  border-left-width: 3px;
-  background: linear-gradient(135deg, rgba(99,102,241,0.06), transparent 60%), var(--surface);
+.record-card-good { border-left-color: var(--good); }
+.record-card-bad  { border-left-color: var(--bad); }
+.record-card-even { border-left-color: var(--muted-2); }
+
+/* The current period keeps its verdict edge, so only the other three sides
+   pick up the accent ring. */
+.record-card.is-current {
+  border-top-color: var(--accent-strong);
+  border-right-color: var(--accent-strong);
+  border-bottom-color: var(--accent-strong);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.06), transparent 60%), var(--surface);
 }
 
-.season-card-good { border-left-color: var(--good); }
-.season-card-warn { border-left-color: var(--warn); }
-.season-card-bad  { border-left-color: var(--bad); }
-
-.season-card-headline {
-  font-size: 1.02rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--text);
-  margin: 0.1rem 0 0.15rem;
-}
-.season-card-good .season-card-headline { color: var(--good); }
-.season-card-warn .season-card-headline { color: var(--warn); }
-.season-card-bad  .season-card-headline { color: var(--bad); }
-
-.season-card-past {
-  opacity: 0.85;
-}
-
-.season-card-head {
+/* Head: who the period is on the left, what it scored on the right. The two
+   number lines are right-aligned to a common edge so a column of cards reads
+   straight down. */
+.record-card-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 0.5rem;
-  margin-bottom: 0.35rem;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  padding-bottom: 0.7rem;
 }
 
-.season-card-title {
+/* Baseline, not centre, so the smaller week number sits on the same line as
+   the date range instead of floating above it. The pill has no text to share
+   a baseline with, so it re-centres itself below. */
+.record-card-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.5rem;
+  min-width: 0;
+}
+
+.record-card-name {
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+/* ISO week number beside the date range, e.g. "#32". Deliberately quiet: the
+   dates are the card's title and this is only the calendar's name for them,
+   so it borrows the same muted annotation style as a rival row's running
+   "(3-5-1)" rather than becoming a second pill. */
+.record-week-num {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: help;
+}
+
+/* margin-left:auto keeps the numbers on the right edge even when the title
+   line is long enough to push them onto a line of their own. */
+.record-card-head-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15rem;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.record-current-pill {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--accent-strong);
+  background: var(--accent-soft);
+  color: var(--accent-2);
+  font-size: 0.63rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.record-card-wlt {
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.record-card-stats {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  line-height: 1.3;
+}
+
+.record-stat-num {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.record-stat-label { color: var(--muted); }
+.record-stat-sep   { color: var(--muted-2); }
+
+/* Card win %: green above 50, red below, muted at exactly 50 or when nothing
+   was decided. Plain spans, so main.css has no colour rule to fight here. */
+.record-stat-pct {
+  color: var(--muted);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.record-stat-pct.is-good { color: var(--good); }
+.record-stat-pct.is-bad  { color: var(--bad); }
+
+/* Per-rival split inside the period. Rows are separated by hairlines rather
+   than left floating in space, so the eye tracks from a name across to its
+   percentage on a wide card. */
+.record-rivals {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+  display: grid;
+}
+
+.record-rival {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 3.1rem;
+  align-items: baseline;
+  gap: 0.5rem 0.9rem;
+  padding: 0.42rem 0;
+  font-size: 0.85rem;
+  border-bottom: 1px solid rgba(37, 41, 56, 0.6);
+}
+.record-rival:last-child { border-bottom: 0; padding-bottom: 0.1rem; }
+
+.record-rival-name {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.1rem 0.4rem;
+  min-width: 0;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.record-rival-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Running "(won-lost[-tied])" count of periods against this rival. */
+.record-rival-run {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.record-rival-wlt {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.record-rival-pct {
+  color: var(--muted);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.record-rival-pct.is-good { color: var(--good); }
+.record-rival-pct.is-bad  { color: var(--bad); }
+
+.records-empty { margin-top: 0.5rem; }
+
+/* Dashboard current-form banner: this week and this month at a glance, and
+   the way into the Records view. Colour pins as above (it is a button). */
+.record-dash-banner,
+.record-dash-banner:hover {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  height: auto;
+  line-height: 1.35;
+  padding: 0.7rem 0.9rem;
+  margin-bottom: 1rem;
+  text-align: left;
+  white-space: normal;
+  border: 1px solid var(--accent-strong);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.10), transparent 65%), var(--surface);
+  color: var(--text) !important;
+  box-shadow: none !important;
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.record-dash-banner:hover {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.20), transparent 65%), var(--surface-2);
+  border-color: var(--accent);
+}
+
+.record-dash-banner:hover:active { background-color: var(--surface-2); }
+
+.record-dash-banner:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft) !important;
+}
+
+.record-dash-banner-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.5rem;
+  min-width: 0;
+}
+
+.record-dash-banner-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted-2);
+  white-space: nowrap;
+}
+
+/* Two stat blocks, caption over figure, same rhythm as the summary cards
+   right below the banner. The rule separates them from the eyebrow label
+   without adding another box. */
+.record-dash-banner-lines {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 2rem;
+  padding-left: 1.25rem;
+  border-left: 1px solid var(--border-strong);
+}
+
+.record-dash-banner-line {
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
 }
 
-.season-card-name {
+.record-dash-banner-period {
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.record-dash-banner-figures {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.45rem;
+}
+
+.record-dash-banner-wlt {
   font-size: 1rem;
   font-weight: 700;
   color: var(--text);
-  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
 }
 
-.season-card-dates {
+.record-dash-banner-wlt.is-good { color: var(--good); }
+.record-dash-banner-wlt.is-bad  { color: var(--bad); }
+
+.record-dash-banner-empty {
+  font-size: 0.88rem;
+  color: var(--muted-2);
+}
+
+.record-dash-banner-pct {
   font-size: 0.78rem;
-  color: var(--muted);
+  font-weight: 700;
+  color: var(--muted-2);
+  font-variant-numeric: tabular-nums;
 }
+.record-dash-banner-pct.is-good { color: var(--good); }
+.record-dash-banner-pct.is-bad  { color: var(--bad); }
 
-.season-card-head-right {
-  display: flex;
+/* Right-hand affordance: the banner is a button, so it says where it goes. */
+.record-dash-banner-cta {
+  display: inline-flex;
   align-items: center;
   gap: 0.4rem;
   flex-shrink: 0;
-}
-
-.season-card-meta {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.55rem;
-}
-
-.season-card-meta-item {
-  font-size: 0.82rem;
-  color: var(--muted);
-}
-
-.season-card-meta-sep {
-  color: var(--muted-2);
-  font-size: 0.8rem;
-}
-
-.season-card-stats {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.55rem;
-  font-size: 0.87rem;
-}
-
-.season-stat-num {
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--text);
-}
-
-.season-stat-label {
-  color: var(--muted);
-}
-
-.season-stat-sep {
-  color: var(--muted-2);
-}
-
-.season-stat-wld {
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
-
-.season-stat-pct {
+  padding: 0.3rem 0.6rem 0.3rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
   color: var(--accent-2);
-  font-weight: 600;
-}
-
-/* Progress bar */
-.season-progress-row {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  margin-bottom: 0.5rem;
-}
-
-.season-progress-label {
-  font-size: 0.78rem;
-  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
   white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-  min-width: 5rem;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
-.season-progress-wrap {
-  flex: 1;
+.record-dash-banner:hover .record-dash-banner-cta,
+.record-dash-banner:focus-visible .record-dash-banner-cta {
+  border-color: var(--accent-strong);
+  background: var(--accent-soft);
 }
 
-.season-progress-bar {
-  height: 6px;
-  background: var(--surface-3);
-  border-radius: 999px;
-  overflow: hidden;
+.record-dash-banner-arrow {
+  font-size: 0.95rem;
+  line-height: 1;
+  color: var(--accent-2);
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
 }
 
-.season-progress-fill {
-  display: block;
-  height: 100%;
-  background: var(--accent);
-  border-radius: 999px;
-  transition: width 0.3s ease;
-}
+.record-dash-banner:hover .record-dash-banner-arrow { transform: translateX(2px); }
 
-.season-progress-fill.is-done {
-  background: var(--good);
-}
-
-/* On-track indicator */
-.season-track-pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.15rem 0.55rem;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  margin-left: 0.4rem;
-}
-
-.season-track-pill.is-on-track {
-  background: var(--good-soft);
-  color: var(--good);
-}
-
-.season-track-pill.is-behind {
-  background: rgba(251, 146, 60, 0.14);
-  color: var(--warn);
-}
-
-/* Verdict pill */
-.season-verdict-pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.2rem 0.6rem;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-}
-
-.season-verdict-pill.is-pass {
-  background: var(--good-soft);
-  color: var(--good);
-}
-
-.season-verdict-pill.is-fail {
-  background: var(--bad-soft);
-  color: var(--bad);
-}
-
-/* Season modal */
-.modal-panel-season { max-width: 28rem; }
-
-.season-modal-dates {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0 0.75rem;
-}
-
+/* Shared modal field controls, used by the rival and import modals. */
 .modal-field input[type="date"] {
   font-family: inherit;
 }
@@ -4524,127 +4888,19 @@ body.maptap-rivals-app select option {
   border-color: var(--accent);
 }
 
-.season-goal-fieldset {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 0.6rem 0.75rem;
-  margin: 0.85rem 0 0;
-}
-
-.season-goal-fieldset legend {
-  font-size: 0.78rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--muted);
-  padding: 0 0.3rem;
-}
-
-.season-goal-radio {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.3rem 0;
-  cursor: pointer;
-  font-size: 0.88rem;
-  color: var(--text);
-}
-
-.season-goal-radio input[type="radio"] {
-  accent-color: var(--accent);
-  flex-shrink: 0;
-}
-
-.season-goal-val {
-  width: 4.5rem;
-  height: 1.9rem;
-  padding: 0 0.45rem;
-  border: 1px solid var(--border);
-  border-radius: var(--ctrl-radius);
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-  font-size: 0.88rem;
-  text-align: right;
-}
-
-.season-goal-val:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: -1px;
-  border-color: var(--accent);
-}
-
-.season-goal-unit {
-  color: var(--muted);
-  font-size: 0.82rem;
-}
-
-.season-modal-error {
-  margin: 0.5rem 0 0;
-  font-size: 0.82rem;
-  color: var(--bad);
-}
-
-/* Dashboard active-season banner — shares the season cards' status-accent
-   language (left edge keyed to on-track/behind). */
-.season-dash-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.65rem 0.9rem;
-  background: linear-gradient(135deg, rgba(99,102,241,0.10), transparent 65%), var(--surface);
-  border: 1px solid var(--accent-strong);
-  border-left-width: 3px;
-  border-radius: var(--radius-sm);
-  margin-bottom: 1rem;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-.season-dash-banner.is-on-track { border-left-color: var(--good); }
-.season-dash-banner.is-behind   { border-left-color: var(--warn); }
-
-.season-dash-banner:hover {
-  background: rgba(99, 102, 241, 0.22);
-}
-
-.season-dash-banner-left {
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-}
-
-.season-dash-banner-name {
-  font-size: 0.78rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
-}
-
-.season-dash-banner-headline {
-  font-size: 0.95rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--text);
-}
-
-.season-dash-banner-meta {
-  font-size: 0.78rem;
-  color: var(--accent-2);
-}
-
-.season-dash-banner-arrow {
-  font-size: 1rem;
-  color: var(--accent-2);
-  flex-shrink: 0;
-}
-
-.seasons-empty {
-  margin-top: 0.5rem;
-}
-
 @media (max-width: 600px) {
-  .season-modal-dates { grid-template-columns: 1fr; }
-  .season-card-head { flex-wrap: wrap; }
+  .records-toolbar { flex-direction: column; align-items: stretch; }
+  /* One row while both controls fit, each pinned to its own edge. */
+  .records-controls { justify-content: space-between; }
+  .record-card { padding: 0.85rem 0.9rem 0.75rem; }
+  .record-rival { grid-template-columns: minmax(0, 1fr) auto 2.8rem; gap: 0.4rem 0.6rem; }
+  /* The eyebrow label sits above the stat blocks once the banner stacks, so
+     the vertical rule between them would point nowhere. */
+  .record-dash-banner { align-items: flex-start; }
+  .record-dash-banner-left { gap: 0.45rem 1rem; }
+  .record-dash-banner-lines {
+    gap: 0.35rem 1.5rem;
+    padding-left: 0;
+    border-left: 0;
+  }
 }
