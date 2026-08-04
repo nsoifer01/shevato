@@ -583,22 +583,62 @@
     return out;
   }
 
-  // Accumulate per-player { days, sum, avg, shareSum, share } over a list of
-  // days, each day being its own entries array. `share` is the headline figure
-  // (mean daily share of the field beaten, 0..1); `avg` is the mean raw
-  // finishing position, kept for the tooltip. Players with no qualifying day
-  // are absent from the result, which is what lets the UI skip the figure
-  // instead of rendering a meaningless "avg 0%".
-  function accumulateFinishPositions(days) {
+  // Integer competition ranks ("1224" style) for the day: tied players all
+  // take the best rank of the span they tie across, and the next distinct
+  // total resumes below the whole group. This is the bucketing the finish
+  // distribution wants - two players tied for the top total both *finished
+  // 1st* - whereas the fractional mean rank above would smear a tie into a
+  // position 1.5 that nobody can actually finish in. Same solo-day and
+  // did-not-play rules as finishPositionsForDay.
+  function competitionRanksForDay(entries) {
+    const played = (Array.isArray(entries) ? entries : [])
+      .filter(e => e && Number.isFinite(e.total));
+    if (played.length < 2) return {};
+    const ordered = played.slice().sort((a, b) => b.total - a.total);
     const out = {};
-    for (const entries of Array.isArray(days) ? days : []) {
+    let i = 0;
+    while (i < ordered.length) {
+      let j = i;
+      while (j + 1 < ordered.length && ordered[j + 1].total === ordered[i].total) j++;
+      for (let k = i; k <= j; k++) out[ordered[k].key] = i + 1;
+      i = j + 1;
+    }
+    return out;
+  }
+
+  // Accumulate per-player { days, sum, avg, shareSum, share, counts, dates,
+  // maxField } over a list of days, each day being its own entries array.
+  // `share` is the headline figure (mean daily share of the field beaten,
+  // 0..1); `avg` is the mean raw finishing position, kept for the tooltip.
+  // `counts` maps integer finishing position (competition-ranked, so ties
+  // bucket at the top of their span) to the number of days the player
+  // finished there, and `maxField` is the biggest field the player has
+  // competed in - together they let the UI draw a full 1..N distribution
+  // where a zero-count row still means something. `dayISOs`, when given, is
+  // a parallel array of each day's ISO date; `dates` then maps each position
+  // to the (unsorted) list of ISO dates the player finished there, so the UI
+  // can name the exact days behind a sparse bucket. Players with no
+  // qualifying day are absent from the result, which is what lets the UI
+  // skip the figure instead of rendering a meaningless "avg 0%".
+  function accumulateFinishPositions(days, dayISOs) {
+    const out = {};
+    const list = Array.isArray(days) ? days : [];
+    const isos = Array.isArray(dayISOs) ? dayISOs : [];
+    for (let i = 0; i < list.length; i++) {
+      const entries = list[i];
+      const iso = typeof isos[i] === 'string' ? isos[i] : null;
       const positions = finishPositionsForDay(entries);
       const shares = fieldSharesForDay(entries);
+      const ranks = competitionRanksForDay(entries);
+      const field = Object.keys(positions).length;
       for (const key of Object.keys(positions)) {
-        if (!out[key]) out[key] = { days: 0, sum: 0, avg: 0, shareSum: 0, share: 0 };
+        if (!out[key]) out[key] = { days: 0, sum: 0, avg: 0, shareSum: 0, share: 0, counts: {}, dates: {}, maxField: 0 };
         out[key].days += 1;
         out[key].sum += positions[key];
         out[key].shareSum += shares[key];
+        out[key].counts[ranks[key]] = (out[key].counts[ranks[key]] || 0) + 1;
+        if (iso) (out[key].dates[ranks[key]] = out[key].dates[ranks[key]] || []).push(iso);
+        if (field > out[key].maxField) out[key].maxField = field;
       }
     }
     for (const key of Object.keys(out)) {
@@ -675,7 +715,8 @@
     // predicted-position accuracy
     rankByScore, positionHitsForDay, accumulatePositionHits,
     // finishing positions
-    finishPositionsForDay, fieldSharesForDay, accumulateFinishPositions,
+    finishPositionsForDay, fieldSharesForDay, competitionRanksForDay,
+    accumulateFinishPositions,
     avgPositionColor, avgPositionColors,
     // ordering
     compareNamesCI, compareWinPctDesc,

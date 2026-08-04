@@ -151,7 +151,7 @@
     rivalryScoreFromGames,
     isoWeekId, monthId, periodRecords, runningRivalPeriodRecords, periodTallyText,
     accumulatePositionHits,
-    accumulateFinishPositions, avgPositionColors,
+    accumulateFinishPositions, avgPositionColor, avgPositionColors,
     compareNamesCI, compareWinPctDesc,
   } = window.MapTapStats;
 
@@ -217,7 +217,11 @@
     recordsPage: 1,                // Records period-card page (in-memory only)
     lbSort: 'rival',               // sortable column key, e.g. 'winpct' | 'rivalry'
     lbDir: 1,                      // 1 = column's natural order, -1 = reversed (toggled by re-clicking the header)
-    historyFilters: { rival: 'all', result: 'all' },
+    // `days` narrows history to a set of ISO dates. Set only by clicking a
+    // position row in the predictions card's finish distribution; carries the
+    // human label of where it came from ("🦊 Alice · 2nd") for the dismiss
+    // chip. In-memory only, like the other history filters.
+    historyFilters: { rival: 'all', result: 'all', days: null },
     historyPage: 1,
     historyPageSize: 25,
     rivalGamesPage: 1,
@@ -240,6 +244,11 @@
     // Reset whenever the selected day changes. Only ever populated while the
     // user has played the selected day (the reveal strip is gated on that).
     predictRevealedRounds: new Set(),
+    // Player keys (rival id / '@me') whose finish-position distribution is
+    // expanded in the predictions card. In-memory only, and deliberately NOT
+    // reset when the selected day changes: the distribution is a property of
+    // the player's whole history, not of the day being viewed.
+    predictExpandedKeys: new Set(),
   };
 
   function persistRivals() { save(KEY.RIVALS, state.rivals); }
@@ -1564,12 +1573,14 @@
     }
 
     const days = [];
-    byDate.forEach(day => {
+    const dayISOs = [];
+    byDate.forEach((day, iso) => {
       const entries = [];
       day.forEach((total, key) => entries.push({ key, total }));
       days.push(entries);
+      dayISOs.push(iso);
     });
-    return accumulateFinishPositions(days);
+    return accumulateFinishPositions(days, dayISOs);
   }
 
   function finishPositionRecords() {
@@ -1674,12 +1685,119 @@
     ]);
   }
 
-  function makePredictionRow({ label, predictedScores, actualScores, predictedTotal, actualTotal, isYou, accentColor, hitRecord, avgPosition, avgColor }) {
+  // Ordinal for a finishing position: 1st, 2nd, 3rd, 21st… Positions are
+  // small integers, but the teen-exception logic is cheap enough to be right.
+  function ordinalName(n) {
+    const tens = n % 100;
+    if (tens >= 11 && tens <= 13) return n + 'th';
+    const suffix = { 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th';
+    return n + suffix;
+  }
+
+  // Expanded per-player breakdown behind the avg chip: how often the player
+  // actually finished 1st, 2nd, … across the same qualifying days the average
+  // is computed over. Rows run 1..(biggest field they competed in) with
+  // zero-count rows kept - "never finished 3rd" is information. Ties bucket at
+  // the top of the span they tie across (competition ranking), which is how a
+  // leaderboard reads a tie; the avg above keeps the fairer fractional rank,
+  // so the two can legitimately disagree on a tie-heavy history.
+  //
+  // Each bar is tinted by position quality on the shared green→red ramp
+  // (1st green, last red) so "mostly 1st" and "mostly last" read apart at a
+  // glance without parsing the labels. Rows with at least one day are
+  // buttons: activating one jumps to History filtered to exactly those days,
+  // which is also what makes the per-day detail reachable on touch, where
+  // the title tooltip does not exist. `playerLabel` feeds the filter chip.
+  function makeFinishDistribution(record, playerLabel) {
+    const rows = [];
+    const maxPos = Math.max(record.maxField,
+      ...Object.keys(record.counts).map(Number));
+    for (let pos = 1; pos <= maxPos; pos++) {
+      const count = record.counts[pos] || 0;
+      const share = count / record.days;
+      const ord = ordinalName(pos);
+      const tone = avgPositionColor(maxPos > 1 ? (pos - 1) / (maxPos - 1) : 0);
+      let title = `Finished ${ord} on ${count} of ${record.days} ` +
+        `day${record.days === 1 ? '' : 's'}`;
+      // A sparse bucket is a handful of concrete memories, not a statistic:
+      // name the exact days so "finished 3rd twice" is checkable against the
+      // history table. Five or more and the list stops being readable in a
+      // tooltip, so the count alone stands.
+      const posDates = ((record.dates && record.dates[pos]) || []).slice().sort();
+      if (count > 0 && count < 5 && posDates.length === count) {
+        title += ': ' + posDates.map(fmtDateShort).join(', ');
+      }
+      const cells = [
+        el('span', {
+          class: 'pred-pos-rank',
+          style: count ? `color:${tone};` : null,
+        }, ord),
+        el('div', { class: 'pred-pos-bar' }, [
+          el('div', {
+            class: 'pred-pos-fill',
+            style: `width:${share * 100}%;background:${tone};`,
+          }),
+        ]),
+        el('span', { class: 'pred-pos-pct' }, `${Math.round(share * 100)}%`),
+        el('span', { class: 'pred-pos-count' }, `×${count}`),
+      ];
+      // Dates back every counted day (they come from the same accumulation
+      // pass), so count > 0 implies a non-empty list; the length guard just
+      // keeps a malformed record from producing a dead-end filter.
+      if (count > 0 && posDates.length) {
+        rows.push(el('button', {
+          type: 'button',
+          class: 'pred-pos-row pred-pos-row-btn',
+          title: title + '. Shows those games in History.',
+          onclick: () => {
+            state.historyFilters.days = {
+              isoDates: posDates,
+              label: `${playerLabel} · ${ord}`,
+            };
+            state.historyPage = 1;
+            setView('history');
+          },
+        }, cells));
+      } else {
+        rows.push(el('div', { class: 'pred-pos-row is-zero', title }, cells));
+      }
+    }
+    return el('div', { class: 'pred-pos-dist' }, [
+      el('div', { class: 'pred-pos-dist-head' },
+        `Daily finishes · ${record.days} day${record.days === 1 ? '' : 's'}`),
+      ...rows,
+    ]);
+  }
+
+  function makePredictionRow({ key, label, predictedScores, actualScores, predictedTotal, actualTotal, isYou, accentColor, hitRecord, avgPosition, avgColor }) {
     const cls = ['pred-row'];
     if (isYou) cls.push('pred-row-you');
+    // The name doubles as the distribution toggle whenever there is a finish
+    // history to show. The avg chip stays outside the button on purpose - it
+    // is plain text with its own tooltip, never a control.
+    const expandable = !!(key && avgPosition && avgPosition.days);
+    const expanded = expandable && state.predictExpandedKeys.has(key);
+    const nameNode = !expandable
+      ? el('span', { class: 'pred-label-name' }, label)
+      : el('button', {
+          type: 'button',
+          class: 'pred-label-toggle' + (expanded ? ' is-open' : ''),
+          'aria-expanded': expanded ? 'true' : 'false',
+          title: expanded
+            ? 'Hide the daily finish breakdown'
+            : 'Show how often this player finished in each position',
+          onclick: () => {
+            if (state.predictExpandedKeys.has(key)) state.predictExpandedKeys.delete(key);
+            else state.predictExpandedKeys.add(key);
+            renderTodaysPredictions();
+          },
+        }, [
+          el('span', { class: 'pred-label-name' }, label),
+          svgIcon(ICON_CHEV, { cls: 'pred-label-chev', sw: 2 }),
+        ]);
     const cells = [el('div', { class: 'pred-label' }, [
       el('span', { class: 'pred-label-line' }, [
-        el('span', { class: 'pred-label-name' }, label),
+        nameNode,
         makeAvgPosition(avgPosition, avgColor),
       ]),
       makeHitBadge(hitRecord),
@@ -1699,20 +1817,24 @@
     // user can see their rival's round shape.
     const hasPredArr = Array.isArray(predictedScores) && predictedScores.length === N_LOCS;
     const hasActualArr = Array.isArray(actualScores) && actualScores.length === N_LOCS;
-    if (!hasPredArr && !hasActualArr) {
+    if (!hasPredArr && !hasActualArr && !expanded) {
       if (accentStyle) head.setAttribute('style', accentStyle);
       return head;
     }
-    const strip = el('div', { class: 'pred-round-strip' },
-      Array.from({ length: N_LOCS }, (_, i) => makeRoundChip(
-        i,
-        hasPredArr ? predictedScores[i] : null,
-        hasActualArr ? actualScores[i] : null,
-      )));
+    const children = [head];
+    if (hasPredArr || hasActualArr) {
+      children.push(el('div', { class: 'pred-round-strip' },
+        Array.from({ length: N_LOCS }, (_, i) => makeRoundChip(
+          i,
+          hasPredArr ? predictedScores[i] : null,
+          hasActualArr ? actualScores[i] : null,
+        ))));
+    }
+    if (expanded) children.push(makeFinishDistribution(avgPosition, label));
     return el('div', {
       class: 'pred-row-wrap' + (isYou ? ' pred-row-wrap-you' : ''),
       style: accentStyle || null,
-    }, [head, strip]);
+    }, children);
   }
 
   // Day-level location reveal strip. Rendered only when the user has played
@@ -1869,6 +1991,7 @@
     const avgPositions = finishPositionRecords();
     const rows = [];
     rows.push({
+      key: MY_PLAYER_KEY,
       label: `${state.myIcon || '🧍'} ${state.me || 'You'}`,
       sortName: state.me || 'You',
       predictedScores: myPred ? myPred.scores : null,
@@ -1888,6 +2011,7 @@
       if (pred) predictedCount++;
       const act = isPastOrToday ? actualScoresForRivalDay(r.id, selectedISO) : { scores: null, total: null };
       rows.push({
+        key: r.id,
         label: `${r.icon || '🎯'} ${r.name}`,
         sortName: r.name,
         predictedScores: pred ? pred.scores : null,
@@ -4809,10 +4933,43 @@
   }
 
   // ---------- history ----------
+  // Dismissible chip naming the active days filter ("🦊 Alice · 2nd,
+  // 2 days"). Lives next to the rival/result selects; the filter has no
+  // select of its own because its only source is a click in the predictions
+  // card, so a chip with a clear button is the whole UI.
+  function renderHistoryDaysChip() {
+    const holder = $('#history-days-filter');
+    if (!holder) return;
+    holder.innerHTML = '';
+    const days = state.historyFilters.days;
+    if (!days) { holder.hidden = true; return; }
+    holder.hidden = false;
+    const n = days.isoDates.length;
+    holder.appendChild(el('span', {
+      class: 'history-days-chip',
+      title: 'Days: ' + days.isoDates.map(fmtDateShort).join(', '),
+    }, [
+      el('span', { class: 'history-days-chip-label' },
+        `${days.label} · ${n} day${n === 1 ? '' : 's'}`),
+      el('button', {
+        type: 'button',
+        class: 'history-days-chip-clear',
+        'aria-label': 'Clear the days filter',
+        title: 'Clear the days filter',
+        onclick: () => {
+          state.historyFilters.days = null;
+          state.historyPage = 1;
+          renderHistory();
+        },
+      }, '×'),
+    ]));
+  }
+
   function renderHistory() {
     const tbody = $('#history-table tbody');
     tbody.innerHTML = '';
     const rivalById = Object.fromEntries(state.rivals.map(r => [r.id, r]));
+    renderHistoryDaysChip();
 
     let games = state.games.slice().sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
     if (state.historyFilters.rival !== 'all') {
@@ -4821,6 +4978,10 @@
     if (state.historyFilters.result !== 'all') {
       const want = state.historyFilters.result === 'win' ? 'W' : state.historyFilters.result === 'loss' ? 'L' : 'T';
       games = games.filter(g => resultOf(g) === want);
+    }
+    if (state.historyFilters.days) {
+      const wanted = new Set(state.historyFilters.days.isoDates);
+      games = games.filter(g => wanted.has(g.date));
     }
 
     if (!games.length) {
