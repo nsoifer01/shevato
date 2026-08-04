@@ -441,6 +441,296 @@ body.maptap-rivals-app textarea:focus {
 }
 .profile-hint strong { color: var(--text); font-weight: 600; }
 
+/* ---------- Rival network ----------
+   Sits under the profile card and shares its shape, but stays neutral until
+   you actually join (then it picks up the accent border like a verified
+   profile). Every button below re-pins color/background/hover: main.css
+   paints `button { color:#555 !important }` and `button:hover { color:
+   #ce1b28 !important }` sitewide. */
+
+.network-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+  margin-bottom: 1.25rem;
+}
+.network-card.is-joined {
+  background: linear-gradient(135deg, rgba(99,102,241,0.10), rgba(74,222,128,0.05));
+  border-color: var(--accent-strong);
+}
+
+.network-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.network-card-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.network-card-title h2 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.network-card-icon {
+  font-size: 1.15rem;
+  width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--accent-soft);
+}
+.network-card-actions {
+  display: inline-flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.network-card-body { margin-top: 0.65rem; }
+
+/* Join / Leave / Refresh. They already carry .btn + a variant, but pin the
+   three properties main.css forces so a future variant change can't leak the
+   site red or gray through. */
+.network-btn,
+.network-btn:hover,
+.network-btn:focus {
+  color: var(--text) !important;
+  box-shadow: none !important;
+}
+.network-join-btn,
+.network-join-btn:hover,
+.network-join-btn:focus {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff !important;
+  border-color: transparent;
+}
+.network-join-btn:disabled,
+.network-join-btn:disabled:hover {
+  background: var(--surface-2);
+  color: var(--muted) !important;
+  border-color: var(--border);
+  opacity: 1;
+}
+.network-refresh-btn,
+.network-leave-btn {
+  background: var(--surface-2);
+}
+.network-refresh-btn:hover,
+.network-leave-btn:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  color: var(--text) !important;
+}
+.network-refresh-btn:hover:active,
+.network-leave-btn:hover:active { background-color: var(--surface-3); }
+
+.network-status-line {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.55rem;
+  font-size: 0.82rem;
+  flex-wrap: wrap;
+}
+.network-status-line .tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.network-status-line .tag.ok { background: var(--good-soft); color: var(--good); }
+.network-status-line .tag.err { background: var(--bad-soft); color: var(--bad); }
+.network-status-line .tag.warn { background: rgba(251,146,60,0.15); color: var(--warn); }
+.network-status-line .network-handle { font-weight: 700; color: var(--text); }
+.network-status-text { color: var(--muted); }
+
+.network-meta {
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.network-hint {
+  margin-top: 0.55rem;
+  padding: 0.55rem 0.8rem;
+  background: rgba(255, 255, 255, 0.015);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.network-hint strong { color: var(--text); font-weight: 600; }
+
+/* Incoming-connection banner. One row per auto-added rival, dismissible. */
+.network-notices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+.network-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(74, 222, 128, 0.35);
+  border-radius: var(--radius-sm);
+  background: var(--good-soft);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+.network-notice-icon { font-size: 1.05rem; flex: 0 0 auto; }
+.network-notice-text { flex: 1 1 auto; min-width: 0; }
+.network-notice-dismiss,
+.network-notice-dismiss:hover {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted) !important;
+  box-shadow: none !important;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.network-notice-dismiss:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text) !important;
+}
+.network-notice-dismiss:hover:active { background-color: rgba(255, 255, 255, 0.08); }
+.network-notice-dismiss:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Connected marker on a rival card. */
+.rival-card-ident { min-width: 0; }
+.connected-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--good-soft);
+  color: var(--good);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+/* ---------- Rival discovery ("Their rivals") ---------- */
+
+/* main.css's reset forces `section { display: block; }` as an author-level
+   rule, which beats the UA stylesheet's `[hidden] { display: none; }` in the
+   cascade regardless of specificity. Re-pin it here so toggling the native
+   `hidden` attribute on this <section> actually hides it. */
+.discovery-section[hidden] { display: none; }
+
+.discovery-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+  margin-bottom: 1.1rem;
+}
+.discovery-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.55rem;
+}
+.discovery-sub {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.discovery-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.discovery-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.discovery-icon { font-size: 1.1rem; flex: 0 0 auto; }
+.discovery-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.discovery-handle {
+  font-size: 0.75rem;
+  color: var(--muted) !important;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.discovery-handle:hover { color: var(--accent-2) !important; }
+.discovery-add-btn,
+.discovery-add-btn:hover {
+  margin-left: auto;
+  flex: 0 0 auto;
+  height: 30px;
+  padding: 0 0.7rem;
+  border: 1px solid var(--accent-strong);
+  border-radius: var(--ctrl-radius);
+  background: var(--accent-soft);
+  color: var(--accent-2) !important;
+  box-shadow: none !important;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.discovery-add-btn:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff !important;
+}
+.discovery-add-btn:hover:active { background-color: var(--accent); }
+.discovery-add-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.discovery-empty,
+.discovery-already {
+  margin: 0.15rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+@media (max-width: 520px) {
+  .network-card-actions { width: 100%; }
+  .network-card-actions .btn { flex: 1 1 auto; }
+  .discovery-row { flex-wrap: wrap; }
+  .discovery-handle { flex: 1 1 100%; margin-left: 1.65rem; }
+  .discovery-add-btn { margin-left: auto; }
+}
+
 /* ---------- Paste-mode dashboard entry ---------- */
 
 .paste-section {

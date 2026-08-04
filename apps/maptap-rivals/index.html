@@ -143,6 +143,24 @@
         <div class="profile-card-body" id="profile-card-body"></div>
       </section>
 
+      <!-- Incoming-connection notices. Rendered from the local network cache
+           (maptapRivalsNetwork) whenever a pair link auto-added a rival. -->
+      <div class="network-notices" id="network-notices"></div>
+
+      <!-- Rival Network: opt-in, needs a signed-in account plus a verified
+           MapTap profile. Everything below renders from the local cache, so
+           the card still shows its last known state offline. -->
+      <section class="network-card" id="network-card">
+        <header class="network-card-head">
+          <div class="network-card-title">
+            <span class="network-card-icon" aria-hidden="true">🌐</span>
+            <h2>Rival network</h2>
+          </div>
+          <div class="network-card-actions" id="network-card-actions"></div>
+        </header>
+        <div class="network-card-body" id="network-card-body"></div>
+      </section>
+
       <!-- Paste-mode entry, collapsed by default — the MapTap profile
            card above is the recommended path. Opens to reveal the
            paste rows: every rival shows up as its own row with a live
@@ -223,6 +241,17 @@
     <!-- RIVAL DETAIL VIEW -->
     <section class="view view-rival" data-view-panel="rival" hidden>
       <div class="rival-header" id="rival-header"></div>
+
+      <!-- Rival discovery. Only rendered for a connected rival: their
+           published rival list minus you and minus everyone you already
+           track, each row one tap away from becoming a local rival. -->
+      <section class="discovery-section" id="discovery-section" hidden>
+        <header class="discovery-head">
+          <h2 class="section-title">Their rivals</h2>
+          <span class="discovery-sub" id="discovery-sub"></span>
+        </header>
+        <div class="discovery-list" id="discovery-list"></div>
+      </section>
 
       <div class="stat-cards" id="rival-stat-cards"></div>
 
@@ -668,6 +697,7 @@
 
   <!-- App -->
   <script src="js/stats.js"></script>
+  <script src="js/network.js"></script>
   <script src="js/app.js" defer></script>
   <script src="/assets/js/back-to-top.js" defer></script>
 </body>
