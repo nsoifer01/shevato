@@ -15,6 +15,7 @@ Mario Kart Race Tracker is a feature-rich web application that allows you to:
 ## 🚀 Features
 
 ### Core Functionality
+- **Game Version Switcher**: Toggle the whole app between Mario Kart 8 Deluxe (1-12) and Mario Kart World (1-24) from the buttons under the page title. Each game keeps a fully independent dataset (its own races, stats, achievements, recent searches, and favorites) under separate localStorage namespaces (`marioKart*` vs `marioKartWorld*`)
 - **Race Recording**: Quick and easy race result entry with multiple input methods
 - **Course Selection**: Tag each race with the course/map you played on, via a searchable picker (an inline dropdown on mobile, a command-palette overlay on desktop) with favorites, recent searches, and game-version / new-course filters. Course data is data-driven and easy to update (see "Updating Course Data" below)
 - **Player Management**: Customizable player names and emoji/icons
@@ -23,8 +24,11 @@ Mario Kart Race Tracker is a feature-rich web application that allows you to:
 - **Data Persistence**: Automatic saving to browser localStorage, with account sync across devices when signed in
 - **Export/Import**: JSON file support for data backup and transfer
 - **Restore**: One-click recovery from the rolling auto-backup snapshot (taken every 10 minutes)
+- **Edit Races**: Every race in the history (table row or mobile card) has an edit button that opens the race in a modal to correct positions, date, and time
 - **Safe Deletes**: Deleting a race asks for confirmation first; undo/redo still covers every action
+- **Clear All Data**: The 🗑️ button in the sidebar header wipes races, stats, backups, and history behind a "Delete Everything" confirmation modal (disabled when there is nothing to clear)
 - **Sortable History**: Sort the race-history table by date or by any player's finishing position
+- **Sync Status**: An offline banner appears at the top of the page when the connection drops, and the sidebar footer shows a live sync-status pill
 
 ### Statistics & Analytics
 - **Comprehensive Stats**: Win rates, average positions, streaks, and more
@@ -97,11 +101,15 @@ mario-kart/
 │   ├── statistics.js    # Statistics calculations
 │   ├── courseData.js    # Course data source abstraction + ranked search
 │   ├── coursePicker.js  # Course picker UI (inline dropdown + desktop palette)
+│   ├── gameVersionManager.js # MK8D / MK World switching + storage namespacing
 │   └── ...              # Other feature modules
 ├── data/
 │   └── courses.json     # Vendored course/map data (cups, courses, aliases)
 ├── scripts/
 │   └── sync-courses.mjs # Validate / normalize / regenerate courses.json
+├── tests/                # node:test suites (run via `npm test` from the repo root)
+│   ├── core.test.js     # Core app logic
+│   └── courses.test.js  # Course dataset integrity + search ranking
 └── README.md            # This file
 ```
 
@@ -109,25 +117,25 @@ mario-kart/
 
 Courses are vendored in `data/courses.json` and read through a swappable source (`js/courseData.js` → `CourseDataConfig`). There is no live API to break, so the list stays stable. Run all commands from the repo root.
 
-### Option A — add or edit a course by hand (most common)
+### Option A - add or edit a course by hand (most common)
 
 1. Open `apps/mario-kart/data/courses.json`.
 2. Pick the game under `games`: `mk8d` (Mario Kart 8 Deluxe) or `mkworld` (Mario Kart World).
-3. In that game's `cups` array, find the cup — or add a new one: `{ "id": "leaf", "name": "Leaf Cup", "courses": [] }`.
+3. In that game's `cups` array, find the cup - or add a new one: `{ "id": "leaf", "name": "Leaf Cup", "courses": [] }`.
 4. Add the course to that cup's `courses` array:
    ```json
    { "id": "dry-bones-burnout", "name": "Dry Bones Burnout", "origin": "new", "aliases": ["dbb"] }
    ```
-   - **id** — unique, kebab-case, stable. Never reuse an id for a different course. A course that appears in two cups must use the **same id and name** in both (that is how variants like Crown City merge into a single entry).
-   - **name** — exactly as shown in-game.
-   - **origin** — `"new"` if the track debuts in this game, otherwise the source game (e.g. `"Mario Kart 64"`). Drives the "New" filter and the preview's status.
-   - **aliases** — optional search shortcuts. Search already handles punctuation and word-initials (so "dk", "mk8", "rr" work without aliases); only add genuinely different spellings.
+   - **id** - unique, kebab-case, stable. Never reuse an id for a different course. A course that appears in two cups must use the **same id and name** in both (that is how variants like Crown City merge into a single entry).
+   - **name** - exactly as shown in-game.
+   - **origin** - `"new"` if the track debuts in this game, otherwise the source game (e.g. `"Mario Kart 64"`). Drives the "New" filter and the preview's status.
+   - **aliases** - optional search shortcuts. Search already handles punctuation and word-initials (so "dk", "mk8", "rr" work without aliases); only add genuinely different spellings.
 5. (Optional) update that game's `source.lastSynced` date, and set `source.complete` to `true` once a game is fully entered.
 6. **Validate**: `npm run sync:mario-kart-courses -- --check` → must print `Validation passed.`
 7. **Test**: `npm test` (dataset-integrity checks live in `tests/courses.test.js`).
 8. **Verify in the app**: open Add Race → Course and confirm the course appears and is searchable.
 
-### Option B — regenerate with the sync script
+### Option B - regenerate with the sync script
 
 - Validate only (CI-friendly, non-zero exit on error): `npm run sync:mario-kart-courses -- --check`
 - Normalize the file and restamp every game's `lastSynced` to today: `node apps/mario-kart/scripts/sync-courses.mjs --write`
@@ -147,7 +155,7 @@ const CourseDataConfig = {
 };
 ```
 
-> Note: MK8 Deluxe is currently `source.complete: false` — the 48 Booster Course Pass tracks are not vendored yet. Add them as new cups the same way.
+> Note: MK8 Deluxe is currently `source.complete: false` - the 48 Booster Course Pass tracks are not vendored yet. Add them as new cups the same way.
 
 ## 🚀 Getting Started
 
@@ -159,12 +167,12 @@ const CourseDataConfig = {
 
 ## 💡 Tips & Tricks
 
-- Star your most-played courses to pin them to the top of the course picker
+- Star your most-played courses, then use the course picker's **Favorites** filter chip (desktop palette) to pull up just those tracks
 - Click on achievements to see detailed progress
 - Use date filters to analyze specific time periods
 - Export your data regularly as backup
 - Try different player icons for better visual distinction
-- Use keyboard shortcuts for faster navigation
+- Stay on the keyboard while entering a race: Enter moves to the next position input and submits from the last one, Esc closes the sidebar form or any modal, and ↑/↓ plus Enter pick a course inside the course picker
 
 ## 🔮 Future Improvements
 
