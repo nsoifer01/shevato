@@ -3135,3 +3135,109 @@ body.gym-tracker .btn-remove-set:hover:active,
 body.gym-tracker .btn-add-set--extra:hover:active {
     background: var(--bg-hover);
 }
+
+/* ==================================================================
+   Warm-up ramp configuration (Settings) + measurement goal targets
+   (Measurements). Styles for controls added with those two features.
+   ================================================================== */
+
+/* ---- Settings: warm-up ramp rows ---- */
+body.gym-tracker .warmup-ramp {
+    display: grid;
+    gap: 8px;
+}
+body.gym-tracker .warmup-ramp-row {
+    display: grid;
+    grid-template-columns: 4.5rem 1fr 1fr;
+    align-items: end;
+    gap: 8px;
+    background: var(--gt-surface-2);
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-sm);
+    padding: 0.6rem 0.7rem;
+}
+body.gym-tracker .warmup-ramp-num {
+    color: var(--gt-muted);
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding-bottom: 0.7rem;
+}
+body.gym-tracker .warmup-ramp-field {
+    display: grid;
+    gap: 4px;
+}
+body.gym-tracker .settings-form .setting-item .warmup-ramp-field input[type="number"] {
+    padding: 0.5rem 0.6rem;
+    min-height: 44px;
+}
+
+/* ---- Measurements: goal progress bar under the sparkline ---- */
+body.gym-tracker .measurement-goal {
+    display: grid;
+    gap: 4px;
+    margin-top: 6px;
+}
+body.gym-tracker .measurement-goal-track {
+    height: 6px;
+    border-radius: var(--gt-radius-pill);
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+}
+body.gym-tracker .measurement-goal-fill {
+    height: 100%;
+    border-radius: inherit;
+    background: var(--gt-accent-grad);
+}
+body.gym-tracker .measurement-goal-pct {
+    color: var(--gt-muted);
+    font-size: 0.72rem;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---- Measurements: per-tile goal button ----
+   A new control, so it pins its own colors against the sitewide
+   main.css `button { color: #555 !important }` plus the red press tint. */
+body.gym-tracker .measurement-goal-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 36px;
+    margin-top: 8px;
+    padding: 0.35rem 0.6rem;
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-sm);
+    box-shadow: none;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+}
+body.gym-tracker .measurement-goal-btn,
+body.gym-tracker .measurement-goal-btn:hover,
+body.gym-tracker .measurement-goal-btn:hover:active {
+    color: var(--gt-text) !important;
+}
+body.gym-tracker .measurement-goal-btn,
+body.gym-tracker .measurement-goal-btn:hover:active {
+    background: var(--gt-surface-2);
+}
+body.gym-tracker .measurement-goal-btn:hover {
+    background: var(--gt-surface-3);
+    border-color: var(--gt-border-strong);
+    color: var(--gt-accent) !important;
+}
+body.gym-tracker .measurement-goal-btn:focus-visible {
+    box-shadow: 0 0 0 3px var(--gt-accent-ring);
+}
+
+@media (max-width: 640px) {
+    body.gym-tracker .measurement-goal-btn { min-height: 44px; }
+    body.gym-tracker .warmup-ramp-row { grid-template-columns: 1fr 1fr; }
+    body.gym-tracker .warmup-ramp-num {
+        grid-column: 1 / -1;
+        padding-bottom: 0;
+    }
+}

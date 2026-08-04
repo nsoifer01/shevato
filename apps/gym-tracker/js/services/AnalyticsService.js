@@ -261,6 +261,83 @@ export class AnalyticsService {
     }
 
     /**
+     * Item 4: latest date (local YYYY-MM-DD) on which each muscle category
+     * logged any volume. Categories that were never trained are absent from
+     * the map. Category lookup matches getVolumeByCategoryInRange, so an
+     * exercise missing from the catalog buckets into 'other'.
+     */
+    static getLastTrainedByCategory(sessions, exerciseDatabase) {
+        const byId = new Map((exerciseDatabase || []).map(e => [e.id, e]));
+        const out = new Map();
+        (sessions || []).forEach(s => {
+            if (!s.date) return;
+            (s.exercises || []).forEach(ex => {
+                const data = byId.get(ex.exerciseId);
+                const category = (data && data.category) || 'other';
+                const vol = (ex.sets || []).reduce(
+                    (sum, set) => sum + ((set.weight || 0) * (set.reps || 0)) + (set.duration || 0),
+                    0,
+                );
+                if (vol <= 0) return;
+                const prev = out.get(category);
+                if (!prev || s.date > prev) out.set(category, s.date);
+            });
+        });
+        return out;
+    }
+
+    /**
+     * Item 4: muscle categories the user has PROGRAMMED but has not trained
+     * inside the trailing `days` window. Saved programs are the statement of
+     * intent, so a category that appears in no program is never reported.
+     *
+     * Returns [{ category, lastDate, daysSince }] where a never-trained
+     * category carries `lastDate: null` / `daysSince: null`. Sorted
+     * never-trained first, then longest-neglected first, then by name.
+     */
+    static getStaleProgramCategories(programs, sessions, exerciseDatabase, { days = 14, today = new Date() } = {}) {
+        const byId = new Map((exerciseDatabase || []).map(e => [e.id, e]));
+        const programmed = new Set();
+        (programs || []).forEach(p => {
+            (p.exercises || []).forEach(ex => {
+                const data = byId.get(ex.exerciseId);
+                programmed.add((data && data.category) || 'other');
+            });
+        });
+        if (programmed.size === 0) return [];
+
+        const end = new Date(today);
+        end.setHours(0, 0, 0, 0);
+        const windowStart = new Date(end);
+        windowStart.setDate(windowStart.getDate() - days);
+        const endExclusive = new Date(end);
+        endExclusive.setDate(endExclusive.getDate() + 1); // inclusive of today
+
+        const recent = new Set(
+            this.getVolumeByCategoryInRange(sessions || [], exerciseDatabase, windowStart, endExclusive)
+                .map(t => t.category),
+        );
+        const lastTrained = this.getLastTrainedByCategory(sessions || [], exerciseDatabase);
+
+        const out = [];
+        programmed.forEach(category => {
+            if (recent.has(category)) return;
+            const lastDate = lastTrained.get(category) || null;
+            const daysSince = lastDate
+                ? Math.round((end - this.toLocalDate(lastDate)) / 86400000)
+                : null;
+            out.push({ category, lastDate, daysSince });
+        });
+
+        return out.sort((a, b) => {
+            const av = a.daysSince == null ? Infinity : a.daysSince;
+            const bv = b.daysSince == null ? Infinity : b.daysSince;
+            if (av !== bv) return bv - av;
+            return a.category.localeCompare(b.category);
+        });
+    }
+
+    /**
      * Get muscle group distribution
      */
     static getMuscleGroupDistribution(sessions, exerciseDatabase) {

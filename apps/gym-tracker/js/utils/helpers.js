@@ -277,6 +277,110 @@ export function downloadJSON(data, filename) {
 }
 
 /**
+ * Download a text file (CSV export). Mirrors downloadJSON: a Blob object
+ * URL, so the download works fully offline with no network round-trip.
+ */
+export function downloadText(text, filename, mimeType = 'text/plain') {
+    const blob = new Blob([text], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+/**
+ * Escape a single CSV field per RFC 4180: quote it when it contains a
+ * comma, a double quote, CR or LF, and double up any embedded quotes.
+ * null / undefined become an empty field.
+ */
+export function escapeCsvField(value) {
+    const s = value === null || value === undefined ? '' : String(value);
+    if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+}
+
+/** Column order of the per-set CSV export. */
+export const SETS_CSV_HEADER = [
+    'date', 'program', 'exercise', 'setNumber',
+    'weight', 'reps', 'duration', 'volume', 'unit',
+];
+
+/**
+ * Flatten every COMPLETED set across all sessions into a per-set CSV.
+ *
+ * One row per completed set. Timed sets (duration > 0) report seconds in
+ * `duration` and leave weight/reps empty; rep sets report weight + reps and
+ * leave duration empty. `volume` mirrors the app's Set.volume rule (duration
+ * for timed sets, weight × reps otherwise). `unit` is the session's temporary
+ * unit when it has one, else the account unit.
+ *
+ * Returns { csv, rowCount } so callers can tell "nothing logged yet" from
+ * "header plus rows" without re-walking the data.
+ */
+export function buildSetsCsv(sessions, defaultUnit = 'kg') {
+    const lines = [SETS_CSV_HEADER.join(',')];
+
+    (sessions || []).forEach((session) => {
+        const unit = session.sessionUnit || defaultUnit;
+        (session.exercises || []).forEach((exercise) => {
+            (exercise.sets || []).forEach((set, index) => {
+                if (!set.completed) return;
+                const duration = Number(set.duration) || 0;
+                const weight = Number(set.weight) || 0;
+                const reps = Number(set.reps) || 0;
+                const timed = duration > 0;
+                // Prefer the stable user-facing slot; legacy sets without one
+                // fall back to array position, same as the render layer.
+                const setNumber = set.slot != null ? Number(set.slot) + 1 : index + 1;
+                lines.push([
+                    session.date,
+                    session.workoutDayName,
+                    exercise.exerciseName,
+                    setNumber,
+                    timed ? '' : weight,
+                    timed ? '' : reps,
+                    timed ? duration : '',
+                    timed ? duration : weight * reps,
+                    unit,
+                ].map(escapeCsvField).join(','));
+            });
+        });
+    });
+
+    return { csv: lines.join('\r\n'), rowCount: lines.length - 1 };
+}
+
+/**
+ * Progress toward a measurement goal as an integer percent, clamped 0-100.
+ *
+ * `baseline` is the earliest logged value for the metric, `current` the
+ * latest. A 'decrease' goal fills as the value drops toward the target; an
+ * 'increase' goal fills as it rises. When the baseline already sits at or
+ * past the target there is no span to travel, so the result is simply 100
+ * (target met) or 0. Returns null when any input is not a finite number.
+ */
+export function computeGoalProgress(baseline, current, goal) {
+    // Number(null) is 0, so blanks are rejected before coercion.
+    const toNumber = (v) => (v === null || v === undefined || v === '' ? NaN : Number(v));
+    const from = toNumber(baseline);
+    const now = toNumber(current);
+    const target = toNumber(goal?.target);
+    if (!Number.isFinite(from) || !Number.isFinite(now) || !Number.isFinite(target)) return null;
+
+    const decrease = goal.direction === 'decrease';
+    const span = decrease ? from - target : target - from;
+    const moved = decrease ? from - now : now - from;
+    if (span <= 0) {
+        return (decrease ? now <= target : now >= target) ? 100 : 0;
+    }
+    return Math.max(0, Math.min(100, Math.round((moved / span) * 100)));
+}
+
+/**
  * Show toast notification.
  *
  * Accepts either `showToast(message, type, duration)` or

@@ -7,6 +7,7 @@ import { trapModalFocus } from '../utils/modal-focus.js';
 import { DarkCalendar } from '../utils/dark-calendar.js';
 import { DarkSelect } from '../utils/dark-select.js';
 import { Program } from '../models/Program.js';
+import { sameId } from '../utils/id-utils.js';
 import { makePaginatorState, paginatorInfo, paginatorDualHTML } from '../utils/paginator.js';
 
 const HISTORY_PAGE_SIZE = 15;
@@ -22,6 +23,9 @@ class HistoryView {
         this.currentSort = 'date-desc';
         this.dateFrom = null;
         this.dateTo = null;
+        // Item 5: '' = All Programs. Deliberately not persisted, so a reload
+        // starts from the unfiltered list.
+        this.programFilter = '';
         this._pagination = makePaginatorState(HISTORY_PAGE_SIZE);
         this.setupEventListeners();
         this.wireListActions();
@@ -79,6 +83,18 @@ class HistoryView {
                 this.currentSort = e.target.value;
                 this._pagination.page = 1;
                 this.render();
+            });
+        }
+
+        // Program filter (Item 5). The options themselves are rebuilt on every
+        // render (see syncProgramFilter); this listener lives on the native
+        // select, which DarkSelect writes back to, so it survives the rebuild.
+        const programSelect = document.getElementById('history-program');
+        if (programSelect) {
+            programSelect.addEventListener('change', (e) => {
+                this.programFilter = e.target.value;
+                this._pagination.page = 1;
+                this.renderHistoryList();
             });
         }
 
@@ -147,12 +163,67 @@ class HistoryView {
     }
 
     render() {
+        this.syncProgramFilter();
         this.renderHistoryList();
+    }
+
+    /**
+     * Item 5: keep the Program dropdown in step with the saved programs.
+     * DarkSelect snapshots its options at construction, so the wrapper is
+     * torn down and rebuilt whenever a program is added, renamed or deleted.
+     * A filter pointing at a program that no longer exists falls back to
+     * All Programs rather than showing an empty list forever.
+     */
+    syncProgramFilter() {
+        const select = document.getElementById('history-program');
+        if (!select) return;
+
+        const programs = this.app.programs || [];
+        if (this.programFilter && !programs.some(p => sameId(p.id, this.programFilter))) {
+            this.programFilter = '';
+        }
+
+        const signature = programs.map(p => `${p.id}:${p.name}`).join('|');
+        if (this.programDropdown && signature === this._programFilterSignature) {
+            select.value = this.programFilter;
+            this.programDropdown.sync();
+            return;
+        }
+        this._programFilterSignature = signature;
+
+        select.innerHTML = ['<option value="">All Programs</option>']
+            .concat(programs.map(p =>
+                `<option value="${escapeHtml(String(p.id))}">${escapeHtml(p.name)}</option>`))
+            .join('');
+        select.value = this.programFilter;
+
+        if (this.programDropdown) {
+            this.programDropdown.close();
+            const wrapper = this.programDropdown.wrapper;
+            wrapper.parentNode.insertBefore(select, wrapper);
+            wrapper.remove();
+        }
+        this.programDropdown = new DarkSelect(select);
+        select.dataset.darkSelectInit = '1';
     }
 
     renderHistoryList() {
         const container = document.getElementById('history-list');
         let sessions = [...this.app.workoutSessions];
+
+        // Program filter (Item 5). Sessions started from a program record its
+        // id, so that's the identity we match on. Sessions predating programId
+        // (or imported without one) fall back to the workout name they were
+        // saved under, which is the program name at the time.
+        if (this.programFilter) {
+            const program = this.app.getProgramById(this.programFilter);
+            const programName = program ? program.name : null;
+            sessions = sessions.filter(session => (
+                session.programId != null
+                    ? sameId(session.programId, this.programFilter)
+                    : (programName !== null && session.workoutDayName === programName)
+            ));
+        }
 
         // Apply date filters
         if (this.dateFrom) {

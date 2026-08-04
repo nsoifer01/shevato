@@ -23,6 +23,10 @@ const CATEGORY_LABEL = {
     'full-body': 'Full body', cardio: 'Cardio', other: 'Other',
 };
 
+// Item 4: a programmed category with no volume inside this trailing window
+// counts as "not trained recently".
+const STALE_WINDOW_DAYS = 14;
+
 class InsightsView {
     constructor() {
         this.app = app;
@@ -34,17 +38,20 @@ class InsightsView {
         };
         on(EVENTS.SESSIONS_CHANGED, refresh);
         on(EVENTS.CUSTOM_EXERCISES_CHANGED, refresh);
+        on(EVENTS.PROGRAMS_CHANGED, refresh);
     }
 
     render() {
         const sessions = this.app.workoutSessions || [];
         const empty = document.getElementById('insights-empty');
         const volumeSection = document.getElementById('insights-volume-section');
+        const staleSection = document.getElementById('insights-stale-section');
         const heatmapSection = document.getElementById('insights-heatmap-section');
 
         if (sessions.length === 0) {
             if (empty) empty.hidden = false;
             if (volumeSection) volumeSection.hidden = true;
+            if (staleSection) staleSection.hidden = true;
             if (heatmapSection) heatmapSection.hidden = true;
             return;
         }
@@ -53,6 +60,7 @@ class InsightsView {
         if (heatmapSection) heatmapSection.hidden = false;
 
         this.renderVolumeBars(sessions);
+        this.renderStaleCategories(sessions);
         this.renderHeatmap(sessions);
     }
 
@@ -99,6 +107,45 @@ class InsightsView {
                     </div>
                     <div class="insights-bar-value">${Math.round(volume).toLocaleString()} ${escapeHtml(unit)}</div>
                 </div>
+            `;
+        }).join('');
+    }
+
+    /**
+     * Item 4: the companion to the volume bars, which drop empty buckets
+     * entirely. Lists the muscle categories the user PROGRAMMED but has not
+     * trained in the trailing window, so the gap is visible instead of just
+     * missing. Hidden when there are no programs or nothing is neglected.
+     */
+    renderStaleCategories(sessions) {
+        const section = document.getElementById('insights-stale-section');
+        const list = document.getElementById('insights-stale-list');
+        const caption = document.getElementById('insights-stale-caption');
+        if (!section || !list) return;
+
+        const stale = AnalyticsService.getStaleProgramCategories(
+            this.app.programs || [], sessions, this.app.exerciseDatabase || [],
+            { days: STALE_WINDOW_DAYS },
+        );
+
+        if (stale.length === 0) {
+            section.hidden = true;
+            list.innerHTML = '';
+            return;
+        }
+        section.hidden = false;
+        if (caption) caption.textContent = `No volume in the last ${STALE_WINDOW_DAYS} days`;
+
+        list.innerHTML = stale.map(({ category, daysSince }) => {
+            const label = CATEGORY_LABEL[category] || (category[0]?.toUpperCase() + category.slice(1));
+            const since = daysSince == null
+                ? 'Never trained'
+                : `${daysSince} days since last trained`;
+            return `
+                <li class="insights-stale-row">
+                    <span class="insights-stale-label">${escapeHtml(label)}</span>
+                    <span class="insights-stale-since">${escapeHtml(since)}</span>
+                </li>
             `;
         }).join('');
     }
