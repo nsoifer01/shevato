@@ -17,7 +17,8 @@ const {
   monthId, monthStart, monthEnd, periodBounds, periodRecords,
   periodOutcomeVsRival, runningRivalPeriodRecords, periodTallyText,
   rankByScore, positionHitsForDay, accumulatePositionHits,
-  finishPositionsForDay, fieldSharesForDay, accumulateFinishPositions,
+  finishPositionsForDay, fieldSharesForDay, competitionRanksForDay,
+  accumulateFinishPositions,
   avgPositionColor, avgPositionColors,
   compareNamesCI, compareWinPctDesc,
 } = require('../js/stats.js');
@@ -1009,6 +1010,52 @@ test('fieldSharesForDay: a solo day awards no share', () => {
   assert.deepEqual(fieldSharesForDay(null), {});
 });
 
+// --- competitionRanksForDay ------------------------------------------------
+
+test('competitionRanksForDay: distinct totals rank 1..N by total descending', () => {
+  assert.deepEqual(competitionRanksForDay([
+    { key: 'a', total: 700 },
+    { key: 'b', total: 900 },
+    { key: 'c', total: 500 },
+  ]), { b: 1, a: 2, c: 3 });
+});
+
+test('competitionRanksForDay: ties take the top of their span, next rank skips', () => {
+  // "1224": both tied players finished 2nd, and nobody finished 3rd.
+  assert.deepEqual(competitionRanksForDay([
+    { key: 'a', total: 900 },
+    { key: 'b', total: 700 },
+    { key: 'c', total: 700 },
+    { key: 'd', total: 500 },
+  ]), { a: 1, b: 2, c: 2, d: 4 });
+  // Tied for first: both finished 1st, unlike the fractional 1.5 of
+  // finishPositionsForDay.
+  assert.deepEqual(competitionRanksForDay([
+    { key: 'a', total: 900 },
+    { key: 'b', total: 900 },
+    { key: 'c', total: 400 },
+  ]), { a: 1, b: 1, c: 3 });
+});
+
+test('competitionRanksForDay: same eligibility rules as fractional positions', () => {
+  // Non-players are unranked, and a day with fewer than two actual players
+  // awards no positions at all.
+  assert.deepEqual(competitionRanksForDay([
+    { key: 'a', total: 900 },
+    { key: 'b', total: null },
+    { key: 'c', total: 300 },
+  ]), { a: 1, c: 2 });
+  assert.deepEqual(competitionRanksForDay([{ key: 'a', total: 900 }]), {});
+  assert.deepEqual(competitionRanksForDay([]), {});
+  assert.deepEqual(competitionRanksForDay(null), {});
+});
+
+test('competitionRanksForDay: does not mutate the caller array', () => {
+  const day = [{ key: 'a', total: 100 }, { key: 'b', total: 900 }];
+  competitionRanksForDay(day);
+  assert.deepEqual(day.map(e => e.key), ['a', 'b']);
+});
+
 // --- accumulateFinishPositions ---------------------------------------------
 
 test('accumulateFinishPositions: averages the qualifying days only', () => {
@@ -1060,6 +1107,54 @@ test('accumulateFinishPositions: a day you sat out is nobody else\'s problem', (
   // c was last on both days though, so the share does not reward the smaller
   // field the way the raw position does.
   assert.equal(out.c.share, 0);
+});
+
+test('accumulateFinishPositions: counts bucket each day at the competition rank', () => {
+  const days = [
+    [{ key: 'a', total: 900 }, { key: 'b', total: 500 }],   // a 1st, b 2nd
+    [{ key: 'a', total: 400 }, { key: 'b', total: 800 }],   // a 2nd, b 1st
+    [{ key: 'a', total: 700 }, { key: 'b', total: 700 }],   // tied: both 1st
+  ];
+  const out = accumulateFinishPositions(days);
+  assert.deepEqual(out.a.counts, { 1: 2, 2: 1 });
+  assert.deepEqual(out.b.counts, { 1: 2, 2: 1 });
+  // The tie counts as a 1st for both, while the fractional average still
+  // carries the 1.5 - the two metrics legitimately disagree on tie days.
+  closeTo(out.a.avg, (1 + 2 + 1.5) / 3);
+});
+
+test('accumulateFinishPositions: a parallel ISO array attributes each finish to its day', () => {
+  const days = [
+    [{ key: 'a', total: 900 }, { key: 'b', total: 500 }],   // a 1st, b 2nd
+    [{ key: 'a', total: 400 }, { key: 'b', total: 800 }],   // a 2nd, b 1st
+    [{ key: 'a', total: 700 }, { key: 'b', total: 700 }],   // tied: both 1st
+  ];
+  const out = accumulateFinishPositions(days, ['2026-08-01', '2026-08-02', '2026-08-03']);
+  assert.deepEqual(out.a.dates, { 1: ['2026-08-01', '2026-08-03'], 2: ['2026-08-02'] });
+  assert.deepEqual(out.b.dates, { 1: ['2026-08-02', '2026-08-03'], 2: ['2026-08-01'] });
+});
+
+test('accumulateFinishPositions: without ISO dates the counts stand alone', () => {
+  const out = accumulateFinishPositions([
+    [{ key: 'a', total: 900 }, { key: 'b', total: 500 }],
+  ]);
+  assert.deepEqual(out.a.dates, {});
+  assert.deepEqual(out.a.counts, { 1: 1 });
+});
+
+test('accumulateFinishPositions: maxField tracks the biggest field each player saw', () => {
+  const out = accumulateFinishPositions([
+    [{ key: 'a', total: 900 }, { key: 'b', total: 500 }],
+    [{ key: 'a', total: 900 }, { key: 'b', total: 500 }, { key: 'c', total: 100 }],
+  ]);
+  assert.equal(out.a.maxField, 3);
+  assert.equal(out.b.maxField, 3);
+  // c only ever competed in the three-player day.
+  assert.equal(out.c.maxField, 3);
+  assert.deepEqual(out.c.counts, { 3: 1 });
+  // A zero-count position inside the range stays absent from counts - the
+  // UI renders the gap from maxField, not from a stored zero.
+  assert.equal('2' in out.c.counts, false);
 });
 
 test('accumulateFinishPositions: a player with no qualifying day is absent', () => {

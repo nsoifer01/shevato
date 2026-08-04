@@ -1017,6 +1017,138 @@ body.maptap-rivals-app textarea:focus {
   text-overflow: ellipsis;
 }
 
+/* Name-as-toggle for the finish-distribution panel. Looks exactly like the
+   plain name plus a small chevron; the chevron (not a border or fill) is the
+   whole affordance, so every main.css button default has to go: height,
+   line-height, padding, the #555 inset ring and the red hover are all
+   counter-pinned. */
+.pred-label-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  height: auto;
+  line-height: inherit;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none !important;
+  color: var(--text) !important;
+  font: inherit;
+  font-weight: 600;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pred-label-toggle:hover,
+.pred-label-toggle:hover:active {
+  background: transparent;
+  box-shadow: none !important;
+  color: var(--accent-2) !important;
+}
+.pred-label-chev {
+  flex: 0 0 auto;
+  width: 0.62rem;
+  height: 0.62rem;
+  color: var(--muted-2);
+  transition: transform 0.15s ease;
+}
+.pred-label-toggle:hover .pred-label-chev { color: inherit; }
+.pred-label-toggle.is-open .pred-label-chev { transform: rotate(90deg); }
+
+/* Finish-position distribution: one bar row per position, 1st at the top.
+   Sits under the totals row (and round strip, when present) inside the same
+   accent-carrying wrap, so the bars read as belonging to the player above. */
+.pred-pos-dist {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.55rem 0.65rem 0.6rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+}
+.pred-pos-dist-head {
+  color: var(--muted-2);
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.15rem;
+}
+.pred-pos-row {
+  display: grid;
+  grid-template-columns: 2.4rem 1fr 2.6rem 2.2rem;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: help;
+}
+/* Counted rows are buttons that jump to History filtered to those days.
+   Same grid as the plain row; every main.css button default (height,
+   padding, #555 ring, red hover) is counter-pinned so the row looks like a
+   row, and only a soft surface tint marks the hover. */
+.pred-pos-row-btn {
+  height: auto;
+  line-height: inherit;
+  width: 100%;
+  padding: 0.12rem 0.25rem;
+  margin: -0.12rem -0.25rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  box-shadow: none !important;
+  color: var(--text) !important;
+  font: inherit;
+  text-align: left;
+  white-space: normal;
+  cursor: pointer;
+}
+.pred-pos-row-btn:hover,
+.pred-pos-row-btn:hover:active {
+  background: var(--surface-2);
+  box-shadow: none !important;
+  color: var(--text) !important;
+}
+.pred-pos-rank {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.pred-pos-bar {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.pred-pos-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--row-accent, var(--accent-2));
+  min-width: 0;
+}
+.pred-pos-pct {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--text);
+  text-align: right;
+}
+.pred-pos-count {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.64rem;
+  color: var(--muted-2);
+  text-align: right;
+}
+.pred-pos-row.is-zero .pred-pos-rank,
+.pred-pos-row.is-zero .pred-pos-pct,
+.pred-pos-row.is-zero .pred-pos-count { color: var(--muted-2); }
+
 /* Average finishing position. Plain text with a tooltip, never a control:
    nothing here takes focus, hover or a click. */
 .pred-avg-pos {
@@ -1136,6 +1268,8 @@ body.maptap-rivals-app textarea:focus {
   .pred-row { grid-template-columns: minmax(100px, 1.3fr) repeat(3, minmax(58px, 1fr)); gap: 0.45rem; font-size: 0.92rem; padding: 0.55rem 0.6rem; }
   .pred-row-head { font-size: 0.6rem; padding: 0 0.6rem 0.3rem; }
   .pred-delta-badge { font-size: 0.78rem; padding: 0.15rem 0.4rem; }
+  .pred-pos-row { grid-template-columns: 2rem 1fr 2.3rem 1.9rem; gap: 0.4rem; }
+  .pred-pos-dist { padding: 0.5rem 0.55rem 0.55rem; }
 }
 
 /* On the very narrowest phones the totals row's fixed column minimums
@@ -3157,7 +3291,49 @@ tr:focus-within .icon-btn-share {
   .pagination-controls { gap: 0.3rem; }
   .pager .page-ellipsis { display: none; }
 }
-.history-filters { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.history-filters { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+
+/* Days-filter chip: the pill announcing "these N specific days" with its
+   clear button. Shaped like the select pills beside it so the filter row
+   reads as one family. */
+.history-days-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  height: var(--ctrl-h);
+  padding: 0 0.5rem 0 0.85rem;
+  border: 1px solid var(--accent-strong);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: help;
+}
+.history-days-chip-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.3rem;
+  height: 1.3rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface-3);
+  box-shadow: none !important;
+  color: var(--text) !important;
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.history-days-chip-clear:hover,
+.history-days-chip-clear:hover:active {
+  background: var(--bad-soft);
+  box-shadow: none !important;
+  color: var(--bad) !important;
+}
 /* Premium filter pills — custom chevron, layered surface, lit accent ring on
    focus. The trailing-chevron SVG is inlined so the control needs no markup
    change and no extra request. */
