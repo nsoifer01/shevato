@@ -14,8 +14,9 @@ service cloud.firestore {
     // link doc id is the two uids sorted lexicographically and joined by
     // '__' (see pairKey() in apps/maptap-rivals/js/network.js). Rather than
     // re-deriving that sort here, check both orderings: it costs one extra
-    // exists() on a miss and stays correct no matter which order the client
-    // wrote, with no dependency on string ordering in the rules language.
+    // exists() only on a miss, and it stays correct even if a client ever
+    // writes the pair key in the other order, which a sort re-derived here
+    // would silently fail to match.
     function isLinkedTo(otherUid) {
       return exists(/databases/$(database)/documents/maptapRivalsLinks/$(request.auth.uid + '__' + otherUid))
         || exists(/databases/$(database)/documents/maptapRivalsLinks/$(otherUid + '__' + request.auth.uid));
