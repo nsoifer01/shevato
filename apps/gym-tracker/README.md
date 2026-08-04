@@ -7,14 +7,18 @@ A comprehensive, mobile-first workout tracking application built with vanilla Ja
 ### 🏋️ Core Functionality
 
 - **Program Builder**: Create workout programs with custom exercises and reorderable exercise lists; each set row has a labeled toggle for a single rep target or a rep range (e.g. set 1: 11-12, set 2: 8-10); a program-level rest mode (one uniform between-exercises duration set with an M:SS stepper, or custom per-exercise rest); the exercise picker adds your picks as simple rows you then refine per set; removing an exercise asks for confirmation
+- **Program List Sorting**: Sort the program cards by name or exercise count, or keep a custom order created by dragging cards around; the chosen sort and the custom order both persist (dragging a card switches the list to custom automatically)
 - **Supersets**: Link consecutive exercises into a superset so they are grouped together in both the program builder and the workout view
 - **Workout Execution**: Mobile-optimized interface for tracking sets, reps, and weight during workouts; per-set rep range labels (shown once per exercise when all sets match); rest is shown by a compact floating circular timer dial, color-coded (green between sets, blue between exercises), with the countdown centered and +30s / Skip controls inside it, and for uniform programs the between-exercise rest also shows in the sticky workout header; after-exercise rest is read-only during a workout (it is set in the program); a pencil button on each exercise opens an inline notes field saved as you type, and a "same as last time" chip restores the previous session's weight and reps on a row; auto-collapsing completed exercises that re-collapse after un-marking and stay collapsed across a pause/resume (the edit and plate-hint buttons hide while a card is collapsed); a final-5-seconds red pulse countdown with audio pings and haptics; the finish summary shows total volume with a percentage delta versus your previous session of the same program; and a plate calculator for all plate-loaded equipment (barbell, trap-bar, and plate-loaded machines such as the leg press) with per-exercise and global toggles whose state persists once a workout is saved
+- **Timed Exercises**: Exercises marked as duration-based in the database are logged with min:sec inputs instead of weight and reps, and their volume counts the seconds held; rep ranges, plate hints, feel marking, and Strength PRs are skipped for them
+- **"How did it feel"**: When every target set of a reps-based exercise reaches the top of its rep range, a feel picker appears once for that exercise; the chosen mark shows as a smiley on the exercise header (tap to remove it) and the most recent marking from previous sessions shows next to the exercise name as progression context
+- **Workout Notes**: A free-text note captured in the finish-workout dialog, shown on the history card and in the session detail view
 - **Exercise Database**: 500+ exercises categorized by muscle group and equipment, with persistent sorting (name, most recently used, most logged), numbered pagination, and the ability to remove a specific exercise's logged history
 - **Back to top**: A floating button appears on long pages and tall modals, and on the public exercise directory pages, to jump back to the top
 - **Custom Exercises**: Create and manage your own custom exercises
 - **Workout History**: Complete history of all workouts with detailed stats, numbered pagination, and clickable workout details; each exercise in the session detail shows a small inline strength-trend chart of its top-set weight over recent sessions, plus any per-exercise notes you logged
 - **Progress Tracking**: View previous workout data (all sets) during current workout for progression
-- **Body Measurements**: A dedicated Measurements view (its own nav entry) to log body measurements over time via an add-measurement modal; included in the welcome tour
+- **Body Measurements**: A dedicated Measurements view (its own nav entry) to log body measurements over time via an add-measurement modal, with a trends grid showing one tile per tracked metric (latest value, 30-day delta, and an inline sparkline) above the editable history list; included in the welcome tour
 - **Calendar View**: Visual representation of workout days with progress indicators (first day of week is configurable, Sunday or Monday)
 - **Program Scheduling**: Assign weekdays to a program; the days show on the program tiles, as markers on the calendar, and as a compact day-pill week strip at the top of the workout screen where tapping a day shows that day's scheduled workout below the pills and highlights the matching program card
 - **Welcome Tour**: A single scrollable onboarding modal that explains the core features, with quick links into Programs, Workout, Calendar, and Settings; replayable any time from Settings
@@ -34,13 +38,18 @@ A comprehensive, mobile-first workout tracking application built with vanilla Ja
 ### ⚙️ Settings & Customization
 
 - Weight unit selection (kg/lb)
+- Time format (12-hour or 24-hour)
 - First day of week (Sunday or Monday)
+- Show program schedule toggle (adds scheduled days to the calendar and workout screen)
 - Configurable rest timer
+- Separate sound and vibration toggles, plus the seconds-left thresholds for the first warning sound and the countdown
+- Plate calculator configuration (bar weight and the comma-separated list of available plate sizes, with a live preview)
 - Post-workout metrics (heart rate, calories)
 - Dark theme optimized for gym use with improved text contrast
 - Custom styled confirmation modals throughout app
 - Data export/import (JSON)
 - Cloud sync via Firebase with SSO authentication
+- Destructive actions, each behind a confirmation modal: "Clear All Data" (wipes every local program, workout, achievement, custom exercise, and setting) and "Delete cloud data" (removes the synced copy)
 
 ## Architecture
 
@@ -99,7 +108,8 @@ gym-tracker/
 #### Set
 - Single set of an exercise
 - Records weight, reps, and completion status
-- Calculates volume (weight × reps)
+- Also records `duration` in seconds for time-based exercises
+- Calculates volume (weight × reps, or the duration itself for time-based sets)
 
 #### Achievement
 - Unlockable objectives
@@ -140,7 +150,7 @@ The app is optimized for mobile use during workouts:
 - Quick data entry (weight/reps only)
 - Previous workout data visible during entry
 - Minimal scrolling required
-- Rest timer with notifications
+- Rest timer cues via audio pings and vibration (no push notifications)
 
 ### Desktop Features
 - Side navigation for easy access
@@ -171,12 +181,13 @@ Designed for gym environments with low lighting:
 - User authentication
 - Cross-device synchronization
 - Automatic conflict resolution
+- Sync status UI: a banner at the top of the app while offline (and briefly on the offline → synced transition), plus a sync dot on the "More" nav item
 
 ### Export/Import
 - JSON format
 - Complete data backup
 - Transfer between devices
-- Email or file sharing
+- Export downloads a dated JSON file (`gym-tracker-data-YYYY-MM-DD.json`); import reads a JSON file you pick
 
 ## User Workflow
 
@@ -225,6 +236,7 @@ Each exercise includes:
 - Primary muscle group
 - Secondary muscles
 - Equipment required
+- Exercise type (`reps` or `duration`); `duration` exercises are logged as min:sec durations instead of weight and reps
 
 ### Custom Exercises
 Users can create custom exercises with:
@@ -270,7 +282,7 @@ Users can create custom exercises with:
 - [ ] Workout templates/presets
 - [ ] Exercise form videos/GIFs
 - [ ] Social features (share workouts)
-- [ ] Advanced analytics (charts, graphs)
+- [x] Advanced analytics (Insights charts, per-exercise strength-trend charts, measurement sparklines)
 - [ ] Workout notes with voice input
 - [ ] Integration with fitness trackers
 - [ ] Progressive overload suggestions

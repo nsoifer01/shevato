@@ -4775,9 +4775,11 @@ function bindShortcutLegend() {
   });
 }
 
-// Live remote-update channel: another device toggled a watched
-// season. 750 ms debounce coalesces bursts after sign-in or
-// reconnect. Re-loads the Watched set then re-renders.
+// Live remote-update channel: another device toggled a watched season or
+// changed the compare set. 750 ms debounce coalesces bursts after sign-in
+// or reconnect. Re-loads both sets from storage then re-renders, mirroring
+// the boot path (Compare.load + syncCompareFab), so the FAB counter and the
+// row toggles never disagree with what just synced in.
 let __rsRemoteRefreshTimer = null;
 window.addEventListener('localStorageSync', (e) => {
   const key = e.detail?.key;
@@ -4786,7 +4788,9 @@ window.addEventListener('localStorageSync', (e) => {
   clearTimeout(__rsRemoteRefreshTimer);
   __rsRemoteRefreshTimer = setTimeout(() => {
     Watched.load();
+    Compare.load();
     renderFinder();
+    syncCompareFab();
   }, 750);
 });
 

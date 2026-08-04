@@ -69,7 +69,8 @@ const APP_SYNC_CONFIG = {
   'rising-shows': {
     namespace: 'risingSeasonsApp',
     keys: [
-      'rising-seasons:watched'      // Set of watched (seriesId, season) keys
+      'rising-seasons:watched',     // Set of watched (seriesId, season) keys
+      'rising-seasons:compare'      // Compare-overlay series ids (insertion order)
     ]
   },
 
