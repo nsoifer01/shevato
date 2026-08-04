@@ -2,10 +2,52 @@
  * Settings View Controller
  */
 import { app } from '../app.js';
-import { showToast, downloadJSON, showConfirmModal } from '../utils/helpers.js';
+import {
+    showToast,
+    downloadJSON,
+    downloadText,
+    buildSetsCsv,
+    showConfirmModal,
+} from '../utils/helpers.js';
 import { DarkSelect } from '../utils/dark-select.js';
+import { WARMUP_DEFAULTS } from '../utils/warmup.js';
 import { Settings } from '../models/Settings.js';
+import { storageService } from '../services/StorageService.js';
 import { closeModalSafely } from '../utils/modal-focus.js';
+
+/**
+ * Item 6: warm-up ramp configuration. Stored under its own localStorage key
+ * (not in the Settings model) because the workout view reads it directly.
+ * Shape: { enabled, thresholdKg, thresholdLb, ramp: [{ pct, reps }, ...] }
+ * where pct is a percentage of the working weight and pct 0 = empty bar.
+ */
+const WARMUP_KEY = 'gymTrackerWarmupSettings';
+/** Clamp `value` into [min, max], falling back to `fallback` for junk input. */
+function clampNumber(value, fallback, min, max, round = false) {
+    if (value === undefined || value === null || value === '') return fallback;
+    let n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    if (round) n = Math.round(n);
+    return Math.min(max, Math.max(min, n));
+}
+
+/** Clamp stored/entered warm-up config into writable bounds (the lenient
+ * read-side normalize lives in utils/warmup.js; this is the write-side gate). */
+function clampWarmupSettings(raw) {
+    const data = raw && typeof raw === 'object' ? raw : {};
+    const ramp = Array.isArray(data.ramp) ? data.ramp : [];
+    return {
+        enabled: data.enabled !== false,
+        // Thresholds stay positive: the workout-side reader treats a
+        // non-positive threshold as "missing" and falls back to its default.
+        thresholdKg: clampNumber(data.thresholdKg, WARMUP_DEFAULTS.thresholdKg, 1, 500),
+        thresholdLb: clampNumber(data.thresholdLb, WARMUP_DEFAULTS.thresholdLb, 1, 1100),
+        ramp: WARMUP_DEFAULTS.ramp.map((fallback, i) => ({
+            pct: clampNumber(ramp[i]?.pct, fallback.pct, 0, 100, true),
+            reps: clampNumber(ramp[i]?.reps, fallback.reps, 1, 30, true),
+        })),
+    };
+}
 
 function validateImportData(data) {
     if (!data) {
@@ -113,6 +155,26 @@ class SettingsView {
             });
         }
 
+        // Warm-up ramp (Item 6). These live in their own storage key and
+        // persist immediately on change, so they're outside the form's
+        // dirty-tracking / Save flow.
+        const warmupEnabled = document.getElementById('warmup-enabled');
+        if (warmupEnabled) {
+            warmupEnabled.addEventListener('change', () => this.saveWarmupSettings());
+        }
+        ['warmup-threshold-kg', 'warmup-threshold-lb'].forEach((id) => {
+            const input = document.getElementById(id);
+            if (input) input.addEventListener('change', () => this.saveWarmupSettings());
+        });
+        const rampWrap = document.getElementById('warmup-ramp');
+        if (rampWrap) {
+            rampWrap.addEventListener('change', (e) => {
+                if (e.target.matches('.warmup-ramp-pct, .warmup-ramp-reps')) {
+                    this.saveWarmupSettings();
+                }
+            });
+        }
+
         // Settings form submission
         const settingsForm = document.getElementById('settings-form');
         if (settingsForm) {
@@ -126,6 +188,12 @@ class SettingsView {
         const exportBtn = document.getElementById('export-data-btn');
         if (exportBtn) {
             exportBtn.addEventListener('click', () => this.exportData());
+        }
+
+        // Export every completed set as CSV (Item 8)
+        const exportCsvBtn = document.getElementById('export-csv-btn');
+        if (exportCsvBtn) {
+            exportCsvBtn.addEventListener('click', () => this.exportSetsCsv());
         }
 
         // Import data
@@ -267,9 +335,51 @@ class SettingsView {
         if (platesInput) platesInput.value = (settings.plates || []).join(', ');
         this.refreshPlatesPreview();
 
+        this.renderWarmupSettings();
+
         // Snapshot current values for dirty-state comparison
         this.savedSnapshot = this.snapshotForm();
         this.checkDirty();
+    }
+
+    /** Populate the warm-up controls from the stored (normalized) config. */
+    renderWarmupSettings() {
+        const warmup = clampWarmupSettings(storageService.get(WARMUP_KEY, null));
+
+        const enabledInput = document.getElementById('warmup-enabled');
+        if (enabledInput) enabledInput.checked = warmup.enabled;
+        const kgInput = document.getElementById('warmup-threshold-kg');
+        if (kgInput) kgInput.value = String(warmup.thresholdKg);
+        const lbInput = document.getElementById('warmup-threshold-lb');
+        if (lbInput) lbInput.value = String(warmup.thresholdLb);
+
+        warmup.ramp.forEach((step, i) => {
+            const pctInput = document.getElementById(`warmup-pct-${i}`);
+            if (pctInput) pctInput.value = String(step.pct);
+            const repsInput = document.getElementById(`warmup-reps-${i}`);
+            if (repsInput) repsInput.value = String(step.reps);
+        });
+    }
+
+    /**
+     * Read the warm-up controls, normalize, persist, and reflect the
+     * normalized values back into the inputs so the user always sees what
+     * actually got stored.
+     */
+    saveWarmupSettings() {
+        const ramp = WARMUP_DEFAULTS.ramp.map((_, i) => ({
+            pct: document.getElementById(`warmup-pct-${i}`)?.value,
+            reps: document.getElementById(`warmup-reps-${i}`)?.value,
+        }));
+        const warmup = clampWarmupSettings({
+            enabled: document.getElementById('warmup-enabled')?.checked !== false,
+            thresholdKg: document.getElementById('warmup-threshold-kg')?.value,
+            thresholdLb: document.getElementById('warmup-threshold-lb')?.value,
+            ramp,
+        });
+
+        storageService.set(WARMUP_KEY, warmup);
+        this.renderWarmupSettings();
     }
 
     /** Build a snapshot of all form values used for dirty-state checking. */
@@ -404,6 +514,24 @@ class SettingsView {
         const filename = `gym-tracker-data-${new Date().toISOString().split('T')[0]}.json`;
         downloadJSON(data, filename);
         showToast('Data exported successfully', 'success');
+    }
+
+    /**
+     * Item 8: one CSV row per completed set across every logged session.
+     * Plain Blob download so it works offline like the JSON export.
+     */
+    exportSetsCsv() {
+        const unit = this.app.settings?.weightUnit || 'kg';
+        const { csv, rowCount } = buildSetsCsv(this.app.workoutSessions || [], unit);
+
+        if (rowCount === 0) {
+            showToast('No completed sets to export yet. Log a workout first.', 'info', 4000);
+            return;
+        }
+
+        const filename = `gym-tracker-sets-${new Date().toISOString().split('T')[0]}.csv`;
+        downloadText(csv, filename, 'text/csv;charset=utf-8');
+        showToast(`Exported ${rowCount} ${rowCount === 1 ? 'set' : 'sets'} to CSV`, 'success');
     }
 
     importData(file) {

@@ -540,6 +540,75 @@
                         </div>
                     </div>
 
+                    <!-- Item 3: in-workout exercise swap picker. Session-only:
+                         picking a replacement rewrites the live session entry,
+                         never the saved program. Lives inside #workout-view so
+                         wireWorkoutActions' delegation reaches its cards. -->
+                    <div id="swap-exercise-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="swap-exercise-title">
+                        <div class="modal-content large" data-back-to-top>
+                            <div class="modal-header">
+                                <h2 id="swap-exercise-title">Swap Exercise</h2>
+                                <button class="modal-close" aria-label="Close">&times;</button>
+                            </div>
+                            <div class="modal-body">
+                                <p class="swap-exercise-subtitle">
+                                    Replacing <strong id="swap-exercise-current"></strong> for this workout only.
+                                </p>
+                                <div class="exercise-picker-search">
+                                    <div class="search-input-wrapper">
+                                        <i class="fas fa-search search-icon"></i>
+                                        <input type="text" id="swap-exercise-search" placeholder="Search exercises by name or muscle group...">
+                                    </div>
+                                    <div class="exercise-filters">
+                                        <select id="swap-exercise-category-filter" aria-label="Filter by category">
+                                            <option value="">All Categories</option>
+                                            <option value="chest">Chest</option>
+                                            <option value="back">Back</option>
+                                            <option value="shoulders">Shoulders</option>
+                                            <option value="biceps">Biceps</option>
+                                            <option value="triceps">Triceps</option>
+                                            <option value="forearms">Forearms</option>
+                                            <option value="quads">Quads</option>
+                                            <option value="hamstrings">Hamstrings</option>
+                                            <option value="glutes">Glutes</option>
+                                            <option value="calves">Calves</option>
+                                            <option value="core">Core</option>
+                                            <option value="abs">Abs</option>
+                                            <option value="obliques">Obliques</option>
+                                            <option value="traps">Traps</option>
+                                            <option value="neck">Neck</option>
+                                            <option value="full-body">Full Body</option>
+                                            <option value="cardio">Cardio</option>
+                                        </select>
+                                        <select id="swap-exercise-equipment-filter" aria-label="Filter by equipment">
+                                            <option value="">All Equipment</option>
+                                            <option value="barbell">Barbell</option>
+                                            <option value="dumbbell">Dumbbell</option>
+                                            <option value="cable">Cable</option>
+                                            <option value="machine">Machine</option>
+                                            <option value="bodyweight">Bodyweight</option>
+                                            <option value="kettlebell">Kettlebell</option>
+                                            <option value="resistance-band">Resistance Band</option>
+                                            <option value="plate">Plate</option>
+                                            <option value="trap-bar">Trap Bar</option>
+                                            <option value="medicine-ball">Medicine Ball</option>
+                                            <option value="battle-ropes">Battle Ropes</option>
+                                            <option value="ab-wheel">Ab Wheel</option>
+                                            <option value="sled">Sled</option>
+                                            <option value="tire">Tire</option>
+                                            <option value="gripper">Gripper</option>
+                                            <option value="towel">Towel</option>
+                                            <option value="various">Various</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div id="swap-exercise-list" class="exercise-grid">
+                                    <!-- Will be populated by JS -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Finish Workout Modal -->
                     <div id="finish-workout-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="finish-workout-title">
                         <div class="modal-content finish-workout-modal-content" data-back-to-top>
@@ -640,6 +709,12 @@
                     <button type="button" class="history-clear-btn" id="clear-filters-btn" disabled aria-disabled="true">
                         <i class="fas fa-xmark"></i> Clear
                     </button>
+                    <div class="history-program-wrap">
+                        <i class="fas fa-layer-group history-program-icon" aria-hidden="true"></i>
+                        <select id="history-program">
+                            <option value="">All Programs</option>
+                        </select>
+                    </div>
                     <div class="history-sort-wrap">
                         <i class="fas fa-arrow-down-wide-short history-sort-icon" aria-hidden="true"></i>
                         <select id="history-sort">
@@ -932,6 +1007,13 @@
                     </div>
                     <div class="insights-volume-grid" id="insights-volume-grid"></div>
                 </section>
+                <section class="section" id="insights-stale-section" hidden>
+                    <div class="section-header">
+                        <h2>Not trained recently</h2>
+                        <span class="section-caption" id="insights-stale-caption"></span>
+                    </div>
+                    <ul class="insights-stale-list" id="insights-stale-list"></ul>
+                </section>
                 <section class="section" id="insights-heatmap-section" hidden>
                     <div class="section-header">
                         <h2>Workout heatmap</h2>
@@ -1038,6 +1120,36 @@
                                 <div class="form-actions">
                                     <button type="button" class="btn btn-ghost modal-close">Cancel</button>
                                     <button type="submit" class="btn btn-primary">Save</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Goal modal (per trend tile) -->
+                <div id="measurement-goal-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="measurement-goal-modal-title">
+                    <div class="modal-content small" data-back-to-top>
+                        <div class="modal-header">
+                            <h2 id="measurement-goal-modal-title">Set goal</h2>
+                            <button class="modal-close" aria-label="Close">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <form id="measurement-goal-form" novalidate>
+                                <div class="form-group">
+                                    <label for="goal-target">Target <small id="goal-target-unit"></small></label>
+                                    <input type="number" id="goal-target" step="0.1" min="0" placeholder="e.g. 75">
+                                </div>
+                                <div class="form-group">
+                                    <label for="goal-direction">Direction</label>
+                                    <select id="goal-direction">
+                                        <option value="decrease">Decrease to target</option>
+                                        <option value="increase">Increase to target</option>
+                                    </select>
+                                </div>
+                                <div class="form-actions">
+                                    <button type="button" class="btn btn-ghost" id="goal-clear-btn">Clear goal</button>
+                                    <button type="button" class="btn btn-ghost modal-close">Cancel</button>
+                                    <button type="submit" class="btn btn-primary">Save goal</button>
                                 </div>
                             </form>
                         </div>
@@ -1199,6 +1311,70 @@
 
                     <section class="settings-section">
                         <header class="settings-section-header">
+                            <i class="fas fa-fire settings-section-icon"></i>
+                            <div>
+                                <h2>Warm-up ramp</h2>
+                                <p class="settings-section-sub">Suggested ramp sets before a heavy working set. Saved as you edit.</p>
+                            </div>
+                        </header>
+                        <div class="setting-item setting-item-toggle">
+                            <label for="warmup-enabled" class="setting-toggle-label">Suggest warm-up sets</label>
+                            <label class="toggle-switch" aria-label="Warm-up suggestions toggle">
+                                <input type="checkbox" id="warmup-enabled">
+                                <span class="toggle-slider" aria-hidden="true"></span>
+                            </label>
+                        </div>
+                        <div class="setting-item">
+                            <label for="warmup-threshold-kg">Threshold <small>(kg)</small></label>
+                            <input type="number" id="warmup-threshold-kg" min="1" step="0.5" inputmode="decimal" placeholder="40">
+                        </div>
+                        <div class="setting-item">
+                            <label for="warmup-threshold-lb">Threshold <small>(lb)</small></label>
+                            <input type="number" id="warmup-threshold-lb" min="1" step="0.5" inputmode="decimal" placeholder="90">
+                        </div>
+                        <div class="setting-item setting-item-stack">
+                            <label>Ramp sets <small>(percent of the working weight, 0 = empty bar)</small></label>
+                            <div class="warmup-ramp" id="warmup-ramp">
+                                <div class="warmup-ramp-row" data-ramp-index="0">
+                                    <span class="warmup-ramp-num">Set 1</span>
+                                    <div class="warmup-ramp-field">
+                                        <label for="warmup-pct-0">Percent</label>
+                                        <input type="number" id="warmup-pct-0" class="warmup-ramp-pct" data-ramp-index="0" min="0" max="100" step="1" inputmode="numeric" placeholder="0">
+                                    </div>
+                                    <div class="warmup-ramp-field">
+                                        <label for="warmup-reps-0">Reps</label>
+                                        <input type="number" id="warmup-reps-0" class="warmup-ramp-reps" data-ramp-index="0" min="1" max="30" step="1" inputmode="numeric" placeholder="8">
+                                    </div>
+                                </div>
+                                <div class="warmup-ramp-row" data-ramp-index="1">
+                                    <span class="warmup-ramp-num">Set 2</span>
+                                    <div class="warmup-ramp-field">
+                                        <label for="warmup-pct-1">Percent</label>
+                                        <input type="number" id="warmup-pct-1" class="warmup-ramp-pct" data-ramp-index="1" min="0" max="100" step="1" inputmode="numeric" placeholder="50">
+                                    </div>
+                                    <div class="warmup-ramp-field">
+                                        <label for="warmup-reps-1">Reps</label>
+                                        <input type="number" id="warmup-reps-1" class="warmup-ramp-reps" data-ramp-index="1" min="1" max="30" step="1" inputmode="numeric" placeholder="5">
+                                    </div>
+                                </div>
+                                <div class="warmup-ramp-row" data-ramp-index="2">
+                                    <span class="warmup-ramp-num">Set 3</span>
+                                    <div class="warmup-ramp-field">
+                                        <label for="warmup-pct-2">Percent</label>
+                                        <input type="number" id="warmup-pct-2" class="warmup-ramp-pct" data-ramp-index="2" min="0" max="100" step="1" inputmode="numeric" placeholder="75">
+                                    </div>
+                                    <div class="warmup-ramp-field">
+                                        <label for="warmup-reps-2">Reps</label>
+                                        <input type="number" id="warmup-reps-2" class="warmup-ramp-reps" data-ramp-index="2" min="1" max="30" step="1" inputmode="numeric" placeholder="3">
+                                    </div>
+                                </div>
+                            </div>
+                            <p class="settings-help-text">Warm-ups are suggested when the working weight is at or above the threshold for your current unit.</p>
+                        </div>
+                    </section>
+
+                    <section class="settings-section">
+                        <header class="settings-section-header">
                             <i class="fas fa-database settings-section-icon"></i>
                             <div>
                                 <h2>Data Management</h2>
@@ -1208,6 +1384,9 @@
                         <div class="setting-actions">
                             <button type="button" class="btn btn-secondary" id="export-data-btn">
                                 <i class="fas fa-download"></i> Export Data
+                            </button>
+                            <button type="button" class="btn btn-secondary" id="export-csv-btn">
+                                <i class="fas fa-file-csv"></i> Export CSV
                             </button>
                             <button type="button" class="btn btn-secondary" id="import-data-btn">
                                 <i class="fas fa-upload"></i> Import Data

@@ -56,7 +56,9 @@ const APP_SYNC_CONFIG = {
       'gymTrackerAchievements',   // Unlocked achievements
       'gymTrackerActiveProgram',  // Currently active program ID
       'gymTrackerCustomExercises', // User-created custom exercises
-      'gymTrackerMeasurements'    // Body measurements log
+      'gymTrackerMeasurements',   // Body measurements log
+      'gymTrackerMeasurementGoals', // Measurement target values + direction
+      'gymTrackerWarmupSettings'  // Warm-up ramp preferences (threshold, ramp rows)
     ]
   },
 

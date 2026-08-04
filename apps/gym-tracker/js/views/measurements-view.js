@@ -18,10 +18,20 @@ import {
     formatDate,
     escapeHtml,
     getTodayDateString,
+    computeGoalProgress,
 } from '../utils/helpers.js';
 import { trapModalFocus } from '../utils/modal-focus.js';
 import { on, EVENTS } from '../utils/event-bus.js';
 import { DarkCalendar } from '../utils/dark-calendar.js';
+import { DarkSelect } from '../utils/dark-select.js';
+import { storageService } from '../services/StorageService.js';
+
+/**
+ * Item 7: per-metric goal targets, keyed by metric id.
+ * Shape: { [metricKey]: { target: number, direction: 'increase' | 'decrease' } }
+ * Kept out of the measurement entries so clearing a goal never touches history.
+ */
+const GOALS_KEY = 'gymTrackerMeasurementGoals';
 
 const METRICS = [
     { key: 'weight',     label: 'Body weight', unitFromSettings: true },
@@ -87,6 +97,56 @@ class MeasurementsView {
                 if (btn.dataset.action === 'delete-measurement') this.confirmDelete(id);
             });
         }
+
+        // Delegated trend-tile actions: set/edit a goal.
+        const grid = document.getElementById('measurements-trends-grid');
+        if (grid) {
+            grid.addEventListener('click', (e) => {
+                const btn = e.target.closest('[data-action="set-goal"]');
+                if (btn) this.openGoalModal(btn.dataset.metric);
+            });
+        }
+
+        const goalModal = document.getElementById('measurement-goal-modal');
+        if (goalModal) {
+            goalModal.querySelectorAll('.modal-close').forEach(btn => {
+                btn.addEventListener('click', () => goalModal.classList.remove('active'));
+            });
+        }
+
+        const directionSelect = document.getElementById('goal-direction');
+        if (directionSelect && !directionSelect.dataset.darkSelectInit) {
+            this.directionDropdown = new DarkSelect(directionSelect);
+            directionSelect.dataset.darkSelectInit = '1';
+        }
+
+        const goalForm = document.getElementById('measurement-goal-form');
+        if (goalForm) {
+            goalForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.saveGoalFromForm();
+            });
+        }
+
+        const clearGoalBtn = document.getElementById('goal-clear-btn');
+        if (clearGoalBtn) clearGoalBtn.addEventListener('click', () => this.clearGoal());
+    }
+
+    /** All stored goals, keyed by metric id. Junk in storage reads as none. */
+    loadGoals() {
+        const raw = storageService.get(GOALS_KEY, {});
+        return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    }
+
+    saveGoals(goals) {
+        storageService.set(GOALS_KEY, goals);
+    }
+
+    /** Display unit for a metric, matching the tile / history rendering. */
+    unitForMetric(metric) {
+        const weightUnit = this.app.settings?.weightUnit || 'kg';
+        const lengthUnit = weightUnit === 'lb' ? 'in' : 'cm';
+        return metric.unit || (metric.unitFromSettings ? weightUnit : lengthUnit);
     }
 
     render() {
@@ -123,6 +183,7 @@ class MeasurementsView {
         const settings = this.app.settings || {};
         const weightUnit = settings.weightUnit || 'kg';
         const lengthUnit = weightUnit === 'lb' ? 'in' : 'cm';
+        const goals = this.loadGoals();
 
         const tiles = METRICS.map(({ key, label, unitFromSettings, unit }) => {
             // chronological for sparkline + delta math
@@ -143,6 +204,14 @@ class MeasurementsView {
             const deltaSign = delta > 0 ? '+' : '';
             const deltaClass = delta === 0 ? '' : (delta > 0 ? 'is-up' : 'is-down');
 
+            // Goal progress runs from the earliest logged value (baseline)
+            // toward the target, so it reflects the whole tracked span.
+            const goal = goals[key];
+            const percent = goal ? computeGoalProgress(series[0].value, latest.value, goal) : null;
+            const goalLabel = goal && Number.isFinite(Number(goal.target))
+                ? `Goal: ${round1(goal.target)} ${tileUnit}`
+                : 'Set goal';
+
             return `
                 <div class="measurement-tile">
                     <div class="measurement-tile-label">${escapeHtml(label)}</div>
@@ -153,6 +222,19 @@ class MeasurementsView {
                         ${deltaSign}${delta} ${escapeHtml(tileUnit)} <span>vs 30d</span>
                     </div>
                     ${this.renderSparkline(series)}
+                    ${percent === null ? '' : `
+                        <div class="measurement-goal" data-metric="${escapeHtml(key)}">
+                            <div class="measurement-goal-track" role="img" aria-label="${percent}% to goal">
+                                <div class="measurement-goal-fill" style="width: ${percent}%"></div>
+                            </div>
+                            <div class="measurement-goal-pct">${percent}% to goal</div>
+                        </div>
+                    `}
+                    <button type="button" class="measurement-goal-btn" data-action="set-goal"
+                            data-metric="${escapeHtml(key)}"
+                            aria-label="Set goal for ${escapeHtml(label)}">
+                        ${escapeHtml(goalLabel)}
+                    </button>
                 </div>
             `;
         }).filter(Boolean).join('');
@@ -256,6 +338,67 @@ class MeasurementsView {
 
         modal.classList.add('active');
         trapModalFocus(modal);
+    }
+
+    openGoalModal(metricKey) {
+        const metric = METRICS.find(m => m.key === metricKey);
+        const modal = document.getElementById('measurement-goal-modal');
+        if (!metric || !modal) return;
+
+        this.goalMetricKey = metric.key;
+        const goal = this.loadGoals()[metric.key] || null;
+
+        const titleEl = document.getElementById('measurement-goal-modal-title');
+        if (titleEl) titleEl.textContent = `${metric.label} goal`;
+        const unitEl = document.getElementById('goal-target-unit');
+        if (unitEl) unitEl.textContent = `(${this.unitForMetric(metric)})`;
+
+        const targetInput = document.getElementById('goal-target');
+        if (targetInput) targetInput.value = goal ? goal.target : '';
+        const directionSelect = document.getElementById('goal-direction');
+        if (directionSelect) {
+            directionSelect.value = goal?.direction === 'increase' ? 'increase' : 'decrease';
+            if (this.directionDropdown) this.directionDropdown.sync();
+        }
+        const clearBtn = document.getElementById('goal-clear-btn');
+        if (clearBtn) clearBtn.hidden = !goal;
+
+        modal.classList.add('active');
+        trapModalFocus(modal);
+    }
+
+    saveGoalFromForm() {
+        if (!this.goalMetricKey) return;
+        const target = Number(document.getElementById('goal-target')?.value);
+        if (!Number.isFinite(target)) {
+            showToast('Enter a target value', 'error');
+            return;
+        }
+        const direction = document.getElementById('goal-direction')?.value === 'increase'
+            ? 'increase'
+            : 'decrease';
+
+        const goals = this.loadGoals();
+        goals[this.goalMetricKey] = { target, direction };
+        this.saveGoals(goals);
+
+        document.getElementById('measurement-goal-modal').classList.remove('active');
+        this.goalMetricKey = null;
+        showToast('Goal saved', 'success');
+        this.render();
+    }
+
+    /** Remove just this metric's goal. Measurement history is untouched. */
+    clearGoal() {
+        if (!this.goalMetricKey) return;
+        const goals = this.loadGoals();
+        delete goals[this.goalMetricKey];
+        this.saveGoals(goals);
+
+        document.getElementById('measurement-goal-modal').classList.remove('active');
+        this.goalMetricKey = null;
+        showToast('Goal cleared', 'info');
+        this.render();
     }
 
     saveFromForm() {

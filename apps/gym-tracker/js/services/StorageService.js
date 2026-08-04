@@ -17,7 +17,9 @@ export class StorageService {
             CUSTOM_EXERCISES: 'gymTrackerCustomExercises',
             ACTIVE_WORKOUT: 'gymTrackerActiveWorkout',
             ONBOARDING_SEEN: 'gymTrackerOnboardingSeen',
-            MEASUREMENTS: 'gymTrackerMeasurements'
+            MEASUREMENTS: 'gymTrackerMeasurements',
+            MEASUREMENT_GOALS: 'gymTrackerMeasurementGoals',
+            WARMUP_SETTINGS: 'gymTrackerWarmupSettings'
         };
     }
 

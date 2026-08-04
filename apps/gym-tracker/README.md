@@ -18,7 +18,12 @@ A comprehensive, mobile-first workout tracking application built with vanilla Ja
 - **Custom Exercises**: Create and manage your own custom exercises
 - **Workout History**: Complete history of all workouts with detailed stats, numbered pagination, and clickable workout details; each exercise in the session detail shows a small inline strength-trend chart of its top-set weight over recent sessions, plus any per-exercise notes you logged
 - **Progress Tracking**: View previous workout data (all sets) during current workout for progression
+- **Progression Suggestions**: When the last two sessions of an exercise hit every set's rep target at the same weight, the next workout pre-fills a bumped weight (equipment-appropriate increment) and explains itself with a "+X suggested" badge on the first planned row; tapping the badge reveals the two sessions it is based on and a "Use last weight" control that puts the literal last-session weight back. Missing your reps shows "Missed target - repeat weight" instead, and two consecutive misses at the same weight suggest a 5-10% deload. Per-set rep ranges are respected (each set is judged against its own target)
+- **Weight/Rep Steppers**: One-tap minus/plus buttons flank every planned row's weight and reps inputs; weight steps by the exercise's increment, reps by 1 (floored at 0), without raising the phone keyboard, and plate hints plus the "same as last time" chip stay live
+- **In-Workout Exercise Swap**: A swap button on each exercise header substitutes a different exercise for THIS session only (searchable picker pre-filtered to the same category); the saved program is never touched, swapping with logged sets asks for confirmation, and the substitute's sets count toward its own history and PRs
+- **Warm-Up Ramp**: Barbell and trap-bar exercises whose working weight meets a configurable threshold show a collapsed warm-up strip above set 1 (empty bar, then percentage steps rounded to loadable plates) with one-tap ticks; warm-ups never count toward set completion, volume, or PRs
 - **Body Measurements**: A dedicated Measurements view (its own nav entry) to log body measurements over time via an add-measurement modal, with a trends grid showing one tile per tracked metric (latest value, 30-day delta, and an inline sparkline) above the editable history list; included in the welcome tour
+- **Measurement Goals**: Each trend tile takes an optional target value and direction (increase or decrease); a tile with a goal shows a progress bar and "N% to goal" under its sparkline, measured from the earliest logged value, and clearing the goal removes the bar without touching history
 - **Calendar View**: Visual representation of workout days with progress indicators (first day of week is configurable, Sunday or Monday)
 - **Program Scheduling**: Assign weekdays to a program; the days show on the program tiles, as markers on the calendar, and as a compact day-pill week strip at the top of the workout screen where tapping a day shows that day's scheduled workout below the pills and highlights the matching program card
 - **Welcome Tour**: A single scrollable onboarding modal that explains the core features, with quick links into Programs, Workout, Calendar, and Settings; replayable any time from Settings
@@ -30,10 +35,10 @@ A comprehensive, mobile-first workout tracking application built with vanilla Ja
 - Weekly workout tracking (respects the configured first day of week)
 - Exercise frequency analysis
 - Personal records tracking (max weight, reps, volume per exercise)
-- Workout history with filtering and sorting
+- Workout history with filtering and sorting, including a program filter (All Programs plus each saved program) that combines with the sort and date-range controls
 - Clickable workout cards for detailed views
 - Exercise history with best set tracking
-- Insights view: a 4-week volume-by-muscle-group breakdown and a 12-month consistency heatmap
+- Insights view: a 4-week volume-by-muscle-group breakdown, a "Not trained recently" list (muscle groups in your programs with no volume for 14 days, never-trained first), and a 12-month consistency heatmap
 
 ### ⚙️ Settings & Customization
 
@@ -44,10 +49,11 @@ A comprehensive, mobile-first workout tracking application built with vanilla Ja
 - Configurable rest timer
 - Separate sound and vibration toggles, plus the seconds-left thresholds for the first warning sound and the countdown
 - Plate calculator configuration (bar weight and the comma-separated list of available plate sizes, with a live preview)
+- Warm-up ramp configuration (enable toggle, kg and lb thresholds, and the three ramp rows' percentages and reps; saved as you change them)
 - Post-workout metrics (heart rate, calories)
 - Dark theme optimized for gym use with improved text contrast
 - Custom styled confirmation modals throughout app
-- Data export/import (JSON)
+- Data export/import (JSON), plus a per-set CSV export for spreadsheets
 - Cloud sync via Firebase with SSO authentication
 - Destructive actions, each behind a confirmation modal: "Clear All Data" (wipes every local program, workout, achievement, custom exercise, and setting) and "Delete cloud data" (removes the synced copy)
 
@@ -188,6 +194,7 @@ Designed for gym environments with low lighting:
 - Complete data backup
 - Transfer between devices
 - Export downloads a dated JSON file (`gym-tracker-data-YYYY-MM-DD.json`); import reads a JSON file you pick
+- CSV export: one row per completed set (date, program, exercise, set number, weight, reps, duration, volume, unit) as `gym-tracker-sets-YYYY-MM-DD.csv`, RFC-4180 escaped; exporting with no workouts shows a toast instead of an empty file
 
 ## User Workflow
 
