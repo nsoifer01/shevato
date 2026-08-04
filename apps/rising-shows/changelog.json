@@ -1,6 +1,208 @@
 {
   "updates": [
     {
+      "builtAt": "2026-08-04T08:50:27.040Z",
+      "totals": {
+        "seasons": 66142,
+        "delta": 12
+      },
+      "shapeCounts": {
+        "mid-peak": 4633,
+        "rebound": 10076,
+        "rising": 2892,
+        "slow-burn": 4374,
+        "big-finale": 12107,
+        "u-shaped": 3097,
+        "rollercoaster": 14066,
+        "saved-best-for-last": 1538,
+        "front-loaded": 3471,
+        "declining": 1875,
+        "bad-finale": 4656,
+        "consistent": 2626,
+        "shape-drift": 1634
+      },
+      "shapeDeltas": {
+        "rebound": -6,
+        "rising": -7,
+        "slow-burn": -3,
+        "big-finale": 7,
+        "u-shaped": 5,
+        "rollercoaster": 11,
+        "saved-best-for-last": -1,
+        "front-loaded": 7,
+        "declining": 4,
+        "bad-finale": 5,
+        "consistent": 6,
+        "shape-drift": -3
+      },
+      "added": [
+        {
+          "seriesId": "tt38754770",
+          "title": "False Memory",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1495163",
+          "title": "Operation Repo",
+          "season": 2,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt0162798",
+          "title": "The Cedar Tree",
+          "season": 4,
+          "seasonYear": 1978
+        },
+        {
+          "seriesId": "tt2223298",
+          "title": "Salvage Hunters",
+          "season": 5,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt2033616",
+          "title": "Fake or Fortune",
+          "season": 14,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt8119462",
+          "title": "Brazzers House",
+          "season": 3,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt35853665",
+          "title": "Vefa Sultan",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41278494",
+          "title": "Let's Go Kaikigumi",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0168348",
+          "title": "Un medico in famiglia",
+          "season": 2,
+          "seasonYear": 2000
+        },
+        {
+          "seriesId": "tt2131864",
+          "title": "Junior Bake Off",
+          "season": 10,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt33710320",
+          "title": "USAshveloebi",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt6210390",
+          "title": "This Is Not Happening",
+          "season": 4,
+          "seasonYear": 2018
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt14980730",
+          "title": "Mahrem",
+          "season": 1,
+          "from": 5.73,
+          "to": 7.6,
+          "delta": 1.87
+        },
+        {
+          "seriesId": "tt42006748",
+          "title": "House of Stassi",
+          "season": 1,
+          "from": 5.43,
+          "to": 4.31,
+          "delta": -1.12
+        },
+        {
+          "seriesId": "tt5679558",
+          "title": "The Flower in Prison",
+          "season": 1,
+          "from": 9.01,
+          "to": 8.18,
+          "delta": -0.83
+        },
+        {
+          "seriesId": "tt1331923",
+          "title": "Review with Myles Barlow",
+          "season": 2,
+          "from": 6.82,
+          "to": 6.25,
+          "delta": -0.57
+        },
+        {
+          "seriesId": "tt43440117",
+          "title": "Love in Sync",
+          "season": 1,
+          "from": 7.98,
+          "to": 7.43,
+          "delta": -0.55
+        },
+        {
+          "seriesId": "tt0318959",
+          "title": "Crank Yankers",
+          "season": 2,
+          "from": 5.89,
+          "to": 6.42,
+          "delta": 0.53
+        },
+        {
+          "seriesId": "tt0318959",
+          "title": "Crank Yankers",
+          "season": 1,
+          "from": 6.36,
+          "to": 6.84,
+          "delta": 0.48
+        },
+        {
+          "seriesId": "tt0329829",
+          "title": "Fireman Sam",
+          "season": 3,
+          "from": 8.83,
+          "to": 8.38,
+          "delta": -0.45
+        },
+        {
+          "seriesId": "tt27814427",
+          "title": "Skibidi Toilet",
+          "season": 14,
+          "from": 6.33,
+          "to": 5.93,
+          "delta": -0.4
+        },
+        {
+          "seriesId": "tt1331923",
+          "title": "Review with Myles Barlow",
+          "season": 1,
+          "from": 6.68,
+          "to": 6.28,
+          "delta": -0.4
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 23465,
+        "avgRating": 1248,
+        "shapes": 215,
+        "episodeCount": 84,
+        "seriesRating": 394,
+        "poster": 3,
+        "overview": 2
+      }
+    },
+    {
       "builtAt": "2026-08-03T09:35:02.058Z",
       "totals": {
         "seasons": 66130,
@@ -7295,186 +7497,6 @@
         "avgRating": 1865,
         "shapes": 363,
         "episodeCount": 139
-      }
-    },
-    {
-      "builtAt": "2026-07-06T10:18:41.956Z",
-      "totals": {
-        "seasons": 65663,
-        "delta": 8
-      },
-      "shapeCounts": {
-        "mid-peak": 4634,
-        "rebound": 10042,
-        "rising": 2921,
-        "slow-burn": 4346,
-        "big-finale": 11987,
-        "u-shaped": 3069,
-        "rollercoaster": 14025,
-        "saved-best-for-last": 1521,
-        "front-loaded": 3437,
-        "declining": 1857,
-        "bad-finale": 4640,
-        "consistent": 2598,
-        "shape-drift": 1608
-      },
-      "shapeDeltas": {
-        "mid-peak": 4,
-        "rebound": -5,
-        "rising": -3,
-        "slow-burn": 1,
-        "big-finale": -5,
-        "u-shaped": 5,
-        "rollercoaster": 4,
-        "saved-best-for-last": -1,
-        "front-loaded": 1,
-        "declining": 3,
-        "bad-finale": 5,
-        "consistent": -1,
-        "shape-drift": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt37376067",
-          "title": "Reckless",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt3909734",
-          "title": "The 90s: The Decade That Connected Us",
-          "season": 1,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt4071414",
-          "title": "Young Guns Go for It",
-          "season": 1,
-          "seasonYear": 1999
-        },
-        {
-          "seriesId": "tt12740746",
-          "title": "Britain by Narrowboat",
-          "season": 1,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt43636687",
-          "title": "Amdré e Seus Amigos",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1058776",
-          "title": "Pink Panther and Pals",
-          "season": 2,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt16607152",
-          "title": "Masyanya",
-          "season": 1,
-          "seasonYear": 2001
-        },
-        {
-          "seriesId": "tt17361756",
-          "title": "Survival of the Thickest",
-          "season": 3,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt12872744",
-          "title": "Darcey & Stacey",
-          "season": 4,
-          "from": 7.33,
-          "to": 6.45,
-          "delta": -0.88
-        },
-        {
-          "seriesId": "tt28315535",
-          "title": "Haus Kummerveldt",
-          "season": 1,
-          "from": 5.63,
-          "to": 4.83,
-          "delta": -0.8
-        },
-        {
-          "seriesId": "tt6581428",
-          "title": "Booba",
-          "season": 4,
-          "from": 5.6,
-          "to": 6.39,
-          "delta": 0.79
-        },
-        {
-          "seriesId": "tt34498121",
-          "title": "Thukra Ke Mera Pyaar",
-          "season": 2,
-          "from": 4.44,
-          "to": 5.15,
-          "delta": 0.71
-        },
-        {
-          "seriesId": "tt15135124",
-          "title": "Sin novedad",
-          "season": 1,
-          "from": 8.2,
-          "to": 7.5,
-          "delta": -0.7
-        },
-        {
-          "seriesId": "tt6581428",
-          "title": "Booba",
-          "season": 3,
-          "from": 5.04,
-          "to": 5.64,
-          "delta": 0.6
-        },
-        {
-          "seriesId": "tt5323298",
-          "title": "Naagin",
-          "season": 7,
-          "from": 9.3,
-          "to": 8.76,
-          "delta": -0.54
-        },
-        {
-          "seriesId": "tt12872744",
-          "title": "Darcey & Stacey",
-          "season": 3,
-          "from": 4.96,
-          "to": 4.54,
-          "delta": -0.42
-        },
-        {
-          "seriesId": "tt28995977",
-          "title": "If I Were Luísa Sonza",
-          "season": 1,
-          "from": 5.07,
-          "to": 5.47,
-          "delta": 0.4
-        },
-        {
-          "seriesId": "tt12423408",
-          "title": "In Search of the Automatic House",
-          "season": 14,
-          "from": 8.93,
-          "to": 8.55,
-          "delta": -0.38
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 15730,
-        "avgRating": 621,
-        "seriesRating": 228,
-        "shapes": 106,
-        "episodeCount": 47,
-        "poster": 22,
-        "overview": 9,
-        "providers": 2
       }
     }
   ]
