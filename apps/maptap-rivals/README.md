@@ -9,6 +9,7 @@ MapTap.gg has no built-in social layer, so this app *is* the rivalry layer. The 
 - **Rivals** (`maptapRivalsRivals`) - each named friend you track: `{ id, name, color, icon, createdAt }`, plus an optional MapTap username for auto-sync.
 - **Games** (`maptapRivalsGames`) - one record per day you played a given rival: `{ id, rivalId, date, note, myScores[5], theirScores[5], myScore, theirScore }`. Each of MapTap's 5 rounds is a raw 0–100 score; round weights `[1, 1, 2, 3, 3]` roll up to a 0–1000 daily total. Older games stored as totals only (no per-round array) still count toward records and streaks but are skipped from per-round breakdowns.
 - **You** - your display name (`maptapRivalsMe`), icon (`maptapRivalsMyIcon`), and optional MapTap profile (`maptapRivalsMyProfile`).
+- **Rival network** (`maptapRivalsNetwork`) - the local cache for the opt-in account-backed network: `{ joined, uid, handle, links[], directory{}, materialized[], notices[], updatedAt }`. Every network screen renders from this cache rather than from a live query, so the app looks the same offline. It is deliberately excluded from the cross-device sync key list, since it mirrors Firestore documents that are already per-account.
 
 The matrix selection, its row-sort choice (`maptapRivalsMatrixSort`), and the currently focused rival are persisted under their own keys. Everything else, weekly and monthly records included, is computed on demand from the games list; there are no precomputed stats in storage.
 
@@ -19,6 +20,9 @@ The matrix selection, its row-sort choice (`maptapRivalsMatrixSort`), and the cu
 | Add/edit rivals | Create a named rival with an accent color and icon (and an optional MapTap username); edit or delete from a modal. |
 | Paste daily scores | A collapsible entry panel: paste your MapTap result, and a row per rival shows a live win/loss/tie preview against your score before you save the day's games. |
 | MapTap profile auto-sync | Link your MapTap profile (and a rival's username) to pull game history automatically from the public MapTap profile endpoint instead of pasting. |
+| Rival network (opt-in) | Sign in, verify your MapTap profile, and publish a handle claim so other members can find you. Joining publishes only your handle, display name, icon, and the handles of the rivals you track, readable only by rivals you are connected to; scores, games and notes are never published, and leaving deletes all of it. Requires a registered (non-anonymous) account. |
+| Mutual rival connections | Adding a rival whose MapTap handle belongs to another member connects you both at once: a single pair document is created, your card shows a "Connected" chip, and the other person gets the rival added to their own list with a dismissible "added you as a rival" notice. No second person has to search for anyone. Deleting a connected rival tears the pair down. |
+| Rival discovery ("Their rivals") | A connected rival's dashboard lists the people they track, minus you and minus anyone you already have, each one tap from becoming your own rival. Discovering someone who is also a member connects you to them immediately. |
 | Dashboard | A rival grid of summary cards (record, streak, averages) in alphabetical order, with an at-a-glance summary strip, a current-form banner, and a "today's predictions" card when the day's puzzle data is available. |
 | Predictions accuracy | Each row of the predictions card carries the share of the field the player beats on an average day ("avg 78%", the mean of `(N - rank) / (N - 1)` over every past day at least two tracked players logged a score, so first is always 100% and last always 0% whatever the field size, ties sharing fractional rank credit and solo days excluded, with the raw average finish and day count in the tooltip) plus a "Spot-on" badge giving the share of days they finished exactly where the predictor put them ("Spot-on 83%", with the raw "5 of 6 past days" count in the tooltip). Clicking a player's name expands a "Daily finishes" distribution: one bar per finishing position (1st, 2nd, ... up to the biggest field they competed in, zero-count rows included) with the percent of days and the raw count, ties bucketed at the top of the span they tie across (competition ranking, so two players tied for the best total both finished 1st); a position held on fewer than 5 days names those exact dates in its row tooltip. Rows are tinted by position quality on the shared green-to-red ramp (1st green, last red), and clicking a row with at least one day opens the History tab filtered to exactly those days, marked by a dismissible chip ("Alice · 2nd · 2 days"). |
 | Per-rival dashboard | A focused head-to-head view: stat cards, score-over-time and win-distribution and score-differential charts (Chart.js), recent-games table with pagination, and narrative callouts. |
@@ -54,4 +58,16 @@ The scoring and stats core (weighted daily totals, the predicted-total reconcili
 npm run test:maptap
 ```
 
-The suite (`tests/stats.test.js`) is also part of the repo-wide `npm test` target.
+The rival network's decidable core (pair-document ids, handle canonicalization, the published payload, the reconcile that decides which connections still need a local rival, and the discovery filtering) lives in `js/network.js` on the same terms: a pure dual-export module with no Firebase imports, unit-tested in `tests/network.test.js`.
+
+Both suites (`tests/stats.test.js` and `tests/network.test.js`) are also part of the repo-wide `npm test` target.
+
+## Deploying the network rules
+
+The rival network needs three Firestore collections (`maptapRivalsHandles`, `maptapRivalsNetwork`, `maptapRivalsLinks`) whose security rules live in the repo-root `firestore.rules`. They are not deployed automatically. Until someone runs:
+
+```sh
+firebase deploy --only firestore:rules
+```
+
+every join and connection attempt fails with a permission error. That is handled gracefully (a status line at most, local rivals and games untouched, nothing crashes), but the feature does not work for anyone until the rules are live.

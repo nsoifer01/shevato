@@ -36,6 +36,12 @@
     SELECTED: 'maptapRivalsSelectedRivalId',
     MATRIX_SEL: 'maptapRivalsMatrixSelection',
     MATRIX_SORT: 'maptapRivalsMatrixSort',
+    // Rival-network runtime cache: { joined, uid, handle, links, directory,
+    // materialized, notices, updatedAt }. Deliberately NOT in the
+    // sync-system key list (like the matrix selection): it mirrors Firestore
+    // docs that are already per-account, so syncing it across devices would
+    // just fight the refresh. Every network UI state renders from this cache.
+    NETWORK: 'maptapRivalsNetwork',
     // Per-ISO-date cache of the day's 5 puzzle lat/lng pairs. Values are
     // stored under `KEY.DAILY_CITIES_PREFIX + isoDate`. Only coordinates
     // are persisted — never names or trivia from the daily file.
@@ -155,6 +161,14 @@
     compareNamesCI, compareWinPctDesc,
   } = window.MapTapStats;
 
+  // Same deal for the rival-network core (js/network.js, also loaded before
+  // this file): doc-id shaping, the published payload, the auto-add merge and
+  // the discovery list are pure and unit-tested in node.
+  const {
+    handleKey, pairKey,
+    buildNetworkDoc, mergeIncomingLinks, buildDiscoveryList,
+  } = window.MapTapNetwork;
+
   // Presentation-only labels stay here (not needed by the stats module).
   const LOC_LABELS = ['R1', 'R2', 'R3', 'R4', 'R5'];
   const LOC_NAMES = ['Round 1', 'Round 2', 'Round 3', 'Round 4', 'Round 5'];
@@ -209,6 +223,12 @@
     settings: load(KEY.SETTINGS, {}),
     selectedRivalId: loadString(KEY.SELECTED, null),
     view: 'dashboard',
+    // Rival network. `network` is the persisted cache every network UI reads
+    // from; `networkStatus` / `networkBusy` are in-memory only (a status line
+    // and an in-flight marker, never worth persisting).
+    network: normalizeNetworkCache(load(KEY.NETWORK, null)),
+    networkStatus: null,           // { kind: 'ok'|'err'|'info', msg }
+    networkBusy: null,             // 'join' | 'leave' | 'refresh'
     matrixSelection: load(KEY.MATRIX_SEL, null), // string[] of rivalIds, or null = "all"
     matrixSort: loadString(KEY.MATRIX_SORT, 'name'), // 'name' | 'win' | 'avg' row order
     matrixTab: 'record',           // overridden by URL hash on first paint
@@ -259,6 +279,7 @@
   function persistMyMapTap() { saveString(KEY.MY_MAPTAP, state.myMapTap); }
   function persistMyProfile() { save(KEY.MY_PROFILE, state.myProfile); }
   function persistSelected() { saveString(KEY.SELECTED, state.selectedRivalId); }
+  function persistNetwork() { save(KEY.NETWORK, state.network); }
   function persistMatrixSelection() { save(KEY.MATRIX_SEL, state.matrixSelection); }
   function persistMatrixSort() { saveString(KEY.MATRIX_SORT, state.matrixSort); }
 
@@ -849,6 +870,7 @@
       return;
     }
     const maptapUsername = normalizeMapTapUsername($('#rival-maptap-username').value);
+    let saved = null;
     if (state.editingRivalId) {
       const r = state.rivals.find(x => x.id === state.editingRivalId);
       if (r) {
@@ -856,18 +878,24 @@
         r.color = state.pickedColor;
         r.icon = state.pickedIcon;
         r.maptapUsername = maptapUsername;
+        saved = r;
       }
     } else {
-      state.rivals.push({
+      saved = {
         id: uid(),
         name,
         color: state.pickedColor,
         icon: state.pickedIcon,
         maptapUsername,
         createdAt: Date.now(),
-      });
+      };
+      state.rivals.push(saved);
     }
     persistRivals();
+    // Network side-effects are fire-and-forget: the rival is already saved
+    // locally, and both calls no-op when we are not on the network.
+    netFire(publishNetworkDoc());
+    if (saved) netFire(tryLinkRival(saved));
     closeRivalModal();
     refreshRivalSelects();
     if (state.view === 'dashboard') renderDashboard();
@@ -885,6 +913,9 @@
       ? `Delete ${r.name} and all ${gameCount} game${gameCount === 1 ? '' : 's'}? This cannot be undone.`
       : `Delete ${r.name}?`;
     if (!confirm(msg)) return;
+    // Grab the pair doc before the rival leaves state.rivals; tearing the
+    // link down is best effort and must never block the local delete.
+    const linkedPairKey = networkLinkState().linkedRivalIds.get(r.id) || null;
     state.rivals = state.rivals.filter(x => x.id !== r.id);
     state.games = state.games.filter(g => g.rivalId !== r.id);
     if (state.selectedRivalId === r.id) {
@@ -897,6 +928,14 @@
     }
     persistRivals();
     persistGames();
+    if (linkedPairKey) {
+      // Drop the stale link from the cache so the chip disappears now rather
+      // than at the next refresh.
+      state.network.links = state.network.links.filter(l => l.pairKey !== linkedPairKey);
+      persistNetwork();
+      netFire(deleteLinkDoc(linkedPairKey));
+    }
+    netFire(publishNetworkDoc());
     closeRivalModal();
     refreshRivalSelects();
     if (state.view === 'rival') setView('dashboard');
@@ -1351,6 +1390,8 @@
   // ---------- dashboard view ----------
   function renderDashboard() {
     renderProfileCard();
+    renderNetworkNotices();
+    renderNetworkCard();
     renderPasteSection();
     renderRecordBanner();
     renderDashSummary();
@@ -2737,13 +2778,14 @@
     // view reads ABC, so a card sits in the same place whatever the week did.
     const sorted = state.rivals.slice().sort((a, b) => compareNamesCI(a.name, b.name));
 
-    sorted.forEach(r => grid.appendChild(makeRivalCard(rivalSummary(r))));
+    const linked = networkLinkState().linkedRivalIds;
+    sorted.forEach(r => grid.appendChild(makeRivalCard(rivalSummary(r), linked)));
 
     // Re-apply any in-flight sync/spinner state after the grid is rebuilt
     sorted.forEach(r => refreshRivalCardSyncUI(r.id));
   }
 
-  function makeRivalCard(s) {
+  function makeRivalCard(s, linkedRivalIds) {
     const r = s.rival;
     const card = el('article', {
       class: 'rival-card',
@@ -2779,10 +2821,19 @@
       }),
     ]);
 
+    const connected = !!(linkedRivalIds && linkedRivalIds.has(r.id));
     const head = el('div', { class: 'rival-card-head' }, [
       el('div', { class: 'rival-icon', style: `background:${r.color}33` }, r.icon),
-      el('div', {}, [
-        el('div', { class: 'rival-card-name' }, r.name),
+      el('div', { class: 'rival-card-ident' }, [
+        el('div', { class: 'rival-card-name' }, [
+          r.name,
+          connected
+            ? el('span', {
+                class: 'connected-chip',
+                title: `${r.name} is connected to you on the rival network`,
+              }, '🔗 Connected')
+            : null,
+        ]),
         el('div', { class: 'rival-card-meta' },
           s.total ? `${s.total} game${s.total === 1 ? '' : 's'} played` : 'No games yet'
         ),
@@ -3142,6 +3193,7 @@
       tableBody.innerHTML = '';
       $('#loc-section').hidden = true;
       $('#continent-section').hidden = true;
+      $('#discovery-section').hidden = true;
       destroyAllCharts();
       return;
     }
@@ -3209,6 +3261,11 @@
 
     // Reflect any in-flight sync state on the freshly rendered button.
     refreshRivalCardSyncUI(rival.id);
+
+    // Rival discovery sits above the stats: it is about the person, and it
+    // has to render before the no-games early-returns below so a freshly
+    // auto-added rival still shows their network.
+    renderDiscoverySection(rival, networkLinkState().linkedRivalIds);
 
     // stat cards
     cardsHost.innerHTML = '';
@@ -5363,6 +5420,636 @@
     return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
+  // ---------- rival network ----------
+  // Opt-in, account-backed layer on top of the local rival list. Three
+  // Firestore collections (see firestore.rules):
+  //
+  //   maptapRivalsHandles/{handleLower}  claim + handle -> uid directory
+  //   maptapRivalsNetwork/{uid}          published profile + rival handles
+  //   maptapRivalsLinks/{pairKey}        one doc per connected pair
+  //
+  // Two hard rules here. (1) Everything the UI draws comes from the local
+  // cache (KEY.NETWORK), never straight from a Firestore promise, so the app
+  // renders the same offline and so states are seedable. (2) Every network
+  // call is best-effort: the rules ship in this repo but are deployed by
+  // hand, so until that happens every read/write returns permission-denied.
+  // A failure may show a status line and must never throw, block a local
+  // action, or touch local rival data.
+  const NET_HANDLES = 'maptapRivalsHandles';
+  const NET_PROFILES = 'maptapRivalsNetwork';
+  const NET_LINKS = 'maptapRivalsLinks';
+
+  // All Firestore access flows through firebase-config.js (the single init
+  // point; the invariant test in sync-system/tests forbids importing the SDK
+  // anywhere else). Resolve it against this script's own URL so the dynamic
+  // import works from a classic script whatever the page's base URL is.
+  const FIREBASE_CONFIG_URL = (function () {
+    const src = document.currentScript && document.currentScript.src;
+    return new URL('../../../firebase-config.js', src || document.baseURI).href;
+  })();
+
+  let firebaseBitsPromise = null;
+  function firebaseBits() {
+    if (!firebaseBitsPromise) {
+      firebaseBitsPromise = import(FIREBASE_CONFIG_URL)
+        .then(m => ({ db: m.db, fs: m.firestore }));
+      // Own the rejection here too so a failed import can never surface as an
+      // unhandled promise rejection; every caller awaits inside try/catch.
+      firebaseBitsPromise.catch(() => {});
+    }
+    return firebaseBitsPromise;
+  }
+
+  function authUser() {
+    const fa = window.firebaseAuth;
+    if (!fa || typeof fa.getCurrentUser !== 'function') return null;
+    try { return fa.getCurrentUser(); } catch (_) { return null; }
+  }
+
+  // "Registered" mirrors the rules' isRegistered(): a real account, not the
+  // anonymous guest sign-in Arena uses.
+  function isRegisteredUser(u) {
+    return !!u && !!u.uid && u.isAnonymous !== true;
+  }
+
+  function netStringMap(raw) {
+    const out = {};
+    if (!raw || typeof raw !== 'object') return out;
+    for (const [k, v] of Object.entries(raw)) {
+      if (typeof k === 'string' && typeof v === 'string') out[k] = v.slice(0, 128);
+    }
+    return out;
+  }
+
+  // Boundary validation for a link doc (from Firestore or from a hand-seeded
+  // cache): a link is only usable when it names exactly two uids.
+  function sanitizeLink(raw, id) {
+    if (!raw || typeof raw !== 'object') return null;
+    const uids = (Array.isArray(raw.uids) ? raw.uids : [])
+      .filter(u => typeof u === 'string' && u);
+    if (uids.length !== 2) return null;
+    const key = (typeof raw.pairKey === 'string' && raw.pairKey)
+      ? raw.pairKey
+      : (id || pairKey(uids[0], uids[1]));
+    if (!key) return null;
+    return { pairKey: key, uids, handles: netStringMap(raw.handles), names: netStringMap(raw.names) };
+  }
+
+  function normalizeNetworkCache(raw) {
+    const c = (raw && typeof raw === 'object') ? raw : {};
+    const links = [];
+    for (const l of (Array.isArray(c.links) ? c.links : [])) {
+      const clean = sanitizeLink(l, l && l.pairKey);
+      if (clean) links.push(clean);
+    }
+    const directory = {};
+    const rawDir = (c.directory && typeof c.directory === 'object') ? c.directory : {};
+    for (const [uid_, entry] of Object.entries(rawDir)) {
+      const clean = buildNetworkDoc(entry);
+      if (clean) directory[uid_] = clean;
+    }
+    return {
+      joined: c.joined === true,
+      uid: typeof c.uid === 'string' ? c.uid : '',
+      handle: typeof c.handle === 'string' ? c.handle : '',
+      links,
+      directory,
+      // pairKeys already turned into a local rival once. Keeps a rival the
+      // user deliberately deleted from coming back on the next refresh.
+      materialized: (Array.isArray(c.materialized) ? c.materialized : [])
+        .filter(k => typeof k === 'string' && k),
+      notices: (Array.isArray(c.notices) ? c.notices : [])
+        .filter(n => n && typeof n === 'object'),
+      updatedAt: Number.isFinite(c.updatedAt) ? c.updatedAt : 0,
+    };
+  }
+
+  function emptyNetworkCache() { return normalizeNetworkCache(null); }
+
+  function myNetworkHandle() {
+    return state.network.handle || normalizeMapTapUsername(state.myMapTap);
+  }
+
+  // Single source for "which of my rivals are connected" and "which link
+  // peers still need a local rival". Skipped entirely when not joined, which
+  // is what makes every link path a no-op for signed-out users (AC2.5).
+  function networkLinkState() {
+    const c = state.network;
+    if (!c.joined || !c.uid) return { toAdd: [], linkedRivalIds: new Map() };
+    return mergeIncomingLinks(state.rivals, c.links, c.uid, c.directory, {
+      skipPairKeys: c.materialized,
+    });
+  }
+
+  function networkErrorText(err) {
+    const code = String((err && (err.code || err.message)) || '');
+    if (/permission-denied|insufficient permissions/i.test(code)) {
+      return 'Permission denied. The handle may be claimed by another account, or the network rules are not deployed yet.';
+    }
+    if (/unavailable|offline|failed to fetch|network/i.test(code)) {
+      return 'Could not reach the network right now. Your local data is untouched.';
+    }
+    return 'Network request failed. Your local data is untouched.';
+  }
+
+  function setNetworkStatus(kind, msg) {
+    state.networkStatus = msg ? { kind, msg } : null;
+  }
+
+  // Fire-and-forget wrapper. Every network side effect is optional by
+  // definition, so none of them may surface as an unhandled rejection.
+  function netFire(p) {
+    if (p && typeof p.catch === 'function') p.catch(() => {});
+  }
+
+  // ---- writes (all best-effort) ----
+
+  function networkDocPayload(handle) {
+    return buildNetworkDoc({
+      handle,
+      name: state.me,
+      icon: state.myIcon,
+      rivals: state.rivals.map(r => ({
+        handle: r.maptapUsername,
+        name: r.name,
+        icon: r.icon,
+      })),
+    });
+  }
+
+  async function publishNetworkDoc() {
+    const c = state.network;
+    if (!c.joined || !c.uid) return;
+    const user = authUser();
+    if (!isRegisteredUser(user) || user.uid !== c.uid) return;
+    const payload = networkDocPayload(myNetworkHandle());
+    if (!payload) return;
+    try {
+      const { db, fs } = await firebaseBits();
+      await fs.setDoc(fs.doc(db, NET_PROFILES, c.uid), {
+        ...payload,
+        updatedAt: fs.serverTimestamp(),
+      });
+    } catch (_) {
+      // Silent: republishing is housekeeping, not something the user asked
+      // for. The next successful join/refresh puts the doc right.
+    }
+  }
+
+  let publishTimer = null;
+  function schedulePublishNetworkDoc() {
+    if (!state.network.joined) return;
+    clearTimeout(publishTimer);
+    publishTimer = setTimeout(() => netFire(publishNetworkDoc()), 1200);
+  }
+
+  async function joinNetwork() {
+    const user = authUser();
+    const handle = normalizeMapTapUsername(state.myMapTap);
+    if (!isRegisteredUser(user) || !handle || !state.myProfile) return;
+    const key = handleKey(handle);
+    if (!key) return;
+
+    state.networkBusy = 'join';
+    setNetworkStatus(null, null);
+    renderNetworkCard();
+    try {
+      const { db, fs } = await firebaseBits();
+      await fs.setDoc(fs.doc(db, NET_HANDLES, key), {
+        uid: user.uid,
+        nickname: handle,
+        updatedAt: fs.serverTimestamp(),
+      });
+      const payload = networkDocPayload(handle);
+      await fs.setDoc(fs.doc(db, NET_PROFILES, user.uid), {
+        ...payload,
+        updatedAt: fs.serverTimestamp(),
+      });
+      state.network.joined = true;
+      state.network.uid = user.uid;
+      state.network.handle = handle;
+      state.network.updatedAt = Date.now();
+      persistNetwork();
+      setNetworkStatus('ok', 'You are on the network as ' + handle + '.');
+      state.networkBusy = null;
+      renderNetworkCard();
+      await refreshNetwork();
+      // Any rival that already has a handle may be a member; connect them.
+      for (const r of state.rivals.slice()) await tryLinkRival(r);
+    } catch (err) {
+      setNetworkStatus('err', networkErrorText(err));
+    } finally {
+      state.networkBusy = null;
+      renderNetworkCard();
+    }
+  }
+
+  async function leaveNetwork() {
+    const c = state.network;
+    const user = authUser();
+    state.networkBusy = 'leave';
+    setNetworkStatus(null, null);
+    renderNetworkCard();
+    try {
+      if (isRegisteredUser(user) && user.uid === c.uid) {
+        const { db, fs } = await firebaseBits();
+        const key = handleKey(myNetworkHandle());
+        if (key) {
+          try { await fs.deleteDoc(fs.doc(db, NET_HANDLES, key)); } catch (_) {}
+        }
+        try { await fs.deleteDoc(fs.doc(db, NET_PROFILES, c.uid)); } catch (_) {}
+      }
+      setNetworkStatus('ok', 'You left the rival network. Your rivals and games are untouched.');
+    } catch (err) {
+      setNetworkStatus('err', networkErrorText(err));
+    } finally {
+      // The local cache always clears: leaving must never strand the card in
+      // a joined state because a delete failed.
+      state.network = emptyNetworkCache();
+      persistNetwork();
+      state.networkBusy = null;
+      renderNetworkSurfaces();
+    }
+  }
+
+  // Look the rival's handle up in the claim directory and, when it belongs to
+  // another member, create the pair doc. Missing claim = not a member, which
+  // is a normal outcome and stays silent (AC2.2).
+  async function tryLinkRival(rival) {
+    const c = state.network;
+    if (!c.joined || !c.uid || !rival) return;
+    const user = authUser();
+    if (!isRegisteredUser(user) || user.uid !== c.uid) return;
+    const key = handleKey(rival.maptapUsername);
+    if (!key || key === handleKey(myNetworkHandle())) return;
+    try {
+      const { db, fs } = await firebaseBits();
+      const claim = await fs.getDoc(fs.doc(db, NET_HANDLES, key));
+      if (!claim.exists()) return;
+      const peerUid = claim.data().uid;
+      const pk = pairKey(c.uid, peerUid);
+      if (!pk) return;
+      const ref = fs.doc(db, NET_LINKS, pk);
+      const existing = await fs.getDoc(ref);
+      if (!existing.exists()) {
+        await fs.setDoc(ref, {
+          uids: [c.uid, peerUid].sort(),
+          handles: { [c.uid]: myNetworkHandle(), [peerUid]: claim.data().nickname || key },
+          names: { [c.uid]: state.me },
+          createdBy: c.uid,
+          createdAt: fs.serverTimestamp(),
+        });
+      }
+      await refreshNetwork();
+    } catch (_) {
+      // Soft-fail: the rival is already saved locally either way.
+    }
+  }
+
+  async function deleteLinkDoc(pk) {
+    if (!pk || !state.network.joined) return;
+    try {
+      const { db, fs } = await firebaseBits();
+      await fs.deleteDoc(fs.doc(db, NET_LINKS, pk));
+    } catch (_) {
+      // Best effort by design: the local rival is already gone (AC2.4).
+    }
+  }
+
+  // ---- read + reconcile ----
+
+  async function refreshNetwork(opts) {
+    const manual = !!(opts && opts.manual);
+    const c = state.network;
+    const user = authUser();
+    if (!c.joined || !c.uid) return;
+    if (!isRegisteredUser(user) || user.uid !== c.uid) {
+      if (manual) {
+        // A precondition, not a failure: nothing is broken, the user just
+        // isn't signed in on the account that joined. Red would read as
+        // "the network is down", so this stays a warn.
+        setNetworkStatus('warn', 'Sign in with the account you joined on to refresh.');
+        renderNetworkCard();
+      }
+      return;
+    }
+    if (state.networkBusy === 'refresh') return;
+    state.networkBusy = 'refresh';
+    if (manual) renderNetworkCard();
+    try {
+      const { db, fs } = await firebaseBits();
+      const snap = await fs.getDocs(fs.query(
+        fs.collection(db, NET_LINKS),
+        fs.where('uids', 'array-contains', c.uid)
+      ));
+      const links = [];
+      snap.forEach(d => {
+        const clean = sanitizeLink(d.data(), d.id);
+        if (clean) links.push(clean);
+      });
+
+      const peers = new Set();
+      for (const l of links) for (const u of l.uids) if (u !== c.uid) peers.add(u);
+      const directory = {};
+      for (const p of peers) {
+        try {
+          const d = await fs.getDoc(fs.doc(db, NET_PROFILES, p));
+          const clean = d.exists() ? buildNetworkDoc(d.data()) : null;
+          if (clean) directory[p] = clean;
+        } catch (_) {
+          // One unreadable peer must not sink the whole refresh.
+        }
+      }
+
+      c.links = links;
+      c.directory = directory;
+      c.updatedAt = Date.now();
+      persistNetwork();
+      applyIncomingLinks();
+      if (manual) setNetworkStatus('ok', 'Network up to date.');
+    } catch (err) {
+      if (manual) setNetworkStatus('err', networkErrorText(err));
+    } finally {
+      state.networkBusy = null;
+      renderNetworkSurfaces();
+    }
+  }
+
+  // Materialize link peers that have no local rival yet. Idempotent twice
+  // over: the merge matches by handle, and every materialized pairKey is
+  // remembered so a rival the user then deletes never comes back (AC2.3).
+  function applyIncomingLinks() {
+    const c = state.network;
+    const { toAdd } = networkLinkState();
+    if (!toAdd.length) return;
+    const notices = c.notices.slice();
+    toAdd.forEach(draft => {
+      state.rivals.push({
+        id: uid(),
+        name: draft.name,
+        color: COLORS[state.rivals.length % COLORS.length],
+        icon: draft.icon || ICONS[state.rivals.length % ICONS.length],
+        maptapUsername: draft.handle,
+        createdAt: Date.now(),
+      });
+      c.materialized.push(draft.pairKey);
+      notices.push({
+        pairKey: draft.pairKey,
+        name: draft.name,
+        icon: draft.icon || '🤝',
+        at: Date.now(),
+      });
+    });
+    c.notices = notices;
+    persistRivals();
+    persistNetwork();
+    refreshRivalSelects();
+  }
+
+  function dismissNetworkNotice(pk) {
+    state.network.notices = state.network.notices.filter(n => n.pairKey !== pk);
+    persistNetwork();
+    renderNetworkNotices();
+  }
+
+  // One-tap add from the discovery list: same shape as a modal-created rival,
+  // then an immediate link attempt because a discovered person is very likely
+  // a member themselves.
+  function addRivalFromDiscovery(entry) {
+    const key = handleKey(entry.handle);
+    if (!key) return;
+    if (state.rivals.some(r => handleKey(r.maptapUsername) === key)) return;
+    const rival = {
+      id: uid(),
+      name: entry.name || entry.handle,
+      color: COLORS[state.rivals.length % COLORS.length],
+      icon: entry.icon || ICONS[state.rivals.length % ICONS.length],
+      maptapUsername: entry.handle,
+      createdAt: Date.now(),
+    };
+    state.rivals.push(rival);
+    persistRivals();
+    refreshRivalSelects();
+    renderRival();
+    netFire(publishNetworkDoc());
+    netFire(tryLinkRival(rival));
+  }
+
+  // ---- rendering (cache-driven) ----
+
+  // Repaint every surface the network touches, wherever the user is standing:
+  // card and notices live on the dashboard, connected chips on the rival
+  // grid, the discovery section on the rival detail view.
+  function renderNetworkSurfaces() {
+    renderNetworkCard();
+    renderNetworkNotices();
+    if (state.view === 'dashboard') renderRivalGrid();
+    else if (state.view === 'rival') renderRival();
+  }
+
+  function renderNetworkCard() {
+    const card = $('#network-card');
+    const actions = $('#network-card-actions');
+    const body = $('#network-card-body');
+    if (!card || !actions || !body) return;
+    actions.innerHTML = '';
+    body.innerHTML = '';
+
+    const c = state.network;
+    const joined = c.joined && !!c.uid;
+    const user = authUser();
+    const registered = isRegisteredUser(user);
+    const handle = normalizeMapTapUsername(state.myMapTap);
+    const verified = !!state.myProfile && !!handle;
+    const busy = state.networkBusy;
+    card.classList.toggle('is-joined', joined);
+
+    if (joined) {
+      actions.appendChild(el('button', {
+        type: 'button',
+        class: 'btn btn-ghost network-btn network-refresh-btn',
+        disabled: busy ? 'disabled' : null,
+        title: 'Check for new connections',
+        onclick: () => netFire(refreshNetwork({ manual: true })),
+      }, busy === 'refresh' ? 'Refreshing…' : '🔄 Refresh'));
+      actions.appendChild(el('button', {
+        type: 'button',
+        class: 'btn btn-ghost network-btn network-leave-btn',
+        disabled: busy ? 'disabled' : null,
+        title: 'Remove your published profile and handle claim',
+        onclick: () => netFire(leaveNetwork()),
+      }, busy === 'leave' ? 'Leaving…' : 'Leave network'));
+    } else {
+      const canJoin = registered && verified && !busy;
+      actions.appendChild(el('button', {
+        type: 'button',
+        class: 'btn btn-primary network-btn network-join-btn',
+        disabled: canJoin ? null : 'disabled',
+        title: !registered
+          ? 'Sign in to join the rival network'
+          : !verified
+            ? 'Verify your MapTap profile first'
+            : 'Publish your handle so your rivals can connect with you',
+        onclick: () => netFire(joinNetwork()),
+      }, busy === 'join' ? 'Joining…' : 'Join rival network'));
+    }
+
+    if (joined) {
+      const linked = networkLinkState().linkedRivalIds;
+      body.appendChild(el('div', { class: 'network-status-line' }, [
+        el('span', { class: 'tag ok' }, '✓ On the network'),
+        el('span', {}, 'Published as '),
+        el('span', { class: 'network-handle' }, c.handle || handle || 'your handle'),
+      ]));
+      body.appendChild(el('div', { class: 'network-meta' },
+        `${linked.size} connected rival${linked.size === 1 ? '' : 's'}`
+        + ` · ${c.links.length} pair link${c.links.length === 1 ? '' : 's'}`
+        + (c.updatedAt ? ` · checked ${new Date(c.updatedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : '')));
+      if (!registered) {
+        body.appendChild(el('div', { class: 'network-hint' },
+          'Signed out on this device. The list below is your last synced state; sign back in to check for new connections.'));
+      }
+    } else if (!registered) {
+      body.appendChild(el('div', { class: 'network-hint' }, [
+        el('strong', {}, 'Sign in to join the rival network. '),
+        'Members can find each other by MapTap handle: add someone as a rival and, if they are on the network too, you are both connected automatically.',
+      ]));
+    } else if (!verified) {
+      body.appendChild(el('div', { class: 'network-hint' }, [
+        el('strong', {}, 'Verify your MapTap profile first. '),
+        'Your handle is your name on the network, so it has to be checked against maptap.gg. Use the Verify button in the profile card above.',
+      ]));
+    } else {
+      body.appendChild(el('div', { class: 'network-hint' }, [
+        el('strong', {}, 'Joining publishes '),
+        `your handle (${handle}), your display name, your icon, and the handles of the rivals you track. Only rivals you are connected to can read that list, and it is what lets them discover each other. Scores, games and notes are never published. Leaving deletes all of it.`,
+      ]));
+    }
+
+    if (state.networkStatus) {
+      const kind = state.networkStatus.kind === 'err' ? 'err'
+        : state.networkStatus.kind === 'ok' ? 'ok' : 'warn';
+      body.appendChild(el('div', { class: 'network-status-line' }, [
+        el('span', { class: 'tag ' + kind },
+          kind === 'err' ? '✗ Network' : kind === 'ok' ? '✓ Network' : '· Network'),
+        el('span', { class: 'network-status-text' }, state.networkStatus.msg),
+      ]));
+    }
+  }
+
+  function renderNetworkNotices() {
+    const host = $('#network-notices');
+    if (!host) return;
+    host.innerHTML = '';
+    const notices = state.network.notices;
+    if (!notices.length) { host.hidden = true; return; }
+    host.hidden = false;
+    notices.forEach(n => {
+      host.appendChild(el('div', { class: 'network-notice' }, [
+        el('span', { class: 'network-notice-icon', 'aria-hidden': 'true' }, n.icon || '🤝'),
+        el('span', { class: 'network-notice-text' },
+          `${n.name || 'Someone'} added you as a rival, you are now connected.`),
+        el('button', {
+          type: 'button',
+          class: 'network-notice-dismiss',
+          'aria-label': `Dismiss the notice about ${n.name || 'a new connection'}`,
+          title: 'Dismiss',
+          onclick: () => dismissNetworkNotice(n.pairKey),
+        }, '×'),
+      ]));
+    });
+  }
+
+  // "Their rivals" for the currently viewed rival. Only ever drawn for a
+  // connected rival whose peer profile we actually hold (AC3.4).
+  function renderDiscoverySection(rival, linkedRivalIds) {
+    const section = $('#discovery-section');
+    const list = $('#discovery-list');
+    const sub = $('#discovery-sub');
+    if (!section || !list) return;
+    list.innerHTML = '';
+    if (sub) sub.textContent = '';
+
+    const c = state.network;
+    const pk = rival ? linkedRivalIds.get(rival.id) : null;
+    if (!c.joined || !pk) { section.hidden = true; return; }
+    const link = c.links.find(l => l.pairKey === pk);
+    const peerUid = link ? link.uids.find(u => u !== c.uid) : null;
+    const peer = peerUid ? c.directory[peerUid] : null;
+    if (!peer) { section.hidden = true; return; }
+
+    section.hidden = false;
+    const theirs = peer.rivals || [];
+    const suggestions = buildDiscoveryList(theirs, myNetworkHandle(), state.rivals);
+    const mineKeys = new Set(state.rivals.map(r => handleKey(r.maptapUsername)).filter(Boolean));
+    const myKey = handleKey(myNetworkHandle());
+    const already = theirs.filter(p => {
+      const k = handleKey(p.handle);
+      return k && k !== myKey && mineKeys.has(k);
+    });
+
+    if (sub) {
+      sub.textContent = `${rival.name} tracks ${theirs.length} rival${theirs.length === 1 ? '' : 's'} with a MapTap handle`;
+    }
+
+    if (!suggestions.length) {
+      list.appendChild(el('p', { class: 'discovery-empty' },
+        already.length
+          ? 'You already track everyone they do.'
+          : 'Nobody new to discover here yet.'));
+    }
+
+    suggestions.forEach(p => {
+      list.appendChild(el('div', { class: 'discovery-row' }, [
+        el('span', { class: 'discovery-icon', 'aria-hidden': 'true' }, p.icon || '🎯'),
+        el('span', { class: 'discovery-name' }, p.name),
+        el('a', {
+          class: 'discovery-handle',
+          href: `https://maptap.gg/u/${encodeURIComponent(p.handle)}`,
+          target: '_blank',
+          rel: 'noopener noreferrer',
+          title: 'Open their maptap.gg profile',
+        }, '@' + p.handle),
+        el('button', {
+          type: 'button',
+          class: 'discovery-add-btn',
+          title: `Add ${p.name} as a rival`,
+          'aria-label': `Add ${p.name} as a rival`,
+          onclick: () => addRivalFromDiscovery(p),
+        }, '+ Add'),
+      ]));
+    });
+
+    if (already.length) {
+      list.appendChild(el('p', { class: 'discovery-already' },
+        'Already in your list: ' + already.map(p => `${p.icon || ''} ${p.name}`.trim()).join(', ')));
+    }
+  }
+
+  // ---- auth wiring ----
+  // firebase-config.js is a deferred ES module, so `window.firebaseAuth` may
+  // not exist yet when this classic script runs its init. Hook the adapter if
+  // it is there, otherwise wait for the `firebaseAuthReady` event the module
+  // dispatches (same pattern as sync-modal-integration.js).
+  let networkAuthWired = false;
+  function initNetworkAuth() {
+    if (networkAuthWired) return;
+    const fa = window.firebaseAuth;
+    if (!fa || typeof fa.onAuthStateChange !== 'function') {
+      window.addEventListener('firebaseAuthReady', initNetworkAuth, { once: true });
+      return;
+    }
+    networkAuthWired = true;
+    fa.onAuthStateChange(() => {
+      // Signing in or out only changes what the card offers; the data on
+      // screen keeps coming from the cache either way.
+      renderNetworkCard();
+      // Only a joined member has anything to fetch. Everyone else (signed
+      // out, guest, never joined) stays entirely off Firestore.
+      netFire(refreshNetwork());
+    });
+  }
+
   // mapTapHistoryToRounds lives in stats.js (bound at the top of this IIFE) so
   // the profile-history → per-day-rounds conversion can be unit-tested in node.
 
@@ -6387,6 +7074,8 @@
     meInput.addEventListener('input', () => {
       state.me = meInput.value.trim() || 'Me';
       persistMe();
+      // Debounced so a republish doesn't fire on every keystroke.
+      schedulePublishNetworkDoc();
     });
 
     // User icon picker — flyout with the same ICONS palette as rivals,
@@ -6413,6 +7102,7 @@
             persistMyIcon();
             renderMyIconCurrent();
             closeMyIconFlyout();
+            netFire(publishNetworkDoc());
             // Refresh anywhere the icon is on screen
             if (state.view === 'dashboard') renderDashboard();
             else if (state.view === 'matrix') renderMatrix();
@@ -6519,6 +7209,12 @@
         th.addEventListener('click',   makeLbSortHandler(key));
         th.addEventListener('keydown', makeLbSortHandler(key));
       });
+
+    // Rival network. Auth may settle after this classic script runs (
+    // firebase-config.js is a deferred module), so hook the adapter when it
+    // exists and wait for `firebaseAuthReady` otherwise, the same way
+    // sync-modal-integration.js does.
+    initNetworkAuth();
 
     // cross-tab / sync changes
     window.addEventListener('storage', onExternalStorage);
