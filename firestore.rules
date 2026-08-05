@@ -180,8 +180,21 @@ service cloud.firestore {
     // afterwards (no update rule) so neither side can rewrite the other's
     // handle or name. Either member may delete, which is how "delete this
     // rival" tears the connection down.
+    //
+    // get vs list: the client probes a specific pair id BEFORE creating it
+    // (tryLinkRival's existence check). On a nonexistent doc `resource` is
+    // null, so a single `read` rule touching resource.data errors and the
+    // probe dies with permission-denied before the create can ever run -
+    // this silently broke the first live connection attempt. So `get`
+    // explicitly allows the resource == null case. The cost: a registered
+    // member can probe whether two specific uids are linked, which requires
+    // already knowing both uids and reveals only that a pair doc exists.
+    // `list` keeps the strict membership condition, which is what actually
+    // guards bulk reads.
     match /maptapRivalsLinks/{pairKey} {
-      allow read: if isRegistered()
+      allow get: if isRegistered()
+        && (resource == null || request.auth.uid in resource.data.uids);
+      allow list: if isRegistered()
         && request.auth.uid in resource.data.uids;
       allow create: if isRegistered()
         && request.resource.data.uids.size() == 2
