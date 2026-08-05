@@ -333,7 +333,14 @@ body.brain-arena-app button {
   position: relative;
   display: flex;
   width: fit-content;
+  /* Below ~400px the four pills are wider than the page; without these
+     the strip bled past the viewport (body scrollWidth 374 at 360) and
+     clipped the Profile tab. */
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.view-tabs::-webkit-scrollbar { display: none; }
 .view-tabs::after {
   content: "";
   position: absolute;
@@ -356,7 +363,9 @@ body.brain-arena-app button {
   border: 1px solid transparent;
   border-radius: 999px;
   background: transparent;
-  color: var(--muted-2) !important;
+  /* --muted-2 read at ~3.3:1 against the page, too low for a primary
+     nav label. --muted is ~6.2:1 and keeps the inactive/active split. */
+  color: var(--muted) !important;
   /* Pin off main.css's global `button` gray ring (inset 0 0 0 1px #555);
      an inactive pill is borderless. The .is-active variant sets its own. */
   box-shadow: none !important;
@@ -373,8 +382,19 @@ body.brain-arena-app button {
   color: var(--text) !important;
   box-shadow: none !important;
 }
+/* Same red-flash pin as .game-type-btn: main.css tints every pressed
+   button rgba(206,27,40,0.25). */
+.view-tab:hover:active {
+  background: rgba(34, 211, 238, 0.09) !important;
+  color: var(--text) !important;
+}
+.view-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .view-tab.is-active,
-.view-tab.is-active:hover {
+.view-tab.is-active:hover,
+.view-tab.is-active:hover:active {
   background: var(--grad-brand);
   border-color: transparent;
   color: #061522 !important;
@@ -387,7 +407,19 @@ body.brain-arena-app button {
 }
 
 @media (max-width: 480px) {
-  .view-tab, .view-tab:hover { padding: 0.5rem 0.65rem; font-size: 0.82rem; gap: 0.3rem; }
+  .view-tab, .view-tab:hover {
+    padding: 0.55rem 0.58rem;
+    font-size: 0.82rem;
+    gap: 0.28rem;
+    /* 40px minimum tap target on phones. */
+    min-height: 40px;
+  }
+}
+/* Drop the decorative tab emoji on the narrowest phones so all four
+   labels fit the strip instead of scrolling out of reach. */
+@media (max-width: 380px) {
+  .view-tab > span[aria-hidden="true"] { display: none; }
+  .view-tab, .view-tab:hover { padding: 0.55rem 0.75rem; gap: 0; }
 }
 
 .view { display: none; }
@@ -414,6 +446,16 @@ body.brain-arena-app button {
      header without feeling bolted on. */
   margin-top: 0.75rem;
   margin-bottom: 1rem;
+  /* NOT flex here. The lobby banner wraps its copy in one <span>, so two
+     flex items line up fine; this one interleaves raw text with an inline
+     <button>, which makes each text run its own flex item. Below ~500px
+     those items wrapped independently and the single sentence rendered as
+     three ragged columns. Block flow keeps it one paragraph. */
+  display: block;
+  line-height: 1.5;
+}
+.end-guest-cta > span[aria-hidden="true"] {
+  margin-right: 0.35rem;
 }
 
 .link-btn {
@@ -512,13 +554,21 @@ body.brain-arena-app button {
   font-size: 0.85rem;
 }
 
-.lobby-form { display: flex; flex-direction: column; gap: 0.7rem; }
+/* Gap carries the whole vertical rhythm now that the stray site-wide
+   label margin is gone (see .lobby-field below). */
+.lobby-form { display: flex; flex-direction: column; gap: 0.95rem; }
 
-.lobby-field { display: block; }
+/* main.css styles every <label> with `margin: 0 0 1rem` (site-wide form
+   legacy). Every field in this app is a <label>, so that stray margin was
+   adding ~15px on top of each flex `gap`: loose form rhythm in the lobby
+   and a filter that floated above the leaderboard title instead of
+   bottom-aligning with it. Spacing here is the container's job. */
+.lobby-field { display: block; margin: 0; }
 .lobby-field > span {
   display: block;
   font-size: 0.7rem;
-  color: var(--muted-2);
+  /* --muted-2 on the app surface is ~3.3:1, too low for 10px caps. */
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.09em;
   font-weight: 600;
@@ -529,18 +579,29 @@ body.brain-arena-app button {
 .lobby-field input[type="password"],
 .lobby-field select {
   width: 100%;
-  height: 38px;
+  height: var(--ctrl-h);
   padding: 0 0.7rem;
   border: 1px solid var(--border);
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.025);
+  border-radius: var(--ctrl-radius);
+  background-color: rgba(255, 255, 255, 0.025);
   color: var(--text);
   font-size: 0.9rem;
-  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+  transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
   /* color-scheme: dark; tells the browser to render native popups
      (the option list, autofill chips, scrollbar) in dark mode so the
      dropdowns match the page chrome instead of flashing white. */
   color-scheme: dark;
+}
+/* main.css sets `appearance: none` on every select and paints its own
+   arrow through a `background` shorthand, which this file's background
+   declaration wipes, leaving selects that look exactly like text
+   inputs. Paint our own chevron in the app's muted ink instead. */
+.lobby-field select {
+  padding-right: 2.1rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b95b3' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  background-size: 15px 15px;
 }
 /* Apply the same dark color-scheme to every select / option in the app
    so the OS-native dropdown popups stay dark site-wide, not just inside
@@ -548,14 +609,17 @@ body.brain-arena-app button {
    but color-scheme drives the popup palette. */
 select, option { color-scheme: dark; }
 select option { background: var(--surface); color: var(--text); }
+/* background-COLOR only on these two: the `background` shorthand would
+   drop the select chevron painted above. */
 .lobby-field input:hover, .lobby-field select:hover {
   border-color: var(--border-strong);
-  background: var(--surface-2);
+  background-color: var(--surface-2);
 }
-.lobby-field input:focus, .lobby-field select:focus {
+.lobby-field input:focus, .lobby-field select:focus,
+.lobby-field input:focus-visible, .lobby-field select:focus-visible {
   outline: none;
   border-color: var(--accent);
-  background: var(--surface-2);
+  background-color: var(--surface-2);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
@@ -605,6 +669,14 @@ select option { background: var(--surface); color: var(--text); }
   height: 24px;
   flex-shrink: 0;
   margin: 0;
+  /* main.css hides every checkbox site-wide (`opacity: 0; float: left;
+     z-index: -1`) because its own pattern draws the box on the sibling
+     <label>. This app draws the switch on the input itself, so those
+     three have to be undone or the track+thumb below never render: the
+     toggle rows looked like plain, un-toggleable strips. */
+  opacity: 1;
+  float: none;
+  z-index: 0;
   border: 1px solid rgba(148, 163, 184, 0.18);
   border-radius: 999px;
   background:
@@ -661,11 +733,32 @@ select option { background: var(--surface); color: var(--text); }
   text-align: center;
 }
 
+/* Same chip chrome as .field-warning (below), in the error palette, so
+   the two inline messages in the lobby read as one family instead of
+   "amber chip" vs "bare red sentence". */
 .join-error {
   margin: 0;
-  min-height: 1.2rem;
-  color: var(--bad);
-  font-size: 0.85rem;
+  padding: 0.4rem 0.6rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #fca5a5;
+  font-size: 0.82rem;
+  font-weight: 500;
+  background: linear-gradient(90deg, var(--bad-soft), rgba(239, 68, 68, 0.03) 60%, transparent);
+  border: 1px solid rgba(239, 68, 68, 0.32);
+  border-left-width: 3px;
+  border-radius: 7px;
+  animation: field-warning-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.join-error::before {
+  content: "";
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  background: var(--bad);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 8v5'/%3E%3Cpath d='M12 16h.01'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 8v5'/%3E%3Cpath d='M12 16h.01'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
 /* Inline form-field warning — used under fields when validation fails.
@@ -766,7 +859,8 @@ select option { background: var(--surface); color: var(--text); }
 }
 .room-code-label {
   font-size: 0.66rem;
-  color: var(--muted-2);
+  /* --muted-2 measures 3.0:1 inside the code pill at this size. */
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.16em;
   font-weight: 600;
@@ -1019,6 +1113,19 @@ select option { background: var(--surface); color: var(--text); }
   color: #ffffff !important;
   background: rgba(255, 255, 255, 0.04);
   box-shadow: none !important;
+}
+/* main.css paints `button:hover:active { background-color: rgba(206,27,40,
+   0.25) }` site-wide: pressing an inactive segment flashed brand red.
+   Verified with forced :hover:active + computed style. */
+.game-type-btn:hover:active {
+  background: rgba(255, 255, 255, 0.07) !important;
+  color: #ffffff !important;
+}
+.game-type-btn.is-active:hover:active {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 35%),
+    var(--grad-brand) !important;
+  color: #061522 !important;
 }
 .game-type-btn.is-active,
 .game-type-btn.is-active:hover {
@@ -1403,13 +1510,27 @@ select option { background: var(--surface); color: var(--text); }
 .btn-danger-ghost:hover:active { background-color: rgba(248, 113, 113, 0.10); }
 .btn-danger,
 .btn-danger:hover {
-  background: rgb(220, 38, 38) !important;
-  border-color: rgb(220, 38, 38) !important;
+  /* Was a flat rgb(220,38,38) slab, which read as a stock browser button
+     next to .btn-primary's lit gradient. Same red, same weight, now with
+     the app's top-light + halo treatment so the destructive button belongs
+     to the same family as the primary one. */
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 50%),
+    linear-gradient(135deg, rgb(239, 68, 68), rgb(190, 24, 24)) !important;
+  border-color: transparent !important;
   /* Grouped :hover so white beats .btn-primary:hover's
      `color: #051b22 !important` on the confirm-modal danger variant. */
   color: white !important;
+  font-weight: 600;
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.45), 0 8px 24px rgba(239, 68, 68, 0.25) !important;
 }
-.btn-danger:hover { background: rgb(185, 28, 28) !important; }
+.btn-danger:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.6), 0 10px 32px rgba(239, 68, 68, 0.4) !important;
+}
+/* See .btn:hover:active — main.css repaints pressed buttons brand-red;
+   the gradient above supplies the fill, so keep the layer transparent. */
+.btn-danger:hover:active { background-color: transparent !important; }
 
 /* Restart-proposal waiting modal — shown to the proposer while
    opponents respond. The list of responses re-renders on each
@@ -1962,6 +2083,57 @@ select option { background: var(--surface); color: var(--text); }
   }
 }
 
+/* ---- Phone: the countdown joins the fixed action bar ----
+   Submit + Clear are pinned to the viewport bottom above, while the
+   countdown chip is anchored to the TOP-LEFT of the globe wrapper, which
+   scrolls. On narrow screens the two share an x-band (the centred pair
+   starts at 50% - 133px = 62px at 390 and 47px at 360; the chip ended at
+   92px), so for the ~70px of scroll where the globe's top edge crosses the
+   button band they overlapped — measured 30x29px at 390 and 45x46px at
+   360, right where a player lands when a new location loads.
+   Below 480px the chip becomes the leading item of the same fixed bar:
+   viewport-anchored like the buttons, so the two can never occupy the same
+   space, and the countdown stays on screen while the globe is panned.
+   It is anchored off the pair's own left edge (`right: 50% + 143px` puts
+   its right edge exactly 10px left of the Clear pill) so the gap holds at
+   every width and, crucially, Submit/Clear do not move — they keep the
+   position they were tuned to, including their clearance from the site's
+   back-to-top button in the bottom-right corner. */
+@media (max-width: 480px) {
+  .game-timer.globe-drop-timer-overlay {
+    position: fixed;
+    top: auto;
+    left: auto;
+    right: calc(50% + 143px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem + 6px);
+    width: 36px;
+    height: 36px;
+    z-index: 200;
+    /* Over the globe the bare ring was legible; docked to the viewport it
+       can end up over page copy, so it takes the same glass plate as the
+       Clear pill it now sits beside. */
+    border-radius: 50%;
+    background: rgba(8, 11, 22, 0.72);
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 2px 10px rgba(2, 6, 23, 0.45);
+  }
+  .game-timer.globe-drop-timer-overlay .game-timer-num { font-size: 0.74rem; }
+}
+/* At 375px and below the centred pair leaves only a 47px gutter to its
+   left, so a 36px chip would end up flush against the screen edge. Four
+   pixels smaller buys a real margin on both sides. */
+@media (max-width: 374px) {
+  .game-timer.globe-drop-timer-overlay {
+    right: calc(50% + 141px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem + 8px);
+    width: 32px;
+    height: 32px;
+  }
+  .game-timer.globe-drop-timer-overlay .game-timer-num { font-size: 0.68rem; }
+}
+
 /* ---- Item 13: collapsible standings (mobile only) ---- */
 /* Toggle button: hidden on desktop, shown ≤768px. Colours pinned with
    !important so main.css's `button { color:#555 !important }` + red hover
@@ -2367,7 +2539,7 @@ select option { background: var(--surface); color: var(--text); }
   letter-spacing: 0.01em;
 }
 .room-chat-time {
-  color: var(--muted-2);
+  color: var(--muted);
   font-size: 0.72rem;
   margin-left: 0.4rem;
   font-family: var(--mono);
@@ -2444,6 +2616,8 @@ select option { background: var(--surface); color: var(--text); }
   color-scheme: dark;
   transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
 }
+/* Inert: main.css ships `::-webkit-input-placeholder { color:#bbb !important }`,
+   which wins on !important. Pixel-checked at #bbb, which reads fine here. */
 .room-chat-form input[type="text"]::placeholder { color: var(--muted-2); }
 .room-chat-form input[type="text"]:focus {
   outline: none;
@@ -2451,14 +2625,31 @@ select option { background: var(--surface); color: var(--text); }
   background: rgba(34, 211, 238, 0.04);
   box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.15), 0 0 18px rgba(34, 211, 238, 0.15);
 }
+/* Same chip family as .join-error / .field-warning (chunk A P1): gradient
+   wash, weighted left edge, masked icon. */
 .room-chat-error {
   margin: 0 0.95rem 0.7rem;
-  padding: 0.45rem 0.65rem;
-  background: rgba(248, 113, 113, 0.10);
-  border: 1px solid rgba(248, 113, 113, 0.35);
-  border-radius: 8px;
-  color: rgb(252, 165, 165);
+  padding: 0.4rem 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: linear-gradient(90deg, var(--bad-soft), rgba(239, 68, 68, 0.03) 60%, transparent);
+  border: 1px solid rgba(239, 68, 68, 0.32);
+  border-left-width: 3px;
+  border-radius: 7px;
+  color: #fca5a5;
   font-size: 0.82rem;
+  font-weight: 500;
+  animation: field-warning-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.room-chat-error::before {
+  content: "";
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  background: var(--bad);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 8v5'/%3E%3Cpath d='M12 16h.01'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 8v5'/%3E%3Cpath d='M12 16h.01'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
 .room-chat-badge {
@@ -2565,7 +2756,7 @@ select option { background: var(--surface); color: var(--text); }
   font-size: 0.65rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--muted-2);
+  color: var(--muted);
   font-weight: 700;
 }
 .h2h-record-score {
@@ -2690,7 +2881,8 @@ select option { background: var(--surface); color: var(--text); }
   margin: 0;
 }
 .h2h-stats dt {
-  color: var(--muted-2);
+  /* Matches the lobby field labels: --muted-2 was ~3.3:1 here. */
+  color: var(--muted);
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -2875,6 +3067,11 @@ select option { background: var(--surface); color: var(--text); }
     right: 0.5rem;
   }
 }
+/* The 46px in that offset is nominally the timer ring's height, and below
+   480px the ring has moved into the bottom action bar — but the offset is
+   load-bearing for a second reason: it is also what keeps the panel's
+   distance line clear of the sticky prompt row once the player scrolls the
+   globe up. Reclaiming it pushed the headline under the prompt. Left as is. */
 .globe-drop-reveal-head {
   display: flex;
   align-items: center;
@@ -3019,14 +3216,14 @@ select option { background: var(--surface); color: var(--text); }
   color: var(--muted);
   font-size: 0.85rem;
 }
-.pick-progress-label { text-transform: uppercase; letter-spacing: 0.09em; font-size: 0.7rem; color: var(--muted-2); font-weight: 600; }
+.pick-progress-label { text-transform: uppercase; letter-spacing: 0.09em; font-size: 0.7rem; color: var(--muted); font-weight: 600; }
 .pick-progress-now {
   font-family: var(--mono);
   font-size: 1.4rem;
   font-weight: 700;
   color: var(--text);
 }
-.pick-progress-sep { color: var(--muted-2); }
+.pick-progress-sep { color: var(--muted); }
 .pick-progress-total { color: var(--muted); font-family: var(--mono); }
 
 .pick-decider {
@@ -3051,7 +3248,7 @@ select option { background: var(--surface); color: var(--text); }
 .pick-decider-text { display: flex; flex-direction: column; line-height: 1.1; }
 .pick-decider-label {
   font-size: 0.62rem;
-  color: var(--muted-2);
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   font-weight: 700;
@@ -3075,6 +3272,12 @@ select option { background: var(--surface); color: var(--text); }
   gap: 0.65rem;
   max-width: 740px;
   margin: 0 auto;
+}
+/* The pool-exhausted message is appended INTO the grid, so without this it
+   lands in the next cell and reads as a caption for the tile beside it. */
+.pick-category-grid .empty-state {
+  grid-column: 1 / -1;
+  padding: 1.2rem 0 0.2rem;
 }
 
 .pick-cat-btn {
@@ -3120,7 +3323,7 @@ select option { background: var(--surface); color: var(--text); }
 .pick-cat-count {
   font-family: var(--mono);
   font-size: 0.72rem;
-  color: var(--muted-2);
+  color: var(--muted);
 }
 .pick-cat-random {
   background: linear-gradient(135deg, var(--accent-soft), rgba(74, 222, 128, 0.08));
@@ -3155,14 +3358,15 @@ select option { background: var(--surface); color: var(--text); }
   color: var(--muted);
   font-size: 0.85rem;
 }
-.game-progress-label { text-transform: uppercase; letter-spacing: 0.09em; font-size: 0.7rem; color: var(--muted-2); font-weight: 600; }
+/* --muted-2 measures 3.5:1 on the page background at 10px; --muted is 6.2:1. */
+.game-progress-label { text-transform: uppercase; letter-spacing: 0.09em; font-size: 0.7rem; color: var(--muted); font-weight: 600; }
 .game-progress-now {
   font-family: var(--mono);
   font-size: 1.4rem;
   font-weight: 700;
   color: var(--text);
 }
-.game-progress-sep { color: var(--muted-2); }
+.game-progress-sep { color: var(--muted); }
 .game-progress-total { color: var(--muted); font-family: var(--mono); }
 
 .game-timer {
@@ -3283,7 +3487,11 @@ select option { background: var(--surface); color: var(--text); }
 .answer-btn:hover:active { background-color: var(--surface-3); }
 .answer-btn.is-picked:hover:active { background-color: var(--accent-soft); }
 .answer-btn:active { transform: translateY(1px); }
-.answer-btn:disabled { cursor: default; }
+/* main.css ships `button:disabled { opacity: 0.25 }`, and every answer button
+   is disabled the moment you lock in. Without this pin the correct answer and
+   your own pick render at quarter strength while the deliberately-dimmed
+   distractors (0.55 below) stay brighter — the reveal hierarchy inverts. */
+.answer-btn:disabled { cursor: default; opacity: 1; }
 
 .answer-btn .answer-letter {
   width: 30px; height: 30px;
@@ -3320,7 +3528,8 @@ select option { background: var(--surface); color: var(--text); }
 .answer-btn.is-wrong .answer-letter { background: var(--bad); color: var(--bad-ink); }
 
 .answer-btn.is-dim,
-.answer-btn.is-dim:hover {
+.answer-btn.is-dim:hover,
+.answer-btn.is-dim:disabled {
   opacity: 0.55;
   border-color: var(--border);
   background: var(--surface-2);
@@ -3362,7 +3571,12 @@ select option { background: var(--surface); color: var(--text); }
 }
 .mini-board h3 {
   font-family: "Space Grotesk", "Outfit", sans-serif;
-  font-size: 0.7rem;
+  /* Matches .rounds-history-board h3: the two boards sit side by side in
+     the Globe Drop stage and a 10px header next to a 13px one read as two
+     different components. (The uppercase + colour below are inert — the
+     app-wide `body.brain-arena-app h3` rule outranks this selector — so
+     the size is the only lever that actually lands.) */
+  font-size: 0.92rem;
   text-transform: uppercase;
   letter-spacing: 0.16em;
   color: var(--muted-2);
@@ -3482,11 +3696,15 @@ select option { background: var(--surface); color: var(--text); }
    sliding in next to it. No "submitted" word, no toast, no badge
    chrome. The tint reads at a glance even at a distance; the ✓ is
    the precise confirmation. */
+/* The name span is `flex: 1 1 auto`, so a bounded fill + inset ring drew a
+   full-width rounded box around a short name and read as a disabled text
+   input (measured 220px of chrome around an 11-character name at 390).
+   A left-anchored fade keeps the same green cue with no right edge and no
+   ring, so it can't be mistaken for a field. */
 .mini-board-row.is-answered .mini-board-name {
-  background: rgba(16, 185, 129, 0.16);
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.22), rgba(16, 185, 129, 0.06) 55%, transparent);
   border-radius: 6px;
   padding: 0.05rem 0.4rem;
-  box-shadow: 0 0 10px rgba(16, 185, 129, 0.18) inset;
 }
 /* When both me + pending: remove the violet border (the cyan shimmer is enough). */
 .mini-board-row.is-me.is-pending {
@@ -3624,7 +3842,8 @@ select option { background: var(--surface); color: var(--text); }
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--muted-2);
+  /* --muted-2 measures 3.45:1 on the hero panel at this size. */
+  color: var(--muted);
 }
 .solo-hero-stat-value {
   font-family: var(--mono);
@@ -3710,7 +3929,10 @@ select option { background: var(--surface); color: var(--text); }
 /* Podium */
 .podium {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  /* Column per slot rather than a fixed 3, so a 2-player result centres
+     instead of leaving an empty third column pushing the pair left. */
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   align-items: end;
   gap: 0.4rem;
   margin: 0 auto 0.7rem;
@@ -3781,6 +4003,8 @@ select option { background: var(--surface); color: var(--text); }
   border-bottom: 0;
   text-align: center;
   padding-top: 0.25rem;
+  /* Inert: every rendered block is .podium-slot-1/2/3, each of which sets its
+     own gold/silver/bronze colour. Kept as the shape-only fallback. */
   color: var(--muted-2);
   font-family: var(--mono);
   font-weight: 700;
@@ -3865,6 +4089,10 @@ select option { background: var(--surface); color: var(--text); }
   width: 100%;
   border-collapse: collapse;
   font-size: 0.92rem;
+  /* main.css ships `table { margin: 0 0 2rem 0 }`, which left ~30px of
+     dead surface between the last row and the bottom of every table
+     card. */
+  margin: 0;
 }
 .end-board thead th, .leaderboard-table thead th {
   text-align: left;
@@ -3873,7 +4101,9 @@ select option { background: var(--surface); color: var(--text); }
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: var(--muted-2);
+  /* --muted-2 at 10px caps is ~3.3:1 on this surface; --muted is 6.2:1
+     and still reads as a secondary header row. */
+  color: var(--muted);
   padding: 0.8rem 0.75rem;
   border-bottom: 1px solid rgba(34, 211, 238, 0.12);
   background: rgba(20, 26, 44, 0.5);
@@ -4005,7 +4235,9 @@ select option { background: var(--surface); color: var(--text); }
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--muted-2);
+  /* Same 10px-caps role as the lobby field labels: --muted-2 measures
+     3.0:1 on this panel, --muted 5.8:1. */
+  color: var(--muted);
   margin-bottom: 0.2rem;
 }
 .room-settings-item dd {
@@ -4254,7 +4486,8 @@ select option { background: var(--surface); color: var(--text); }
   display: block;
   font-family: "Space Grotesk", "Outfit", sans-serif;
   font-size: 0.62rem;            /* was 0.7 — smaller alongside compacter cards */
-  color: var(--muted-2);
+  /* --muted-2 measures 3.36:1 at 9px on the recap cards. */
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.12em;
   font-weight: 600;
@@ -4301,7 +4534,7 @@ select option { background: var(--surface); color: var(--text); }
   font-size: 0.68rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--muted-2);
+  color: var(--muted);
   font-weight: 700;
 }
 .end-recap-h2h-names {
@@ -4343,7 +4576,7 @@ select option { background: var(--surface); color: var(--text); }
 .end-recap-h2h-pill.is-loss { background: rgba(239, 68, 68, 0.12);  border-color: rgba(239, 68, 68, 0.30);  color: rgb(252, 165, 165); }
 .end-recap-h2h-total {
   font-size: 0.72rem;
-  color: var(--muted-2);
+  color: var(--muted);
   letter-spacing: 0.02em;
 }
 
@@ -4427,9 +4660,19 @@ select option { background: var(--surface); color: var(--text); }
   font-size: 1rem;
 }
 .recap-loc-country {
-  color: var(--muted-2);
+  /* --muted-2 measures 3.37:1 against the recap row. */
+  color: var(--muted);
   font-size: 0.78rem;
   margin-left: 0.4rem;
+}
+/* Globe Drop pairs a short city with a short country, so inline reads fine.
+   Trivia's "name" is a whole question, so an inline meta starts on the
+   question's last line and splits mid-phrase ("... a whale? Society And /
+   Culture · answer: ..."). Own line for trivia only. */
+.recap-loc-cell.is-trivia .recap-loc-country {
+  display: block;
+  margin-left: 0;
+  margin-top: 0.2rem;
 }
 .recap-score-cell {
   font-family: var(--mono);
@@ -4441,7 +4684,7 @@ select option { background: var(--surface); color: var(--text); }
   color: rgb(110, 231, 183);
   font-size: 1rem;
 }
-.recap-score-cell.is-zero { color: var(--muted-2); font-weight: 500; }
+.recap-score-cell.is-zero { color: var(--muted); font-weight: 500; }
 .recap-score-cell.is-mine { background: rgba(34, 211, 238, 0.06); }
 .recap-score-cell.is-winner {
   background: rgba(16, 185, 129, 0.12);
@@ -4596,7 +4839,7 @@ select option { background: var(--surface); color: var(--text); }
 .detailed-stat-label {
   font-family: "Space Grotesk", "Outfit", sans-serif;
   font-size: 0.7rem;
-  color: var(--muted-2);
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.14em;
   font-weight: 600;
@@ -4706,7 +4949,8 @@ select option { background: var(--surface); color: var(--text); }
   font-size: 0.65rem;
   letter-spacing: 0.10em;
   text-transform: uppercase;
-  color: var(--muted-2);
+  /* --muted-2 measures 3.34:1 at 9.5px on this banded row. */
+  color: var(--muted);
   font-weight: 700;
   text-align: left;
   padding: 0.75rem 0.75rem 0.35rem;
@@ -4731,6 +4975,24 @@ select option { background: var(--surface); color: var(--text); }
   gap: 0.9rem;
   margin-bottom: 0.85rem;
 }
+/* The section blurb belongs under its title, not flung to the opposite
+   end of a 1100px row by space-between. Full basis drops it to its own
+   line while the title keeps sharing a row with the filter / date. */
+.leaderboard-head .leaderboard-sub {
+  flex-basis: 100%;
+  margin-top: 0;
+}
+/* On phones the title and the period filter fought over one row (167px
+   + 160px in a 342px column). Stack them; the select gets a full-width
+   tap target. */
+@media (max-width: 540px) {
+  .leaderboard-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.6rem;
+  }
+  .leaderboard-filters .lobby-field { min-width: 0; }
+}
 .leaderboard-filters {
   display: flex;
   gap: 0.6rem;
@@ -4745,6 +5007,10 @@ select option { background: var(--surface); color: var(--text); }
   overflow-x: auto;
   overflow-y: hidden;
 }
+/* With no rows the wrap still painted a header row and an empty body
+   strip directly above the "nobody has played yet" copy. The empty
+   state is the whole message; the table shell is noise. */
+.leaderboard-wrap:has(tbody:empty) { display: none; }
 
 /* ---------- Profile ---------- */
 
@@ -4767,7 +5033,8 @@ select option { background: var(--surface); color: var(--text); }
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.06) inset,
     0 18px 50px rgba(2, 6, 23, 0.55);
-  min-height: 420px;
+  /* No min-height: with the pack panel collapsed (the default) a 420px
+     floor left ~140px of empty card under the last row. */
 }
 .profile-card-trivia::before {
   content: "";
@@ -4833,11 +5100,13 @@ select option { background: var(--surface); color: var(--text); }
     0 0 48px rgba(168, 85, 247, 0.20);
 }
 .profile-id { flex: 1; min-width: 200px; }
-.profile-display-field { margin: 0; }
+/* A 20-character name field stretched to the full card width read as a
+   search bar; cap it so the row stays proportioned next to the avatar. */
+.profile-display-field { margin: 0; max-width: 340px; }
 .profile-email {
   margin: 0.4rem 0 0;
   font-size: 0.85rem;
-  color: var(--muted-2);
+  color: var(--muted);
   font-family: var(--mono);
 }
 
@@ -4854,6 +5123,14 @@ select option { background: var(--surface); color: var(--text); }
   border: 1px solid rgba(148, 163, 184, 0.10);
   border-radius: var(--radius-sm);
   padding: 1rem 0.85rem 0.9rem;
+  /* These three were stranded inside the max-width:540px block below
+     (declarations after a nested rule, so the parser dropped them):
+     the tiles never got their centred text, the ::before accent bar
+     was never clipped by the radius, and :hover snapped instead of
+     easing. */
+  text-align: center;
+  overflow: hidden;
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
 }
 /* Headline stat (Avg score) spans 2 columns and gets a larger value
    so it reads as the primary metric while the other tiles serve as
@@ -4869,9 +5146,6 @@ select option { background: var(--surface); color: var(--text); }
 }
 @media (max-width: 540px) {
   .profile-stat.is-headline { grid-column: 1 / -1; }   /* full-width on mobile */
-  text-align: center;
-  overflow: hidden;
-  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
 }
 .profile-stat::before {
   content: "";
@@ -4913,7 +5187,9 @@ select option { background: var(--surface); color: var(--text); }
   display: block;
   font-family: "Space Grotesk", "Outfit", sans-serif;
   font-size: 0.66rem;
-  color: var(--muted-2);
+  /* --muted, not --muted-2: 10px uppercase at 3.3:1 was the one surface the
+     chunk-A contrast sweep missed (caught in chunk B's re-probe). */
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.16em;
   font-weight: 600;
@@ -5104,6 +5380,9 @@ select option { background: var(--surface); color: var(--text); }
 .answer-btn:focus-visible,
 .globe-drop-ready-btn:focus-visible,
 .room-chat-quick-btn:focus-visible,
+/* <summary> is keyboard-focusable and was falling back to the UA's 1px
+   near-black ring, invisible on this page. */
+.custom-pack summary:focus-visible,
 .modal-close:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -5120,11 +5399,27 @@ select option { background: var(--surface); color: var(--text); }
   .game-timer { width: 54px; height: 54px; }
   .game-timer-num { font-size: 0.95rem; }
   .question-card { padding: 1.1rem 1rem; }
+  /* 40px is the floor for a tapped control; the desktop 38px selects
+     and inputs sat just under it. */
+  .lobby-field input[type="text"],
+  .lobby-field input[type="password"],
+  .lobby-field select { height: 44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---- Visual audit consolidation (2026-08-04) ---- */
+/* The site back-to-top FAB (fixed bottom-right, ~48px) overlapped the right
+   end of the "Play solo" button on phone widths. Give the solo/daily action
+   row clearance on the side the FAB owns; scoped to this app's body class so
+   no other page inherits it. */
+@media (max-width: 480px) {
+  .brain-arena-app .lobby-solo-actions {
+    padding-right: 64px;
   }
 }
