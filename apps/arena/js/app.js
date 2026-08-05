@@ -465,6 +465,13 @@ async function tryLoadPendingPostMatch() {
         state.roomData = data;
         state.roomPlayers = players;
         state.postMatchCode = code;
+        // B1: renderEndStage only swaps STAGES; the panel swap lives in
+        // enterRoom, which a view-only recap never calls. Without this the
+        // recap renders inside a hidden #room-panel and the visitor sees the
+        // lobby, so a shared recap link looked broken.
+        show($('#room-panel'));
+        hide($('#lobby-panel'));
+        setText($('#room-code-display'), code);
         syncUrlToState();
         renderEndStage(false);
     } catch (err) {
@@ -676,12 +683,13 @@ function applyAuthState(user) {
     else $('#auth-gate').hidden = false;
 
     // Invite-link landing: if a signed-out user arrived via an
-    // /?room=ABCDE link, silently sign them in as a guest and join.
-    // applyAuthState fires again once the anon user exists, which
-    // re-runs the signedIn branch below and tryRejoinPendingRoom
-    // takes them straight to the room. We only kick this off once per
-    // boot to avoid an auth-loop if the sign-in itself fails.
-    if (!signedIn && state.pendingRoomCode && !state.inviteSignInPrompted) {
+    // /?room=ABCDE or /?postMatch=ABCDE link, silently sign them in as a
+    // guest and join / load the recap. applyAuthState fires again once the
+    // anon user exists, which re-runs the signedIn branch below and
+    // tryRejoinPendingRoom / tryLoadPendingPostMatch takes them straight
+    // there. We only kick this off once per boot to avoid an auth-loop if
+    // the sign-in itself fails.
+    if (!signedIn && (state.pendingRoomCode || state.pendingPostMatchCode) && !state.inviteSignInPrompted) {
         state.inviteSignInPrompted = true;
         ensureGuestAuth();
     }
@@ -936,7 +944,7 @@ function wireCustomPack() {
 
     saveBtn.addEventListener('click', async () => {
         msg.classList.remove('is-ok', 'is-err');
-        if (!state.user) { setText(msg, 'Sign in first.'); msg.classList.add('is-err'); return; }
+        if (!state.user || isGuest()) { setText(msg, 'Sign in first.'); msg.classList.add('is-err'); return; }
         let parsed;
         try {
             parsed = JSON.parse($('#custom-pack-input').value || '');
@@ -1047,6 +1055,12 @@ function wireGameTypeToggle() {
                     // .lobby-solo-actions uses a CSS transition instead of hidden.
                     if (el.classList.contains('lobby-solo-actions')) {
                         el.classList.toggle('is-hidden', shouldHide);
+                    } else if (el.id === 'create-globe-drop-time-field') {
+                        // This field's visibility is independently owned by
+                        // the timer-override checkbox, so only ever hide it
+                        // here, never force it open just because Globe Drop
+                        // became the active tab again.
+                        el.hidden = shouldHide || !$('#create-globe-drop-timer-override').checked;
                     } else {
                         el.hidden = shouldHide;
                     }
@@ -1450,11 +1464,13 @@ async function createRoom(opts) {
                 questionTimeMs: seconds * 1000
             }));
         } else {
-            // The pack-select dropdown was retired — live API is the only
-            // built-in source. A saved custom pack still goes through
-            // buildQuestionsForRound('custom', …) elsewhere; the lobby
-            // doesn't expose pack choice anymore.
-            const sel = 'live';
+            // B2: read the question source the host picked. Falls back to the
+            // live API when the picker is absent or holds a stale 'custom'
+            // whose pack has since been cleared, so a missing pack can never
+            // create an unplayable room.
+            const packSel = $('#create-pack-select');
+            const wanted = packSel ? packSel.value : 'live';
+            const sel = (wanted === 'custom' && state.customPack) ? 'custom' : 'live';
             const count = parseInt($('#create-questions-count').value, 10) || 10;
             const seconds = parseInt($('#create-trivia-time').value, 10) || 15;
             btn.innerHTML = 'Fetching questions…';
@@ -1911,7 +1927,13 @@ async function leaveRoom({ silent = false, reason = null } = {}) {
     if (joinPw) joinPw.value = '';
     setJoinPwFieldVisible(false);
     clearJoinError();
-    if (!silent && reason) alert(reason);
+    // B8: `silent` means "no blocking alert", not "say nothing". A room that
+    // vanishes under a player (host closed it, cleanup) used to bounce them to
+    // the lobby with no explanation at all; the reason now rides a toast.
+    if (reason) {
+        if (silent) showToast(reason, { icon: '👋', key: 'room-left-reason' });
+        else alert(reason);
+    }
     teardownMap();
     syncUrlToState();
 }
@@ -2226,7 +2248,14 @@ function wireChat() {
 
 async function sendChatEmoji(emoji) {
     if (!state.user || !state.roomCode || !emoji) return;
-    if (Chat.shouldRateLimit(chatState.lastSentAt, Date.now())) return;
+    // B17: same error surfacing as sendChatMessage. A silently dropped tap
+    // (rate limit or write failure) read as "the button is broken".
+    const err = $('#room-chat-error');
+    if (err) { err.hidden = true; err.textContent = ''; }
+    if (Chat.shouldRateLimit(chatState.lastSentAt, Date.now())) {
+        if (err) { err.textContent = 'Slow down. Wait a moment before sending again.'; err.hidden = false; }
+        return;
+    }
     const displayName = (state.profile && state.profile.displayName) || deriveInitialDisplayName();
     try {
         await addDoc(collection(db, 'triviaRooms', state.roomCode, 'chat'), {
@@ -2238,6 +2267,7 @@ async function sendChatEmoji(emoji) {
         chatState.lastSentAt = Date.now();
     } catch (e) {
         console.warn('sendChatEmoji failed:', e);
+        if (err) { err.textContent = 'Could not send. Try again.'; err.hidden = false; }
     }
 }
 
@@ -2495,9 +2525,14 @@ function renderRoomSettings(isHost) {
 
     // Globe Drop-specific settings rows — hide for trivia rooms.
     const isGlobeDrop = room.gameType === 'globe-drop';
-    const roundTypeItem = $('#room-settings-item-round-type');
-    if (roundTypeItem) roundTypeItem.hidden = !isGlobeDrop;
-    const diffEl = document.querySelector('.room-settings-item:has(#room-settings-difficulty)');
+    // B7: every Globe Drop row hides on a trivia room, not just round type.
+    // The other three used to stay on screen showing the last globe-drop
+    // room's values, which read as facts about the trivia room.
+    for (const id of ['#room-settings-item-round-type', '#room-settings-item-difficulty',
+        '#room-settings-item-locations', '#room-settings-item-timer']) {
+        const item = $(id);
+        if (item) item.hidden = !isGlobeDrop;
+    }
 
     if (isGlobeDrop) {
         const roundType = room.roundType || 'capitals';
@@ -2552,7 +2587,9 @@ function openRoomSettingsEditor() {
     $('#room-settings-edit-round-type').value = room.roundType || 'capitals';
     $('#room-settings-edit-difficulty').value = room.difficulty || 'medium';
     $('#room-settings-edit-count').value = String(room.totalQuestions || 5);
-    const seconds = Math.round((room.questionTimeMs || 120000) / 1000);
+    // B14: fall back to the same 60s every difficulty tier actually creates
+    // with, not a 120s figure nothing else uses.
+    const seconds = Math.round((room.questionTimeMs || Config.GLOBE_DROP_DEFAULT_TIMER_SEC * 1000) / 1000);
     $('#room-settings-edit-time').value = String(seconds);
     const msg = $('#room-settings-msg');
     if (msg) { msg.hidden = true; msg.textContent = ''; msg.classList.remove('is-busy', 'is-err'); }
@@ -2575,7 +2612,7 @@ async function saveRoomSettings() {
     const newRoundType = $('#room-settings-edit-round-type').value || 'capitals';
     const newDifficulty = $('#room-settings-edit-difficulty').value || 'medium';
     const newCount = Math.max(Config.GLOBE_DROP_LOCATIONS_MIN, Math.min(10, parseInt($('#room-settings-edit-count').value, 10) || 5));
-    const newSeconds = parseInt($('#room-settings-edit-time').value, 10) || 120;
+    const newSeconds = parseInt($('#room-settings-edit-time').value, 10) || Config.GLOBE_DROP_DEFAULT_TIMER_SEC;
     const diff = GlobeDropScoring.difficultySettings(newDifficulty);
 
     const oldRoundType = state.roomData.roundType || 'capitals';
@@ -2652,7 +2689,15 @@ async function switchRoomGameType() {
     const switchBtn = $('#room-switch-game-type-btn');
     if (switchBtn) switchBtn.disabled = true;
     try {
-        await updateDoc(doc(db, 'triviaRooms', state.roomCode), { gameType: next });
+        // B14 root cause: a switched room used to keep the OLD game's timer
+        // (or none), which is how the odd 120s fallback ever became visible.
+        // Stamp the target game's own default so the room is coherent.
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+            gameType: next,
+            questionTimeMs: next === 'globe-drop'
+                ? Config.GLOBE_DROP_DEFAULT_TIMER_SEC * 1000
+                : Config.QUESTION_TIME_MS,
+        });
         // Also update state.selectedGameType so the local create-form toggle
         // stays in sync on subsequent room-settings renders.
         state.selectedGameType = next;
@@ -3510,7 +3555,6 @@ function renderGlobeDropStage() {
             triviaEl.textContent = '';
             triviaEl.hidden = true;
             $('#globe-drop-countdown').hidden = true;
-            $('#globe-drop-hint').hidden = false;
             setText($('#globe-drop-status'), '');
             $('#globe-drop-status').classList.remove('is-correct', 'is-wrong');
         }
@@ -4583,6 +4627,16 @@ async function startGame() {
 async function submitAnswer(choiceIndex, question) {
     if (!state.user || !state.roomCode) return;
     if (state.submittedQuestionId === question.id) return; // double-click guard
+
+    // B6: same spectator gate submitGuess already had. A player who joins
+    // mid-question spectates it; without this they could answer (and score on)
+    // the very question the spectator banner says they are sitting out.
+    const mePlayer = state.roomPlayers.find((p) => p.uid === state.user.uid);
+    const joinedAtQIdx = mePlayer && typeof mePlayer.joinedAtQuestionIndex === 'number'
+        ? mePlayer.joinedAtQuestionIndex : -1;
+    const curQIdx = typeof state.roomData.currentQuestionIndex === 'number'
+        ? state.roomData.currentQuestionIndex : -1;
+    if (joinedAtQIdx >= 0 && curQIdx <= joinedAtQIdx) return;
 
     const startMs = state.roomData.questionStartedAt && state.roomData.questionStartedAt.toMillis
         ? state.roomData.questionStartedAt.toMillis() : Date.now();
@@ -5930,11 +5984,23 @@ async function proposeRematch() {
  * fields immediately so opponents stop seeing the prompt. */
 const PROPOSAL_TIMEOUT_MS = 10000;
 let proposalPendingTimerId = null;
+// B10: Escape cancels the pending proposal, matching the Escape contract every
+// other modal in the app honors (it is exactly the Cancel button's action).
+// Backdrop clicks stay deliberately inert: the modal auto-resolves in 10s and
+// an accidental tap should not burn a restart allowance.
+function onProposalPendingKeydown(e) {
+    if (e.key !== 'Escape') return;
+    const modal = document.getElementById('proposal-pending-modal');
+    if (!modal || modal.hasAttribute('hidden')) return;
+    e.preventDefault();
+    cancelOwnProposal('cancel');
+}
 function openProposalPendingModal() {
     const modal = document.getElementById('proposal-pending-modal');
     if (!modal) return;
     state.proposalPendingDeadline = Date.now() + PROPOSAL_TIMEOUT_MS;
     modal.removeAttribute('hidden');
+    document.addEventListener('keydown', onProposalPendingKeydown);
     // Reset the depletion bar to full width and kick off the 10-second
     // shrink. transition: transform 0.25s linear in CSS smooths the
     // 250ms render cadence into a continuous animation.
@@ -5968,6 +6034,7 @@ function closeProposalPendingModal() {
         proposalPendingTimerId = null;
     }
     state.proposalPendingDeadline = null;
+    document.removeEventListener('keydown', onProposalPendingKeydown);
 }
 function renderProposalPendingModal() {
     const list = document.getElementById('proposal-response-list');
@@ -6473,7 +6540,7 @@ async function renderH2HComparison() {
     const eb = entries.find((e) => e.uid === b.value);
     const empty = $('#h2h-empty');
     const result = $('#h2h-result');
-    if (!ea || !eb) {
+    if (!ea || !eb || ea.uid === eb.uid) {
         if (empty) empty.hidden = false;
         if (result) result.hidden = true;
         return;

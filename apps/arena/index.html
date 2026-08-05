@@ -211,6 +211,17 @@
                 </select>
               </label>
               <!-- Trivia-only fields -->
+              <!-- B2: the question-source picker. renderPackOptions() fills it
+                   (Live API always, plus a saved custom pack) and createRoom
+                   reads it. Without this element a pack saved in Profile could
+                   never be played, even though the profile form, the README and
+                   the page description all advertise custom packs. -->
+              <label class="lobby-field" data-game-type="trivia" hidden>
+                <span>Questions from</span>
+                <select id="create-pack-select">
+                  <option value="live">Live questions (The Trivia API)</option>
+                </select>
+              </label>
               <label class="lobby-field" data-game-type="trivia" hidden>
                 <span>Questions per game</span>
                 <select id="create-questions-count">
@@ -408,15 +419,19 @@
                 <dt>Round type</dt>
                 <dd id="room-settings-round-type">—</dd>
               </div>
-              <div class="room-settings-item">
+              <!-- B7: these three rows describe Globe Drop only. They carry ids
+                   so renderRoomSettings can hide them on a trivia room; without
+                   them the panel kept showing a previous room's difficulty,
+                   location count and timer. -->
+              <div class="room-settings-item" id="room-settings-item-difficulty">
                 <dt>Difficulty</dt>
                 <dd id="room-settings-difficulty">—</dd>
               </div>
-              <div class="room-settings-item">
+              <div class="room-settings-item" id="room-settings-item-locations">
                 <dt>Locations</dt>
                 <dd id="room-settings-locations">—</dd>
               </div>
-              <div class="room-settings-item">
+              <div class="room-settings-item" id="room-settings-item-timer">
                 <dt>Time / location</dt>
                 <dd id="room-settings-timer">—</dd>
               </div>
@@ -578,7 +593,13 @@
                  pulsing) instead of auto-expanding, so the globe never
                  moves mid-reveal. Hidden on desktop where both boards are
                  always visible. -->
-            <button type="button" class="globe-drop-standings-toggle" id="globe-drop-standings-toggle" aria-expanded="false" hidden>
+            <!-- B9: no `hidden` attribute. Nothing in app.js ever removed it,
+                 and this app's `[hidden] { display: none !important }` rule
+                 (styles.css) outranks the <=768px `display: inline-flex`, so
+                 the collapsible-standings control was dead at every width.
+                 Visibility is the stylesheet's job: none on desktop,
+                 inline-flex on mobile. -->
+            <button type="button" class="globe-drop-standings-toggle" id="globe-drop-standings-toggle" aria-expanded="false">
               <span class="globe-drop-standings-toggle-label">Standings</span>
               <svg class="globe-drop-standings-toggle-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
             </button>
@@ -607,7 +628,10 @@
               <div class="rounds-history-scoreboard" id="rounds-history-scoreboard"></div>
             </section>
 
-            <p class="globe-drop-hint" id="globe-drop-hint" hidden></p>
+            <!-- B11: the empty #globe-drop-hint paragraph was removed. It was
+                 un-hidden on every new question but no code ever set its text,
+                 so it rendered as a blank line; hints live in
+                 #globe-drop-prompt-hints. -->
             <!-- Status element kept (display:none) so JS callsites don't
                  crash. Action bar removed by request — phase feedback
                  lives in the reveal panel + visual pin. -->

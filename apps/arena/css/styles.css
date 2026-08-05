@@ -1882,6 +1882,18 @@ select option { background: var(--surface); color: var(--text); }
     animation: none;
     transform: none;
   }
+  /* Same trap one level up: every .stage element runs stage-fade (also
+     animation-fill-mode: both), which leaves #stage-globe-drop with a
+     resolved (identity) transform matrix even once fully faded in. That
+     ALSO establishes a containing block, so once the fab-stack above stops
+     doing it, position:fixed on Submit/Clear resolves against this stage
+     section instead of the viewport — landing the pair far down the page,
+     below the fold, instead of pinned to the bottom. Drop the animation
+     here too so #stage-globe-drop never establishes a containing block. */
+  #stage-globe-drop {
+    animation: none;
+    transform: none;
+  }
   /* Submit + Clear are pinned to the viewport bottom as a CENTRED PAIR.
      Pair width = Clear(56) + gap(10) + Submit(200) = 266px. We anchor each
      button off left:50% with fixed pixel offsets so the group is centred
@@ -4730,7 +4742,8 @@ select option { background: var(--surface); color: var(--text); }
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 /* ---------- Profile ---------- */
