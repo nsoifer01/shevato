@@ -210,6 +210,11 @@ body.maptap-rivals-app textarea:focus {
 /* ---------- Layout ---------- */
 
 .page {
+  /* main.css turns body into a column flex container on footer pages
+     (body:has(> [data-include="footer"]), sticky footer). With margin
+     auto alone the flex item shrinks to fit-content, so the dashboard
+     width would change with its text; width:100% pins it to the page. */
+  width: 100%;
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 1.25rem 3rem;
@@ -283,6 +288,11 @@ body.maptap-rivals-app textarea:focus {
   color: var(--text);
   letter-spacing: -0.01em;
 }
+
+/* The leaderboard title sits directly on the table wrap (no sub-line or
+   controls row between them like other views have), so give it its own
+   breathing room. */
+.view-leaderboard .section-title { margin-bottom: 0.85rem; }
 
 .empty-state {
   text-align: center;
