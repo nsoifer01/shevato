@@ -52,6 +52,16 @@ function main() {
   fs.rmSync(SHOWS_DIR, { recursive: true, force: true });
   fs.mkdirSync(SHOWS_DIR, { recursive: true });
 
+  // The curated set is decided BEFORE rendering: pages outside it are
+  // rendered with a noindex,follow robots meta. The May 2026 full-catalogue
+  // launch put ~34k templated pages in front of Google, which crawled the
+  // lot and then declined to index nearly all of it (GSC "Crawled -
+  // currently not indexed" ~60k by August), dragging sitewide quality
+  // signals down with it. The long tail stays generated and linked for app
+  // users and for link equity, but only the curated pages ask to be indexed.
+  const sitemapSeries = selectSitemapSeries(series, SITEMAP_LIMIT);
+  const curatedIds = new Set(sitemapSeries.map((s) => s.seriesId));
+
   let pageCount = 0;
   const start = Date.now();
   for (const s of series) {
@@ -75,7 +85,7 @@ function main() {
         }
       }
     }
-    const html = renderShowPage({ ...s, cast, builtAt: data.builtAt, dominantShape, dominantShapeSlug, relatedShows });
+    const html = renderShowPage({ ...s, cast, builtAt: data.builtAt, dominantShape, dominantShapeSlug, relatedShows, inSitemap: curatedIds.has(s.seriesId) });
     fs.writeFileSync(path.join(dir, 'index.html'), html);
     pageCount++;
     if (pageCount % 1000 === 0) {
@@ -98,9 +108,8 @@ function main() {
     console.log(`[build-show-pages] shape hub /${slug}/ · ${hubShows.length} shows`);
   }
 
-  const sitemapSeries = selectSitemapSeries(series, SITEMAP_LIMIT);
   fs.writeFileSync(SITEMAP_FILE, renderShowsSitemap(sitemapSeries.map(toIndexEntry), data.builtAt, SHAPE_SLUGS));
-  console.log(`[build-show-pages] sitemap curated to top ${sitemapSeries.length} of ${series.length} series by votes; the rest stay crawlable via the A-Z index`);
+  console.log(`[build-show-pages] sitemap curated to top ${sitemapSeries.length} of ${series.length} series by votes; the rest stay reachable for app users but carry noindex,follow`);
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
   console.log(`[build-show-pages] wrote ${pageCount} show pages (${castCount} with cast) + index + sitemap in ${elapsed}s`);

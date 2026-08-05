@@ -45,7 +45,7 @@ test('renderShowPage produces a valid HTML5 document', () => {
 
 test('renderShowPage puts the show name in the title and h1', () => {
   const html = renderShowPage(BREAKING_BAD);
-  assert.ok(html.includes('<title>Breaking Bad (2008) — Episode Ratings'));
+  assert.ok(html.includes('<title>Breaking Bad (2008) - Episode Ratings'));
   assert.ok(html.match(/<h1>Breaking Bad/));
 });
 
@@ -414,4 +414,34 @@ test('groupBySeries backfills series-level fields from any season', () => {
   const grouped = groupBySeries(matches);
   assert.equal(grouped[0].poster, '/late.jpg');
   assert.equal(grouped[0].tmdbId, 99);
+});
+
+// ---------- curated vs long-tail robots meta (SEO cleanup, 2026-08-05) ----------
+// Only sitemap-listed pages ask to be indexed. The long tail keeps
+// noindex,FOLLOW so internal links still pass equity while Google drains the
+// ~60k "Crawled - currently not indexed" backlog created by the May 2026
+// full-catalogue launch.
+
+test('a curated page (inSitemap true) asks to be indexed', () => {
+  const html = renderShowPage({ ...BREAKING_BAD, inSitemap: true });
+  assert.ok(html.includes('<meta name="robots" content="index, follow, max-image-preview:large">'));
+  assert.ok(!html.includes('noindex'));
+});
+
+test('a long-tail page (inSitemap false) is noindex but still follow', () => {
+  const html = renderShowPage({ ...BREAKING_BAD, inSitemap: false });
+  assert.ok(html.includes('<meta name="robots" content="noindex, follow">'));
+  assert.ok(!html.includes('max-image-preview'));
+});
+
+test('inSitemap defaults to indexable so nothing regresses if a caller omits it', () => {
+  const html = renderShowPage(BREAKING_BAD);
+  assert.ok(html.includes('<meta name="robots" content="index, follow, max-image-preview:large">'));
+});
+
+test('the page title uses a plain hyphen, never an em dash', () => {
+  const html = renderShowPage(BREAKING_BAD);
+  const title = html.match(/<title>([^<]*)<\/title>/)[1];
+  assert.ok(title.includes(' - '));
+  assert.ok(!title.includes('—'));
 });

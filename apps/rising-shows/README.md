@@ -73,10 +73,15 @@ These are gitignored build artifacts, derived from `data.json` (which the build 
 
 `sitemap-shows.xml` is deliberately curated: it lists only the top 2,000 series by
 IMDb vote count (`SITEMAP_LIMIT` in `build-show-pages.js`), not all ~34k, plus the
-A-Z index and the 13 shape hubs (2,014 URLs in total). Every page
-is still built and reachable through the A-Z index; the sitemap just focuses Google's
-crawl budget on shows with real search demand instead of parking the long tail in
-"Discovered - currently not indexed" (GSC, 2026-07). After the page builders run,
+A-Z index and the 13 shape hubs (2,014 URLs in total). Every page is still built
+and reachable through the A-Z index for app users, but since 2026-08 the
+non-curated pages carry `noindex, follow`: the 2026-05 full-catalogue launch put
+~34k templated pages in front of Google, which crawled them and then declined to
+index nearly all of them (GSC "Crawled - currently not indexed" ~60k by 2026-08,
+with the site's search traffic collapsing in June under the sitewide quality
+drag). Curating the sitemap alone did not shrink that backlog because the pages
+still self-identified as indexable; the explicit noindex drains it while the
+`follow` keeps internal link equity flowing to the curated pages. After the page builders run,
 `scripts/stamp-sitemap-index.mjs` (repo root) re-stamps the root `sitemap.xml`
 index's `<lastmod>` entries from the freshly generated sub-sitemaps.
 
