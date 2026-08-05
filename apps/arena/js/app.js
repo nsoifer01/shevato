@@ -1,11 +1,11 @@
 /*
- * Brain Arena — main app module.
+ * Brain Arena - main app module.
  *
  * Wiring:
  *   - Auth: window.firebaseAuth (set up by ../../firebase-config.js, loaded
  *     as a module earlier in the page; we wait on its ready promise).
  *   - Firestore: import the SDK directly from the gstatic CDN. The db
- *     instance is already initialized inside firebase-config.js — we import
+ *     instance is already initialized inside firebase-config.js - we import
  *     `db` from there so we don't initialize a second app.
  *   - Pure helpers: window.BrainArena.{Config,Scoring,RoomState} from the
  *     three classic scripts loaded above this module.
@@ -30,7 +30,7 @@
  */
 
 // All Firestore SDK access flows through firebase-config.js (the single
-// init point) so we don't import the SDK URL directly here — the
+// init point) so we don't import the SDK URL directly here - the
 // `no app file imports Firestore directly` invariant test forbids it.
 // Path: this file is /apps/arena/js/app.js, so we go up three
 // directories (js → arena → apps → repo root).
@@ -79,13 +79,13 @@ const state = {
     // question (not once per rAF frame between write and snapshot ack).
     earlyRevealForQuestion: null,
 
-    // Lobby — which game type the create-card is currently configured for.
+    // Lobby - which game type the create-card is currently configured for.
     // Defaults to globe-drop because it's the headline mode now.
     selectedGameType: 'globe-drop',
 
     // GlobeDrop-specific runtime state (only populated while a GlobeDrop room
     // is active). globe = globe.gl/Three.js scene wrapper; we don't keep
-    // per-marker handles because globe.gl is declarative — call
+    // per-marker handles because globe.gl is declarative - call
     // pointsData()/arcsData() with the full set on every update.
     globe: null,
     globeResizeAttached: false,          // guard so the ResizeObserver attaches once
@@ -98,8 +98,8 @@ const state = {
     standingsToggleQId: null,            // question id the collapse state was reset for
     pendingGuess: null,                  // { lat, lng } selected but not yet submitted
     lastRenderedMapQuestion: null,       // location id currently shown on the globe
-    lastRevealedMapQuestion: null,       // '{locId}:local' or '{locId}:global' — what we've drawn
-    lastCameraTarget: null,              // '{locId}:{lat},{lng}' — short-circuits redundant pointOfView calls
+    lastRevealedMapQuestion: null,       // '{locId}:local' or '{locId}:global' - what we've drawn
+    lastCameraTarget: null,              // '{locId}:{lat},{lng}' - short-circuits redundant pointOfView calls
     triviaFetchedFor: null,              // location id we've already kicked off a Wikipedia fetch for
 
     // Timer rAF handle
@@ -107,13 +107,13 @@ const state = {
 
     // Leaderboard
     leaderboardEntries: [],
-    // Active sort for the global leaderboard table — `{ key, dir }`.
+    // Active sort for the global leaderboard table - `{ key, dir }`.
     // Click on a header toggles dir for the same key, or sets the new
     // key with its data-sort-default (defaults to 'desc' if absent).
     leaderboardSort: { key: 'avgScore', dir: 'desc' },
     leaderboardUnsub: null,
 
-    // Daily Globe Drop leaderboard — same panel, separate subscription
+    // Daily Globe Drop leaderboard - same panel, separate subscription
     // because it lives in its own collection and resets at UTC midnight.
     dailyLeaderboardEntries: [],
     dailyLeaderboardUnsub: null,
@@ -125,7 +125,7 @@ const state = {
     // Room code parsed from `?room=ABCDE` at boot, queued behind sign-in.
     // applyAuthState picks it up the first time it sees a signed-in user.
     pendingRoomCode: null,
-    // Same idea for `?postMatch=ABCDE` — a read-only deep link to a
+    // Same idea for `?postMatch=ABCDE` - a read-only deep link to a
     // finished room's recap. Auth-gated since Firestore reads need it.
     pendingPostMatchCode: null,
 
@@ -225,7 +225,7 @@ function wireConfirmModal() {
     const modal = document.getElementById('confirm-modal');
     if (!modal) return;
     modal.addEventListener('click', (e) => {
-        // .closest() — clicks on the SVG/path INSIDE the X button bubble
+        // .closest() - clicks on the SVG/path INSIDE the X button bubble
         // as e.target=<path|svg>, which would never match [data-confirm-close]
         // on the button directly via .matches().
         if (e.target.closest('[data-confirm-close]')) closeConfirmModal(false);
@@ -336,7 +336,7 @@ function wireViewTabs() {
  * The URL is the single source of truth for: which tab is active, and
  * which room (if any) the user is currently in. A refresh re-attaches to
  * the same tab + the same room without re-prompting. A pasted room URL
- * is treated as a join attempt — gates apply normally (sign-in, password).
+ * is treated as a join attempt - gates apply normally (sign-in, password).
  *
  * We use history.replaceState (not pushState) so the back button doesn't
  * accumulate every tab click; the URL just mirrors current state.
@@ -387,7 +387,7 @@ function syncUrlToState() {
         } else {
             url.searchParams.delete('view');
         }
-        // ?postMatch=<code> wins over ?room=<code> — the recap view is
+        // ?postMatch=<code> wins over ?room=<code> - the recap view is
         // read-only, so we don't want pasting the URL to also re-join.
         if (state.postMatchCode) {
             url.searchParams.set('postMatch', state.postMatchCode);
@@ -400,7 +400,7 @@ function syncUrlToState() {
             url.searchParams.delete('postMatch');
         }
         const next = url.pathname + (url.search ? url.search : '') + url.hash;
-        // No-op when URL is already in sync — avoids redundant history
+        // No-op when URL is already in sync - avoids redundant history
         // entries when render fans out three setView calls during boot.
         if (next !== window.location.pathname + window.location.search + window.location.hash) {
             window.history.replaceState(null, '', next);
@@ -419,7 +419,7 @@ function syncUrlToState() {
 async function restoreFromUrl() {
     const { view, room, postMatch } = parseUrlState();
     if (view && view !== state.activeView) setView(view);
-    // postMatch wins over room — it's a deep link to a finished room's
+    // postMatch wins over room - it's a deep link to a finished room's
     // recap view. Same auth gating (Firestore reads need a signed-in
     // user, even anonymous), so we queue behind applyAuthState too.
     if (postMatch) { state.pendingPostMatchCode = postMatch; return; }
@@ -441,14 +441,14 @@ async function tryLoadPendingPostMatch() {
     try {
         const snap = await getDoc(doc(db, 'triviaRooms', code));
         if (!snap.exists()) {
-            showJoinError('Recap not found — that room may have been cleaned up.');
+            showJoinError('Recap not found - that room may have been cleaned up.');
             state.postMatchCode = null;
             syncUrlToState();
             return;
         }
         const data = snap.data() || {};
         if (data.status !== 'finished') {
-            // Not finished — fall through to a normal join attempt so the
+            // Not finished - fall through to a normal join attempt so the
             // user lands in the active room instead of a broken recap.
             state.pendingRoomCode = code;
             state.postMatchCode = null;
@@ -488,7 +488,7 @@ async function tryRejoinPendingRoom() {
     // Indicate to the UI that we're resolving a room from the URL. We hold
     // off any "finished / missing room" verdict until after both the room
     // doc AND the player-membership doc have actually returned from
-    // Firestore — that was the race that caused "That room has already
+    // Firestore - that was the race that caused "That room has already
     // finished" to flash on first paint of an active room.
     setView('play');
     showJoinError('Loading room…');
@@ -507,7 +507,7 @@ async function tryRejoinPendingRoom() {
         const playerSnap = await getDoc(playerRef);
         const wasAlreadyMember = playerSnap.exists();
         if (wasAlreadyMember) {
-            // Member rejoin — works for any status. Finished rooms render
+            // Member rejoin - works for any status. Finished rooms render
             // the end stage, lobby/picking/playing render the matching
             // stage. Either way, no error.
             clearJoinError();
@@ -550,7 +550,7 @@ function waitForFirebaseAuth() {
 /**
  * True when the current user is an anonymous (guest) Firebase user.
  * Guests can play, but persistent writes (leaderboard, H2H, daily,
- * users/{uid}.triviaProfile) skip them — their room is ephemeral.
+ * users/{uid}.triviaProfile) skip them - their room is ephemeral.
  */
 function isGuest() {
     return !!(state.user && state.user.isAnonymous);
@@ -582,13 +582,13 @@ async function ensureGuestAuth() {
         // operation). Surface a toast so the user understands why
         // they're being routed to the sign-in modal instead of into
         // the room.
-        showToast('Guest mode is unavailable right now — please sign in or sign up to play.', { icon: '⚠️', key: 'guest-auth-failed' });
+        showToast('Guest mode is unavailable right now - please sign in or sign up to play.', { icon: '⚠️', key: 'guest-auth-failed' });
         return null;
     }
 }
 
 async function loadProfile(uid) {
-    // Guests never get a persistent users/{uid} doc — their uid resets
+    // Guests never get a persistent users/{uid} doc - their uid resets
     // when storage is cleared, so any profile we wrote would be garbage.
     // Returning null lets renderProfileView short-circuit into the
     // "sign up to save your stats" CTA branch.
@@ -602,7 +602,7 @@ async function loadProfile(uid) {
         // Seed a minimal profile on first run.
         const seeded = {
             displayName: deriveInitialDisplayName(),
-            // Not a choice, just a placeholder — ensureDisplayNameChosen
+            // Not a choice, just a placeholder - ensureDisplayNameChosen
             // asks the player to confirm before anything is published.
             displayNameChosen: false,
             xp: 0,
@@ -633,13 +633,13 @@ function deriveInitialDisplayName() {
  * their first multiplayer game. Returns the name to use, or null if the
  * player dismissed the prompt (caller aborts the create/join).
  *
- * Guests are exempt — they have no persistent profile and never reach the
+ * Guests are exempt - they have no persistent profile and never reach the
  * leaderboard, so there's nothing to remember and nothing to publish.
  */
 async function ensureDisplayNameChosen() {
     if (!state.user || isGuest()) return deriveInitialDisplayName();
     // The invite-link path races loadProfile, so a null profile here can
-    // just mean "not back yet" — resolve it before deciding to prompt,
+    // just mean "not back yet" - resolve it before deciding to prompt,
     // otherwise we'd re-ask a player who already picked a name.
     if (!state.profile) state.profile = await loadProfile(state.user.uid);
     const { needed, suggested } = RoomState.displayNamePrompt(
@@ -652,7 +652,7 @@ async function ensureDisplayNameChosen() {
     try {
         await saveProfileField({ displayName: picked, displayNameChosen: true });
     } catch (err) {
-        // Profile doc unreachable — play on with the name they picked
+        // Profile doc unreachable - play on with the name they picked
         // rather than blocking the game; we'll ask again next time.
         console.warn('Could not save display name:', err);
     }
@@ -673,7 +673,7 @@ async function saveProfileField(patch) {
 function applyAuthState(user) {
     state.user = user || null;
     const signedIn = !!user;
-    // Treat guests (anonymous users) as "not signed up" for UI gating —
+    // Treat guests (anonymous users) as "not signed up" for UI gating -
     // the auth-gate / profile-signed-out CTAs still show their sign-up
     // prompt, but the lobby itself stays unlocked because createRoom /
     // joinRoom auto-bootstrap anon auth when needed.
@@ -694,7 +694,7 @@ function applyAuthState(user) {
         ensureGuestAuth();
     }
 
-    // Profile view toggles — guests see the sign-up CTA (same panel
+    // Profile view toggles - guests see the sign-up CTA (same panel
     // as fully signed-out users, slightly different copy handled by
     // renderProfileGuestCTA).
     setClass($('#profile-signed-out'), 'is-hidden', isRegistered);
@@ -710,13 +710,13 @@ function applyAuthState(user) {
 
     if (signedIn) {
         // If we landed on /?room=ABCDE or /?postMatch=ABCDE before
-        // sign-in, the rejoin / recap fetch was queued behind auth —
+        // sign-in, the rejoin / recap fetch was queued behind auth -
         // kick it off now. Runs in parallel with loadProfile since
         // the two don't depend on each other.
         if (state.pendingPostMatchCode) tryLoadPendingPostMatch();
         else if (state.pendingRoomCode)  tryRejoinPendingRoom();
         // Skip the registered-only side effects (admin probe + profile
-        // subscription) for guests — both would be wasted Firestore
+        // subscription) for guests - both would be wasted Firestore
         // reads that hit rule denials.
         if (isRegistered) checkLeaderboardAdmin(user.uid);
         if (isGuest()) {
@@ -757,7 +757,7 @@ function applyAuthState(user) {
  * Update the copy of the #profile-signed-out CTA based on whether the
  * visitor is fully signed out or playing as a guest. Same panel, two
  * voices: "Sign in to save…" for signed-out, "You're playing as a guest
- * — sign up to keep your stats" for anonymous users.
+ * - sign up to keep your stats" for anonymous users.
  */
 function renderProfileGuestCTA() {
     const panel = $('#profile-signed-out');
@@ -778,7 +778,7 @@ function renderProfileView() {
     const input = $('#profile-display-name');
     if (input && document.activeElement !== input) input.value = name;
     setText($('#profile-avatar'), avatarLetter(name));
-    // Avg score (= total score / games) is the headline stat — total
+    // Avg score (= total score / games) is the headline stat - total
     // score is what's persisted, but mean per game is the meaningful
     // skill signal regardless of how many games someone has logged.
     const games = p.gamesPlayed || 0;
@@ -808,7 +808,7 @@ function wireProfileView() {
  * Push a new display name to every place we've denormalized it:
  *   - the active room's player doc (so the mini-board updates)
  *   - the global leaderboard doc (so other tabs see the new name)
- * Errors are swallowed — best-effort UX, the source of truth is the
+ * Errors are swallowed - best-effort UX, the source of truth is the
  * user profile doc which has already been updated by saveProfileField.
  */
 async function propagateDisplayName(displayName) {
@@ -837,7 +837,7 @@ async function propagateDisplayName(displayName) {
  * client-side privacy extension (uBlock, Brave Shields, etc.) blocks the
  * https://firestore.googleapis.com/.../Write/channel POST. Firestore retries
  * internally and keeps the app working, but the unhandled rejection lands
- * in the console as a scary "ERR_BLOCKED_BY_CLIENT" stack — and on leaveRoom
+ * in the console as a scary "ERR_BLOCKED_BY_CLIENT" stack - and on leaveRoom
  * the terminating XHR can throw on the way out.
  *
  * We swallow only this specific class of message; real bugs still surface.
@@ -885,7 +885,7 @@ function shuffle(arr, rand = Math.random) {
  * play order.
  *
  * After stamping, reorder the playlist so each round is at least as
- * hard as the last — easiest first, hardest last. Per-location
+ * hard as the last - easiest first, hardest last. Per-location
  * difficulty alone doesn't guarantee progression; without this sort
  * the playlist would jump around (×1 → ×2.5 → ×1 → ×1.5 → ×1).
  * Ties keep their original (shuffled) order via Array.sort's
@@ -904,10 +904,10 @@ function applyRoundMultipliers(locations, roundType) {
  *
  * Live source is the only built-in (no offline fallback). A saved custom
  * pack takes precedence when explicitly selected. Any fetch failure bubbles
- * up — callers should catch and surface a clear error to the host.
+ * up - callers should catch and surface a clear error to the host.
  *
- * @param {string} packId — 'live' | 'custom'
- * @param {number} count — number of questions to be played this round
+ * @param {string} packId - 'live' | 'custom'
+ * @param {number} count - number of questions to be played this round
  * @returns {Promise<{questions:Array, packId:string, packName:string}>}
  */
 async function buildQuestionsForRound(packId, count) {
@@ -1152,7 +1152,7 @@ function wireLobby() {
         $('#create-password-field').hidden = !wantsPrivate;
     });
 
-    // Globe Drop: difficulty drives the hint level only — timer is a
+    // Globe Drop: difficulty drives the hint level only - timer is a
     // separate dial (default 60 s, host can override via the toggle).
     $('#create-globe-drop-timer-override').addEventListener('change', (e) => {
         $('#create-globe-drop-time-field').hidden = !e.target.checked;
@@ -1189,7 +1189,7 @@ function wireLobby() {
         if (ok) leaveRoom();
     });
     $('#start-game-btn').addEventListener('click', startGame);
-    // Legacy bottom-of-recap end-stage buttons were removed — guard
+    // Legacy bottom-of-recap end-stage buttons were removed - guard
     // the listeners so a future re-add Just Works.
     const endBack = $('#end-back-btn');
     if (endBack) endBack.addEventListener('click', () => leaveRoom());
@@ -1235,7 +1235,7 @@ function wireLobby() {
     if (standingsToggle) standingsToggle.addEventListener('click', () => {
         state.standingsCollapsed = !state.standingsCollapsed;
         applyStandingsCollapsed();
-        // Expanding satisfies the "something new to see" cue — stop pulsing.
+        // Expanding satisfies the "something new to see" cue - stop pulsing.
         if (!state.standingsCollapsed) standingsToggle.classList.remove('is-pulsing');
     });
 
@@ -1327,7 +1327,7 @@ function showJoinError(msg) {
 
 async function createRoom(opts) {
     if (!state.user) {
-        // Visitor hasn't signed up — drop them into anonymous (guest)
+        // Visitor hasn't signed up - drop them into anonymous (guest)
         // mode so they can try the game with zero friction. Their room
         // and player docs are ephemeral; leaveRoom + the TTL sweep wipe
         // them. Persistent writes (leaderboard, H2H, profile) skip
@@ -1347,7 +1347,7 @@ async function createRoom(opts) {
         : (state.selectedGameType === 'globe-drop' ? 'globe-drop' : 'trivia');
 
     // Solo / daily rooms are always private to keep them out of any future
-    // public-room discovery. They have no password — only this user is in
+    // public-room discovery. They have no password - only this user is in
     // them, and the room code itself acts as the (single-use) secret.
     const isPrivate = isSoloLike ? true : !!$('#create-private-toggle').checked;
     const password = (isPrivate && !isSoloLike) ? String($('#create-password').value || '').trim() : '';
@@ -1443,9 +1443,9 @@ async function createRoom(opts) {
             // Difficulty-driven scaling: each location is stamped with
             // a multiplier from the [1.0, 1.5, 2.0, 2.5, 3.0] ladder
             // based on its own continent rarity × population obscurity
-            // — NOT its position in the playlist. Famous capitals are
+            // - NOT its position in the playlist. Famous capitals are
             // worth less; obscure island states are worth more. (Major-cities
-            // is the exception: its multiplier is continent-based — see
+            // is the exception: its multiplier is continent-based - see
             // applyRoundMultipliers / assignDifficultyMultipliers.)
             locations = applyRoundMultipliers(locations, roundType);
 
@@ -1507,7 +1507,7 @@ async function createRoom(opts) {
     } catch (err) {
         console.warn('Room creation failed:', err);
         // The live APIs (The Trivia API + REST Countries) are the only
-        // built-in question/location sources — there's no offline pack to
+        // built-in question/location sources - there's no offline pack to
         // fall back to. Surface the failure so the host knows to retry.
         alert(
             (gameType === 'globe-drop' ? 'Could not fetch locations: ' : 'Could not fetch questions: ')
@@ -1521,7 +1521,7 @@ async function createRoom(opts) {
 }
 
 async function reserveUniqueRoomCode() {
-    // Try a handful of times — collisions on a 31^5 space are vanishingly rare.
+    // Try a handful of times - collisions on a 31^5 space are vanishingly rare.
     for (let i = 0; i < 6; i++) {
         const code = RoomState.generateRoomCode();
         const snap = await getDoc(doc(db, 'triviaRooms', code));
@@ -1541,7 +1541,7 @@ async function reserveUniqueRoomCode() {
  *     request updates the DOM. Otherwise a slow lookup for an earlier
  *     prefix could overwrite a newer one.
  *   - Any error (not signed in, doc missing, transient) just clears the
- *     field — the user will see the real error when they click Join.
+ *     field - the user will see the real error when they click Join.
  */
 let joinPeekToken = 0;
 function setJoinPwFieldVisible(visible) {
@@ -1571,7 +1571,7 @@ async function maybeRevealJoinPasswordField(rawValue) {
 
 async function joinRoom() {
     if (!state.user) {
-        // Same guest-mode fallback as createRoom — sign in anonymously
+        // Same guest-mode fallback as createRoom - sign in anonymously
         // so the visitor can join a friend's room without making an
         // account first.
         await ensureGuestAuth();
@@ -1620,7 +1620,7 @@ async function joinRoom() {
     const displayName = await ensureDisplayNameChosen();
     if (!displayName) return;
     // Mark the player as a spectator if they're joining mid-game so the UI
-    // can show a "Spectating — joining next round" banner and gate submitting.
+    // can show a "Spectating - joining next round" banner and gate submitting.
     const isSpectator = data.status === 'playing';
     await joinPlayer(code, displayName, /* isHost */ false, isSpectator ? (data.currentQuestionIndex || 0) : -1);
     enterRoom(code);
@@ -1637,7 +1637,7 @@ async function joinPlayer(code, displayName, isHost, joinedAtQuestionIndex) {
         if (roomSnap.exists()) currentRound = roomSnap.data().round || 1;
     } catch (e) { /* fall back to 1 */ }
 
-    // Check for an existing player doc written by beforeUnloadCleanup — if
+    // Check for an existing player doc written by beforeUnloadCleanup - if
     // disconnectedAt is within the grace window, restore the player's
     // score/streak/answers instead of resetting them to 0.
     let existingSnap = null;
@@ -1710,7 +1710,7 @@ function enterRoom(code) {
     // texture is ~4.5 MB and decoding it is the single biggest chunk
     // inside Globe()(el). Browsers cache decoded bitmap data, so once
     // this <img> resolves, the later globe init reuses it instead of
-    // re-fetching + re-decoding — moving most of the >200ms cost off
+    // re-fetching + re-decoding - moving most of the >200ms cost off
     // the game-start critical path.
     if (!state.earthTextureWarmed) {
         state.earthTextureWarmed = true;
@@ -1752,7 +1752,7 @@ function enterRoom(code) {
 
 /**
  * Audio ping when an opponent transitions from "not answered" to
- * "answered" for the current question. No toast, no pulse banner —
+ * "answered" for the current question. No toast, no pulse banner -
  * the green name tint + ✓ on the mini-board carries the visual
  * signal. Skipped for the local player (their own submission gets
  * a louder cue from guessSubmitted) and for any submission that
@@ -1780,7 +1780,7 @@ function flashStagePulse(message) {
     if (!el) return;
     el.textContent = message;
     el.removeAttribute('hidden');
-    // Re-trigger CSS animation by cloning the node — the keyframes only
+    // Re-trigger CSS animation by cloning the node - the keyframes only
     // run on first mount, so swapping the element resets them.
     const replacement = el.cloneNode(true);
     el.parentNode.replaceChild(replacement, el);
@@ -1825,7 +1825,7 @@ const DISCONNECT_GRACE_MS = 30000; // 30-second rejoin window
 async function beforeUnloadCleanup() {
     if (!state.roomCode || !state.user) return;
     // Keep the player doc when the room is already in the post-match
-    // stage — refreshing the page should land the player back on the
+    // stage - refreshing the page should land the player back on the
     // end screen, not bounce them to the lobby. tryRejoinPendingRoom
     // identifies them as a member via this doc on reload, then
     // renderRoom routes status=finished → renderEndStage.
@@ -1858,7 +1858,7 @@ async function deleteRoomChat(code) {
         await Promise.all(snap.docs.map((d) =>
             deleteDoc(doc(db, 'triviaRooms', code, 'chat', d.id)).catch(() => {})
         ));
-    } catch (e) { /* ignore — room delete is the source of truth */ }
+    } catch (e) { /* ignore - room delete is the source of truth */ }
 }
 
 async function leaveRoom({ silent = false, reason = null } = {}) {
@@ -1888,7 +1888,7 @@ async function leaveRoom({ silent = false, reason = null } = {}) {
             const remaining = await getDocs(collection(db, 'triviaRooms', code, 'players'));
             const survivors = remaining.docs.map((d) => d.data());
             if (!survivors.length) {
-                // Best-effort chat sweep before deleting the room doc —
+                // Best-effort chat sweep before deleting the room doc -
                 // chat messages don't cascade automatically. Mostly
                 // matters for guest rooms (where we want zero residual
                 // data in Firestore after the last player leaves), but
@@ -1953,7 +1953,7 @@ function isHostOfActiveRoom() {
 
 /**
  * Per-player rate limits on mid-game control actions, keyed by room.
- * Resets when leaveRoom() runs. Limits are intentionally generous —
+ * Resets when leaveRoom() runs. Limits are intentionally generous -
  * they exist to prevent griefing (one player spamming pause / restart
  * proposals), not to punish honest use.
  */
@@ -2044,7 +2044,7 @@ async function hostEndGameEarly() {
 }
 
 /* =====================================================================
- * Chat — per-room subcollection at triviaRooms/{code}/chat
+ * Chat - per-room subcollection at triviaRooms/{code}/chat
  * ===================================================================== */
 
 const chatState = {
@@ -2064,7 +2064,7 @@ function openChatPanel() {
     // Show "Game in progress" banner when a game is actively running.
     const liveBanner = document.getElementById('room-chat-game-live');
     if (liveBanner) liveBanner.hidden = !(state.roomData && state.roomData.status === 'playing');
-    // Focus the input on open — feels conversational.
+    // Focus the input on open - feels conversational.
     const input = $('#room-chat-input');
     if (input) setTimeout(() => input.focus(), 50);
     scrollChatToBottom();
@@ -2286,7 +2286,7 @@ function renderRoom() {
     const room = state.roomData;
     const playing = room.status === 'playing';
     // Pause + End Game are available to every player (host included)
-    // once the room is playing — the previous host-only gate created
+    // once the room is playing - the previous host-only gate created
     // dead-end states where the host had left.
     const hostActions = $('#room-host-actions');
     if (hostActions) hostActions.hidden = !playing;
@@ -2308,7 +2308,7 @@ function renderRoom() {
         restartBtn2.disabled = left <= 0;
         restartBtn2.title = restartBtn2.disabled
             ? 'You\'ve used your restart proposals for this room.'
-            : `Propose restarting the game — all players must accept (${left} left)`;
+            : `Propose restarting the game - all players must accept (${left} left)`;
     }
     const endBtn2 = $('#room-end-btn');
     if (endBtn2) {
@@ -2335,7 +2335,7 @@ function renderRoom() {
     // canonical end action. The leave-room button reads as "Back to
     // lobby" so the two controls don't both say "End game" and
     // confuse the player. Same treatment once a multi game is
-    // finished — the game's over, "Leave room" reframes nicely as
+    // finished - the game's over, "Leave room" reframes nicely as
     // "Back to lobby".
     const finished = room.status === 'finished';
     const leaveBtn = $('#leave-room-btn');
@@ -2347,14 +2347,14 @@ function renderRoom() {
     // stage. The end-of-stage section keeps its own copy for users
     // who scroll past the recap. Toggle a class on .room-head-right
     // so the layout flips from inline-row (mid-game) to a clean
-    // right-aligned column (post-match) — see styles.css.
+    // right-aligned column (post-match) - see styles.css.
     const headerEndActions = $('#room-end-actions');
     const headerRematch = $('#room-end-again-btn');
     if (headerEndActions) headerEndActions.hidden = !finished;
     const headRight = document.querySelector('.room-head-right');
     if (headRight) headRight.classList.toggle('is-finished', finished);
     if (headerRematch) {
-        // Mirror the visibility logic from renderRematchUI — only show
+        // Mirror the visibility logic from renderRematchUI - only show
         // when a rematch is even an option (>=2 players in multi, or
         // solo player can restart).
         const pCount = rematchPlayerCount();
@@ -2369,7 +2369,7 @@ function renderRoom() {
             : '<span aria-hidden="true">🔁</span> Rematch';
     }
 
-    // Rematch / restart proposal — surface an accept/decline prompt
+    // Rematch / restart proposal - surface an accept/decline prompt
     // exactly once per proposal so the player has a chance to weigh in
     // without missing the round. Fires both mid-game (status='playing')
     // and post-game (status='finished'). A live "Xs remaining" ticker
@@ -2386,7 +2386,7 @@ function renderRoom() {
         const baseBody = playing
             ? 'Another player proposed restarting. Accept to draw fresh locations; decline to keep playing.'
             : 'Another player wants a rematch. Accept to start a new game; decline to head back to the lobby.';
-        // The body element is the same one openConfirmModal writes —
+        // The body element is the same one openConfirmModal writes -
         // we keep updating it until the modal closes. clearInterval
         // happens both when the promise resolves and when the timer
         // hits zero (which also auto-declines).
@@ -2413,7 +2413,7 @@ function renderRoom() {
     }
 
     // If this client IS the proposer, keep their waiting modal in sync
-    // with the latest snapshot — and close it once the proposal
+    // with the latest snapshot - and close it once the proposal
     // resolves either way (unanimous accept → game restarts, decline →
     // close, no proposal field → host already cleared it).
     if (room.rematchProposedBy && state.user && room.rematchProposedBy === state.user.uid) {
@@ -2423,7 +2423,7 @@ function renderRoom() {
             else if (rematchAcceptCount() >= rematchPlayerCount()) closeProposalPendingModal();
         }
     } else if (!room.rematchProposedBy && state.proposalPendingDeadline) {
-        // Proposal cleared by someone else — make sure our modal is closed.
+        // Proposal cleared by someone else - make sure our modal is closed.
         closeProposalPendingModal();
     }
     // Reset the prompt-shown sentinel once a proposal clears so a NEW
@@ -2442,10 +2442,10 @@ function renderRoom() {
         && !state.rematchInFlight) {
         playAgain();
     }
-    // Spectator banner — shown when the local player joined mid-game and the
+    // Spectator banner - shown when the local player joined mid-game and the
     // current question is the one they joined on (joinedAtQuestionIndex === currentQuestionIndex).
     // As soon as the host advances to the next question the index increments
-    // and the banner disappears — the player is now a full participant.
+    // and the banner disappears - the player is now a full participant.
     const spectatorBanner = $('#room-spectator-banner');
     if (spectatorBanner) {
         const mePlayer = state.user ? state.roomPlayers.find((p) => p.uid === state.user.uid) : null;
@@ -2513,17 +2513,17 @@ function renderRoomSettings(isHost) {
     const room = state.roomData || {};
     const canEdit = isHost && room.status === 'lobby';
 
-    // Show the panel for both game types — trivia rooms need the game-type
+    // Show the panel for both game types - trivia rooms need the game-type
     // display and the switch button even though they have no GlobeDrop fields.
     panel.hidden = false;
 
-    // Game type display row — always populated regardless of game type.
+    // Game type display row - always populated regardless of game type.
     const gameTypeEl = $('#room-settings-game-type');
     if (gameTypeEl) {
         setText(gameTypeEl, room.gameType === 'globe-drop' ? 'Globe Drop' : 'Trivia');
     }
 
-    // Globe Drop-specific settings rows — hide for trivia rooms.
+    // Globe Drop-specific settings rows - hide for trivia rooms.
     const isGlobeDrop = room.gameType === 'globe-drop';
     // B7: every Globe Drop row hides on a trivia room, not just round type.
     // The other three used to stay on screen showing the last globe-drop
@@ -2549,7 +2549,7 @@ function renderRoomSettings(isHost) {
         setText($('#room-settings-timer'), `${seconds}s`);
     }
 
-    // Switch game type button — host only, lobby only.
+    // Switch game type button - host only, lobby only.
     const switchBtn = $('#room-switch-game-type-btn');
     if (switchBtn) {
         switchBtn.hidden = !canEdit;
@@ -2574,7 +2574,7 @@ function renderRoomSettings(isHost) {
 }
 
 /**
- * Open the inline settings editor — preload the selects with the
+ * Open the inline settings editor - preload the selects with the
  * current room values, hide the read-only summary, show the form.
  */
 function openRoomSettingsEditor() {
@@ -2652,7 +2652,7 @@ async function saveRoomSettings() {
             update.playedQuestionIds = [];
         }
         // If difficulty changed but timer was the tier default, snap timer
-        // Difficulty no longer rewrites the timer — hosts set the timer
+        // Difficulty no longer rewrites the timer - hosts set the timer
         // independently via the override toggle.
         await updateDoc(doc(db, 'triviaRooms', state.roomCode), update);
         if (msg) {
@@ -2675,7 +2675,7 @@ async function saveRoomSettings() {
 
 /**
  * Toggle the room's game type between 'globe-drop' and 'trivia' while the
- * room is still in the lobby. Writes atomically to the room doc — only the
+ * room is still in the lobby. Writes atomically to the room doc - only the
  * gameType field changes, the player list is untouched.
  */
 async function switchRoomGameType() {
@@ -2711,7 +2711,7 @@ async function switchRoomGameType() {
 /**
  * Fetch the lifetime H2H record between the current user and `opponentUid`
  * and stamp a "W-L-T" badge into the lobby tile. Cached on state so
- * re-renders within the same session don't refetch. Best-effort —
+ * re-renders within the same session don't refetch. Best-effort -
  * missing docs / network errors leave the badge hidden.
  */
 async function hydrateLobbyH2HBadge(opponentUid, spanId) {
@@ -2748,7 +2748,7 @@ function renderLobbyStage(isHost) {
     hide($('#stage-picking'));
     hide($('#stage-end'));
 
-    // Room settings panel — show current room settings to everyone in
+    // Room settings panel - show current room settings to everyone in
     // the lobby. Host can edit (click event handled separately).
     renderRoomSettings(isHost);
 
@@ -2868,7 +2868,7 @@ function renderPickingStage(isHost) {
         prompt.hidden = true;
         const msg = deciderPresent
             ? `Waiting for ${deciderName} to pick a category…`
-            : `${deciderName} disconnected — host can pick to keep the game moving.`;
+            : `${deciderName} disconnected - host can pick to keep the game moving.`;
         setText(waiting, msg);
         waiting.hidden = false;
     }
@@ -2986,9 +2986,9 @@ function renderQuestion(q, myAnsweredIndex) {
             setText(status, '✓ Correct!');
             status.classList.add('is-correct');
         } else if (myAnsweredIndex == null) {
-            setText(status, `⏱ Time up — correct answer: ${correctText}`);
+            setText(status, `⏱ Time up - correct answer: ${correctText}`);
         } else {
-            setText(status, `✗ Wrong — correct answer: ${correctText}`);
+            setText(status, `✗ Wrong - correct answer: ${correctText}`);
             status.classList.add('is-wrong');
         }
     } else if (myAnsweredIndex != null) {
@@ -3006,7 +3006,7 @@ function renderMiniBoard(currentQuestionId) {
         score: p.score,
         streak: p.streak,
         uid: p.uid,
-        // Mark "answered" only when the marker matches the current question id —
+        // Mark "answered" only when the marker matches the current question id -
         // otherwise we'd light the green check on stale data from question N-1.
         answeredThisQuestion: currentQuestionId != null
             && p.currentAnsweredFor === currentQuestionId
@@ -3019,7 +3019,7 @@ function renderMiniBoard(currentQuestionId) {
         if (i === 0 && (p.score || 0) > 0) li.classList.add('is-leader');
         if (p.answeredThisQuestion) li.classList.add('is-answered');
         // Surface streak ≥2 so the multiplier feels visible and people can
-        // see who's on a heater — single correct (streak=1) doesn't yet
+        // see who's on a heater - single correct (streak=1) doesn't yet
         // earn a multiplier, so no indicator there.
         const streak = Number(p.streak) || 0;
         const streakChip = streak >= 2
@@ -3029,22 +3029,26 @@ function renderMiniBoard(currentQuestionId) {
             `<span class="mini-board-rank">${i+1}</span>` +
             `<span class="mini-board-name">${escapeHtml(p.displayName)}</span>` +
             streakChip +
+            // Same "tint + ✓" answered cue Globe Drop's board emits. Without
+            // this span the tint is the only half that lands, and a
+            // full-width tinted name reads as a disabled input.
+            `<span class="mini-board-check" aria-label="submitted"></span>` +
             `<span class="mini-board-score">${p.score || 0}</span>`;
         list.appendChild(li);
     });
 }
 
 /* =====================================================================
- * GlobeDrop stage — map UI, guess submission, reveal, Wikipedia trivia
+ * GlobeDrop stage - map UI, guess submission, reveal, Wikipedia trivia
  * ===================================================================== */
 
 /**
  * Lazy-init the globe.gl instance on first entry into a GlobeDrop room.
  * The script is loaded with `defer` so it may not be ready at the moment
- * the room enters — callers retry on the next snapshot in that case.
+ * the room enters - callers retry on the next snapshot in that case.
  *
  * Texture: NASA Blue Marble (satellite imagery from three-globe's example
- * assets, no API key). No labels, no political boundaries — pure Earth
+ * assets, no API key). No labels, no political boundaries - pure Earth
  * from space, so a geography game stays a real challenge.
  */
 // Single source of truth for the "treat this as a phone" breakpoint used by
@@ -3065,7 +3069,7 @@ function globeRotateSpeedForAltitude(altitude) {
 function ensureGlobe() {
     if (state.globe) return state.globe;
     if (typeof Globe === 'undefined') {
-        console.warn('globe.gl not loaded yet — init deferred');
+        console.warn('globe.gl not loaded yet - init deferred');
         return null;
     }
     const el = document.getElementById('globe-drop-map');
@@ -3135,11 +3139,11 @@ function ensureGlobe() {
     // Initial camera pose: roughly overhead, comfortable altitude.
     state.globe.pointOfView({ lat: 20, lng: 0, altitude: 1.0 }, 0);
 
-    // Three.js OrbitControls defaults feel sluggish — crank zoom speed and
+    // Three.js OrbitControls defaults feel sluggish - crank zoom speed and
     // ease damping so wheel + pinch react snappily. We ALSO install a
     // custom wheel listener below so each scroll click moves altitude by
     // a large fixed factor instead of the small linear delta OrbitControls
-    // produces — that's where the real "feels fast" upgrade comes from.
+    // produces - that's where the real "feels fast" upgrade comes from.
     const controls = state.globe.controls();
     if (controls) {
         // Camera feel:
@@ -3180,7 +3184,7 @@ function ensureGlobe() {
     }, { passive: false });
 
     // Ask the device for the actual pixel ratio so the globe canvas is
-    // rendered at native (retina) resolution — without this, three.js uses
+    // rendered at native (retina) resolution - without this, three.js uses
     // 1.0 which looks blurry on hi-DPI displays.
     const renderer = state.globe.renderer && state.globe.renderer();
     if (renderer && typeof renderer.setPixelRatio === 'function') {
@@ -3289,14 +3293,14 @@ function setClearBtnVisible(visible) {
     const btn = document.getElementById('globe-drop-clear-btn');
     if (!btn) return;
     btn.hidden = !visible;
-    // Fallback for browsers that don't support :has() — toggle class on the stack.
+    // Fallback for browsers that don't support :has() - toggle class on the stack.
     const stack = document.getElementById('globe-drop-fab-stack');
     if (stack) stack.classList.toggle('fab-pinned', visible);
 }
 
 function onGlobeClick(lat, lng) {
     // Only respond when we're in a live GlobeDrop game and haven't locked
-    // in this question yet. We do NOT block on phase === 'asking' here —
+    // in this question yet. We do NOT block on phase === 'asking' here -
     // the very first click immediately after the host starts the game can
     // race the questionStartedAt server timestamp landing in the local
     // cache (pendingWrite leaves it null for a tick), and that race was
@@ -3327,7 +3331,7 @@ function onGlobeClick(lat, lng) {
 }
 
 // Item 12: one-time "tap the globe" coach mark. Lives in .globe-drop-map-wrap
-// (NOT #globe-drop-map — globe.gl wipes that element's children on init).
+// (NOT #globe-drop-map - globe.gl wipes that element's children on init).
 // pointer-events:none so it never eats the very tap it's teaching. Shown on
 // the first question of a session only, auto-hides after 5s or on first click.
 function showGlobeTapHintOnce() {
@@ -3386,7 +3390,7 @@ function currentAskingDurationMs() {
 }
 
 /**
- * Phase function for GlobeDrop — same shape as RoomState.questionPhase but
+ * Phase function for GlobeDrop - same shape as RoomState.questionPhase but
  * keyed off the per-room duration (host-configurable) for asking and
  * GLOBE_DROP_REVEAL_TIME_MS for reveal.
  */
@@ -3436,9 +3440,9 @@ function renderGlobeDropStage() {
     setText($('#globe-drop-target-name'), loc.name || '…');
 
     // Difficulty drives which hints render:
-    //   easy   — country + continent + subregion (full geographic context)
-    //   medium — country + continent
-    //   hard   — country only (no continent/subregion hint)
+    //   easy   - country + continent + subregion (full geographic context)
+    //   medium - country + continent
+    //   hard   - country only (no continent/subregion hint)
     // We look up the tier from the room doc; legacy rooms (no difficulty
     // field) read as medium and show the prior country-only behaviour.
     const diff = GlobeDropScoring.difficultySettings(state.roomData.difficulty);
@@ -3462,7 +3466,7 @@ function renderGlobeDropStage() {
         setText(hintsEl, extra.join(' · '));
         hintsEl.removeAttribute('hidden');
     } else {
-        // Always clear the text in addition to hiding — guarantees stale
+        // Always clear the text in addition to hiding - guarantees stale
         // hint content from a previous round (or a mid-game difficulty
         // change) can never bleed through if [hidden] is overridden by
         // some other style.
@@ -3470,7 +3474,7 @@ function renderGlobeDropStage() {
         hintsEl.setAttribute('hidden', '');
     }
 
-    // Difficulty chip — shows the tier label only (no "+50% score"
+    // Difficulty chip - shows the tier label only (no "+50% score"
     // claim, since difficulty now controls timer + hint level only,
     // not scoring; per-round multiplier comes from the round ladder).
     const chip = $('#globe-drop-difficulty-chip');
@@ -3500,22 +3504,22 @@ function renderGlobeDropStage() {
         // The deferred fire-time can land AFTER leaveRoom() has nulled
         // state.roomData, which then crashes the phase/reveal code below
         // with `Cannot read properties of null (reading 'questionStartedAt')`.
-        // Bail if the room is gone — there's nothing to render.
+        // Bail if the room is gone - there's nothing to render.
         if (!state.roomData || !state.roomCode) return;
         // Smooth-scroll the question prompt to the top of the viewport
         // on each new question. Anchoring to the "Where is …" header
         // (not the globe) means the player sees the city name first,
-        // then the globe sits naturally below — no hunting for the
+        // then the globe sits naturally below - no hunting for the
         // prompt after a long live-standings panel. Once per question
         // so the viewport doesn't yank mid-round.
         // On mobile the prompt row is position:sticky (item 11), so a
         // scrollIntoView on every new question just yanks the viewport for
-        // no benefit — skip it there. Desktop keeps the smooth scroll.
+        // no benefit - skip it there. Desktop keeps the smooth scroll.
         const promptRow = document.querySelector('.globe-drop-prompt-row');
         if (promptRow && window.innerWidth > 768
             && state.lastScrolledToGlobeForQId !== currentGlobeDropLocationId()) {
             state.lastScrolledToGlobeForQId = currentGlobeDropLocationId();
-            // Only scroll if the prompt row is actually off-screen — when
+            // Only scroll if the prompt row is actually off-screen - when
             // it's already in view, an unconditional scrollIntoView just
             // yanks the viewport for no reason. block:'nearest' nudges the
             // minimum amount needed instead of slamming it to the top.
@@ -3533,7 +3537,7 @@ function renderGlobeDropStage() {
         showGlobeTapHintOnce();
 
         // New question? Wipe overlays and re-arm the controls. Camera
-        // stays where the last reveal left it — the user can pan / zoom
+        // stays where the last reveal left it - the user can pan / zoom
         // out manually to drop a new guess. That avoids the jarring
         // "globe spins back to (20, 0) between rounds" effect, which
         // also clobbered the in-flight reveal tween if the next round
@@ -3570,7 +3574,7 @@ function renderGlobeDropStage() {
         // Three reveal states:
         //   - global (showOthers=true)  : reveal phase has begun for the room
         //   - local  (showOthers=false) : I've submitted but others are still
-        //                                 guessing — show me my result, hide theirs
+        //                                 guessing - show me my result, hide theirs
         //   - none                       : still asking, I haven't submitted yet
         // We tag lastRevealedMapQuestion with `:local` vs `:global` so the
         // transition from local → global redraws to include opponents' pins.
@@ -3622,7 +3626,7 @@ async function markReadyForNext() {
  * Render the Ready bar inside the reveal panel.
  *
  * Visible from the moment I submit (so it's not a surprise once
- * global reveal hits) — but disabled until every player has either
+ * global reveal hits) - but disabled until every player has either
  * submitted or timed out for this round. That gives a clear
  * affordance for "we're waiting on someone" instead of the button
  * silently appearing later.
@@ -3646,7 +3650,7 @@ function renderReadyBar(phase) {
         && players.every((p) => p && p.currentAnsweredFor === loc.id);
     const meReady = !!(me && me.readyAfterQId === loc.id);
 
-    // Last round: relabel to "Finish" — the click ends the game, not
+    // Last round: relabel to "Finish" - the click ends the game, not
     // "ready for next."
     const room = state.roomData || {};
     const idx = room.currentQuestionIndex || 0;
@@ -3689,7 +3693,7 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
 
     // Always shown: actual location (gold) + my pin (indigo) if I've submitted.
     // Opponents' pins (red) are hidden during the local "I just submitted but
-    // others are still guessing" reveal — surfacing them would let me yell
+    // others are still guessing" reveal - surfacing them would let me yell
     // their pick across the room before they've locked in.
     const pins = [{
         lat: loc.lat, lng: loc.lng,
@@ -3760,7 +3764,7 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
     loadCountryFeaturesIndex().then((idx) => {
         if (!state.globe) return;
         // Race guard: only paint if this is still the question on
-        // screen — a fast next-question would otherwise leak the
+        // screen - a fast next-question would otherwise leak the
         // previous country's border into the new round.
         const stillCurrent = state.lastRenderedMapQuestion === loc.id
             || state.lastRevealedMapQuestion === loc.id + ':local'
@@ -3821,7 +3825,7 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
         setText($('#globe-drop-status'), showOthers ? sentiment : `${sentiment} Waiting for the rest…`);
         // Reveal sound + haptic, tiered by points earned (so a tiny-city
         // bullseye gets the celebratory sound, an antipodal guess gets a
-        // soft minor descent). Only fires on the LOCAL reveal — the
+        // soft minor descent). Only fires on the LOCAL reveal - the
         // global reveal doesn't re-trigger so opponents' arcs landing
         // don't make a second buzz.
         if (!showOthers) {
@@ -3833,7 +3837,7 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
     }
     revealEl.hidden = false;
 
-    // Wikipedia escape hatch. Always rendered when the reveal opens —
+    // Wikipedia escape hatch. Always rendered when the reveal opens -
     // the inline trivia summary loads async and can fail; the link is
     // useful either way. Title prefers the location's own name (capital
     // city / landmark / country), which is what Wikipedia indexes.
@@ -3865,7 +3869,7 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
     // submit -> reveal window (item 5) so the globe never moves.
 
     // Wikipedia trivia (best-effort; silently skipped on failure). Fetch
-    // once per question — the local reveal kicks off the request so it's
+    // once per question - the local reveal kicks off the request so it's
     // already in the panel by the time the global reveal hits. The
     // resolve callback re-checks that we're still on the same question
     // so a slow response from the previous round can't bleed in.
@@ -3897,7 +3901,7 @@ function applyStandingsCollapsed() {
 
 // Reset the collapse to its default (collapsed) once per question. The
 // collapse state only ever changes by user toggle or this per-question
-// reset — submitting no longer auto-expands the board (that pushed the
+// reset - submitting no longer auto-expands the board (that pushed the
 // globe down mid-reveal). Instead, while the local player has submitted
 // (reveal live) and the board is still collapsed, a subtle pulse cue
 // nudges the toggle. Desktop is unaffected (CSS no-ops the class there).
@@ -3989,7 +3993,7 @@ function renderMiniBoardGlobeDrop(currentQuestionId) {
             // see who still needs to submit without it being distracting.
             li.classList.add('is-pending');
         }
-        // Surface bullseye streak >= 2 — same treatment as trivia streaks.
+        // Surface bullseye streak >= 2 - same treatment as trivia streaks.
         const streak = Number(p.streak) || 0;
         const streakChip = streak >= 2
             ? `<span class="mini-board-streak" title="${streak} bullseyes in a row">🎯${streak}</span>`
@@ -4008,12 +4012,12 @@ function renderMiniBoardGlobeDrop(currentQuestionId) {
 /**
  * Render every completed round in this game as a row: round number +
  * location name + a chip per player showing their score for that round.
- * Pairs visually with the cumulative live standings above it — the
+ * Pairs visually with the cumulative live standings above it - the
  * standings answer "who is winning right now", this answers "how did
  * they get there round-by-round".
  *
  * Reads each player's `answers[]` (per-location record list every
- * guess appends to) — same source as the end-of-game recap, so the
+ * guess appends to) - same source as the end-of-game recap, so the
  * numbers are guaranteed to match.
  */
 // --- Canonical Globe Drop scoring for DISPLAY ----------------------------
@@ -4065,7 +4069,7 @@ function renderRoundsHistoryBoard() {
     // To prevent score-peeking, opponents' scores for the CURRENT round
     // (the one in progress) stay hidden until the local user has
     // submitted their guess for that round. We only mask the current
-    // round here — prior rounds' scores are always visible because the
+    // round here - prior rounds' scores are always visible because the
     // reveal phase already disclosed them.
     const curLoc = currentGlobeDropLocation();
     const me = state.user
@@ -4283,7 +4287,7 @@ function startGlobeDropTimerLoop() {
         const currentQId = state.roomData.currentQuestionId;
         // Low-timer pings at 5 / 4 / 3 / 2 / 1 seconds. Each fires
         // exactly once per question. Skipped entirely if the local
-        // player has ALREADY submitted their guess for this round —
+        // player has ALREADY submitted their guess for this round -
         // they don't need the urgent countdown cue, only the players
         // still picking do.
         const meForBuzz = state.user && state.roomPlayers.find((p) => p.uid === state.user.uid);
@@ -4350,7 +4354,7 @@ function startGlobeDropTimerLoop() {
         }
 
         // Render the Ready bar (button + per-player pips) every tick
-        // while we're in or past reveal. Cheap — just a few DOM
+        // while we're in or past reveal. Cheap - just a few DOM
         // writes on a small element.
         if (phase === 'reveal' || phase === 'ended') renderReadyBar(phase);
 
@@ -4383,14 +4387,14 @@ function startGlobeDropTimerLoop() {
 
 /**
  * Drive the "5 to next" chip above the globe. Visible only during the
- * GLOBAL reveal (revealStartedAt is set on the room doc) — the local
+ * GLOBAL reveal (revealStartedAt is set on the room doc) - the local
  * reveal that fires when you submit before opponents shouldn't show a
  * countdown, because the host hasn't started one yet.
  */
 function renderRevealCountdown(phase, revealStartedAtMs, nowMs) {
     // The "5 to next" countdown is now drawn into the timer overlay
     // itself by renderGlobeDropTimer. We keep the chip element hidden
-    // permanently — there's only ever one timer on screen, top-left.
+    // permanently - there's only ever one timer on screen, top-left.
     const chip = $('#globe-drop-countdown');
     if (chip) chip.hidden = true;
 }
@@ -4409,7 +4413,7 @@ function renderGlobeDropTimer(leftMs, phase, totalMs) {
         // Prefer the explicit revealStartedAt the host writes during
         // early-reveal (all players submitted). When the asking timer
         // simply runs out without an early trigger, revealStartedAt is
-        // null — derive the anchor from questionStartedAt + asking
+        // null - derive the anchor from questionStartedAt + asking
         // duration so the countdown still renders. Without this, the
         // display fell through to "—" + a flat ring after time-up.
         let revealAnchorMs = (room.revealStartedAt && room.revealStartedAt.toMillis)
@@ -4436,7 +4440,7 @@ function renderGlobeDropTimer(leftMs, phase, totalMs) {
         return;
     }
 
-    // Asking phase — render the question countdown into the overlay.
+    // Asking phase - render the question countdown into the overlay.
     const fraction = Math.max(0, Math.min(1, leftMs / total));
     const circumference = 176;
     const offset = circumference * (1 - fraction);
@@ -4506,7 +4510,7 @@ function startTimerLoop() {
         // Host triggers early reveal as soon as every player has answered
         // the current question (avoids waiting out the full asking window
         // when everyone's locked in). The earlyRevealForQuestion guard
-        // ensures we fire exactly once per question — rAF is 60fps, the
+        // ensures we fire exactly once per question - rAF is 60fps, the
         // snapshot round-trip is ~150ms, without the guard we'd queue
         // 5-10 redundant writes before state.roomData.revealStartedAt
         // catches up.
@@ -4524,7 +4528,7 @@ function startTimerLoop() {
         }
 
         // Host advances the question when reveal window elapses. Swallow
-        // any rejection here — without an explicit catch, a failed rules
+        // any rejection here - without an explicit catch, a failed rules
         // write would float up as "Uncaught (in promise)".
         if (isHost && phase === 'ended') {
             advanceQuestionOrFinish().catch((err) => console.warn('advance failed:', err));
@@ -4585,7 +4589,7 @@ async function startGame() {
     if (state.roomData.status !== 'lobby') return;
 
     if (state.roomData.gameType === 'globe-drop') {
-        // GlobeDrop plays locations sequentially — no picking stage, no decider.
+        // GlobeDrop plays locations sequentially - no picking stage, no decider.
         const pool = Array.isArray(state.roomData.questions) ? state.roomData.questions : [];
         const firstLoc = pool[0];
         if (!firstLoc) return;
@@ -4600,8 +4604,8 @@ async function startGame() {
         return;
     }
 
-    // Trivia mode — picking stage with decider rotation.
-    // Fetch the player list FRESH from Firestore — state.roomPlayers can
+    // Trivia mode - picking stage with decider rotation.
+    // Fetch the player list FRESH from Firestore - state.roomPlayers can
     // be stale if the host clicks Start before late-joiner snapshots have
     // propagated, which would silently shrink playerOrder to just the host
     // and make every question rotate back to them.
@@ -4729,7 +4733,7 @@ async function advanceQuestionOrFinish() {
     // No per-player reset write here. The rules (correctly) forbid the host
     // from writing other players' docs, so resetting their per-question
     // fields would 403. Instead we use `currentAnsweredFor` (written by the
-    // player themselves on submit) as the per-question marker — any stale
+    // player themselves on submit) as the per-question marker - any stale
     // currentAnswerIndex on a player doc is ignored downstream because it
     // belongs to a previous question.
 
@@ -4743,7 +4747,7 @@ async function advanceQuestionOrFinish() {
     }
 
     if (state.roomData.gameType === 'globe-drop') {
-        // GlobeDrop is sequential — no picking stage, just advance.
+        // GlobeDrop is sequential - no picking stage, just advance.
         const pool = Array.isArray(state.roomData.questions) ? state.roomData.questions : [];
         const nextLoc = pool[nextIdx];
         if (!nextLoc) return;
@@ -4787,7 +4791,7 @@ async function advanceQuestionOrFinish() {
  * Anyone signed in can update the room doc (per the rules), but we
  * gate this client-side: only the current decider (or, as a fallback,
  * the host if the decider has dropped) gets the UI to call this.
- * @param {string} category — category id or '__any__'
+ * @param {string} category - category id or '__any__'
  */
 async function pickCategoryAndStart(category) {
     if (!state.roomCode || !state.roomData) return;
@@ -4827,7 +4831,7 @@ async function renderEndStage(isHost) {
     hide($('#stage-picking'));
     show($('#stage-end'));
 
-    // Guest-only sign-up nudge. Only shown to anonymous users — for
+    // Guest-only sign-up nudge. Only shown to anonymous users - for
     // registered users this panel stays hidden so the recap layout
     // doesn't pick up dead space.
     const guestCta = $('#end-guest-cta');
@@ -4854,14 +4858,14 @@ async function renderEndStage(isHost) {
         streak: p.streak || 0
     })));
 
-    // Podium — skipped for solo runs (no opponents to rank against).
+    // Podium - skipped for solo runs (no opponents to rank against).
     const podium = $('#podium');
     const isSoloMode = (state.roomData && state.roomData.playMode) === 'solo';
     podium.hidden = isSoloMode;
     podium.innerHTML = '';
     const soloHero = $('#solo-hero');
     if (isSoloMode) {
-        // Hide the end-board too — for solo there's only one row and the
+        // Hide the end-board too - for solo there's only one row and the
         // final score is already in the hero block.
         const boardWrap = document.querySelector('.end-board-wrap');
         if (boardWrap) boardWrap.hidden = true;
@@ -4952,7 +4956,7 @@ async function renderEndStage(isHost) {
         setText($('#end-summary'), 'No scores recorded.');
     }
 
-    // Round type label (Globe Drop only) — shows which pack this game used
+    // Round type label (Globe Drop only) - shows which pack this game used
     // (World capitals, Countries, Major cities, ...). Hidden for Trivia,
     // which has no round type.
     const roundTypeEl = $('#end-round-type');
@@ -4968,7 +4972,7 @@ async function renderEndStage(isHost) {
         }
     }
 
-    // Share result button — visible on the end stage for all game types.
+    // Share result button - visible on the end stage for all game types.
     const shareBtn = $('#end-share-btn');
     if (shareBtn) shareBtn.hidden = false;
 
@@ -4991,7 +4995,7 @@ async function renderEndStage(isHost) {
 
     // Write score / wins / games to profile (once per game). The
     // Firestore field is still named `xp` for backward-compat with
-    // existing user docs — UI labels are "score" everywhere now.
+    // existing user docs - UI labels are "score" everywhere now.
     if (state.user && me && endStageWrittenForRoom !== state.roomCode) {
         endStageWrittenForRoom = state.roomCode;
         await writeEndOfGameStats(me, winner && winner.uid === me.uid);
@@ -5000,7 +5004,7 @@ async function renderEndStage(isHost) {
 
 async function writeEndOfGameStats(me, didWin) {
     if (!state.user) return;
-    // Guests have no persistent profile or leaderboard slot — the end-
+    // Guests have no persistent profile or leaderboard slot - the end-
     // of-game writes would all fail at the rules layer, and we don't
     // want anon uids polluting the global boards anyway.
     if (isGuest()) return;
@@ -5014,7 +5018,7 @@ async function writeEndOfGameStats(me, didWin) {
         const userRef = doc(db, 'users', state.user.uid);
         // Solo: still earns score and counts as a game played, but it
         // cannot grant a "win" because there was no opponent. The
-        // global leaderboard write is also skipped — solo results
+        // global leaderboard write is also skipped - solo results
         // are personal-best-only, not ranked.
         const winsDelta = (isSolo ? 0 : (didWin ? 1 : 0));
 
@@ -5052,7 +5056,7 @@ async function writeEndOfGameStats(me, didWin) {
             state.profile.bestRoundScore = newBest;
         }
         if (!isSolo) {
-            // Denormalized leaderboard write — multiplayer + daily only.
+            // Denormalized leaderboard write - multiplayer + daily only.
             const lbRef = doc(db, 'triviaLeaderboard', state.user.uid);
             await setDoc(lbRef, {
                 uid: state.user.uid,
@@ -5067,11 +5071,11 @@ async function writeEndOfGameStats(me, didWin) {
         }
 
         // Daily-challenge leaderboard write. Only the player's BEST score
-        // for the day stays — we read the existing doc and only overwrite
+        // for the day stays - we read the existing doc and only overwrite
         // when the new score is higher. No-op for solo / multi.
         await maybeWriteDailyLeaderboard(me);
 
-        // Pairwise head-to-head — host only, multiplayer only. Iterates
+        // Pairwise head-to-head - host only, multiplayer only. Iterates
         // every player pair in the room and updates triviaH2H/<pair_key>
         // so the H2H view can display real records instead of generic
         // aggregates.
@@ -5083,7 +5087,7 @@ async function writeEndOfGameStats(me, didWin) {
 
 /**
  * Build a plain-text share blurb for a finished Arena game.
- * Pure function — no DOM access, safe to call from tests.
+ * Pure function - no DOM access, safe to call from tests.
  *
  * @param {string} gameTypeLabel - Human-readable game type, e.g. 'Globe Drop'.
  * @param {Array<{displayName:string,score:number}>} rankedPlayers - Already ranked, highest first.
@@ -5179,14 +5183,14 @@ async function maybeWriteH2HPairs() {
     if (!state.user || !state.roomData || !state.roomCode) return;
     // Guest hosts: still update sessionMatchCount on the room doc (it's
     // ephemeral and helps the in-room session H2H render), but skip
-    // the lifetime triviaH2H pair writes — rules forbid anon writes
+    // the lifetime triviaH2H pair writes - rules forbid anon writes
     // there, and anon uids would create orphaned pair rows anyway.
     const playMode = state.roomData.playMode || 'multi';
     if (playMode !== 'multi') return;
     const players = Array.isArray(state.roomPlayers) ? state.roomPlayers.slice() : [];
     if (players.length < 2) return;
 
-    // In-room session H2H — host writes the room-level counter so
+    // In-room session H2H - host writes the room-level counter so
     // rematches accumulate. Other players don't try (rules permit it
     // since /triviaRooms is open-write to anyone signed in, but only
     // one writer avoids the increment race).
@@ -5206,12 +5210,12 @@ async function maybeWriteH2HPairs() {
         }
     }
 
-    // Per-pair lifetime H2H — written by whichever side of the pair has
+    // Per-pair lifetime H2H - written by whichever side of the pair has
     // the lexicographically lower uid. That single-writer convention
     // (a) satisfies the rules (the writer is uidA, so rules pass)
     // (b) avoids two clients racing to increment the same pair doc.
     // For pairs that don't include me, OR pairs where I'm uidB, I
-    // skip — my counterpart handles the write. Guests skip entirely
+    // skip - my counterpart handles the write. Guests skip entirely
     // (rules block anon writes to triviaH2H).
     if (isGuest()) return;
     const myUid = state.user.uid;
@@ -5250,18 +5254,18 @@ async function maybeWriteH2HPairs() {
             });
         } catch (err) {
             // The most common cause here is "Missing or insufficient
-            // permissions" — i.e. the Firestore rules for /triviaH2H
+            // permissions" - i.e. the Firestore rules for /triviaH2H
             // haven't been deployed yet. Run:
             //     firebase deploy --only firestore:rules
             // The block won't fail the rest of end-of-game.
-            console.warn('H2H write failed for pair', key, '— check that firestore.rules has been deployed:', err);
+            console.warn('H2H write failed for pair', key, '- check that firestore.rules has been deployed:', err);
         }
     }
 }
 
 async function maybeWriteDailyLeaderboard(me) {
     if (!state.user || !state.roomData) return;
-    // Guests don't qualify for the daily leaderboard — anon uids can
+    // Guests don't qualify for the daily leaderboard - anon uids can
     // change at any time, so their score isn't a "personal best" anyone
     // could ever beat. Rules block the write anyway.
     if (isGuest()) return;
@@ -5288,7 +5292,7 @@ async function maybeWriteDailyLeaderboard(me) {
 }
 
 /* =====================================================================
- * Game recap — per-question/per-location table + aggregate stats
+ * Game recap - per-question/per-location table + aggregate stats
  * ===================================================================== */
 
 /**
@@ -5350,7 +5354,7 @@ function renderEndRecap() {
 
     const isGlobeDrop = state.roomData && state.roomData.gameType === 'globe-drop';
 
-    // Lifetime H2H banner — only in 2-player rooms (the pair record
+    // Lifetime H2H banner - only in 2-player rooms (the pair record
     // is unambiguous). Fetches the triviaH2H pair doc and shows
     // W-D-L between the local user and the opponent at the top of
     // the recap.
@@ -5405,7 +5409,7 @@ function renderEndRecap() {
         statsHost.appendChild(div);
     });
 
-    // Compact table — rank | ×mult | location | per-player score | winner.
+    // Compact table - rank | ×mult | location | per-player score | winner.
     // Replaces the previous card-list which spread each round across
     // two strips; the table is one row per round, easier to scan
     // vertically for 8-10 round matches.
@@ -5424,7 +5428,7 @@ function renderEndRecap() {
         return;
     }
 
-    // Header row. Solo runs skip the Winner column entirely — there's
+    // Header row. Solo runs skip the Winner column entirely - there's
     // only one player, "winner" would just be that player on every row.
     const isSoloRecap = (state.roomData && state.roomData.playMode) === 'solo';
     const trHead = document.createElement('tr');
@@ -5456,14 +5460,14 @@ function renderEndRecap() {
                 + '</td>';
         } else {
             const correctText = q.choices ? q.choices[q.correctIndex] : '';
-            locCell = '<td class="recap-loc-cell">'
+            locCell = '<td class="recap-loc-cell is-trivia">'
                 + `<span class="recap-loc-name">${escapeHtml(q.question || '…')}</span>`
                 + `<span class="recap-loc-country">${escapeHtml(prettyCategory(q.category || ''))} · answer: ${escapeHtml(correctText)}</span>`
                 + '</td>';
         }
 
         // Per-column results + winner detection. Both-zero is a TIE,
-        // not "no winner" — so the winner column always shows something.
+        // not "no winner" - so the winner column always shows something.
         const colResults = columns.map((col) => {
             const ans = (answersByUid[col.uid] || [])
                 .find((a) => (a.locationId || a.questionId) === q.id);
@@ -5513,7 +5517,7 @@ function renderEndRecap() {
                 // color tracks performance CONSISTENTLY across rows: 99 ≈ max,
                 // 80 clearly weaker, a 1-point gap ~invisible. The round winner
                 // is shown separately by a subtle left-accent marker
-                // (.recap-gd.is-winner in CSS), NOT a brighter fill — so a
+                // (.recap-gd.is-winner in CSS), NOT a brighter fill - so a
                 // 1-point win never looks like a blowout. Only the answered
                 // cells get tinted; a no-guess stays neutral via is-zero.
                 const clampedBase = Math.max(0, Math.min(100, base));
@@ -5693,7 +5697,7 @@ function renderGlobeDropComparisonTable(host) {
     });
 
     // Row definitions: label, value extractor (returns { text, sub?, sortKey, missing? })
-    // — sortKey + higherIsBetter determines which cell gets the leader badge.
+    // - sortKey + higherIsBetter determines which cell gets the leader badge.
     const fmt = (n) => (n == null ? '—' : n.toLocaleString());
     const rows = [
         { label: 'Final score',     higherIsBetter: true,  get: (s, col) => ({ text: String(col.score || 0), sortKey: col.score || 0 }) },
@@ -5753,7 +5757,7 @@ function renderGlobeDropComparisonTable(host) {
         }
         const tr = document.createElement('tr');
         const cells = cols.map((col) => row.get(statsByUid[col.uid], col));
-        // Find the leader cell — best sortKey under higherIsBetter sense.
+        // Find the leader cell - best sortKey under higherIsBetter sense.
         const valid = cells.filter((c) => c && Number.isFinite(c.sortKey));
         let bestKey = null;
         if (valid.length) {
@@ -5825,7 +5829,7 @@ function renderTriviaDetailedStats(host) {
  *
  * Once `rematchAcceptedBy.length === playerCount` and no decliners,
  * `playAgain()` is invoked by the host's client (only one client should
- * actually do the writes — we gate by `state.roomData.hostUid`).
+ * actually do the writes - we gate by `state.roomData.hostUid`).
  */
 
 function rematchAcceptCount() {
@@ -5922,7 +5926,7 @@ function renderRematchUI(isHost) {
     if (playerCount < 2) return;
 
     if (!proposed) {
-        // No proposal yet — any player can propose a rematch.
+        // No proposal yet - any player can propose a rematch.
         if (proposeBtn) {
             proposeBtn.hidden = false;
             proposeBtn.innerHTML = '<span aria-hidden="true">🔁</span> Rematch';
@@ -5930,13 +5934,13 @@ function renderRematchUI(isHost) {
         return;
     }
 
-    // Proposal active — show strip with progress.
+    // Proposal active - show strip with progress.
     if (strip) strip.hidden = false;
     if (declined) {
         // Surface the decline briefly, then auto-reset so anyone can
         // propose again. Without this, a single decline used to lock
         // the rematch flow forever.
-        if (status) setText(status, 'Rematch declined — try again any time.');
+        if (status) setText(status, 'Rematch declined - try again any time.');
         if (proposeBtn) {
             proposeBtn.hidden = false;
             proposeBtn.innerHTML = '<span aria-hidden="true">🔁</span> Propose again';
@@ -5945,7 +5949,7 @@ function renderRematchUI(isHost) {
         return;
     }
     const accepted = rematchAcceptCount();
-    if (status) setText(status, `Rematch — ${accepted} / ${playerCount} players ready`);
+    if (status) setText(status, `Rematch - ${accepted} / ${playerCount} players ready`);
 
     // Show accept/decline buttons to anyone who hasn't yet responded.
     if (actions && state.user && !meHasAcceptedRematch() && !meHasDeclinedRematch()) {
@@ -5977,7 +5981,7 @@ async function proposeRematch() {
     }
 }
 
-/* Proposer's waiting modal — single-instance, driven by the room
+/* Proposer's waiting modal - single-instance, driven by the room
  * snapshot. The timer is a setInterval that ticks the countdown
  * label every 250ms and force-closes once it hits 0. Cancelling
  * from the modal calls clearRematchStateSoon() to wipe the room
@@ -6096,7 +6100,7 @@ function clearRematchStateSoon() {
     _rematchClearTimer = setTimeout(async () => {
         _rematchClearTimer = null;
         if (!state.roomCode || !state.user) return;
-        // Only any one client needs to write — pick the proposer since
+        // Only any one client needs to write - pick the proposer since
         // they're the one who created the state. If they've left,
         // anyone may clear it.
         const r = state.roomData || {};
@@ -6151,7 +6155,7 @@ async function playAgain() {
     try {
         if (isGlobeDrop) {
             // Re-fetch fresh locations using the same round type the room
-            // was created with — host can't switch round types mid-replay,
+            // was created with - host can't switch round types mid-replay,
             // that's a fresh-room move.
             const fetched = await GlobeDropLocations.fetchLocations(
                 state.roomData.roundType || 'capitals',
@@ -6186,7 +6190,7 @@ async function playAgain() {
         } else {
             // Trivia: re-deal questions using the same source + reset picker.
             // Old rooms may have `packId: 'default'` from before this commit
-            // removed the offline pack — coerce those to 'live'.
+            // removed the offline pack - coerce those to 'live'.
             const sourcePackId = state.roomData.packId === 'custom' ? 'custom' : 'live';
             const { questions, packId, packName } = await buildQuestionsForRound(
                 sourcePackId,
@@ -6253,7 +6257,7 @@ function startLeaderboardListener() {
     }, (err) => {
         console.warn('Leaderboard listener error:', err);
     });
-    // Daily Globe Drop top 10 — fresh subscription per leaderboard open
+    // Daily Globe Drop top 10 - fresh subscription per leaderboard open
     // so the date is always today's, and so we drop the listener for an
     // old date when the user comes back tomorrow.
     startDailyLeaderboardListener();
@@ -6486,7 +6490,7 @@ function formatRelativeDate(d) {
  *
  * Reuses state.leaderboardEntries (already subscribed when the LB or H2H
  * view is active). Both dropdowns list every entry; picking two of the
- * same player just shows their card on both sides — harmless.
+ * same player just shows their card on both sides - harmless.
  * ===================================================================== */
 
 let h2hPickerVersion = 0;
@@ -6561,7 +6565,7 @@ async function renderH2HComparison() {
         try {
             const snap = await getDoc(doc(db, 'triviaH2H', key));
             if (snap.exists()) pair = snap.data();
-        } catch (_) { /* network / rules — fall back to no-pair view */ }
+        } catch (_) { /* network / rules - fall back to no-pair view */ }
     }
     if (token !== h2hPairFetchToken) return; // raced
 
@@ -6664,7 +6668,7 @@ async function boot() {
 
     await waitForFirebaseAuth();
     window.firebaseAuth.onAuthStateChange(applyAuthState);
-    // Initial state — onAuthStateChange fires synchronously if ready.
+    // Initial state - onAuthStateChange fires synchronously if ready.
 }
 
 if (document.readyState === 'loading') {

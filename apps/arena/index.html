@@ -6,7 +6,7 @@
 
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="description" content="Arena: real-time multiplayer hub for private rooms with friends. Create a room, share an invite link, race the timer across a growing collection of party games — including Globe Drop geography and head-to-head Trivia.">
+  <meta name="description" content="Arena: real-time multiplayer hub for private rooms with friends. Create a room, share an invite link, race the timer across a growing collection of party games - including Globe Drop geography and head-to-head Trivia.">
   <meta name="keywords" content="multiplayer party game, play with friends, private room game, online game with friends, invite link game, group party game, real-time multiplayer, globe drop, multiplayer trivia, head to head game, geography game, capital city game, 3d globe game, room code game, party games hub" />
   <meta name="author" content="Shevato LLC">
   <meta name="robots" content="index, follow, max-image-preview:large">
@@ -54,7 +54,7 @@
     "@context": "https://schema.org",
     "@type": "WebApplication",
     "name": "Arena",
-    "description": "Real-time multiplayer hub for private rooms with friends. Create a room, share an invite link, and play across a growing roster of games — Globe Drop geography (pin cities on a 3D globe), head-to-head Trivia, and more on the way. Free to play, with custom question packs and detailed post-game stats.",
+    "description": "Real-time multiplayer hub for private rooms with friends. Create a room, share an invite link, and play across a growing roster of games - Globe Drop geography (pin cities on a 3D globe), head-to-head Trivia, and more on the way. Free to play, with custom question packs and detailed post-game stats.",
     "url": "https://shevato.com/apps/arena/",
     "applicationCategory": "GameApplication",
     "operatingSystem": "Web Browser",
@@ -66,7 +66,7 @@
     },
     "featureList": [
       "Growing roster of party games (currently Globe Drop geography + Trivia; more on the way)",
-      "Create a private room and share an invite link — friends auto-join when they open it",
+      "Create a private room and share an invite link - friends auto-join when they open it",
       "Real-time Firestore sync (see players join and scores update live)",
       "Per-room cumulative head-to-head record across rematches, plus global pairwise H2H stats",
       "Host-configurable round type, difficulty, locations / questions count, and timer",
@@ -100,7 +100,7 @@
   <link rel="stylesheet" href="/assets/css/back-to-top.css">
 </head>
 <body class="brain-arena-app">
-  <!-- Sync status banner (managed by assets/js/sync-status.js) — only visible when offline. -->
+  <!-- Sync status banner (managed by assets/js/sync-status.js) - only visible when offline. -->
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
   <div data-include="header"></div>
 
@@ -148,17 +148,17 @@
                  need a matching toggle. -->
             <div class="game-type-toggle" role="tablist" aria-label="Game type">
               <button type="button" class="game-type-btn is-active" data-game-type="globe-drop" role="tab" aria-selected="true"
-                      title="Globe Drop — drop a pin on the 3D globe; closer guesses score more.">
+                      title="Globe Drop - drop a pin on the 3D globe; closer guesses score more.">
                 <span aria-hidden="true">🗺️</span> Globe Drop
               </button>
               <button type="button" class="game-type-btn" data-game-type="trivia" role="tab" aria-selected="false"
-                      title="Trivia — multiple-choice questions across categories.">
+                      title="Trivia - multiple-choice questions across categories.">
                 <span aria-hidden="true">🎯</span> Trivia
               </button>
             </div>
 
             <div class="lobby-form">
-              <!-- Globe Drop-only fields (default visible — headline mode) -->
+              <!-- Globe Drop-only fields (default visible - headline mode) -->
               <label class="lobby-field" data-game-type="globe-drop">
                 <span>Round type</span>
                 <select id="create-globe-drop-round-type" title="Pick the location pool used to seed each round.">
@@ -259,7 +259,7 @@
               </label>
               <button type="button" class="btn btn-primary lobby-cta" id="create-room-btn">Create room</button>
 
-              <!-- Solo + daily challenge — Globe Drop only. Solo creates a
+              <!-- Solo + daily challenge - Globe Drop only. Solo creates a
                    private room of one and auto-starts; Daily uses a
                    deterministic location set seeded by today's UTC date
                    and posts the result to the per-day leaderboard. -->
@@ -325,7 +325,7 @@
           </div>
           <div class="room-head-right">
             <!-- Mid-game controls. Visible to every player once the
-                 room is playing — pause + restart + end game now all
+                 room is playing - pause + restart + end game now all
                  require unanimous accept where applicable. -->
             <div class="room-host-actions" id="room-host-actions" hidden>
               <button type="button" class="btn btn-ghost btn-sm" id="room-pause-btn" title="Pause / resume the timer">
@@ -358,7 +358,7 @@
           <span aria-hidden="true">⏸</span> Game paused by host.
         </p>
         <p class="room-spectator-banner" id="room-spectator-banner" hidden>
-          <span aria-hidden="true">👁</span> Spectating — joining next round automatically.
+          <span aria-hidden="true">👁</span> Spectating - joining next round automatically.
         </p>
 
         <!-- Chat side panel. Slides in from the right when toggled.
@@ -374,7 +374,7 @@
           <p class="room-chat-game-live" id="room-chat-game-live" hidden><span aria-hidden="true">🎮</span> Game in progress</p>
           <ul class="room-chat-list" id="room-chat-list" aria-live="polite"></ul>
           <p class="room-chat-empty" id="room-chat-empty">No messages yet. Say something.</p>
-          <!-- Quick-tap emoji bar — one click sends that emoji as a
+          <!-- Quick-tap emoji bar - one click sends that emoji as a
                message, no typing required. Skips moderation since
                emoji-only messages can't contain profanity. -->
           <div class="room-chat-quick" aria-label="Quick reactions">
@@ -396,7 +396,7 @@
 
         <!-- STAGE: lobby (waiting) -->
         <section class="stage stage-lobby" id="stage-lobby">
-          <!-- Room settings — visible to all players. Host gets inline
+          <!-- Room settings - visible to all players. Host gets inline
                select fields; guests see a read-only summary. -->
           <section class="room-settings" id="room-settings" hidden>
             <header class="room-settings-head">
@@ -576,10 +576,12 @@
 
           <article class="globe-drop-card">
             <header class="globe-drop-prompt-row">
+              <!-- The country span must butt straight up against the name:
+                   its ::before supplies the ", " separator, so any whitespace
+                   between the two elements renders as "Kigali , Rwanda?". -->
               <p class="globe-drop-prompt">
                 <span class="globe-drop-prompt-label">Where is</span>
-                <strong id="globe-drop-target-name">—</strong>
-                <span class="globe-drop-prompt-country" id="globe-drop-target-country"></span>?
+                <strong id="globe-drop-target-name">—</strong><span class="globe-drop-prompt-country" id="globe-drop-target-country"></span>?
               </p>
               <p class="globe-drop-prompt-hints" id="globe-drop-prompt-hints" hidden></p>
               <span class="globe-drop-difficulty-chip" id="globe-drop-difficulty-chip" hidden></span>
@@ -633,7 +635,7 @@
                  so it rendered as a blank line; hints live in
                  #globe-drop-prompt-hints. -->
             <!-- Status element kept (display:none) so JS callsites don't
-                 crash. Action bar removed by request — phase feedback
+                 crash. Action bar removed by request - phase feedback
                  lives in the reveal panel + visual pin. -->
             <p class="answer-status globe-drop-status" id="globe-drop-status" hidden></p>
             <!-- Wrapper holds the globe + overlay UI as siblings; globe.gl
@@ -643,8 +645,8 @@
                  globe.gl only wipes #globe-drop-map's children, not the
                  wrap's, so the reveal panel is safe here. -->
             <div class="globe-drop-map-wrap">
-              <div id="globe-drop-map" class="globe-drop-map" role="img" aria-label="Interactive 3D world globe — click to place your guess pin"></div>
-              <!-- Reveal panel — overlays the TOP of the globe so the
+              <div id="globe-drop-map" class="globe-drop-map" role="img" aria-label="Interactive 3D world globe - click to place your guess pin"></div>
+              <!-- Reveal panel - overlays the TOP of the globe so the
                    result is visible without the globe moving or the page
                    scrolling. Inset to the right of the timer overlay on
                    desktop; full-width below the timer on mobile. -->
@@ -709,7 +711,7 @@
                  (World capitals, Countries, Major cities, ...). Populated and
                  toggled by renderEndStage; hidden for Trivia. -->
             <p class="end-round-type" id="end-round-type" hidden></p>
-            <!-- Copy result — builds a plain-text standings summary and
+            <!-- Copy result - builds a plain-text standings summary and
                  writes it to the clipboard. -->
             <button type="button" class="btn btn-ghost btn-sm end-share-btn" id="end-share-btn" hidden>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -721,12 +723,12 @@
           </header>
 
           <!-- Guest-only sign-up CTA. Shown for anonymous users on the
-               recap stage as a soft nudge to save their stats — toggled
+               recap stage as a soft nudge to save their stats - toggled
                by renderEndStage based on isGuest(). Reuses .auth-gate
                styling so the look matches the lobby banner. -->
           <p class="auth-gate end-guest-cta" id="end-guest-cta" hidden>
             <span aria-hidden="true">⭐</span>
-            Nice run! You played as a guest — <button type="button" class="link-btn" id="end-guest-cta-btn">sign up</button> to save your score, wins, and games played across devices.
+            Nice run! You played as a guest - <button type="button" class="link-btn" id="end-guest-cta-btn">sign up</button> to save your score, wins, and games played across devices.
           </p>
 
           <!-- Solo-only hero score block. Populated by renderEndStage
@@ -770,7 +772,7 @@
             </table>
           </div>
 
-          <!-- Game recap — per-question/per-location table + aggregate stats.
+          <!-- Game recap - per-question/per-location table + aggregate stats.
                Built from each player's `answers[]` array on their player doc,
                so we can compare what everyone picked side-by-side. -->
           <section class="end-recap" id="end-recap" hidden>
@@ -778,7 +780,7 @@
               <h3>Game recap</h3>
               <p class="end-recap-sub" id="end-recap-sub"></p>
             </header>
-            <!-- Lifetime H2H banner — shown only in 2-player rooms.
+            <!-- Lifetime H2H banner - shown only in 2-player rooms.
                  Surfaces the player vs opponent record (W-D-L) from
                  triviaH2H so players see context as soon as the end
                  stage loads. -->
@@ -807,16 +809,16 @@
             <div class="detailed-stats-grid" id="detailed-stats-grid"></div>
           </section>
 
-          <!-- In-room session H2H — visible once at least one match has
+          <!-- In-room session H2H - visible once at least one match has
                finished in this room and there are 2+ players. -->
           <section class="room-session-h2h" id="room-session-h2h" hidden>
             <header class="mini-board-head">
-              <h3>This room — head to head</h3>
+              <h3>This room - head to head</h3>
             </header>
             <ol class="mini-board-list" id="room-session-h2h-list"></ol>
           </section>
 
-          <!-- Rematch coordination strip — only visible once a rematch
+          <!-- Rematch coordination strip - only visible once a rematch
                has been proposed. Tracks accept progress across the
                remaining players. -->
           <div class="rematch-strip" id="rematch-strip" hidden>
@@ -877,7 +879,7 @@
         No games played yet. Be the first to land on the board.
       </p>
 
-      <!-- Daily Globe Drop challenge — same UTC date, same locations,
+      <!-- Daily Globe Drop challenge - same UTC date, same locations,
            one personal-best score per player per day. -->
       <header class="leaderboard-head leaderboard-head-daily">
         <h2 class="section-title">
@@ -1099,14 +1101,14 @@
   <script src="../../sync-system/sync-loading-modal.js"></script>
   <script src="../../sync-system/sync-modal-integration.js"></script>
 
-  <!-- Site main JS — injects header/footer partials via $.fn.load and mounts AuthUI. -->
+  <!-- Site main JS - injects header/footer partials via $.fn.load and mounts AuthUI. -->
   <script src="../../assets/js/main.js"></script>
 
   <!-- globe.gl (Three.js-based 3D globe for Globe Drop mode). Bundles Three.js
        so no separate three import needed. We use NASA's Blue Marble texture
-       as the globe surface — pure satellite imagery, no labels or borders,
+       as the globe surface - pure satellite imagery, no labels or borders,
        so the geography game stays a real challenge. -->
-  <!-- Self-hosted globe.gl (2.27.4) — keeps the page off unpkg so the
+  <!-- Self-hosted globe.gl (2.27.4) - keeps the page off unpkg so the
        Netlify CSP can stay tight (no script-src exception needed) and
        removes a second-origin round-trip from initial load. To upgrade,
        re-download from https://unpkg.com/globe.gl@<ver>/dist/globe.gl.min.js
