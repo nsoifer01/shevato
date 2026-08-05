@@ -68,7 +68,7 @@ function computeDominantShape(show) {
 
 // --- sensitive (adult) posters ---
 // Titles carrying the IMDb "Adult" genre get their poster blurred behind a
-// CSS-only (checkbox) reveal — these static pages ship no app JS, so the
+// CSS-only (checkbox) reveal - these static pages ship no app JS, so the
 // reveal must not depend on it. Social/search previews can't be blurred, so
 // the OG/Twitter/JSON-LD image is swapped for the neutral site card instead.
 function isAdultGenres(genres) {
@@ -102,19 +102,25 @@ function wrapSensitivePoster(imgHtml, id, compact) {
 // Build a single static HTML page for one TV series, given every season's
 // data (already grouped from data.json's flat `matches` array). Returns a
 // complete HTML string.
-function renderShowPage({ seriesId, title, year, type, genres, seriesRating, seriesVotes, poster, overview, language, providers, tmdbId, cast, seasons, builtAt, dominantShape, dominantShapeSlug, relatedShows }) {
+function renderShowPage({ seriesId, title, year, type, genres, seriesRating, seriesVotes, poster, overview, language, providers, tmdbId, cast, seasons, builtAt, dominantShape, dominantShapeSlug, relatedShows, inSitemap = true }) {
   const path = `/apps/rising-shows/shows/${showPath(title, seriesId)}/`;
   const canonical = `${SITE}${path}`;
   const numberOfSeasons = seasons.length;
   const yearLabel = year ? ` (${year})` : '';
-  const pageTitle = `${title}${yearLabel} — Episode Ratings & Season Trajectories | Rising Shows`;
+  const pageTitle = `${title}${yearLabel} - Episode Ratings & Season Trajectories | Rising Shows`;
+  // Only curated (sitemap-listed) pages ask to be indexed. The long tail
+  // keeps noindex,FOLLOW so its links still pass equity to curated pages
+  // while Google drains ~60k thin pages out of "Crawled - not indexed".
+  const robots = inSitemap
+    ? 'index, follow, max-image-preview:large'
+    : 'noindex, follow';
   const cleanOverview = (overview || '').trim();
   const description = buildDescription(title, year, numberOfSeasons, seriesRating, seriesVotes, cleanOverview);
 
   const posterUrl = poster ? `${TMDB_POSTER}${poster}` : null;
   const isAdult = isAdultGenres(genres);
   // Adult posters are never exposed in link/search previews (which can't be
-  // blurred) — fall back to the neutral site card instead.
+  // blurred) - fall back to the neutral site card instead.
   const exposePoster = !!posterUrl && !isAdult;
   const ogImage = exposePoster ? posterUrl : `${SITE}/images/og-card.png`;
 
@@ -144,7 +150,7 @@ function renderShowPage({ seriesId, title, year, type, genres, seriesRating, ser
   <title>${escapeHtml(pageTitle)}</title>
   <meta name="description" content="${escapeHtml(description)}">
   <meta name="author" content="Shevato LLC">
-  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta name="robots" content="${robots}">
   <meta name="theme-color" content="#0b0d12">
   <meta name="color-scheme" content="dark">
   <link rel="canonical" href="${canonical}">
@@ -153,7 +159,7 @@ function renderShowPage({ seriesId, title, year, type, genres, seriesRating, ser
   <link rel="dns-prefetch" href="https://www.google-analytics.com">
 
   <!-- Open Graph -->
-  <meta property="og:title" content="${escapeHtml(`${title}${yearLabel} — Episode Ratings & Season Trajectories`)}">
+  <meta property="og:title" content="${escapeHtml(`${title}${yearLabel} - Episode Ratings & Season Trajectories`)}">
   <meta property="og:description" content="${escapeHtml(description)}">
   <meta property="og:type" content="video.tv_show">
   <meta property="og:url" content="${canonical}">
@@ -164,7 +170,7 @@ function renderShowPage({ seriesId, title, year, type, genres, seriesRating, ser
 
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="${escapeHtml(`${title}${yearLabel} — Episode Ratings`)}">
+  <meta name="twitter:title" content="${escapeHtml(`${title}${yearLabel} - Episode Ratings`)}">
   <meta name="twitter:description" content="${escapeHtml(description)}">
   <meta name="twitter:image" content="${ogImage}">
   <meta name="twitter:site" content="@shevato">${twitterCardMeta}
@@ -186,7 +192,7 @@ ${seasonSchemas}
   <link rel="stylesheet" href="/apps/rising-shows/css/show-page.css">
   <link rel="stylesheet" href="/assets/css/back-to-top.css">
 
-  <!-- Google Analytics — shared site tag -->
+  <!-- Google Analytics - shared site tag -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-GEQGY35JJN"></script>
   <script defer src="/assets/js/analytics.js"></script>
 </head>
@@ -271,7 +277,7 @@ function renderHeroPoster(posterUrl, title, isAdult) {
 }
 
 // Top-billed cast strip. `cast` is the array stashed on the series by
-// enrich-tmdb.js — each entry is { id, name, character, profile_path }.
+// enrich-tmdb.js - each entry is { id, name, character, profile_path }.
 // Mirrors the in-app show modal's cast cards (same class names) so the
 // shared .cast-* styling applies. Returns '' when there's no cast so the
 // section is omitted entirely.
@@ -334,7 +340,7 @@ function renderSeasonSection(season, seriesId) {
         </header>
         ${curveSvg}
         <table class="episode-table">
-          <caption>Season ${season.season} episodes — IMDb ratings</caption>
+          <caption>Season ${season.season} episodes - IMDb ratings</caption>
           <thead><tr><th scope="col">#</th><th scope="col">Title</th><th scope="col">Rating</th><th scope="col">Votes</th></tr></thead>
           <tbody>
             ${season.episodes.map((ep) => `<tr><td>${ep.episode}</td><td>${escapeHtml(ep.name || '—')}</td><td><strong>${ep.rating.toFixed(1)}</strong></td><td>${ep.votes.toLocaleString()}</td></tr>`).join('\n            ')}
@@ -469,7 +475,7 @@ function buildDescription(title, year, n, rating, votes, overview) {
   const yearLabel = year ? ` (${year})` : '';
   const ratingLabel = rating ? ` IMDb ${rating.toFixed(1)}/10${votes ? ` (${votes.toLocaleString()} votes)` : ''}.` : '';
   const seasonLabel = n === 1 ? '1 season' : `${n} seasons`;
-  const lead = `${title}${yearLabel} — episode-by-episode IMDb ratings and season-shape analysis across ${seasonLabel}.${ratingLabel}`;
+  const lead = `${title}${yearLabel} - episode-by-episode IMDb ratings and season-shape analysis across ${seasonLabel}.${ratingLabel}`;
   if (!overview) return clip(lead, 300);
   return clip(`${lead} ${overview}`, 300);
 }
