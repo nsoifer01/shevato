@@ -397,10 +397,23 @@
   // semantics, exactly like resultOf treats them. Returns newest period
   // first; `byRival` is each rival's record inside that period, biggest
   // sample first with the rival id as a stable tie-break.
-  function periodRecords(games, unit) {
+  //
+  // `knownRivalIds` (a Set or array of the rival ids that still exist) drops
+  // games pointing at a rival who is gone from the list. Cross-device sync
+  // writes the rival list and the game log under separate keys, so a rival
+  // deleted on one device can have their games pushed back by another,
+  // leaving games nobody owns. Every other view already reads the game log
+  // through the rival list and ignores those; without this the records view
+  // was the one place they surfaced, as an "Unknown rival" row that also
+  // inflated the period's own W-L-T. Omit the argument to bucket everything.
+  function periodRecords(games, unit, knownRivalIds) {
+    const known = knownRivalIds instanceof Set ? knownRivalIds
+      : Array.isArray(knownRivalIds) ? new Set(knownRivalIds)
+      : null;
     const byPeriod = new Map();
     for (const g of Array.isArray(games) ? games : []) {
       if (!g || !bothPlayed(g)) continue;
+      if (known && !known.has(g.rivalId)) continue;
       const bounds = periodBounds(g.date, unit);
       if (!bounds) continue;
       let period = byPeriod.get(bounds.id);
