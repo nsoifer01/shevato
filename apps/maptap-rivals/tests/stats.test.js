@@ -662,6 +662,46 @@ test('periodRecords: no games at all yields an empty list', () => {
   assert.deepEqual(periodRecords(null, 'month'), []);
 });
 
+test('periodRecords: games whose rival is gone are dropped from the split and the total', () => {
+  // 'ghost' is a rival the sync resurrected games for after a delete: it must
+  // count nowhere, not as an extra row and not in the period's own W-L-T.
+  const withGhost = recordLog.concat([
+    { rivalId: 'ghost', date: '2026-07-22', myScore: 900, theirScore: 100 }, // W week30
+    { rivalId: 'ghost', date: '2026-07-31', myScore: 100, theirScore: 900 }, // L week31
+  ]);
+  const [w31, w30] = periodRecords(withGhost, 'week', new Set(['a', 'b']));
+  assert.deepEqual(w30.byRival.map(r => r.rivalId), ['a', 'b']);
+  assert.deepEqual(
+    { games: w30.games, wins: w30.wins, losses: w30.losses, ties: w30.ties },
+    { games: 3, wins: 1, losses: 1, ties: 1 });
+  assert.deepEqual(w31.byRival.map(r => r.rivalId), ['a', 'b']);
+  assert.equal(w31.games, 2);
+});
+
+test('periodRecords: a period left with only gone rivals disappears entirely', () => {
+  const onlyGhost = [
+    { rivalId: 'ghost', date: '2026-05-04', myScore: 500, theirScore: 400 },
+  ];
+  assert.deepEqual(periodRecords(onlyGhost, 'week', new Set(['a'])), []);
+  assert.deepEqual(periodRecords(onlyGhost, 'month', ['a']), []);
+});
+
+test('periodRecords: an array of known ids works the same as a Set', () => {
+  const set = periodRecords(recordLog, 'week', new Set(['a']));
+  const arr = periodRecords(recordLog, 'week', ['a']);
+  assert.deepEqual(arr, set);
+  assert.deepEqual(arr.flatMap(w => w.byRival.map(r => r.rivalId)), ['a', 'a']);
+});
+
+test('periodRecords: omitting the known-rival set buckets every game', () => {
+  const withGhost = recordLog.concat([
+    { rivalId: 'ghost', date: '2026-07-22', myScore: 900, theirScore: 100 },
+  ]);
+  const [, w30] = periodRecords(withGhost, 'week');
+  assert.deepEqual(w30.byRival.map(r => r.rivalId).sort(), ['a', 'b', 'ghost']);
+  assert.equal(w30.games, 4);
+});
+
 // --- periodOutcomeVsRival / runningRivalPeriodRecords ----------------------
 // Three consecutive ISO weeks inside one month, two rivals. Hand-computed:
 //   week Jun 8:  a W,W -> won      b L    -> lost

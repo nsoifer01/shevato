@@ -1121,6 +1121,14 @@
   // days carry a result, so rival-only and solo days sit these out exactly
   // the way resultOf treats them everywhere else.
 
+  // The rival ids that still exist. Every view that walks the game log reads
+  // it through the rival list, so a game whose rival is gone counts nowhere;
+  // records passes this set to periodRecords so it agrees with the rest of
+  // the app instead of inventing an "Unknown rival".
+  function liveRivalIds() {
+    return new Set(state.rivals.map(r => r.id));
+  }
+
   function rivalLabel(rivalId) {
     if (!rivalId) return 'All rivals';
     const r = state.rivals.find(x => x.id === rivalId);
@@ -1290,7 +1298,7 @@
     const sortSelect = $('#records-sort-select');
     if (sortSelect) sortSelect.value = state.recordsSort;
 
-    const records = periodRecords(state.games, unit);
+    const records = periodRecords(state.games, unit, liveRivalIds());
     if (!records.length) {
       body.appendChild(el('div', { class: 'empty-state records-empty' }, [
         el('p', {}, `No head-to-head games yet. Log a day against a rival and your ${unit === 'month' ? 'monthly' : 'weekly'} record shows up here on its own.`),
@@ -1359,12 +1367,13 @@
     if (!wrap) return;
     wrap.innerHTML = '';
 
-    const weeks = periodRecords(state.games, 'week');
+    const live = liveRivalIds();
+    const weeks = periodRecords(state.games, 'week', live);
     if (!weeks.length) { wrap.hidden = true; return; }
 
     const today = todayISO();
     const week = weeks.find(w => w.id === isoWeekId(today));
-    const month = periodRecords(state.games, 'month').find(m => m.id === monthId(today));
+    const month = periodRecords(state.games, 'month', live).find(m => m.id === monthId(today));
 
     wrap.hidden = false;
     wrap.appendChild(el('button', {
