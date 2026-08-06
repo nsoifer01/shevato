@@ -284,10 +284,10 @@
   // state the undo baseline: one Undo could hand the broken data back. Written
   // outsideHistory because the app straightening its own storage is
   // housekeeping, not an edit the traveller made and should have to undo.
-  function repairDb() {
+  function repairDb(skipSave) {
     const before = historyKey();
     repairTrips();
-    if (historyKey() !== before) save(null, null, true);
+    if (!skipSave && historyKey() !== before) save(null, null, true);
   }
   function repairTrips() {
     if (!Array.isArray(db.trips)) db.trips = [];
@@ -8343,12 +8343,18 @@
     $(id).max = DATE_MAX;
   }
   syncTimefmtLabel();
-  repairDb();
   // Same reader the view-hash writer consults, so the two can never disagree.
   // A hand-retyped "#SHARE=..." used to boot as a normal load, while that
   // writer (correctly case-insensitive) then refused to touch the fragment, so
   // the payload just sat in the URL doing nothing.
-  if (viewFromHash(location.hash, ui.view).isShare) {
+  const bootIsShare = viewFromHash(location.hash, ui.view).isShare;
+  // repairTrips() still runs so `db`/`realDb` is never handed downstream code
+  // (e.g. ensureTrip() on a failed share decode) in an unnormalized shape, but
+  // the write-back is skipped on a share boot: opening someone else's link
+  // must never touch this device's own real trip data, not even to fix up a
+  // stale schema field.
+  repairDb(bootIsShare);
+  if (bootIsShare) {
     enterSharedMode();
   } else {
     // Set before the first render so there is no flash of Timeline on a
