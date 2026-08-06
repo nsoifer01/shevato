@@ -2,6 +2,36 @@ let playerCount = 3;
 let players = ['player1', 'player2', 'player3'];
 const maxPlayers = 4;
 
+// The slots every table, chart and statistic reads with.
+//
+// `playerCount` is the entry-form width: how many people are playing now.
+// The race log is a separate record of who has ever played, and cross-device
+// sync carries the two under independent last-write-wins keys
+// (marioKartPlayerCount, marioKartRaces), so they can disagree without anyone
+// touching the app. Reading with the count alone is how a player with a full
+// history disappears from the history table and from every statistic while
+// their results sit intact in storage.
+//
+// Union of the two, so narrowing the entry form never hides a recorded
+// result, and a slot you have added but not yet played still gets its column.
+function rosterForCount(count) {
+    const allPlayers = ['player1', 'player2', 'player3', 'player4'];
+    const wanted = Number.isFinite(count) ? count : 0;
+    let played = 0;
+    if (typeof highestPlayerWithRaces === 'function' && typeof races !== 'undefined') {
+        played = highestPlayerWithRaces(races);
+    }
+    const slots = Math.max(1, Math.min(maxPlayers, Math.max(wanted, played)));
+    return allPlayers.slice(0, slots);
+}
+
+// Recompute the roster from the current count and race log. Called after the
+// race log loads or changes, since either can widen it.
+function refreshPlayerRoster() {
+    players = rosterForCount(playerCount);
+    return players;
+}
+
 // Use centralized player name manager
 let playerNames = window.PlayerNameManager ? window.PlayerNameManager.getAll() : {
     player1: 'Player 1',
@@ -78,8 +108,7 @@ function updatePlayerCount(newCount) {
     playerCount = newCount;
 
     // Update players array
-    const allPlayers = ['player1', 'player2', 'player3', 'player4'];
-    players = allPlayers.slice(0, playerCount);
+    players = rosterForCount(playerCount);
 
     // Update UI visibility
     updatePlayerFieldsVisibility();
