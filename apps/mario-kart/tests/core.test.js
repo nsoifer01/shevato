@@ -89,6 +89,93 @@ test('detectActivePlayersFromRaces: clamps between 1 and 4', () => {
   assert.equal(fn([{ player1: null, player2: null, player3: null, player4: null }]), 1);
 });
 
+// --- highestPlayerWithRaces ------------------------------------------------
+// Unlike detectActivePlayersFromRaces this one must NOT default to 3: it
+// answers "who has recorded results", and a wrong floor would drag a 1- or
+// 2-player setup back up to 3 every load.
+
+test('highestPlayerWithRaces: an empty or missing log is 0, not 3', () => {
+  const ctx = makeContext();
+  loadInto(ctx, 'dataManager.js');
+  const fn = ctx.highestPlayerWithRaces;
+  assert.equal(fn([]), 0);
+  assert.equal(fn(null), 0);
+  assert.equal(fn(undefined), 0);
+  assert.equal(fn('not an array'), 0);
+});
+
+test('highestPlayerWithRaces: returns the highest slot holding a position', () => {
+  const ctx = makeContext();
+  loadInto(ctx, 'dataManager.js');
+  const fn = ctx.highestPlayerWithRaces;
+  assert.equal(fn([{ player1: 1, player2: 2, player3: null, player4: null }]), 2);
+  assert.equal(fn([{ player1: 1, player2: null, player3: 3, player4: null }]), 3);
+  assert.equal(fn([{ player1: 1, player2: 2, player3: 3, player4: 4 }]), 4);
+});
+
+test('highestPlayerWithRaces: scans the whole log, not just the first race', () => {
+  const ctx = makeContext();
+  loadInto(ctx, 'dataManager.js');
+  const fn = ctx.highestPlayerWithRaces;
+  assert.equal(fn([
+    { player1: 1, player2: 2, player3: null, player4: null },
+    { player1: 1, player2: 2, player3: 3, player4: 4 },
+  ]), 4);
+});
+
+test('highestPlayerWithRaces: a position of 1 counts, null and undefined do not', () => {
+  const ctx = makeContext();
+  loadInto(ctx, 'dataManager.js');
+  const fn = ctx.highestPlayerWithRaces;
+  assert.equal(fn([{ player1: null, player2: null, player3: null, player4: 1 }]), 4);
+  assert.equal(fn([{ player1: 1 }]), 1);
+  assert.equal(fn([null, { player1: 1, player2: 2 }]), 2);
+});
+
+// --- rosterForCount --------------------------------------------------------
+// The roster every table and statistic reads with: the entry-form width and
+// the race log unioned, so a narrower form never hides a recorded result.
+
+// dataManager.js declares `let races` at top level, which shadows anything
+// the sandbox was seeded with, so the log has to be assigned after loading.
+// Rosters come back as arrays built by the vm's own Array, so compare joined
+// strings rather than tripping deepEqual's cross-realm prototype check.
+function rosterCtx(raceLog) {
+  const ctx = makeContext();
+  loadInto(ctx, 'dataManager.js');
+  loadInto(ctx, 'playerManager.js');
+  vm.runInContext(`races = ${JSON.stringify(raceLog)}`, ctx);
+  return (count) => vm.runInContext(
+    `rosterForCount(${JSON.stringify(count)}).join(',')`, ctx);
+}
+
+test('rosterForCount: with no race log the roster is exactly the entry width', () => {
+  const roster = rosterCtx([]);
+  assert.equal(roster(2), 'player1,player2');
+  assert.equal(roster(1), 'player1');
+  assert.equal(roster(4), 'player1,player2,player3,player4');
+});
+
+test('rosterForCount: a player with races is kept even when the count is short', () => {
+  // This is the divergence: the count key says 3, the race log says 4.
+  const roster = rosterCtx([{ player1: 1, player2: 2, player3: 3, player4: 4 }]);
+  assert.equal(roster(3), 'player1,player2,player3,player4');
+  assert.equal(roster(1), 'player1,player2,player3,player4');
+});
+
+test('rosterForCount: a slot added but not yet played still gets its column', () => {
+  const roster = rosterCtx([{ player1: 1, player2: 2, player3: null, player4: null }]);
+  assert.equal(roster(4), 'player1,player2,player3,player4');
+});
+
+test('rosterForCount: never empty and never past four', () => {
+  const roster = rosterCtx([]);
+  assert.equal(roster(0), 'player1');
+  assert.equal(roster(-2), 'player1');
+  assert.equal(roster(99), 'player1,player2,player3,player4');
+  assert.equal(roster(null), 'player1');
+});
+
 // --- getFilteredRaces ------------------------------------------------------
 
 test('getFilteredRaces: "all" returns every race', () => {

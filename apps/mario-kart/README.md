@@ -77,6 +77,22 @@ The tracker works best on modern browsers:
 - **Players**: Supports 1-4 players; layouts verified at all player counts
 - **Browser**: Chrome or Firefox on desktop for best experience
 
+### Player count vs the race log
+The player-count selector sets how wide the race-entry form is: how many
+people are playing now. It is stored under its own key
+(`marioKartPlayerCount`), separate from the race log (`marioKartRaces`), and
+cross-device sync carries the two independently, so they can disagree
+without anyone touching the app.
+
+Because of that, the history table, the per-player cards and every statistic
+read from a roster that unions the two: the entry width plus whoever
+actually has results in the race log. Narrowing the entry form therefore
+stops you entering a fourth score, but never hides a fourth player's
+recorded races, and their positions stay editable from the race-edit dialog.
+When no count has ever been stored, it is taken from the race log rather
+than from the built-in default of 3, so a device that receives the races
+without the count key does not silently drop a player.
+
 ## 🛠️ Technical Details
 
 ### Technologies Used

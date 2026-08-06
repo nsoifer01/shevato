@@ -35,6 +35,28 @@ function detectActivePlayersFromRaces(raceData) {
     return Math.max(1, Math.min(4, activeCount));
 }
 
+// Highest player slot that actually appears in the race log, or 0 when the
+// log is empty. Deliberately NOT detectActivePlayersFromRaces: that one
+// answers "how many players should an import switch to" and defaults to 3
+// for an empty log, which would drag a 1- or 2-player setup back up to 3.
+// This one answers "who has recorded results" and says 0 when nobody does.
+function highestPlayerWithRaces(raceData) {
+    if (!Array.isArray(raceData)) return 0;
+    let highest = 0;
+    for (const race of raceData) {
+        if (!race) continue;
+        for (let i = 4; i > highest; i--) {
+            const pos = race[`player${i}`];
+            if (pos !== null && pos !== undefined) {
+                highest = i;
+                break;
+            }
+        }
+        if (highest === 4) break;
+    }
+    return highest;
+}
+
 function addRace() {
     const date = document.getElementById('date').value;
     // Dynamic player data collection
@@ -460,17 +482,33 @@ function loadSavedData() {
         const savedPlayerCount = localStorage.getItem(storageKey);
         if (savedPlayerCount) {
             playerCount = parseInt(savedPlayerCount);
-            const allPlayers = ['player1', 'player2', 'player3', 'player4'];
-            players = allPlayers.slice(0, playerCount);
+        } else if (typeof highestPlayerWithRaces === 'function') {
+            // No stored count. A stored one is a choice we must respect even
+            // when it looks small (someone really can drop from four players
+            // to three), but an absent one records no choice at all, and the
+            // module default of 3 would silently narrow the entry form for
+            // someone whose race log plainly has four. This is the shape a
+            // device lands in when sync delivers the race log without the
+            // count key, since the two travel as independent keys.
+            playerCount = Math.max(playerCount, highestPlayerWithRaces(races));
+        }
 
-            // Update the select dropdown
-            const playerCountSelect = document.getElementById('player-count');
-            if (playerCountSelect) {
-                playerCountSelect.value = playerCount.toString();
-            }
+        // Update the select dropdown
+        const playerCountSelect = document.getElementById('player-count');
+        if (playerCountSelect) {
+            playerCountSelect.value = playerCount.toString();
         }
     } catch (e) {
         console.error('Error loading player count:', e);
+    }
+
+    // Always recompute the roster, count key or not. A device that received
+    // the race log but not the count key (or received a stale one) would
+    // otherwise read with the module default of 3 and drop a fourth player
+    // who has a full history. Runs outside the try above so a failed count
+    // read still leaves the roster matching the races we did load.
+    if (typeof refreshPlayerRoster === 'function') {
+        refreshPlayerRoster();
     }
 }
 
