@@ -1066,7 +1066,8 @@
     const tv = $('#filterTraveler');
     if (tv) tv.value = '';
     ui.search = ''; ui.filterType = ''; ui.filterStatus = ''; ui.filterTraveler = '';
-    exitSelectMode();
+    // clearing only ever REVEALS rows, so there is nothing to prune and no
+    // reason to drop the mode - the same contract as the filter listeners
     render();
   }
 
@@ -1143,6 +1144,16 @@
   // and a filtered-to-nothing trip are handled by the same code.
   function syncSelectUi(visibleIds) {
     selVisible = visibleIds;
+    // Moving the filters moves which rows exist, so the selection is PRUNED to
+    // what the board just drew rather than torn down: a filter is transient,
+    // and dropping the mode as you type means re-entering it by hand once the
+    // search is right. An id the filters hid is forgotten outright - never
+    // silently re-pointed at a row the traveller cannot see - so a bulk action
+    // can only ever reach what is on screen.
+    if (selMode && selIds.size) {
+      const drawn = new Set(visibleIds);
+      for (const id of selIds) if (!drawn.has(id)) selIds.delete(id);
+    }
     const btn = $('#selectBtn');
     btn.textContent = selMode ? 'Cancel select' : 'Select items';
     btn.classList.toggle('on', selMode);
@@ -3649,8 +3660,15 @@
     }
     // trip name, then date. An undated item sorts to the END of its trip rather
     // than the top, where an empty string would otherwise put it.
+    // The date leg compares by CODE POINT, not localeCompare: ICU collation
+    // treats "~" as punctuation and sorts it BEFORE digits
+    // ("~".localeCompare("2026-08-18") === -1), which put every undated item at
+    // the TOP of its trip - the exact opposite of what the "~" sentinel is for.
+    // ISO dates are ASCII, so a plain codepoint compare orders them correctly
+    // and leaves "~" (0x7E) above every digit, as intended.
+    const byDate = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
     rows.sort((a, b) => a.tripName.localeCompare(b.tripName)
-      || (a.date || '~').localeCompare(b.date || '~')
+      || byDate(a.date || '~', b.date || '~')
       || a.title.localeCompare(b.title));
     return rows;
   }
@@ -8121,9 +8139,8 @@
       ui.search = $('#searchBox').value.trim();
       ui.filterType = $('#filterType').value;
       ui.filterStatus = $('#filterStatus').value;
-      // moving the filters moves which rows exist, so the selection made
-      // against the old ones is dropped rather than silently re-pointed
-      exitSelectMode();
+      // select mode survives a filter change; syncSelectUi prunes the selection
+      // to the rows the next render actually draws
       render();
     });
   });
@@ -8133,7 +8150,7 @@
   $('#travelerFilterWrap').addEventListener('input', e => {
     if (e.target.id !== 'filterTraveler') return;
     ui.filterTraveler = e.target.value;
-    exitSelectMode();
+    // pruned, not exited - the same contract as the toolbar filters above
     render();
   });
 

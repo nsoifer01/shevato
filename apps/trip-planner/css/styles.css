@@ -1295,6 +1295,12 @@
   .leg-btn {
     border: 1px dashed var(--border); background: none; border-radius: 999px;
     padding: 4px 14px; font-size: 12.5px; font-weight: 600; color: var(--text);
+    /* the label is a whole sentence ("Kyoto, Japan -> Osaka, Japan · how to
+       get there"), and as a flex item it defaults to min-width:auto, so it
+       refused to shrink and pushed the PAGE 14px wider than a 360px phone.
+       Let it shrink and wrap instead: the overflow belongs to the label, not
+       to the document. */
+    min-width: 0; white-space: normal;
   }
   .leg-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
   /* ---------- read a booking confirmation ---------- */
@@ -2998,6 +3004,22 @@
   /* the caption already carries the break, so the hairline above it tightens */
   .tp-menu-panel .sep + .tp-menu-cap { padding-top: 3px; }
 
+  @media (max-width: 560px) {
+    /* 15 action rows plus two captions and two hairlines run the panel to
+       ~696px, and it opens ~172px down the page, so its tail fell past the
+       fold on a 844px phone with nothing to scroll: the panel is absolutely
+       positioned, so the PAGE cannot reach it either. It scrolls itself
+       instead. dvh second so it wins where supported - 100vh measures the
+       tallest viewport, i.e. the one with the URL bar already retracted. */
+    .tp-menu-panel {
+      max-height: calc(100vh - 190px);
+      max-height: calc(100dvh - 190px);
+      overflow-y: auto;
+      /* and the page does not take over once the panel bottoms out */
+      overscroll-behavior: contain;
+    }
+  }
+
   /* ---------- bulk selection ----------
      The toolbar toggle, the bar above the board, and the checkbox column a
      top-level row grows while the mode is on. Every interactive part here pins
@@ -3118,6 +3140,11 @@
        together rather than each grabbing one */
     .trip-planner-app .bulk-status { margin-left: 0; flex: 1 1 140px; min-height: 44px; }
     .trip-planner-app .bulk-del { flex: 1 1 130px; min-height: 44px; }
+    /* "Select all" is a label wrapping a 22px box, so it was a 22px tap target
+       sitting beside two 44px ones. The label is what the thumb actually hits
+       (the box and its text both toggle it), so the floor belongs here, not on
+       the checkbox - growing that would leave a 44px tick on a phone. */
+    .trip-planner-app .bulk-all { min-height: 44px; }
   }
 
 /* ===== Round 4: item fields, warnings and the totals breakdown family ===== */
