@@ -5141,6 +5141,15 @@ const TripLogic = (() => {
   function tripAsTemplate(trip) {
     const copy = JSON.parse(JSON.stringify(trip));
     copy.items = (Array.isArray(copy.items) ? copy.items : []).filter(Boolean).map(templateItem);
+    // The packing LIST is part of the shape and is kept, tags and all. Which
+    // boxes were TICKED is a fact about the trip that was taken, not about the
+    // plan, so it goes the same way the prices and the codes do: a template
+    // opening with the passport already packed is exactly the kind of lie the
+    // rule above exists to prevent, and it is the one that could send somebody
+    // to the airport without it.
+    if (Array.isArray(copy.packing)) {
+      for (const row of copy.packing) if (row && typeof row === 'object') row.done = false;
+    }
     return copy;
   }
 

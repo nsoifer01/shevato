@@ -5498,6 +5498,31 @@ test('the cost column of a template is BLANK, estimates included', () => {
   assert.equal(L.costDisplayParts(it).tilde, '');
 });
 
+test('a template keeps the packing list but not which boxes were ticked', () => {
+  const source = bookedTrip();
+  source.packing = [
+    { id: 'p1', text: 'Passport or photo ID', done: true },
+    { id: 'p2', text: 'Hiking boots', done: false, who: ['Alex'] },
+    { id: 'p3', text: 'Sunscreen', done: true, who: ['Sam'] },
+  ];
+  const tpl = L.tripAsTemplate(source);
+  // the rows survive, in order, with their per-traveller tags intact: the list
+  // itself is part of the shape being reused
+  assert.deepEqual(tpl.packing.map(r => r.text), ['Passport or photo ID', 'Hiking boots', 'Sunscreen']);
+  assert.deepEqual(tpl.packing.map(r => r.who || null), [null, ['Alex'], ['Sam']]);
+  // but nothing is pre-packed for a trip that has not happened yet
+  assert.deepEqual(tpl.packing.map(r => r.done), [false, false, false]);
+  // and the source keeps its own progress
+  assert.deepEqual(source.packing.map(r => r.done), [true, false, true]);
+});
+
+test('a template of a trip that never opened its packing list stays without one', () => {
+  const source = bookedTrip();
+  delete source.packing;
+  const tpl = L.tripAsTemplate(source);
+  assert.equal('packing' in tpl, false);
+});
+
 test('building a template does not touch the trip it was built from', () => {
   const source = bookedTrip();
   const before = JSON.stringify(source);
