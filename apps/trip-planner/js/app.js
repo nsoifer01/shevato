@@ -7,7 +7,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 56;
+  const TP_BUILD = 57;
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   const TYPE_META = {
@@ -2300,7 +2300,7 @@
     const ids = tieRowsOf(ctx.row).map(r => r.dataset.id);
     // dropped where it was picked up: not an edit, so not a save and not an
     // undo step the traveller would have to press twice to get past
-    if (ids.join(' ') === ctx.ids.join(' ')) return;
+    if (ids.join('\0') === ctx.ids.join('\0')) return;
     commitOrder(ids);
   }
 
@@ -3084,6 +3084,12 @@
 
   function submitItemForm(e) {
     e.preventDefault();
+    // A second submit event firing back-to-back with no intervening render
+    // (a double-click, or two rapid Enter presses) lands after the first one
+    // has already saved and closed the overlay; the form's fields are still
+    // populated with what was just saved, so without this guard it reads as
+    // a second, independently valid Add and creates a duplicate item.
+    if (!$('#itemOverlay').classList.contains('open')) return;
     clearFieldErrors();
     const travel = !!TRAVEL_TYPES[modalType];
     // the form rebuilds the item from scratch, so anything it does not expose
@@ -3701,8 +3707,11 @@
 
   // What a shared view is allowed to do from the trip menu. Everything else
   // writes to a trip the visitor does not own, and save() is a no-op there, so
-  // those eight rows are DISABLED rather than left looking live and doing
-  // nothing when pressed, which is what every blocked row used to do.
+  // those rows are DISABLED rather than left looking live and doing nothing
+  // when pressed, which is what every blocked row used to do. The menu holds 15
+  // rows and this list allows 5, so 10 are blocked; the count is deliberately
+  // not spelled out again below, because the last one written here went stale
+  // the moment a row was added.
   //
   // "Backup all trips" is deliberately not on this list even though it only
   // reads: shared mode parks the visitor's own trips aside and leaves `db`
@@ -6205,10 +6214,32 @@
     scrollMessages();
   }
 
+  // Clearing the thread is the ONE destructive action in this app that cannot
+  // be taken back: the conversation lives under its own chat key, never in the
+  // db, so save() never sees it and Undo has nothing to restore. Every other
+  // destructive path either confirms first or hands back an Undo - even
+  // DELETING THE TRIP is gentler, because that one deliberately keeps the
+  // thread in hand so an undo can return it (see syncDeletedChats). So this
+  // asks, using the same dialog the other destructive paths use.
+  //
+  // An EMPTY thread is not a loss, so it is cleared without a question: a
+  // confirm with nothing at stake is how travellers learn to click through
+  // confirms that do.
   function clearChat() {
     const trip = activeTrip();
     if (!trip) return;
-    try { localStorage.removeItem(chatKey(trip.id)); } catch { /* best effort */ }
+    const messages = loadChat(trip.id).length;
+    if (!messages) { wipeChat(trip.id); return; }
+    confirmDialog(
+      'Clear this conversation?',
+      `The ${messages} message${messages === 1 ? '' : 's'} in this conversation, and any suggestions still waiting on screen, will be permanently deleted. This cannot be undone. Your trip itself is not touched.`,
+      'Clear chat',
+      () => wipeChat(trip.id),
+    );
+  }
+
+  function wipeChat(tripId) {
+    try { localStorage.removeItem(chatKey(tripId)); } catch { /* best effort */ }
     $('#assistMessages').innerHTML = '';
     assistActions.clear();
   }
@@ -7415,10 +7446,16 @@
   // The ARRAY'S EXISTENCE is the "already seeded" flag, which is why an emptied
   // list is still written as [] rather than deleted: a traveller who cleared
   // every row must not have the defaults handed back to them on the next open.
+  // Seeded outsideHistory, for the same reason ensureTrip is: the app laying
+  // down its own defaults is not an edit the traveller made. Filed as a normal
+  // save it became an undo step just for OPENING the dialog - the Undo button
+  // lit up untouched, one press emptied the list the traveller was looking at,
+  // and the next open re-seeded it and filed another step. Their real last edit
+  // was then two presses away instead of one.
   function ensurePacking(trip) {
     if (Array.isArray(trip.packing)) return;
     trip.packing = defaultPackingItems(trip).map(text => ({ id: uid(), text, done: false }));
-    save();
+    save(null, null, true);
   }
   const packingRows = trip => (Array.isArray(trip.packing) ? trip.packing : []).filter(r => r && typeof r.text === 'string');
 
