@@ -17,8 +17,25 @@
     <link rel="dns-prefetch" href="https://www.google-analytics.com">
 
     <!-- Google Analytics -->
+    <!--
+      Netlify serves this document for any unmatched path while leaving that
+      path in the address bar, so GA4 was recording one distinct page_path per
+      broken link and per bot probe. That long tail is a large part of why 624
+      views were spread over 257 paths, and every one of those rows shows 0s
+      engagement, dragging the site average down.
+
+      Pinning page_path collapses all of them into a single /404 row. The path
+      that actually failed is still reported, as a parameter on a `page_not_found`
+      event below, so broken inbound links remain findable without polluting
+      Pages and Screens. This inline block must stay ahead of the deferred
+      analytics.js, which reads it at config time.
+    -->
+    <script>
+      window.SHEVATO_ANALYTICS_CONFIG = { pagePath: '/404', pageTitle: '404 Not Found' };
+    </script>
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-GEQGY35JJN"></script>
     <script defer src="/assets/js/analytics.js"></script>
+    <script defer src="/assets/js/analytics-404.js"></script>
 
     <link rel="stylesheet" href="/assets/css/main.css" />
     <link rel="stylesheet" href="/assets/css/brand-colors.css" />

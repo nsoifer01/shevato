@@ -1,3 +1,18 @@
+/**
+ * Analytics shim. Resolves window.shevatoAnalytics at call time (the shared
+ * helper is deferred and this file is a classic script) and never throws.
+ * Returns silently under node:vm, where the tests load this file with no
+ * window at all.
+ */
+function track(method, ...args) {
+    try {
+        const a = typeof window !== 'undefined' ? window.shevatoAnalytics : null;
+        if (a && typeof a[method] === 'function') a[method](...args);
+    } catch (e) {
+        /* analytics must never break the app */
+    }
+}
+
 let currentView = 'achievements';
 let sortColumn = null;
 let sortDirection = 'asc';
@@ -690,6 +705,10 @@ function toggleView(view) {
 
     // Now update currentView
     currentView = view;
+
+    // Which tabs people actually use. app_view, not a synthetic page_view, so
+    // the hash mirroring below cannot create phantom URLs in GA4.
+    track('trackView', view);
 
     // Mirror to URL hash so reload + back/forward preserves the view.
     // replaceState (not pushState) keeps the existing history entry —

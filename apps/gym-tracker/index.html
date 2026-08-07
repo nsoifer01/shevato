@@ -108,6 +108,14 @@
     <!-- Visual refresh layer — must load last so it wins specificity ties. -->
     <link rel="stylesheet" href="css/refresh.css">
   <link rel="stylesheet" href="/assets/css/back-to-top.css">
+
+  <!-- Google Analytics. Loaded async + defer so it never blocks first paint;
+       all tracking goes through the shared helper in analytics.js, which
+       no-ops if gtag is blocked. See privacy.html "Analytics and cookies". -->
+  <link rel="preconnect" href="https://www.googletagmanager.com" crossorigin>
+  <link rel="dns-prefetch" href="https://www.google-analytics.com">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-GEQGY35JJN"></script>
+  <script defer src="/assets/js/analytics.js"></script>
 </head>
 <body class="gym-tracker">
     <div data-include="header"></div>

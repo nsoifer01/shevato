@@ -32,6 +32,7 @@ import {
     shouldShowWarmup,
     buildWarmupRamp,
 } from '../utils/warmup.js';
+import { track } from '../utils/analytics.js';
 
 const PLATE_LOADED_EQUIPMENT = new globalThis.Set(['barbell', 'trap-bar', 'machine', 'plate', 'sled']);
 
@@ -3214,6 +3215,17 @@ class WorkoutView {
         // Save workout session
         this.app.workoutSessions.push(this.currentWorkoutSession);
         this.app.saveWorkoutSessions();
+
+        // The app's single most meaningful completion. Counts and duration
+        // only: no exercise names, no notes, no heart-rate or calorie figures,
+        // which are health data and have no place in analytics.
+        track('trackAction', 'workout_completed', {
+            exercise_count: this.currentWorkoutSession.exercises.length,
+            set_count: this.currentWorkoutSession.exercises.reduce(
+                (n, ex) => n + ((ex.sets || []).filter((s) => s.completed).length), 0
+            ),
+            duration_minutes: this.currentWorkoutSession.duration || 0,
+        });
 
         // Integration 4: persistent per-exercise PR achievements. Fires only for
         // exercises that beat their all-time best with 2+ prior sessions; the

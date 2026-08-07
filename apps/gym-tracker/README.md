@@ -78,7 +78,9 @@ gym-tracker/
 │   │                           #   Set, Achievement, Measurement, Settings
 │   ├── services/               # Storage, Timer, Analytics, Achievement
 │   ├── utils/                  # plate-calculator, program-schedule, pr-session, rest-cues,
-│   │                           #   session-merge, paginator, event-bus, dark-select, helpers, ...
+│   │                           #   session-merge, paginator, event-bus, dark-select, helpers,
+│   │                           #   analytics (bridge to the site-wide GA4 helper — distinct
+│   │                           #   from services/Analytics, which computes workout stats), ...
 │   └── views/                  # home, programs, workout, history, exercises, calendar,
 │                               #   achievements, insights, measurements, settings, paused-banner
 ├── data/

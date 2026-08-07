@@ -1,6 +1,22 @@
 'use strict';
 (() => {
 
+  /**
+   * Analytics shim. Resolves window.shevatoAnalytics at call time because
+   * /assets/js/analytics.js is deferred and this IIFE can run first, and
+   * swallows everything so a tracking failure can never break a trip.
+   * Nothing here may ever send trip contents: destinations, item names and
+   * anything typed into Details are the user's travel plans.
+   */
+  function track(method, ...args) {
+    try {
+      const a = typeof window !== 'undefined' ? window.shevatoAnalytics : null;
+      if (a && typeof a[method] === 'function') a[method](...args);
+    } catch (e) {
+      /* analytics must never break the app */
+    }
+  }
+
   // ---------- constants ----------
   // Shown at the bottom of the trip menu so a bug report can name the exact
   // build it came from. THE RULE: TP_BUILD must always equal the `?v=` on
@@ -4370,6 +4386,11 @@
     // links fine; the real-world limit is chat apps truncating them. Hard
     // stop only at absurd sizes, advisory warning in between.
     if (url.length > 30000) { toastError('This trip is too large to share by link. Use Export trip (JSON) instead.'); return; }
+    // Item count only, never the link: the share URL's fragment encodes the
+    // entire trip, including confirmation numbers typed into Details.
+    track('trackAction', 'trip_shared', {
+      item_count: Array.isArray(t.items) ? t.items.length : 0,
+    });
     try {
       await navigator.clipboard.writeText(url);
       toast(url.length > 8000
@@ -5935,6 +5956,10 @@
   let assistReturnFocus = null;
 
   function openAssist(focusDate) {
+    // The assistant is the app's only paid dependency, so knowing how often it
+    // is opened at all is worth one event. The prompt and the reply are never
+    // touched here - they contain the trip.
+    track('trackAction', 'assistant_opened');
     const panel = $('#assistPanel');
     const opener = document.activeElement;
     if (opener && opener !== document.body && !panel.contains(opener)) assistReturnFocus = opener;
@@ -7914,6 +7939,9 @@
   // brings you back to the view that has the checkboxes.
   function setView(v) {
     ui.view = v;
+    // trackView drops repeats, so the several code paths that re-assert the
+    // current view (share exit, select-mode exit, hashchange) report once.
+    track('trackView', v);
     if (selMode && v !== 'timeline') { exitSelectMode(); render(); return; }
     applyView();
   }

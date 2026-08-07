@@ -24,6 +24,20 @@
 (function () {
   'use strict';
 
+  /**
+   * Analytics shim. Resolves window.shevatoAnalytics at call time (the shared
+   * helper is deferred, this IIFE can run first) and never throws.
+   * Rival names are user-entered and never leave the app.
+   */
+  function track(method, ...args) {
+    try {
+      const a = typeof window !== 'undefined' ? window.shevatoAnalytics : null;
+      if (a && typeof a[method] === 'function') a[method](...args);
+    } catch (e) {
+      /* analytics must never break the app */
+    }
+  }
+
   // ---------- storage helpers ----------
   const KEY = {
     RIVALS: 'maptapRivalsRivals',
@@ -715,6 +729,9 @@
   function setView(view) {
     const changed = state.view !== view;
     state.view = view;
+    // Reported unconditionally; trackView drops repeats itself, so the
+    // `changed` flag below stays purely about rendering.
+    track('trackView', view);
     $$('.view-tab').forEach(tab => {
       const active = tab.dataset.view === view;
       tab.classList.toggle('is-active', active);
@@ -2417,6 +2434,16 @@
       savedGames.push({ game: newGame, rival });
     }
     persistGames();
+
+    // One event per save action carrying a count, not one per game: a paste
+    // can create a dozen games at once and that would be a dozen events for
+    // a single user gesture.
+    if (savedGames.length) {
+      track('trackAction', 'games_logged', {
+        entry_method: 'paste',
+        game_count: savedGames.length,
+      });
+    }
 
     // Briefly highlight the rows that just saved before we clear them.
     const savedIds = new Set(targets.map(x => x.rival.id));
@@ -6415,6 +6442,9 @@
         added++;
       }
       if (added || backfilled || updated) persistGames();
+      if (added) {
+        track('trackAction', 'games_logged', { entry_method: 'maptap_sync', game_count: added });
+      }
 
       const parts = [];
       if (added)      parts.push(`${added} new`);
@@ -6870,6 +6900,10 @@
         });
         pushed++;
       }
+    }
+
+    if (pushed) {
+      track('trackAction', 'games_logged', { entry_method: 'whatsapp_import', game_count: pushed });
     }
 
     persistRivals();

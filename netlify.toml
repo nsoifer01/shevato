@@ -16,30 +16,138 @@
   port = 8888
   publish = "."
 
-# The site homepage lives at /home.html; "/" must be a clean edge 301 so
-# Google indexes the real homepage. force = true makes this win over the
-# committed index.html stub (which previously served at "/" carrying a
-# noindex meta that de-indexed the domain root - GSC, 2026-06). The stub
-# remains only as a local-dev / no-JS fallback.
+# ---------------------------------------------------------------------------
+# URL canonicalisation.
+#
+# Netlify's Pretty URLs serves every committed `foo.html` at BOTH /foo.html
+# and /foo, with a 200 on each and no redirect between them. Nothing here
+# used to collapse the pair, so one page was reachable at two live URLs:
+# GA4 filed them as two rows (/apps 11 views vs /apps.html 13), and Google
+# saw a duplicate it had to resolve via the canonical tag.
+#
+# Direction of travel is extensionless, because that is what every page's
+# <link rel="canonical"> and sitemap-pages.xml already declare - so these
+# redirects make the server agree with what we had been claiming, and
+# nothing needs re-indexing.
+#
+# force = true on each: the .html file physically exists, and without force
+# static file serving wins and the redirect never runs.
+#
+# NOTE: google10670283c9d04acd.html is deliberately absent. Search Console
+# fetches that exact .html path to verify domain ownership; redirecting it
+# would fail verification. Every rule below names one page for that reason -
+# a blanket *.html rule would have caught it.
+# ---------------------------------------------------------------------------
+
+# "/" must be a clean edge 301 so Google indexes the real homepage. force
+# makes this win over the committed index.html stub (which previously served
+# at "/" carrying a noindex meta that de-indexed the domain root - GSC,
+# 2026-06). The stub remains only as a local-dev / no-JS fallback.
+#
+# Targets /home, not /home.html: this redirect is the site's single busiest
+# entry point, and pointing it at the non-canonical variant is what drove
+# 279 of 624 page views onto /home.html while /home recorded almost none.
 [[redirects]]
   from = "/"
-  to = "/home.html"
+  to = "/home"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/index.html"
+  to = "/home"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/home.html"
+  to = "/home"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/apps.html"
+  to = "/apps"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/work.html"
+  to = "/work"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/about.html"
+  to = "/about"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/contact.html"
+  to = "/contact"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/privacy.html"
+  to = "/privacy"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/moadon-alef.html"
+  to = "/moadon-alef"
+  status = 301
+  force = true
+
+# Directory-index duplicates. Every generated page under shows/ and
+# exercises/ was reachable both as `/…/slug/` and `/…/slug/index.html`,
+# doubling the potential URL space for ~34,800 generated pages. Named
+# placeholders (:slug) rather than a splat, so the rule cannot escape the
+# directory it is meant to tidy.
+[[redirects]]
+  from = "/apps/rising-shows/shows/:slug/index.html"
+  to = "/apps/rising-shows/shows/:slug/"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/apps/gym-tracker/exercises/:slug/index.html"
+  to = "/apps/gym-tracker/exercises/:slug/"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/apps/:app/index.html"
+  to = "/apps/:app/"
+  status = 301
+  force = true
+
+# The Kometa builder sits one level deeper than the rule above reaches.
+[[redirects]]
+  from = "/apps/rising-shows/kometa/index.html"
+  to = "/apps/rising-shows/kometa/"
   status = 301
   force = true
 
 # product.html was retired as part of the marketing/portfolio refresh.
-# Its services content now lives at the top of /work.html. Permanent
-# redirect so anyone with a bookmark or inbound link lands cleanly.
+# Its services content now lives at the top of /work. Permanent redirect so
+# anyone with a bookmark or inbound link lands cleanly.
+#
+# Targets /work rather than /work.html: since /work.html now 301s to /work,
+# the old target would have made this a two-hop redirect chain, which costs
+# a round trip and dilutes the link signal Google passes through.
 [[redirects]]
   from = "/product.html"
-  to = "/work.html"
+  to = "/work"
   status = 301
   force = true
 
 # Extensionless variant in case anyone bookmarked /product without .html.
 [[redirects]]
   from = "/product"
-  to = "/work.html"
+  to = "/work"
   status = 301
   force = true
 
