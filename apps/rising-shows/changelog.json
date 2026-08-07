@@ -1,6 +1,258 @@
 {
   "updates": [
     {
+      "builtAt": "2026-08-07T07:35:40.225Z",
+      "totals": {
+        "seasons": 66181,
+        "delta": 20
+      },
+      "shapeCounts": {
+        "mid-peak": 4629,
+        "rebound": 10076,
+        "rising": 2907,
+        "slow-burn": 4383,
+        "big-finale": 12123,
+        "u-shaped": 3091,
+        "rollercoaster": 14060,
+        "saved-best-for-last": 1543,
+        "front-loaded": 3470,
+        "declining": 1872,
+        "bad-finale": 4659,
+        "consistent": 2619,
+        "shape-drift": 1632
+      },
+      "shapeDeltas": {
+        "mid-peak": -7,
+        "rebound": -1,
+        "rising": 15,
+        "slow-burn": 3,
+        "big-finale": 19,
+        "u-shaped": -3,
+        "rollercoaster": 5,
+        "saved-best-for-last": 1,
+        "front-loaded": -4,
+        "declining": -3,
+        "bad-finale": 2,
+        "consistent": -3,
+        "shape-drift": -5
+      },
+      "added": [
+        {
+          "seriesId": "tt43337681",
+          "title": "Star Wars: Visions Presents - The Ninth Jedi",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt35618070",
+          "title": "Sterling Point",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0328731",
+          "title": "Die Abenteuer des braven Soldaten Schwejk",
+          "season": 1,
+          "seasonYear": 1972
+        },
+        {
+          "seriesId": "tt0471990",
+          "title": "Bratz",
+          "season": 2,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt39690705",
+          "title": "Engaged",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt9892936",
+          "title": "One Hundred Years of Solitude",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38891054",
+          "title": "Posle Fishera. Inkvizitor",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt3408180",
+          "title": "Enchufe.tv",
+          "season": 3,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt16738756",
+          "title": "Ugliest House in America",
+          "season": 8,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1535977",
+          "title": "America's Cutest",
+          "season": 4,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt28810719",
+          "title": "Secrets of Our Universe with Tim Peake",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt35386309",
+          "title": "The Rise and Fall of the Maya",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt38692912",
+          "title": "Terror of X",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt3608112",
+          "title": "SashaTanya",
+          "season": 1,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt0389594",
+          "title": "Chandrakanta",
+          "season": 1,
+          "seasonYear": 1994
+        },
+        {
+          "seriesId": "tt21329138",
+          "title": "Rosie's Rules",
+          "season": 2,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt29420686",
+          "title": "1670",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36896738",
+          "title": "Anna Haugh's Big Irish Food Tour",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt37724480",
+          "title": "911: Did the Killer Call?",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt40914930",
+          "title": "The Alliance",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt21764074",
+          "title": "Cranberry Sorbet",
+          "season": 4,
+          "from": 4.47,
+          "to": 6.59,
+          "delta": 2.12
+        },
+        {
+          "seriesId": "tt21764804",
+          "title": "The Family",
+          "season": 2,
+          "from": 6.64,
+          "to": 7.75,
+          "delta": 1.11
+        },
+        {
+          "seriesId": "tt43643879",
+          "title": "Unacceptable",
+          "season": 1,
+          "from": 6,
+          "to": 6.82,
+          "delta": 0.82
+        },
+        {
+          "seriesId": "tt1286883",
+          "title": "Akasya Duragi",
+          "season": 4,
+          "from": 4.79,
+          "to": 5.52,
+          "delta": 0.73
+        },
+        {
+          "seriesId": "tt21764804",
+          "title": "The Family",
+          "season": 1,
+          "from": 6.63,
+          "to": 7.34,
+          "delta": 0.71
+        },
+        {
+          "seriesId": "tt2337840",
+          "title": "Bad Education",
+          "season": 5,
+          "from": 4.8,
+          "to": 5.44,
+          "delta": 0.64
+        },
+        {
+          "seriesId": "tt40857820",
+          "title": "Isakapatnam",
+          "season": 1,
+          "from": 4.07,
+          "to": 4.71,
+          "delta": 0.64
+        },
+        {
+          "seriesId": "tt0424611",
+          "title": "Da Boom Crew",
+          "season": 1,
+          "from": 6.93,
+          "to": 6.32,
+          "delta": -0.61
+        },
+        {
+          "seriesId": "tt1286883",
+          "title": "Akasya Duragi",
+          "season": 3,
+          "from": 5.33,
+          "to": 5.92,
+          "delta": 0.59
+        },
+        {
+          "seriesId": "tt31501409",
+          "title": "Solo las más",
+          "season": 2,
+          "from": 6.17,
+          "to": 5.6,
+          "delta": -0.57
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20804,
+        "avgRating": 1289,
+        "shapes": 214,
+        "seriesRating": 365,
+        "episodeCount": 87,
+        "poster": 6,
+        "overview": 6,
+        "providers": 1
+      }
+    },
+    {
       "builtAt": "2026-08-06T08:49:30.061Z",
       "totals": {
         "seasons": 66161,
@@ -7110,208 +7362,6 @@
         "episodeCount": 82,
         "overview": 1,
         "providers": 2
-      }
-    },
-    {
-      "builtAt": "2026-07-08T08:28:53.769Z",
-      "totals": {
-        "seasons": 65691,
-        "delta": 8
-      },
-      "shapeCounts": {
-        "mid-peak": 4634,
-        "rebound": 10030,
-        "rising": 2912,
-        "slow-burn": 4354,
-        "big-finale": 11985,
-        "u-shaped": 3070,
-        "rollercoaster": 14012,
-        "saved-best-for-last": 1525,
-        "front-loaded": 3431,
-        "declining": 1859,
-        "bad-finale": 4630,
-        "consistent": 2607,
-        "shape-drift": 1610
-      },
-      "shapeDeltas": {
-        "rebound": -14,
-        "rising": 1,
-        "big-finale": -7,
-        "u-shaped": 3,
-        "rollercoaster": -9,
-        "saved-best-for-last": 2,
-        "front-loaded": -4,
-        "bad-finale": -10,
-        "consistent": 1,
-        "shape-drift": -3
-      },
-      "added": [
-        {
-          "seriesId": "tt13045860",
-          "title": "Hiç Komik Degil",
-          "season": 3,
-          "seasonYear": 2013
-        },
-        {
-          "seriesId": "tt14527610",
-          "title": "Harry Wild",
-          "season": 5,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0782374",
-          "title": "Little People, Big World",
-          "season": 11,
-          "seasonYear": 2012
-        },
-        {
-          "seriesId": "tt1383294",
-          "title": "Himmelblå",
-          "season": 3,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt20222554",
-          "title": "Southern Hospitality",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt2111893",
-          "title": "Sherlock Yack: Zoo-Detective",
-          "season": 1,
-          "seasonYear": 2011
-        },
-        {
-          "seriesId": "tt6105116",
-          "title": "Cartoon Monsoon",
-          "season": 1,
-          "seasonYear": 2003
-        },
-        {
-          "seriesId": "tt6304194",
-          "title": "The Wall",
-          "season": 6,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt19838076",
-          "title": "Grand Designs: The Streets",
-          "season": 2,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt37542405",
-          "title": "Bibaa & Nicole: Murder in the Park",
-          "season": 1,
-          "seasonYear": 2025
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt0092322",
-          "title": "Biography",
-          "season": 2,
-          "seasonYear": 1995
-        },
-        {
-          "seriesId": "tt28473961",
-          "title": "Animator vs. Animation - Actual Shorts",
-          "season": 3,
-          "seasonYear": 2024
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt28077038",
-          "title": "Pritam Pedro",
-          "season": 1,
-          "from": 8.9,
-          "to": 7.98,
-          "delta": -0.92
-        },
-        {
-          "seriesId": "tt0202491",
-          "title": "The Hardy Boys: The Mystery of the Ghost Farm",
-          "season": 1,
-          "from": 7.28,
-          "to": 8.15,
-          "delta": 0.87
-        },
-        {
-          "seriesId": "tt7639726",
-          "title": "King Shakir",
-          "season": 2,
-          "from": 8.34,
-          "to": 7.51,
-          "delta": -0.83
-        },
-        {
-          "seriesId": "tt41672842",
-          "title": "Salish & Jordan Matter",
-          "season": 1,
-          "from": 3.66,
-          "to": 4.49,
-          "delta": 0.83
-        },
-        {
-          "seriesId": "tt7639726",
-          "title": "King Shakir",
-          "season": 3,
-          "from": 8.62,
-          "to": 7.89,
-          "delta": -0.73
-        },
-        {
-          "seriesId": "tt21057046",
-          "title": "The Doomies",
-          "season": 1,
-          "from": 8.99,
-          "to": 8.26,
-          "delta": -0.73
-        },
-        {
-          "seriesId": "tt7639726",
-          "title": "King Shakir",
-          "season": 1,
-          "from": 7.93,
-          "to": 7.41,
-          "delta": -0.52
-        },
-        {
-          "seriesId": "tt10956014",
-          "title": "Baalveer Returns",
-          "season": 1,
-          "from": 9.07,
-          "to": 8.55,
-          "delta": -0.52
-        },
-        {
-          "seriesId": "tt1558182",
-          "title": "Call Me Fitz",
-          "season": 4,
-          "from": 6.42,
-          "to": 5.95,
-          "delta": -0.47
-        },
-        {
-          "seriesId": "tt6073266",
-          "title": "Click Your Heart",
-          "season": 1,
-          "from": 9.77,
-          "to": 9.31,
-          "delta": -0.46
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 19516,
-        "avgRating": 1267,
-        "shapes": 221,
-        "seriesRating": 361,
-        "poster": 13,
-        "episodeCount": 72,
-        "overview": 6,
-        "providers": 1
       }
     }
   ]
