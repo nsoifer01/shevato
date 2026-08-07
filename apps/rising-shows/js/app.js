@@ -1,5 +1,21 @@
 'use strict';
 
+/**
+ * Analytics shim. Resolves window.shevatoAnalytics at call time, not load
+ * time, because assets/js/analytics.js is deferred and this file may execute
+ * first. Returns silently when the helper is missing, which is the normal
+ * case in the node:vm test harness (no window at all) and when a visitor
+ * blocks gtag.js. Nothing in the app may ever depend on a return value.
+ */
+function track(method, ...args) {
+  try {
+    const a = typeof window !== 'undefined' ? window.shevatoAnalytics : null;
+    if (a && typeof a[method] === 'function') a[method](...args);
+  } catch (e) {
+    /* analytics must never break the app */
+  }
+}
+
 // --- Feature 7: std dev helper (exported via window for tests) ---
 function computeStdDev(episodes) {
   const n = episodes.length;
@@ -815,6 +831,9 @@ function applyStateFromURL() {
   // syncFinderControls once they exist.
   mode = 'finder';
   applyFinderStateFromParams(p);
+  // Seed the analytics dedupe with whatever state we booted into, so only
+  // changes the user actually makes are reported from here on.
+  primeFinderAnalytics();
 
   // Deep links that open a modal on load: a show permalink (?show=) opens the
   // show modal; a legacy season link (?season=) opens that season's detail
@@ -2188,6 +2207,11 @@ function openShowModal(seriesId, opts = {}) {
     .sort((a, b) => a.season - b.season);
   if (seasons.length === 0) return;
 
+  // Reported after the early return, so a failed lookup is not counted as a
+  // view. This is the in-app counterpart to a page_view on the generated
+  // /shows/<slug>/ page, and lets the two be compared for the same show.
+  track('trackContentView', { contentType: 'show', contentId: seriesId });
+
   pushModalHistory(opts, `show:${seriesId}`);
   const wasSeasonOpen = !els.modal.hidden;
   // Inherit origin from the season modal we're closing, so closing the
@@ -3045,6 +3069,10 @@ function renderFinder() {
   syncFinderShapeChips();
   updateFinderMoodActive();
   const rows = filterAndSortFinder();
+  // Stashed for onFinderFilterChange's analytics call, which runs right after
+  // this and would otherwise have to re-run the whole filter pass to learn
+  // how many results the user ended up with.
+  lastFinderRowCount = rows.length;
   els.finderCount.textContent = rows.length === 1
     ? '1 show matches your filters'
     : `${rows.length.toLocaleString()} shows match your filters`;
@@ -3370,6 +3398,9 @@ function goToFinderPage(n, scrollAfter = true) {
   finderState.page = n;
   writeFinderStateToURL();
   renderFinder();
+  // How deep people page is the clearest signal of whether the default sort
+  // surfaces what they came for.
+  track('trackLoadMore', { pageNumber: n, itemsShown: lastFinderRowCount });
   if (scrollAfter) {
     const top = els.finderResults.getBoundingClientRect().top + window.scrollY - 70;
     window.scrollTo({ top, behavior: 'smooth' });
@@ -3378,11 +3409,70 @@ function goToFinderPage(n, scrollAfter = true) {
 
 const renderFinderDebounced = debounce(renderFinder, 120);
 
+// Result count from the most recent renderFinder(), for analytics only.
+let lastFinderRowCount = 0;
+
 // Page resets to 1 whenever a filter or sort changes (matches Seasons).
 function onFinderFilterChange() {
   finderState.page = 1;
   writeFinderStateToURL();
   renderFinder();
+  reportFinderChange();
+}
+
+/**
+ * Reports what the user filtered by and how well it worked.
+ *
+ * The search box's contents are deliberately never sent: it is a free-text
+ * field, so it could contain anything. What goes out is the query's length,
+ * whether it matched anything, and the result count - enough to see whether
+ * search is used and whether it succeeds, with none of the words. What people
+ * actually look for is recovered from search_result_select, which reports the
+ * catalogue id of the show they picked.
+ *
+ * Filter values are safe to send verbatim because every one of them is chosen
+ * from a fixed set the app defines (shape names, genres, sort keys), never
+ * typed. trackFilter() drops repeats, so dragging a slider reports one event
+ * per settled value rather than one per pixel.
+ */
+function reportFinderChange() {
+  const f = finderState;
+  const query = (f.search || '').trim();
+
+  if (query) {
+    track('trackSearch', {
+      scope: 'shows',
+      queryLength: query.length,
+      resultsCount: lastFinderRowCount,
+    });
+  }
+
+  for (const [name, value] of finderFilterSnapshot()) {
+    track('trackFilter', name, value);
+  }
+}
+
+/** The finder's filter state as [name, value] pairs, for analytics only. */
+function finderFilterSnapshot() {
+  const f = finderState;
+  return [
+    ['sort', `${f.sort}:${f.sortDir}`],
+    ['shapes', [...f.shapes].sort().join(',') || '(none)'],
+    ['genres', [...f.genres].sort().join(',') || '(none)'],
+    ['languages', [...f.languages].sort().join(',') || '(none)'],
+    ['hidden_gems', f.hiddenGems ? 'on' : 'off'],
+  ];
+}
+
+/**
+ * Registers the finder's boot state (defaults, or whatever a deep link set)
+ * as already-reported, so the first control the user touches produces one
+ * filter_change event rather than five.
+ */
+function primeFinderAnalytics() {
+  for (const [name, value] of finderFilterSnapshot()) {
+    track('primeFilter', name, value);
+  }
 }
 
 function finderHasActiveFilters() {
@@ -4332,6 +4422,13 @@ function moveFinderSuggestionActive(delta) {
 function selectFinderSuggestion(i) {
   const s = finderSuggestState.items[i];
   if (!s) return;
+  // The one place we learn what people search for, without storing queries:
+  // seriesId is a catalogue identifier, not anything the user typed.
+  track('trackSearchResultSelect', {
+    contentType: 'show',
+    contentId: s.seriesId,
+    position: i,
+  });
   closeFinderSuggestions();
   // Mirror the Seasons "pick a series" behavior: jump straight to the
   // picked show's modal.

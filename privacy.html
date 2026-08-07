@@ -90,7 +90,7 @@
 
       <article class="about-shell">
 
-        <p><strong>Last reviewed:</strong> 22 July 2026. <!-- TODO(owner): update this date whenever the behaviour described below changes. --></p>
+        <p><strong>Last reviewed:</strong> 7 August 2026. <!-- TODO(owner): update this date whenever the behaviour described below changes. --></p>
 
         <h2>The short version</h2>
 
@@ -279,9 +279,17 @@
 
         <h2>Analytics and cookies</h2>
 
-        <p>Our own code sets no cookies. The marketing pages you are reading now, and the individual show pages under Rising Shows, load Google Analytics 4 with its default configuration, which stores its own identifier cookie in your browser and reports page views to Google.</p>
+        <p>Our own code sets no cookies. Every page on this site, including the apps, loads Google Analytics 4, which stores its own identifier cookie in your browser and reports page views to Google.</p>
 
-        <p>The app pages themselves do not load Google Analytics. Opening Mario Kart, Football H2H, Gym Tracker, MapTap Rivals, Trip Planner, Arena or the main Rising Shows app does not send anything to Analytics.</p>
+        <p>This changed in August 2026. Until then the app pages carried no analytics at all, which meant we could see that people arrived but not whether anything we built was worth using. The apps now report a small, fixed set of events. What follows is the complete list of what they send.</p>
+
+        <p>Alongside page views, we record: that an app was opened; which section or tab within an app you moved to; that a search ran, with how many characters you typed and how many results came back; which item you picked from a search result list; which filters or sorting you chose; that you opened a detail view, and which catalogue entry it was; that you paged through a list; that you followed a link to another website, and to which domain; a handful of completed actions specific to each app (a workout finished, a match or race logged, a trip shared, the Trip Planner assistant opened, an Arena room created or joined); and JavaScript errors, by their message.</p>
+
+        <p>What we deliberately do not send matters more than the list above. <strong>We never send anything you type.</strong> Search boxes report how long your query was and whether it matched anything, never the query itself. We never send your trip contents, destinations, item details or confirmation numbers; your workout notes, exercise names, weights, heart rate or calorie figures; your rivals' or players' names; custom team names; Arena room codes or display names; your email address, account id, or any Firestore path. Filter and sort values are sent as text, but only because every one of them is picked from a fixed list the app defines rather than typed by you.</p>
+
+        <p>The generated show pages under Rising Shows and the exercise pages under Gym Tracker report ordinary page views and nothing else.</p>
+
+        <p>Analytics is loaded so that it cannot interfere with the apps: every tracking call is wrapped so that a failure is silently discarded, and if you block Google Analytics with an extension or a content blocker, every app continues to work exactly as it does otherwise. Nothing on this site is gated on analytics loading.</p>
 
         <p>There's no contact form on this site; the contact page is just a set of links, so nothing is collected there.</p>
 

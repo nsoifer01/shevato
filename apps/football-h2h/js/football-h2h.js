@@ -1,5 +1,19 @@
 // Football H2H Tracker JavaScript
 
+/**
+ * Analytics shim. Resolves window.shevatoAnalytics at call time (the shared
+ * helper is deferred, this is a classic script) and never throws, so a
+ * tracking failure can never stop a match being saved.
+ */
+function track(method, ...args) {
+    try {
+        const a = typeof window !== 'undefined' ? window.shevatoAnalytics : null;
+        if (a && typeof a[method] === 'function') a[method](...args);
+    } catch (e) {
+        /* analytics must never break the app */
+    }
+}
+
 // Data structure for games
 let games = [];
 let currentEditId = null;
@@ -615,7 +629,13 @@ function saveGame(event) {
         player2Team,
         penaltyWinner: penaltyWinner || null
     };
-    
+
+    // Logged after validation passes. Team names are excluded on purpose:
+    // the "Other" option makes them a free-text field.
+    track('trackAction', currentEditId ? 'match_edited' : 'match_logged', {
+        went_to_penalties: Boolean(penaltyWinner),
+    });
+
     if (currentEditId) {
         // Edit existing game
         const gameIndex = games.findIndex(m => m.id === currentEditId);
@@ -2041,6 +2061,10 @@ function syncStatsTabFromHash() {
 // hashchange — otherwise we'd briefly re-stamp the same hash, which
 // is harmless but pointless.
 function switchStatsTab(tabName, { fromHash = false } = {}) {
+    // Which stats tab people actually read. trackView dedupes, so the
+    // boot-time call and the hash sync do not double-report the same tab.
+    track('trackView', tabName);
+
     // Remove active class from all tabs and contents
     document.querySelectorAll('.stats-tab').forEach(tab => {
         tab.classList.remove('active');

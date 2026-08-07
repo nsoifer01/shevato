@@ -44,6 +44,14 @@
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
   <link rel="stylesheet" href="css/styles.css?v=55">
+
+  <!-- Google Analytics. Loaded async + defer so it never blocks first paint;
+       all tracking goes through the shared helper in analytics.js, which
+       no-ops if gtag is blocked. See privacy.html "Analytics and cookies". -->
+  <link rel="preconnect" href="https://www.googletagmanager.com" crossorigin>
+  <link rel="dns-prefetch" href="https://www.google-analytics.com">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-GEQGY35JJN"></script>
+  <script defer src="/assets/js/analytics.js"></script>
 </head>
 <body class="tp-page">
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>

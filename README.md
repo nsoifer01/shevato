@@ -14,11 +14,13 @@ shevato/
 │   ├── js/                           # Site-wide JavaScript modules
 │   │   ├── main.js                   # Auth UI + partials loader (jQuery)
 │   │   ├── jquery.min.js             # jQuery (vendored)
-│   │   ├── analytics.js              # Google Analytics bootstrap
+│   │   ├── analytics.js              # GA4 config + the shared tracking API (window.shevatoAnalytics)
+│   │   ├── analytics-404.js          # Reports the failed path on 404.html
 │   │   ├── language-switcher.js      # Tri-lingual switcher for the separately-branded landing
 │   │   ├── passive-events-fix.js     # Passive listeners polyfill
 │   │   ├── breakpoints.min.js, browser.min.js, util.js  # Responsive helpers
 │   │   └── pagination.js, global-icons.js
+│   ├── js/tests/                     # Unit tests for the analytics helper (npm run test:analytics)
 │   ├── sass/                         # SASS sources for main.css
 │   └── seo/                          # Reference JSON-LD fragments + metadata checklist
 │
@@ -159,9 +161,54 @@ npm run test:rising-shows           # render + integrations-lib
 npm run test:mario-kart
 npm run test:arena
 npm run test:sync                   # cross-cutting sync-system invariants
+npm run test:analytics              # shared GA4 helper (privacy + dedupe rules)
 ```
 
 The repo has cross-cutting invariant tests under `sync-system/tests/`, so run `npm test` after any non-trivial change before committing.
+
+## Analytics
+
+Every page loads GA4 through one file, `assets/js/analytics.js`, which configures
+the property and installs `window.shevatoAnalytics`. **Call that API — never
+`gtag()` directly.** It centralises the privacy rules, the dedupe, and the
+guarantee that a tracking failure cannot throw into app code.
+
+Apps reach it through a small local `track(method, ...args)` shim that resolves
+`window.shevatoAnalytics` at call time (the helper is deferred, so app code can
+run first) and swallows everything. Gym Tracker, being ES modules, imports the
+same shim from `apps/gym-tracker/js/utils/analytics.js`.
+
+Events, all carrying `app_name` and `app_section` automatically:
+
+| Event | Fired when | Key parameters |
+|---|---|---|
+| `page_view` | once per document load | `page_path` (no query, no hash, no `.html`) |
+| `app_open` | an app's own entry page loads | — |
+| `app_view` | in-app section/tab change | `view_name` |
+| `search` | a search runs | `search_scope`, `query_length`, `results_count`, `has_results` |
+| `search_result_select` | a result is picked | `content_type`, `content_id`, `result_position` |
+| `filter_change` | a filter/sort control changes | `filter_name`, `filter_value` |
+| `content_view` | a detail record opens | `content_type`, `content_id` |
+| `load_more` | pagination advances | `page_number`, `items_shown` |
+| `app_action` | a meaningful action completes | `action_name` + per-action counts |
+| `outbound_click` | a link to another origin | `link_domain` |
+| `site_nav_click` | an internal link or mailto/tel | `nav_location`, `link_destination` |
+| `app_error` | uncaught error or rejection | `error_scope`, `error_message` (capped at 5/page) |
+| `page_not_found` | 404.html renders | `not_found_path`, `referrer_domain` |
+
+Two rules when adding tracking:
+
+1. **Never send anything the user typed.** Report a query's length and result
+   count, not its text; report a catalogue id (a show slug), not a title someone
+   entered. `scrub()` drops parameters whose names look like free text or
+   identity and values that look like emails or generated ids, but it is a
+   backstop — do not rely on it.
+2. **One event per gesture.** `trackView`/`trackFilter` drop repeats; call
+   `primeFilter` at boot to register default filter state so the first control a
+   user touches reports once instead of the whole panel reporting its defaults.
+
+In-app navigation deliberately reports `app_view`, never a synthetic
+`page_view`, so client routing can never invent URLs in Pages and Screens.
 
 ## Deployment
 

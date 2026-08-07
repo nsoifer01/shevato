@@ -41,6 +41,22 @@ const {
     increment, deleteField
 } = firestore;
 
+/**
+ * Analytics shim. Resolved at call time (the shared helper is installed by a
+ * deferred classic script, this is a module) and never throws. Arena is
+ * multiplayer, so the rule is stricter than elsewhere: no room codes, no
+ * display names, no uids - a room code is a shared secret that lets anyone
+ * join, and it must not leave the app.
+ */
+function track(method, ...args) {
+    try {
+        const a = typeof window !== 'undefined' ? window.shevatoAnalytics : null;
+        if (a && typeof a[method] === 'function') a[method](...args);
+    } catch (e) {
+        /* analytics must never break the app */
+    }
+}
+
 const Config = window.BrainArena.Config;
 const Scoring = window.BrainArena.Scoring;
 const Feedback = window.BrainArena.Feedback;
@@ -1346,6 +1362,11 @@ async function createRoom(opts) {
         ? 'globe-drop'
         : (state.selectedGameType === 'globe-drop' ? 'globe-drop' : 'trivia');
 
+    // Which game and which mode people pick is the whole product question for
+    // Arena. Both values are fixed enumerations defined right here, not user
+    // input, and neither identifies the room or the players.
+    track('trackAction', 'room_created', { game_type: gameType, room_mode: mode });
+
     // Solo / daily rooms are always private to keep them out of any future
     // public-room discovery. They have no password - only this user is in
     // them, and the room code itself acts as the (single-use) secret.
@@ -1623,6 +1644,14 @@ async function joinRoom() {
     // can show a "Spectating - joining next round" banner and gate submitting.
     const isSpectator = data.status === 'playing';
     await joinPlayer(code, displayName, /* isHost */ false, isSpectator ? (data.currentQuestionIndex || 0) : -1);
+    // Reported only after every guard has passed and the player doc is
+    // written, so a wrong password, a full room or an abandoned name prompt is
+    // never counted as a join. The room code is a shared secret that grants
+    // entry, and the display name is user-entered - neither is sent.
+    track('trackAction', 'room_joined', {
+        game_type: data.gameType || 'unknown',
+        joined_as: isSpectator ? 'spectator' : 'player',
+    });
     enterRoom(code);
 }
 

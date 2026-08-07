@@ -21,6 +21,7 @@ import { trapModalFocus, closeModalSafely } from './utils/modal-focus.js';
 import { mountSyncStatusPill } from './utils/sync-status.js';
 import { emit, EVENTS } from './utils/event-bus.js';
 import { sameId } from './utils/id-utils.js';
+import { track } from './utils/analytics.js';
 
 class GymTrackerApp {
     constructor() {
@@ -496,6 +497,13 @@ class GymTrackerApp {
         }
 
         this.currentView = viewName;
+
+        // Reported here rather than at the top of showView: the early return
+        // above means a repeat tap on the current tab is not a navigation, and
+        // the beforeLeave guard can cancel the move entirely. By this line the
+        // view has actually changed. Sent as app_view, never a synthetic
+        // page_view, so hash routing cannot invent URLs in GA4.
+        track('trackView', viewName);
 
         // Switching views is a context switch: land the user at the top of
         // the new view instead of wherever the previous view was scrolled

@@ -129,7 +129,19 @@ function addRace() {
     }
 
     races.push(raceObject);
-    
+
+    // The app's core action, reported only after every validation above has
+    // passed. Player count and whether a course was picked, never player
+    // names or finishing positions.
+    if (typeof window !== 'undefined' && window.shevatoAnalytics) {
+        try {
+            window.shevatoAnalytics.trackAction('race_logged', {
+                player_count: activePlayers.length,
+                has_course: Boolean(selectedCourse),
+            });
+        } catch (e) { /* analytics must never break the app */ }
+    }
+
     // Save action for undo/redo
     saveAction('ADD_RACE', { race: raceObject });
     
