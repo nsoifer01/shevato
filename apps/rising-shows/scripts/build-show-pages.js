@@ -12,7 +12,15 @@ const path = require('path');
 const { showPath } = require('./slugify.js');
 const { renderShowPage, computeDominantShape } = require('./render-show-page.js');
 const { renderShowsIndex } = require('./render-shows-index.js');
-const { renderShapeHub, selectHubShows, SHAPE_SLUGS } = require('./render-shape-hub.js');
+const {
+  renderShapeHub,
+  renderGapHub,
+  selectHubShows,
+  selectGapHubShows,
+  SHAPE_SLUGS,
+  HUB_SLUGS,
+  GAP_HUB_SLUG,
+} = require('./render-shape-hub.js');
 const { renderShowsSitemap, selectSitemapSeries } = require('./render-sitemap.js');
 
 const ROOT = path.join(__dirname, '..');
@@ -62,6 +70,11 @@ function main() {
   const sitemapSeries = selectSitemapSeries(series, SITEMAP_LIMIT);
   const curatedIds = new Set(sitemapSeries.map((s) => s.seriesId));
 
+  // Decided before rendering too: only the shows that make the gap hub link
+  // out to it from their recommendations block.
+  const gapHubShows = selectGapHubShows(series);
+  const gapHubIds = new Set(gapHubShows.map((s) => s.seriesId));
+
   let pageCount = 0;
   const start = Date.now();
   for (const s of series) {
@@ -85,7 +98,7 @@ function main() {
         }
       }
     }
-    const html = renderShowPage({ ...s, cast, builtAt: data.builtAt, dominantShape, dominantShapeSlug, relatedShows, inSitemap: curatedIds.has(s.seriesId) });
+    const html = renderShowPage({ ...s, cast, builtAt: data.builtAt, dominantShape, dominantShapeSlug, relatedShows, inSitemap: curatedIds.has(s.seriesId), inGapHub: gapHubIds.has(s.seriesId) });
     fs.writeFileSync(path.join(dir, 'index.html'), html);
     pageCount++;
     if (pageCount % 1000 === 0) {
@@ -108,7 +121,14 @@ function main() {
     console.log(`[build-show-pages] shape hub /${slug}/ · ${hubShows.length} shows`);
   }
 
-  fs.writeFileSync(SITEMAP_FILE, renderShowsSitemap(sitemapSeries.map(toIndexEntry), data.builtAt, SHAPE_SLUGS));
+  // The gap hub: same shell, ranked by avg episode rating minus the show's
+  // own IMDb rating rather than by shape membership.
+  const gapDir = path.join(SHOWS_DIR, 'shape', GAP_HUB_SLUG);
+  fs.mkdirSync(gapDir, { recursive: true });
+  fs.writeFileSync(path.join(gapDir, 'index.html'), renderGapHub(gapHubShows, data.builtAt));
+  console.log(`[build-show-pages] gap hub /${GAP_HUB_SLUG}/ · ${gapHubShows.length} shows · gap ${gapHubShows[0] ? gapHubShows[0].gap : 0} down to ${gapHubShows.length ? gapHubShows.at(-1).gap : 0}`);
+
+  fs.writeFileSync(SITEMAP_FILE, renderShowsSitemap(sitemapSeries.map(toIndexEntry), data.builtAt, HUB_SLUGS));
   console.log(`[build-show-pages] sitemap curated to top ${sitemapSeries.length} of ${series.length} series by votes; the rest stay reachable for app users but carry noindex,follow`);
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);

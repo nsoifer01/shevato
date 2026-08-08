@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 
 const { renderShowsSitemap, selectSitemapSeries } = require('../scripts/render-sitemap.js');
 const { renderShowsIndex, sortTitle, firstLetter } = require('../scripts/render-shows-index.js');
-const { SHAPE_SLUGS } = require('../scripts/render-shape-hub.js');
+const { SHAPE_SLUGS, HUB_SLUGS, GAP_HUB_SLUG, hubPath } = require('../scripts/render-shape-hub.js');
 
 const SERIES = [
   { seriesId: 'tt0903747', title: 'Breaking Bad', year: 2008 },
@@ -37,6 +37,16 @@ test('renderShowsSitemap adds one URL per shape hub when given the slugs', () =>
   assert.ok(xml.indexOf('/shows/shape/rising/') > xml.indexOf('<loc>https://shevato.com/apps/rising-shows/shows/</loc>'));
   assert.ok(xml.indexOf('/shows/shape/shape-drift/') < xml.indexOf('/shows/breaking-bad-tt0903747/'));
   assert.equal((xml.match(/<priority>0\.6<\/priority>/g) || []).length, SHAPE_SLUGS.length);
+});
+
+test('renderShowsSitemap adds exactly one URL for the gap hub, at the hub priority', () => {
+  const withShapes = renderShowsSitemap(SERIES, '2026-05-18T00:00:00.000Z', SHAPE_SLUGS);
+  const withGap = renderShowsSitemap(SERIES, '2026-05-18T00:00:00.000Z', HUB_SLUGS);
+  const count = (xml) => (xml.match(/<loc>/g) || []).length;
+  assert.equal(count(withGap) - count(withShapes), 1);
+  assert.ok(!withShapes.includes(GAP_HUB_SLUG));
+  assert.ok(withGap.includes(`<loc>https://shevato.com${hubPath(GAP_HUB_SLUG)}</loc>`));
+  assert.equal((withGap.match(/<priority>0\.6<\/priority>/g) || []).length, HUB_SLUGS.length);
 });
 
 test('renderShowsSitemap URLs use the slug + tconst path scheme', () => {
@@ -102,10 +112,14 @@ test('renderShowsIndex emits the count and links to every series', () => {
   assert.ok(html.includes('/apps/rising-shows/shows/the-office-tt0386676/'));
 });
 
-test('renderShowsIndex carries a browse-by-shape strip to all 13 hubs', () => {
+test('renderShowsIndex carries a browse strip to all 13 shape hubs plus the gap hub', () => {
   const html = renderShowsIndex(SERIES, '2026-05-18T00:00:00.000Z');
   const hubLinks = new Set([...html.matchAll(/href="(\/apps\/rising-shows\/shows\/shape\/[a-z-]+\/)"/g)].map((m) => m[1]));
-  assert.equal(hubLinks.size, SHAPE_SLUGS.length);
+  assert.equal(hubLinks.size, HUB_SLUGS.length);
   assert.ok(hubLinks.has('/apps/rising-shows/shows/shape/slow-burn/'));
+  assert.ok(hubLinks.has(hubPath(GAP_HUB_SLUG)));
   assert.ok(html.includes('>Saved best for last<'));
+  assert.ok(html.includes('>Outshines its reputation<'));
+  // The A-Z index is nobody's current page, so no chip is marked as such.
+  assert.ok(!html.includes('shape-nav-current'));
 });

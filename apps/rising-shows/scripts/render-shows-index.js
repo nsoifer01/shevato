@@ -1,8 +1,8 @@
 'use strict';
 
 const { showPath } = require('./slugify.js');
-const { escapeHtml, SITE, SHAPE_LABELS } = require('./render-show-page.js');
-const { SHAPE_SLUGS, hubPath } = require('./render-shape-hub.js');
+const { escapeHtml, SITE } = require('./render-show-page.js');
+const { renderHubNav } = require('./render-shape-hub.js');
 const { renderMoreFooter } = require('./render-footer.js');
 
 // Single A-Z browse index of every show. This is the crawler's primary
@@ -89,7 +89,7 @@ function renderShowsIndex(series, builtAt) {
 
     <nav class="shape-nav" aria-label="Browse by shape">
       <span class="shape-nav-label">Browse by shape</span>
-      ${SHAPE_SLUGS.map((slug) => `<a href="${hubPath(slug)}">${escapeHtml(SHAPE_LABELS[slug] || slug)}</a>`).join('\n      ')}
+      ${renderHubNav()}
     </nav>
 
     <nav class="alpha-jump" aria-label="Jump to letter">

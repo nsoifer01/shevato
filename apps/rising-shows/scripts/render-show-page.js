@@ -31,6 +31,13 @@ const SHAPE_LABELS = {
   'shape-drift': 'Shape drift',
 };
 
+// The one hub that ranks by a metric instead of by shape membership: shows
+// whose episodes average higher than the series' own IMDb rating. Lives next
+// to the shape hubs under /shows/shape/ and is defined here (rather than in
+// render-shape-hub.js) so show pages can link to it without a require cycle.
+const GAP_HUB_SLUG = 'outshines-reputation';
+const GAP_HUB_LABEL = 'Outshines its reputation';
+
 // One-line plain-English definition per shape, kept verbatim in sync with
 // SHAPE_DESCS in js/app.js so the static shape hubs describe a shape the
 // same way the in-app chips do.
@@ -102,7 +109,7 @@ function wrapSensitivePoster(imgHtml, id, compact) {
 // Build a single static HTML page for one TV series, given every season's
 // data (already grouped from data.json's flat `matches` array). Returns a
 // complete HTML string.
-function renderShowPage({ seriesId, title, year, type, genres, seriesRating, seriesVotes, poster, overview, language, providers, tmdbId, cast, seasons, builtAt, dominantShape, dominantShapeSlug, relatedShows, inSitemap = true }) {
+function renderShowPage({ seriesId, title, year, type, genres, seriesRating, seriesVotes, poster, overview, language, providers, tmdbId, cast, seasons, builtAt, dominantShape, dominantShapeSlug, relatedShows, inSitemap = true, inGapHub = false }) {
   const path = `/apps/rising-shows/shows/${showPath(title, seriesId)}/`;
   const canonical = `${SITE}${path}`;
   const numberOfSeasons = seasons.length;
@@ -252,7 +259,7 @@ ${seasonSchemas}
       ${seasons.map((s) => renderSeasonSection(s, seriesId)).join('\n')}
     </section>
 
-    ${renderRelatedShows(relatedShows, dominantShape, dominantShapeSlug)}
+    ${renderRelatedShows(relatedShows, dominantShape, dominantShapeSlug, inGapHub)}
 
     <section class="page-footer-meta">
       <p class="attribution">Episode ratings and vote counts from <a href="https://www.imdb.com/title/${seriesId}/" rel="noopener" target="_blank">IMDb</a>${tmdbId ? `. Poster, overview, and streaming data from <a href="https://www.themoviedb.org/tv/${tmdbId}" rel="noopener" target="_blank">TMDB</a>` : ''}. Data refreshed ${builtAt ? new Date(builtAt).toISOString().slice(0, 10) : 'weekly'}.</p>
@@ -365,9 +372,18 @@ function renderFreshnessLine(builtAt, seasonCount) {
   return `<p class="hero-freshness">${text}</p>`;
 }
 
-function renderRelatedShows(relatedShows, dominantShape, dominantShapeSlug) {
-  if (!relatedShows || relatedShows.length === 0 || !dominantShape) return '';
+// Only shows that actually made the gap hub link into it, so the link never
+// points at a list this show is absent from.
+const GAP_HUB_LINK = `<a href="/apps/rising-shows/shows/shape/${GAP_HUB_SLUG}/">See shows that outshine their reputation →</a>`;
+
+function renderRelatedShows(relatedShows, dominantShape, dominantShapeSlug, inGapHub = false) {
+  if (!relatedShows || relatedShows.length === 0 || !dominantShape) {
+    // Shapeless shows get no recommendations block, but a gap-hub show still
+    // links back to the one hub it appears on.
+    return inGapHub ? `<p class="rec-see-all">${GAP_HUB_LINK}</p>` : '';
+  }
   const shapeLabel = SHAPE_LABELS[dominantShape] || dominantShape;
+  const gapHubLink = inGapHub ? ` · ${GAP_HUB_LINK}` : '';
   const cards = relatedShows.map((s) => {
     let posterEl = s.poster
       ? `<img class="rec-poster" src="${escapeHtml(`https://image.tmdb.org/t/p/w185${s.poster}`)}" alt="${escapeHtml(`${s.title} poster`)}" width="92" height="138" loading="lazy" decoding="async">`
@@ -390,7 +406,7 @@ function renderRelatedShows(relatedShows, dominantShape, dominantShapeSlug) {
   return `<section class="related-shows" aria-labelledby="related-heading">
     <h2 id="related-heading">Shows like this</h2>
     <div class="rec-strip">${cards}</div>
-    <p class="rec-see-all"><a href="/apps/rising-shows/shows/shape/${escapeHtml(dominantShapeSlug)}/">See all ${escapeHtml(shapeLabel)} shows →</a></p>
+    <p class="rec-see-all"><a href="/apps/rising-shows/shows/shape/${escapeHtml(dominantShapeSlug)}/">See all ${escapeHtml(shapeLabel)} shows →</a>${gapHubLink}</p>
   </section>`;
 }
 
@@ -572,6 +588,8 @@ module.exports = {
   renderSeasonNav,
   SHAPE_LABELS,
   SHAPE_DESCS,
+  GAP_HUB_SLUG,
+  GAP_HUB_LABEL,
   computeDominantShape,
   computeOverallAvgRating,
   jsonLd,

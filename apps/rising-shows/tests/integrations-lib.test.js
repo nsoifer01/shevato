@@ -6,10 +6,12 @@ const {
   COLLECTION_SHAPES,
   SHAPE_META,
   buildKometaCollections,
+  buildCompareCollection,
   buildSeasonOverlays,
   buildIdLists,
   yamlString,
   bestConfidenceForShape,
+  compareCollectionName,
 } = require('../scripts/integrations-lib.js');
 
 // Tiny fixture covering: high/low confidence, missing ID variants, dedupe of
@@ -196,4 +198,71 @@ test('buildIdLists dedupes a series that has multiple seasons of the same shape'
   const lists = buildIdLists(fx, { confidenceFloor: 0.35 });
   const sb = lists.find((l) => l.shape === 'slow-burn');
   assert.equal(sb.contents.trim(), 'tt9');
+});
+
+// --- compare-set collection ---
+// The compare modal hands this whatever the user hand-picked, so it has to
+// tolerate shows that never got enriched with external IDs and still name the
+// collection after something a Plex user recognises.
+
+const COMPARE_SET = [
+  { seriesId: 'tt0000001', title: 'Alpha', tmdbId: 1001, tvdbId: 2001 },
+  { seriesId: 'tt0000004', title: 'Delta', tmdbId: null, tvdbId: 2004 },
+  { seriesId: 'tt0000009', title: 'Iota', tmdbId: null, tvdbId: null },
+];
+
+test('buildCompareCollection emits exactly the compared shows that have IDs', () => {
+  const file = buildCompareCollection(COMPARE_SET);
+  assert.equal(file.seriesCount, 2, 'the ID-less show is not counted');
+  assert.match(file.contents, /tmdb_show:\n {6}- 1001\n/);
+  assert.match(file.contents, /tvdb_show:\n {6}- 2004\n/);
+  assert.ok(!/null|undefined/.test(file.contents), 'never emits a null/undefined list entry');
+  assert.equal(file.filename, 'rising-shows-compare.yml');
+});
+
+test('buildCompareCollection prefers tmdb_show and never lists a show twice', () => {
+  const file = buildCompareCollection([
+    { seriesId: 'tt1', title: 'A', tmdbId: 11, tvdbId: 21 },
+    { seriesId: 'tt2', title: 'B', tmdbId: 12, tvdbId: 22 },
+  ]);
+  assert.ok(file.contents.includes('    tmdb_show:\n      - 11\n      - 12\n'));
+  assert.ok(!file.contents.includes('tvdb_show'), 'tvdb is the fallback, not a duplicate');
+});
+
+test('buildCompareCollection returns null when no compared show has an ID', () => {
+  assert.equal(buildCompareCollection([{ seriesId: 'tt9', title: 'Solo' }]), null);
+  assert.equal(buildCompareCollection([]), null);
+});
+
+test('buildCompareCollection links back to the full compare set, including ID-less shows', () => {
+  const file = buildCompareCollection(COMPARE_SET);
+  assert.ok(
+    file.contents.includes('#compare=tt0000001,tt0000004,tt0000009'),
+    'the on-site permalink covers everything the user compared',
+  );
+});
+
+test('buildCompareCollection quotes a name containing YAML punctuation', () => {
+  const file = buildCompareCollection([
+    { seriesId: 'tt1', title: 'Star Wars: Andor', tmdbId: 1 },
+    { seriesId: 'tt2', title: 'Fargo', tmdbId: 2 },
+  ]);
+  assert.ok(file.contents.includes('  "Star Wars: Andor vs Fargo":'));
+});
+
+test('compareCollectionName stays identifiable at every set size', () => {
+  assert.equal(compareCollectionName(['Alpha']), 'Alpha');
+  assert.equal(compareCollectionName(['Alpha', 'Beta']), 'Alpha vs Beta');
+  assert.equal(
+    compareCollectionName(['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon']),
+    'Alpha, Beta + 3 more',
+  );
+});
+
+test('compareCollectionName clips a very long title instead of running on', () => {
+  const long = 'The Extremely Long Television Programme Title';
+  const name = compareCollectionName([long, 'Beta']);
+  assert.ok(name.length < long.length + 10, `expected a clipped name, got ${name}`);
+  assert.ok(name.endsWith(' vs Beta'));
+  assert.ok(name.startsWith('The Extremely Long Televisi…'));
 });

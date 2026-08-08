@@ -190,6 +190,26 @@ test('renderShowPage sends "See all" to the hub but keeps the CTAs on the explor
   assert.ok(html.slice(stickyIdx, stickyIdx + 160).includes('href="/apps/rising-shows/#shape=rising"'));
 });
 
+test('renderShowPage links the gap hub only from shows that are on it', () => {
+  const related = [{ seriesId: 'tt0944947', title: 'Game of Thrones', year: 2011, poster: null, genres: ['Drama'], dominantShape: 'rising', dominantShapeSlug: 'rising', slug: 'game-of-thrones-tt0944947' }];
+  const base = { ...BREAKING_BAD, dominantShape: 'rising', dominantShapeSlug: 'rising', relatedShows: related };
+  const off = renderShowPage(base);
+  assert.ok(!off.includes('/apps/rising-shows/shows/shape/outshines-reputation/'));
+  const on = renderShowPage({ ...base, inGapHub: true });
+  const seeAll = on.match(/<p class="rec-see-all">([\s\S]*?)<\/p>/)[1];
+  assert.ok(seeAll.includes('href="/apps/rising-shows/shows/shape/rising/"'));
+  assert.ok(seeAll.includes('href="/apps/rising-shows/shows/shape/outshines-reputation/"'));
+  assert.ok(seeAll.includes('See shows that outshine their reputation →'));
+});
+
+test('renderShowPage still links the gap hub when a show has no shape-mates', () => {
+  const html = renderShowPage({ ...BREAKING_BAD, dominantShape: null, dominantShapeSlug: null, relatedShows: [], inGapHub: true });
+  const seeAll = html.match(/<p class="rec-see-all">([\s\S]*?)<\/p>/)[1];
+  assert.ok(seeAll.includes('href="/apps/rising-shows/shows/shape/outshines-reputation/"'));
+  // No cards, so no recommendations section around it.
+  assert.ok(!html.includes('class="related-shows"'));
+});
+
 test('renderShowPage app-btn is present even when show has no dominant shape', () => {
   const html = renderShowPage({ ...BREAKING_BAD, dominantShape: null, dominantShapeSlug: null, relatedShows: [] });
   assert.ok(html.includes('class="app-btn"'));

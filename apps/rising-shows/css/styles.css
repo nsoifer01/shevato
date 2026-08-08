@@ -1666,14 +1666,29 @@ body.rising-shows-app button {
   font-family: inherit;
   line-height: 1.4;
 }
+/* Clickable variant (modal shape pills, which jump into the Finder).
+   main.css styles bare <button> with a 3.25rem height, an inset grey ring and
+   `color: #555 !important` that turns red on hover, so every one of those has
+   to be pinned back here or the pill stops looking like a pill. */
 button.shape-tag.is-clickable {
+  height: auto;
+  display: inline-block;
+  font-weight: inherit;
+  text-align: center;
+  color: var(--text) !important;
+  box-shadow: none !important;
   cursor: pointer;
   transition: background-color 0.12s, color 0.12s, border-color 0.12s;
 }
 button.shape-tag.is-clickable:hover {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent) !important;
   border-color: var(--accent-strong);
+  box-shadow: none !important;
+}
+button.shape-tag.is-clickable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 .shape-tag.active {
   background: var(--accent-soft);
@@ -2395,7 +2410,23 @@ button.shape-tag.is-clickable:hover {
   font-weight: 600;
   color: var(--text);
 }
-.compare-clear {
+/* Share / permalink / export actions ride flush-right with "Clear all" so the
+   legend keeps the left half of the row. They stay on one line on desktop and
+   wrap under the legend on narrow screens. */
+.compare-actions {
+  display: flex;
+  /* Grows into the space the legend leaves and, crucially, is allowed to
+     shrink: with flex:0 0 auto the four buttons would run off the right edge
+     on a phone instead of wrapping onto a second line. */
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+.compare-clear,
+.compare-action-btn {
   flex: 0 0 auto;
   padding: 0.32rem 0.7rem;
   font-size: 0.78rem;

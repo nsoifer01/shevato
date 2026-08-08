@@ -12,6 +12,7 @@
 const FINDER_DEFAULTS = {
   search: '',
   minEpisodes: 0,
+  minSeasons: 0,
   minVotes: 0,
   minShowRating: 0,
   minAvgEpisode: 0,
@@ -172,6 +173,8 @@ function parseFinderQuery(query) {
     sort: get('sort', 'fSort') || 'votes',
     sortDir: get('dir', 'fDir') === 'asc' ? 'asc' : 'desc',
     minEpisodes: parseFloat(get('minEps', 'fMinEps')) || 0,
+    // Newer than the rename, so there is no legacy `f`-prefixed spelling.
+    minSeasons: parseFloat(p.get('minSeasons')) || 0,
     minVotes: parseFloat(get('minVotes', 'fMinVotes')) || 0,
     minShowRating: parseFloat(get('minShow', 'fMinShow')) || 0,
     minAvgEpisode: parseFloat(get('minAvg', 'fMinAvg')) || 0,
@@ -194,6 +197,7 @@ function passesFinderFilters(s, f) {
   const q = (f.search || '').trim().toLowerCase();
   if (q && !s.title.toLowerCase().includes(q) && !s.seriesId.toLowerCase().includes(q)) return false;
   if (s.episodes < f.minEpisodes) return false;
+  if (s.seasonsCount < f.minSeasons) return false;
   if (s.votes < f.minVotes) return false;
   if (s.showRating < f.minShowRating) return false;
   if (s.avgEpisode < f.minAvgEpisode) return false;

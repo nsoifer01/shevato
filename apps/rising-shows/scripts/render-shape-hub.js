@@ -6,6 +6,8 @@ const {
   SITE,
   SHAPE_LABELS,
   SHAPE_DESCS,
+  GAP_HUB_SLUG,
+  GAP_HUB_LABEL,
   computeDominantShape,
   computeOverallAvgRating,
   jsonLd,
@@ -30,10 +32,23 @@ const SHAPE_SLUGS = [
   'shape-drift',
 ];
 
+// Every hub page under /shows/shape/: the 13 shape hubs plus the gap hub,
+// which ranks by a metric instead of by shape membership. This is the list
+// the sitemap and the browse strips walk.
+const HUB_SLUGS = [...SHAPE_SLUGS, GAP_HUB_SLUG];
+
 // Visible ranking depth. The ItemList in JSON-LD stops earlier so the
 // structured-data payload stays small.
 const HUB_LIMIT = 100;
 const HUB_SCHEMA_LIMIT = 25;
+
+// Minimum IMDb votes to qualify for the gap hub. 15,000 is roughly where the
+// curated sitemap cuts off (top 2,000 shows by votes), so nearly every ranked
+// show is itself an indexable page, and it sits near the 94th percentile of
+// rated shows. Lower floors hand the top of the list to review-bombed titles:
+// with no floor the leader is a 451-vote show averaging 9.9 per episode
+// against a 1.3 series rating.
+const GAP_MIN_VOTES = 15000;
 
 function hubPath(slug) {
   return `/apps/rising-shows/shows/shape/${slug}/`;
@@ -49,37 +64,119 @@ function selectHubShows(series, slug, limit = HUB_LIMIT) {
     .slice(0, limit);
 }
 
+// Shows whose episodes rate higher than the series' own IMDb score, ranked by
+// that gap. Both numbers are used at the one decimal IMDb publishes, so the
+// value a row prints is exactly the value that ranked it. Shows under the vote
+// floor are dropped before ranking, and only positive gaps qualify.
+function selectGapHubShows(series, limit = HUB_LIMIT, minVotes = GAP_MIN_VOTES) {
+  return series
+    .filter((s) => (s.seriesVotes || 0) >= minVotes && s.seriesRating)
+    .map((s) => {
+      const avgEpisode = parseFloat(computeOverallAvgRating(s.seasons));
+      return { ...s, avgEpisode, gap: Math.round((avgEpisode - s.seriesRating) * 10) / 10 };
+    })
+    .filter((s) => s.gap > 0)
+    .sort((a, b) => b.gap - a.gap || (b.seriesVotes || 0) - (a.seriesVotes || 0) || a.title.localeCompare(b.title))
+    .slice(0, limit);
+}
+
 // One static landing page per rating shape: a ranked list of the most-voted
 // shows whose dominant season carries that shape. These are the topic hubs the
 // per-season shape badges and the A-Z index link into.
 function renderShapeHub(slug, shows, builtAt) {
   const label = SHAPE_LABELS[slug] || slug;
   const desc = SHAPE_DESCS[slug] || '';
-  const canonical = `${SITE}${hubPath(slug)}`;
   const count = shows.length;
-  const description = `The ${count} best ${label.toLowerCase()} TV shows, ranked by IMDb votes. ${desc}. Episode-by-episode ratings and season-shape analysis for every show.`;
-  const pageTitle = `Best ${label} TV shows - Rising Shows`;
 
-  const rows = shows
-    .map((s, i) => {
-      const avg = computeOverallAvgRating(s.seasons);
-      const stats = [
-        `${avg} avg episode`,
-        s.seriesVotes ? `${s.seriesVotes.toLocaleString()} votes` : null,
-      ].filter(Boolean).join(' · ');
-      return `<li>
+  const rows = shows.map((s, i) => {
+    const avg = computeOverallAvgRating(s.seasons);
+    const stats = [
+      `${avg} avg episode`,
+      s.seriesVotes ? `${s.seriesVotes.toLocaleString()} votes` : null,
+    ].filter(Boolean).join(' · ');
+    return rankRow(s, i, stats);
+  });
+
+  return renderHubPage({
+    slug,
+    label,
+    pageTitle: `Best ${label} TV shows - Rising Shows`,
+    description: `The ${count} best ${label.toLowerCase()} TV shows, ranked by IMDb votes. ${desc}. Episode-by-episode ratings and season-shape analysis for every show.`,
+    schemaName: `Best ${label} TV shows`,
+    ogImageAlt: `Best ${label} TV shows on Rising Shows`,
+    heading: `Best ${escapeHtml(label)} TV shows`,
+    lede: `${escapeHtml(label)}: ${escapeHtml(desc.toLowerCase())}. These are the ${count} most-voted shows whose highest-rated season carries that shape, each with an episode-by-episode rating page.`,
+    ctaHref: `/apps/rising-shows/#shape=${escapeHtml(slug)}`,
+    ctaLabel: `Filter ${escapeHtml(label)} shows in the explorer →`,
+    footerNote: 'Ranked by IMDb vote count.',
+    rows,
+    shows,
+    builtAt,
+  });
+}
+
+// The one hub ranked by a number rather than by shape: the gap between a
+// show's episode-weighted average and its own IMDb series rating.
+function renderGapHub(shows, builtAt, minVotes = GAP_MIN_VOTES) {
+  const count = shows.length;
+  const votesLabel = minVotes.toLocaleString();
+
+  const rows = shows.map((s, i) => rankRow(
+    s,
+    i,
+    `avg episode ${s.avgEpisode.toFixed(1)} · IMDb ${s.seriesRating.toFixed(1)} · +${s.gap.toFixed(1)} above IMDb`,
+  ));
+
+  return renderHubPage({
+    slug: GAP_HUB_SLUG,
+    label: GAP_HUB_LABEL,
+    pageTitle: 'TV shows that outshine their reputation - Rising Shows',
+    description: `${count} TV shows whose episodes score higher than the show's own IMDb rating, ranked by the size of that gap, among shows with at least ${votesLabel} IMDb votes.`,
+    schemaName: 'TV shows that outshine their reputation',
+    ogImageAlt: 'TV shows whose episodes outscore their IMDb rating, on Rising Shows',
+    heading: 'TV shows that outshine their reputation',
+    lede: `Every episode these shows aired rates higher, on average, than the show's own IMDb score. The ${count} biggest gaps among shows with at least ${votesLabel} IMDb votes, so the ranking reflects real audiences rather than a handful of votes.`,
+    ctaHref: `/apps/rising-shows/#sort=gap&amp;gapDir=up&amp;minVotes=${minVotes}`,
+    ctaLabel: 'Sort every show by this gap in the explorer →',
+    footerNote: `Ranked by average episode rating minus the show's IMDb rating, among shows with at least ${votesLabel} votes.`,
+    rows,
+    shows,
+    builtAt,
+  });
+}
+
+function rankRow(s, i, stats) {
+  return `<li>
         <a class="rank-row" href="/apps/rising-shows/shows/${showPath(s.title, s.seriesId)}/">
           <span class="rank-num">${i + 1}</span>
           <span class="rank-title">${escapeHtml(s.title)}${s.year ? ` <span class="muted">(${s.year})</span>` : ''}</span>
           <span class="rank-stats">${escapeHtml(stats)}</span>
         </a>
       </li>`;
-    })
-    .join('\n      ');
+}
 
-  const otherShapes = SHAPE_SLUGS.filter((x) => x !== slug)
-    .map((x) => `<a href="${hubPath(x)}">${escapeHtml(SHAPE_LABELS[x] || x)}</a>`)
-    .join('\n      ');
+function hubLabel(slug) {
+  return slug === GAP_HUB_SLUG ? GAP_HUB_LABEL : (SHAPE_LABELS[slug] || slug);
+}
+
+// Browse strip shared by every hub and by the A-Z index: the current hub (if
+// any) as plain text, then a link to each sibling hub.
+function renderHubNav(currentSlug) {
+  const links = HUB_SLUGS.filter((x) => x !== currentSlug).map((x) => {
+    const cls = x === GAP_HUB_SLUG ? ' class="shape-nav-gap"' : '';
+    return `<a${cls} href="${hubPath(x)}">${escapeHtml(hubLabel(x))}</a>`;
+  });
+  const current = currentSlug
+    ? [`<span class="shape-nav-current" aria-current="page">${escapeHtml(hubLabel(currentSlug))}</span>`]
+    : [];
+  return [...current, ...links].join('\n      ');
+}
+
+// Shared page shell for every hub. Callers supply the copy, the ranked rows
+// and the shows behind them; everything else (head, chrome, JSON-LD) is
+// identical across hubs by design.
+function renderHubPage({ slug, label, pageTitle, description, schemaName, ogImageAlt, heading, lede, ctaHref, ctaLabel, footerNote, rows, shows, builtAt }) {
+  const canonical = `${SITE}${hubPath(slug)}`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -100,7 +197,7 @@ function renderShapeHub(slug, shows, builtAt) {
   <meta property="og:type" content="website">
   <meta property="og:url" content="${canonical}">
   <meta property="og:image" content="${SITE}/images/og-card.png">
-  <meta property="og:image:alt" content="${escapeHtml(`Best ${label} TV shows on Rising Shows`)}">
+  <meta property="og:image:alt" content="${escapeHtml(ogImageAlt)}">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:site_name" content="Shevato">
@@ -120,7 +217,7 @@ ${jsonLd(buildBreadcrumbs(label, canonical))}
 
   <!-- CollectionPage -->
   <script type="application/ld+json">
-${jsonLd(buildCollectionSchema(label, canonical, description, shows))}
+${jsonLd(buildCollectionSchema(schemaName, canonical, description, shows))}
   </script>
 
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📈%3C/text%3E%3C/svg%3E">
@@ -156,23 +253,22 @@ ${jsonLd(buildCollectionSchema(label, canonical, description, shows))}
     </nav>
 
     <header class="hub-hero">
-      <h1>Best ${escapeHtml(label)} TV shows</h1>
-      <p class="lede">${escapeHtml(label)}: ${escapeHtml(desc.toLowerCase())}. These are the ${count} most-voted shows whose highest-rated season carries that shape, each with an episode-by-episode rating page.</p>
-      <a class="primary-btn" href="/apps/rising-shows/#shape=${escapeHtml(slug)}">Filter ${escapeHtml(label)} shows in the explorer →</a>
+      <h1>${heading}</h1>
+      <p class="lede">${lede}</p>
+      <a class="primary-btn" href="${ctaHref}">${ctaLabel}</a>
     </header>
 
     <nav class="shape-nav" aria-label="Browse by shape">
       <span class="shape-nav-label">Browse by shape</span>
-      <span class="shape-nav-current" aria-current="page">${escapeHtml(label)}</span>
-      ${otherShapes}
+      ${renderHubNav(slug)}
       <a class="shape-nav-all" href="/apps/rising-shows/shows/">All shows A-Z</a>
     </nav>
 
     <ol class="rank-list">
-      ${rows}
+      ${rows.join('\n      ')}
     </ol>
 
-    <p class="index-footer">Ranked by IMDb vote count. Refreshed ${builtAt ? new Date(builtAt).toISOString().slice(0, 10) : 'weekly'}. Source: <a href="https://datasets.imdbws.com/" rel="noopener" target="_blank">IMDb datasets</a>.</p>
+    <p class="index-footer">${footerNote} Refreshed ${builtAt ? new Date(builtAt).toISOString().slice(0, 10) : 'weekly'}. Source: <a href="https://datasets.imdbws.com/" rel="noopener" target="_blank">IMDb datasets</a>.</p>
   </main>
 
   ${renderMoreFooter()}
@@ -196,11 +292,11 @@ function buildBreadcrumbs(label, canonical) {
   };
 }
 
-function buildCollectionSchema(label, canonical, description, shows) {
+function buildCollectionSchema(name, canonical, description, shows) {
   return {
     '@context': 'https://schema.org',
     '@type': 'CollectionPage',
-    name: `Best ${label} TV shows`,
+    name,
     url: canonical,
     description,
     isPartOf: {
@@ -221,4 +317,17 @@ function buildCollectionSchema(label, canonical, description, shows) {
   };
 }
 
-module.exports = { renderShapeHub, selectHubShows, hubPath, SHAPE_SLUGS, HUB_LIMIT };
+module.exports = {
+  renderShapeHub,
+  renderGapHub,
+  selectHubShows,
+  selectGapHubShows,
+  renderHubNav,
+  hubPath,
+  SHAPE_SLUGS,
+  HUB_SLUGS,
+  HUB_LIMIT,
+  GAP_HUB_SLUG,
+  GAP_HUB_LABEL,
+  GAP_MIN_VOTES,
+};
