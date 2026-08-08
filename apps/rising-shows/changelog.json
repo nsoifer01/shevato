@@ -1,6 +1,218 @@
 {
   "updates": [
     {
+      "builtAt": "2026-08-08T06:55:33.840Z",
+      "totals": {
+        "seasons": 66195,
+        "delta": 14
+      },
+      "shapeCounts": {
+        "mid-peak": 4635,
+        "rebound": 10084,
+        "rising": 2899,
+        "slow-burn": 4375,
+        "big-finale": 12123,
+        "u-shaped": 3090,
+        "rollercoaster": 14061,
+        "saved-best-for-last": 1544,
+        "front-loaded": 3470,
+        "declining": 1875,
+        "bad-finale": 4663,
+        "consistent": 2619,
+        "shape-drift": 1635
+      },
+      "shapeDeltas": {
+        "mid-peak": 6,
+        "rebound": 8,
+        "rising": -8,
+        "slow-burn": -8,
+        "u-shaped": -1,
+        "rollercoaster": 1,
+        "saved-best-for-last": 1,
+        "declining": 3,
+        "bad-finale": 4,
+        "shape-drift": 3
+      },
+      "added": [
+        {
+          "seriesId": "tt12327578",
+          "title": "Star Trek: Strange New Worlds",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38718126",
+          "title": "Drag Race México: Latina Royale",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt8323628",
+          "title": "My Life with the Walter Boys",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1224142",
+          "title": "Beyaz Show",
+          "season": 1,
+          "seasonYear": 1996
+        },
+        {
+          "seriesId": "tt3408180",
+          "title": "Enchufe.tv",
+          "season": 4,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt37522426",
+          "title": "A Killer Among Friends",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43492801",
+          "title": "Wrath",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43587102",
+          "title": "Mebius Dust",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0063963",
+          "title": "Ugryum-reka",
+          "season": 1,
+          "seasonYear": 1969
+        },
+        {
+          "seriesId": "tt0251503",
+          "title": "The Thorn and the Rose",
+          "season": 1,
+          "seasonYear": 2000
+        },
+        {
+          "seriesId": "tt0810500",
+          "title": "Bibin svijet",
+          "season": 2,
+          "seasonYear": 2007
+        },
+        {
+          "seriesId": "tt5532808",
+          "title": "This Boy Is a Professional Wizard",
+          "season": 1,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt43586839",
+          "title": "Prepare for Glory",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt39311004",
+          "title": "Magical Girl Lyrical Nanoha EXCEEDS Gun Blaze Vengeance",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt39690705",
+          "title": "Engaged",
+          "season": 2,
+          "from": 2.7,
+          "to": 1.24,
+          "delta": -1.46
+        },
+        {
+          "seriesId": "tt32590226",
+          "title": "Laughter Chefs Unlimited Entertainment",
+          "season": 3,
+          "from": 7.17,
+          "to": 5.73,
+          "delta": -1.44
+        },
+        {
+          "seriesId": "tt6556992",
+          "title": "Hot Ones",
+          "season": 30,
+          "from": 7.51,
+          "to": 6.56,
+          "delta": -0.95
+        },
+        {
+          "seriesId": "tt29420686",
+          "title": "1670",
+          "season": 3,
+          "from": 8.23,
+          "to": 7.44,
+          "delta": -0.79
+        },
+        {
+          "seriesId": "tt0423730",
+          "title": "SOKO Wismar",
+          "season": 14,
+          "from": 6.83,
+          "to": 6.06,
+          "delta": -0.77
+        },
+        {
+          "seriesId": "tt31867798",
+          "title": "Wizards Beyond Waverly Place",
+          "season": 3,
+          "from": 9,
+          "to": 8.4,
+          "delta": -0.6
+        },
+        {
+          "seriesId": "tt32104971",
+          "title": "First Copy",
+          "season": 2,
+          "from": 6.29,
+          "to": 6.78,
+          "delta": 0.49
+        },
+        {
+          "seriesId": "tt0315647",
+          "title": "Archer's Goon",
+          "season": 1,
+          "from": 7.45,
+          "to": 7.93,
+          "delta": 0.48
+        },
+        {
+          "seriesId": "tt35618070",
+          "title": "Sterling Point",
+          "season": 1,
+          "from": 7.6,
+          "to": 8.07,
+          "delta": 0.47
+        },
+        {
+          "seriesId": "tt15655018",
+          "title": "Fragrance of the First Flower",
+          "season": 2,
+          "from": 8.4,
+          "to": 7.98,
+          "delta": -0.42
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 19996,
+        "avgRating": 1139,
+        "shapes": 212,
+        "seriesRating": 329,
+        "episodeCount": 71,
+        "poster": 3,
+        "overview": 1
+      }
+    },
+    {
       "builtAt": "2026-08-07T07:35:40.225Z",
       "totals": {
         "seasons": 66181,
@@ -6984,384 +7196,6 @@
         "seriesRating": 356,
         "poster": 3,
         "overview": 6
-      }
-    },
-    {
-      "builtAt": "2026-07-09T09:26:17.994Z",
-      "totals": {
-        "seasons": 65684,
-        "delta": -7
-      },
-      "shapeCounts": {
-        "mid-peak": 4629,
-        "rebound": 10031,
-        "rising": 2905,
-        "slow-burn": 4351,
-        "big-finale": 11984,
-        "u-shaped": 3069,
-        "rollercoaster": 14018,
-        "saved-best-for-last": 1519,
-        "front-loaded": 3434,
-        "declining": 1858,
-        "bad-finale": 4633,
-        "consistent": 2613,
-        "shape-drift": 1610
-      },
-      "shapeDeltas": {
-        "mid-peak": -5,
-        "rebound": 1,
-        "rising": -7,
-        "slow-burn": -3,
-        "big-finale": -1,
-        "u-shaped": -1,
-        "rollercoaster": 6,
-        "saved-best-for-last": -6,
-        "front-loaded": 3,
-        "declining": -1,
-        "bad-finale": 3,
-        "consistent": 6
-      },
-      "added": [
-        {
-          "seriesId": "tt1756927",
-          "title": "American Restoration",
-          "season": 6,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt0329824",
-          "title": "Dr. Phil",
-          "season": 1,
-          "seasonYear": 2002
-        },
-        {
-          "seriesId": "tt0047719",
-          "title": "Casablanca",
-          "season": 1,
-          "seasonYear": 1955
-        },
-        {
-          "seriesId": "tt4588194",
-          "title": "Born from the Flank: Wilada Min Alkhasira",
-          "season": 2,
-          "seasonYear": 2012
-        },
-        {
-          "seriesId": "tt7425626",
-          "title": "Comedy Central Stand-Up Presents",
-          "season": 3,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt37020466",
-          "title": "The Kimberley",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt5536392",
-          "title": "Henry Danger Motion Comic",
-          "season": 2,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt2674484",
-          "title": "24 Hours in A&E",
-          "season": 4,
-          "seasonYear": 2013
-        },
-        {
-          "seriesId": "tt11597398",
-          "title": "Madhuri Talkies",
-          "season": 1,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt1466565",
-          "title": "The Irate Gamer",
-          "season": 7,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt12324018",
-          "title": "Om Haroon",
-          "season": 1,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt21073922",
-          "title": "Shadow",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt14598786",
-          "title": "Shipwreck Hunters Australia",
-          "season": 2,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt2180697",
-          "title": "Australia on Trial",
-          "season": 1,
-          "seasonYear": 2012
-        },
-        {
-          "seriesId": "tt42171878",
-          "title": "Eleni",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt42171878",
-          "title": "Eleni",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt42423511",
-          "title": "Crashers",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt22393396",
-          "title": "Louis Theroux Interviews...",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt8773338",
-          "title": "Stay Here",
-          "season": 1,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt1942171",
-          "title": "Athena: Goddess of War",
-          "season": 1,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt22393396",
-          "title": "Louis Theroux Interviews...",
-          "season": 2,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt9865156",
-          "title": "Spy Wars",
-          "season": 1,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt0089991",
-          "title": "Sense and Sensibility",
-          "season": 1,
-          "seasonYear": 1981
-        },
-        {
-          "seriesId": "tt21154618",
-          "title": "Helgoland 513",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt1744230",
-          "title": "Ramsay's Best Restaurant",
-          "season": 1,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt0129666",
-          "title": "Bullpitt!",
-          "season": 2,
-          "seasonYear": 1998
-        },
-        {
-          "seriesId": "tt0129666",
-          "title": "Bullpitt!",
-          "season": 1,
-          "seasonYear": 1997
-        },
-        {
-          "seriesId": "tt3355142",
-          "title": "Chefs",
-          "season": 1,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt2442494",
-          "title": "Get Out Alive with Bear Grylls",
-          "season": 1,
-          "seasonYear": 2013
-        },
-        {
-          "seriesId": "tt12511004",
-          "title": "Stampy's Lovely World",
-          "season": 4,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt12511004",
-          "title": "Stampy's Lovely World",
-          "season": 5,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt1517749",
-          "title": "Cupcake Wars",
-          "season": 1,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt1517749",
-          "title": "Cupcake Wars",
-          "season": 2,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt1517749",
-          "title": "Cupcake Wars",
-          "season": 3,
-          "seasonYear": 2011
-        },
-        {
-          "seriesId": "tt1517749",
-          "title": "Cupcake Wars",
-          "season": 4,
-          "seasonYear": 2011
-        },
-        {
-          "seriesId": "tt1517749",
-          "title": "Cupcake Wars",
-          "season": 5,
-          "seasonYear": 2012
-        },
-        {
-          "seriesId": "tt1517749",
-          "title": "Cupcake Wars",
-          "season": 8,
-          "seasonYear": 2013
-        },
-        {
-          "seriesId": "tt3355142",
-          "title": "Chefs",
-          "season": 2,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt5730720",
-          "title": "Noisey",
-          "season": 1,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt20673854",
-          "title": "Aashiqana",
-          "season": 2,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt31531564",
-          "title": "The Real Housewives van het Zuiden",
-          "season": 2,
-          "seasonYear": 2026
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt13011686",
-          "title": "Talking Tom Shorts",
-          "season": 1,
-          "from": 9.81,
-          "to": 8.58,
-          "delta": -1.23
-        },
-        {
-          "seriesId": "tt15311906",
-          "title": "Dierks Bentley - Black",
-          "season": 1,
-          "from": 10,
-          "to": 8.9,
-          "delta": -1.1
-        },
-        {
-          "seriesId": "tt31841978",
-          "title": "The Getaway",
-          "season": 1,
-          "from": 7.5,
-          "to": 6.42,
-          "delta": -1.08
-        },
-        {
-          "seriesId": "tt10545652",
-          "title": "Vlad Love",
-          "season": 1,
-          "from": 4.88,
-          "to": 5.75,
-          "delta": 0.87
-        },
-        {
-          "seriesId": "tt38267477",
-          "title": "BanG Dream! YumeMita",
-          "season": 1,
-          "from": 7.43,
-          "to": 8.27,
-          "delta": 0.84
-        },
-        {
-          "seriesId": "tt15307038",
-          "title": "Sea of Hope",
-          "season": 1,
-          "from": 9.65,
-          "to": 8.9,
-          "delta": -0.75
-        },
-        {
-          "seriesId": "tt39334636",
-          "title": "My Husband Is a Mafia Boss",
-          "season": 1,
-          "from": 9.73,
-          "to": 9.07,
-          "delta": -0.66
-        },
-        {
-          "seriesId": "tt5247480",
-          "title": "The Perfect Insider",
-          "season": 1,
-          "from": 7.48,
-          "to": 8,
-          "delta": 0.52
-        },
-        {
-          "seriesId": "tt35406274",
-          "title": "Ms. Rachel",
-          "season": 1,
-          "from": 6.2,
-          "to": 5.68,
-          "delta": -0.52
-        },
-        {
-          "seriesId": "tt15281840",
-          "title": "Not a Love Triangle",
-          "season": 1,
-          "from": 9.24,
-          "to": 8.72,
-          "delta": -0.52
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 19362,
-        "avgRating": 1145,
-        "seriesRating": 280,
-        "shapes": 192,
-        "poster": 6,
-        "episodeCount": 82,
-        "overview": 1,
-        "providers": 2
       }
     }
   ]
