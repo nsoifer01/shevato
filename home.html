@@ -160,15 +160,20 @@
         <h1 id="home-hero-title">Software engineering, <span class="accent">delivered cleanly</span>.</h1>
         <p class="lede">Shevato is a software engineering firm, shipping since 2019. We design and build backend systems, full stack web applications, and the platform tooling that holds them together. The pages here show what we do, what we have built, and where to reach us.</p>
         <div class="cta-row">
-          <!-- Two primaries, deliberately. This page serves two distinct
-               audiences: people hiring an engineering firm, and people who
-               came for the free apps. A single primary would tell both groups
-               that one of those is the real purpose of the site.
-               "Get in touch" stays secondary because it is a later step in the
-               same funnel "See the work" starts, not a third destination. -->
+          <!-- All three share one variant, deliberately. They are three
+               parallel destinations, not one recommended action plus two
+               fallbacks: which one matters depends entirely on why the visitor
+               arrived, and this page serves people hiring a firm and people
+               after the free apps in roughly equal measure. Emphasising any
+               one of them only encodes whichever audience the page happened to
+               be written for at the time, and reads as an arbitrary styling
+               difference rather than a hierarchy.
+               Contrast with 404.html, which keeps one primary on purpose:
+               there the visitor is lost and "Home" is a genuinely recommended
+               recovery, so the emphasis carries real meaning. -->
           <a href="work.html" class="button primary">See the work</a>
           <a href="apps.html" class="button primary">Try the free apps</a>
-          <a href="contact.html" class="button ghost">Get in touch</a>
+          <a href="contact.html" class="button primary">Get in touch</a>
         </div>
       </section>
 

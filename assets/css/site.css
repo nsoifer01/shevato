@@ -74,6 +74,22 @@
   box-shadow: inset 0 0 0 1px rgba(var(--brand-blue-rgb), 0.35);
 }
 
+/* Pressed state. There was none: a click went straight from the hover colour
+   back to rest with no feedback that the press registered, which reads as an
+   unresponsive control on touch devices in particular, where there is no
+   hover phase at all to confirm the target. Both variants get the same
+   treatment so the row keeps behaving as one set. */
+.hero .cta-row .button.primary:active {
+  background-color: var(--brand-blue-hover);
+  box-shadow: 0 2px 6px rgba(var(--brand-blue-rgb), 0.22);
+  transform: translateY(1px);
+}
+.hero .cta-row .button.ghost:active {
+  background-color: rgba(var(--brand-blue-rgb), 0.16);
+  box-shadow: inset 0 0 0 1px rgba(var(--brand-blue-rgb), 0.4);
+  transform: translateY(1px);
+}
+
 @media screen and (max-width: 736px) {
   .hero h1 { font-size: 2.1rem; }
   .hero p.lede { font-size: 1rem; }
