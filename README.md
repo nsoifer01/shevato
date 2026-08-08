@@ -95,10 +95,12 @@ SAME round. Wire the app into ALL of these:
    classic misses.
 3. `home.html` - side-projects prose list + count, "Free web apps"
    preview-card list, `og:description` count, AND the `.home-app-links`
-   "Open an app" grid near the bottom (one `<li>` per app, with its
-   one-line description). That grid is the only place the homepage links
-   directly to an individual app, so an app missing from it gets no direct
-   internal link from the site's highest-authority page.
+   "Open an app" grid, which sits directly under the hero (one `<li>` per
+   app, with its one-line description). That grid is the only place the
+   homepage links directly to an individual app, so an app missing from it
+   gets no direct internal link from the site's highest-authority page.
+   Keep each one-liner consistent with that app's description in
+   `apps.html`; the names must match the apps hub exactly.
 4. `work.html` - personal-projects work-item.
 5. `partials/header.html` - desktop dropdown AND mobile nav list.
 6. `apps/rising-shows/scripts/render-footer.js` AND
