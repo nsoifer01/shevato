@@ -38,6 +38,40 @@ const HIDDEN_GEM_MAX_VOTES_PER_EP = 500;
 // work for them (matching how the per-shape hub pages and Kometa treat them).
 const CATEGORICAL_SHAPES = ['saved-best-for-last', 'shape-drift'];
 
+/**
+ * The single definition of "what shape is this show".
+ *
+ * Feeds the ordered per-SEASON averages to the same detectors match.js runs
+ * per episode, then appends any categorical tag a season carries. The result
+ * describes the show's trajectory across its run, which is the product's whole
+ * premise.
+ *
+ * Extracted so the browser Finder (through buildShowAgg) and the static page
+ * builder (through render-show-page's computeDominantShape) share one
+ * implementation. They previously each had their own idea of a show's shape
+ * and disagreed on 83.5% of the catalogue: the static side classified the
+ * EPISODES inside a show's single highest-rated season and labelled that as
+ * the show's shape, so Game of Thrones read "slow-burn" on its page and
+ * "front-loaded, bad-finale, shape-drift" in the app, and a third of some hub
+ * pages listed shows the app's own filter would reject.
+ *
+ * @param {number[]} seasonAvgs per-season average ratings, ORDERED by season
+ * @param {Set<string>} categoricalTags tags any season carries
+ * @param {Function} detectShapes match.js's classifier, passed in so the
+ *   browser can hand over its global and a missing one degrades to no shapes
+ * @returns {string[]} trajectory shapes first, then categorical tags
+ */
+function deriveShowShapes(seasonAvgs, categoricalTags, detectShapes) {
+  // A single season has no cross-season trajectory, so such shows carry no
+  // trajectory shape (they can still carry categorical tags).
+  const trajectoryShapes = (seasonAvgs.length >= 2 && typeof detectShapes === 'function')
+    ? detectShapes(seasonAvgs.map((avg) => ({ rating: avg })))
+    : [];
+  return trajectoryShapes.concat(
+    CATEGORICAL_SHAPES.filter((t) => categoricalTags.has(t) && !trajectoryShapes.includes(t)),
+  );
+}
+
 // Aggregate per-season records (data.json `matches`) into one row per series.
 // `detectShapes` is the per-episode shape classifier from match.js - passed in
 // rather than required so the browser can hand over its global and a missing
@@ -113,15 +147,12 @@ function buildShowAgg(matches, detectShapes) {
     const episodeSeries = s.seasonsCount === 1 ? s.seasonEpisodeSeries[0] : undefined;
     const seasonAvgs = s.seasonAvgs.slice().sort((a, b) => a.season - b.season);
     // Whole-show shape: feed the ordered per-season averages to the same shape
-    // detectors the Seasons view uses per episode. A single season has no
-    // cross-season trajectory, so such shows carry no trajectory shape.
-    // Categorical season tags (saved-best-for-last, shape-drift) are appended
-    // after the trajectory shapes regardless of season count.
-    const trajectoryShapes = (seasonAvgs.length >= 2 && typeof detectShapes === 'function')
-      ? detectShapes(seasonAvgs.map((a) => ({ rating: a.avg })))
-      : [];
-    const shapes = trajectoryShapes.concat(
-      CATEGORICAL_SHAPES.filter((t) => s.categoricalShapes.has(t) && !trajectoryShapes.includes(t)),
+    // detectors the Seasons view uses per episode. See deriveShowShapes, which
+    // the static page builder calls too so the two surfaces cannot disagree.
+    const shapes = deriveShowShapes(
+      seasonAvgs.map((a) => a.avg),
+      s.categoricalShapes,
+      detectShapes,
     );
     out.push({
       seriesId: s.seriesId,
@@ -260,6 +291,7 @@ const API = {
   HIDDEN_GEM_MIN_AVG,
   HIDDEN_GEM_MAX_VOTES_PER_EP,
   CATEGORICAL_SHAPES,
+  deriveShowShapes,
   buildShowAgg,
   parseFinderQuery,
   passesFinderFilters,

@@ -37,14 +37,64 @@ function makeShow(seriesId, title, seriesVotes, shapes, avgRating = 8.0, seriesR
   };
 }
 
+// Season-average trajectories that produce a known dominant shape under the
+// shared classifier (finder-lib's deriveShowShapes over match.js's
+// detectShapes). Hub membership is decided by shapes[0] of the WHOLE SHOW's
+// trajectory across its seasons, so a fixture needs real per-season averages;
+// a single season has no trajectory and therefore no dominant shape at all.
+//
+// Every sequence below was verified against detectShapes rather than assumed.
+// Worth knowing: detectShapes emits trajectory shapes in a fixed order, so
+// some shapes can never be dominant - 'rebound' always trails 'slow-burn' and
+// 'big-finale' in the output, which is why the cap tests below use slow-burn.
+const TRAJECTORIES = {
+  // -> ['slow-burn', 'big-finale']
+  'slow-burn': [7.5, 7.6, 7.5, 9.2],
+  // -> ['rising', 'slow-burn', 'big-finale']: dominant rising, and it carries
+  // slow-burn as a SECONDARY shape, which is what proves a secondary shape
+  // does not pull a show onto a second hub.
+  rising: [7.0, 7.6, 8.2, 8.8],
+  // -> [] : peaks in the middle, matches no detector.
+  none: [7.2, 8.8, 8.9, 7.3],
+};
+
+// Multi-season fixture whose seasons trace `trajectory`, for anything that
+// goes through selectHubShows. makeShow above stays single-season and is still
+// what the gap-hub tests use, since those care about the avgRating/seriesRating
+// difference rather than about shape.
+function makeShapedShow(seriesId, title, seriesVotes, trajectory, seriesRating = null) {
+  const avgs = TRAJECTORIES[trajectory];
+  if (!avgs) throw new Error(`no trajectory fixture for ${trajectory}`);
+  return {
+    seriesId,
+    title,
+    year: 2010,
+    seriesVotes,
+    seriesRating,
+    seasons: avgs.map((avgRating, i) => ({
+      season: i + 1,
+      avgRating,
+      // Per-season shapes now only matter for the categorical tags
+      // (saved-best-for-last, shape-drift); the trajectory comes from the
+      // season averages above.
+      shapes: [],
+      episodes: [
+        { episode: 1, rating: avgRating, votes: 100 },
+        { episode: 2, rating: avgRating, votes: 100 },
+      ],
+    })),
+  };
+}
+
 const SERIES = [
-  makeShow('tt0001', 'Slow One', 5000, ['slow-burn'], 8.4),
-  makeShow('tt0002', 'Slow Two', 90000, ['slow-burn'], 8.1),
-  makeShow('tt0003', 'Riser', 40000, ['rising'], 9.0),
-  makeShow('tt0004', 'Shapeless', 70000, [], 7.0),
-  // Dominant shape is shapes[0] of the highest-rated season, so this show
-  // belongs to the rising hub only, never to slow-burn.
-  makeShow('tt0005', 'Multi Shape', 60000, ['rising', 'slow-burn'], 8.8),
+  makeShapedShow('tt0001', 'Slow One', 5000, 'slow-burn'),
+  makeShapedShow('tt0002', 'Slow Two', 90000, 'slow-burn'),
+  makeShapedShow('tt0003', 'Riser', 40000, 'rising'),
+  makeShapedShow('tt0004', 'Shapeless', 70000, 'none'),
+  // Dominant shape is shapes[0] of the whole-show trajectory, so this show
+  // belongs to the rising hub only, never to slow-burn, even though its
+  // trajectory also carries slow-burn as a secondary shape.
+  makeShapedShow('tt0005', 'Multi Shape', 60000, 'rising'),
 ];
 
 test('SHAPE_SLUGS covers the 13 shapes exactly once', () => {
@@ -70,8 +120,10 @@ test('selectHubShows orders by IMDb votes descending', () => {
 });
 
 test('selectHubShows caps the list at 100 shows', () => {
-  const many = Array.from({ length: 250 }, (_, i) => makeShow(`tt9${i}`, `Show ${i}`, i, ['rebound']));
-  const picked = selectHubShows(many, 'rebound');
+  // slow-burn, not rebound: detectShapes never emits 'rebound' first, so no
+  // show can have it as a DOMINANT shape and the hub would always be empty.
+  const many = Array.from({ length: 250 }, (_, i) => makeShapedShow(`tt9${i}`, `Show ${i}`, i, 'slow-burn'));
+  const picked = selectHubShows(many, 'slow-burn');
   assert.equal(picked.length, HUB_LIMIT);
   assert.equal(picked.length, 100);
   assert.equal(picked[0].seriesVotes, 249);
@@ -124,9 +176,9 @@ test('renderShapeHub JSON-LD blocks all parse', () => {
 });
 
 test('renderShapeHub caps the JSON-LD ItemList at 25 while listing all 100', () => {
-  const many = Array.from({ length: 250 }, (_, i) => makeShow(`tt9${i}`, `Show ${i}`, i, ['rebound']));
-  const shows = selectHubShows(many, 'rebound');
-  const html = renderShapeHub('rebound', shows, '2026-05-18T00:00:00.000Z');
+  const many = Array.from({ length: 250 }, (_, i) => makeShapedShow(`tt9${i}`, `Show ${i}`, i, 'slow-burn'));
+  const shows = selectHubShows(many, 'slow-burn');
+  const html = renderShapeHub('slow-burn', shows, '2026-05-18T00:00:00.000Z');
   const collection = JSON.parse(html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)[1]
     .replace(/<\/?script[^>]*>/g, ''));
   assert.equal(collection.mainEntity.numberOfItems, 100);

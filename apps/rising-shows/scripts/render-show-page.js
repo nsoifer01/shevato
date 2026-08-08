@@ -3,6 +3,12 @@
 const { renderCurve, escapeXml } = require('./render-curve.js');
 const { showPath } = require('./slugify.js');
 const { renderMoreFooter } = require('./render-footer.js');
+// Shape classification is shared with the browser Finder so the static pages
+// and the app can never label the same show differently. deriveShowShapes owns
+// the definition; detectShapes is the per-episode classifier it runs over the
+// per-season averages. Neither module requires this one, so no cycle.
+const { deriveShowShapes } = require('./finder-lib.js');
+const { detectShapes } = require('./match.js');
 
 const SITE = 'https://shevato.com';
 const TMDB_POSTER = 'https://image.tmdb.org/t/p/w500';
@@ -57,19 +63,39 @@ const SHAPE_DESCS = {
   'shape-drift': 'Rating pattern or quality changed significantly late in the run',
 };
 
-// Pick the shape from the show's highest-rated season (all seasons in a series
-// share the same seriesVotes, so the season average is the tiebreaker). Returns
-// nulls when the show has no shape classifications at all. Drives the show
+// The show's whole-run trajectory shape, from the SAME derivation the browser
+// Finder uses (finder-lib's deriveShowShapes, also called by buildShowAgg), so
+// a page's badge, its hub membership and the app's shape chips can never
+// disagree. Returns nulls when the show has no shape at all. Drives the show
 // page's CTA/recommendations and the per-shape hub membership.
+//
+// This used to read the FIRST shape of the show's single highest-rated season,
+// which is the shape of the EPISODES inside that one season, not of the show.
+// The two answered different questions and disagreed on 83.5% of the catalogue
+// (6,497 of 7,780 shows where both produced a label). Game of Thrones read
+// "slow-burn" here and "front-loaded, bad-finale, shape-drift" in the app;
+// Stranger Things read "big-finale" against the app's "bad-finale", an
+// outright contradiction. Because this function also decides hub membership,
+// /shows/shape/big-finale/ was listing 1,915 of 5,411 shows that the app's own
+// big-finale filter would reject, so visitors arriving from search hit a
+// filtered view missing a third of what they had just been shown.
+//
+// `shapes[0]` is the dominant one: deriveShowShapes returns trajectory shapes
+// before categorical tags, so a show with a real trajectory is filed under it
+// and only tag-only shows (a single season that saved its best for last) land
+// on a categorical hub.
 function computeDominantShape(show) {
-  let bestSeason = null;
-  for (const s of show.seasons) {
-    if (!s.shapes || s.shapes.length === 0) continue;
-    if (!bestSeason) { bestSeason = s; continue; }
-    if (s.avgRating > bestSeason.avgRating) bestSeason = s;
+  const seasons = show.seasons || [];
+  const seasonAvgs = seasons
+    .map((s) => s.avgRating)
+    .filter((r) => typeof r === 'number');
+  const categoricalTags = new Set();
+  for (const s of seasons) {
+    for (const t of (s.shapes || [])) categoricalTags.add(t);
   }
-  if (!bestSeason) return { dominantShape: null, dominantShapeSlug: null };
-  const shape = bestSeason.shapes[0];
+  const shapes = deriveShowShapes(seasonAvgs, categoricalTags, detectShapes);
+  const shape = shapes[0];
+  if (!shape) return { dominantShape: null, dominantShapeSlug: null };
   return { dominantShape: shape, dominantShapeSlug: shapeToSlug(shape) };
 }
 
