@@ -717,7 +717,7 @@ async function load() {
   bindAdvancedDrawer();
   bindShapeTagTouchTooltips();
   bindShortcutLegend();
-  showAgg = buildShowAgg();
+  showAgg = buildShowAggFromDataset();
   showShapesBySeries = new Map(showAgg.map((s) => [s.seriesId, s.shapes]));
   renderFinderShapes();
   renderFinderMoods();
@@ -943,11 +943,15 @@ function languageLabel(code) {
 
 // --- filter + sort ---
 
-function passesShapeAnd(m, shapeSet) {
-  if (shapeSet.size === 0) return true;
-  for (const s of shapeSet) if (!m.shapes.includes(s)) return false;
-  return true;
-}
+// passesShapeAnd deliberately does NOT live here. finder-lib.js owns it and
+// exports it on RisingShowsFinder; this file used to declare a byte-identical
+// copy at top level. Both are classic scripts sharing one global lexical
+// scope and app.js is deferred second, so that copy silently overwrote the
+// library's own and finder-lib's internal filterAndSortRows() ended up calling
+// THIS file's version. Harmless only for as long as the two stayed identical.
+// It is the same collision class that made integrations-lib.js throw
+// "Identifier 'CATEGORICAL_SHAPES' has already been declared" and silently
+// skip the whole file. Call RisingShowsFinder.passesShapeAnd instead.
 
 // --- render ---
 
@@ -2768,7 +2772,15 @@ function formatCompactVotes(n) {
 // Kometa are built from exactly the rows this view shows. `detectShapes` comes
 // from match.js, loaded before this script; guard so a missing global never
 // breaks the finder.
-function buildShowAgg() {
+// Named buildShowAggFromDataset, not buildShowAgg: a bare `buildShowAgg` here
+// would overwrite finder-lib.js's exported function of that name on the shared
+// global (both are classic scripts and this one is deferred second), leaving a
+// zero-argument wrapper standing where a two-argument function is expected.
+// Nothing in finder-lib calls it by the bare name today, so that shadow was
+// harmless, but it is the same collision that made integrations-lib.js throw
+// "Identifier 'CATEGORICAL_SHAPES' has already been declared" and skip its
+// whole file. Distinct names keep the global free of look-alikes.
+function buildShowAggFromDataset() {
   return RisingShowsFinder.buildShowAgg(
     dataset.matches,
     typeof detectShapes === 'function' ? detectShapes : null,
@@ -2915,7 +2927,7 @@ function makeFinderShapeChip(shape, name, icon) {
 function syncFinderShapeChips() {
   if (!els.finderShapes) return;
   const base = finderRowsBeforeShape();
-  const current = base.filter((s) => passesShapeAnd(s, finderState.shapes));
+  const current = base.filter((s) => RisingShowsFinder.passesShapeAnd(s, finderState.shapes));
   const counts = finderShapeCounts(current);
   for (const btn of els.finderShapes.querySelectorAll('.shape-chip')) {
     const shape = btn.dataset.shape;
@@ -3179,7 +3191,7 @@ function finderRowsBeforeShape() {
 function filterAndSortFinder() {
   const f = finderState;
   const rows = finderRowsBeforeShape()
-    .filter((s) => passesShapeAnd(s, f.shapes));
+    .filter((s) => RisingShowsFinder.passesShapeAnd(s, f.shapes));
   rows.sort(RisingShowsFinder.finderComparator(f.sort, f.sortDir));
   return rows;
 }
