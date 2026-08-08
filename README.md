@@ -153,6 +153,22 @@ npm install -g sass
 sass --watch assets/sass/main.scss:assets/css/main.css
 ```
 
+> **`assets/css/main.css` has diverged from `assets/sass/`. Running that
+> command will silently revert live styling.**
+>
+> Over time main.css has been hand-edited rather than recompiled, and the two
+> are no longer equivalent. Concrete example: `_footer.scss` declares
+> `.copyright { font-size: 0.8rem }` with no colour and no margin, while the
+> shipped main.css has `font-size: 0.75rem; color: white; margin: 0`. Whole
+> blocks (`#footer h4`/`h2`, `#footer ul.plain`, the font-smoothing
+> normalisation near the end of the file) exist only in main.css and have no
+> SASS source at all.
+>
+> So: edit `main.css` directly, which is what the recent history actually
+> does, or reconcile the SASS source with the shipped CSS first and verify
+> the header and footer against a screenshot before trusting a rebuild.
+> Do not run `sass --watch` casually.
+
 ## Tests
 
 Node's built-in test runner is used for the apps and the shared sync system:

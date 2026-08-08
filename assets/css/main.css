@@ -2318,7 +2318,7 @@ ul.icons {
     padding: 0.5rem 0;
     text-align: center;
     margin: 0; }
-  #footer h4 {
+  #footer h4, #footer h2 {
     font-size: 1rem;
     margin-bottom: 0.5rem; }
   #footer ul.plain {
@@ -3074,6 +3074,7 @@ body > [data-include="footer"] {
 #header #header-user-email,
 #menu .links a,
 #footer h4,
+#footer h2,
 #footer .copyright {
   font-family: "Raleway", Arial, Helvetica, sans-serif !important; }
 
@@ -3105,7 +3106,8 @@ body > [data-include="footer"] {
 #footer ul,
 #footer li { color: rgba(255, 255, 255, 0.5) !important; }
 
-#footer h4 {
+#footer h4,
+#footer h2 {
   font-weight: 300 !important;
   line-height: 1.5 !important;
   letter-spacing: normal !important;

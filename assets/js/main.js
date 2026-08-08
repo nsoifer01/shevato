@@ -878,7 +878,10 @@
     const $menuToggle = $(SELECTORS.menuToggle);
     
     $menu
-      .append('<a href="#menu" class="close"></a>')
+      // aria-label, because this link has no text content: it is an icon drawn
+      // in CSS. Without a name a screen reader announces it only as "link", so
+      // the sole way out of the open mobile menu was unlabelled.
+      .append('<a href="#menu" class="close" aria-label="Close menu"></a>')
       .appendTo($body)
       .panel({
         target: $body,
