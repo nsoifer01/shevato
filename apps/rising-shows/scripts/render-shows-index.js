@@ -71,7 +71,7 @@ function renderShowsIndex(series, builtAt) {
     <nav class="page-nav" aria-label="Primary">
       <a href="/apps/rising-shows/">Explorer</a>
       <a href="/apps/rising-shows/shows/" aria-current="page">All shows</a>
-      <a href="/apps.html">More apps</a>
+      <a href="/apps">More apps</a>
     </nav>
   </header>
 

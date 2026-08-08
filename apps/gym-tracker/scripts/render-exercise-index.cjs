@@ -62,7 +62,7 @@ function renderExerciseIndex(exercises, slugs, builtAt) {
     <nav class="page-nav" aria-label="Primary">
       <a href="/apps/gym-tracker/">Tracker</a>
       <a href="/apps/gym-tracker/exercises/" aria-current="page">All exercises</a>
-      <a href="/apps.html">More apps</a>
+      <a href="/apps">More apps</a>
     </nav>
   </header>
 
@@ -166,7 +166,7 @@ function renderTaxonomyPage({ kind, key, label, exercises, slugs, builtAt }) {
     <nav class="page-nav" aria-label="Primary">
       <a href="/apps/gym-tracker/">Tracker</a>
       <a href="/apps/gym-tracker/exercises/">All exercises</a>
-      <a href="/apps.html">More apps</a>
+      <a href="/apps">More apps</a>
     </nav>
   </header>
 

@@ -238,7 +238,7 @@ ${jsonLd(buildCollectionSchema(schemaName, canonical, description, shows))}
       <nav class="page-nav" aria-label="Primary">
         <a href="/apps/rising-shows/">Explorer</a>
         <a href="/apps/rising-shows/shows/">All shows</a>
-        <a href="/apps.html">More apps</a>
+        <a href="/apps">More apps</a>
       </nav>
       <a class="header-launch-btn" href="/apps/rising-shows/">Launch app →</a>
     </div>
@@ -283,8 +283,8 @@ function buildBreadcrumbs(label, canonical) {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
     itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Home', item: `${SITE}/home.html` },
-      { '@type': 'ListItem', position: 2, name: 'Apps', item: `${SITE}/apps.html` },
+      { '@type': 'ListItem', position: 1, name: 'Home', item: `${SITE}/home` },
+      { '@type': 'ListItem', position: 2, name: 'Apps', item: `${SITE}/apps` },
       { '@type': 'ListItem', position: 3, name: 'Rising Shows', item: `${SITE}/apps/rising-shows/` },
       { '@type': 'ListItem', position: 4, name: 'All shows', item: `${SITE}/apps/rising-shows/shows/` },
       { '@type': 'ListItem', position: 5, name: label, item: canonical },

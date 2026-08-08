@@ -602,3 +602,63 @@ body {
    layout) live in main.css instead of here, because the apps load main.css
    but not site.css — keeping them in main.css makes the nav + footer render
    identically on the marketing pages and inside every app. */
+
+/* Home page: direct links to each app.
+   ---------------------------------------------------------------------------
+   The homepage named all seven apps in prose but linked to none of them, so
+   the site's highest-authority page passed no direct link equity to the pages
+   it most wants found.
+
+   Colours are pinned explicitly rather than inherited. assets/css/main.css
+   sets a sitewide `a { color: #ce1b28 }` plus `text-decoration: underline`,
+   which would render this block as a wall of red underlined text; the same
+   collision has bitten other components in this repo before. */
+.home-app-links {
+  margin: 0 0 3rem;
+}
+.home-app-links-title {
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(var(--brand-blue-rgb), 0.75);
+  margin: 0 0 0.9rem;
+}
+.home-app-links ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.75rem;
+}
+.home-app-links li {
+  margin: 0;
+  padding: 0;
+}
+.home-app-links a {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.85rem 1rem;
+  background: #ffffff;
+  border: 1px solid rgba(var(--brand-blue-rgb), 0.08);
+  border-radius: 10px;
+  text-decoration: none;
+  color: var(--brand-blue, #1f3a5f);
+  font-weight: 600;
+  line-height: 1.35;
+  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+}
+.home-app-links a span {
+  font-weight: 400;
+  font-size: 0.85rem;
+  color: rgba(0, 0, 0, 0.58);
+}
+.home-app-links a:hover,
+.home-app-links a:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(var(--brand-blue-rgb), 0.12);
+  border-color: rgba(var(--brand-blue-rgb), 0.22);
+  text-decoration: none;
+  color: var(--brand-blue, #1f3a5f);
+}

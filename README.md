@@ -43,7 +43,7 @@ shevato/
 ├── scripts/                          # Site-level build helpers (sitemap index lastmod stamping)
 ├── sync-system/                      # localStorage ↔ Firestore sync used by the apps
 │
-├── index.html                        # Apex shell — redirects to /home.html (noindex)
+├── index.html                        # Apex shell — redirects to /home (noindex)
 ├── home.html                         # Main landing page
 ├── work.html                         # Selected work + services overview
 ├── apps.html                         # Apps hub
@@ -94,7 +94,11 @@ SAME round. Wire the app into ALL of these:
    wording. The two `image:alt` tags and the JSON-LD description are the
    classic misses.
 3. `home.html` - side-projects prose list + count, "Free web apps"
-   preview-card list, `og:description` count.
+   preview-card list, `og:description` count, AND the `.home-app-links`
+   "Open an app" grid near the bottom (one `<li>` per app, with its
+   one-line description). That grid is the only place the homepage links
+   directly to an individual app, so an app missing from it gets no direct
+   internal link from the site's highest-authority page.
 4. `work.html` - personal-projects work-item.
 5. `partials/header.html` - desktop dropdown AND mobile nav list.
 6. `apps/rising-shows/scripts/render-footer.js` AND
