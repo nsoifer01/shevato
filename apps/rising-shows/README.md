@@ -106,9 +106,25 @@ Each page (`scripts/render-show-page.js`) emits:
 `apps/rising-shows/shows/shape/<slug>/` (13 of them: `rising`, `consistent`, `slow-burn`,
 `big-finale`, `rebound`, `front-loaded`, `declining`, `bad-finale`, `rollercoaster`,
 `mid-peak`, `u-shaped`, `saved-best-for-last`, `shape-drift`). A show appears on exactly
-one hub, the one matching its **dominant shape** (the first shape tag of its highest-rated
-season, `computeDominantShape` in `render-show-page.js`), ranked by IMDb vote count and
-capped at the top 100; the `CollectionPage` JSON-LD `ItemList` carries the first 25.
+one hub, the one matching its **dominant shape**: the first entry of the show's whole-run
+trajectory, computed by `computeDominantShape` in `render-show-page.js`, which delegates to
+finder-lib's `deriveShowShapes` - the same derivation `buildShowAgg` runs for the browser
+Finder, so a page's badge and the app's shape chips cannot disagree. Ranked by IMDb vote
+count and capped at the top 100; the `CollectionPage` JSON-LD `ItemList` carries the first 25.
+
+Until 2026-08-08 the dominant shape was instead the first shape tag of the show's single
+highest-rated season, which describes the EPISODES inside that one season rather than the
+show's trajectory. The two answered different questions and disagreed for 83.5% of the
+catalogue (6,497 of the 7,780 shows where both produced a label): Game of Thrones read
+"slow burn" on its page and "front-loaded, bad-finale, shape-drift" in the app, Stranger
+Things read "big finale" against the app's "bad-finale". Because the same function decides
+hub membership, `/shows/shape/big-finale/` was listing 1,915 of 5,411 shows that the app's
+own big-finale filter would reject. Expect some hubs to be smaller than before (rebound
+and rollercoaster especially): they are no longer padded with shows whose best season
+merely happened to have that internal shape. Note that a few shapes can never be dominant,
+because `detectShapes` emits trajectory shapes in a fixed order and `rebound` always trails
+`slow-burn` and `big-finale`; those hubs fill only from shows where the earlier shapes do
+not apply.
 Each hub cross-links the others, the A-Z index, and the shape-filtered explorer view
 (`/apps/rising-shows/#shape=<slug>`). The per-season shape badges on show pages and the
 "See all X shows" link under the recommendations point at these hubs, the A-Z index carries
