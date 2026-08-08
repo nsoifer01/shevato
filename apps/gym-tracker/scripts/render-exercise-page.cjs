@@ -36,7 +36,19 @@ function renderExercisePage({ exercise, slug, related, builtAt }) {
   <title>${escapeHtml(pageTitle)}</title>
   <meta name="description" content="${escapeHtml(description)}">
   <meta name="author" content="Shevato LLC">
-  <meta name="robots" content="index, follow, max-image-preview:large">
+  <!-- noindex, FOLLOW. Each of these 513 pages is a templated ~2,500-character
+       description of one exercise, competing against sites with real editorial
+       depth on the same query. They are the same thin-pages-at-scale shape that
+       put ~60k Rising Shows pages into "Crawled - currently not indexed" and
+       dragged the whole domain, which is why that long tail carries the same
+       directive (see render-show-page.js).
+       The follow half is deliberate: these pages link to the app, the muscle
+       and equipment taxonomy pages and the exercise index, all of which stay
+       indexable, so their internal link equity keeps flowing to the pages that
+       can realistically rank. Only the individual exercise pages leave the
+       index; the taxonomy and index pages are list/hub pages with aggregate
+       value and are kept. -->
+  <meta name="robots" content="noindex, follow">
   <meta name="theme-color" content="#0a0c14">
   <meta name="color-scheme" content="dark">
   <link rel="canonical" href="${canonical}">

@@ -121,7 +121,7 @@ test('renderTaxonomyPage targets a high-volume query', () => {
   assert.ok(!html.includes(LEGACY_SCROLL_TOP_TOKEN), 'no bespoke inline back-to-top markup or script must be emitted on taxonomy page');
 });
 
-test('renderExercisesSitemap covers per-exercise, taxonomy, and index URLs', () => {
+test('renderExercisesSitemap lists the index and taxonomy pages', () => {
   const slugs = assignSlugs(SAMPLE);
   const xml = renderExercisesSitemap({
     exercises: SAMPLE,
@@ -134,8 +134,74 @@ test('renderExercisesSitemap covers per-exercise, taxonomy, and index URLs', () 
   assert.ok(xml.includes('https://shevato.com/apps/gym-tracker/exercises/</loc>'));
   assert.ok(xml.includes('https://shevato.com/apps/gym-tracker/exercises/muscle/pectorals/</loc>'));
   assert.ok(xml.includes('https://shevato.com/apps/gym-tracker/exercises/equipment/cable/</loc>'));
-  assert.ok(xml.includes('https://shevato.com/apps/gym-tracker/exercises/archer-push-ups/</loc>'));
-  // Count locs: index + 4 muscles + 3 equipment + 4 exercises = 12
+  // index + 4 muscles + 3 equipment, and nothing else.
   const locs = (xml.match(/<loc>/g) || []).length;
-  assert.equal(locs, 1 + 4 + 3 + SAMPLE.length);
+  assert.equal(locs, 1 + 4 + 3);
+});
+
+test('renderExercisesSitemap omits the individual exercise pages', () => {
+  // Those pages carry `noindex, follow`, so listing them would ask the crawler
+  // to index URLs it has just been told to skip. This asserts the absence
+  // rather than only the count, so re-adding them is a visible failure and not
+  // a silently larger sitemap.
+  const slugs = assignSlugs(SAMPLE);
+  const xml = renderExercisesSitemap({
+    exercises: SAMPLE,
+    slugs,
+    muscles: ['pectorals'],
+    equipment: ['cable'],
+    builtAt: '2026-05-18T00:00:00.000Z',
+  });
+  for (const ex of SAMPLE) {
+    const loc = `https://shevato.com/apps/gym-tracker/exercises/${slugs.get(ex.id)}/</loc>`;
+    assert.ok(!xml.includes(loc), `sitemap must not list the noindexed page ${loc}`);
+  }
+  assert.equal((xml.match(/<loc>/g) || []).length, 1 + 1 + 1);
+});
+
+// ---------------------------------------------------------------------------
+// Indexability.
+//
+// The 513 individual exercise pages are templated, roughly 2,500 characters
+// each, and compete against sites with real editorial depth on the same query.
+// They are the same thin-pages-at-scale shape that put ~60k Rising Shows pages
+// into "Crawled - currently not indexed" and dragged the whole domain, so they
+// carry `noindex, follow` and are kept out of the sitemap.
+//
+// The taxonomy and index pages are deliberately NOT part of that: they are
+// list/hub pages that aggregate content, the same role the Rising Shows shape
+// hubs play, and they stay indexable. These tests pin that split, because the
+// two halves live in different files and could drift apart silently.
+// ---------------------------------------------------------------------------
+
+test('individual exercise pages are noindex, follow', () => {
+  const html = renderExercisePage({
+    exercise: SAMPLE[0], slug: 'archer-push-ups', related: [], builtAt: '2026-05-18T00:00:00.000Z',
+  });
+  assert.ok(
+    html.includes('<meta name="robots" content="noindex, follow">'),
+    'exercise pages must ask not to be indexed',
+  );
+  // follow, not nofollow: these pages link to the app and to the taxonomy and
+  // index pages, which do stay indexable, so the equity must keep flowing.
+  assert.ok(!html.includes('nofollow'), 'links out of an exercise page must still be followed');
+});
+
+test('taxonomy and index pages stay indexable', () => {
+  const slugs = assignSlugs(SAMPLE);
+  const taxo = renderTaxonomyPage({
+    kind: 'muscle',
+    key: 'pectorals',
+    label: 'Pectorals',
+    exercises: [SAMPLE[0]],
+    slugs,
+    builtAt: '2026-05-18T00:00:00.000Z',
+  });
+  assert.ok(taxo.includes('content="index, follow'), 'taxonomy pages must remain indexable');
+  assert.ok(!taxo.includes('content="noindex'), 'taxonomy pages must not be noindexed');
+
+  // positional args, not an options object
+  const index = renderExerciseIndex(SAMPLE, slugs, '2026-05-18T00:00:00.000Z');
+  assert.ok(index.includes('content="index, follow'), 'the exercise index must remain indexable');
+  assert.ok(!index.includes('content="noindex'), 'the exercise index must not be noindexed');
 });
