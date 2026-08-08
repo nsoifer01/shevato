@@ -210,7 +210,11 @@ The default vote floor is deliberately low - IMDb's per-episode vote counts can 
 
 ## Viewing locally
 
-The page loads `data.json` via `fetch`, so serve the directory rather than opening `file://`:
+Serve the directory rather than opening `file://`. Two independent reasons now:
+the page loads `data.json` via `fetch`, and `js/app.js` is a `type="module"`
+script, which the browser refuses to execute from a `file://` origin. The
+module failure is the quieter of the two, since the page still renders its
+shell and simply never becomes interactive.
 
 ```sh
 cd apps/rising-shows
