@@ -152,3 +152,73 @@ test('netlify.toml keeps a 301 from tracker.html to the new mario-kart entry', (
     assert.match(toml, /to\s*=\s*"\/apps\/mario-kart\/"/);
     assert.match(toml, /status\s*=\s*301/);
 });
+
+// ---------------------------------------------------------------------------
+// Cross-cutting invariant: every user-facing list of apps is in A-Z order.
+//
+// The owner's rule is that apps are ALWAYS listed alphabetically. Before this
+// test the site disagreed with itself: the header nav and the apps.html
+// JSON-LD were alphabetical, apps.html's visible cards were alphabetical
+// except Gym Tracker hoisted to first, the homepage grid was in no order at
+// all, and both README lists and the sitemap followed a fourth arbitrary
+// order. Ordering is exactly the kind of thing that drifts silently every
+// time an app is added, so it is asserted rather than remembered.
+// ---------------------------------------------------------------------------
+
+/** Case-insensitive compare, so "MapTap" sorts before "Mario" on 'p' < 'r'. */
+function isSortedCI(names) {
+    const sorted = [...names].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    return names.join('|') === sorted.join('|');
+}
+
+function readRepoFile(...parts) {
+    return readFileSync(join(REPO_ROOT, ...parts), 'utf8');
+}
+
+test('the homepage app grid is in A-Z order', () => {
+    const html = readRepoFile('home.html');
+    const names = [...html.matchAll(/href="apps\/[a-z0-9-]+\/">([^<]*)<span>/g)].map((m) => m[1].trim());
+    assert.equal(names.length, 7, 'expected all seven apps in the homepage grid');
+    assert.ok(isSortedCI(names), `homepage grid out of A-Z order: ${names.join(', ')}`);
+});
+
+test('the apps hub cards are in A-Z order', () => {
+    const html = readRepoFile('apps.html');
+    const section = html.slice(html.indexOf('<div class="highlights">'));
+    const names = [...section.matchAll(/<h3>([^<]*)<\/h3>/g)].map((m) => m[1].trim());
+    assert.equal(names.length, 7, 'expected all seven app cards');
+    assert.ok(isSortedCI(names), `apps.html cards out of A-Z order: ${names.join(', ')}`);
+});
+
+test('the header nav app menu is in A-Z order', () => {
+    const html = readRepoFile('partials', 'header.html');
+    // The nav renders twice (desktop dropdown + mobile list); check each run
+    // separately rather than the concatenation, which would never be sorted.
+    const links = [...html.matchAll(/href="\/apps\/[a-z0-9-]+\/"[^>]*>([^<]*)</g)].map((m) => m[1].trim());
+    assert.equal(links.length, 14, 'expected seven apps in each of the two nav blocks');
+    const desktop = links.slice(0, 7);
+    const mobile = links.slice(7);
+    assert.ok(isSortedCI(desktop), `header desktop nav out of A-Z order: ${desktop.join(', ')}`);
+    assert.ok(isSortedCI(mobile), `header mobile nav out of A-Z order: ${mobile.join(', ')}`);
+});
+
+test('the apps hub CollectionPage JSON-LD lists apps in A-Z order', () => {
+    const html = readRepoFile('apps.html');
+    const blocks = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)];
+    const names = [];
+    for (const [, raw] of blocks) {
+        const parsed = JSON.parse(raw); // also asserts the JSON-LD stays valid
+        for (const part of parsed.hasPart || []) {
+            if (part.name) names.push(part.name);
+        }
+    }
+    assert.equal(names.length, 7, 'expected all seven apps in hasPart');
+    assert.ok(isSortedCI(names), `apps.html JSON-LD out of A-Z order: ${names.join(', ')}`);
+});
+
+test('the sitemap lists the app landing pages in A-Z order', () => {
+    const xml = readRepoFile('sitemap-pages.xml');
+    const slugs = [...xml.matchAll(/<loc>https:\/\/shevato\.com\/apps\/([a-z0-9-]+)\/<\/loc>/g)].map((m) => m[1]);
+    assert.equal(slugs.length, 7, 'expected seven app landing pages in the sitemap');
+    assert.ok(isSortedCI(slugs), `sitemap app order not A-Z: ${slugs.join(', ')}`);
+});

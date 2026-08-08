@@ -25,12 +25,12 @@ shevato/
 │   └── seo/                          # Reference JSON-LD fragments + metadata checklist
 │
 ├── apps/                             # Browser apps (each is self-contained)
-│   ├── mario-kart/                   # Mario Kart race tracker (8 Deluxe + World)
-│   ├── gym-tracker/                  # Gym workout tracker (PWA, manifest + service worker)
-│   ├── football-h2h/                 # Head-to-head football league manager
-│   ├── rising-shows/                 # TV shows ranked by rating-trend shape + Plex/Kometa integration
-│   ├── maptap-rivals/                # Daily MapTap.gg head-to-head tracker
 │   ├── arena/                        # Real-time multiplayer hub (Firestore Realtime DB)
+│   ├── football-h2h/                 # Head-to-head football league manager
+│   ├── gym-tracker/                  # Gym workout tracker (PWA, manifest + service worker)
+│   ├── maptap-rivals/                # Daily MapTap.gg head-to-head tracker
+│   ├── mario-kart/                   # Mario Kart race tracker (8 Deluxe + World)
+│   ├── rising-shows/                 # TV shows ranked by rating-trend shape + Plex/Kometa integration
 │   └── trip-planner/                 # Day-by-day trip itinerary builder with route map
 │
 ├── partials/                         # Header/footer fragments loaded by main.js
@@ -64,18 +64,23 @@ shevato/
 
 | App | Path | Category | Notes |
 |-----|------|----------|-------|
-| Mario Kart Tracker | `apps/mario-kart/` | Game stats | Race log, charts, achievements. Supports MK8 Deluxe + Mario Kart World |
-| Gym Tracker | `apps/gym-tracker/` | Health | Installable PWA, offline support, programs + measurements |
-| Football H2H League | `apps/football-h2h/` | Sports stats | Match log, penalty shootouts, player comparison table |
-| Rising Shows | `apps/rising-shows/` | TV / multimedia | Whole TV shows ranked by the shape of their rating trend across thousands of shows; Plex + Kometa integration under `apps/rising-shows/kometa/` |
-| MapTap Rivals | `apps/maptap-rivals/` | Game tracker | Daily MapTap.gg H2H against named friends; rivalry seasons + calendar heatmap |
 | Arena | `apps/arena/` | Real-time multiplayer | Private rooms for friends — Globe Drop, Trivia, more. Requires Firestore + Realtime Database |
+| Football H2H League | `apps/football-h2h/` | Sports stats | Match log, penalty shootouts, player comparison table |
+| Gym Tracker | `apps/gym-tracker/` | Health | Installable PWA, offline support, programs + measurements |
+| MapTap Rivals | `apps/maptap-rivals/` | Game tracker | Daily MapTap.gg H2H against named friends; rivalry seasons + calendar heatmap |
+| Mario Kart Tracker | `apps/mario-kart/` | Game stats | Race log, charts, achievements. Supports MK8 Deluxe + Mario Kart World |
+| Rising Shows | `apps/rising-shows/` | TV / multimedia | Whole TV shows ranked by the shape of their rating trend across thousands of shows; Plex + Kometa integration under `apps/rising-shows/kometa/` |
 | Trip Planner | `apps/trip-planner/` | Travel | Day-by-day itineraries: flights, stays, costs, night coverage, collision and gap warnings, route map, A-to-B travel options. Optional Firestore sync via site sign-in |
 
 ### Adding a new app (required surfaces checklist)
 
 Every place an existing app is referenced must reference the new one in the
 SAME round. Wire the app into ALL of these:
+
+**Apps are always listed A-Z**, on every surface below, with no featured app
+hoisted to the front. Insert alphabetically rather than appending. Five tests
+in `sync-system/tests/app-naming-consistency.test.mjs` enforce this; if one
+fails, fix the ordering rather than the test.
 
 1. `apps/<slug>/` - index.html (shared header/footer includes, full SEO head:
    canonical, OG + Twitter cards, SoftwareApplication JSON-LD, emoji favicon),
