@@ -21,7 +21,6 @@ shevato/
 │   │   ├── breakpoints.min.js, browser.min.js, util.js  # Responsive helpers
 │   │   └── pagination.js, global-icons.js
 │   ├── js/tests/                     # Unit tests for the analytics helper (npm run test:analytics)
-│   ├── sass/                         # SASS sources for main.css
 │   └── seo/                          # Reference JSON-LD fragments + metadata checklist
 │
 ├── apps/                             # Browser apps (each is self-contained)
@@ -153,28 +152,16 @@ npx serve -l 8080 .
 
 Then open `http://127.0.0.1:8080/`.
 
-For SASS edits:
+For CSS edits, edit the stylesheets in `assets/css/` directly. There is no
+build step: the files served to browsers are the files in the repo.
 
-```bash
-npm install -g sass
-sass --watch assets/sass/main.scss:assets/css/main.css
-```
-
-> **`assets/css/main.css` has diverged from `assets/sass/`. Running that
-> command will silently revert live styling.**
->
-> Over time main.css has been hand-edited rather than recompiled, and the two
-> are no longer equivalent. Concrete example: `_footer.scss` declares
-> `.copyright { font-size: 0.8rem }` with no colour and no margin, while the
-> shipped main.css has `font-size: 0.75rem; color: white; margin: 0`. Whole
-> blocks (`#footer h4`/`h2`, `#footer ul.plain`, the font-smoothing
-> normalisation near the end of the file) exist only in main.css and have no
-> SASS source at all.
->
-> So: edit `main.css` directly, which is what the recent history actually
-> does, or reconcile the SASS source with the shipped CSS first and verify
-> the header and footer against a screenshot before trusting a rebuild.
-> Do not run `sass --watch` casually.
+`assets/css/main.css` used to be compiled from a SASS source tree, which was
+removed on 2026-08-08. It had stopped being the source of truth long before
+that: main.css was hand-edited for months while the SASS lagged behind, so
+recompiling would have deleted 342 selectors of live styling, including the
+`#footer h2` accessibility rules and the `.content--two-col` footer layout.
+Keeping a build input that silently destroys shipped CSS is worse than having
+no build step at all, so the sources were deleted rather than reconciled.
 
 ## Tests
 
@@ -247,7 +234,7 @@ Latest two versions of Chrome, Edge, Firefox, and Safari (desktop and mobile).
 
 ## Technologies
 
-- HTML5, CSS3 (with optional SASS preprocessing).
+- HTML5 and CSS3, hand-written with no build step.
 - Vanilla JavaScript with jQuery for the partials/auth UI.
 - FontAwesome (4.x and 6.x).
 - Chart.js (Mario Kart tracker, MapTap Rivals).
