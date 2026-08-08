@@ -240,6 +240,12 @@
         <input type="search" id="app-search" name="q" placeholder="Search apps by name or description" aria-label="Search apps by name or description" autocomplete="off" />
       </div>
 
+      <!-- The app cards are h3, so without this the outline jumped h1 -> h3.
+           Screen-reader-only because the filter bar and grid already make the
+           structure obvious to a sighted user; the heading exists to give the
+           cards a parent in the document outline. -->
+      <h2 class="sr-only">All apps</h2>
+
       <div class="highlights">
         <section data-category="fitness">
           <div class="content">
