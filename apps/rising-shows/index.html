@@ -553,11 +553,34 @@
        scope, so as a plain <script defer> the second one dies on a
        SyntaxError and never reaches its window.RisingShowsIntegrations
        assignment. It still attaches to window the same way, and app.js only
-       reads it from a click handler, so the later execution slot is fine. -->
+       reads it from a click handler, so the later execution slot is fine.
+
+       app.js is type="module" for the same reason, applied structurally
+       rather than one name at a time. As a classic script every one of its
+       ~500 top-level declarations became a global property, so any name it
+       shared with match.js or finder-lib.js silently overwrote theirs. That
+       produced three separate incidents: the CATEGORICAL_SHAPES SyntaxError
+       above, plus duplicate passesShapeAnd (which made finder-lib's own
+       filterAndSortRows call app.js's copy) and duplicate buildShowAgg. A
+       module gets its own scope, so app.js now contributes NOTHING to the
+       global namespace and the collision class is closed by construction
+       instead of by remembering to pick unique names.
+
+       Nothing needed to change inside app.js. It contains no import/export
+       syntax (so the node:vm test harness still loads it as a plain script),
+       it was already 'use strict', it assigns exactly one thing to window
+       (_rsTestExports, for those tests), and this page has no inline on*=
+       handlers that would need its functions to be global. It still reads
+       RisingShowsFinder and detectShapes as globals, which module scope
+       resolves through to window exactly as before.
+
+       Module scripts are deferred by default and execute in document order
+       alongside classic defer scripts, so match.js and finder-lib.js are
+       still guaranteed to run first. -->
   <script src="scripts/match.js" defer></script>
   <script src="scripts/finder-lib.js" defer></script>
   <script type="module" src="scripts/integrations-lib.js"></script>
-  <script src="js/app.js" defer></script>
+  <script type="module" src="js/app.js"></script>
   <script src="/assets/js/back-to-top.js" defer></script>
 </body>
 </html>
