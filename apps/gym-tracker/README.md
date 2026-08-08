@@ -91,6 +91,37 @@ gym-tracker/
 └── tests/                      # node:test unit suites
 ```
 
+### Indexability of the generated pages
+
+`npm run build:gym-tracker:pages` writes three kinds of page, and they are
+treated differently on purpose:
+
+| Pages | Count | Robots | In `sitemap-exercises.xml` |
+|---|---:|---|---|
+| Individual exercises | 513 | `noindex, follow` | no |
+| Muscle + equipment taxonomy | 51 | `index, follow` | yes |
+| `/exercises/` directory index | 1 | `index, follow` | yes |
+
+The individual pages are templated, roughly 2,500 characters each, and compete
+against sites with real editorial depth on the same query. They are the same
+thin-pages-at-scale shape that put ~60k Rising Shows pages into Google's
+"Crawled - currently not indexed" bucket and dragged the whole domain, which is
+why that long tail carries the same directive (see
+`apps/rising-shows/scripts/render-show-page.js`).
+
+The `follow` half matters: these pages link to the app, the taxonomy pages and
+the index, all of which stay indexable, so their internal link equity keeps
+flowing to pages that can realistically rank. They are also kept OUT of the
+sitemap, because a sitemap is a request to index and listing a page you have
+told the crawler to skip is a contradiction that wastes crawl budget. That took
+the exercise sitemap from 565 URLs to 52.
+
+The taxonomy and index pages are deliberately exempt: they are list/hub pages
+that aggregate content, the same role the Rising Shows shape hubs play. The
+split is pinned by tests in `tests/build-exercise-pages.test.cjs`, because the
+robots directive and the sitemap live in different files and could otherwise
+drift apart silently.
+
 ### Data Models
 
 #### Program
