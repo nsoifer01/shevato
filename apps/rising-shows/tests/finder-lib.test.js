@@ -367,3 +367,93 @@ test('buildFinderCollection returns null when no row has a usable ID', () => {
   assert.equal(buildFinderCollection({ slug: 's', name: 'n', query: '' }, []), null);
   assert.equal(buildFinderCollection({ slug: 's', name: 'n', query: '' }, [{ seriesId: null }]), null);
 });
+
+// ---------------------------------------------------------------------------
+// Split-payload support.
+//
+// The browser no longer receives per-episode arrays: scripts/split-data.js
+// strips them (40% of data.json) into per-show detail files fetched when a
+// modal opens, and folds the aggregates buildShowAgg needs into ratedCount /
+// ratingSum, plus epRatings for single-season shows whose card sparkline is
+// drawn from episodes rather than season averages.
+//
+// The Node side (build-show-pages.js, export-integrations.js, these tests)
+// still reads the unsplit data.json, so buildShowAgg has to accept BOTH shapes
+// and produce the same answer. These pin exactly that.
+// ---------------------------------------------------------------------------
+
+/** Mirrors what split-data.js emits for one season record. */
+function splitOf(m, seasonsInSeries) {
+  const { episodes, overview, ...rest } = m;
+  const eps = episodes || [];
+  let ratedCount = 0;
+  let ratingSum = 0;
+  for (const e of eps) {
+    if (typeof e.rating === 'number') { ratedCount++; ratingSum += e.rating; }
+  }
+  rest.episodeCount = eps.length;
+  rest.ratedCount = ratedCount;
+  rest.ratingSum = Math.round(ratingSum * 100) / 100;
+  if (seasonsInSeries === 1 && eps.length) {
+    rest.epRatings = eps.filter((e) => typeof e.rating === 'number').map((e) => e.rating);
+  }
+  return rest;
+}
+
+const MULTI = [
+  { seriesId: 'ttA', title: 'Multi', year: 2010, season: 1, seriesRating: 8.0, seriesVotes: 5000,
+    avgRating: 7.0, genres: ['Drama'], language: 'en', shapes: [],
+    episodes: [{ episode: 1, rating: 6.8, votes: 10 }, { episode: 2, rating: 7.2, votes: 12 }] },
+  { seriesId: 'ttA', title: 'Multi', year: 2010, season: 2, seriesRating: 8.0, seriesVotes: 5000,
+    avgRating: 9.0, genres: ['Drama'], language: 'en', shapes: [],
+    episodes: [{ episode: 1, rating: 8.9, votes: 11 }, { episode: 2, rating: 9.1, votes: 13 }] },
+];
+
+const SINGLE = [
+  { seriesId: 'ttB', title: 'Single', year: 2012, season: 1, seriesRating: 7.5, seriesVotes: 900,
+    avgRating: 8.0, genres: ['Comedy'], language: 'en', shapes: [],
+    episodes: [{ episode: 1, rating: 7.5, votes: 5 }, { episode: 2, rating: 8.5, votes: 6 }] },
+];
+
+test('buildShowAgg: split records produce the same aggregates as full records', () => {
+  const full = buildShowAgg([...MULTI, ...SINGLE], null);
+  const split = buildShowAgg(
+    [...MULTI.map((m) => splitOf(m, 2)), ...SINGLE.map((m) => splitOf(m, 1))],
+    null,
+  );
+  assert.equal(split.length, full.length);
+  const byId = (rows) => new Map(rows.map((r) => [r.seriesId, r]));
+  const f = byId(full);
+  const s = byId(split);
+  for (const id of f.keys()) {
+    assert.equal(s.get(id).episodes, f.get(id).episodes, `${id} episode count`);
+    assert.equal(s.get(id).avgEpisode, f.get(id).avgEpisode, `${id} avgEpisode`);
+    assert.equal(s.get(id).gap, f.get(id).gap, `${id} gap`);
+    assert.deepEqual(s.get(id).seasonAvgs, f.get(id).seasonAvgs, `${id} seasonAvgs`);
+  }
+});
+
+test('buildShowAgg: epRatings rebuilds the sparkline series for single-season shows', () => {
+  const [row] = buildShowAgg(SINGLE.map((m) => splitOf(m, 1)), null);
+  // episodeSeries is what drawFinderSpark plots when a show has one season.
+  assert.equal(row.episodeSeries.length, 2);
+  assert.deepEqual(row.episodeSeries.map((e) => e.rating), [7.5, 8.5]);
+  // Episode numbers are positional in the split form; votes are not carried
+  // because the sparkline never reads them.
+  assert.deepEqual(row.episodeSeries.map((e) => e.episode), [1, 2]);
+});
+
+test('buildShowAgg: multi-season split rows carry no episodeSeries', () => {
+  const [row] = buildShowAgg(MULTI.map((m) => splitOf(m, 2)), null);
+  // Only single-season shows get epRatings, so this must stay undefined
+  // rather than becoming an empty array that draws a blank sparkline.
+  assert.equal(row.episodeSeries, undefined);
+});
+
+test('buildShowAgg: a split row with no rated episodes is dropped, as before', () => {
+  const empty = splitOf(
+    { seriesId: 'ttC', title: 'Empty', year: 2000, season: 1, seriesRating: 5, seriesVotes: 10,
+      genres: [], language: 'en', shapes: [], episodes: [] }, 1,
+  );
+  assert.equal(buildShowAgg([empty], null).length, 0);
+});
