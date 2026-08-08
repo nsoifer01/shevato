@@ -80,7 +80,7 @@ ${jsonLd(buildExerciseSchema({ exercise, canonical, description }))}
     <nav class="page-nav" aria-label="Primary">
       <a href="/apps/gym-tracker/">Tracker</a>
       <a href="/apps/gym-tracker/exercises/">All exercises</a>
-      <a href="/apps.html">More apps</a>
+      <a href="/apps">More apps</a>
     </nav>
   </header>
 
@@ -155,8 +155,8 @@ function buildBreadcrumbs(name, path) {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
     itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Home', item: `${SITE}/home.html` },
-      { '@type': 'ListItem', position: 2, name: 'Apps', item: `${SITE}/apps.html` },
+      { '@type': 'ListItem', position: 1, name: 'Home', item: `${SITE}/home` },
+      { '@type': 'ListItem', position: 2, name: 'Apps', item: `${SITE}/apps` },
       { '@type': 'ListItem', position: 3, name: 'Gym Tracker', item: `${SITE}/apps/gym-tracker/` },
       { '@type': 'ListItem', position: 4, name: 'Exercises', item: `${SITE}/apps/gym-tracker/exercises/` },
       { '@type': 'ListItem', position: 5, name: name, item: `${SITE}${path}` },
