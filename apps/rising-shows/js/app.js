@@ -80,9 +80,17 @@ function languagesCompatible(anchorLang, candidateLang) {
 // Candidates: other series with seriesRating that share at least one genre,
 // have a compatible original language (languagesCompatible), and sit within one order of magnitude of
 // the current show's votes/episode (mean of its seasons' minVotes).
-// Sort: |d_current - d_candidate| asc, then shared-genre count desc, then votes desc.
-// Returns up to 10; caller hides section only when there are none.
-function computeShowRelated(seriesId, matches) {
+// Sort: shared-shape count desc (shape is what this app is about, so a show on
+// the same trajectory outranks a stranger with a closer gap), then
+// |d_current - d_candidate| asc, then shared-genre count desc, then votes desc.
+// `shapesBySeries` is the seriesId -> show-level shape list map built off
+// showAgg; without it every candidate scores zero shared shapes and the
+// ranking degrades to the gap-first order this used to have.
+// Returns up to 10; caller hides section only when there are none. Each result
+// carries `_sharedShape`: the first shape it has in common, or null.
+function computeShowRelated(seriesId, matches, shapesBySeries) {
+  const shapesFor = (sid) => (shapesBySeries && shapesBySeries.get(sid)) || [];
+  const currentShapes = shapesFor(seriesId);
   const bySeriesId = new Map();
   for (const m of matches) {
     if (!bySeriesId.has(m.seriesId)) bySeriesId.set(m.seriesId, []);
@@ -117,14 +125,20 @@ function computeShowRelated(seriesId, matches) {
     const dev = avg - meta.seriesRating;
     const devDiff = Math.abs(currentDev - dev);
     const voteProxy = typeof meta.seriesVotes === 'number' ? meta.seriesVotes : (meta.minVotes || 0);
-    results.push({ meta, avg, devDiff, sharedGenreCount, voteProxy });
+    const candShapes = shapesFor(sid);
+    const sharedShapes = currentShapes.filter((sh) => candShapes.includes(sh));
+    results.push({ meta, avg, devDiff, sharedGenreCount, voteProxy, sharedShapes });
   }
   results.sort((a, b) => {
+    if (a.sharedShapes.length !== b.sharedShapes.length) {
+      return b.sharedShapes.length - a.sharedShapes.length;
+    }
     if (a.devDiff !== b.devDiff) return a.devDiff - b.devDiff;
     if (b.sharedGenreCount !== a.sharedGenreCount) return b.sharedGenreCount - a.sharedGenreCount;
     return b.voteProxy - a.voteProxy;
   });
-  return results.slice(0, 10).map((r) => ({ ...r.meta, _avg: r.avg }));
+  return results.slice(0, 10)
+    .map((r) => ({ ...r.meta, _avg: r.avg, _sharedShape: r.sharedShapes[0] || null }));
 }
 
 const SHAPE_LABELS = {
@@ -248,10 +262,14 @@ const els = {
   showModalOverlayCurve: document.getElementById('showModalOverlayCurve'),
   showModalOverlayLegend: document.getElementById('showModalOverlayLegend'),
   showModalCompare: document.getElementById('showModalCompare'),
+  showModalShareChart: document.getElementById('showModalShareChart'),
   compareModal: document.getElementById('compareModal'),
   compareModalCurve: document.getElementById('compareModalCurve'),
   compareModalLegend: document.getElementById('compareModalLegend'),
   compareModalClear: document.getElementById('compareModalClear'),
+  compareModalCopyLink: document.getElementById('compareModalCopyLink'),
+  compareModalShareChart: document.getElementById('compareModalShareChart'),
+  compareModalKometa: document.getElementById('compareModalKometa'),
   compareFab: document.getElementById('compareFab'),
   compareFabCount: document.getElementById('compareFabCount'),
   changelogModal: document.getElementById('changelogModal'),
@@ -279,6 +297,7 @@ const els = {
   finderPopularPick: document.getElementById('finderPopularPick'),
   finderActiveFilterBar: document.getElementById('finderActiveFilterBar'),
   finderMinEpisodes: document.getElementById('finderMinEpisodes'),
+  finderMinSeasons: document.getElementById('finderMinSeasons'),
   finderMinVotes: document.getElementById('finderMinVotes'),
   finderVotesChips: document.getElementById('finderVotesChips'),
   finderGemsChip: document.getElementById('finderGemsChip'),
@@ -311,9 +330,14 @@ let dataset = null;
 // is no longer a Seasons view to switch to.
 let mode = 'finder';
 let showAgg = null;
+// seriesId -> that show's whole-show shapes, derived from showAgg. Kept as a
+// lookup because computeShowRelated works over raw season matches, which only
+// carry per-season shapes.
+let showShapesBySeries = new Map();
 const finderState = {
   search: '',
   minEpisodes: 0,
+  minSeasons: 0,
   minVotes: 0,
   minShowRating: 0,
   minAvgEpisode: 0,
@@ -343,6 +367,7 @@ let worstSeasonBySeries = new Map();
 let aboveImdbBySeries = new Map();
 let pendingModalKey = null;
 let pendingShowKey = null;
+let pendingCompareIds = null;
 let modalState = { season: null, lastFocus: null, surprise: false, fromChangelog: false };
 let showModalState = { seriesId: null, lastFocus: null, fromChangelog: false };
 let changelog = null;
@@ -693,6 +718,7 @@ async function load() {
   bindShapeTagTouchTooltips();
   bindShortcutLegend();
   showAgg = buildShowAgg();
+  showShapesBySeries = new Map(showAgg.map((s) => [s.seriesId, s.shapes]));
   renderFinderShapes();
   renderFinderMoods();
   renderFinderGenres();
@@ -707,6 +733,7 @@ async function load() {
   applyFinderViewClasses();
   renderFinder();
   bindScrollMemory();
+  const compareOpened = applyPendingCompareIds();
   if (pendingModalKey) {
     const [sid, snStr] = pendingModalKey.split(':');
     const sn = parseInt(snStr, 10);
@@ -718,7 +745,7 @@ async function load() {
       openShowModal(pendingShowKey);
     }
     pendingShowKey = null;
-  } else {
+  } else if (!compareOpened) {
     // Restore the saved scroll position now that the grid (which defines the
     // page height) is in the DOM. A modal deep-link opens at the top instead,
     // so this only runs for the plain grid view. rAF lets layout settle so
@@ -837,9 +864,53 @@ function applyStateFromURL() {
 
   // Deep links that open a modal on load: a show permalink (?show=) opens the
   // show modal; a legacy season link (?season=) opens that season's detail
-  // (still reachable as an in-show drill-down).
+  // (still reachable as an in-show drill-down); a compare= list opens the
+  // compare modal on that exact set.
   if (p.has('season')) pendingModalKey = p.get('season');
   if (p.has('show'))   pendingShowKey = p.get('show');
+  if (p.has('compare')) pendingCompareIds = parseCompareParam(p.get('compare'));
+}
+
+// Parse a `compare=` hash param into an ordered, de-duplicated list of series
+// ids, capped at COMPARE_LIMIT so a hand-edited link can't grow the set past
+// what Compare.add allows. Existence is not checked here: applyPendingCompareIds
+// drops unknown ids once dataset.matches is available.
+function parseCompareParam(raw) {
+  if (typeof raw !== 'string') return [];
+  const out = [];
+  for (const part of raw.split(',')) {
+    const id = part.trim();
+    if (!id || out.includes(id)) continue;
+    out.push(id);
+    if (out.length >= COMPARE_LIMIT) break;
+  }
+  return out;
+}
+
+// Shareable permalink for the current compare set. Built from Compare.ids
+// rather than location.href so it always carries the set the modal is showing,
+// with nothing else (a compare link is about the comparison, not the finder
+// filters the sender happened to have on).
+function buildCompareShareUrl() {
+  return `${location.origin}${location.pathname}#compare=${Compare.ids.join(',')}`;
+}
+
+// Open the compare modal on a shared `compare=` set. Unknown ids are dropped
+// silently so a stale link still opens on whatever is left.
+function applyPendingCompareIds() {
+  const ids = pendingCompareIds;
+  pendingCompareIds = null;
+  if (!ids || !ids.length) return false;
+  const known = new Set(dataset.matches.map((m) => m.seriesId));
+  const valid = ids.filter((id) => known.has(id));
+  if (!valid.length) return false;
+  // Deliberately no Compare.save(): a link someone else sent shouldn't
+  // overwrite this visitor's own stored compare set. The first edit they make
+  // in the modal (remove a show, add another) persists from there as usual.
+  Compare.ids = valid;
+  syncCompareFab();
+  openCompareModal();
+  return true;
 }
 
 // Decade ranges — used by the Show Finder decade filter.
@@ -994,21 +1065,59 @@ function showError(err) {
 // Reroll inside the modal honors whichever mode the user clicked.
 // --- shared shape-tag + best-badge helpers ---
 
-// Render read-only shape pills into a container (season detail modal).
+// Render shape pills into a container (season detail modal).
 function fillShapeTags(container, shapes) {
   container.replaceChildren();
   // No "No pattern" placeholder — an empty shape container just renders
   // nothing, which keeps the card/list cleaner for seasons that don't fit
   // a recognized trajectory shape.
   if (shapes.length === 0) return;
-  for (const s of shapes) {
-    const desc = SHAPE_DESCS[s] || '';
-    const tag = document.createElement('span');
-    tag.className = 'shape-tag';
-    tag.textContent = SHAPE_LABELS[s] || s;
-    if (desc) tag.title = desc;
-    container.appendChild(tag);
-  }
+  for (const s of shapes) container.appendChild(makeShapeTag(s));
+}
+
+// A shape pill is also the shortcut to "more shows like this": activating one
+// applies that shape in the Finder and drops the user back on the filtered
+// grid, matching what the shape badges on the static show pages do. Built as a
+// real <button> so Tab reaches it and Enter/Space activate it for free.
+function makeShapeTag(shape) {
+  const label = SHAPE_LABELS[shape] || shape;
+  const desc = SHAPE_DESCS[shape] || '';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'shape-tag is-clickable';
+  btn.dataset.shape = shape;
+  btn.textContent = label;
+  btn.title = desc ? `${desc} - show every ${label} show` : `Show every ${label} show`;
+  btn.setAttribute('aria-label', `Filter the finder to ${label} shows`);
+  btn.addEventListener('click', (e) => {
+    // The show modal's season rows open the season on click/Enter/Space; keep
+    // that handler from firing for a tap on the pill inside it.
+    e.stopPropagation();
+    applyFinderShapeFromTag(shape);
+  });
+  btn.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') e.stopPropagation();
+  });
+  return btn;
+}
+
+// Same end state as clicking the matching toolbar shape chip, plus closing the
+// modal chain so the freshly filtered grid is what the user sees.
+function applyFinderShapeFromTag(shape) {
+  closeModal({ suppressReopen: true });
+  closeShowModal({ suppressReopen: true });
+  clearModalHistory();
+  // Clearing the search box is the whole point of this control. You reach a
+  // shape pill by looking up one specific show, so the search term is still
+  // sitting there ("breaking bad"); leaving it would AND itself with the
+  // shape and return that one show again, which is the opposite of the
+  // "show me more like this" the pill promises. Same three steps the search
+  // chip's own remove() handler uses: state, input, then re-filter.
+  finderState.search = '';
+  els.finderSearch.value = '';
+  closeFinderSuggestions();
+  if (!finderState.shapes.has(shape)) toggleFinderShape(shape);
+  onFinderFilterChange();
 }
 
 // Format an avg-runtime value as "52 min" / "1h 5m" depending on length.
@@ -1835,7 +1944,16 @@ function buildCompareEntries() {
       .filter((m) => m.seriesId === id)
       .sort((a, b) => a.season - b.season);
     if (!seasons.length) continue;
-    out.push({ seriesId: id, title: seasons[0].title, seasons });
+    // External ids ride on every season record post-enrichment, but a series
+    // can have them on some seasons only, so take the first one that carries
+    // each. The Kometa export needs at least one of the two.
+    out.push({
+      seriesId: id,
+      title: seasons[0].title,
+      tmdbId: seasons.find((m) => m.tmdbId != null)?.tmdbId ?? null,
+      tvdbId: seasons.find((m) => m.tvdbId != null)?.tvdbId ?? null,
+      seasons,
+    });
   }
   return out;
 }
@@ -1882,6 +2000,8 @@ function renderCompareModal() {
   }
   drawCompareChart(els.compareModalCurve, entries, 600, 260);
   renderCompareLegend(entries);
+  // A one-show "comparison" is not a collection worth pushing to Plex.
+  els.compareModalKometa.hidden = entries.length < 2;
 }
 
 let compareModalState = { lastFocus: null };
@@ -2357,6 +2477,9 @@ function openShowModal(seriesId, opts = {}) {
   } else {
     els.showModalOverlay.hidden = true;
   }
+  // The chart image IS the overlay chart, so it follows the overlay's gating:
+  // a single-season show has no curve worth sharing.
+  els.showModalShareChart.hidden = els.showModalOverlay.hidden;
 
   els.showModalImdb.href = `https://www.imdb.com/title/${seriesId}/`;
   if (els.showModalPermalink) {
@@ -2417,12 +2540,7 @@ function buildShowSeasonRow(m, bestSeason, worstSeason) {
   if (rowShapes.length) {
     const shapeRow = document.createElement('span');
     shapeRow.className = 'ss-shape-row';
-    for (const s of rowShapes) {
-      const tag = document.createElement('span');
-      tag.className = 'shape-tag';
-      tag.textContent = SHAPE_LABELS[s] || s;
-      shapeRow.appendChild(tag);
-    }
+    for (const s of rowShapes) shapeRow.appendChild(makeShapeTag(s));
     meta.appendChild(shapeRow);
   }
 
@@ -2488,7 +2606,7 @@ function renderShowRelated(seriesId) {
   const container = document.getElementById('showModalRelated');
   if (!container) return;
   if (!dataset) { container.hidden = true; return; }
-  const related = computeShowRelated(seriesId, dataset.matches);
+  const related = computeShowRelated(seriesId, dataset.matches, showShapesBySeries);
   if (related.length < 1) { container.hidden = true; return; }
   container.hidden = false;
 
@@ -2556,7 +2674,8 @@ function buildShowRelatedRow(r, extraClass) {
   const yearVal = r.year || '';
   const imdbPart = typeof r.seriesRating === 'number' ? `IMDb ${r.seriesRating.toFixed(1)}` : '';
   const avgPart = typeof r._avg === 'number' ? `avg ep ${r._avg.toFixed(1)}` : '';
-  const metaParts = [imdbPart, avgPart, yearVal].filter(Boolean);
+  const shapePart = r._sharedShape ? (SHAPE_LABELS[r._sharedShape] || r._sharedShape) : '';
+  const metaParts = [imdbPart, avgPart, shapePart, yearVal].filter(Boolean);
   const meta = document.createElement('span');
   meta.className = 'show-related-meta';
   meta.textContent = metaParts.join(' · ');
@@ -2862,6 +2981,7 @@ function finderFilterSignature(src) {
   return JSON.stringify({
     search: (src.search || '').trim().toLowerCase(),
     minEpisodes: src.minEpisodes || 0,
+    minSeasons: src.minSeasons || 0,
     minVotes: src.minVotes || 0,
     minShowRating: src.minShowRating || 0,
     minAvgEpisode: src.minAvgEpisode || 0,
@@ -2886,6 +3006,7 @@ function countShowsForFilters(ff) {
   let n = 0;
   for (const s of showAgg) {
     if (ff.minEpisodes && s.episodes < ff.minEpisodes) continue;
+    if (ff.minSeasons && s.seasonsCount < ff.minSeasons) continue;
     if (ff.minVotes && s.votes < ff.minVotes) continue;
     if (ff.minShowRating && s.showRating < ff.minShowRating) continue;
     if (ff.minAvgEpisode && s.avgEpisode < ff.minAvgEpisode) continue;
@@ -2943,6 +3064,7 @@ function applyFinderMood(mood) {
   resetFinderState();
   const ff = mood.filters;
   if (ff.minEpisodes) finderState.minEpisodes = ff.minEpisodes;
+  if (ff.minSeasons) finderState.minSeasons = ff.minSeasons;
   if (ff.minVotes) finderState.minVotes = ff.minVotes;
   if (ff.minShowRating) finderState.minShowRating = ff.minShowRating;
   if (ff.minAvgEpisode) finderState.minAvgEpisode = ff.minAvgEpisode;
@@ -3461,6 +3583,7 @@ function finderFilterSnapshot() {
     ['genres', [...f.genres].sort().join(',') || '(none)'],
     ['languages', [...f.languages].sort().join(',') || '(none)'],
     ['hidden_gems', f.hiddenGems ? 'on' : 'off'],
+    ['min_seasons', f.minSeasons > 0 ? String(f.minSeasons) : '(none)'],
   ];
 }
 
@@ -3479,6 +3602,7 @@ function finderHasActiveFilters() {
   const f = finderState;
   if (f.search && f.search.trim()) return true;
   if (f.minEpisodes > 0) return true;
+  if (f.minSeasons > 0) return true;
   if (f.minVotes > 0) return true;
   if (f.minShowRating > 0) return true;
   if (f.minAvgEpisode > 0) return true;
@@ -3506,6 +3630,7 @@ function syncFinderResetButton() {
 function resetFinderState() {
   finderState.search = '';
   finderState.minEpisodes = 0;
+  finderState.minSeasons = 0;
   finderState.minVotes = 0;
   finderState.minShowRating = 0;
   finderState.minAvgEpisode = 0;
@@ -3523,6 +3648,7 @@ function resetFinderState() {
   finderState.page = 1;
   els.finderSearch.value = '';
   els.finderMinEpisodes.value = '';
+  els.finderMinSeasons.value = '';
   els.finderMinVotes.value = '';
   els.finderMinShowRating.value = '';
   els.finderMinAvgEpisode.value = '';
@@ -3540,6 +3666,7 @@ function resetFinderState() {
 function syncFinderControls() {
   els.finderSearch.value = finderState.search;
   els.finderMinEpisodes.value = finderState.minEpisodes > 0 ? String(finderState.minEpisodes) : '';
+  els.finderMinSeasons.value = finderState.minSeasons > 0 ? String(finderState.minSeasons) : '';
   els.finderMinVotes.value = finderState.minVotes > 0 ? String(finderState.minVotes) : '';
   els.finderMinShowRating.value = finderState.minShowRating > 0 ? String(finderState.minShowRating) : '';
   els.finderMinAvgEpisode.value = finderState.minAvgEpisode > 0 ? String(finderState.minAvgEpisode) : '';
@@ -3710,6 +3837,7 @@ function describeFinderActiveFilters() {
     });
   }
   if (f.minEpisodes > 0) chips.push(finderNumericChip('Min eps', f.minEpisodes, 'minEpisodes', els.finderMinEpisodes));
+  if (f.minSeasons > 0) chips.push(finderNumericChip('Min seasons', f.minSeasons, 'minSeasons', els.finderMinSeasons));
   if (f.minVotes > 0) chips.push(finderNumericChip('Min votes', f.minVotes.toLocaleString(), 'minVotes', els.finderMinVotes));
   if (f.minShowRating > 0) chips.push(finderNumericChip('Min show', f.minShowRating, 'minShowRating', els.finderMinShowRating));
   if (f.minAvgEpisode > 0) chips.push(finderNumericChip('Min avg ep', f.minAvgEpisode, 'minAvgEpisode', els.finderMinAvgEpisode));
@@ -3798,6 +3926,7 @@ function bindFinder() {
     });
   };
   numHandler(els.finderMinEpisodes, 'minEpisodes', false);
+  numHandler(els.finderMinSeasons, 'minSeasons', false);
   numHandler(els.finderMinVotes, 'minVotes', false);
   numHandler(els.finderMinShowRating, 'minShowRating', false);
   numHandler(els.finderMinAvgEpisode, 'minAvgEpisode', false);
@@ -3925,6 +4054,7 @@ function writeFinderStateToURL() {
   if (f.sort !== 'votes') p.set('sort', f.sort);
   if (f.sortDir !== 'desc') p.set('dir', f.sortDir);
   if (f.minEpisodes > 0) p.set('minEps', f.minEpisodes);
+  if (f.minSeasons > 0) p.set('minSeasons', f.minSeasons);
   if (f.minVotes > 0) p.set('minVotes', f.minVotes);
   if (f.minShowRating > 0) p.set('minShow', f.minShowRating);
   if (f.minAvgEpisode > 0) p.set('minAvg', f.minAvgEpisode);
@@ -4449,17 +4579,22 @@ function shareShowCard(seriesId) {
   shareText(buildShowShareText(seasons), els.showModalShareCard);
 }
 
+// Swap a button's label for a short confirmation ("Copied!", "Downloaded!")
+// and put the original back. Re-entrant: origLabel survives a second click
+// mid-flash so the button can never get stuck showing the confirmation.
+function flashButtonLabel(buttonEl, label) {
+  if (!buttonEl) return;
+  const orig = buttonEl.dataset.origLabel || buttonEl.textContent;
+  buttonEl.dataset.origLabel = orig;
+  buttonEl.textContent = label;
+  setTimeout(() => {
+    buttonEl.textContent = orig;
+    delete buttonEl.dataset.origLabel;
+  }, 1800);
+}
+
 function shareText(text, buttonEl) {
-  const flashLabel = (label) => {
-    if (!buttonEl) return;
-    const orig = buttonEl.dataset.origLabel || buttonEl.textContent;
-    buttonEl.dataset.origLabel = orig;
-    buttonEl.textContent = label;
-    setTimeout(() => {
-      buttonEl.textContent = orig;
-      delete buttonEl.dataset.origLabel;
-    }, 1800);
-  };
+  const flashLabel = (label) => flashButtonLabel(buttonEl, label);
   const manualFallback = () => {
     // Last-ditch: pop a prompt with the text pre-selected so the user
     // can ⌘C / Ctrl-C manually. Better than silently doing nothing.
@@ -4521,6 +4656,358 @@ function showPageUrl(m) {
   return `${location.origin}/apps/rising-shows/shows/${showSlug(m.title)}-${m.seriesId}/`;
 }
 
+// --- shareable chart image -------------------------------------------------
+// Both trend charts are an SVG (geometry only) plus an HTML layer holding the
+// axis labels and dots, so a shareable picture has to be composited rather
+// than screenshotted: rasterise the SVG, then paint the HTML layer, the
+// legend, and the title/shape/stats caption over it with canvas text.
+//
+// The SVG is serialised with its own xmlns + explicit width/height and the
+// handful of CSS rules its class-driven strokes need (styles.css does not
+// apply inside an <img>), then handed to the decoder as a data: URL. That
+// keeps everything same-origin, so the canvas is never tainted and toBlob
+// always works.
+
+const CHART_IMAGE = {
+  width: 1200,
+  pad: 48,
+  bg: '#0a0c14',
+  surface: '#181c26',
+  text: '#f1f3f8',
+  muted: '#a4adbd',
+  muted2: '#6f7785',
+  accent: '#f5c518',
+  border: '#232838',
+  font: 'Inter, system-ui, -apple-system, "Segoe UI", sans-serif',
+  mono: 'ui-monospace, Menlo, Consolas, monospace',
+};
+
+const CHART_IMAGE_SVG_CSS = [
+  '.axis-grid{stroke:rgba(255,255,255,.10);stroke-width:1}',
+  '.compare-grid{stroke:rgba(255,255,255,.09);stroke-width:1}',
+  '.compare-grid-v{stroke:rgba(255,255,255,.05)}',
+  '.compare-axis-line{stroke:rgba(255,255,255,.18);stroke-width:1}',
+  '.overlay-season-hidden{display:none}',
+].join('');
+
+function serializeChartSvg(svg, W, H) {
+  const clone = svg.cloneNode(true);
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  clone.setAttribute('width', String(W));
+  clone.setAttribute('height', String(H));
+  clone.removeAttribute('id');
+  clone.removeAttribute('class');
+  // The export keeps the chart's own aspect ratio, so strokes can scale with
+  // it; non-scaling-stroke would leave hairlines on a 1200px-wide card.
+  for (const el of clone.querySelectorAll('[vector-effect]')) el.removeAttribute('vector-effect');
+  const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+  style.textContent = CHART_IMAGE_SVG_CSS;
+  clone.insertBefore(style, clone.firstChild);
+  return new XMLSerializer().serializeToString(clone);
+}
+
+function rasterizeSvg(svgString, W, H) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.width = W;
+    img.height = H;
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('chart SVG failed to rasterize'));
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgString);
+  });
+}
+
+// Legend entries straight off the live legend DOM, so the exported image can
+// never disagree with the chart about colors, labels, or which seasons the
+// user toggled off.
+function chartLegendFromDom(container) {
+  const out = [];
+  for (const item of container.querySelectorAll('.overlay-legend-item')) {
+    if (item.classList.contains('overlay-legend-toggle--off')) continue;
+    const swatch = item.querySelector('.overlay-legend-swatch');
+    const name = item.querySelector('.compare-legend-name');
+    out.push({
+      label: (name ? name.textContent : item.textContent).trim(),
+      color: swatch && swatch.style.background ? swatch.style.background : CHART_IMAGE.muted,
+    });
+  }
+  return out;
+}
+
+function fitText(g, text, maxWidth) {
+  if (g.measureText(text).width <= maxWidth) return text;
+  let s = text;
+  while (s.length > 1 && g.measureText(s + '…').width > maxWidth) s = s.slice(0, -1);
+  return s + '…';
+}
+
+function layoutChartLegend(g, items, maxWidth) {
+  const swatchW = 26;
+  const swatchGap = 10;
+  const itemGap = 30;
+  const rows = [];
+  let row = [];
+  let x = 0;
+  g.font = `600 22px ${CHART_IMAGE.font}`;
+  for (const it of items) {
+    const w = swatchW + swatchGap + g.measureText(it.label).width;
+    if (row.length && x + w > maxWidth) { rows.push(row); row = []; x = 0; }
+    row.push({ label: it.label, color: it.color, x, w });
+    x += w + itemGap;
+  }
+  if (row.length) rows.push(row);
+  return { rows, swatchW, swatchGap, rowH: 34, height: rows.length * 34 };
+}
+
+// Paint the chart's HTML label layer (rating/season labels, compare dots and
+// value callouts) into the canvas rect the SVG was drawn into. Every one of
+// those elements is positioned by percentage of the chart box, so the same
+// percentages map straight onto the rect.
+function paintChartOverlay(g, svg, rect, scale) {
+  const host = svg.parentElement;
+  if (!host) return;
+  const pct = (v) => (parseFloat(v) || 0) / 100;
+
+  g.textAlign = 'right';
+  g.textBaseline = 'middle';
+  g.fillStyle = CHART_IMAGE.muted;
+  g.font = `${Math.round(12 * scale)}px ${CHART_IMAGE.mono}`;
+  for (const el of host.querySelectorAll('.curve-axis-labels .axis-label')) {
+    g.fillText(el.textContent, rect.x + rect.w * 0.05 - 5 * scale, rect.y + rect.h * pct(el.style.top));
+  }
+
+  g.fillStyle = CHART_IMAGE.muted2;
+  g.font = `${Math.round(12 * scale)}px ${CHART_IMAGE.font}`;
+  for (const el of host.querySelectorAll('.compare-axis-y')) {
+    g.fillText(el.textContent, rect.x + rect.w * pct(el.style.left) - 5 * scale, rect.y + rect.h * pct(el.style.top));
+  }
+  g.textAlign = 'center';
+  g.font = `600 ${Math.round(12 * scale)}px ${CHART_IMAGE.font}`;
+  for (const el of host.querySelectorAll('.compare-axis-x')) {
+    g.fillText(el.textContent, rect.x + rect.w * pct(el.style.left), rect.y + rect.h * pct(el.style.top));
+  }
+
+  for (const el of host.querySelectorAll('.compare-dot')) {
+    g.beginPath();
+    g.arc(rect.x + rect.w * pct(el.style.left), rect.y + rect.h * pct(el.style.top), 5 * scale, 0, Math.PI * 2);
+    g.fillStyle = el.style.background || CHART_IMAGE.text;
+    g.fill();
+  }
+  g.font = `700 ${Math.round(12 * scale)}px ${CHART_IMAGE.font}`;
+  for (const el of host.querySelectorAll('.compare-val-label')) {
+    g.fillStyle = el.style.color || CHART_IMAGE.text;
+    g.fillText(el.textContent, rect.x + rect.w * pct(el.style.left), rect.y + rect.h * pct(el.style.top));
+  }
+}
+
+// Composite the whole share card and return it as a PNG blob.
+async function buildChartCardBlob({ svg, viewW, viewH, title, subtitle, stats, legend, footer }) {
+  const W = CHART_IMAGE.width;
+  const pad = CHART_IMAGE.pad;
+  const chartW = W - pad * 2;
+  const chartH = Math.round((chartW * viewH) / viewW);
+  const scale = chartW / viewW;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = 10;
+  const g = canvas.getContext('2d');
+  const legendLayout = layoutChartLegend(g, legend, chartW);
+
+  const chartTop = pad + 154;
+  const legendTop = chartTop + chartH + 26;
+  const H = legendTop + legendLayout.height + 34 + pad;
+
+  const img = await rasterizeSvg(serializeChartSvg(svg, chartW, chartH), chartW, chartH);
+
+  canvas.height = H;
+  g.fillStyle = CHART_IMAGE.bg;
+  g.fillRect(0, 0, W, H);
+  g.textBaseline = 'alphabetic';
+
+  g.textAlign = 'left';
+  g.fillStyle = CHART_IMAGE.accent;
+  g.font = `700 20px ${CHART_IMAGE.font}`;
+  g.fillText('RISING SHOWS', pad, pad + 16);
+
+  g.fillStyle = CHART_IMAGE.text;
+  g.font = `700 42px ${CHART_IMAGE.font}`;
+  g.fillText(fitText(g, title, chartW), pad, pad + 68);
+
+  g.fillStyle = CHART_IMAGE.accent;
+  g.font = `600 24px ${CHART_IMAGE.font}`;
+  g.fillText(fitText(g, subtitle, chartW), pad, pad + 106);
+
+  g.fillStyle = CHART_IMAGE.muted;
+  g.font = `22px ${CHART_IMAGE.font}`;
+  g.fillText(fitText(g, stats, chartW), pad, pad + 140);
+
+  g.fillStyle = CHART_IMAGE.surface;
+  g.beginPath();
+  g.roundRect(pad, chartTop, chartW, chartH, 16);
+  g.fill();
+  g.strokeStyle = CHART_IMAGE.border;
+  g.lineWidth = 1;
+  g.stroke();
+  g.drawImage(img, pad, chartTop, chartW, chartH);
+  paintChartOverlay(g, svg, { x: pad, y: chartTop, w: chartW, h: chartH }, scale);
+
+  g.textAlign = 'left';
+  g.textBaseline = 'middle';
+  legendLayout.rows.forEach((row, r) => {
+    const y = legendTop + r * legendLayout.rowH + legendLayout.rowH / 2;
+    for (const item of row) {
+      g.fillStyle = item.color;
+      g.beginPath();
+      g.roundRect(pad + item.x, y - 5, legendLayout.swatchW, 10, 5);
+      g.fill();
+      g.fillStyle = CHART_IMAGE.text;
+      g.font = `600 22px ${CHART_IMAGE.font}`;
+      g.fillText(item.label, pad + item.x + legendLayout.swatchW + legendLayout.swatchGap, y);
+    }
+  });
+
+  g.fillStyle = CHART_IMAGE.muted2;
+  g.font = `20px ${CHART_IMAGE.font}`;
+  g.fillText(footer, pad, H - pad + 4);
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('toBlob returned null'))), 'image/png');
+  });
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return 'downloaded';
+}
+
+// Native share sheet where files are supported (mobile), plain download
+// everywhere else. A cancelled share sheet is a deliberate no-op, not a
+// reason to drop a file in the user's downloads folder.
+function deliverChartImage(blob, filename, shareTitle) {
+  const file = typeof File === 'function' ? new File([blob], filename, { type: 'image/png' }) : null;
+  if (file && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+    return navigator.share({ files: [file], title: shareTitle })
+      .then(() => 'shared')
+      .catch((err) => (err && err.name === 'AbortError' ? 'cancelled' : downloadBlob(blob, filename)));
+  }
+  return Promise.resolve(downloadBlob(blob, filename));
+}
+
+async function shareChartImage(buttonEl, opts) {
+  if (buttonEl) buttonEl.disabled = true;
+  try {
+    const blob = await buildChartCardBlob(opts);
+    const how = await deliverChartImage(blob, opts.filename, opts.title);
+    if (how !== 'cancelled') {
+      flashButtonLabel(buttonEl, how === 'shared' ? 'Shared!' : 'Downloaded!');
+      track('trackAction', 'share_chart_image', {
+        surface: opts.surface,
+        method: how,
+        series_count: opts.seriesCount,
+      });
+    }
+  } catch {
+    flashButtonLabel(buttonEl, 'Image failed');
+  } finally {
+    if (buttonEl) buttonEl.disabled = false;
+  }
+}
+
+function shareShowChartImage(seriesId) {
+  const seasons = dataset.matches
+    .filter((s) => s.seriesId === seriesId)
+    .sort((a, b) => a.season - b.season);
+  if (seasons.length < 2) return;
+  const meta = seasons[0];
+  const years = seasons.map((s) => s.seasonYear || s.year).filter(Boolean);
+  const yearStr = years.length === 0 ? ''
+    : years[0] === years[years.length - 1] ? `${years[0]}`
+    : `${years[0]}-${years[years.length - 1]}`;
+  const shapes = showShapesBySeries.get(seriesId) || [];
+  const totalEps = seasons.reduce((s, m) => s + m.episodes.length, 0);
+  const overallAvg = seasons.reduce((s, m) => s + m.avgRating, 0) / seasons.length;
+  const stats = [
+    `${seasons.length} seasons`,
+    `${totalEps} episodes`,
+    `avg episode ${overallAvg.toFixed(1)}`,
+  ];
+  if (typeof meta.seriesRating === 'number') stats.push(`IMDb ${meta.seriesRating.toFixed(1)}`);
+
+  shareChartImage(els.showModalShareChart, {
+    svg: els.showModalOverlayCurve,
+    viewW: 600,
+    viewH: 200,
+    title: meta.title + (yearStr ? ` (${yearStr})` : ''),
+    subtitle: shapes.length ? (SHAPE_LABELS[shapes[0]] || shapes[0]) : 'Season trajectory',
+    stats: stats.join(' · '),
+    legend: chartLegendFromDom(els.showModalOverlayLegend),
+    footer: showPageUrl(meta),
+    filename: `rising-shows-${showSlug(meta.title)}.png`,
+    surface: 'show',
+    seriesCount: 1,
+  });
+}
+
+function shareCompareChartImage() {
+  const entries = buildCompareEntries();
+  if (!entries.length) return;
+  const totalSeasons = entries.reduce((s, e) => s + e.seasons.length, 0);
+  shareChartImage(els.compareModalShareChart, {
+    svg: els.compareModalCurve,
+    viewW: 600,
+    viewH: 260,
+    title: entries.map((e) => e.title).join(' vs '),
+    subtitle: 'Season-average rating trajectory',
+    stats: `${entries.length} shows · ${totalSeasons} seasons`,
+    legend: chartLegendFromDom(els.compareModalLegend),
+    footer: buildCompareShareUrl(),
+    filename: 'rising-shows-compare.png',
+    surface: 'compare',
+    seriesCount: entries.length,
+  });
+}
+
+// --- compare set: permalink + Kometa export --------------------------------
+
+function copyCompareLink() {
+  const url = buildCompareShareUrl();
+  const btn = els.compareModalCopyLink;
+  const manual = () => {
+    try { window.prompt('Copy this link:', url); }
+    catch { flashButtonLabel(btn, 'Copy failed'); }
+  };
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    navigator.clipboard.writeText(url).then(() => flashButtonLabel(btn, 'Copied!'), manual);
+  } else {
+    manual();
+  }
+  track('trackAction', 'copy_compare_link', { series_count: Compare.size() });
+}
+
+// Same YAML renderer the /kometa/ builder page runs, pointed at the compare
+// set instead of a pre-built shape collection. Shows with neither a TMDB nor
+// a TVDB id are dropped by buildCompareCollection (Kometa can't match them).
+function exportCompareToKometa() {
+  const entries = buildCompareEntries();
+  const btn = els.compareModalKometa;
+  const file = RisingShowsIntegrations.buildCompareCollection(entries);
+  if (!file) {
+    flashButtonLabel(btn, 'No Plex IDs');
+    return;
+  }
+  downloadBlob(new Blob([file.contents], { type: 'application/x-yaml;charset=utf-8' }), file.filename);
+  flashButtonLabel(btn, 'Downloaded!');
+  track('trackAction', 'export_compare_kometa', { series_count: file.seriesCount });
+}
+
 function bindEvents() {
   // Season detail modal (reachable as an in-show drill-down) + show modal +
   // compare + changelog: close / back buttons.
@@ -4552,6 +5039,9 @@ function bindEvents() {
     syncCompareFab();
     closeCompareModal();
   });
+  els.compareModalCopyLink.addEventListener('click', copyCompareLink);
+  els.compareModalShareChart.addEventListener('click', shareCompareChartImage);
+  els.compareModalKometa.addEventListener('click', exportCompareToKometa);
   els.modalViewShow.addEventListener('click', () => {
     if (!modalState.season) return;
     openShowModal(modalState.season.seriesId);
@@ -4575,6 +5065,10 @@ function bindEvents() {
       shareShowCard(showModalState.seriesId);
     });
   }
+  els.showModalShareChart.addEventListener('click', () => {
+    if (!showModalState.seriesId) return;
+    shareShowChartImage(showModalState.seriesId);
+  });
 
   // Hash navigation (back/forward, or a pasted finder link) re-applies the
   // finder state from the URL and re-renders. writeFinderStateToURL uses
@@ -4822,22 +5316,39 @@ const PROVIDER_URLS = {
   'Crunchyroll':        (q) => `https://www.crunchyroll.com/search?q=${q}`,
 };
 
-// "Watch on …" deep-link on the show modal. Picks the first mainstream
-// provider on the show and sends the user directly to that provider's
-// search page for the title.
+// "Watch on …" deep-links on the show modal: one per mainstream provider the
+// show is on, each pointing at that provider's own search page for the title.
+// The provider list is the same one fillProviderTags renders as badges, so a
+// badge never appears without a matching link. #showModalWatchOn is the first
+// link; the rest are built beside it and torn down on the next open.
 function syncShowModalWatchOnLink(meta) {
   const btn = els.showModalWatchOn;
   if (!btn) return;
-  const provider = (meta.providers || []).find((p) => isMainstreamProvider(p));
-  const urlFor = provider ? PROVIDER_URLS[provider] : null;
-  if (!provider || !urlFor) {
+  for (const extra of btn.parentNode.querySelectorAll('.watch-on-extra')) extra.remove();
+  const providers = (meta.providers || [])
+    .filter((p) => isMainstreamProvider(p) && PROVIDER_URLS[p]);
+  if (providers.length === 0) {
     btn.hidden = true;
     return;
   }
   btn.hidden = false;
-  btn.textContent = `Watch on ${provider} →`;
-  btn.title = `Search for "${meta.title}" on ${provider}`;
-  btn.href = urlFor(encodeURIComponent(meta.title));
+  fillWatchOnLink(btn, providers[0], meta.title);
+  let prev = btn;
+  for (const provider of providers.slice(1)) {
+    const link = document.createElement('a');
+    link.className = 'btn btn-ghost watch-on-extra';
+    link.target = '_blank';
+    link.rel = 'noopener';
+    fillWatchOnLink(link, provider, meta.title);
+    prev.insertAdjacentElement('afterend', link);
+    prev = link;
+  }
+}
+
+function fillWatchOnLink(el, provider, title) {
+  el.textContent = `Watch on ${provider} →`;
+  el.title = `Search for "${title}" on ${provider}`;
+  el.href = PROVIDER_URLS[provider](encodeURIComponent(title));
 }
 
 // Shortcut legend popover: ?-button + ? key both toggle. Click-outside +
@@ -4921,6 +5432,7 @@ if (typeof window !== 'undefined') {
     clampScrollY,
     ScrollMemory,
     buildSeasonShareText,
+    parseCompareParam,
   };
 }
 

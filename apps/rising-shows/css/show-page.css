@@ -389,6 +389,8 @@ a.shape-badge:hover {
 .shape-nav a:hover { background: var(--shape); color: var(--shape-text); }
 .shape-nav-current { background: var(--shape); color: var(--shape-text); font-weight: 600; }
 .shape-nav a.shape-nav-all { color: var(--accent); }
+/* The gap hub is not a shape, so it reads as a distinct entry in the strip. */
+.shape-nav a.shape-nav-gap { color: var(--accent); }
 
 .shape-hub .hub-hero { margin-bottom: 4px; }
 .shape-hub .hub-hero h1 { margin: 0 0 8px; font-size: clamp(28px, 4vw, 36px); }

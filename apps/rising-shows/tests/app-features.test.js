@@ -374,3 +374,33 @@ test('buildSeasonShareText: returns a non-empty string', () => {
   assert.ok(text.includes('Season 5'));
 });
 
+// ---------------------------------------------------------------------------
+// Shared compare sets: the `compare=` hash param
+// A shared link is untrusted input, so parsing must never hand the compare
+// modal more shows than Compare.add would have allowed, and never the same
+// show twice.
+// ---------------------------------------------------------------------------
+
+test('parseCompareParam: keeps the hash order', () => {
+  assert.equal(
+    helpers.parseCompareParam('tt0903747,tt0944947,tt4574334').join(','),
+    'tt0903747,tt0944947,tt4574334',
+  );
+});
+
+test('parseCompareParam: caps a hand-edited link at the compare limit of 5', () => {
+  const ids = helpers.parseCompareParam('tt1,tt2,tt3,tt4,tt5,tt6,tt7');
+  assert.equal(ids.length, 5);
+  assert.equal(ids.join(','), 'tt1,tt2,tt3,tt4,tt5');
+});
+
+test('parseCompareParam: drops duplicates and blanks, trims whitespace', () => {
+  assert.equal(helpers.parseCompareParam('tt1, tt2 ,,tt1,').join(','), 'tt1,tt2');
+});
+
+test('parseCompareParam: empty or non-string input yields an empty set', () => {
+  assert.equal(helpers.parseCompareParam('').length, 0);
+  assert.equal(helpers.parseCompareParam(null).length, 0);
+  assert.equal(helpers.parseCompareParam(undefined).length, 0);
+});
+

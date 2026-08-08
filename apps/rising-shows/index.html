@@ -231,6 +231,10 @@
               <input type="number" id="finderMinEpisodes" min="0" step="1" placeholder="any" inputmode="numeric">
             </label>
             <label>
+              Min seasons
+              <input type="number" id="finderMinSeasons" min="0" step="1" placeholder="any" inputmode="numeric">
+            </label>
+            <label>
               Min IMDb votes
               <input type="number" id="finderMinVotes" min="0" step="1000" placeholder="any" inputmode="numeric">
             </label>
@@ -393,6 +397,7 @@
           <div class="provider-badges" id="showModalProviders"></div>
           <div class="modal-primary-actions">
             <button type="button" class="btn btn-ghost" id="showModalShareCard">Share card</button>
+            <button type="button" class="btn btn-ghost" id="showModalShareChart" hidden>Share chart image</button>
             <button type="button" class="btn compare-btn" id="showModalCompare">＋ Add to compare</button>
           </div>
         </div>
@@ -434,7 +439,12 @@
       </header>
       <div class="compare-legend-row">
         <div class="overlay-legend compare-legend" id="compareModalLegend"></div>
-        <button type="button" class="btn btn-ghost compare-clear" id="compareModalClear">Clear all</button>
+        <div class="compare-actions">
+          <button type="button" class="btn btn-ghost compare-action-btn" id="compareModalCopyLink">Copy compare link</button>
+          <button type="button" class="btn btn-ghost compare-action-btn" id="compareModalShareChart">Share chart image</button>
+          <button type="button" class="btn btn-ghost compare-action-btn" id="compareModalKometa">Export to Kometa</button>
+          <button type="button" class="btn btn-ghost compare-clear" id="compareModalClear">Clear all</button>
+        </div>
       </div>
       <div class="compare-chart">
         <svg class="overlay-curve compare-curve" id="compareModalCurve" viewBox="0 0 600 260" preserveAspectRatio="none" role="img" aria-label="Season-average rating trajectory chart"></svg>
@@ -535,9 +545,18 @@
        first so app.js can classify whole shows by their per-season averages.
        finder-lib.js ships the Show Finder aggregation/filtering shared with
        the Node export pipeline (Kometa Finder presets) and must also load
-       before app.js. -->
+       before app.js. integrations-lib.js renders the Kometa YAML the compare
+       modal's "Export to Kometa" button downloads (same code the /kometa/
+       builder page runs). It loads as type="module" ONLY to get its own
+       scope: it and finder-lib.js both declare a top-level `const
+       CATEGORICAL_SHAPES`, and classic scripts share one global lexical
+       scope, so as a plain <script defer> the second one dies on a
+       SyntaxError and never reaches its window.RisingShowsIntegrations
+       assignment. It still attaches to window the same way, and app.js only
+       reads it from a click handler, so the later execution slot is fine. -->
   <script src="scripts/match.js" defer></script>
   <script src="scripts/finder-lib.js" defer></script>
+  <script type="module" src="scripts/integrations-lib.js"></script>
   <script src="js/app.js" defer></script>
   <script src="/assets/js/back-to-top.js" defer></script>
 </body>

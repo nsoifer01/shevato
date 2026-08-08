@@ -43,22 +43,26 @@ A season can match more than one shape - the card shows all of them.
 | Language filter          | Multi-select chips for the top original languages (TMDB `original_language`).                      |
 | Streaming tags           | Where a show streams surfaces as display-only tags on cards and list rows and as badges in the show modal, limited to the mainstream services (Netflix, Hulu, Amazon Prime Video, HBO Max / Max, Disney+, Peacock, Paramount+, Apple TV+, Crunchyroll). There is no provider filter. |
 | Hidden gems              | A "💎 Hidden gems" quick-filter chip surfaces highly rated but under-watched shows: episode-weighted average episode rating ≥ 8.5 and under 500 IMDb votes per rated episode. Composes with every other filter, shows as a removable chip in the active-filter bar, and serializes to the hash (`gems=on`). |
+| Min seasons filter       | A "Min seasons" numeric input in the advanced "More filters" drawer, mirroring "Min episodes" exactly (live re-filtering, removable active-filter chip, `minSeasons=` hash param, cleared by "Clear filters"). It exists because a trajectory shape like "rising" is satisfied by any two-season show whose second season simply beat its first, which is close to a coin flip; requiring 3+ seasons keeps the shape chips meaning what they claim. |
 | Surprise me / Popular pick | Two toolbar buttons for discovery. "🎲 Surprise me" opens a random show from the current filtered results; "🔥 Popular pick" opens a random show from the 50 most-voted of those results. Both do nothing when no shows match, and neither changes the URL. |
 | Search matching          | The search box matches a show's title or its IMDb series ID (`tt…`) only, never episode names. Suggestions rank title-prefix hits first, then title substrings, then ID hits, and append typo-tolerant "Did you mean?" results under their own subheader. |
-| Compare shows            | "+ Add to compare" on each show, then a floating button opens an overlay chart of season-trajectories for up to 5 series (persisted in localStorage). |
+| Compare shows            | "+ Add to compare" on each show, then a floating button opens an overlay chart of season-trajectories for up to 5 series (persisted in localStorage). The overlay's action row carries four controls: **Copy compare link** (a `#compare=<ids>` permalink that reopens the same comparison for anyone who follows it; unknown ids in a shared link are skipped rather than throwing, and opening someone else's link does not overwrite your own stored set until you edit it), **Share chart image**, **Export to Kometa**, and "Clear all". |
+| Export a comparison to Kometa | "Export to Kometa" in the compare overlay downloads a single collection YAML (`rising-shows-compare.yml`) for the 2-5 shows currently compared, built client-side by `scripts/integrations-lib.js` in the same field structure as the pre-built `exports/kometa/<shape>.yml` files. The collection name is generated from the compared titles. Shows with neither a TMDB nor a TVDB id are skipped rather than emitting a null entry. Hidden below 2 compared shows. |
 | Season overlay           | In the show modal, all seasons drawn together on one chart with a legend; clicking a legend entry (the swatch or the S-number) hides/restores that season's line. |
 | Best / worst badges      | Inline pill on the highest- and lowest-rated season of each series (skipped when all seasons tie). |
+| Clickable shape pills    | The shape pills inside the show modal's season rows and the season detail modal are real buttons (Tab-reachable, Enter/Space activatable), not inert text. Activating one closes the modals and filters the grid to that shape. It also **clears the search box**, because you only ever reach a pill by looking up one specific show and leaving the query in place would AND it with the new shape and hand back that same show. This is a deliberate divergence from the toolbar shape chips, which do preserve the search term: a toolbar chip is a filter you are composing, a pill is a jump-to-similar action. |
 | Season overview          | The season detail modal shows that season's own TMDB plot summary (from `scripts/fetch-season-overviews.js`, merged into `data.json` at build time), falling back to the show-level overview when the season has none. |
 | Cast strip               | The show modal shows a top-billed cast strip, populated from `data/show-modal-extras.json` (the side-file holding cast, per-season overviews, and per-episode IMDb IDs / runtimes / titles, kept out of `data.json` so it stays under GitHub's file-size cap); the section stays hidden for series with no cast data. |
 | Watched tracking         | Per-season watched toggle inside the show modal; persists in localStorage; the show modal shows a per-show watched count. |
 | Cross-device sync        | For signed-in users, watched state and the compare set mirror to Firestore through `sync-system/` (namespace `risingSeasonsApp`, legacy `rising-seasons:*` keys kept on purpose so pre-rebrand data carries over). A change made on another device re-loads both sets, re-renders the grid and updates the compare counter, debounced 750 ms. Signed-out users stay fully functional on localStorage alone. |
 | Sensitive posters        | Posters for titles carrying the IMDb "Adult" genre render blurred, with a light overlay: a small eye-off badge flags the content in the top-left corner and a prominent centered "Tap to reveal" pill is the action (badge-only on small thumbnails). The blur is deliberately the only obstruction, so the blurred artwork and the always-visible title still give context. Clicking reveals that one poster without opening its modal; the reveal is per-poster and per-session (re-blurs on reload). Applies to every surface: Finder cards and list rows, both the show and season detail modals, related-show rows, and search-suggestion thumbnails. Adult titles are detected by genre on any season; lightweight surfaces (suggestions) fall back to a precomputed adult-series-ID set. Fallback poster tiles (no TMDB image, just the title) are left legible since they show no art. |
 | Above-IMDb badge         | Marks seasons whose average episode rating beats the show's overall IMDb score.                    |
-| More shows like this     | The show modal lists up to 10 shows that share a genre, a compatible original language (English suggests English; other languages match within broad family groups - Romance, European, Asian, Middle Eastern), and a similar popularity (votes/episode within 10x), with the closest gap between their IMDb rating and their average episode rating. The first 4 show; an "N more" toggle expands the rest; click one to open that show. |
-| "Watch on …" button      | When a show streams on one of the mainstream services, the show modal shows a deep link into that streamer's own search for the title (Netflix, Hulu, Prime Video, Max, Disney+, Peacock, Paramount+, Apple TV+, Crunchyroll). Hidden when no known provider matches. |
+| More shows like this     | The show modal lists up to 10 shows that share a genre, a compatible original language (English suggests English; other languages match within broad family groups - Romance, European, Asian, Middle Eastern), and a similar popularity (votes/episode within 10x). Ranked by **shared show-shape first**, with the gap between IMDb rating and average episode rating as the tiebreaker inside each tier, so a show that trends the same way outranks a same-genre show that merely has a closer gap. Each row names the shared shape in its meta line. Shows sharing no shape are not excluded, they fill the remaining slots up to the 10-result cap; a show carrying no shape at all falls back to the older genre/language/popularity/gap ranking. The first 4 show; an "N more" toggle expands the rest; click one to open that show. |
+| "Watch on …" button      | When a show streams on the mainstream services, the show modal renders **one deep link per provider** (Netflix, Hulu, Prime Video, Max, Disney+, Peacock, Paramount+, Apple TV+, Crunchyroll), each into that streamer's own search for the title, so the set of links always matches the set of provider badges. Hidden when no known provider matches. |
 | Permalink + outbound links | The show modal links to that show's static SEO page ("Permalink", `/apps/rising-shows/shows/<slug>-<seriesId>/`), to IMDb, and to TVDB when a TVDB ID is known. The season modal links to the season on IMDb and to the season (or the series, as a fallback) on TVDB. |
 | Copy link                | A "Copy link" button in the active-filter bar copies the current filtered-view URL to the clipboard whenever any filter is active. |
 | Share card               | A "Share card" button in both the show modal and the season detail modal copies a shareable text summary (title, shapes, ratings) to the clipboard. |
+| Share chart image        | A "Share chart image" button next to "Share card" in the show modal, and in the compare overlay, composites the on-screen SVG curve plus the title, dominant shape and key stats onto an offscreen canvas and hands back a PNG (1200px wide). Uses `navigator.share({files})` where the browser supports it and falls back to a plain download otherwise, flashing "Shared!" / "Downloaded!" the way the existing copy buttons flash "Copied!". Everything is same-origin so the canvas is never tainted. The show-modal button is hidden for single-season shows, the same gate the overlay chart itself uses; the compare variant captures every legend entry in the colors `renderCompareLegend` assigned. |
 | What's new               | A "What's new" chip in the footer opens a changelog modal (built from `changelog.json`) summarizing the latest daily data refresh: totals, shape shifts, shows added/dropped, notable rating swings, and data freshness. |
 | Keyboard shortcuts       | `/` focuses the search box, `?` toggles a shortcuts popover (also opened by the `?` button in the toolbar), and `Esc` closes the topmost open thing (popover, changelog, compare overlay, season modal, show modal, advanced drawer). With a modal's ratings curve focused, `←` / `→` step through its episodes. |
 | Scroll restoration       | Reloading or returning to the grid restores the previous scroll position (saved per tab in sessionStorage) once the grid has rendered; deep links to a modal or a real anchor win over the saved offset. |
@@ -67,13 +71,13 @@ A season can match more than one shape - the card shows all of them.
 
 `scripts/build-show-pages.js` (run via `npm run build:rising-shows:pages`, and on
 every Netlify deploy through `npm run build:site`) renders one static HTML page per
-series under `apps/rising-shows/shows/` plus an A-Z index, 13 per-shape hub pages, and
-`sitemap-shows.xml`.
+series under `apps/rising-shows/shows/` plus an A-Z index, 14 hub pages (13 per-shape
+plus one gap-ranked "Outshines its reputation" hub), and `sitemap-shows.xml`.
 These are gitignored build artifacts, derived from `data.json` (which the build downloads from the `rising-shows-data` release first).
 
 `sitemap-shows.xml` is deliberately curated: it lists only the top 2,000 series by
 IMDb vote count (`SITEMAP_LIMIT` in `build-show-pages.js`), not all ~34k, plus the
-A-Z index and the 13 shape hubs (2,014 URLs in total). Every page is still built
+A-Z index and the 14 hubs (2,015 URLs in total). Every page is still built
 and reachable through the A-Z index for app users, but since 2026-08 the
 non-curated pages carry `noindex, follow`: the 2026-05 full-catalogue launch put
 ~34k templated pages in front of Google, which crawled them and then declined to
@@ -105,10 +109,23 @@ Each page (`scripts/render-show-page.js`) emits:
 one hub, the one matching its **dominant shape** (the first shape tag of its highest-rated
 season, `computeDominantShape` in `render-show-page.js`), ranked by IMDb vote count and
 capped at the top 100; the `CollectionPage` JSON-LD `ItemList` carries the first 25.
-Each hub cross-links the other 12, the A-Z index, and the shape-filtered explorer view
+Each hub cross-links the others, the A-Z index, and the shape-filtered explorer view
 (`/apps/rising-shows/#shape=<slug>`). The per-season shape badges on show pages and the
 "See all X shows" link under the recommendations point at these hubs, the A-Z index carries
-a "Browse by shape" strip, and all 13 URLs are listed in `sitemap-shows.xml`.
+a "Browse by shape" strip, and all hub URLs are listed in `sitemap-shows.xml`.
+
+**Gap hub ("Outshines its reputation").** A 14th hub at
+`apps/rising-shows/shows/shape/outshines-reputation/`, built by the same
+`renderHubPage` shell so it is structurally identical to the shape hubs, but selected and
+ranked by **gap** (`avgEpisode - showRating`) rather than by shape membership:
+the 100 biggest gaps, floored at 15,000 IMDb votes (`GAP_MIN_VOTES`). The floor exists
+because an unfloored gap sort is owned by brigaded titles - the top result was a 451-vote
+show averaging 9.9 per episode against a 1.3 series rating - and 15,000 is where the
+existing `SITEMAP_LIMIT` curation already cuts off, so nearly every linked page is itself
+indexable. The floor is stated in the page's own lede. This gives the gap metric, the
+app's most distinctive signal, a durable indexable URL; previously it was reachable only
+through the in-app Hidden gems chip or the "Outshines its reputation" mood preset. Each
+row's stats cell prints the gap itself (`avg episode 8.6 · IMDb 7.9 · +0.7 above IMDb`).
 
 **Sensitive (adult) posters.** Pages for titles carrying the IMDb "Adult" genre blur
 the hero poster (and any adult related-show thumbnail) behind a CSS-only click-to-reveal
