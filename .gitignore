@@ -42,6 +42,14 @@ apps/rising-shows/sitemap-shows.xml
 apps/rising-shows/data.json
 apps/rising-shows/data/show-modal-extras.json
 
+# Derived from data.json by scripts/split-data.js at build time. data-index.json
+# is the slim payload the browser actually fetches (per-episode arrays and
+# per-season overviews stripped out); data/detail/ holds one small file per
+# series carrying exactly those stripped fields, fetched when a modal opens.
+# Build artifacts, so never committed - and detail/ alone is ~34,600 files.
+apps/rising-shows/data-index.json
+apps/rising-shows/data/detail/
+
 # Gym Tracker static SEO pages — derived from exercises-db.json at
 # build time. Same rationale as Rising Shows.
 apps/gym-tracker/exercises/

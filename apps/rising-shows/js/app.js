@@ -648,60 +648,46 @@ function bindScrollMemory() {
 
 async function load() {
   showSkeletons(8);
-  let extras = null;
   try {
     // data.json carries everything needed to filter, sort, and render the
-    // grid. show-modal-extras.json carries cast, per-season plot overviews,
-    // and per-episode IMDb deep-link IDs / runtimes / titles — kept separate
-    // so data.json stays under GitHub's 100 MB file-size cap. Fetched in
-    // parallel; the extras file is optional, so a failure there doesn't
-    // block the grid (episode rows just lose their titles).
-    const [dataRes, extrasRes] = await Promise.all([
-      fetch('data.json', { cache: 'no-store' }),
-      fetch('data/show-modal-extras.json', { cache: 'no-store' }).catch(() => null),
-    ]);
+    // grid, so it is the ONLY fetch on the critical path.
+    //
+    // show-modal-extras.json (cast, per-season plot overviews, per-episode
+    // IMDb ids / runtimes / titles) used to be fetched here in parallel and
+    // awaited before first paint. It is ~21.5 MB over the wire against
+    // data.json's ~16.8 MB, so first paint was waiting on ~38 MB of transfer:
+    // roughly 30 seconds on typical 4G, during which the page shows nothing
+    // but skeletons. None of it is needed until a modal opens. It now loads
+    // in the background after the grid renders (see loadExtrasInBackground).
+    //
+    // `cache: 'no-store'` is also gone. It forced a full re-download on every
+    // single visit and reload, which on a file this size is hostile to anyone
+    // on a metered connection. Normal HTTP caching applies now; the daily data
+    // refresh changes the file, and the CDN revalidates on its own.
+    // data-index.json, not data.json: scripts/split-data.js strips the
+    // per-episode arrays and per-season plot overviews (64% of the file, and
+    // neither is read by the grid, the filters or the sort) into per-show
+    // detail files fetched when a modal opens. 12 MB over the wire becomes
+    // ~4 MB, which on a 10 Mbps connection is ~9.6s of blank page down to
+    // ~3.3s. data.json is still built and deployed unchanged because the
+    // static SEO pages render per-episode tables from it.
+    const dataRes = await fetch('data-index.json');
     if (!dataRes.ok) throw new Error(`HTTP ${dataRes.status}`);
     dataset = await dataRes.json();
-    if (extrasRes && extrasRes.ok) {
-      try { extras = await extrasRes.json(); }
-      catch (_) { extras = null; }
-    }
   } catch (err) {
     showError(err);
     return;
   }
   // Precompute normalized title once per match so the search hot path doesn't
   // re-derive it on every filter pass. [[normalizeSearch]] for the rule.
-  // Same pass attaches per-match modal extras (cast, season overview, per-episode
-  // tt + runtime + title) from show-modal-extras.json. The fields are placed directly
-  // on each match object so downstream code can keep reading `m.cast`, `m.seasonOverview`,
-  // `e.tt`, `e.runtime`, and `e.name` exactly as it did when everything lived in data.json.
+  //
+  // The old `m._stddev = computeStdDev(m.episodes)` line is gone from here. Its
+  // comment claimed it fed a volatility sort, but nothing ever read `_stddev`:
+  // the assignment was the only reference in the file. It walked every episode
+  // of all ~66,000 season records on every page load to produce a number no
+  // code consumed.
   for (const m of dataset.matches) {
     m.titleSearch = normalizeSearch(m.title);
-    // Feature 7: precompute std dev once so the volatility sort is O(1) per comparison.
-    m._stddev = computeStdDev(m.episodes);
-    if (extras) {
-      const e = extras[m.seriesId];
-      if (e) {
-        if (e.cast) m.cast = e.cast;
-        const sRec = e.seasons && e.seasons[String(m.season)];
-        if (sRec) {
-          if (sRec.ov) m.seasonOverview = sRec.ov;
-          if (sRec.eps && Array.isArray(m.episodes)) {
-            for (const ep of m.episodes) {
-              const rec = sRec.eps[String(ep.episode)];
-              if (rec) {
-                if (rec.tt) ep.tt = rec.tt;
-                if (rec.rt !== undefined) ep.runtime = rec.rt;
-                // Guarded so a pre-split data.json (inline names, no rec.n)
-                // keeps working while the daily refresh flips the format.
-                if (rec.n && !ep.name) ep.name = rec.n;
-              }
-            }
-          }
-        }
-      }
-    }
   }
   loadChangelog();
   Watched.load();
@@ -752,16 +738,146 @@ async function load() {
     // scrollHeight reflects the freshly appended cards.
     requestAnimationFrame(() => ScrollMemory.restore());
   }
+  // Everything above this line is what first paint waits for. The extras file
+  // is fetched only now, with the grid already interactive.
+  loadExtrasInBackground();
+}
+
+// Modal-only data (cast, per-season plot overviews, per-episode IMDb ids,
+// runtimes and titles), ~21.5 MB over the wire. It used to be awaited before
+// first paint alongside data.json, which meant nobody saw a single show until
+// ~38 MB had transferred - about half a minute on typical 4G.
+//
+// Now it arrives while the visitor is already browsing, and the fields are
+// attached onto the same match objects the modals already read, so every
+// downstream reader (`m.cast`, `m.seasonOverview`, `e.tt`, `e.runtime`,
+// `e.name`) is unchanged. A modal opened before this resolves simply shows
+// what data.json already had; extrasReady lets openers re-render once it
+// lands. Failure stays non-fatal, exactly as when it was optional here.
+let extrasLoaded = false;
+let extrasData = null;
+function loadExtrasInBackground() {
+  if (extrasLoaded) return;
+  extrasLoaded = true;
+  fetch('data/show-modal-extras.json')
+    .then((res) => (res && res.ok ? res.json() : null))
+    .then((extras) => {
+      if (!extras) return;
+      // Kept so applyDetail can enrich a show's episodes whenever its detail
+      // file arrives. Detail and extras now load independently and in either
+      // order, so whichever lands second does the joining.
+      extrasData = extras;
+      for (const m of dataset.matches) {
+        const e = extras[m.seriesId];
+        if (!e) continue;
+        if (e.cast) m.cast = e.cast;
+        const sRec = e.seasons && e.seasons[String(m.season)];
+        if (!sRec) continue;
+        if (sRec.ov) m.seasonOverview = sRec.ov;
+        // Episode-level fields are applied here only when the episodes are
+        // already present (an unsplit dataset). With the split payload they
+        // arrive later, via applyDetail.
+        applyExtrasToEpisodes(m, sRec);
+      }
+      // A modal open at this moment was populated before the extras existed.
+      // Re-render it in place so the cast strip and episode titles appear
+      // rather than staying blank until the user closes and reopens.
+      // fromHistory (not a new flag): it is the existing opt pushModalHistory
+      // checks to skip recording a step, which is exactly right here - this is
+      // a silent re-render of the view already on screen, not a navigation, so
+      // it must not add a back-stack entry.
+      try {
+        if (!els.showModal.hidden && showModalState.seriesId) {
+          openShowModal(showModalState.seriesId, { fromHistory: true });
+        } else if (!els.modal.hidden && modalState.season) {
+          openModal(modalState.season, { fromHistory: true });
+        }
+      } catch (e) { /* refresh is best-effort; the data is attached either way */ }
+    })
+    .catch(() => { /* extras are optional: modals degrade, grid is unaffected */ });
+}
+
+/**
+ * Copies the per-episode extras (IMDb id, runtime, title) for one season
+ * record onto its episode objects. No-op when the episodes are not loaded yet.
+ */
+function applyExtrasToEpisodes(m, sRec) {
+  if (!sRec || !sRec.eps || !Array.isArray(m.episodes)) return;
+  for (const ep of m.episodes) {
+    const rec = sRec.eps[String(ep.episode)];
+    if (!rec) continue;
+    if (rec.tt) ep.tt = rec.tt;
+    if (rec.rt !== undefined) ep.runtime = rec.rt;
+    // Guarded so a pre-split data.json (inline names, no rec.n) keeps working.
+    if (rec.n && !ep.name) ep.name = rec.n;
+  }
+}
+
+/**
+ * Loads one show's per-episode data on demand.
+ *
+ * The grid needs no episodes at all, so they were moved out of the payload
+ * into one small file per series (Breaking Bad's is 4.3 KB, against the 38 MB
+ * every visitor used to download before anything rendered). A modal is the
+ * first thing that actually needs them, so this is called there.
+ *
+ * Memoised by seriesId, including the in-flight promise, so re-opening a show
+ * or double-clicking never refetches. Resolves to null and leaves the app
+ * working if the file is missing: modals then show what the index already has.
+ */
+const detailCache = new Map();
+function ensureDetail(seriesId) {
+  if (!seriesId) return Promise.resolve(null);
+  if (detailCache.has(seriesId)) return detailCache.get(seriesId);
+  // An unsplit dataset already carries episodes; nothing to fetch.
+  const anyLoaded = dataset.matches.some((m) => m.seriesId === seriesId && Array.isArray(m.episodes));
+  if (anyLoaded) {
+    const done = Promise.resolve(null);
+    detailCache.set(seriesId, done);
+    return done;
+  }
+  const p = fetch(`data/detail/${encodeURIComponent(seriesId)}.json`)
+    .then((res) => (res && res.ok ? res.json() : null))
+    .then((detail) => {
+      if (!detail || !detail.seasons) return null;
+      for (const m of dataset.matches) {
+        if (m.seriesId !== seriesId) continue;
+        const sRec = detail.seasons[String(m.season)];
+        if (!sRec) continue;
+        if (Array.isArray(sRec.episodes)) m.episodes = sRec.episodes;
+        if (sRec.overview && !m.overview) m.overview = sRec.overview;
+        // Extras may already be in memory; join them on now that the episode
+        // objects exist. If extras land later, its own pass handles it.
+        const ex = extrasData && extrasData[seriesId];
+        const exSeason = ex && ex.seasons && ex.seasons[String(m.season)];
+        applyExtrasToEpisodes(m, exSeason);
+      }
+      return detail;
+    })
+    .catch(() => null);
+  detailCache.set(seriesId, p);
+  return p;
 }
 
 function buildAboveImdbMap() {
-  // For each series: total all episode ratings across every season we have,
-  // then mark the series as "above IMDb" only if the overall average exceeds
-  // the show's IMDb rating. Per-season comparisons can flip on a single
-  // strong season — we want a show-level signal here.
+  // "Above IMDb" means a series' episodes average higher than its own IMDb
+  // score. It used to be derived here by summing every episode rating of every
+  // season, which was the last load-time reader of the per-episode arrays and
+  // the reason they could not simply be dropped from the payload.
+  //
+  // The answer is identical for every visitor, so split-data.js computes it
+  // once at build time and ships `aboveImdb` as a list of the series that
+  // qualify. Absent from the list means false, which halves its size.
+  aboveImdbBySeries = new Map();
+  if (Array.isArray(dataset.aboveImdb)) {
+    for (const seriesId of dataset.aboveImdb) aboveImdbBySeries.set(seriesId, true);
+    return;
+  }
+  // Fallback for an unsplit dataset (a local data.json served directly, or a
+  // deploy where split-data.js has not run): compute it the original way.
   const grouped = new Map();
   for (const m of dataset.matches) {
-    if (typeof m.seriesRating !== 'number') continue;
+    if (typeof m.seriesRating !== 'number' || !Array.isArray(m.episodes)) continue;
     let entry = grouped.get(m.seriesId);
     if (!entry) {
       entry = { sumRating: 0, totalEps: 0, seriesRating: m.seriesRating };
@@ -772,11 +888,9 @@ function buildAboveImdbMap() {
       entry.totalEps++;
     }
   }
-  aboveImdbBySeries = new Map();
   for (const [seriesId, info] of grouped) {
     if (info.totalEps === 0) continue;
-    const overallAvg = info.sumRating / info.totalEps;
-    aboveImdbBySeries.set(seriesId, overallAvg > info.seriesRating);
+    aboveImdbBySeries.set(seriesId, (info.sumRating / info.totalEps) > info.seriesRating);
   }
 }
 
@@ -2102,7 +2216,13 @@ function goBackModalView() {
   syncModalBackButtons();
 }
 
-function openModal(m, opts = {}) {
+// async because the per-episode data this modal is built from is no longer in
+// the initial payload; it is one small per-series file fetched on demand. The
+// await resolves instantly on a repeat open (memoised in detailCache) and on
+// an unsplit dataset. Callers are fire-and-forget and do not need the promise.
+async function openModal(m, opts = {}) {
+  await ensureDetail(m.seriesId);
+  if (!Array.isArray(m.episodes)) m.episodes = [];
   pushModalHistory(opts, `season:${m.seriesId}:${m.season}`);
   const wasOpen = !els.modal.hidden;
   const wasShowOpen = !els.showModal.hidden;
@@ -2325,11 +2445,18 @@ function closeModal(opts = {}) {
   if (reopenChangelog) openChangelogModal();
 }
 
-function openShowModal(seriesId, opts = {}) {
+// async for the same reason as openModal: the season sparklines and the
+// overlay chart are drawn from per-episode data that is fetched on demand.
+async function openShowModal(seriesId, opts = {}) {
   const seasons = dataset.matches
     .filter((m) => m.seriesId === seriesId)
     .sort((a, b) => a.season - b.season);
   if (seasons.length === 0) return;
+
+  // Awaited before any rendering so every season row has its episodes. One
+  // fetch covers the whole series, and it is memoised, so reopening is free.
+  await ensureDetail(seriesId);
+  for (const m of seasons) if (!Array.isArray(m.episodes)) m.episodes = [];
 
   // Reported after the early return, so a failed lookup is not counted as a
   // view. This is the in-app counterpart to a page_view on the generated

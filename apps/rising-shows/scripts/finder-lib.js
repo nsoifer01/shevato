@@ -113,16 +113,43 @@ function buildShowAgg(matches, detectShapes) {
     if (s.tmdbId == null && m.tmdbId != null) s.tmdbId = m.tmdbId;
     if (s.tvdbId == null && m.tvdbId != null) s.tvdbId = m.tvdbId;
     for (const g of (m.genres || [])) s.genres.add(g);
+    // Two input shapes are supported on purpose.
+    //
+    // Full records (`m.episodes` present) are what the Node side always has:
+    // build-show-pages.js, export-integrations.js and every unit test read the
+    // unsplit data.json. Those keep the original per-episode walk.
+    //
+    // Split records (no `m.episodes`, but `ratedCount` / `ratingSum` /
+    // optional `epRatings`) are what the BROWSER now receives, because the
+    // per-episode arrays were 40% of the payload and the grid never displayed
+    // them. scripts/split-data.js folds the same sums down at build time, so
+    // both paths produce identical aggregates.
     let seasonRated = 0;
     let seasonRatingSum = 0;
     const seasonEpisodes = [];
-    for (const e of m.episodes) {
-      if (typeof e.rating === 'number') {
-        s.ratingSum += e.rating;
-        s.episodes++;
-        seasonRated++;
-        seasonRatingSum += e.rating;
-        seasonEpisodes.push({ episode: e.episode, rating: e.rating, votes: e.votes });
+    if (Array.isArray(m.episodes)) {
+      for (const e of m.episodes) {
+        if (typeof e.rating === 'number') {
+          s.ratingSum += e.rating;
+          s.episodes++;
+          seasonRated++;
+          seasonRatingSum += e.rating;
+          seasonEpisodes.push({ episode: e.episode, rating: e.rating, votes: e.votes });
+        }
+      }
+    } else {
+      seasonRated = m.ratedCount || 0;
+      seasonRatingSum = m.ratingSum || 0;
+      s.ratingSum += seasonRatingSum;
+      s.episodes += seasonRated;
+      // epRatings is only shipped for single-season shows, which are the only
+      // ones whose card sparkline is drawn from episodes rather than season
+      // averages. Episode numbers are positional; votes are not read by the
+      // sparkline, so they are not carried.
+      if (Array.isArray(m.epRatings)) {
+        for (let i = 0; i < m.epRatings.length; i++) {
+          seasonEpisodes.push({ episode: i + 1, rating: m.epRatings[i], votes: 0 });
+        }
       }
     }
     s.seasonEpisodeSeries.push(seasonEpisodes);

@@ -6,10 +6,50 @@ Rank whole TV shows by the **shape** of their IMDb episode ratings, not the aver
 
 1. A Node script (`scripts/build-data.js`) streams three gzipped TSV dumps from IMDb, joins episodes with their ratings, runs each season through eleven shape detectors (plus two series-level shapes applied across a show's seasons in a post-pass), and writes `data.json` with every season that passes the vote/episode floor (tagged with every shape it fits - seasons matching no shape are still included with `shapes: []`).
 2. Three optional enrichment scripts pull TMDB metadata: `scripts/enrich-tmdb.js` for posters, overviews, and language; `scripts/enrich-providers.js` for US streaming providers (Netflix / Max / Prime / …); `scripts/fetch-season-overviews.js` for per-season plot summaries. The first two cache to `data/tmdb-cache.json` so they survive rebuilds; the third writes a side-file, `data/season-overviews.json`, that `build-data.js` merges onto each season.
-3. `index.html` loads `data.json` in the browser and renders the **Show Finder**: one row per show (total rated episodes, episode-weighted average episode rating, the gap vs the show's IMDb rating, votes, total runtime) with show-shape chips, mood presets, search, grid + list views, tri-state genres, decade/year, language, sort, pagination (24 per page), and an active-filter bar. It draws a season-average sparkline per show - single-season shows draw their episode trajectory in a distinct orange. Watched tracking persists to localStorage, and all filter/view state lives in the URL hash so any view is shareable. No extra data or backend: it derives everything client-side from the fields already in `data.json`.
+3. `index.html` loads `data-index.json` in the browser (see "Payload split" below) and renders the **Show Finder**: one row per show (total rated episodes, episode-weighted average episode rating, the gap vs the show's IMDb rating, votes, total runtime) with show-shape chips, mood presets, search, grid + list views, tri-state genres, decade/year, language, sort, pagination (24 per page), and an active-filter bar. It draws a season-average sparkline per show - single-season shows draw their episode trajectory in a distinct orange. Watched tracking persists to localStorage, and all filter/view state lives in the URL hash so any view is shareable. No extra data or backend: it derives everything client-side from the fields already in `data.json`.
 4. The show-shape chips classify each show by the shape of its per-season averages (the same eleven detectors `match.js` runs per episode, now loaded in the browser too, so there is one source of truth), so a "rising" show is one whose seasons kept getting better; a show needs 2+ seasons to carry a cross-season shape. The two categorical season tags (Saved best for last, Shape drift) also surface as chips: a show carries one whenever any of its seasons does, so those chips work for single-season shows too. Open any show to see a detail modal with its season-by-season trajectory. See the feature table below.
 
 `data.json` and `data/show-modal-extras.json` are not tracked in git (they are ~150 MB per refresh and were bloating history). They live as gzipped assets on the rolling [`rising-shows-data` GitHub release](https://github.com/nsoifer01/shevato/releases/tag/rising-shows-data), refreshed daily by GitHub Actions and downloaded at build time by `scripts/fetch-data.js` (locally: `npm run fetch:rising-shows-data`). See [`DATA_README.md`](DATA_README.md) for the auto-refresh details.
+
+### Payload split (what the browser actually downloads)
+
+The browser does **not** fetch `data.json`. It used to, alongside
+`show-modal-extras.json`, and both were awaited before the grid could paint a
+single card: about **38 MB** of transfer with `cache: 'no-store'` forcing a full
+re-download on every visit. On a typical 10 Mbps mobile connection that is
+roughly half a minute of blank page, every time.
+
+Measured against the real file, two fields dominate `data.json`: `episodes`
+(31.3 MB, 40%) and `overview` (18.2 MB, 24%). Neither is read by the grid, the
+filters or the sort - both are modal-only. So `scripts/split-data.js` runs at
+build time (wired into `build:site` after the page builders) and writes:
+
+| File | What it is | Fetched |
+|---|---|---|
+| `data-index.json` | `data.json` minus `episodes`/`overview`, ~4.3 MB brotli | on load, the only thing first paint waits for |
+| `data/detail/<seriesId>.json` | exactly those stripped fields, one small file per series (Breaking Bad: 4.3 KB) | when a modal opens, memoised |
+| `data/show-modal-extras.json` | cast, per-season overviews, per-episode ids/runtimes/titles | in the background after the grid renders |
+
+Critical-path transfer went from ~38 MB to ~4.3 MB, roughly 31s to 3.4s on
+10 Mbps, and normal HTTP caching now applies so repeat visits cost nothing.
+
+Two things the split has to preserve, both covered by tests in
+`tests/finder-lib.test.js`:
+
+- **`buildShowAgg` accepts either shape.** The Node side (`build-show-pages.js`,
+  `export-integrations.js`, every unit test) still reads the unsplit
+  `data.json` and keeps its per-episode walk. Split records instead carry
+  `ratedCount` / `ratingSum`, folded down at build time, plus `epRatings` for
+  single-season shows, whose card sparkline is drawn from episodes rather than
+  season averages. Verified across the full catalogue: 34,508 rows both ways,
+  zero aggregate and zero shape differences.
+- **`aboveImdb` is precomputed.** Deciding whether a show's episodes average
+  above its IMDb score was the last load-time reader of the episode arrays.
+  The answer is identical for every visitor, so it ships as a list of the
+  22,995 series that qualify (absent means false).
+
+`data.json` itself is still built, deployed and left untouched, because the
+static SEO pages render per-episode tables and curves from it.
 
 ## Shapes
 
