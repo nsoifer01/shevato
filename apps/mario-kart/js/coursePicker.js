@@ -356,7 +356,7 @@
                     '<div class="cp-filters"></div>' +
                     '<span class="cp-count" hidden></span>' +
                 '</div>' +
-                '<div class="cp-hint">Search by <b>course</b>, <b>cup</b>, <b>game</b>, or <b>abbreviation</b> — try &ldquo;DK&rdquo;, &ldquo;Mushroom Cup&rdquo;, or &ldquo;MK8&rdquo;.</div>' +
+                '<div class="cp-hint">Search by <b>course</b>, <b>cup</b>, <b>game</b>, or <b>abbreviation</b>. Try &ldquo;DK&rdquo;, &ldquo;Mushroom Cup&rdquo;, or &ldquo;MK8&rdquo;.</div>' +
                 '<div class="cp-recent-searches" hidden></div>' +
                 '<div class="cp-modal-body">' +
                     '<div class="cp-results" role="listbox" aria-label="Courses"></div>' +

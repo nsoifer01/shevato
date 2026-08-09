@@ -241,7 +241,16 @@
         _countryMetaPromise = (async () => {
             try {
                 const res = await fetch(COUNTRIES_DATA_URL, { cache: 'force-cache' });
-                if (!res.ok) return {};
+                // A failed load must not stay cached: this promise is stored
+                // before it settles, so returning {} while leaving it in place
+                // pinned "no country metadata" (difficulty scoring, area and
+                // population hints) for the whole session after one flaky
+                // request. Clearing the cache slot means the next round simply
+                // retries.
+                if (!res.ok) {
+                    _countryMetaPromise = null;
+                    return {};
+                }
                 const raw = await res.json();
                 const idx = {};
                 for (const c of (Array.isArray(raw) ? raw : [])) {
@@ -266,6 +275,7 @@
                 }
                 return idx;
             } catch (_) {
+                _countryMetaPromise = null;
                 return {};
             }
         })();

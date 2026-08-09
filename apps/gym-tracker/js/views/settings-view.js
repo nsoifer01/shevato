@@ -276,7 +276,7 @@ class SettingsView {
         const confirmed = await showConfirmModal({
             title: 'Delete cloud data',
             message: 'Wipe the gym tracker data stored in the cloud for this account. Your local data stays on this device.',
-            warning: 'This cannot be undone — other devices that sync will also lose this data on their next sync.',
+            warning: 'This cannot be undone. Other devices that sync will also lose this data on their next sync.',
             confirmText: 'Delete from cloud',
             cancelText: 'Cancel',
             isDangerous: true,
@@ -289,7 +289,7 @@ class SettingsView {
             showToast('Cloud data deleted. Sign out + back in to re-sync.', 'success', 5000);
         } catch (error) {
             console.error('Failed to delete cloud data:', error);
-            showToast('Could not delete cloud data — check your connection.', 'error', 5000);
+            showToast('Could not delete cloud data. Check your connection.', 'error', 5000);
         }
     }
 

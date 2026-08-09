@@ -207,3 +207,34 @@ export function decideRemoteChange(localRev, remoteInfo, lastRemoteUpdate) {
   if ((remoteInfo?.rev || 0) > (localRev.rev || 0)) return 'apply';
   return 'skip-older';
 }
+
+/**
+ * Re-queues the writes of a FAILED flush without clobbering newer work.
+ *
+ * flushWrites copies the queue and clears it before the network call, so a
+ * user edit made while the flush is in flight lands in the (now empty) queue
+ * as a higher revision of the same key. Blindly re-queuing the failed copy
+ * replaced that newer entry with the older one, and because localRevisions
+ * already records the newer hash, the newer value was never re-sent: silent
+ * data loss on the next successful flush. The failed copy is therefore only
+ * restored where no entry exists, or where the queued entry is OLDER (a rev
+ * the failed batch itself superseded, which cannot happen today but costs
+ * nothing to defend against).
+ *
+ * Pure so it is unit-testable outside the browser module.
+ *
+ * @param {Map<string, {rev?: number}>} queue live queue (mutated in place)
+ * @param {Map<string, {rev?: number}>} failedWrites the batch that failed
+ * @returns {number} how many entries were restored
+ */
+export function requeueFailedWrites(queue, failedWrites) {
+  let restored = 0;
+  for (const [key, value] of failedWrites) {
+    const queued = queue.get(key);
+    if (!queued || (queued.rev || 0) < (value.rev || 0)) {
+      queue.set(key, value);
+      restored++;
+    }
+  }
+  return restored;
+}

@@ -85,7 +85,7 @@ function updateBanner(prev, next) {
         bannerEl.hidden = false;
         bannerEl.dataset.state = 'offline';
         bannerEl.dataset.fading = 'false';
-        bannerEl.textContent = 'You’re offline — changes saved on this device';
+        bannerEl.textContent = 'You’re offline. Changes are saved on this device';
         return;
     }
 
@@ -95,7 +95,7 @@ function updateBanner(prev, next) {
         bannerEl.hidden = false;
         bannerEl.dataset.state = 'synced';
         bannerEl.dataset.fading = 'false';
-        bannerEl.textContent = 'Back online — synced';
+        bannerEl.textContent = 'Back online. Synced';
         recoveryTimer = setTimeout(() => {
             if (!bannerEl) return;
             bannerEl.dataset.fading = 'true';

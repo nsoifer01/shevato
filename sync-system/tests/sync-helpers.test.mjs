@@ -15,7 +15,8 @@ import {
   sanitiseForFirestore,
   estimatePayloadBytes,
   sameKeySet,
-  decideRemoteChange
+  decideRemoteChange,
+  requeueFailedWrites
 } from '../sync-helpers.mjs';
 
 /* -------------------- hashValue -------------------- */
@@ -300,4 +301,43 @@ test('decideRemoteChange: missing remote.hash skips the dedupe path', () => {
         500
     );
     assert.equal(verdict, 'apply');
+});
+
+// ---------------------------------------------------------------------------
+// requeueFailedWrites: the failed-flush data-loss race
+// ---------------------------------------------------------------------------
+
+test('requeueFailedWrites restores failed writes into an empty queue', () => {
+    const queue = new Map();
+    const failed = new Map([
+        ['k1', { rev: 3, value: 'a' }],
+        ['k2', { rev: 1, value: 'b' }],
+    ]);
+    const restored = requeueFailedWrites(queue, failed);
+    assert.equal(restored, 2);
+    assert.equal(queue.get('k1').rev, 3);
+    assert.equal(queue.get('k2').rev, 1);
+});
+
+test('requeueFailedWrites never clobbers a NEWER write made during the flush', () => {
+    // THE RACE: flushWrites copied rev 3 and cleared the queue; while the
+    // network call was failing, the user edited the same key again and
+    // queueWrite stored rev 4. The old code re-queued rev 3 over it, and
+    // since localRevisions already held rev 4's hash, rev 4 was never sent.
+    const queue = new Map([['k1', { rev: 4, value: 'newer' }]]);
+    const failed = new Map([['k1', { rev: 3, value: 'older' }]]);
+    const restored = requeueFailedWrites(queue, failed);
+    assert.equal(restored, 0);
+    assert.equal(queue.get('k1').rev, 4);
+    assert.equal(queue.get('k1').value, 'newer');
+});
+
+test('requeueFailedWrites replaces an older queued entry and tolerates missing revs', () => {
+    const queue = new Map([['k1', { rev: 2, value: 'stale' }], ['k2', { value: 'no-rev' }]]);
+    const failed = new Map([['k1', { rev: 5, value: 'fresh' }], ['k2', { rev: 1, value: 'revved' }]]);
+    const restored = requeueFailedWrites(queue, failed);
+    assert.equal(restored, 2);
+    assert.equal(queue.get('k1').value, 'fresh');
+    // A queued entry with no rev counts as rev 0 and yields to any revved one.
+    assert.equal(queue.get('k2').value, 'revved');
 });
