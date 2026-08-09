@@ -4,7 +4,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { renderShowsSitemap, selectSitemapSeries } = require('../scripts/render-sitemap.js');
-const { renderShowsIndex, sortTitle, firstLetter } = require('../scripts/render-shows-index.js');
+const {
+  renderShowsIndex, renderShowsLetterPage, groupByLetter, letterPages, letterPath,
+  sortTitle, firstLetter, PER_PAGE,
+} = require('../scripts/render-shows-index.js');
 const { SHAPE_SLUGS, HUB_SLUGS, GAP_HUB_SLUG, hubPath } = require('../scripts/render-shape-hub.js');
 
 const SERIES = [
@@ -102,14 +105,71 @@ test('firstLetter buckets non-letters into "#"', () => {
   assert.equal(firstLetter(''), '#');
 });
 
-test('renderShowsIndex emits the count and links to every series', () => {
+test('renderShowsIndex is a letter hub, not a list of every show', () => {
   const html = renderShowsIndex(SERIES, '2026-05-18T00:00:00.000Z');
   assert.ok(html.includes('3 shows'));
-  assert.ok(html.includes('/apps/rising-shows/shows/breaking-bad-tt0903747/'));
-  assert.ok(html.includes('/apps/rising-shows/shows/game-of-thrones-tt0944947/'));
-  // "The Office" is alphabetized under O, not T
-  assert.ok(html.includes('id="letter-O"'));
-  assert.ok(html.includes('/apps/rising-shows/shows/the-office-tt0386676/'));
+  // The hub links to letter pages...
+  assert.ok(html.includes('href="/apps/rising-shows/shows/letter/b/"'));
+  assert.ok(html.includes('href="/apps/rising-shows/shows/letter/g/"'));
+  // ..."The Office" is alphabetized under O, not T...
+  assert.ok(html.includes('href="/apps/rising-shows/shows/letter/o/"'));
+  // ...and it must NOT carry the show links itself. All 34,586 on one page is
+  // what made this 4.79 MB and 535,383px tall.
+  assert.ok(!html.includes('/apps/rising-shows/shows/breaking-bad-tt0903747/'));
+  assert.ok(!html.includes('/apps/rising-shows/shows/the-office-tt0386676/'));
+});
+
+test('letter pages carry the shows, and every show lands on exactly one', () => {
+  const groups = groupByLetter(SERIES);
+  const pages = letterPages(groups);
+  const seen = [];
+  for (const page of pages) {
+    const html = renderShowsLetterPage({ ...page, groups, builtAt: '2026-05-18T00:00:00.000Z' });
+    for (const s of page.items) seen.push(s.seriesId);
+    assert.ok(html.includes(`<h1>Shows starting with ${page.letter}`));
+    // Self-canonical: pointing later pages at page 1 would tell Google the shows
+    // listed there need no crawling, which is the opposite of the point.
+    assert.ok(html.includes(`<link rel="canonical" href="https://shevato.com${page.path}">`));
+  }
+  assert.deepEqual(seen.sort(), SERIES.map((s) => s.seriesId).sort());
+});
+
+test('a letter longer than PER_PAGE splits into linked pages', () => {
+  const many = Array.from({ length: PER_PAGE + 5 }, (_, i) => ({
+    seriesId: `tt${String(i).padStart(7, '0')}`,
+    title: `Zulu Show ${String(i).padStart(4, '0')}`,
+    year: 2020,
+  }));
+  const groups = groupByLetter(many);
+  const pages = letterPages(groups);
+  assert.equal(pages.length, 2);
+  assert.equal(pages[0].items.length, PER_PAGE);
+  assert.equal(pages[1].items.length, 5);
+  assert.equal(pages[0].path, '/apps/rising-shows/shows/letter/z/');
+  assert.equal(pages[1].path, '/apps/rising-shows/shows/letter/z/2/');
+
+  const first = renderShowsLetterPage({ ...pages[0], groups, builtAt: null });
+  const second = renderShowsLetterPage({ ...pages[1], groups, builtAt: null });
+  assert.ok(first.includes(`<link rel="next" href="https://shevato.com${pages[1].path}">`));
+  assert.ok(!first.includes('rel="prev"'));
+  assert.ok(second.includes(`<link rel="prev" href="https://shevato.com${pages[0].path}">`));
+  assert.ok(!second.includes('rel="next"'));
+});
+
+test('non-letter titles get a URL-safe "other" slug rather than a bare #', () => {
+  assert.equal(letterPath('#'), '/apps/rising-shows/shows/letter/other/');
+  assert.equal(letterPath('#', 3), '/apps/rising-shows/shows/letter/other/3/');
+});
+
+test('the sitemap lists the browse pages, not just the curated shows', () => {
+  const browsePaths = ['/apps/rising-shows/shows/letter/b/', '/apps/rising-shows/shows/letter/b/2/'];
+  const xml = renderShowsSitemap(SERIES, '2026-05-18T00:00:00.000Z', [], browsePaths);
+  for (const p of browsePaths) {
+    assert.ok(xml.includes(`<loc>https://shevato.com${p}</loc>`));
+  }
+  // Omitting them would leave every page past a letter's first sitting two hops
+  // from anything the sitemap mentions.
+  assert.ok(xml.includes('<loc>https://shevato.com/apps/rising-shows/shows/</loc>'));
 });
 
 test('renderShowsIndex carries a browse strip to all 13 shape hubs plus the gap hub', () => {

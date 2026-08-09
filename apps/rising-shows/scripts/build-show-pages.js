@@ -11,7 +11,9 @@ const path = require('path');
 
 const { showPath } = require('./slugify.js');
 const { renderShowPage, computeDominantShape } = require('./render-show-page.js');
-const { renderShowsIndex } = require('./render-shows-index.js');
+const {
+  renderShowsIndex, renderShowsLetterPage, groupByLetter, letterPages,
+} = require('./render-shows-index.js');
 const {
   renderShapeHub,
   renderGapHub,
@@ -106,10 +108,37 @@ function main() {
     }
   }
 
+  // The browse index: a small /shows/ hub plus paginated per-letter pages.
+  // Every show appears on exactly one letter page, which matters because the
+  // sitemap lists only the curated top ~2,000 and these pages are the sole
+  // crawl path to the other ~32,500.
+  const indexEntries = series.map(toIndexEntry);
   fs.writeFileSync(
     path.join(SHOWS_DIR, 'index.html'),
-    renderShowsIndex(series.map(toIndexEntry), data.builtAt),
+    renderShowsIndex(indexEntries, data.builtAt),
   );
+
+  const letterGroups = groupByLetter(indexEntries);
+  const browsePages = letterPages(letterGroups);
+  let listedShows = 0;
+  for (const page of browsePages) {
+    // page.path is site-absolute (/apps/rising-shows/shows/letter/s/2/); the
+    // segments below SHOWS_DIR are what gets created on disk.
+    const rel = page.path.replace('/apps/rising-shows/shows/', '').replace(/\/$/, '');
+    const dir = path.join(SHOWS_DIR, ...rel.split('/'));
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'index.html'),
+      renderShowsLetterPage({ ...page, groups: letterGroups, builtAt: data.builtAt }),
+    );
+    listedShows += page.items.length;
+  }
+  // Guard the property that matters: a split that silently drops shows would
+  // orphan them from every crawl path, and nothing else here would notice.
+  if (listedShows !== indexEntries.length) {
+    throw new Error(`browse pages list ${listedShows} shows but there are ${indexEntries.length}; every show must stay reachable`);
+  }
+  console.log(`[build-show-pages] browse index · ${letterGroups.size} letters · ${browsePages.length} pages · ${listedShows} shows listed`);
 
   // Per-shape topic hubs. Safe to nest inside SHOWS_DIR: show directories
   // always end in -tt<digits>, so "shape" can never collide with one.
@@ -128,7 +157,10 @@ function main() {
   fs.writeFileSync(path.join(gapDir, 'index.html'), renderGapHub(gapHubShows, data.builtAt));
   console.log(`[build-show-pages] gap hub /${GAP_HUB_SLUG}/ · ${gapHubShows.length} shows · gap ${gapHubShows[0] ? gapHubShows[0].gap : 0} down to ${gapHubShows.length ? gapHubShows.at(-1).gap : 0}`);
 
-  fs.writeFileSync(SITEMAP_FILE, renderShowsSitemap(sitemapSeries.map(toIndexEntry), data.builtAt, HUB_SLUGS));
+  fs.writeFileSync(SITEMAP_FILE, renderShowsSitemap(
+    sitemapSeries.map(toIndexEntry), data.builtAt, HUB_SLUGS,
+    browsePages.map((p) => p.path),
+  ));
   console.log(`[build-show-pages] sitemap curated to top ${sitemapSeries.length} of ${series.length} series by votes; the rest stay reachable for app users but carry noindex,follow`);
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
