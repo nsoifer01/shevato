@@ -26,6 +26,21 @@ browser binary and takes minutes. Keeping them separate means CI stays fast and
 does not depend on a Chromium install, while this stays available locally and
 before a release.
 
+## Skipped checks
+
+A check reports `skip` when a precondition the repo cannot supply is missing.
+Skips are not failures and do not affect the exit code, but they are always
+listed so a partial run is never mistaken for a full one.
+
+The rising-shows dataset is the current case: `data.json` and
+`data-index.json` are gitignored and pulled from a GitHub release, so a clean
+clone has no shows and every finder assertion would fail for a reason that is
+not a bug. Those six checks skip with the fix in the message. To run them:
+
+```bash
+npm run fetch:rising-shows-data
+```
+
 ## Configuration
 
 | Variable | Default | Notes |
