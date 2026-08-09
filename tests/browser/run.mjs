@@ -82,9 +82,11 @@ try {
     results.push(...r);
     for (const x of r) {
       if (!x.pass) console.log(`  FAIL ${x.name}${x.detail ? '  [' + x.detail + ']' : ''}`);
+      else if (x.skipped) console.log(`  skip ${x.name}${x.detail ? '  [' + x.detail + ']' : ''}`);
     }
     const f = r.filter((x) => !x.pass).length;
-    console.log(`  ${r.length - f}/${r.length} passed`);
+    const sk = r.filter((x) => x.pass && x.skipped).length;
+    console.log(`  ${r.length - f - sk}/${r.length - sk} passed${sk ? `, ${sk} skipped` : ''}`);
   }
 } catch (e) {
   console.error('\nrunner error:', e.message);
@@ -94,8 +96,15 @@ try {
 }
 
 const failed = results.filter((r) => !r.pass);
+const skipped = results.filter((r) => r.pass && r.skipped);
+const ran = results.length - skipped.length;
 console.log(`\n${'='.repeat(52)}`);
-console.log(`BROWSER REGRESSION: ${results.length - failed.length}/${results.length} passed`);
+console.log(`BROWSER REGRESSION: ${ran - failed.length}/${ran} passed`
+  + (skipped.length ? `, ${skipped.length} skipped` : ''));
+if (skipped.length) {
+  console.log('\nSkipped (precondition missing, not a failure):');
+  for (const s of skipped) console.log(`  - ${s.name}${s.detail ? '  [' + s.detail + ']' : ''}`);
+}
 if (failed.length) {
   console.log('\nFailures:');
   for (const f of failed) console.log(`  - ${f.name}${f.detail ? '  [' + f.detail + ']' : ''}`);
