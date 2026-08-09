@@ -51,6 +51,19 @@
   // frame) when a momentum scroll or URL-bar resize hovered right at the line.
   var SHOW_THRESHOLD = 400;
   var HIDE_THRESHOLD = 320;
+
+  // Longest distance we let the browser animate on its own. Chrome gives
+  // `behavior: 'smooth'` a roughly FIXED duration (~1.5s) no matter how far it
+  // has to travel, so on a very tall page the per-frame step grows without
+  // limit. The shows index is 535,000px tall: that works out at ~5,600px per
+  // frame against a 900px viewport, so every frame skips six whole screens and
+  // the result reads as an instant teleport rather than a scroll.
+  //
+  // Above this distance we jump instantly to MAX_SMOOTH_DISTANCE and let the
+  // browser animate only the final stretch. That keeps the per-frame step near
+  // what an ordinary long page produces (~130px/frame), so the arrival at the
+  // top looks the same everywhere instead of varying with page height.
+  var MAX_SMOOTH_DISTANCE = 12000;
   var EDGE_GAP = 16;       // px gap between the button and the modal rect edge
   var MODAL_Z_INDEX = 11001; // above apps' modal panels (z up to 11000)
   // While a finger/pointer is pressing the button (and briefly after release,
@@ -226,6 +239,25 @@
 
     // The scroll-to-top action, shared by the touch/pointer activation and the
     // mouse click path.
+    // Instantly close the distance down to MAX_SMOOTH_DISTANCE so the animation
+    // that follows covers a sane span. No-op when already close enough, or when
+    // the motion is going to be instant anyway.
+    function shortenLongJourney(el, smooth) {
+      if (!smooth) return;
+      if (el) {
+        if (el.scrollTop > MAX_SMOOTH_DISTANCE) el.scrollTop = MAX_SMOOTH_DISTANCE;
+        return;
+      }
+      var doc = document.documentElement;
+      var body = document.body;
+      var current = window.pageYOffset || doc.scrollTop || body.scrollTop || 0;
+      if (current <= MAX_SMOOTH_DISTANCE) return;
+      // Set every candidate: which one actually holds the offset varies by page,
+      // which is the same reason the scroll code below touches all three.
+      if (doc.scrollTop > MAX_SMOOTH_DISTANCE) doc.scrollTop = MAX_SMOOTH_DISTANCE;
+      if (body.scrollTop > MAX_SMOOTH_DISTANCE) body.scrollTop = MAX_SMOOTH_DISTANCE;
+    }
+
     function scrollToTop() {
       var behavior = prefersReducedMotion() ? 'auto' : 'smooth';
       // Recompute the context at activation time rather than trusting the
@@ -234,12 +266,14 @@
       // an invisible element while the page stays put.
       var target = findModalContainer();
       if (target) {
+        shortenLongJourney(target, behavior === 'smooth');
         if (typeof target.scrollTo === 'function') {
           target.scrollTo({ top: 0, behavior: behavior });
         } else {
           target.scrollTop = 0;
         }
       } else {
+        shortenLongJourney(null, behavior === 'smooth');
         window.scrollTo({ top: 0, behavior: behavior });
         // The window helper reports a scrolled state from the document element
         // OR the body (some app states make BODY the scroller, e.g. fh2h with
