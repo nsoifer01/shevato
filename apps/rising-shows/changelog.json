@@ -1,6 +1,225 @@
 {
   "updates": [
     {
+      "builtAt": "2026-08-09T06:59:37.398Z",
+      "totals": {
+        "seasons": 66210,
+        "delta": 15
+      },
+      "shapeCounts": {
+        "mid-peak": 4636,
+        "rebound": 10084,
+        "rising": 2904,
+        "slow-burn": 4373,
+        "big-finale": 12121,
+        "u-shaped": 3091,
+        "rollercoaster": 14058,
+        "saved-best-for-last": 1543,
+        "front-loaded": 3469,
+        "declining": 1876,
+        "bad-finale": 4664,
+        "consistent": 2619,
+        "shape-drift": 1641
+      },
+      "shapeDeltas": {
+        "mid-peak": 1,
+        "rising": 5,
+        "slow-burn": -2,
+        "big-finale": -2,
+        "u-shaped": 1,
+        "rollercoaster": -3,
+        "saved-best-for-last": -1,
+        "front-loaded": -1,
+        "declining": 1,
+        "bad-finale": 1,
+        "shape-drift": 6
+      },
+      "added": [
+        {
+          "seriesId": "tt38264832",
+          "title": "Alley Cats",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2100976",
+          "title": "Impractical Jokers",
+          "season": 13,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt21908550",
+          "title": "Vadhandhi",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36955608",
+          "title": "Our Sticky Love",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41785451",
+          "title": "Affairs Not the Only Secret",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0081934",
+          "title": "Solo",
+          "season": 2,
+          "seasonYear": 1982
+        },
+        {
+          "seriesId": "tt0810500",
+          "title": "Bibin svijet",
+          "season": 3,
+          "seasonYear": 2007
+        },
+        {
+          "seriesId": "tt1166709",
+          "title": "Say Yes to the Dress",
+          "season": 13,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt28083272",
+          "title": "Betrayal",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt18968062",
+          "title": "Fixer to Fabulous: Welcome Inn",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt32896333",
+          "title": "No One Will Miss Us",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt33294281",
+          "title": "De bedste år",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42344158",
+          "title": "Paris Is Always A Good Idea",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38856819",
+          "title": "Be My Player Two",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43738667",
+          "title": "Eight Blocks",
+          "season": 1,
+          "seasonYear": 2025
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt0159876",
+          "title": "Great Performances",
+          "season": 42,
+          "from": 7,
+          "to": 8.23,
+          "delta": 1.23
+        },
+        {
+          "seriesId": "tt0200358",
+          "title": "Omnibus",
+          "season": 31,
+          "from": 8.6,
+          "to": 7.65,
+          "delta": -0.95
+        },
+        {
+          "seriesId": "tt1034201",
+          "title": "Britain's Got Talent",
+          "season": 9,
+          "from": 6.4,
+          "to": 5.54,
+          "delta": -0.86
+        },
+        {
+          "seriesId": "tt21764074",
+          "title": "Cranberry Sorbet",
+          "season": 4,
+          "from": 6.59,
+          "to": 7.41,
+          "delta": 0.82
+        },
+        {
+          "seriesId": "tt41672842",
+          "title": "Salish & Jordan Matter",
+          "season": 1,
+          "from": 4.14,
+          "to": 3.39,
+          "delta": -0.75
+        },
+        {
+          "seriesId": "tt32590226",
+          "title": "Laughter Chefs Unlimited Entertainment",
+          "season": 3,
+          "from": 5.73,
+          "to": 4.99,
+          "delta": -0.74
+        },
+        {
+          "seriesId": "tt22816510",
+          "title": "Travesuras de la Niña Mala",
+          "season": 1,
+          "from": 6.87,
+          "to": 7.47,
+          "delta": 0.6
+        },
+        {
+          "seriesId": "tt37522426",
+          "title": "A Killer Among Friends",
+          "season": 2,
+          "from": 7.13,
+          "to": 6.57,
+          "delta": -0.56
+        },
+        {
+          "seriesId": "tt29420686",
+          "title": "1670",
+          "season": 3,
+          "from": 7.44,
+          "to": 6.93,
+          "delta": -0.51
+        },
+        {
+          "seriesId": "tt0437741",
+          "title": "Project Runway",
+          "season": 22,
+          "from": 4.55,
+          "to": 4.08,
+          "delta": -0.47
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20966,
+        "avgRating": 1215,
+        "shapes": 221,
+        "episodeCount": 67,
+        "seriesRating": 309,
+        "overview": 5,
+        "poster": 2
+      }
+    },
+    {
       "builtAt": "2026-08-08T06:55:33.840Z",
       "totals": {
         "seasons": 66195,
@@ -6885,317 +7104,6 @@
         "poster": 9,
         "providers": 3,
         "overview": 8
-      }
-    },
-    {
-      "builtAt": "2026-07-10T09:33:16.139Z",
-      "totals": {
-        "seasons": 65706,
-        "delta": 22
-      },
-      "shapeCounts": {
-        "mid-peak": 4629,
-        "rebound": 10027,
-        "rising": 2908,
-        "slow-burn": 4364,
-        "big-finale": 11998,
-        "u-shaped": 3076,
-        "rollercoaster": 14006,
-        "saved-best-for-last": 1522,
-        "front-loaded": 3431,
-        "declining": 1853,
-        "bad-finale": 4630,
-        "consistent": 2607,
-        "shape-drift": 1613
-      },
-      "shapeDeltas": {
-        "rebound": -4,
-        "rising": 3,
-        "slow-burn": 13,
-        "big-finale": 14,
-        "u-shaped": 7,
-        "rollercoaster": -12,
-        "saved-best-for-last": 3,
-        "front-loaded": -3,
-        "declining": -5,
-        "bad-finale": -3,
-        "consistent": -6,
-        "shape-drift": 3
-      },
-      "added": [
-        {
-          "seriesId": "tt0139803",
-          "title": "Top of the Pops",
-          "season": 37,
-          "seasonYear": 2000
-        },
-        {
-          "seriesId": "tt29669561",
-          "title": "Markiplier - Five Nights at Freddy's",
-          "season": 7,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt28181816",
-          "title": "Consuelo",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt38262097",
-          "title": "The Villager of Level 999",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41276835",
-          "title": "Heroine? Saint? No, I'm an All-Works Maid (And Proud of It)!",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0071004",
-          "title": "Korg: 70,000 B.C.",
-          "season": 1,
-          "seasonYear": 1974
-        },
-        {
-          "seriesId": "tt12573102",
-          "title": "Basement Company",
-          "season": 1,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt1531068",
-          "title": "Alaska State Troopers",
-          "season": 7,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt1574247",
-          "title": "Oud België",
-          "season": 1,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt0087684",
-          "title": "A Married Man",
-          "season": 1,
-          "seasonYear": 1983
-        },
-        {
-          "seriesId": "tt9203928",
-          "title": "Zmurke",
-          "season": 1,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt21200262",
-          "title": "Evening Drink Style",
-          "season": 2,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt27434683",
-          "title": "Runes",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt31501409",
-          "title": "Solo las más",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt32552796",
-          "title": "Khirurg",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt3448272",
-          "title": "Kamigami no asobi",
-          "season": 1,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt0264985",
-          "title": "Kyllä isä osaa",
-          "season": 2,
-          "seasonYear": 1995
-        },
-        {
-          "seriesId": "tt7252086",
-          "title": "Patrick Willems Video Essays",
-          "season": 7,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt9594300",
-          "title": "Ikaw lamang",
-          "season": 1,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt10477870",
-          "title": "Drishtibhram",
-          "season": 1,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt12310832",
-          "title": "Official Bhootiyagiri",
-          "season": 1,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt29207711",
-          "title": "Classic Movies: The Story Of",
-          "season": 3,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt30459572",
-          "title": "Massive Engineering Mistakes",
-          "season": 1,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt43588311",
-          "title": "Bad Nam",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt3037954",
-          "title": "Leviathan: The Last Defense",
-          "season": 1,
-          "seasonYear": 2013
-        },
-        {
-          "seriesId": "tt8330932",
-          "title": "MTV Troll Police",
-          "season": 1,
-          "seasonYear": 2018
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt1178618",
-          "title": "Wallander",
-          "season": 3,
-          "seasonYear": 2012
-        },
-        {
-          "seriesId": "tt12511004",
-          "title": "Stampy's Lovely World",
-          "season": 6,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt12511004",
-          "title": "Stampy's Lovely World",
-          "season": 7,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt12511004",
-          "title": "Stampy's Lovely World",
-          "season": 8,
-          "seasonYear": 2016
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt10585070",
-          "title": "Panchali",
-          "season": 1,
-          "from": 7,
-          "to": 6.1,
-          "delta": -0.9
-        },
-        {
-          "seriesId": "tt27160073",
-          "title": "FGirl Island",
-          "season": 1,
-          "from": 7.55,
-          "to": 6.76,
-          "delta": -0.79
-        },
-        {
-          "seriesId": "tt14825858",
-          "title": "FBoy Island",
-          "season": 3,
-          "from": 7.35,
-          "to": 6.74,
-          "delta": -0.61
-        },
-        {
-          "seriesId": "tt14783642",
-          "title": "Saturday Morning Minions",
-          "season": 1,
-          "from": 8.37,
-          "to": 7.77,
-          "delta": -0.6
-        },
-        {
-          "seriesId": "tt34728191",
-          "title": "Shades",
-          "season": 1,
-          "from": 9.87,
-          "to": 9.33,
-          "delta": -0.54
-        },
-        {
-          "seriesId": "tt4858114",
-          "title": "Hotel Transylvania: The Series",
-          "season": 2,
-          "from": 6.49,
-          "to": 7,
-          "delta": 0.51
-        },
-        {
-          "seriesId": "tt29376692",
-          "title": "Bizon. Delo manekenshchitsy",
-          "season": 1,
-          "from": 6.97,
-          "to": 6.47,
-          "delta": -0.5
-        },
-        {
-          "seriesId": "tt11541884",
-          "title": "Damaged 2",
-          "season": 1,
-          "from": 8.47,
-          "to": 7.98,
-          "delta": -0.49
-        },
-        {
-          "seriesId": "tt8130522",
-          "title": "Love Lust and Confusion",
-          "season": 2,
-          "from": 8.08,
-          "to": 8.57,
-          "delta": 0.49
-        },
-        {
-          "seriesId": "tt35677100",
-          "title": "Privileges",
-          "season": 1,
-          "from": 6.78,
-          "to": 6.33,
-          "delta": -0.45
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 20909,
-        "avgRating": 1348,
-        "shapes": 221,
-        "episodeCount": 199,
-        "seriesRating": 356,
-        "poster": 3,
-        "overview": 6
       }
     }
   ]
