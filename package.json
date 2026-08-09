@@ -4,6 +4,7 @@
   "type": "commonjs",
   "scripts": {
     "test": "node --test apps/gym-tracker/tests/ apps/football-h2h/tests/ apps/rising-shows/tests/ apps/mario-kart/tests/ apps/arena/tests/ apps/maptap-rivals/tests/ apps/trip-planner/tests/ netlify/functions/tests/ sync-system/tests/ assets/js/tests/",
+    "test:browser": "node --experimental-websocket tests/browser/run.mjs",
     "test:gym": "node --test apps/gym-tracker/tests/",
     "test:football": "node --test apps/football-h2h/tests/",
     "test:rising-shows": "node --test apps/rising-shows/tests/",
