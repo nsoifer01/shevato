@@ -2046,16 +2046,24 @@
           return;
         }
         lastDeleted = { item: it, idx, tripId: trip.id };
-        const ok = save(); render();
-        if (ok) toast(`Deleted "${it.title}"`, undoDelete);
+        const ok = save();
+        const snapshot = lastSaved;
+        render();
+        // only safe while ours is still the newest snapshot; anything saved
+        // since would be what undo() actually reverses - same inline guard
+        // clearDay/bulkDelete/duplicateDay use, so a stale delete toast can
+        // never resurrect an item over a save that happened after it.
+        if (ok) toast(`Deleted "${it.title}"`, () => { if (lastSaved === snapshot) undoDelete(); });
       });
       return;
     }
     const idx = trip.items.findIndex(x => x.id === id);
     lastDeleted = { item: it, idx, tripId: trip.id };
     trip.items.splice(idx, 1);
-    const ok = save(); render();
-    if (ok) toast(`Deleted "${it.title}"`, undoDelete);
+    const ok = save();
+    const snapshot = lastSaved;
+    render();
+    if (ok) toast(`Deleted "${it.title}"`, () => { if (lastSaved === snapshot) undoDelete(); });
   }
 
   function undoDelete() {
@@ -2139,7 +2147,7 @@
       return;
     }
     const source = dupDaySource;
-    closeOverlays();
+    closeAllOverlays();
     duplicateDay(source, target);
   }
 
@@ -3271,7 +3279,21 @@
       const el = $('#splitErr');
       if (el) { el.textContent = splitErr; el.hidden = false; }
     }
-    if (Object.keys(errs).length) return;
+    if (Object.keys(errs).length) {
+      // The red field and its message are the whole answer only if you can see
+      // them: without this, a blocked save left focus wherever it was (normally
+      // #inTitle, from opening the modal), so a keyboard or screen-reader
+      // traveller was refused and never told where. Focus lands on the first
+      // field that needs fixing, in document order, and only AFTER the messages
+      // above are rendered, so the field is already carrying its error when
+      // focus arrives on it. The split is looked up on its own because its
+      // message hangs off a node inside the fieldset rather than off a .field
+      // (see clearFieldErrors), and its rows sit after every other field anyway.
+      const firstInvalid = document.querySelector('#itemForm .field.invalid input, #itemForm .field.invalid select, #itemForm .field.invalid textarea')
+        || (errs.split ? $('#splitMode .split-amt') : null);
+      if (firstInvalid) firstInvalid.focus();
+      return;
+    }
 
     const trip = activeTrip();
     if (ui.editingId) {
@@ -3283,7 +3305,7 @@
       // into the console with the modal still sitting there.
       if (idx < 0) {
         toastError('That item is no longer in this trip, so nothing was saved');
-        closeOverlays();
+        closeAllOverlays();
         return;
       }
       it.createdAt = trip.items[idx].createdAt;
@@ -3296,7 +3318,7 @@
     // is renumbered, and a row now tying with nobody drops the field entirely
     normalizeOrders(trip.items);
     save(ui.editingId ? 'Item updated' : 'Item added');
-    closeOverlays();
+    closeAllOverlays();
     ui.flashId = it.id;
     render();
   }
@@ -3348,7 +3370,7 @@
     } else {
       const scope = document.querySelector('input[name="shiftScope"]:checked').value;
       const anchor = trip.items.find(x => x.id === ui.shiftTarget);
-      if (!anchor) { closeOverlays(); return; }
+      if (!anchor) { closeAllOverlays(); return; }
       if (scope === 'one') targets = [anchor];
       else if (scope === 'all') targets = trip.items;
       else {
@@ -3363,7 +3385,7 @@
     if (!shiftFits(targets, days)) { shiftError(rangeMsg); return; }
     const moved = applyDayShift(targets, days);
     save(`Shifted ${moved} item${moved === 1 ? '' : 's'} by ${days > 0 ? '+' : ''}${days} day${Math.abs(days) === 1 ? '' : 's'}`);
-    closeOverlays();
+    closeAllOverlays();
     if (ui.shiftTarget) ui.flashId = ui.shiftTarget;
     render();
   }
@@ -3548,7 +3570,7 @@
       if (plan && plan.days) applyDayShift(t.items, plan.days);
     }
     save(ui.tripModalMode === 'new' ? `Trip "${name}" created` : 'Trip updated');
-    closeOverlays();
+    closeAllOverlays();
     render();
   }
 
@@ -3653,7 +3675,7 @@
     // over whatever edit came before this dialog was opened
     const changed = JSON.stringify(trip.essentials || null) !== before;
     save('Trip essentials saved', changed ? undo : null);
-    closeOverlays();
+    closeAllOverlays();
     syncUndoButtons();
   }
 
@@ -3718,7 +3740,7 @@
   }
 
   // The two header popovers borrow the modal focus contract (openOverlay /
-  // closeOverlays): whoever opened one gets the focus back when it closes, so
+  // closeOverlay): whoever opened one gets the focus back when it closes, so
   // dismissing search does not strand a keyboard user on a now-hidden input.
   // Only ONE of them can be open at a time (each opener closes the other), so
   // one slot is enough. Paths that deliberately hand focus somewhere else clear
@@ -7139,7 +7161,10 @@
     if (!res.ok) {
       // 503 not_configured is the default state: the owner has no Places key,
       // so the feature switches itself off for the session and costs nothing.
-      if (res.status === 503 || res.status === 403 || res.status === 400 || res.status === 405) placesOff = true;
+      // 501 joins 405 because it means the same thing from a server that has
+      // no functions at all (python -m http.server answers POST with 501):
+      // retrying every 60s only re-logs the browser's network error.
+      if (res.status === 503 || res.status === 403 || res.status === 400 || res.status === 405 || res.status === 501) placesOff = true;
       else placesPausedUntil = Date.now() + (res.status === 429 ? 3600000 : 60000);
       return false;
     }
@@ -7706,23 +7731,47 @@
     // which buries its heading under the fixed site header
     o.querySelector('.modal').focus({ preventScroll: true });
   }
-  function closeOverlays() {
-    const wasOpen = document.querySelector('.overlay.open');
+  // Closes ONE layer. Dismissing by hand (Escape, the backdrop, a Cancel
+  // button) used to strip .open off every open overlay at once, so a confirm
+  // stacked over the item modal took the modal down with it and one Escape
+  // dismissed two layers.
+  function closeOverlay(o) {
+    if (!o || !o.classList.contains('open')) return;
     // The picker popups are children of <body>, not of the modal, so closing
     // the overlay does not take them with it: they would hang over the board.
     [...cbOpen].forEach(cb => cb.close());
     // ui.editingId is the item dialog's own state and outlived it, so between a
     // Cancel and the next Add, "which item is being edited" answered with the
     // last one edited. Cleared here with the object URLs, the same way
-    // ui.confirmAction is cleared below.
-    if (wasOpen && wasOpen.id === 'itemOverlay') { revokeDocUrls(); ui.editingId = null; }
-    document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open'));
+    // ui.confirmAction is cleared below. Both are scoped to the dialog that
+    // owns them now that layers close one at a time: dismissing a confirm must
+    // not wipe the editing state of the item modal still open underneath it.
+    if (o.id === 'itemOverlay') { revokeDocUrls(); ui.editingId = null; }
+    if (o.id === 'confirmOverlay') ui.confirmAction = null;
+    o.classList.remove('open');
+    const uncovered = topOverlay();
+    if (uncovered) {
+      // Only the outermost open records overlayReturnFocus (see openOverlay), so
+      // a layer closing off the top of a stack has no opener of its own to hand
+      // focus back to. Focus goes to the modal it just uncovered, the same place
+      // opening that modal put it. Left behind on a button of the layer that is
+      // now hidden, focus drops to <body> and the Tab trap goes with it.
+      uncovered.querySelector('.modal').focus({ preventScroll: true });
+      return;
+    }
     document.body.classList.remove('tp-modal-open');
-    ui.confirmAction = null;
-    if (wasOpen && overlayReturnFocus && document.contains(overlayReturnFocus) && typeof overlayReturnFocus.focus === 'function') {
+    if (overlayReturnFocus && document.contains(overlayReturnFocus) && typeof overlayReturnFocus.focus === 'function') {
       overlayReturnFocus.focus();
     }
     overlayReturnFocus = null;
+  }
+  function closeTopOverlay() { closeOverlay(topOverlay()); }
+  // Everything, for the programmatic paths that change what is on screen
+  // underneath (a save, a trip switch): topmost first, so each layer runs its
+  // own teardown and only the last one out hands focus back to the opener.
+  function closeAllOverlays() {
+    let o;
+    while ((o = topOverlay())) closeOverlay(o);
   }
 
   let lastDeleted = null;
@@ -7748,7 +7797,7 @@
   $('#routeBtn').addEventListener('click', () => openRouteModal('', ''));
   $('#visaBtn').addEventListener('click', openVisaModal);
   $('#assistBtn').addEventListener('click', () => openAssist(null));
-  // openOverlay/closeOverlays own the focus contract, so the shortcut list gets
+  // openOverlay/closeOverlay own the focus contract, so the shortcut list gets
   // Escape, backdrop click, the Close button and focus-back-to-opener for free.
   $('#shortcutsBtn').addEventListener('click', () => openOverlay('#shortcutsOverlay'));
   $('#assistCloseBtn').addEventListener('click', closeAssist);
@@ -8158,7 +8207,7 @@
 
   $('#confirmYes').addEventListener('click', () => {
     const fn = ui.confirmAction;
-    closeOverlays();
+    closeAllOverlays();
     if (fn) fn();
   });
 
@@ -8269,9 +8318,13 @@
   });
 
   document.querySelectorAll('.overlay').forEach(o => {
-    o.addEventListener('mousedown', e => { if (e.target === o) closeOverlays(); });
+    // the backdrop that was hit belongs to the topmost layer by construction,
+    // but it closes THAT layer rather than every open one
+    o.addEventListener('mousedown', e => { if (e.target === o) closeOverlay(o); });
   });
-  document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeOverlays));
+  document.querySelectorAll('[data-close]').forEach(b => {
+    b.addEventListener('click', () => closeOverlay(b.closest('.overlay')));
+  });
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       // one keypress dismisses one layer, topmost first: a row being dragged
@@ -8279,7 +8332,7 @@
       // modals (z 90), then the assistant panel (80), then the header popovers
       // (search 41, menu 40)
       if (dragCtx) { cancelRowDrag(); return; }
-      if (document.querySelector('.overlay.open')) { closeOverlays(); return; }
+      if (topOverlay()) { closeTopOverlay(); return; }
       if (!$('#assistPanel').hidden) { closeAssist(); return; }
       if ($('#tripSearch').classList.contains('open')) { closeTripSearch(); return; }
       if ($('#tripMenu').classList.contains('open')) { closeTripMenu(); return; }
