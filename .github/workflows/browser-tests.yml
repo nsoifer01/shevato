@@ -1,0 +1,50 @@
+name: browser tests
+
+# Runs the end-to-end browser suite on pull requests, so interaction and layout
+# regressions are caught before merge rather than by someone remembering to run
+# it locally.
+#
+# Separate from `tests` on purpose: that workflow is pure Node and finishes in
+# seconds, while this one needs a browser and takes minutes. Keeping them apart
+# means a slow browser run never delays the fast feedback from unit tests.
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    # The suite drives 15 pages with real timing; well above the ~4 min it takes,
+    # but low enough that a hung browser fails instead of burning a full hour.
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Use Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+
+      # Chrome ships on the GitHub runner image. Resolve it rather than assuming
+      # a name, so an image change surfaces as a clear error here instead of a
+      # confusing timeout waiting for a debugging port that never opens.
+      - name: Resolve browser
+        run: |
+          set -e
+          for c in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$c" >/dev/null 2>&1; then
+              echo "CHROME_BIN=$c" >> "$GITHUB_ENV"
+              echo "Using $c: $("$c" --version)"
+              exit 0
+            fi
+          done
+          echo "No Chrome/Chromium found on the runner image." >&2
+          exit 1
+
+      # The rising-shows dataset is gitignored and lives on a GitHub release, so
+      # it is absent here. The suite skips its six data-dependent checks and
+      # reports them; every other app is fully exercised. Downloading 111 MB on
+      # every pull request is not worth those six assertions.
+      - name: Run browser regression suite
+        run: npm run test:browser
