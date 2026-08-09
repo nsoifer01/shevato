@@ -33,8 +33,13 @@
 .back-to-top:active,
 .back-to-top:hover:active {
   position: fixed;
-  bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
-  right: calc(1.25rem + env(safe-area-inset-right, 0px));
+  /* px, not rem: this button renders on every page of the site, and the two
+     page families disagree on the root font size (main.css pages compute
+     14.67px, the generated static pages keep the 16px default), so a rem
+     offset put the button 18.33px from the corner on one family and 20px on
+     the other. One shared component gets one position. */
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  right: calc(20px + env(safe-area-inset-right, 0px));
   z-index: 9000;
   display: -webkit-flex;
   display: flex;

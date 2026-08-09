@@ -48,7 +48,8 @@
 
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { checkQuota, releaseQuota, DEFAULT_LIMITS, OWNER_LIMITS } from './lib/tp-places-quota.mjs';
-import { updateUsage } from './lib/tp-places-usage.mjs';
+import { updateUsage } from './lib/blob-cas.mjs';
+import { originAllowed, json, upstreamSignal } from './lib/tp-http.mjs';
 import { resolveQueries } from './lib/tp-places-lookup.mjs';
 import { isGenericQuery } from './lib/tp-places-match.mjs';
 
@@ -176,17 +177,6 @@ export default async function handler(req) {
   return json({ results, attribution: ATTRIBUTION }, 200);
 }
 
-function originAllowed(req) {
-  const src = req.headers.get('origin') || req.headers.get('referer') || '';
-  if (!src) return false;
-  try {
-    const u = new URL(src);
-    if (u.protocol === 'https:' && u.hostname === 'shevato.com') return true;
-    if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') return true;
-    return false;
-  } catch { return false; }
-}
-
 // Exported for the unit tests. Duplicate queries collapse to one entry: a day
 // plan often proposes the same konbini or hotel bar twice, and every duplicate
 // would otherwise be a second billed lookup within the same request.
@@ -238,6 +228,10 @@ async function findPlaceId(key, query) {
       'X-Goog-FieldMask': SEARCH_FIELD_MASK,
     },
     body: JSON.stringify({ textQuery: query, pageSize: 1, languageCode: 'en' }),
+  
+    // Deadline under Netlify's 10s ceiling; see lib/tp-http.mjs. One hung
+    // lookup in a batch then costs 9s, not the whole invocation.
+    signal: upstreamSignal(),
   });
   if (!res.ok) {
     // function logs only; body helps diagnose, key never logged
@@ -254,6 +248,7 @@ async function findPlaceId(key, query) {
 async function fetchDetails(key, placeId) {
   const res = await fetch(PLACES_HOST + '/places/' + encodeURIComponent(placeId) + '?languageCode=en', {
     headers: { 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': DETAILS_FIELD_MASK },
+    signal: upstreamSignal(),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -274,11 +269,4 @@ async function fetchDetails(key, placeId) {
     lat: typeof loc.latitude === 'number' ? loc.latitude : null,
     lon: typeof loc.longitude === 'number' ? loc.longitude : null,
   };
-}
-
-function json(obj, status) {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
 }

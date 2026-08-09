@@ -762,7 +762,17 @@ function loadExtrasInBackground() {
   fetch('data/show-modal-extras.json')
     .then((res) => (res && res.ok ? res.json() : null))
     .then((extras) => {
-      if (!extras) return;
+      // The guard flag is set BEFORE the fetch settles (deliberately: it is
+      // what stops a second boot-time call racing the first), so a failure
+      // must hand the flag back or one flaky request means no cast strip and
+      // no episode titles for the rest of the session. Modal open retries via
+      // the loadExtrasInBackground() call there, i.e. exactly when the data
+      // is next wanted, so a dead network costs one failed request per open
+      // rather than a background retry loop.
+      if (!extras) {
+        extrasLoaded = false;
+        return;
+      }
       // Kept so applyDetail can enrich a show's episodes whenever its detail
       // file arrives. Detail and extras now load independently and in either
       // order, so whichever lands second does the joining.
@@ -794,7 +804,12 @@ function loadExtrasInBackground() {
         }
       } catch (e) { /* refresh is best-effort; the data is attached either way */ }
     })
-    .catch(() => { /* extras are optional: modals degrade, grid is unaffected */ });
+    .catch(() => {
+      // Network-level failure: hand the guard flag back (see above) so the
+      // next modal open retries. Extras stay optional either way: modals
+      // degrade, the grid is unaffected.
+      extrasLoaded = false;
+    });
 }
 
 /**
@@ -829,8 +844,14 @@ const detailCache = new Map();
 function ensureDetail(seriesId) {
   if (!seriesId) return Promise.resolve(null);
   if (detailCache.has(seriesId)) return detailCache.get(seriesId);
-  // An unsplit dataset already carries episodes; nothing to fetch.
-  const anyLoaded = dataset.matches.some((m) => m.seriesId === seriesId && Array.isArray(m.episodes));
+  // An unsplit dataset already carries episodes; nothing to fetch. The
+  // non-empty check matters: after a FAILED fetch the render paths coerce
+  // `m.episodes = []` so they can draw a degraded modal, and treating that
+  // empty array as "loaded" made this guard cache a resolved-null and defeat
+  // the retry the failure eviction just paid for. A genuinely loaded season
+  // always has at least one rated episode, so empty means "not loaded".
+  const anyLoaded = dataset.matches.some((m) => m.seriesId === seriesId
+    && Array.isArray(m.episodes) && m.episodes.length > 0);
   if (anyLoaded) {
     const done = Promise.resolve(null);
     detailCache.set(seriesId, done);
@@ -839,7 +860,15 @@ function ensureDetail(seriesId) {
   const p = fetch(`data/detail/${encodeURIComponent(seriesId)}.json`)
     .then((res) => (res && res.ok ? res.json() : null))
     .then((detail) => {
-      if (!detail || !detail.seasons) return null;
+      // A failed or empty fetch must NOT stay cached: the promise below is
+      // stored before it settles, so without this eviction one flaky request
+      // pinned "no episodes" for the rest of the session. Evicting means the
+      // next modal open simply retries; a repeat failure costs one request
+      // per open, which is bounded and beats permanently degraded detail.
+      if (!detail || !detail.seasons) {
+        detailCache.delete(seriesId);
+        return null;
+      }
       for (const m of dataset.matches) {
         if (m.seriesId !== seriesId) continue;
         const sRec = detail.seasons[String(m.season)];
@@ -854,7 +883,11 @@ function ensureDetail(seriesId) {
       }
       return detail;
     })
-    .catch(() => null);
+    .catch(() => {
+      // Same eviction on a network-level failure (offline, aborted).
+      detailCache.delete(seriesId);
+      return null;
+    });
   detailCache.set(seriesId, p);
   return p;
 }
@@ -1373,6 +1406,14 @@ function aboveImdbBadge(m) {
 // --- curve drawing (shared) ---
 
 function drawCurve(svg, episodes, W, H, opts) {
+  // No episodes, no curve. On the healthy path every caller has episode
+  // arrays by the time it draws, but a failed detail fetch leaves them
+  // undefined/empty, and the path math below indexes points[0] and
+  // points[length-1]: with zero points that is a TypeError which aborted
+  // openShowModal entirely, so a traveller on a flaky network got NO modal
+  // instead of a modal with blank sparklines. An empty svg degrades; a
+  // throw here takes the whole render down with it.
+  if (!Array.isArray(episodes) || episodes.length === 0) return;
   // Charts with hover dots need a small inset so the dots don't get
   // clipped at the viewport edge. Sparklines without dots (the list-view
   // row and the show-modal per-season mini-spark) pass padX=0 so the
@@ -1441,7 +1482,9 @@ function drawCurveAnnotations(svg, episodes, shapes) {
 
   const W = 600, H = 180;
   const padXLeft = 36, padXRight = 4, padY = 6;
-  const n = episodes.length;
+  // Same guard as drawCurve: episodes may be missing after a failed detail
+  // fetch, and annotations over no curve are meaningless anyway.
+  const n = Array.isArray(episodes) ? episodes.length : 0;
   if (n < 2) return;
   const ratings = episodes.map((e) => e.rating);
   const lo = Math.max(0, Math.min(...ratings) - 0.3);
@@ -1810,6 +1853,11 @@ function drawSeasonOverlay(svg, seasons, W, H) {
   // Wipe previous content — this SVG is reused across openShowModal calls.
   while (svg.firstChild) svg.removeChild(svg.firstChild);
   if (!seasons.length) return [];
+  // A failed detail fetch leaves every season's episodes empty; lo/hi would
+  // stay at +/-Infinity and the axis gridlines render with NaN coordinates
+  // (one console error per attribute). An empty overlay says the same thing
+  // more quietly, and the modal open retries the fetch.
+  if (!seasons.some((s) => Array.isArray(s.episodes) && s.episodes.length > 0)) return [];
 
   let lo = Infinity, hi = -Infinity;
   for (const s of seasons) for (const e of s.episodes) {
@@ -2035,7 +2083,7 @@ function drawCompareChart(svg, seriesEntries, W, H) {
       dot.style.left = `${xPct(x)}%`;
       dot.style.top = `${yPct(y)}%`;
       dot.style.background = color;
-      dot.title = `${title} — S${s.season}: avg ${s.avgRating.toFixed(1)}`;
+      dot.title = `${title}, S${s.season}: avg ${s.avgRating.toFixed(1)}`;
       overlay.appendChild(dot);
       // For a lone series, call out each season's value above its dot.
       if (single) {
@@ -2221,6 +2269,8 @@ function goBackModalView() {
 // await resolves instantly on a repeat open (memoised in detailCache) and on
 // an unsplit dataset. Callers are fire-and-forget and do not need the promise.
 async function openModal(m, opts = {}) {
+  // Extras retry point, same as openShowModal; no-op when already loaded.
+  loadExtrasInBackground();
   await ensureDetail(m.seriesId);
   if (!Array.isArray(m.episodes)) m.episodes = [];
   pushModalHistory(opts, `season:${m.seriesId}:${m.season}`);
@@ -2453,6 +2503,9 @@ async function openShowModal(seriesId, opts = {}) {
     .sort((a, b) => a.season - b.season);
   if (seasons.length === 0) return;
 
+  // The extras loader hands its guard flag back on failure; this is its retry
+  // point. A no-op in the common case where the boot-time load succeeded.
+  loadExtrasInBackground();
   // Awaited before any rendering so every season row has its episodes. One
   // fetch covers the whole series, and it is memoised, so reopening is free.
   await ensureDetail(seriesId);

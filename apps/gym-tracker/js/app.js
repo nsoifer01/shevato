@@ -248,7 +248,7 @@ class GymTrackerApp {
             console.error(`Failed to load ${label}:`, error);
             // Lazily import-free toast — helpers.showToast is already in scope.
             try {
-                showToast(`Could not load ${label} — that section reset to empty.`, 'error', 5000);
+                showToast(`Could not load ${label}, so that section reset to empty.`, 'error', 5000);
             } catch (_) { /* toast layer not ready yet on first paint */ }
             return fallback;
         }
@@ -437,7 +437,7 @@ class GymTrackerApp {
                 // the top of the page, not wherever they had scrolled to.
                 window.scrollTo(0, 0);
                 if (this.programs.length === 0) {
-                    showToast('Create a program first — then pick it to start a workout.', 'info', 4000);
+                    showToast('Create a program first, then pick it to start a workout.', 'info', 4000);
                     this.viewControllers.programs?.createProgramFromElsewhere();
                 } else {
                     this.showView('workout');

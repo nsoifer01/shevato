@@ -319,7 +319,7 @@ class CalendarView {
                     </div>
                     ${scheduledHTML}
                     <p class="calendar-detail-empty">
-                        <i class="fas fa-bed"></i> Rest day — nothing recorded for this date.
+                        <i class="fas fa-bed"></i> Rest day. Nothing recorded for this date.
                     </p>
                 </div>
             `;

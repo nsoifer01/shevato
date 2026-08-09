@@ -286,7 +286,7 @@
     const isYaml = f.filename.endsWith('.yml');
     const kind = state.outputMode === 'ids' ? 'IMDb IDs' : (state.outputMode === 'overlays' ? 'overlay shape buckets' : 'series');
     els.outputMeta.innerHTML = `
-      <span><strong>${f.filename}</strong> — ${f.metaCount.toLocaleString()} ${f.metaUnit}</span>
+      <span><strong>${f.filename}</strong>: ${f.metaCount.toLocaleString()} ${f.metaUnit}</span>
       <span>${isYaml ? 'Kometa YAML' : 'plain text'} • confidence ≥ ${state.confidence.toFixed(2)}</span>
     `;
   }

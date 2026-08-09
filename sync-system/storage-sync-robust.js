@@ -27,7 +27,8 @@ import {
   sanitiseForFirestore,
   estimatePayloadBytes,
   sameKeySet,
-  decideRemoteChange
+  decideRemoteChange,
+  requeueFailedWrites
 } from './sync-helpers.mjs';
 
 // Configuration
@@ -702,10 +703,10 @@ class StorageSyncManager {
         state.retryCount++;
         console.log(`🔄 Retrying write flush (${state.retryCount}/${MAX_RETRY_ATTEMPTS})`);
         
-        // Re-queue failed writes
-        for (const [key, value] of writes) {
-          queue.set(key, value);
-        }
+        // Re-queue failed writes, but never OVER a newer entry the user made
+        // while this flush was in flight; see requeueFailedWrites for the
+        // data-loss race this guards against.
+        requeueFailedWrites(queue, writes);
         
         // Retry with exponential backoff
         setTimeout(() => this.flushWrites(state), RETRY_DELAY_MS * state.retryCount);

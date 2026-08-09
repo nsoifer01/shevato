@@ -17,6 +17,8 @@
 // linked to any other project leaves this endpoint on 503.
 
 import { checkQuota } from './lib/tp-assist-quota.mjs';
+import { updateUsage } from './lib/blob-cas.mjs';
+import { originAllowed, json, upstreamSignal } from './lib/tp-http.mjs';
 // SINGLE SOURCE OF TRUTH for the assistant contract. This used to be a
 // hand-copied SYSTEM_PREAMBLE, which meant Tier 3 silently kept the old shape
 // every time the client contract changed. trip-logic.js is a classic script
@@ -129,15 +131,21 @@ export default async function handler(req) {
   if (!geminiKey) return json({ error: 'not_configured' }, 503);
 
   // (5) Quota check against the usage blob; rejected calls never hit upstream.
+  // The reservation is an etag-conditional write (lib/blob-cas.mjs), the same
+  // pattern tp-places uses: a plain get + setJSON let two PARALLEL requests
+  // read the same counters and the later write erase the earlier reservation,
+  // so a concurrent burst walked straight through the daily caps. A rejection
+  // reads the counters but writes nothing; sustained CAS contention fails
+  // closed, because many writers fighting over this one blob is exactly the
+  // load the quota exists to stop.
   const now = Date.now();
-  const usage = (await store.get(USAGE_KEY, { type: 'json' })) || {};
-  const q = checkQuota(usage, clamped.clientId, now);
+  const reserved = await updateUsage(store, USAGE_KEY, usage => {
+    const q = checkQuota(usage, clamped.clientId, now);
+    return { write: q.allowed ? q.usage : null, result: q };
+  });
+  if (!reserved.ok) return json({ error: 'quota_exceeded', scope: 'contention' }, 429);
+  const q = reserved.result;
   if (!q.allowed) return json({ error: 'quota_exceeded', scope: q.scope }, 429);
-
-  // Reserve the slot BEFORE the upstream call so a burst of parallel requests
-  // can't overrun the limit; the minor cost is that a failed upstream still
-  // counts against the quota.
-  await store.setJSON(USAGE_KEY, q.usage);
 
   // (6) Build the system instruction server-side from the pinned constant plus
   // the client-supplied trip context (messages were already role-filtered).
@@ -163,17 +171,6 @@ export default async function handler(req) {
 
   // (9) Success.
   return json({ reply }, 200);
-}
-
-function originAllowed(req) {
-  const src = req.headers.get('origin') || req.headers.get('referer') || '';
-  if (!src) return false;
-  try {
-    const u = new URL(src);
-    if (u.protocol === 'https:' && u.hostname === 'shevato.com') return true;
-    if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') return true;
-    return false;
-  } catch { return false; }
 }
 
 function clampBody(body) {
@@ -233,6 +230,11 @@ async function callGemini(key, sys, contents) {
       contents,
       generationConfig: GENERATION_CONFIG,
     }),
+    // A hung upstream must fail inside Netlify's 10s ceiling so the browser
+    // gets our JSON error (and its "try again / Tier 1" fallback UI), not a
+    // platform gateway page. The abort surfaces as a TypeError from fetch and
+    // takes the same 502 path as any other upstream failure.
+    signal: upstreamSignal(),
   });
   if (!res.ok) {
     // function logs only; body helps diagnose, key never logged
@@ -254,11 +256,4 @@ async function callGemini(key, sys, contents) {
     console.error('tp-assist gemini truncated', JSON.stringify(data.usageMetadata || {}));
   }
   return out.text;
-}
-
-function json(obj, status) {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
 }
