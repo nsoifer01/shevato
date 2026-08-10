@@ -591,7 +591,10 @@
                 <span class="globe-drop-prompt-label">Where is</span>
                 <strong id="globe-drop-target-name">—</strong><span class="globe-drop-prompt-country" id="globe-drop-target-country"></span>?
               </p>
-              <p class="globe-drop-prompt-hints" id="globe-drop-prompt-hints" hidden></p>
+              <!-- Never [hidden]: the line keeps its reserved height so a
+                   location without region hints doesn't shift the globe
+                   (see .globe-drop-prompt-hints min-height). -->
+              <p class="globe-drop-prompt-hints" id="globe-drop-prompt-hints"></p>
               <span class="globe-drop-difficulty-chip" id="globe-drop-difficulty-chip" hidden></span>
             </header>
 
@@ -624,28 +627,14 @@
               <ol class="mini-board-list" id="mini-board-list-globe-drop"></ol>
             </section>
 
-            <!-- Round-by-round breakdown. Populated by app.js after the
-                 first round resolves; one row per completed round
-                 showing each player's score for that round. Sits
-                 alongside the live standings above (cumulative). -->
-            <section class="rounds-history-board" id="rounds-history-board" hidden>
-              <header class="mini-board-head">
-                <h3>Rounds so far</h3>
-              </header>
-              <!-- One row per player. Each round pill carries everything:
-                   R#: base × multiplier (final). No separate per-location
-                   rows. Populated by renderRoundsHistoryBoard. -->
-              <div class="rounds-history-scoreboard" id="rounds-history-scoreboard"></div>
-            </section>
-
             <!-- B11: the empty #globe-drop-hint paragraph was removed. It was
                  un-hidden on every new question but no code ever set its text,
                  so it rendered as a blank line; hints live in
                  #globe-drop-prompt-hints. -->
-            <!-- Status element kept (display:none) so JS callsites don't
-                 crash. Action bar removed by request - phase feedback
-                 lives in the reveal panel + visual pin. -->
-            <p class="answer-status globe-drop-status" id="globe-drop-status" hidden></p>
+            <!-- Wave 2 item 7: the display:none #globe-drop-status paragraph
+                 was removed. Wave 1 moved the verdict line into the reveal
+                 panel, and every remaining write to it ("Pin placed…") was
+                 already invisible; transient messages use showToast. -->
             <!-- Wrapper holds the globe + overlay UI as siblings; globe.gl
                  owns the inner contents of #globe-drop-map (canvas) so
                  the FAB stack + timer overlay + reveal panel MUST live
@@ -661,11 +650,12 @@
               <section class="globe-drop-reveal" id="globe-drop-reveal" hidden>
                 <div class="globe-drop-reveal-head">
                   <p class="globe-drop-reveal-distance" id="globe-drop-reveal-distance"></p>
-                  <div class="globe-drop-countdown" id="globe-drop-countdown" hidden>
-                    <span class="globe-drop-countdown-num" id="globe-drop-countdown-num">5</span>
-                    <span class="globe-drop-countdown-label">to next</span>
-                  </div>
                 </div>
+                <!-- Verdict line ("Bullseye!", "Not bad." ...). Lands a beat
+                     after the distance count-up. It used to be written into
+                     the display:none #globe-drop-status, so it never rendered
+                     at all. -->
+                <p class="globe-drop-reveal-sentiment" id="globe-drop-reveal-sentiment" hidden></p>
                 <p class="globe-drop-reveal-trivia" id="globe-drop-reveal-trivia" hidden></p>
                 <!-- Always-visible Wikipedia escape hatch. Wired up by
                      drawGlobeDropReveal whenever the reveal opens so
@@ -693,10 +683,11 @@
                 </svg>
                 <span class="game-timer-num" id="globe-drop-timer-num">120</span>
               </div>
-              <!-- Floating action buttons. Auto-hidden via CSS :has()
-                   until #globe-drop-clear-btn loses its [hidden] (i.e.
-                   a pin has been placed). -->
-              <div class="globe-drop-fab-stack" id="globe-drop-fab-stack">
+              <!-- Floating action buttons. Hidden until a pin is placed;
+                   setClearBtnVisible() owns the [hidden] on this stack so
+                   the pair can animate in and out (the old CSS :has()
+                   collapse could only pop). -->
+              <div class="globe-drop-fab-stack" id="globe-drop-fab-stack" hidden>
                 <button type="button" class="globe-drop-fab globe-drop-fab-ghost" id="globe-drop-clear-btn" hidden aria-label="Clear pin">
                   <svg class="globe-drop-fab-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                   <span>Clear pin</span>
@@ -707,7 +698,23 @@
                 </button>
               </div>
             </div>
-            <!-- Nothing below the globe by design. -->
+
+            <!-- Round-by-round breakdown. Populated by app.js after the
+                 first round resolves; one row per completed round
+                 showing each player's score for that round.
+                 Item 9: it lives BELOW the globe on purpose. As a normal-flow
+                 block above the map wrap it used to unhide after round 1 and
+                 shove the globe ~117px down mid-game; below the globe its
+                 appearance can never move the canvas. -->
+            <section class="rounds-history-board" id="rounds-history-board" hidden>
+              <header class="mini-board-head">
+                <h3>Rounds so far</h3>
+              </header>
+              <!-- One row per player. Each round pill carries everything:
+                   R#: base × multiplier (final). No separate per-location
+                   rows. Populated by renderRoundsHistoryBoard. -->
+              <div class="rounds-history-scoreboard" id="rounds-history-scoreboard"></div>
+            </section>
           </article>
         </section>
 
