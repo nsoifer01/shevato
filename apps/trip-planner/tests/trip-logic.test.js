@@ -5657,6 +5657,83 @@ test('a nonsense today reports nothing rather than guessing at one', () => {
   assert.deepEqual(L.bookingDeadlines(undefined, '2027-05-02'), []);
 });
 
+// ---------- pace ----------
+// The rule under all of these: this is an OBSERVATION, so it only speaks when
+// the arithmetic is worth a sentence (enough stays to average, and an average
+// short enough that the trip really is a run of one-night stops), and the
+// figures it hands over are the ones nights() gives the strip - never a second
+// count of the same nights.
+
+// one stay per entry: `spans` is the nights each stay covers, laid end to end
+// from a fixed start so the dates stay real however long the run gets
+function paceStays(spans, status = 'booked') {
+  let start = '2027-05-01';
+  return spans.map((n, i) => {
+    const end = L.addDays(start, n);
+    const row = stay(`s${i}`, `city${i}`, start, end, status);
+    start = end;
+    return row;
+  });
+}
+
+test('four stays averaging under two nights is a fast pace, with both figures', () => {
+  const pace = L.paceAdvisory(paceStays([1, 1, 2, 1]));
+  assert.deepEqual(pace, { stays: 4, nights: 5, avg: 1.3 });
+});
+
+test('four stays is the floor: three one-night stops say nothing', () => {
+  assert.equal(L.paceAdvisory(paceStays([1, 1, 1])), null);
+  assert.equal(L.paceAdvisory(paceStays([1, 1, 1, 1])).stays, 4);
+});
+
+test('an average of exactly two nights is not fast', () => {
+  assert.equal(L.paceAdvisory(paceStays([2, 2, 2, 2])), null);
+  // and the same total spread so it lands just under the line does speak
+  assert.equal(L.paceAdvisory(paceStays([1, 2, 2, 2])).avg, 1.8);
+});
+
+test('an average that would PRINT as 2.0 says nothing, so the line cannot contradict itself', () => {
+  // 39 nights over 20 stays is 1.95, which rounds to the 2.0 the sentence would
+  // print under the word "Fast"
+  const spans = [...Array(19).fill(2), 1];
+  const stays = paceStays(spans);
+  assert.equal(stays.length, 20);
+  assert.equal(L.paceAdvisory(stays), null);
+});
+
+test('a cancelled stay is off the trip, so it is in neither the count nor the average', () => {
+  const live = paceStays([1, 1, 1, 1]);
+  const dead = paceStays([9, 9], 'cancelled');
+  assert.deepEqual(L.paceAdvisory([...live, ...dead]), { stays: 4, nights: 4, avg: 1 });
+  // and dropping to three live stays takes the whole line away, however many
+  // cancelled ones are left lying around
+  assert.equal(L.paceAdvisory([...live.slice(0, 3), ...dead]), null);
+});
+
+test('only what nights() calls a stay is counted, so the figures match the strip', () => {
+  const items = [
+    ...paceStays([1, 1, 1, 1]),
+    flight('f1', 'SIN to BKK', '2027-05-01', '2027-05-02'),
+    stay('same-day', 'daybed', '2027-05-20', '2027-05-20'),
+    stay('undated', 'nowhere', '', ''),
+  ];
+  const pace = L.paceAdvisory(items);
+  assert.deepEqual(pace, { stays: 4, nights: 4, avg: 1 });
+  const strip = items.map(L.nights).filter(n => n != null);
+  assert.equal(strip.length, pace.stays);
+  assert.equal(strip.reduce((a, b) => a + b, 0), pace.nights);
+});
+
+test('the average is rounded to the one decimal the line prints', () => {
+  // 10 nights over 6 stays is 1.666..., and the sentence says 1.7
+  assert.equal(L.paceAdvisory(paceStays([1, 1, 2, 2, 2, 2])).avg, 1.7);
+});
+
+test('no items at all is not a pace', () => {
+  assert.equal(L.paceAdvisory([]), null);
+  assert.equal(L.paceAdvisory(undefined), null);
+});
+
 test('validateItem rejects a deadline dated after the item it books', () => {
   const late = L.validateItem({ title: 'Sumo', startDate: '2027-05-20', bookBy: '2027-05-21' });
   assert.equal(typeof late.bookBy, 'string');

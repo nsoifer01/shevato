@@ -7,7 +7,9 @@
  *   - Stale-while-revalidate for everything else under our scope, so the
  *     user gets an instant load and the cache refreshes in the background.
  *   - Do NOT intercept Firebase / cross-origin auth + sync requests.
- *   - On every activate, drop old precaches.
+ *   - On every activate, drop old precaches UNDER OUR OWN NAME PREFIX.
+ *     shevato.com is a single origin for every app on the site, so caches.keys()
+ *     also lists the other apps' shells; only their own workers may delete those.
  *
  * CACHE_VERSION uses semver (MAJOR.MINOR.PATCH). Bump:
  *   - PATCH when the precache list contents change (file edits / additions).
@@ -16,7 +18,7 @@
  * Old caches are pruned automatically on activate.
  */
 
-const CACHE_VERSION = '1.7.6';
+const CACHE_VERSION = '1.8.0';
 const PRECACHE = `gym-precache-${CACHE_VERSION}`;
 const RUNTIME = `gym-runtime-${CACHE_VERSION}`;
 
@@ -84,7 +86,11 @@ self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keep = new Set([PRECACHE, RUNTIME]);
     const names = await caches.keys();
-    await Promise.all(names.filter((n) => !keep.has(n)).map((n) => caches.delete(n)));
+    // Ours and stale. The prefix test is load-bearing: without it this deleted
+    // every cache on the origin, so activating here wiped trip-planner's offline
+    // shell (and its worker returned the favour).
+    const stale = names.filter((n) => n.startsWith('gym-') && !keep.has(n));
+    await Promise.all(stale.map((n) => caches.delete(n)));
     await self.clients.claim();
   })());
 });

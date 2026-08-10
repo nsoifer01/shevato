@@ -23,7 +23,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 57;
+  const TP_BUILD = 58;
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   const TYPE_META = {
@@ -83,14 +83,15 @@
     HOTEL_TAGS, rankHotelResults,
     airportIndex, airportLabel, airportDetail, searchAirports,
     flightTitleFromAirports, parseFlightAirports,
-    extractBookings,
+    extractBookings, parseIcsToProposals,
     classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote, passportExpiryStatus, slimTripForShare, hasFastRail, viewFromHash, hashForView,
-    buildIcs, buildCsv, convertAmount, sumInCurrency, normalizeTravelers, travelerTotals,
+    buildIcs, buildGpx, buildCsv, convertAmount, sumInCurrency, normalizeTravelers, travelerTotals,
     evenSplitAmounts, splitAmountsMatch, customSplitShares,
     settlements, costsByType, typeBarShares, cashNeeded,
     bytesToBase64url, base64urlToBytes,
     transportGaps, connectionWarnings, sameTimeCollisions, TIGHT_CONNECTION_MIN, tripPhase, isPastRow,
-    bookingDeadlines,
+    bookingDeadlines, paceAdvisory,
+    dayShareText, shareHostStay, weekStart, spendByWeek,
     dayCards, dayMorningCity, emptyDayNote, departureOrigin, suggestedPassport, passportAssumptionParts, defaultPlanDay, planDayGroups, overnightTransit,
     timelineGroups, mealKind, isFoodOrDrink, isLongDetails, mealTitlePrefixes, itemMapsQuery, displayTitle,
     weatherKey, summarizeClimate, weatherLine, weatherRange, pickMonthSamples, docGuard,
@@ -404,11 +405,17 @@
   function todayIso() { return localDateIso(new Date()); }
 
   // ---------- money ----------
-  // CHF is deliberately absent: the Swiss franc has no real symbol (it
-  // renders as the bare code even with narrowSymbol), which broke the
-  // symbol-everywhere contract. Legacy trips that stored it keep working
-  // via the picker's fallback option below.
-  const CURRENCIES = ['USD', 'EUR', 'GBP', 'ILS', 'JPY', 'THB', 'CAD', 'AUD'];
+  // Every code Frankfurter (the ECB reference set ensureRates fetches) actually
+  // publishes, so anything the traveller can pick is something the app can
+  // convert. Alphabetical, because 31 codes is a list you scan rather than read.
+  const CURRENCIES = [
+    'AUD', 'BGN', 'BRL', 'CAD', 'CHF', 'CNY', 'CZK', 'DKK', 'EUR', 'GBP',
+    'HKD', 'HUF', 'IDR', 'ILS', 'INR', 'ISK', 'JPY', 'KRW', 'MXN', 'MYR',
+    'NOK', 'NZD', 'PHP', 'PLN', 'RON', 'SEK', 'SGD', 'THB', 'TRY', 'USD', 'ZAR',
+  ];
+  // The eight the planner shipped with, floated to the top of every picker: a
+  // long alphabetical list buries USD under four codes nobody spends.
+  const COMMON_CURRENCIES = ['USD', 'EUR', 'GBP', 'ILS', 'JPY', 'THB', 'CAD', 'AUD'];
   function currencySymbol(code) {
     // narrowSymbol yields the tightest real symbol (THB -> baht sign,
     // CAD/AUD -> $); fall back for engines without narrowSymbol support
@@ -421,6 +428,29 @@
           .formatToParts(0).find(p => p.type === 'currency').value;
       } catch { return '$'; }
     }
+  }
+
+  // CHF and BGN have no symbol convention, so narrowSymbol hands back the bare
+  // code and "CHF (CHF)" reads like a bug. Those print the code on its own.
+  function currencyLabel(code) {
+    const sym = currencySymbol(code);
+    return sym === code ? code : `${code} (${sym})`;
+  }
+
+  // ONE builder behind every currency picker (trip currency, item cost
+  // currency, bulk reassign) so they can never drift apart. `extra` carries
+  // codes this trip already stores that CURRENCIES does not (a hand-edited
+  // import, a currency the ECB dropped): keeping them as options is what stops
+  // opening a picker from silently rewriting the saved currency.
+  function currencyOptionsFor(selected, extra) {
+    const opt = c => `<option value="${c}"${c === selected ? ' selected' : ''}>${esc(currencyLabel(c))}</option>`;
+    const common = new Set(COMMON_CURRENCIES);
+    const known = new Set(CURRENCIES);
+    const legacy = [...new Set(extra || [])].filter(c => c && !known.has(c));
+    let html = `<optgroup label="Common">${COMMON_CURRENCIES.map(opt).join('')}</optgroup>`
+      + `<optgroup label="All currencies">${CURRENCIES.filter(c => !common.has(c)).map(opt).join('')}</optgroup>`;
+    if (legacy.length) html += `<optgroup label="Saved with this trip">${legacy.map(opt).join('')}</optgroup>`;
+    return html;
   }
 
   // Older items carry no costCurrency (it used to mean "same as the trip
@@ -610,7 +640,11 @@
     // items dated before today but still "to book"
     for (const it of items) {
       if (it.status === 'to-book' && isIsoDate(it.startDate) && it.startDate < todayIso()) {
-        issues.push({ level: 'warn', text: `"${it.title}" is in the past but still marked "To book".`, ids: [it.id] });
+        // `bookId` marks a warning that ONE still-to-book item can answer, so the
+        // panel can offer the status change beside it. Only this line and the
+        // deadline below qualify: every other warning is about a clash between
+        // two items or about nights, which booking something cannot fix.
+        issues.push({ level: 'warn', text: `"${it.title}" is in the past but still marked "To book".`, ids: [it.id], bookId: it.id });
       }
     }
 
@@ -626,7 +660,7 @@
       const text = d.kind === 'passed'
         ? `${d.title}: booking deadline passed (${fmtDate(d.date)})`
         : `${d.title}: book by ${fmtDate(d.date)}, ${left}`;
-      issues.push({ level: 'warn', text, ids: [d.id] });
+      issues.push({ level: 'warn', text, ids: [d.id], bookId: d.id });
     }
 
     // city changes with no flight/transport logged between them (only when
@@ -673,6 +707,20 @@
         ids: [],
         html: `Overlaps with another trip: "<button type="button" class="issue-jump" data-trip="${esc(o.id)}">${esc(name)}</button>"`
           + ` (${esc(o.start === o.end ? fmtDate(o.start) : fmtRange(o.start, o.end))})`,
+      });
+    }
+
+    // Last, and the only line here that is not a problem: how fast the trip
+    // moves. `kind: 'info'` keeps it out of the error/warning counts and gives
+    // it its own tag, because nothing about it needs fixing - it is the
+    // arithmetic on the stays, and what to do about it is the traveller's call.
+    const pace = paceAdvisory(items);
+    if (pace) {
+      issues.push({
+        level: 'info',
+        kind: 'info',
+        text: `Fast pace: ${pace.stays} stays averaging ${pace.avg.toFixed(1)} nights each.`,
+        ids: [],
       });
     }
     return issues;
@@ -954,7 +1002,10 @@
         : `${esc(fmtMoney(trip, money.confirmed.total))} <small>of ${esc(figure)}</small>`;
       chips.push(chip('Budget', body + short(missing), (verdict === 'ok' || verdict === 'refund') ? 'ok-chip' : 'warn-chip', spentShare(money.confirmed.total, trip.budget)));
     }
-    const warnCount = issues.length;
+    // Problems only: an info line (the pace note) is an observation, so counting
+    // it here would put a trip with nothing wrong on an amber "Issues 1" chip
+    // and send the traveller into the panel looking for the problem.
+    const warnCount = issues.filter(i => i.kind !== 'info').length;
     chips.push(chip('Issues', warnCount ? String(warnCount) : 'None', warnCount ? 'warn-chip' : 'ok-chip'));
     $('#summary').innerHTML = chips.join('');
   }
@@ -985,13 +1036,20 @@
     // renders.
     if (!issues.length) { box.hidden = true; $('#issuesList').innerHTML = ''; return; }
     box.hidden = false;
+    // The counts are a to-do list, so an info line is never in them: it names
+    // nothing to fix, and folding it into "3 warnings" would send the traveller
+    // hunting for a third problem that does not exist. It is counted and named
+    // separately instead, and a panel holding nothing else drops the warning
+    // triangle with it.
     const errs = issues.filter(i => i.level === 'error').length;
-    const warns = issues.length - errs;
+    const notes = issues.filter(i => i.kind === 'info').length;
+    const warns = issues.length - errs - notes;
+    const parts = [];
+    if (errs) parts.push(`<span class="count-err">${errs} error${errs === 1 ? '' : 's'}</span>`);
+    if (warns) parts.push(`<span class="count-warn">${warns} warning${warns === 1 ? '' : 's'}</span>`);
+    if (notes) parts.push(`<span class="count-note">${notes} note${notes === 1 ? '' : 's'}</span>`);
     $('#issuesSummary').innerHTML =
-      `<span>⚠️</span><span>` +
-      (errs ? `<span class="count-err">${errs} error${errs === 1 ? '' : 's'}</span>` : '') +
-      (errs && warns ? ' · ' : '') +
-      (warns ? `<span class="count-warn">${warns} warning${warns === 1 ? '' : 's'}</span>` : '') +
+      `<span>${errs || warns ? '⚠️' : 'ℹ️'}</span><span>` + parts.join(' · ') +
       `</span><span style="color:var(--text-dim);font-weight:400;font-size:13px">(click to review)</span>`;
     // Both jump controls - "show" here and the other trip's name inside
     // iss.html - are <button>, not <a>. They navigate inside the app rather
@@ -1010,9 +1068,19 @@
       if (iss.gap && !sharedMode && stayPrefillForGap(iss.gap)) {
         acts.push(`<button type="button" class="issue-jump issue-add-stay" data-add-stay="${idx}">Add stay</button>`);
       }
+      // A warning about ONE item still marked "To book" can be answered without
+      // leaving the panel: same status write the Timeline row's <select> makes,
+      // so it is one undo step, and the warning is gone from the next render
+      // because the item no longer qualifies for it. Owner-only, like "Add
+      // stay": a read-only visitor changes nothing. It carries .issue-jump so
+      // main.css's button rules stay pinned exactly as they are for "show".
+      if (iss.bookId && !sharedMode) {
+        acts.push(`<button type="button" class="issue-jump issue-mark-booked" data-book-id="${esc(iss.bookId)}">Mark booked</button>`);
+      }
+      const tag = iss.kind === 'info' ? ['info', 'INFO'] : iss.level === 'error' ? ['err', 'ERROR'] : ['warn', 'WARN'];
       return `
       <li>
-        <span class="tag ${iss.level === 'error' ? 'err' : 'warn'}">${iss.level === 'error' ? 'ERROR' : 'WARN'}</span>
+        <span class="tag ${tag[0]}">${tag[1]}</span>
         <span>${iss.html || esc(iss.text)}${acts.length ? ' ' + acts.join(' · ') : ''}</span>
       </li>`;
     }).join('');
@@ -1196,10 +1264,12 @@
     all.checked = !nothingToSelect && n === visibleIds.length;
     all.indeterminate = n > 0 && n < visibleIds.length;
     all.disabled = nothingToSelect;
-    // nothing ticked means nothing to act on, so the two actions are dead
+    // nothing ticked means nothing to act on, so the actions are dead
     // rather than silently doing nothing
     $('#bulkStatus').disabled = !n;
     $('#bulkStatus').value = '';
+    $('#bulkCurrency').disabled = !n;
+    $('#bulkCurrency').value = '';
     $('#bulkDelete').disabled = !n;
   }
 
@@ -1216,6 +1286,13 @@
         <option value="">Set status</option>
         ${Object.entries(STATUS_META).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('')}
       </select>
+      <!-- .bulk-status carries the colour and sizing pins that hold main.css off
+           this select; the inline margin only undoes that class's margin-left:auto,
+           which would otherwise split the row between the two pickers -->
+      <select class="bulk-status bulk-cur" id="bulkCurrency" aria-label="Set the cost currency of the selected items" style="margin-left:0">
+        <option value="">Set currency</option>
+        ${currencyOptionsFor(null, [activeTrip().currency])}
+      </select>
       <button type="button" class="btn danger bulk-del" id="bulkDelete">Delete selected</button>`;
     const board = $('#board');
     board.parentNode.insertBefore(bar, board);
@@ -1227,6 +1304,7 @@
       render();
     });
     $('#bulkStatus').addEventListener('change', e => bulkStatus(e.target.value));
+    $('#bulkCurrency').addEventListener('change', e => bulkSetCurrency(e.target.value));
     $('#bulkDelete').addEventListener('click', bulkDelete);
     return bar;
   }
@@ -1240,6 +1318,26 @@
     const n = selIds.size;
     for (const it of trip.items) if (selIds.has(it.id)) it.status = status;
     save(`${n} item${n === 1 ? '' : 's'} set to ${STATUS_META[status].label}`);
+    render();
+  }
+
+  // Same ONE save() per batch as bulkStatus, so the whole selection is ONE undo
+  // step. This RELABELS the money, it never converts it: the traveller is
+  // saying "these were always baht", so 1200 stays 1200 and the totals convert
+  // it from the new currency. A row with no cost is skipped rather than
+  // stamped, because a costCurrency without a cost is a currency for money that
+  // does not exist.
+  function bulkSetCurrency(code) {
+    if (!code || !selIds.size) return;
+    const trip = activeTrip();
+    let n = 0;
+    for (const it of trip.items) {
+      if (!selIds.has(it.id) || it.cost == null || it.cost === '') continue;
+      it.costCurrency = code;
+      n++;
+    }
+    if (!n) { toast('None of the selected items have a cost'); render(); return; }
+    save(`${n} item${n === 1 ? '' : 's'} set to ${code}`);
     render();
   }
 
@@ -1280,8 +1378,7 @@
   // carry has to keep it as an option or picking anything would lose it.
   function currencyOptionsHtml(trip) {
     const cur = trip.currency || 'USD';
-    const list = CURRENCIES.includes(cur) ? CURRENCIES : [...CURRENCIES, cur];
-    return list.map(c => `<option value="${c}" ${c === cur ? 'selected' : ''}>${c} (${esc(currencySymbol(c))})</option>`).join('');
+    return currencyOptionsFor(cur, [cur]);
   }
 
   function renderBoard(trip, issues) {
@@ -1451,7 +1548,7 @@
   // A LONE card is not a group and gets no wrapper, so its spacing stays exactly
   // what it was before this existed (no manufactured air around one card).
   function breakdownGroupHtml(trip) {
-    const cards = [travelerTotalsHtml(trip), settleUpHtml(trip), typeTotalsHtml(trip), cashNeededHtml(trip)]
+    const cards = [travelerTotalsHtml(trip), settleUpHtml(trip), typeTotalsHtml(trip), spendOverTimeHtml(trip), cashNeededHtml(trip)]
       .filter(Boolean);
     if (cards.length < 2) return cards.join('');
     return `<div class="breakdown-group">${cards.join('')}</div>`;
@@ -1547,6 +1644,40 @@
         + `</div>`;
     }).join('');
     return `<div class="traveler-totals type-totals">${ttHead('🧾', 'Cost by type')}<div class="tt-list">${html}</div></div>`;
+  }
+
+  // "Spend over time": the same confirmed money as the card above, arranged by
+  // WHEN it lands instead of by what it bought, one bar per ISO week. It answers
+  // the question the ranked list cannot - whether the trip is front-loaded on
+  // flights and a hotel or bleeding evenly - so the rows are in date order and
+  // never sorted by size.
+  //
+  // Gated on the trip spanning two or more calendar weeks: on a long weekend
+  // every booking falls in one week, and a single full-width bar labelled with
+  // that week is a chart that says nothing. Below the gate there is no block in
+  // the DOM at all, exactly as the other breakdown cards behave.
+  //
+  // Markup, classes and bar rules are Cost by type's verbatim (see
+  // typeTotalsHtml): these are two readings of one number and must not look like
+  // two different features. An amount we could not convert is amber with the
+  // count in the week it belongs to, never quietly dropped from the bar.
+  function spendOverTimeHtml(trip) {
+    const st = tripStats(trip);
+    if (!isIsoDate(st.start) || !isIsoDate(st.end)) return '';
+    if (weekStart(st.start) === weekStart(st.end)) return '';
+    const weeks = spendByWeek(trip, activeRates(trip));
+    if (!weeks.length) return '';
+    const shares = typeBarShares(weeks);
+    const short = n => n ? ` <small>+ ${n} not converted</small>` : '';
+    const html = weeks.map((w, i) => {
+      const missing = w.unconverted.length;
+      return `<div class="tt-row${missing ? ' incomplete' : ''}" data-week="${esc(w.start)}">`
+        + `<span class="tt-name" title="${esc(fmtRange(w.start, addDays(w.start, 6)))}">Week of ${esc(fmtDate(w.start, false))}</span>`
+        + `<span class="tt-val">${moneyHtml(trip, w.total, undefined, 'total')}${short(missing)}</span>`
+        + `<span class="tt-bar" aria-hidden="true"><i style="width:${(shares[i] * 100).toFixed(2)}%"></i></span>`
+        + `</div>`;
+    }).join('');
+    return `<div class="traveler-totals spend-time">${ttHead('📈', 'Spend over time')}<div class="tt-list">${html}</div></div>`;
   }
 
   // "Cash needed": how much actual cash to carry, per currency, for everything
@@ -1956,8 +2087,13 @@
     // the bulk-delete count is the FULL day, never the filtered view: the button
     // deletes everything on the date, so its label has to say so
     const canClear = !sharedMode && (card.clearCount != null ? card.clearCount : dayClearCount(card)) > 0;
+    // The copy button has a wider gate than clear/duplicate: an interior
+    // night of a stay has nothing to clear, but "Staying at <hotel>" is
+    // still a day worth pasting to someone, and the card itself says it.
+    const canCopy = canClear || (!sharedMode && !!shareHostStay(trip.items, card.date));
     const editBtns = sharedMode ? '' : `
             <button class="row-btn" data-act="add-day" data-date="${card.date}" title="Add an item on this day" aria-label="Add an item on ${esc(fmtDate(card.date))}">+</button>
+            <button class="row-btn" data-act="share-day" data-date="${card.date}"${canCopy ? '' : ' disabled'} title="${canCopy ? 'Copy day' : 'Nothing on this day to copy'}" aria-label="Copy ${esc(fmtDate(card.date))} as text">📋</button>
             <button class="row-btn" data-act="duplicate-day" data-date="${card.date}"${canClear ? '' : ' disabled'} title="${canClear ? 'Copy every item on this day to another date' : 'Nothing on this day to copy'}" aria-label="Copy everything on ${esc(fmtDate(card.date))} to another date">📄</button>
             ${canClear ? `<button class="row-btn danger" data-act="clear-day" data-date="${card.date}" title="Delete every item on this day" aria-label="Delete every item on ${esc(fmtDate(card.date))}">${TRASH_SVG}</button>` : ''}`;
     // Where the day's chain of distances starts: the stay covering it (its own
@@ -2018,6 +2154,17 @@
     }
     if ((docCounts.get(it.id) || 0) > 0) notes.push('Attached documents cannot be recovered.');
     return notes;
+  }
+
+  // The ONE per-item status write: the Timeline row's status <select> and the
+  // issues panel's "Mark booked" both land here, so whichever control the
+  // traveller used, the change is one save and one undo step.
+  function setItemStatus(id, status) {
+    const it = activeTrip().items.find(x => x.id === id);
+    if (!it) return;
+    it.status = status;
+    save();
+    render();
   }
 
   // The ONE per-item delete path: the timeline row button and the day-card row
@@ -2179,6 +2326,45 @@
       // since would be what undo() actually reverses
       if (lastSaved === snapshot) undo();
     });
+  }
+
+  // One day as text, out of the app: the share sheet where the device has one,
+  // the clipboard where it does not. Built from the UNFILTERED day, the same
+  // whole-day reading the copy and clear buttons beside it take, so what lands
+  // in the message is the day rather than whatever a search box left on screen.
+  //
+  // The fallback chain is shareTrip's: clipboard, then window.prompt, so a
+  // browser that refuses clipboard access still hands the text over. A share
+  // sheet the traveller dismisses is a rejected promise and NOT a failure, so it
+  // never falls through to copying something they just declined to send.
+  async function shareDay(date) {
+    const trip = activeTrip();
+    const card = dayCards(trip).find(c => c.date === date);
+    if (!card) return;
+    const text = dayShareText(card, trip.items, fmtDate, fmtTime);
+    // Clipboard only, by owner decision: the native share sheet made the
+    // button do different things on different devices, and the point of this
+    // control is a predictable "it is on my clipboard now". The prompt is
+    // the last resort for clipboard-API failures (permissions, http).
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Day copied');
+      // The toast lands at the screen edge while the eye is on the button
+      // that was just pressed, so the button itself confirms too: a brief
+      // checkmark right under the cursor. Re-queried by date because a
+      // render between click and now would detach the original node.
+      const btn = document.querySelector(`button[data-act="share-day"][data-date="${date}"]`);
+      if (btn) {
+        btn.textContent = '✅';
+        btn.title = 'Copied';
+        setTimeout(() => {
+          const b = document.querySelector(`button[data-act="share-day"][data-date="${date}"]`);
+          if (b && b.textContent === '✅') { b.textContent = '📋'; b.title = 'Copy day'; }
+        }, 1600);
+      }
+    } catch {
+      window.prompt('Copy this day:', text);
+    }
   }
 
   function renderDays() {
@@ -2864,8 +3050,7 @@
     // an estimate-only item has no costCurrency yet, so the picker opens on the
     // currency the guess is in: that is the currency adopting it would use
     const itemCur = (it && (it.costCurrency || it.estCostCurrency)) || base;
-    const curList = [...new Set([...CURRENCIES, base, itemCur])];
-    $('#inCostCurrency').innerHTML = curList.map(c => `<option value="${c}">${c} (${esc(currencySymbol(c))})</option>`).join('');
+    $('#inCostCurrency').innerHTML = currencyOptionsFor(itemCur, [base, itemCur]);
     $('#inCostCurrency').value = itemCur;
     const sym = currencySymbol(itemCur);
     $('#costPrefix').textContent = sym;
@@ -3464,7 +3649,14 @@
     $('#tripNameList').innerHTML = sampleTripOptions().map(o => `<option value="${esc(o.place)}">`).join('');
     $('#inTripName').value = existing ? t.name : '';
     syncTripNameHint();
-    $('#inTripCurrency').value = existing ? (t.currency || 'USD') : 'USD';
+    // Rebuilt from the shared constant on every open: the static 8-option
+    // markup predates the full Frankfurter list, and this select is the one
+    // place a trip's display currency is actually chosen, so it must offer
+    // the same set (and the same legacy-currency fallback group) as every
+    // other picker this round widened.
+    const tripCur = existing ? (t.currency || 'USD') : 'USD';
+    $('#inTripCurrency').innerHTML = currencyOptionsFor(tripCur, [tripCur]);
+    $('#inTripCurrency').value = tripCur;
     $('#inTripBudgetTo').value = existing && t.budget != null ? t.budget : '';
     $('#inTripBudgetFrom').value = existing && t.budgetFrom != null ? t.budgetFrom : '';
     $('#inTripTravelers').value = existing && Array.isArray(t.travelers) ? t.travelers.join(', ') : '';
@@ -3778,17 +3970,35 @@
   // The 12/24-hour toggle IS on it. It is a device display preference written
   // to its own TIMEFMT_KEY, never to a trip; blocking it would make the one
   // harmless row in the menu look broken for no gain.
-  const SHARED_MENU_ACTS = ['export-trip', 'export-csv', 'export-ics', 'share-trip', 'timefmt'];
+  const SHARED_MENU_ACTS = ['export-trip', 'export-csv', 'export-ics', 'export-gpx', 'share-trip', 'timefmt'];
   function syncTripMenuShared() {
     for (const b of $('#tripMenu').querySelectorAll('.tp-menu-panel button[data-act]')) {
       b.disabled = sharedMode && !SHARED_MENU_ACTS.includes(b.dataset.act);
     }
   }
 
+  // A GPX file is nothing but coordinates, and coordinates only exist for
+  // places the Map view has already looked up. So the row says why it cannot
+  // run instead of downloading an empty (or one-waypoint) file: two is the
+  // floor because a route needs somewhere to go. Readiness is expressed as
+  // aria-disabled, NOT the native attribute: a disabled button receives no
+  // hover events, so the title explaining why it cannot run never appeared -
+  // the row just sat there greyed and mute. The click dispatcher enforces it
+  // instead. Native `disabled` stays the shared-mode mechanism alone
+  // (syncTripMenuShared), so the two never fight over the same attribute.
+  function syncGpxMenuRow() {
+    const btn = $('#tripMenu').querySelector('button[data-act="export-gpx"]');
+    const ready = gpxStops(activeTrip()).length >= 2;
+    if (ready) btn.removeAttribute('aria-disabled');
+    else btn.setAttribute('aria-disabled', 'true');
+    btn.title = ready ? '' : 'Needs at least two located places (open the Map view once)';
+  }
+
   function openTripMenu() {
     popoverReturnFocus = null; // the search panel is being replaced, not dismissed
     closeTripSearch();
     syncTripMenuShared();
+    syncGpxMenuRow();
     $('#tripMenu').classList.add('open');
     popoverReturnFocus = $('#tripMenuBtn');
   }
@@ -3852,6 +4062,26 @@
   function exportIcs() {
     const t = activeTrip();
     download(`${slug(t.name)}.ics`, buildIcs(t), 'text/calendar');
+  }
+  // The GPX export spends the geocode cache the Map view already filled and
+  // never asks for a coordinate of its own: Nominatim is one request a second
+  // under a policy that forbids bulk, so a menu click must not queue a dozen.
+  // A stop the cache does not hold is simply not in the file.
+  function gpxStops(trip) {
+    const out = [];
+    for (const stop of mapStops(trip)) {
+      const hit = geoCache[stop.key];
+      // the traveller's own place name, not the geocoder's: "Tokyo" is what
+      // they typed and what they will look for in their GPS app
+      if (hit && Number.isFinite(hit.lat) && Number.isFinite(hit.lon)) {
+        out.push({ name: stop.name, lat: hit.lat, lon: hit.lon });
+      }
+    }
+    return out;
+  }
+  function exportGpx() {
+    const t = activeTrip();
+    download(`${slug(t.name)}-route.gpx`, buildGpx(gpxStops(t)), 'application/gpx+xml');
   }
   function exportAll() {
     download('trip-planner-backup.json', JSON.stringify(db, null, 2));
@@ -4287,8 +4517,9 @@
     $('#importBookingPaste').value = '';
     setImportState('<div class="m-empty"><span class="me-ico" aria-hidden="true">📄</span>'
       + '<span class="me-title">Read a booking confirmation</span>'
-      + '<span>Pick the PDF your airline or hotel sent, or paste the text of it. '
-      + 'Nothing is uploaded and the file is not saved: it is read on this device and discarded.</span></div>');
+      + '<span>Pick the PDF your airline or hotel sent, or a calendar file (.ics), or paste the '
+      + 'text of it. Nothing is uploaded and the file is not saved: it is read on this device '
+      + 'and discarded.</span></div>');
     openOverlay('#importBookingOverlay');
   }
 
@@ -4344,8 +4575,55 @@
     runBookingExtraction(text);
   }
 
+  // A calendar file is not prose to be guessed at: it carries labelled fields,
+  // so it gets the exact reader for them. Both ways in (the file picker and the
+  // paste box) funnel through runBookingExtraction, so this one test covers
+  // both, and it tests the CONTENT rather than the file name: an .ics saved as
+  // .txt is still a calendar, and a confirmation that merely mentions the word
+  // "calendar" is still prose.
+  function looksLikeCalendar(text) {
+    return /BEGIN:VCALENDAR/i.test(text);
+  }
+
+  function runIcsImport(text) {
+    const res = parseIcsToProposals(text);
+    const { events, read, skipped, recurring } = res.stats;
+    if (!res.proposals.length) {
+      setImportState('<div class="m-empty err"><span class="me-ico" aria-hidden="true">🗓️</span>'
+        + `<span class="me-title">${events ? 'None of those events could be read' : 'No events in that calendar'}</span>`
+        + '<span>' + (events
+          ? `The file holds ${events} event${events === 1 ? '' : 's'}, but none of them has a start date this reader can use.`
+          : 'The file is a calendar but contains no events. Export it again from your calendar app with the dates you want included.')
+        + '</span></div>');
+      return;
+    }
+    const box = document.createElement('div');
+    box.className = 'import-found';
+    const parts = [`Read ${read} of ${events} event${events === 1 ? '' : 's'}`];
+    if (skipped) parts.push(`; ${skipped} could not be read`);
+    parts.push('.');
+    // Said out loud because the file does not say it: DTSTART is only the FIRST
+    // date of a repeating event, and nothing here expands the rest.
+    if (recurring) {
+      parts.push(recurring === 1 ? ' One of them repeats' : ` ${recurring} of them repeat`);
+      parts.push(', and only the first date was read.');
+    }
+    box.innerHTML = `<p class="import-order">${esc(parts.join(''))}</p>`;
+    setImportState('');
+    $('#importBookingResult').appendChild(box);
+
+    // The same proposal machinery the PDF reader hands off to: same validation,
+    // same accept path, same undo. Nothing is stored on the way through - the
+    // text was never written anywhere but this function's argument.
+    const container = document.createElement('div');
+    container.className = 'assist-proposals';
+    $('#importBookingResult').appendChild(container);
+    renderProposals(res.proposals.map(p => ({ op: 'add', item: p.item, source: 'document' })), container);
+  }
+
   async function runBookingExtraction(text) {
     importText = text;
+    if (looksLikeCalendar(text)) { runIcsImport(text); return; }
     // The airport table is what turns "LHR" into a route at all, so it has to
     // be here before we read anything. It is normally loaded by the flight
     // form; on this path nothing has opened one yet.
@@ -7782,9 +8060,16 @@
     // the action defaults to Undo because almost every toast that carries one is
     // an undo; opts.action names it when it is something else ("Clear filters")
     const actLabel = (opts && opts.action) || 'Undo';
-    el.innerHTML = `<span>${esc(msg)}</span>${undoFn ? `<button type="button">${esc(actLabel)}</button>` : ''}`;
+    // opts.sticky waits for the reader instead of a clock (the new-version
+    // prompt: a notice you can miss in six seconds is not a notice). It carries
+    // its own Dismiss because without the timeout the action would otherwise be
+    // the only way off the screen.
+    const sticky = !!(opts && opts.sticky);
+    el.innerHTML = `<span>${esc(msg)}</span>${undoFn ? `<button type="button">${esc(actLabel)}</button>` : ''}${sticky ? '<button type="button" data-toast-dismiss>Dismiss</button>' : ''}`;
     if (undoFn) el.querySelector('button').addEventListener('click', () => { undoFn(); el.remove(); });
+    if (sticky) el.querySelector('[data-toast-dismiss]').addEventListener('click', () => el.remove());
     box.appendChild(el);
+    if (sticky) return;
     setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .4s'; setTimeout(() => el.remove(), 450); }, undoFn ? 6000 : 2600);
   }
   // Genuine failures (a bad import, a share link that will not open) route here
@@ -7911,6 +8196,7 @@
     if (act === 'ask-day') openAssist(date);
     else if (sharedMode) return;
     else if (act === 'add-day') openItemModal(null, date);
+    else if (act === 'share-day') shareDay(date);
     else if (act === 'duplicate-day') openDupDayModal(date);
     else if (act === 'clear-day') clearDay(date);
     else if (act === 'edit') openItemModal(btn.dataset.id);
@@ -8147,6 +8433,12 @@
     const b = e.target.closest('button[data-act]');
     // clicks on captions/dividers/padding are inert: keep the panel open
     if (!b) { e.stopPropagation(); return; }
+    // aria-disabled means "not ready yet" (see syncGpxMenuRow). It does not
+    // block the click the way the native attribute would, so the no-op is
+    // enforced here - and the menu is deliberately left OPEN, because the whole
+    // point of the aria form is that the row can be hovered and its title read.
+    // Keyboard Enter arrives through this same handler, so it is covered too.
+    if (b.getAttribute('aria-disabled') === 'true') { e.stopPropagation(); return; }
     closeTripMenu();
     const act = b.dataset.act;
     // The same allow-list syncTripMenuShared disables the rows by; a disabled
@@ -8163,6 +8455,7 @@
     else if (act === 'export-trip') exportTrip();
     else if (act === 'export-csv') exportCsv();
     else if (act === 'export-ics') exportIcs();
+    else if (act === 'export-gpx') exportGpx();
     else if (act === 'export-all') exportAll();
     else if (act === 'share-trip') shareTrip();
     else if (act === 'import') $('#importFile').click();
@@ -8249,6 +8542,11 @@
       if (pre) openItemModal(null, pre);
       return;
     }
+    // "Mark booked" on a still-to-book warning: the status write itself, not a
+    // trip to the row that carries it. render() rebuilds this panel, so the
+    // warning it answered is gone by the time the click finishes.
+    const book = e.target.closest('button[data-book-id]');
+    if (book && !sharedMode) { setItemStatus(book.dataset.bookId, 'booked'); return; }
     // the overlapping-trip warning names the other trip; the name switches to
     // it, exactly as picking it from #tripSelect does - filters untouched
     const t = e.target.closest('button[data-trip]');
@@ -8313,8 +8611,7 @@
     }
     const sel = e.target.closest('select[data-status-for]');
     if (!sel) return;
-    const it = activeTrip().items.find(x => x.id === sel.dataset.statusFor);
-    if (it) { it.status = sel.value; save(); render(); }
+    setItemStatus(sel.dataset.statusFor, sel.value);
   });
 
   document.querySelectorAll('.overlay').forEach(o => {
@@ -8413,6 +8710,27 @@
   const buildTag = $('#buildTag');
   if (buildTag) buildTag.textContent = 'build ' + TP_BUILD;
   window.__TP_BUILD = TP_BUILD;
+
+  // A tab left open for days keeps the JS it booted with: sw.js is
+  // network-first, so a LOAD always brings the newest code, but nothing ever
+  // reloads a tab that just sits there. The worker posts tp-update-available
+  // once it activates over a previous install (see sw.js), and the offer is
+  // made rather than taken: reloading under a half-typed item would lose it.
+  if ('serviceWorker' in navigator) {
+    let updateOffered = false;
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if (!e.data || e.data.type !== 'tp-update-available') return;
+      // One offer per update. The worker posts to every window client, and a
+      // second toast for the same version would just be noise.
+      if (updateOffered) return;
+      // A page that loaded moments ago fetched the new assets itself on the way
+      // in (network-first), so the worker activating right behind it has
+      // nothing to offer; only a tab that has been sitting open does.
+      if (performance.now() < 10000) return;
+      updateOffered = true;
+      toast('A new version of Trip Planner is ready.', () => location.reload(), { action: 'Refresh', sticky: true });
+    });
+  }
 
   // ---------- boot ----------
   // #itemForm is novalidate, so these attributes only shape the native picker;
