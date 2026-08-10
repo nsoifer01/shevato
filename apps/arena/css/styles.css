@@ -1172,16 +1172,23 @@ select option { background: var(--surface); color: var(--text); }
   box-shadow: 0 22px 60px -16px rgba(0,0,0,0.4);
 }
 
+/* Item 13: the row is deliberately lean. Every pixel of vertical chrome
+   here pushes the globe's bottom edge past the fold at 1280x800, and the
+   player needs the prompt, the standings AND the whole globe on screen at
+   once after placing a pin. Row gap is split so the hints line hugs the
+   question without narrowing the horizontal gap to the difficulty chip. */
 .globe-drop-prompt-row {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 0.75rem;
-  margin: 0 0 1.1rem;
-  padding: 1.3rem 1.5rem;
-  /* scrollIntoView({block:'start'}) anchors element top to viewport
-     y=0; the global fixed page header would otherwise overlap. Add
-     a margin so the prompt lands just under the header. */
+  gap: 0.45rem 0.75rem;
+  margin: 0 0 0.75rem;
+  padding: 0.85rem 1.25rem;
+  /* The round-start auto-scroll in renderGlobeDropStage() calls
+     scrollIntoView({block:'start'}), which anchors this row's top to
+     viewport y=0; the global fixed page header (3.25rem tall) would
+     otherwise overlap it. This margin lands the prompt just under the
+     header instead. */
   scroll-margin-top: 4rem;
   /* Glassmorphism: semi-transparent surface + blur picks up the
      background gradient. Inner glow + outer shadow gives it lift. */
@@ -1210,7 +1217,9 @@ select option { background: var(--surface); color: var(--text); }
 .globe-drop-prompt {
   margin: 0;
   font-family: "Space Grotesk", "Outfit", sans-serif;
-  font-size: clamp(1.4rem, 3.4vw, 2.1rem);
+  /* Item 13: max trimmed from 2.1rem; the phone end of the clamp is
+     unchanged, only the desktop ceiling comes down. */
+  font-size: clamp(1.4rem, 3.4vw, 1.7rem);
   font-weight: 500;
   color: var(--text);
   letter-spacing: -0.015em;
@@ -1252,6 +1261,14 @@ select option { background: var(--surface); color: var(--text); }
   font-size: 0.85rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  /* Item 9: hints exist for some locations and not others inside the same
+     game, and this is a full-width flex row - hiding it when empty moved
+     the globe canvas up between rounds. The line box is reserved whether or
+     not there is text in it, so line-height is pinned here rather than
+     inherited: min-height has to equal exactly one rendered line or the
+     reservation is a few pixels short and the globe still twitches. */
+  line-height: 1.5;
+  min-height: 1.5em;
 }
 .globe-drop-difficulty-chip {
   display: inline-flex;
@@ -1757,7 +1774,7 @@ select option { background: var(--surface); color: var(--text); }
 }
 
 /* Ready-for-next strip — sits inside the reveal panel during the
-   5-second wait between rounds. Any player can vote ready to skip
+   10-second wait between rounds. Any player can vote ready to skip
    the wait; the host advances once everyone's voted. */
 .globe-drop-ready-bar {
   margin-top: 0.6rem;
@@ -1825,9 +1842,6 @@ select option { background: var(--surface); color: var(--text); }
   text-align: center;
 }
 
-/* Globe-drop layout — top-mounted live standings */
-.globe-drop-status { display: none; }
-
 /* Floating action buttons overlaid on the globe (top-right). Container
    has pointer-events:none so the globe stays draggable behind it; the
    buttons themselves restore pointer-events:auto. Only rendered while
@@ -1870,16 +1884,25 @@ select option { background: var(--surface); color: var(--text); }
   pointer-events: none;
   animation: globe-fab-in 240ms cubic-bezier(0.22, 1, 0.36, 1);
 }
-/* Hide the whole stack until a pin is placed. The Clear button is the
-   pin-placed signal (hidden becomes false on pin-drop); when it's
-   absent, the entire FAB stack collapses.
-   .fab-pinned is a JS fallback class for browsers that don't support :has(). */
-.globe-drop-fab-stack:not(:has(#globe-drop-clear-btn:not([hidden]))):not(.fab-pinned) {
-  display: none;
-}
+/* The stack is hidden until a pin is placed. setClearBtnVisible() sets
+   [hidden] here (the global `[hidden] { display: none !important }` does the
+   hiding); a CSS :has() collapse used to do it, but a display flip cannot
+   animate, so the pair - and on mobile the whole fixed bottom action bar -
+   blinked out the instant the guess was submitted. */
 @keyframes globe-fab-in {
   from { transform: translateY(-6px); opacity: 0; }
   to   { transform: none; opacity: 1; }
+}
+/* Exit: JS holds the stack in the DOM for the length of this animation and
+   only then sets [hidden] (see hideWithExit). Pointer events go dead for
+   the duration so a leaving Clear button can't still be tapped. */
+.globe-drop-fab-stack.is-leaving {
+  animation: gd-fab-out 200ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+.globe-drop-fab-stack.is-leaving .globe-drop-fab { pointer-events: none; }
+@keyframes gd-fab-out {
+  from { transform: none; opacity: 1; }
+  to   { transform: translateY(-6px) scale(0.94); opacity: 0; }
 }
 /* Shared base for both FABs. Identical height + padding + radius +
    font-weight so Submit and Clear read as a matched pair. The two
@@ -2003,6 +2026,15 @@ select option { background: var(--surface); color: var(--text); }
     animation: none;
     transform: none;
   }
+  /* Same trap, exit edition: .globe-drop-fab-stack.is-leaving outranks the
+     rule above (media queries add no specificity), so the leave animation
+     would put a transform back on the stack for 200ms and yank Submit/Clear
+     out of the viewport-fixed position mid-animation. Pin it off here; the
+     mobile exit runs on the buttons instead (below). */
+  .globe-drop-fab-stack.is-leaving {
+    animation: none;
+    transform: none;
+  }
   /* Same trap one level up: every .stage element runs stage-fade (also
      animation-fill-mode: both), which leaves #stage-globe-drop with a
      resolved (identity) transform matrix even once fully faded in. That
@@ -2061,6 +2093,30 @@ select option { background: var(--surface); color: var(--text); }
      stays a compact 56px circle in the centred pair. The ≤540px rule
      already hides FAB labels; keep it hidden here too. */
   #globe-drop-clear-btn span { display: none; }
+
+  /* Item 12: the bottom bar gets its own in/out motion, run on the BUTTONS.
+     That is the one safe place for it here - a transform on an element does
+     not change where that same element's own position:fixed resolves (only
+     an ANCESTOR's transform does, which is the trap the two notes above are
+     about), and these buttons ARE the fixed elements. Both keyframes end on
+     `transform: none`, so the resting geometry the pair was tuned to (and
+     its clearance from the site back-to-top button) is unchanged. */
+  #globe-drop-submit-btn,
+  #globe-drop-clear-btn {
+    animation: gd-fab-bar-in 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .globe-drop-fab-stack.is-leaving #globe-drop-submit-btn,
+  .globe-drop-fab-stack.is-leaving #globe-drop-clear-btn {
+    animation: gd-fab-bar-out 200ms cubic-bezier(0.4, 0, 1, 1) both;
+  }
+  @keyframes gd-fab-bar-in {
+    from { transform: translateY(16px); opacity: 0; }
+    to   { transform: none; opacity: 1; }
+  }
+  @keyframes gd-fab-bar-out {
+    from { transform: none; opacity: 1; }
+    to   { transform: translateY(16px); opacity: 0; }
+  }
   /* Add bottom padding to the map wrap so the fixed pills don't
      cover the bottom of the globe on short screens. */
   .globe-drop-map-wrap {
@@ -2073,7 +2129,10 @@ select option { background: var(--surface); color: var(--text); }
      blur lets the globe show through faintly behind it. */
   .globe-drop-prompt-row {
     position: sticky;
-    top: 0;
+    /* Pin BELOW the fixed site header (main.css: 44px at <=980px), not at
+       y=0. At top:0 the header sat on top of the pinned row and swallowed
+       the first line of "Where is <city>?". */
+    top: 44px;
     z-index: 60;
     -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
@@ -2266,19 +2325,22 @@ select option { background: var(--surface); color: var(--text); }
 }
 
 /* Mini-board variant pinned above the globe with submit-state badges.
-   Generous bottom margin gives live standings breathing room before
-   the next section (globe / previous round scores) begins. */
-.mini-board-top { margin: 0 0 1.6rem; }
+   Item 13: bottom margin trimmed from 1.6rem; this strip and the prompt row
+   are the only chrome between the top of the card and the globe, so their
+   spare vertical space is what pushes the canvas bottom off screen. */
+.mini-board-top { margin: 0 0 1rem; }
 
 /* Round-by-round breakdown. Each row = one completed round, with per-
-   player score chips. Sits next to / under the cumulative live
-   standings — same visual family, muted treatment so it reads as
-   reference detail not the headline. */
+   player score chips. Sits BELOW the globe (see index.html), same visual
+   family as the live standings above it, muted treatment so it reads as
+   reference detail not the headline. Top margin rather than bottom: it is
+   the last thing in the card, and the space it needs is the gap between it
+   and the globe canvas. */
 .rounds-history-board:not([hidden]) {
   animation: stage-fade 0.35s ease-out both;
 }
 .rounds-history-board {
-  margin: 0 0 1.6rem;
+  margin: 1.2rem 0 0;
   padding: 0.9rem 1.1rem 0.95rem;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 40%),
@@ -2923,27 +2985,6 @@ select option { background: var(--surface); color: var(--text); }
   font-size: 0.85rem;
 }
 
-.globe-drop-region-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.25rem 0.6rem;
-  background: var(--accent-soft);
-  border: 1px solid var(--accent);
-  border-radius: 999px;
-  color: var(--accent-2);
-  text-transform: capitalize;
-  letter-spacing: 0.02em;
-  font-size: 0.74rem;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.globe-drop-hint {
-  margin: 0 0 0.85rem;
-  color: var(--muted);
-  font-size: 0.88rem;
-}
-
 /* Wrapper hosts the globe + overlay UI as siblings. globe.gl owns the
    inner contents of #globe-drop-map (its WebGL canvas) and we can't
    safely keep our own children in there — they get reparented when
@@ -2960,8 +3001,13 @@ select option { background: var(--surface); color: var(--text); }
   /* Lower floor than the old clamp(420px, …) so landscape phones (844x390)
      fit the whole globe inside the viewport. min(320px, 40vh) keeps the
      floor proportional on very short screens; desktop still lands in the
-     420-640px band because 62vh dominates there. */
+     420-640px band because 62vh dominates there.
+     Item 9: svh (small viewport height) is the same number whether the
+     mobile URL bar is shown or hidden, so scrolling no longer resizes the
+     WebGL renderer mid-gesture. The vh line above it is the fallback for
+     browsers without the new units - they ignore the svh declaration. */
   height: clamp(min(320px, 40vh), 62vh, 640px);
+  height: clamp(min(320px, 40svh), 62svh, 640px);
   /* No flat border or hard background — the globe should appear to
      float in space. We get the atmosphere look from a radial gradient
      that goes from near-black at the corners to a very deep navy
@@ -2999,29 +3045,6 @@ select option { background: var(--surface); color: var(--text); }
    drag to rotate, pinch to zoom) instead of the page scrolling/zooming. */
 .globe-drop-map canvas { display: block; position: relative; z-index: 1; touch-action: none; }
 
-.globe-drop-controls {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.55rem;
-  margin-top: 0.85rem;
-  flex-wrap: wrap;
-}
-
-.globe-drop-status {
-  margin-top: 0.6rem;
-}
-
-.globe-drop-attribution {
-  margin: 0.75rem 0 0;
-  font-size: 0.7rem;
-  color: var(--muted-2);
-  text-align: right;
-}
-.globe-drop-attribution a {
-  color: inherit;
-  text-decoration: underline dotted;
-}
-
 /* Reveal panel as a globe overlay (item 1). Lives inside
    .globe-drop-map-wrap and is anchored to the TOP of the globe area so
    the result fades in without the globe moving or the page scrolling.
@@ -3058,6 +3081,17 @@ select option { background: var(--surface); color: var(--text); }
   0%   { opacity: 0; transform: translateY(-8px); }
   100% { opacity: 1; transform: translateY(0); }
 }
+/* Item 7: the panel used to vanish on the frame the next question landed.
+   JS keeps it mounted for this animation and hides it on animationend
+   (hideWithExit), which is also when its text is cleared - clearing first
+   would flash an empty panel. */
+.globe-drop-reveal.is-leaving {
+  animation: gd-reveal-out 180ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+@keyframes gd-reveal-out {
+  0%   { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-6px); }
+}
 /* Mobile: drop below the timer ring and span the full width — the timer
    is too tall to share a row with the panel on a 390px viewport. */
 @media (max-width: 540px) {
@@ -3093,45 +3127,29 @@ select option { background: var(--surface); color: var(--text); }
 .globe-drop-reveal-distance.is-pulse strong {
   animation: gd-score-pulse 700ms cubic-bezier(0.18, 0.84, 0.32, 1) both;
 }
+/* Item 4e: the km value counts up over ~700ms, so it needs fixed-width
+   digits or the rest of the line jitters left and right as it climbs. */
+.gd-reveal-km { font-variant-numeric: tabular-nums; }
+/* Item 4f: the verdict line ("Bullseye!"). This used to be written into
+   #globe-drop-status, which is display:none, so it never rendered in game. */
+.globe-drop-reveal-sentiment {
+  margin: 0.3rem 0 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--cyan-2);
+  animation: gd-sentiment-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.globe-drop-reveal-sentiment[hidden] { display: none; }
+@keyframes gd-sentiment-in {
+  0%   { opacity: 0; transform: translateY(4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
 @keyframes gd-score-pulse {
   0%   { transform: translateY(8px) scale(0.85); opacity: 0; }
   35%  { transform: translateY(-2px) scale(1.15); opacity: 1; }
   60%  { transform: translateY(0) scale(1.05); }
   100% { transform: translateY(0) scale(1); }
 }
-
-/* "5 to next" countdown chip — visible only during the global reveal
-   window so players see exactly how many seconds until the next city. */
-.globe-drop-countdown {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.35rem 0.7rem 0.35rem 0.45rem;
-  background: var(--accent-soft);
-  border: 1px solid var(--accent);
-  border-radius: 999px;
-  color: var(--accent-2);
-  font-size: 0.74rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-.globe-drop-countdown-num {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: #fff;
-  font-family: var(--mono);
-  font-size: 1rem;
-  font-weight: 700;
-  letter-spacing: 0;
-}
-.globe-drop-countdown-label { letter-spacing: 0.08em; }
 
 .globe-drop-reveal-trivia {
   margin: 0.55rem 0 0;
@@ -3172,31 +3190,85 @@ select option { background: var(--surface); color: var(--text); }
   text-decoration: none;
 }
 
-/* Pin styling is now handled by globe.gl's pointColor() (no DOM nodes
-   to style — pins are rendered into the WebGL canvas). Legend chips
-   below the globe explain the colors. */
-.globe-drop-legend {
-  display: flex;
-  gap: 0.7rem;
-  flex-wrap: wrap;
-  margin-top: 0.5rem;
-  font-size: 0.72rem;
-  color: var(--muted);
+/* Item 3: the guess pin and the answer pin are DOM (CSS2D) markers, not
+   WebGL points, so the drop and the ground pulse can be real CSS animation
+   (a cylinder mesh can only tween its own scale). globe.gl rewrites the
+   OUTER element's transform every frame to project the geo point, so every
+   bit of motion has to live on these children. Opponents' pins stay as
+   canvas points, since their markers are context, not the player's moment.
+   Colours are literals so they stay locked to the arc gradient endpoints
+   set in app.js (#6366f1 guess → #fcd34d answer). */
+.gd-pin {
+  width: 0;
+  height: 0;
+  pointer-events: none;
 }
-.globe-drop-legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-.globe-drop-legend-dot {
-  width: 10px;
-  height: 10px;
+.gd-pin-body,
+.gd-pin-pulse {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 13px;
+  height: 13px;
+  margin: -6.5px 0 0 -6.5px;
   border-radius: 50%;
-  display: inline-block;
 }
-.globe-drop-legend-dot.is-actual { background: var(--gold); box-shadow: 0 0 0 2px rgba(252, 211, 77, 0.3); }
-.globe-drop-legend-dot.is-mine   { background: var(--accent); }
-.globe-drop-legend-dot.is-other  { background: var(--bad); }
+.gd-pin-body {
+  background: #6366f1;
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  box-shadow: 0 0 0 1px rgba(2, 6, 23, 0.6), 0 0 12px rgba(99, 102, 241, 0.9);
+}
+.gd-pin-pulse {
+  border: 2px solid #6366f1;
+  opacity: 0;
+}
+.gd-pin-actual .gd-pin-body,
+.gd-pin-actual .gd-pin-pulse {
+  width: 17px;
+  height: 17px;
+  margin: -8.5px 0 0 -8.5px;
+}
+.gd-pin-actual .gd-pin-body {
+  background: #fcd34d;
+  box-shadow: 0 0 0 1px rgba(2, 6, 23, 0.6), 0 0 16px rgba(252, 211, 77, 0.95);
+}
+.gd-pin-actual .gd-pin-pulse { border-color: #fcd34d; }
+/* Replayed by app.js whenever a pin lands somewhere new (never on a redraw
+   that leaves it in place, so the reveal can't re-animate an old guess). */
+.gd-pin.is-dropping .gd-pin-body {
+  animation: gd-pin-drop 340ms cubic-bezier(0.2, 0.9, 0.3, 1.4) both;
+}
+.gd-pin.is-dropping .gd-pin-pulse {
+  animation: gd-pin-ground 700ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+@keyframes gd-pin-drop {
+  0%   { transform: translateY(-16px) scale(0.5); opacity: 0; }
+  55%  { transform: translateY(0) scale(1.18); opacity: 1; }
+  78%  { transform: translateY(0) scale(0.94); }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+@keyframes gd-pin-ground {
+  0%   { transform: scale(0.5); opacity: 0; }
+  18%  { opacity: 0.85; }
+  100% { transform: scale(3.6); opacity: 0; }
+}
+/* globe.gl injects .scene-tooltip (lavender, 15px, sans-serif) for the
+   pointLabel hovers on opponents' pins and never scopes it to anything, so
+   it has to be re-styled here to match the app. It also lives in the DOM
+   permanently with empty content, hence :empty. */
+.globe-drop-map .scene-tooltip {
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text);
+  background: rgba(8, 11, 22, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: var(--radius-sm);
+  padding: 0.22rem 0.5rem;
+  box-shadow: 0 6px 18px rgba(2, 6, 23, 0.55);
+  white-space: nowrap;
+}
+.globe-drop-map .scene-tooltip:empty { display: none; }
 
 /* ---------- Stage: picking (between questions) ---------- */
 
@@ -3397,6 +3469,12 @@ select option { background: var(--surface); color: var(--text); }
   stroke-dasharray: 176;
   stroke-dashoffset: 0;
   transition: stroke-dashoffset 0.4s linear, stroke 0.3s ease;
+}
+/* Item 6: renderGlobeDropTimer rewrites this offset every frame, so the
+   0.4s dashoffset transition above only made the ring lag the real clock by
+   ~400ms and rubber-band across phase changes. Colour keeps its transition. */
+.globe-drop-timer-overlay .timer-ring-fill {
+  transition: stroke 0.3s ease;
 }
 .game-timer[data-state="warn"]   .timer-ring-fill { stroke: var(--warn); }
 .game-timer[data-state="danger"] .timer-ring-fill {
@@ -3717,6 +3795,18 @@ select option { background: var(--surface); color: var(--text); }
 .mini-board-row.is-answered .mini-board-rank {
   animation: none;
   opacity: 0.85;
+}
+/* Item 8: one-shot cue when a player's answered state flips. Rows are keyed
+   and reused now, so this fires exactly on the change instead of on every
+   re-render. Background-color only (no fill mode) so the row falls straight
+   back to whatever tint .is-me / .is-leader give it. */
+.mini-board-row.is-just-answered {
+  animation: mb-row-answered 620ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes mb-row-answered {
+  0%   { background-color: rgba(16, 185, 129, 0.34); }
+  60%  { background-color: rgba(16, 185, 129, 0.16); }
+  100% { background-color: transparent; }
 }
 .mini-board-check {
   display: inline-flex;

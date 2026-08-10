@@ -100,9 +100,9 @@ const state = {
     selectedGameType: 'globe-drop',
 
     // GlobeDrop-specific runtime state (only populated while a GlobeDrop room
-    // is active). globe = globe.gl/Three.js scene wrapper; we don't keep
-    // per-marker handles because globe.gl is declarative - call
-    // pointsData()/arcsData() with the full set on every update.
+    // is active). globe = globe.gl/Three.js scene wrapper; the layers are
+    // declarative (hand them the full set on every update), but the datum
+    // objects themselves are reused - see globeMarkers.
     globe: null,
     globeResizeAttached: false,          // guard so the ResizeObserver attaches once
     globeResizeObserver: null,           // RO handle (cleaned up in teardownMap)
@@ -116,6 +116,8 @@ const state = {
     lastRenderedMapQuestion: null,       // location id currently shown on the globe
     lastRevealedMapQuestion: null,       // '{locId}:local' or '{locId}:global' - what we've drawn
     lastCameraTarget: null,              // '{locId}:{lat},{lng}' - short-circuits redundant pointOfView calls
+    revealChoreoForQuestion: null,       // location id whose reveal sequence has already played
+    globeGestureAt: 0,                   // perf timestamp of the last pointer gesture we resolved ourselves
     triviaFetchedFor: null,              // location id we've already kicked off a Wikipedia fetch for
 
     // Timer rAF handle
@@ -1735,18 +1737,20 @@ function enterRoom(code) {
     syncUrlToState();
     startChatListener(code);
 
-    // Pre-warm the 8K Earth texture as soon as we enter the room. The
-    // texture is ~4.5 MB and decoding it is the single biggest chunk
-    // inside Globe()(el). Browsers cache decoded bitmap data, so once
-    // this <img> resolves, the later globe init reuses it instead of
-    // re-fetching + re-decoding - moving most of the >200ms cost off
-    // the game-start critical path.
+    // Pre-warm the Earth texture as soon as we enter the room. Decoding it
+    // is the single biggest chunk inside Globe()(el). Browsers cache decoded
+    // bitmap data, so once this <img> resolves, the later globe init reuses
+    // it instead of re-fetching + re-decoding - moving most of the >200ms
+    // cost off the game-start critical path.
+    // Item 10b: warm the asset ensureGlobe will actually ask for. This used
+    // to fetch earth-8k.jpg unconditionally, so a phone paid ~4.5 MB for a
+    // texture it never uses (it renders the 2k one).
     if (!state.earthTextureWarmed) {
         state.earthTextureWarmed = true;
         try {
             const img = new Image();
             img.decoding = 'async';
-            img.src = 'data/earth-8k.jpg';
+            img.src = isMobileGlobeViewport() ? 'data/earth-2k.jpg' : 'data/earth-8k.jpg';
             // No need to await; the load+decode happens in the background
             // and the browser's image cache fields the second request.
         } catch (_) { /* best-effort */ }
@@ -3095,6 +3099,211 @@ function globeRotateSpeedForAltitude(altitude) {
     return Math.max(0.10, Math.min(0.45, 0.45 * alt));
 }
 
+function prefersReducedMotion() {
+    return typeof window !== 'undefined'
+        && typeof window.matchMedia === 'function'
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/* =====================================================================
+ * Globe camera
+ *
+ * Every programmatic camera move goes through flyGlobeCameraTo. globe.gl's
+ * own pointOfView(pose, duration) starts a TWEEN it never cancels, so two
+ * overlapping calls (a burst of wheel clicks, or a reveal flight landing on
+ * top of a round-start pull-back) both keep writing the camera every frame
+ * and fight each other. One rAF tween that a new call supersedes keeps zoom
+ * continuous and makes every flight cancellable by the new-question reset.
+ * ===================================================================== */
+
+const GLOBE_MIN_ALTITUDE = 0.15;
+const GLOBE_MAX_ALTITUDE = 4.0;
+const GLOBE_EXPLORE_ALTITUDE = 1.2;
+const globeCamera = { raf: null, target: null };
+
+function cancelGlobeCameraTween() {
+    if (globeCamera.raf) cancelAnimationFrame(globeCamera.raf);
+    globeCamera.raf = null;
+    globeCamera.target = null;
+}
+
+function flyGlobeCameraTo(pose, durationMs) {
+    if (!state.globe) return;
+    cancelGlobeCameraTween();
+    const from = state.globe.pointOfView();
+    const to = {
+        lat: typeof pose.lat === 'number' ? pose.lat : from.lat,
+        lng: typeof pose.lng === 'number' ? pose.lng : from.lng,
+        altitude: typeof pose.altitude === 'number' ? pose.altitude : from.altitude
+    };
+    const duration = prefersReducedMotion() ? 0 : durationMs;
+    if (!duration) {
+        state.globe.pointOfView(to, 0);
+        return;
+    }
+    // Take the short way round the meridian: a 170 -> -170 pan crosses the
+    // dateline instead of sweeping backwards across the whole globe.
+    let fromLng = from.lng;
+    while (to.lng - fromLng > 180) fromLng += 360;
+    while (to.lng - fromLng < -180) fromLng -= 360;
+    // Rise over the middle of a long pan. Without this, a player zoomed right
+    // in when the reveal fires gets dragged across the surface at that same
+    // altitude, which reads as a blurry skim instead of a flight.
+    const dLat = (to.lat - from.lat) * Math.PI / 180;
+    const dLng = (to.lng - fromLng) * Math.PI / 180;
+    const travel = Math.min(Math.PI, Math.hypot(dLat, dLng * Math.cos(to.lat * Math.PI / 180)));
+    const lift = (travel / Math.PI) * 0.9;
+    globeCamera.target = to;
+    const started = performance.now();
+    const step = (now) => {
+        if (!state.globe) { cancelGlobeCameraTween(); return; }
+        const p = Math.min(1, (now - started) / duration);
+        const k = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+        state.globe.pointOfView({
+            lat: from.lat + (to.lat - from.lat) * k,
+            lng: fromLng + (to.lng - fromLng) * k,
+            altitude: from.altitude + (to.altitude - from.altitude) * k + Math.sin(Math.PI * p) * lift
+        }, 0);
+        if (p < 1) { globeCamera.raf = requestAnimationFrame(step); return; }
+        globeCamera.raf = null;
+        globeCamera.target = null;
+    };
+    globeCamera.raf = requestAnimationFrame(step);
+}
+
+function zoomGlobeByWheel(deltaY) {
+    if (!state.globe) return;
+    const pov = state.globe.pointOfView();
+    // Chain off the in-flight zoom target rather than the live altitude, so a
+    // fast burst of wheel clicks accumulates into one continuous move instead
+    // of each click re-measuring a camera that is still travelling.
+    const base = globeCamera.target ? globeCamera.target.altitude : pov.altitude;
+    const factor = deltaY > 0 ? 1.15 : 0.87;
+    const next = Math.max(GLOBE_MIN_ALTITUDE, Math.min(GLOBE_MAX_ALTITUDE, base * factor));
+    flyGlobeCameraTo({ lat: pov.lat, lng: pov.lng, altitude: next }, 240);
+    const controls = state.globe.controls();
+    if (controls) controls.rotateSpeed = globeRotateSpeedForAltitude(next);
+}
+
+/**
+ * Camera pose that frames two points at once: aim at their great-circle
+ * midpoint and back off until both sit inside the camera frustum. Fitting to
+ * the visible horizon is not enough - globe.gl's camera has a 50 degree
+ * VERTICAL fov, so on a wide canvas the top and bottom of the globe are
+ * cropped long before the horizon. Antipodal points can never both be on
+ * screen (sphere geometry, not a bug), so the altitude clamps rather than
+ * running away to orbit.
+ */
+function globeFrameForPair(aLat, aLng, bLat, bLng) {
+    const rad = Math.PI / 180;
+    const toVec = (lat, lng) => {
+        const phi = lat * rad;
+        const lam = lng * rad;
+        return [Math.cos(phi) * Math.cos(lam), Math.cos(phi) * Math.sin(lam), Math.sin(phi)];
+    };
+    const a = toVec(aLat, aLng);
+    const b = toVec(bLat, bLng);
+    const m = [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+    const len = Math.hypot(m[0], m[1], m[2]);
+    // Antipodal: the midpoint is undefined, so stay over the answer.
+    const mid = len < 1e-6
+        ? { lat: bLat, lng: bLng }
+        : { lat: Math.asin(m[2] / len) / rad, lng: Math.atan2(m[1], m[0]) / rad };
+    const dot = Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]));
+    const halfSep = Math.acos(dot) / 2;
+    // Camera distance that puts a point halfSep off-axis exactly on the frame
+    // edge: D = R(cos(halfSep) + sin(halfSep) / tan(halfFov)). Altitude is
+    // D/R - 1. The tighter of the two half-fovs wins (a portrait canvas is
+    // narrower horizontally), and 0.85 of it leaves the pins off the edge.
+    const camera = state.globe && state.globe.camera && state.globe.camera();
+    const halfFovV = ((camera && camera.fov ? camera.fov : 50) / 2) * rad;
+    const el = document.getElementById('globe-drop-map');
+    const aspect = el && el.clientHeight ? el.clientWidth / el.clientHeight : 1.6;
+    const halfFov = Math.min(halfFovV, Math.atan(Math.tan(halfFovV) * aspect)) * 0.85;
+    const fitted = Math.cos(halfSep) + Math.sin(halfSep) / Math.tan(halfFov) - 1;
+    const altitude = Math.max(0.35, Math.min(2.2, fitted));
+    return { lat: mid.lat, lng: mid.lng, altitude };
+}
+
+/* =====================================================================
+ * Globe markers
+ *
+ * globe.gl's layers join data by object IDENTITY (they take no id accessor),
+ * so handing them fresh object literals on every redraw makes each redraw a
+ * full exit + enter: moving a pin meant "vanish, then grow back". Every
+ * marker below is a persistent datum keyed by role that we mutate in place,
+ * which turns the same redraw into a position tween.
+ * ===================================================================== */
+
+const globeMarkers = { points: new Map(), pins: new Map(), arcs: new Map() };
+
+function globePointMarker(key, props) {
+    let d = globeMarkers.points.get(key);
+    if (!d) { d = {}; globeMarkers.points.set(key, d); }
+    return Object.assign(d, props);
+}
+
+function globeArcMarker(key, props) {
+    let d = globeMarkers.arcs.get(key);
+    if (!d) { d = {}; globeMarkers.arcs.set(key, d); }
+    return Object.assign(d, props);
+}
+
+/**
+ * The guess pin and the answer pin are DOM (CSS2D) markers rather than WebGL
+ * points so the drop + ground pulse can be real CSS animation - a cylinder
+ * mesh can only tween its own scale. Opponents stay as points: their pins are
+ * context, not the player's tactile moment.
+ */
+function globePinMarker(key, variant, lat, lng) {
+    let d = globeMarkers.pins.get(key);
+    if (!d) {
+        d = { el: createGlobePinElement(variant), lat: null, lng: null };
+        globeMarkers.pins.set(key, d);
+    }
+    const moved = d.lat !== lat || d.lng !== lng;
+    d.lat = lat;
+    d.lng = lng;
+    // Replay the drop only where the pin actually lands somewhere new, so the
+    // reveal never re-animates the guess pin the player placed 30s ago.
+    if (moved) {
+        d.el.classList.remove('is-dropping');
+        // Reflow so removing + re-adding restarts the CSS animation.
+        // eslint-disable-next-line no-void
+        void d.el.offsetWidth;
+        d.el.classList.add('is-dropping');
+    }
+    return d;
+}
+
+function createGlobePinElement(variant) {
+    const el = document.createElement('div');
+    el.className = `gd-pin gd-pin-${variant}`;
+    const pulse = document.createElement('span');
+    pulse.className = 'gd-pin-pulse';
+    const body = document.createElement('span');
+    body.className = 'gd-pin-body';
+    el.appendChild(pulse);
+    el.appendChild(body);
+    return el;
+}
+
+function clearGlobeMarkers() {
+    globeMarkers.points.clear();
+    globeMarkers.pins.clear();
+    globeMarkers.arcs.clear();
+}
+
+/**
+ * Arc height scaled to the miss. The old fixed arcAltitude(0.18) gave a 40 km
+ * near-miss the same balloon as a transatlantic one; the floor keeps a short
+ * arc lifted enough to read against the texture.
+ */
+function globeArcAltitudeForDistance(km) {
+    const frac = Math.max(0, Math.min(1, km / 20015));
+    return 0.03 + 0.32 * frac;
+}
+
 function ensureGlobe() {
     if (state.globe) return state.globe;
     if (typeof Globe === 'undefined') {
@@ -3117,6 +3326,13 @@ function ensureGlobe() {
         if (loadingCleared) return;
         loadingCleared = true;
         el.classList.remove('is-loading');
+        // Item 5: ease down from the high orbit parked below. Anchored here
+        // (not at construction) so it runs with globe.gl's own scale/spin-in,
+        // which also waits for the texture; the 2s clearLoading fallback
+        // guarantees the camera still arrives if onGlobeReady never fires.
+        // Deferred a tick so it can never outrun the construction chain that
+        // assigns state.globe and parks the camera.
+        setTimeout(() => flyGlobeCameraTo({ lat: 20, lng: 0, altitude: 1.0 }, 1200), 0);
     };
     setTimeout(clearLoading, 2000);
     state.globe = Globe()(el)
@@ -3134,7 +3350,15 @@ function ensureGlobe() {
         .atmosphereColor('#6366f1')
         .atmosphereAltitude(0.18)
         .backgroundColor('rgba(0, 0, 0, 0)')
-        .onGlobeClick(({ lat, lng }) => onGlobeClick(lat, lng))
+        // Fallback click path only. The app-level gesture tracking installed
+        // by attachGlobeInputHandling is the primary one (globe.gl cancels a
+        // click on ANY pointer movement, which eats guesses to hand tremor);
+        // it stamps globeGestureAt so this callback can't place a second pin
+        // for a gesture it already resolved.
+        .onGlobeClick(({ lat, lng }) => {
+            if (performance.now() - state.globeGestureAt < 400) return;
+            onGlobeClick(lat, lng);
+        })
         .onGlobeReady(clearLoading)
         .pointLat('lat')
         .pointLng('lng')
@@ -3142,14 +3366,33 @@ function ensureGlobe() {
         .pointAltitude(0.012)
         .pointRadius('size')
         .pointLabel('label')
+        // Default 12 segments reads as a faceted polygon up close; 24 is
+        // round at any altitude the camera clamp allows.
+        .pointResolution(24)
+        // Default 1000ms makes a pin move feel like a slow regrow. Marker
+        // identity is stable (see globePointMarker), so this is the tween a
+        // moved pin actually rides. NOTE: globe.gl also uses this value for
+        // html element moves - htmlTransitionDuration is only a gate there.
+        .pointsTransitionDuration(300)
+        .htmlLat('lat')
+        .htmlLng('lng')
+        .htmlElement('el')
+        .htmlTransitionDuration(300)
         .arcStartLat('startLat').arcStartLng('startLng')
         .arcEndLat('endLat').arcEndLng('endLng')
         .arcColor('color')
-        .arcAltitude(0.18)
+        .arcAltitude('altitude')
         .arcStroke(0.45)
-        .arcDashLength(0.4)
-        .arcDashGap(0.2)
-        .arcDashAnimateTime(1800)
+        // Settled (solid) dash state. The reveal arms a one-shot draw-on over
+        // these in startRevealArcDraw and resets them here-equivalent values
+        // in clearMapOverlays.
+        .arcDashLength(1)
+        .arcDashGap(0)
+        .arcDashInitialGap(0)
+        .arcDashAnimateTime(0)
+        // The dash sweep is the arc's entrance; a geometry grow-in underneath
+        // it just muddies the draw.
+        .arcsTransitionDuration(0)
         // Polygon styling used by the reveal-phase country-border
         // overlay. Cap fill is a faint cyan wash so the texture
         // beneath stays readable; side + stroke are saturated so
@@ -3165,25 +3408,29 @@ function ensureGlobe() {
     // up front so we have to call it after the stage is visible.
     state.globe.width(el.clientWidth);
     state.globe.height(el.clientHeight);
-    // Initial camera pose: roughly overhead, comfortable altitude.
-    state.globe.pointOfView({ lat: 20, lng: 0, altitude: 1.0 }, 0);
+    // Item 5: park the camera in a high orbit; clearLoading eases it down to
+    // the start view. Snapping straight to 1.0 (duration 0) on top of
+    // globe.gl's own 2.5-altitude init was a visible first-frame jump.
+    state.globe.pointOfView({ lat: 20, lng: 0, altitude: 2.6 }, 0);
 
-    // Three.js OrbitControls defaults feel sluggish - crank zoom speed and
-    // ease damping so wheel + pinch react snappily. We ALSO install a
-    // custom wheel listener below so each scroll click moves altitude by
-    // a large fixed factor instead of the small linear delta OrbitControls
-    // produces - that's where the real "feels fast" upgrade comes from.
+    // Three.js OrbitControls defaults feel sluggish - ease damping so drag
+    // and pinch react snappily. Wheel zoom is NOT OrbitControls' any more
+    // (see attachGlobeInputHandling): it is one tweened altitude move per
+    // scroll click, which is where the "feels fast" upgrade comes from.
     const controls = state.globe.controls();
     if (controls) {
         // Camera feel:
         //   - rotateSpeed scales with altitude (full 0.45 zoomed out, 0.10
         //     floor zoomed in) so a drag never over-shoots up close
-        //   - zoomSpeed 4 / damping 0.3 on desktop; gentler 2 / 0.15 on
-        //     mobile so a flick doesn't fling the camera on a touchscreen
+        //   - damping 0.3 on desktop; gentler 0.15 on mobile so a flick
+        //     doesn't fling the camera on a touchscreen
         //   - autoRotate explicitly OFF so a stray default doesn't kick
         //     the globe into continuous spin between rounds
+        //   - zoomSpeed is deliberately not set here: globe.gl installs its
+        //     own controls 'change' listener that rewrites it to 0.1*(alt+1)
+        //     after the first interaction, so any value we set was dead. It
+        //     now only affects pinch, where that adaptive value is right.
         const mobile = isMobileGlobeViewport();
-        controls.zoomSpeed = mobile ? 2 : 4;
         controls.rotateSpeed = globeRotateSpeedForAltitude(state.globe.pointOfView().altitude);
         controls.enableDamping = true;
         controls.dampingFactor = mobile ? 0.15 : 0.3;
@@ -3195,22 +3442,11 @@ function ensureGlobe() {
         });
     }
 
-    // Custom wheel zoom: multiplicative altitude change per scroll click,
-    // gentler factor (15% per click instead of 25%) for less erratic feel
-    // and a slightly longer tween (240ms) so the zoom interpolates rather
-    // than snapping. Passive:false because we preventDefault.
-    el.addEventListener('wheel', (e) => {
-        e.preventDefault();
-        if (!state.globe) return;
-        const pov = state.globe.pointOfView();
-        const factor = e.deltaY > 0 ? 1.15 : 0.87;
-        const minAlt = 0.15;
-        const maxAlt = 4.0;
-        const nextAlt = Math.max(minAlt, Math.min(maxAlt, pov.altitude * factor));
-        state.globe.pointOfView({ lat: pov.lat, lng: pov.lng, altitude: nextAlt }, 240);
-        const c = state.globe.controls();
-        if (c) c.rotateSpeed = globeRotateSpeedForAltitude(nextAlt);
-    }, { passive: false });
+    attachGlobeInputHandling(el);
+
+    // Item 11. Deliberately not inline in the construction chain above: the
+    // lights don't exist yet at that point (see tuneGlobeLighting).
+    tuneGlobeLighting();
 
     // Ask the device for the actual pixel ratio so the globe canvas is
     // rendered at native (retina) resolution - without this, three.js uses
@@ -3228,6 +3464,131 @@ function ensureGlobe() {
     attachGlobeResizeHandling(el);
 
     return state.globe;
+}
+
+/**
+ * Item 11: make the sphere read as a sphere.
+ *
+ * globe.gl's defaults are AmbientLight(0xbbbbbb) + DirectionalLight(0xffffff,
+ * 0.6) fixed above the north pole: the ambient is strong enough to flatten
+ * the surface and the key comes from a direction the camera never sits at,
+ * so the globe looked like a printed disc. This version parents the key light
+ * to the CAMERA, which gives a stable centre-bright / limb-dark falloff from
+ * every angle - a real 3D read with no dark side to hide a target city in,
+ * and no per-frame work (three.js already updates the camera's world matrix).
+ * The camera has to be in the scene graph for a light hanging off it to be
+ * collected by the renderer, so it gets added.
+ *
+ * There is no lights() accessor in globe.gl 2.27.4, hence the traverse. No
+ * postprocessing, no night side, and the colours stay near-white so the map
+ * texture is not tinted. Total light at the centre of the disc lands within
+ * a few percent of the stock setup, so exposure is unchanged - what changes
+ * is that the edge now falls off.
+ *
+ * Retried because globe.gl populates the scene AFTER the constructor
+ * returns: at that moment the scene holds only the sky mesh and the camera,
+ * so tuning there silently did nothing.
+ */
+function tuneGlobeLighting(attempt = 0) {
+    if (!state.globe || typeof state.globe.scene !== 'function') return;
+    try {
+        const scene = state.globe.scene();
+        const camera = state.globe.camera();
+        if (!scene || !camera) return;
+        let ambient = null;
+        let key = null;
+        scene.traverse((obj) => {
+            if (!ambient && obj.type === 'AmbientLight') ambient = obj;
+            if (!key && obj.type === 'DirectionalLight') key = obj;
+        });
+        if (!ambient || !key) {
+            if (attempt < 20) setTimeout(() => tuneGlobeLighting(attempt + 1), 100);
+            return;
+        }
+        // Ambient drops to a floor that keeps the unlit limb readable
+        // (nothing on this globe may ever become invisible) but no longer
+        // washes the shading out.
+        ambient.color.set(0xffffff);
+        ambient.intensity = 0.52;
+        // Slightly warm key, offset up and to the left of the camera. The
+        // offset is in world units against a globe radius of 100, so it
+        // works out to roughly 25 degrees off the view axis at the default
+        // altitude - enough to shade, not enough to push the terminator
+        // inside the visible disc at any altitude the zoom clamp allows.
+        key.color.set(0xfff4e8);
+        key.intensity = 0.52;
+        key.position.set(-55, 70, 0);
+        camera.add(key);
+        if (!scene.children.includes(camera)) scene.add(camera);
+    } catch (_) { /* lighting is a nicety; never let it break the globe */ }
+}
+
+/**
+ * Wheel zoom + click-to-place, both owned at the container level.
+ *
+ * Attach-once for the lifetime of the page: teardownMap wipes the container's
+ * children but not listeners bound to the container itself, so re-binding on
+ * a rejoin would double every zoom step.
+ */
+let globeInputAttached = false;
+// Below these a pointer gesture counts as a click, not a drag. globe.gl's own
+// threshold is zero movement for a mouse, which silently ate guesses.
+const GLOBE_CLICK_SLOP_PX = 6;
+const GLOBE_CLICK_MAX_MS = 600;
+
+function attachGlobeInputHandling(el) {
+    if (globeInputAttached) return;
+    globeInputAttached = true;
+
+    // Item 1: exactly one wheel-zoom path. OrbitControls listens for wheel on
+    // the canvas and dollies the camera itself, so with our handler running
+    // too every scroll click double-stepped and stuttered. Intercepting in the
+    // CAPTURE phase and stopping propagation means the canvas listener never
+    // sees the event, while pinch (a touch gesture OrbitControls handles
+    // internally) is untouched. passive:false is explicit because
+    // /assets/js/passive-events-fix.js forces passive:true on any wheel
+    // listener that omits it, which would break preventDefault.
+    el.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        zoomGlobeByWheel(e.deltaY);
+    }, { passive: false, capture: true });
+
+    // Item 2: forgiving click-to-place. Capture phase so we resolve the
+    // gesture before globe.gl's own pointerup listener (which defers its
+    // click through rAF, so our stamp always lands first). No
+    // stopPropagation: OrbitControls needs these events to finish its drag.
+    let gesture = null;
+    el.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 || !e.isPrimary) return;
+        // Any deliberate input takes the camera over immediately.
+        cancelGlobeCameraTween();
+        gesture = { id: e.pointerId, x: e.clientX, y: e.clientY, at: performance.now(), travel: 0 };
+    }, { passive: true, capture: true });
+    el.addEventListener('pointermove', (e) => {
+        if (!gesture || e.pointerId !== gesture.id) return;
+        // Track the furthest excursion, not just down-to-up displacement, so a
+        // rotate-drag that happens to end where it began is still a drag.
+        gesture.travel = Math.max(gesture.travel, Math.hypot(e.clientX - gesture.x, e.clientY - gesture.y));
+    }, { passive: true, capture: true });
+    el.addEventListener('pointercancel', () => { gesture = null; }, { passive: true, capture: true });
+    el.addEventListener('pointerup', (e) => {
+        if (!gesture || e.pointerId !== gesture.id) return;
+        const g = gesture;
+        gesture = null;
+        // Claim the gesture whatever the verdict: globe.gl's fallback click
+        // must not place a pin for a drag we just rejected.
+        state.globeGestureAt = performance.now();
+        if (!state.globe) return;
+        const travel = Math.max(g.travel, Math.hypot(e.clientX - g.x, e.clientY - g.y));
+        if (travel > GLOBE_CLICK_SLOP_PX) return;
+        if (performance.now() - g.at > GLOBE_CLICK_MAX_MS) return;
+        const rect = el.getBoundingClientRect();
+        const coords = state.globe.toGlobeCoords(e.clientX - rect.left, e.clientY - rect.top);
+        // null when the ray missed the sphere - a click on empty space.
+        if (!coords) return;
+        onGlobeClick(coords.lat, coords.lng);
+    }, { passive: true, capture: true });
 }
 
 // Re-apply container dimensions to the globe whenever #globe-drop-map
@@ -3248,7 +3609,18 @@ function attachGlobeResizeHandling(el) {
         state.globe.height(h);
     };
     if (typeof ResizeObserver === 'function') {
-        const ro = new ResizeObserver(() => apply());
+        // Item 9: coalesce to one resize per frame. A drag on a split-screen
+        // divider (or the mobile URL bar sliding away) delivers a burst of
+        // observations, and each one used to run a synchronous
+        // renderer.setSize + camera update inside the observer callback.
+        let resizeRaf = null;
+        const ro = new ResizeObserver(() => {
+            if (resizeRaf) return;
+            resizeRaf = requestAnimationFrame(() => {
+                resizeRaf = null;
+                apply();
+            });
+        });
         ro.observe(el);
         state.globeResizeObserver = ro;
     } else {
@@ -3262,9 +3634,66 @@ function attachGlobeResizeHandling(el) {
     }
 }
 
+/**
+ * Item 10a: give the GPU its memory back.
+ *
+ * Dropping the container's innerHTML only removes the canvas - the WebGL
+ * context, its geometries, materials and the multi-megabyte Earth texture
+ * all stayed alive, and globe.gl's own render loop kept running against the
+ * detached scene, so every leave/rejoin cycle stacked a new context on top
+ * of the old one (browsers cap live contexts at ~16 and start killing the
+ * oldest). globe.gl's _destructor stops that loop and empties the layers;
+ * the rest is three.js internals, so all of it is best-effort.
+ */
+function disposeGlobeResources() {
+    if (!state.globe) return;
+    try {
+        if (typeof state.globe._destructor === 'function') state.globe._destructor();
+    } catch (_) { /* best-effort */ }
+    try {
+        const scene = state.globe.scene && state.globe.scene();
+        if (scene && typeof scene.traverse === 'function') {
+            scene.traverse((obj) => {
+                if (obj.geometry && typeof obj.geometry.dispose === 'function') {
+                    obj.geometry.dispose();
+                }
+                const materials = Array.isArray(obj.material)
+                    ? obj.material
+                    : (obj.material ? [obj.material] : []);
+                materials.forEach((mat) => {
+                    Object.keys(mat).forEach((key) => {
+                        const val = mat[key];
+                        if (val && val.isTexture && typeof val.dispose === 'function') val.dispose();
+                    });
+                    if (typeof mat.dispose === 'function') mat.dispose();
+                });
+            });
+        }
+    } catch (_) { /* best-effort */ }
+    try {
+        const renderer = state.globe.renderer && state.globe.renderer();
+        if (renderer) {
+            if (typeof renderer.dispose === 'function') renderer.dispose();
+            // forceContextLoss exists on newer three builds; on the ones
+            // where it doesn't, the extension is the same thing by hand.
+            if (typeof renderer.forceContextLoss === 'function') {
+                renderer.forceContextLoss();
+            } else if (typeof renderer.getContext === 'function') {
+                const ctx = renderer.getContext();
+                const ext = ctx && ctx.getExtension && ctx.getExtension('WEBGL_lose_context');
+                if (ext) ext.loseContext();
+            }
+        }
+    } catch (_) { /* best-effort */ }
+}
+
 function teardownMap() {
-    // globe.gl doesn't expose a public destructor; drop our ref and clear
-    // the container so the WebGL renderer + canvas get GC'd.
+    // Stop every local timer, release the GPU-side resources, then drop our
+    // ref and clear the container.
+    cancelGlobeCameraTween();
+    cancelRevealChoreography();
+    clearGlobeMarkers();
+    disposeGlobeResources();
     const el = document.getElementById('globe-drop-map');
     if (el) el.innerHTML = '';
     if (state.globeResizeObserver) {
@@ -3279,13 +3708,19 @@ function teardownMap() {
     state.lastRenderedMapQuestion = null;
     state.lastRevealedMapQuestion = null;
     state.lastCameraTarget = null;
+    state.revealChoreoForQuestion = null;
 }
 
 function clearMapOverlays() {
+    clearGlobeMarkers();
     if (!state.globe) return;
     state.globe.pointsData([]);
+    state.globe.htmlElementsData([]);
     state.globe.arcsData([]);
     state.globe.polygonsData([]);
+    // Return the dash props to their settled (solid) state in case an early
+    // advance cut the reveal's draw-on short mid-sweep.
+    state.globe.arcDashGap(0).arcDashInitialGap(0).arcDashAnimateTime(0);
 }
 
 /**
@@ -3318,13 +3753,72 @@ function loadCountryFeaturesIndex() {
     return countryFeaturesIndexPromise;
 }
 
+/* =====================================================================
+ * Animated show/hide for gameplay panels
+ *
+ * [hidden] is `display: none !important` in this app, so anything hidden
+ * that way disappears on the frame it is set - the reveal panel and the FAB
+ * stack both popped out of existence mid-loop. hideWithExit plays the
+ * element's .is-leaving animation first and hides it only once that
+ * finishes. The animationend listener is backed by a timeout on purpose:
+ * an ancestor can be display:none'd out from under the element (leaving the
+ * room mid-reveal) and the event then never fires, so the fallback is what
+ * guarantees the element still ends up hidden. Under prefers-reduced-motion
+ * the global 0.01ms duration rule makes animationend land almost
+ * immediately, and the fallback simply never gets there first.
+ * ===================================================================== */
+
+const exitTransitions = new WeakMap();
+
+function cancelExitTransition(el) {
+    const pending = exitTransitions.get(el);
+    if (pending) {
+        clearTimeout(pending.timer);
+        el.removeEventListener('animationend', pending.onEnd);
+        exitTransitions.delete(el);
+    }
+    el.classList.remove('is-leaving');
+}
+
+function showWithEnter(el) {
+    if (!el) return;
+    cancelExitTransition(el);
+    el.hidden = false;
+}
+
+function hideWithExit(el, durationMs, onHidden) {
+    if (!el) return;
+    if (el.hidden) { cancelExitTransition(el); return; }
+    cancelExitTransition(el);
+    const finish = () => {
+        cancelExitTransition(el);
+        el.hidden = true;
+        if (onHidden) onHidden();
+    };
+    // Children animate too (the verdict line has its own entrance) and their
+    // animationend bubbles, so only this element's own animation counts.
+    const onEnd = (e) => { if (e.target === el) finish(); };
+    el.addEventListener('animationend', onEnd);
+    const timer = setTimeout(finish, durationMs + 80);
+    exitTransitions.set(el, { timer, onEnd });
+    el.classList.add('is-leaving');
+}
+
+const FAB_EXIT_MS = 200;
+const REVEAL_EXIT_MS = 180;
+
 function setClearBtnVisible(visible) {
     const btn = document.getElementById('globe-drop-clear-btn');
-    if (!btn) return;
-    btn.hidden = !visible;
-    // Fallback for browsers that don't support :has() - toggle class on the stack.
     const stack = document.getElementById('globe-drop-fab-stack');
-    if (stack) stack.classList.toggle('fab-pinned', visible);
+    if (!btn || !stack) return;
+    // The Clear button is the "a pin is placed" signal for the whole stack:
+    // with no pin there is nothing to submit either. Visibility used to be a
+    // CSS :has() collapse, which cannot animate - the stack (and on mobile
+    // the fixed bottom action bar) blinked out. JS owns it now so the exit
+    // has somewhere to run.
+    btn.hidden = !visible;
+    if (visible) showWithEnter(stack);
+    else hideWithExit(stack, FAB_EXIT_MS);
 }
 
 function onGlobeClick(lat, lng) {
@@ -3354,8 +3848,6 @@ function onGlobeClick(lat, lng) {
     drawMyPinOnly(lat, lng);
     $('#globe-drop-submit-btn').disabled = false;
     setClearBtnVisible(true);
-    setText($('#globe-drop-status'), 'Pin placed. Submit when you\'re sure.');
-    $('#globe-drop-status').classList.remove('is-correct', 'is-wrong');
     Feedback.pinPlaced();
 }
 
@@ -3383,12 +3875,8 @@ function dismissGlobeTapHint() {
 
 function drawMyPinOnly(lat, lng) {
     if (!state.globe) return;
-    state.globe.pointsData([{
-        lat, lng,
-        color: '#6366f1',
-        size: 0.55,
-        label: 'Your guess'
-    }]);
+    state.globe.htmlElementsData([globePinMarker('mine', 'mine', lat, lng)]);
+    state.globe.pointsData([]);
     state.globe.arcsData([]);
     state.globe.polygonsData([]);
 }
@@ -3491,17 +3979,13 @@ function renderGlobeDropStage() {
             if (loc.subregion && loc.subregion !== loc.region) extra.push(loc.subregion);
         }
     }
-    if (extra.length) {
-        setText(hintsEl, extra.join(' · '));
-        hintsEl.removeAttribute('hidden');
-    } else {
-        // Always clear the text in addition to hiding - guarantees stale
-        // hint content from a previous round (or a mid-game difficulty
-        // change) can never bleed through if [hidden] is overridden by
-        // some other style.
-        setText(hintsEl, '');
-        hintsEl.setAttribute('hidden', '');
-    }
+    // Item 9: the hints line stays in flow even when this location has no
+    // region data. It is a full-width flex row inside the prompt card, so
+    // toggling [hidden] on it moved the whole globe up and down between
+    // rounds; CSS reserves its line box instead. Clearing the text is what
+    // hides it, which also guarantees a previous round's hint can never
+    // bleed through.
+    setText(hintsEl, extra.length ? extra.join(' · ') : '');
 
     // Difficulty chip - shows the tier label only (no "+50% score"
     // claim, since difficulty now controls timer + hint level only,
@@ -3544,52 +4028,83 @@ function renderGlobeDropStage() {
         // On mobile the prompt row is position:sticky (item 11), so a
         // scrollIntoView on every new question just yanks the viewport for
         // no benefit - skip it there. Desktop keeps the smooth scroll.
+        // Item 9: deferred a frame so it measures AFTER this render's layout
+        // changes (the rounds-history board appearing after round 1 is the
+        // big one). Measuring first meant scrolling to a rect that the same
+        // render was about to move.
         const promptRow = document.querySelector('.globe-drop-prompt-row');
         if (promptRow && window.innerWidth > 768
             && state.lastScrolledToGlobeForQId !== currentGlobeDropLocationId()) {
             state.lastScrolledToGlobeForQId = currentGlobeDropLocationId();
-            // Only scroll if the prompt row is actually off-screen - when
-            // it's already in view, an unconditional scrollIntoView just
-            // yanks the viewport for no reason. block:'nearest' nudges the
-            // minimum amount needed instead of slamming it to the top.
-            const rect = promptRow.getBoundingClientRect();
-            if (rect.top < 0 || rect.bottom > window.innerHeight) {
-                try {
-                    promptRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                } catch (_) { /* older browsers */ }
-            }
+            requestAnimationFrame(() => {
+                if (!state.roomData || !state.roomCode) return;
+                // Trigger on the whole play surface, not just the prompt row:
+                // at 1280x800 from page top the row is fully visible while the
+                // globe below it is cut off by the fold, so a row-only test
+                // never fires and the player starts the round unable to see
+                // the bottom of the globe. Scroll when the globe overflows the
+                // viewport, or when the row itself has scrolled above it.
+                const rect = promptRow.getBoundingClientRect();
+                const mapEl = document.getElementById('globe-drop-map');
+                const mapRect = mapEl ? mapEl.getBoundingClientRect() : null;
+                const globeCutOff = !!mapRect && mapRect.bottom > window.innerHeight;
+                if (rect.top < 0 || globeCutOff) {
+                    try {
+                        // block:'start' (not 'nearest', which is a no-op once
+                        // the row is fully visible) parks the row at the top,
+                        // and its scroll-margin-top keeps it under the fixed
+                        // site header, leaving the globe fully in frame.
+                        promptRow.scrollIntoView({
+                            behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+                            block: 'start',
+                        });
+                    } catch (_) { /* older browsers */ }
+                }
+            });
         }
+        const globeExisted = !!state.globe;
         const g = ensureGlobe();
         if (!g) return;
         const el = document.getElementById('globe-drop-map');
         if (el) { g.width(el.clientWidth); g.height(el.clientHeight); }
         showGlobeTapHintOnce();
 
-        // New question? Wipe overlays and re-arm the controls. Camera
-        // stays where the last reveal left it - the user can pan / zoom
-        // out manually to drop a new guess. That avoids the jarring
-        // "globe spins back to (20, 0) between rounds" effect, which
-        // also clobbered the in-flight reveal tween if the next round
-        // arrived before the previous tween settled.
+        // New question? Wipe overlays, cancel anything the last reveal still
+        // had in flight (the host can advance mid-choreography at any moment)
+        // and re-arm the controls.
         if (state.lastRenderedMapQuestion !== loc.id) {
+            cancelRevealChoreography();
             clearMapOverlays();
+            // Item 5: pull back to a neutral explore altitude so every round
+            // opens on the same deliberate beat instead of wherever the last
+            // reveal parked the camera. Current lat/lng are kept - a spin back
+            // to (20, 0) between rounds was disorienting. Skipped on the render
+            // that just built the globe, where the first-load ease owns the
+            // camera.
+            if (globeExisted) {
+                const pov = state.globe.pointOfView();
+                flyGlobeCameraTo({ lat: pov.lat, lng: pov.lng, altitude: GLOBE_EXPLORE_ALTITUDE }, 800);
+            }
             state.lastRenderedMapQuestion = loc.id;
             state.lastRevealedMapQuestion = null;
             state.lastCameraTarget = null;        // re-arm the reveal-pan guard
+            state.revealChoreoForQuestion = null; // re-arm the reveal sequence
             state.pendingGuess = null;
             $('#globe-drop-submit-btn').disabled = true;
             setClearBtnVisible(false);
-            $('#globe-drop-reveal').hidden = true;
-            const triviaEl = $('#globe-drop-reveal-trivia');
-            // Clear the text in addition to hiding so a stale entry can
-            // never flash when the reveal panel comes back for the next
-            // question. Trivia only renders after a successful fetch
-            // completes on the new question.
-            triviaEl.textContent = '';
-            triviaEl.hidden = true;
-            $('#globe-drop-countdown').hidden = true;
-            setText($('#globe-drop-status'), '');
-            $('#globe-drop-status').classList.remove('is-correct', 'is-wrong');
+            // Item 7: the panel fades out before it goes [hidden], and its
+            // contents are wiped only once it has - clearing them up front
+            // would show an empty panel for the length of the fade. Stale
+            // trivia in particular must never flash back on the next
+            // question; it only renders after a fresh fetch resolves.
+            hideWithExit($('#globe-drop-reveal'), REVEAL_EXIT_MS, () => {
+                const sentimentEl = $('#globe-drop-reveal-sentiment');
+                setText(sentimentEl, '');
+                sentimentEl.hidden = true;
+                const triviaEl = $('#globe-drop-reveal-trivia');
+                triviaEl.textContent = '';
+                triviaEl.hidden = true;
+            });
         }
 
         // Lock the controls if we've already submitted this question.
@@ -3634,7 +4149,8 @@ function renderGlobeDropStage() {
  * question. The host's rAF gate watches every player's readyAfterQId;
  * once everyone matches the current question id, the next round (or
  * the end stage, for the final question) fires early instead of
- * waiting out the full 5-second reveal window.
+ * waiting out the full 10-second reveal window
+ * (Config.GLOBE_DROP_REVEAL_TIME_MS).
  */
 async function markReadyForNext() {
     if (!state.user || !state.roomCode || !state.roomData) return;
@@ -3660,6 +4176,13 @@ async function markReadyForNext() {
  * affordance for "we're waiting on someone" instead of the button
  * silently appearing later.
  */
+// Item 8: the rAF loop calls renderReadyBar EVERY frame for the whole reveal
+// window (~600 calls), and it used to rewrite both innerHTMLs each time -
+// pure layout thrash, and it restarted any animation on those nodes before it
+// could play. The bar's content is a pure function of a handful of values, so
+// it is rebuilt only when that signature actually changes.
+let lastReadyBarSignature = null;
+
 function renderReadyBar(phase) {
     const bar = $('#globe-drop-ready-bar');
     if (!bar) return;
@@ -3672,7 +4195,7 @@ function renderReadyBar(phase) {
     // Show during global reveal OR once I've submitted (local reveal).
     const visible = !!loc && (inReveal || meSubmitted);
     bar.hidden = !visible;
-    if (!visible) return;
+    if (!visible) { lastReadyBarSignature = null; return; }
 
     const players = state.roomPlayers || [];
     const allSubmitted = players.length > 0
@@ -3685,105 +4208,196 @@ function renderReadyBar(phase) {
     const idx = room.currentQuestionIndex || 0;
     const totalQ = room.totalQuestions || 0;
     const isLast = totalQ > 0 && idx >= totalQ - 1;
+    const waitingForOthers = !allSubmitted && !inReveal;
+    const readyCount = players.filter((p) => p.readyAfterQId === loc.id).length;
+    const label = isLast ? 'finishing' : 'ready';
+
+    let btnHtml;
+    if (waitingForOthers) {
+        btnHtml = '<span aria-hidden="true">⏳</span> Waiting for opponents';
+    } else if (meReady) {
+        btnHtml = isLast
+            ? '<span aria-hidden="true">✓</span> Finishing'
+            : '<span aria-hidden="true">✓</span> You\'re ready';
+    } else {
+        btnHtml = isLast
+            ? '<span aria-hidden="true">🏁</span> Finish'
+            : '<span aria-hidden="true">⏭</span> Ready';
+    }
+
+    let statusHtml;
+    if (players.length > 4) {
+        statusHtml = `<small>${readyCount}/${players.length} ${label}</small>`;
+    } else {
+        const pips = players.map((p) => {
+            const isReady = p.readyAfterQId === loc.id;
+            return `<span class="ready-pip${isReady ? ' is-ready' : ''}">${escapeHtml(p.displayName || 'Player')}</span>`;
+        }).join('');
+        statusHtml = `${pips} <small>${readyCount}/${players.length} ${label}</small>`;
+    }
+
+    // Everything above is string building - no DOM was touched. Bail before
+    // the writes when nothing the bar shows has changed since the last frame.
+    const signature = `${loc.id}|${meReady || waitingForOthers}|${btnHtml}|${statusHtml}`;
+    if (signature === lastReadyBarSignature) return;
+    lastReadyBarSignature = signature;
+
     const btn = $('#globe-drop-ready-btn');
     if (btn) {
-        const waitingForOthers = !allSubmitted && !inReveal;
         btn.disabled = meReady || waitingForOthers;
-        if (waitingForOthers) {
-            btn.innerHTML = '<span aria-hidden="true">⏳</span> Waiting for opponents';
-        } else if (meReady) {
-            btn.innerHTML = isLast
-                ? '<span aria-hidden="true">✓</span> Finishing'
-                : '<span aria-hidden="true">✓</span> You\'re ready';
-        } else {
-            btn.innerHTML = isLast
-                ? '<span aria-hidden="true">🏁</span> Finish'
-                : '<span aria-hidden="true">⏭</span> Ready';
-        }
+        btn.innerHTML = btnHtml;
     }
     const statusEl = $('#globe-drop-ready-status');
-    if (statusEl) {
-        const readyCount = players.filter((p) => p.readyAfterQId === loc.id).length;
-        const label = isLast ? 'finishing' : 'ready';
-        if (players.length > 4) {
-            statusEl.innerHTML = `<small>${readyCount}/${players.length} ${label}</small>`;
-        } else {
-            const pips = players.map((p) => {
-                const isReady = p.readyAfterQId === loc.id;
-                return `<span class="ready-pip${isReady ? ' is-ready' : ''}">${escapeHtml(p.displayName || 'Player')}</span>`;
-            }).join('');
-            statusEl.innerHTML = `${pips} <small>${readyCount}/${players.length} ${label}</small>`;
-        }
-    }
+    if (statusEl) statusEl.innerHTML = statusHtml;
+}
+
+/* =====================================================================
+ * Reveal choreography
+ *
+ * The reveal window is 10s but the host can advance out of it at ANY moment,
+ * so every step the sequence schedules is registered here and the whole thing
+ * comes down in one cancelRevealChoreography() call from the new-question
+ * reset. Total runtime is ~1.6s, well inside the window.
+ * ===================================================================== */
+
+const REVEAL_CAMERA_MS = 1300;
+const REVEAL_PANEL_MS = 180;
+const REVEAL_COUNT_MS = 700;
+const REVEAL_SENTIMENT_MS = 1000;
+const REVEAL_ARC_DRAW_MS = 900;
+const revealChoreo = { timeouts: [], raf: null };
+
+function scheduleRevealStep(fn, delayMs) {
+    // Reduced motion: land on the end state immediately rather than staging it.
+    if (!delayMs || prefersReducedMotion()) { fn(); return; }
+    revealChoreo.timeouts.push(setTimeout(fn, delayMs));
+}
+
+function cancelRevealChoreography() {
+    revealChoreo.timeouts.forEach((id) => clearTimeout(id));
+    revealChoreo.timeouts.length = 0;
+    if (revealChoreo.raf) cancelAnimationFrame(revealChoreo.raf);
+    revealChoreo.raf = null;
+}
+
+function countUpKm(el, targetKm) {
+    const format = (v) => Math.round(v).toLocaleString();
+    if (prefersReducedMotion()) { el.textContent = format(targetKm); return; }
+    const started = performance.now();
+    const step = (now) => {
+        const p = Math.min(1, (now - started) / REVEAL_COUNT_MS);
+        el.textContent = format(targetKm * (1 - Math.pow(1 - p, 3)));
+        if (p < 1) { revealChoreo.raf = requestAnimationFrame(step); return; }
+        revealChoreo.raf = null;
+        el.textContent = format(targetKm);
+    };
+    revealChoreo.raf = requestAnimationFrame(step);
+}
+
+/**
+ * One-shot draw-on for the reveal arcs. dashLength 1 / dashGap 1 /
+ * initialGap 1 clips the arc away entirely, and globe.gl's dash animation
+ * then sweeps the visible window start -> end over exactly
+ * arcDashAnimateTime. That animation loops (it would start erasing on the
+ * second pass), so we settle the layer to a solid line as the first pass lands.
+ */
+function startRevealArcDraw() {
+    if (!state.globe) return;
+    if (prefersReducedMotion()) return;
+    state.globe.arcDashLength(1).arcDashGap(1).arcDashInitialGap(1).arcDashAnimateTime(REVEAL_ARC_DRAW_MS);
+    scheduleRevealStep(() => {
+        if (!state.globe) return;
+        state.globe.arcDashGap(0).arcDashInitialGap(0).arcDashAnimateTime(0);
+    }, REVEAL_ARC_DRAW_MS + 40);
 }
 
 function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
     if (!state.globe) return;
 
-    // Always shown: actual location (gold) + my pin (indigo) if I've submitted.
-    // Opponents' pins (red) are hidden during the local "I just submitted but
-    // others are still guessing" reveal - surfacing them would let me yell
-    // their pick across the room before they've locked in.
-    const pins = [{
-        lat: loc.lat, lng: loc.lng,
-        color: '#fcd34d',
-        size: 0.8,
-        label: `📍 ${loc.name}, ${loc.country}`
-    }];
     const meSubmitted = me && me.currentGuess && me.currentAnsweredFor === loc.id;
-    if (meSubmitted) {
-        pins.push({
-            lat: me.currentGuess.lat, lng: me.currentGuess.lng,
-            color: '#6366f1',
-            size: 0.55,
-            label: 'You'
-        });
+    // The local reveal ("I submitted, others are still guessing") and the
+    // global one are two calls for the same question. Choreograph only the
+    // first: the second exists to add the opponents' markers, and re-running
+    // the sequence would restart the count-up and re-fly a settled camera.
+    const isFirstReveal = state.revealChoreoForQuestion !== loc.id;
+    if (isFirstReveal) {
+        cancelRevealChoreography();
+        state.revealChoreoForQuestion = loc.id;
+        // A fresh reveal owns the panel. The new-question fade-out clears
+        // the previous trivia when it completes, but a reveal that lands
+        // during that fade cancels it (a client rendering a question that
+        // is already in its reveal window), so drop it here too.
+        const staleTrivia = $('#globe-drop-reveal-trivia');
+        staleTrivia.textContent = '';
+        staleTrivia.hidden = true;
     }
+
+    // Always shown: the answer pin (gold) + my pin (indigo) if I've submitted.
+    // Both are DOM markers so the drop-in can be real CSS animation; the guess
+    // pin keeps the identity it was placed with, so the reveal never re-grows
+    // a pin that has been sitting there since the player dropped it.
+    const pins = [globePinMarker('actual', 'actual', loc.lat, loc.lng)];
+    if (meSubmitted) {
+        pins.push(globePinMarker('mine', 'mine', me.currentGuess.lat, me.currentGuess.lng));
+    }
+    state.globe.htmlElementsData(pins);
+
+    // Opponents' pins (red) stay hidden during the local reveal - surfacing
+    // them would let me yell their pick across the room before they lock in.
+    const points = [];
     if (showOthers) {
         state.roomPlayers.forEach((p) => {
             if (!p || !p.currentGuess) return;
             if (p.currentAnsweredFor !== loc.id) return;
-            if (state.user && p.uid === state.user.uid) return; // already added
-            pins.push({
+            if (state.user && p.uid === state.user.uid) return; // drawn as my pin
+            points.push(globePointMarker(`guess:${p.uid}`, {
                 lat: p.currentGuess.lat, lng: p.currentGuess.lng,
                 color: '#f87171',
                 size: 0.55,
                 label: p.displayName
-            });
+            }));
         });
     }
-    state.globe.pointsData(pins);
+    state.globe.pointsData(points);
 
     // Great-circle arcs from each guess to the actual location. The
     // outbound colour (per-player) fades into gold at the truth so it
-    // reads as "your pin → the right spot". During the local reveal we
-    // only draw the player's own arc; during the global reveal we add
-    // every opponent so the result feels collective.
+    // reads as "your pin → the right spot". The guess has to be the arc's
+    // START point: the draw-on sweep runs start -> end. During the local
+    // reveal we only draw the player's own arc; during the global reveal we
+    // add every opponent so the result feels collective.
     const arcs = [];
     if (meSubmitted) {
-        arcs.push({
+        arcs.push(globeArcMarker('arc:me', {
             startLat: me.currentGuess.lat,
             startLng: me.currentGuess.lng,
             endLat: loc.lat,
             endLng: loc.lng,
+            altitude: globeArcAltitudeForDistance(GlobeDropScoring.haversineDistanceKm(
+                me.currentGuess.lat, me.currentGuess.lng, loc.lat, loc.lng
+            )),
             color: ['#6366f1', '#fcd34d']
-        });
+        }));
     }
     if (showOthers) {
         state.roomPlayers.forEach((p) => {
             if (!p || !p.currentGuess) return;
             if (p.currentAnsweredFor !== loc.id) return;
             if (state.user && p.uid === state.user.uid) return; // already added above
-            arcs.push({
+            arcs.push(globeArcMarker(`arc:${p.uid}`, {
                 startLat: p.currentGuess.lat,
                 startLng: p.currentGuess.lng,
                 endLat: loc.lat,
                 endLng: loc.lng,
+                altitude: globeArcAltitudeForDistance(GlobeDropScoring.haversineDistanceKm(
+                    p.currentGuess.lat, p.currentGuess.lng, loc.lat, loc.lng
+                )),
                 color: ['#f87171', '#fcd34d']
-            });
+            }));
         });
     }
     state.globe.arcsData(arcs);
+    if (isFirstReveal && arcs.length) startRevealArcDraw();
 
     // Reveal-phase country border. Lazy-load the world-countries
     // index on first call, then hand globe.gl exactly one polygon
@@ -3804,30 +4418,25 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
         state.globe.polygonsData(feat ? [feat] : []);
     });
 
-    // Cinematic camera pan into the correct location. We do a two-phase
-    // tween: first pull back slightly from the player's current altitude
-    // (200ms, gives visual context), then arc into the target at 0.6
-    // altitude (1400ms). The two-phase approach prevents an abrupt jump
-    // when the player is zoomed close and the target is far away.
-    // Guarded by lastCameraTarget so local → global doesn't re-fire.
+    // Cinematic camera flight that frames BOTH pins: aim at their great-circle
+    // midpoint at an altitude scaled to the miss, in one eased tween that also
+    // rises over the middle of a long pan (see flyGlobeCameraTo), so a player
+    // zoomed right in isn't dragged across the surface. Guarded by
+    // lastCameraTarget so local → global doesn't re-fire.
     const camTarget = `${loc.id}:${loc.lat.toFixed(3)},${loc.lng.toFixed(3)}`;
     if (state.lastCameraTarget !== camTarget) {
-        const curPov = state.globe.pointOfView();
-        const pullbackAlt = Math.max(curPov.altitude, 1.2);
-        // Phase 1: pull back (200ms)
-        state.globe.pointOfView({ lat: curPov.lat, lng: curPov.lng, altitude: pullbackAlt }, 200);
-        // Phase 2: fly to target (1400ms), delayed so phase 1 settles
-        setTimeout(() => {
-            if (state.globe && state.lastCameraTarget === camTarget) {
-                state.globe.pointOfView({ lat: loc.lat, lng: loc.lng, altitude: 0.6 }, 1400);
-            }
-        }, 220);
         state.lastCameraTarget = camTarget;
+        flyGlobeCameraTo(meSubmitted
+            ? globeFrameForPair(me.currentGuess.lat, me.currentGuess.lng, loc.lat, loc.lng)
+            : { lat: loc.lat, lng: loc.lng, altitude: 0.6 },
+        REVEAL_CAMERA_MS);
     }
 
     // Reveal panel: distance + points or "no guess"
     const revealEl = $('#globe-drop-reveal');
     const distEl = $('#globe-drop-reveal-distance');
+    const sentimentEl = $('#globe-drop-reveal-sentiment');
+    let sentiment;
     if (meSubmitted) {
         const d = GlobeDropScoring.haversineDistanceKm(
             me.currentGuess.lat, me.currentGuess.lng, loc.lat, loc.lng
@@ -3845,13 +4454,22 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
         const multTxt = multNum !== 1
             ? ` × ${multStr} = <strong>${points}</strong>`
             : '';
-        distEl.innerHTML = `${Math.round(d).toLocaleString()} km off: <strong>${basePoints}</strong>/100${multTxt}`;
-        let sentiment;
+        // The distance counts up from zero (item 4e), so it starts as its own
+        // span with a placeholder; the points land with gd-score-pulse as the
+        // count finishes. Only written on the first reveal - the global reveal
+        // produces identical markup and would clobber a running count-up.
+        if (isFirstReveal) {
+            distEl.classList.remove('is-pulse');
+            distEl.innerHTML = `<span class="gd-reveal-km">0</span> km off: <strong>${basePoints}</strong>/100${multTxt}`;
+            const kmEl = distEl.querySelector('.gd-reveal-km');
+            scheduleRevealStep(() => countUpKm(kmEl, d), REVEAL_PANEL_MS);
+            scheduleRevealStep(() => distEl.classList.add('is-pulse'), REVEAL_PANEL_MS + REVEAL_COUNT_MS);
+        }
         if (d < 100) sentiment = '🎯 Bullseye!';
         else if (d < 500) sentiment = 'Close, nicely done.';
         else if (d < 2000) sentiment = 'Not bad.';
         else sentiment = 'Way off, but you tried.';
-        setText($('#globe-drop-status'), showOthers ? sentiment : `${sentiment} Waiting for the rest…`);
+        if (!showOthers) sentiment += ' Waiting for the rest…';
         // Reveal sound + haptic, tiered by points earned (so a tiny-city
         // bullseye gets the celebratory sound, an antipodal guess gets a
         // soft minor descent). Only fires on the LOCAL reveal - the
@@ -3861,10 +4479,24 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
             try { Feedback.revealForScore(points); } catch (_) { /* ignore */ }
         }
     } else {
-        distEl.textContent = 'No guess submitted (minimum score awarded).';
-        setText($('#globe-drop-status'), showOthers ? '⏱ Time up.' : 'Waiting for the rest…');
+        if (isFirstReveal) distEl.textContent = 'No guess submitted (minimum score awarded).';
+        sentiment = showOthers ? '⏱ Time up.' : 'Waiting for the rest…';
     }
-    revealEl.hidden = false;
+    // Item 4f: the sentiment line used to be written into #globe-drop-status,
+    // which is display:none - it never rendered once in the shipped game.
+    setText(sentimentEl, sentiment);
+    if (isFirstReveal) {
+        // Panel enters just after the camera starts moving, not on top of it.
+        // showWithEnter, not `hidden = false`: the previous question's
+        // fade-out can still be in flight, and its pending hide would
+        // otherwise close this panel a beat after it opened.
+        sentimentEl.hidden = true;
+        scheduleRevealStep(() => showWithEnter(revealEl), REVEAL_PANEL_MS);
+        scheduleRevealStep(() => { sentimentEl.hidden = false; }, REVEAL_SENTIMENT_MS);
+    } else {
+        showWithEnter(revealEl);
+        sentimentEl.hidden = false;
+    }
 
     // Wikipedia escape hatch. Always rendered when the reveal opens -
     // the inline trivia summary loads async and can fail; the link is
@@ -3881,17 +4513,6 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
         }
     }
 
-    // One-shot pulse on the score callout so the points feel earned. The
-    // class is removed once the animation finishes (animationend) so it
-    // re-fires the next time the panel opens for a fresh question.
-    if (meSubmitted) {
-        distEl.classList.remove('is-pulse');
-        // Force a reflow so removing + re-adding the class restarts the
-        // CSS animation. void 0 is a no-op that triggers layout.
-        // eslint-disable-next-line no-void
-        void distEl.offsetWidth;
-        distEl.classList.add('is-pulse');
-    }
     // The hint is an empty contentless paragraph; the reveal panel is now
     // a globe overlay, so toggling the hint's visibility here would only
     // shift the globe up mid-reveal. Leave it as-is across the
@@ -3955,9 +4576,39 @@ function syncStandingsCollapse(loc) {
     }
 }
 
+/**
+ * Play a one-shot CSS animation class and take it off again so it can fire
+ * next time. The timeout is the safety net: if the element is not being
+ * rendered (a collapsed board, a hidden stage) animationend never arrives
+ * and the class would stick, permanently disarming the cue.
+ */
+function pulseOnce(el, className, durationMs) {
+    if (!el) return;
+    el.classList.remove(className);
+    // Reflow so removing + re-adding restarts the animation.
+    // eslint-disable-next-line no-void
+    void el.offsetWidth;
+    el.classList.add(className);
+    let timer = null;
+    const clear = () => {
+        clearTimeout(timer);
+        el.removeEventListener('animationend', onEnd);
+        el.classList.remove(className);
+    };
+    const onEnd = (e) => { if (e.target === el) clear(); };
+    el.addEventListener('animationend', onEnd);
+    timer = setTimeout(clear, durationMs + 80);
+}
+
+const MINI_BOARD_ROW_HTML =
+    '<span class="mini-board-rank"></span>'
+    + '<span class="mini-board-name"></span>'
+    + '<span class="mini-board-streak" hidden></span>'
+    + '<span class="mini-board-check" aria-label="submitted"></span>'
+    + '<span class="mini-board-score"></span>';
+
 function renderMiniBoardGlobeDrop(currentQuestionId) {
     const list = $('#mini-board-list-globe-drop');
-    list.innerHTML = '';
     list.classList.toggle('is-crowded', state.roomPlayers && state.roomPlayers.length > 4);
     // Anti-peek: if I haven't submitted the current round, redact each
     // opponent's contribution from THIS round so I can't infer their
@@ -4010,31 +4661,67 @@ function renderMiniBoardGlobeDrop(currentQuestionId) {
     const currentPhase = globeDropPhase(startMs, Date.now(), revealMs, currentAskingDurationMs());
     const isAskingPhase = currentPhase === 'asking';
 
+    // Item 8: rows are keyed by uid and updated in place. The old
+    // innerHTML='' rebuild handed every snapshot a brand new node, which
+    // starts at its final computed style - so the 180ms .mini-board-check
+    // slide-in could never play, and a row could not react to a change
+    // because it had no previous state to change from.
+    const existing = new Map();
+    Array.from(list.children).forEach((node) => {
+        if (node.dataset.uid) existing.set(node.dataset.uid, node);
+        else node.remove();
+    });
     ranked.forEach((p, i) => {
-        const li = document.createElement('li');
-        li.className = 'mini-board-row';
-        if (state.user && p.uid === state.user.uid) li.classList.add('is-me');
-        if (i === 0 && (p.score || 0) > 0) li.classList.add('is-leader');
-        if (p.answeredThisQuestion) {
-            li.classList.add('is-answered');
-        } else if (isAskingPhase && currentQuestionId) {
-            // Idle during the asking window: subtle pulse so the host can
-            // see who still needs to submit without it being distracting.
-            li.classList.add('is-pending');
+        let li = existing.get(p.uid);
+        const isNew = !li;
+        if (isNew) {
+            li = document.createElement('li');
+            li.className = 'mini-board-row';
+            li.dataset.uid = p.uid;
+            li.innerHTML = MINI_BOARD_ROW_HTML;
+        } else {
+            existing.delete(p.uid);
         }
+        // Only touch the DOM where the rank order actually changed - moving
+        // a node restarts its CSS animations.
+        if (list.children[i] !== li) list.insertBefore(li, list.children[i] || null);
+
+        const wasAnswered = li.classList.contains('is-answered');
+        li.classList.toggle('is-me', !!(state.user && p.uid === state.user.uid));
+        li.classList.toggle('is-leader', i === 0 && (p.score || 0) > 0);
+        li.classList.toggle('is-answered', !!p.answeredThisQuestion);
+        // Idle during the asking window: subtle pulse so the host can
+        // see who still needs to submit without it being distracting.
+        li.classList.toggle('is-pending',
+            !p.answeredThisQuestion && isAskingPhase && !!currentQuestionId);
+
+        const rankEl = li.querySelector('.mini-board-rank');
+        if (rankEl.textContent !== String(i + 1)) rankEl.textContent = String(i + 1);
+        const nameEl = li.querySelector('.mini-board-name');
+        const name = p.displayName == null ? '' : String(p.displayName);
+        if (nameEl.textContent !== name) nameEl.textContent = name;
         // Surface bullseye streak >= 2 - same treatment as trivia streaks.
         const streak = Number(p.streak) || 0;
-        const streakChip = streak >= 2
-            ? `<span class="mini-board-streak" title="${streak} bullseyes in a row">🎯${streak}</span>`
-            : '';
-        li.innerHTML =
-            `<span class="mini-board-rank">${i+1}</span>` +
-            `<span class="mini-board-name">${escapeHtml(p.displayName)}</span>` +
-            streakChip +
-            `<span class="mini-board-check" aria-label="submitted"></span>` +
-            `<span class="mini-board-score">${p.score || 0}</span>`;
-        list.appendChild(li);
+        const streakEl = li.querySelector('.mini-board-streak');
+        streakEl.hidden = streak < 2;
+        if (streak >= 2) {
+            const chip = `🎯${streak}`;
+            if (streakEl.textContent !== chip) {
+                streakEl.textContent = chip;
+                streakEl.title = `${streak} bullseyes in a row`;
+            }
+        }
+        const scoreEl = li.querySelector('.mini-board-score');
+        const scoreTxt = String(p.score || 0);
+        if (scoreEl.textContent !== scoreTxt) scoreEl.textContent = scoreTxt;
+
+        // One-shot cue the moment an opponent (or I) lock in, on top of the
+        // check that slides in beside the name.
+        if (!isNew && p.answeredThisQuestion && !wasAnswered) {
+            pulseOnce(li, 'is-just-answered', 620);
+        }
     });
+    existing.forEach((node) => node.remove());
     renderRoundsHistoryBoard();
 }
 
@@ -4115,7 +4802,15 @@ function renderRoundsHistoryBoard() {
     // Opponents' current-round cell stays masked (and is excluded from their
     // shown Total) until the local player has submitted, so the running total
     // never leaks a result.
-    scoreboard.innerHTML = '';
+    // Item 8: same keyed treatment as the mini-board - rows are matched by
+    // uid and rewritten only when their own content changed, so an unrelated
+    // snapshot (someone's lastSeen heartbeat) no longer rebuilds the board.
+    const existingRows = new Map();
+    Array.from(scoreboard.children).forEach((node) => {
+        if (node.dataset.uid) existingRows.set(node.dataset.uid, node);
+        else node.remove();
+    });
+    let rowIndex = 0;
     const players = state.roomPlayers.slice().sort((a, b) => (b.score || 0) - (a.score || 0));
     for (const p of players) {
         const isMe = !!(state.user && p.uid === state.user.uid);
@@ -4160,14 +4855,31 @@ function renderRoundsHistoryBoard() {
                 `<span class="${cls}"><span class="rh-score-pill-r">R${r + 1}:</span> ${valHtml}</span>`
             );
         }
-        const row = document.createElement('div');
-        row.className = 'rh-score-row' + (isMe ? ' is-me' : '');
-        row.innerHTML =
+        const html =
             `<span class="rh-score-name">${escapeHtml(p.displayName || 'Player')}</span>`
             + `<span class="rh-score-pills">${pills.join('')}</span>`
             + `<span class="rh-score-total">Total: <strong>${total}</strong></span>`;
-        scoreboard.appendChild(row);
+        let row = existingRows.get(p.uid);
+        if (!row) {
+            row = document.createElement('div');
+            row.dataset.uid = p.uid;
+        } else {
+            existingRows.delete(p.uid);
+        }
+        const cls = 'rh-score-row' + (isMe ? ' is-me' : '');
+        if (row.className !== cls) row.className = cls;
+        // Signature kept as an expando, not a data- attribute: it is long,
+        // and writing it to the DOM would be exactly the churn this avoids.
+        if (row._rhSignature !== html) {
+            row._rhSignature = html;
+            row.innerHTML = html;
+        }
+        if (scoreboard.children[rowIndex] !== row) {
+            scoreboard.insertBefore(row, scoreboard.children[rowIndex] || null);
+        }
+        rowIndex++;
     }
+    existingRows.forEach((node) => node.remove());
 
     board.hidden = idx === 0;
 }
@@ -4262,21 +4974,46 @@ async function submitGuess() {
         });
     } catch (err) {
         console.warn('Guess write failed:', err);
+        // Item 10c: the optimistic reveal was drawn on the assumption the
+        // write lands. It didn't, so put the board back exactly as it was
+        // the moment before Submit: pin placed, nothing revealed, controls
+        // live. Without this the player was left staring at a result for a
+        // guess the room never received, with no way to retry.
         state.submittedQuestionId = null;
+        cancelRevealChoreography();
+        if (myEntry) {
+            myEntry.currentGuess = null;
+            myEntry.currentAnsweredFor = null;
+        }
+        state.lastRevealedMapQuestion = null;
+        state.revealChoreoForQuestion = null;
+        state.lastCameraTarget = null;
+        // Re-arm the trivia fetch too: the retry's reveal wipes the panel as
+        // a fresh one, and the in-flight fetch would have nowhere to land.
+        state.triviaFetchedFor = null;
+        hideWithExit($('#globe-drop-reveal'), REVEAL_EXIT_MS, () => {
+            const sentimentEl = $('#globe-drop-reveal-sentiment');
+            setText(sentimentEl, '');
+            sentimentEl.hidden = true;
+        });
+        state.pendingGuess = guess;
+        // clearMapOverlays first so the reveal's arc, answer pin and country
+        // polygon go with it; drawMyPinOnly then re-drops just the guess.
+        clearMapOverlays();
+        drawMyPinOnly(guess.lat, guess.lng);
         $('#globe-drop-submit-btn').disabled = false;
+        setClearBtnVisible(true);
+        showToast('Guess did not save - tap Submit to try again.', {
+            icon: '⚠️', key: 'globe-drop-submit-failed'
+        });
     }
 }
 
 function clearMyPin() {
     state.pendingGuess = null;
-    if (state.globe) {
-        state.globe.pointsData([]);
-        state.globe.arcsData([]);
-        state.globe.polygonsData([]);
-    }
+    clearMapOverlays();
     $('#globe-drop-submit-btn').disabled = true;
     setClearBtnVisible(false);
-    setText($('#globe-drop-status'), '');
 }
 
 function startGlobeDropTimerLoop() {
@@ -4311,7 +5048,6 @@ function startGlobeDropTimerLoop() {
         const left = globeDropTimeLeftMs(startMs, now, revealMs, duration);
         const phase = globeDropPhase(startMs, now, revealMs, duration);
         renderGlobeDropTimer(left, phase, duration);
-        renderRevealCountdown(phase, revealMs, now);
 
         const currentQId = state.roomData.currentQuestionId;
         // Low-timer pings at 5 / 4 / 3 / 2 / 1 seconds. Each fires
@@ -4390,7 +5126,7 @@ function startGlobeDropTimerLoop() {
         // Early advance: if every player has voted Ready for the
         // current question during reveal, jump straight to the next
         // round (or the end stage for the final question) instead of
-        // waiting out the rest of the 5-second window. The
+        // waiting out the rest of the 10-second window. The
         // earlyAdvanceForQuestion guard ensures we fire exactly once
         // per question.
         if (isHost && phase === 'reveal' && currentQId
@@ -4404,28 +5140,31 @@ function startGlobeDropTimerLoop() {
             });
         }
 
-        if (isHost && phase === 'ended') {
-            advanceQuestionOrFinish().catch((err) => console.warn('advance failed:', err));
-            return;
+        // Reveal window is over: the host moves the room on. Item 10d: this
+        // used to fire and then `return` without rescheduling, so one failed
+        // write (a network blip, a rules hiccup) killed the host's loop and
+        // the room sat on the finished question until some other snapshot
+        // happened to restart it. The loop keeps running while the write is
+        // in flight now, sharing earlyAdvanceForQuestion with the
+        // early-advance path above so the two can never both advance the
+        // same question; a failure re-arms the guard after a beat, so a hard
+        // failure retries about once a second instead of every frame.
+        if (isHost && phase === 'ended' && currentQId
+            && state.earlyAdvanceForQuestion !== currentQId) {
+            state.earlyAdvanceForQuestion = currentQId;
+            advanceQuestionOrFinish().catch((err) => {
+                console.warn('advance failed:', err);
+                setTimeout(() => {
+                    if (state.earlyAdvanceForQuestion === currentQId) {
+                        state.earlyAdvanceForQuestion = null;
+                    }
+                }, 1000);
+            });
         }
 
         state.timerRaf = requestAnimationFrame(tick);
     };
     state.timerRaf = requestAnimationFrame(tick);
-}
-
-/**
- * Drive the "5 to next" chip above the globe. Visible only during the
- * GLOBAL reveal (revealStartedAt is set on the room doc) - the local
- * reveal that fires when you submit before opponents shouldn't show a
- * countdown, because the host hasn't started one yet.
- */
-function renderRevealCountdown(phase, revealStartedAtMs, nowMs) {
-    // The "5 to next" countdown is now drawn into the timer overlay
-    // itself by renderGlobeDropTimer. We keep the chip element hidden
-    // permanently - there's only ever one timer on screen, top-left.
-    const chip = $('#globe-drop-countdown');
-    if (chip) chip.hidden = true;
 }
 
 function renderGlobeDropTimer(leftMs, phase, totalMs) {
