@@ -1806,15 +1806,6 @@ body.gym-tracker #active-workout .superset-block {
     font-size: 0.72rem;
 }
 
-.rest-timer-label {
-    color: var(--rest-accent);
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
-    font-size: 0.55rem;
-    font-weight: 700;
-    margin-bottom: 0.02rem;
-}
-
 .rest-timer-value {
     font-variant-numeric: tabular-nums;
     font-size: 1.5rem;
@@ -2065,9 +2056,25 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle i {
     min-width: 0;
 }
 
+/* Tapping the exercise name OR its meta line (sets / muscle / rep range /
+   rest) collapses and expands the entry, same as the chevron. A pointer-only
+   affordance: the chevron button next to it stays the keyboard and
+   screen-reader control, so this block takes no tab stop. */
+.exercise-title-collapse {
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.exercise-title-collapse:hover .exercise-name-main {
+    color: var(--accent-primary);
+}
+
 .exercise-name-main {
     color: var(--text-primary);
     font-weight: 700;
+    transition: color var(--transition-base);
 }
 
 /* Pass 2 #2: subtitle row under the name — progress pill, muscle, rep range,

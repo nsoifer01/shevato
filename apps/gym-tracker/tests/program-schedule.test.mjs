@@ -86,8 +86,8 @@ test('weekdayOrder: Sunday-first', () => {
 // Item R2-5: Settings.firstDayOfWeek user-facing setting
 // -------------------------------------------------------
 
-test('R2-5: firstDayOfWeek defaults to 0 (Sunday)', () => {
-    assert.equal(Settings.getDefault().firstDayOfWeek, 0);
+test('R2-5: firstDayOfWeek defaults to 1 (Monday)', () => {
+    assert.equal(Settings.getDefault().firstDayOfWeek, 1);
 });
 
 test('R2-5: firstDayOfWeek = 1 (Monday) round-trips', () => {
@@ -96,8 +96,14 @@ test('R2-5: firstDayOfWeek = 1 (Monday) round-trips', () => {
     assert.equal(Settings.fromJSON(s.toJSON()).firstDayOfWeek, 1);
 });
 
-test('R2-5: legacy data without firstDayOfWeek defaults to Sunday', () => {
-    assert.equal(Settings.fromJSON({ weightUnit: 'kg' }).firstDayOfWeek, 0);
+test('R2-5: a stored Sunday survives the Monday default', () => {
+    // 0 is falsy, so the old `data.firstDayOfWeek || 0` idiom would have
+    // silently rewritten a deliberate Sunday once the default moved.
+    assert.equal(Settings.fromJSON({ weightUnit: 'kg', firstDayOfWeek: 0 }).firstDayOfWeek, 0);
+});
+
+test('R2-5: legacy data without firstDayOfWeek defaults to Monday', () => {
+    assert.equal(Settings.fromJSON({ weightUnit: 'kg' }).firstDayOfWeek, 1);
 });
 
 // Calendar grid leading-blank offset is a pure formula shared by both column
