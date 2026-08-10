@@ -1,6 +1,266 @@
 {
   "updates": [
     {
+      "builtAt": "2026-08-10T07:42:37.661Z",
+      "totals": {
+        "seasons": 66210,
+        "delta": 0
+      },
+      "shapeCounts": {
+        "mid-peak": 4636,
+        "rebound": 10081,
+        "rising": 2904,
+        "slow-burn": 4374,
+        "big-finale": 12118,
+        "u-shaped": 3090,
+        "rollercoaster": 14060,
+        "saved-best-for-last": 1543,
+        "front-loaded": 3467,
+        "declining": 1877,
+        "bad-finale": 4666,
+        "consistent": 2625,
+        "shape-drift": 1639
+      },
+      "shapeDeltas": {
+        "rebound": -3,
+        "slow-burn": 1,
+        "big-finale": -3,
+        "u-shaped": -1,
+        "rollercoaster": 2,
+        "front-loaded": -2,
+        "declining": 1,
+        "bad-finale": 2,
+        "consistent": 6,
+        "shape-drift": -2
+      },
+      "added": [
+        {
+          "seriesId": "tt14986406",
+          "title": "Bleach: Thousand-Year Blood War",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36643714",
+          "title": "Operation Safed Sagar",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0457246",
+          "title": "Kappa Mikey",
+          "season": 2,
+          "seasonYear": 2007
+        },
+        {
+          "seriesId": "tt43588603",
+          "title": "Salcedo, Leather, and Boogaloo",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt29064303",
+          "title": "Simon Coleman",
+          "season": 2,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt19892794",
+          "title": "Al Maddah 2: Ostorat Al Wady",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt42171878",
+          "title": "Eleni",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43616775",
+          "title": "A Bona Fide Killer",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2247207",
+          "title": "Beni Affet",
+          "season": 1,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt29264604",
+          "title": "SKZ Code",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt29614148",
+          "title": "Death Inc.",
+          "season": 4,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt35513078",
+          "title": "Lego Ninjago: Legends",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0133302",
+          "title": "Frontline",
+          "season": 45,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt34129249",
+          "title": "MDRJago",
+          "season": 2,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt34129249",
+          "title": "MDRJago",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt35546593",
+          "title": "MDR Game",
+          "season": 2,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt34129249",
+          "title": "MDRJago",
+          "season": 3,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt27613744",
+          "title": "LEGO® DreamZzz",
+          "season": 4,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt28672586",
+          "title": "Lego City: No Limits",
+          "season": 2,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt34129249",
+          "title": "MDRJago",
+          "season": 6,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38304490",
+          "title": "MDRJago: Secrets of the Kair Strike",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt42576938",
+          "title": "MDRJago: Liars of MDR",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt13535142",
+          "title": "Heroes of Envell",
+          "season": 1,
+          "from": 9.02,
+          "to": 8.02,
+          "delta": -1
+        },
+        {
+          "seriesId": "tt13535142",
+          "title": "Heroes of Envell",
+          "season": 2,
+          "from": 9.2,
+          "to": 8.27,
+          "delta": -0.93
+        },
+        {
+          "seriesId": "tt1400819",
+          "title": "Horrible Histories",
+          "season": 10,
+          "from": 5.05,
+          "to": 5.66,
+          "delta": 0.61
+        },
+        {
+          "seriesId": "tt21908550",
+          "title": "Vadhandhi",
+          "season": 2,
+          "from": 8.86,
+          "to": 8.29,
+          "delta": -0.57
+        },
+        {
+          "seriesId": "tt0377291",
+          "title": "Yhdeksän miehen saappaat",
+          "season": 1,
+          "from": 5.4,
+          "to": 5.95,
+          "delta": 0.55
+        },
+        {
+          "seriesId": "tt36951033",
+          "title": "Parlor Room",
+          "season": 2,
+          "from": 8.23,
+          "to": 7.73,
+          "delta": -0.5
+        },
+        {
+          "seriesId": "tt41976477",
+          "title": "Shaidai",
+          "season": 1,
+          "from": 8.51,
+          "to": 8.04,
+          "delta": -0.47
+        },
+        {
+          "seriesId": "tt28083272",
+          "title": "Betrayal",
+          "season": 4,
+          "from": 5.13,
+          "to": 4.67,
+          "delta": -0.46
+        },
+        {
+          "seriesId": "tt31365727",
+          "title": "A renitens",
+          "season": 3,
+          "from": 4.43,
+          "to": 4.89,
+          "delta": 0.46
+        },
+        {
+          "seriesId": "tt7849864",
+          "title": "Grey's Anatomy: The Webisodes",
+          "season": 1,
+          "from": 5.63,
+          "to": 6.07,
+          "delta": 0.44
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 22017,
+        "avgRating": 1316,
+        "shapes": 209,
+        "seriesRating": 363,
+        "episodeCount": 90,
+        "poster": 1
+      }
+    },
+    {
       "builtAt": "2026-08-09T06:59:37.398Z",
       "totals": {
         "seasons": 66210,
@@ -6763,347 +7023,6 @@
         "episodeCount": 103,
         "poster": 17,
         "overview": 2
-      }
-    },
-    {
-      "builtAt": "2026-07-11T08:09:16.687Z",
-      "totals": {
-        "seasons": 65735,
-        "delta": 29
-      },
-      "shapeCounts": {
-        "mid-peak": 4621,
-        "rebound": 10035,
-        "rising": 2904,
-        "slow-burn": 4356,
-        "big-finale": 12009,
-        "u-shaped": 3077,
-        "rollercoaster": 14002,
-        "saved-best-for-last": 1522,
-        "front-loaded": 3428,
-        "declining": 1853,
-        "bad-finale": 4631,
-        "consistent": 2610,
-        "shape-drift": 1612
-      },
-      "shapeDeltas": {
-        "mid-peak": -8,
-        "rebound": 8,
-        "rising": -4,
-        "slow-burn": -8,
-        "big-finale": 11,
-        "u-shaped": 1,
-        "rollercoaster": -4,
-        "front-loaded": -3,
-        "bad-finale": 1,
-        "consistent": 3,
-        "shape-drift": -1
-      },
-      "added": [
-        {
-          "seriesId": "tt8773338",
-          "title": "Stay Here",
-          "season": 1,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt1942171",
-          "title": "Athena: Goddess of War",
-          "season": 1,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt0089991",
-          "title": "Sense and Sensibility",
-          "season": 1,
-          "seasonYear": 1981
-        },
-        {
-          "seriesId": "tt40550160",
-          "title": "From Overshadowed to Overpowered: Second Reincarnation of a Talentless Sage",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt21154618",
-          "title": "Helgoland 513",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt2431250",
-          "title": "Little House on the Prairie",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43583640",
-          "title": "Alti Ustu Istanbul",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0200358",
-          "title": "Omnibus",
-          "season": 3,
-          "seasonYear": 1969
-        },
-        {
-          "seriesId": "tt2442494",
-          "title": "Get Out Alive with Bear Grylls",
-          "season": 1,
-          "seasonYear": 2013
-        },
-        {
-          "seriesId": "tt0167567",
-          "title": "Cousin Skeeter",
-          "season": 1,
-          "seasonYear": 1998
-        },
-        {
-          "seriesId": "tt43351313",
-          "title": "Muhtemel ask",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0954837",
-          "title": "Three Piece Suite",
-          "season": 1,
-          "seasonYear": 1977
-        },
-        {
-          "seriesId": "tt0445882",
-          "title": "The Koala Brothers",
-          "season": 2,
-          "seasonYear": 2004
-        },
-        {
-          "seriesId": "tt11161138",
-          "title": "Dr. Gokú Super",
-          "season": 1,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt1517749",
-          "title": "Cupcake Wars",
-          "season": 1,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt1517749",
-          "title": "Cupcake Wars",
-          "season": 2,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt1517749",
-          "title": "Cupcake Wars",
-          "season": 3,
-          "seasonYear": 2011
-        },
-        {
-          "seriesId": "tt1517749",
-          "title": "Cupcake Wars",
-          "season": 4,
-          "seasonYear": 2011
-        },
-        {
-          "seriesId": "tt1517749",
-          "title": "Cupcake Wars",
-          "season": 5,
-          "seasonYear": 2012
-        },
-        {
-          "seriesId": "tt1517749",
-          "title": "Cupcake Wars",
-          "season": 8,
-          "seasonYear": 2013
-        },
-        {
-          "seriesId": "tt32644434",
-          "title": "Against You",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt32907596",
-          "title": "Bodies in the Water",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0309183",
-          "title": "The Mouse Factory",
-          "season": 1,
-          "seasonYear": 1972
-        },
-        {
-          "seriesId": "tt0315047",
-          "title": "Presidio Med",
-          "season": 1,
-          "seasonYear": 2002
-        },
-        {
-          "seriesId": "tt11429120",
-          "title": "Sheriff Hoot Kloot",
-          "season": 1,
-          "seasonYear": 1973
-        },
-        {
-          "seriesId": "tt14068896",
-          "title": "Lego Star Wars: Celebrate the Season",
-          "season": 4,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt14068896",
-          "title": "Lego Star Wars: Celebrate the Season",
-          "season": 3,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt22097692",
-          "title": "StoryBots: Answer Time",
-          "season": 2,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt24669186",
-          "title": "Recipe for Farewell",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt37379474",
-          "title": "Millennial Mal",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43210030",
-          "title": "EclipseCraft",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt43405601",
-          "title": "Doganin Kanunu",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt43586569",
-          "title": "Alti Ustu Istanbul",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt12511004",
-          "title": "Stampy's Lovely World",
-          "season": 9,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt0861751",
-          "title": "Hungarian Folk Tales",
-          "season": 9,
-          "seasonYear": 2011
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt14068896",
-          "title": "Lego Star Wars: Celebrate the Season",
-          "season": 2,
-          "from": 3.84,
-          "to": 5.02,
-          "delta": 1.18
-        },
-        {
-          "seriesId": "tt14068896",
-          "title": "Lego Star Wars: Celebrate the Season",
-          "season": 1,
-          "from": 4.04,
-          "to": 4.98,
-          "delta": 0.94
-        },
-        {
-          "seriesId": "tt43081076",
-          "title": "What Remains of Honor",
-          "season": 1,
-          "from": 6.44,
-          "to": 5.78,
-          "delta": -0.66
-        },
-        {
-          "seriesId": "tt15660128",
-          "title": "The Prince of Tennis II: U-17 World Cup",
-          "season": 1,
-          "from": 8.61,
-          "to": 8.03,
-          "delta": -0.58
-        },
-        {
-          "seriesId": "tt39673631",
-          "title": "Monster Eater",
-          "season": 1,
-          "from": 6.46,
-          "to": 5.89,
-          "delta": -0.57
-        },
-        {
-          "seriesId": "tt0167567",
-          "title": "Cousin Skeeter",
-          "season": 2,
-          "from": 6.92,
-          "to": 7.47,
-          "delta": 0.55
-        },
-        {
-          "seriesId": "tt30972594",
-          "title": "The Valley",
-          "season": 3,
-          "from": 7.79,
-          "to": 7.25,
-          "delta": -0.54
-        },
-        {
-          "seriesId": "tt12768024",
-          "title": "I Want to Be His Prey!",
-          "season": 1,
-          "from": 6.33,
-          "to": 6.83,
-          "delta": 0.5
-        },
-        {
-          "seriesId": "tt21998588",
-          "title": "Good Bad Girl",
-          "season": 1,
-          "from": 6.38,
-          "to": 5.89,
-          "delta": -0.49
-        },
-        {
-          "seriesId": "tt15402976",
-          "title": "Untold",
-          "season": 6,
-          "from": 6.7,
-          "to": 6.23,
-          "delta": -0.47
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 19030,
-        "avgRating": 1287,
-        "seriesRating": 262,
-        "shapes": 203,
-        "episodeCount": 108,
-        "poster": 9,
-        "providers": 3,
-        "overview": 8
       }
     }
   ]
