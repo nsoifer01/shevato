@@ -1577,6 +1577,47 @@ const TripLogic = (() => {
     return out.join('\r\n') + '\r\n';
   }
 
+  // ---------- GPX export ----------
+  // The route the Map view draws, as a file a GPS app or My Maps can open. It
+  // takes ALREADY-LOCATED stops ({ name, lat, lon }) rather than a trip: the
+  // coordinates come from the geocode cache the map already filled, and this
+  // file must never be the thing that starts a geocoding run (Nominatim is one
+  // request a second under a policy that forbids bulk).
+  const xmlEscape = s => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+
+  function buildGpx(stops) {
+    const out = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<gpx version="1.1" creator="Shevato Trip Planner" xmlns="http://www.topografix.com/GPX/1/1">',
+    ];
+    // The last waypoint WRITTEN, not the last stop seen: a stop with no
+    // coordinate is dropped rather than sent to 0,0 (a waypoint in the Gulf of
+    // Guinea is worse than a missing one), and dropping it must not leave the
+    // same place written twice in a row.
+    let lastKey = '';
+    for (const stop of (Array.isArray(stops) ? stops : [])) {
+      if (!stop || !validCoord(stop.lat, stop.lon)) continue;
+      const name = String(stop.name == null ? '' : stop.name).trim();
+      // mapStops' rule: coming back to a city later in the trip is a second
+      // waypoint, two items in the same city back to back are one.
+      const key = name.toLowerCase();
+      if (key && key === lastKey) continue;
+      lastKey = key;
+      // Fixed decimals, never the default number formatting: a coordinate near
+      // zero prints as "1e-7" there, which is not a valid xsd:decimal.
+      out.push(`  <wpt lat="${Number(stop.lat).toFixed(6)}" lon="${Number(stop.lon).toFixed(6)}">`);
+      out.push(`    <name>${xmlEscape(name)}</name>`);
+      out.push('  </wpt>');
+    }
+    out.push('</gpx>');
+    return out.join('\n') + '\n';
+  }
+
   // ---------- CSV export ----------
   // Pure so the round trip is testable: the `cost` column is the STORED number,
   // sign and all, which is what makes a spreadsheet SUM over it equal the app's
@@ -2178,6 +2219,40 @@ const TripLogic = (() => {
       });
     }
     return out.sort((a, b) => a.date < b.date ? -1 : (a.date > b.date ? 1 : 0));
+  }
+
+  // ---------- pace ----------
+  // The one thing the panel says about the SHAPE of a trip rather than a mistake
+  // in it: a run of one-night stops reads fine on paper and is exhausting to
+  // live, because every day loses its two ends to checking out and checking in.
+  // It is an observation, never a task, so the caller files it as info.
+  //
+  // Under 2 nights per stay is the line because 2 is the first number that buys
+  // a whole day in a place: one night is arrive-and-leave, two leaves one full
+  // day between the travel halves. Four stays is the smallest run an average can
+  // describe - one or two short stops are just how a long trip starts or ends.
+  //
+  // Nights come from nights(), the same helper the night strip and the timeline
+  // count with, so this can never print a figure the strip disagrees with.
+  const PACE_MIN_STAYS = 4;
+  const PACE_FAST_AVG_NIGHTS = 2;
+  function paceAdvisory(items) {
+    let stays = 0;
+    let total = 0;
+    for (const it of (items || [])) {
+      if (!it || it.status === 'cancelled') continue;
+      const n = nights(it);
+      if (n == null) continue;
+      stays++;
+      total += n;
+    }
+    if (stays < PACE_MIN_STAYS) return null;
+    // rounded BEFORE the comparison, because the rounded figure is what the line
+    // prints: an average of 1.96 would otherwise read "averaging 2.0 nights
+    // each" under the word "Fast", contradicting itself
+    const avg = Math.round((total / stays) * 10) / 10;
+    if (avg >= PACE_FAST_AVG_NIGHTS) return null;
+    return { stays, nights: total, avg };
   }
 
   // ---------- trip-in-progress ----------
@@ -6062,6 +6137,273 @@ const TripLogic = (() => {
     };
   }
 
+  // ---------- calendar-file import (.ics) ----------
+  // The other half of buildIcs: a calendar file the traveller already holds (a
+  // conference programme, a shared trip calendar, the .ics an airline attaches)
+  // read back into the same reviewable proposals the PDF reader produces. No
+  // network and no model - an .ics has labelled fields, so nothing here guesses.
+  //
+  // Times are the WALL CLOCK AS WRITTEN, whatever the file says about zones.
+  // The app stores no time zone at all, so converting a Z-stamped or TZID'd
+  // stamp would move the event by an amount nothing in the app can name back,
+  // and 09:00 in the file is what the traveller reads off their own calendar.
+
+  const ICS_UNESCAPE = { n: '\n', N: '\n', '\\': '\\', ';': ';', ',': ',' };
+  const icsUnescape = s => String(s).replace(/\\([nN\\;,])/g, (_, c) => ICS_UNESCAPE[c]);
+
+  // RFC 5545 folding: a CRLF followed by one space or tab continues the line
+  // before it. Bare LF is accepted too, because plenty of real files use it.
+  function icsUnfold(text) {
+    return String(text == null ? '' : text)
+      .replace(/\r\n|\r/g, '\n')
+      .replace(/\n[ \t]/g, '')
+      .split('\n');
+  }
+
+  // "DTSTART;TZID=Europe/Paris:20270112T090000" -> name, params, value
+  function icsProp(line) {
+    const colon = line.indexOf(':');
+    if (colon < 0) return null;
+    const head = line.slice(0, colon).split(';');
+    return { name: head[0].trim().toUpperCase(), value: line.slice(colon + 1) };
+  }
+
+  // 20270112 (all-day) or 20270112T090000 with an optional trailing Z. Anything
+  // else returns null, which is what makes an event countable as unread rather
+  // than half-imported onto a made-up day.
+  function icsDateTime(value) {
+    const m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?Z?)?$/.exec(String(value).trim());
+    if (!m) return null;
+    const date = `${m[1]}-${m[2]}-${m[3]}`;
+    if (!isIsoDate(date)) return null;
+    if (!m[4]) return { date, time: '' };
+    if (Number(m[4]) > 23 || Number(m[5]) > 59) return null;
+    return { date, time: `${m[4]}:${m[5]}` };
+  }
+
+  function icsProposal(evLines) {
+    const props = new Map();
+    for (const line of evLines) {
+      const p = icsProp(line);
+      // First wins: a VEVENT is not supposed to repeat these properties, and a
+      // calendar app shows the first when one does.
+      if (p && !props.has(p.name)) props.set(p.name, p.value);
+    }
+    const start = props.has('DTSTART') ? icsDateTime(props.get('DTSTART')) : null;
+    if (!start) return null;
+    const end = props.has('DTEND') ? icsDateTime(props.get('DTEND')) : null;
+    const text = name => (props.has(name) ? icsUnescape(props.get(name)).trim() : '');
+
+    const item = {
+      // Everything lands as an activity. An .ics says what an event is CALLED,
+      // never what kind of thing it is, and the type is one click to change on
+      // a card the traveller is reviewing anyway; inferring "flight" from a
+      // summary line would be the one guess this reader gets to make.
+      type: 'activity',
+      // A VEVENT with no SUMMARY is legal. Without a placeholder the proposal
+      // would fail validation and render as an unexplained "Cannot apply".
+      title: text('SUMMARY') || 'Calendar event',
+      location: text('LOCATION'),
+      startDate: start.date,
+      startTime: start.time,
+      endDate: '',
+      endTime: '',
+    };
+    const details = text('DESCRIPTION');
+    if (details) item.details = details;
+    if (end) {
+      if (!start.time && !end.time) {
+        // An all-day DTEND is EXCLUSIVE (the convention buildIcs writes), so
+        // the app's inclusive last day is the day before it. A one-day event
+        // therefore keeps an empty endDate rather than repeating its start.
+        const last = addDays(end.date, -1);
+        if (diffDays(item.startDate, last) > 0) item.endDate = last;
+      } else if (diffDays(item.startDate, end.date) > 0) {
+        item.endDate = end.date;
+      }
+      if (end.time) item.endTime = end.time;
+    }
+    // RRULE is read as a flag, not expanded: DTSTART is the first occurrence,
+    // and importing 52 weekly copies of a standing meeting into a trip is never
+    // what anyone wanted. The caller says so out loud in its summary line.
+    return { item, recurring: props.has('RRULE') };
+  }
+
+  function parseIcsToProposals(text) {
+    // Pasted (not file-picked) calendars often arrive uniformly indented:
+    // email clients, chat apps and docs add a leading margin to every line
+    // of a quoted block. RFC 5545 says a line starting with whitespace is a
+    // CONTINUATION of the previous line, so the unfolder glues an indented
+    // paste into one long line and the strict parse finds zero events, and
+    // the traveller is told their perfectly good calendar is empty. When
+    // that happens AND every non-blank line shares a common indent, strip
+    // the indent once and re-parse. Genuine folding is untouched: a real
+    // fold's continuation lines are indented while its property lines are
+    // not, so such text has no COMMON indent and never takes this path.
+    const first = parseIcsStrict(text);
+    if (first.stats.events > 0) return first;
+    const lines = String(text || '').split(/\r\n|\r|\n/);
+    const nonBlank = lines.filter(l => l.trim());
+    if (!nonBlank.length || !nonBlank.every(l => /^[ \t]/.test(l))) return first;
+    return parseIcsStrict(lines.map(l => l.replace(/^[ \t]+/, '')).join('\n'));
+  }
+
+  function parseIcsStrict(text) {
+    const events = [];
+    let current = null;
+    for (const line of icsUnfold(text)) {
+      const flat = line.trim();
+      if (/^BEGIN:VEVENT$/i.test(flat)) { current = []; continue; }
+      if (/^END:VEVENT$/i.test(flat)) { if (current) events.push(current); current = null; continue; }
+      if (current && flat) current.push(line);
+    }
+    const proposals = [];
+    let recurring = 0;
+    for (const ev of events) {
+      const p = icsProposal(ev);
+      if (!p) continue;
+      if (p.recurring) recurring++;
+      proposals.push(p);
+    }
+    return {
+      proposals,
+      stats: {
+        events: events.length,
+        read: proposals.length,
+        skipped: events.length - proposals.length,
+        recurring,
+      },
+    };
+  }
+
+  // ---------- one day as plain text ----------
+  // What a traveller pastes into a message: the day, then the day card's own
+  // rows in the order the card draws them. The two formatters are injected
+  // rather than rebuilt here (the same shape budgetFigure takes), so the text
+  // prints the very date and clock format the screen beside it is printing.
+  //
+  // The stay is ONE "Staying at" line rather than the card's check-in and
+  // check-out rows: a day pasted into a chat should say where you are sleeping,
+  // not name the same hotel twice.
+  //
+  // Trip essentials can never reach this text, and that is structural rather
+  // than a filter: this is handed the day's ITEMS, and the emergency contact,
+  // the insurer and the medical note live on the trip (see readEssentials).
+  // dayHostStay minus its location requirement; see the call site below for
+  // why the two must differ. Night wins, checkout morning still answers.
+  function shareHostStay(items, date) {
+    const stays = (items || []).filter(it => isStay(it) && it.status !== 'cancelled'
+      && ((it.title || '').trim() || (it.location || '').trim())
+      && isIsoDate(it.startDate) && isIsoDate(it.endDate));
+    return stays.find(s => s.startDate <= date && date < s.endDate)
+      || stays.find(s => s.endDate === date)
+      || null;
+  }
+
+  // The same icons the on-screen cards use (app.js TYPE_META); duplicated
+  // here rather than injected because this module is the pure layer and the
+  // set is as stable as the type list itself.
+  const TYPE_ICONS = {
+    flight: '✈️', transport: '🚆', local: '🚕',
+    activity: '🎟️', stay: '🏨', note: '📝',
+  };
+
+  function dayShareText(card, items, fmtDate, fmtTime) {
+    // Built as SECTIONS joined by blank lines, not a flat list: the text is
+    // pasted into messages, where an unbroken run of lines made the note
+    // items read like headings and the stay line like just another event.
+    // Owner-directed format: date header, timed rows with the card's own
+    // type icon, untimed rows as a bulleted block, the stay set apart last.
+    const row = ev => {
+      const it = ev.item;
+      const time = ev.time ? fmtTime(ev.time) + ' ' : '';
+      const icon = TYPE_ICONS[it.type] || '';
+      const where = String(it.location == null ? '' : it.location).trim();
+      // The "Cancelled" badge the card puts beside the title, in words:
+      // displayTitle strips the "Cancelled:" prefix, so without this the row
+      // reads in a message as a plan that is still on.
+      const off = it.status === 'cancelled' ? ' (Cancelled)' : '';
+      const line = `${time}${icon ? icon + ' ' : ''}${displayTitle(it)}${where ? ', ' + where : ''}${off}`;
+      // Same rule the .ics export follows: the confirmation code travels with
+      // the item, because a pasted day is read at a counter or a gate.
+      const ref = String(it.confirmation == null ? '' : it.confirmation).trim();
+      return ref ? [line, 'Ref: ' + ref] : [line];
+    };
+
+    const sections = [['📅 ' + fmtDate(card.date)]];
+    const timed = [];
+    for (const ev of card.events) if (ev.kind === 'item') timed.push(...row(ev));
+    if (timed.length) sections.push(timed);
+    if (card.untimed.length) {
+      const untimed = ['No time set:'];
+      for (const ev of card.untimed) untimed.push(...row(ev).map(l => l.startsWith('Ref: ') ? l : '• ' + l));
+      sections.push(untimed);
+    }
+    // NOT dayHostStay: that helper answers "which CITY does this date belong
+    // to" and therefore requires a location, which weather chips and day
+    // headers depend on. For the copy the hotel NAME is the value and Place
+    // is optional (people skip it when the title already names the hotel),
+    // so this lookup keeps the same date windows and drops the location gate.
+    const host = shareHostStay(items, card.date);
+    if (host) {
+      const stay = [`🏨 Staying at: ${(host.title || host.location).trim()}`];
+      // The hotel's code, on the day you check in and no other - which is both
+      // where the card prints it (the check-in row) and where the .ics puts it
+      // (one event, starting here). Repeating it under every night of the stay
+      // would bury the day's own rows.
+      const stayRef = host.startDate === card.date ? String(host.confirmation == null ? '' : host.confirmation).trim() : '';
+      if (stayRef) stay.push('Ref: ' + stayRef);
+      sections.push(stay);
+    }
+    return sections.map(s => s.join('\n')).join('\n\n');
+  }
+
+  // ---------- spend over time ----------
+  // Monday on or before this date. ISO weeks run Monday..Sunday and
+  // getUTCDay() calls Sunday 0, so Sunday walks back six days, not none.
+  function weekStart(date) {
+    return addDays(date, -((toUtc(date).getUTCDay() + 6) % 7));
+  }
+
+  // "When did the money land", one bucket per ISO week of a BOOKED costed
+  // item's start date. Booked-only and unconverted-aside are exactly the
+  // filters costsByType and the Confirmed total use, so these buckets add up to
+  // the number the totals bar already prints rather than to a third figure.
+  //
+  // A spend-free week BETWEEN two that hold money still gets a zero bucket:
+  // this is a time series, and closing the gap would draw a quiet week as if it
+  // never happened. Weeks before the first and after the last spend are not
+  // buckets at all, because there is nothing between them to distort.
+  const MAX_SPEND_WEEKS = Math.ceil(MAX_TRIP_DAYS / 7) + 1;
+  function spendByWeek(trip, ratesObj) {
+    const base = (trip && trip.currency) || 'USD';
+    const weeks = new Map();
+    for (const it of ((trip && trip.items) || [])) {
+      if (it.status !== 'booked') continue;
+      if (it.cost == null || it.cost === '' || isNaN(it.cost)) continue;
+      if (!isIsoDate(it.startDate)) continue;
+      const start = weekStart(it.startDate);
+      let row = weeks.get(start);
+      if (!row) { row = { start, total: 0, unconverted: [] }; weeks.set(start, row); }
+      const conv = convertAmount(Number(it.cost), it.costCurrency || base, base, ratesObj);
+      if (conv === null) row.unconverted.push(it);
+      else row.total += conv;
+    }
+    if (!weeks.size) return [];
+    const keys = [...weeks.keys()].sort();
+    const first = keys[0], last = keys[keys.length - 1];
+    // One mistyped year dates an item millions of days out (the hazard dayCards
+    // caps with renderEnd), and filling every empty week to it would build
+    // hundreds of thousands of rows. Past the cap the buckets stay sparse: every
+    // week holding money is still there and they still add up to the same total.
+    if (diffDays(first, last) / 7 + 1 > MAX_SPEND_WEEKS) return keys.map(k => weeks.get(k));
+    const out = [];
+    for (let d = first; d <= last; d = addDays(d, 7)) {
+      out.push(weeks.get(d) || { start: d, total: 0, unconverted: [] });
+    }
+    return out;
+  }
+
   return {
     isIsoDate, toUtc, diffDays, addDays, localDateIso,
     shiftFits, applyDayShift, firstItemDate, startDateShift,
@@ -6086,17 +6428,20 @@ const TripLogic = (() => {
     findConfirmation, findRoute, inferDateOrder, implausibility,
     readFlightLegs, parseDayMonthNoYear, collectDateAnchors, resolveYear,
     extractBookings, bookingTextToLines: toLines,
+    parseIcsToProposals,
     flightTitleFromAirports, parseFlightAirports,
     classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote,
     passportExpiryStatus, PASSPORT_VALIDITY_DAYS,
     slimTripForShare, hasFastRail, viewFromHash, hashForView,
-    buildIcs, buildCsv, csvColumns, convertAmount, sumInCurrency,
+    buildIcs, buildGpx, buildCsv, csvColumns, convertAmount, sumInCurrency,
     normalizeTravelers, travelerTotals,
     assignedTravelers, evenSplitAmounts, splitAmountsSum, splitAmountsMatch, customSplitShares,
     settlements, costsByType, typeBarShares, cashNeeded,
+    dayShareText, shareHostStay, weekStart, spendByWeek, MAX_SPEND_WEEKS,
     bytesToBase64url, base64urlToBytes,
     transportGaps, connectionWarnings, sameTimeCollisions, TIGHT_CONNECTION_MIN, tripPhase, isPastRow,
     bookingDeadlines, BOOKING_LEAD_DAYS,
+    paceAdvisory, PACE_MIN_STAYS, PACE_FAST_AVG_NIGHTS,
     dayCards, dayHostStay, dayItemsInOrder, emptyDayNote, stripPlaceCode, parseTravelOrigin, dayMorningCity,
     departureOrigin, suggestedPassport, passportAssumptionParts,
     coveringStay, timelineGroups,

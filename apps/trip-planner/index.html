@@ -62,7 +62,7 @@
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
   <link rel="stylesheet" href="/assets/css/back-to-top.css">
-  <link rel="stylesheet" href="css/styles.css?v=55">
+  <link rel="stylesheet" href="css/styles.css?v=56">
 
   <!-- Google Analytics. Loaded async + defer so it never blocks first paint;
        all tracking goes through the shared helper in analytics.js, which
@@ -121,6 +121,10 @@
           <button data-act="export-trip">⬇️ Export trip (JSON)</button>
           <button data-act="export-csv">⬇️ Export trip (CSV)</button>
           <button data-act="export-ics">⬇️ Export trip (.ics)</button>
+          <!-- the map's route as a file. Enabled only once the Map view has
+               located two places, because its coordinates come from that
+               view's cache and nothing here geocodes (see syncGpxMenuRow) -->
+          <button data-act="export-gpx">⬇️ Export route (GPX)</button>
           <button data-act="export-all">⬇️ Backup all trips</button>
           <button data-act="share-trip">🔗 Share itinerary</button>
           <button data-act="import">⬆️ Import JSON</button>
@@ -682,17 +686,18 @@
     <div class="m-body">
       <section class="m-section">
         <div class="import-pick">
-          <input type="file" id="importBookingFile" accept="application/pdf,text/plain,.pdf,.txt" hidden>
+          <input type="file" id="importBookingFile" accept="application/pdf,text/plain,text/calendar,.pdf,.txt,.ics" hidden>
           <button type="button" class="btn" id="importBookingBtn">Choose a PDF</button>
-          <span class="import-or">or paste the text of it</span>
+          <span class="import-or">or a calendar file (.ics), or paste the text of it</span>
         </div>
         <div class="field">
           <textarea id="importBookingPaste" rows="4" maxlength="20000"
                     aria-label="Paste your booking confirmation"
                     placeholder="Paste a confirmation here and it will be read as you type..."></textarea>
         </div>
-        <p class="hint">Read on this device only. The file is never uploaded and never saved:
-          the details are picked out by pattern, and you approve every one before it is added.</p>
+        <p class="hint">Read on this device only. A booking PDF or a calendar (.ics) file is never
+          uploaded and never saved: the details are picked out by pattern, and you approve every one
+          before it is added.</p>
       </section>
       <section class="m-section">
         <div class="m-panel" id="importBookingResult"></div>
@@ -875,8 +880,8 @@
     }
   </script>
 
-  <script src="js/trip-logic.js?v=33"></script>
-  <script src="js/app.js?v=57"></script>
+  <script src="js/trip-logic.js?v=34"></script>
+  <script src="js/app.js?v=58"></script>
   <script src="/assets/js/back-to-top.js" defer></script>
 </body>
 </html>

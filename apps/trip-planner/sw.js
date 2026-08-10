@@ -11,13 +11,17 @@
  *   - Never intercept cross-origin requests (Nominatim, map tiles, frankfurter,
  *     Open-Meteo, the visa dataset on raw.githubusercontent, Firebase): those
  *     have their own lifetimes and framing/caching rules.
- *   - On every activate, drop old-version caches.
+ *   - On every activate, drop old-version caches UNDER OUR OWN NAME PREFIX.
+ *     shevato.com is a single origin for every app on the site, so caches.keys()
+ *     also lists the other apps' shells; only their own workers may delete those.
+ *   - Tell open tabs when a NEW version took over, so a tab left open for days
+ *     can offer a reload instead of quietly running last week's JS.
  *
  * CACHE_VERSION is semver: bump PATCH when the precache contents change,
  * MINOR when the strategy changes, MAJOR for a back-compat break.
  */
 
-const CACHE_VERSION = '2.1.33';
+const CACHE_VERSION = '2.3.0';
 const PRECACHE = `trip-precache-${CACHE_VERSION}`;
 const RUNTIME = `trip-runtime-${CACHE_VERSION}`;
 
@@ -25,9 +29,9 @@ const PRECACHE_URLS = [
   './',
   './index.html',
   './manifest.webmanifest',
-  './css/styles.css?v=55',
-  './js/trip-logic.js?v=33',
-  './js/app.js?v=57',
+  './css/styles.css?v=56',
+  './js/trip-logic.js?v=34',
+  './js/app.js?v=58',
   // The bundled airport table (see scripts/build-airports.mjs). ~260 KB, and
   // precached on purpose: an airport picker that stops working without signal
   // is useless in the one place you most need it.
@@ -67,8 +71,22 @@ self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keep = new Set([PRECACHE, RUNTIME]);
     const names = await caches.keys();
-    await Promise.all(names.filter((n) => !keep.has(n)).map((n) => caches.delete(n)));
+    // Ours and stale. The prefix test is load-bearing: without it this deleted
+    // every cache on the origin, so activating here wiped gym-tracker's offline
+    // shell (and its worker returned the favour).
+    const stale = names.filter((n) => n.startsWith('trip-') && !keep.has(n));
+    // Caches under our own prefix from another version are the only durable
+    // proof that an EARLIER install of this app already ran on this device,
+    // and they are still on disk at this point (the delete below is what
+    // removes them). Counting window clients cannot answer the same question:
+    // a first-ever install also finds the tab that just registered it open,
+    // which is exactly the case that must stay silent.
+    const replacedPrevious = stale.length > 0;
+    await Promise.all(stale.map((n) => caches.delete(n)));
     await self.clients.claim();
+    if (!replacedPrevious) return;
+    const windows = await self.clients.matchAll({ type: 'window' });
+    for (const c of windows) c.postMessage({ type: 'tp-update-available' });
   })());
 });
 

@@ -3519,6 +3519,16 @@
   .trip-planner-app .tp-menu-panel button:disabled:focus {
     background: none; color: var(--text-faint) !important;
   }
+  /* The GPX row is aria-disabled rather than disabled so that hover still fires
+     and its title can say why (see syncGpxMenuRow), which means the :disabled
+     paint above has to be spelled out for it. not-allowed is the cursor the
+     native attribute would not have given it either way: :where() sets pointer
+     on every button in the app. */
+  .trip-planner-app .tp-menu-panel button[aria-disabled="true"],
+  .trip-planner-app .tp-menu-panel button[aria-disabled="true"]:hover,
+  .trip-planner-app .tp-menu-panel button[aria-disabled="true"]:focus {
+    background: none; color: var(--text-faint) !important; cursor: not-allowed;
+  }
 
   /* D7: a documents store that cannot be read says so where the tiles would
      be. It lives INSIDE .docs-list so the sibling ".docs-list:not(:empty) +
@@ -3672,3 +3682,57 @@
     .pk-filter { flex-wrap: wrap; }
     .pk-who-tag { max-width: 84px; }
   }
+
+/* ===== Round 8: share a day, spend over time ===== */
+
+  /* "Spend over time" is Cost by type read along the calendar instead of by
+     category, so it borrows that card's shape verbatim: same .traveler-totals
+     surface, same .tt-row line, same .tt-bar on its own wrapped line. These are
+     the .type-totals rules spelled out again for .spend-time rather than added
+     to those selectors, so the cost-by-type card renders byte for byte what it
+     did before this block existed.
+     row-gap 0 is load-bearing for the same reason it is there: .tt-row's 16px
+     gap applies BETWEEN FLEX LINES once the row wraps, which would push each bar
+     closer to the next week's label than to its own. */
+  .spend-time .tt-list { gap: 12px; }
+  .spend-time .tt-row { flex-wrap: wrap; row-gap: 0; }
+  .spend-time .tt-name, .spend-time .tt-val { flex: 0 1 auto; }
+
+  /* Room for the fifth day-header action (Share day) on a phone.
+     The header is one nowrap row where the city-and-weather chip is what gives
+     way, and a fifth 44px target is more than it had left: measured at 390px the
+     chip fell from 68px to 24px, i.e. neither the city nor the temperature was
+     legible any more. Shrinking the targets instead would undercut the 44px
+     floor this breakpoint sets on purpose, so the chip moves to its own line -
+     which is the exact trade the forecast header already makes at this width
+     (see .day-card.has-forecast .dc-head above), now extended to the plain
+     header that needs it for the same reason.
+     row-gap is 0 and the chip carries its own 4px lead, so a day with no city
+     resolved (the chip renders [hidden]) keeps the single-row header it has
+     always had, to the pixel. Forecast cards are excluded because their own
+     grid already places all four areas. */
+  @media (max-width: 560px) {
+    .day-card:not(.has-forecast) .dc-head {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-areas:
+        'num head acts'
+        'num chip chip';
+      align-items: center; column-gap: 4px; row-gap: 0;
+    }
+    .day-card:not(.has-forecast) .dc-daynum { grid-area: num; }
+    .day-card:not(.has-forecast) .dc-headings { grid-area: head; justify-self: start; }
+    .day-card:not(.has-forecast) .dc-acts { grid-area: acts; justify-self: end; margin-left: 0; }
+    .day-card:not(.has-forecast) .dc-chip {
+      grid-area: chip; justify-self: start; max-width: 100%; margin-top: 4px;
+    }
+  }
+
+/* Round 8 integration: the issues panel's new info-kind entry (the pace
+   advisory). Its tag rendered as a bare uppercase label because the agent
+   that added the entry could not touch this file; the muted chip keeps it
+   visually a NOTE, clearly apart from the amber/red warning tags. The
+   mark-booked button gets the same weight bump .issue-add-stay uses, so the
+   two action buttons on a warning line read as siblings. */
+.trip-planner-app .issues li .tag.info { background: var(--border-soft); color: var(--text-dim); }
+.trip-planner-app .issues li .issue-mark-booked { font-weight: 700; }
