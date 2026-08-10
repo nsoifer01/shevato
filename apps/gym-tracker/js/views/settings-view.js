@@ -301,7 +301,7 @@ class SettingsView {
         if (this.weightUnitDropdown) this.weightUnitDropdown.sync();
         const timeFormatEl = document.getElementById('time-format');
         if (timeFormatEl) {
-            timeFormatEl.value = settings.timeFormat || '12';
+            timeFormatEl.value = settings.timeFormat || '24';
             if (this.timeFormatDropdown) this.timeFormatDropdown.sync();
         }
 

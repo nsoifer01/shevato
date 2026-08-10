@@ -1082,6 +1082,7 @@ class WorkoutView {
         }
 
         container.innerHTML = this.renderExerciseList(this.currentWorkoutSession.exercises);
+        this.currentWorkoutSession.exercises.forEach((_ex, i) => this.dedupePlateHints(i));
     }
 
     /**
@@ -1196,12 +1197,40 @@ class WorkoutView {
             equipment, isDuration, unit, workingWeight,
         });
 
+        // Two different kinds of note, placed by two different rules.
+        //
+        // A bump or deload changes the weight for the WHOLE exercise, so it is
+        // one badge on the first eligible row; repeating it under every set
+        // read as noise and one glance says it all.
+        //
+        // A missed target belongs to a SET. Missing is per set by nature - a
+        // lifter can hit set 1's target, fall short on set 2 and hit set 3's -
+        // so every set that fell short carries its own warning, and a set that
+        // hit its target is never accused of one.
+        //
+        // Eligible = not already committed this session, and not holding a
+        // sticky value (once the user types their own number the advice about
+        // the prefill is stale).
+        const progression = previousSets.progression || null;
+        const eligibleSlots = [];
+        for (let i = 0; i < totalRows; i++) {
+            if (setsBySlot.get(i)) continue;
+            if (exercise.stickyValues && exercise.stickyValues[i]) continue;
+            eligibleSlots.push(i);
+        }
+        const isRepeat = progression?.status === PROGRESSION_REPEAT;
+        // slot -> the miss detail for that set, for the per-row warnings.
+        const missBySlot = new Map();
+        if (isRepeat) {
+            (progression.misses || []).forEach(m => {
+                if (eligibleSlots.includes(m.slot)) missBySlot.set(m.slot, m);
+            });
+        }
+        // A deload badge already tells the lifter to drop the weight, so it
+        // supersedes the per-set "repeat" advice rather than contradicting it.
+        const badgeSlot = (progression && !isRepeat) ? eligibleSlots[0] : undefined;
+
         let rowsHTML = '';
-        // Item 1 (owner call, 2026-08-04): the suggestion badge renders once,
-        // on the first planned row without user-typed values. Later rows still
-        // PREFILL the suggested weight; repeating the identical badge under
-        // every row read as noise, and one glance says it all.
-        let progressionShown = false;
         for (let i = 0; i < totalRows; i++) {
             const committed = setsBySlot.get(i);
             if (committed) {
@@ -1226,15 +1255,33 @@ class WorkoutView {
                 // Prefill each row with its own set's top-of-range target, not set 1's.
                 const slotTargetReps = (progSets && i < progSets.length)
                     ? progSets[i].repsMax : exercise.targetReps;
-                // Item 1: the progression badge explains the PREFILL. A sticky
-                // value is the user's own number, so it gets no badge; and only
-                // the first badge-eligible row carries it (see progressionShown).
-                const rowProgression = (sticky || progressionShown)
-                    ? null : (previousSets.progression || null);
-                if (rowProgression) progressionShown = true;
-                rowsHTML += this.renderPlannedRow(index, i, prior, isDuration, unit, slotTargetReps, isPlateLoaded, usesBarWeight, slotRepLabel, rowProgression);
+                // Item 1: the bump/deload badge explains the PREFILL and lands
+                // on exactly one row; a miss warning lands on each set that
+                // actually fell short (see above).
+                const rowProgression = i === badgeSlot ? progression : null;
+                const rowMiss = missBySlot.get(i) || null;
+                rowsHTML += this.renderPlannedRow(index, i, prior, isDuration, unit, slotTargetReps, isPlateLoaded, usesBarWeight, slotRepLabel, rowProgression, rowMiss);
             }
         }
+
+        // Column captions over the two input fields. Once per exercise rather
+        // than per row, so "which side is weight" is answered without adding a
+        // label to every set. The trailing span is a hidden .set-toggle: it
+        // inherits the toggle's exact box (which narrows on small screens), so
+        // the captions stay locked over their columns at every width.
+        // Duration exercises use a Min:Sec row instead, and an exercise with
+        // every set logged has no fields left to caption.
+        const hasPlannedRow = setsBySlot.size < totalRows;
+        const headsHTML = (!isDuration && hasPlannedRow) ? `
+            <li class="set-heads" aria-hidden="true">
+                <span class="set-row-num"></span>
+                <div class="set-row-inputs">
+                    <span class="set-col-head">Weight (${unit})</span>
+                    <span class="set-col-head">Reps</span>
+                </div>
+                <span class="set-toggle set-toggle--ghost"></span>
+            </li>
+        ` : '';
 
         // Item R3-4: the chosen feel for THIS session (set via the modal) shows
         // on the exercise header and toggles good -> none on tap. The inline
@@ -1286,7 +1333,10 @@ class WorkoutView {
             <div class="exercise-entry ${isComplete ? 'exercise-complete' : ''} ${isCollapsed ? 'exercise-collapsed' : ''}"
                  id="exercise-${index}" data-exercise-type="${isDuration ? 'duration' : 'reps'}">
                 <div class="exercise-entry-header">
-                    <div class="exercise-title-block">
+                    <div class="exercise-title-block exercise-title-collapse"
+                         data-action="toggle-exercise-collapse"
+                         data-exercise-index="${index}"
+                         title="${isCollapsed ? 'Expand' : 'Collapse'} exercise">
                         <h3>
                             <span class="exercise-name-main">${escapeHtml(exercise.exerciseName)}</span>${sessionFeelHTML}${lastFeelHTML}
                         </h3>
@@ -1336,6 +1386,7 @@ class WorkoutView {
                     ${warmupHTML}
 
                     <ol class="set-row-list" id="set-row-list-${index}">
+                        ${headsHTML}
                         ${rowsHTML}
                     </ol>
 
@@ -1367,7 +1418,7 @@ class WorkoutView {
      * set and starts the rest timer. The row itself is NOT tappable — users
      * deliberately flick the toggle to complete.
      */
-    renderPlannedRow(exerciseIndex, slot, prior, isDuration, unit, targetReps, isPlateLoaded = false, usesBarWeight = false, repLabel = null, progression = null) {
+    renderPlannedRow(exerciseIndex, slot, prior, isDuration, unit, targetReps, isPlateLoaded = false, usesBarWeight = false, repLabel = null, progression = null, miss = null) {
         const setLabel = `${slot + 1}`;
         const toggle = this.renderSetToggle(false, 'commit-planned-set', exerciseIndex, slot, 'Mark set complete');
 
@@ -1418,7 +1469,8 @@ class WorkoutView {
 
         // Item 1: explain the prefill whenever it is not simply "what you lifted
         // last time". Sticky rows pass progression = null (see renderExerciseEntry).
-        const progressionHTML = this.renderProgressionNote(exerciseIndex, slot, weight, unit, progression);
+        const progressionHTML = this.renderProgressionNote(exerciseIndex, slot, weight, unit, progression)
+            + this.renderMissNote(slot, miss);
         const step = this._overloadIncrement(
             this.currentWorkoutSession?.exercises[exerciseIndex]?.exerciseId,
             unit,
@@ -1444,11 +1496,14 @@ class WorkoutView {
                             value="${reps === '' ? '' : reps}" placeholder="Reps" aria-label="Reps">
                         ${this.renderStepper('step-reps', 'up', exerciseIndex, slot, 'One more rep')}
                     </div>
-                    ${repLabel ? `<span class="set-rep-target" aria-label="Target: ${repLabel}">${repLabel}</span>` : ''}
                 </div>
                 ${toggle}
-                ${plateHintHTML ? `<div class="plate-hint" id="plate-hint-${exerciseIndex}-${slot}">${plateHintHTML}</div>` : ''}
-                ${progressionHTML}
+                ${(repLabel || plateHintHTML) ? `
+                <div class="set-row-meta">
+                    ${repLabel ? `<span class="set-rep-target" aria-label="Target: ${repLabel}">${repLabel}</span>` : ''}
+                    ${plateHintHTML ? `<div class="plate-hint" id="plate-hint-${exerciseIndex}-${slot}">${plateHintHTML}</div>` : ''}
+                </div>` : ''}
+                <div class="set-row-notes">${progressionHTML}</div>
             </li>
         `;
     }
@@ -1472,11 +1527,33 @@ class WorkoutView {
     }
 
     /**
-     * Item 1: the badge/label under a planned row that explains the prefilled
-     * weight.
-     *   bump/deload -> tappable badge; opening it shows the two prior sessions
-     *                  and a "Use last weight" control.
-     *   repeat      -> a plain "Missed target - repeat weight" label.
+     * The per-SET miss warning. Rendered on each set whose own last-session
+     * reps fell under its own target, and on no others.
+     *
+     * Deliberately terse on screen - "Repeat weight" beside a warning icon.
+     * Repeated down a card, the old "Missed target - repeat weight" sentence
+     * was heavier than the information it carried. The full reasoning, with
+     * this set's actual numbers, lives in the title/aria-label so it stays
+     * available to a hover, a long-press and a screen reader.
+     */
+    renderMissNote(slot, miss) {
+        if (!miss) return '';
+        const target = miss.min === miss.max ? `${miss.min}` : `${miss.min}-${miss.max}`;
+        const explanation = `Set ${slot + 1}: last time you got ${miss.reps} `
+            + `${miss.reps === 1 ? 'rep' : 'reps'} against a target of ${target}. `
+            + 'Repeat the same weight and try to reach it.';
+        return `<span class="gt-note gt-note--warn gt-note--compact gt-progress-label gt-progress-label--miss"
+            title="${escapeHtml(explanation)}" aria-label="${escapeHtml(explanation)}">
+            <i class="fas fa-triangle-exclamation" aria-hidden="true"></i> Repeat weight
+        </span>`;
+    }
+
+    /**
+     * Item 1: the badge under a planned row that explains the prefilled weight
+     * for the whole exercise - a tappable bump/deload badge whose panel shows
+     * the two prior sessions and a "Use last weight" control.
+     *
+     * Per-set misses are NOT handled here; see renderMissNote.
      * Nothing renders when the prefill IS the literal last-session weight.
      */
     renderProgressionNote(exerciseIndex, slot, weight, unit, progression) {
@@ -1484,11 +1561,6 @@ class WorkoutView {
         const { status } = progression;
         // Bodyweight-style history (no load) has no weight to talk about.
         if (!(progression.lastWeight > 0)) return '';
-        if (status === PROGRESSION_REPEAT) {
-            return `<span class="gt-progress-label gt-progress-label--miss">
-                <i class="fas fa-triangle-exclamation" aria-hidden="true"></i> Missed target - repeat weight
-            </span>`;
-        }
         if (status !== PROGRESSION_BUMP && status !== PROGRESSION_DELOAD) return '';
 
         const lastWeight = this.toSessionWeight(progression.lastWeight);
@@ -1508,7 +1580,7 @@ class WorkoutView {
         `).join('');
 
         return `
-            <button type="button" class="gt-progress-badge gt-progress-badge--${isBump ? 'bump' : 'deload'}"
+            <button type="button" class="gt-note gt-note--${isBump ? 'good' : 'warn'} gt-progress-badge gt-progress-badge--${isBump ? 'bump' : 'deload'}"
                 data-action="toggle-progression-detail"
                 data-exercise-index="${exerciseIndex}" data-slot="${slot}"
                 aria-expanded="false" aria-controls="${detailId}"
@@ -1624,7 +1696,7 @@ class WorkoutView {
         const unit = this.sessionUnit();
         const chip = document.createElement('button');
         chip.type = 'button';
-        chip.className = 'gt-restore-chip';
+        chip.className = 'gt-note gt-note--info gt-restore-chip';
         chip.dataset.action = 'restore-last-time';
         chip.dataset.exerciseIndex = String(exerciseIndex);
         chip.dataset.slot = String(slot);
@@ -1633,9 +1705,9 @@ class WorkoutView {
         // Compact, muted helper line: a history icon + "Previous: 130lb × 8".
         // Reads as secondary metadata beneath the inputs while staying tappable.
         chip.innerHTML = `<i class="fas fa-clock-rotate-left" aria-hidden="true"></i><span class="gt-restore-chip-text">Previous: ${priorWeight}${unit} × ${priorReps}</span>`;
-        // Append after the toggle (own line beneath the inputs), the same
-        // placement the Feature 1 bump chip uses.
-        row.appendChild(chip);
+        // Into the row's notes strip, alongside any progression pill, so the
+        // status notes share one full-width line beneath the inputs.
+        (row.querySelector('.set-row-notes') || row).appendChild(chip);
     }
 
     /**
@@ -1840,6 +1912,59 @@ class WorkoutView {
         const usesBarWeight = equipment === 'barbell' || equipment === 'trap-bar';
         const html = this.renderPlateHint(weight, unit, usesBarWeight);
         if (html) hintEl.innerHTML = html;
+        this.dedupePlateHints(exerciseIndex);
+    }
+
+    /**
+     * Polish pass: an identical "Plates per side" breakdown repeated under
+     * every set is pure vertical cost - three sets at the same weight said the
+     * same thing three times. Hide a hint that matches the row above it and
+     * show it again the moment that row's weight diverges. The element always
+     * exists (refreshPlateHint needs a target); only its visibility changes,
+     * so no information is lost - the first row of every distinct load keeps
+     * its breakdown.
+     */
+    dedupePlateHints(exerciseIndex) {
+        const list = document.getElementById(`set-row-list-${exerciseIndex}`);
+        if (!list) return;
+        let previous = null;
+        list.querySelectorAll(':scope > li').forEach(row => {
+            const hint = row.querySelector('.plate-hint');
+            if (!hint) {
+                // A logged set breaks the run: the next planned row is no
+                // longer visually adjacent, so it earns its own breakdown.
+                previous = null;
+                return;
+            }
+            // An empty weight has nothing to break down; renderPlateHint
+            // returns a bare em dash, which reads as debris under the field.
+            const weightInput = row.querySelector('input.set-weight');
+            const blank = !weightInput || weightInput.value === '';
+            hint.classList.toggle('plate-hint--empty', blank);
+
+            const text = hint.textContent.trim();
+            const isDup = !blank && previous !== null && text === previous;
+            hint.classList.toggle('plate-hint--dup', isDup);
+            previous = blank ? null : text;
+        });
+    }
+
+    /**
+     * Mark one freshly-committed row so the completion pulse plays for it and
+     * nothing else. The class is removed when the animation ends, so a later
+     * re-render of the same exercise renders the row in its calm resting
+     * state rather than replaying the celebration.
+     */
+    flashJustLoggedRow(exerciseIndex, slot) {
+        const list = document.getElementById(`set-row-list-${exerciseIndex}`);
+        const row = list?.querySelector(`.set-row-complete[data-slot="${slot}"]`);
+        if (!row) return;
+        row.classList.add('set-row--just-logged');
+        row.addEventListener(
+            'animationend',
+            () => row.classList.remove('set-row--just-logged'),
+            { once: true },
+        );
     }
 
     /**
@@ -2198,6 +2323,7 @@ class WorkoutView {
         wrapper.innerHTML = this.renderExerciseEntry(exercise, exerciseIndex);
         const fresh = wrapper.firstElementChild;
         if (fresh && host.parentNode) host.parentNode.replaceChild(fresh, host);
+        this.dedupePlateHints(exerciseIndex);
     }
 
     /**
@@ -2348,12 +2474,12 @@ class WorkoutView {
         // honored. The row renders a badge for whichever branch fired.
         const unit = this.app.settings.weightUnit;
         const increment = this._overloadIncrement(exerciseId, unit);
-        const targetRepsForSet = (set, arrIdx) =>
-            this._targetRepsForPriorSet(exerciseId, set, arrIdx, lastExercise.targetReps);
+        const repRangeForSet = (set, arrIdx) =>
+            this._repRangeForPriorSet(exerciseId, set, arrIdx, lastExercise.targetReps);
         const progression = evaluateProgression({
             lastSets,
             prevSets: prev ? prev.completedSets : null,
-            targetRepsForSet,
+            repRangeForSet,
             increment,
         });
 
@@ -2386,17 +2512,25 @@ class WorkoutView {
     }
 
     /**
-     * Rep target for a set logged in a PRIOR session: the current program's
-     * rep range for that slot, falling back to the exercise-level targetReps
-     * carried on the historical entry.
+     * Rep RANGE for a set logged in a PRIOR session: the current program's
+     * range for that slot, falling back to the exercise-level targetReps
+     * carried on the historical entry (a fixed target, so min === max).
+     *
+     * Both ends matter: falling under `min` is a miss, reaching `max` on every
+     * set earns the bump, and anything between is a good set that holds the
+     * weight (see progression.js).
      */
-    _targetRepsForPriorSet(exerciseId, set, arrIdx, fallbackTargetReps) {
+    _repRangeForPriorSet(exerciseId, set, arrIdx, fallbackTargetReps) {
         const program = this.app.getProgramById(this.currentWorkoutSession?.programId);
         const progEx = program?.exercises.find(e => sameId(e.exerciseId, exerciseId));
         const progSets = (progEx?.sets && progEx.sets.length > 0) ? progEx.sets : null;
         const slot = set.slot != null ? set.slot : arrIdx;
-        if (progSets && slot < progSets.length) return progSets[slot].repsMax;
-        return fallbackTargetReps || 0;
+        if (progSets && slot < progSets.length) {
+            const progSet = progSets[slot];
+            return { min: progSet.repsMin, max: progSet.repsMax };
+        }
+        const fixed = fallbackTargetReps || 0;
+        return { min: fixed, max: fixed };
     }
 
     /** One row of the tap-to-reveal progression panel: "Jul 3 - 60kg x 8, 8, 7". */
@@ -2507,6 +2641,10 @@ class WorkoutView {
         this._prevCompleteState[exerciseIndex] = isNowComplete;
 
         this.rerenderExercise(exerciseIndex);
+        // The green "just logged" pulse belongs to THIS row only. It used to
+        // live on .set-row-complete itself, which meant every already-logged
+        // row in the exercise flashed again on every re-render.
+        this.flashJustLoggedRow(exerciseIndex, slot);
 
         // Item R3-4: if this commit just made the exercise satisfy the
         // all-sets-at-max condition, show the feel picker modal (once per

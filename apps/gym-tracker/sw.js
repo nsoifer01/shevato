@@ -18,7 +18,7 @@
  * Old caches are pruned automatically on activate.
  */
 
-const CACHE_VERSION = '1.8.0';
+const CACHE_VERSION = '1.8.2';
 const PRECACHE = `gym-precache-${CACHE_VERSION}`;
 const RUNTIME = `gym-runtime-${CACHE_VERSION}`;
 
@@ -27,6 +27,7 @@ const PRECACHE_URLS = [
   './index.html',
   './manifest.webmanifest',
   './css/gym-tracker.css',
+  './css/refresh.css',
   './data/exercises-db.js',
   './data/exercises-db.json',
   './js/app.js',
@@ -42,6 +43,7 @@ const PRECACHE_URLS = [
   './js/services/AnalyticsService.js',
   './js/services/StorageService.js',
   './js/services/TimerService.js',
+  './js/utils/analytics.js',
   './js/utils/dark-calendar.js',
   './js/utils/dark-select.js',
   './js/utils/event-bus.js',

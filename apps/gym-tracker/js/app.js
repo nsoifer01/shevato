@@ -215,9 +215,13 @@ class GymTrackerApp {
         );
         if (!rawSettings) {
             this.settings = Settings.getDefault();
+            this.settings.defaultsVersion = Settings.DEFAULTS_VERSION;
             this.saveSettings();
         } else {
             this.settings = Settings.fromJSON(rawSettings);
+            // Existing installs wrote their settings on first boot, so a
+            // changed default reaches them only through this one-time pass.
+            if (Settings.applyDefaultUpgrades(this.settings)) this.saveSettings();
         }
 
         // Broadcast the post-load state. Sync arrivals re-call loadAllData
@@ -583,9 +587,16 @@ class GymTrackerApp {
     /**
      * Show/hide + label the global FAB based on current state:
      *   - Hidden when there are no programs (nothing to start).
-     *   - Hidden on the active-workout screen (the user is already there).
+     *   - Hidden anywhere on the Workout view (the user is already there).
      *   - "Resume workout" (green) when a paused session exists.
      *   - "Start workout" otherwise.
+     *
+     * The FAB is a shortcut TO the Workout view, so on that view it had
+     * nothing left to do: its handler fell through to showView('workout'),
+     * which early-returns on the current view. That left a prominent
+     * "Start workout" button on the program picker that swallowed clicks
+     * silently. The picker's own per-program Start buttons and the paused
+     * banner are the real controls there.
      */
     updateGlobalFab() {
         const fab = document.getElementById('home-workout-fab');
@@ -593,10 +604,9 @@ class GymTrackerApp {
 
         const hasPrograms = this.programs.length > 0;
         const paused = storageService.getActiveWorkout();
-        const onActiveWorkout = this.currentView === 'workout'
-            && document.getElementById('active-workout')?.classList.contains('active');
+        const onWorkoutView = this.currentView === 'workout';
 
-        if (!hasPrograms || onActiveWorkout) {
+        if (!hasPrograms || onWorkoutView) {
             fab.hidden = true;
             return;
         }
