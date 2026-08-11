@@ -492,7 +492,10 @@ body.gym-tracker .modal-header h2 {
     text-transform: none;
 }
 
-body.gym-tracker .modal-close {
+/* `.modal-close` is the round X affordance. The program editor's header
+   Cancel also carries the class (it is a close path), so it must be excluded
+   or it renders as a 30px circle with its label clipped to "Cance". */
+body.gym-tracker .modal-close:not(.program-modal-cancel) {
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid var(--gt-border);
     color: var(--gt-text) !important;
@@ -509,7 +512,7 @@ body.gym-tracker .modal-close:hover,
 body.gym-tracker .modal-close:hover:active {
     box-shadow: none !important;
 }
-body.gym-tracker .modal-close:hover {
+body.gym-tracker .modal-close:not(.program-modal-cancel):hover {
     background: var(--gt-surface-2);
     border-color: var(--gt-border-strong);
 }
@@ -1850,60 +1853,6 @@ body.gym-tracker .modal-header h2 {
     letter-spacing: -0.01em;
 }
 
-/* Program form inside modal — Title Case, consistent label sizing. */
-body.gym-tracker #program-form .form-group label {
-    color: var(--gt-muted);
-    font-size: 0.85rem;
-    letter-spacing: 0;
-    text-transform: none;
-}
-
-/* Program exercises section */
-body.gym-tracker .program-exercises-section {
-    background: var(--gt-surface-2);
-    border: 1px solid var(--gt-border);
-    border-radius: var(--gt-radius-inner);
-}
-
-body.gym-tracker .program-exercises-empty {
-    background: var(--gt-surface);
-    border: 1px dashed var(--gt-border-strong);
-    border-radius: var(--gt-radius-inner);
-}
-
-body.gym-tracker .program-exercises-empty i {
-    color: var(--gt-accent);
-    opacity: 0.7;
-}
-
-body.gym-tracker .program-exercises-empty p {
-    color: var(--gt-text) !important;
-    font-weight: 600;
-}
-
-body.gym-tracker .program-exercises-empty small {
-    color: var(--gt-muted) !important;
-}
-
-/* Individual exercise row in program editor */
-body.gym-tracker .program-exercise-row {
-    background: var(--gt-surface);
-    border: 1px solid var(--gt-border);
-    border-radius: var(--gt-radius-inner);
-}
-
-body.gym-tracker .program-exercise-row:hover {
-    background: var(--gt-surface-2);
-    border-color: var(--gt-border-strong);
-}
-
-/* Rest mode toggle row */
-body.gym-tracker .rest-mode-toggle-row {
-    background: var(--gt-surface-2);
-    border: 1px solid var(--gt-border);
-    border-radius: var(--gt-radius-inner);
-}
-
 /* ============================================================
    10. GENERAL TYPOGRAPHY + EMPTY STATES REFINEMENT
    ============================================================ */
@@ -2222,197 +2171,6 @@ body.gym-tracker .gt-exercise-dir-link:focus-visible {
     outline: 2px solid var(--gt-accent);
     outline-offset: 2px;
     text-decoration: none !important;
-}
-
-/* ============================================================
-   18. PROGRAM MODAL MOBILE ALIGNMENT (max-width: 640px)
-   Fixes alignment of all controls in the Create/Edit Program modal
-   at 390px: consistent gutters, touch targets >=40px, no overflow.
-   ============================================================ */
-
-@media (max-width: 640px) {
-
-    /* Modal body padding — tighter on mobile */
-    body.gym-tracker #program-modal .modal-body {
-        padding: 0.85rem 0.75rem !important;
-    }
-
-    /* Name + description inputs: full width, readable height */
-    body.gym-tracker #program-form .form-group input[type="text"],
-    body.gym-tracker #program-form .form-group textarea {
-        width: 100%;
-        box-sizing: border-box;
-    }
-
-    /* Uniform rest toggle row: fix label wrapping — icon + text shrink,
-       toggle stays on same line */
-    body.gym-tracker .rest-mode-toggle-row {
-        align-items: flex-start;
-        flex-wrap: nowrap;
-        gap: 0.5rem;
-        padding: 0.65rem 0.75rem;
-        min-height: 48px;
-    }
-
-    body.gym-tracker .rest-mode-label {
-        font-size: 0.82rem;
-        flex: 1 1 auto;
-        min-width: 0;
-        flex-wrap: wrap;
-        align-items: flex-start;
-        gap: 0.35rem;
-        padding-top: 0.1rem;
-    }
-
-    body.gym-tracker .rest-mode-label i {
-        flex-shrink: 0;
-        margin-top: 0.1rem;
-    }
-
-    body.gym-tracker .rest-mode-group .toggle-switch {
-        flex-shrink: 0;
-    }
-
-    /* Uniform rest stepper — full width on mobile */
-    body.gym-tracker .rest-mode-uniform-section {
-        padding: 0.5rem 0 0;
-    }
-
-    body.gym-tracker #rest-mode-uniform-stepper .pex-stepper {
-        width: 100%;
-        box-sizing: border-box;
-        display: flex;
-        justify-content: space-between;
-    }
-
-    /* Exercise list section — full-width, no side overflow */
-    body.gym-tracker .program-exercises-section {
-        padding: 0.65rem 0.65rem 0.65rem;
-        overflow: hidden;
-    }
-
-    /* Each exercise row: single-column layout on narrow screens.
-       Stack handle+position+name on top, then targets below. */
-    body.gym-tracker .program-exercise-row {
-        grid-template-columns: auto auto 1fr auto auto;
-        grid-template-areas:
-            "handle position name   actions actions"
-            "targets targets targets targets targets";
-        padding: 0.55rem 0.6rem;
-        gap: 0.4rem;
-        overflow: hidden;
-    }
-
-    body.gym-tracker .program-exercise-row .pex-row-actions {
-        grid-area: actions;
-        align-self: center;
-        justify-self: end;
-        margin-left: 0;
-    }
-
-    /* Targets row spans full width and lays out as a column */
-    body.gym-tracker .program-exercise-row .pex-targets {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-        width: 100%;
-        padding-top: 0.4rem;
-        border-top: 1px dashed var(--gt-border);
-        align-items: stretch;
-    }
-
-    /* Sets/reps block fills full width */
-    body.gym-tracker .pex-sets-block {
-        width: 100%;
-    }
-
-    /* Sets header: label + add button on same row, full width */
-    body.gym-tracker .pex-sets-header {
-        width: 100%;
-    }
-
-    /* Each set row: align controls on one line, ensure min touch target */
-    body.gym-tracker .pex-set-row {
-        gap: 0.4rem;
-        min-height: 40px;
-    }
-
-    /* Set label: consistent width */
-    body.gym-tracker .pex-set-label {
-        min-width: 2.8rem;
-        flex-shrink: 0;
-    }
-
-    /* Reps inputs: slightly larger for fat-finger accuracy */
-    body.gym-tracker .pex-reps-input {
-        width: 3rem;
-        min-height: 36px;
-        padding: 0.3rem 0.25rem;
-        font-size: 0.9rem;
-    }
-
-    /* Range toggle + remove set: explicit touch target */
-    body.gym-tracker .pex-range-toggle,
-    body.gym-tracker .pex-set-remove {
-        width: 32px;
-        height: 32px;
-        flex-shrink: 0;
-    }
-
-    /* Rest stepper: full width pill on mobile */
-    body.gym-tracker .program-exercise-row .pex-stepper {
-        width: 100%;
-        box-sizing: border-box;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.35rem 0.6rem;
-        min-height: 40px;
-    }
-
-    body.gym-tracker .program-exercise-row .pex-stepper-btn {
-        width: 32px;
-        height: 32px;
-        font-size: 0.75rem;
-    }
-
-    /* Move buttons: ensure they don't overflow */
-    body.gym-tracker .pex-move-buttons {
-        flex-shrink: 0;
-    }
-
-    /* Delete button: proper touch target */
-    body.gym-tracker .pex-delete {
-        width: 32px !important;
-        height: 32px !important;
-    }
-
-    /* Form footer buttons — full width stack, already handled by gym-tracker.css
-       @media (max-width: 520px) rule, but reinforce for 640px breakpoint */
-    body.gym-tracker .program-form-actions {
-        flex-direction: column-reverse;
-        align-items: stretch;
-        gap: 0.5rem;
-        margin-top: 1rem;
-    }
-
-    body.gym-tracker .program-form-actions .btn {
-        width: 100%;
-        min-width: 0;
-    }
-}
-
-/* Exercise card highlight animation — fires once when a new card is
-   added from the picker. JS adds .gt-exercise-added class immediately,
-   removes it after the animation duration. */
-@keyframes gt-exercise-added-glow {
-    0%   { box-shadow: 0 0 0 2px var(--gt-accent), 0 0 14px rgba(91, 155, 255,0.45); }
-    60%  { box-shadow: 0 0 0 2px var(--gt-accent), 0 0 10px rgba(91, 155, 255,0.3); }
-    100% { box-shadow: none; }
-}
-
-body.gym-tracker .program-exercise-row.gt-exercise-added {
-    animation: gt-exercise-added-glow 1.5s ease forwards;
 }
 
 /* Shared back-to-top button: on mobile it tucks LOW, hugging just above the
@@ -3063,23 +2821,6 @@ body.gym-tracker .set-toggle:hover:active {
 }
 body.gym-tracker .set-toggle[aria-pressed="true"]:hover:active {
     background: var(--accent-success) padding-box;
-}
-
-/* Program-modal weekday chips: they use a real 1px border, so the leaked
-   inset ring double-strokes them gray and turns red on hover. */
-body.gym-tracker .schedule-day-chip,
-body.gym-tracker .schedule-day-chip:hover,
-body.gym-tracker .schedule-day-chip:hover:active {
-    box-shadow: none !important;
-}
-body.gym-tracker .schedule-day-chip:focus-visible {
-    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.35) !important;
-}
-body.gym-tracker .schedule-day-chip:hover:active {
-    background: var(--bg-hover);
-}
-body.gym-tracker .schedule-day-chip.is-on:hover:active {
-    background: #1d4ed8;
 }
 
 /* Desktop workout FAB and mobile More-menu rows: their labels/icons are

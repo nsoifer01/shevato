@@ -281,103 +281,6 @@
                     <!-- Will be populated by JS -->
                 </div>
 
-                <!-- Create/Edit Program Modal -->
-                <div id="program-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="program-modal-title">
-                    <div class="modal-content" data-back-to-top>
-                        <div class="modal-header program-modal-header">
-                            <h2 id="program-modal-title">Create Program</h2>
-                            <!-- Item R2-7: in workout mode these two actions live in
-                                 the sticky header; the footer save/return are hidden. -->
-                            <div class="program-modal-workout-actions" id="program-modal-workout-actions" hidden>
-                                <button type="button" class="btn btn-ghost program-modal-cancel" id="program-modal-cancel-workout">Cancel</button>
-                                <button type="button" class="btn btn-primary" id="program-modal-save-resume">
-                                    <i class="fas fa-check"></i> Save &amp; resume
-                                </button>
-                            </div>
-                            <!-- Normal create/edit actions, pinned in the sticky header:
-                                 a plain Cancel (dismisses) + a blue Save. No separate X. -->
-                            <div class="program-modal-normal-actions" id="program-modal-normal-actions" hidden>
-                                <button type="button" class="btn btn-ghost modal-close program-modal-cancel">Cancel</button>
-                                <button type="submit" class="btn btn-primary btn-save-program" form="program-form">
-                                    <i class="fas fa-check"></i> Save
-                                </button>
-                            </div>
-                        </div>
-                        <div class="modal-body">
-                            <form id="program-form" novalidate>
-                                <div class="form-group" id="program-name-group">
-                                    <label for="program-name">Program Name</label>
-                                    <input type="text" id="program-name"
-                                        placeholder="e.g., Full Body Workout"
-                                        aria-describedby="program-name-error"
-                                        aria-invalid="false">
-                                    <p id="program-name-error" class="form-error" hidden>
-                                        <i class="fas fa-circle-exclamation" aria-hidden="true"></i>
-                                        <span>Enter a name for this program.</span>
-                                    </p>
-                                </div>
-                                <div class="form-group">
-                                    <label for="program-description">Description (Optional)</label>
-                                    <textarea id="program-description" placeholder="Program details..." rows="3"></textarea>
-                                </div>
-
-                                <div class="form-group program-schedule-group">
-                                    <span class="program-schedule-label">Scheduled days (optional)</span>
-                                    <div id="program-schedule-days" class="program-schedule-days" role="group" aria-label="Scheduled days of the week"></div>
-                                    <p class="form-hint">Pick the days you plan to run this program. They show as markers in the calendar.</p>
-                                </div>
-
-                                <div class="form-group rest-mode-group">
-                                    <div class="rest-mode-toggle-row">
-                                        <label class="rest-mode-label" for="rest-mode-toggle">
-                                            <i class="fas fa-stopwatch" aria-hidden="true"></i>
-                                            Uniform rest between exercises
-                                        </label>
-                                        <label class="toggle-switch" aria-label="Use a single rest duration between all exercises">
-                                            <input type="checkbox" id="rest-mode-toggle" role="switch">
-                                            <span class="toggle-slider" aria-hidden="true"></span>
-                                        </label>
-                                    </div>
-                                    <div id="rest-mode-uniform-section" hidden class="rest-mode-uniform-section">
-                                        <span class="rest-mode-uniform-label">Rest duration</span>
-                                        <div id="rest-mode-uniform-stepper"></div>
-                                        <p id="rest-mode-uniform-hint" class="form-hint">Applied after each exercise. Rest between sets stays per exercise.</p>
-                                    </div>
-                                </div>
-
-                                <section class="program-exercises-section" id="program-exercises-section">
-                                    <header class="program-exercises-header">
-                                        <h3 class="program-exercises-heading">
-                                            <i class="fas fa-dumbbell"></i> Exercises
-                                        </h3>
-                                        <span id="program-exercises-count" class="program-exercises-count"></span>
-                                    </header>
-                                    <div id="program-exercises-list">
-                                        <!-- Exercises will be added here -->
-                                    </div>
-                                    <button type="button" class="btn-add-exercise" id="add-exercise-to-program-btn">
-                                        <i class="fas fa-plus"></i> Add Exercise
-                                    </button>
-                                    <p id="program-exercises-error" class="form-error form-error-section" hidden>
-                                        <i class="fas fa-circle-exclamation" aria-hidden="true"></i>
-                                        <span>Add at least one exercise before saving this program.</span>
-                                    </p>
-                                </section>
-
-                                <div class="form-actions program-form-actions">
-                                    <button type="button" class="btn btn-ghost modal-close">Cancel</button>
-                                    <button type="button" class="btn btn-return-workout" id="return-to-workout-btn" hidden>
-                                        <i class="fas fa-circle-arrow-left"></i> Return to workout
-                                    </button>
-                                    <button type="submit" class="btn btn-primary btn-save-program">
-                                        <i class="fas fa-check"></i> Save Program
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Exercise Picker Modal -->
                 <div id="exercise-picker-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="exercise-picker-title">
                     <div class="modal-content large" data-back-to-top>
@@ -1657,6 +1560,108 @@
                     </button>
                     <button type="button" class="btn btn-ghost feel-modal-skip-secondary" id="feel-modal-skip-btn">Not yet</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create/Edit Program Modal.
+         Lives at document level, NOT inside #programs-view: `.view` animates
+         `fadeIn` with a transform, and a transformed ancestor becomes the
+         containing block for `position: fixed`, which pinned this overlay to
+         the view box (taller than the viewport) instead of the screen. -->
+    <div id="program-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="program-modal-title">
+        <div class="modal-content" data-back-to-top>
+            <div class="modal-header program-modal-header">
+                <h2 id="program-modal-title">Create Program</h2>
+                <!-- Item R2-7: in workout mode these two actions live in
+                     the sticky header; the footer save/return are hidden. -->
+                <div class="program-modal-workout-actions" id="program-modal-workout-actions" hidden>
+                    <button type="button" class="btn btn-ghost program-modal-cancel" id="program-modal-cancel-workout">Cancel</button>
+                    <button type="button" class="btn btn-primary btn-save-program" id="program-modal-save-resume">
+                        <i class="fas fa-check" aria-hidden="true"></i> Save &amp; resume
+                    </button>
+                </div>
+                <!-- Normal create/edit actions, pinned in the sticky header:
+                     a plain Cancel (dismisses) + a blue Save. No separate X. -->
+                <div class="program-modal-normal-actions" id="program-modal-normal-actions" hidden>
+                    <button type="button" class="btn btn-ghost modal-close program-modal-cancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary btn-save-program" form="program-form">
+                        <i class="fas fa-check" aria-hidden="true"></i> Save
+                    </button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <form id="program-form" novalidate>
+                    <div class="form-group" id="program-name-group">
+                        <label for="program-name">Program Name</label>
+                        <input type="text" id="program-name"
+                            placeholder="e.g., Full Body Workout"
+                            aria-describedby="program-name-error"
+                            aria-invalid="false">
+                        <p id="program-name-error" class="form-error" hidden>
+                            <i class="fas fa-circle-exclamation" aria-hidden="true"></i>
+                            <span>Enter a name for this program.</span>
+                        </p>
+                    </div>
+                    <div class="form-group">
+                        <label for="program-description">Description (Optional)</label>
+                        <textarea id="program-description" placeholder="Program details..." rows="2"></textarea>
+                    </div>
+
+                    <div class="form-group program-schedule-group">
+                        <span class="program-schedule-label">Scheduled days (optional)</span>
+                        <div id="program-schedule-days" class="program-schedule-days" role="group" aria-label="Scheduled days of the week"></div>
+                        <p class="form-hint">Pick the days you plan to run this program. They show as markers in the calendar.</p>
+                    </div>
+
+                    <div class="form-group rest-mode-group">
+                        <div class="rest-mode-box">
+                            <div class="rest-mode-toggle-row">
+                                <label class="rest-mode-label" for="rest-mode-toggle">
+                                    <i class="fas fa-stopwatch" aria-hidden="true"></i>
+                                    Uniform rest between exercises
+                                </label>
+                                <label class="toggle-switch" aria-label="Use a single rest duration between all exercises">
+                                    <input type="checkbox" id="rest-mode-toggle" role="switch">
+                                    <span class="toggle-slider" aria-hidden="true"></span>
+                                </label>
+                            </div>
+                            <div id="rest-mode-uniform-section" hidden class="rest-mode-uniform-section">
+                                <div id="rest-mode-uniform-stepper"></div>
+                            </div>
+                        </div>
+                        <p id="rest-mode-hint" class="form-hint">Rest between exercises is set on each exercise below.</p>
+                    </div>
+
+                    <section class="program-exercises-section" id="program-exercises-section">
+                        <header class="program-exercises-header">
+                            <h3 class="program-exercises-heading">
+                                <i class="fas fa-dumbbell" aria-hidden="true"></i> Exercises
+                            </h3>
+                            <span id="program-exercises-count" class="program-exercises-count"></span>
+                        </header>
+                        <div id="program-exercises-list">
+                            <!-- Exercises will be added here -->
+                        </div>
+                        <button type="button" class="btn-add-exercise" id="add-exercise-to-program-btn">
+                            <i class="fas fa-plus" aria-hidden="true"></i> Add Exercise
+                        </button>
+                        <p id="program-exercises-error" class="form-error form-error-section" hidden>
+                            <i class="fas fa-circle-exclamation" aria-hidden="true"></i>
+                            <span>Add at least one exercise before saving this program.</span>
+                        </p>
+                    </section>
+
+                    <div class="form-actions program-form-actions">
+                        <button type="button" class="btn btn-ghost modal-close">Cancel</button>
+                        <button type="button" class="btn btn-return-workout" id="return-to-workout-btn" hidden>
+                            <i class="fas fa-circle-arrow-left" aria-hidden="true"></i> Return to workout
+                        </button>
+                        <button type="submit" class="btn btn-primary btn-save-program">
+                            <i class="fas fa-check" aria-hidden="true"></i> Save Program
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>

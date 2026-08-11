@@ -85,6 +85,7 @@ class ProgramsView {
                         this.renderUniformStepper(stepperContainer, this.currentProgram.uniformRestSeconds ?? 90);
                     }
                 }
+                this.syncRestModeHint(restModeToggle.checked);
                 this.renderProgramExercises();
                 this.renderExercisePickerTray();
             });
@@ -529,6 +530,20 @@ class ProgramsView {
         if (isUniform && this.currentProgram) {
             this.renderUniformStepper(stepperContainer, this.currentProgram.uniformRestSeconds ?? 90);
         }
+        this.syncRestModeHint(isUniform);
+    }
+
+    /**
+     * Item 9: one hint line, in both states. OFF has to say what actually
+     * happens (rest lives on each exercise), which the old markup never did
+     * because the only hint lived inside the uniform-only section.
+     */
+    syncRestModeHint(isUniform) {
+        const hint = document.getElementById('rest-mode-hint');
+        if (!hint) return;
+        hint.textContent = isUniform
+            ? 'This rest is used after every exercise. Rest between sets stays per exercise.'
+            : 'Rest between exercises is set on each exercise below.';
     }
 
     /**
@@ -538,14 +553,17 @@ class ProgramsView {
      */
     renderUniformStepper(container, seconds) {
         const label = formatRestLabel(seconds);
-        container.innerHTML = stepperHTML('uniformRest', 0, seconds, 0, 900, 'Rest', 15, label);
+        container.innerHTML = stepperHTML('uniformRest', 0, seconds, 0, 900, 'Rest duration', 15, label);
         container.querySelectorAll('[data-stepper]').forEach(btn => {
             btn.addEventListener('click', () => {
                 if (!this.currentProgram) return;
                 const cur = this.currentProgram.uniformRestSeconds ?? 90;
                 const next = Math.max(0, Math.min(900, cur + Number(btn.dataset.delta)));
                 this.currentProgram.uniformRestSeconds = next;
-                this.renderUniformStepper(container, next);
+                // Same rule as the per-exercise steppers: update the value and
+                // the bound states in place. Re-rendering here rebuilt the
+                // container and threw away the button being clicked.
+                syncStepperUI(container.querySelector('.pex-stepper'), next, 0, 900, formatRestLabel(next));
             });
         });
     }
@@ -599,7 +617,7 @@ class ProgramsView {
             const linkBtnIcon = linkedAbove ? 'fa-link-slash' : 'fa-link';
             // First row can't link upward — there's nothing above it.
             const linkBtnHTML = index === 0 ? '' : `
-                <button type="button" class="btn-icon btn-icon-link${linkedAbove ? ' is-on' : ''}"
+                <button type="button" class="pex-icon-btn pex-icon-btn-link${linkedAbove ? ' is-on' : ''}"
                     data-action="${linkedAbove ? 'unlink-superset' : 'link-superset'}"
                     data-index="${index}"
                     aria-pressed="${linkedAbove ? 'true' : 'false'}"
@@ -613,10 +631,23 @@ class ProgramsView {
             const setRowsHTML = exercise.sets.map((setRow, si) => {
                 const isSingle = setRow.repsMin === setRow.repsMax;
                 const canRemove = exercise.sets.length > 1;
+                // Item 5: a two-option segmented control showing the CURRENT
+                // mode as selected. Both options carry the existing
+                // `toggle-rep-range` action; `data-mode` makes re-picking the
+                // active option a no-op instead of a toggle-away.
+                const modeOpt = (mode, label, on) => `
+                        <button type="button" class="pex-mode-opt${on ? ' is-on' : ''}"
+                            data-action="toggle-rep-range"
+                            data-mode="${mode}"
+                            data-exercise-index="${index}"
+                            data-set-index="${si}"
+                            aria-pressed="${on ? 'true' : 'false'}"
+                            aria-label="Set ${si + 1}: ${mode === 'single' ? 'single rep target' : 'rep range'}"
+                            title="Set ${si + 1}: ${mode === 'single' ? 'single rep target' : 'rep range'}">${label}</button>`;
                 return `
                 <div class="pex-set-row" data-set-index="${si}">
                     <span class="pex-set-label">Set ${si + 1}</span>
-                    <div class="pex-set-reps">
+                    <span class="pex-set-reps">
                         <input type="number" class="pex-reps-input"
                             data-action="set-reps-min"
                             data-exercise-index="${index}"
@@ -632,24 +663,19 @@ class ProgramsView {
                             value="${setRow.repsMax}"
                             min="1" max="100"
                             aria-label="Set ${si + 1} max reps">
-                        <button type="button" class="pex-range-toggle${isSingle ? '' : ' is-on'}"
-                            data-action="toggle-rep-range"
-                            data-exercise-index="${index}"
-                            data-set-index="${si}"
-                            title="${isSingle ? 'Add rep range' : 'Remove rep range'}"
-                            aria-label="${isSingle ? 'Add rep range' : 'Remove rep range'}">
-                            <i class="fas ${isSingle ? 'fa-arrows-left-right' : 'fa-minus'}"></i>
-                            <span class="pex-range-toggle-label">${isSingle ? 'Range' : 'Single'}</span>
-                        </button>
-                    </div>
-                    <button type="button" class="pex-set-remove"
+                    </span>
+                    <span class="pex-mode-seg" role="group" aria-label="Set ${si + 1} rep mode">
+                        ${modeOpt('single', 'Single', isSingle)}
+                        ${modeOpt('range', 'Range', !isSingle)}
+                    </span>
+                    <button type="button" class="pex-icon-btn pex-icon-btn-danger pex-set-remove"
                         data-action="remove-set-row"
                         data-exercise-index="${index}"
                         data-set-index="${si}"
-                        title="Remove set"
+                        title="Remove set ${si + 1}"
                         aria-label="Remove set ${si + 1}"
                         ${canRemove ? '' : 'disabled'}>
-                        <i class="fas fa-xmark"></i>
+                        <i class="fas fa-trash-can" aria-hidden="true"></i>
                     </button>
                 </div>`;
             }).join('');
@@ -657,59 +683,58 @@ class ProgramsView {
             return `
             <div class="program-exercise-row ${groupClasses}" draggable="true" data-exercise-index="${index}">
                 ${linkedAbove ? `<span class="pex-superset-tag" aria-hidden="true">Superset</span>` : ''}
-                <span class="pex-drag-handle" aria-hidden="true" title="Drag to reorder">
-                    <i class="fas fa-grip-vertical"></i>
-                </span>
-                <div class="pex-move-buttons" role="group" aria-label="Reorder exercise">
-                    <button type="button" class="btn-icon btn-icon-move btn-icon-move-mini"
-                        data-action="move-exercise-up"
-                        data-index="${index}"
-                        ${index === 0 ? 'disabled' : ''}
-                        aria-label="Move ${escapeHtml(exercise.exerciseName)} up"
-                        title="Move up">
-                        <i class="fas fa-chevron-up"></i>
-                    </button>
-                    <button type="button" class="btn-icon btn-icon-move btn-icon-move-mini"
-                        data-action="move-exercise-down"
-                        data-index="${index}"
-                        ${index === this.currentProgram.exercises.length - 1 ? 'disabled' : ''}
-                        aria-label="Move ${escapeHtml(exercise.exerciseName)} down"
-                        title="Move down">
-                        <i class="fas fa-chevron-down"></i>
-                    </button>
-                </div>
-                <div class="pex-position" aria-hidden="true">${index + 1}</div>
-                <div class="pex-name">
-                    <span class="pex-name-main">${escapeHtml(exercise.exerciseName)}</span>${muscle ? `
-                    <span class="pex-name-sub">(${muscle})</span>` : ''}
-                </div>
-                <div class="pex-targets">
-                    <div class="pex-sets-block">
-                        <div class="pex-sets-header">
-                            <span class="pex-stepper-label">Sets / Reps</span>
-                            <button type="button" class="pex-add-set-btn"
-                                data-action="add-set-row"
+                <div class="pex-head">
+                    <span class="pex-drag-handle" aria-hidden="true" title="Drag to reorder">
+                        <i class="fas fa-grip-vertical"></i>
+                    </span>
+                    <span class="pex-position" aria-hidden="true">${index + 1}</span>
+                    <span class="pex-name">
+                        <span class="pex-name-main">${escapeHtml(exercise.exerciseName)}</span>${muscle ? `
+                        <span class="pex-name-sub">${escapeHtml(muscle)}</span>` : ''}
+                    </span>
+                    <span class="pex-head-actions">
+                        ${linkBtnHTML}
+                        <span class="pex-move-buttons" role="group" aria-label="Reorder exercise">
+                            <button type="button" class="pex-icon-btn pex-icon-btn-move"
+                                data-action="move-exercise-up"
                                 data-index="${index}"
-                                aria-label="Add set to ${escapeHtml(exercise.exerciseName)}">
-                                <i class="fas fa-plus"></i> Add set
+                                ${index === 0 ? 'disabled' : ''}
+                                aria-label="Move ${escapeHtml(exercise.exerciseName)} up"
+                                title="Move up">
+                                <i class="fas fa-chevron-up" aria-hidden="true"></i>
                             </button>
-                        </div>
-                        <p class="pex-range-hint">Each set can be a single target or a range.</p>
-                        <div class="pex-set-rows">
-                            ${setRowsHTML}
-                        </div>
-                    </div>
-                    ${stepperHTML('rest', index, exercise.restSeconds, 0, 900, 'Rest between sets', 15, restLabel)}
-                    ${isUniform ? '' : stepperHTML('restAfter', index, exercise.restAfterSeconds, 0, 900, 'Rest after exercise', 15, restAfterLabel)}
+                            <button type="button" class="pex-icon-btn pex-icon-btn-move"
+                                data-action="move-exercise-down"
+                                data-index="${index}"
+                                ${index === this.currentProgram.exercises.length - 1 ? 'disabled' : ''}
+                                aria-label="Move ${escapeHtml(exercise.exerciseName)} down"
+                                title="Move down">
+                                <i class="fas fa-chevron-down" aria-hidden="true"></i>
+                            </button>
+                        </span>
+                        <button type="button" class="pex-icon-btn pex-icon-btn-danger pex-delete"
+                            data-action="remove-exercise"
+                            data-index="${index}"
+                            title="Remove ${escapeHtml(exercise.exerciseName)}"
+                            aria-label="Remove ${escapeHtml(exercise.exerciseName)}">
+                            <i class="fas fa-trash-can" aria-hidden="true"></i>
+                        </button>
+                    </span>
                 </div>
-                <div class="pex-row-actions">
-                    ${linkBtnHTML}
-                    <button class="pex-delete"
-                        data-action="remove-exercise"
+                <div class="pex-body">
+                    <div class="pex-sets-block">
+                        ${setRowsHTML}
+                    </div>
+                    <button type="button" class="pex-add-set-btn"
+                        data-action="add-set-row"
                         data-index="${index}"
-                        title="Remove exercise" type="button" aria-label="Remove exercise">
-                        <i class="fas fa-xmark"></i>
+                        aria-label="Add set to ${escapeHtml(exercise.exerciseName)}">
+                        <i class="fas fa-plus" aria-hidden="true"></i> Add set
                     </button>
+                    <div class="pex-rest-block">
+                        ${stepperHTML('rest', index, exercise.restSeconds, 0, 900, 'Rest between sets', 15, restLabel, 'Between sets')}
+                        ${isUniform ? '' : stepperHTML('restAfter', index, exercise.restAfterSeconds, 0, 900, 'Rest after exercise', 15, restAfterLabel, 'After exercise')}
+                    </div>
                 </div>
             </div>
         `;}).join('');
@@ -778,13 +803,21 @@ class ProgramsView {
             });
         });
 
-        // Toggle rep range on/off for a set
+        // Rep mode segmented control (Single / Range) for a set
         container.querySelectorAll('[data-action="toggle-rep-range"]').forEach(btn => {
             btn.addEventListener('click', () => {
-                this.toggleRepRange(
-                    Number(btn.dataset.exerciseIndex),
-                    Number(btn.dataset.setIndex)
-                );
+                const ei = Number(btn.dataset.exerciseIndex);
+                const si = Number(btn.dataset.setIndex);
+                const mode = btn.dataset.mode || null;
+                this.toggleRepRange(ei, si, mode);
+                // Collapsing to Single doesn't move focus into an input, so
+                // put it back on the option the user just pressed (the click
+                // re-rendered the row and destroyed the original node).
+                if (mode === 'single') {
+                    document.querySelector(
+                        `#program-exercises-list [data-action="toggle-rep-range"][data-mode="single"][data-exercise-index="${ei}"][data-set-index="${si}"]`
+                    )?.focus();
+                }
             });
         });
 
@@ -874,13 +907,23 @@ class ProgramsView {
         if (!this.currentProgram) return;
         const ex = this.currentProgram.exercises[index];
         if (!ex) return;
-        if (field === 'rest') {
-            this.currentProgram.updateExercise(index, { restSeconds: ex.restSeconds + delta });
-            this.renderProgramExercises();
-        } else if (field === 'restAfter') {
-            this.currentProgram.updateExercise(index, { restAfterSeconds: ex.restAfterSeconds + delta });
-            this.renderProgramExercises();
-        }
+        const key = field === 'rest' ? 'restSeconds' : field === 'restAfter' ? 'restAfterSeconds' : null;
+        if (!key) return;
+        // #16 again, this time for the steppers: a +/- click changes one number,
+        // so it must NOT re-render #program-exercises-list. The rebuild replaced
+        // every card, which destroyed the button under the pointer (focus fell to
+        // <body>, so holding position for a second click was luck) and repainted
+        // the whole list for a two-character change.
+        // Clamping still belongs to the model: hand updateExercise the raw sum
+        // and read the normalized value back out for the display.
+        this.currentProgram.updateExercise(index, { [key]: ex[key] + delta });
+        const value = this.currentProgram.exercises[index][key];
+        syncStepperUI(
+            document.querySelector(
+                `#program-exercises-list .program-exercise-row[data-exercise-index="${index}"] .pex-stepper[data-field="${field}"]`
+            ),
+            value, 0, 900, formatRestLabel(value)
+        );
     }
 
     addSetRow(exerciseIndex) {
@@ -903,13 +946,21 @@ class ProgramsView {
         this.renderProgramExercises();
     }
 
-    toggleRepRange(exerciseIndex, setIndex) {
+    /**
+     * Switch a set between a single rep target and a rep range.
+     * `mode` ('single' | 'range') comes from the segmented control and makes
+     * clicking the already-selected option a no-op; called without it the
+     * function still flips whichever state the set is in.
+     */
+    toggleRepRange(exerciseIndex, setIndex, mode = null) {
         if (!this.currentProgram) return;
         const ex = this.currentProgram.exercises[exerciseIndex];
         if (!ex || !Array.isArray(ex.sets)) return;
         const row = ex.sets[setIndex];
         if (!row) return;
         const activating = row.repsMin === row.repsMax;
+        if (mode === 'single' && activating) return;
+        if (mode === 'range' && !activating) return;
         if (activating) {
             // Activate range: default max to min+2 (capped at 100)
             row.repsMax = Math.min(100, row.repsMin + 2);
@@ -942,8 +993,9 @@ class ProgramsView {
         // The change event fires on TAB-out (blur); a full re-render destroys
         // and rebuilds the input being left, so the browser's native "focus the
         // next tabbable element" lands on a detached node and jumps elsewhere.
-        // Update the model in place; if clamping moved the SIBLING field, write
-        // only that sibling's input value via a targeted selector — no rebuild.
+        // Update the model in place; write the clamped value back into the
+        // edited input, and into the SIBLING input when clamping moved it, via
+        // targeted selectors, no rebuild.
         let siblingChanged = null; // 'min' | 'max' when the other field was clamped
         if (minOrMax === 'min') {
             const wasSingle = row.repsMin === row.repsMax;
@@ -965,15 +1017,20 @@ class ProgramsView {
         }
         this.currentProgram.updatedAt = new Date().toISOString();
 
+        const repsInput = (kind) => document.querySelector(
+            `#program-exercises-list [data-action="set-reps-${kind}"][data-exercise-index="${exerciseIndex}"][data-set-index="${setIndex}"]`
+        );
+        // The field the user just left keeps whatever they typed unless we
+        // rewrite it, so typing 250 left "250" on screen against a model of 100
+        // and the next open of the editor showed a different number.
+        const edited = repsInput(minOrMax);
+        if (edited) edited.value = minOrMax === 'min' ? row.repsMin : row.repsMax;
+
         if (siblingChanged === 'max') {
-            const maxInput = document.querySelector(
-                `#program-exercises-list [data-action="set-reps-max"][data-exercise-index="${exerciseIndex}"][data-set-index="${setIndex}"]`
-            );
+            const maxInput = repsInput('max');
             if (maxInput) maxInput.value = row.repsMax;
         } else if (siblingChanged === 'min') {
-            const minInput = document.querySelector(
-                `#program-exercises-list [data-action="set-reps-min"][data-exercise-index="${exerciseIndex}"][data-set-index="${setIndex}"]`
-            );
+            const minInput = repsInput('min');
             if (minInput) minInput.value = row.repsMin;
         }
     }
@@ -1098,11 +1155,10 @@ class ProgramsView {
     }
 
     editProgram(programId) {
-        // The program modal lives inside #programs-view, which is `display: none`
-        // when another view is active. If the user triggered this from elsewhere
-        // (e.g. the Dashboard's empty-program row), switch to the Programs view
-        // first so the modal can actually render — and remember where they came
-        // from so we can return them on close.
+        // If the user triggered this from elsewhere (e.g. the Dashboard's
+        // empty-program row), switch to the Programs view first so closing the
+        // editor lands on the program list, and remember where they came from
+        // so we can return them there.
         if (this.app.currentView !== 'programs') {
             this.returnToView = this.app.currentView;
             this.app.showView('programs');
@@ -1183,6 +1239,30 @@ class ProgramsView {
             this.returnToView = null;
             this.app.showView(target);
         }
+    }
+
+    /**
+     * Item R2-9 hook. #program-modal is a document-level element (a `.view`
+     * animates, which would make its `position: fixed` resolve against the
+     * view box), so showView()'s display:none sweep over `.view` no longer
+     * hides it. Dismiss the editor whenever the user leaves Programs by any
+     * route, including the Back button (popstate routes through showView too).
+     * The staged clone is simply dropped, exactly like Cancel. The exercise
+     * picker lives inside #programs-view and so is hidden with it, but its
+     * `active` class also holds the body scroll lock, so clear that as well.
+     * Navigation always proceeds: this hook never defers.
+     */
+    beforeLeave() {
+        const modal = document.getElementById('program-modal');
+        if (modal && modal.classList.contains('active')) {
+            // Cleared first: closeProgramModal() would otherwise call
+            // showView() from inside the showView() that invoked us.
+            this.returnToView = null;
+            this.closeProgramModal();
+        }
+        const picker = document.getElementById('exercise-picker-modal');
+        if (picker) picker.classList.remove('active');
+        return true;
     }
 
     duplicateProgram(programId) {
@@ -1558,35 +1638,59 @@ class ProgramsView {
 }
 
 /**
- * Compact +/- stepper for program-exercise target values.
- * `valueLabel` overrides the displayed label (used by rest which shows "1:30").
+ * Compact single-line `label − value +` stepper for program-exercise values.
+ * `valueLabel` overrides the displayed value (rest shows "1:30" for 90).
+ * `shortLabel` is a narrow-screen alias for the visible caption; the full
+ * `label` always drives the +/- aria-labels so screen readers keep the
+ * unambiguous wording ("Decrease rest between sets").
  */
-function stepperHTML(field, index, value, min, max, label, step = 1, valueLabel = null) {
+function stepperHTML(field, index, value, min, max, label, step = 1, valueLabel = null, shortLabel = null) {
     const displayed = valueLabel ?? String(value);
     const atMin = value <= min;
     const atMax = value >= max;
+    const caption = shortLabel
+        ? `<span class="pex-label-full">${label}</span><span class="pex-label-short">${shortLabel}</span>`
+        : label;
     return `
         <div class="pex-stepper" data-field="${field}">
-            <span class="pex-stepper-label">${label}</span>
+            <span class="pex-stepper-label" title="${label}">${caption}</span>
             <span class="pex-stepper-controls">
-                <button type="button" class="pex-stepper-btn"
+                <button type="button" class="pex-icon-btn pex-stepper-btn"
                     data-stepper data-index="${index}" data-field="${field}" data-delta="${-step}"
                     ${atMin ? 'disabled' : ''}
                     aria-label="Decrease ${label.toLowerCase()}">
-                    <i class="fas fa-minus"></i>
+                    <i class="fas fa-minus" aria-hidden="true"></i>
                 </button>
                 <span class="pex-stepper-value">${displayed}</span>
-                <button type="button" class="pex-stepper-btn"
+                <button type="button" class="pex-icon-btn pex-stepper-btn"
                     data-stepper data-index="${index}" data-field="${field}" data-delta="${step}"
                     ${atMax ? 'disabled' : ''}
                     aria-label="Increase ${label.toLowerCase()}">
-                    <i class="fas fa-plus"></i>
+                    <i class="fas fa-plus" aria-hidden="true"></i>
                 </button>
             </span>
         </div>
     `;
 }
 
+
+/**
+ * In-place refresh of one stepper built by stepperHTML(). A +/- click can only
+ * change two things: the displayed value, and whether the buttons are at a
+ * bound. Everything else in the markup (labels, aria-labels, the data-* the
+ * delegated handlers read) is a function of the field, not the value, so it is
+ * left alone and the listeners already on these buttons keep working.
+ */
+function syncStepperUI(stepper, value, min, max, valueLabel = null) {
+    if (!stepper) return;
+    // Write into the existing text node rather than assigning textContent:
+    // textContent throws the node away and inserts a new one, which is a real
+    // childList removal, i.e. a smaller version of the teardown this avoids.
+    stepper.querySelector('.pex-stepper-value').firstChild.data = valueLabel ?? String(value);
+    stepper.querySelectorAll('[data-stepper]').forEach(btn => {
+        btn.disabled = Number(btn.dataset.delta) < 0 ? value <= min : value >= max;
+    });
+}
 
 /** "1:30", "45s", "0s" — short display optimized for the stepper pill. */
 function formatRestLabel(seconds) {
