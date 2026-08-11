@@ -1234,7 +1234,9 @@ body.modal-open {
     color: white;
 }
 
-.modal-close {
+/* The round X affordance. `.program-modal-cancel` also carries `.modal-close`
+   (it closes the editor) but is a labelled text button, so it opts out here. */
+.modal-close:not(.program-modal-cancel) {
     background: none;
     border: none;
     color: var(--text-primary);
@@ -1249,7 +1251,7 @@ body.modal-open {
     transition: all var(--transition-base);
 }
 
-.modal-close:hover {
+.modal-close:not(.program-modal-cancel):hover {
     background: var(--bg-hover);
     color: var(--text-primary);
 }
@@ -4365,709 +4367,6 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle i {
     }
 }
 
-/* Edit Program — compact exercise row */
-#program-exercises-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-}
-
-/* ---- Create/Edit Program modal — form polish ---- */
-#program-form .form-group {
-    margin-bottom: var(--spacing-md);
-}
-
-#program-form .form-group label {
-    margin-bottom: 0.4rem;
-    font-size: 0.85rem;
-    font-weight: 600;
-    text-transform: none;
-    letter-spacing: 0;
-    color: var(--text-secondary);
-}
-
-#program-form .form-group input[type="text"],
-#program-form .form-group textarea {
-    padding: 0.7rem 0.85rem;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-color);
-    color: var(--text-primary);
-    font-size: 0.95rem;
-    border-radius: var(--radius-md);
-}
-
-#program-form .form-group input::placeholder,
-#program-form .form-group textarea::placeholder {
-    color: rgba(184, 184, 209, 0.78);
-    opacity: 1;
-}
-
-#program-form .form-group input:focus,
-#program-form .form-group textarea:focus {
-    outline: none;
-    border-color: var(--accent-primary);
-    background: var(--bg-card);
-    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.18);
-}
-
-/* Modal body padding tightens slightly inside the program modal */
-#program-modal .modal-body {
-    padding: var(--spacing-md) var(--spacing-lg) var(--spacing-md);
-}
-
-/* ---- Create/Edit Program — Exercises section ---- */
-.program-exercises-section {
-    margin-top: var(--spacing-md);
-    padding: 0.85rem 0.85rem 0.7rem;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    display: flex;
-    flex-direction: column;
-    gap: 0.6rem;
-}
-
-.program-exercises-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    padding-bottom: 0.4rem;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.program-exercises-heading {
-    margin: 0;
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: var(--text-primary);
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    letter-spacing: -0.005em;
-}
-
-.program-exercises-heading i {
-    color: var(--text-muted);
-    font-size: 0.8rem;
-}
-
-.program-exercises-count {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    font-weight: 500;
-    text-transform: none;
-    letter-spacing: 0;
-}
-
-.program-exercises-count:empty { display: none; }
-
-#program-exercises-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-}
-
-.program-exercises-empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    padding: 1.4rem 1rem;
-    background: var(--bg-card);
-    border: 1px dashed var(--border-color);
-    border-radius: var(--radius-lg);
-    text-align: center;
-}
-
-.program-exercises-empty i {
-    font-size: 1.85rem;
-    color: var(--accent-primary);
-    opacity: 0.75;
-    margin-bottom: 0.25rem;
-}
-
-.program-exercises-empty p {
-    margin: 0;
-    color: var(--text-primary);
-    font-size: 0.95rem;
-    font-weight: 700;
-}
-
-.program-exercises-empty small {
-    color: var(--text-secondary);
-    font-size: 0.8rem;
-    line-height: 1.4;
-}
-
-/* Two-row layout at every breakpoint so exercise identity never competes with
-   the numeric controls. The drag handle + index badge span both rows so the
-   whole card reads as a single draggable unit; identity + delete occupy the
-   top row; the Sets/Reps/Rest cluster sits below as a secondary control row. */
-.program-exercise-row {
-    display: grid;
-    grid-template-columns: auto auto 1fr auto;
-    grid-template-areas:
-        "handle position name   delete"
-        "handle position targets targets";
-    align-items: center;
-    column-gap: 0.55rem;
-    row-gap: 0.45rem;
-    padding: 0.55rem 0.7rem;
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-sm);
-    transition: transform var(--transition-fast), background var(--transition-fast),
-                border-color var(--transition-fast), box-shadow var(--transition-fast);
-}
-
-.program-exercise-row .pex-drag-handle { grid-area: handle; align-self: center; }
-.program-exercise-row .pex-position    { grid-area: position; align-self: center; }
-.program-exercise-row .pex-name        { grid-area: name; align-self: center; }
-.program-exercise-row .pex-delete      { grid-area: delete; align-self: center; justify-self: end; }
-
-/* Base = mobile. Keep the original flex-wrap row exactly as it was — the
- * desktop media query below swaps in the new vertical-block grid layout. */
-.pex-targets {
-    grid-area: targets;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-    justify-content: flex-start;
-    min-width: 0;
-}
-
-/* Desktop refinement — left-aligned card, tighter title/control connection,
-   and a structured CSS Grid for Sets / Reps / Rest. Each stepper lives
-   inside a bounded grid cell so siblings can NEVER overlap.
-   Mobile keeps its existing flex-wrap layout via the media query boundary. */
-@media (min-width: 641px) {
-    /* Wider program modal so there's real horizontal space for three
-       stepper cells + padding without crowding. */
-    #program-modal .modal-content { max-width: 760px; }
-
-    /* Left-aligned, full-width: the list fills the modal body instead of
-       centering a narrow column. */
-    #program-exercises-list {
-        max-width: none;
-        margin-inline: 0;
-    }
-
-    .program-exercise-row {
-        padding: 0.75rem 1rem;
-        column-gap: 0.75rem;
-        /* Tight row-gap + dashed divider = "title and controls are one unit." */
-        row-gap: 0.6rem;
-        border-radius: var(--radius-lg);
-        /* Desktop: targets get their own full-width row beneath the title row
-           so Sets/Reps/Rest can breathe across the entire card instead of
-           being squeezed into the name+delete columns. `minmax(0, 1fr)` on
-           the name column stops long exercise names from forcing the whole
-           card wider than the modal. */
-        grid-template-columns: auto auto minmax(0, 1fr) auto;
-        grid-template-areas:
-            "handle position name    delete"
-            "targets targets targets targets";
-    }
-
-    .program-exercise-row .pex-name-main { font-size: 1.05rem; }
-
-    .program-exercise-row .pex-name-sub {
-        font-size: 0.8rem;
-        opacity: 1;
-    }
-
-    /* Controls row: sets-block takes the majority of space; rest stepper
-       sits in a fixed-size right column when present (custom mode).
-       Spans all four outer-grid columns via redefined grid-template-areas. */
-    .pex-targets {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        gap: 0.75rem;
-        padding-top: 0.5rem;
-        margin-top: 0;
-        border-top: 1px dashed var(--border-color);
-        min-width: 0;
-        width: 100%;
-        align-items: start;
-    }
-
-    .pex-targets > * {
-        min-width: 0;
-    }
-
-    /* Desktop-only: each control is a vertical block — label on top of
-       a full-width [-  value  +] pill. The outer .pex-stepper becomes a
-       transparent wrapper (all pill chrome moves to .pex-stepper-controls)
-       so the label isn't competing inside a crowded single row.
-       Mobile keeps the original horizontal pill via the base rules. */
-    .program-exercise-row .pex-stepper {
-        display: flex;
-        flex-direction: column;
-        align-items: stretch;
-        gap: 0.3rem;
-        width: 100%;
-        min-width: 0;
-        padding: 0;
-        background: transparent;
-        border: none;
-        border-radius: 0;
-        box-sizing: border-box;
-    }
-
-    .program-exercise-row .pex-stepper-label {
-        font-size: 0.76rem;
-        letter-spacing: 0;
-        padding-left: 0.1rem;
-    }
-
-    /* The pill now lives on .pex-stepper-controls on desktop. */
-    .program-exercise-row .pex-stepper-controls {
-        display: flex;
-        justify-content: space-between;
-        gap: 0.4rem;
-        padding: 0.4rem 0.65rem;
-        background: var(--bg-elevated);
-        border: 1px solid var(--border-color);
-        border-radius: var(--radius-sm);
-        min-width: 0;
-        box-sizing: border-box;
-    }
-
-    /* Slightly larger value floor so "2:15"/"10:30" sit cleanly without
-       crowding the +/- buttons. Tabular numerals keep widths stable. */
-    .program-exercise-row .pex-stepper-value {
-        min-width: 3ch;
-        font-size: 0.9rem;
-    }
-
-    .program-exercise-row .pex-stepper-controls {
-        gap: 0.4rem;
-    }
-
-    .program-exercise-row .pex-stepper-btn {
-        width: 26px;
-        height: 26px;
-        font-size: 0.75rem;
-    }
-
-    /* Drag handle + index badge — more presence on the taller card. */
-    .program-exercise-row .pex-drag-handle {
-        height: 28px;
-        font-size: 0.9rem;
-    }
-    .program-exercise-row .pex-position {
-        width: 22px;
-        height: 22px;
-        font-size: 0.8rem;
-    }
-
-    /* Delete stays tertiary at rest; aligned to the identity row's right edge. */
-    .program-exercise-row .pex-delete {
-        width: 28px !important;
-        height: 28px !important;
-        font-size: 0.82rem !important;
-    }
-}
-
-/* Between 641px and 900px keep the 2-column layout (sets-block + rest).
-   No special override needed — the 1fr auto grid already stacks gracefully. */
-
-/* Stepper — two zones separated by space-between:
-     [ LABEL ]                   [ - value + ]
-   The inner .pex-stepper-controls owns its own fixed inter-element gap so
-   the spacing between minus, value, and plus is ALWAYS identical, no matter
-   how long the value string is ("3", "10", "1:30", "2:15", "10:30"). */
-/* Base = mobile. Horizontal inline pill — label inside, [-  value  +]
- * sharing the same rounded container. Desktop media query above replaces
- * this with a vertical label-over-pill block layout. */
-.pex-stepper {
-    display: inline-flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    padding: 0.15rem 0.35rem;
-    font-size: 0.78rem;
-    min-width: 0;
-    box-sizing: border-box;
-}
-
-.pex-stepper-label {
-    flex-shrink: 0;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: none;
-    letter-spacing: 0;
-    font-size: 0.78rem;
-    white-space: nowrap;
-}
-
-/* Right-side cluster: [-] value [+]. Inline, no background of its own —
- * the outer .pex-stepper provides the pill chrome on mobile. */
-.pex-stepper-controls {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    flex-shrink: 0;
-}
-
-.pex-stepper-value {
-    min-width: 2.6ch;
-    padding: 0 0.1rem;
-    text-align: center;
-    color: var(--text-primary);
-    font-variant-numeric: tabular-nums;
-    font-weight: 600;
-    letter-spacing: -0.005em;
-    white-space: nowrap;
-}
-
-.pex-stepper-btn {
-    flex-shrink: 0;
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    width: 22px;
-    height: 22px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--radius-sm);
-    font-size: 0.7rem;
-    transition: background var(--transition-fast), color var(--transition-fast);
-}
-
-.pex-stepper-btn:hover:not(:disabled) {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-}
-
-.pex-stepper-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-}
-
-.pex-stepper-btn:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 2px rgba(91, 155, 255, 0.45);
-}
-
-/* Tighter gap specifically between the number badge and the exercise name,
-   so the badge reads as attached to the name it belongs to. */
-.program-exercise-row .pex-position + .pex-name {
-    margin-left: -0.15rem;
-}
-
-.program-exercise-row:hover {
-    background: var(--bg-elevated);
-    border-color: var(--border-light);
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-md);
-}
-
-/* Neutral, low-emphasis index marker (not a bold blue circle). */
-.pex-position {
-    width: 20px;
-    height: 20px;
-    flex-shrink: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    font-size: 0.78rem;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-}
-
-/* Drag handle — low-emphasis grip icon; the whole row is draggable, this is
-   just the visual affordance. Brightens on row hover. */
-.pex-drag-handle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 26px;
-    color: var(--text-muted);
-    opacity: 0.85;
-    cursor: grab;
-    font-size: 0.95rem;
-    transition: color var(--transition-fast), opacity var(--transition-fast);
-    flex-shrink: 0;
-}
-
-.program-exercise-row:hover .pex-drag-handle {
-    color: var(--text-secondary);
-    opacity: 1;
-}
-
-.pex-drag-handle:active {
-    cursor: grabbing;
-}
-
-/* Row drag states */
-.program-exercise-row {
-    cursor: grab;
-}
-
-.program-exercise-row:active {
-    cursor: grabbing;
-}
-
-.program-exercise-row.is-dragging {
-    opacity: 0.4;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-    border-color: var(--accent-primary);
-}
-
-/* Drop indicator — accent bar on the edge the dragged row would land on */
-.program-exercise-row.is-drop-above {
-    box-shadow: 0 -2px 0 0 var(--accent-primary);
-}
-
-.program-exercise-row.is-drop-below {
-    box-shadow: 0 2px 0 0 var(--accent-primary);
-}
-
-.pex-name {
-    font-size: 0.95rem;
-    color: var(--text-primary);
-    letter-spacing: -0.005em;
-    min-width: 0;
-    overflow: hidden;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0.35rem;
-    line-height: 1.25;
-}
-
-.pex-name-main {
-    font-weight: 700;
-    font-size: 1rem;
-    color: var(--text-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    min-width: 0;
-    letter-spacing: -0.01em;
-}
-
-.pex-name-sub {
-    font-weight: 500;
-    color: var(--text-secondary);
-    font-size: 0.78rem;
-    opacity: 1;
-    white-space: nowrap;
-}
-
-/* Delete — small, low-contrast at rest; clear red on hover without heavy glow */
-.pex-delete {
-    width: 26px !important;
-    height: 26px !important;
-    padding: 0 !important;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: 1px solid transparent !important;
-    color: var(--text-muted) !important;
-    opacity: 0.65;
-    border-radius: var(--radius-sm);
-    font-size: 0.78rem !important;
-    font-weight: 500 !important;
-    line-height: 1 !important;
-    cursor: pointer;
-    box-shadow: none !important;
-    font-family: inherit !important;
-    transition: color var(--transition-fast), background var(--transition-fast),
-                border-color var(--transition-fast), opacity var(--transition-fast),
-                transform var(--transition-fast);
-}
-
-.program-exercise-row:hover .pex-delete {
-    opacity: 1;
-    border-color: var(--border-color) !important;
-}
-
-.pex-delete:hover,
-.pex-delete:focus-visible {
-    color: var(--accent-error) !important;
-    background: var(--bg-elevated);
-    border-color: var(--accent-error) !important;
-    opacity: 1;
-    outline: none;
-}
-
-.pex-delete:focus-visible {
-    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.4) !important;
-}
-
-.pex-delete:active {
-    transform: scale(0.96);
-}
-
-/* Add Exercise — full-width secondary action. Subtle tinted surface at rest,
-   brightens on hover. !important beats the global button overrides. */
-.btn-add-exercise {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    width: 100%;
-    margin: 0;
-    height: auto !important;
-    min-height: 0 !important;
-    padding: 0.6rem 1rem !important;
-    background: var(--bg-elevated) !important;
-    border: 1px dashed var(--border-light) !important;
-    border-radius: var(--radius-lg);
-    color: var(--text-secondary) !important;
-    font-family: inherit !important;
-    font-weight: 600 !important;
-    font-size: 0.85rem !important;
-    line-height: 1 !important;
-    cursor: pointer;
-    box-shadow: none !important;
-    transition: background var(--transition-base), border-color var(--transition-base),
-                color var(--transition-base), box-shadow var(--transition-base);
-}
-
-.btn-add-exercise:hover {
-    background: var(--bg-hover) !important;
-    border-color: var(--border-light) !important;
-    color: var(--text-primary) !important;
-    box-shadow: none !important;
-}
-
-.btn-add-exercise:active {
-    background: var(--bg-hover) !important;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25) !important;
-}
-
-.btn-add-exercise:focus-visible {
-    outline: none;
-    color: var(--text-primary) !important;
-    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.4) !important;
-}
-
-.btn-add-exercise i {
-    font-size: 0.78rem;
-    color: inherit !important;
-    transition: color var(--transition-base);
-}
-
-.btn-add-exercise:hover i {
-    color: inherit !important;
-}
-
-/* Bottom action row — anchored footer with clear Cancel/Save hierarchy. */
-.program-form-actions {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 0.75rem;
-    margin-top: 1.5rem;
-    padding-top: 1.25rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.program-form-actions .btn {
-    height: 44px !important;
-    min-height: 0 !important;
-    min-width: 120px;
-    padding: 0 1.25rem !important;
-    border-radius: 10px;
-    font-size: 0.9rem !important;
-    font-weight: 600 !important;
-    font-family: inherit !important;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.4rem;
-    line-height: 1 !important;
-    transition: background var(--transition-base), border-color var(--transition-base),
-                color var(--transition-base), box-shadow var(--transition-base),
-                transform var(--transition-base), filter var(--transition-base);
-}
-
-/* Cancel — transparent/outline, tuned down so Save dominates. */
-.program-form-actions .btn-ghost {
-    background: transparent !important;
-    border: 1px solid rgba(255, 255, 255, 0.15) !important;
-    color: rgba(255, 255, 255, 0.7) !important;
-    box-shadow: none !important;
-}
-
-.program-form-actions .btn-ghost:hover {
-    background: rgba(255, 255, 255, 0.04) !important;
-    border-color: rgba(255, 255, 255, 0.25) !important;
-    color: var(--text-primary) !important;
-}
-
-.program-form-actions .btn-ghost:active {
-    background: var(--bg-hover) !important;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25) !important;
-}
-
-.program-form-actions .btn-ghost:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.25) !important;
-}
-
-/* Save — primary CTA. Strong gradient + glow so it's the obvious action. */
-/* Calmer azure primary: flat fill, standard height, no glow/heavy shadow. */
-.btn-save-program {
-    background: var(--accent-primary) !important;
-    border: 1px solid transparent !important;
-    color: #ffffff !important;
-    box-shadow: none !important;
-    padding: 0.5rem 1rem !important;
-    height: auto !important;
-    min-height: 0 !important;
-    font-size: 0.85rem !important;
-}
-
-.btn-save-program i {
-    color: #ffffff !important;
-    font-size: 0.82rem;
-}
-
-.btn-save-program:hover {
-    filter: brightness(1.08);
-    box-shadow: none !important;
-}
-
-.btn-save-program:active {
-    filter: brightness(0.95);
-    box-shadow: none !important;
-}
-
-.btn-save-program:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.4) !important;
-}
-
-@media (max-width: 520px) {
-    .program-form-actions { flex-direction: column-reverse; align-items: stretch; gap: 0.5rem; }
-    .program-form-actions .btn { width: 100%; min-width: 0; }
-}
-
-@media (max-width: 520px) {
-    .program-exercise-row {
-        gap: 0.5rem;
-        padding: 0.5rem 0.6rem;
-    }
-    .pex-position { width: 22px; height: 22px; font-size: 0.65rem; }
-}
 
 /* Workout Day Exercise Items */
 .exercise-day-item {
@@ -8440,48 +7739,6 @@ button.calendar-day {
 }
 
 /* ------------------------------------------------------------------
-   Keyboard reorder buttons — sit alongside the drag handle on programs
-   and program-exercise rows (in the Program edit modal). The card-
-   level arrows on the Programs grid were removed in favour of drag-
-   only reorder; the in-modal exercise-row arrows stay because there's
-   no drag handle inside the modal.
-   ------------------------------------------------------------------ */
-.pex-move-buttons {
-    display: inline-flex;
-    flex-direction: column;
-    gap: 2px;
-    margin-right: 4px;
-}
-.btn-icon-move {
-    width: 28px;
-    height: 22px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 6px;
-    color: rgba(255, 255, 255, 0.7);
-    cursor: pointer;
-    transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
-}
-.btn-icon-move:hover:not(:disabled),
-.btn-icon-move:focus-visible {
-    background: rgba(91, 155, 255, 0.18);
-    border-color: rgba(91, 155, 255, 0.45);
-    color: #fff;
-}
-.btn-icon-move:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-}
-.btn-icon-move-mini {
-    width: 24px;
-    height: 18px;
-    font-size: 10px;
-}
-
-/* ------------------------------------------------------------------
    Plate calculator UI — Settings input stack + per-row inline hint.
    ------------------------------------------------------------------ */
 .setting-item-stack {
@@ -8584,76 +7841,6 @@ button.calendar-day {
     .plate-hint-label-text { display: none; }
     .plate-hint { font-size: 0.78rem; }
 }
-
-/* ------------------------------------------------------------------
-   Supersets — Program edit link button + workout-view group card.
-   ------------------------------------------------------------------ */
-
-/* Row-level link/unlink button in the program-edit modal. Sits in the
-   same trailing actions cluster as the delete (×) button. */
-.pex-row-actions {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    margin-left: auto;
-}
-.btn-icon-link {
-    width: 30px;
-    height: 30px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 6px;
-    color: rgba(255, 255, 255, 0.7);
-    cursor: pointer;
-    transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
-}
-.btn-icon-link:hover,
-.btn-icon-link:focus-visible {
-    background: rgba(91, 155, 255, 0.18);
-    border-color: rgba(91, 155, 255, 0.45);
-    color: #fff;
-}
-.btn-icon-link.is-on {
-    background: rgba(91, 155, 255, 0.28);
-    border-color: rgba(91, 155, 255, 0.7);
-    color: #fff;
-}
-
-/* Visual cohesion for adjacent rows in the same superset: collapse the
-   bottom border of the row above and the top border of the row below
-   so they read as one unit, plus a subtle accent stripe. */
-.program-exercise-row.is-grouped {
-    border-color: rgba(91, 155, 255, 0.45);
-    background: rgba(91, 155, 255, 0.05);
-}
-.program-exercise-row.is-linked-above {
-    border-top-color: transparent;
-    border-top-left-radius: 0;
-    border-top-right-radius: 0;
-    margin-top: 0;
-}
-.program-exercise-row.is-linked-below {
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
-    margin-bottom: 0;
-}
-.pex-superset-tag {
-    position: absolute;
-    top: -8px;
-    left: 12px;
-    padding: 1px 7px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary);
-    font-size: 0.65rem;
-    font-weight: 600;
-    letter-spacing: 0;
-}
-.program-exercise-row { position: relative; }
 
 /* Workout-view group card — wraps consecutive .exercise-entry blocks
    that share a groupId. The wrapper provides the outer purple frame +
@@ -8932,319 +8119,10 @@ button.calendar-day {
     }
 }
 
-/* ------------------------------------------------------------------
-   Rest mode toggle (program modal)
-   ------------------------------------------------------------------ */
-
-.rest-mode-group {
-    margin-bottom: 0.75rem;
-}
-
-.rest-mode-toggle-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.55rem 0.75rem;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
-}
-
-.rest-mode-label {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    cursor: pointer;
-    user-select: none;
-}
-
-.rest-mode-label i {
-    color: var(--text-muted);
-    font-size: 0.9rem;
-}
-
-.rest-mode-uniform-section {
-    margin-top: 0.6rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-}
-
-.rest-mode-uniform-label {
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: none;
-    letter-spacing: 0;
-}
-
-.rest-mode-uniform-input {
-    width: 100%;
-    max-width: 140px;
-    padding: 0.4rem 0.6rem;
-    background: var(--bg-input, var(--bg-elevated));
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    font-size: 0.9rem;
-    font-variant-numeric: tabular-nums;
-}
-
-.rest-mode-uniform-input:focus {
-    outline: none;
-    border-color: var(--accent-primary);
-    box-shadow: 0 0 0 2px rgba(91, 155, 255, 0.25);
-}
-
 .form-hint {
     font-size: 0.75rem;
     color: var(--text-muted);
     margin: 0;
-}
-
-/* ------------------------------------------------------------------
-   Per-set rep rows in the program builder
-   ------------------------------------------------------------------ */
-
-/* The sets-block replaces the old Sets + Reps steppers. */
-.pex-sets-block {
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-    min-width: 0;
-}
-
-.pex-sets-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-}
-
-/* Reuse the existing .pex-stepper-label for the "Sets / Reps" heading.
-   Reduced emphasis: smaller, lighter, Title Case. */
-.pex-sets-header .pex-stepper-label {
-    font-size: 0.76rem;
-    letter-spacing: 0;
-    font-weight: 600;
-    text-transform: none;
-    color: var(--text-secondary);
-}
-
-/* Add set: a quiet neutral chip that reads as part of the sets block.
-   Clearly clickable (filled elevated surface) without a blue border. */
-.pex-add-set-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.25rem 0.6rem;
-    background: var(--bg-elevated) !important;
-    border: 1px solid transparent !important;
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary) !important;
-    font-size: 0.72rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 120ms ease, color 120ms ease;
-    white-space: nowrap;
-}
-
-.pex-add-set-btn i { color: inherit !important; }
-
-.pex-add-set-btn:hover {
-    background: var(--bg-hover) !important;
-    color: var(--text-primary) !important;
-    outline: none;
-}
-
-.pex-add-set-btn:focus-visible {
-    color: var(--text-primary) !important;
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.4) !important;
-}
-
-.pex-set-rows {
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-}
-
-.pex-set-row {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    min-width: 0;
-}
-
-.pex-set-label {
-    flex: 0 0 auto;
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: none;
-    letter-spacing: 0;
-    min-width: 3.2rem;
-}
-
-.pex-set-reps {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    flex: 1 1 auto;
-    min-width: 0;
-}
-
-.pex-reps-input {
-    width: 3.2rem;
-    padding: 0.25rem 0.3rem;
-    background: var(--bg-input, var(--bg-elevated));
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    font-size: 0.85rem;
-    font-variant-numeric: tabular-nums;
-    text-align: center;
-    -moz-appearance: textfield;
-}
-
-.pex-reps-input::-webkit-inner-spin-button,
-.pex-reps-input::-webkit-outer-spin-button {
-    -webkit-appearance: none;
-}
-
-.pex-reps-input:focus {
-    outline: none;
-    border-color: var(--accent-primary);
-    box-shadow: 0 0 0 2px rgba(91, 155, 255, 0.22);
-}
-
-.pex-reps-sep {
-    flex: 0 0 auto;
-    font-size: 0.8rem;
-    color: var(--text-muted);
-    font-weight: 700;
-}
-
-.pex-reps-sep-hidden,
-.pex-reps-max-hidden {
-    display: none;
-}
-
-/* Single/Range selector: a quiet neutral segmented-style toggle, not a
-   bordered blue button. Borderless quiet fill at rest; subtle elevated fill
-   when on. */
-.pex-range-toggle {
-    flex: 0 0 auto;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.3rem;
-    min-width: 64px;
-    height: 32px;
-    padding: 0 0.55rem;
-    background: var(--bg-elevated) !important;
-    border: 1px solid transparent !important;
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary) !important;
-    cursor: pointer;
-    font-size: 0.7rem;
-    transition: background 100ms ease, color 100ms ease, border-color 100ms ease;
-}
-
-.pex-range-toggle:hover {
-    background: var(--bg-hover) !important;
-    color: var(--text-primary) !important;
-}
-
-.pex-range-toggle:focus-visible {
-    color: var(--text-primary) !important;
-    border-color: transparent !important;
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.4) !important;
-}
-
-.pex-range-toggle:hover:active {
-    background: var(--bg-hover) !important;
-}
-
-.pex-range-toggle.is-on {
-    background: var(--bg-hover) !important;
-    border-color: transparent !important;
-    color: var(--text-primary) !important;
-}
-
-.pex-range-toggle.is-on:hover {
-    background: var(--bg-hover) !important;
-    color: var(--text-primary) !important;
-}
-
-.pex-range-toggle-label {
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0;
-    line-height: 1;
-    color: inherit;
-}
-
-/* Per-exercise hint below the sets/reps header */
-.pex-range-hint {
-    margin: 0.15rem 0 0.35rem;
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    line-height: 1.3;
-}
-
-/* At mobile widths refresh.css forces width:32px on .pex-range-toggle which
-   would clip the text label — override to auto-width with a sensible minimum. */
-@media (max-width: 640px) {
-    body.gym-tracker .pex-range-toggle {
-        width: auto;
-        min-width: 58px;
-        height: 32px;
-        padding: 0 0.4rem;
-    }
-}
-
-.pex-set-remove {
-    flex: 0 0 auto;
-    width: 22px;
-    height: 22px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: none;
-    border-radius: var(--radius-sm);
-    color: var(--text-disabled);
-    cursor: pointer;
-    font-size: 0.72rem;
-    transition: color 100ms ease, background 100ms ease;
-}
-
-.pex-set-remove:hover:not(:disabled) {
-    color: var(--accent-error);
-    background: var(--bg-elevated);
-    outline: none;
-}
-
-.pex-set-remove:focus-visible:not(:disabled) {
-    color: var(--accent-error);
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.4);
-}
-
-.pex-set-remove:disabled {
-    opacity: 0.25;
-    cursor: default;
-}
-
-/* When rest stepper is absent (uniform mode), sets-block spans full width. */
-.pex-targets:not(:has(.pex-stepper)) .pex-sets-block {
-    grid-column: 1 / -1;
 }
 
 /* ---- Finish Workout Modal — premium redesign ---- */
@@ -9926,66 +8804,6 @@ button.calendar-day {
     border-radius: var(--radius-lg);
 }
 
-/* Item 9: weekday chips in the program editor. */
-.program-schedule-days {
-    display: flex;
-    gap: 0.4rem;
-    margin-top: 0.35rem;
-}
-.schedule-day-chip {
-    appearance: none;
-    /* Every day is an identical cell: equal width (flex share) + fixed height,
-       border-box so the 1px border never shifts size. Selection changes ONLY
-       background/border/text color, never the box dimensions. */
-    flex: 1 1 0;
-    min-width: 0;
-    box-sizing: border-box;
-    height: 40px;
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--border-light);
-    background: var(--bg-elevated);
-    /* Pin colour !important across states: these chips are <button>s, so the
-       sitewide main.css `button{color:#555!important}` / `:hover{#ce1b28}` trap
-       would otherwise dim them to a disabled-looking gray. */
-    color: var(--text-primary) !important;
-    font: inherit;
-    font-size: 0.82rem;
-    font-weight: 600;
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    transition: background var(--transition-base), border-color var(--transition-base),
-                color var(--transition-base);
-}
-.schedule-day-chip:hover {
-    background: var(--bg-hover);
-    border-color: var(--accent-primary);
-    color: var(--text-primary) !important;
-}
-.schedule-day-chip.is-on,
-.schedule-day-chip.is-on:hover {
-    background: #2563eb;
-    border-color: #2563eb;
-    color: #ffffff !important;
-}
-.schedule-day-chip.is-on:hover {
-    background: #1d4ed8;
-    border-color: #1d4ed8;
-}
-.schedule-day-chip:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.35);
-}
-.program-schedule-label {
-    display: block;
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    margin-bottom: 0.2rem;
-}
-
 /* Item 9: calendar schedule marker (distinct from the workout dot/PR star).
    Positioned bottom-left to avoid overlapping the day number (top-right),
    PR star (top-left) and workout dot (bottom-center). */
@@ -10247,146 +9065,6 @@ button.calendar-day {
         width: auto;
         flex: 0 0 auto;
     }
-}
-
-/* Item R2-7: mid-workout program editor sticky header action bar. */
-.program-modal-workout-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-}
-.program-modal-workout-actions[hidden] { display: none; }
-.program-modal-workout-actions .btn { white-space: nowrap; }
-
-/* In workout mode: pin the header to the top of the scrolling modal content,
-   hide the footer save/return cluster and the corner X (the two header actions
-   are the only controls). */
-#program-modal.program-editor-workout-mode .program-modal-header {
-    position: sticky;
-    top: 0;
-    z-index: 5;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-color);
-    box-shadow: none;
-}
-#program-modal.program-editor-workout-mode .modal-close {
-    display: none;
-}
-#program-modal.program-editor-workout-mode .program-form-actions {
-    display: none;
-}
-/* Pin the header action button colors so the sitewide button red can't bleed. */
-#program-modal-save-resume,
-#program-modal-save-resume:hover,
-#program-modal-save-resume:focus {
-    background: var(--accent-primary) !important;
-    color: #ffffff !important;
-}
-#program-modal-save-resume:hover {
-    filter: brightness(1.08);
-}
-#program-modal-cancel-workout:hover,
-#program-modal-cancel-workout:focus {
-    color: var(--text-primary) !important;
-    background: var(--bg-hover) !important;
-}
-
-/* Feature B: normal create/edit mode also pins Save + Cancel in a sticky
-   header at the top of the scrolling modal. Mirrors the R2-7 workout-mode
-   layout for normal entry. */
-.program-modal-normal-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-}
-.program-modal-normal-actions[hidden] { display: none; }
-.program-modal-normal-actions .btn { white-space: nowrap; }
-
-/* Pin the header in normal mode too (the R2-7 rule only stickies workout mode).
-   Both modes now use the header for actions, so the header is always sticky.
-   Reads as a flat navigation bar: title left, actions right, a single bottom
-   border (no card elevation / drop shadow). */
-#program-modal .program-modal-header {
-    position: sticky;
-    top: 0;
-    z-index: 5;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-color);
-    box-shadow: none;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.85rem var(--spacing-lg);
-}
-
-/* Title is the focal point of the bar: larger + stronger than the generic
-   modal-header h2. Stays on one line; actions (Cancel + Save) sit on the right. */
-#program-modal-title {
-    font-size: 1.25rem;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-    line-height: 1.15;
-    white-space: nowrap;
-    margin: 0;
-    margin-right: auto;
-}
-
-/* Cancel: a plain muted text button (no border/fill), pairs with the blue Save. */
-#program-modal .program-modal-cancel,
-#program-modal .program-modal-cancel:hover,
-#program-modal .program-modal-cancel:focus-visible {
-    background: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
-    color: var(--text-secondary) !important;
-    padding: 0.5rem 0.6rem;
-    font-weight: 600;
-}
-#program-modal .program-modal-cancel:hover { color: var(--text-primary) !important; }
-
-/* The bottom form actions are now redundant in both modes — the header carries
-   Save + Cancel. Hide the footer cluster for this modal entirely. */
-#program-modal .program-form-actions {
-    display: none;
-}
-
-/* Pin the header Save button accent color against the sitewide red button bleed
-   (mirrors #program-modal-save-resume). .btn-save-program already gets the
-   primary gradient, but assert it here in the header context too. */
-.program-modal-normal-actions .btn-save-program,
-.program-modal-normal-actions .btn-save-program:hover,
-.program-modal-normal-actions .btn-save-program:focus {
-    background: var(--accent-primary) !important;
-    color: #ffffff !important;
-}
-
-/* Cancel: small, quiet ghost text, not a heavy button. Applies to both the
-   normal and workout header action clusters. */
-.program-modal-normal-actions .btn-ghost,
-.program-modal-workout-actions .btn-ghost {
-    padding: 0.5rem 0.65rem !important;
-    height: auto !important;
-    min-height: 0 !important;
-    font-size: 0.85rem !important;
-    font-weight: 500 !important;
-    background: transparent !important;
-    border: 1px solid transparent !important;
-    color: var(--text-secondary) !important;
-    box-shadow: none !important;
-}
-.program-modal-normal-actions .btn-ghost:hover,
-.program-modal-normal-actions .btn-ghost:focus-visible,
-.program-modal-workout-actions .btn-ghost:hover,
-.program-modal-workout-actions .btn-ghost:focus-visible {
-    background: var(--bg-hover) !important;
-    color: var(--text-primary) !important;
-    border-color: transparent !important;
-    outline: none;
-}
-.program-modal-normal-actions .btn-ghost:focus-visible,
-.program-modal-workout-actions .btn-ghost:focus-visible {
-    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.4) !important;
 }
 
 /* =========================================================================
@@ -10926,4 +9604,1196 @@ button.calendar-day {
     /* Full 44px tap target on phones. */
     .history-program-wrap .dark-select-trigger { height: 44px !important; }
     .history-program-wrap .dark-select-option { min-height: 44px; }
+}
+
+/* =========================================================================
+   EDIT PROGRAM EDITOR — 2026-08-10 UI/UX polish round.
+
+   Single source of truth for the Create/Edit Program modal (#program-modal).
+   Before this round the same controls were sized in four places in this file
+   plus two override blocks in refresh.css, at three different values; that
+   scatter is why the editor read as "many slightly different rectangles".
+   Everything now derives from the --pe-* tokens below.
+
+   Every selector is #program-modal-scoped on purpose. The ID beats both the
+   sitewide assets/css/main.css button trap (`button { color:#555 !important;
+   box-shadow: inset 0 0 0 1px #555 }`, `button:hover { color:#ce1b28 }`,
+   `button:hover:active { background: rgba(206,27,40,.25) }`) and the
+   `body.gym-tracker`-scoped rules in refresh.css, so no editor rule can be
+   silently reverted by a later file. `color` still needs !important because
+   main.css declares it !important.
+   ========================================================================= */
+
+#program-modal {
+    /* One height for every icon button, input, chip and segment. */
+    --pe-control-h: 32px;
+    --pe-radius: 8px;
+    --pe-gap: 6px;
+    --pe-card-pad-x: 0.7rem;
+    --pe-card-pad-y: 0.4rem;
+    --pe-card-gap: 6px;
+    --pe-rest-col: 248px;
+    /* One readable measure for every top-level form block, so name, description,
+       scheduled days and the rest-mode box share a right edge. The exercises
+       section is deliberately outside the cap: its cards need the full dialog. */
+    --pe-field-max: 720px;
+    /* The single muted tone for every piece of secondary text in the editor. */
+    --pe-text-muted: #a4adbd;
+    --pe-surface-2: var(--bg-elevated);
+    --pe-surface-3: var(--bg-hover);
+    /* Exercise-card hover. It cannot be --pe-surface-2: that is the exact fill
+       of the reps inputs and the rest steppers sitting inside the card, so
+       hovering painted the card the controls' own colour and they dissolved
+       (their border is 2/255 off that fill, so it rescues nothing). The card
+       is squeezed between the section behind it (#12151d) and those controls
+       (#232836), and the app's own proven minimum surface step is the 6/7/9
+       between a resting card and the section. This sits ~45% up the card ->
+       control ramp, which keeps 6/7/10 to the controls and widens the gap to
+       the section to 11/12/15. The lift is deliberately small; :hover also
+       swaps border-color to --border-light, a 17/18/23 jump. */
+    --pe-card-hover: #1d212c;
+    --pe-focus: 0 0 0 3px rgba(91, 155, 255, 0.45);
+    --pe-accent-soft: rgba(91, 155, 255, 0.22);
+}
+
+/* ---- 1. One scroll container -------------------------------------------
+   .modal-content is the only thing that scrolls; the overlay never does, so
+   a wheel/touch gesture cannot move two surfaces depending on where the
+   pointer sits and the dialog can never land above the viewport. Scoped to
+   this modal so the picker and confirm dialogs keep their own behaviour. */
+#program-modal {
+    overflow: hidden;
+}
+
+#program-modal .modal-content {
+    max-width: min(760px, 94vw);
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    /* Fade, don't slide. The shared `slideUp` starts 50px low, and with the
+       overlay no longer scrolling that put the bottom of a 90vh dialog past
+       the viewport for the length of the animation. */
+    animation: peModalIn 0.22s ease;
+}
+
+@keyframes peModalIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+#program-modal .modal-body {
+    padding: 0.9rem 1.25rem 1.1rem;
+    overflow: visible;
+}
+
+/* ---- 2. Sticky header that fits ---------------------------------------- */
+#program-modal .program-modal-header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.7rem 1.25rem;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: none;
+}
+
+#program-modal-title {
+    flex: 0 1 auto;
+    min-width: 0;
+    margin: 0 auto 0 0;
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* The action cluster never shrinks; the title absorbs the squeeze instead.
+   Letting these shrink is half of what clipped "Cancel" down to "Cance". */
+#program-modal .program-modal-normal-actions,
+#program-modal .program-modal-workout-actions {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+#program-modal .program-modal-normal-actions[hidden],
+#program-modal .program-modal-workout-actions[hidden] {
+    display: none;
+}
+
+#program-modal .program-modal-header .btn {
+    flex: 0 0 auto;
+    width: auto;
+    height: 34px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0 0.85rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    border-radius: var(--pe-radius);
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    box-shadow: none;
+}
+
+/* Cancel: quiet ghost text. Rest AND hover colours are pinned so the sitewide
+   grey/red button rules cannot bleed through. */
+#program-modal .program-modal-cancel {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--pe-text-muted) !important;
+}
+
+#program-modal .program-modal-cancel:hover,
+#program-modal .program-modal-cancel:hover:active,
+#program-modal .program-modal-cancel:focus-visible {
+    background: var(--pe-surface-3);
+    border-color: transparent;
+    color: var(--text-primary) !important;
+}
+
+#program-modal .program-modal-cancel:focus-visible {
+    outline: none;
+    box-shadow: var(--pe-focus);
+}
+
+#program-modal .btn-save-program {
+    background: var(--accent-primary);
+    border: 1px solid transparent;
+    color: #ffffff !important;
+}
+
+#program-modal .btn-save-program i {
+    color: #ffffff !important;
+    font-size: 0.8rem;
+}
+
+#program-modal .btn-save-program:hover,
+#program-modal .btn-save-program:hover:active {
+    background: var(--accent-primary);
+    color: #ffffff !important;
+    filter: brightness(1.08);
+}
+
+#program-modal .btn-save-program:focus-visible {
+    outline: none;
+    box-shadow: var(--pe-focus);
+}
+
+/* The footer cluster is redundant: the sticky header carries Save + Cancel. */
+#program-modal .program-form-actions {
+    display: none;
+}
+
+#program-modal.program-editor-workout-mode .modal-close:not(.program-modal-cancel) {
+    display: none;
+}
+
+/* ---- 3. Program form fields -------------------------------------------- */
+#program-form .form-group {
+    max-width: var(--pe-field-max);
+    margin-bottom: 0.75rem;
+}
+
+#program-form .form-group label,
+#program-modal .program-schedule-label {
+    display: block;
+    margin-bottom: 0.3rem;
+    color: var(--pe-text-muted);
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+/* The readable-line-length cap lives on .form-group above, so the fields and
+   the blocks around them end on the same edge instead of the input alone. */
+#program-form .form-group input[type="text"],
+#program-form .form-group textarea {
+    padding: 0.55rem 0.75rem;
+    background: var(--pe-surface-2);
+    border: 1px solid var(--border-color);
+    border-radius: var(--pe-radius);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.92rem;
+}
+
+#program-form .form-group textarea {
+    resize: none;
+    line-height: 1.4;
+}
+
+#program-form .form-group input::placeholder,
+#program-form .form-group textarea::placeholder {
+    color: rgba(184, 184, 209, 0.7);
+    opacity: 1;
+}
+
+#program-form .form-group input:focus,
+#program-form .form-group textarea:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    background: var(--bg-card);
+    box-shadow: var(--pe-focus);
+}
+
+#program-modal .form-hint {
+    margin: 0.3rem 0 0;
+    color: var(--pe-text-muted);
+    font-size: 0.75rem;
+    line-height: 1.35;
+}
+
+/* ---- 4. Scheduled days: seven equal columns, never overflowing ---------- */
+#program-modal .program-schedule-days {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    justify-content: start;
+    gap: 4px;
+    margin-top: 0.1rem;
+}
+
+/* Above phone widths the strip stops stretching: seven fixed 72px columns
+   left-aligned inside the (full-width) block, so the chips read as controls
+   instead of dominating the form at 125px each. */
+@media (min-width: 641px) {
+    #program-modal .program-schedule-days {
+        grid-template-columns: repeat(7, 72px);
+    }
+}
+
+#program-modal .schedule-day-chip {
+    appearance: none;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    height: 36px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--pe-surface-2);
+    border: 1px solid var(--border-color);
+    border-radius: var(--pe-radius);
+    color: var(--pe-text-muted) !important;
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: none;
+    transition: background var(--transition-base), border-color var(--transition-base),
+                color var(--transition-base);
+}
+
+#program-modal .schedule-day-chip:hover,
+#program-modal .schedule-day-chip:hover:active {
+    background: var(--pe-surface-3);
+    border-color: var(--accent-primary);
+    color: var(--text-primary) !important;
+}
+
+/* Selected differs from unselected in BOTH background and text colour. */
+#program-modal .schedule-day-chip.is-on,
+#program-modal .schedule-day-chip.is-on:hover,
+#program-modal .schedule-day-chip.is-on:hover:active {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #ffffff !important;
+}
+
+#program-modal .schedule-day-chip:focus-visible {
+    outline: none;
+    box-shadow: var(--pe-focus);
+}
+
+/* ---- 5. Program-level rest block --------------------------------------- */
+#program-modal .rest-mode-group {
+    margin-bottom: 0.75rem;
+}
+
+/* Toggle and duration share one bordered container so the stepper reads as
+   nested under the switch that reveals it. */
+#program-modal .rest-mode-box {
+    background: var(--pe-surface-2);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+}
+
+#program-modal .rest-mode-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-height: 40px;
+    padding: 0.35rem 0.7rem;
+}
+
+#program-modal .rest-mode-label {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-width: 0;
+    margin: 0;
+    color: var(--pe-text-muted);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+}
+
+#program-modal .rest-mode-label i {
+    flex-shrink: 0;
+    color: var(--pe-text-muted);
+    font-size: 0.85rem;
+}
+
+#program-modal .rest-mode-group .toggle-switch {
+    flex-shrink: 0;
+}
+
+/* The switch's real checkbox is transparent but still inherits the sitewide
+   `color: #555 !important`; pin it so nothing in the editor resolves grey. */
+#program-modal .toggle-switch input[type="checkbox"] {
+    color: var(--pe-text-muted) !important;
+}
+
+#program-modal .rest-mode-uniform-section {
+    padding: 0 0.7rem 0.45rem 1.55rem;
+}
+
+#program-modal .rest-mode-uniform-section[hidden] {
+    display: none;
+}
+
+#program-modal #rest-mode-uniform-stepper .pex-stepper {
+    width: 100%;
+    max-width: 320px;
+    background: var(--bg-card);
+}
+
+/* ---- 6. Exercises section ---------------------------------------------- */
+#program-modal .program-exercises-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    margin-top: 0.9rem;
+    padding: 0.7rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+}
+
+#program-modal .program-exercises-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+#program-modal .program-exercises-heading {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: -0.005em;
+}
+
+#program-modal .program-exercises-heading i {
+    color: var(--pe-text-muted);
+    font-size: 0.8rem;
+}
+
+#program-modal .program-exercises-count {
+    color: var(--pe-text-muted);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+#program-modal .program-exercises-count:empty {
+    display: none;
+}
+
+#program-modal .program-exercises-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 1.3rem 1rem;
+    background: var(--bg-card);
+    border: 1px dashed var(--border-light);
+    border-radius: 10px;
+    text-align: center;
+}
+
+#program-modal .program-exercises-empty i {
+    margin-bottom: 0.2rem;
+    color: var(--accent-primary);
+    font-size: 1.7rem;
+    opacity: 0.75;
+}
+
+#program-modal .program-exercises-empty p {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+#program-modal .program-exercises-empty small {
+    color: var(--pe-text-muted);
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+
+#program-modal .btn-add-exercise {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    height: 36px;
+    min-height: 0;
+    margin: 0;
+    padding: 0 1rem;
+    background: var(--pe-surface-2);
+    border: 1px dashed var(--border-light);
+    border-radius: 10px;
+    color: var(--pe-text-muted) !important;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: none;
+    transition: background var(--transition-base), border-color var(--transition-base),
+                color var(--transition-base);
+}
+
+#program-modal .btn-add-exercise i {
+    color: inherit !important;
+    font-size: 0.78rem;
+}
+
+#program-modal .btn-add-exercise:hover,
+#program-modal .btn-add-exercise:hover:active {
+    background: var(--pe-surface-3);
+    border-color: var(--accent-primary);
+    color: var(--text-primary) !important;
+}
+
+#program-modal .btn-add-exercise:focus-visible {
+    outline: none;
+    color: var(--text-primary) !important;
+    box-shadow: var(--pe-focus);
+}
+
+#program-exercises-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pe-card-gap);
+}
+
+/* ---- 7. Exercise card shell -------------------------------------------- */
+#program-modal .program-exercise-row {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--pe-gap);
+    /* The card's top inset lives on .pex-head, not here: it keeps the header
+       row flush with the card's top edge so every header control measures
+       inside the header band. */
+    padding: 0 var(--pe-card-pad-x) var(--pe-card-pad-y);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    box-shadow: var(--shadow-sm);
+    cursor: grab;
+    transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+#program-modal .program-exercise-row:hover {
+    background: var(--pe-card-hover);
+    border-color: var(--border-light);
+}
+
+#program-modal .program-exercise-row:active {
+    cursor: grabbing;
+}
+
+#program-modal .program-exercise-row.is-dragging {
+    opacity: 0.4;
+    border-color: var(--accent-primary);
+}
+
+#program-modal .program-exercise-row.is-drop-above {
+    box-shadow: 0 -2px 0 0 var(--accent-primary);
+}
+
+#program-modal .program-exercise-row.is-drop-below {
+    box-shadow: 0 2px 0 0 var(--accent-primary);
+}
+
+/* Fires once when a card arrives from the exercise picker. */
+#program-modal .program-exercise-row.gt-exercise-added {
+    animation: gt-exercise-added-glow 1.5s ease forwards;
+}
+
+@keyframes gt-exercise-added-glow {
+    0%   { box-shadow: 0 0 0 2px var(--accent-primary), 0 0 14px rgba(91, 155, 255, 0.45); }
+    60%  { box-shadow: 0 0 0 2px var(--accent-primary), 0 0 10px rgba(91, 155, 255, 0.3); }
+    100% { box-shadow: none; }
+}
+
+/* Superset members sit flush with squared shared edges and rounded outer
+   ones; the linked card carries extra top padding so the tag gets its own
+   band instead of overlapping the header. */
+#program-modal .program-exercise-row.is-grouped {
+    background: rgba(91, 155, 255, 0.06);
+    border-color: rgba(91, 155, 255, 0.45);
+}
+
+#program-modal .program-exercise-row.is-linked-above {
+    margin-top: calc(-1 * var(--pe-card-gap));
+    border-top-color: transparent;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+
+#program-modal .program-exercise-row.is-linked-above .pex-head {
+    padding-top: calc(var(--pe-card-pad-y) + 15px);
+}
+
+#program-modal .program-exercise-row.is-linked-below {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+#program-modal .pex-superset-tag {
+    position: absolute;
+    top: 3px;
+    left: 10px;
+    padding: 0 7px;
+    background: var(--bg-card);
+    border: 1px solid rgba(91, 155, 255, 0.5);
+    border-radius: 999px;
+    color: var(--accent-primary);
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 15px;
+}
+
+/* ---- 8. Card header: handle, number, name, muscle, action cluster ------- */
+#program-modal .pex-head {
+    display: flex;
+    align-items: center;
+    gap: var(--pe-gap);
+    padding-top: var(--pe-card-pad-y);
+    min-width: 0;
+    min-height: calc(var(--pe-control-h) + var(--pe-card-pad-y));
+}
+
+#program-modal .pex-drag-handle {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: var(--pe-control-h);
+    color: var(--pe-text-muted);
+    font-size: 0.9rem;
+    opacity: 0.7;
+    cursor: grab;
+    transition: opacity var(--transition-fast);
+}
+
+#program-modal .program-exercise-row:hover .pex-drag-handle {
+    opacity: 1;
+}
+
+#program-modal .pex-drag-handle:active {
+    cursor: grabbing;
+}
+
+#program-modal .pex-position {
+    flex: 0 0 auto;
+    min-width: 15px;
+    color: var(--pe-text-muted);
+    font-size: 0.78rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+#program-modal .pex-name {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    min-width: 0;
+    overflow: hidden;
+}
+
+/* Name is the strongest element in the card and truncates rather than
+   wrapping the header onto a third line. */
+#program-modal .pex-name-main {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+}
+
+#program-modal .pex-name-sub {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--pe-text-muted);
+    font-size: 0.78rem;
+    font-weight: 500;
+    line-height: 1.3;
+}
+
+#program-modal .pex-head-actions {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: auto;
+}
+
+#program-modal .pex-move-buttons {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+/* ---- 9. The one icon button -------------------------------------------- */
+#program-modal .pex-icon-btn {
+    flex: 0 0 auto;
+    width: var(--pe-control-h);
+    height: var(--pe-control-h);
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--pe-radius);
+    color: var(--pe-text-muted) !important;
+    font-family: inherit;
+    font-size: 0.78rem;
+    font-weight: 500;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: none;
+    transition: background var(--transition-fast), color var(--transition-fast),
+                border-color var(--transition-fast);
+}
+
+#program-modal .pex-icon-btn i {
+    color: inherit !important;
+}
+
+#program-modal .pex-icon-btn:hover,
+#program-modal .pex-icon-btn:hover:active {
+    background: var(--pe-surface-3);
+    border-color: var(--border-light);
+    color: var(--text-primary) !important;
+}
+
+#program-modal .pex-icon-btn:focus-visible {
+    outline: none;
+    color: var(--text-primary) !important;
+    box-shadow: var(--pe-focus);
+}
+
+#program-modal .pex-icon-btn:disabled {
+    background: transparent;
+    border-color: transparent;
+    color: var(--pe-text-muted) !important;
+    opacity: 0.28;
+    cursor: not-allowed;
+}
+
+/* Destructive controls stay muted at rest and only take the danger colour on
+   hover/focus, pinned here so the sitewide red hover can't claim them. */
+#program-modal .pex-icon-btn-danger:hover:not(:disabled),
+#program-modal .pex-icon-btn-danger:hover:active:not(:disabled),
+#program-modal .pex-icon-btn-danger:focus-visible:not(:disabled) {
+    background: rgba(248, 113, 113, 0.12);
+    border-color: rgba(248, 113, 113, 0.5);
+    color: var(--accent-error) !important;
+}
+
+#program-modal .pex-icon-btn-link.is-on {
+    background: var(--pe-accent-soft);
+    border-color: rgba(91, 155, 255, 0.65);
+    color: #ffffff !important;
+}
+
+#program-modal .pex-icon-btn-link.is-on:hover,
+#program-modal .pex-icon-btn-link.is-on:hover:active {
+    background: rgba(91, 155, 255, 0.34);
+    border-color: var(--accent-primary);
+    color: #ffffff !important;
+}
+
+/* ---- 10. Card body: sets on the left, rest in a fixed right column ------ */
+#program-modal .pex-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--pe-rest-col);
+    grid-template-areas:
+        "sets   rest"
+        "addset rest";
+    gap: var(--pe-gap) 0.75rem;
+    align-items: start;
+    min-width: 0;
+}
+
+#program-modal .pex-sets-block {
+    grid-area: sets;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+#program-modal .pex-add-set-btn {
+    grid-area: addset;
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    width: auto;
+    max-width: 110px;
+    height: 28px;
+    min-height: 0;
+    padding: 0 0.6rem;
+    background: transparent;
+    border: 1px dashed var(--border-light);
+    border-radius: var(--pe-radius);
+    color: var(--pe-text-muted) !important;
+    font-family: inherit;
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    box-shadow: none;
+    transition: background var(--transition-fast), color var(--transition-fast),
+                border-color var(--transition-fast);
+}
+
+#program-modal .pex-add-set-btn i {
+    color: inherit !important;
+    font-size: 0.66rem;
+}
+
+#program-modal .pex-add-set-btn:hover,
+#program-modal .pex-add-set-btn:hover:active {
+    background: var(--pe-surface-3);
+    border-color: var(--accent-primary);
+    color: var(--text-primary) !important;
+}
+
+#program-modal .pex-add-set-btn:focus-visible {
+    outline: none;
+    color: var(--text-primary) !important;
+    box-shadow: var(--pe-focus);
+}
+
+#program-modal .pex-rest-block {
+    grid-area: rest;
+    display: flex;
+    flex-direction: column;
+    gap: var(--pe-gap);
+    min-width: 0;
+}
+
+/* ---- 11. Set row: Set N | reps | Single|Range | remove ------------------ */
+#program-modal .pex-set-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+
+#program-modal .pex-set-label {
+    flex: 0 0 auto;
+    min-width: 2.6rem;
+    color: var(--pe-text-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    white-space: nowrap;
+}
+
+#program-modal .pex-set-reps {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+#program-modal .pex-reps-input {
+    flex: 0 0 auto;
+    width: 46px;
+    height: var(--pe-control-h);
+    padding: 0 2px;
+    background: var(--pe-surface-2);
+    border: 1px solid var(--border-color);
+    border-radius: var(--pe-radius);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    box-shadow: none;
+    -moz-appearance: textfield;
+}
+
+#program-modal .pex-reps-input::-webkit-inner-spin-button,
+#program-modal .pex-reps-input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+#program-modal .pex-reps-input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    background: var(--bg-card);
+    box-shadow: var(--pe-focus);
+}
+
+#program-modal .pex-reps-sep {
+    flex: 0 0 auto;
+    color: var(--pe-text-muted);
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+/* Single mode really removes the second input from layout, it isn't just
+   faded out, so the row reads as one target. */
+#program-modal .pex-reps-sep-hidden,
+#program-modal .pex-reps-max-hidden {
+    display: none;
+}
+
+/* Segmented control showing the CURRENT mode as selected. It shrinks before
+   the row can ever overflow at narrow widths. */
+#program-modal .pex-mode-seg {
+    flex: 0 1 auto;
+    display: inline-flex;
+    align-items: stretch;
+    height: var(--pe-control-h);
+    min-width: 0;
+    max-width: 120px;
+    padding: 0;
+    background: var(--pe-surface-2);
+    border: none;
+    border-radius: var(--pe-radius);
+}
+
+#program-modal .pex-mode-opt {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    padding: 0 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: var(--pe-radius);
+    color: var(--pe-text-muted) !important;
+    font-family: inherit;
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    box-shadow: none;
+    transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+#program-modal .pex-mode-opt:hover,
+#program-modal .pex-mode-opt:hover:active {
+    background: var(--pe-surface-3);
+    color: var(--text-primary) !important;
+}
+
+/* Selected reads as a raised chip with accent text, not a saturated fill: the
+   mode control is chrome and repeats on every set row, so a solid blue block
+   per row out-shouted the rep numbers, which are the actual data. The inset
+   ring keeps the box the same size as every other editor control. */
+#program-modal .pex-mode-opt.is-on,
+#program-modal .pex-mode-opt.is-on:hover,
+#program-modal .pex-mode-opt.is-on:hover:active {
+    background: var(--pe-surface-3);
+    color: var(--accent-primary) !important;
+    box-shadow: inset 0 0 0 1px rgba(91, 155, 255, 0.55);
+}
+
+#program-modal .pex-mode-opt.is-on:focus-visible {
+    box-shadow: inset 0 0 0 1px rgba(91, 155, 255, 0.55), var(--pe-focus);
+}
+
+#program-modal .pex-mode-opt:focus-visible {
+    outline: none;
+    box-shadow: var(--pe-focus);
+}
+
+/* ---- 12. Rest steppers: label - value + on one line --------------------- */
+#program-modal .pex-stepper {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+    min-width: 0;
+    padding: 0 0.15rem 0 0.6rem;
+    background: var(--pe-surface-2);
+    border: 1px solid var(--border-color);
+    border-radius: var(--pe-radius);
+    box-sizing: border-box;
+}
+
+#program-modal .pex-stepper-label {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--pe-text-muted);
+    font-size: 0.74rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+#program-modal .pex-label-short {
+    display: none;
+}
+
+#program-modal .pex-stepper-controls {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+#program-modal .pex-stepper-value {
+    min-width: 3.2ch;
+    padding: 0 0.15rem;
+    color: var(--text-primary);
+    font-size: 0.82rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    white-space: nowrap;
+}
+
+#program-modal .pex-stepper-btn {
+    font-size: 0.68rem;
+}
+
+/* ---- 13. Desktop (>= 1024px): a wider dialog --------------------------- */
+@media (min-width: 1024px) {
+    #program-modal .modal-content {
+        max-width: min(940px, 92vw);
+    }
+}
+
+/* ---- 14. Mobile (<= 640px) --------------------------------------------- */
+@media (max-width: 640px) {
+    #program-modal {
+        --pe-control-h: 36px;
+        --pe-card-pad-x: 0.55rem;
+    }
+
+    #program-modal .modal-content {
+        max-width: 100%;
+    }
+
+    #program-modal .modal-body {
+        padding: 0.7rem 0.7rem 0.9rem;
+    }
+
+    #program-modal .program-modal-header {
+        padding: 0.6rem 0.75rem;
+    }
+
+    #program-modal .program-exercises-section {
+        padding: 0.55rem;
+    }
+
+    /* Sets span the full width; "+ Add set" and the rest controls share the
+       row below, which is what keeps a five-set card inside the height budget. */
+    #program-modal .pex-body {
+        grid-template-columns: auto minmax(0, 1fr);
+        grid-template-areas:
+            "sets   sets"
+            "addset rest";
+        gap: var(--pe-gap) 0.5rem;
+    }
+
+    #program-modal .pex-add-set-btn {
+        height: 36px;
+        font-size: 0.75rem;
+    }
+
+    #program-modal .pex-label-full {
+        display: none;
+    }
+
+    #program-modal .pex-label-short {
+        display: inline;
+    }
+
+    #program-modal .pex-stepper {
+        padding-left: 0.5rem;
+    }
+
+    #program-modal .pex-drag-handle {
+        width: 12px;
+    }
+
+    /* Name over muscle group: sharing one line here left the name at ~90px
+       and the muscle group at ~20px, so both were ellipsis. Two short lines
+       still fit inside the 36px action row. */
+    #program-modal .pex-name {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0;
+    }
+
+    /* Touch targets: header actions and the uniform-rest switch both sat
+       under 36px on their short axis. */
+    #program-modal .program-modal-header .btn {
+        height: 36px;
+    }
+
+    #program-modal .rest-mode-group .toggle-switch {
+        width: 60px;
+        height: 36px;
+    }
+
+    #program-modal .rest-mode-group .toggle-slider::before {
+        top: 3px;
+        left: 3px;
+        width: 28px;
+        height: 28px;
+    }
+
+    #program-modal .rest-mode-group .toggle-switch input[type="checkbox"]:checked + .toggle-slider::before {
+        transform: translateX(24px);
+    }
+}
+
+/* ---- 15. Narrow (<= 380px): everything stacks -------------------------- */
+@media (max-width: 380px) {
+    #program-modal {
+        --pe-card-pad-x: 0.45rem;
+        padding: 0.35rem;
+    }
+
+    #program-modal .modal-body {
+        padding: 0.6rem 0.5rem 0.8rem;
+    }
+
+    #program-modal .program-exercises-section {
+        padding: 0.45rem;
+    }
+
+    #program-modal .pex-body {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+            "sets"
+            "addset"
+            "rest";
+    }
+
+    /* The header's action cluster (4 x 36px), the drag handle and the position
+       badge consume this width, leaving the name 65px: every name ellipsised,
+       "Hex Press" included. Unwrap .pex-name so the name takes a full-width
+       line of its own and the meta row below it carries
+       [handle] [position] [muscle group] ... [actions]. */
+    #program-modal .pex-head {
+        flex-wrap: wrap;
+        row-gap: 0;
+    }
+
+    #program-modal .pex-name {
+        display: contents;
+    }
+
+    #program-modal .pex-name-main {
+        order: -1;
+        flex: 1 0 100%;
+        width: 100%;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        white-space: normal;
+        line-height: 1.25;
+    }
+
+    /* Basis 0 so a long muscle group ("Upper Chest") can never push the action
+       cluster onto a third line: with wrapping on, flex line-breaking happens
+       before shrinking, so an auto basis would break the row. */
+    #program-modal .pex-name-sub {
+        flex: 1 1 0;
+    }
+
+    #program-modal .pex-set-label {
+        min-width: 0;
+        font-size: 0.7rem;
+    }
+
+    #program-modal .pex-reps-input {
+        width: 44px;
+    }
+
+    #program-modal .pex-mode-opt {
+        padding: 0 0.35rem;
+        font-size: 0.66rem;
+    }
+
+    #program-modal .schedule-day-chip {
+        font-size: 0.72rem;
+    }
 }
