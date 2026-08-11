@@ -1,6 +1,251 @@
 {
   "updates": [
     {
+      "builtAt": "2026-08-11T07:22:12.487Z",
+      "totals": {
+        "seasons": 66229,
+        "delta": 19
+      },
+      "shapeCounts": {
+        "mid-peak": 4638,
+        "rebound": 10075,
+        "rising": 2910,
+        "slow-burn": 4372,
+        "big-finale": 12127,
+        "u-shaped": 3093,
+        "rollercoaster": 14062,
+        "saved-best-for-last": 1544,
+        "front-loaded": 3470,
+        "declining": 1876,
+        "bad-finale": 4666,
+        "consistent": 2629,
+        "shape-drift": 1641
+      },
+      "shapeDeltas": {
+        "mid-peak": 2,
+        "rebound": -6,
+        "rising": 6,
+        "slow-burn": -2,
+        "big-finale": 9,
+        "u-shaped": 3,
+        "rollercoaster": 2,
+        "saved-best-for-last": 1,
+        "front-loaded": 3,
+        "declining": -1,
+        "consistent": 4,
+        "shape-drift": 2
+      },
+      "added": [
+        {
+          "seriesId": "tt18546730",
+          "title": "The Walking Dead: Dead City",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37692332",
+          "title": "President Curtis",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt27799594",
+          "title": "The Librarians: The Next Chapter",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0443948",
+          "title": "Clara Sheller",
+          "season": 2,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt39037171",
+          "title": "Match Point",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt10679886",
+          "title": "Aani Kay Hava",
+          "season": 3,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt1232714",
+          "title": "True Beauty",
+          "season": 1,
+          "seasonYear": 2009
+        },
+        {
+          "seriesId": "tt38607962",
+          "title": "Ágata y Lola",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39444616",
+          "title": "Class Crush Crisis",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43701180",
+          "title": "The Legend of Karna",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt5856752",
+          "title": "Gayle",
+          "season": 1,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt2074166",
+          "title": "Ro-Kyu-Bu!",
+          "season": 1,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt27796039",
+          "title": "Die Kanarischen Inseln",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt30948025",
+          "title": "Sword and Fairy 4",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt12057284",
+          "title": "Who Wants to Be a Millionaire",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt16300466",
+          "title": "Saberfart",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt31189898",
+          "title": "Drunkard Morning",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39496157",
+          "title": "Bloody Smart",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36118534",
+          "title": "Kholod",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt38646611",
+          "title": "Hana-Kimi",
+          "season": 2,
+          "from": 8.02,
+          "to": 7.32,
+          "delta": -0.7
+        },
+        {
+          "seriesId": "tt4219148",
+          "title": "Isuca",
+          "season": 1,
+          "from": 5.9,
+          "to": 5.21,
+          "delta": -0.69
+        },
+        {
+          "seriesId": "tt8323628",
+          "title": "My Life with the Walter Boys",
+          "season": 3,
+          "from": 8.26,
+          "to": 7.59,
+          "delta": -0.67
+        },
+        {
+          "seriesId": "tt32034812",
+          "title": "I'm Living with an Otaku NEET Kunoichi!?",
+          "season": 1,
+          "from": 8.2,
+          "to": 7.57,
+          "delta": -0.63
+        },
+        {
+          "seriesId": "tt28672586",
+          "title": "Lego City: No Limits",
+          "season": 1,
+          "from": 6.6,
+          "to": 7.23,
+          "delta": 0.63
+        },
+        {
+          "seriesId": "tt32832412",
+          "title": "Anyway, I'm Falling in Love with You",
+          "season": 2,
+          "from": 6.61,
+          "to": 6.03,
+          "delta": -0.58
+        },
+        {
+          "seriesId": "tt42969298",
+          "title": "Kamui: He's Behind You",
+          "season": 1,
+          "from": 8.55,
+          "to": 8,
+          "delta": -0.55
+        },
+        {
+          "seriesId": "tt12169564",
+          "title": "100 Day Dream Home",
+          "season": 3,
+          "from": 6.07,
+          "to": 6.61,
+          "delta": 0.54
+        },
+        {
+          "seriesId": "tt2623042",
+          "title": "Photo Kano",
+          "season": 1,
+          "from": 7.01,
+          "to": 6.48,
+          "delta": -0.53
+        },
+        {
+          "seriesId": "tt3639864",
+          "title": "Himegoto",
+          "season": 1,
+          "from": 7.15,
+          "to": 6.65,
+          "delta": -0.5
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 21803,
+        "avgRating": 1196,
+        "shapes": 209,
+        "episodeCount": 81,
+        "seriesRating": 272,
+        "poster": 3,
+        "overview": 2,
+        "providers": 3
+      }
+    },
+    {
       "builtAt": "2026-08-10T07:42:37.661Z",
       "totals": {
         "seasons": 66210,
@@ -6742,287 +6987,6 @@
         "episodeCount": 98,
         "poster": 4,
         "overview": 8
-      }
-    },
-    {
-      "builtAt": "2026-07-12T08:34:18.671Z",
-      "totals": {
-        "seasons": 65754,
-        "delta": 19
-      },
-      "shapeCounts": {
-        "mid-peak": 4620,
-        "rebound": 10038,
-        "rising": 2904,
-        "slow-burn": 4367,
-        "big-finale": 12019,
-        "u-shaped": 3072,
-        "rollercoaster": 14003,
-        "saved-best-for-last": 1518,
-        "front-loaded": 3431,
-        "declining": 1854,
-        "bad-finale": 4628,
-        "consistent": 2611,
-        "shape-drift": 1609
-      },
-      "shapeDeltas": {
-        "mid-peak": -1,
-        "rebound": 3,
-        "slow-burn": 11,
-        "big-finale": 10,
-        "u-shaped": -5,
-        "rollercoaster": 1,
-        "saved-best-for-last": -4,
-        "front-loaded": 3,
-        "declining": 1,
-        "bad-finale": -3,
-        "consistent": 1,
-        "shape-drift": -3
-      },
-      "added": [
-        {
-          "seriesId": "tt22393396",
-          "title": "Louis Theroux Interviews...",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt22393396",
-          "title": "Louis Theroux Interviews...",
-          "season": 2,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt37543147",
-          "title": "Life, Larry and the Pursuit of Unhappiness: an Almost History of America",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt35587659",
-          "title": "The Five-Star Weekend",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0101046",
-          "title": "Beyond Reality",
-          "season": 1,
-          "seasonYear": 1991
-        },
-        {
-          "seriesId": "tt2777882",
-          "title": "The Lord of the Skies",
-          "season": 9,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt1322074",
-          "title": "Kriminálka Andel",
-          "season": 5,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt38629798",
-          "title": "Enquête en famille",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt39182733",
-          "title": "When Light Fades",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt40164372",
-          "title": "Don't Be Too Emotional",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36742917",
-          "title": "I'm Not Afraid",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0377168",
-          "title": "Dr. Coto's Clinic",
-          "season": 1,
-          "seasonYear": 2003
-        },
-        {
-          "seriesId": "tt4320944",
-          "title": "Red Rock",
-          "season": 5,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt11286224",
-          "title": "Pimp",
-          "season": 1,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt12664408",
-          "title": "Break Up Story",
-          "season": 1,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt15502918",
-          "title": "Indu",
-          "season": 3,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt16141842",
-          "title": "Qatil Haseenaon Ke Naam",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt26761151",
-          "title": "The House That Dragons Built",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt24948828",
-          "title": "Outdoor Boys",
-          "season": 1,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt40184737",
-          "title": "Ab Hoga Hisaab",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43659859",
-          "title": "The Stable SMP",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt6809466",
-          "title": "Gehraiyaan",
-          "season": 1,
-          "seasonYear": 2017
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt1210340",
-          "title": "Tiempo final",
-          "season": 1,
-          "seasonYear": 2007
-        },
-        {
-          "seriesId": "tt16384576",
-          "title": "Underground of Berlin",
-          "season": 3,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt42207122",
-          "title": "Xatar: Ein Leben ist nicht genug",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt13858416",
-          "title": "Dino Ranch",
-          "season": 3,
-          "from": 6.6,
-          "to": 8.22,
-          "delta": 1.62
-        },
-        {
-          "seriesId": "tt31927967",
-          "title": "Roblox Fnaf",
-          "season": 2,
-          "from": 6.87,
-          "to": 5.85,
-          "delta": -1.02
-        },
-        {
-          "seriesId": "tt43081076",
-          "title": "What Remains of Honor",
-          "season": 1,
-          "from": 5.78,
-          "to": 4.82,
-          "delta": -0.96
-        },
-        {
-          "seriesId": "tt33744588",
-          "title": "Okura: Cold Case Investigation",
-          "season": 1,
-          "from": 5.2,
-          "to": 6.13,
-          "delta": 0.93
-        },
-        {
-          "seriesId": "tt0411007",
-          "title": "Listen Up",
-          "season": 1,
-          "from": 7.04,
-          "to": 6.31,
-          "delta": -0.73
-        },
-        {
-          "seriesId": "tt21057046",
-          "title": "The Doomies",
-          "season": 1,
-          "from": 8.41,
-          "to": 9.05,
-          "delta": 0.64
-        },
-        {
-          "seriesId": "tt2431250",
-          "title": "Little House on the Prairie",
-          "season": 1,
-          "from": 6.75,
-          "to": 7.38,
-          "delta": 0.63
-        },
-        {
-          "seriesId": "tt13923092",
-          "title": "1962: The War in the Hills",
-          "season": 1,
-          "from": 8.3,
-          "to": 7.7,
-          "delta": -0.6
-        },
-        {
-          "seriesId": "tt8682658",
-          "title": "Memories",
-          "season": 1,
-          "from": 8.48,
-          "to": 7.9,
-          "delta": -0.58
-        },
-        {
-          "seriesId": "tt0429466",
-          "title": "Who Do You Think You Are?",
-          "season": 23,
-          "from": 7.5,
-          "to": 8,
-          "delta": 0.5
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 19287,
-        "avgRating": 1140,
-        "seriesRating": 283,
-        "shapes": 221,
-        "episodeCount": 103,
-        "poster": 17,
-        "overview": 2
       }
     }
   ]
