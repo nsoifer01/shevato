@@ -384,6 +384,25 @@ ranking, and only the part of a correction that changes ORDER changes decisions
 
 ## Shared infrastructure, discovered during this app's build
 
+- **Gitignored build output is a blind spot of diff review, and it bit this
+  app** (2026-08-12). Rising Shows and Gym Tracker generate ~35,000 static
+  pages at Netlify DEPLOY time (`npm run build:site` in netlify.toml), each
+  carrying a cross-app footer. The footer templates were correctly updated for
+  this app, but (a) the machine-local generated pages stayed stale until
+  regenerated, (b) the templates hand-duplicated the app list in TWO files
+  with a "keep in sync" comment, and (c) no test read them - so the owner
+  found a live page advertising an app inventory without this app on it after
+  three "production-ready" audits had passed. The audits failed because they
+  verified the DIFF and the tested surfaces, never a rendered SIBLING page,
+  and generated output is invisible to `git diff` by construction. Fixed by
+  `assets/apps-manifest.json` as THE canonical app list, both generators
+  rendering from it, and registry-to-render invariants in
+  `sync-system/tests/app-naming-consistency.test.mjs` (manifest == apps/
+  directories == tested surfaces == generated footers). Adding the NEXT app
+  fails tests until the manifest is updated, and the manifest update flows to
+  every generated page at the next deploy.
+
+
 - `assets/css/main.css` paints `button { color:#555 !important }`, a red
   `button:hover` AND a red `input[type=text]:focus` box-shadow. Every
   interactive element needs counter-pins verified by computed style, never by
