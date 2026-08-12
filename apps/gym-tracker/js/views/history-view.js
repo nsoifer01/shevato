@@ -44,7 +44,11 @@ class HistoryView {
         const dispatch = (e, fromKeyboard = false) => {
             const target = e.target.closest('[data-action]');
             if (!target || !list.contains(target)) return;
-            const id = Number(target.dataset.sessionId);
+            // Keep the raw string: lookups go through sameId(), so numeric,
+            // stringified-numeric (Firestore round-trip), and string ids from
+            // imports all resolve. Number() here made non-numeric session ids
+            // silently unclickable (NaN matched nothing).
+            const id = target.dataset.sessionId;
             switch (target.dataset.action) {
                 case 'delete-session':
                     e.preventDefault();
@@ -377,7 +381,7 @@ class HistoryView {
     }
 
     showWorkoutDetails(sessionId) {
-        const session = this.app.workoutSessions.find(s => s.id === sessionId);
+        const session = this.app.workoutSessions.find(s => sameId(s.id, sessionId));
         if (!session) return;
 
         const unit = this.app.settings.weightUnit;
@@ -634,7 +638,7 @@ class HistoryView {
     }
 
     async saveSessionAsProgram(sessionId) {
-        const session = this.app.workoutSessions.find(s => s.id === sessionId);
+        const session = this.app.workoutSessions.find(s => sameId(s.id, sessionId));
         if (!session) return;
 
         const rawName = window.prompt('Program name:', session.workoutDayName || 'My Program');
@@ -650,7 +654,12 @@ class HistoryView {
             const completedSets = (ex.sets || []).filter(s => s.completed);
             if (completedSets.length === 0) return;
             const reps = Math.round(completedSets.reduce((s, set) => s + (set.reps || 0), 0) / completedSets.length);
-            program.addExercise(ex.exerciseId, ex.exerciseName, completedSets.length, reps || 10);
+            // Resolve through the catalog so a program built from an old
+            // session carries the exercise's current name, not a pre-rename
+            // snapshot.
+            program.addExercise(ex.exerciseId,
+                this.app.getExerciseDisplayName(ex.exerciseId, ex.exerciseName),
+                completedSets.length, reps || 10);
         });
 
         if (program.exercises.length === 0) {
@@ -665,7 +674,7 @@ class HistoryView {
     }
 
     async deleteWorkout(sessionId) {
-        const session = this.app.workoutSessions.find(s => s.id === sessionId);
+        const session = this.app.workoutSessions.find(s => sameId(s.id, sessionId));
         if (!session) return;
 
         const exerciseCount = session.exercises.length;
@@ -682,7 +691,7 @@ class HistoryView {
 
         if (!confirmed) return;
 
-        const index = this.app.workoutSessions.findIndex(s => s.id === sessionId);
+        const index = this.app.workoutSessions.findIndex(s => sameId(s.id, sessionId));
         if (index < 0) return;
 
         this.app.workoutSessions.splice(index, 1);

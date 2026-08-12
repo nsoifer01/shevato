@@ -7,6 +7,7 @@ import { trapModalFocus } from '../utils/modal-focus.js';
 import { DarkSelect } from '../utils/dark-select.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
 import { makePaginatorState, paginatorInfo, paginatorDualHTML } from '../utils/paginator.js';
+import { sameId } from '../utils/id-utils.js';
 
 const EXERCISE_SORT_KEY = 'gymTrackerExerciseSort';
 const EXERCISE_PAGE_SIZE = 15;
@@ -227,7 +228,7 @@ class ExercisesView {
     _getExerciseLastUsed(exerciseId) {
         let latest = 0;
         this.app.workoutSessions.forEach(session => {
-            const ex = session.exercises.find(e => e.exerciseId === exerciseId);
+            const ex = session.exercises.find(e => sameId(e.exerciseId, exerciseId));
             if (ex && ex.sets && ex.sets.some(s => s.completed)) {
                 const ts = new Date(session.sortTimestamp).getTime();
                 if (ts > latest) latest = ts;
@@ -292,7 +293,7 @@ class ExercisesView {
     exerciseHasHistory(exerciseId) {
         return this.app.workoutSessions.some(session =>
             session.exercises.some(ex =>
-                ex.exerciseId === exerciseId &&
+                sameId(ex.exerciseId, exerciseId) &&
                 ex.sets &&
                 ex.sets.length > 0 &&
                 ex.sets.some(set => set.completed)
@@ -303,7 +304,7 @@ class ExercisesView {
     getExerciseHistoryCount(exerciseId) {
         let count = 0;
         this.app.workoutSessions.forEach(session => {
-            const exercise = session.exercises.find(ex => ex.exerciseId === exerciseId);
+            const exercise = session.exercises.find(ex => sameId(ex.exerciseId, exerciseId));
             if (exercise && exercise.sets && exercise.sets.length > 0) {
                 const completedSets = exercise.sets.filter(set => set.completed);
                 if (completedSets.length > 0) {
@@ -318,7 +319,7 @@ class ExercisesView {
         const history = [];
 
         this.app.workoutSessions.forEach(session => {
-            const exercise = session.exercises.find(ex => ex.exerciseId === exerciseId);
+            const exercise = session.exercises.find(ex => sameId(ex.exerciseId, exerciseId));
             if (exercise && exercise.sets && exercise.sets.length > 0) {
                 exercise.sets.forEach(set => {
                     if (set.completed) {
@@ -349,7 +350,7 @@ class ExercisesView {
         const groups = [];
 
         this.app.workoutSessions.forEach(session => {
-            const exercise = session.exercises.find(ex => ex.exerciseId === exerciseId);
+            const exercise = session.exercises.find(ex => sameId(ex.exerciseId, exerciseId));
             if (exercise && exercise.sets && exercise.sets.length > 0) {
                 const completedSets = exercise.sets.filter(set => set.completed);
                 if (completedSets.length > 0) {
@@ -951,7 +952,7 @@ class ExercisesView {
 
         // Remove this exercise's entries from every session in memory
         this.app.workoutSessions.forEach(session => {
-            session.exercises = session.exercises.filter(ex => ex.exerciseId !== exerciseId);
+            session.exercises = session.exercises.filter(ex => !sameId(ex.exerciseId, exerciseId));
         });
 
         this.app.saveWorkoutSessions();
@@ -990,7 +991,7 @@ class ExercisesView {
         });
 
         if (confirmed) {
-            const index = this.app.customExercises.findIndex(ex => ex.id === exerciseId);
+            const index = this.app.customExercises.findIndex(ex => sameId(ex.id, exerciseId));
             if (index >= 0) {
                 this.app.customExercises.splice(index, 1);
                 this.app.saveCustomExercises();

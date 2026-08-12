@@ -771,7 +771,10 @@ class WorkoutView {
             program.exercises,
             (progEx) => ({
                 exerciseId: progEx.exerciseId,
-                exerciseName: progEx.exerciseName,
+                // Resolve through the catalog so a renamed exercise enters the
+                // session under its current name (program rows carry an old
+                // snapshot).
+                exerciseName: this.app.getExerciseDisplayName(progEx.exerciseId, progEx.exerciseName),
                 sets: [],
                 targetSets: progEx.targetSets,
                 targetReps: progEx.targetReps,
@@ -993,7 +996,9 @@ class WorkoutView {
             workoutDayName: program.name,
             exercises: program.exercises.map(ex => new WorkoutExercise({
                 exerciseId: ex.exerciseId,
-                exerciseName: ex.exerciseName,
+                // Snapshot the exercise's CURRENT catalog name into the new
+                // session: program rows can carry a pre-rename snapshot.
+                exerciseName: this.app.getExerciseDisplayName(ex.exerciseId, ex.exerciseName),
                 targetSets: ex.targetSets,
                 targetReps: ex.targetReps,
                 restSeconds: ex.restSeconds,
@@ -1338,7 +1343,7 @@ class WorkoutView {
                          data-exercise-index="${index}"
                          title="${isCollapsed ? 'Expand' : 'Collapse'} exercise">
                         <h3>
-                            <span class="exercise-name-main">${escapeHtml(exercise.exerciseName)}</span>${sessionFeelHTML}${lastFeelHTML}
+                            <span class="exercise-name-main">${escapeHtml(this.app.getExerciseDisplayName(exercise.exerciseId, exercise.exerciseName))}</span>${sessionFeelHTML}${lastFeelHTML}
                         </h3>
                         <div class="exercise-subtitle">
                             <span class="exercise-progress ${isComplete ? 'is-complete' : ''}" aria-label="Sets ${progressLabel}">
@@ -2340,7 +2345,7 @@ class WorkoutView {
         const current = this.app.getExerciseById(exercise.exerciseId);
 
         const currentEl = document.getElementById('swap-exercise-current');
-        if (currentEl) currentEl.textContent = exercise.exerciseName;
+        if (currentEl) currentEl.textContent = this.app.getExerciseDisplayName(exercise.exerciseId, exercise.exerciseName);
 
         const search = document.getElementById('swap-exercise-search');
         const category = document.getElementById('swap-exercise-category-filter');

@@ -55,7 +55,9 @@ class HomeView {
                     break;
                 case 'show-session':
                     e.preventDefault();
-                    this.showWorkoutDetails(Number(target.dataset.sessionId));
+                    // Raw string on purpose: the history view resolves via
+                    // sameId(), and Number() breaks non-numeric session ids.
+                    this.showWorkoutDetails(target.dataset.sessionId);
                     break;
             }
         };

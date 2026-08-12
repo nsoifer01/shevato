@@ -320,8 +320,13 @@ export const SETS_CSV_HEADER = [
  *
  * Returns { csv, rowCount } so callers can tell "nothing logged yet" from
  * "header plus rows" without re-walking the data.
+ *
+ * `resolveName(exerciseId, fallback)` (optional) maps the stored
+ * exerciseName snapshot to the exercise's current catalog name, so a
+ * renamed exercise exports under ONE name instead of splitting rows
+ * between the old and new spellings. Defaults to the snapshot as-is.
  */
-export function buildSetsCsv(sessions, defaultUnit = 'kg') {
+export function buildSetsCsv(sessions, defaultUnit = 'kg', resolveName = (id, fallback) => fallback) {
     const lines = [SETS_CSV_HEADER.join(',')];
 
     (sessions || []).forEach((session) => {
@@ -339,7 +344,7 @@ export function buildSetsCsv(sessions, defaultUnit = 'kg') {
                 lines.push([
                     session.date,
                     session.workoutDayName,
-                    exercise.exerciseName,
+                    resolveName(exercise.exerciseId, exercise.exerciseName),
                     setNumber,
                     timed ? '' : weight,
                     timed ? '' : reps,

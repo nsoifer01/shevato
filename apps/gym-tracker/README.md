@@ -6,7 +6,7 @@ A comprehensive, mobile-first workout tracking application built with vanilla Ja
 
 ### 🏋️ Core Functionality
 
-- **Program Builder**: Create workout programs with custom exercises and reorderable exercise lists; each set row has a labeled toggle for a single rep target or a rep range (e.g. set 1: 11-12, set 2: 8-10); a program-level rest mode (one uniform between-exercises duration set with an M:SS stepper, or custom per-exercise rest); the exercise picker adds your picks as simple rows you then refine per set; removing an exercise asks for confirmation
+- **Program Builder**: Create workout programs with custom exercises and reorderable exercise lists; each set row has a labeled toggle for a single rep target or a rep range (e.g. set 1: 11-12, set 2: 8-10); a program-level rest mode (one uniform between-exercises duration set with an M:SS stepper, or custom per-exercise rest); the exercise picker opens as a child modal ON TOP of the editor (the plan being edited stays open and untouched underneath: committing returns the picks to it, cancelling the picker returns to it with all unsaved edits intact, and closing the editor by any route also closes the picker); removing an exercise asks for confirmation
 - **Program List Sorting**: Sort the program cards by name or exercise count, or keep a custom order created by dragging cards around; the chosen sort and the custom order both persist (dragging a card switches the list to custom automatically)
 - **Supersets**: Link consecutive exercises into a superset so they are grouped together in both the program builder and the workout view
 - **Workout Execution**: Mobile-optimized interface for tracking sets, reps, and weight during workouts; per-set rep range labels (shown once per exercise when all sets match); rest is shown by a compact floating circular timer dial, color-coded (green between sets, blue between exercises), with the countdown centered and +30s / Skip controls inside it, and for uniform programs the between-exercise rest also shows in the sticky workout header; after-exercise rest is read-only during a workout (it is set in the program); a pencil button on each exercise opens an inline notes field saved as you type, and a "same as last time" chip restores the previous session's weight and reps on a row; weight and reps are each a single control with the number as the focus and flat -/+ inside it, under WEIGHT / REPS column captions so it is obvious which side is which; tapping the exercise name or its metadata line collapses and expands the card, the same as the chevron; auto-collapsing completed exercises carry a green success tint (stronger while collapsed) and re-collapse after un-marking, staying collapsed across a pause/resume (the edit and plate-hint buttons hide while a card is collapsed); an identical plate breakdown is shown once per run of sets at the same weight rather than under every set; a final-5-seconds red pulse countdown with audio pings and haptics; the finish summary shows total volume with a percentage delta versus your previous session of the same program; and a plate calculator for all plate-loaded equipment (barbell, trap-bar, and plate-loaded machines such as the leg press) with per-exercise and global toggles whose state persists once a workout is saved
@@ -99,7 +99,7 @@ treated differently on purpose:
 
 | Pages | Count | Robots | In `sitemap-exercises.xml` |
 |---|---:|---|---|
-| Individual exercises | 513 | `noindex, follow` | no |
+| Individual exercises | 514 | `noindex, follow` | no |
 | Muscle + equipment taxonomy | 51 | `index, follow` | yes |
 | `/exercises/` directory index | 1 | `index, follow` | yes |
 
@@ -272,7 +272,15 @@ Designed for gym environments with low lighting:
 - **Full Body**: Compound movements and functional exercises
 
 Each exercise includes:
-- Name
+- Stable numeric `id` - the identity everything joins on (history, PRs,
+  progression, program rows). Ids are literals in `data/exercises-db.json`,
+  never derived from array position, and are never reused or renumbered.
+- Name - a display property. Programs and sessions store a name snapshot, but
+  every surface resolves the current catalog name by id at render time
+  (`app.getExerciseDisplayName`), so renaming an exercise in the catalog
+  retroactively updates old programs, history, achievements and exports
+  without touching stored user data. See `FINDINGS.md` for the rename
+  checklist.
 - Category (muscle group based)
 - Primary muscle group
 - Secondary muscles
