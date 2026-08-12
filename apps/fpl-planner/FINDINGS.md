@@ -428,6 +428,44 @@ ranking, and only the part of a correction that changes ORDER changes decisions
   active to 2027. EPL injuries come one season per request with NO pagination,
   so the whole 3-season backfill costs 3 requests.
 
+## Operational state (recorded at the 2026-08-12 pause)
+
+- **The app is release-ready but UNRELEASED.** `apps/fpl-planner` exists only
+  on `feature/fpl-planner` (13 commits, never pushed); `origin/master`, which
+  is what shevato.com deploys, has no FPL Planner. Releasing is push -> PR ->
+  owner merge, and is an owner decision. Until then there is NO deployed
+  production path to verify, and "production" claims in this file describe the
+  intended architecture.
+- **Production is serverless/static; nothing must stay running.** The app is a
+  static browser bundle; planning runs in a Web Worker; live reads go through
+  the Netlify function proxy with Blob caching. The trained artifact is loaded
+  and deliberately not consumed (`engineConsumes: []`), the status panel says
+  so (`dashboard.js`), and the analytic engine (`planner-1+analytic-1`) is
+  what produces every plan.
+- **Season-start transition is data-driven, no manual switch:**
+  `seasonStarted = events.some(isCurrent || isPrevious || finished)` off the
+  live bootstrap; pre-season routes to the draft builder with the full budget,
+  and the in-season import path activates by itself when GW1 goes live.
+- **Nothing durable is collected by this repo, and nothing needs to be.** All
+  FPL reads are on-demand; caches (Netlify Blobs, browser memory,
+  localStorage) are temporary by design. Historical evidence comes from the
+  vaastav/Fantasy-Premier-League archive, which preserves the per-gameweek
+  deadline-relevant columns (value, selected, xG/xA, starts, defcon) and
+  **is already tracking 2026-27** (players_raw.csv live as of 2026-08-12).
+  Availability records remain retrospectively fetchable per season from
+  API-Football (key active to 2027). No collector was built, on purpose: the
+  only ephemeral quantities (live chance_of_playing at deadlines) feed a
+  signal this project measured and REJECTED.
+- **Wake-up triggers, in order of likelihood:** (1) GW1 of 2026-27 goes live:
+  validate the real import path once (squad, transfer history, selling
+  prices, live defcon) - a production-validation trigger, not a tuning
+  licence; (2) early 2026-27: confirm vaastav's merged_gw.csv is accumulating
+  gameweeks - if that archive ever stops, THEN build the minimal collector;
+  (3) a fifth complete season, which un-parks the prior-weight family and any
+  underpowered question; (4) discovery of the 2023-24 prior-value channel;
+  (5) an observed real-use planner failure, which outranks all speculative
+  work.
+
 ## Open questions / next highest-value work
 
 Ranked 2026-08-12, evening, after 2025-26 qualified (entry 15), bonus closed
