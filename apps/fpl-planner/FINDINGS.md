@@ -424,7 +424,7 @@ Ranked 2026-08-12, after the replay-evidence fix moved the instrument by 1253
 points and closed the availability question.
 
 1. **Where the top of the market is under-projected — now decomposed by
-   component** (2026-08-13, leakage-free, sums exactly to the total gap). In
+   component** (2026-08-12, leakage-free, sums exactly to the total gap). In
    the top projection decile the missing points are: **assists ~50%** (both
    seasons), **bonus 24-54%**, cards over-penalized 7-23%, goals roughly
    calibrated (+28% / -27%, noise). GKP and DEF in the top decile are

@@ -259,7 +259,7 @@ would have caught all three of this file's defects in seconds.
 
 ---
 
-## Defect 4, found 2026-08-13 by the component decomposition
+## Defect 4, found 2026-08-12 by the component decomposition
 
 The same 2022-23 payload change that introduced `starts` introduced
 `expected_goals`, `expected_assists` and `expected_goals_conceded`: all three

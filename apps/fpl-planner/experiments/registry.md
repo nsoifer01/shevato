@@ -33,7 +33,7 @@ Baselines, same settings. Measured 2026-08-12 on the corrected replay evidence
 | fdr       |    1255 |    1010 |    1282 |   3547 |
 
 45 paired trajectories, chips off, the deciding instrument: **34,051**
-(11,138 / 11,134 / 11,779), measured 2026-08-13 after entries 11 (xG
+(11,138 / 11,134 / 11,779), measured 2026-08-12 after entries 11 (xG
 denominator) and 14 (historical season rules). Chips-on full seasons under the
 rules the seasons were actually played by: **6975** (2239 / 2283 / 2453).
 Superseded: 34,071 after entry 11 alone, 33,684 before it, 32,713 at the old
@@ -1051,7 +1051,7 @@ either. To re-run this, the change is one block in `positionPriors`, one term in
 
 ## 11. The xG/xA denominator: expected data starts at 2022-23 gameweek 16
 
-- **Date:** 2026-08-13
+- **Date:** 2026-08-12
 - **Kind:** correctness fix to the measuring instrument, entry 7's fourth
   member. Same bug class (a numerator divided by minutes it does not cover),
   same fix pattern (the caller that builds the numerator declares the
@@ -1097,7 +1097,7 @@ league-wide expected sum is zero with minutes on the board.
 
 ## 12. Assist lambda scaled by the measured FPL-assists-per-xA ratio
 
-- **Date:** 2026-08-13
+- **Date:** 2026-08-12
 - **Decision: REJECT.** The candidate is removed; the assist lambda comes
   straight from xA exactly as before.
 
@@ -1185,7 +1185,7 @@ removed; this entry is the spec.
 
 ## 13. Bonus curve fitted in its query space
 
-- **Date:** 2026-08-13
+- **Date:** 2026-08-12
 - **Decision: INCONCLUSIVE, not shipped.** Direction positive, no
   significance, and the same rule that rejected the availability signal at
   t 1.06 applies at t 0.80.
@@ -1261,7 +1261,7 @@ is the spec.
 
 ## 14. Historical season rules: chips, the transfer cap and the World Cup break
 
-- **Date:** 2026-08-13
+- **Date:** 2026-08-12
 - **Kind:** correctness fix to the replay's rules fidelity. Ships on principle.
 - **Files:** `scripts/backtest.mjs` (`historicalRules`, `loadRules(season)`),
   `js/engine/transfer-state.js` (two era flags with live-game defaults),
