@@ -86,6 +86,15 @@ export function advance(state, { gw, transfersMade = 0, chipPlayed = null, rules
   const at = gw === undefined || gw === null ? state.gw : gw;
   const nextGw = at === null || at === undefined ? null : at + 1;
 
+  // A season can carry gameweeks whose transfers were UNLIMITED by rule: the
+  // 2022-23 World Cup break gave every manager unlimited free transfers between
+  // the gameweek 16 and 17 deadlines. That is the same state as pre-season (no
+  // count, and coming out of it the next gameweek starts at exactly one), so it
+  // reuses the phase rather than inventing a second sentinel. The set comes
+  // from the rules object; the live game publishes none.
+  const unlimitedNext = rules && Array.isArray(rules.unlimitedEvents) && rules.unlimitedEvents.includes(nextGw);
+  if (unlimitedNext) return { phase: PRESEASON, gw: nextGw, banked: UNLIMITED };
+
   // Rule 1 into rule 2. Unlimited does not roll over: the first gameweek after
   // the deadline starts at exactly one however many transfers were made before
   // it, and a chip played in that gameweek changes nothing about that.
@@ -94,7 +103,12 @@ export function advance(state, { gw, transfersMade = 0, chipPlayed = null, rules
   if (!recorded) return { ...state, gw: nextGw };
 
   const free = chipPlayed === 'wildcard' || chipPlayed === 'freehit';
-  const kept = free ? state.banked : Math.max(0, state.banked - transfersMade);
+  // Rule 5 is the CURRENT rule. Before 2024-25 a wildcard or free hit week
+  // could not bank: the following gameweek started at one whatever was saved.
+  // The flag defaults to the modern behaviour so a rules object that has never
+  // heard of it (every live payload) is unchanged.
+  const preserves = !rules || rules.chipPreservesBank !== false;
+  const kept = free ? (preserves ? state.banked : 0) : Math.max(0, state.banked - transfersMade);
   return seasonState(kept + 1, rules, nextGw);
 }
 

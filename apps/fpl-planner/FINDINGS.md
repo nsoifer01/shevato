@@ -70,9 +70,11 @@ Raw test count is not evidence of correctness. Do not report it as if it were.
 - **Chips come twice** in the CURRENT season: 8 entries, one per half-season.
   Wildcard and free hit are NOT legal in GW1 (windows open GW2); bench boost and
   triple captain are. Always route through `chipAvailableAt`. That doubling
-  arrived in 2025-26: 2022-23 through 2024-25 had two wildcards but one free hit,
-  one bench boost and one triple captain, which is why the replay's chip
-  catalogue is anachronistic for those seasons (see the open questions).
+  arrived in 2025-26: 2022-23 through 2024-25 had two wildcards but one free
+  hit, one bench boost and one triple captain, and the replay scores those
+  seasons under their own catalogues via `historicalRules` in
+  `scripts/backtest.mjs` (registry entry 14), along with the era's 2-transfer
+  bank, chip weeks not banking, and 2022-23's unlimited-transfer World Cup week.
 - **Defensive contribution composition differs by position**: DEF = CBIT +
   tackles; MID/FWD = CBIT + recoveries + tackles; GKP none. Verified against
   live per-player sums.
@@ -455,12 +457,10 @@ points and closed the availability question.
 3. **Multi-season player-history features**, unblocked by `code` identity, and
    now also by the denominator fix that makes the seeded evidence mean what it
    says.
-4. **The chip catalogue is anachronistic in the replay** (see below). Cheap to
-   fix and required before ANY chip-strategy experiment, worthless before that.
-5. Transfer round-trip churn pricing belongs in `planner.js` (a charge inside
+4. Transfer round-trip churn pricing belongs in `planner.js` (a charge inside
    `searchTransfers` filters rather than decides; measured and rejected there,
    see `experiments/transfer-churn.md`).
-6. Bookmaker odds: The Odds API ($30 for one month covers the historical
+5. Bookmaker odds: The Odds API ($30 for one month covers the historical
    backfill) is the recommended provider; `js/engine/odds.js` and
    `experiments/odds-evaluation-plan.md` are ready and inert. Owner has
    deliberately deferred any spend until correctness work settles. **That
@@ -469,17 +469,16 @@ points and closed the availability question.
 
 Known and deliberately unfixed:
 
-- **The replay gives historical seasons the 2025-26 chip catalogue.** The rules
-  come from the committed `tests/fixtures/bootstrap.json`, which carries eight
-  chips, two of each. 2022-23 through 2024-25 really had two wildcards but only
-  ONE free hit, ONE bench boost and ONE triple captain; the second of each
-  arrived in 2025-26. So the chips-on instrument replays a game with three chips
-  that did not exist. In practice the planner plays one of each anyway (the
-  2024-25 replay spends wildcard, wildcard, 3xc, freehit, bboost, which is
-  exactly the real allowance), and both arms of any experiment get the same
-  catalogue, so paired deltas are unaffected. It does mean full-season totals in
-  `leaderboard.md` are not directly comparable to a real manager's score, and
-  that any experiment about CHIP STRATEGY must fix this first.
+- **Historical seasons now replay under the rules they were played by**
+  (registry entry 14): per-season chip catalogues with verified wildcard
+  windows, one FH/BB/TC each through 2024-25, the 2-transfer bank before
+  2024-25, chip weeks not banking before 2024-25, and 2022-23's unlimited
+  transfers at GW17 (the World Cup break). `scripts/backtest.mjs
+  historicalRules` owns the season table; the engine reads `maxFreeTransfers`,
+  `chipPreservesBank` and `unlimitedEvents` off the rules object with defaults
+  that ARE the live game, so a payload that never heard of the flags behaves
+  identically. Chip-strategy experiments are unblocked. Chips-on totals from
+  before this fix were measured with three chips those seasons did not have.
 - **Do not run `npm test` while an experiment is running.**
   `tests/perf-budget.test.mjs` budgets full plan generation, and eight worker
   processes saturating the machine push it over. Two failures chased on

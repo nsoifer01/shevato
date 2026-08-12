@@ -109,8 +109,55 @@ export function loadSeason(season) {
   return dataset;
 }
 
-export function loadRules() {
-  return buildRules(JSON.parse(fs.readFileSync(RULES_FIXTURE, 'utf8')));
+// The rules a season was ACTUALLY played under, where they differ from the
+// committed 2026-27 bootstrap the fixture provides. Two eras matter:
+//
+//   - Chips: one free hit, one bench boost and one triple captain per SEASON
+//     until 2024-25 inclusive; the second of each arrived in 2025-26. Wildcards
+//     were always two, with the half-season boundary moving year to year.
+//   - Free transfers: the bank was capped at 2 until 2023-24; the 5-cap arrived
+//     in 2024-25 along with chips preserving the banked count. Before that a
+//     wildcard or free hit week reset the following week to one.
+//   - 2022-23 only: unlimited free transfers for every manager between the
+//     gameweek 16 and 17 deadlines (the World Cup break), and the second
+//     wildcard from gameweek 18 (after the gameweek 17 deadline).
+//
+// Chip windows verified against premierleague.com announcements: 2022-23 WC1
+// through GW16 and WC2 from GW18; 2023-24 WC1 through GW20 and WC2 from GW21;
+// 2024-25 WC1 through GW19 and WC2 from GW20. The 2024-25 assistant-manager
+// chip is not modelled: the planner selects footballers only.
+//
+// This is a SCRIPT because season literals are banned from js/engine (a year in
+// engine code is a bug next August); the engine reads era behaviour off the
+// rules object with defaults that reproduce the live game.
+const chip = (name, from, to) => ({ id: null, name, type: name === 'wildcard' || name === 'freehit' ? 'transfer' : 'team', startEvent: from, stopEvent: to });
+const HISTORICAL_RULES = {
+  '2022-23': {
+    chips: [chip('wildcard', 2, 16), chip('wildcard', 18, 38), chip('freehit', 2, 38), chip('bboost', 1, 38), chip('3xc', 1, 38)],
+    maxFreeTransfers: 2,
+    chipPreservesBank: false,
+    unlimitedEvents: [17],
+  },
+  '2023-24': {
+    chips: [chip('wildcard', 2, 20), chip('wildcard', 21, 38), chip('freehit', 2, 38), chip('bboost', 1, 38), chip('3xc', 1, 38)],
+    maxFreeTransfers: 2,
+    chipPreservesBank: false,
+  },
+  '2024-25': {
+    chips: [chip('wildcard', 2, 19), chip('wildcard', 20, 38), chip('freehit', 2, 38), chip('bboost', 1, 38), chip('3xc', 1, 38)],
+    maxFreeTransfers: 5,
+    chipPreservesBank: true,
+  },
+};
+
+export function historicalRules(season) {
+  return HISTORICAL_RULES[season] || null;
+}
+
+export function loadRules(season = null) {
+  const rules = buildRules(JSON.parse(fs.readFileSync(RULES_FIXTURE, 'utf8')));
+  const overrides = season ? HISTORICAL_RULES[season] : null;
+  return overrides ? { ...rules, ...overrides } : rules;
 }
 
 // ---------------------------------------------------------------------------
@@ -129,7 +176,7 @@ export async function runBacktest({
   onProgress = null,
   modelPath = null,
 } = {}) {
-  const R = rules || loadRules();
+  const R = rules || loadRules(season);
   const dataset = loadSeason(season);
 
   // Optional, and refused unless it is provably leakage-free.

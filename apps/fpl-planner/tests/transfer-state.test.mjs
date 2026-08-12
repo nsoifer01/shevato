@@ -379,3 +379,64 @@ test('the cap comes from the game settings, and a different cap changes the sequ
   }
   assert.deepEqual(seen, [UNLIMITED, 1, 2, 2, 2, 2]);
 });
+
+// ---------------------------------------------------------------------------
+// Era rules. The engine defaults reproduce the LIVE game; a historical rules
+// object (scripts/backtest.mjs historicalRules) switches on the season the
+// replay is scoring, and these walks pin each behaviour as a sequence.
+// ---------------------------------------------------------------------------
+
+test('a 2-cap era banks to two and never three', () => {
+  const era = { ...rules, maxFreeTransfers: 2 };
+  let state = initialTransferState({ gw: 1 });
+  state = advance(state, { gw: 1, transfersMade: 0, rules: era });   // -> gw2, 1 FT
+  assert.equal(freeTransfersFor(state), 1);
+  state = advance(state, { gw: 2, transfersMade: 0, rules: era });   // -> gw3, 2 FT
+  assert.equal(freeTransfersFor(state), 2);
+  state = advance(state, { gw: 3, transfersMade: 0, rules: era });   // -> gw4, capped
+  assert.equal(freeTransfersFor(state), 2, 'the 2-cap era cannot bank a third');
+});
+
+test('before 2024-25 a chip week could not bank: the next week starts at one', () => {
+  const era = { ...rules, maxFreeTransfers: 2, chipPreservesBank: false };
+  let state = initialTransferState({ gw: 1 });
+  state = advance(state, { gw: 1, transfersMade: 0, rules: era });
+  state = advance(state, { gw: 2, transfersMade: 0, rules: era });
+  assert.equal(freeTransfersFor(state), 2, 'two banked going into the chip week');
+  state = advance(state, { gw: 3, transfersMade: 4, chipPlayed: 'wildcard', rules: era });
+  assert.equal(freeTransfersFor(state), 1, 'the old rule resets the week after a chip');
+
+  // And the modern default on the same walk preserves the bank.
+  let modern = initialTransferState({ gw: 1 });
+  modern = advance(modern, { gw: 1, transfersMade: 0, rules });
+  modern = advance(modern, { gw: 2, transfersMade: 0, rules });
+  modern = advance(modern, { gw: 3, transfersMade: 4, chipPlayed: 'wildcard', rules });
+  assert.equal(freeTransfersFor(modern), Math.min(rules.maxFreeTransfers, 2 + 1));
+});
+
+test('an unlimited event mid-season: unlimited that week, exactly one after', () => {
+  // The 2022-23 World Cup break: unlimited transfers between the gameweek 16
+  // and 17 deadlines, then the count restarts at one for gameweek 18.
+  const era = { ...rules, maxFreeTransfers: 2, unlimitedEvents: [17] };
+  let state = initialTransferState({ gw: 1 });
+  for (let gw = 1; gw <= 15; gw++) state = advance(state, { gw, transfersMade: 1, rules: era });
+  assert.equal(freeTransfersFor(state), 1, 'a transfer a week holds the count at one');
+  state = advance(state, { gw: 16, transfersMade: 0, rules: era });
+  assert.ok(!Number.isFinite(freeTransfersFor(state)), 'gameweek 17 is unlimited');
+  assert.ok(isUnlimited(state));
+  // Unlimited transfers cost nothing whatever their number.
+  assert.equal(hitCost(state, 9, era), 0);
+  state = advance(state, { gw: 17, transfersMade: 9, rules: era });
+  assert.equal(freeTransfersFor(state), 1, 'and gameweek 18 starts at exactly one');
+  // Banking resumes normally afterwards.
+  state = advance(state, { gw: 18, transfersMade: 0, rules: era });
+  assert.equal(freeTransfersFor(state), 2);
+});
+
+test('a rules object that has never heard of the era flags is the live game', () => {
+  // The exact walk the modern game produces, with the flags absent rather than
+  // set to their defaults, because every live payload is in that state.
+  let state = initialTransferState({ gw: 1 });
+  for (let gw = 1; gw <= 6; gw++) state = advance(state, { gw, transfersMade: 0, rules });
+  assert.equal(freeTransfersFor(state), Math.min(rules.maxFreeTransfers, 6));
+});

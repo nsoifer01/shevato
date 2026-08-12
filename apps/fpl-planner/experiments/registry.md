@@ -32,10 +32,12 @@ Baselines, same settings. Measured 2026-08-12 on the corrected replay evidence
 | hold      |    1453 |    2107 |    2112 |   5672 |
 | fdr       |    1255 |    1010 |    1282 |   3547 |
 
-45 paired trajectories, chips off, the deciding instrument: **34,071**
-(11,119 / 11,173 / 11,779), measured 2026-08-13 after entry 11's xG-denominator
-fix. Superseded values on the same tree: 33,684 before entry 11, 32,713 at the
-old horizon-3 default.
+45 paired trajectories, chips off, the deciding instrument: **34,051**
+(11,138 / 11,134 / 11,779), measured 2026-08-13 after entries 11 (xG
+denominator) and 14 (historical season rules). Chips-on full seasons under the
+rules the seasons were actually played by: **6975** (2239 / 2283 / 2453).
+Superseded: 34,071 after entry 11 alone, 33,684 before it, 32,713 at the old
+horizon-3 default.
 
 `greedy-xp` is this planner at horizon 1 and so does not move with the default;
 `hold` and `fdr` do, because their opening squad is built over the horizon.
@@ -1256,3 +1258,57 @@ underlyingRates(p, {}), { position, priors }).bps` when
 `tuning.bonusFitSpace === 'shrunk'`; `tuning` threaded through
 `buildProjections` and the backtest's `plannerDecide`. All removed; this entry
 is the spec.
+
+## 14. Historical season rules: chips, the transfer cap and the World Cup break
+
+- **Date:** 2026-08-13
+- **Kind:** correctness fix to the replay's rules fidelity. Ships on principle.
+- **Files:** `scripts/backtest.mjs` (`historicalRules`, `loadRules(season)`),
+  `js/engine/transfer-state.js` (two era flags with live-game defaults),
+  `scripts/experiment-worker.mjs` (per-season rules), four sequence tests in
+  `tests/transfer-state.test.mjs`.
+
+The replay scored every historical season under the 2026-27 bootstrap fixture:
+two of every chip, a 5-transfer bank, chip weeks preserving the bank, and no
+World Cup break. The seasons actually played were:
+
+| season | chips | FT cap | chip week banks? | other |
+| --- | --- | --- | --- | --- |
+| 2022-23 | 2 WC (2-16, 18-38), 1 FH, 1 BB, 1 TC | 2 | no | unlimited transfers at GW17 |
+| 2023-24 | 2 WC (2-20, 21-38), 1 FH, 1 BB, 1 TC | 2 | no | |
+| 2024-25 | 2 WC (2-19, 20-38), 1 FH, 1 BB, 1 TC | 5 | yes | AM chip, not modelled |
+
+Windows verified against premierleague.com announcements. Season literals live
+in the script (the engine bans them); the engine reads `maxFreeTransfers`,
+`chipPreservesBank` and `unlimitedEvents` off the rules object with defaults
+that reproduce the live game, and the unlimited week reuses the pre-season
+phase (no count; the following week starts at exactly one).
+
+### What it changed
+
+Chips-on full seasons, the first totals ever measured under the rules those
+seasons were played by: **2239 / 2283 / 2453 = 6975**. Every chip lands inside
+its historical window, one FH/BB/TC each, and the 2022-23 replay takes its
+second wildcard at GW18, the free rebuild after the World Cup break that real
+managers took. Prior chips-on totals (6870 and everything before) were measured
+under a catalogue with three chips those seasons did not have; do not compare
+against them.
+
+Chip-free paired instrument: 34,071 to **34,051** (+19 / -39 / 0 by season), a
+wobble from the 2-cap and the GW17 unlimited week in the two affected seasons;
+2024-25 is bit-identical because its era rules match the modern fixture with
+chips stripped. Null arm exactly zero.
+
+### What it unblocks
+
+Chip-strategy experiments, which were invalid under the anachronistic
+catalogue, and (with the already-parsed defensive contribution) the path to
+2025-26 as a fourth replayable season, which is entry 13's re-test condition.
+
+### Known residual approximations
+
+- The GW17 unlimited week models the ALLOWANCE correctly but the planner still
+  only searches its normal move depth, so it rebuilds less than a real manager
+  could. A search limit, correctly NOT written into game state.
+- 2022-23 prices during the break and the January-window value drift are the
+  archive's own, unchanged.

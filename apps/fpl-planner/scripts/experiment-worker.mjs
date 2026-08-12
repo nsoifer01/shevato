@@ -30,10 +30,13 @@ function dataset(season) {
   return loaded;
 }
 
-let baseRules = null;
-function rulesFor({ chips }) {
-  if (!baseRules) baseRules = loadRules();
-  return chips ? baseRules : { ...baseRules, chips: [] };
+const rulesCache = new Map();
+function rulesFor({ chips, season }) {
+  // Per-season, because the chip catalogue, the free-transfer cap and the
+  // 2022-23 unlimited week are properties of the season being replayed.
+  if (!rulesCache.has(season)) rulesCache.set(season, loadRules(season));
+  const base = rulesCache.get(season);
+  return chips ? base : { ...base, chips: [] };
 }
 
 // A season with no downloaded predecessor seeds nothing, which is a different
@@ -52,7 +55,7 @@ function priorFor(season, usePrior) {
 async function runCell({ cell, config, arm }) {
   const data = dataset(cell.season);
   const prior = priorFor(cell.season, config.usePrior !== false);
-  const rules = rulesFor({ chips: config.chips });
+  const rules = rulesFor({ chips: config.chips, season: cell.season });
 
   // Arm environment, applied around this cell only. FPL_AVAILABILITY is read
   // synchronously inside replaySeason, so a scoped assignment is enough and no
