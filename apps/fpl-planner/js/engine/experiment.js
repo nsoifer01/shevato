@@ -1,7 +1,8 @@
 // Paired-trajectory experiments: the plan, the statistics and the report.
 //
 // WHY THIS EXISTS. `experiments/registry.md` ranks three measurement
-// instruments and names the third one, 45 paired trajectories, as the one that
+// instruments and names the third one, paired trajectories (seasons x sliding
+// windows x seeds; 60 on the current four-season configuration), as the one that
 // decides. Every experiment in that file was nevertheless argued from the
 // weaker two, because the strong one was a manual afternoon: freeze a copy of
 // the tree, edit a constant, run ninety replays by hand, paste the numbers into
@@ -41,8 +42,8 @@
 // WHICH SEASONS is deliberately NOT here. It is a fact about what has been
 // downloaded onto a particular machine, not about the instrument, and a season
 // label in an engine module is exactly what `tests/rules.test.mjs` refuses. The
-// caller supplies it; on three seasons `paired` is the 45 trajectories the
-// registry names.
+// caller supplies it; the trajectory count is seasons x 5 windows x 3 seeds
+// (60 on the current four-season KNOWN_SEASONS).
 export const INSTRUMENTS = Object.freeze({
   paired: {
     key: 'paired',

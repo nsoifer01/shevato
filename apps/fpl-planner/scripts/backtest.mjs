@@ -53,11 +53,13 @@ const DEFAULT_SEASON = '2024-25';
 // season sweep behind it.
 const DEFAULT_HORIZON = PLANNER_PARAMS.defaultHorizon;
 // The seasons every experiment in experiments/registry.md is measured over:
-// the three complete archives with the columns the model needs. 2025-26 is
-// downloaded but in progress, and anything before 2022-23 has no xG, xA or
-// starts at all (FINDINGS.md, "Historical data"). Exported because the
-// experiment runner reports on the same three and there must be one list.
-export const KNOWN_SEASONS = ['2022-23', '2023-24', '2024-25'];
+// the complete archives with the columns the model needs. 2025-26 qualified on
+// 2026-08-12 (complete 380 fixtures, exact points reconstruction including
+// defensive contribution, 534/534 returning players on `code`, byte-duplicates
+// dropped at load, full expected-data coverage). Anything before 2022-23 has
+// no xG, xA or starts at all (FINDINGS.md, "Historical data"). Exported
+// because the experiment runner reports on the same list and there must be one.
+export const KNOWN_SEASONS = ['2022-23', '2023-24', '2024-25', '2025-26'];
 
 // The primary strategy first, then the three baselines SPEC 14.2 asks for.
 const DEFAULT_STRATEGIES = ['planner', 'hold', 'greedy-xp', 'fdr'];
@@ -145,6 +147,24 @@ const HISTORICAL_RULES = {
   },
   '2024-25': {
     chips: [chip('wildcard', 2, 19), chip('wildcard', 20, 38), chip('freehit', 2, 38), chip('bboost', 1, 38), chip('3xc', 1, 38)],
+    maxFreeTransfers: 5,
+    chipPreservesBank: true,
+  },
+  // 2025-26 is the season the modern rules arrived in: two of every chip (the
+  // first set expires at the GW19 deadline, the second runs GW20-38, no chip
+  // carries over), the 5-transfer bank, chips preserving it, defensive
+  // contribution scoring (proven by the 100.00% points reconstruction), and no
+  // assistant-manager chip. That happens to be exactly the shape of the
+  // committed 2026-27 fixture TODAY, but it is pinned here anyway: the fixture
+  // is a live payload that will be refreshed when a future season changes the
+  // rules, and a historical season's replay must not silently change with it.
+  // Verified against premierleague.com news 4362027 (two sets of chips,
+  // GW19/GW20 boundary) and 4362211 (2025-26 changes).
+  '2025-26': {
+    chips: [
+      chip('wildcard', 2, 19), chip('freehit', 2, 19), chip('bboost', 1, 19), chip('3xc', 1, 19),
+      chip('wildcard', 20, 38), chip('freehit', 20, 38), chip('bboost', 20, 38), chip('3xc', 20, 38),
+    ],
     maxFreeTransfers: 5,
     chipPreservesBank: true,
   },

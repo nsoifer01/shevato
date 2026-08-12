@@ -32,12 +32,11 @@ Baselines, same settings. Measured 2026-08-12 on the corrected replay evidence
 | hold      |    1453 |    2107 |    2112 |   5672 |
 | fdr       |    1255 |    1010 |    1282 |   3547 |
 
-45 paired trajectories, chips off, the deciding instrument: **34,051**
-(11,138 / 11,134 / 11,779), measured 2026-08-12 after entries 11 (xG
-denominator) and 14 (historical season rules). Chips-on full seasons under the
-rules the seasons were actually played by: **6975** (2239 / 2283 / 2453).
-Superseded: 34,071 after entry 11 alone, 33,684 before it, 32,713 at the old
-horizon-3 default.
+The deciding instrument is now FOUR seasons x 5 sliding windows x 3 seeds =
+**20 window observations, 60 paired trajectories** (entry 15). Current control:
+**44,181** (11,138 / 11,134 / 11,779 / 10,130). Chips-on full seasons under
+each season's own rules: **9,015** (2239 / 2283 / 2453 / 2040). Superseded
+three-season values: 34,051 (entries 11+14), 34,071, 33,684, 32,713.
 
 `greedy-xp` is this planner at horizon 1 and so does not move with the default;
 `hold` and `fdr` do, because their opening squad is built over the horizon.
@@ -1312,3 +1311,72 @@ catalogue, and (with the already-parsed defensive contribution) the path to
   could. A search limit, correctly NOT written into game state.
 - 2022-23 prices during the break and the January-window value drift are the
   archive's own, unchanged.
+
+## 15. 2025-26 becomes the fourth replay season; the instrument grows to 20 windows
+
+- **Date:** 2026-08-12
+- **Kind:** instrument expansion plus one correctness fix found while qualifying
+  the season.
+
+### Qualification, checked against facts outside the app
+
+- 380 fixtures, 38 gameweeks, no truncation; full expected-data coverage.
+- Points reconstruct from components at 100.00% on 11,498 played rows,
+  INCLUDING defensive contribution, which doubles as proof of the scoring
+  table and the DEF 10 / MID-FWD 12 thresholds.
+- Identity: 841/841 players coded; 534/534 returning players resolved from
+  2024-25 on `code`, zero collisions, zero unresolved.
+- Schema: the only columns new against 2024-25 are the four
+  defensive-contribution ones (already parsed); the AM-chip `mng_*` columns are
+  2024-25-only; no non-footballer positions.
+- Starts: 8,362 raw = 8,360 + the 2 duplicated rows below. After dedupe the
+  football arithmetic is exact.
+
+### The correctness fix: byte-duplicate rows now dropped at load
+
+The archive carries ten byte-identical rows (one Bournemouth player duplicated
+across gameweeks 1-9). The TRAINER already dropped them; the REPLAY did not, so
+a replayed squad owning that player would have scored him twice and his
+accumulated evidence was doubled. `buildDataset` now drops a repeated
+(gameweek, player, fixture) key - a player plays a fixture at most once in any
+season - while distinct fixture ids in one gameweek (double gameweeks) pass
+through untouched. Regression test added; the three prior seasons carry no
+duplicates and replay bit-identical.
+
+### 2025-26 historical rules
+
+Pinned in `historicalRules` even though they match the committed 2026-27
+fixture today (two of each chip, first set through GW19, second set GW20-38,
+5-transfer bank, chips preserve the bank, no AM chip, no unlimited event):
+the fixture is a live payload that will be refreshed when a future season
+changes the rules, and a historical season's replay must not silently change
+with it. Verified against premierleague.com news 4362027 and 4362211.
+
+### The instrument is now 4 seasons x 5 windows x 3 seeds
+
+- **20 window observations, 60 paired trajectories.** The unit of inference
+  remains the window; seeds are still averaged first.
+- Null arm: exactly zero on all 60 trajectories.
+- Counts derive from `KNOWN_SEASONS`; nothing hardcodes 45 or 15.
+
+### Baselines on this tree
+
+| instrument | 2022-23 | 2023-24 | 2024-25 | 2025-26 | total |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| paired, chips off | 11,138 | 11,134 | 11,779 | 10,130 | **44,181** |
+| full seasons, chips on | 2,239 | 2,283 | 2,453 | 2,040 | **9,015** |
+
+The three prior seasons are bit-identical to entry 14's baseline (34,051), so
+the addition changed nothing it should not have. 2025-26's lower level is the
+season, not the engine: within it the ordering planner 2040 > greedy 1961 >
+hold 1521 > fdr 1191 holds with normal margins, every chip lands inside its
+legal window (including one bench boost per half), and its like-for-like
+projection bias of +2.1 a gameweek is the best-calibrated of the four seasons -
+consistent with it being the only season whose archive carries every scoring
+input the live game has.
+
+### What this changes for older entries
+
+Nothing is re-decided. The three-season 15-window instrument remains what
+entries 8-13 were measured on; new experiments run on 20 windows. Entry 13's
+re-test condition has FIRED.

@@ -2,7 +2,7 @@
 // Run a control/candidate experiment on the instrument that decides, in
 // parallel, and write down everything needed to believe the answer.
 //
-// WHY. registry.md ranks 45 paired trajectories as the deciding instrument and
+// WHY. registry.md ranks paired trajectories (seasons x windows x seeds) as the deciding instrument and
 // then argues almost every verdict in the file from a weaker one, because the
 // strong instrument was a manual afternoon: freeze a copy of the tree, edit a
 // constant, run ninety replays by hand, transcribe the totals. That is how a

@@ -8,7 +8,7 @@ Data comes from the public Fantasy Premier League API. This app is not affiliate
 
 You give the app one number. Everything else is read: your squad, bank, squad value, transfer history, chips played, overall rank, plus the whole player database and fixture list. The engine then rebuilds the state that FPL does not hand out directly, projects points per player per gameweek, and searches for the best legal, affordable plan.
 
-Plans are scored over a rolling horizon, and the default is **5 gameweeks**. It was 3 until 2026-08-12, on evidence measured with a replay that could not represent expected minutes; on the deciding instrument (45 paired trajectories read as 15 windows, chips off) horizon 5 beats horizon 3 by 21.6 points a window with a t of 2.32, winning 11 windows to 4 and gaining in all three seasons. Horizon 8 also beats 3 but by less, so 5 is an interior optimum rather than "longer is better". Full-season replays WITH chips read +66 for horizon 5 while losing two seasons of three, which is the weakest instrument in the project and is reported rather than acted on. The tables live next to `DEFAULT_HORIZON` in `js/engine/planner.js` and in `experiments/registry.md` entry 9. Settings offers 3, 5 or 8.
+Plans are scored over a rolling horizon, and the default is **5 gameweeks**. It was 3 until 2026-08-12, on evidence measured with a replay that could not represent expected minutes; on the deciding instrument (paired trajectories read as windows, chips off; 15 windows on the three seasons then replayable) horizon 5 beats horizon 3 by 21.6 points a window with a t of 2.32, winning 11 windows to 4 and gaining in every season then measurable. Horizon 8 also beats 3 but by less, so 5 is an interior optimum rather than "longer is better". Full-season replays WITH chips read +66 for horizon 5 while losing two seasons of three, which is the weakest instrument in the project and is reported rather than acted on. The tables live next to `DEFAULT_HORIZON` in `js/engine/planner.js` and in `experiments/registry.md` entry 9. Settings offers 3, 5 or 8.
 
 ### The FPL API, and what it does and does not give you
 
@@ -193,10 +193,12 @@ number in the model):
 
 `scripts/backtest.mjs` replays one season. That is a sanity check, not evidence:
 a single trajectory forks on one chip decision and diverges by hundreds of
-points. The instrument that decides is **45 paired trajectories, read as 15
-windows** (five sliding chip-free windows per season, each replayed at three
-seeds), and `scripts/experiment.mjs` runs it on eight worker processes: three to
-four minutes for a two-arm comparison, twenty for three arms at longer horizons:
+points. The instrument that decides is **paired trajectories read as windows**
+(five sliding chip-free windows per season, each replayed at three seeds, seeds
+averaged within a window before inference; on the current four replayable
+seasons that is 20 windows and 60 trajectories), and `scripts/experiment.mjs`
+runs it on eight worker processes in about six minutes for a two-arm
+comparison:
 
 ```sh
 node apps/fpl-planner/scripts/experiment.mjs \
@@ -224,7 +226,7 @@ kind of measurement as everything else). The runner:
   `experiments/registry.md`.
 
 `experiments/configs/null-arm.mjs` runs two IDENTICAL arms and must report
-exactly zero on all 45 trajectories. Run it after touching the runner, the
+exactly zero on every trajectory (60 on the current configuration). Run it after touching the runner, the
 worker or the replay harness. `--rerender <results.json>` recomputes the
 statistics and the report from a finished run's stored cells, which is how a
 change to the statistics is applied without re-running the replays.

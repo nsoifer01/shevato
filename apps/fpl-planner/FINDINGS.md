@@ -120,17 +120,19 @@ Ranked in `experiments/registry.md` Methodology; the short version:
    through everything after it (a moved wildcard swung a half-season by 211).
 2. **Nine chip-free windows** (3 seasons x 3 splits): better; still one seed,
    and seed alone moves 9-10 of 15 windows by 21-32 points.
-3. **45 paired trajectories READ AS 15 WINDOWS** (5 sliding windows x 3 seasons,
-   each at 3 seeds, chips off, arm paired against control per trajectory): the
-   decider.
+3. **Paired trajectories READ AS WINDOWS** (5 sliding windows per season, each
+   at 3 seeds, chips off, arm paired against control per trajectory): the
+   decider. Counts derive from `KNOWN_SEASONS`; on the current FOUR seasons
+   (2025-26 qualified 2026-08-12, registry entry 15) that is 20 window
+   observations and 60 paired trajectories.
 
 **`scripts/experiment.mjs` runs instrument 3 in three to four minutes** on eight
 workers, writes a markdown report with the statistics and the per-window table,
 and fingerprints the engine, scripts and season data before AND after the run so
 a tree that moved underneath an experiment is reported as void rather than
 reported. `experiments/configs/null-arm.mjs` runs two identical arms and must
-report exactly zero on all 45 trajectories; run it after touching the runner or
-the replay. There is deliberately no way to compare against a stored baseline:
+report exactly zero on every trajectory (60 on the current four-season
+configuration); run it after touching the runner or the replay. There is deliberately no way to compare against a stored baseline:
 the control arm is re-measured every time.
 
 **Average the seeds inside a window before counting anything.** Three seeds
@@ -190,7 +192,7 @@ ranking, and only the part of a correction that changes ORDER changes decisions
 - **The horizon default is 5** (2026-08-12, registry entry 9). It was 3 for two
   days on evidence that has been withdrawn twice over: the first justification
   was an artefact of the free-transfer bug, the second was measured on a replay
-  whose pStart was pinned at 1.000. On 15 windows, horizon 5 beats 3 by +21.6 a
+  whose pStart was pinned at 1.000. On the then-15-window instrument, horizon 5 beats 3 by +21.6 a
   window (t 2.32, 11-4-0, positive in all three seasons) and horizon 8 beats 3
   by less, so 5 is an interior optimum. Three constants must move together:
   `planner.js DEFAULT_HORIZON`, `lineup.js DEFAULT_HORIZON` and
@@ -219,7 +221,7 @@ ranking, and only the part of a correction that changes ORDER changes decisions
   owned pool through gameweek 10, every position prior pinned at 1.000, and 57%
   of the pool still clamped at gameweek 20**. Corrected, median pStart sits at
   0.57-0.61 and the 90th percentile at 0.82-0.86 all season. Worth +1253 points
-  over 45 paired trajectories with the starts fix; see
+  over the then-45-trajectory instrument with the starts fix; see
   `experiments/replay-evidence.md`.
 - `START_RATE_SHRINK_MATCHES = 6` serves BOTH cross-season (pre-season) and
   within-season evidence. Still an open design question, but it is now a
@@ -325,6 +327,14 @@ ranking, and only the part of a correction that changes ORDER changes decisions
   rows and the replay scores it as a blank for all twenty clubs. That is
   correct, not a data defect. It also means that season has 37 scoring
   gameweeks, which is why its totals sit below the other two.
+- **2025-26 is a replayable season** (registry entry 15): complete, exact
+  points reconstruction including defensive contribution, 534/534 returning
+  players on `code`, rules pinned in `historicalRules` (two chips of each per
+  half, GW19/GW20 boundary) so a future fixture refresh cannot silently change
+  its replay. Its ten byte-duplicate archive rows are dropped at load by
+  `buildDataset` (a player plays a fixture once; double gameweeks have distinct
+  fixture ids and survive). Its like-for-like projection bias, +2.1 a gameweek,
+  is the best-calibrated of the four seasons.
 - Historical data: xG/xA/`starts` do NOT exist before 2022-23 (hard floor),
   and **within 2022-23 they exist only from gameweek 16**: the payload change
   that added `starts` mid-season added the expected_* columns in the same

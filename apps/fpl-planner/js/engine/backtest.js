@@ -316,7 +316,24 @@ export function flagExpectedData(rows) {
 // player carries code null, which is what makes a cross-season join degrade to
 // name matching rather than silently key on the season-scoped element id.
 export function buildDataset({ csv, rows, season, identity = null }) {
-  const parsed = rows || parseMergedGw(csv);
+  // A player plays a given fixture at most once, in any season, so a second
+  // row with the same (gameweek, player, fixture) key is a duplicated record
+  // and never football. The 2025-26 archive carries ten byte-identical ones
+  // (0.011%; one player's rows doubled across gameweeks 1-9), and an undropped
+  // duplicate double-counts the player's ACTUAL points when scoring a replayed
+  // squad as well as his accumulated evidence. Distinct fixture ids in one
+  // gameweek are DOUBLE GAMEWEEKS and pass through untouched; the key includes
+  // the fixture id precisely so they cannot be confused.
+  const raw = rows || parseMergedGw(csv);
+  const seen = new Set();
+  const parsed = [];
+  let duplicateRows = 0;
+  for (const r of raw) {
+    const key = `${r.gw}|${r.playerId}|${r.fixtureId}`;
+    if (seen.has(key)) { duplicateRows++; continue; }
+    seen.add(key);
+    parsed.push(r);
+  }
   const startsFilled = reconstructStarts(parsed);
   const expectedCoverage = flagExpectedData(parsed);
 
@@ -422,6 +439,8 @@ export function buildDataset({ csv, rows, season, identity = null }) {
     // Gameweeks with no expected_* columns (2022-23 gw1-15). Their minutes are
     // excluded from the xG/xA denominator rather than reconstructed.
     expectedDataMissing: expectedCoverage.uncovered.length ? expectedCoverage.uncovered : null,
+    // Byte-duplicate rows dropped at load (same gameweek, player AND fixture).
+    duplicateRowsDropped: duplicateRows,
   };
 }
 

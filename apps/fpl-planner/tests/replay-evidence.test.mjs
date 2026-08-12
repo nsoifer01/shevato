@@ -512,3 +512,30 @@ test('zero covered minutes is zero evidence, resolved to the prior, never a zero
   const k = PROJECTION_PARAMS.priorNineties.bps[4];
   assert.ok(Math.abs(shrunk.bps - (20 * 10 + 15 * k) / (10 + k)) < 1e-9, `bps kept its evidence: ${shrunk.bps}`);
 });
+
+// ---------------------------------------------------------------------------
+// 5. Duplicate rows
+//
+// The 2025-26 archive carries ten byte-identical rows (one player duplicated
+// across gameweeks 1-9). The trainer already dropped them; the REPLAY did not,
+// so a replayed squad owning that player scored him twice. A player plays a
+// given fixture at most once in any season; a repeated (gw, player, fixture)
+// key is a duplicated record, while distinct fixture ids in one gameweek are a
+// double gameweek and must survive.
+// ---------------------------------------------------------------------------
+
+test('a byte-duplicate row is dropped; a double gameweek is not', async () => {
+  const { actualPoints } = await import('../js/engine/backtest.js');
+  const rows = [
+    row({ gw: 1, playerId: 1, name: 'dupe', fixtureId: 1, minutes: 90, starts: 1, totalPoints: 6 }),
+    row({ gw: 1, playerId: 1, name: 'dupe', fixtureId: 1, minutes: 90, starts: 1, totalPoints: 6 }),   // duplicate
+    row({ gw: 1, playerId: 2, name: 'dgw', fixtureId: 1, minutes: 90, starts: 1, totalPoints: 4 }),
+    row({ gw: 1, playerId: 2, name: 'dgw', fixtureId: 2, minutes: 90, starts: 1, totalPoints: 7 }),    // double gameweek
+  ];
+  const dataset = buildDataset({ rows, season: 'dupes' });
+  assert.equal(dataset.duplicateRowsDropped, 1);
+  assert.equal(actualPoints(dataset, 1, 1), 6, 'the duplicated player scores once');
+  assert.equal(actualPoints(dataset, 1, 2), 11, 'the double gameweek still scores both fixtures');
+  assert.equal(dataset.players.get(1).rows.length, 1);
+  assert.equal(dataset.players.get(2).rows.length, 2);
+});
