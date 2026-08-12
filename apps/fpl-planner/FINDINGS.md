@@ -445,12 +445,11 @@ points and closed the availability question.
    FPL-assists-per-xA ratio of ~1.4 is real, but correcting it loses -10.4 a
    window because the top creativity quartile has the LOWEST extra-assist
    premium, so the induced reranking points the wrong way. The bonus half is
-   measured and INCONCLUSIVE (entry 13): the curve is fitted on raw bps rates
-   and queried with shrunk ones, which demonstrably under-reads the top, and
-   fixing the fit space read +6.6 a window (10W-5L, no season collapse) at
-   t 0.80 — the healthiest null the project has produced, parked until a fourth
-   replayable season gives the instrument the power to decide a +6-or-so
-   effect. **This question is now considered worked, not open**: both measured
+   measured twice and now REJECTED-CLOSED (entries 13 and 16): +6.6 a window on
+   15 windows, then -0.7 on 20 windows with held-out 2025-26 voting -17.3 under
+   a pre-registered standard. The raw fit's regression dilution and the query's
+   shrinkage offset by SEASON-DEPENDENT amounts, so one-space fitting is a
+   trade, not a correction; only a new mechanism may reopen bonus. **This question is now considered worked, not open**: both measured
    components have verdicts, and what remains (cards over-penalized ~15%, the
    residual) is smaller than the instrument can decide. Any new candidate here
    must first pass the entry-12 order test: a level correction cancels out of

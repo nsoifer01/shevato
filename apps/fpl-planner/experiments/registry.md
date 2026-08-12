@@ -1380,3 +1380,48 @@ input the live game has.
 Nothing is re-decided. The three-season 15-window instrument remains what
 entries 8-13 were measured on; new experiments run on 20 windows. Entry 13's
 re-test condition has FIRED.
+
+## 16. Bonus fit-space re-test on 20 windows: REJECT, closed
+
+- **Date:** 2026-08-12
+- **What happened:** entry 13's re-test condition fired (entry 15 made the
+  instrument 20 windows), the arm was reconstructed exactly from entry 13's
+  spec, and the decision standard was PRE-REGISTERED in the config before the
+  run: SHIP needed t >= 2.0 and >= 13 wins with no season collapse; REJECT on a
+  window mean <= 0; a second inconclusive would close the question.
+
+### The mechanism check on the held-out season, run before the experiment
+
+2025-26's top decile still shows the order gradient (bonus gaps 0.078 / 0.088 /
+0.137 by projected-points tercile) and curve(shrunk) still under-reads the top
+(0.446 against 0.589 observed) - but curve(RAW) OVER-reads it there (0.651
+against 0.589), the first season where the dilution counter-argument visibly
+outweighs the shrinkage effect. That was the warning.
+
+### Result, 20 windows, 60 paired trajectories
+
+| statistic | per window | per trajectory |
+| --- | ---: | ---: |
+| total | -14 | -42 |
+| mean | -0.7 | -0.7 |
+| se | 7.6 | 5.7 |
+| t | -0.09 | -0.12 |
+| W / L / T | 10 / 10 / 0 | 34 / 26 / 0 |
+
+Per season: +9.5 / -0.1 / +5.1 / **-17.3** (6W-9L in 2025-26). The three
+original seasons roughly reproduced entry 13's readings; the held-out season
+voted against, exactly as its own diagnostic predicted.
+
+### Decision: REJECT under the pre-registered standard, and CLOSED
+
+The window mean is below zero. More importantly, the two measurements together
+establish the real shape: the raw-x fit's regression dilution and the query's
+shrinkage genuinely offset by SEASON-DEPENDENT amounts, so "fit and query in
+one space" is not a correction, it is a trade whose sign varies. Production
+keeps the raw fit. Bonus is closed to further replays; only a NEW mechanism
+(not more measurement of this one) may reopen it. The candidate code is
+removed; entry 13 holds the reconstruction spec if that ever happens.
+
+This is also the held-out season doing exactly what entry 15 said it was for:
+2025-26 was not used to tune anything, and its first vote killed a candidate
+that three-season evidence had left alive.
