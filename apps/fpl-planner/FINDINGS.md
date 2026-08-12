@@ -430,51 +430,41 @@ ranking, and only the part of a correction that changes ORDER changes decisions
 
 ## Open questions / next highest-value work
 
-Ranked 2026-08-12, after the replay-evidence fix moved the instrument by 1253
-points and closed the availability question.
+Ranked 2026-08-12, evening, after 2025-26 qualified (entry 15), bonus closed
+(entry 16), the defcon denominator landed (entry 17) and the prior-weight sweep
+read out (entry 18).
 
-1. **Where the top of the market is under-projected — now decomposed by
-   component** (2026-08-12, leakage-free, sums exactly to the total gap). In
-   the top projection decile the missing points are: **assists ~50%** (both
-   seasons), **bonus 24-54%**, cards over-penalized 7-23%, goals roughly
-   calibrated (+28% / -27%, noise). GKP and DEF in the top decile are
-   OVER-projected (clean sheets and concessions); the under-projection is MID
-   and FWD, and for forwards bonus alone is 84% of their gap.
-
-   The assists half is measured and REJECTED (entry 12): the league-wide
-   FPL-assists-per-xA ratio of ~1.4 is real, but correcting it loses -10.4 a
-   window because the top creativity quartile has the LOWEST extra-assist
-   premium, so the induced reranking points the wrong way. The bonus half is
-   measured twice and now REJECTED-CLOSED (entries 13 and 16): +6.6 a window on
-   15 windows, then -0.7 on 20 windows with held-out 2025-26 voting -17.3 under
-   a pre-registered standard. The raw fit's regression dilution and the query's
-   shrinkage offset by SEASON-DEPENDENT amounts, so one-space fitting is a
-   trade, not a correction; only a new mechanism may reopen bonus. **This question is now considered worked, not open**: both measured
-   components have verdicts, and what remains (cards over-penalized ~15%, the
-   residual) is smaller than the instrument can decide. Any new candidate here
-   must first pass the entry-12 order test: a level correction cancels out of
-   every ranking and only crosses hit/chip thresholds.
-
-   A bounded non-contributor: the three replayed seasons predate defensive
-   contribution, so projections and actuals both carry none of it there; only a
-   future 2025-26 replay has that component in play.
-2. **Cross-season vs within-season evidence weighting.** Now measurable through
-   `opts.priorSeasonWeight` (it moves both sides of the rate, so a sweep is
-   honest). Note the live app currently has NO prior-season evidence in season
-   at all: FPL resets totals in August and nothing else is fetched. If a nonzero
-   weight wins in replay, that is a production plumbing job, not a free win.
-3. **Multi-season player-history features**, unblocked by `code` identity, and
-   now also by the denominator fix that makes the seeded evidence mean what it
-   says.
-4. Transfer round-trip churn pricing belongs in `planner.js` (a charge inside
-   `searchTransfers` filters rather than decides; measured and rejected there,
-   see `experiments/transfer-churn.md`).
-5. Bookmaker odds: The Odds API ($30 for one month covers the historical
-   backfill) is the recommended provider; `js/engine/odds.js` and
-   `experiments/odds-evaluation-plan.md` are ready and inert. Owner has
-   deliberately deferred any spend until correctness work settles. **That
-   deferral looks right:** the last two rounds of correctness work were each
-   worth more than any external signal has been shown to be.
+1. **A DECAYING prior-season weight**, mechanism-driven and pre-registered.
+   Entry 18 left the flat weight at 0.5, but its arms jointly point one way:
+   no-prior (the shipped in-season app) loses its EARLY windows and churns
+   (22 hits against the control's 13), while full-prior collapses LATE and in
+   the regime-change season (-50.3 a window in 2025-26). A weight that is high
+   in August and near zero by spring is the natural shape; it must be a new
+   pre-registered experiment, not a tweak of entry 18. If it wins at the bar,
+   THEN the production data path (section 9 of the 2026-08-12 directive:
+   pre-season bootstrap snapshot carried forward, `code` identity, versioned
+   artifact) becomes worth designing - entry 18's w25-vs-w0 contrast (+15.6 a
+   window, t 1.55, positive in all three seeded seasons) is the current
+   estimate of what that path is worth.
+2. **Multi-season player-history features**, unblocked by `code` identity and
+   the evidence-denominator fixes. One mechanistic feature at a time; each must
+   say what decision error it fixes and how it changes ORDER. Prerequisite if
+   the training pipeline gets involved: fix `buildTeamHistory`'s name-vs-index
+   club join (two features identically zero).
+3. **Transfer round-trip churn pricing at the `planner.js` objective level**
+   (the searchTransfers version filters rather than decides; measured and
+   rejected, see `experiments/transfer-churn.md`). Derive what the planner
+   fails to price before constructing an experiment.
+4. **The top-decile question is WORKED, not open** (entries 12, 13, 16): both
+   measurable components have verdicts (assists REJECT for reranking the wrong
+   way; bonus REJECT-CLOSED with the held-out season voting it down). The
+   residual (cards over-penalized ~15%) is below the instrument's resolution.
+   Any new candidate must first pass the entry-12 order test: a level
+   correction cancels out of every ranking and only crosses hit/chip
+   thresholds.
+5. **Bookmaker odds stay deferred** (owner decision; `odds.js` inert). Every
+   correctness round so far has been worth more than any unproven external
+   signal.
 
 Known and deliberately unfixed:
 
