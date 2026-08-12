@@ -284,10 +284,12 @@ test('both static-page footer generators render every manifest app and nothing e
 
 test('every tested surface lists every manifest app', () => {
     const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
-    // home.html is deliberately absent: its per-app grid was removed
-    // 2026-08-12 and the page now routes through /apps only.
+    // home.html is back on the list: the Side projects strip (added in the
+    // same-day What-we-do redesign) links every app again, replacing the
+    // removed "Open an app" grid with a compact A-Z portfolio row.
     const surfaces = [
         ['apps.html', readFileSync(join(REPO_ROOT, 'apps.html'), 'utf8')],
+        ['home.html', readFileSync(join(REPO_ROOT, 'home.html'), 'utf8')],
         ['partials/header.html', readFileSync(join(REPO_ROOT, 'partials', 'header.html'), 'utf8')],
         ['sitemap-pages.xml', readFileSync(join(REPO_ROOT, 'sitemap-pages.xml'), 'utf8')],
     ];
@@ -341,6 +343,14 @@ test('the apps.html JSON-LD hasPart entries are in A-Z order and cover every app
         .filter((n) => n !== 'Shevato Apps');
     assert.equal(names.length, manifest.apps.length, 'one hasPart entry per app');
     assert.ok(isSortedCI(names), `JSON-LD hasPart out of A-Z order: ${names.join(', ')}`);
+});
+
+test('the homepage side-projects strip lists every app in A-Z order', () => {
+    const html = readRepoFile('home.html');
+    const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
+    const strip = html.slice(html.indexOf('class="side-projects"'), html.indexOf('</nav>', html.indexOf('class="side-projects"')));
+    const slugs = [...strip.matchAll(/href="apps\/([a-z0-9-]+)\/"/g)].map((m) => m[1]);
+    assert.deepEqual(slugs, manifest.apps.map((a) => a.slug), 'strip must list every app, in manifest (A-Z) order');
 });
 
 test('the homepage prose names apps in A-Z order', () => {
