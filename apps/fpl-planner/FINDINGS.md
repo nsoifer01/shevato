@@ -434,18 +434,18 @@ Ranked 2026-08-12, evening, after 2025-26 qualified (entry 15), bonus closed
 (entry 16), the defcon denominator landed (entry 17) and the prior-weight sweep
 read out (entry 18).
 
-1. **A DECAYING prior-season weight**, mechanism-driven and pre-registered.
-   Entry 18 left the flat weight at 0.5, but its arms jointly point one way:
-   no-prior (the shipped in-season app) loses its EARLY windows and churns
-   (22 hits against the control's 13), while full-prior collapses LATE and in
-   the regime-change season (-50.3 a window in 2025-26). A weight that is high
-   in August and near zero by spring is the natural shape; it must be a new
-   pre-registered experiment, not a tweak of entry 18. If it wins at the bar,
-   THEN the production data path (section 9 of the 2026-08-12 directive:
-   pre-season bootstrap snapshot carried forward, `code` identity, versioned
-   artifact) becomes worth designing - entry 18's w25-vs-w0 contrast (+15.6 a
-   window, t 1.55, positive in all three seeded seasons) is the current
-   estimate of what that path is worth.
+1. **The prior-weight family is PARKED** (entries 18, 20, 21; two
+   pre-registered inconclusives). The decay hypothesis was disconfirmed by
+   diagnosis: implied K is 1-5 equivalent matches at every m in every season
+   pair, flat. The derived small weight then failed its primary (t 0.52 with a
+   2023-24 collapse), and the durable discovery is that per-season optimal
+   weights genuinely differ (2023-24 wants K~19+, 2025-26 wants K~2-5) through
+   a channel start-rate persistence does not see. Reopening requires (a) a
+   fifth season, or (b) finding the 2023-24 channel first - candidate suspects
+   are xG/xA rate quality and opening-15 construction. The production-path
+   contrast (light prior vs none) has now read +14.5 to +15.6 a window at
+   t 1.5-1.7, positive in every exposed season, twice - consistent evidence,
+   below every registered bar.
 2. **Multi-season player-history features**, unblocked by `code` identity and
    the evidence-denominator fixes. One mechanistic feature at a time; each must
    say what decision error it fixes and how it changes ORDER. Prerequisite if

@@ -1569,3 +1569,115 @@ proportionally. **No verdict changes**: w25 still does not clear the
 pre-registered bar, and both structural-window alarms read exactly zero. The
 primary contrast (w25 vs w0, +15.6 a window, t 1.55) was already computed on
 exposed windows only and is unaffected.
+
+## 20. The decay hypothesis is disconfirmed by diagnosis; the prior is worth 2-3 matches, flat
+
+- **Date:** 2026-08-12
+- **Kind:** mechanism diagnosis (registry Methodology step: diagnose before
+  coding). No planner points were consumed in the derivation.
+
+### What entry 18's raw windows actually show
+
+Grouping the clean run's paired deltas by window start, exposed seasons only
+(mean delta per window vs control 0.5):
+
+| window start | w0 | w25 | w100 |
+| --- | ---: | ---: | ---: |
+| gw1 (EARLY) | **-95.6** | -34.9 | -40.4 |
+| gw7 | -13.9 | +25.4 | -42.3 |
+| gw14 | +27.6 | +49.9 | -15.2 |
+| gw20 | +34.2 | +27.9 | +18.8 |
+| gw27 (LATE) | +13.1 | +0.9 | -34.7 |
+
+Two facts, one of which kills the decay framing: (1) removing the prior is
+catastrophic ONLY in the opening windows, consistently across all three
+exposed seasons (-100 / -161 / -26 at gw1-13); (2) full weight is bad nearly
+EVERYWHERE, including early - "good early, bad late" is false. The early
+optimum among tested arms is 0.5, the mid/late optimum is 0.25 or less: the
+ranking inverts around gw14.
+
+### The leakage-free derivation
+
+The engine's flat weight w IS an equivalent-sample prior with K = 38w: the
+blended rate is (K*P + m*C)/(K + m). So "should w decay?" is "does the K that
+best predicts near-future performance fall with m?" - measurable from the
+archive alone. For every returning player with 10+ prior matches, blend his
+prior-season start rate P with his current-to-date rate C at each m and score
+it against his realized NEXT-5-match start rate, across all three season
+pairs (~1,500 players per m):
+
+| m | 2 | 4 | 6 | 9 | 12 | 16 | 20 | 25 | 30 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| best K | 2 | 2 | 2 | 2 | 3 | 5 | 3 | 3 | 3 |
+
+Per season pair the picture is identical (K in {1,2,3,5} everywhere, including
+regime-change 2025-26). **There is no decay. The prior is worth 2-3 equivalent
+matches at every point of the season** - one seventh of what the replay's 0.5
+default (K=19) grants it, and K=19's prediction error is worse than K=2-3 at
+EVERY m, worse even than K=0 from m=4 on.
+
+### Why the planner table looked like decay
+
+The boundary regime. At m~0 the blend equals P for ANY K > 0, so a small K
+substitutes fully for absent evidence; w0's early collapse is not "the prior
+matters more early", it is players falling to crude price priors when NOTHING
+else exists. One small flat K covers both regimes: full substitution at m~0,
+near-optimal light weighting after. What made 0.25 look like an interior peak
+in entry 18 is that the true optimum (~w 0.07) lies LEFT of every nonzero arm
+tested.
+
+### What follows
+
+Entry 21: a pre-registered test of the DERIVED weight w = 2.5/38 = 0.066, with
+a K=5 robustness bracket that can warn but cannot ship. The decaying-prior
+experiment that FINDINGS ranked first is cancelled as designed - building it
+after this diagnosis would have been manufacturing an experiment for a
+mechanism the data says does not exist.
+
+## 21. The derived prior weight: INCONCLUSIVE, and the family is now PARKED
+
+- **Date:** 2026-08-12
+- **Pre-registered** in `experiments/configs/prior-weight-derived.mjs` before
+  the run: primary w007 (the persistence-derived 0.066) vs control 0.5, SHIP at
+  t >= 2 with no exposed-season mean below -15 and no loss to w0; secondary
+  w007 vs w0 as the production-path question; w013 as a bracket that can warn
+  but not ship; a second INCONCLUSIVE parks the family until a fifth season.
+
+### Results, 15 exposed windows (2022-23 structural, alarms clean)
+
+| contrast | mean/window | t | W-L-T | 2023-24 | 2024-25 | 2025-26 |
+| --- | ---: | ---: | --- | ---: | ---: | ---: |
+| w007 vs control | +7.6 | 0.52 | 10-5-0 | **-21.7** | +2.1 | +42.3 |
+| w013 vs control | +12.2 | 0.93 | 9-6-0 | **-29.3** | +23.9 | +41.9 |
+| w0 vs control | -6.9 | -0.39 | 8-7-0 | -28.0 | -12.7 | +20.0 |
+| w007 vs w0 (secondary) | +14.5 | 1.74 | 11-4-0 | +6.3 | +14.9 | +22.3 |
+| w013 vs w007 (bracket) | +4.6 | 0.65 | 5-10-0 | -7.7 | +21.8 | -0.4 |
+
+Decision counters: w007 has the fewest hits of any arm ever measured on this
+instrument (6, against control's 13 and w0's 22) and cuts transfers, with
+captaincy value above w0 but below control (1906 vs 2096).
+
+### Verdict: INCONCLUSIVE. The family is PARKED until a fifth season exists.
+
+The primary fails twice over - t 0.52, and a 2023-24 collapse at -21.7 a
+window (3W-12L), below the registered line. The bracket does not warn (it
+loses 10 of 15 windows to the candidate). The secondary production-path
+question reads +14.5 at t 1.74, positive in all three exposed seasons - the
+second consecutive consistent-direction sub-bar reading of that contrast
+(entry 18's w25-vs-w0: +15.6 at t 1.55) - and stays evidence, not a mandate.
+The replay default remains 0.5; no production prior-evidence infrastructure is
+built.
+
+### The durable discovery, which narrows any future reopening
+
+**The per-season optimal prior weight is strongly season-dependent, and
+next-5-match start-rate persistence does not capture what drives it.** Every
+light-prior arm loses 2023-24 by 20-30 a window (that season wants K near 19+;
+even w100 was +8.1 there) while 2025-26 wants K of 2-5 and 2024-25 sits
+between - yet entry 20's per-player persistence measurement reads K=1-5 in ALL
+THREE pairs, including for 2023-24. So the planner value of the prior flows
+through channels the start-rate diagnostic does not see (candidate suspects:
+xG/xA rate quality, and early-window squad construction where a wrong opening
+15 echoes for weeks). Any future reopening must first find the 2023-24
+channel; running more weights is known to be useless, because no flat weight
+can satisfy three seasons whose optima genuinely differ.
