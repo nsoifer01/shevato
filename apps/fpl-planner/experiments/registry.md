@@ -34,9 +34,11 @@ Baselines, same settings. Measured 2026-08-12 on the corrected replay evidence
 
 The deciding instrument is now FOUR seasons x 5 sliding windows x 3 seeds =
 **20 window observations, 60 paired trajectories** (entry 15). Current control:
-**44,181** (11,138 / 11,134 / 11,779 / 10,130). Chips-on full seasons under
-each season's own rules: **9,015** (2239 / 2283 / 2453 / 2040). Superseded
-three-season values: 34,051 (entries 11+14), 34,071, 33,684, 32,713.
+**44,296** (10,897 / 10,943 / 11,779 / 10,677), measured after entry 17's
+defcon-denominator fix, which also corrected the pooled shrinkage target and so
+moved every season. Chips-on full seasons under each season's own rules were
+9,015 before entry 17. Superseded: 44,181 (entry 15), 34,051 (entries 11+14),
+34,071, 33,684, 32,713.
 
 `greedy-xp` is this planner at horizon 1 and so does not move with the default;
 `hold` and `fdr` do, because their opening squad is built over the horizon.
@@ -1462,3 +1464,61 @@ SPEC 14.4 cheat-hook was updated to declare `xMinutes` alongside the xG it
 injects - the covered-minutes contract now applies to feature injectors too.
 
 Null arm exactly zero on all 60 trajectories; validator clean; 787/787.
+
+## 18. Prior-season evidence weight: default stays 0.5, production path not yet earned
+
+- **Date:** 2026-08-12
+- **Pre-registered** in `experiments/configs/prior-weight.mjs` before the run:
+  arms 0 / 0.25 / 0.5 (control) / 1.0; the replay default changes only on
+  t >= 2 against control with no season collapse; the PRIMARY question is
+  whether w=0 (the shipped in-season production app, which has no prior
+  evidence at all) is materially worse than the best nonzero arm at t >= 2; a
+  best cell in a non-monotone sweep is noise.
+- **The first run is VOID for 2025-26**: it surfaced the defcon-denominator
+  defect (entry 17) exactly as a season-concentrated anomaly should. Numbers
+  below are the clean re-run on the corrected tree. 2022-23 has no downloadable
+  predecessor, so its five windows are structural ties in every arm and the
+  effective sample is 15 windows.
+
+### Results, 20 windows (per-window mean vs control 0.5)
+
+| arm | mean | t | W-L-T | 2023-24 | 2024-25 | 2025-26 |
+| --- | ---: | ---: | --- | ---: | ---: | ---: |
+| w0 | -5.2 | -0.40 | 8-7-5 | -28.0 | -12.7 | +20.0 |
+| w25 | +10.4 | 1.32 | 10-5-5 | -9.0 | +18.3 | +32.3 |
+| w100 | -17.1 | -1.87 | 5-10-5 | +8.1 | -26.1 | -50.3 |
+
+Pre-registered primary contrast, w25 against w0: **+15.6 a window, t 1.55,
+10W-5L-5T, positive in all three seeded seasons** (+19.0 / +31.0 / +12.3).
+
+Decision counters across the 60 trajectories: hits fall monotonically with
+weight (22 / 13 / 6 / 5 for w0 / control / w25 / w100) and captaincy value
+peaks at w25 (1566 / 2096 / 2184 / 1979). The no-prior app churns more and
+captains worse; the full-weight app is over-anchored, catastrophically so in
+2025-26 (-50.3 a window), a regime-change season whose scoring environment
+dropped sharply from its predecessor - THAT reading survived the defcon fix
+and is about the weight, not the instrument.
+
+### Verdicts
+
+- **Replay default: stays 0.5.** The sweep has an interior shape (-5.2 / +10.4
+  / 0 / -17.1 across 0 / 0.25 / 0.5 / 1.0) but w25 does not clear the
+  registered bar. Not cell-picked.
+- **Primary question: INCONCLUSIVE, direction consistent.** Moderate prior
+  evidence beats none in every season that can express it, by about 15 a
+  window, at t 1.55 against a registered bar of 2. Under section 9 discipline a
+  replay win is required BEFORE production data-path work, so no production
+  prior-evidence path is designed yet.
+- **Re-test when** a fifth season qualifies (2026-27), or with a
+  mechanism-driven redesign (a prior that DECAYS over the season instead of a
+  flat weight - w100's 2025-26 collapse and w0's early-window losses point the
+  same direction: the right weight is high early and low late). That redesign
+  is a new pre-registered experiment, not a tweak of this one.
+
+### Baseline note
+
+Entry 17's fix moved the control itself (the pooled shrinkage target was
+diluted too, which reaches even 2022-23 through its xG prior): the deciding
+instrument's control arm is now **44,296** (10,897 / 10,943 / 11,779 / 10,677),
+superseding entry 15's 44,181. As always, nothing compares against a stored
+baseline; the runner re-measures control every run.
