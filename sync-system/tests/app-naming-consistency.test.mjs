@@ -178,7 +178,7 @@ function readRepoFile(...parts) {
 test('the homepage app grid is in A-Z order', () => {
     const html = readRepoFile('home.html');
     const names = [...html.matchAll(/href="apps\/[a-z0-9-]+\/">([^<]*)<span>/g)].map((m) => m[1].trim());
-    assert.equal(names.length, 7, 'expected all seven apps in the homepage grid');
+    assert.equal(names.length, 8, 'expected all eight apps in the homepage grid');
     assert.ok(isSortedCI(names), `homepage grid out of A-Z order: ${names.join(', ')}`);
 });
 
@@ -186,7 +186,7 @@ test('the apps hub cards are in A-Z order', () => {
     const html = readRepoFile('apps.html');
     const section = html.slice(html.indexOf('<div class="highlights">'));
     const names = [...section.matchAll(/<h3>([^<]*)<\/h3>/g)].map((m) => m[1].trim());
-    assert.equal(names.length, 7, 'expected all seven app cards');
+    assert.equal(names.length, 8, 'expected all eight app cards');
     assert.ok(isSortedCI(names), `apps.html cards out of A-Z order: ${names.join(', ')}`);
 });
 
@@ -195,9 +195,9 @@ test('the header nav app menu is in A-Z order', () => {
     // The nav renders twice (desktop dropdown + mobile list); check each run
     // separately rather than the concatenation, which would never be sorted.
     const links = [...html.matchAll(/href="\/apps\/[a-z0-9-]+\/"[^>]*>([^<]*)</g)].map((m) => m[1].trim());
-    assert.equal(links.length, 14, 'expected seven apps in each of the two nav blocks');
-    const desktop = links.slice(0, 7);
-    const mobile = links.slice(7);
+    assert.equal(links.length, 16, 'expected eight apps in each of the two nav blocks');
+    const desktop = links.slice(0, 8);
+    const mobile = links.slice(8);
     assert.ok(isSortedCI(desktop), `header desktop nav out of A-Z order: ${desktop.join(', ')}`);
     assert.ok(isSortedCI(mobile), `header mobile nav out of A-Z order: ${mobile.join(', ')}`);
 });
@@ -212,13 +212,13 @@ test('the apps hub CollectionPage JSON-LD lists apps in A-Z order', () => {
             if (part.name) names.push(part.name);
         }
     }
-    assert.equal(names.length, 7, 'expected all seven apps in hasPart');
+    assert.equal(names.length, 8, 'expected all eight apps in hasPart');
     assert.ok(isSortedCI(names), `apps.html JSON-LD out of A-Z order: ${names.join(', ')}`);
 });
 
 test('the sitemap lists the app landing pages in A-Z order', () => {
     const xml = readRepoFile('sitemap-pages.xml');
     const slugs = [...xml.matchAll(/<loc>https:\/\/shevato\.com\/apps\/([a-z0-9-]+)\/<\/loc>/g)].map((m) => m[1]);
-    assert.equal(slugs.length, 7, 'expected seven app landing pages in the sitemap');
+    assert.equal(slugs.length, 8, 'expected eight app landing pages in the sitemap');
     assert.ok(isSortedCI(slugs), `sitemap app order not A-Z: ${slugs.join(', ')}`);
 });

@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- CRITICAL: immediate sync override must run before any localStorage call -->
+  <script src="../../sync-system/sync-immediate.js"></script>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Enter your FPL Team ID and get one clear plan for the gameweek: which transfers to make, whether to take a hit or roll, who to captain, and whether to play a chip. Every recommendation is explained from expected points, expected minutes and fixture projections.">
+  <meta name="keywords" content="FPL planner, Fantasy Premier League planner, FPL transfer planner, FPL team optimizer, FPL captain picker, FPL wildcard planner, expected points FPL, FPL chip strategy, fantasy football planner">
+  <meta name="author" content="Shevato LLC">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta name="theme-color" content="#0b0d12">
+  <meta name="color-scheme" content="dark">
+  <link rel="canonical" href="https://shevato.com/apps/fpl-planner/" />
+  <title>FPL Planner | Fantasy Premier League transfer and captain planner - Shevato</title>
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="FPL Planner | Your Fantasy Premier League gameweek plan" />
+  <meta property="og:description" content="One Team ID in, one plan out: transfers, hit or roll, captain, vice and chip, each explained from real projections." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://shevato.com/apps/fpl-planner/" />
+  <meta property="og:image" content="https://shevato.com/images/og/fpl-planner.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:alt" content="FPL Planner: Fantasy Premier League transfer, captain and chip planner" />
+  <meta property="og:site_name" content="Shevato" />
+  <meta property="og:locale" content="en_US" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="FPL Planner | Your Fantasy Premier League gameweek plan" />
+  <meta name="twitter:description" content="One Team ID in, one plan out: transfers, hit or roll, captain, vice and chip, each explained from real projections." />
+  <meta name="twitter:image" content="https://shevato.com/images/og/fpl-planner.png" />
+  <meta name="twitter:image:alt" content="FPL Planner: Fantasy Premier League transfer, captain and chip planner" />
+  <meta name="twitter:site" content="@shevato" />
+
+  <!-- Breadcrumbs -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://shevato.com/home" },
+      { "@type": "ListItem", "position": 2, "name": "Apps", "item": "https://shevato.com/apps" },
+      { "@type": "ListItem", "position": 3, "name": "FPL Planner", "item": "https://shevato.com/apps/fpl-planner/" }
+    ]
+  }
+  </script>
+
+  <!-- WebApplication -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "FPL Planner",
+    "description": "A Fantasy Premier League planning tool: enter your Team ID and get a single recommended plan for the gameweek, covering transfers, whether to take a hit or roll, captain and vice-captain, chip strategy and your best starting eleven, with every recommendation explained from expected points, expected minutes and fixture projections.",
+    "url": "https://shevato.com/apps/fpl-planner/",
+    "applicationCategory": "SportsApplication",
+    "operatingSystem": "Web Browser",
+    "browserRequirements": "Requires JavaScript. Works on all modern browsers.",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "featureList": [
+      "Squad import from an FPL Team ID",
+      "Recommended transfers with reconstructed selling prices",
+      "Hit or roll decision with the value of keeping a free transfer",
+      "Captain and vice-captain picks scored on upside as well as mean points",
+      "Optimal starting eleven and auto-sub bench order",
+      "Chip strategy for wildcard, free hit, bench boost and triple captain",
+      "Multi-gameweek planning over a rolling horizon",
+      "Expected points, expected minutes and fixture projections per player",
+      "Pre-season squad builder for opening gameweeks"
+    ],
+    "author": {
+      "@type": "Organization",
+      "name": "Shevato LLC",
+      "url": "https://shevato.com"
+    }
+  }
+  </script>
+
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚽</text></svg>">
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" crossorigin="anonymous" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="../../assets/css/main.css">
+  <link rel="stylesheet" href="../../assets/css/sync-status.css">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="/assets/css/back-to-top.css">
+
+  <!-- Google Analytics. Loaded async + defer so it never blocks first paint;
+       all tracking goes through the shared helper in analytics.js, which
+       no-ops if gtag is blocked. See privacy.html "Analytics and cookies". -->
+  <link rel="preconnect" href="https://www.googletagmanager.com" crossorigin>
+  <link rel="dns-prefetch" href="https://www.google-analytics.com">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-GEQGY35JJN"></script>
+  <script defer src="/assets/js/analytics.js"></script>
+</head>
+<!-- SCOPING CONTRACT (see the header comment in apps/trip-planner/css/styles.css):
+     body.fpl-page carries page-level tokens only. ALL element styling is scoped
+     to the .fpl-planner-app ROOT WRAPPER below, so shared chrome (header,
+     footer, the sign-out modal, #sync-banner) can never be restyled by this
+     app. Enforced by sync-system/tests/shared-ui-consistency.test.mjs. -->
+<body class="fpl-page">
+  <!-- Sync status banner, only visible when offline (and briefly on recovery).
+       Managed by assets/js/sync-status.js. Shared chrome: stays OUTSIDE the
+       app root wrapper. -->
+  <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
+  <div data-include="header"></div>
+
+  <div class="fpl-planner-app">
+    <main class="fpl-main">
+      <!-- The app mounts here once a Team ID is connected. It stays empty in
+           the served HTML so the page a crawler sees is identical for every
+           visitor, whatever Team ID a browser happens to have stored. -->
+      <!-- aria-live: the plan is computed asynchronously in a worker and swapped
+           in here, so without a live region a screen reader announces nothing
+           when the staged progress advances or the recommendation finally
+           lands. "polite" rather than "assertive" so it waits for a pause
+           instead of interrupting. -->
+      <div id="fpl-app" class="fpl-app" role="region" aria-label="Your gameweek plan" aria-live="polite" aria-busy="false" hidden></div>
+
+      <!-- Landing: the onboarding form plus the public description of the
+           tool. Hidden by script once a plan is on screen. -->
+      <section id="fpl-landing" class="fpl-landing">
+        <header class="fpl-landing-head">
+          <p class="fpl-eyebrow">Fantasy Premier League</p>
+          <h1>FPL Planner</h1>
+          <p class="fpl-lede">Enter your Team ID and get one plan for the gameweek: the transfers to make, whether to take a hit or roll, who to captain, and whether to play a chip. Every line of it is explained from the numbers behind it.</p>
+        </header>
+
+        <form id="fpl-onboard" class="fpl-onboard" novalidate>
+          <label class="fpl-field-label" for="fpl-team-id">Your FPL Team ID</label>
+          <div class="fpl-onboard-row">
+            <input id="fpl-team-id" class="fpl-input" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="1234567" aria-describedby="fpl-onboard-hint">
+            <button id="fpl-onboard-go" class="fpl-btn fpl-btn-primary" type="submit">Build My Plan</button>
+          </div>
+          <p id="fpl-onboard-error" class="fpl-onboard-error" role="alert" hidden></p>
+          <p id="fpl-onboard-hint" class="fpl-onboard-hint">Open the Fantasy Premier League site, go to Points, and read the number in the address bar after <code>/entry/</code>. That is your Team ID. Nothing else is needed: squad, budget, free transfers and chips are all read for you.</p>
+        </form>
+
+        <div class="fpl-landing-prose">
+          <section class="fpl-prose-block">
+            <h2>One answer, not a wall of statistics</h2>
+            <p>Most FPL tools hand you tables and leave the decision to you. This one commits. It reads your squad from the public Fantasy Premier League API, projects every player over a rolling multi gameweek horizon, and returns a single recommendation for the deadline: the transfer to make or the free transfer to bank, the captain and vice-captain, the starting eleven and bench order, and whether a chip is worth playing this week.</p>
+          </section>
+          <section class="fpl-prose-block">
+            <h2>How the plan is built</h2>
+            <ul class="fpl-prose-list">
+              <li><strong>Expected minutes first.</strong> A player who starts six games in ten is not the same asset as one who starts ten, so appearance and start probability drive everything downstream.</li>
+              <li><strong>Fixtures as probabilities.</strong> Each match becomes expected goals for and against and a clean sheet probability, rather than a difficulty colour.</li>
+              <li><strong>Position specific scoring.</strong> Keepers are projected on saves and clean sheets, defenders on clean sheets and defensive contribution, attackers on expected goals and assists.</li>
+              <li><strong>Real prices.</strong> Selling prices are reconstructed from your transfer history, so a recommendation you cannot afford is never shown.</li>
+              <li><strong>Horizon, not just this week.</strong> A transfer that wins this gameweek and loses the ones after it is not an upgrade, and the planner is scored on the whole horizon net of any hit.</li>
+            </ul>
+          </section>
+          <section class="fpl-prose-block">
+            <h2>Transfer planner, captain picker and chip strategy</h2>
+            <p>The transfer search checks every candidate against budget, club limit, position counts and squad size before it is scored, so an illegal or unaffordable move cannot reach the screen. Hits are recommended only when the horizon gain clears the four point cost with room to spare, and keeping a free transfer is treated as a real option with its own value rather than as doing nothing. Captaincy is scored on upside as well as average points, because the captain armband is a risk decision. Wildcard, free hit, bench boost and triple captain are each evaluated against the rest of the season, and "hold your chips" is a normal, confident answer.</p>
+          </section>
+          <section class="fpl-prose-block">
+            <h2>Before the season starts</h2>
+            <p>Between seasons there is no squad to import, because Fantasy Premier League only publishes picks once a gameweek has been played. The planner says so plainly and offers the same optimizer as a squad builder, so you can open the season with a legal, affordable fifteen. When gameweek one goes live, the normal import takes over.</p>
+          </section>
+        </div>
+
+        <p class="fpl-attribution">Data from the public Fantasy Premier League API. This site is not affiliated with, endorsed by, or connected to the Premier League or Fantasy Premier League.</p>
+      </section>
+    </main>
+  </div><!-- /.fpl-planner-app -->
+
+  <div data-include="footer"></div>
+
+  <script src="../../assets/js/jquery.min.js"></script>
+  <script src="../../assets/js/browser.min.js"></script>
+  <script src="../../assets/js/breakpoints.min.js"></script>
+  <script src="../../assets/js/util.js"></script>
+
+  <!-- Firebase storage sync (matches other apps) -->
+  <script type="module" src="../../firebase-config.js"></script>
+  <script type="module" src="../../sync-system/storage-sync-robust.js"></script>
+  <script type="module" src="../../sync-system/app-sync-init.js"></script>
+  <script src="../../sync-system/sync-debug.js"></script>
+  <script src="../../sync-system/sync-loading-modal.js"></script>
+  <script src="../../sync-system/sync-modal-integration.js"></script>
+
+  <!-- Site main JS: injects header/footer partials and mounts the auth UI -->
+  <script src="../../assets/js/main.js"></script>
+
+  <!-- App -->
+  <script type="module" src="js/app.js"></script>
+  <script src="/assets/js/back-to-top.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+{
+  "models": [
+    {
+      "version": 1,
+      "modelVersion": "fpl-planner-v1",
+      "file": "fpl-planner-v1.json",
+      "trainedAt": "2026-08-10T22:01:45.875Z",
+      "datasetVersion": "vaastav-merged-gw-1",
+      "featureVersion": "fv1",
+      "pointsWinner": "ridge-lambda-1",
+      "pointsValidationRmse": 2.035306917759489,
+      "pointsValidationMae": 1.0772249478342262,
+      "startWinner": "logistic-lambda-100",
+      "startValidationLogLoss": 0.2987471759968764
+    },
+    {
+      "version": 2,
+      "modelVersion": "fpl-planner-v2",
+      "file": "fpl-planner-v2.json",
+      "trainedAt": "2026-08-11T00:55:29.552Z",
+      "datasetVersion": "vaastav-merged-gw-1",
+      "featureVersion": "fv2",
+      "pointsWinner": "ridge-lambda-1",
+      "pointsValidationRmse": 1.8950830979562177,
+      "pointsValidationMae": 1.0078114442356347,
+      "startWinner": "logistic-lambda-1",
+      "startValidationLogLoss": 0.2804939626978079
+    }
+  ],
+  "updatedAt": "2026-08-11T00:55:29.552Z"
+}

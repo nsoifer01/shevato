@@ -1,0 +1,1515 @@
+{
+  "datasetVersion": "vaastav-merged-gw-1",
+  "featureVersion": "fv2",
+  "trainedAt": "2026-08-11T00:55:29.552Z",
+  "seed": 20260810,
+  "seasons": [
+    "2022-23",
+    "2023-24",
+    "2024-25",
+    "2025-26"
+  ],
+  "periods": {
+    "train": "2022-23, 2023-24, 2024-25 plus 2025-26 GW 4-19",
+    "validation": "2025-26 GW 20-29",
+    "test": "2025-26 GW 30-38"
+  },
+  "rowCounts": {
+    "total": 103495,
+    "train": 88117,
+    "validation": 8036,
+    "test": 7342
+  },
+  "features": [
+    "nineties",
+    "minutesPerGw",
+    "startRate",
+    "xg90",
+    "xa90",
+    "bps90",
+    "saves90",
+    "xgc90",
+    "pointsPerGame",
+    "recentMinutes",
+    "recentStartRate",
+    "recentXg90",
+    "recentXa90",
+    "recentPointsPerGame",
+    "wasHome",
+    "priceMillions",
+    "isGkp",
+    "isDef",
+    "isMid",
+    "isFwd",
+    "oppConcededPerMatch",
+    "oppScoredPerMatch",
+    "teamScoredPerMatch",
+    "teamConcededPerMatch"
+  ],
+  "sameGwAllowedColumns": [
+    "element",
+    "name",
+    "position",
+    "team",
+    "GW",
+    "round",
+    "fixture",
+    "opponent_team",
+    "was_home",
+    "kickoff_time",
+    "value"
+  ],
+  "requiredColumns": [
+    "element",
+    "name",
+    "position",
+    "team",
+    "GW",
+    "fixture",
+    "opponent_team",
+    "was_home",
+    "value",
+    "minutes",
+    "starts",
+    "expected_goals",
+    "expected_assists",
+    "expected_goals_conceded",
+    "bps",
+    "saves",
+    "total_points",
+    "team_h_score",
+    "team_a_score"
+  ],
+  "seasonSpecificColumns": {
+    "defensive_contribution": "2025-26 onward, when defensive-contribution scoring was introduced",
+    "tackles": "2025-26 onward",
+    "recoveries": "2025-26 onward",
+    "clearances_blocks_interceptions": "2025-26 onward",
+    "mng_win": "2024-25 only, assistant managers",
+    "mng_draw": "2024-25 only, assistant managers",
+    "mng_loss": "2024-25 only, assistant managers",
+    "mng_clean_sheets": "2024-25 only, assistant managers",
+    "mng_goals_scored": "2024-25 only, assistant managers",
+    "mng_underdog_win": "2024-25 only, assistant managers",
+    "mng_underdog_draw": "2024-25 only, assistant managers",
+    "modified": "2024-25 only"
+  },
+  "excludedRows": {
+    "rule": "Rows whose position column is not GK/GKP, DEF, MID or FWD are not footballers and are dropped.",
+    "reason": "The only season that ever had them is 2024-25 (assistant managers, position \"AM\"). They record no minutes and no starts, so every feature describing them is zero, and their points came entirely from mng_* columns that no other season has. Keeping them would put an abolished scoring system into both the training set and the held-out block.",
+    "bySeason": [
+      {
+        "season": "2024-25",
+        "rows": 322,
+        "positions": [
+          {
+            "position": "AM",
+            "count": 322
+          }
+        ]
+      }
+    ]
+  },
+  "scaler": {
+    "mean": [
+      5.631474693368361,
+      27.665621463796064,
+      0.24601542818685046,
+      0.07967840830031621,
+      0.049739444318005525,
+      15.94201310460631,
+      0.1344918532731199,
+      0.9716002536046927,
+      1.1673470965386243,
+      27.0589644071708,
+      0.268230874859563,
+      0.08070471948935369,
+      0.04873696300005712,
+      1.1504809892906724,
+      0.4996311721915181,
+      4.890167618054219,
+      0.10950213920128919,
+      0.3340331604571195,
+      0.4383263161478489,
+      0.11813838419374241,
+      0,
+      0,
+      1.464453149034074,
+      1.4819857086604933
+    ],
+    "sd": [
+      7.558971774500913,
+      31.143818233192206,
+      0.3315046366222554,
+      0.23973672090909431,
+      0.14246417965452082,
+      37.96178959522678,
+      0.6710368284105114,
+      2.2643780026498503,
+      1.4552141215476848,
+      33.62056656542,
+      0.3792538576678029,
+      0.5078293151577155,
+      0.22181039086943558,
+      1.652195880031004,
+      0.4999998639659954,
+      1.068164032451083,
+      0.3122681871592371,
+      0.4716513629497694,
+      0.49618177789999174,
+      0.3227719107570454,
+      1,
+      1,
+      0.519693901222401,
+      0.4541019842411357
+    ]
+  },
+  "seasonWeighting": {
+    "parameter": "SEASON_HALF_LIFE_SEASONS",
+    "formula": "weight = 0.5 ** (seasonsOld / halfLifeSeasons), seasonsOld counted back from the newest season",
+    "grid": [
+      null,
+      2,
+      1,
+      0.5,
+      0.25,
+      0.125
+    ],
+    "note": "null means off, every row weighted 1. Selected per target by validation metric; ties go to off.",
+    "scalerIsWeighted": false,
+    "selected": {
+      "points": 0.5,
+      "starts": 0.25
+    },
+    "searched": [
+      {
+        "halfLifeSeasons": null,
+        "weightBySeason": {
+          "2022-23": 1,
+          "2023-24": 1,
+          "2024-25": 1,
+          "2025-26": 1
+        },
+        "points": {
+          "winner": "ridge-lambda-1",
+          "validationRmse": 1.8998364735992255,
+          "validationMae": 1.011670430819688
+        },
+        "starts": {
+          "winner": "logistic-lambda-1",
+          "validationLogLoss": 0.291432445528037,
+          "validationBrier": 0.09001738366404469
+        }
+      },
+      {
+        "halfLifeSeasons": 2,
+        "weightBySeason": {
+          "2022-23": 0.35355339059327373,
+          "2023-24": 0.5,
+          "2024-25": 0.7071067811865476,
+          "2025-26": 1
+        },
+        "points": {
+          "winner": "ridge-lambda-1",
+          "validationRmse": 1.8986860735838713,
+          "validationMae": 1.0114711639395646
+        },
+        "starts": {
+          "winner": "logistic-lambda-1",
+          "validationLogLoss": 0.2895072384065974,
+          "validationBrier": 0.08930435334888863
+        }
+      },
+      {
+        "halfLifeSeasons": 1,
+        "weightBySeason": {
+          "2022-23": 0.125,
+          "2023-24": 0.25,
+          "2024-25": 0.5,
+          "2025-26": 1
+        },
+        "points": {
+          "winner": "ridge-lambda-1",
+          "validationRmse": 1.8972994717328049,
+          "validationMae": 1.0104936788602945
+        },
+        "starts": {
+          "winner": "logistic-lambda-1",
+          "validationLogLoss": 0.2869301883655596,
+          "validationBrier": 0.08838421731113005
+        }
+      },
+      {
+        "halfLifeSeasons": 0.5,
+        "weightBySeason": {
+          "2022-23": 0.015625,
+          "2023-24": 0.0625,
+          "2024-25": 0.25,
+          "2025-26": 1
+        },
+        "points": {
+          "winner": "ridge-lambda-1",
+          "validationRmse": 1.8950830979562177,
+          "validationMae": 1.0078114442356347
+        },
+        "starts": {
+          "winner": "logistic-lambda-1",
+          "validationLogLoss": 0.28191752400298303,
+          "validationBrier": 0.08666151558482367
+        }
+      },
+      {
+        "halfLifeSeasons": 0.25,
+        "weightBySeason": {
+          "2022-23": 0.000244140625,
+          "2023-24": 0.00390625,
+          "2024-25": 0.0625,
+          "2025-26": 1
+        },
+        "points": {
+          "winner": "ridge-lambda-1",
+          "validationRmse": 1.8957776523831429,
+          "validationMae": 1.014920842226259
+        },
+        "starts": {
+          "winner": "logistic-lambda-1",
+          "validationLogLoss": 0.2804939626978079,
+          "validationBrier": 0.08625831263827198
+        }
+      },
+      {
+        "halfLifeSeasons": 0.125,
+        "weightBySeason": {
+          "2022-23": 5.960464477539063e-8,
+          "2023-24": 0.0000152587890625,
+          "2024-25": 0.00390625,
+          "2025-26": 1
+        },
+        "points": {
+          "winner": "ridge-lambda-1",
+          "validationRmse": 1.89894899331226,
+          "validationMae": 1.0307290280654535
+        },
+        "starts": {
+          "winner": "logistic-lambda-1",
+          "validationLogLoss": 0.28176828743050514,
+          "validationBrier": 0.08665963341643992
+        }
+      }
+    ]
+  },
+  "ablation": {
+    "evaluatedOn": "2025-26 GW 20-29 validation, GW 30-38 test",
+    "arms": [
+      {
+        "weighting": "equal weights",
+        "arm": "2025-26",
+        "trainRows": 11860,
+        "points": {
+          "winner": "ridge-lambda-1",
+          "validationRmse": 1.899467175506412,
+          "testRmse": 1.888909097597509,
+          "testMae": 1.0156162094461405,
+          "baselineTestRmse": 1.9395796826966725,
+          "beatsBaselineOnTest": true
+        },
+        "starts": {
+          "winner": "logistic-lambda-1",
+          "validationLogLoss": 0.28204839779204016,
+          "testLogLoss": 0.30226127531134167,
+          "testBrier": 0.09514993433983936,
+          "baselineTestLogLoss": 0.3644341255807541,
+          "beatsBaselineOnTest": true
+        }
+      },
+      {
+        "weighting": "equal weights",
+        "arm": "2024-25 + 2025-26",
+        "trainRows": 36797,
+        "points": {
+          "winner": "ridge-lambda-1",
+          "validationRmse": 1.8945334809239172,
+          "testRmse": 1.8826520590617537,
+          "testMae": 0.9760080576395274,
+          "baselineTestRmse": 1.9395796826966725,
+          "beatsBaselineOnTest": true
+        },
+        "starts": {
+          "winner": "logistic-lambda-1",
+          "validationLogLoss": 0.28008251485163804,
+          "testLogLoss": 0.3009700942720919,
+          "testBrier": 0.09440191409853284,
+          "baselineTestLogLoss": 0.3644341255807541,
+          "beatsBaselineOnTest": true
+        }
+      },
+      {
+        "weighting": "equal weights",
+        "arm": "2023-24 + 2024-25 + 2025-26",
+        "trainRows": 63935,
+        "points": {
+          "winner": "ridge-lambda-1",
+          "validationRmse": 1.8960846634587714,
+          "testRmse": 1.8828526710130913,
+          "testMae": 0.9829145972492306,
+          "baselineTestRmse": 1.9395796826966725,
+          "beatsBaselineOnTest": true
+        },
+        "starts": {
+          "winner": "logistic-lambda-1",
+          "validationLogLoss": 0.27991242047732884,
+          "testLogLoss": 0.30090312211434256,
+          "testBrier": 0.09448795497674277,
+          "baselineTestLogLoss": 0.3644341255807541,
+          "beatsBaselineOnTest": true
+        }
+      },
+      {
+        "weighting": "equal weights",
+        "arm": "2022-23 + 2023-24 + 2024-25 + 2025-26",
+        "trainRows": 88117,
+        "points": {
+          "winner": "ridge-lambda-1",
+          "validationRmse": 1.8998364735992255,
+          "testRmse": 1.8881452610749634,
+          "testMae": 0.9938956870043044,
+          "baselineTestRmse": 1.9395796826966725,
+          "beatsBaselineOnTest": true
+        },
+        "starts": {
+          "winner": "logistic-lambda-1",
+          "validationLogLoss": 0.291432445528037,
+          "testLogLoss": 0.31354681440314536,
+          "testBrier": 0.09783267693035594,
+          "baselineTestLogLoss": 0.3644341255807541,
+          "beatsBaselineOnTest": true
+        }
+      },
+      {
+        "weighting": "equal weights",
+        "arm": "2022-23 + 2023-24 + 2024-25 (no 2025-26 training rows)",
+        "trainRows": 76257,
+        "points": {
+          "winner": "ridge-lambda-1",
+          "validationRmse": 1.9004515895978555,
+          "testRmse": 1.8888300495415742,
+          "testMae": 0.991427689648502,
+          "baselineTestRmse": 1.9395796826966725,
+          "beatsBaselineOnTest": true
+        },
+        "starts": {
+          "winner": "logistic-lambda-1",
+          "validationLogLoss": 0.29185381412235306,
+          "testLogLoss": 0.31391170041939626,
+          "testBrier": 0.0980250588242842,
+          "baselineTestLogLoss": 0.3644341255807541,
+          "beatsBaselineOnTest": true
+        }
+      },
+      {
+        "weighting": "selected decay",
+        "arm": "2025-26",
+        "trainRows": 11860,
+        "points": {
+          "winner": "ridge-lambda-1",
+          "validationRmse": 1.899467175506412,
+          "testRmse": 1.888909097597509,
+          "testMae": 1.0156162094461405,
+          "baselineTestRmse": 1.9395796826966725,
+          "beatsBaselineOnTest": true
+        },
+        "starts": {
+          "winner": "logistic-lambda-1",
+          "validationLogLoss": 0.28204839779204016,
+          "testLogLoss": 0.30226127531134167,
+          "testBrier": 0.09514993433983936,
+          "baselineTestLogLoss": 0.3644341255807541,
+          "beatsBaselineOnTest": true
+        }
+      },
+      {
+        "weighting": "selected decay",
+        "arm": "2024-25 + 2025-26",
+        "trainRows": 36797,
+        "points": {
+          "winner": "ridge-lambda-1",
+          "validationRmse": 1.8943362525196352,
+          "testRmse": 1.8823925692729313,
+          "testMae": 0.9788270906827591,
+          "baselineTestRmse": 1.9395796826966725,
+          "beatsBaselineOnTest": true
+        },
+        "starts": {
+          "winner": "logistic-lambda-1",
+          "validationLogLoss": 0.28049436470468725,
+          "testLogLoss": 0.300623804639265,
+          "testBrier": 0.09440510343024468,
+          "baselineTestLogLoss": 0.3644341255807541,
+          "beatsBaselineOnTest": true
+        }
+      },
+      {
+        "weighting": "selected decay",
+        "arm": "2023-24 + 2024-25 + 2025-26",
+        "trainRows": 63935,
+        "points": {
+          "winner": "ridge-lambda-1",
+          "validationRmse": 1.8946068021646936,
+          "testRmse": 1.8822469385599614,
+          "testMae": 0.9800501880986593,
+          "baselineTestRmse": 1.9395796826966725,
+          "beatsBaselineOnTest": true
+        },
+        "starts": {
+          "winner": "logistic-lambda-1",
+          "validationLogLoss": 0.2804691023983129,
+          "testLogLoss": 0.30060673297434265,
+          "testBrier": 0.0943956451196461,
+          "baselineTestLogLoss": 0.3644341255807541,
+          "beatsBaselineOnTest": true
+        }
+      },
+      {
+        "weighting": "selected decay",
+        "arm": "2022-23 + 2023-24 + 2024-25 + 2025-26",
+        "trainRows": 88117,
+        "points": {
+          "winner": "ridge-lambda-1",
+          "validationRmse": 1.8950830979562177,
+          "testRmse": 1.8831640876323446,
+          "testMae": 0.9841719746308826,
+          "baselineTestRmse": 1.9395796826966725,
+          "beatsBaselineOnTest": true
+        },
+        "starts": {
+          "winner": "logistic-lambda-1",
+          "validationLogLoss": 0.2804939626978079,
+          "testLogLoss": 0.30062333396117485,
+          "testBrier": 0.09439391355825158,
+          "baselineTestLogLoss": 0.3644341255807541,
+          "beatsBaselineOnTest": true
+        }
+      },
+      {
+        "weighting": "selected decay",
+        "arm": "2022-23 + 2023-24 + 2024-25 (no 2025-26 training rows)",
+        "trainRows": 76257,
+        "points": {
+          "winner": "ridge-lambda-1",
+          "validationRmse": 1.8971854569072428,
+          "testRmse": 1.8853337328509108,
+          "testMae": 0.9834182226956173,
+          "baselineTestRmse": 1.9395796826966725,
+          "beatsBaselineOnTest": true
+        },
+        "starts": {
+          "winner": "logistic-lambda-1",
+          "validationLogLoss": 0.2816845474770934,
+          "testLogLoss": 0.3017847293897375,
+          "testBrier": 0.09453687861997237,
+          "baselineTestLogLoss": 0.3644341255807541,
+          "beatsBaselineOnTest": true
+        }
+      }
+    ]
+  },
+  "baseline": "Season points per game carried forward: predict this gameweek with the mean points the player has scored per played gameweek so far this season.",
+  "points": {
+    "target": "total_points",
+    "selectionMetric": "validation RMSE",
+    "selectionRationale": "Validation RMSE. The optimizer sums expected points over a squad, so it needs an unbiased conditional mean; MAE targets the conditional median, which understates a zero-inflated, right-skewed target. MAE is reported for every candidate alongside it.",
+    "seasonHalfLife": 0.5,
+    "winner": "ridge-lambda-1",
+    "winnerByMae": "hurdle-lambda-1",
+    "baseline": "baseline-points-per-game",
+    "beatsBaselineOnTest": true,
+    "candidates": [
+      {
+        "name": "baseline-points-per-game",
+        "kind": "baseline",
+        "description": "Season points per game carried forward: predict this gameweek with the mean points the player has scored per played gameweek so far this season.",
+        "hyperparameters": {},
+        "weights": null,
+        "appearWeights": null,
+        "validation": {
+          "mae": 1.047966639509525,
+          "rmse": 1.9838665246512714,
+          "poissonDeviance": 1.7929611303198427
+        },
+        "test": {
+          "mae": 1.0132706996034977,
+          "rmse": 1.9395796826966725,
+          "poissonDeviance": 1.6629242817467904
+        }
+      },
+      {
+        "name": "ridge-lambda-1",
+        "kind": "ridge",
+        "hyperparameters": {
+          "lambda": 1
+        },
+        "weights": {
+          "intercept": 1.1857762031169905,
+          "byFeature": {
+            "nineties": 0.03358600446046364,
+            "minutesPerGw": -0.3240299017286393,
+            "startRate": 0.262047738197643,
+            "xg90": 0.008412319934799616,
+            "xa90": 0.03874658156527188,
+            "bps90": -0.003529796704985024,
+            "saves90": -0.020315131206564627,
+            "xgc90": 0.01760734897717561,
+            "pointsPerGame": 0.2976769156796029,
+            "recentMinutes": 1.6378537935495951,
+            "recentStartRate": -0.8428659186344876,
+            "recentXg90": 0.04207322598032733,
+            "recentXa90": 0.010797372123971184,
+            "recentPointsPerGame": 0.1534512659320052,
+            "wasHome": 0.06135947583633072,
+            "priceMillions": 0.2102158392229872,
+            "isGkp": 0.006932181584044758,
+            "isDef": 0.00839587001948242,
+            "isMid": -0.00853757455494993,
+            "isFwd": -0.0058506792928087895,
+            "oppConcededPerMatch": 0,
+            "oppScoredPerMatch": 0,
+            "teamScoredPerMatch": -0.03653259746200042,
+            "teamConcededPerMatch": -0.041463786515970796
+          }
+        },
+        "appearWeights": null,
+        "validation": {
+          "mae": 1.0078114442356347,
+          "rmse": 1.8950830979562177,
+          "poissonDeviance": 1.6118467665457548
+        },
+        "test": {
+          "mae": 0.9841719746308826,
+          "rmse": 1.8831640876323446,
+          "poissonDeviance": 1.5478053366461484
+        }
+      },
+      {
+        "name": "ridge-lambda-10",
+        "kind": "ridge",
+        "hyperparameters": {
+          "lambda": 10
+        },
+        "weights": {
+          "intercept": 1.189577701568696,
+          "byFeature": {
+            "nineties": 0.03166371756983721,
+            "minutesPerGw": -0.2504121794248865,
+            "startRate": 0.20575706987645076,
+            "xg90": 0.008636426216441924,
+            "xa90": 0.038957549913913515,
+            "bps90": -0.0035986666373914065,
+            "saves90": -0.02019941423745349,
+            "xgc90": 0.017749108255844505,
+            "pointsPerGame": 0.2912167161613797,
+            "recentMinutes": 1.5531000072040413,
+            "recentStartRate": -0.7714946964351724,
+            "recentXg90": 0.04184793191847557,
+            "recentXa90": 0.010970465864566445,
+            "recentPointsPerGame": 0.15965099807891817,
+            "wasHome": 0.061358738798079314,
+            "priceMillions": 0.2103710225660157,
+            "isGkp": 0.006941369117193775,
+            "isDef": 0.008422689198135897,
+            "isMid": -0.008619569235426287,
+            "isFwd": -0.005772709437897532,
+            "oppConcededPerMatch": 0,
+            "oppScoredPerMatch": 0,
+            "teamScoredPerMatch": -0.036256910025719395,
+            "teamConcededPerMatch": -0.04144126163690135
+          }
+        },
+        "appearWeights": null,
+        "validation": {
+          "mae": 1.007773102062438,
+          "rmse": 1.8953072434577898,
+          "poissonDeviance": 1.6139881793775492
+        },
+        "test": {
+          "mae": 0.9840878807657951,
+          "rmse": 1.883377076861856,
+          "poissonDeviance": 1.5470221971638594
+        }
+      },
+      {
+        "name": "ridge-lambda-100",
+        "kind": "ridge",
+        "hyperparameters": {
+          "lambda": 100
+        },
+        "weights": {
+          "intercept": 1.2020065993186833,
+          "byFeature": {
+            "nineties": 0.024764027770338697,
+            "minutesPerGw": 0.07454775889231327,
+            "startRate": -0.036839667995953645,
+            "xg90": 0.009894977860399381,
+            "xa90": 0.03997106566760663,
+            "bps90": -0.003941346639207257,
+            "saves90": -0.01858254861702959,
+            "xgc90": 0.018550528262950956,
+            "pointsPerGame": 0.2602766752191889,
+            "recentMinutes": 1.1241592646949583,
+            "recentStartRate": -0.4136757136260842,
+            "recentXg90": 0.040585644740378374,
+            "recentXa90": 0.011978200056314878,
+            "recentPointsPerGame": 0.19268694796912506,
+            "wasHome": 0.06122674827414107,
+            "priceMillions": 0.21027251883130052,
+            "isGkp": 0.006432689188746909,
+            "isDef": 0.008793094133850958,
+            "isMid": -0.008951285700930076,
+            "isFwd": -0.005311906390703133,
+            "oppConcededPerMatch": 0,
+            "oppScoredPerMatch": 0,
+            "teamScoredPerMatch": -0.035036187000611806,
+            "teamConcededPerMatch": -0.04120344719793266
+          }
+        },
+        "appearWeights": null,
+        "validation": {
+          "mae": 1.0089005300549156,
+          "rmse": 1.897251621715131,
+          "poissonDeviance": 1.6019341631888513
+        },
+        "test": {
+          "mae": 0.985359037021534,
+          "rmse": 1.8853135546836788,
+          "poissonDeviance": 1.5463586986285691
+        }
+      },
+      {
+        "name": "ridge-lambda-1000",
+        "kind": "ridge",
+        "hyperparameters": {
+          "lambda": 1000
+        },
+        "weights": {
+          "intercept": 1.1725571239769503,
+          "byFeature": {
+            "nineties": 0.03388245848677609,
+            "minutesPerGw": 0.21002087188980711,
+            "startRate": -0.06564560217361237,
+            "xg90": 0.013858968603032526,
+            "xa90": 0.04080125701404083,
+            "bps90": -0.004095055050670488,
+            "saves90": -0.00927951244054901,
+            "xgc90": 0.019724813366780294,
+            "pointsPerGame": 0.220809331309785,
+            "recentMinutes": 0.5322695573087092,
+            "recentStartRate": 0.033747600311156874,
+            "recentXg90": 0.036663696848410164,
+            "recentXa90": 0.01475534720073069,
+            "recentPointsPerGame": 0.248771090564093,
+            "wasHome": 0.058901905123283436,
+            "priceMillions": 0.19912334246124072,
+            "isGkp": 0.0008385401915717957,
+            "isDef": 0.009337091997537591,
+            "isMid": -0.007809932652136365,
+            "isFwd": -0.0024492692754426873,
+            "oppConcededPerMatch": 0,
+            "oppScoredPerMatch": 0,
+            "teamScoredPerMatch": -0.03137586607165271,
+            "teamConcededPerMatch": -0.040095142195590766
+          }
+        },
+        "appearWeights": null,
+        "validation": {
+          "mae": 1.0176310230566792,
+          "rmse": 1.9025075173398083,
+          "poissonDeviance": 1.5749898702561147
+        },
+        "test": {
+          "mae": 0.9971440169850655,
+          "rmse": 1.8902045112700077,
+          "poissonDeviance": 1.5591184832398965
+        }
+      },
+      {
+        "name": "poisson-lambda-1",
+        "kind": "poisson",
+        "hyperparameters": {
+          "lambda": 1,
+          "maxIter": 30,
+          "iterations": 8,
+          "converged": true
+        },
+        "weights": {
+          "intercept": -0.39193061225543774,
+          "byFeature": {
+            "nineties": 0.04500204571422429,
+            "minutesPerGw": 0.006001794316308201,
+            "startRate": 0.18691709489291264,
+            "xg90": 0.031019551366914606,
+            "xa90": 0.061803640301025226,
+            "bps90": -0.04554440147128651,
+            "saves90": 0.16203011371029102,
+            "xgc90": 0.06752810304141224,
+            "pointsPerGame": 0.02159420716439077,
+            "recentMinutes": 1.1423045506448652,
+            "recentStartRate": -0.5161717653460385,
+            "recentXg90": 0.030574330298534798,
+            "recentXa90": 0.01791133944843035,
+            "recentPointsPerGame": 0.050252857403407264,
+            "wasHome": 0.052403102829978225,
+            "priceMillions": 0.05770147113640565,
+            "isGkp": -0.2492869572496323,
+            "isDef": 0.024475423188019974,
+            "isMid": 0.0866896910438103,
+            "isFwd": 0.07214591381929825,
+            "oppConcededPerMatch": 0,
+            "oppScoredPerMatch": 0,
+            "teamScoredPerMatch": -0.020185241782582745,
+            "teamConcededPerMatch": -0.060545028177852185
+          }
+        },
+        "appearWeights": null,
+        "validation": {
+          "mae": 1.0602522523986249,
+          "rmse": 1.9512357773672226,
+          "poissonDeviance": 1.7642499277977208
+        },
+        "test": {
+          "mae": 1.0541134438232493,
+          "rmse": 1.9397799662536432,
+          "poissonDeviance": 1.7469827234982551
+        }
+      },
+      {
+        "name": "poisson-lambda-10",
+        "kind": "poisson",
+        "hyperparameters": {
+          "lambda": 10,
+          "maxIter": 30,
+          "iterations": 8,
+          "converged": true
+        },
+        "weights": {
+          "intercept": -0.3895730867496898,
+          "byFeature": {
+            "nineties": 0.04476603797008153,
+            "minutesPerGw": 0.033179414228299044,
+            "startRate": 0.1652607309866274,
+            "xg90": 0.03102420900120441,
+            "xa90": 0.06181688181153584,
+            "bps90": -0.04548503586775774,
+            "saves90": 0.1614574527058492,
+            "xgc90": 0.06753333257702047,
+            "pointsPerGame": 0.020668823397637277,
+            "recentMinutes": 1.110436414297549,
+            "recentStartRate": -0.4890359934758473,
+            "recentXg90": 0.030504623305776277,
+            "recentXa90": 0.017909451113843823,
+            "recentPointsPerGame": 0.05135989703154035,
+            "wasHome": 0.05241106475184145,
+            "priceMillions": 0.05780987465888069,
+            "isGkp": -0.24845049970176236,
+            "isDef": 0.02440086869347154,
+            "isMid": 0.08639898791286657,
+            "isFwd": 0.07189250352737743,
+            "oppConcededPerMatch": 0,
+            "oppScoredPerMatch": 0,
+            "teamScoredPerMatch": -0.020059533836801938,
+            "teamConcededPerMatch": -0.060367589488025744
+          }
+        },
+        "appearWeights": null,
+        "validation": {
+          "mae": 1.0602354734540655,
+          "rmse": 1.951158648130946,
+          "poissonDeviance": 1.7646018358341138
+        },
+        "test": {
+          "mae": 1.0540186454210716,
+          "rmse": 1.939495237483986,
+          "poissonDeviance": 1.747261390859033
+        }
+      },
+      {
+        "name": "poisson-lambda-100",
+        "kind": "poisson",
+        "hyperparameters": {
+          "lambda": 100,
+          "maxIter": 30,
+          "iterations": 8,
+          "converged": true
+        },
+        "weights": {
+          "intercept": -0.3756846434062053,
+          "byFeature": {
+            "nineties": 0.043567816646374755,
+            "minutesPerGw": 0.1869259852569188,
+            "startRate": 0.04358239318408049,
+            "xg90": 0.030622405764251025,
+            "xa90": 0.06169190132487824,
+            "bps90": -0.04424040684522903,
+            "saves90": 0.15585904768701242,
+            "xgc90": 0.06733096001905711,
+            "pointsPerGame": 0.016331289767707195,
+            "recentMinutes": 0.9145802127283926,
+            "recentStartRate": -0.3235077565591123,
+            "recentXg90": 0.03006334011682793,
+            "recentXa90": 0.017923110936429114,
+            "recentPointsPerGame": 0.05832434862086175,
+            "wasHome": 0.05237506895589446,
+            "priceMillions": 0.058389570941511426,
+            "isGkp": -0.2403761241009158,
+            "isDef": 0.023516575790652212,
+            "isMid": 0.08370396464420084,
+            "isFwd": 0.06951599176921257,
+            "oppConcededPerMatch": 0,
+            "oppScoredPerMatch": 0,
+            "teamScoredPerMatch": -0.019478093643943005,
+            "teamConcededPerMatch": -0.05880599612460619
+          }
+        },
+        "appearWeights": null,
+        "validation": {
+          "mae": 1.0608557077508471,
+          "rmse": 1.951097926997782,
+          "poissonDeviance": 1.767933225533489
+        },
+        "test": {
+          "mae": 1.0543028770472949,
+          "rmse": 1.9383173228740165,
+          "poissonDeviance": 1.7502780401054876
+        }
+      },
+      {
+        "name": "hurdle-lambda-1",
+        "kind": "hurdle",
+        "description": "Logistic P(appears) multiplied by a ridge fit of points among players who appeared.",
+        "hyperparameters": {
+          "lambda": 1
+        },
+        "weights": {
+          "intercept": 2.1962623949965834,
+          "byFeature": {
+            "nineties": 0.06724890998701735,
+            "minutesPerGw": -0.17320933025529714,
+            "startRate": 0.09922276409475991,
+            "xg90": -0.005386573476187664,
+            "xa90": 0.06173498608187677,
+            "bps90": -0.05265225377734735,
+            "saves90": -0.13823771197379264,
+            "xgc90": -0.02576016607081713,
+            "pointsPerGame": 0.2904540590166254,
+            "recentMinutes": 0.6116382135240633,
+            "recentStartRate": -0.22333810625289233,
+            "recentXg90": 0.06396103996041705,
+            "recentXa90": -0.003873900682200916,
+            "recentPointsPerGame": 0.05832806518109714,
+            "wasHome": 0.14961908290347858,
+            "priceMillions": 0.307344042543877,
+            "isGkp": 0.22374487662392728,
+            "isDef": 0.013714894529154142,
+            "isMid": -0.09954513276904138,
+            "isFwd": -0.08347868518315578,
+            "oppConcededPerMatch": 0,
+            "oppScoredPerMatch": 0,
+            "teamScoredPerMatch": -0.04879703879276467,
+            "teamConcededPerMatch": -0.09397071529208595
+          }
+        },
+        "appearWeights": {
+          "intercept": -0.27053177716192545,
+          "byFeature": {
+            "nineties": -0.057692847333259495,
+            "minutesPerGw": 0.817395700776156,
+            "startRate": -0.15165826661934048,
+            "xg90": 0.13914165912798093,
+            "xa90": 0.0804025736601762,
+            "bps90": 0.08909555078506533,
+            "saves90": 0.21872074354412704,
+            "xgc90": 0.11662116492155936,
+            "pointsPerGame": -0.07438092766926546,
+            "recentMinutes": 3.202098604842732,
+            "recentStartRate": -2.0358071495846635,
+            "recentXg90": 0.12848001363646552,
+            "recentXa90": 0.052813933619122684,
+            "recentPointsPerGame": 0.43574543283499917,
+            "wasHome": -0.0028383227546015387,
+            "priceMillions": 0.18729952654212825,
+            "isGkp": -0.4471223894891135,
+            "isDef": 0.0752869722565451,
+            "isMid": 0.15798869064338633,
+            "isFwd": 0.07969028486739815,
+            "oppConcededPerMatch": 0,
+            "oppScoredPerMatch": 0,
+            "teamScoredPerMatch": -0.08542071296571052,
+            "teamConcededPerMatch": 0.017400406644378245
+          }
+        },
+        "validation": {
+          "mae": 1.0051504616853537,
+          "rmse": 1.9008400967004693,
+          "poissonDeviance": 1.5587388317219173
+        },
+        "test": {
+          "mae": 0.982114561736139,
+          "rmse": 1.8895641221428614,
+          "poissonDeviance": 1.5416596570560919
+        }
+      },
+      {
+        "name": "hurdle-lambda-10",
+        "kind": "hurdle",
+        "description": "Logistic P(appears) multiplied by a ridge fit of points among players who appeared.",
+        "hyperparameters": {
+          "lambda": 10
+        },
+        "weights": {
+          "intercept": 2.198468046452844,
+          "byFeature": {
+            "nineties": 0.06633246293611199,
+            "minutesPerGw": -0.13356772835995342,
+            "startRate": 0.07082569544204846,
+            "xg90": -0.004908522915933626,
+            "xa90": 0.06198541665970392,
+            "bps90": -0.05271925932908747,
+            "saves90": -0.13483093060660753,
+            "xgc90": -0.02558462831957213,
+            "pointsPerGame": 0.28608999634344146,
+            "recentMinutes": 0.5674100673531928,
+            "recentStartRate": -0.18819830782919353,
+            "recentXg90": 0.06308228364157434,
+            "recentXa90": -0.0038923406104784354,
+            "recentPointsPerGame": 0.06199708000808288,
+            "wasHome": 0.149484704566641,
+            "priceMillions": 0.30712786994611735,
+            "isGkp": 0.21980195903711966,
+            "isDef": 0.014611665540482368,
+            "isMid": -0.09852728744554794,
+            "isFwd": -0.08253917302822698,
+            "oppConcededPerMatch": 0,
+            "oppScoredPerMatch": 0,
+            "teamScoredPerMatch": -0.04821941853222782,
+            "teamConcededPerMatch": -0.09399081167986055
+          }
+        },
+        "appearWeights": {
+          "intercept": -0.27652699671946984,
+          "byFeature": {
+            "nineties": -0.04986677571789693,
+            "minutesPerGw": 1.0679010856382956,
+            "startRate": -0.37593025450844936,
+            "xg90": 0.14167690613085537,
+            "xa90": 0.0832057981680124,
+            "bps90": 0.08577811682003995,
+            "saves90": 0.21457155358704688,
+            "xgc90": 0.11999566709654291,
+            "pointsPerGame": -0.06993216984794448,
+            "recentMinutes": 2.5617939562140277,
+            "recentStartRate": -1.483070979867478,
+            "recentXg90": 0.13048085644737353,
+            "recentXa90": 0.05580910976840652,
+            "recentPointsPerGame": 0.47076899727369426,
+            "wasHome": -0.0030142210668623,
+            "priceMillions": 0.18465689809798572,
+            "isGkp": -0.4322159244142269,
+            "isDef": 0.07460899739072255,
+            "isMid": 0.15130429321262295,
+            "isFwd": 0.07653520593624198,
+            "oppConcededPerMatch": 0,
+            "oppScoredPerMatch": 0,
+            "teamScoredPerMatch": -0.08690330588252791,
+            "teamConcededPerMatch": 0.018970765792760025
+          }
+        },
+        "validation": {
+          "mae": 1.0070629047988988,
+          "rmse": 1.9016367065022506,
+          "poissonDeviance": 1.5622742172106023
+        },
+        "test": {
+          "mae": 0.984338080581292,
+          "rmse": 1.8905860102452905,
+          "poissonDeviance": 1.5447264900825073
+        }
+      },
+      {
+        "name": "hurdle-lambda-100",
+        "kind": "hurdle",
+        "description": "Logistic P(appears) multiplied by a ridge fit of points among players who appeared.",
+        "hyperparameters": {
+          "lambda": 100
+        },
+        "weights": {
+          "intercept": 2.2033686395460492,
+          "byFeature": {
+            "nineties": 0.06237500622683759,
+            "minutesPerGw": 0.01186109862296452,
+            "startRate": -0.02267551680548271,
+            "xg90": -0.002241549585467075,
+            "xa90": 0.06178468144323692,
+            "bps90": -0.052101406649621505,
+            "saves90": -0.10730144489379054,
+            "xgc90": -0.025954894498769168,
+            "pointsPerGame": 0.26244055685266954,
+            "recentMinutes": 0.3832198089760946,
+            "recentStartRate": -0.04898859843188554,
+            "recentXg90": 0.05717826967784841,
+            "recentXa90": -0.0035614354807169324,
+            "recentPointsPerGame": 0.08217771785700895,
+            "wasHome": 0.14799785420141584,
+            "priceMillions": 0.3041585481953988,
+            "isGkp": 0.18708730931596926,
+            "isDef": 0.021591961950114515,
+            "isMid": -0.08967844661570203,
+            "isFwd": -0.0746920079418761,
+            "oppConcededPerMatch": 0,
+            "oppScoredPerMatch": 0,
+            "teamScoredPerMatch": -0.044241219160165726,
+            "teamConcededPerMatch": -0.09408277571605826
+          }
+        },
+        "appearWeights": {
+          "intercept": -0.3690614531083471,
+          "byFeature": {
+            "nineties": 0.02930920876794797,
+            "minutesPerGw": 0.7572329626970822,
+            "startRate": -0.24283842959508387,
+            "xg90": 0.14801750358823768,
+            "xa90": 0.09029543643343382,
+            "bps90": 0.07379011193876632,
+            "saves90": 0.1724362824919075,
+            "xgc90": 0.1291323938860323,
+            "pointsPerGame": 0.09325412572893317,
+            "recentMinutes": 1.2643967812569008,
+            "recentStartRate": -0.3379919359286044,
+            "recentXg90": 0.1390833317646176,
+            "recentXa90": 0.0646500507316519,
+            "recentPointsPerGame": 0.4861628866648695,
+            "wasHome": -0.003557059225716096,
+            "priceMillions": 0.17094144939053202,
+            "isGkp": -0.350477786475624,
+            "isDef": 0.06458208197865452,
+            "isMid": 0.12110098123688838,
+            "isFwd": 0.05853897204089082,
+            "oppConcededPerMatch": 0,
+            "oppScoredPerMatch": 0,
+            "teamScoredPerMatch": -0.0948990466146169,
+            "teamConcededPerMatch": 0.02548906695179161
+          }
+        },
+        "validation": {
+          "mae": 1.0190411342594754,
+          "rmse": 1.90586386427455,
+          "poissonDeviance": 1.580365305194874
+        },
+        "test": {
+          "mae": 0.9994409883436147,
+          "rmse": 1.8950742410788348,
+          "poissonDeviance": 1.560472071811722
+        }
+      },
+      {
+        "name": "hurdle-lambda-1000",
+        "kind": "hurdle",
+        "description": "Logistic P(appears) multiplied by a ridge fit of points among players who appeared.",
+        "hyperparameters": {
+          "lambda": 1000
+        },
+        "weights": {
+          "intercept": 2.1983319981824607,
+          "byFeature": {
+            "nineties": 0.05416568917076701,
+            "minutesPerGw": 0.0802050856345745,
+            "startRate": 0.007559442171430556,
+            "xg90": 0.005191248932814623,
+            "xa90": 0.051669081284651044,
+            "bps90": -0.042776916969323814,
+            "saves90": -0.02421203300507221,
+            "xgc90": -0.029904652103468557,
+            "pointsPerGame": 0.20331096990245806,
+            "recentMinutes": 0.1798231480334619,
+            "recentStartRate": 0.06086648264754571,
+            "recentXg90": 0.034677027297742836,
+            "recentXa90": 0.0011355091397681645,
+            "recentPointsPerGame": 0.12821472654967372,
+            "wasHome": 0.13391001899461394,
+            "priceMillions": 0.27358686023358164,
+            "isGkp": 0.08107306821111332,
+            "isDef": 0.03419235491037861,
+            "isMid": -0.05669189337734125,
+            "isFwd": -0.04124871446809355,
+            "oppConcededPerMatch": 0,
+            "oppScoredPerMatch": 0,
+            "teamScoredPerMatch": -0.0215032623766696,
+            "teamConcededPerMatch": -0.09117440868485206
+          }
+        },
+        "appearWeights": {
+          "intercept": -0.4411193376995149,
+          "byFeature": {
+            "nineties": 0.10391409835844734,
+            "minutesPerGw": 0.32595298791329663,
+            "startRate": 0.13919807368768441,
+            "xg90": 0.13801191036794253,
+            "xa90": 0.08932117277167845,
+            "bps90": 0.06342069466447255,
+            "saves90": 0.054443359136759545,
+            "xgc90": 0.11438327223968077,
+            "pointsPerGame": 0.22544015172614995,
+            "recentMinutes": 0.48020081339712917,
+            "recentStartRate": 0.21770732202249218,
+            "recentXg90": 0.10409447210724547,
+            "recentXa90": 0.06697089533835475,
+            "recentPointsPerGame": 0.35591046432418294,
+            "wasHome": -0.0022369204825219394,
+            "priceMillions": 0.13866086245644718,
+            "isGkp": -0.17532000413743687,
+            "isDef": 0.02203557990849798,
+            "isMid": 0.06877267165147087,
+            "isFwd": 0.03169421419776682,
+            "oppConcededPerMatch": 0,
+            "oppScoredPerMatch": 0,
+            "teamScoredPerMatch": -0.0660682982277437,
+            "teamConcededPerMatch": 0.026225706252330703
+          }
+        },
+        "validation": {
+          "mae": 1.0365426418067383,
+          "rmse": 1.9112899984416392,
+          "poissonDeviance": 1.618315158088615
+        },
+        "test": {
+          "mae": 1.0208448757855675,
+          "rmse": 1.8993125847587788,
+          "poissonDeviance": 1.5945578767383959
+        }
+      }
+    ]
+  },
+  "starts": {
+    "target": "started (minutes as a starter > 0)",
+    "selectionMetric": "validation log loss",
+    "seasonHalfLife": 0.25,
+    "winner": "logistic-lambda-1",
+    "baseline": "baseline-start-rate",
+    "beatsBaselineOnTest": true,
+    "candidates": [
+      {
+        "name": "baseline-start-rate",
+        "kind": "baseline",
+        "description": "Season start rate carried forward.",
+        "hyperparameters": {},
+        "weights": null,
+        "appearWeights": null,
+        "validation": {
+          "logLoss": 0.3779589064920252,
+          "brier": 0.1113036120356569,
+          "ece": 0.043904349628353795,
+          "maxGap": 0.10766035686542019
+        },
+        "test": {
+          "logLoss": 0.3644341255807541,
+          "brier": 0.10894149115833815,
+          "ece": 0.033986257932783044,
+          "maxGap": 0.12392376745133782
+        }
+      },
+      {
+        "name": "logistic-lambda-1",
+        "kind": "logistic",
+        "hyperparameters": {
+          "lambda": 1,
+          "maxIter": 30,
+          "iterations": 7,
+          "converged": true
+        },
+        "weights": {
+          "intercept": -1.370887467174157,
+          "byFeature": {
+            "nineties": -0.0022121922871733046,
+            "minutesPerGw": 0.3517793344386645,
+            "startRate": 0.09395714006325916,
+            "xg90": -0.019867045170810248,
+            "xa90": 0.07888399827242393,
+            "bps90": 0.04226535699940486,
+            "saves90": 0.2843469203520799,
+            "xgc90": 0.09363494557482997,
+            "pointsPerGame": 0.04091664145640781,
+            "recentMinutes": 2.6566431318871238,
+            "recentStartRate": -1.2704941938983505,
+            "recentXg90": 0.03818007772839146,
+            "recentXa90": 0.007974701686900697,
+            "recentPointsPerGame": 0.2389463214549257,
+            "wasHome": -0.00045545360348687254,
+            "priceMillions": 0.15622528161414717,
+            "isGkp": -0.23370501652459053,
+            "isDef": 0.15226740812932474,
+            "isMid": 0.024762064723925926,
+            "isFwd": -0.034466983235977036,
+            "oppConcededPerMatch": 0,
+            "oppScoredPerMatch": 0,
+            "teamScoredPerMatch": -0.08449182312274527,
+            "teamConcededPerMatch": 0.04412588235535269
+          }
+        },
+        "appearWeights": null,
+        "validation": {
+          "logLoss": 0.2804939626978079,
+          "brier": 0.08625831263827198,
+          "ece": 0.02836593408656151,
+          "maxGap": 0.08140852489432884
+        },
+        "test": {
+          "logLoss": 0.30062333396117485,
+          "brier": 0.09439391355825158,
+          "ece": 0.04474014920909074,
+          "maxGap": 0.16522689926323092
+        }
+      },
+      {
+        "name": "logistic-lambda-10",
+        "kind": "logistic",
+        "hyperparameters": {
+          "lambda": 10,
+          "maxIter": 30,
+          "iterations": 7,
+          "converged": true
+        },
+        "weights": {
+          "intercept": -1.3456044316660225,
+          "byFeature": {
+            "nineties": 0.010418433367930455,
+            "minutesPerGw": 0.7628224350458912,
+            "startRate": -0.23759486353743947,
+            "xg90": -0.017817772386865684,
+            "xa90": 0.08067744272771622,
+            "bps90": 0.038650629173748244,
+            "saves90": 0.2761231824976852,
+            "xgc90": 0.09573706077549614,
+            "pointsPerGame": 0.03023078849783698,
+            "recentMinutes": 1.9537886913567304,
+            "recentStartRate": -0.6880367424724113,
+            "recentXg90": 0.03637561793718458,
+            "recentXa90": 0.011564203309989186,
+            "recentPointsPerGame": 0.27586991077528017,
+            "wasHome": -0.0001329625726241757,
+            "priceMillions": 0.15699060136740714,
+            "isGkp": -0.22003929604939923,
+            "isDef": 0.15158365537142973,
+            "isMid": 0.019557859248340522,
+            "isFwd": -0.03868867932194561,
+            "oppConcededPerMatch": 0,
+            "oppScoredPerMatch": 0,
+            "teamScoredPerMatch": -0.08613632296864449,
+            "teamConcededPerMatch": 0.044790761934646386
+          }
+        },
+        "appearWeights": null,
+        "validation": {
+          "logLoss": 0.2818934428306378,
+          "brier": 0.08666393618747315,
+          "ece": 0.029222344462936756,
+          "maxGap": 0.10994411551772579
+        },
+        "test": {
+          "logLoss": 0.30102543706069174,
+          "brier": 0.09436900801325439,
+          "ece": 0.044498757663254646,
+          "maxGap": 0.1647633200188269
+        }
+      },
+      {
+        "name": "logistic-lambda-100",
+        "kind": "logistic",
+        "hyperparameters": {
+          "lambda": 100,
+          "maxIter": 30,
+          "iterations": 7,
+          "converged": true
+        },
+        "weights": {
+          "intercept": -1.3946138364526999,
+          "byFeature": {
+            "nineties": 0.07581725237525473,
+            "minutesPerGw": 0.5321132252130503,
+            "startRate": -0.030500430876903274,
+            "xg90": -0.008424565291503759,
+            "xa90": 0.08312540183844247,
+            "bps90": 0.02484798829830323,
+            "saves90": 0.2176867367997739,
+            "xgc90": 0.0997099724652804,
+            "pointsPerGame": 0.10758996830747314,
+            "recentMinutes": 0.9488957643391692,
+            "recentStartRate": 0.0830136998427155,
+            "recentXg90": 0.027253106570733106,
+            "recentXa90": 0.01930367683359586,
+            "recentPointsPerGame": 0.32021470904922616,
+            "wasHome": 0.00041163002946004553,
+            "priceMillions": 0.1377568132299296,
+            "isGkp": -0.14676485539045073,
+            "isDef": 0.136794227032369,
+            "isMid": -0.004850687173240357,
+            "isFwd": -0.05044542342043017,
+            "oppConcededPerMatch": 0,
+            "oppScoredPerMatch": 0,
+            "teamScoredPerMatch": -0.08844946005304563,
+            "teamConcededPerMatch": 0.049990979723336534
+          }
+        },
+        "appearWeights": null,
+        "validation": {
+          "logLoss": 0.28767399685513145,
+          "brier": 0.08826461119562597,
+          "ece": 0.03551782762469727,
+          "maxGap": 0.08127081471626757
+        },
+        "test": {
+          "logLoss": 0.30475845527620626,
+          "brier": 0.09499718752051613,
+          "ece": 0.0442387396721771,
+          "maxGap": 0.13451889143188633
+        }
+      }
+    ],
+    "calibration": {
+      "method": "bins",
+      "fittedOn": "validation",
+      "testBefore": {
+        "logLoss": 0.30062333396117485,
+        "brier": 0.09439391355825158,
+        "ece": 0.04474014920909074,
+        "maxGap": 0.16522689926323092
+      },
+      "testAfter": {
+        "logLoss": 0.28466465848720623,
+        "brier": 0.09222777286970757,
+        "ece": 0.02212428383976586,
+        "maxGap": 0.09774201821906914
+      },
+      "testBins": [
+        {
+          "lo": 0,
+          "hi": 0.1,
+          "n": 4014,
+          "meanPredicted": 0.013784370893101973,
+          "observedRate": 0.013702042850024913
+        },
+        {
+          "lo": 0.1,
+          "hi": 0.2,
+          "n": 486,
+          "meanPredicted": 0.14755286338659898,
+          "observedRate": 0.17901234567901234
+        },
+        {
+          "lo": 0.2,
+          "hi": 0.3,
+          "n": 280,
+          "meanPredicted": 0.2458645927147572,
+          "observedRate": 0.32142857142857145
+        },
+        {
+          "lo": 0.3,
+          "hi": 0.4,
+          "n": 365,
+          "meanPredicted": 0.3543257512495738,
+          "observedRate": 0.41643835616438357
+        },
+        {
+          "lo": 0.4,
+          "hi": 0.5,
+          "n": 376,
+          "meanPredicted": 0.44651676580016253,
+          "observedRate": 0.5132978723404256
+        },
+        {
+          "lo": 0.5,
+          "hi": 0.6,
+          "n": 253,
+          "meanPredicted": 0.5445854521329075,
+          "observedRate": 0.5928853754940712
+        },
+        {
+          "lo": 0.6,
+          "hi": 0.7,
+          "n": 248,
+          "meanPredicted": 0.6541936311222949,
+          "observedRate": 0.5564516129032258
+        },
+        {
+          "lo": 0.7,
+          "hi": 0.8,
+          "n": 267,
+          "meanPredicted": 0.7540162704924868,
+          "observedRate": 0.6853932584269663
+        },
+        {
+          "lo": 0.8,
+          "hi": 0.9,
+          "n": 537,
+          "meanPredicted": 0.856098872983529,
+          "observedRate": 0.819366852886406
+        },
+        {
+          "lo": 0.9,
+          "hi": 1,
+          "n": 516,
+          "meanPredicted": 0.9154470305373481,
+          "observedRate": 0.9089147286821705
+        }
+      ]
+    }
+  },
+  "engineConsumes": [],
+  "engineConsumesDisabledBecause": "This artifact loads at runtime and nothing in it reaches the engine. Its start calibrator does beat its own statistical baseline on held-out data (test log loss 0.3006 against a 0.3135 baseline, expected calibration error 0.0447 improved to 0.0221), and it still costs season points. Two leakage-free full-season replays were run. In each one a model was trained EXCLUDING the season about to be replayed, then that season was replayed with and without it. 2024-25, model trained on 2022-23 and 2023-24 only: planner 2371 to 2211 (-160), greedy-xp 2284 to 2215 (-69), hold 2006 to 1953 (-53), and projection bias moved from +0.33 points per gameweek to +2.6 points per gameweek. 2023-24, model trained on 2022-23, 2024-25 and 2025-26: planner 1943 to 1853 (-90), greedy-xp 1947 to 1892 (-55), hold 1928 to 1944 (+16). Both seasons and both decision-making strategies moved the same way, and the planner's edge over the greedy baseline collapsed from +87 to -4 in 2024-25. Conclusion: the artifact beats its statistical baseline but degrades season points in leakage-free replay, so nothing from it is fed to the engine. startCalibratorJSON is kept in this file on purpose so the decision can be re-tested later, with scripts/backtest.mjs --model against a season the artifact was not trained on. A better log loss on its own is not grounds to re-enable this.",
+  "pointsModelNotConsumedBecause": "beatsBaselineOnTest compares the points model against points per game carried forward. The engine projects points by convolving component distributions, not by carrying a mean forward, so clearing the naive baseline is not evidence it would improve the engine. That is a separate measurement against projections.js, and it has not been run.",
+  "startCalibratorJSON": {
+    "method": "bins",
+    "n": 8036,
+    "points": [
+      {
+        "x": 0.017553503879443908,
+        "y": 0.002801992528019925
+      },
+      {
+        "x": 0.032355730469645794,
+        "y": 0.002801992528019925
+      },
+      {
+        "x": 0.036690027240516,
+        "y": 0.002801992528019925
+      },
+      {
+        "x": 0.041272990487768335,
+        "y": 0.002801992528019925
+      },
+      {
+        "x": 0.053986052315067125,
+        "y": 0.031133250311332503
+      },
+      {
+        "x": 0.09942377508416723,
+        "y": 0.1357409713574097
+      },
+      {
+        "x": 0.23725566634438883,
+        "y": 0.3163138231631382
+      },
+      {
+        "x": 0.5209671816990958,
+        "y": 0.5180572851805728
+      },
+      {
+        "x": 0.7999658418922891,
+        "y": 0.797011207970112
+      },
+      {
+        "x": 0.9257505807734828,
+        "y": 0.9184177997527813
+      }
+    ]
+  },
+  "durationMs": 44204,
+  "version": 2,
+  "modelVersion": "fpl-planner-v2"
+}

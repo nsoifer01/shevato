@@ -90,17 +90,17 @@
 
       <article class="about-shell">
 
-        <p><strong>Last reviewed:</strong> 7 August 2026. <!-- TODO(owner): update this date whenever the behaviour described below changes. --></p>
+        <p><strong>Last reviewed:</strong> 11 August 2026. <!-- TODO(owner): update this date whenever the behaviour described below changes. --></p>
 
         <h2>The short version</h2>
 
         <p>Every app on this site keeps your data in your own browser and works fully without an account. If you never sign in, nothing you enter into an app is sent to us. Signing in is optional and does exactly one thing: it copies a specific, listed set of your data between your devices.</p>
 
-        <p>There are two real exceptions. The Trip Planner assistant and the venue-ratings lookup send trip contents to Google when you use them, and Arena is a multiplayer game, so what you do there is visible to the people you play with. Both are covered in detail below.</p>
+        <p>There are three real exceptions. The Trip Planner assistant and the venue-ratings lookup send trip contents to Google when you use them; the FPL Planner sends the Fantasy Premier League team ID you type to the official FPL API, because that is how it loads your team; and Arena is a multiplayer game, so what you do there is visible to the people you play with. All three are covered in detail below.</p>
 
         <h2>What stays on your device</h2>
 
-        <p>Each app stores its working data in your browser's <code>localStorage</code>, under keys scoped to that app. This includes your Mario Kart races and player names, your Football H2H games, your Gym Tracker programs, sessions, settings and body measurements, your Rising Shows watched list, your MapTap Rivals rivals and games, and your Trip Planner trips and items.</p>
+        <p>Each app stores its working data in your browser's <code>localStorage</code>, under keys scoped to that app. This includes your Mario Kart races and player names, your Football H2H games, your FPL Planner team ID, settings and saved gameweek plans, your Gym Tracker programs, sessions, settings and body measurements, your Rising Shows watched list, your MapTap Rivals rivals and games, and your Trip Planner trips and items.</p>
 
         <p>The Trip Planner also stores files you attach to a trip (booking confirmations, tickets, vouchers) as blobs in an IndexedDB database named <code>trip-planner-docs</code>. Those files never leave your device: they aren't included in exports, share links, or sync.</p>
 
@@ -122,6 +122,10 @@
           <div class="skill-row">
             <h3>Football H2H</h3>
             <p>Games, players, player icons and the automatic backup.</p>
+          </div>
+          <div class="skill-row">
+            <h3>FPL Planner</h3>
+            <p>Your Fantasy Premier League team ID, your planner settings, your saved gameweek plans and the last snapshot of your squad. The Fantasy Premier League data the app works from is not synced; it is public and is fetched again on each device.</p>
           </div>
           <div class="skill-row">
             <h3>Gym Tracker</h3>
@@ -146,6 +150,8 @@
         <h2>What never syncs</h2>
 
         <p>Some things stay on your device on purpose, even when you're signed in. In the Trip Planner these are: any AI provider API key you supply, your passport nationality for the visa checker, your assistant conversation history, the geocoding cache, the cached exchange rates, weather and visa data, the per-browser identifier described below, and the venue-lookup owner token. Attached documents, as noted, are also excluded.</p>
+
+        <p>The FPL Planner's copy of the Fantasy Premier League data (players, fixtures, and the projections it computes from them) stays on your device for the same reason. It is identical for every user and cheap to fetch again, so there is nothing to gain from syncing it.</p>
 
         <h2>Arena is more public</h2>
 
@@ -264,6 +270,10 @@
             <p>Receives the text of Arena chat messages for profanity checking, as described above.</p>
           </div>
           <div class="skill-row">
+            <h3>Fantasy Premier League</h3>
+            <p>The FPL Planner reads the official Fantasy Premier League API through a function we host, so your browser never contacts it directly and it never sees your IP address. What reaches it is the team ID you typed, as part of the address being requested, together with the public data requests every user makes (players and fixtures). Nothing else about you is sent, no account or sign-in is involved, and we are not affiliated with the Premier League or Fantasy Premier League.</p>
+          </div>
+          <div class="skill-row">
             <h3>MapTap.gg</h3>
             <p>MapTap Rivals sends the MapTap usernames you enter, yours and your rivals', to a MapTap endpoint to fetch public profiles, and downloads each day's puzzle from MapTap.gg.</p>
           </div>
@@ -283,9 +293,9 @@
 
         <p>This changed in August 2026. Until then the app pages carried no analytics at all, which meant we could see that people arrived but not whether anything we built was worth using. The apps now report a small, fixed set of events. What follows is the complete list of what they send.</p>
 
-        <p>Alongside page views, we record: that an app was opened; which section or tab within an app you moved to; that a search ran, with how many characters you typed and how many results came back; which item you picked from a search result list; which filters or sorting you chose; that you opened a detail view, and which catalogue entry it was; that you paged through a list; that you followed a link to another website, and to which domain; a handful of completed actions specific to each app (a workout finished, a match or race logged, a trip shared, the Trip Planner assistant opened, an Arena room created or joined); and JavaScript errors, by their message.</p>
+        <p>Alongside page views, we record: that an app was opened; which section or tab within an app you moved to; that a search ran, with how many characters you typed and how many results came back; which item you picked from a search result list; which filters or sorting you chose; that you opened a detail view, and which catalogue entry it was; that you paged through a list; that you followed a link to another website, and to which domain; a handful of completed actions specific to each app (a workout finished, a match or race logged, a trip shared, the Trip Planner assistant opened, an Arena room created or joined, an FPL Planner gameweek plan calculated with how long the optimizer took and which model version produced it); and JavaScript errors, by their message.</p>
 
-        <p>What we deliberately do not send matters more than the list above. <strong>We never send anything you type.</strong> Search boxes report how long your query was and whether it matched anything, never the query itself. We never send your trip contents, destinations, item details or confirmation numbers; your workout notes, exercise names, weights, heart rate or calorie figures; your rivals' or players' names; custom team names; Arena room codes or display names; your email address, account id, or any Firestore path. Filter and sort values are sent as text, but only because every one of them is picked from a fixed list the app defines rather than typed by you.</p>
+        <p>What we deliberately do not send matters more than the list above. <strong>We never send anything you type.</strong> Search boxes report how long your query was and whether it matched anything, never the query itself. We never send your trip contents, destinations, item details or confirmation numbers; your workout notes, exercise names, weights, heart rate or calorie figures; your rivals' or players' names; custom team names; Arena room codes or display names; your FPL team ID, squad or recommended transfers; your email address, account id, or any Firestore path. Filter and sort values are sent as text, but only because every one of them is picked from a fixed list the app defines rather than typed by you.</p>
 
         <p>The generated show pages under Rising Shows and the exercise pages under Gym Tracker report ordinary page views and nothing else.</p>
 
@@ -295,13 +305,21 @@
 
         <h2>Logs and server-side records</h2>
 
-        <p>The two functions we host, for the AI assistant and for venue ratings, log HTTP status codes and truncated error responses from the service upstream when something fails. They do not log your trip, your prompt or the assistant's reply.</p>
+        <p>Two of the functions we host, for the AI assistant and for venue ratings, log HTTP status codes and truncated error responses from the service upstream when something fails. They do not log your trip, your prompt or the assistant's reply.</p>
 
-        <p>Both functions apply usage limits, and to do that they count requests against a random identifier that the Trip Planner generates once per browser and stores locally. It isn't derived from you or your account, and isn't linked to either. It is, though, the one identifier about you that we hold on a server, and there's no control in the app to view, reset or clear it; clearing your browser's site data for shevato.com discards it and the app generates a fresh one. The counters it keys are kept in server-side storage and are discarded automatically when their hourly, daily or monthly window rolls over.</p>
+        <p>A third function is the Fantasy Premier League proxy behind the FPL Planner. It keeps a server-side cache of what it fetches, so that many people asking for the same public data cause roughly one request upstream. Everything in that cache is a copy of a public Fantasy Premier League response, including, where a team was looked up, that team's own public FPL entry. Nothing is stored against your account, and these requests carry no per-browser identifier.</p>
+
+        <p>Those first two functions apply usage limits, and to do that they count requests against a random identifier that the Trip Planner generates once per browser and stores locally. It isn't derived from you or your account, and isn't linked to either. It is, though, the one identifier about you that we hold on a server, and there's no control in the app to view, reset or clear it; clearing your browser's site data for shevato.com discards it and the app generates a fresh one. The counters it keys are kept in server-side storage and are discarded automatically when their hourly, daily or monthly window rolls over.</p>
 
         <p>The venue-ratings function also keeps a small server-side configuration holding our own Google Places API key and a secret token that lets the site owner's browsers use a higher rate limit than the public one. Neither value is ever sent to your browser, and neither has anything to do with your data. If you are not the owner, your requests simply count against the public limits.</p>
 
-        <!-- TODO(owner): Netlify itself keeps standard access logs (including IP addresses) for the site and its functions, on Netlify's own retention schedule. Confirm the current retention window for your plan and state it here rather than leaving this vague. -->
+        <p>Separately from anything we write, this site is hosted on Netlify, and Netlify processes ordinary request metadata such as IP addresses in the course of serving, securing and diagnosing the site. That is the hosting provider's own activity rather than something the apps do: we do not read those records, and nothing in any app is built on top of them. How long Netlify keeps them is governed by its own service terms and the plan the site runs on. For the functions described above, Netlify's documentation states that function logs are retained for at least 24 hours of activity, extending to 7 days on certain of its pricing plans.</p>
+
+        <!-- The 24 hour / 7 day figure applies specifically to FUNCTION logs and is quoted from
+             https://docs.netlify.com/build/functions/logs/ ("Logs are retained for at least 24 hours of function
+             activity ... This log retention period increases to 7 days for certain pricing plans"). Netlify does not
+             publish a retention period for general request logs, so none is claimed here. Do not add a specific
+             figure for those unless Netlify documents one. -->
 
         <h2>Share links</h2>
 
@@ -313,18 +331,35 @@
 
         <p>Every app keeps your data in your browser, so you can remove all local data at any time by clearing site data for shevato.com in your browser settings. The Trip Planner can also export a single trip or your whole planner as a JSON file, plus calendar and spreadsheet exports for a trip.</p>
 
-        <p>For synced data, the picture is currently uneven:</p>
+        <h3>Deleting your whole account</h3>
+
+        <p>Signed in, click your name in the header, then "Sign Out", then "Delete account and all data" at the bottom of that window. Deleting is deliberately awkward: you have to enter your current password and type the word DELETE before the button becomes active. The password is checked before anything is removed, so a wrong one leaves everything untouched.</p>
+
+        <p>It removes, in this order: the synced Firestore document belonging to every app listed earlier on this page, plus the shared theme preference document; the <code>users/&lt;your account id&gt;</code> document itself, which is where Arena keeps your trivia profile (XP, wins, games played and any custom pack); your MapTap Rivals network entry, handle claim and the pair links to rivals you connected with, if you ever joined that network; every synced key in this browser's <code>localStorage</code>; and finally the Firebase Authentication user, so the email address and password credential are gone too.</p>
+
+        <p>If any one of those deletions fails, the process stops, names what failed, and leaves your account active on purpose so you can try again. It never reports success it didn't achieve, and it never deletes the credential before the data, because an account that can't sign in again could never come back to finish the job.</p>
+
+        <p>Three things survive, and we would rather say so than imply otherwise:</p>
 
         <ul>
-          <li>Gym Tracker is the only app that can erase its own synced data: there's a control in its settings that deletes its Firestore copy.</li>
-          <li>Mario Kart, Football H2H, Rising Shows, MapTap Rivals and the Trip Planner have no equivalent control. Their synced copies stay in Firestore until removed for you.</li>
-          <li>Arena's leaderboard, head-to-head and daily-challenge entries are outside that system too, and can't be removed from within the app.</li>
-          <li>There's no self-service account deletion; that has to be done for you. Password reset is self-service: the sign-in window has a "Forgot password?" link that emails you a reset link.</li>
-          <li>Arena's chat messages can't be deleted by anyone, by design.</li>
+          <li>Your Arena global XP leaderboard row, your head-to-head records against other players, and your Globe Drop daily-challenge scores. These live outside <code>users/&lt;your account id&gt;</code> and the security rules don't grant you deletion rights over them: leaderboard rows can only be removed by a leaderboard admin, and the other two have no deletion rule at all.</li>
+          <li>Anything you typed in Arena room chat. Chat is append-only by design, as described above, and nobody can delete it.</li>
+          <li>Other devices you're signed in on keep their own local copy of your app data until it's cleared there. They lose access to the cloud copy immediately, because the account no longer exists.</li>
         </ul>
 
-        <p>If you want your account removed or your synced data deleted, email <a href="mailto:nikita@shevato.com">nikita@shevato.com</a> and we'll take care of it manually.
-        <!-- TODO(owner): state a turnaround commitment you can actually keep (for example "within 30 days"), and decide whether to build self-service deletion instead. As written, this paragraph is accurate but puts a manual obligation on you. --></p>
+        <p>Two smaller notes. Device-local caches that were never part of your account, the FPL Planner's bulk fixture and projection cache and the Trip Planner's geocode cache, aren't touched by account deletion because they hold public data rather than anything about you; clearing site data removes them. And guest play in Arena signs you in anonymously without creating an account, so there is nothing to delete there either, only browser storage to clear.</p>
+
+        <p>Per-app controls still exist for people who want to remove one app's data without closing their account:</p>
+
+        <ul>
+          <li>Gym Tracker and FPL Planner can erase their own synced data: each has a control in its settings that deletes its Firestore copy. The FPL Planner offers two, kept separate on purpose: "Disconnect your FPL team" removes only the team ID and the cached squad snapshot, on the device and in the cloud, leaving your saved plans and settings alone; "Delete all FPL Planner data" removes all four of its keys locally and deletes the whole <code>fplPlannerApp</code> document from your account. Signed out, both remove the local copy only, and the app says which of the two happened.</li>
+          <li>Mario Kart, Football H2H, Rising Shows, MapTap Rivals and the Trip Planner have no equivalent per-app control. Their synced copies stay in Firestore until you delete your account or ask us to remove them.</li>
+          <li>MapTap Rivals has a "Leave rival network" control that removes your published profile and handle claim without touching the rest of your account.</li>
+          <li>Password reset is self-service too: the sign-in window has a "Forgot password?" link that emails you a reset link.</li>
+        </ul>
+
+        <p>If you'd rather not do it yourself, or you want the Arena entries above removed as well, email <a href="mailto:nikita@shevato.com">nikita@shevato.com</a> and we'll take care of it manually.
+        <!-- TODO(owner): state a turnaround commitment you can actually keep (for example "within 30 days") for the manual requests that remain, namely the Arena leaderboard, head-to-head and daily-score rows that a user cannot delete themselves. --></p>
 
         <p>One scope note: this is an informational page, not a formal legal policy. It makes no statement about legal basis, statutory rights, where data is transferred, use by children, or how changes to this page are announced.
         <!-- TODO(owner): the sentence above is deliberately scoped. Add legal basis, GDPR/CCPA rights, data-transfer locations, children's use, and a policy-change notification process if you need this page to serve a compliance purpose rather than an informational one. None of those are decisions the code can answer. --></p>

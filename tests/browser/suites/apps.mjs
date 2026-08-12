@@ -353,6 +353,7 @@ export async function run({ base, cdpPort }) {
   /* --------------------------- MOBILE SWEEP ----------------------------- */
   for (const [name, path] of [
     ['arena', '/apps/arena/'], ['football-h2h', '/apps/football-h2h/'],
+    ['fpl-planner', '/apps/fpl-planner/'],
     ['gym-tracker', '/apps/gym-tracker/'], ['maptap-rivals', '/apps/maptap-rivals/'],
     ['mario-kart', '/apps/mario-kart/'], ['rising-shows', '/apps/rising-shows/'],
     ['trip-planner', '/apps/trip-planner/'],

@@ -68,7 +68,7 @@ export async function run({ base, cdpPort }) {
   t('home: three hero CTAs', home.ctaCount === 3, String(home.ctaCount));
   t('home: CTAs share one variant', home.variants.length === 1, home.variants.join(' / '));
   t('home: CTAs share one background', home.backgrounds.length === 1, home.backgrounds.join(' / '));
-  t('home: seven apps listed', home.names.length === 7, String(home.names.length));
+  t('home: eight apps listed', home.names.length === 8, String(home.names.length));
   t('home: apps listed A-Z', home.sorted, home.names.join(', '));
 
   for (let i = 0; i < home.hrefs.length; i++) {

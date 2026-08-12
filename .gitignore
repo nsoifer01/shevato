@@ -74,3 +74,9 @@ deno.lock
 # validating firestore.rules locally). Local-only, never committed.
 *-debug.log
 .firebase/
+
+# FPL Planner training data, downloaded by apps/fpl-planner/scripts/fetch-history.mjs
+apps/fpl-planner/.data/
+
+# FPL Planner availability data, downloaded by apps/fpl-planner/scripts/fetch-availability.mjs
+apps/fpl-planner/.data/availability/
