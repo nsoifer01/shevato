@@ -228,8 +228,9 @@ from the complete planner are the only accepted arbiter, and the base rate for
   claim). The old near-zero bias was two errors cancelling: pStart pinned at 1
   inflated every projection and the mechanism below deflates it.
 
-  **It is entirely in the minutes, and the points model is not implicated.**
-  Measured over 9,727 projected player-gameweeks of 2024-25, leakage-free:
+  **Where the bias lives depends on which population you ask, and the two
+  answers are different.** Measured over 9,727 projected player-gameweeks of
+  2024-25, leakage-free:
 
   | quantity | predicted | observed |
   | --- | ---: | ---: |
@@ -239,9 +240,17 @@ from the complete planner are the only accepted arbiter, and the base rate for
   | xPoints | 2.054 | 2.209 |
   | top 11 by projection, per gameweek | 52.2 | 57.5 |
 
-  The points-given-minutes model is as well calibrated as anything in this
-  repository. pStart is 3 to 5 points of probability low, in every decile from
-  the second up.
+  **POOLED over the whole projected pool**, the points-per-90 model is
+  calibrated to three decimals and the aggregate bias is minutes: pStart is 3
+  to 5 points of probability low in every decile from the second up.
+
+  **In the TOP PROJECTION DECILE**, which is where transfers, captains and
+  premium holds are decided, the opposite: expected minutes are within 1%
+  (75.9 predicted against 76.8) and POINTS are 7.6% low (4.178 against 4.494).
+  A pooled per-90 that averages to zero across a gradient — over-projecting the
+  bottom decile, under-projecting the top — is exactly what hides this. Do not
+  quote the pooled 3.825-vs-3.823 as proof the rate model is fine for the
+  players that matter; it is proof only in aggregate.
 
   **The mechanism is the shrinkage TARGET, not the shrinkage.** `baseStart` is
   pulled toward the position's league-wide start rate, measured over every
@@ -310,7 +319,17 @@ from the complete planner are the only accepted arbiter, and the base rate for
   rows and the replay scores it as a blank for all twenty clubs. That is
   correct, not a data defect. It also means that season has 37 scoring
   gameweeks, which is why its totals sit below the other two.
-- Historical data: xG/xA/`starts` do NOT exist before 2022-23 (hard floor).
+- Historical data: xG/xA/`starts` do NOT exist before 2022-23 (hard floor),
+  and **within 2022-23 they exist only from gameweek 16**: the payload change
+  that added `starts` mid-season added the expected_* columns in the same
+  release, so gameweeks 1-15 carry zeros for all of them. Starts are
+  reconstructed (a club fields eleven); xG cannot be, so those minutes are
+  excluded from the xG/xA DENOMINATOR instead (`xMinutes` on the accumulator,
+  `xNineties` as the rates' own evidence weight in `shrinkRates`). Before that
+  fix the replay read Haaland's mid-2022-23 xG/90 as 0.369 against a
+  covered-minutes truth of 0.723, and 2022-23's totals seeded 2023-24's replay
+  with the same understatement. Worth +387 on the deciding instrument
+  (+231 / +156 / +0 by season; 2024-25 is bit-identical, which is the control).
   Predictive returns saturate at ~2 seasons; 2022-23 survives only under
   recency decay (weight 0.016). Do not download older seasons.
 - Archive duplicates are DOUBLE GAMEWEEKS (distinct fixture ids, preserve)
@@ -403,9 +422,12 @@ points and closed the availability question.
    decile of projections is 7.6% low on POINTS with expected minutes within 1%,
    and the shrinkage-target fix that would have explained a minutes gap is a
    measured REJECT (entry 10). Look at the per-90 RATE shrinkage next, bonus
-   first (k = 19 to 24 nineties, the strongest pull in `PRIOR_NINETIES`), and at
-   the fact that the archive carries no defensive-contribution columns so that
-   component is identically zero in every replay.
+   first (k = 19 to 24 nineties, the strongest pull in `PRIOR_NINETIES`). A
+   smaller, bounded contributor: the three seasons the deciding instrument
+   replays (2022-23 to 2024-25) predate defensive contribution, so both the
+   projection AND the actuals correctly carry none of it there and it cannot
+   explain their gap; only a future replay of 2025-26, where the rule exists and
+   the columns are now parsed, has that component in play.
 2. **Cross-season vs within-season evidence weighting.** Now measurable through
    `opts.priorSeasonWeight` (it moves both sides of the rate, so a sweep is
    honest). Note the live app currently has NO prior-season evidence in season
@@ -442,7 +464,11 @@ Known and deliberately unfixed:
 - **Do not run `npm test` while an experiment is running.**
   `tests/perf-budget.test.mjs` budgets full plan generation, and eight worker
   processes saturating the machine push it over. Two failures chased on
-  2026-08-12 were entirely that; the suite passes 3211/3211 on an idle machine.
+  2026-08-12 were entirely that; the same suite passes completely on an idle
+  machine. (No literal test count here on purpose: the count moves with every
+  added test and a stale number reads as a discrepancy. The 3211-vs-3215
+  confusion of 2026-08-12 was exactly this, four regression tests landing
+  between two measurements.)
 
 - The counterfactual minutes sentence compares only the DIRECT pair; knock-ons
   can bring in near-zero-minutes players while the sentence says "level".

@@ -31,7 +31,7 @@
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
-import { parseMergedGw, reconstructStarts } from '../js/engine/backtest.js';
+import { parseMergedGw, reconstructStarts, flagExpectedData } from '../js/engine/backtest.js';
 import { defConComposite } from '../js/engine/projections.js';
 import { loadRules, KNOWN_SEASONS } from './backtest.mjs';
 import { seasonPath } from './fetch-history.mjs';
@@ -140,6 +140,20 @@ export function validateSeason(season, { rules }) {
         ? `Gameweeks ${fixed.gameweeks.join(', ')} carry no starts at all and are reconstructed at load.`
         : 'The shortfall is NOT a whole missing gameweek, so reconstruction will not fix it.'));
   }
+
+  // --- expected-data coverage ----------------------------------------------
+  //
+  // The expected_* columns arrived mid-2022-23 with `starts`. A gameweek with
+  // minutes and a league-wide expected-goals sum of exactly zero did not have
+  // them, and its minutes are excluded from the xG/xA denominator at load. This
+  // check exists because the gap sat unnoticed in every replay until
+  // 2026-08-12, reading Haaland's mid-2022-23 xG/90 as 0.369 against a
+  // covered-minutes truth of 0.723.
+  const coverage = flagExpectedData(rows.map(r => ({ ...r })));
+  add(coverage.uncovered.length ? 'WARN' : 'OK', 'expected data',
+    coverage.uncovered.length
+      ? `no expected_* data for gameweek ${coverage.uncovered.join(', ')}; those minutes are excluded from xG/xA denominators at load`
+      : 'every played gameweek carries expected_* data');
 
   // --- points reconstruct from their own components -----------------------
   let exact = 0;

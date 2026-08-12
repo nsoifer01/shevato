@@ -441,3 +441,74 @@ test('a season with no such columns is bit-identical to the old hardcoded zero',
     assert.equal(p.per90.defCon, 0);
   }
 });
+
+// ---------------------------------------------------------------------------
+// 4. The xG/xA denominator
+//
+// The 2022-23 payload change that introduced `starts` mid-season introduced the
+// expected_* columns at the same time, so xG, xA and xGC are exactly zero for
+// gameweeks 1 to 15 of that season. Unlike starts, xG cannot be reconstructed,
+// so the treatment is the numerator-denominator rule: a rate may only be
+// divided by the minutes its numerator covers. Found 2026-08-12; mid-2022-23
+// the replay read Haaland's xG/90 as 0.369 against a covered-minutes truth of
+// 0.723.
+// ---------------------------------------------------------------------------
+
+test('a gameweek with minutes and no expected data anywhere is flagged uncovered', () => {
+  const rows = season({ gws: 3 });
+  // Strip expected data from gameweek 1 only, the 2022-23 shape in miniature.
+  for (const r of rows) if (r.gw === 1) { r.xG = 0; r.xA = 0; r.xGC = 0; }
+  for (const r of rows) if (r.gw > 1 && r.minutes > 0) { r.xG = 0.1; r.xGC = 0.5; }
+  const dataset = buildDataset({ rows, season: 'partial-x' });
+  assert.deepEqual(dataset.expectedDataMissing, [1]);
+  // And the accumulator excludes those minutes from the x-denominator only.
+  const accumulator = createAccumulator(dataset);
+  accumulator.absorb(1);
+  accumulator.absorb(2);
+  const gs = gameStateAt(dataset, 3, { rules: RULES, accumulator });
+  const p = [...gs.players.values()].find(x => x.minutes >= 180);
+  assert.equal(p.minutes, 180, 'two matches of minutes');
+  assert.equal(p.xMinutes, 90, 'only one of them carried expected data');
+});
+
+test('a season with complete expected data is untouched: xMinutes equals minutes', () => {
+  const rows = season({ gws: 2 });
+  for (const r of rows) if (r.minutes > 0) r.xG = 0.2;
+  const dataset = buildDataset({ rows, season: 'complete-x' });
+  assert.equal(dataset.expectedDataMissing, null);
+  const accumulator = createAccumulator(dataset);
+  accumulator.absorb(1);
+  const gs = gameStateAt(dataset, 2, { rules: RULES, accumulator });
+  for (const p of gs.players.values()) {
+    if (p.minutes > 0) assert.equal(p.xMinutes, p.minutes);
+  }
+});
+
+test('an xG rate is divided by the minutes its evidence covers, not all minutes', async () => {
+  const { underlyingRates } = await import('../js/engine/projections.js');
+  // 900 minutes total, expected data covering 450 of them, 5 xG accumulated.
+  const covered = underlyingRates({ minutes: 900, xMinutes: 450, xG: 5, xA: 2, bps: 200, saves: 0, yellowCards: 0, redCards: 0, penaltiesSaved: 0, position: 4 });
+  assert.ok(Math.abs(covered.xG - 1.0) < 1e-9, `xG/90 over covered minutes: ${covered.xG}`);
+  assert.ok(Math.abs(covered.xNineties - 5) < 1e-9, 'five nineties of x-evidence');
+  // bps still reads over ALL minutes: its column was always populated.
+  assert.ok(Math.abs(covered.bps - 20) < 1e-9, `bps/90 over all minutes: ${covered.bps}`);
+
+  // No declaration means the two denominators are the same number.
+  const plain = underlyingRates({ minutes: 900, xG: 5, xA: 2, bps: 200, saves: 0, yellowCards: 0, redCards: 0, penaltiesSaved: 0, position: 4 });
+  assert.ok(Math.abs(plain.xG - 0.5) < 1e-9);
+  assert.equal(plain.xNineties, plain.nineties);
+});
+
+test('zero covered minutes is zero evidence, resolved to the prior, never a zero rate', async () => {
+  const { underlyingRates, shrinkRates } = await import('../js/engine/projections.js');
+  const rates = underlyingRates({ minutes: 900, xMinutes: 0, xG: 0, xA: 0, bps: 200, saves: 0, yellowCards: 0, redCards: 0, penaltiesSaved: 0, position: 4 });
+  assert.equal(rates.xNineties, 0);
+  const priors = { rateFor: () => ({ xG: 0.4, xA: 0.2, bps: 15, saves: 0, defCon: 0, yellow: 0.1, red: 0, pensSaved: 0 }) };
+  const shrunk = shrinkRates(rates, { position: 4, priors });
+  assert.ok(Math.abs(shrunk.xG - 0.4) < 1e-9, `pure prior, got ${shrunk.xG}`);
+  // While bps keeps its ten real nineties of evidence: (20*10 + 15*k)/(10+k)
+  // with k = PRIOR_NINETIES.bps for a forward.
+  const { PROJECTION_PARAMS } = await import('../js/engine/projections.js');
+  const k = PROJECTION_PARAMS.priorNineties.bps[4];
+  assert.ok(Math.abs(shrunk.bps - (20 * 10 + 15 * k) / (10 + k)) < 1e-9, `bps kept its evidence: ${shrunk.bps}`);
+});

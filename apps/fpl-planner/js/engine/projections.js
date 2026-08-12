@@ -274,9 +274,18 @@ export function underlyingRates(player, { gw, halfLife = RECENCY_HALF_LIFE_GWS }
     return {
       source: 'none',
       nineties: 0,
+      xNineties: 0,
       xG: 0, xA: 0, bps: 0, saves: 0, defCon: 0, yellow: 0, red: 0, pensSaved: 0,
     };
   }
+  // xG and xA may cover fewer minutes than the rest of the totals: the archive
+  // introduced the expected_* columns mid-2022-23, so a replay of that season
+  // accumulates xG only from gameweek 16 while minutes run from gameweek 1. A
+  // caller in that position declares `xMinutes` (see gameStateAt), and the two
+  // attacking rates are read over it, with their own evidence weight. A live
+  // payload never sets the field: FPL's totals and minutes always cover the
+  // same rows, so the fallback is the identity.
+  const xMinutes = Number.isFinite(player.xMinutes) ? player.xMinutes : minutes;
   return ratesFrom({
     xG: player.xG,
     xA: player.xA,
@@ -286,17 +295,23 @@ export function underlyingRates(player, { gw, halfLife = RECENCY_HALF_LIFE_GWS }
     yellow: player.yellowCards,
     red: player.redCards,
     pensSaved: player.penaltiesSaved,
-  }, minutes, 'season');
+  }, minutes, 'season', { xMinutes });
 }
 
-function ratesFrom(totals, minutes, source) {
+function ratesFrom(totals, minutes, source, { xMinutes = minutes } = {}) {
   const nineties = minutes / 90;
+  const xNineties = xMinutes / 90;
   const per = (v) => (v || 0) / nineties;
+  // Zero covered minutes means zero xG EVIDENCE, not a zero xG rate: the rate
+  // is reported as 0 with xNineties 0 and the shrinkage layer resolves it to
+  // the position prior, exactly as it does for a player with no minutes at all.
+  const perX = (v) => (xNineties > 0 ? (v || 0) / xNineties : 0);
   return {
     source,
     nineties,
-    xG: per(totals.xG),
-    xA: per(totals.xA),
+    xNineties,
+    xG: perX(totals.xG),
+    xA: perX(totals.xA),
     bps: per(totals.bps),
     saves: per(totals.saves),
     defCon: per(totals.defCon),
@@ -371,11 +386,17 @@ export function priorNinetiesFor(rate, position) {
 // whatever underlyingRates returned, so `nineties` is the same n the rate was
 // divided by, and the identity total = rate * n recovers the numerator.
 export function shrinkRates(rates, { position, priors }) {
-  const n = rates.nineties;
   const prior = priors.rateFor(position);
   const out = { ...rates, shrunk: true };
   for (const key of SHRUNK_RATES) {
     const k = priorNinetiesFor(key, position);
+    // The evidence behind a rate is the nineties its own numerator covers,
+    // which for xG and xA can be fewer than the player's total nineties (the
+    // archive's expected_* columns arrive mid-2022-23). Everywhere else the
+    // two are the same number.
+    const n = (key === 'xG' || key === 'xA') && Number.isFinite(rates.xNineties)
+      ? rates.xNineties
+      : rates.nineties;
     out[key] = (rates[key] * n + prior[key] * k) / (n + k);
   }
   return out;

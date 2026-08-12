@@ -270,6 +270,44 @@ export function reconstructStarts(rows) {
 }
 
 // ---------------------------------------------------------------------------
+// Expected-data coverage
+//
+// The same 2022-23 payload change that introduced `starts` mid-season also
+// introduced expected_goals, expected_assists and expected_goals_conceded: all
+// three are exactly zero for gameweeks 1 to 15 of that season and populated
+// from 16 on. Unlike starts, xG cannot be reconstructed from anything else in
+// the archive, so the honest treatment is the numerator-denominator rule again:
+// a per-90 xG rate may only be divided by the minutes its numerator actually
+// covers. Every row is therefore flagged with whether its gameweek carried the
+// columns, the accumulator keeps a separate `xMinutes` total from flagged rows,
+// and the rate layer reads xG and xA over THAT denominator with its own
+// evidence weight. A player whose whole record predates the columns has real
+// minutes and zero xG evidence, and comes out as the shrinkage prior rather
+// than as a player who never threatens a goal.
+//
+// Detection is per gameweek: a round of real football cannot produce a
+// league-wide expected-goals sum of exactly zero, so a gameweek with minutes on
+// the board and no expected data at all did not have the columns.
+// ---------------------------------------------------------------------------
+
+export function flagExpectedData(rows) {
+  const byGw = new Map();
+  for (const r of rows) {
+    const entry = byGw.get(r.gw) || { expected: 0, minutes: 0 };
+    entry.expected += r.xG + r.xA + r.xGC;
+    entry.minutes += r.minutes;
+    byGw.set(r.gw, entry);
+  }
+  const uncovered = [];
+  for (const [gw, entry] of [...byGw.entries()].sort((a, b) => a[0] - b[0])) {
+    if (entry.minutes > 0 && entry.expected === 0) uncovered.push(gw);
+  }
+  const uncoveredSet = new Set(uncovered);
+  for (const r of rows) r.hasExpectedData = !uncoveredSet.has(r.gw);
+  return { uncovered };
+}
+
+// ---------------------------------------------------------------------------
 // Dataset
 // ---------------------------------------------------------------------------
 
@@ -280,6 +318,7 @@ export function reconstructStarts(rows) {
 export function buildDataset({ csv, rows, season, identity = null }) {
   const parsed = rows || parseMergedGw(csv);
   const startsFilled = reconstructStarts(parsed);
+  const expectedCoverage = flagExpectedData(parsed);
 
   const byGw = new Map();
   const byFixture = new Map();
@@ -380,6 +419,9 @@ export function buildDataset({ csv, rows, season, identity = null }) {
     // Which gameweeks had no starts column and were reconstructed, so a report
     // can say so rather than leave a reader to assume the archive was complete.
     startsReconstructed: startsFilled.gameweeks.length ? startsFilled : null,
+    // Gameweeks with no expected_* columns (2022-23 gw1-15). Their minutes are
+    // excluded from the xG/xA denominator rather than reconstructed.
+    expectedDataMissing: expectedCoverage.uncovered.length ? expectedCoverage.uncovered : null,
   };
 }
 
@@ -858,6 +900,10 @@ const EMPTY_TOTALS = () => ({
   yellowCards: 0, redCards: 0, ownGoals: 0, penaltiesSaved: 0, penaltiesMissed: 0,
   xG: 0, xA: 0, xGC: 0, appearances: 0,
   cbit: 0, recoveries: 0, tackles: 0,
+  // Minutes from rows whose gameweek carried the expected_* columns: the ONLY
+  // legal denominator for an xG or xA rate. Equal to `minutes` everywhere
+  // except 2022-23, where the columns arrive at gameweek 16.
+  xMinutes: 0,
 });
 
 function addRow(totals, row, weight = 1) {
@@ -879,6 +925,9 @@ function addRow(totals, row, weight = 1) {
   totals.xG += weight * row.xG;
   totals.xA += weight * row.xA;
   totals.xGC += weight * row.xGC;
+  // Absent flag means a caller (tests, synthetic rows) that predates it; those
+  // rows all carry real expected data, so they count.
+  if (row.hasExpectedData !== false) totals.xMinutes += weight * row.minutes;
   totals.cbit += weight * (row.cbit || 0);
   totals.recoveries += weight * (row.recoveries || 0);
   totals.tackles += weight * (row.tackles || 0);
@@ -1058,6 +1107,11 @@ export function gameStateAt(dataset, gw, { rules, accumulator, featureHook = nul
       // resets in August), so the field is absent there and minutes.js falls
       // back to counting this season's matches. See priorTotalsByPlayer.
       evidenceMatches: t.appearances,
+      // Like evidenceMatches, but for the xG/xA numerators: the minutes their
+      // evidence actually covers. A live payload never sets it (FPL's totals
+      // and minutes always cover the same rows) and the rate layer falls back
+      // to `minutes`.
+      xMinutes: t.xMinutes,
       totalPoints: t.totalPoints,
       bonus: t.bonus,
       bps: t.bps,
@@ -1087,10 +1141,10 @@ export function gameStateAt(dataset, gw, { rules, accumulator, featureHook = nul
       xGI: t.xG + t.xA,
       xGC: t.xGC,
       per90: {
-        xG: per90(t.xG, t.minutes),
-        xA: per90(t.xA, t.minutes),
-        xGI: per90(t.xG + t.xA, t.minutes),
-        xGC: per90(t.xGC, t.minutes),
+        xG: per90(t.xG, t.xMinutes),
+        xA: per90(t.xA, t.xMinutes),
+        xGI: per90(t.xG + t.xA, t.xMinutes),
+        xGC: per90(t.xGC, t.xMinutes),
         saves: per90(t.saves, t.minutes),
         goalsConceded: per90(t.goalsConceded, t.minutes),
         starts: per90(t.starts, t.minutes),

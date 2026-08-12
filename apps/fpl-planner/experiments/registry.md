@@ -32,8 +32,10 @@ Baselines, same settings. Measured 2026-08-12 on the corrected replay evidence
 | hold      |    1453 |    2107 |    2112 |   5672 |
 | fdr       |    1255 |    1010 |    1282 |   3547 |
 
-45 paired trajectories, chips off, the deciding instrument: **33,684**
-(10,888 / 11,017 / 11,779). At the old default of 3 the same cells read 32,713.
+45 paired trajectories, chips off, the deciding instrument: **34,071**
+(11,119 / 11,173 / 11,779), measured 2026-08-13 after entry 11's xG-denominator
+fix. Superseded values on the same tree: 33,684 before entry 11, 32,713 at the
+old horizon-3 default.
 
 `greedy-xp` is this planner at horizon 1 and so does not move with the default;
 `hold` and `fdr` do, because their opening squad is built over the horizon.
@@ -1044,3 +1046,49 @@ The bucket machinery and the `tuning` option that carried it through
 either. To re-run this, the change is one block in `positionPriors`, one term in
 `baseStart`, and a `tuning` pass-through in three call sites, plus an arm with
 `opts: { tuning: { startPrior: 'ownership' } }`.
+
+## 11. The xG/xA denominator: expected data starts at 2022-23 gameweek 16
+
+- **Date:** 2026-08-13
+- **Kind:** correctness fix to the measuring instrument, entry 7's fourth
+  member. Same bug class (a numerator divided by minutes it does not cover),
+  same fix pattern (the caller that builds the numerator declares the
+  denominator), same production guarantee (a live payload never sets the field
+  and is bit-identical by construction; tests assert it).
+- **Files:** `js/engine/backtest.js` (`flagExpectedData`, `xMinutes`),
+  `js/engine/projections.js` (`xNineties` in `underlyingRates`/`shrinkRates`),
+  `scripts/validate-history.mjs` (coverage check), four new tests in
+  `tests/replay-evidence.test.mjs`.
+- **Write-up:** `experiments/replay-evidence.md`, defect 4.
+
+The 2022-23 archive's expected_* columns are exactly zero before gameweek 16
+(they shipped with `starts`). The replay accumulated xG from gameweek 16 on and
+divided by minutes from gameweek 1, so every 2022-23 attacking rate was
+understated in proportion to pre-16 minutes: Haaland's mid-season xG/90 read
+0.369 against a covered-minutes 0.723. The season's totals then seeded 2023-24
+at the same understatement.
+
+### Points, 45 paired trajectories
+
+| season | before | after | delta |
+| --- | ---: | ---: | ---: |
+| 2022-23 | 10,888 | 11,119 | +231 |
+| 2023-24 | 11,017 | 11,173 | +156 |
+| 2024-25 | 11,779 | 11,779 | **0, bit-identical** |
+| total | 33,684 | **34,071** | **+387**, 7-2-6 by window |
+
+The exposure gradient is the proof: the unexposed season does not move by a
+single point, and within 2022-23 the uncovered opening window moves by exactly
+zero. Null arm clean before and after.
+
+### Decision
+
+**SHIP.** Correctness, not modelling; it would ship at -387. The deciding
+instrument's control arm is now **34,071** and nothing measured against 33,684
+is comparable.
+
+### Re-test if
+
+`fetch-history.mjs` ever swaps archive sources, or a future season introduces a
+column mid-year again. `validate-history.mjs` now warns on any gameweek whose
+league-wide expected sum is zero with minutes on the board.

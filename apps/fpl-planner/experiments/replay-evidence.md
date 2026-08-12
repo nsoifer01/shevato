@@ -256,3 +256,46 @@ thresholds against 11,498 real awards.
 arithmetic, the points reconstruction, the schema, the coverage, the duplicate
 classification and the identity-table presence over every downloaded season, and
 would have caught all three of this file's defects in seconds.
+
+---
+
+## Defect 4, found 2026-08-13 by the component decomposition
+
+The same 2022-23 payload change that introduced `starts` introduced
+`expected_goals`, `expected_assists` and `expected_goals_conceded`: all three
+are exactly zero for gameweeks 1 to 15 and populated from 16 on. Found while
+decomposing the top-decile projection gap, whose league-wide ratios looked
+impossible for that season (assists/xA of 2.11 against 1.37-1.42 everywhere
+else).
+
+Unlike starts, xG cannot be reconstructed from anything else in the archive, so
+the treatment is the numerator-denominator rule a third time: a per-90 rate may
+only be divided by the minutes its numerator covers. The accumulator keeps a
+separate `xMinutes` total from covered rows, `gameStateAt` publishes it, and
+`underlyingRates`/`shrinkRates` read xG and xA over it with their own evidence
+weight (`xNineties`). A player whose whole record predates the columns has real
+minutes and ZERO xG evidence, and resolves to the shrinkage prior rather than to
+a player who never threatens a goal. A live payload never sets the field and is
+bit-identical by construction.
+
+The scale of the old error, one player: at gameweek 26 of 2022-23 the replay
+read Haaland's xG/90 as **0.369**. Over covered minutes it is **0.723**. The
+instrument spent half a season with the league's best striker at half his real
+threat, and 2022-23's season totals then seeded 2023-24's replay at gameweek 1
+with the same understatement.
+
+45 paired trajectories, before and after, null arm clean either side:
+
+| season | before | after | delta | mechanism exposure |
+| --- | ---: | ---: | ---: | --- |
+| 2022-23 | 10,888 | 11,119 | **+231** | its own gameweeks 16-38 |
+| 2023-24 | 11,017 | 11,173 | **+156** | seeded from 2022-23's totals |
+| 2024-25 | 11,779 | 11,779 | **0, bit-identical** | none, the control |
+| total | 33,684 | **34,071** | **+387** | 7-2-6 by window |
+
+The within-season gradient seals it: 2022-23 gw1-13 moves by exactly 0.0 (no
+covered data on either arm), gw7-19 by +2.7, and the gains grow with coverage.
+
+`scripts/validate-history.mjs` now checks expected-data coverage per gameweek,
+so the next column that arrives mid-season is a WARN at download time instead of
+a diagnosis two days later.
