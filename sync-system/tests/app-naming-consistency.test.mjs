@@ -311,3 +311,47 @@ test('every apps-hub preview image is itself a link to its app', () => {
     const bare = [...html.matchAll(/(?<!>)<img class="app-preview"/g)].length;
     assert.equal(html.split('<img class="app-preview"').length - 1, wrapped.length, 'a preview image exists outside a link');
 });
+
+// ---------------------------------------------------------------------------
+// A-Z everywhere an app list is DISPLAYED. Added after the 2026-08-12 site
+// audit found two surfaces with no ordering test drifted out of order: the
+// homepage prose hoisted Rising Shows mid-list, and work.html's Personal
+// projects section ran in an arbitrary order. Every check derives its
+// expectations from the manifest, never a literal count.
+//
+// Deliberate exception, documented rather than tested: assets/og/cards.json is
+// a BUILD manifest for the OG-image generator, mixes apps with site pages, and
+// is never displayed to a user, so its internal order is not a surface.
+// ---------------------------------------------------------------------------
+
+test('work.html personal projects are in A-Z order and cover every app', () => {
+    const html = readRepoFile('work.html');
+    const section = html.slice(html.indexOf('aria-labelledby="grp-personal"'), html.indexOf('</section>', html.indexOf('aria-labelledby="grp-personal"')));
+    const names = [...section.matchAll(/<h3>([^<]+)<\/h3>/g)].map((m) => m[1].trim());
+    const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
+    assert.equal(names.length, manifest.apps.length, 'one personal-projects item per app');
+    assert.ok(isSortedCI(names), `work.html personal projects out of A-Z order: ${names.join(', ')}`);
+});
+
+test('the apps.html JSON-LD hasPart entries are in A-Z order and cover every app', () => {
+    const html = readRepoFile('apps.html');
+    const ld = html.slice(html.indexOf('"hasPart"'));
+    const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
+    const names = [...ld.matchAll(/"name": "([^"]+)"/g)].map((m) => m[1])
+        .filter((n) => n !== 'Shevato Apps');
+    assert.equal(names.length, manifest.apps.length, 'one hasPart entry per app');
+    assert.ok(isSortedCI(names), `JSON-LD hasPart out of A-Z order: ${names.join(', ')}`);
+});
+
+test('the homepage prose names apps in A-Z order', () => {
+    const html = readRepoFile('home.html');
+    const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
+    // First mention of each display name in document order must already be
+    // sorted; a hoisted favourite shows up as an inversion.
+    const mentions = manifest.apps
+        .map((a) => ({ name: a.name, at: html.indexOf(a.name) }))
+        .filter((m) => m.at >= 0)
+        .sort((a, b) => a.at - b.at)
+        .map((m) => m.name);
+    assert.ok(isSortedCI(mentions), `homepage prose mentions out of A-Z order: ${mentions.join(', ')}`);
+});
