@@ -449,12 +449,12 @@ ranking, and only the part of a correction that changes ORDER changes decisions
 
 ## Operational state (recorded at the 2026-08-12 pause)
 
-- **The app is release-ready but UNRELEASED.** `apps/fpl-planner` exists only
-  on `feature/fpl-planner` (13 commits, never pushed); `origin/master`, which
-  is what shevato.com deploys, has no FPL Planner. Releasing is push -> PR ->
-  owner merge, and is an owner decision. Until then there is NO deployed
-  production path to verify, and "production" claims in this file describe the
-  intended architecture.
+- **Release state:** `apps/fpl-planner` lives on the `feature/fpl-planner`
+  branch; `origin/master` is what shevato.com deploys, so the app is live only
+  once that branch is merged there. (No commit counts here on purpose: they go
+  stale with every checkpoint. `git log --oneline origin/master..` is the
+  truth.) Until merge there is no deployed production path to verify, and
+  "production" claims in this file describe the intended architecture.
 - **Production is serverless/static; nothing must stay running.** The app is a
   static browser bundle; planning runs in a Web Worker; live reads go through
   the Netlify function proxy with Blob caching. The trained artifact is loaded
