@@ -1522,3 +1522,50 @@ diluted too, which reaches even 2022-23 through its xG prior): the deciding
 instrument's control arm is now **44,296** (10,897 / 10,943 / 11,779 / 10,677),
 superseding entry 15's 44,181. As always, nothing compares against a stored
 baseline; the runner re-measures control every run.
+
+## 19. Structural windows: declared exposure in the experiment statistics
+
+- **Date:** 2026-08-12
+- **Kind:** correction to the inferential machinery, applied generally rather
+  than as a prior-weight special case.
+
+### The problem
+
+2022-23 has no downloadable predecessor, so any experiment that differs only
+through prior-season evidence produces five windows there whose delta is zero
+BY CONSTRUCTION - deterministic zeros known before the run, not draws from the
+effect distribution. Entry 18 averaged them in, which shrank every mean by a
+quarter and handed the t-test five free degrees of freedom: an estimate of
+"the average effect including windows where the treatment cannot operate",
+which is not the question any experiment asks.
+
+### The fix
+
+A config may pre-register `exposure: { seasons: [...] }`. Primary inference
+(window stats, pair stats, per-season stats) then runs on exposed windows
+only; structural windows are still replayed, still shown in every table
+(tagged), and double as an in-experiment null arm: a declared-structural
+window that moves at all raises a SCOPE LEAK alarm, because an arm reaching
+outside its declared exposure makes the whole result uninterpretable.
+Eligibility is DECLARED, never detected: a window where the treatment ran and
+changed nothing is a genuine tie and stays in the sample. With no declaration
+the behaviour is exactly as before; the null arm is unchanged and still reads
+zero everywhere.
+
+### Entry 18, re-stated under the corrected estimand (not silently)
+
+Same stored trajectories, re-derived; the registry entry's original numbers
+remain what they were.
+
+| arm | mean/window (was) | t (was) | W-L-T on 15 exposed |
+| --- | ---: | ---: | --- |
+| w0 | -6.9 (-5.2) | -0.39 (-0.40) | 8-7-0 |
+| w25 | +13.8 (+10.4) | 1.33 (1.32) | 10-5-0 |
+| w100 | -22.8 (-17.1) | -1.92 (-1.87) | 5-10-0 |
+
+The means rise by a third to their undiluted values; the t statistics barely
+move because the zeros suppressed mean and standard error nearly
+proportionally. **No verdict changes**: w25 still does not clear the
+pre-registered bar, and both structural-window alarms read exactly zero. The
+primary contrast (w25 vs w0, +15.6 a window, t 1.55) was already computed on
+exposed windows only and is unaffected.

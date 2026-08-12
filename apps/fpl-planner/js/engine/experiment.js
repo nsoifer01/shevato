@@ -248,7 +248,27 @@ export function pairedStats(deltas) {
 // Results in, per-arm comparisons out. A trajectory missing either side is
 // REPORTED rather than dropped silently: a pair that failed to run is a hole in
 // the instrument, and an instrument with holes should say so.
-export function pairArms(results, { arms, controlArm = CONTROL_ARM } = {}) {
+// `exposure`, when a config declares it, is the PRE-REGISTERED set of seasons
+// the treatment can operate in at all. 2022-23 has no downloadable predecessor,
+// so any experiment that differs only through prior-season evidence produces
+// five windows there whose delta is zero BY CONSTRUCTION - deterministic
+// zeros known before the run, not draws from the effect distribution. Counting
+// them shrinks the mean by a quarter while handing the t-test five free degrees
+// of freedom, which is a different estimand from "the effect where the
+// treatment operates". With exposure declared:
+//
+//   - primary inference (windowStats, stats, per-season stats) runs on the
+//     EXPOSED windows only;
+//   - the structural windows are still replayed and reported, and they double
+//     as an in-experiment null arm: a nonzero delta in a declared-structural
+//     window means the arm leaked outside its declared scope, and the report
+//     raises an alarm instead of averaging the leak away.
+//
+// Eligibility is declared, never detected: a window where the treatment ran
+// and changed nothing is a genuine tie and must stay in the sample; only a
+// window where the treatment CANNOT run is structural, and which is which is
+// knowable before the run, which is exactly what pre-registration is for.
+export function pairArms(results, { arms, controlArm = CONTROL_ARM, exposure = null } = {}) {
   const byTrajectory = new Map();
   for (const r of results) {
     if (!byTrajectory.has(r.trajectory)) byTrajectory.set(r.trajectory, new Map());
@@ -303,24 +323,40 @@ export function pairArms(results, { arms, controlArm = CONTROL_ARM } = {}) {
       if (!byWindowKey.has(key)) byWindowKey.set(key, { key, season: p.season, window: p.window, deltas: [] });
       byWindowKey.get(key).deltas.push(p.delta);
     }
+    const eligibleSeasons = exposure && Array.isArray(exposure.seasons) ? new Set(exposure.seasons) : null;
+    const isExposed = (season) => !eligibleSeasons || eligibleSeasons.has(season);
+
     const windows = [...byWindowKey.values()].map(w => ({
       ...w,
       seeds: w.deltas.length,
       delta: w.deltas.reduce((s, d) => s + d, 0) / w.deltas.length,
+      structural: !isExposed(w.season),
     }));
+    const exposedWindows = windows.filter(w => !w.structural);
+    const structuralWindows = windows.filter(w => w.structural);
+    // The alarm: a declared-structural window with ANY movement is a scope leak.
+    const structuralLeaks = structuralWindows.filter(w => w.deltas.some(d => d !== 0));
+
+    const exposedPairs = pairs.filter(p => isExposed(p.season));
 
     comparisons.push({
       arm,
       controlArm,
       pairs,
       incomplete,
-      stats: pairedStats(pairs.map(p => p.delta)),
+      exposure: eligibleSeasons ? [...eligibleSeasons] : null,
+      structuralLeaks: structuralLeaks.map(w => w.key),
+      // Primary inference runs on exposed windows/pairs; with no exposure
+      // declared these are the full sample and nothing changes.
+      stats: pairedStats(exposedPairs.map(p => p.delta)),
       windows,
-      windowStats: pairedStats(windows.map(w => w.delta)),
+      windowStats: pairedStats(exposedWindows.map(w => w.delta)),
+      structuralWindowCount: structuralWindows.length,
       controlTotal: pairs.reduce((s, p) => s + p.control, 0),
       candidateTotal: pairs.reduce((s, p) => s + p.candidate, 0),
       bySeason: [...bySeason.entries()].map(([season, list]) => ({
         season,
+        structural: !isExposed(season),
         stats: pairedStats(list.map(p => p.delta)),
         controlTotal: list.reduce((s, p) => s + p.control, 0),
         candidateTotal: list.reduce((s, p) => s + p.candidate, 0),
@@ -407,6 +443,24 @@ export function formatReport({ config, comparisons, results, fingerprint, runtim
     out.push('the same season, the same fixtures and the same injuries with a');
     out.push('different search RNG, so they are averaged rather than counted.');
     out.push('');
+    if (c.exposure) {
+      out.push(`**Declared exposure:** ${c.exposure.join(', ')}. Primary inference runs on the`);
+      out.push(`${w.n} exposed windows; the ${c.structuralWindowCount} structural windows (no prior data,`);
+      out.push('so the treatment cannot operate there) are replayed and reported but do');
+      out.push('not enter the statistics, because a deterministic zero known before the');
+      out.push('run is not a draw from the effect distribution.');
+      out.push('');
+      if (c.structuralLeaks.length) {
+        out.push(`**ALARM - SCOPE LEAK:** ${c.structuralLeaks.length} declared-structural window(s) moved:`);
+        out.push(`${c.structuralLeaks.join(', ')}. The arm reaches outside its declared exposure;`);
+        out.push('this result is not interpretable until that is explained.');
+        out.push('');
+      } else if (c.structuralWindowCount) {
+        out.push(`Structural windows all read exactly zero, which doubles as an in-experiment`);
+        out.push('null arm for everything the treatment does not touch.');
+        out.push('');
+      }
+    }
     out.push('| measure | per window (seeds averaged) | per trajectory |');
     out.push('| --- | ---: | ---: |');
     out.push(`| observations | ${w.n} | ${s.n} |`);
@@ -428,7 +482,8 @@ export function formatReport({ config, comparisons, results, fingerprint, runtim
     out.push('| season | window | mean delta | seeds |');
     out.push('| --- | --- | ---: | ---: |');
     for (const row of c.windows) {
-      out.push(`| ${row.season} | gw${row.window[0]}-${row.window[1]} | ${signed(row.delta)} | ${row.seeds} |`);
+      const tag = row.structural ? ' (structural)' : '';
+      out.push(`| ${row.season}${tag} | gw${row.window[0]}-${row.window[1]} | ${signed(row.delta)} | ${row.seeds} |`);
     }
     out.push('');
 

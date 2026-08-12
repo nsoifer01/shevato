@@ -297,3 +297,71 @@ test('the report states the split, the caveat and the fact that it is not a verd
   assert.match(md, /evidence, not a verdict/);
   assert.match(md, /Prediction metrics decide nothing/);
 });
+
+// ---------------------------------------------------------------------------
+// Declared exposure: structural windows are controls, not observations
+// ---------------------------------------------------------------------------
+
+test('declared exposure excludes structural windows from inference but keeps them in the table', () => {
+  const results = [];
+  // Two exposed seasons with a +12 effect, one structural season at exactly 0.
+  for (const [season, effect] of [['2023-24', 12], ['2024-25', 12], ['2022-23', 0]]) {
+    for (const window of [[1, 13], [14, 26]]) {
+      for (const seed of [1, 2]) {
+        results.push(result(season, window, seed, 'control', 700));
+        results.push(result(season, window, seed, 'candidate', 700 + effect));
+      }
+    }
+  }
+  const noExposure = pairArms(results, { arms: ['control', 'candidate'] })[0];
+  const withExposure = pairArms(results, {
+    arms: ['control', 'candidate'],
+    exposure: { seasons: ['2023-24', '2024-25'] },
+  })[0];
+
+  assert.equal(noExposure.windowStats.n, 6, 'all six windows without a declaration');
+  assert.equal(withExposure.windowStats.n, 4, 'primary inference on the exposed four');
+  assert.equal(withExposure.structuralWindowCount, 2);
+  assert.equal(withExposure.windows.length, 6, 'the table still carries every window');
+  assert.ok(Math.abs(withExposure.windowStats.mean - 12) < 1e-9, 'the mean is no longer diluted');
+  assert.ok(Math.abs(noExposure.windowStats.mean - 8) < 1e-9, 'the diluted mean this exists to avoid');
+  assert.deepEqual(withExposure.structuralLeaks, [], 'zeros where zeros belong');
+  // Ties in W/L/T: exposed windows only.
+  assert.deepEqual([withExposure.windowStats.wins, withExposure.windowStats.losses, withExposure.windowStats.ties], [4, 0, 0]);
+});
+
+test('a declared-structural window that moves raises the scope-leak alarm', () => {
+  const results = [
+    result('2023-24', [1, 13], 1, 'control', 700),
+    result('2023-24', [1, 13], 1, 'candidate', 710),
+    result('2022-23', [1, 13], 1, 'control', 600),
+    result('2022-23', [1, 13], 1, 'candidate', 605),  // MUST be zero; it is not
+  ];
+  const c = pairArms(results, { arms: ['control', 'candidate'], exposure: { seasons: ['2023-24'] } })[0];
+  assert.deepEqual(c.structuralLeaks, ['2022-23|gw1-13']);
+  const md = formatReport({
+    config: {
+      name: 'leak', question: null, instrumentLabel: 'x', instrumentRank: 3,
+      seasons: ['2022-23', '2023-24'], windows: [[1, 13]], seeds: [1], chips: false,
+      strategy: 'planner', horizon: null, risk: 'balanced',
+      arms: [{ name: 'control' }, { name: 'candidate' }], exposure: { seasons: ['2023-24'] },
+    },
+    comparisons: [c],
+    results,
+    fingerprint: null,
+    runtimeMs: 0,
+  });
+  assert.match(md, /ALARM - SCOPE LEAK/);
+  assert.match(md, /2022-23 \(structural\)/);
+});
+
+test('no declared exposure is the old behaviour exactly', () => {
+  const results = [
+    result('2024-25', [1, 13], 1, 'control', 800),
+    result('2024-25', [1, 13], 1, 'candidate', 830),
+  ];
+  const a = pairArms(results, { arms: ['control', 'candidate'] })[0];
+  assert.equal(a.exposure, null);
+  assert.equal(a.structuralWindowCount, 0);
+  assert.equal(a.windowStats.n, 1);
+});

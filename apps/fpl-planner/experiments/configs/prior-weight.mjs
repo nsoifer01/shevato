@@ -29,6 +29,10 @@
 //   node apps/fpl-planner/scripts/experiment.mjs --config apps/fpl-planner/experiments/configs/prior-weight.mjs
 export default {
   name: 'prior season weight',
+  // 2022-23 has no downloadable predecessor: the treatment cannot operate
+  // there, its five windows are deterministic zeros, and they enter the run as
+  // structural controls rather than observations. Declared, not detected.
+  exposure: { seasons: ['2023-24', '2024-25', '2025-26'] },
   question: 'How much previous-season evidence should seed a returning player, and what is prior evidence worth at all?',
   instrument: 'paired',
   arms: [

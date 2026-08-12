@@ -148,6 +148,10 @@ export function resolveConfig(raw, overrides = {}) {
     risk: raw.risk || 'balanced',
     poolSize: raw.poolSize || null,
     usePrior: raw.usePrior !== false,
+    // Pre-registered exposure: the seasons the treatment can operate in at
+    // all. Windows outside it are replayed as structural controls and excluded
+    // from primary inference. See pairArms.
+    exposure: raw.exposure || null,
     arms: raw.arms,
   };
 
@@ -260,7 +264,10 @@ function parseArgs(argv) {
 // same numbers.
 async function rerender(file) {
   const stored = JSON.parse(await fsp.readFile(file, 'utf8'));
-  const comparisons = pairArms(stored.results, { arms: stored.config.arms.map(a => a.name) });
+  const comparisons = pairArms(stored.results, {
+    arms: stored.config.arms.map(a => a.name),
+    exposure: stored.config.exposure || null,
+  });
   const report = formatReport({
     config: stored.config,
     comparisons,
@@ -340,7 +347,7 @@ async function main(argv) {
     );
   }
 
-  const comparisons = pairArms(results, { arms: config.arms.map(a => a.name) });
+  const comparisons = pairArms(results, { arms: config.arms.map(a => a.name), exposure: config.exposure });
   const report = formatReport({ config, comparisons, results, fingerprint: before, runtimeMs });
 
   const dir = args.outDir || path.join(OUT_ROOT, `${slug(config.name)}-${slug(config.instrument)}`);
