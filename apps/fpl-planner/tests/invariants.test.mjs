@@ -478,7 +478,16 @@ test('a full transfer search over the sample dataset stays inside its budget', (
 // unmeasured: it more than doubled when the lineup optimizer was made exact,
 // and nothing would have failed. This covers the whole `buildPlan` path the
 // user actually waits on, at the shipped default horizon.
-const PLAN_GENERATION_BUDGET_MS = 3000;
+//
+// THE NUMBER IS OWNED BY tests/perf-budget.test.mjs, which documents the
+// measurements behind it; keep the two equal. This line sat at 3000 from the
+// horizon-3 era (local median ~600-800 ms) and was missed when the default
+// moved to horizon 5 (local 1100-1536 ms) because the development machine
+// still cleared it with room - the CI runner, about twice as slow, then failed
+// PR #374 at a median of 3020 ms. A budget constant duplicated across files
+// drifts exactly like the duplicated app lists and free-transfer arithmetic
+// this project keeps re-learning about.
+const PLAN_GENERATION_BUDGET_MS = 5000;
 
 test('end to end plan generation stays inside its budget at the default horizon', async (t) => {
   const names = ['meta', 'bootstrap', 'fixtures', 'entry', 'entry-history', 'entry-transfers', 'entry-picks'];

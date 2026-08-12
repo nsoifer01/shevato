@@ -18,8 +18,15 @@
 // Moving the default from 3 to 5 roughly doubled it, which is the price of the
 // +21.6 points a window that bought the change (registry entry 9). It runs in a
 // Web Worker behind a loading state, so it costs a second of waiting rather than
-// a frozen page. The budgets below still leave several times that headroom, so a
-// slower CI runner fails only when something has genuinely changed shape.
+// a frozen page.
+//
+// The GitHub CI runner is about twice as slow as the development machine: PR
+// #374 measured a 3020 ms median for the default-horizon path. The budgets
+// below are set from that CI observation with ~1.65x headroom, so routine
+// runner noise passes and a genuine doubling of the work still fails. The
+// same number lives in tests/invariants.test.mjs (PLAN_GENERATION_BUDGET_MS);
+// keep the two equal - the 3000 left behind there from the horizon-3 era is
+// what failed the PR.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -32,8 +39,8 @@ import { buildGameState } from '../js/engine/normalize.js';
 import { buildSquadState } from '../js/engine/squad.js';
 import { buildPlan } from '../js/engine/planner.js';
 
-const FULL_PLAN_BUDGET_MS = 4000;
-const LONGEST_HORIZON_BUDGET_MS = 8000;
+const FULL_PLAN_BUDGET_MS = 5000;
+const LONGEST_HORIZON_BUDGET_MS = 10000;
 
 const APP = join(dirname(fileURLToPath(import.meta.url)), '..');
 const sample = (name) => JSON.parse(readFileSync(join(APP, 'data', 'sample', `${name}.json`), 'utf8'));
