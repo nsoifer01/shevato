@@ -1,6 +1,202 @@
 {
   "updates": [
     {
+      "builtAt": "2026-08-12T07:38:12.729Z",
+      "totals": {
+        "seasons": 66238,
+        "delta": 9
+      },
+      "shapeCounts": {
+        "mid-peak": 4644,
+        "rebound": 10086,
+        "rising": 2909,
+        "slow-burn": 4379,
+        "big-finale": 12128,
+        "u-shaped": 3091,
+        "rollercoaster": 14057,
+        "saved-best-for-last": 1544,
+        "front-loaded": 3469,
+        "declining": 1871,
+        "bad-finale": 4675,
+        "consistent": 2627,
+        "shape-drift": 1641
+      },
+      "shapeDeltas": {
+        "mid-peak": 6,
+        "rebound": 11,
+        "rising": -1,
+        "slow-burn": 7,
+        "big-finale": 1,
+        "u-shaped": -2,
+        "rollercoaster": -5,
+        "front-loaded": -1,
+        "declining": -5,
+        "bad-finale": 9,
+        "consistent": -2
+      },
+      "added": [
+        {
+          "seriesId": "tt0149460",
+          "title": "Futurama",
+          "season": 14,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0410965",
+          "title": "Blood of the Vikings",
+          "season": 1,
+          "seasonYear": 2001
+        },
+        {
+          "seriesId": "tt15127174",
+          "title": "Mafia Nights",
+          "season": 2,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt43648966",
+          "title": "My Bias, My Boss",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt8266218",
+          "title": "T.O.T.S.",
+          "season": 2,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt35932159",
+          "title": "Your Third",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt5004632",
+          "title": "Meiden van de Herengracht",
+          "season": 1,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt39345375",
+          "title": "Seytan Üçgeni",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt37831901",
+          "title": "Seven Wonders of the Ancient World with Bettany Hughes",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt35781996",
+          "title": "The Chosen in the Wild with Bear Grylls",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt32896333",
+          "title": "No One Will Miss Us",
+          "season": 2,
+          "seasonYear": 2026
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt36596401",
+          "title": "Minecraft Cops and Robbers",
+          "season": 1,
+          "from": 8.7,
+          "to": 7.4,
+          "delta": -1.3
+        },
+        {
+          "seriesId": "tt1756927",
+          "title": "American Restoration",
+          "season": 7,
+          "from": 3.93,
+          "to": 3.33,
+          "delta": -0.6
+        },
+        {
+          "seriesId": "tt3810466",
+          "title": "WWE Slam City",
+          "season": 1,
+          "from": 7.09,
+          "to": 7.65,
+          "delta": 0.56
+        },
+        {
+          "seriesId": "tt3482114",
+          "title": "Theater Class",
+          "season": 1,
+          "from": 7.81,
+          "to": 8.24,
+          "delta": 0.43
+        },
+        {
+          "seriesId": "tt43632572",
+          "title": "Gurthukosthunnayi",
+          "season": 1,
+          "from": 6.53,
+          "to": 6.96,
+          "delta": 0.43
+        },
+        {
+          "seriesId": "tt1232714",
+          "title": "True Beauty",
+          "season": 1,
+          "from": 6.05,
+          "to": 6.43,
+          "delta": 0.38
+        },
+        {
+          "seriesId": "tt2114184",
+          "title": "The High Fructose Adventures of Annoying Orange",
+          "season": 2,
+          "from": 6.89,
+          "to": 6.52,
+          "delta": -0.37
+        },
+        {
+          "seriesId": "tt8975856",
+          "title": "Care Bears: Unlock the Magic",
+          "season": 1,
+          "from": 8.4,
+          "to": 8.05,
+          "delta": -0.35
+        },
+        {
+          "seriesId": "tt43636687",
+          "title": "Amdré e Seus Amigos",
+          "season": 1,
+          "from": 9.6,
+          "to": 9.27,
+          "delta": -0.33
+        },
+        {
+          "seriesId": "tt41278615",
+          "title": "Oh Boy, Was I Wrong About Her",
+          "season": 1,
+          "from": 8.28,
+          "to": 7.95,
+          "delta": -0.33
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 22595,
+        "avgRating": 1234,
+        "shapes": 211,
+        "seriesRating": 491,
+        "episodeCount": 63,
+        "overview": 2,
+        "poster": 3
+      }
+    },
+    {
       "builtAt": "2026-08-11T07:22:12.487Z",
       "totals": {
         "seasons": 66229,
@@ -6748,245 +6944,6 @@
         "seriesRating": 415,
         "poster": 1,
         "providers": 1
-      }
-    },
-    {
-      "builtAt": "2026-07-13T09:06:56.327Z",
-      "totals": {
-        "seasons": 65768,
-        "delta": 14
-      },
-      "shapeCounts": {
-        "mid-peak": 4622,
-        "rebound": 10039,
-        "rising": 2899,
-        "slow-burn": 4361,
-        "big-finale": 12019,
-        "u-shaped": 3073,
-        "rollercoaster": 14014,
-        "saved-best-for-last": 1521,
-        "front-loaded": 3433,
-        "declining": 1858,
-        "bad-finale": 4633,
-        "consistent": 2613,
-        "shape-drift": 1607
-      },
-      "shapeDeltas": {
-        "mid-peak": 2,
-        "rebound": 1,
-        "rising": -5,
-        "slow-burn": -6,
-        "u-shaped": 1,
-        "rollercoaster": 11,
-        "saved-best-for-last": 3,
-        "front-loaded": 2,
-        "declining": 4,
-        "bad-finale": 5,
-        "consistent": 2,
-        "shape-drift": -2
-      },
-      "added": [
-        {
-          "seriesId": "tt5574940",
-          "title": "The New Edition Story",
-          "season": 1,
-          "seasonYear": 2017
-        },
-        {
-          "seriesId": "tt32915471",
-          "title": "2026 FIFA World Cup",
-          "season": 6,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41278620",
-          "title": "The Cat and the Dragon",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0424603",
-          "title": "Atomic Betty",
-          "season": 1,
-          "seasonYear": 2004
-        },
-        {
-          "seriesId": "tt4305162",
-          "title": "Expedition Unknown",
-          "season": 17,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt6117020",
-          "title": "Worst Bakers in America",
-          "season": 1,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt9646546",
-          "title": "Dimension 20",
-          "season": 30,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt11162686",
-          "title": "Grasa",
-          "season": 2,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt19383782",
-          "title": "Yu-Gi-Oh!: Go Rush!!",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt1556079",
-          "title": "Futari Wa Pretty Cure Max Heart",
-          "season": 1,
-          "seasonYear": 2005
-        },
-        {
-          "seriesId": "tt26343082",
-          "title": "Prisoner of the Prophet",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt29261298",
-          "title": "Who's Your Gynac?",
-          "season": 2,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt33305811",
-          "title": "National Parks: USA",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt36735704",
-          "title": "La caza del solitario",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt39115169",
-          "title": "Vida perra",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt5235950",
-          "title": "Word Party",
-          "season": 1,
-          "seasonYear": 2016
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt12511004",
-          "title": "Stampy's Lovely World",
-          "season": 10,
-          "seasonYear": 2017
-        },
-        {
-          "seriesId": "tt12511004",
-          "title": "Stampy's Lovely World",
-          "season": 11,
-          "seasonYear": 2017
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt42423511",
-          "title": "Crashers",
-          "season": 1,
-          "from": 8.07,
-          "to": 7.15,
-          "delta": -0.92
-        },
-        {
-          "seriesId": "tt27582860",
-          "title": "Project Fear",
-          "season": 4,
-          "from": 8.78,
-          "to": 7.91,
-          "delta": -0.87
-        },
-        {
-          "seriesId": "tt43588311",
-          "title": "Bad Nam",
-          "season": 1,
-          "from": 5.55,
-          "to": 4.86,
-          "delta": -0.69
-        },
-        {
-          "seriesId": "tt36742917",
-          "title": "I'm Not Afraid",
-          "season": 1,
-          "from": 8.9,
-          "to": 8.26,
-          "delta": -0.64
-        },
-        {
-          "seriesId": "tt0411007",
-          "title": "Listen Up",
-          "season": 1,
-          "from": 6.31,
-          "to": 5.73,
-          "delta": -0.58
-        },
-        {
-          "seriesId": "tt27582860",
-          "title": "Project Fear",
-          "season": 5,
-          "from": 8.52,
-          "to": 7.96,
-          "delta": -0.56
-        },
-        {
-          "seriesId": "tt22000632",
-          "title": "Bloody Bites",
-          "season": 1,
-          "from": 6.71,
-          "to": 6.16,
-          "delta": -0.55
-        },
-        {
-          "seriesId": "tt27582860",
-          "title": "Project Fear",
-          "season": 3,
-          "from": 8.74,
-          "to": 8.22,
-          "delta": -0.52
-        },
-        {
-          "seriesId": "tt32461549",
-          "title": "Eat Run Love",
-          "season": 1,
-          "from": 9.2,
-          "to": 8.7,
-          "delta": -0.5
-        },
-        {
-          "seriesId": "tt35433285",
-          "title": "My Safe Zone",
-          "season": 1,
-          "from": 8.01,
-          "to": 7.55,
-          "delta": -0.46
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 19638,
-        "avgRating": 1329,
-        "seriesRating": 278,
-        "shapes": 212,
-        "episodeCount": 98,
-        "poster": 4,
-        "overview": 8
       }
     }
   ]
