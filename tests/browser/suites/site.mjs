@@ -57,24 +57,29 @@ export async function run({ base, cdpPort }) {
   await goto(s, `${base}/home.html`, { settle: 2600 });
   const home = await evaluate(s, `(()=>{
     const btns=[...document.querySelectorAll('.hero .cta-row .button')];
-    const links=[...document.querySelectorAll('.home-app-links li a')];
-    const names=links.map(a=>a.firstChild.textContent.trim());
     return { ctaCount:btns.length,
       variants:[...new Set(btns.map(b=>b.className))],
       backgrounds:[...new Set(btns.map(b=>getComputedStyle(b).backgroundColor))],
-      names, hrefs:links.map(a=>a.getAttribute('href')),
-      sorted: JSON.stringify(names)===JSON.stringify([...names].sort((a,b)=>
-        a.toLowerCase()<b.toLowerCase()?-1:1)) };})()`);
+      appLinksGone: !document.querySelector('.home-app-links') };})()`);
   t('home: three hero CTAs', home.ctaCount === 3, String(home.ctaCount));
   t('home: CTAs share one variant', home.variants.length === 1, home.variants.join(' / '));
   t('home: CTAs share one background', home.backgrounds.length === 1, home.backgrounds.join(' / '));
-  t('home: eight apps listed', home.names.length === 8, String(home.names.length));
-  t('home: apps listed A-Z', home.sorted, home.names.join(', '));
+  // The per-app grid was removed 2026-08-12: /apps is the one route, via the
+  // hero button, so the homepage carries no app inventory to drift.
+  t('home: no per-app link grid', home.appLinksGone, 'stale .home-app-links present');
 
-  for (let i = 0; i < home.hrefs.length; i++) {
-    await goto(s, `${base}/${home.hrefs[i]}`, { settle: 1500 });
+  // Every app must resolve from the hub's linked preview images, which are
+  // the canonical browse surface now that home carries no per-app grid.
+  await goto(s, `${base}/apps.html`, { settle: 2000 });
+  const hub = await evaluate(s, `(()=>{
+    const links=[...document.querySelectorAll('a.app-preview-link')];
+    return { hrefs:links.map(a=>a.getAttribute('href')),
+      names:links.map(a=>(a.getAttribute('aria-label')||'').replace(/^Open /,'')) };})()`);
+  t('apps hub: every preview image is a link', hub.hrefs.length > 0 && hub.hrefs.every(h => /^apps\/[a-z0-9-]+\/$/.test(h)), hub.hrefs.join(', '));
+  for (let i = 0; i < hub.hrefs.length; i++) {
+    await goto(s, `${base}/${hub.hrefs[i]}`, { settle: 1500 });
     const ok = await evaluate(s, "document.title.length>0 && !!document.querySelector('h1,h2')");
-    t(`home: app link ${home.names[i]} resolves`, !!ok, home.hrefs[i]);
+    t(`apps hub: preview link ${hub.names[i]} resolves`, !!ok, hub.hrefs[i]);
   }
 
   // --- nav by real click ---------------------------------------------------

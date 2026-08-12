@@ -175,18 +175,19 @@ function readRepoFile(...parts) {
     return readFileSync(join(REPO_ROOT, ...parts), 'utf8');
 }
 
-test('the homepage app grid is in A-Z order', () => {
-    const html = readRepoFile('home.html');
-    const names = [...html.matchAll(/href="apps\/[a-z0-9-]+\/">([^<]*)<span>/g)].map((m) => m[1].trim());
-    assert.equal(names.length, 8, 'expected all eight apps in the homepage grid');
-    assert.ok(isSortedCI(names), `homepage grid out of A-Z order: ${names.join(', ')}`);
-});
+// The homepage per-app link grid was removed on 2026-08-12 (owner decision:
+// the "Try the free apps" hero button is the one route to /apps, so the page
+// carries no per-app inventory to keep in sync). If a homepage app list ever
+// returns, it must read from assets/apps-manifest.json and regain a test here.
 
 test('the apps hub cards are in A-Z order', () => {
     const html = readRepoFile('apps.html');
     const section = html.slice(html.indexOf('<div class="highlights">'));
     const names = [...section.matchAll(/<h3>([^<]*)<\/h3>/g)].map((m) => m[1].trim());
-    assert.equal(names.length, 8, 'expected all eight app cards');
+    // Derived from the manifest, never a literal count: literals go stale the
+    // day an app is added, which is this suite's founding lesson.
+    const manifest = JSON.parse(readFileSync(join(REPO_ROOT, 'assets', 'apps-manifest.json'), 'utf8'));
+    assert.equal(names.length, manifest.apps.length, 'expected one card per manifest app');
     assert.ok(isSortedCI(names), `apps.html cards out of A-Z order: ${names.join(', ')}`);
 });
 
@@ -283,9 +284,10 @@ test('both static-page footer generators render every manifest app and nothing e
 
 test('every tested surface lists every manifest app', () => {
     const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
+    // home.html is deliberately absent: its per-app grid was removed
+    // 2026-08-12 and the page now routes through /apps only.
     const surfaces = [
         ['apps.html', readFileSync(join(REPO_ROOT, 'apps.html'), 'utf8')],
-        ['home.html', readFileSync(join(REPO_ROOT, 'home.html'), 'utf8')],
         ['partials/header.html', readFileSync(join(REPO_ROOT, 'partials', 'header.html'), 'utf8')],
         ['sitemap-pages.xml', readFileSync(join(REPO_ROOT, 'sitemap-pages.xml'), 'utf8')],
     ];
@@ -296,4 +298,16 @@ test('every tested surface lists every manifest app', () => {
         }
     }
     assert.deepEqual(missing, []);
+});
+
+test('every apps-hub preview image is itself a link to its app', () => {
+    const html = readRepoFile('apps.html');
+    const manifest = JSON.parse(readFileSync(join(REPO_ROOT, 'assets', 'apps-manifest.json'), 'utf8'));
+    const wrapped = [...html.matchAll(/<a class="app-preview-link" href="apps\/([a-z0-9-]+)\/"[^>]*><img class="app-preview"/g)]
+        .map((m) => m[1]);
+    assert.deepEqual(wrapped.sort(), manifest.apps.map((a) => a.slug).sort(),
+        'each manifest app needs exactly one linked preview image');
+    // No bare preview images left behind.
+    const bare = [...html.matchAll(/(?<!>)<img class="app-preview"/g)].length;
+    assert.equal(html.split('<img class="app-preview"').length - 1, wrapped.length, 'a preview image exists outside a link');
 });

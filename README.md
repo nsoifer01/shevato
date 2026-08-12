@@ -106,39 +106,41 @@ fails, fix the ordering rather than the test.
    selectors from app CSS (layout-positioning of bare `#header`/`#footer` is
    the only exception). Enforced by
    `sync-system/tests/shared-ui-consistency.test.mjs`.
-2. `apps.html` - visible card with `data-category` (add a filter-bar button if
+2. `assets/apps-manifest.json` FIRST - the canonical app list (slug, name,
+   footer blurb). The generated Rising Shows / Gym Tracker page footers render
+   from it and `app-naming-consistency.test.mjs` pins every other surface
+   against it, so nothing else passes until this entry exists.
+3. `apps.html` - visible card with `data-category` (add a filter-bar button if
    the category is new), CollectionPage JSON-LD `hasPart` entry AND its
    `description`, `<title>`, meta description, meta keywords,
-   `og:image:alt`, `twitter:image:alt`, and the "Eight free web apps" count
-   wording. The two `image:alt` tags and the JSON-LD description are the
-   classic misses.
-3. `home.html` - side-projects prose list + count, "Free web apps"
-   preview-card list, `og:description` count, AND the `.home-app-links`
-   "Open an app" grid, which sits directly under the hero (one `<li>` per
-   app, with its one-line description). That grid is the only place the
-   homepage links directly to an individual app, so an app missing from it
-   gets no direct internal link from the site's highest-authority page.
-   Keep each one-liner consistent with that app's description in
-   `apps.html`; the names must match the apps hub exactly.
-4. `work.html` - personal-projects work-item.
-5. `partials/header.html` - desktop dropdown AND mobile nav list.
-6. `apps/rising-shows/scripts/render-footer.js` AND
-   `apps/gym-tracker/scripts/render-footer.cjs` (kept in sync by convention).
-7. `sitemap-pages.xml` `<url>` entry (plus `sitemap.xml` index only if the app
+   `og:image:alt`, `twitter:image:alt`, and a linked preview image
+   (`a.app-preview-link`, enforced by tests). Intro copy is deliberately
+   count-free ("Free web apps we have built...") so it never goes stale. The
+   two `image:alt` tags and the JSON-LD description are the classic misses.
+4. `home.html` - the side-projects prose list only. The per-app "Open an
+   app" grid was removed 2026-08-12 (the hero's "Try the free apps" button
+   is the one route to /apps), and all count wording is deliberately
+   count-free so it never goes stale.
+5. `work.html` - personal-projects work-item.
+6. `partials/header.html` - desktop dropdown AND mobile nav list.
+7. The generated Rising Shows / Gym Tracker page footers need NO edit: both
+   render-footer scripts read `assets/apps-manifest.json` (step 2), and a test
+   fails if they ever diverge from it.
+8. `sitemap-pages.xml` `<url>` entry (plus `sitemap.xml` index only if the app
    ships its own sub-sitemap).
-8. `netlify.toml` - redirects only if a path moved.
-9. `assets/og/cards.json` entry + `node assets/og/build-og-cards.mjs <slug>`
+9. `netlify.toml` - redirects only if a path moved.
+10. `assets/og/cards.json` entry + `node assets/og/build-og-cards.mjs <slug>`
    (commit the generated `images/og/<slug>.png`).
-10. `images/app-previews/<slug>.webp` (720x450) - rendered from SAMPLE data
+11. `images/app-previews/<slug>.webp` (720x450) - rendered from SAMPLE data
     only, never a real user's content.
-11. Root `README.md` - repo tree line + Apps table row above.
-12. `package.json` - aggregate `test` script list + `test:<slug>`.
-13. `sync-system/app-sync-init.js` - namespace + URL routing (only if the app
+12. Root `README.md` - repo tree line + Apps table row above.
+13. `package.json` - aggregate `test` script list + `test:<slug>`.
+14. `sync-system/app-sync-init.js` - namespace + URL routing (only if the app
     syncs).
-14. `privacy.html` - it makes narrow, checkable per-app promises, so it needs an
+15. `privacy.html` - it makes narrow, checkable per-app promises, so it needs an
     entry in the sync list, whatever the app keeps locally, any new third party
     it contacts, any new analytics event, and a bumped `Last reviewed:` date.
-15. Local (gitignored) surfaces: `.claude/agents/<slug>-pm.md`, the app
+16. Local (gitignored) surfaces: `.claude/agents/<slug>-pm.md`, the app
     enumerations inside the developer/PM agent briefs, and the app list at the
     top of `.features/PROMPTS.md`.
 
