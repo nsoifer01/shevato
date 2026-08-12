@@ -1180,3 +1180,79 @@ One multiplier in `projectFixtureForPlayer` (`lamAssists *= ratio`), a cached
 accumulator field beside `xMinutes`, and a `tuning` pass-through in
 `buildProjections`/`projectPlayerGw` and the backtest's `plannerDecide`. All
 removed; this entry is the spec.
+
+## 13. Bonus curve fitted in its query space
+
+- **Date:** 2026-08-13
+- **Decision: INCONCLUSIVE, not shipped.** Direction positive, no
+  significance, and the same rule that rejected the availability signal at
+  t 1.06 applies at t 0.80.
+
+### The mismatch, which is real and measured
+
+`bonusModel` fits an isotonic curve on RAW season bps/90 and the projection
+queries it with a SHRUNK rate. A curve convex at the top under-reads queries
+drawn from that compressed distribution: on the top raw-bps decile (players
+with 8+ nineties of evidence), curve(shrunk input) predicts 0.550 bonus/90 in
+2024-25 against an observed 0.749, while curve(raw input) predicts 0.696 - the
+curve itself is nearly calibrated and the query transformation is what loses
+the points. Bonus is 24-54% of the top projection decile's gap.
+
+Unlike entry 12, the ORDER diagnostic passed before the run: inside the top
+decile the bonus deficit grows monotonically with projected points (gaps 0.083
+/ 0.128 / 0.305 by tercile in 2024-25, 0.049 / 0.142 / 0.184 in 2023-24), so
+the correction steepens an ordering that is already right.
+
+### The candidate
+
+Fit the same isotonic curve on (shrunk bps/90 -> raw bonus/90), so fit and
+query live in one space. No new constants; noise control preserved. Verified to
+move the top-26 of a live pool by +0.06 bonus points and the mid-pool by +0.02.
+
+### Planner points, 45 paired trajectories read as 15 windows
+
+| statistic | per window | per trajectory |
+| --- | ---: | ---: |
+| total | +99 | +297 |
+| mean | +6.6 | +6.6 |
+| se | 8.3 | 6.3 |
+| t | 0.80 | 1.05 |
+| W / L / T | 10 / 5 / 0 | 28 / 17 / 0 |
+
+Per season: +228 (12W-3L), -7 (7W-8L), +76 (9W-6L). Spread across windows, no
+single-window carry, no season collapse - the healthiest-looking null this
+project has produced, and still a null.
+
+### Why this is INCONCLUSIVE rather than REJECT
+
+Two things distinguish it from entries 8, 10 and 12. The pre-registered order
+diagnostic passed, and the theoretical direction is one-sided (a convex curve
+under a compressed query distribution can only under-read). But the achievable
+effect is small - the shrunk-fit curve recovers ~0.06 xPoints for top players -
+and a true effect that size cannot clear t 2 on fifteen windows. The instrument
+cannot decide effects this small; that is a statement about the instrument, and
+it is why this entry is not a rejection of the mechanism.
+
+There is also a genuine counter-argument recorded for balance: isotonic
+regression on noisy raw x already suffers regression dilution, which FLATTENS
+the fitted curve and partially compensates the shrinkage of the query. The two
+biases offset by different amounts at different evidence levels, so "fit and
+query in one space" is a modelling preference, not an external truth like a
+free-transfer count. That is why it does not ship on principle the way entries
+5, 6, 7 and 11 did.
+
+### Re-test when the instrument gains power
+
+When 2025-26 becomes a replayable season (complete, chip catalogue corrected
+per the open-work list, defensive contribution already parsed), the instrument
+grows to 20 windows and a +6.6 mean with this spread would read at roughly
+t 1.1-1.3; two such seasons would decide it. Do not re-run before then and do
+not bundle it with another bonus change.
+
+### Reconstruction
+
+`bonusModel(gameState, { tuning })` keyed cache; fit x = `shrinkRates(
+underlyingRates(p, {}), { position, priors }).bps` when
+`tuning.bonusFitSpace === 'shrunk'`; `tuning` threaded through
+`buildProjections` and the backtest's `plannerDecide`. All removed; this entry
+is the spec.

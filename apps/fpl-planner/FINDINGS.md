@@ -432,12 +432,17 @@ points and closed the availability question.
    The assists half is measured and REJECTED (entry 12): the league-wide
    FPL-assists-per-xA ratio of ~1.4 is real, but correcting it loses -10.4 a
    window because the top creativity quartile has the LOWEST extra-assist
-   premium, so the induced reranking points the wrong way. **The remaining live
-   hypothesis is bonus**, where concentration is plausible (bonus is a
-   within-match BPS rank, structurally winner-takes-most) — but any candidate
-   must argue about ORDER, not levels: a level correction cancels out of every
-   ranking and only crosses hit/chip thresholds, which is exactly where entry
-   12's candidate lost its points.
+   premium, so the induced reranking points the wrong way. The bonus half is
+   measured and INCONCLUSIVE (entry 13): the curve is fitted on raw bps rates
+   and queried with shrunk ones, which demonstrably under-reads the top, and
+   fixing the fit space read +6.6 a window (10W-5L, no season collapse) at
+   t 0.80 — the healthiest null the project has produced, parked until a fourth
+   replayable season gives the instrument the power to decide a +6-or-so
+   effect. **This question is now considered worked, not open**: both measured
+   components have verdicts, and what remains (cards over-penalized ~15%, the
+   residual) is smaller than the instrument can decide. Any new candidate here
+   must first pass the entry-12 order test: a level correction cancels out of
+   every ranking and only crosses hit/chip thresholds.
 
    A bounded non-contributor: the three replayed seasons predate defensive
    contribution, so projections and actuals both carry none of it there; only a

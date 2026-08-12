@@ -432,6 +432,15 @@ function setPieceMultipliers(player) {
 
 const bonusCache = new WeakMap();
 
+// KNOWN, MEASURED, NOT SHIPPED: this curve is fitted on raw season bps/90 and
+// queried with a SHRUNK rate, and a curve convex at the top under-reads queries
+// drawn from that compressed distribution (top raw-bps decile: 0.55 predicted
+// bonus/90 from shrunk inputs against 0.75 observed). Fitting on shrunk inputs
+// instead read +6.6 points a window (t 0.80, 10W-5L, +228/-7/+76 by season) on
+// the deciding instrument, a direction without significance, and ships nothing
+// by the same rule that rejected the availability signal at t 1.06. Registry
+// entry 13 holds the verdict, the reconstruction and the re-test condition (a
+// fourth replayable season). Do not re-litigate from this comment alone.
 export function bonusModel(gameState) {
   const cached = bonusCache.get(gameState);
   if (cached) return cached;
