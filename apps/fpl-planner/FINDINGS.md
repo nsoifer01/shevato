@@ -149,15 +149,19 @@ Never decide on a weaker instrument when a stronger reading exists; never pick
 the best cell of a non-monotone sweep (that is fitting noise); always re-measure
 the control arm on your own tree.
 
-**Prediction metrics decide nothing.** FOUR separate changes improved log loss /
-Brier / calibration / MAE and none improved planner points: the trained start
+**Prediction metrics decide nothing.** FIVE separate changes improved log loss /
+Brier / calibration / bias and none improved planner points: the trained start
 calibrator (cost 160 and 90 points in two leakage-free replays; shipped disabled
 via `engineConsumes: []`), the availability signal (7 wins 7 losses on the
 deciding instrument), rate shrinkage alone (a wash until paired with the
-zero-minutes fix), and the ownership-conditioned start prior (+2.9 a window,
-t 0.37, and the mechanism it was built on did not fire). Historical FPL points
-from the complete planner are the only accepted arbiter, and the base rate for
-"better metrics, better team" in this project is now zero for four.
+zero-minutes fix), the ownership-conditioned start prior (+2.9 a window, t 0.37),
+and the assist-ratio correction (bias improved 2.3 points a gameweek, planner
+LOST 10.4 a window, entry 12). Historical FPL points from the complete planner
+are the only accepted arbiter; the base rate for "better metrics, better team"
+in this project is zero for five. The sharpened form of the lesson, from entry
+12: an aggregate gap sits mostly on the LEVEL, the level cancels out of every
+ranking, and only the part of a correction that changes ORDER changes decisions
+— so ask what a candidate does to order before running it.
 
 ## Optimizer
 
@@ -417,17 +421,27 @@ from the complete planner are the only accepted arbiter, and the base rate for
 Ranked 2026-08-12, after the replay-evidence fix moved the instrument by 1253
 points and closed the availability question.
 
-1. **Where the top of the market is under-projected.** Narrowed on 2026-08-12
-   from "the engine under-projects" to something much sharper: the highest
-   decile of projections is 7.6% low on POINTS with expected minutes within 1%,
-   and the shrinkage-target fix that would have explained a minutes gap is a
-   measured REJECT (entry 10). Look at the per-90 RATE shrinkage next, bonus
-   first (k = 19 to 24 nineties, the strongest pull in `PRIOR_NINETIES`). A
-   smaller, bounded contributor: the three seasons the deciding instrument
-   replays (2022-23 to 2024-25) predate defensive contribution, so both the
-   projection AND the actuals correctly carry none of it there and it cannot
-   explain their gap; only a future replay of 2025-26, where the rule exists and
-   the columns are now parsed, has that component in play.
+1. **Where the top of the market is under-projected — now decomposed by
+   component** (2026-08-13, leakage-free, sums exactly to the total gap). In
+   the top projection decile the missing points are: **assists ~50%** (both
+   seasons), **bonus 24-54%**, cards over-penalized 7-23%, goals roughly
+   calibrated (+28% / -27%, noise). GKP and DEF in the top decile are
+   OVER-projected (clean sheets and concessions); the under-projection is MID
+   and FWD, and for forwards bonus alone is 84% of their gap.
+
+   The assists half is measured and REJECTED (entry 12): the league-wide
+   FPL-assists-per-xA ratio of ~1.4 is real, but correcting it loses -10.4 a
+   window because the top creativity quartile has the LOWEST extra-assist
+   premium, so the induced reranking points the wrong way. **The remaining live
+   hypothesis is bonus**, where concentration is plausible (bonus is a
+   within-match BPS rank, structurally winner-takes-most) — but any candidate
+   must argue about ORDER, not levels: a level correction cancels out of every
+   ranking and only crosses hit/chip thresholds, which is exactly where entry
+   12's candidate lost its points.
+
+   A bounded non-contributor: the three replayed seasons predate defensive
+   contribution, so projections and actuals both carry none of it there; only a
+   future 2025-26 replay has that component in play.
 2. **Cross-season vs within-season evidence weighting.** Now measurable through
    `opts.priorSeasonWeight` (it moves both sides of the rate, so a sweep is
    honest). Note the live app currently has NO prior-season evidence in season

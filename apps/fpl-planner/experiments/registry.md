@@ -1092,3 +1092,91 @@ is comparable.
 `fetch-history.mjs` ever swaps archive sources, or a future season introduces a
 column mid-year again. `validate-history.mjs` now warns on any gameweek whose
 league-wide expected sum is zero with minutes on the board.
+
+## 12. Assist lambda scaled by the measured FPL-assists-per-xA ratio
+
+- **Date:** 2026-08-13
+- **Decision: REJECT.** The candidate is removed; the assist lambda comes
+  straight from xA exactly as before.
+
+### The mechanism it was aimed at, which is real and now measured
+
+An FPL assist is broader than the Opta assist xA models: rebounds, deflections,
+winning a converted penalty and forcing an own goal all count. League-wide,
+actual FPL assists run at **1.42 / 1.37 / 1.38 times xA** in the three complete
+recent seasons, while goals sit at 0.98 to 1.0 times xG. The component
+decomposition (this entry's parent diagnosis) measured missing assists as 55%
+of the top projection decile's gap in 2024-25 and 49% in 2023-24, the single
+largest component in both.
+
+### The candidate
+
+Multiply the assist lambda by an ONLINE league ratio: summed pre-deadline
+assists over summed pre-deadline xA, covered rows only so 2022-23's
+half-coverage cannot poison it, capped at 2, defaulting to 1 with no evidence.
+Nothing typed in, nothing fitted to the replayed seasons. Verified live: the
+ratio reads 1.35-1.43 from gameweek 1 (seeded) and exactly 1.0 in 2022-23 until
+covered data exists.
+
+### Planner points, 45 paired trajectories read as 15 windows
+
+| statistic | per window | per trajectory |
+| --- | ---: | ---: |
+| total | **-156** | -467 |
+| mean | -10.4 | -10.4 |
+| se | 6.0 | 4.4 |
+| t | -1.73 | -2.36 |
+| W / L / T | 4 / 9 / 2 | 13 / 26 / 6 |
+
+Per season: -121 (0W-9L-6T), -309 (6W-9L), -37 (7W-8L). Negative in all three.
+
+### Why a true correction loses points, which is the entry worth keeping
+
+Projection bias improved (-9.40 to -7.14 a gameweek) and points fell: the fifth
+change in this project to improve a calibration quantity and not the planner.
+The decision-level counters say how:
+
+| summed over 45 trajectories | control | candidate |
+| --- | ---: | ---: |
+| captaincy value | 1,766 | **1,709** |
+| hits | 12 | **19** |
+| transfers | 523 | 539 |
+
+1. **The planner acts on rankings, and the correction reranks wrongly.** The
+   quartile table held the warning before the run: the TOP creativity quartile
+   has the LOWEST assists-per-xA ratio (1.32-1.40 against 1.45-1.50 for the
+   middle). The league multiplier hands its largest absolute boosts to exactly
+   the players whose extra-assist premium is smallest, tilting captaincy and
+   transfers toward elite creators and away from finishers.
+2. **A level correction crosses absolute thresholds.** Inflated assist
+   projections pushed seven more swaps over the 4-point hit bar, and they did
+   not pay.
+
+The general lesson, sharper than before: a component can be genuinely
+under-projected IN AGGREGATE while every decision-relevant COMPARISON is
+already right, because the aggregate gap sits mostly on the level, and the
+level cancels out of a ranking. Only the part of a correction that changes
+ORDER changes decisions, and here the induced order-change pointed the wrong
+way.
+
+### Do not re-test
+
+- A flat multiplicative assist scale, at any strength, measured or tuned.
+- An additive per-90 assist constant: it changes levels only, so it cannot
+  change decisions except through the hit/chip thresholds it just failed at.
+
+### Worth testing instead, if assists are ever revisited
+
+A ratio conditioned on WHERE the extra assists come from (penalty-winning
+dribblers, corner takers, rebound-generating shot volume), because the failure
+was the gradient, not the level. Set-piece order is already in the payload and
+`setPieceMultipliers` is the natural seam. Requires evidence that the
+conditioning signal is stable season over season before any run.
+
+### Reconstruction
+
+One multiplier in `projectFixtureForPlayer` (`lamAssists *= ratio`), a cached
+`leagueAssistRatio(gameState)` summing player totals, an `assistsCovered`
+accumulator field beside `xMinutes`, and a `tuning` pass-through in
+`buildProjections`/`projectPlayerGw` and the backtest's `plannerDecide`. All
+removed; this entry is the spec.
