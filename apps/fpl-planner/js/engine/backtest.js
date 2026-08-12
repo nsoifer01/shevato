@@ -290,6 +290,30 @@ export function reconstructStarts(rows) {
 // the board and no expected data at all did not have the columns.
 // ---------------------------------------------------------------------------
 
+// Same rule, third component family: defensive-contribution columns exist only
+// from 2025-26, so rows seeded from an earlier prior season carry minutes with
+// no defcon data, and a rate divided by ALL minutes understates a returning
+// player's within-season rate by the seeded share (measured: a defender's true
+// 14-per-90 composite read 8.3 with the prior seeded, the difference between
+// clearing the 10-action threshold and projecting nothing). A played gameweek
+// whose league-wide composite sums to zero did not carry the columns.
+export function flagDefConData(rows) {
+  const byGw = new Map();
+  for (const r of rows) {
+    const entry = byGw.get(r.gw) || { defcon: 0, minutes: 0 };
+    entry.defcon += (r.cbit || 0) + (r.recoveries || 0) + (r.tackles || 0);
+    entry.minutes += r.minutes;
+    byGw.set(r.gw, entry);
+  }
+  const uncovered = [];
+  for (const [gw, entry] of [...byGw.entries()].sort((a, b) => a[0] - b[0])) {
+    if (entry.minutes > 0 && entry.defcon === 0) uncovered.push(gw);
+  }
+  const uncoveredSet = new Set(uncovered);
+  for (const r of rows) r.hasDefConData = !uncoveredSet.has(r.gw);
+  return { uncovered };
+}
+
 export function flagExpectedData(rows) {
   const byGw = new Map();
   for (const r of rows) {
@@ -336,6 +360,7 @@ export function buildDataset({ csv, rows, season, identity = null }) {
   }
   const startsFilled = reconstructStarts(parsed);
   const expectedCoverage = flagExpectedData(parsed);
+  const defConCoverage = flagDefConData(parsed);
 
   const byGw = new Map();
   const byFixture = new Map();
@@ -441,6 +466,7 @@ export function buildDataset({ csv, rows, season, identity = null }) {
     expectedDataMissing: expectedCoverage.uncovered.length ? expectedCoverage.uncovered : null,
     // Byte-duplicate rows dropped at load (same gameweek, player AND fixture).
     duplicateRowsDropped: duplicateRows,
+    defConDataMissing: defConCoverage.uncovered.length ? defConCoverage.uncovered : null,
   };
 }
 
@@ -923,6 +949,9 @@ const EMPTY_TOTALS = () => ({
   // legal denominator for an xG or xA rate. Equal to `minutes` everywhere
   // except 2022-23, where the columns arrive at gameweek 16.
   xMinutes: 0,
+  // And the defensive-contribution denominator: minutes from rows whose
+  // gameweek carried the defcon columns (2025-26 on).
+  dcMinutes: 0,
 });
 
 function addRow(totals, row, weight = 1) {
@@ -947,6 +976,7 @@ function addRow(totals, row, weight = 1) {
   // Absent flag means a caller (tests, synthetic rows) that predates it; those
   // rows all carry real expected data, so they count.
   if (row.hasExpectedData !== false) totals.xMinutes += weight * row.minutes;
+  if (row.hasDefConData !== false) totals.dcMinutes += weight * row.minutes;
   totals.cbit += weight * (row.cbit || 0);
   totals.recoveries += weight * (row.recoveries || 0);
   totals.tackles += weight * (row.tackles || 0);
@@ -1131,6 +1161,7 @@ export function gameStateAt(dataset, gw, { rules, accumulator, featureHook = nul
       // and minutes always cover the same rows) and the rate layer falls back
       // to `minutes`.
       xMinutes: t.xMinutes,
+      dcMinutes: t.dcMinutes,
       totalPoints: t.totalPoints,
       bonus: t.bonus,
       bps: t.bps,
@@ -1168,7 +1199,7 @@ export function gameStateAt(dataset, gw, { rules, accumulator, featureHook = nul
         goalsConceded: per90(t.goalsConceded, t.minutes),
         starts: per90(t.starts, t.minutes),
         cleanSheets: per90(t.cleanSheets, t.minutes),
-        defCon: per90(defConComposite({ ...t, position: p.position }), t.minutes),
+        defCon: per90(defConComposite({ ...t, position: p.position }), t.dcMinutes),
       },
       setPieces: { penaltiesOrder: null, directFreekicksOrder: null, cornersOrder: null },
     };

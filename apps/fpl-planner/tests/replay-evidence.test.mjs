@@ -539,3 +539,53 @@ test('a byte-duplicate row is dropped; a double gameweek is not', async () => {
   assert.equal(dataset.players.get(1).rows.length, 1);
   assert.equal(dataset.players.get(2).rows.length, 2);
 });
+
+// ---------------------------------------------------------------------------
+// 6. The defensive-contribution denominator
+//
+// Third member of the covered-minutes family, found 2026-08-12 when the
+// prior-weight experiment produced a season-concentrated anomaly: removing the
+// prior season entirely was worth +56 a window in 2025-26 and cost 40 in
+// 2023-24. Defensive contribution exists only from 2025-26, so minutes seeded
+// from 2024-25 carried no defcon data and diluted every returning player's
+// within-season composite rate (a real 14-per-90 defender read 8.3, under the
+// 10-action threshold). Both the per-player rate and the position-level
+// shrinkage TARGET divide by covered minutes now.
+// ---------------------------------------------------------------------------
+
+test('a defcon rate is divided by the minutes its evidence covers', async () => {
+  const { underlyingRates, shrinkRates, positionRatePriors } = await import('../js/engine/projections.js');
+  // 1800 minutes of which only 900 carry defcon data, 140 actions accumulated.
+  const r = underlyingRates({ minutes: 1800, dcMinutes: 900, cbit: 100, tackles: 40, recoveries: 0, xG: 0, xA: 0, bps: 300, saves: 0, yellowCards: 0, redCards: 0, penaltiesSaved: 0, position: 2 });
+  assert.ok(Math.abs(r.defCon - 14) < 1e-9, `defCon/90 over covered minutes: ${r.defCon}`);
+  assert.ok(Math.abs(r.dcNineties - 10) < 1e-9);
+  // bps still reads over all 20 nineties.
+  assert.ok(Math.abs(r.bps - 15) < 1e-9);
+
+  // Absent field: identity with minutes, the live-payload state.
+  const plain = underlyingRates({ minutes: 1800, cbit: 100, tackles: 40, recoveries: 0, xG: 0, xA: 0, bps: 300, saves: 0, yellowCards: 0, redCards: 0, penaltiesSaved: 0, position: 2 });
+  assert.ok(Math.abs(plain.defCon - 7) < 1e-9);
+  assert.equal(plain.dcNineties, plain.nineties);
+});
+
+test('the seeded prior contributes minutes but no defcon coverage, and the game state says so', () => {
+  const priorRows = season({ gws: 6 });                        // no defcon columns
+  const currentRows = season({ gws: 6 });
+  for (const r of currentRows) if (r.minutes > 0) { r.cbit = 6; r.tackles = 3; r.recoveries = 2; }
+  const prior = buildDataset({ rows: priorRows, season: 'prior' });
+  const current = buildDataset({ rows: currentRows, season: 'current' });
+  assert.equal(current.defConDataMissing, null);
+  assert.deepEqual(prior.defConDataMissing, [1, 2, 3, 4, 5, 6]);
+
+  const accumulator = createAccumulator(current, { priorDataset: prior, priorWeight: 0.5 });
+  for (let g = 1; g <= 3; g++) accumulator.absorb(g);
+  const gs = gameStateAt(current, 4, { rules: RULES, accumulator });
+  // Not a goalkeeper: a GKP's composite is zero by rule whatever his columns
+  // say, which is itself worth pinning alongside the denominator.
+  const p = [...gs.players.values()].find(x => x.minutes > 0 && x.cbit > 0 && x.position !== 1);
+  assert.ok(p.dcMinutes > 0 && p.dcMinutes < p.minutes, 'seeded minutes are excluded from the defcon denominator');
+  const expected = (p.cbit + (p.position === 2 ? p.tackles : p.tackles + p.recoveries)) * 90 / p.dcMinutes;
+  assert.ok(Math.abs(p.per90.defCon - expected) < 1e-9, `${p.per90.defCon} vs ${expected}`);
+  const gk = [...gs.players.values()].find(x => x.minutes > 0 && x.position === 1);
+  assert.equal(gk.per90.defCon, 0, 'a goalkeeper cannot earn defensive contribution');
+});

@@ -275,6 +275,7 @@ export function underlyingRates(player, { gw, halfLife = RECENCY_HALF_LIFE_GWS }
       source: 'none',
       nineties: 0,
       xNineties: 0,
+      dcNineties: 0,
       xG: 0, xA: 0, bps: 0, saves: 0, defCon: 0, yellow: 0, red: 0, pensSaved: 0,
     };
   }
@@ -286,6 +287,7 @@ export function underlyingRates(player, { gw, halfLife = RECENCY_HALF_LIFE_GWS }
   // payload never sets the field: FPL's totals and minutes always cover the
   // same rows, so the fallback is the identity.
   const xMinutes = Number.isFinite(player.xMinutes) ? player.xMinutes : minutes;
+  const dcMinutes = Number.isFinite(player.dcMinutes) ? player.dcMinutes : minutes;
   return ratesFrom({
     xG: player.xG,
     xA: player.xA,
@@ -295,26 +297,29 @@ export function underlyingRates(player, { gw, halfLife = RECENCY_HALF_LIFE_GWS }
     yellow: player.yellowCards,
     red: player.redCards,
     pensSaved: player.penaltiesSaved,
-  }, minutes, 'season', { xMinutes });
+  }, minutes, 'season', { xMinutes, dcMinutes });
 }
 
-function ratesFrom(totals, minutes, source, { xMinutes = minutes } = {}) {
+function ratesFrom(totals, minutes, source, { xMinutes = minutes, dcMinutes = minutes } = {}) {
   const nineties = minutes / 90;
   const xNineties = xMinutes / 90;
+  const dcNineties = dcMinutes / 90;
   const per = (v) => (v || 0) / nineties;
-  // Zero covered minutes means zero xG EVIDENCE, not a zero xG rate: the rate
-  // is reported as 0 with xNineties 0 and the shrinkage layer resolves it to
-  // the position prior, exactly as it does for a player with no minutes at all.
+  // Zero covered minutes means zero EVIDENCE, not a zero rate: the rate is
+  // reported as 0 with its evidence at 0 and the shrinkage layer resolves it
+  // to the position prior, exactly as for a player with no minutes at all.
   const perX = (v) => (xNineties > 0 ? (v || 0) / xNineties : 0);
+  const perDc = (v) => (dcNineties > 0 ? (v || 0) / dcNineties : 0);
   return {
     source,
     nineties,
     xNineties,
+    dcNineties,
     xG: perX(totals.xG),
     xA: perX(totals.xA),
     bps: per(totals.bps),
     saves: per(totals.saves),
-    defCon: per(totals.defCon),
+    defCon: perDc(totals.defCon),
     yellow: per(totals.yellow),
     red: per(totals.red),
     pensSaved: per(totals.pensSaved),
@@ -341,11 +346,19 @@ export function positionRatePriors(gameState) {
     if (!byPosition.has(p.position)) {
       byPosition.set(p.position, {
         nineties: 0,
+        xNineties: 0,
+        dcNineties: 0,
         totals: { xG: 0, xA: 0, bps: 0, saves: 0, defCon: 0, yellow: 0, red: 0, pensSaved: 0 },
       });
     }
     const row = byPosition.get(p.position);
     row.nineties += p.minutes / 90;
+    // The same covered-minutes rule the per-player rates follow: a numerator
+    // may only be divided by the minutes its evidence covers, and this map IS
+    // the shrinkage target, so a diluted target would drag every shrunk rate
+    // down with it. Absent fields (every live payload) fall back to minutes.
+    row.xNineties += (Number.isFinite(p.xMinutes) ? p.xMinutes : p.minutes) / 90;
+    row.dcNineties += (Number.isFinite(p.dcMinutes) ? p.dcMinutes : p.minutes) / 90;
     row.totals.xG += p.xG || 0;
     row.totals.xA += p.xA || 0;
     row.totals.bps += p.bps || 0;
@@ -359,7 +372,12 @@ export function positionRatePriors(gameState) {
   const rates = new Map();
   for (const [position, row] of byPosition) {
     const out = {};
-    for (const key of SHRUNK_RATES) out[key] = row.nineties > 0 ? row.totals[key] / row.nineties : 0;
+    for (const key of SHRUNK_RATES) {
+      const denom = key === 'xG' || key === 'xA' ? row.xNineties
+        : key === 'defCon' ? row.dcNineties
+          : row.nineties;
+      out[key] = denom > 0 ? row.totals[key] / denom : 0;
+    }
     rates.set(position, out);
   }
 
@@ -396,7 +414,9 @@ export function shrinkRates(rates, { position, priors }) {
     // two are the same number.
     const n = (key === 'xG' || key === 'xA') && Number.isFinite(rates.xNineties)
       ? rates.xNineties
-      : rates.nineties;
+      : key === 'defCon' && Number.isFinite(rates.dcNineties)
+        ? rates.dcNineties
+        : rates.nineties;
     out[key] = (rates[key] * n + prior[key] * k) / (n + k);
   }
   return out;

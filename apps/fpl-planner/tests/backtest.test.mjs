@@ -733,11 +733,17 @@ test('SPEC 14.4: injecting a future-only column into the feature builder changes
   // not revealed. A harness that actually reads features has to move; a harness
   // that scores a constant, or that quietly ignores the game state it is handed,
   // would not. That is the whole point of this guard.
+  // The hook obeys the covered-minutes contract: whoever builds a numerator
+  // owns its denominator, so injecting xG means declaring the minutes that
+  // evidence covers. Without the xMinutes line, a never-player's injected xG
+  // divides into zero x-evidence and resolves to the position prior, quietly
+  // muting the very cheat this guard exists to detect.
   const featureHook = (player, { gw, dataset }) => ({
     ...player,
     xG: player.xG + actualPoints(dataset, gw, player.id),
     per90: { ...player.per90, xG: player.per90.xG + actualPoints(dataset, gw, player.id) },
     minutes: Math.max(player.minutes, 90),
+    xMinutes: Math.max(Number.isFinite(player.xMinutes) ? player.xMinutes : player.minutes, 90),
     starts: Math.max(player.starts, 1),
   });
 

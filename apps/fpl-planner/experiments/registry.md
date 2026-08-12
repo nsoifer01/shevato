@@ -1425,3 +1425,40 @@ removed; entry 13 holds the reconstruction spec if that ever happens.
 This is also the held-out season doing exactly what entry 15 said it was for:
 2025-26 was not used to tune anything, and its first vote killed a candidate
 that three-season evidence had left alive.
+
+## 17. The defensive-contribution denominator, found by the prior-weight anomaly
+
+- **Date:** 2026-08-12
+- **Kind:** correctness fix, third member of the covered-minutes family
+  (entries 7 and 11), found exactly the way the Methodology says defects
+  announce themselves: a dramatic experiment result concentrated in one season.
+
+### How it was found
+
+The first prior-weight run (see entry 18) produced an impossible-looking split:
+removing the prior season entirely was worth **+56.5 a window in 2025-26**
+(14W-1L) while costing 40.7 in 2023-24, with a monotone collapse as the weight
+grew (w=1: -52.9 in 2025-26). The one thing unique to 2025-26 is defensive
+contribution - and its prior season's archive has no defcon columns.
+
+### The defect
+
+Minutes seeded from 2024-25 carried no defcon data, but a returning player's
+composite rate divided by ALL his minutes. Measured mid-season: a defender with
+a true within-season rate of ~13-14 actions per 90 read **8.30**, the
+difference between comfortably clearing the DEF threshold of 10 and projecting
+almost nothing. The position-level shrinkage TARGET had the same dilution, so
+every shrunk defcon rate was dragged toward a diluted league prior as well.
+
+### The fix
+
+`flagDefConData` marks coverage per gameweek (a played round whose league-wide
+composite sums to zero did not carry the columns); the accumulator keeps
+`dcMinutes`; per-player rates AND `positionRatePriors` divide defcon by covered
+minutes with its own evidence weight (`dcNineties`) in shrinkage. Zero covered
+minutes is zero evidence resolved to the prior, never a zero rate. Live
+payloads never set the fields and are bit-identical by construction. The
+SPEC 14.4 cheat-hook was updated to declare `xMinutes` alongside the xG it
+injects - the covered-minutes contract now applies to feature injectors too.
+
+Null arm exactly zero on all 60 trajectories; validator clean; 787/787.

@@ -14,6 +14,26 @@ Read the per-season columns before the total. A row that gains in aggregate
 while losing a season is not an improvement, it is a bet, and the note column
 says so.
 
+## 2026-08-12, later: the instrument is now FOUR seasons and the totals below are three-season numbers
+
+2025-26 qualified as a replay season (registry entry 15) after the evidence
+corrections of entries 11 and 14 and a load-time dedupe of its ten duplicated
+archive rows. Current four-season chips-on baseline, each season under its own
+historical rules, at the shipped horizon 5:
+
+| strategy | 2022-23 | 2023-24 | 2024-25 | 2025-26 | total |
+|----------|--------:|--------:|--------:|--------:|------:|
+| planner  |    2239 |    2283 |    2453 |    2040 |  9015 |
+
+Deciding instrument (paired, chips off, 20 windows / 60 trajectories): planner
+control **44,181** (11,138 / 11,134 / 11,779 / 10,130). 2025-26's lower level
+is the season itself, not the engine: within it the planner beats greedy by 79
+and hold by 519, normal margins, and its like-for-like projection bias (+2.1 a
+gameweek) is the best-calibrated of the four seasons.
+
+Every three-season total below this line predates entries 11, 14 and 15 in
+some combination; compare nothing against them without re-measuring.
+
 ## 2026-08-12: every row below was measured with a degenerate minutes model
 
 Superseding everything under it. The replay's start-rate numerator carried half
