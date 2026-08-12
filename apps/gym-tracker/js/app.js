@@ -784,14 +784,33 @@ class GymTrackerApp {
      * Get workout session by ID
      */
     getWorkoutSessionById(id) {
-        return this.workoutSessions.find(s => s.id === id);
+        return this.workoutSessions.find(s => sameId(s.id, id));
     }
 
     /**
-     * Get exercise by ID
+     * Get exercise by ID. sameId-tolerant: catalog ids are numbers, but ids
+     * can arrive as strings from dataset attributes or from custom-exercise
+     * records whose numeric ids were stringified in a sync round-trip (the
+     * same failure measurements hit - see deleteMeasurement).
      */
     getExerciseById(id) {
-        return this.exerciseDatabase.find(e => e.id === id);
+        return this.exerciseDatabase.find(e => sameId(e.id, id));
+    }
+
+    /**
+     * Display name for an exercise, resolved from the catalog by stable id.
+     *
+     * Programs and sessions store an `exerciseName` SNAPSHOT taken when the
+     * row was created; the catalog can rename an exercise later (same id).
+     * Every place that shows an exercise name to the user should resolve
+     * through this helper so renames apply uniformly across old programs,
+     * old sessions, history, and exports - without ever rewriting stored
+     * user data. The snapshot remains the fallback for exercises that no
+     * longer exist in the catalog (e.g. a deleted custom exercise).
+     */
+    getExerciseDisplayName(exerciseId, fallback = '') {
+        const entry = this.exerciseDatabase.find(e => sameId(e.id, exerciseId));
+        return (entry && entry.name) || fallback || 'Unknown Exercise';
     }
 
     /**

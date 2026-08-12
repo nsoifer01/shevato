@@ -136,12 +136,14 @@ export class StorageService {
 
     getWorkoutSessionById(id) {
         const sessions = this.getWorkoutSessions();
-        return sessions.find(s => s.id === id);
+        return sessions.find(s => sameId(s.id, id));
     }
 
     saveWorkoutSession(session) {
         const sessions = this.getWorkoutSessions();
-        const index = sessions.findIndex(s => s.id === session.id);
+        // sameId: a string/number id mismatch here would append a DUPLICATE
+        // session instead of updating the existing one.
+        const index = sessions.findIndex(s => sameId(s.id, session.id));
 
         if (index >= 0) {
             sessions[index] = session;
@@ -154,7 +156,7 @@ export class StorageService {
 
     deleteWorkoutSession(id) {
         const sessions = this.getWorkoutSessions();
-        const filtered = sessions.filter(s => s.id !== id);
+        const filtered = sessions.filter(s => !sameId(s.id, id));
         return this.saveWorkoutSessions(filtered);
     }
 

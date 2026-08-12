@@ -522,7 +522,8 @@ class SettingsView {
      */
     exportSetsCsv() {
         const unit = this.app.settings?.weightUnit || 'kg';
-        const { csv, rowCount } = buildSetsCsv(this.app.workoutSessions || [], unit);
+        const { csv, rowCount } = buildSetsCsv(this.app.workoutSessions || [], unit,
+            (id, fallback) => this.app.getExerciseDisplayName(id, fallback));
 
         if (rowCount === 0) {
             showToast('No completed sets to export yet. Log a workout first.', 'info', 4000);

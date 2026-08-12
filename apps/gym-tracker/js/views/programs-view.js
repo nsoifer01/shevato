@@ -36,12 +36,15 @@ class ProgramsView {
         }
 
         // Modal close buttons. The program modal gets a special handler so we
-        // can return the user to whichever view they came from (e.g. Dashboard).
+        // can return the user to whichever view they came from (e.g. Dashboard),
+        // and the exercise picker one so its selection state is reset with it.
         document.querySelectorAll('.modal-close').forEach(btn => {
             const modal = btn.closest('.modal');
             if (!modal) return;
             if (modal.id === 'program-modal') {
                 btn.addEventListener('click', () => this.closeProgramModal());
+            } else if (modal.id === 'exercise-picker-modal') {
+                btn.addEventListener('click', () => this.closeExercisePicker());
             } else {
                 btn.addEventListener('click', () => modal.classList.remove('active'));
             }
@@ -449,6 +452,10 @@ class ProgramsView {
             modal.classList.remove('active');
             modal.classList.remove('program-editor-workout-mode');
         }
+        // Same editor-close contract as closeProgramModal: the picker never
+        // outlives the editor, and the staged clone is released.
+        this.closeExercisePicker();
+        this.currentProgram = null;
         this.enteredFromWorkout = false;
         const actions = document.getElementById('program-modal-workout-actions');
         if (actions) actions.hidden = true;
@@ -597,6 +604,9 @@ class ProgramsView {
         container.innerHTML = exercises.map((exercise, index) => {
             const details = this.app.getExerciseById(exercise.exerciseId);
             const muscle = formatMuscleGroup(details?.muscleGroup);
+            // Catalog renames apply to saved programs too: display resolves
+            // by stable id; the stored snapshot is only the fallback.
+            const displayName = (details && details.name) || exercise.exerciseName || 'Unknown Exercise';
             const restLabel = formatRestLabel(exercise.restSeconds);
             const restAfterLabel = formatRestLabel(exercise.restAfterSeconds);
             // Visual cues for supersets. Group membership is computed from
@@ -689,7 +699,7 @@ class ProgramsView {
                     </span>
                     <span class="pex-position" aria-hidden="true">${index + 1}</span>
                     <span class="pex-name">
-                        <span class="pex-name-main">${escapeHtml(exercise.exerciseName)}</span>${muscle ? `
+                        <span class="pex-name-main">${escapeHtml(displayName)}</span>${muscle ? `
                         <span class="pex-name-sub">${escapeHtml(muscle)}</span>` : ''}
                     </span>
                     <span class="pex-head-actions">
@@ -699,7 +709,7 @@ class ProgramsView {
                                 data-action="move-exercise-up"
                                 data-index="${index}"
                                 ${index === 0 ? 'disabled' : ''}
-                                aria-label="Move ${escapeHtml(exercise.exerciseName)} up"
+                                aria-label="Move ${escapeHtml(displayName)} up"
                                 title="Move up">
                                 <i class="fas fa-chevron-up" aria-hidden="true"></i>
                             </button>
@@ -707,7 +717,7 @@ class ProgramsView {
                                 data-action="move-exercise-down"
                                 data-index="${index}"
                                 ${index === this.currentProgram.exercises.length - 1 ? 'disabled' : ''}
-                                aria-label="Move ${escapeHtml(exercise.exerciseName)} down"
+                                aria-label="Move ${escapeHtml(displayName)} down"
                                 title="Move down">
                                 <i class="fas fa-chevron-down" aria-hidden="true"></i>
                             </button>
@@ -715,8 +725,8 @@ class ProgramsView {
                         <button type="button" class="pex-icon-btn pex-icon-btn-danger pex-delete"
                             data-action="remove-exercise"
                             data-index="${index}"
-                            title="Remove ${escapeHtml(exercise.exerciseName)}"
-                            aria-label="Remove ${escapeHtml(exercise.exerciseName)}">
+                            title="Remove ${escapeHtml(displayName)}"
+                            aria-label="Remove ${escapeHtml(displayName)}">
                             <i class="fas fa-trash-can" aria-hidden="true"></i>
                         </button>
                     </span>
@@ -728,7 +738,7 @@ class ProgramsView {
                     <button type="button" class="pex-add-set-btn"
                         data-action="add-set-row"
                         data-index="${index}"
-                        aria-label="Add set to ${escapeHtml(exercise.exerciseName)}">
+                        aria-label="Add set to ${escapeHtml(displayName)}">
                         <i class="fas fa-plus" aria-hidden="true"></i> Add set
                     </button>
                     <div class="pex-rest-block">
@@ -879,6 +889,20 @@ class ProgramsView {
             this.currentProgram.updateExercise(index, { groupId });
         } else {
             this.currentProgram.updateExercise(index, { groupId: null });
+            // Splitting can strand one-member "groups" on either side (e.g.
+            // unlinking the second row of a two-row superset left the first
+            // row's groupId set). A superset of one is meaningless and makes
+            // the workout view wrap a lone exercise in superset chrome, so
+            // dissolve any group that no longer has at least two members.
+            const counts = new Map();
+            for (const ex of list) {
+                if (ex.groupId) counts.set(ex.groupId, (counts.get(ex.groupId) || 0) + 1);
+            }
+            list.forEach((ex, i) => {
+                if (ex.groupId && counts.get(ex.groupId) < 2) {
+                    this.currentProgram.updateExercise(i, { groupId: null });
+                }
+            });
         }
 
         this.renderProgramExercises();
@@ -1226,6 +1250,12 @@ class ProgramsView {
         const modal = document.getElementById('program-modal');
         modal.classList.remove('active');
         modal.classList.remove('program-editor-workout-mode');
+        // The picker is a child of the editor - it must never outlive it.
+        // Closing the editor by ANY route (Cancel, X, save, navigation)
+        // dismisses the picker and drops its selection, and the staged clone
+        // is released so a stray commit can't write into a discarded program.
+        this.closeExercisePicker();
+        this.currentProgram = null;
         // Item 4: closing via Cancel/X (not the Return button) abandons the
         // workout-edit context. The paused workout stays resumable from the
         // banner; we just stop offering the in-editor return button.
@@ -1258,10 +1288,13 @@ class ProgramsView {
             // Cleared first: closeProgramModal() would otherwise call
             // showView() from inside the showView() that invoked us.
             this.returnToView = null;
-            this.closeProgramModal();
+            this.closeProgramModal(); // also dismisses the picker (child modal)
+        } else {
+            // Defensive: the picker can't be open without the editor, but if
+            // it ever is, leaving the view must still clear its `active`
+            // class - it holds the body scroll lock.
+            this.closeExercisePicker();
         }
-        const picker = document.getElementById('exercise-picker-modal');
-        if (picker) picker.classList.remove('active');
         return true;
     }
 
@@ -1309,38 +1342,67 @@ class ProgramsView {
         }
     }
 
+    /**
+     * Open the exercise picker OVER the program editor. The picker is a child
+     * of the editor: it never opens without a staged program in an active
+     * editor, the editor stays open (and untouched) underneath while the
+     * picker is up, and every path that closes the editor also closes the
+     * picker (closeProgramModal / cancelWorkoutEdit / beforeLeave). This is
+     * what guarantees the commit always has a live staged program to land in.
+     */
     openExercisePicker() {
         const modal = document.getElementById('exercise-picker-modal');
-        // Start each picker session with an empty selection — fresh picks,
-        // not leftover state from a previous open.
+        const editorOpen = document.getElementById('program-modal')?.classList.contains('active');
+        if (!modal || !editorOpen || !this.currentProgram) return;
+
+        // Start each picker session fresh: empty selection AND empty
+        // search/filter controls, so the full list shown matches the inputs
+        // (previously a leftover search term sat above an unfiltered list).
         this.pickerSelection = new Map();
+        const searchInput = document.getElementById('exercise-search');
+        const categoryFilter = document.getElementById('exercise-category-filter');
+        const equipmentFilter = document.getElementById('exercise-equipment-filter');
+        if (searchInput) searchInput.value = '';
+        if (categoryFilter) categoryFilter.value = '';
+        if (equipmentFilter) equipmentFilter.value = '';
+
         this.renderExercisePicker();
         this.renderExercisePickerTray();
         modal.classList.add('active');
         trapModalFocus(modal);
 
-        // Set up search and filter listeners
-        const searchInput = document.getElementById('exercise-search');
-        const categoryFilter = document.getElementById('exercise-category-filter');
-        const equipmentFilter = document.getElementById('exercise-equipment-filter');
-
-        const filterExercises = () => {
-            this.renderExercisePicker(
-                searchInput.value,
-                categoryFilter.value,
-                equipmentFilter.value
-            );
-        };
-
-        searchInput.removeEventListener('input', filterExercises);
-        searchInput.addEventListener('input', filterExercises);
-        categoryFilter.removeEventListener('change', filterExercises);
-        categoryFilter.addEventListener('change', filterExercises);
-        equipmentFilter.removeEventListener('change', filterExercises);
-        equipmentFilter.addEventListener('change', filterExercises);
+        // Search + filter listeners, wired ONCE. The old per-open wiring
+        // created a fresh closure each time, so removeEventListener never
+        // matched and every reopen stacked another full re-render per
+        // keystroke. The single handler reads the controls' live values.
+        if (!modal.dataset.filtersWired) {
+            const filterExercises = () => {
+                this.renderExercisePicker(
+                    searchInput?.value || '',
+                    categoryFilter?.value || '',
+                    equipmentFilter?.value || ''
+                );
+            };
+            searchInput?.addEventListener('input', filterExercises);
+            categoryFilter?.addEventListener('change', filterExercises);
+            equipmentFilter?.addEventListener('change', filterExercises);
+            modal.dataset.filtersWired = '1';
+        }
 
         // One-time wire-up for tray controls (idempotent via dataset guard).
         this.wireExercisePickerTray();
+    }
+
+    /**
+     * Close the exercise picker and drop its in-flight selection. The single
+     * close path for every route out of the picker - X / Esc, commit, and the
+     * editor closing underneath it - so no stale selection or orphaned picker
+     * can survive into the next open.
+     */
+    closeExercisePicker() {
+        const modal = document.getElementById('exercise-picker-modal');
+        if (modal) modal.classList.remove('active');
+        this.pickerSelection = new Map();
     }
 
     wireExercisePickerTray() {
@@ -1508,13 +1570,25 @@ class ProgramsView {
     }
 
     commitExercisePickerSelection() {
+        // Belt-and-braces: the picker can only be open while the editor is
+        // (openExercisePicker guards, and every editor-close path closes the
+        // picker), but if that invariant is ever broken the commit must not
+        // silently write into a discarded staged clone - that was the original
+        // lost-exercise bug. Close the orphaned picker and tell the user.
+        const editorOpen = document.getElementById('program-modal')?.classList.contains('active');
+        if (!editorOpen || !this.currentProgram) {
+            this.closeExercisePicker();
+            showToast('The program editor closed, so nothing was added. Reopen the program and try again.', 'error');
+            return;
+        }
+
         const items = Array.from((this.pickerSelection || new Map()).values());
         if (items.length === 0) {
             showToast('Pick at least one exercise first', 'error');
             return;
         }
 
-        const firstNewIndex = this.currentProgram ? this.currentProgram.exercises.length : 0;
+        const firstNewIndex = this.currentProgram.exercises.length;
 
         items.forEach(item => {
             this.currentProgram.addExercise(
@@ -1528,8 +1602,7 @@ class ProgramsView {
             );
         });
 
-        document.getElementById('exercise-picker-modal').classList.remove('active');
-        this.pickerSelection = new Map();
+        this.closeExercisePicker();
         this.renderExercisePickerTray();
         this.renderProgramExercises();
         showToast(`Added ${items.length} exercise${items.length === 1 ? '' : 's'}`, 'success');
@@ -1596,7 +1669,8 @@ class ProgramsView {
         if (!this.currentProgram) return;
         const exercise = this.currentProgram.exercises[index];
         if (!exercise) return;
-        const name = escapeHtml(exercise.exerciseName || exercise.name || '');
+        const name = escapeHtml(this.app.getExerciseDisplayName(
+            exercise.exerciseId, exercise.exerciseName || exercise.name || ''));
         const confirmed = await showConfirmModal({
             title: 'Remove Exercise',
             message: `Remove <strong>"${name}"</strong> from this program?`,

@@ -281,86 +281,6 @@
                     <!-- Will be populated by JS -->
                 </div>
 
-                <!-- Exercise Picker Modal -->
-                <div id="exercise-picker-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="exercise-picker-title">
-                    <div class="modal-content large" data-back-to-top>
-                        <div class="modal-header">
-                            <h2 id="exercise-picker-title">Select Exercises</h2>
-                            <button class="modal-close" aria-label="Close">&times;</button>
-                        </div>
-                        <div class="modal-body">
-                            <div class="exercise-picker-search">
-                                <div class="search-input-wrapper">
-                                    <i class="fas fa-search search-icon"></i>
-                                    <input type="text" id="exercise-search" placeholder="Search exercises by name or muscle group...">
-                                </div>
-                                <div class="exercise-filters">
-                                    <select id="exercise-category-filter">
-                                        <option value="">All Categories</option>
-                                        <option value="chest">Chest</option>
-                                        <option value="back">Back</option>
-                                        <option value="shoulders">Shoulders</option>
-                                        <option value="biceps">Biceps</option>
-                                        <option value="triceps">Triceps</option>
-                                        <option value="forearms">Forearms</option>
-                                        <option value="quads">Quads</option>
-                                        <option value="hamstrings">Hamstrings</option>
-                                        <option value="glutes">Glutes</option>
-                                        <option value="calves">Calves</option>
-                                        <option value="core">Core</option>
-                                        <option value="abs">Abs</option>
-                                        <option value="obliques">Obliques</option>
-                                        <option value="traps">Traps</option>
-                                        <option value="neck">Neck</option>
-                                        <option value="full-body">Full Body</option>
-                                        <option value="cardio">Cardio</option>
-                                    </select>
-                                    <select id="exercise-equipment-filter">
-                                        <option value="">All Equipment</option>
-                                        <option value="barbell">Barbell</option>
-                                        <option value="dumbbell">Dumbbell</option>
-                                        <option value="cable">Cable</option>
-                                        <option value="machine">Machine</option>
-                                        <option value="bodyweight">Bodyweight</option>
-                                        <option value="kettlebell">Kettlebell</option>
-                                        <option value="resistance-band">Resistance Band</option>
-                                        <option value="plate">Plate</option>
-                                        <option value="trap-bar">Trap Bar</option>
-                                        <option value="medicine-ball">Medicine Ball</option>
-                                        <option value="battle-ropes">Battle Ropes</option>
-                                        <option value="ab-wheel">Ab Wheel</option>
-                                        <option value="sled">Sled</option>
-                                        <option value="tire">Tire</option>
-                                        <option value="gripper">Gripper</option>
-                                        <option value="towel">Towel</option>
-                                        <option value="various">Various</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div id="exercise-picker-list" class="exercise-grid">
-                                <!-- Will be populated by JS -->
-                            </div>
-
-                            <!-- Sticky tray of picked exercises; appears once at least one is selected -->
-                            <div id="exercise-picker-tray" class="exercise-picker-tray" hidden>
-                                <div class="exercise-picker-tray-header">
-                                    <span class="exercise-picker-tray-count" id="exercise-picker-tray-count">Added 0</span>
-                                    <button type="button" class="btn btn-ghost btn-sm" id="exercise-picker-tray-clear">
-                                        <i class="fas fa-rotate-left"></i> Clear
-                                    </button>
-                                </div>
-                                <ul id="exercise-picker-tray-list" class="exercise-picker-tray-list">
-                                    <!-- populated by JS -->
-                                </ul>
-                                <div class="exercise-picker-tray-actions">
-                                    <button type="button" class="btn btn-primary" id="exercise-picker-commit">
-                                        <i class="fas fa-check"></i> Add to program
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </div>
 
             <!-- WORKOUT VIEW (Mobile-Optimized) -->
@@ -1662,6 +1582,96 @@
                         </button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Exercise Picker Modal.
+         A CHILD of the program editor: it can only open while #program-modal
+         is active, and closing the editor always closes it too (see
+         programs-view.js). It lives at document level for the same
+         transformed-ancestor reason as #program-modal above, and it must come
+         AFTER #program-modal in the DOM: all .modal overlays share one
+         z-index, so document order is what stacks the picker over the editor
+         (and #confirm-modal below stacks over both). It used to live inside
+         #programs-view, which put it BEFORE the editor in document order -
+         opening it painted it underneath the editor, unreachable. -->
+    <div id="exercise-picker-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="exercise-picker-title">
+        <div class="modal-content large" data-back-to-top>
+            <div class="modal-header">
+                <h2 id="exercise-picker-title">Select Exercises</h2>
+                <button class="modal-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="exercise-picker-search">
+                    <div class="search-input-wrapper">
+                        <i class="fas fa-search search-icon"></i>
+                        <input type="text" id="exercise-search" placeholder="Search exercises by name or muscle group...">
+                    </div>
+                    <div class="exercise-filters">
+                        <select id="exercise-category-filter">
+                            <option value="">All Categories</option>
+                            <option value="chest">Chest</option>
+                            <option value="back">Back</option>
+                            <option value="shoulders">Shoulders</option>
+                            <option value="biceps">Biceps</option>
+                            <option value="triceps">Triceps</option>
+                            <option value="forearms">Forearms</option>
+                            <option value="quads">Quads</option>
+                            <option value="hamstrings">Hamstrings</option>
+                            <option value="glutes">Glutes</option>
+                            <option value="calves">Calves</option>
+                            <option value="core">Core</option>
+                            <option value="abs">Abs</option>
+                            <option value="obliques">Obliques</option>
+                            <option value="traps">Traps</option>
+                            <option value="neck">Neck</option>
+                            <option value="full-body">Full Body</option>
+                            <option value="cardio">Cardio</option>
+                        </select>
+                        <select id="exercise-equipment-filter">
+                            <option value="">All Equipment</option>
+                            <option value="barbell">Barbell</option>
+                            <option value="dumbbell">Dumbbell</option>
+                            <option value="cable">Cable</option>
+                            <option value="machine">Machine</option>
+                            <option value="bodyweight">Bodyweight</option>
+                            <option value="kettlebell">Kettlebell</option>
+                            <option value="resistance-band">Resistance Band</option>
+                            <option value="plate">Plate</option>
+                            <option value="trap-bar">Trap Bar</option>
+                            <option value="medicine-ball">Medicine Ball</option>
+                            <option value="battle-ropes">Battle Ropes</option>
+                            <option value="ab-wheel">Ab Wheel</option>
+                            <option value="sled">Sled</option>
+                            <option value="tire">Tire</option>
+                            <option value="gripper">Gripper</option>
+                            <option value="towel">Towel</option>
+                            <option value="various">Various</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="exercise-picker-list" class="exercise-grid">
+                    <!-- Will be populated by JS -->
+                </div>
+
+                <!-- Sticky tray of picked exercises; appears once at least one is selected -->
+                <div id="exercise-picker-tray" class="exercise-picker-tray" hidden>
+                    <div class="exercise-picker-tray-header">
+                        <span class="exercise-picker-tray-count" id="exercise-picker-tray-count">Added 0</span>
+                        <button type="button" class="btn btn-ghost btn-sm" id="exercise-picker-tray-clear">
+                            <i class="fas fa-rotate-left"></i> Clear
+                        </button>
+                    </div>
+                    <ul id="exercise-picker-tray-list" class="exercise-picker-tray-list">
+                        <!-- populated by JS -->
+                    </ul>
+                    <div class="exercise-picker-tray-actions">
+                        <button type="button" class="btn btn-primary" id="exercise-picker-commit">
+                            <i class="fas fa-check"></i> Add to program
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

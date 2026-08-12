@@ -178,6 +178,85 @@ export async function run({ base, cdpPort }) {
     const catCount = await readCount();
     t(`${A}: exercise category filter applies`, !!catCount && catCount !== baseCount, `${baseCount} -> ${catCount}`);
 
+    // --- Program editor <-> exercise picker modal flow (regression for the
+    // stacked-modal bug: the picker used to paint UNDER the editor and a
+    // commit after cancelling the editor silently discarded the exercise).
+    // Seed one program, then drive Edit -> Add Exercise -> commit -> Save.
+    await evaluate(s, `(()=>{ localStorage.setItem('gymTrackerPrograms', JSON.stringify([{
+      id: 424242, name: 'Suite Plan', description: '',
+      exercises: [{ exerciseId: 3, exerciseName: 'Barbell Bench Press',
+        sets: [{repsMin: 8, repsMax: 10}], restSeconds: 90, restAfterSeconds: 90,
+        notes: '', order: 0, groupId: null }],
+      restMode: 'custom', uniformRestSeconds: 90, scheduleDays: [],
+      createdAt: '2026-08-01T10:00:00.000Z', updatedAt: '2026-08-01T10:00:00.000Z' }]));
+      localStorage.setItem('gymTrackerOnboardingSeen', 'true'); return 1 })()`);
+    await goto(s, base + '/apps/gym-tracker/', { settle: 2500 });
+    await clickText(s, 'Programs', { sel: '.nav-links .nav-link', exact: true, settle: 900 });
+    await clickSel(s, '#programs-list [data-action="edit-program"]', { settle: 800 });
+    await clickSel(s, '#add-exercise-to-program-btn', { settle: 800 });
+    const stackState = await evaluate(s, `(()=>{
+      const editor = document.getElementById('program-modal').classList.contains('active');
+      const picker = document.getElementById('exercise-picker-modal').classList.contains('active');
+      const card = document.querySelector('#exercise-picker-list .exercise-picker-card');
+      if (!card) return { editor, picker, onTop: false };
+      const r = card.getBoundingClientRect();
+      const top = document.elementsFromPoint(r.left + r.width/2, r.top + Math.min(r.height/2, 40))[0];
+      return { editor, picker, onTop: !!(top && top.closest('#exercise-picker-modal')) };
+    })()`);
+    t(`${A}: picker opens over the editor (both active, picker hit-testable)`,
+      stackState.editor && stackState.picker && stackState.onTop, JSON.stringify(stackState));
+
+    await evaluate(s, `(()=>{const e=document.getElementById('exercise-search');
+      e.value='Hip Thrust Machine'; e.dispatchEvent(new Event('input',{bubbles:true})); return 1})()`);
+    await sleep(500);
+    await clickSel(s, '#exercise-picker-list .exercise-picker-card', { settle: 500 });
+    await clickSel(s, '#exercise-picker-commit', { settle: 900 });
+    const afterCommit = await evaluate(s, `(()=>({
+      picker: document.getElementById('exercise-picker-modal').classList.contains('active'),
+      editor: document.getElementById('program-modal').classList.contains('active'),
+      rows: [...document.querySelectorAll('#program-exercises-list .pex-name-main')].map(e=>e.textContent.trim()),
+    }))()`);
+    t(`${A}: committed exercise lands in the open editor`,
+      !afterCommit.picker && afterCommit.editor && afterCommit.rows.includes('Hip Thrust Machine'),
+      JSON.stringify(afterCommit));
+
+    await clickSel(s, '#program-modal-normal-actions .btn-save-program', { settle: 900 });
+    const savedPlan = await evaluate(s, `(JSON.parse(localStorage.getItem('gymTrackerPrograms'))[0].exercises || []).map(e=>e.exerciseName)`);
+    t(`${A}: saved plan persists the picked exercise`,
+      Array.isArray(savedPlan) && savedPlan.includes('Hip Thrust Machine'), JSON.stringify(savedPlan));
+
+    // Cancel path: unsaved edits survive opening + cancelling the picker.
+    await clickSel(s, '#programs-list [data-action="edit-program"]', { settle: 800 });
+    await evaluate(s, `(()=>{const e=document.getElementById('program-name');
+      e.value='Suite Plan EDITED'; e.dispatchEvent(new Event('input',{bubbles:true})); return 1})()`);
+    await clickSel(s, '#add-exercise-to-program-btn', { settle: 700 });
+    await clickSel(s, '#exercise-picker-modal .modal-close', { settle: 700 });
+    const afterCancel = await evaluate(s, `(()=>({
+      editor: document.getElementById('program-modal').classList.contains('active'),
+      picker: document.getElementById('exercise-picker-modal').classList.contains('active'),
+      name: document.getElementById('program-name').value,
+    }))()`);
+    t(`${A}: cancelling the picker returns to the editor with edits intact`,
+      afterCancel.editor && !afterCancel.picker && afterCancel.name === 'Suite Plan EDITED',
+      JSON.stringify(afterCancel));
+    await clickSel(s, '#program-modal-normal-actions .program-modal-cancel', { settle: 700 });
+
+    // Catalog round: renamed + new exercises resolve by their stable ids.
+    const catalogState = await evaluate(s, `(()=>{
+      const db = window.gymApp.exerciseDatabase;
+      return {
+        renamed: db.find(e=>e.id===173)?.name,
+        oldGone: !db.some(e=>e.name==='Seated Dumbbell Press'),
+        ghr: db.find(e=>e.id===350)?.name,
+        htm: db.find(e=>e.id===514)?.name,
+        dc: db.find(e=>e.id===452)?.name,
+      };
+    })()`);
+    t(`${A}: catalog rename + additions resolve by stable id`,
+      catalogState.renamed === 'Dumbbell Shoulder Press' && catalogState.oldGone
+        && catalogState.ghr === 'Glute-Ham Raise' && catalogState.htm === 'Hip Thrust Machine'
+        && catalogState.dc === 'Decline Crunch', JSON.stringify(catalogState));
+
     t(`${A}: no JS errors`, cleanErrors(s).length === 0, cleanErrors(s).slice(0, 2).join(' | '));
     await closePage(cdpPort, s);
   } catch (e) { t('gym-tracker: suite ran', false, String(e.message).slice(0, 140)); }

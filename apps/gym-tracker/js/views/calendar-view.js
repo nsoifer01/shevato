@@ -52,7 +52,10 @@ class CalendarView {
             const target = e.target.closest('[data-action="open-session"]');
             if (!target || !view.contains(target)) return;
             e.preventDefault();
-            this.openWorkoutHistory(Number(target.dataset.sessionId));
+            // Raw string on purpose: session lookups go through sameId(), and
+            // Number() would turn non-numeric ids (imports, Firestore
+            // stringification) into NaN that matches nothing.
+            this.openWorkoutHistory(target.dataset.sessionId);
         };
 
         view.addEventListener('click', dispatch);

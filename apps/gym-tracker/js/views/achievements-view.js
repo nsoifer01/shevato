@@ -138,7 +138,11 @@ class AchievementsView {
                 ? convertWeight(a.prWeightKg || 0, 'kg', 'lb')
                 : (a.prWeightKg || 0);
             const weightLabel = `${Number(weight).toLocaleString()} ${unit}`;
-            const name = a.prExerciseName || a.name;
+            // Prefer the exercise's CURRENT catalog name (stable id lives in
+            // requirement.exerciseId); the stored snapshot covers exercises
+            // that no longer resolve (e.g. deleted custom exercises).
+            const name = this.app.getExerciseDisplayName(
+                a.requirement?.exerciseId, a.prExerciseName || a.name);
             return `
                 <div class="strength-pr-card">
                     <span class="strength-pr-medal" aria-hidden="true">${escapeHtml(a.icon || '🏅')}</span>

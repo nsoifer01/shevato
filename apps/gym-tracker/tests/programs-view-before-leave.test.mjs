@@ -35,7 +35,7 @@ function methodSource(name) {
 // extracted text can be evaluated as-is with `document` shadowed by a stub.
 const buildMethods = new Function(
     'document',
-    `"use strict"; return { ${methodSource('beforeLeave')}, ${methodSource('closeProgramModal')} };`
+    `"use strict"; return { ${methodSource('beforeLeave')}, ${methodSource('closeProgramModal')}, ${methodSource('closeExercisePicker')} };`
 );
 
 function makeEl(id, classes = []) {
@@ -111,11 +111,29 @@ test('beforeLeave resets workout-edit state exactly as closing the editor does',
 });
 
 test('beforeLeave also closes the exercise picker', () => {
-    // The picker is inside #programs-view so it is hidden with the view, but its
-    // `active` class holds the shared modal scroll lock on <body>.
+    // The picker is a child of the editor (document-level, stacked above it);
+    // its `active` class holds the shared modal scroll lock on <body>, so no
+    // route out of the Programs view may leave it set.
     const { view, els } = makeView({ pickerOpen: true });
     view.beforeLeave('home');
     assert.equal(els['exercise-picker-modal'].classList.contains('active'), false);
+});
+
+test('beforeLeave with only the picker somehow open still clears it', () => {
+    // Defensive branch: the picker cannot open without the editor, but if the
+    // invariant is ever broken the view-leave path must still release it.
+    const { view, els } = makeView({ open: false, pickerOpen: true });
+    view.beforeLeave('home');
+    assert.equal(els['exercise-picker-modal'].classList.contains('active'), false);
+});
+
+test('closing the editor releases the staged clone', () => {
+    // commitExercisePickerSelection guards on currentProgram: after any close,
+    // a stray commit must find nothing to write into (the original
+    // lost-exercise bug wrote into a discarded staged clone).
+    const { view } = makeView();
+    view.beforeLeave('home');
+    assert.equal(view.currentProgram, null);
 });
 
 test('beforeLeave discards the staged edits instead of committing them', () => {
