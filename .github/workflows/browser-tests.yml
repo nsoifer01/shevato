@@ -14,9 +14,11 @@ on:
 jobs:
   browser:
     runs-on: ubuntu-latest
-    # The suite drives 15 pages with real timing; well above the ~4 min it takes,
-    # but low enough that a hung browser fails instead of burning a full hour.
-    timeout-minutes: 20
+    # The suite drives 15 pages with real timing plus the trip-planner E2E
+    # suites (apps/trip-planner/e2e/); well above the ~8 min the whole run
+    # takes, but low enough that a hung browser fails instead of burning a
+    # full hour.
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v6

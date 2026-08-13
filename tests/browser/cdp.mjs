@@ -115,6 +115,34 @@ export async function evaluate(s, expression) {
   try { return JSON.parse(v); } catch { return v; }
 }
 
+// Awaits a promise-returning expression in the page. evaluate() deliberately
+// never awaits (a hung promise would stall the whole suite), so anything that
+// must (CompressionStream, caches.keys(), navigator.serviceWorker.ready) comes
+// through here, where the driver's own 45s send timeout still bounds it.
+export async function evalAsync(s, expression) {
+  const r = await s.send('Runtime.evaluate', {
+    expression: `(async()=>{ try { return JSON.stringify(await (${expression})); } catch(e) { return JSON.stringify({__evalError: String(e && e.message || e)}); } })()`,
+    returnByValue: true, awaitPromise: true,
+  });
+  const v = r.result && r.result.value;
+  if (v == null) return null;
+  try { return JSON.parse(v); } catch { return v; }
+}
+
+// Waits for an in-page condition instead of sleeping a fixed settle. Returns
+// true as soon as the expression is truthy, false on timeout - callers assert
+// on the result, so a wait that never comes fails the check rather than
+// throwing the suite over.
+export async function waitForExpr(s, expression, { timeout = 8000, poll = 150 } = {}) {
+  const start = Date.now();
+  for (;;) {
+    const v = await evaluate(s, expression);
+    if (v && !v.__evalError) return true;
+    if (Date.now() - start > timeout) return false;
+    await sleep(poll);
+  }
+}
+
 export async function setViewport(s, width, height, mobile = false) {
   await s.send('Emulation.setDeviceMetricsOverride', {
     width, height, deviceScaleFactor: 1, mobile,
@@ -167,8 +195,9 @@ export async function setValue(s, sel, value, { nth = 0 } = {}) {
     e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true})); return true})()`);
 }
 
-export async function pressKey(s, key, code, keyCode) {
-  const p = { key, code: code || key, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode };
+// modifiers is the CDP bitmask: Alt=1, Ctrl=2, Meta=4, Shift=8.
+export async function pressKey(s, key, code, keyCode, modifiers = 0) {
+  const p = { key, code: code || key, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode, modifiers };
   await s.send('Input.dispatchKeyEvent', { type: 'keyDown', ...p });
   await s.send('Input.dispatchKeyEvent', { type: 'keyUp', ...p });
   await sleep(150);
@@ -221,5 +250,88 @@ export async function count(s, sel) {
   return evaluate(s, `document.querySelectorAll(${JSON.stringify(sel)}).length`);
 }
 
-export const NOISE = /googletagmanager|google-analytics|ERR_CONNECTION_REFUSED|gstatic|firebase|googleapis|favicon|fonts\.|firebaseio|Failed to load resource/i;
+// Resource-load noise from blocked/absent external hosts. Deliberately does
+// NOT match "Failed to fetch" style uncaught exceptions: an app fetch dying
+// uncaught is a missing catch in the app, which is exactly the kind of thing
+// the no-errors assertions exist to surface.
+export const NOISE = /googletagmanager|google-analytics|ERR_CONNECTION_REFUSED|ERR_FAILED|ERR_INTERNET_DISCONNECTED|ERR_NAME_NOT_RESOLVED|gstatic|firebase|googleapis|favicon|fonts\.|firebaseio|photon\.komoot|open-meteo|frankfurter|nominatim|openstreetmap|Failed to load resource/i;
 export const cleanErrors = (s) => s.errors.filter((e) => !NOISE.test(e));
+
+// ---------------------------------------------------------------------------
+// Network interception (CDP Fetch domain).
+//
+// rules(url, request) is called for every request the PAGE issues and returns:
+//   null/undefined      -> let it through
+//   'fail'              -> abort it (looks like the network refusing)
+//   { status, body, contentType } -> fulfill with a canned response
+//
+// Interception sees page-issued requests only: a request the service worker
+// makes on the page's behalf belongs to the worker target, not this one. The
+// trip-planner SW never handles cross-origin requests, so external API calls
+// always originate here and are always interceptable.
+export async function interceptNetwork(s, rules) {
+  s.netRules = rules;
+  if (s.netIntercepting) return;
+  s.netIntercepting = true;
+  s.on(async (method, p) => {
+    if (method !== 'Fetch.requestPaused') return;
+    let verdict = null;
+    try { verdict = s.netRules ? s.netRules(p.request.url, p.request) : null; } catch { verdict = null; }
+    try {
+      if (verdict === 'fail') {
+        await s.send('Fetch.failRequest', { requestId: p.requestId, errorReason: 'ConnectionRefused' });
+      } else if (verdict && typeof verdict === 'object') {
+        const body = typeof verdict.body === 'string' ? verdict.body : JSON.stringify(verdict.body ?? {});
+        await s.send('Fetch.fulfillRequest', {
+          requestId: p.requestId,
+          responseCode: verdict.status || 200,
+          responseHeaders: [
+            { name: 'Content-Type', value: verdict.contentType || 'application/json' },
+            { name: 'Access-Control-Allow-Origin', value: '*' },
+          ],
+          body: Buffer.from(body).toString('base64'),
+        });
+      } else {
+        await s.send('Fetch.continueRequest', { requestId: p.requestId });
+      }
+    } catch { /* target navigated away mid-flight; nothing to do */ }
+  });
+  await s.send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
+}
+
+// Every host the trip planner can call out to. Kept here so a suite can block
+// "everything external" without enumerating providers it does not care about.
+export const EXTERNAL_HOSTS = /photon\.komoot\.io|nominatim\.openstreetmap\.org|geocoding-api\.open-meteo\.com|archive-api\.open-meteo\.com|api\.open-meteo\.com|api\.frankfurter\.(app|dev)|raw\.githubusercontent\.com|tile\.openstreetmap\.org|googletagmanager|google-analytics|gstatic\.com|googleapis\.com|firebaseio\.com|\/\.netlify\/functions\//i;
+
+export async function setOffline(s, offline) {
+  await s.send('Network.emulateNetworkConditions', {
+    offline: !!offline, latency: 0, downloadThroughput: -1, uploadThroughput: -1,
+  });
+}
+
+// All debuggable targets (pages, service workers, ...) with their own
+// websocket URLs, straight from the browser's HTTP endpoint.
+export async function listTargets(port) {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: '127.0.0.1', port, path: '/json/list' }, (res) => {
+      let b = '';
+      res.on('data', (c) => (b += c));
+      res.on('end', () => { try { resolve(JSON.parse(b)); } catch (e) { reject(e); } });
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+// Attaches to a non-page target (e.g. a service worker) so domains like
+// Network can be driven on it. Caller closes with s.ws.close().
+export async function connectTarget(target) {
+  const ws = new WebSocket(target.webSocketDebuggerUrl);
+  await new Promise((res, rej) => {
+    ws.addEventListener('open', res, { once: true });
+    ws.addEventListener('error', rej, { once: true });
+  });
+  const s = new Session(ws);
+  s.targetId = target.id;
+  return s;
+}

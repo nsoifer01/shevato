@@ -24,7 +24,33 @@ const PORT = Number(process.env.BROWSER_TEST_PORT || 8099);
 const CDP_PORT = Number(process.env.BROWSER_TEST_CDP_PORT || 9222);
 const BASE = `http://127.0.0.1:${PORT}`;
 
-const SUITES = ['site.mjs', 'apps.mjs'];
+// Suite paths are repo-relative so app-local suites can live beside their app.
+// The trip-planner E2E suites under apps/trip-planner/e2e/ are permanent
+// regression protection for that app's browser workflows; run them alone with
+//   npm run test:trip-planner:e2e        (equivalent to --only=trip-planner)
+const SUITES = [
+  'tests/browser/suites/site.mjs',
+  'tests/browser/suites/apps.mjs',
+  'apps/trip-planner/e2e/core.mjs',
+  'apps/trip-planner/e2e/trips-sync.mjs',
+  'apps/trip-planner/e2e/share.mjs',
+  'apps/trip-planner/e2e/views.mjs',
+  'apps/trip-planner/e2e/ui.mjs',
+  'apps/trip-planner/e2e/pwa.mjs',
+];
+
+// --only=<substring> runs the suites whose path contains it; --headed opens a
+// visible browser window for local debugging. Anything else is rejected so a
+// typo cannot silently run the wrong subset.
+const args = process.argv.slice(2);
+let only = null, headed = false;
+for (const a of args) {
+  if (a.startsWith('--only=')) only = a.slice('--only='.length);
+  else if (a === '--headed') headed = true;
+  else { console.error(`unknown argument: ${a}\nusage: run.mjs [--only=<path-substring>] [--headed]`); process.exit(2); }
+}
+const selected = only ? SUITES.filter((p) => p.includes(only)) : SUITES;
+if (!selected.length) { console.error(`--only=${only} matches no suite. Suites:\n  ${SUITES.join('\n  ')}`); process.exit(2); }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -55,7 +81,8 @@ async function startAll() {
   profileDir = await mkdtemp(path.join(tmpdir(), 'shevato-browser-test-'));
   const bin = process.env.CHROME_BIN || 'chromium';
   chrome = spawn(bin, [
-    '--headless=new', '--disable-gpu', '--no-sandbox', '--no-first-run',
+    ...(headed ? [] : ['--headless=new']),
+    '--disable-gpu', '--no-sandbox', '--no-first-run',
     `--remote-debugging-port=${CDP_PORT}`,
     `--user-data-dir=${profileDir}`,
     // Blackhole analytics so a blocked beacon never looks like an app error.
@@ -75,9 +102,9 @@ async function stopAll() {
 const results = [];
 try {
   await startAll();
-  for (const name of SUITES) {
-    const mod = await import(path.join(HERE, 'suites', name));
-    process.stdout.write(`\n--- ${name.replace('.mjs', '')} ---\n`);
+  for (const name of selected) {
+    const mod = await import(path.join(REPO, name));
+    process.stdout.write(`\n--- ${path.basename(name, '.mjs')} ---\n`);
     const r = await mod.run({ base: BASE, cdpPort: CDP_PORT });
     results.push(...r);
     for (const x of r) {

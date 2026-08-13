@@ -157,11 +157,66 @@ why, the traps, and the invariants.
 
 ## Testing
 
-- `npm run test:trip-planner` - pure-logic suites under `tests/` (node:test,
-  no installs). Function suites run from `netlify/functions` or via root
-  `npm test`. Browser-level checks are ad-hoc headless-Chromium probes via
-  `~/.claude/projects/-home-nikita-projects-shevato/tools/screenshot.sh`
-  (see traps above); screenshots land in `.screenshots/` (gitignored).
+- Three layers, keep each test at the lowest one that can catch its bug:
+  `npm run test:trip-planner` (node:test against trip-logic.js - all math,
+  parsing, validation, history semantics), the function suites (from
+  `netlify/functions` or root `npm test`), and `npm run test:trip-planner:e2e`
+  (browser E2E under `e2e/`, below). Never move a pure-logic assertion into
+  E2E just because E2E exists.
 - When touching an item field, walk the full pathway list: render (both
   views), edit modal round-trip, duplicate, undo, JSON/CSV/ICS export,
   share link, sync, filters, search, AI proposals, templates, repairDb.
+
+## Browser E2E suite (e2e/, added 2026-08-13)
+
+- **Framework: the repo's own zero-dependency CDP harness** (`tests/browser/`),
+  NOT Playwright/Cypress. Deliberate: the repo rule is zero npm deps and no
+  build step, the harness already runs in CI on every PR
+  (`.github/workflows/browser-tests.yml` -> `npm run test:browser`), and one
+  browser-testing stack is enough to maintain. The runner gained repo-relative
+  suite paths, `--only=<substring>` and `--headed`; the driver gained
+  `evalAsync`, `waitForExpr`, key modifiers, `interceptNetwork` (CDP Fetch),
+  `setOffline`, and service-worker target attachment. Suites live with the app
+  (`e2e/core|trips-sync|share|views|ui|pwa.mjs` + `helpers.mjs`) and are
+  registered in `tests/browser/run.mjs` SUITES.
+- **State seeding**: app state is closure-scoped, so `openApp()` seeds
+  `trip-planner:v1` and reloads (never pokes internal state). Fixtures build
+  deterministic dbs with dates relative to today (`iso(offset)`), ids
+  `e2e-NNN` (call `freshIds()` per block). Every mutation assertion reads
+  BOTH the DOM and `localStorage` back.
+- **Network rules**: every external provider is refused per-page by default
+  (`EXTERNAL_HOSTS` in cdp.mjs) so runs are deterministic and offline-safe;
+  the app is expected to degrade cleanly. A test needing a canned success /
+  failure / timeout passes its own `net` rules to `openApp`. Do not mock
+  same-origin requests except through the offline path.
+- **Share links** are built in-page with the app's own primitives
+  (`TripLogic.slimTripForShare` + CompressionStream('deflate') +
+  `TripLogic.bytesToBase64url`) - headless Chrome cannot grant clipboard, so
+  never drive `shareTrip()` itself.
+- **Traps that produced convincing false failures while building this** (all
+  are handled in helpers - keep them handled):
+  - `Page.navigate` from the app to the same URL with a different fragment is
+    a HASH CHANGE, not a reload: share-link entry and deep-link boots silently
+    do not run. Use `gotoHard()` (bounces through about:blank).
+  - A leaked tab poisons later blocks: same profile = same localStorage, and
+    its `storage` listener reacts to (and its `ensureTrip` can even write
+    over) the next block's seeds. Always close pages in `finally`.
+  - Timeline rows inside a stay are collapsed by default and unreachable;
+    `expandTimeline()` first. While a FILTER is on, groups force-open, and a
+    stay whose child matches keeps a wrapper row - assert on which items are
+    visible, not on bare row counts.
+  - Chrome's `innerText` applies `text-transform`: "Check in" reads back as
+    "CHECK IN". Match case-insensitively.
+  - Double-submit is reproduced with two synchronous `form.requestSubmit()`
+    calls - same handler a double-click reaches, but deterministic.
+  - Offline must be emulated on the page target AND the service-worker
+    target(s); page-only lets the worker fetch from the network.
+- **What stays out of E2E**: activate-event cache eviction and update-toast
+  messaging (tests/sw-activate.test.mjs, driving a real redeploy is flaky),
+  cross-DEVICE sync (whole-key LWW via Firestore is a structural limit, see
+  "Sync model"; E2E covers the same-browser two-tab reconciliation and the
+  stale-dialog guards, which are the parts testable locally), and anything
+  computable (trip-logic tests own it).
+- Failure artifacts: one screenshot per failing check in
+  `.screenshots/e2e-trip-planner/` (gitignored), path printed in the result
+  detail. Green runs write nothing.

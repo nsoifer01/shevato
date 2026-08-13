@@ -57,14 +57,30 @@ become defaults here.
 ```
 tests/browser/
   run.mjs            # lifecycle: start server + Chrome, run suites, tear down
-  cdp.mjs            # DevTools Protocol driver
+  cdp.mjs            # DevTools Protocol driver (evaluate, clicks, keys,
+                     #   network interception, offline emulation, targets)
   suites/site.mjs    # 8 marketing pages, nav, forms, responsive
   suites/apps.mjs    # all 7 apps: real feature flows, plus a mobile sweep
+
+apps/trip-planner/e2e/   # the trip-planner E2E regression suites (registered
+                         #   in run.mjs; see that app's README + FINDINGS)
 ```
 
 A suite exports `run({ base, cdpPort })` and returns
-`[{ name, pass, detail }]`. To add one, drop it in `suites/` and add its
-filename to `SUITES` in `run.mjs`.
+`[{ name, pass, detail }]`. Suite paths in `SUITES` (run.mjs) are
+repo-relative, so app-local suites can live beside their app.
+
+## Running a subset
+
+```bash
+node --experimental-websocket tests/browser/run.mjs --only=<path-substring>
+node --experimental-websocket tests/browser/run.mjs --only=trip-planner --headed
+```
+
+`npm run test:trip-planner:e2e` is the shorthand for the trip-planner subset;
+`--headed` opens a visible browser for local debugging. Trip-planner failures
+drop a screenshot of the failing page into `.screenshots/e2e-trip-planner/`
+(gitignored); successful runs write no artifacts.
 
 ## Writing assertions that are actually true
 

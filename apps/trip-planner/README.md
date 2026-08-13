@@ -53,6 +53,7 @@ Most network calls are opt-in and key-free: place lookup via OpenStreetMap Nomin
 | Cost by type | A "Cost by type" block under the totals bar breaks the trip's Booked, costed items down per type (Flight, Stay, Transport, Local travel, Activity, Note), biggest first, in the display currency. A type with nothing booked and costed gets no row at all rather than a $0.00 placeholder, and a row holding money that could not be converted is flagged amber with "+ N not converted", the same honesty rule the Confirmed total follows. Each row carries a thin proportional bar sized against the largest row, so the line item eating the budget is obvious without comparing figures; an amber unconverted row keeps its normal bar color, leaving the honesty cue on the text alone. It is gated on cost data alone, so it shows on a solo trip too |
 | Cash needed | Each item's Booking section takes an optional payment method (Not tracked, Cash, Card, Prepaid / already paid). Tag anything as Cash and a "Cash needed" block under the totals answers how much cash to carry per currency, in the currency actually entered and never converted, so a Japan-plus-Thailand trip reads its yen and its baht as separate lines. One row per currency, sorted by code, and a currency holding nothing gets no row rather than a $0.00 placeholder; a refund nets into its currency and is not hidden. Cancelling an item or untagging it drops the amount on the next render. It is gated on cash tags alone, so it shows on a solo trip too. This block and the Cost per traveler, Settle up and Cost by type blocks now read as one iconed group set apart from the totals bar, rather than a stack of identical cards |
 | Filter by traveler | With two or more named travelers the toolbar gains a third filter next to type and status. Picking a name narrows Timeline and Days view to that person's agenda: their own items plus everything left as Everyone. It ANDs with the type, status and search filters, and it changes only which rows are drawn, never what is computed, so the night-coverage strip, the warnings panel and the totals bar all keep reading for the whole trip. Clearing filters resets it, and a name the next trip's roster lacks is dropped rather than silently hiding rows |
+| Item count | An "Items" chip in the summary bar counts the trip's active itinerary items ("12 items", "1 item"). Cancelled items are out, since cancelling reads as removal from the plan, and restoring one puts it straight back. It is a whole-trip figure: filters and search never change it, and it shows on a read-only shared trip too, being purely informational. Derived from `tripStats` on every render, nothing stored |
 | Up next | A live chip at the front of the summary row answers "what now" mid-trip. Items carrying both a date and a real clock time qualify (a stay's assumed check-in time is not a fact, so stays never do); inside a flight, transport or local leg it reads `Now: {title}`, otherwise it counts down the soonest item within 36 hours as `Up next: {title} in 2h`. Past that window, or with nothing left to time, it does not render at all. It repaints itself every 30 seconds, and clicking it jumps to that row on the Timeline |
 | Packing list | 🎒 Packing list in the trip menu keeps a per-trip checklist with a "{checked} of {total} packed" counter. It is seeded once, on first open, from what the trip actually contains: universal basics always, a boarding-pass row only when the trip has a flight, and a warm-layer row only when a leg runs overnight. After that it is yours: it is never reseeded, adds and deletes and checks are each one undo step, and a list you empty completely stays empty instead of springing back. The seeding itself is deliberately NOT an undo step - the app laying down its own defaults is housekeeping, not an edit the traveller made, so merely opening the dialog never arms Undo (and can never be undone out from under the list you are looking at). It rides along with the trip through save and sync, and is deliberately kept out of share links |
 | Per-traveler packing | On a trip naming two or more travelers each packing row can say who it is for, using the item form's own checkbox-per-traveler control on the add form; nothing ticked (and everybody ticked) means Everyone, which is what every row stored before this existed. The dialog gains a "Show" filter listing each traveler with their own tally, and picking one narrows the list to their rows plus every Everyone row, with the "{checked} of {total} packed" counter reading the filtered set rather than the trip. Rows are keyed by id, so checking one person's row never touches another's identical-text row. Below two travelers none of it is built at all: no filter, no picker, no tags, the list exactly as it was. The tag rides through JSON export/import (clamped to the receiving trip's roster), and editing the roster re-spells or drops it under the same rule "paid by" already follows, except that a row tagged ONLY to somebody leaving is deleted with them rather than handed to everyone else (a mixed tag keeps whoever is left, an Everyone row is never touched, and ticking a row off does not protect it), with the dialog stating both counts - how many rows the save will delete and how many it will only untag - before you confirm |
@@ -134,8 +135,11 @@ apps/trip-planner/
 ├── data/airports.json    # 3,271 IATA airports (generated, committed, precached)
 ├── scripts/build-airports.mjs  # Rebuilds the above from OurAirports:
 │                               #   npm run build:trip-planner:airports
-└── tests/                # node:test suites: trip-logic, booking-extract,
-                          #   gpx-ics, day-share-spend, sw-activate
+├── tests/                # node:test suites: trip-logic, booking-extract,
+│                         #   gpx-ics, day-share-spend, sw-activate
+└── e2e/                  # browser E2E regression suites (headless Chromium via
+                          #   the repo CDP harness): helpers.mjs + core, trips-sync,
+                          #   share, views, ui, pwa. npm run test:trip-planner:e2e
 
 netlify/functions/            # Server-side (unversioned): Tier 3 assistant + venue ratings
 ├── tp-assist.mjs             # Rate-limited Gemini proxy (origin guard, quota, no key leak,
@@ -159,10 +163,32 @@ no Google caching exception covers those fields.
 
 ## Tests
 
+Three layers, lowest appropriate layer wins:
+
 ```
-npm run test:trip-planner
+npm run test:trip-planner        # unit/domain: node --test against trip-logic.js
+npm run test:trip-planner:e2e    # browser E2E: headless Chromium over the real app
+npm run test:trip-planner:e2e:headed   # same, in a visible browser for debugging
 ```
 
-Pure-logic tests via `node --test` against `js/trip-logic.js` (dual-exposed as `window.TripLogic` and a CommonJS module). No installs, no config.
+Pure-logic tests via `node --test` against `js/trip-logic.js` (dual-exposed as
+`window.TripLogic` and a CommonJS module). No installs, no config. The Tier 3
+function's quota math and request guards have their own suite (run by the root
+`npm test`, or on their own with `npm run test:tp-assist-quota`).
 
-The Tier 3 function's quota math and request guards have their own suite (run by the root `npm test`, or on their own with `npm run test:tp-assist-quota`).
+The E2E suites under `e2e/` run on the repo's zero-dependency CDP harness
+(`tests/browser/`, the same one `npm run test:browser` uses, which also runs
+them in CI on every pull request). The runner starts its own static server
+(port 8099) and headless Chromium, runs the suites, and tears both down;
+nothing needs to be running beforehand. Chromium or Chrome on `PATH` (or
+`CHROME_BIN`) is the only requirement. They cover the workflows a DOM-free
+test cannot: bootstrap, create-and-reload persistence, the item lifecycle,
+undo/redo wiring, double-submit guards, multi-trip separation, stale-dialog
+guards, two-tab reconciliation, read-only shares, import-as-mine, XSS
+rendering, filters, warnings navigation, dialog mechanics, keyboard
+shortcuts, Days view, responsive smoke at 1280/390/360, a ~340-item trip,
+and an offline reload against the service worker's precache. External
+providers (Photon, Open-Meteo, Nominatim, Frankfurter, Google, Firebase) are
+blocked per page by default so runs are deterministic; a failing check drops
+a screenshot into `.screenshots/e2e-trip-planner/` (gitignored). See
+FINDINGS "Browser E2E suite" for the architecture and the traps.
