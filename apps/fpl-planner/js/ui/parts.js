@@ -128,11 +128,34 @@ export function freshness(items) {
   ])));
 }
 
-export function kv(label, value) {
-  return el('div', {}, [
+// `wide` spans the value across the whole grid (for one long sentence in a
+// grid of short facts); `muted` renders it as secondary prose rather than a
+// bold value.
+export function kv(label, value, { wide = false, muted = false } = {}) {
+  const cls = [wide ? 'fpl-kv-wide' : '', muted ? 'fpl-kv-muted' : ''].filter(Boolean).join(' ');
+  return el('div', { class: cls || null }, [
     el('div', { class: 'fpl-kv-k', text: label }),
     el('div', { class: 'fpl-kv-v', text: value }),
   ]);
+}
+
+// Display-only emphasis: wraps the numeric facts inside an engine-written
+// sentence (money, points, formations, gameweeks, percentages) so they can be
+// found at a glance. The text itself is never altered - every character of
+// the input is emitted exactly once, some inside an emphasis span.
+const EM_PATTERN = /(£\d+(?:\.\d+)?m?|\b\d+(?:\.\d+)?\s?(?:xP|points?|pts)\b|\b\d-\d-\d\b|\b(?:GW|Gameweek)\s?\d+\b|\b\d+(?:\.\d+)?%|\b\d+(?:\.\d+)?\b)/g;
+
+export function emphasize(text) {
+  const s = String(text ?? '');
+  const out = [];
+  let last = 0;
+  for (const m of s.matchAll(EM_PATTERN)) {
+    if (m.index > last) out.push(s.slice(last, m.index));
+    out.push(el('strong', { class: 'fpl-em', text: m[0] }));
+    last = m.index + m[0].length;
+  }
+  if (last < s.length) out.push(s.slice(last));
+  return out.length ? out : [s];
 }
 
 // The staged loading screen. The stages are the planner's own

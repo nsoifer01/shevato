@@ -442,6 +442,22 @@ ranking, and only the part of a correction that changes ORDER changes decisions
   not modals: they keep the page scrollable but carry
   `overscroll-behavior: contain` so their boundary never chains a fling into
   the page.
+- **The app has two marks, on purpose** (owner-supplied art, 2026-08-12):
+  the shield-and-ball at `images/fpl-planner-icon.png` is the favicon (chosen
+  because it stays legible at 16px) and the tactics-board at
+  `images/fpl-planner-logo.png` is the logo on apps.html (the owner's pick;
+  it mushes at tab size). Both were cropped from larger uploads to their
+  rounded tiles with transparent corners and palette-quantized (11 KB / 3 KB);
+  the originals are deleted, so edits mean re-cropping new art, not tweaking
+  a source file.
+- **Emphasized sentences are multiple inline nodes, and flex containers wedge
+  them apart.** `parts.js emphasize()` splits an engine sentence into text
+  fragments and `<strong>` spans; any list item styled `display: flex` with
+  `gap` then inserts that gap between EVERY fragment ("Gameweek 13 ." with a
+  space before the period). Containers that hold emphasized prose use block
+  flow with an absolutely positioned bullet, never flex-with-gap. Bit the
+  "why not" evidence bullets on 2026-08-12, visible only in a rendered
+  screenshot.
 - **UI charts are hand-rolled HTML/SVG** (`ui/charts.js`): single accent hue,
   thin marks, hairline solid grid, hover/focus tooltips, and every charted
   value also printed as text nearby (the history table, the future card's

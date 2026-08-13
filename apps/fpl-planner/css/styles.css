@@ -568,16 +568,21 @@ body.fpl-page {
 }
 .fpl-planner-app .fpl-conf.is-bare .fpl-conf-why { display: block; margin-top: 2px; font-size: 12px; color: var(--text-faint); }
 
-/* The for/against tag on each line of the working, inside "Why this plan?". */
+/* The for/against tag on each verdict row, inside "Why this plan?". A quiet
+   pill rather than bare text, so it reads as metadata attached to the row. */
 .fpl-planner-app .fpl-conf-mark {
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 700;
-  letter-spacing: 0.09em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   white-space: nowrap;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid;
+  align-self: center;
 }
-.fpl-planner-app .fpl-conf-mark.is-for { color: var(--green); }
-.fpl-planner-app .fpl-conf-mark.is-against { color: var(--amber); }
+.fpl-planner-app .fpl-conf-mark.is-for { color: var(--green); background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 30%, transparent); }
+.fpl-planner-app .fpl-conf-mark.is-against { color: var(--amber); background: var(--amber-soft); border-color: color-mix(in srgb, var(--amber) 32%, transparent); }
 
 .fpl-planner-app .fpl-hero-facts {
   display: grid;
@@ -987,47 +992,138 @@ body.fpl-page {
 .fpl-planner-app .fpl-disclosure[open] > summary { border-bottom: 1px solid var(--border-soft); }
 .fpl-planner-app .fpl-disclosure-body { padding: 18px; }
 
-.fpl-planner-app .fpl-reasons { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+.fpl-planner-app .fpl-reasons { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .fpl-planner-app .fpl-reasons li {
   display: flex;
   gap: 12px;
   align-items: baseline;
   justify-content: space-between;
-  padding-bottom: 9px;
+  padding-bottom: 10px;
   border-bottom: 1px solid var(--border-soft);
-  font-size: 14px;
+  font-size: 13.5px;
   color: var(--text-dim);
-  line-height: 1.5;
+  line-height: 1.55;
 }
 .fpl-planner-app .fpl-reasons li:last-child { border-bottom: 0; padding-bottom: 0; }
+.fpl-planner-app .fpl-reason-text { max-width: 78ch; min-width: 0; }
 .fpl-planner-app .fpl-reason-v { color: var(--text); font-weight: 650; white-space: nowrap; }
 
+/* The numbers inside an engine sentence: brighter and heavier than the prose
+   around them, so a scan lands on the facts. Never a colour of its own - it is
+   emphasis, not status. */
+.fpl-planner-app .fpl-em { color: var(--text); font-weight: 650; }
+
+/* Section header inside a panel: accent tick + uppercase label (+ optional
+   pill). One shape wherever a panel subdivides. */
 .fpl-planner-app .fpl-subhead {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--text-faint);
-  margin: 20px 0 9px;
+  color: var(--text-dim);
+  margin: 22px 0 11px;
+}
+.fpl-planner-app .fpl-subhead::before {
+  content: "";
+  flex: 0 0 3px;
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0.85;
 }
 .fpl-planner-app .fpl-subhead:first-child { margin-top: 0; }
+
+/* Grouped subsections inside "Why this plan?": each header + list is one
+   unit, separated from the next by a hairline and real space. */
+.fpl-planner-app .fpl-why-group .fpl-subhead { margin: 0 0 11px; }
+.fpl-planner-app .fpl-why-group + .fpl-why-group {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-soft);
+}
+
+/* Verdict rows under "How sure is this?": a leading dot ties each sentence to
+   its verdict, the trailing tag names it in the header's words. */
+.fpl-planner-app .fpl-reasons.is-verdicts li.fpl-conf-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  align-items: baseline;
+  justify-content: normal;
+}
+.fpl-planner-app .fpl-conf-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  align-self: center;
+  transform: translateY(1px);
+}
+.fpl-planner-app .fpl-conf-row.is-for .fpl-conf-dot { background: var(--green); }
+.fpl-planner-app .fpl-conf-row.is-against .fpl-conf-dot { background: var(--amber); }
+
+/* The confidence band as a standalone pill (on the "How sure is this?"
+   header). Same tones as the hero strip. */
+.fpl-planner-app .fpl-conf-pill.is-high,
+.fpl-planner-app .fpl-conf-pill.is-moderate,
+.fpl-planner-app .fpl-conf-pill.is-low {
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid;
+}
+.fpl-planner-app .fpl-conf-pill.is-high { color: var(--green); background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 34%, transparent); }
+.fpl-planner-app .fpl-conf-pill.is-moderate { color: var(--amber); background: var(--amber-soft); border-color: color-mix(in srgb, var(--amber) 36%, transparent); }
+.fpl-planner-app .fpl-conf-pill.is-low { color: var(--red); background: var(--red-soft); border-color: color-mix(in srgb, var(--red) 36%, transparent); }
 
 .fpl-planner-app .fpl-whynot-row { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
 .fpl-planner-app .fpl-whynot-picker { flex: 1 1 280px; min-width: 0; }
 .fpl-planner-app .fpl-whynot-out {
-  margin-top: 14px;
-  padding: 14px 15px;
+  margin-top: 12px;
+  padding: 16px 17px;
   background: var(--bg-sunk);
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-sm);
 }
 .fpl-planner-app .fpl-whynot-text { font-size: 14.5px; line-height: 1.6; }
-.fpl-planner-app .fpl-blockers { list-style: none; margin: 11px 0 0; padding: 0; display: grid; gap: 6px; }
-.fpl-planner-app .fpl-blockers li { font-size: 13px; color: var(--text-dim); display: flex; gap: 8px; }
-.fpl-planner-app .fpl-blockers li::before { content: "\2022"; color: var(--text-faint); }
+.fpl-planner-app .fpl-blockers { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+/* Block flow with an absolute bullet, NOT flex: a sentence here is several
+   inline nodes once its numbers are emphasized, and flex `gap` would wedge
+   space between every fragment. */
+.fpl-planner-app .fpl-blockers li {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  line-height: 1.55;
+  position: relative;
+  padding-left: 15px;
+}
+.fpl-planner-app .fpl-blockers li::before {
+  content: "\2022";
+  position: absolute;
+  left: 2px;
+  color: var(--text-faint);
+}
+/* Evidence bullets read quieter than the comparison above them; their numbers
+   stay only slightly raised. */
+.fpl-planner-app .fpl-whynot-evidence {
+  margin-top: 14px;
+  padding: 2px 0 2px 13px;
+  border-left: 2px solid var(--border);
+}
+.fpl-planner-app .fpl-whynot-evidence .fpl-em { color: var(--text-dim); font-weight: 650; }
 
 /* the answer: a verdict tag, the comparison table, the working, the result */
-.fpl-planner-app .fpl-whynot-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.fpl-planner-app .fpl-whynot-head {
+  display: flex;
+  gap: 8px 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
 .fpl-planner-app .fpl-whynot-verdict {
   flex: 0 0 auto;
   font-size: 10.5px;
@@ -1043,30 +1139,49 @@ body.fpl-page {
 .fpl-planner-app .fpl-whynot-verdict.is-better { background: var(--green-soft); border-color: var(--green); color: var(--green); }
 .fpl-planner-app .fpl-whynot-verdict.is-level { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); }
 .fpl-planner-app .fpl-whynot-verdict.is-impossible { background: var(--red-soft); border-color: var(--red); color: var(--red); }
-.fpl-planner-app .fpl-whynot-head .fpl-whynot-text { flex: 1 1 220px; min-width: 0; font-weight: 600; }
+.fpl-planner-app .fpl-whynot-head .fpl-whynot-text { flex: 1 1 220px; min-width: 0; font-weight: 650; font-size: 15px; }
 
+/* The comparison: quiet uppercase labels against readable values, generous
+   row rhythm, long values (knock-on changes) free to wrap. */
 .fpl-planner-app .fpl-whynot-rows {
   display: grid;
   grid-template-columns: minmax(150px, auto) minmax(0, 1fr);
-  gap: 4px 16px;
-  margin: 13px 0 0;
+  gap: 10px 18px;
+  margin: 0;
 }
 .fpl-planner-app .fpl-whynot-rows dt {
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.06em;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--text-faint);
-  padding-top: 2px;
+  padding-top: 3px;
 }
-.fpl-planner-app .fpl-whynot-rows dd { margin: 0; font-size: 13.5px; color: var(--text); }
+.fpl-planner-app .fpl-whynot-rows dd {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+.fpl-planner-app .fpl-whynot-rows dd .fpl-em { font-weight: 680; }
+
+/* The conclusion reads as one: a tinted strip with a directional mark. */
 .fpl-planner-app .fpl-whynot-result {
-  margin-top: 13px;
-  padding-top: 11px;
-  border-top: 1px solid var(--border-soft);
-  font-size: 14.5px;
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-top: 14px;
+  padding: 10px 13px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+  font-size: 14px;
   font-weight: 600;
+  line-height: 1.5;
 }
+.fpl-planner-app .fpl-whynot-result-mark { color: var(--accent); font-size: 13px; align-self: center; }
+.fpl-planner-app .fpl-whynot-result .fpl-em { font-weight: 700; }
 .fpl-planner-app .fpl-whynot-alts { margin-top: 12px; }
 /* The alternatives card next door pairs a headline with a two-word delta, so
    .fpl-alt-delta is `white-space: nowrap` there. A route reads as a whole
@@ -1402,15 +1517,59 @@ body.fpl-page {
 
 /* ---------------------------------------------------------------- status */
 
-.fpl-planner-app .fpl-kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 12px; }
-.fpl-planner-app .fpl-kv-k { font-size: 10.5px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-faint); }
-.fpl-planner-app .fpl-kv-v { margin-top: 2px; font-size: 14px; font-weight: 600; }
-.fpl-planner-app .fpl-src { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--text-dim); padding: 7px 0; border-bottom: 1px solid var(--border-soft); }
+/* The status grid: each fact is a label over a value with a hairline lead-in,
+   so the panel reads as a dashboard of small facts rather than loose text. */
+.fpl-planner-app .fpl-kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px 18px; }
+.fpl-planner-app .fpl-kv > div { padding-left: 10px; border-left: 2px solid var(--border-soft); min-width: 0; }
+.fpl-planner-app .fpl-kv-k { font-size: 10px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-faint); }
+.fpl-planner-app .fpl-kv-v { margin-top: 3px; font-size: 14.5px; font-weight: 650; overflow-wrap: break-word; }
+/* One long sentence in a grid of short facts: full row, secondary prose. */
+.fpl-planner-app .fpl-kv > .fpl-kv-wide { grid-column: 1 / -1; }
+.fpl-planner-app .fpl-kv-muted .fpl-kv-v { font-size: 13px; font-weight: 450; color: var(--text-dim); line-height: 1.6; max-width: 78ch; }
+
+.fpl-planner-app .fpl-status-pill {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.fpl-planner-app .fpl-status-pill.is-good { color: var(--green); background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 34%, transparent); }
+.fpl-planner-app .fpl-status-pill.is-bad { color: var(--red); background: var(--red-soft); border-color: color-mix(in srgb, var(--red) 36%, transparent); }
+
+/* Sources: name beside its health dot, freshness right-aligned in figures. */
+.fpl-planner-app .fpl-src-list {
+  background: var(--bg-sunk);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 2px 12px;
+}
+.fpl-planner-app .fpl-src { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text); font-weight: 550; padding: 9px 0; border-bottom: 1px solid var(--border-soft); }
 .fpl-planner-app .fpl-src:last-child { border-bottom: 0; }
-.fpl-planner-app .fpl-src-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 7px; background: var(--green); }
-.fpl-planner-app .fpl-src.is-bad .fpl-src-dot { background: var(--red); }
-.fpl-planner-app .fpl-src.is-stale .fpl-src-dot { background: var(--amber); }
-.fpl-planner-app .fpl-src-age { margin-left: auto; color: var(--text-faint); font-size: 12px; white-space: nowrap; }
+.fpl-planner-app .fpl-src-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 7px;
+  background: var(--green);
+  box-shadow: 0 0 0 3px var(--green-soft);
+}
+.fpl-planner-app .fpl-src.is-bad .fpl-src-dot { background: var(--red); box-shadow: 0 0 0 3px var(--red-soft); }
+.fpl-planner-app .fpl-src.is-stale .fpl-src-dot { background: var(--amber); box-shadow: 0 0 0 3px var(--amber-soft); }
+.fpl-planner-app .fpl-src-age { margin-left: auto; color: var(--text-faint); font-size: 12px; font-weight: 400; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* Closing explanatory copy: clearly secondary to the facts above it. No
+   divider - the smaller, fainter type and the space above carry the
+   distinction; a readable measure keeps it from sprawling. */
+.fpl-planner-app .fpl-footnote {
+  margin-top: 20px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-faint);
+  max-width: 82ch;
+}
 
 .fpl-planner-app .fpl-freshness {
   display: flex;
@@ -1961,9 +2120,13 @@ body.fpl-page {
   .fpl-planner-app .fpl-whynot-row > button { width: 100%; }
   /* Label above value: two columns at 390px gave the value about 150px and
      wrapped "Tavernier to Palmer" onto three lines. */
-  .fpl-planner-app .fpl-whynot-rows { grid-template-columns: minmax(0, 1fr); gap: 2px; }
-  .fpl-planner-app .fpl-whynot-rows dt { padding-top: 8px; }
+  .fpl-planner-app .fpl-whynot-rows { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+  .fpl-planner-app .fpl-whynot-rows dt { padding-top: 10px; }
   .fpl-planner-app .fpl-whynot-rows dt:first-child { padding-top: 0; }
+
+  /* Verdict rows: the tag drops under its sentence, still tied by the dot. */
+  .fpl-planner-app .fpl-reasons.is-verdicts li.fpl-conf-row { grid-template-columns: 8px minmax(0, 1fr); }
+  .fpl-planner-app .fpl-conf-row .fpl-conf-mark { grid-column: 2; justify-self: start; }
   .fpl-planner-app .fpl-cb-list { max-height: 260px; }
   .fpl-planner-app .fpl-cb-opt { padding: 9px 10px; }
   .fpl-planner-app .fpl-cb-name { flex: 1 1 100%; }
