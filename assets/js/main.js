@@ -38,6 +38,17 @@
   // Firebase config will be loaded from external file (firebase-config-local.js)
   // or from environment variables in production
 
+  // Account deletion lives in the sync layer, next to the one list of app
+  // namespaces. Resolve its URL against THIS script's src, captured while the
+  // script is still evaluating: dynamic import() inside a classic script
+  // resolves against the document's base URL, so an app page two directories
+  // down would otherwise look for /apps/<app>/sync-system/. Same approach as
+  // apps/maptap-rivals/js/app.js.
+  const ACCOUNT_MODULE_URL = (function() {
+    const src = document.currentScript && document.currentScript.src;
+    return new URL('../../sync-system/app-sync-init.js', src || document.baseURI).href;
+  })();
+
   /* ==========================================================================
      Utility Functions
      ========================================================================== */
@@ -419,23 +430,32 @@
               <button class="signout-confirm-btn" type="button">Sign Out</button>
               <button class="signout-cancel-btn" type="button">Cancel</button>
             </div>
+
+            <div class="signout-modal__danger">
+              <button class="signout-modal__delete-link" type="button">Delete account and all data</button>
+            </div>
           </div>
         </div>
       `;
-      
+
       $('body').append(modalHtml);
-      
+
       // Bind events
       $('.signout-cancel-btn, .signout-modal').on('click', (event) => {
         if (event.target === event.currentTarget) {
           this.hideSignOutConfirmation();
         }
       });
-      
+
       $('.signout-confirm-btn').on('click', () => {
         this.performSignOut();
       });
-      
+
+      $('.signout-modal__delete-link').on('click', () => {
+        this.hideSignOutConfirmation();
+        this.showDeleteAccountModal();
+      });
+
       // Keyboard handler
       $(document).on('keydown.signout', (event) => {
         if (event.key === 'Escape') {
@@ -443,6 +463,202 @@
           $(document).off('keydown.signout');
         }
       });
+    }
+
+    /* ----------------------------------------------------------------------
+       Account deletion
+       ----------------------------------------------------------------------
+       Reached from the sign-out dialog, which is where the account controls
+       already live. The gate is deliberately awkward: the current password
+       (which also reauthenticates, so a stale session cannot fail half way
+       through) plus the word DELETE typed by hand. The module enforces both
+       again, so nothing here is the only thing standing between a stray click
+       and the data.
+       ---------------------------------------------------------------------- */
+
+    /**
+     * Show the delete-account confirmation modal
+     * @private
+     */
+    showDeleteAccountModal() {
+      const user = this.state.currentUser;
+      if (!user || user.isAnonymous) {
+        return;
+      }
+
+      this.createDeleteAccountModal(user);
+      $('.delete-account-modal').addClass('delete-account-modal--visible');
+      $('body').addClass('signout-modal-open');
+
+      setTimeout(() => {
+        $('#delete-account-password').focus();
+      }, 100);
+    }
+
+    /**
+     * Hide the delete-account confirmation modal
+     * @private
+     */
+    hideDeleteAccountModal() {
+      $('.delete-account-modal').removeClass('delete-account-modal--visible');
+      $('body').removeClass('signout-modal-open');
+      $(document).off('keydown.deleteaccount');
+
+      setTimeout(() => {
+        $('.delete-account-modal').remove();
+      }, 300);
+    }
+
+    /**
+     * Build the delete-account confirmation modal.
+     *
+     * The "kept" list is not padding. Arena's leaderboard row, head-to-head
+     * records and Globe Drop daily scores sit outside users/{uid} and the
+     * security rules do not let their owner delete them, and room chat is
+     * append-only by design. Saying so up front is the difference between an
+     * honest control and one that overclaims.
+     * @private
+     * @param {Object} user - Signed-in Firebase user
+     */
+    createDeleteAccountModal(user) {
+      $('.delete-account-modal').remove();
+
+      const safeEmail = escapeHtml(user.email || '');
+
+      const modalHtml = `
+        <div class="delete-account-modal" role="dialog" aria-modal="true" aria-labelledby="delete-account-title">
+          <div class="delete-account-modal__content">
+            <div class="delete-account-modal__header">
+              <div class="delete-account-modal__icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 9V13M12 17H12.01M10.29 3.86L1.82 18C1.64 18.32 1.55 18.68 1.55 19.05C1.55 19.42 1.65 19.78 1.83 20.09C2.02 20.41 2.28 20.67 2.6 20.85C2.92 21.03 3.28 21.12 3.65 21.12H20.35C20.72 21.12 21.08 21.03 21.4 20.85C21.72 20.67 21.98 20.41 22.17 20.09C22.35 19.78 22.45 19.42 22.45 19.05C22.45 18.68 22.36 18.32 22.18 18L13.71 3.86C13.53 3.55 13.27 3.29 12.96 3.11C12.65 2.93 12.29 2.83 11.93 2.83C11.57 2.83 11.22 2.93 10.9 3.11C10.59 3.29 10.34 3.55 10.16 3.86H10.29Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <h2 id="delete-account-title" class="delete-account-modal__title">Delete Account</h2>
+            </div>
+
+            <div class="delete-account-modal__body">
+              <p class="delete-account-modal__message">
+                This permanently deletes <strong>${safeEmail}</strong> and the data it stores. It cannot be undone.
+              </p>
+
+              <p class="delete-account-modal__label">This removes</p>
+              <ul class="delete-account-modal__list">
+                <li>Your synced data for every app, in the cloud and on this device</li>
+                <li>Your Arena profile, including XP, wins and games played</li>
+                <li>Your MapTap Rivals network entry and the links to connected rivals</li>
+                <li>Your sign-in email and password</li>
+              </ul>
+
+              <p class="delete-account-modal__label">This does not remove</p>
+              <ul class="delete-account-modal__list delete-account-modal__list--kept">
+                <li>Your Arena leaderboard row, head-to-head records and Globe Drop daily scores. Only leaderboard admins can remove those.</li>
+                <li>Anything you posted in Arena room chat. Chat is permanent by design.</li>
+              </ul>
+
+              <p class="delete-account-modal__note">
+                Other devices that are signed in keep their own local copy until it is cleared there.
+              </p>
+
+              <div class="delete-account-modal__field">
+                <label for="delete-account-password">Your password</label>
+                <input type="password" id="delete-account-password" autocomplete="current-password" placeholder="Password">
+              </div>
+
+              <div class="delete-account-modal__field">
+                <label for="delete-account-confirm">Type DELETE to confirm</label>
+                <input type="text" id="delete-account-confirm" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="DELETE">
+              </div>
+
+              <div class="delete-account-modal__status" role="alert" aria-live="polite"></div>
+            </div>
+
+            <div class="delete-account-modal__actions">
+              <button class="delete-account-confirm-btn" type="button" disabled>Delete account</button>
+              <button class="delete-account-cancel-btn" type="button">Cancel</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      $('body').append(modalHtml);
+
+      $('.delete-account-cancel-btn, .delete-account-modal').on('click', (event) => {
+        if (event.target === event.currentTarget) {
+          this.hideDeleteAccountModal();
+        }
+      });
+
+      $('#delete-account-confirm').on('input', () => {
+        const typed = $('#delete-account-confirm').val() || '';
+        $('.delete-account-confirm-btn').prop('disabled', typed.trim() !== 'DELETE');
+      });
+
+      $('.delete-account-confirm-btn').on('click', () => {
+        this.performAccountDeletion();
+      });
+
+      $(document).on('keydown.deleteaccount', (event) => {
+        if (event.key === 'Escape') {
+          this.hideDeleteAccountModal();
+        }
+      });
+    }
+
+    /**
+     * Run the deletion and report exactly what happened.
+     * @private
+     * @async
+     */
+    async performAccountDeletion() {
+      const $confirm = $('.delete-account-confirm-btn');
+      const originalLabel = $confirm.text();
+
+      $confirm.prop('disabled', true).text('Deleting...');
+      $('.delete-account-cancel-btn').prop('disabled', true);
+      this.showDeleteStatus('Deleting your account. Do not close this tab.', 'info');
+
+      let result;
+      try {
+        const module = await import(ACCOUNT_MODULE_URL);
+        result = await module.deleteAccount({
+          confirmation: $('#delete-account-confirm').val(),
+          password: $('#delete-account-password').val()
+        });
+      } catch (error) {
+        console.error('Account deletion error:', error);
+        result = {
+          ok: false,
+          message: 'Something went wrong and the account was not deleted. Check your connection and try again.'
+        };
+      }
+
+      if (result.ok) {
+        this.showDeleteStatus('Your account and its data have been deleted.', 'success');
+        $('.delete-account-cancel-btn').remove();
+        // Reload rather than leaving the page up: apps hold their state in
+        // memory and would write it straight back to the localStorage keys we
+        // just cleared on the next interaction.
+        setTimeout(() => { window.location.reload(); }, 2500);
+        return;
+      }
+
+      this.showDeleteStatus(result.message, 'error');
+      $confirm.prop('disabled', false).text(originalLabel);
+      $('.delete-account-cancel-btn').prop('disabled', false);
+    }
+
+    /**
+     * Show a status message inside the delete-account modal
+     * @private
+     * @param {string} message - Message text
+     * @param {string} type - Message type
+     */
+    showDeleteStatus(message, type) {
+      $('.delete-account-modal__status')
+        .removeClass('delete-account-modal__status--info delete-account-modal__status--error delete-account-modal__status--success')
+        .addClass(`delete-account-modal__status--${type} delete-account-modal__status--visible`)
+        .text(message);
     }
 
     /**

@@ -1,0 +1,300 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { buildGameState } from '../js/engine/normalize.js';
+import { buildSquadState } from '../js/engine/squad.js';
+import { pitchViewModel } from '../js/ui/pitch.js';
+import { squadLegality, blockedReason, searchPlayers, manualSquadState, MANUAL_TRANSFER_STATE } from '../js/ui/preseason.js';
+import { freeTransfersFor, isUnlimited } from '../js/engine/transfer-state.js';
+import { deletionOutcomeText } from '../js/ui/settings.js';
+import { recommendationLine, reasonLabel } from '../js/ui/history.js';
+import { validatePlan } from '../js/engine/validate.js';
+
+// The view modules build DOM, but the decisions inside them are pure and are
+// tested here: which squad the pitch shows, whether a manual squad is legal,
+// and exactly what a deletion tells the user it removed.
+
+const here = dirname(fileURLToPath(import.meta.url));
+const read = (...p) => JSON.parse(readFileSync(join(here, ...p), 'utf8'));
+
+const gameState = buildGameState(
+  { ...read('fixtures', 'bootstrap.json'), events: read('fixtures', 'events-in-season.json') },
+  read('fixtures', 'fixtures.json'),
+  { fetchedAt: '2026-09-24T10:00:00Z' },
+);
+const rules = gameState.rules;
+const squadState = buildSquadState({
+  entry: read('fixtures', 'entry.json'),
+  history: read('fixtures', 'entry-history.json'),
+  transfers: read('fixtures', 'entry-transfers.json'),
+  picks: read('fixtures', 'entry-picks.json'),
+  gameState,
+  gw: 6,
+});
+
+/* ------------------------------------------------------------------ pitch */
+
+// FPL numbers a squad 1-11 for the eleven that starts (exactly one keeper),
+// 12 for the reserve keeper and 13-15 for the ordered outfield bench. The
+// committed fixture stores its picks grouped by position instead, so the
+// current-team view is tested against a squad laid out the way the API does it.
+function inRealSlotOrder(state) {
+  const positionOf = id => gameState.players.get(id).position;
+  const ids = state.picks.map(p => p.playerId);
+  const gks = ids.filter(id => positionOf(id) === 1);
+  const defs = ids.filter(id => positionOf(id) === 2);
+  const mids = ids.filter(id => positionOf(id) === 3);
+  const fwds = ids.filter(id => positionOf(id) === 4);
+  const ordered = [
+    gks[0],
+    ...defs.slice(0, 4),
+    ...mids.slice(0, 4),
+    ...fwds.slice(0, 2),
+    gks[1],
+    defs[4], mids[4], fwds[2],
+  ];
+  const byId = new Map(state.picks.map(p => [p.playerId, p]));
+  return { ...state, picks: ordered.map((id, i) => ({ ...byId.get(id), slot: i + 1 })) };
+}
+
+const held = squadState.picks.map(p => p.playerId);
+const plan = {
+  gw: 6,
+  transfersOut: [held[0]],
+  transfersIn: [9999],
+  squad: held.slice(1).concat(9999),
+  startingXI: held.slice(0, 11),
+  formation: '3-4-3',
+  bench: { gk: held[11], order: [held[12], held[13], held[14]] },
+  captain: held[5],
+  viceCaptain: held[6],
+};
+
+test('the recommended view shows the plan and marks what it buys', () => {
+  const vm = pitchViewModel({ mode: 'recommended', plan, squadState, gameState });
+  assert.deepEqual(vm.startingXI, plan.startingXI);
+  assert.equal(vm.formation, '3-4-3');
+  assert.equal(vm.captain, plan.captain);
+  assert.deepEqual([...vm.movesIn], [9999]);
+  assert.equal(vm.movesOut.size, 0, 'a sold player is not on the recommended pitch');
+});
+
+test('the current view is built from the real picks, with its own formation', () => {
+  const realistic = inRealSlotOrder(squadState);
+  const outgoing = realistic.picks[2].playerId;
+  const vm = pitchViewModel({ mode: 'current', plan: { ...plan, transfersOut: [outgoing] }, squadState: realistic, gameState });
+  assert.equal(vm.startingXI.length, 11);
+  assert.equal(vm.formation, '4-4-2');
+  const counts = vm.formation.split('-').map(Number);
+  assert.equal(counts.reduce((a, b) => a + b, 0), 10, 'ten outfielders plus the keeper');
+  assert.equal(vm.bench.order.length, 3);
+  assert.equal(gameState.players.get(vm.bench.gk).position, 1, 'the reserve keeper is the bench GK');
+  assert.deepEqual([...vm.movesOut], [outgoing], 'the current squad is where an outgoing player still is');
+  assert.equal(vm.movesIn.size, 0);
+});
+
+test('the current view reads the armbands from the picks, not from the plan', () => {
+  const realistic = inRealSlotOrder(squadState);
+  const withCaptain = {
+    ...realistic,
+    picks: realistic.picks.map((p, i) => ({ ...p, isCaptain: i === 3, isViceCaptain: i === 4 })),
+  };
+  const vm = pitchViewModel({ mode: 'current', plan, squadState: withCaptain, gameState });
+  assert.equal(vm.captain, withCaptain.picks[3].playerId);
+  assert.equal(vm.viceCaptain, withCaptain.picks[4].playerId);
+  assert.notEqual(vm.captain, plan.captain);
+});
+
+/* ------------------------------------------------------- manual squad entry */
+
+const byPosition = (pos) => [...gameState.players.values()].filter(p => p.position === pos);
+
+// The cheapest legal fifteen available in the fixture, which is what a manual
+// entry screen has to be able to accept.
+function cheapestSquad() {
+  const ids = [];
+  for (const pos of Object.values(rules.positions)) {
+    const list = byPosition(pos.id).slice().sort((a, b) => a.nowCost - b.nowCost);
+    const clubs = new Map();
+    for (const player of list) {
+      if (ids.filter(id => gameState.players.get(id).teamId === player.teamId).length >= rules.clubLimit) continue;
+      ids.push(player.id);
+      clubs.set(player.teamId, true);
+      if (byPosition(pos.id).filter(p => ids.includes(p.id)).length === pos.squadSelect) break;
+    }
+  }
+  return ids;
+}
+
+test('an empty squad is legal but not complete', () => {
+  const state = squadLegality([], gameState);
+  assert.equal(state.ok, false);
+  assert.equal(state.complete, false);
+  assert.deepEqual(state.issues, []);
+  assert.equal(state.remaining, rules.budgetTenths);
+});
+
+test('counters, spend and remaining budget track the picks', () => {
+  const ids = byPosition(1).slice(0, 2).map(p => p.id);
+  const state = squadLegality(ids, gameState);
+  assert.equal(state.counts[1], 2);
+  assert.equal(state.spend, ids.reduce((s, id) => s + gameState.players.get(id).nowCost, 0));
+  assert.equal(state.remaining, rules.budgetTenths - state.spend);
+});
+
+test('too many in a position is reported in words', () => {
+  const ids = byPosition(1).slice(0, 3).map(p => p.id);
+  const issues = squadLegality(ids, gameState).issues;
+  assert.equal(issues.length, 1);
+  assert.match(issues[0], /3 GKP selected, the maximum is 2/);
+});
+
+test('a fourth player from one club is reported by club name', () => {
+  const teamId = [...gameState.teams.keys()][0];
+  const ids = [...gameState.players.values()].filter(p => p.teamId === teamId).slice(0, 4).map(p => p.id);
+  const issues = squadLegality(ids, gameState).issues;
+  assert.ok(issues.some(i => /4 players from .*the limit is 3/.test(i)), issues.join(' | '));
+});
+
+test('going over budget is reported to the tenth', () => {
+  const dear = [...gameState.players.values()].slice().sort((a, b) => b.nowCost - a.nowCost);
+  const ids = [];
+  let spend = 0;
+  for (const player of dear) {
+    ids.push(player.id);
+    spend += player.nowCost;
+    if (spend > rules.budgetTenths) break;
+  }
+  const state = squadLegality(ids, gameState);
+  assert.ok(state.issues.some(i => /Over budget by £/.test(i)), state.issues.join(' | '));
+  assert.ok(state.remaining < 0);
+});
+
+test('a complete legal fifteen passes', () => {
+  const ids = cheapestSquad();
+  const state = squadLegality(ids, gameState);
+  assert.equal(ids.length, rules.squadSize);
+  assert.deepEqual(state.issues, []);
+  assert.equal(state.complete, true);
+  assert.equal(state.ok, true);
+});
+
+test('a player is blocked with the reason that blocks him', () => {
+  const gkIds = byPosition(1).slice(0, 2).map(p => p.id);
+  const thirdGk = byPosition(1)[2];
+  assert.match(blockedReason(thirdGk.id, gkIds, gameState), /already have 2 GKP/);
+  assert.match(blockedReason(gkIds[0], gkIds, gameState), /Already selected/);
+
+  const teamId = [...gameState.teams.keys()][0];
+  const clubIds = [...gameState.players.values()].filter(p => p.teamId === teamId).slice(0, 3).map(p => p.id);
+  const fourth = [...gameState.players.values()].find(p => p.teamId === teamId && !clubIds.includes(p.id));
+  assert.match(blockedReason(fourth.id, clubIds, gameState), /Already 3 from that club/);
+
+  const dearest = [...gameState.players.values()].sort((a, b) => b.nowCost - a.nowCost)[0];
+  assert.match(blockedReason(dearest.id, [], gameState, { budgetTenths: 10 }), /Costs £/);
+  assert.equal(blockedReason(dearest.id, [], gameState), null);
+});
+
+test('search filters by name and position and is ordered by price', () => {
+  const all = searchPlayers(gameState, { limit: 5 });
+  assert.equal(all.length, 5);
+  for (let i = 1; i < all.length; i++) assert.ok(all[i - 1].nowCost >= all[i].nowCost);
+
+  const keepers = searchPlayers(gameState, { position: 1, limit: 50 });
+  assert.ok(keepers.length > 0);
+  assert.ok(keepers.every(p => p.position === 1));
+
+  const target = all[0];
+  const byName = searchPlayers(gameState, { query: target.webName.slice(0, 4).toLowerCase(), limit: 50 });
+  assert.ok(byName.some(p => p.id === target.id));
+  assert.equal(searchPlayers(gameState, { query: 'zzzzzz-no-such-player' }).length, 0);
+});
+
+test('a typed squad becomes a SquadState the planner can validate against', () => {
+  const ids = cheapestSquad();
+  const state = manualSquadState({ ids, gameState, gw: 6, entry: read('fixtures', 'entry.json') });
+  assert.equal(state.source, 'manual');
+  assert.equal(state.picks.length, rules.squadSize);
+  // A typed pre-season squad is still PRE-SEASON, so its allowance is unlimited
+  // rather than a number. This asserted a hardcoded 2, which encoded a limit of
+  // the transfer search as if it were a rule of the game.
+  assert.equal(state.freeTransfers, freeTransfersFor(MANUAL_TRANSFER_STATE));
+  assert.equal(isUnlimited(state.transferState), true, 'pre-season is unlimited, not a count');
+  // And chips are whatever the rules allow now, not an empty list: bench boost
+  // and triple captain are both playable from GW1.
+  assert.ok(state.chipsAvailable.length > 0, 'a fresh squad owns its chips');
+  const spend = ids.reduce((s, id) => s + gameState.players.get(id).nowCost, 0);
+  assert.equal(state.bankTenths, rules.budgetTenths - spend);
+  assert.equal(state.picks.every(p => p.sellingTenths === p.purchaseTenths), true);
+  assert.deepEqual(state.picks.map(p => p.slot), ids.map((_, i) => i + 1));
+
+  // A no-transfer plan over that squad has to be legal, which is what the
+  // planner will produce from it.
+  const xi = ids.slice(0, 11);
+  const noop = {
+    gw: 6, chip: null, transfersOut: [], transfersIn: [], transferCount: 0,
+    freeTransfersUsed: 0, freeTransfersAfter: freeTransfersFor(MANUAL_TRANSFER_STATE), hits: 0, hitCostPoints: 0,
+    bankBeforeTenths: state.bankTenths, moneyInTenths: 0, moneyOutTenths: 0,
+    bankAfterTenths: state.bankTenths,
+    squad: ids.slice(),
+    startingXI: xi,
+    formation: '3-4-3',
+    bench: { gk: ids[1], order: [ids[12], ids[13], ids[14]] },
+    captain: xi[5], viceCaptain: xi[6],
+  };
+  const check = validatePlan(noop, state, gameState, rules);
+  assert.equal(check.violations.some(v => v.code === 'budget'), false, JSON.stringify(check.violations));
+  assert.equal(check.violations.some(v => v.code === 'club_limit'), false);
+  assert.equal(check.violations.some(v => v.code === 'squad_size'), false);
+});
+
+/* --------------------------------------------------------------- deletion */
+
+test('a deletion says which copy it actually removed', () => {
+  const signedOut = deletionOutcomeText({ scope: 'all', signedIn: false, cloudOk: false });
+  assert.match(signedOut, /removed from this device/);
+  assert.match(signedOut, /not signed in/);
+  assert.doesNotMatch(signedOut, /and from your Shevato account/);
+
+  const signedIn = deletionOutcomeText({ scope: 'all', signedIn: true, cloudOk: true });
+  assert.match(signedIn, /this device and from your Shevato account/);
+  assert.match(signedIn, /Other devices drop it on their next sync/);
+
+  const failed = deletionOutcomeText({ scope: 'all', signedIn: true, cloudOk: false, cloudError: 'offline' });
+  assert.match(failed, /could not be deleted \(offline\)/);
+  assert.doesNotMatch(failed, /^All FPL Planner data was removed from this device and from/);
+});
+
+test('disconnecting and deleting describe different things', () => {
+  const team = deletionOutcomeText({ scope: 'team', signedIn: true, cloudOk: true });
+  const all = deletionOutcomeText({ scope: 'all', signedIn: true, cloudOk: true });
+  assert.match(team, /^Your FPL team link/);
+  assert.match(all, /^All FPL Planner data/);
+});
+
+/* ---------------------------------------------------------------- history */
+
+test('a stored plan is restated as an action, never as a rationale', () => {
+  const entry = {
+    plan: {
+      headline: 'Make 1 transfer',
+      transferCount: 1,
+      transfersOut: [held[0]],
+      transfersIn: [held[1]],
+    },
+  };
+  const line = recommendationLine(entry, gameState);
+  assert.match(line, /^Make 1 transfer: /);
+  assert.match(line, new RegExp(`${gameState.players.get(held[0]).webName} out`));
+  assert.equal(recommendationLine({ plan: { headline: 'Roll your transfer', transferCount: 0, transfersOut: [], transfersIn: [] } }, gameState), 'Roll your transfer');
+  assert.equal(recommendationLine(null, gameState), null);
+});
+
+test('recalculation reasons render as sentences, unknown codes pass through', () => {
+  assert.equal(reasonLabel('squad-changed'), 'Your squad changed');
+  assert.equal(reasonLabel('first-calculation'), 'First plan for this gameweek');
+  assert.equal(reasonLabel('something-new'), 'something-new');
+  assert.equal(reasonLabel(undefined), 'Recalculated');
+});

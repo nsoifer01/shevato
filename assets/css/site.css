@@ -64,29 +64,14 @@
   background-color: var(--brand-blue-hover);
   box-shadow: 0 10px 22px rgba(var(--brand-blue-rgb), 0.25);
 }
-.hero .cta-row .button.ghost {
-  background-color: rgba(var(--brand-blue-rgb), 0.06);
-  color: var(--brand-blue) !important;
-  box-shadow: inset 0 0 0 1px rgba(var(--brand-blue-rgb), 0.2);
-}
-.hero .cta-row .button.ghost:hover {
-  background-color: rgba(var(--brand-blue-rgb), 0.1);
-  box-shadow: inset 0 0 0 1px rgba(var(--brand-blue-rgb), 0.35);
-}
 
 /* Pressed state. There was none: a click went straight from the hover colour
    back to rest with no feedback that the press registered, which reads as an
    unresponsive control on touch devices in particular, where there is no
-   hover phase at all to confirm the target. Both variants get the same
-   treatment so the row keeps behaving as one set. */
+   hover phase at all to confirm the target. */
 .hero .cta-row .button.primary:active {
   background-color: var(--brand-blue-hover);
   box-shadow: 0 2px 6px rgba(var(--brand-blue-rgb), 0.22);
-  transform: translateY(1px);
-}
-.hero .cta-row .button.ghost:active {
-  background-color: rgba(var(--brand-blue-rgb), 0.16);
-  box-shadow: inset 0 0 0 1px rgba(var(--brand-blue-rgb), 0.4);
   transform: translateY(1px);
 }
 
@@ -120,6 +105,8 @@
 }
 .capability {
   position: relative;
+  display: flex;
+  flex-direction: column;
   background: #ffffff;
   border: 1px solid rgba(var(--brand-blue-rgb), 0.08);
   border-radius: 10px;
@@ -160,8 +147,10 @@
 }
 .capability ul.stack {
   list-style: none;
-  margin: 0.85rem 0 0;
-  padding: 0;
+  /* auto top margin bottom-aligns the chips inside the flex-column card, so
+     equal-height cards in a grid row do not leave dead space under the chips */
+  margin: auto 0 0;
+  padding: 0.9rem 0 0;
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
@@ -385,6 +374,135 @@
   text-align: center;
   color: #4a4f57;
   line-height: 1.7;
+}
+
+/* How we work: a full-width callout between capabilities and side projects.
+   Deliberately horizontal so it reads as a statement about the practice, not
+   a fifth capability card. ------------------------------------------------- */
+.how-we-work {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+  background: linear-gradient(135deg, rgba(var(--brand-blue-rgb), 0.05), rgba(74, 144, 255, 0.08));
+  border: 1px solid rgba(var(--brand-blue-rgb), 0.14);
+  border-radius: 10px;
+  padding: 1.5rem 1.75rem;
+  margin: 0 0 3rem;
+}
+.how-we-work-text {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.1rem;
+  min-width: 0;
+}
+.how-we-work .icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.8rem;
+  height: 2.8rem;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--brand-blue);
+  font-size: 1.25rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+.how-we-work h2 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  text-transform: none;
+  margin: 0 0 0.35rem;
+  color: #1c1f24;
+}
+.how-we-work p {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: #4a5058;
+  max-width: 44rem;
+}
+.how-we-work-chips {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.how-we-work-chips li {
+  padding: 0.32rem 0.7rem;
+  background: #ffffff;
+  border: 1px solid rgba(var(--brand-blue-rgb), 0.16);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--brand-blue);
+}
+@media (max-width: 860px) {
+  .how-we-work {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1.1rem;
+  }
+}
+
+/* Side projects: a compact portfolio strip. The one place on this page that
+   enumerates the apps; each name is a real link, A-Z, and the invariant
+   tests read this list. ---------------------------------------------------- */
+.side-projects {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem 2rem;
+  margin: 1rem 0 3rem;
+}
+.side-projects ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.side-projects li a {
+  display: inline-block;
+  padding: 0.42rem 0.85rem;
+  background: #ffffff;
+  border: 1px solid rgba(var(--brand-blue-rgb), 0.14);
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #1c1f24;
+  text-decoration: none;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, color 180ms ease;
+}
+.side-projects li a:hover,
+.side-projects li a:focus-visible {
+  transform: translateY(-2px);
+  border-color: rgba(var(--brand-blue-rgb), 0.45);
+  color: var(--brand-blue);
+  box-shadow: 0 6px 16px rgba(var(--brand-blue-rgb), 0.14);
+}
+.side-projects-more {
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--brand-blue);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.side-projects-more:after {
+  content: " \2192";
+}
+.side-projects-more:hover {
+  text-decoration: underline;
 }
 
 /* Preview blocks linking to other pages (used on Home) ---------------------- */

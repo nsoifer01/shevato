@@ -1468,6 +1468,370 @@ body.dark-theme .signout-confirm-btn:active {
 }
 
 /* ==========================================================================
+   Delete Account Modal - Complete isolation
+   ==========================================================================
+   Same white-surfaced card as the sign-out dialog above (these components are
+   white BY DESIGN on every page, see the scheme block at the bottom of this
+   file), reached from the "Delete account and all data" link in that dialog.
+   Selectors repeat the body / body.dark-theme variants and pin colours with
+   !important for the same reason the auth modal does: app pages restyle
+   inputs and buttons globally, including main.css's `button { color: #555 }`.
+   ========================================================================== */
+
+.signout-modal__danger {
+  border-top: 1px solid #e5e7eb;
+  margin: 0 2rem;
+  padding: 1rem 0 1.5rem 0;
+  text-align: center;
+}
+
+.signout-modal__delete-link,
+body .signout-modal__delete-link,
+body.dark-theme .signout-modal__delete-link {
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0;
+  font-size: 0.8125rem;
+  font-family: inherit;
+  color: #b91c1c !important;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.signout-modal__delete-link:hover,
+.signout-modal__delete-link:focus,
+body .signout-modal__delete-link:hover,
+body .signout-modal__delete-link:focus {
+  color: #7f1d1d !important;
+}
+
+.delete-account-modal,
+body .delete-account-modal,
+body.dark-theme .delete-account-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  z-index: 10004;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  overflow-y: auto;
+}
+
+.delete-account-modal--visible,
+body .delete-account-modal--visible,
+body.dark-theme .delete-account-modal--visible {
+  display: flex;
+  opacity: 1;
+}
+
+.delete-account-modal__content,
+body .delete-account-modal__content,
+body.dark-theme .delete-account-modal__content {
+  background: #ffffff;
+  border-radius: 1rem;
+  width: 100%;
+  max-width: 28rem;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  position: relative;
+  transform: translateY(20px);
+  transition: transform 0.3s ease;
+  color: #000000 !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.delete-account-modal--visible .delete-account-modal__content,
+body .delete-account-modal--visible .delete-account-modal__content,
+body.dark-theme .delete-account-modal--visible .delete-account-modal__content {
+  transform: translateY(0);
+}
+
+.delete-account-modal *,
+.delete-account-modal h2,
+.delete-account-modal p,
+.delete-account-modal li,
+.delete-account-modal label,
+.delete-account-modal div,
+.delete-account-modal span,
+.delete-account-modal strong,
+body .delete-account-modal *,
+body.dark-theme .delete-account-modal *,
+body.dark-theme .delete-account-modal h2,
+body.dark-theme .delete-account-modal p,
+body.dark-theme .delete-account-modal li,
+body.dark-theme .delete-account-modal label {
+  color: #000000 !important;
+}
+
+.delete-account-modal__header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 2rem 2rem 0 2rem;
+}
+
+.delete-account-modal__icon {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #dc2626 !important;
+  flex-shrink: 0;
+}
+
+.delete-account-modal__icon svg {
+  color: #dc2626 !important;
+}
+
+.delete-account-modal__title,
+body.dark-theme .delete-account-modal__title,
+body.dark-theme h2.delete-account-modal__title {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #000000 !important;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  /* main.css uppercases every h2 globally; pin proper case at the source, the
+     same way the sign-out dialog does */
+  text-transform: none;
+}
+
+.delete-account-modal__body {
+  padding: 1rem 2rem;
+}
+
+.delete-account-modal__message {
+  margin: 0 0 1rem 0;
+  line-height: 1.5;
+  font-size: 0.875rem;
+}
+
+.delete-account-modal__label {
+  margin: 0 0 0.25rem 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.delete-account-modal__list {
+  margin: 0 0 1rem 0;
+  padding-left: 1.125rem;
+  list-style: disc;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.delete-account-modal__list li {
+  margin: 0 0 0.25rem 0;
+  padding: 0;
+}
+
+.delete-account-modal__list li::before {
+  /* main.css decorates list items on some pages; the disc above is enough */
+  content: none !important;
+}
+
+.delete-account-modal__list--kept {
+  background: #f9fafb;
+  border-radius: 0.5rem;
+  padding: 0.75rem 0.75rem 0.75rem 1.75rem;
+}
+
+.delete-account-modal__note {
+  margin: 0 0 1.25rem 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  font-style: italic;
+}
+
+.delete-account-modal__field {
+  margin: 0 0 0.875rem 0;
+}
+
+.delete-account-modal__field label {
+  display: block;
+  margin: 0 0 0.25rem 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.delete-account-modal__field input,
+body .delete-account-modal__field input,
+body.dark-theme .delete-account-modal__field input,
+input#delete-account-password,
+input#delete-account-confirm,
+body input#delete-account-password,
+body input#delete-account-confirm {
+  display: block !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  padding: 0.625rem 0.75rem !important;
+  border: 1px solid #d1d5db !important;
+  border-radius: 0.5rem !important;
+  background: #ffffff !important;
+  background-image: none !important;
+  color: #000000 !important;
+  font-size: 0.875rem !important;
+  font-family: inherit !important;
+  line-height: 1.4 !important;
+  height: auto !important;
+  box-shadow: none !important;
+  text-transform: none !important;
+}
+
+.delete-account-modal__field input:focus,
+body .delete-account-modal__field input:focus,
+body.dark-theme .delete-account-modal__field input:focus {
+  outline: none !important;
+  border-color: #dc2626 !important;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15) !important;
+}
+
+.delete-account-modal__field input::placeholder {
+  color: #9ca3af !important;
+  opacity: 1;
+}
+
+.delete-account-modal__status {
+  display: none;
+  margin: 0.25rem 0 0 0;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.delete-account-modal__status--visible {
+  display: block;
+}
+
+.delete-account-modal__status--info {
+  background: #eff6ff;
+}
+
+.delete-account-modal__status--error {
+  background: #fef2f2;
+}
+
+.delete-account-modal__status--success {
+  background: #f0fdf4;
+}
+
+.delete-account-modal__actions {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0 2rem 2rem 2rem;
+  justify-content: center;
+}
+
+.delete-account-cancel-btn,
+.delete-account-confirm-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  outline: none;
+  border: none;
+  min-width: 5rem;
+  text-transform: none;
+}
+
+.delete-account-cancel-btn,
+body .delete-account-cancel-btn,
+body.dark-theme .delete-account-cancel-btn {
+  background: #f3f4f6 !important;
+  color: #374151 !important;
+  /* main.css gives every button a 2px solid border; the sign-out dialog
+     predates that rule and gets away without the pin, these do not */
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.delete-account-cancel-btn:hover,
+.delete-account-cancel-btn:focus {
+  background: #e5e7eb !important;
+}
+
+.delete-account-confirm-btn,
+body .delete-account-confirm-btn,
+body.dark-theme .delete-account-confirm-btn {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+  color: #ffffff !important;
+  border: none !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.delete-account-confirm-btn:hover:not(:disabled),
+.delete-account-confirm-btn:focus:not(:disabled),
+body .delete-account-confirm-btn:hover:not(:disabled),
+body.dark-theme .delete-account-confirm-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+}
+
+.delete-account-confirm-btn:disabled,
+body .delete-account-confirm-btn:disabled,
+body.dark-theme .delete-account-confirm-btn:disabled {
+  background: #e5e7eb !important;
+  color: #9ca3af !important;
+  border: none !important;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+@media screen and (max-width: 30rem) {
+  .delete-account-modal__content {
+    margin: 0;
+    border-radius: 0.5rem;
+  }
+
+  .delete-account-modal__header,
+  .delete-account-modal__body {
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+  }
+
+  .delete-account-modal__actions {
+    flex-direction: column;
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+  }
+
+  .delete-account-cancel-btn,
+  .delete-account-confirm-btn {
+    width: 100%;
+  }
+
+  .signout-modal__danger {
+    margin: 0 1.25rem;
+  }
+}
+
+/* ==========================================================================
    Accessibility Preferences
    ========================================================================== */
 
@@ -1538,7 +1902,10 @@ html .auth-modal,
 .auth-modal *,
 .signout-modal,
 html .signout-modal,
-.signout-modal * {
+.signout-modal *,
+.delete-account-modal,
+html .delete-account-modal,
+.delete-account-modal * {
   /* !important + the id-level selectors: this stylesheet's own
      `all: unset !important` input reset would otherwise revert
      color-scheme to inherit (= the page's dark scheme) */
@@ -1548,7 +1915,11 @@ html .signout-modal,
 input.auth-form__input:-webkit-autofill,
 input.auth-form__input:-webkit-autofill:hover,
 input.auth-form__input:-webkit-autofill:focus,
-body input.auth-form__input:-webkit-autofill {
+body input.auth-form__input:-webkit-autofill,
+input#delete-account-password:-webkit-autofill,
+input#delete-account-password:-webkit-autofill:hover,
+input#delete-account-password:-webkit-autofill:focus,
+body input#delete-account-password:-webkit-autofill {
   -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
   box-shadow: 0 0 0 1000px #ffffff inset !important;
   -webkit-text-fill-color: #000000 !important;
@@ -1557,7 +1928,8 @@ body input.auth-form__input:-webkit-autofill {
 
 /* standard :autofill kept as its own rule: an unsupported selector would
    invalidate a shared group in older engines */
-input.auth-form__input:autofill {
+input.auth-form__input:autofill,
+input#delete-account-password:autofill {
   box-shadow: 0 0 0 1000px #ffffff inset !important;
   caret-color: #000000 !important;
 }

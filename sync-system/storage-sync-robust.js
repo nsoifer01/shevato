@@ -7,7 +7,11 @@ import {
   onSnapshot,
   serverTimestamp,
   deleteField,
-  deleteDoc
+  deleteDoc,
+  collection,
+  getDocs,
+  query,
+  where
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 import {
@@ -977,6 +981,79 @@ export async function eraseCloudData(namespace) {
   }
   const docRef = doc(db, `users/${user.uid}/apps/${namespace}`);
   await deleteDoc(docRef);
+}
+
+/**
+ * Delete the account's root document, users/{uid}.
+ *
+ * Not the same job as eraseCloudData(): Arena writes its trivia profile (xp,
+ * wins, games played, custom pack) as fields ON users/{uid} rather than under
+ * apps/, and Firestore deletes are not recursive, so removing the root
+ * document leaves the per-namespace documents behind and vice versa. Account
+ * deletion has to do both.
+ *
+ * @returns {Promise<void>}
+ */
+export async function eraseAccountProfile() {
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error('eraseAccountProfile: not signed in');
+  }
+  await deleteDoc(doc(db, 'users', user.uid));
+}
+
+/**
+ * Collection names for the opt-in MapTap Rivals network. Mirrors the
+ * constants in apps/maptap-rivals/js/app.js; the invariant test in
+ * sync-system/tests/account-deletion.test.mjs asserts the two stay equal, so
+ * a rename over there fails the build rather than silently leaving a deleted
+ * user's published profile behind forever.
+ */
+export const RIVAL_NETWORK_COLLECTIONS = Object.freeze({
+  handles: 'maptapRivalsHandles',
+  profiles: 'maptapRivalsNetwork',
+  links: 'maptapRivalsLinks'
+});
+
+/**
+ * Delete the account's MapTap Rivals network identity.
+ *
+ * These three collections sit outside users/{uid}, but every document here is
+ * keyed to one uid and the deployed rules let its owner delete it. They hold
+ * a published handle, display name and the handles of tracked rivals, so
+ * leaving them would strand a public profile that nobody can ever remove once
+ * the auth user is gone. Deleting a pair link also drops the connection on
+ * the other member's side, which is the correct outcome.
+ *
+ * A user who never joined the network simply has nothing to match: deleting a
+ * missing document succeeds, and both queries come back empty.
+ *
+ * @returns {Promise<void>}
+ */
+export async function eraseRivalNetworkIdentity() {
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error('eraseRivalNetworkIdentity: not signed in');
+  }
+  const uid = user.uid;
+
+  await deleteDoc(doc(db, RIVAL_NETWORK_COLLECTIONS.profiles, uid));
+
+  const claims = await getDocs(query(
+    collection(db, RIVAL_NETWORK_COLLECTIONS.handles),
+    where('uid', '==', uid)
+  ));
+  for (const claim of claims.docs) {
+    await deleteDoc(claim.ref);
+  }
+
+  const links = await getDocs(query(
+    collection(db, RIVAL_NETWORK_COLLECTIONS.links),
+    where('uids', 'array-contains', uid)
+  ));
+  for (const link of links.docs) {
+    await deleteDoc(link.ref);
+  }
 }
 
 // Expose the global-status getter to non-module code (e.g. the gym

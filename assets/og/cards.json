@@ -37,6 +37,13 @@
       "accent": "#22c55e"
     },
     {
+      "slug": "fpl-planner",
+      "eyebrow": "Fantasy Premier League",
+      "title": "FPL Planner",
+      "subtitle": "Transfers, captain, chips and your best XI, worked out",
+      "accent": "#14b8a6"
+    },
+    {
       "slug": "gym-tracker",
       "eyebrow": "Workout log",
       "title": "Gym Tracker",

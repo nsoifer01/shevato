@@ -26,6 +26,7 @@ shevato/
 ├── apps/                             # Browser apps (each is self-contained)
 │   ├── arena/                        # Real-time multiplayer hub (Firestore Realtime DB)
 │   ├── football-h2h/                 # Head-to-head football league manager
+│   ├── fpl-planner/                  # Fantasy Premier League transfer, captain and chip planner
 │   ├── gym-tracker/                  # Gym workout tracker (PWA, manifest + service worker)
 │   ├── maptap-rivals/                # Daily MapTap.gg head-to-head tracker
 │   ├── mario-kart/                   # Mario Kart race tracker (8 Deluxe + World)
@@ -56,8 +57,21 @@ shevato/
 ├── netlify.toml                      # Netlify build, headers, and CSP-Report-Only config
 ├── firebase-config.js                # Firebase v10 modular SDK bootstrap
 ├── firestore.rules, database.rules.json
+├── CLAUDE.md                         # Repo-wide rules for Claude Code sessions (read first)
 └── package.json                      # Test + build scripts (build:site runs on every deploy)
 ```
+
+## Per-app documentation
+
+This root README stays a general overview. Detailed knowledge lives WITH each
+app: `apps/<app>/README.md` is that app's current description (architecture,
+data flow, how to run and test it) and `apps/<app>/FINDINGS.md` is its
+accumulated engineering knowledge (discoveries, root causes, regression risks,
+open questions), maintained as a living document. `CLAUDE.md` requires every
+session working on an app to read both first and keep both current as part of
+finishing the work. The FPL Planner carries both today; other apps gain them
+as meaningful work happens. FPL modelling and planner experiments are recorded
+in `apps/fpl-planner/experiments/registry.md` with explicit verdicts.
 
 ## Apps
 
@@ -65,6 +79,7 @@ shevato/
 |-----|------|----------|-------|
 | Arena | `apps/arena/` | Real-time multiplayer | Private rooms for friends — Globe Drop, Trivia, more. Requires Firestore + Realtime Database |
 | Football H2H League | `apps/football-h2h/` | Sports stats | Match log, penalty shootouts, player comparison table |
+| FPL Planner | `apps/fpl-planner/` | Sports stats | Fantasy Premier League planner: imports a squad by FPL Team ID, projects players, and recommends transfers, hits, XI, bench order, captain and chips across a rolling horizon. Reads the public FPL API through a Netlify function proxy. Not affiliated with the Premier League |
 | Gym Tracker | `apps/gym-tracker/` | Health | Installable PWA, offline support, programs + measurements |
 | MapTap Rivals | `apps/maptap-rivals/` | Game tracker | Daily MapTap.gg H2H against named friends; rivalry seasons + calendar heatmap |
 | Mario Kart Tracker | `apps/mario-kart/` | Game stats | Race log, charts, achievements. Supports MK8 Deluxe + Mario Kart World |
@@ -91,36 +106,41 @@ fails, fix the ordering rather than the test.
    selectors from app CSS (layout-positioning of bare `#header`/`#footer` is
    the only exception). Enforced by
    `sync-system/tests/shared-ui-consistency.test.mjs`.
-2. `apps.html` - visible card with `data-category` (add a filter-bar button if
+2. `assets/apps-manifest.json` FIRST - the canonical app list (slug, name,
+   footer blurb). The generated Rising Shows / Gym Tracker page footers render
+   from it and `app-naming-consistency.test.mjs` pins every other surface
+   against it, so nothing else passes until this entry exists.
+3. `apps.html` - visible card with `data-category` (add a filter-bar button if
    the category is new), CollectionPage JSON-LD `hasPart` entry AND its
    `description`, `<title>`, meta description, meta keywords,
-   `og:image:alt`, `twitter:image:alt`, and the "Seven free web apps" count
-   wording. The two `image:alt` tags and the JSON-LD description are the
-   classic misses.
-3. `home.html` - side-projects prose list + count, "Free web apps"
-   preview-card list, `og:description` count, AND the `.home-app-links`
-   "Open an app" grid, which sits directly under the hero (one `<li>` per
-   app, with its one-line description). That grid is the only place the
-   homepage links directly to an individual app, so an app missing from it
-   gets no direct internal link from the site's highest-authority page.
-   Keep each one-liner consistent with that app's description in
-   `apps.html`; the names must match the apps hub exactly.
-4. `work.html` - personal-projects work-item.
-5. `partials/header.html` - desktop dropdown AND mobile nav list.
-6. `apps/rising-shows/scripts/render-footer.js` AND
-   `apps/gym-tracker/scripts/render-footer.cjs` (kept in sync by convention).
-7. `sitemap-pages.xml` `<url>` entry (plus `sitemap.xml` index only if the app
+   `og:image:alt`, `twitter:image:alt`, and a linked preview image
+   (`a.app-preview-link`, enforced by tests). Intro copy is deliberately
+   count-free ("Free web apps we have built...") so it never goes stale. The
+   two `image:alt` tags and the JSON-LD description are the classic misses.
+4. `home.html` - the side-projects prose list only. The per-app "Open an
+   app" grid was removed 2026-08-12 (the hero's "Try the free apps" button
+   is the one route to /apps), and all count wording is deliberately
+   count-free so it never goes stale.
+5. `work.html` - personal-projects work-item.
+6. `partials/header.html` - desktop dropdown AND mobile nav list.
+7. The generated Rising Shows / Gym Tracker page footers need NO edit: both
+   render-footer scripts read `assets/apps-manifest.json` (step 2), and a test
+   fails if they ever diverge from it.
+8. `sitemap-pages.xml` `<url>` entry (plus `sitemap.xml` index only if the app
    ships its own sub-sitemap).
-8. `netlify.toml` - redirects only if a path moved.
-9. `assets/og/cards.json` entry + `node assets/og/build-og-cards.mjs <slug>`
+9. `netlify.toml` - redirects only if a path moved.
+10. `assets/og/cards.json` entry + `node assets/og/build-og-cards.mjs <slug>`
    (commit the generated `images/og/<slug>.png`).
-10. `images/app-previews/<slug>.webp` (720x450) - rendered from SAMPLE data
+11. `images/app-previews/<slug>.webp` (720x450) - rendered from SAMPLE data
     only, never a real user's content.
-11. Root `README.md` - repo tree line + Apps table row above.
-12. `package.json` - aggregate `test` script list + `test:<slug>`.
-13. `sync-system/app-sync-init.js` - namespace + URL routing (only if the app
+12. Root `README.md` - repo tree line + Apps table row above.
+13. `package.json` - aggregate `test` script list + `test:<slug>`.
+14. `sync-system/app-sync-init.js` - namespace + URL routing (only if the app
     syncs).
-14. Local (gitignored) surfaces: `.claude/agents/<slug>-pm.md`, the app
+15. `privacy.html` - it makes narrow, checkable per-app promises, so it needs an
+    entry in the sync list, whatever the app keeps locally, any new third party
+    it contacts, any new analytics event, and a bumped `Last reviewed:` date.
+16. Local (gitignored) surfaces: `.claude/agents/<slug>-pm.md`, the app
     enumerations inside the developer/PM agent briefs, and the app list at the
     top of `.features/PROMPTS.md`.
 
@@ -134,6 +154,7 @@ skipped context. Then run `/doc-coverage` from clean master after shipping.
 - Consistent themed background (`bg.jpg`) across the marketing pages.
 - Dynamic header/footer injection via the partials system.
 - Optional Firebase email/password auth for cross-device sync (apps work fine signed-out via localStorage).
+- Account deletion built into the shared auth UI: reauthenticate, then delete every synced app namespace (sourced from `APP_SYNC_CONFIG`, so new apps are covered automatically), the account profile document, the MapTap network identity, local data, and finally the credential. Partial failures are reported honestly; shared Arena rows the rules do not let an owner delete are named in `privacy.html`.
 - Multi-language support (English, Russian, Hebrew) on the separately-branded landing via per-element `lang` attributes and a small switcher.
 - Reference SEO assets under `assets/seo/` (canonical Organization/WebSite JSON-LD plus a per-page metadata checklist).
 - Rising Shows integrations: Plex + Kometa YAML builder under `apps/rising-shows/kometa/`, plus a `watch-next` CLI for personalized recommendations. See `apps/rising-shows/INTEGRATIONS.md`.
@@ -239,7 +260,7 @@ Latest two versions of Chrome, Edge, Firefox, and Safari (desktop and mobile).
 - FontAwesome (4.x and 6.x).
 - Chart.js (Mario Kart tracker, MapTap Rivals).
 - Firebase Auth + Firestore + Realtime Database (optional sync; Arena requires Realtime DB).
-- Netlify Functions (`firebase-config` endpoint).
+- Netlify Functions: `tp-assist` and `tp-places` (Trip Planner AI assistant and venue ratings) and `fpl` (the cached, allowlisted read proxy in front of the public Fantasy Premier League API, which sends no CORS headers and is otherwise unreachable from a browser).
 
 ## Contact
 

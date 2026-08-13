@@ -37,7 +37,7 @@
 
   <!-- Open Graph -->
   <meta property="og:title" content="Shevato | Software Engineering Firm" />
-  <meta property="og:description" content="Shevato LLC delivers Spring Boot microservices, REST APIs, and full stack web applications for client teams, plus seven free web apps used daily." />
+  <meta property="og:description" content="Shevato LLC delivers Spring Boot microservices, REST APIs, and full stack web applications for client teams, plus a collection of free web apps used daily." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://shevato.com/home" />
   <meta property="og:image" content="https://shevato.com/images/og-card.png" />
@@ -168,34 +168,17 @@
                one of them only encodes whichever audience the page happened to
                be written for at the time, and reads as an arbitrary styling
                difference rather than a hierarchy.
-               Contrast with 404.html, which keeps one primary on purpose:
-               there the visitor is lost and "Home" is a genuinely recommended
-               recovery, so the emphasis carries real meaning. -->
+               404.html's row follows the same rule (owner decision, 2026-08-12):
+               it used to emphasise "Home" as the recovery route, but a visitor
+               who landed there by a bad link is no more likely to want the
+               homepage than the work or apps pages, and the split styling read
+               as an inconsistency between the two pages rather than a hint. -->
           <a href="work.html" class="button primary">See the work</a>
           <a href="apps.html" class="button primary">Try the free apps</a>
           <a href="contact.html" class="button primary">Get in touch</a>
         </div>
       </section>
 
-      <!--
-        Direct links to each app. The homepage names all seven in prose above
-        but linked to none of them: the only route was /apps, so the apps sat
-        two clicks from the site's highest-authority page and received no
-        direct internal link from it. Search engines follow links, and this is
-        the page with the most of them pointing at it.
-      -->
-      <nav class="home-app-links" aria-label="Free web apps">
-        <h2 class="home-app-links-title">Open an app</h2>
-        <ul>
-          <li><a href="apps/arena/">Arena<span>Party games with friends in a private room</span></a></li>
-          <li><a href="apps/football-h2h/">Football H2H League<span>Football scores, penalty shootouts and player stats</span></a></li>
-          <li><a href="apps/gym-tracker/">Gym Tracker<span>Log workouts and track strength progress</span></a></li>
-          <li><a href="apps/maptap-rivals/">MapTap Rivals<span>Daily MapTap.gg scores against friends</span></a></li>
-          <li><a href="apps/mario-kart/">Mario Kart Tracker<span>Log races, compare players, track achievements</span></a></li>
-          <li><a href="apps/rising-shows/">Rising Shows<span>Rank TV shows by their rating trend</span></a></li>
-          <li><a href="apps/trip-planner/">Trip Planner<span>Day-by-day itineraries with a route map</span></a></li>
-        </ul>
-      </nav>
 
       <div class="section-heading">
         <h2>What we do</h2>
@@ -227,19 +210,38 @@
           <p>Oracle, PostgreSQL, mainframe interop, Firestore. We have spent a lot of time on the seam between a modern Spring Boot service and a system that has been around for decades.</p>
           <ul class="stack"><li>Oracle</li><li>PostgreSQL</li><li>Mainframe</li><li>Liquibase</li><li>Firestore</li></ul>
         </article>
-        <article class="capability">
-          <span class="icon fa-rocket" aria-hidden="true"></span>
-          <h3>Side projects</h3>
-          <p>Seven free web apps we have built for friends and strangers to use: Arena, a real-time multiplayer game hub, Football H2H, Rising Shows, a TV show finder ranked by rating trends, a head-to-head MapTap.gg tracker, a Mario Kart league, a gym tracker, and a trip planner.</p>
-          <ul class="stack"><li>PWA</li><li>Firebase</li><li>Chart.js</li><li>Static hosting</li></ul>
-        </article>
-        <article class="capability">
-          <span class="icon fa-handshake-o" aria-hidden="true"></span>
-          <h3>How we work</h3>
-          <p>Honest updates, small visible increments, and no jargon for its own sake. We would rather ship something useful in two weeks than draw architecture diagrams for two months.</p>
-          <ul class="stack"><li>Async friendly</li><li>US based</li><li>Direct comms</li></ul>
-        </article>
       </div>
+
+      <section class="how-we-work" aria-labelledby="how-we-work-title">
+        <div class="how-we-work-text">
+          <span class="icon fa-handshake-o" aria-hidden="true"></span>
+          <div>
+            <h2 id="how-we-work-title">How we work</h2>
+            <p>Honest updates, small visible increments, and no jargon for its own sake. We would rather ship something useful in two weeks than draw architecture diagrams for two months.</p>
+          </div>
+        </div>
+        <ul class="stack how-we-work-chips"><li>Async friendly</li><li>US based</li><li>Direct comms</li></ul>
+      </section>
+
+      <div class="section-heading">
+        <h2>Side projects</h2>
+        <p>Free web apps we have built for friends and anyone else to use.</p>
+      </div>
+
+      <nav class="side-projects" aria-label="Side projects">
+        <ul>
+          <li><a href="apps/arena/">Arena</a></li>
+          <li><a href="apps/football-h2h/">Football H2H</a></li>
+          <li><a href="apps/fpl-planner/">FPL Planner</a></li>
+          <li><a href="apps/gym-tracker/">Gym Tracker</a></li>
+          <li><a href="apps/maptap-rivals/">MapTap Rivals</a></li>
+          <li><a href="apps/mario-kart/">Mario Kart Tracker</a></li>
+          <li><a href="apps/rising-shows/">Rising Shows</a></li>
+          <li><a href="apps/trip-planner/">Trip Planner</a></li>
+        </ul>
+        <a class="side-projects-more" href="apps.html">Open the apps hub</a>
+      </nav>
+
 
       <div class="section-heading">
         <h2>Where to next</h2>
@@ -256,7 +258,7 @@
         <a class="preview-card" href="apps.html">
           <span class="eyebrow">Side projects</span>
           <h3>Free web apps</h3>
-          <p>Arena, Football H2H, Gym Tracker, MapTap Rivals, Mario Kart Tracker, Rising Shows, and Trip Planner. Real apps with real users that we keep online for free.</p>
+          <p>Screenshots, one-line summaries and launch buttons for every app, on one page. No ads, no signup, local-first with optional sync.</p>
           <span class="more">Open the apps</span>
         </a>
         <a class="preview-card" href="about.html">

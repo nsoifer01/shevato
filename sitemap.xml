@@ -14,7 +14,7 @@
 <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <sitemap>
     <loc>https://shevato.com/sitemap-pages.xml</loc>
-    <lastmod>2026-07-22</lastmod>
+    <lastmod>2026-08-10</lastmod>
   </sitemap>
   <sitemap>
     <loc>https://shevato.com/apps/rising-shows/sitemap-shows.xml</loc>
@@ -22,6 +22,6 @@
   </sitemap>
   <sitemap>
     <loc>https://shevato.com/apps/gym-tracker/sitemap-exercises.xml</loc>
-    <lastmod>2026-08-08</lastmod>
+    <lastmod>2026-08-12</lastmod>
   </sitemap>
 </sitemapindex>
