@@ -15,6 +15,14 @@ const DAY_MS = 86400000;
 function hourBucket(now) { return Math.floor(now / HOUR_MS); }
 function dayBucket(now) { return Math.floor(now / DAY_MS); }
 
+// The per-client maps are NULL-PROTOTYPE objects, never literals. clientId is
+// attacker-chosen, and on a plain object a client calling itself "__proto__"
+// reads Object.prototype (so `|| 0` keeps a truthy non-number, every >= cap
+// compare is false) and its increment is a silent no-op: that one name would
+// never hit a per-client cap at all. With no prototype, "__proto__" is just a
+// key like any other. JSON round-trips fine either way.
+const bareMap = src => Object.assign(Object.create(null), src);
+
 // Carry forward only the counters whose bucket still matches now; everything
 // from an elapsed hour/day is dropped, keeping the stored maps bounded.
 function pruneUsage(usage, hb, db) {
@@ -22,8 +30,8 @@ function pruneUsage(usage, hb, db) {
   return {
     hourBucket: hb,
     dayBucket: db,
-    clientHour: (u.hourBucket === hb && u.clientHour && typeof u.clientHour === 'object') ? { ...u.clientHour } : {},
-    clientDay: (u.dayBucket === db && u.clientDay && typeof u.clientDay === 'object') ? { ...u.clientDay } : {},
+    clientHour: (u.hourBucket === hb && u.clientHour && typeof u.clientHour === 'object') ? bareMap(u.clientHour) : Object.create(null),
+    clientDay: (u.dayBucket === db && u.clientDay && typeof u.clientDay === 'object') ? bareMap(u.clientDay) : Object.create(null),
     globalDay: (u.dayBucket === db && typeof u.globalDay === 'number') ? u.globalDay : 0,
   };
 }

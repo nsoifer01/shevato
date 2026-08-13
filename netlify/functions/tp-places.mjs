@@ -154,14 +154,30 @@ export default async function handler(req) {
   }
 
   // (6) Resolve the batch against the caches, spending at most `granted`.
-  const { results, spent } = await resolveQueries({
-    queries: clamped.queries,
-    cache: blobCache(store),
-    findPlaceId: q => findPlaceId(placesKey, q),
-    fetchDetails: id => fetchDetails(placesKey, id),
-    now,
-    budget: granted,
-  });
+  // Wrapped because the blob cache reads/writes inside resolveQueries are I/O
+  // that can reject (a transient Blobs error): unwrapped, that surfaced as a
+  // platform 500 with no JSON contract AND left the whole reservation burned.
+  // Failing the batch as `unavailable` keeps the client's quiet-degrade path
+  // (it treats the response like any other transient miss) and step (7) then
+  // hands every reserved slot back.
+  let results, spent;
+  try {
+    ({ results, spent } = await resolveQueries({
+      queries: clamped.queries,
+      cache: blobCache(store),
+      findPlaceId: q => findPlaceId(placesKey, q),
+      fetchDetails: id => fetchDetails(placesKey, id),
+      now,
+      budget: granted,
+    }));
+  } catch (err) {
+    console.error('tp-places resolve failed', err && err.message);
+    results = clamped.queries.map(query => ({ query, status: 'unavailable', reason: 'upstream' }));
+    // Some lookups may have been billed before the failure; there is no way to
+    // know how many, so the conservative answer is to keep the reservation
+    // (never under-count spend against the monthly cap that protects the card).
+    spent = granted;
+  }
 
   // (7) Give back the reservations the caches made unnecessary. The CAS loop
   // re-reads before every attempt, so the release only ever subtracts its own

@@ -23,7 +23,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 58;
+  const TP_BUILD = 59;
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   const TYPE_META = {
@@ -127,6 +127,10 @@
   }
   function setOpen(tripId, key, open) {
     collapseFor(tripId)[key] = !!open;
+    // A shared trip gets a fresh uid() on every link open, so persisting its
+    // expand/collapse clicks would leave one orphaned record per visit that
+    // dropCollapse can never prune. In-memory is enough for the visit.
+    if (sharedMode) return;
     try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapseState)); } catch { /* best effort */ }
   }
   function isOpen(tripId, key, fallback) {
@@ -797,6 +801,12 @@
 
   function render() {
     try {
+      // A re-render rebuilds #daysList, so a pointer drag in progress would be
+      // holding a detached row: onRowDragMove would re-insert that stale node
+      // into the fresh list (a visual duplicate) and the drop would commit an
+      // order read from that mixed DOM. Remote merges re-render under open UI
+      // by design, so the drag is abandoned rather than corrupted.
+      if (dragCtx) cancelRowDrag();
       ensureTrip();
       renderTripSelect();
       const trip = activeTrip();
@@ -2162,9 +2172,18 @@
   function setItemStatus(id, status) {
     const it = activeTrip().items.find(x => x.id === id);
     if (!it) return;
+    const hadFocus = document.activeElement && document.activeElement.matches
+      && document.activeElement.matches(`select[data-status-for="${CSS.escape(id)}"]`);
     it.status = status;
     save();
     render();
+    // render() replaced the <select> the keyboard traveller was sitting on, so
+    // hand focus to its rebuilt twin (same pattern the strip cells use) rather
+    // than dropping them on <body>.
+    if (hadFocus) {
+      const next = document.querySelector(`select[data-status-for="${CSS.escape(id)}"]`);
+      if (next) next.focus({ preventScroll: true });
+    }
   }
 
   // The ONE per-item delete path: the timeline row button and the day-card row
@@ -2278,6 +2297,10 @@
 
   function submitDupDayForm(e) {
     e.preventDefault();
+    // same re-entry guard submitItemForm documents: a double-click or two
+    // rapid Enters lands a second submit after the overlay closed, and the
+    // fields still hold what was just applied, so it would copy the day twice
+    if (!$('#dupDayOverlay').classList.contains('open')) return;
     const target = $('#dupDayDate').value;
     // #dupDayForm is novalidate like #itemForm, so the input's own min/max never
     // fire on a typed value; these are the same bounds they are stamped from.
@@ -2316,6 +2339,10 @@
       return copy;
     });
     trip.items.push(...copies);
+    // the clones carried the source day's manual `order` numbers into the
+    // TARGET day's tie groups, where they collide with whatever is already
+    // ordered there; one renumber keeps every group gap-free
+    normalizeOrders(trip.items);
     const n = copies.length;
     const label = `${n} item${n === 1 ? '' : 's'}`;
     const ok = save();
@@ -2910,11 +2937,17 @@
   // here would be an unhandled one. A store that cannot be read says so IN
   // PLACE of the list: an empty list is the claim "this item has no
   // documents", and that is not what happened.
+  // A generation token: two overlapping calls (open item A, cancel, open item
+  // B before A's IndexedDB read lands) race on the same #docsList node, and
+  // the LOSER used to paint the wrong item's documents into the open modal.
+  let docsListGen = 0;
   async function renderDocsList(itemId) {
+    const gen = ++docsListGen;
     const list = $('#docsList');
     revokeDocUrls();
     try {
       const docs = await listDocs(itemId);
+      if (gen !== docsListGen) return;
       list.innerHTML = docs.map(d => {
         let preview;
         if ((d.type || '').startsWith('image/')) {
@@ -2931,6 +2964,7 @@
         </div>`;
       }).join('');
     } catch {
+      if (gen !== docsListGen) return;
       // a non-empty #docsList is also what suppresses the "No documents yet"
       // empty state next to it, so the wrong claim cannot show through
       list.innerHTML = `<div class="docs-unavailable">${esc(DOCS_UNREADABLE)}</div>`;
@@ -3533,6 +3567,9 @@
 
   function submitShiftForm(e) {
     e.preventDefault();
+    // same re-entry guard submitItemForm documents: a doubled submit here
+    // would shift the same dates twice, i.e. by 2xN days
+    if (!$('#shiftOverlay').classList.contains('open')) return;
     const raw = $('#shiftDays').value.trim();
     const days = Number(raw);
     // #shiftForm carries novalidate like #itemForm, so step="1" never fires on a
@@ -3596,7 +3633,9 @@
   // this cannot warn about a respelling that will in fact be carried over.
   function syncTravelerWarning() {
     const el = $('#tripTravelersWarn');
-    const t = ui.tripModalMode === 'new' ? null : activeTrip();
+    // the trip the DIALOG is about (pinned at open), not whatever is active:
+    // a remote merge can swap the active trip under an open dialog
+    const t = ui.tripModalMode === 'new' ? null : (db.trips.find(x => x.id === ui.tripEditId) || null);
     if (!t) { el.hidden = true; el.textContent = ''; return; }
     const next = normalizeTravelers($('#inTripTravelers').value.split(','));
     const keep = new Set(next.map(n => n.toLowerCase()));
@@ -3610,6 +3649,25 @@
       const rec = dropped.get(key) || { name: who, count: 0 };
       rec.count++;
       dropped.set(key, rec);
+    }
+    // Who-is-this-for assignments and hand-entered splits pay the same price:
+    // the leaving name comes off each item (their share moves to whoever is
+    // left), and a split that named them no longer adds up, so it reverts to
+    // the even divide. Counted here so the money consequences are ALL stated
+    // before the save, not discovered in the totals afterwards.
+    let whoCount = 0, splitCount = 0;
+    for (const it of t.items) {
+      if (!Array.isArray(it.travelers) || !it.travelers.length) continue;
+      let leaves = false;
+      for (const raw of it.travelers) {
+        const who = String(raw == null ? '' : raw).trim();
+        if (!who || keep.has(who.toLowerCase())) continue;
+        leaves = true;
+        if (!dropped.has(who.toLowerCase())) dropped.set(who.toLowerCase(), { name: who, count: 0 });
+      }
+      if (!leaves) continue;
+      whoCount++;
+      if (it.splitAmounts) splitCount++;
     }
     // The packing list pays the same price under the same rule, so it is counted
     // here rather than in a second warning the traveller has to notice
@@ -3627,6 +3685,8 @@
     const leaving = recs.length === 1 ? recs[0].name : 'them';
     const what = [];
     if (n) what.push(`clears "paid by" on ${n} item${n === 1 ? '' : 's'}`);
+    if (whoCount) what.push(`reassigns ${whoCount} item${whoCount === 1 ? '' : 's'} that named ${leaving} to whoever is left`);
+    if (splitCount) what.push(`drops the hand-entered split on ${splitCount === 1 ? 'one' : splitCount} of them (back to an even divide)`);
     if (pk.removed) what.push(`deletes ${pk.removed} packing row${pk.removed === 1 ? '' : 's'} that ${pk.removed === 1 ? 'was' : 'were'} only for ${leaving}`);
     if (pk.untagged) what.push(pk.removed ? `untags ${pk.untagged} more` : `untags ${pk.untagged} packing row${pk.untagged === 1 ? '' : 's'}`);
     const which = what.length > 1 ? `${what.slice(0, -1).join(', ')} and ${what[what.length - 1]}` : what[0];
@@ -3644,6 +3704,12 @@
     ui.tripModalMode = mode;
     const t = activeTrip();
     const existing = mode !== 'new' && t;
+    // The trip this dialog is ABOUT, pinned at open. A remote sync merge can
+    // replace db under an open dialog (deliberately, without closing it) and
+    // ensureTrip may then re-point activeTripId at a different trip; resolving
+    // activeTrip() again at submit time renamed and re-rostered THAT trip.
+    // Same guard the item form has (see submitItemForm's editingId check).
+    ui.tripEditId = existing ? t.id : null;
     $('#tripModalTitle').textContent = mode === 'new' ? 'New trip' : 'Trip settings';
     $('#tripSaveBtn').textContent = mode === 'new' ? 'Create trip' : 'Save';
     $('#tripNameList').innerHTML = sampleTripOptions().map(o => `<option value="${esc(o.place)}">`).join('');
@@ -3676,7 +3742,8 @@
   // other trip is the dialog it has always been, with no trace of it in the DOM.
   function syncTripStartField() {
     const f = $('#fTripStart');
-    const t = activeTrip();
+    // pinned dialog trip, same reason syncTravelerWarning reads it
+    const t = db.trips.find(x => x.id === ui.tripEditId) || null;
     const from = ui.tripModalMode === 'template' && t ? firstItemDate(t.items) : null;
     f.hidden = !from;
     $('#inTripStart').value = '';
@@ -3702,15 +3769,26 @@
     const budget = range.to;
     const budgetFrom = range.from;
     $('#fTripStart').classList.remove('invalid');
+    // The dialog writes to the trip it was OPENED on, never to whatever is
+    // active at submit time: a remote merge may have swapped the active trip
+    // underneath it (see openTripModal). Gone entirely means another device
+    // deleted it, and the edit is dropped out loud rather than landing on a
+    // bystander trip.
+    const editTrip = ui.tripModalMode === 'new' ? null : db.trips.find(x => x.id === ui.tripEditId);
+    if (ui.tripModalMode !== 'new' && !editTrip) {
+      toastError('That trip is no longer here, so nothing was saved');
+      closeAllOverlays();
+      return;
+    }
     // A template's new start date is checked BEFORE anything is written, for the
     // same reason "Shift entire trip" checks its own: a half-applied move leaves
     // a trip whose dates are wrong in a way nothing on screen explains.
     let plan = null;
     if (ui.tripModalMode === 'template' && !$('#fTripStart').hidden && $('#inTripStart').value) {
       const to = $('#inTripStart').value;
-      plan = startDateShift(activeTrip().items, to);
+      plan = startDateShift(editTrip.items, to);
       if (!plan || !isDateInRange(to)) { tripStartError(`Use a date between ${DATE_MIN} and ${DATE_MAX}.`); return; }
-      if (!shiftFits(activeTrip().items, plan.days)) {
+      if (!shiftFits(editTrip.items, plan.days)) {
         tripStartError(`Starting on ${fmtDate(to)} would move dates outside the calendar. Use a date between ${DATE_MIN} and ${DATE_MAX}.`);
         return;
       }
@@ -3732,7 +3810,7 @@
       // render below repaints the view and syncViewHash clears the fragment.
       ui.view = 'timeline';
     } else {
-      const t = activeTrip();
+      const t = editTrip;
       if ((t.currency || 'USD') !== currency) stampCostCurrencies(t, t.currency || 'USD');
       t.name = name; t.currency = currency; t.budget = budget;
       if (budgetFrom != null) t.budgetFrom = budgetFrom;
@@ -3748,6 +3826,42 @@
         const payer = travelers.find(n => n.toLowerCase() === String(it.paidBy).trim().toLowerCase());
         if (payer) it.paidBy = payer;
         else delete it.paidBy;
+      }
+      // An item's who-is-this-for assignment and its hand-entered split pay
+      // the same price under the same rule. The read paths already coped (a
+      // stale name is dropped at read time and a short split falls back to the
+      // even divide), but the stale names themselves rode into every export
+      // and share link, and nothing on screen said the cost had silently
+      // become one person's. Cleaning at the edit, like paidBy above, keeps
+      // the stored data saying what the totals actually compute.
+      for (const it of t.items) {
+        if (!Array.isArray(it.travelers) || !it.travelers.length) continue;
+        const next = [];
+        for (const raw of it.travelers) {
+          const c = travelers.find(n => n.toLowerCase() === String(raw == null ? '' : raw).trim().toLowerCase());
+          if (c && !next.includes(c)) next.push(c);
+        }
+        const lost = next.length !== it.travelers.length;
+        if (it.splitAmounts) {
+          // a split is an agreement among exactly the people it names: anyone
+          // leaving means the amounts no longer sum for those left, so it is
+          // dropped (back to the even divide) rather than redistributed
+          if (lost || next.length < 2) delete it.splitAmounts;
+          else {
+            const respelled = {};
+            for (const [name, v] of Object.entries(it.splitAmounts)) {
+              const c = next.find(n => n.toLowerCase() === String(name).trim().toLowerCase());
+              if (c) respelled[c] = v;
+            }
+            if (Object.keys(respelled).length === next.length) it.splitAmounts = respelled;
+            else delete it.splitAmounts;
+          }
+        }
+        // nobody left, or everybody: both read as Everyone and store nothing,
+        // exactly as the item form does - except a surviving split keeps its
+        // roster named explicitly, because its amounts are keyed by name
+        if (!next.length || (next.length === travelers.length && !it.splitAmounts)) delete it.travelers;
+        else it.travelers = next;
       }
       // and neither can a packing row stay tagged for somebody the trip no
       // longer names: it keeps whoever is left, and a row that named ONLY people
@@ -4000,10 +4114,14 @@
     syncTripMenuShared();
     syncGpxMenuRow();
     $('#tripMenu').classList.add('open');
+    // the search button already reports its state; this popover is the same
+    // kind of control and a screen reader deserves the same open/closed answer
+    $('#tripMenuBtn').setAttribute('aria-expanded', 'true');
     popoverReturnFocus = $('#tripMenuBtn');
   }
   function closeTripMenu() {
     $('#tripMenu').classList.remove('open');
+    $('#tripMenuBtn').setAttribute('aria-expanded', 'false');
     returnPopoverFocus();
   }
 
@@ -4806,6 +4924,11 @@
   }
   const geoMisses = new Set();
   const geoQueue = [];
+  // key -> job for everything queued or in flight, so two concurrent callers
+  // for the same place (the Map walking stops while the visa dialog resolves
+  // the same names) share ONE fetch instead of burning two 1.1s queue slots
+  // on an identical query.
+  const geoPending = new Map();
   let geoBusy = false;
 
   function geocode(place) {
@@ -4814,7 +4937,11 @@
       if (!key) return resolve({ ok: false, reason: 'empty' });
       if (geoCache[key]) return resolve({ ok: true, ...geoCache[key] });
       if (geoMisses.has(key)) return resolve({ ok: false, reason: 'notfound' });
-      geoQueue.push({ place: place.trim(), key, resolve });
+      const pending = geoPending.get(key);
+      if (pending) { pending.resolves.push(resolve); return; }
+      const job = { place: place.trim(), key, resolves: [resolve] };
+      geoPending.set(key, job);
+      geoQueue.push(job);
       pumpGeo();
     });
   }
@@ -4822,6 +4949,10 @@
     if (geoBusy || !geoQueue.length) return;
     geoBusy = true;
     const job = geoQueue.shift();
+    const settle = answer => {
+      geoPending.delete(job.key);
+      for (const r of job.resolves) r(answer);
+    };
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 9000);
     // limit=5 costs no extra request, only a slightly bigger response, and it
@@ -4848,14 +4979,21 @@
             conf: classifyGeoMatch(job.place, cands),
           };
           geoCache[job.key] = hit;
+          // Bounded like the venue cache (which has a TTL and a 300 cap):
+          // this one grew forever, every route-dialog experiment included, on
+          // the same localStorage budget save() runs out of. Entries carry no
+          // timestamp, so eviction is oldest-INSERTED first (string-keyed
+          // object order), which is close enough for a network cache.
+          const geoKeys = Object.keys(geoCache);
+          for (const old of geoKeys.slice(0, Math.max(0, geoKeys.length - 500))) delete geoCache[old];
           try { localStorage.setItem(GEO_KEY, JSON.stringify(geoCache)); } catch { /* cache is best-effort */ }
-          job.resolve({ ok: true, ...hit });
+          settle({ ok: true, ...hit });
         } else {
           geoMisses.add(job.key);
-          job.resolve({ ok: false, reason: 'notfound' });
+          settle({ ok: false, reason: 'notfound' });
         }
       })
-      .catch(() => job.resolve({ ok: false, reason: 'network' }))
+      .catch(() => settle({ ok: false, reason: 'network' }))
       .finally(() => { clearTimeout(timer); setTimeout(() => { geoBusy = false; pumpGeo(); }, 1100); });
   }
 
@@ -6019,6 +6157,21 @@
       if (!visaMatrix) throw new Error('unparseable dataset');
       try { localStorage.setItem(VISA_KEY, JSON.stringify({ at: Date.now(), csv })); } catch { /* cache is best-effort */ }
       return visaMatrix;
+    } catch (err) {
+      // An EXPIRED cache still beats no answer when the refresh fails: a
+      // traveller offline mid-trip with a 31-day-old dataset used to be told
+      // "network hiccup" while month-old rules sat on the device. The dialog
+      // already prints the dataset's own publication date and staleness
+      // (visaVintageNote), so serving old data stays honest; only a device
+      // that has never downloaded the dataset at all still fails here.
+      try {
+        const stale = JSON.parse(localStorage.getItem(VISA_KEY) || 'null');
+        if (stale && stale.csv) {
+          visaMatrix = parseVisaMatrix(stale.csv);
+          if (visaMatrix) return visaMatrix;
+        }
+      } catch { /* nothing usable cached */ }
+      throw err;
     } finally { clearTimeout(timer); }
   }
 
@@ -6194,9 +6347,9 @@
       const info = classifyVisa(row[d.cc]);
       const wiki = 'https://en.wikipedia.org/wiki/Special:Search?search=' + encodeURIComponent('Visa policy of ' + d.name);
       const sub = d.manual ? 'added manually · transit / overland' : d.places.join(', ');
-      const remove = d.manual ? `<button type="button" class="visa-remove" data-remove-cc="${d.cc}" title="Remove ${esc(d.name)}" aria-label="Remove ${esc(d.name)}">✕</button>` : '';
+      const remove = d.manual ? `<button type="button" class="visa-remove" data-remove-cc="${esc(d.cc)}" title="Remove ${esc(d.name)}" aria-label="Remove ${esc(d.name)}">✕</button>` : '';
       const remind = (info.cls === 'evisa' || info.cls === 'required')
-        ? `<button type="button" class="row-btn visa-remind" data-remind-cc="${d.cc}" data-remind-name="${esc(d.name)}">➕ Add reminder</button>`
+        ? `<button type="button" class="row-btn visa-remind" data-remind-cc="${esc(d.cc)}" data-remind-name="${esc(d.name)}">➕ Add reminder</button>`
         : '';
       return `
         <div class="visa-row">
@@ -6540,6 +6693,23 @@
     return id;
   }
 
+  // Drops chat threads whose trip no longer exists anywhere: not in the db,
+  // and not held for undo in deletedChats. Runs after a remote merge lands
+  // (see the localStorageSync listener), because that is the one delete path
+  // that never goes through this device's own delete flow.
+  function pruneOrphanChats() {
+    const prefix = 'trip-planner:chat:';
+    const live = new Set(db.trips.map(t => t.id));
+    const doomed = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !k.startsWith(prefix)) continue;
+      const id = k.slice(prefix.length);
+      if (!live.has(id) && !deletedChats.has(id)) doomed.push(k);
+    }
+    for (const k of doomed) { try { localStorage.removeItem(k); } catch { /* best effort */ } }
+  }
+
   function restoreChat() {
     const trip = activeTrip();
     if (!trip) return;
@@ -6720,6 +6890,19 @@
   // persist the prose to history (proposal cards are transient by design).
   function handleAssistantReply(reply, tripId) {
     const { actions, cleanedText } = extractTripActions(reply);
+    const history = loadChat(tripId);
+    history.push({ role: 'assistant', content: cleanedText || reply });
+    saveChat(tripId, history);
+    // The reply belongs to the trip that asked. Nothing disables the trip
+    // picker while a request is in flight (only the composer locks), so the
+    // traveller can be looking at ANOTHER trip by the time this lands - and
+    // the bubble then appeared in that trip's freshly cleared thread, with
+    // proposal cards whose Accept validated against activeTrip() and inserted
+    // trip A's items into trip B. The history write above is keyed by tripId,
+    // so the reply is waiting in its own trip's thread; the live panel is only
+    // touched while it is still showing that trip.
+    const current = activeTrip();
+    if (!current || current.id !== tripId) return;
     if (cleanedText) appendBubble('assistant', cleanedText);
     if (actions.length) {
       const container = document.createElement('div');
@@ -6728,9 +6911,6 @@
       renderProposals(actions, container);
     }
     if (!cleanedText && !actions.length) appendBubble('assistant', 'No reply came back. Try rephrasing your request.');
-    const history = loadChat(tripId);
-    history.push({ role: 'assistant', content: cleanedText || reply });
-    saveChat(tripId, history);
     scrollMessages();
   }
 
@@ -7725,8 +7905,13 @@
       // The traveller has now decided to be here, so this is where the rest of
       // the day's recommendations are measured from. Only a place that actually
       // resolved moves the anchor; an unlocatable add leaves it where it was.
-      const point = placePoint({ query: itemMapsQuery(added), name: '', city: (added.location || '').trim() });
-      if (point) assistAcceptedPoint = { ...point, label: added.title || '' };
+      // And only an add on the FOCUS DAY moves it: accepting a Day-5 card while
+      // planning Day 2 must not make Day 2's remaining chips measure from a
+      // venue nobody visits until Day 5.
+      if (!assistFocusDate || added.startDate === assistFocusDate) {
+        const point = placePoint({ query: itemMapsQuery(added), name: '', city: (added.location || '').trim() });
+        if (point) assistAcceptedPoint = { ...point, label: added.title || '' };
+      }
     } else if (p.op === 'update') {
       const it = trip.items.find(x => x.id === p.targetId);
       if (!it) { assistActions.delete(pid); markProposalStale(card); return; }
@@ -8342,6 +8527,10 @@
   $('#docsList').addEventListener('click', async e => {
     const btn = e.target.closest('button[data-doc-remove]');
     if (!btn || !ui.editingId) return;
+    // captured BEFORE the await: closing the modal mid-delete nulls
+    // ui.editingId, and listDocs(null) is an unbounded IndexedDB query that
+    // painted every item's attachments into the closed modal's list
+    const itemId = ui.editingId;
     try { await deleteDoc(Number(btn.dataset.docRemove)); }
     catch {
       // the thumbnail is still there because the document still is. Saying so
@@ -8349,7 +8538,7 @@
       toastError('That document could not be removed on this device.');
       return;
     }
-    await renderDocsList(ui.editingId);
+    if (ui.editingId === itemId) await renderDocsList(itemId);
     refreshDocIndicators();
     toast('Document removed');
   });
@@ -8583,8 +8772,12 @@
     else if (act === 'edit') openItemModal(id);
     else if (act === 'shift-item') openShiftModal(id);
     else if (act === 'duplicate') {
-      const copy = { ...it, id: uid(), createdAt: new Date().toISOString(), title: it.title + ' (copy)' };
+      const copy = { ...it, id: uid(), createdAt: new Date().toISOString(), title: (it.title + ' (copy)').slice(0, 120) };
       trip.items.push(copy);
+      // the copy carried the source's manual `order` into its tie group as a
+      // duplicate number; renumbering keeps every group gap-free, exactly as
+      // an add through the form does
+      normalizeOrders(trip.items);
       save('Item duplicated'); ui.flashId = copy.id; render();
     } else if (act === 'delete') deleteItem(id);
   });
@@ -8699,12 +8892,43 @@
       undoPast.length = 0;
       undoFuture.length = 0;
       markSaved();
+      // A trip deleted on ANOTHER device never went through this device's
+      // delete flow, so its chat thread was orphaned in localStorage forever.
+      // Local deletes are untouched: takeChat already removed their key and
+      // parked the thread in deletedChats for undo.
+      pruneOrphanChats();
       render();
     } else if (key === TIMEFMT_KEY) {
       use24h = localStorage.getItem(TIMEFMT_KEY) === '24';
       syncTimefmtLabel();
       render();
     }
+  });
+
+  // The native cross-tab signal, for the same-device case the sync layer does
+  // not cover: signed OUT there is no sync at all, so two open tabs each held
+  // a full in-memory db and whichever saved later silently overwrote the other
+  // tab's edits wholesale. The `storage` event fires only in tabs that did NOT
+  // write, so there is no echo to guard against; handling mirrors the remote
+  // merge above (reload from disk, reset history, re-render), because "another
+  // writer changed the store underneath us" is the same situation either way.
+  window.addEventListener('storage', e => {
+    if (sharedMode) return;
+    if (e.key === TIMEFMT_KEY) {
+      use24h = localStorage.getItem(TIMEFMT_KEY) === '24';
+      syncTimefmtLabel();
+      render();
+      return;
+    }
+    if (e.key !== LS_KEY) return;
+    if (e.newValue === lastSaved) return; // same bytes, nothing to reconcile
+    db = loadDb();
+    repairDb();
+    ensureTrip();
+    undoPast.length = 0;
+    undoFuture.length = 0;
+    markSaved();
+    render();
   });
 
   const buildTag = $('#buildTag');

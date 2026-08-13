@@ -3194,7 +3194,15 @@ const TripLogic = (() => {
       if (r.status !== 'ok' || typeof r.rating !== 'number' || !isFinite(r.rating)) continue;
       // mapsUri arrives over the network and lands in an href: only http(s).
       const uri = typeof r.mapsUri === 'string' && /^https?:\/\//i.test(r.mapsUri) ? r.mapsUri : '';
-      if (!uri) continue;
+      if (!uri) {
+        // The attribution link is mandatory, so a rating we cannot attribute
+        // is never shown - but simply dropping the entry made the venue a
+        // cache miss on EVERY later batch, re-billing the same lookup for a
+        // rating that would be refused again. A tombstone remembers the
+        // refusal for the session; the card keeps its plain search link.
+        out.push({ key, entry: { status: 'no_match', reason: 'unattributable' } });
+        continue;
+      }
       const count = Number(r.userRatingCount);
       out.push({
         key,
@@ -5375,16 +5383,34 @@ const TripLogic = (() => {
     return { dayFirst: dmy.length > 0, source: 'document', evidence: votes.slice(0, 2), conflict: false };
   }
 
-  /** "21:30", "9:30 PM", "09.30" -> "21:30". Returns null when there is no time. */
+  // A dotted DATE is never a time. "Departs 12.08.2027 at 21:30" read 12.08 as
+  // 12:08, and because 12:08 is earlier than the 21:30 that followed it, the
+  // wrapped-clock rule in readFlight then landed a same-day flight the next
+  // morning. Struck out before anything else looks at the line.
+  const DOTTED_DATE = /\b\d{1,2}\.\d{1,2}\.\d{2,4}\b/g;
+  // "21.30" is a real European clock and "GBP 12.40" is a real price, and the
+  // two are the same string. The dot form is therefore only read next to
+  // something that says it is a clock ("at 21.30", "kl. 21.30", "21.30 Uhr");
+  // a bare dotted number is dropped. A lost optional time costs one blank
+  // field, whereas a price read as an arrival clock invented a whole night.
+  const DOT_TIME_BEFORE = /\b(?:at|kl|um|ab)\.?\s*([01]?\d|2[0-3])\.([0-5]\d)\b/i;
+  const DOT_TIME_AFTER = /\b([01]?\d|2[0-3])\.([0-5]\d)\s*(?:h|hrs|hours|uhr)\b/i;
+
+  /** "21:30", "9:30 PM", "at 09.30" -> "21:30". Returns null when there is no time. */
   function parseTime(s) {
-    const text = String(s || '');
+    const text = String(s || '').replace(DOTTED_DATE, ' ');
     let m = /\b(\d{1,2})[:.](\d{2})\s*([AaPp])\.?[Mm]\.?\b/.exec(text);
     if (m) {
       let h = +m[1] % 12;
       if (m[3].toLowerCase() === 'p') h += 12;
       return +m[2] < 60 ? `${pad(h)}:${m[2]}` : null;
     }
-    m = /\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/.exec(text);
+    m = /\b([01]?\d|2[0-3]):([0-5]\d)\b/.exec(text);
+    if (m) return `${pad(+m[1])}:${m[2]}`;
+    // Money is not a clock. Only the dot form is refused here: a genuine
+    // "21:30" printed on a line that also carries a total is still a time.
+    if (parseDocMoney(text) && /\b(total|fare|price|amount|paid|cost|charge)\b/i.test(text)) return null;
+    m = DOT_TIME_BEFORE.exec(text) || DOT_TIME_AFTER.exec(text);
     return m ? `${pad(+m[1])}:${m[2]}` : null;
   }
 
@@ -5392,8 +5418,17 @@ const TripLogic = (() => {
   // six-character token is far more often a fare class, an aircraft type or a
   // terminal than a PNR, and a wrong code printed confidently is worse at a
   // check-in desk than a blank field.
-  const PNR_LABEL = /(booking\s*(reference|ref|code|id)|confirmation\s*(number|code|no\.?|#)?|reservation\s*(number|code|no\.?)?|record\s*locator|\bPNR\b|airline\s*reference)/i;
-  const PNR_TOKEN = /\b(?=[A-Z0-9]{5,8}\b)(?=.*[A-Z])[A-Z0-9]{5,8}\b/;
+  // "Confirmation" and "Reservation" on their own are a HEADING as often as a
+  // field, so they need a qualifier or a colon after them: a hotel voucher
+  // printing "Reservation" above "GRAND HOTEL ASTORIA" handed back "GRAND" as
+  // the booking code. The unambiguous labels below need no such help.
+  const PNR_LABEL = /(booking\s*(reference|ref|code|id|number)|(confirmation|reservation)\s*(number|code|no\.?|#|reference|:)|record\s*locator|\bPNR\b|airline\s*reference)/i;
+  // At least one LETTER, and the requirement has to fall on the token itself:
+  // a trailing `(?=.*[A-Z])` ranged over the rest of the line, so "Booking
+  // reference: 12345678 KEEP THIS SAFE" passed on the strength of "KEEP" and
+  // a date stamp like 20270812 read as a PNR.
+  const PNR_TOKEN = /\b(?=[A-Z0-9]{5,8}\b)(?=[A-Z0-9]{0,7}[A-Z])[A-Z0-9]{5,8}\b/g;
+  const PNR_NOT_A_CODE = /^(FLIGHT|TICKET|BOOKING|NUMBER|AIRLINE|HOTEL)$/;
 
   function findConfirmation(lines) {
     for (let i = 0; i < lines.length; i++) {
@@ -5402,8 +5437,11 @@ const TripLogic = (() => {
       for (const j of [i, i + 1]) {
         if (j >= lines.length) continue;
         const after = j === i ? lines[j].replace(PNR_LABEL, ' ') : lines[j];
-        const m = PNR_TOKEN.exec(after);
-        if (m && !/^(FLIGHT|TICKET|BOOKING|NUMBER|AIRLINE|HOTEL)$/.test(m[0])) {
+        // EVERY token on the line, not just the first: "Confirmation number:
+        // AIRLINE XYZ123" rejected the whole line on "AIRLINE" and returned
+        // nothing at all. All-digit tokens cannot reach here (see PNR_TOKEN).
+        for (const m of after.matchAll(PNR_TOKEN)) {
+          if (PNR_NOT_A_CODE.test(m[0])) continue;
           return { code: m[0], line: j, raw: lines[j].trim() };
         }
       }
@@ -5413,15 +5451,41 @@ const TripLogic = (() => {
 
   const CUR_SYMBOL = { '£': 'GBP', '$': 'USD', '€': 'EUR', '¥': 'JPY' };
 
-  /** "£1,234.56", "EUR 220.00", "220.00 USD" -> { value, currency }. */
+  // Any run of digits with grouping marks inside it; the ends must be digits so
+  // a trailing full stop or comma is not swallowed.
+  const MONEY_NUM = '(\\d[\\d.,]*\\d|\\d)';
+  const MONEY_SYMBOL_FIRST = new RegExp('([£$€¥])\\s?' + MONEY_NUM);
+  const MONEY_CODE_FIRST = new RegExp('\\b([A-Z]{3})\\s?' + MONEY_NUM);
+  const MONEY_CODE_LAST = new RegExp('\\b' + MONEY_NUM + '\\s?([A-Z]{3})\\b');
+
+  /**
+   * "1.234,56" is what most of Europe prints and it is the SAME amount as
+   * "1,234.56". Reading the comma as a thousands mark turned "Total EUR 148,00"
+   * into 14800 and "1.234,56 EUR" into 23456, which is the kind of wrong that
+   * survives a glance at a budget screen.
+   *
+   * A comma followed by exactly two digits at the end of the number is a
+   * decimal point, and dots in front of it are then thousands marks. Anything
+   * else keeps the dot-decimal reading, so a bare "1,234" stays 1234: it could
+   * be either, and that is the reading this app has always used.
+   */
+  function moneyValue(raw) {
+    const s = String(raw);
+    if (/^\d{1,3}(\.\d{3})+,\d{1,2}$/.test(s) || /^\d+,\d{2}$/.test(s)) {
+      return +s.replace(/\./g, '').replace(',', '.');
+    }
+    return +s.replace(/,/g, '');
+  }
+
+  /** "£1,234.56", "EUR 220.00", "220.00 USD", "EUR 148,00" -> { value, currency }. */
   function parseDocMoney(s) {
     const text = String(s || '');
-    let m = /([£$€¥])\s?([\d,]+(?:\.\d{2})?)/.exec(text);
-    if (m) return { value: +m[2].replace(/,/g, ''), currency: CUR_SYMBOL[m[1]] };
-    m = /\b([A-Z]{3})\s?([\d,]+(?:\.\d{2})?)\b/.exec(text);
-    if (m) return { value: +m[2].replace(/,/g, ''), currency: m[1] };
-    m = /\b([\d,]+(?:\.\d{2})?)\s?([A-Z]{3})\b/.exec(text);
-    if (m) return { value: +m[1].replace(/,/g, ''), currency: m[2] };
+    let m = MONEY_SYMBOL_FIRST.exec(text);
+    if (m) return { value: moneyValue(m[2]), currency: CUR_SYMBOL[m[1]] };
+    m = MONEY_CODE_FIRST.exec(text);
+    if (m) return { value: moneyValue(m[2]), currency: m[1] };
+    m = MONEY_CODE_LAST.exec(text);
+    if (m) return { value: moneyValue(m[1]), currency: m[2] };
     return null;
   }
 
@@ -5439,7 +5503,30 @@ const TripLogic = (() => {
     'ALL', 'AND', 'ANY', 'ARE', 'BUS', 'CAR', 'FOR', 'GBP', 'EUR', 'USD', 'JPY',
     'NEW', 'NOT', 'ONE', 'OUT', 'PDF', 'PER', 'PNR', 'TAX', 'THE', 'TWO', 'VAT',
     'YOU', 'MAY', 'DAY', 'AGE', 'FEE', 'NET', 'SUM', 'TOP', 'END', 'ETA', 'ETD',
+    // Day and month abbreviations, which an all-caps ticket prints exactly the
+    // way it prints an airport code. "OPEN SAT - SUN 10:00" read as San Antonio
+    // to Hailey, and "DEPARTS SAT ... / ARRIVES SUN ... JFK" beat the real
+    // airports to the route. Checked against data/airports.json: THU, SAT, SUN,
+    // JAN, MAR, JUL, AUG, NOV and DEC ARE codes (Pituffik, San Antonio, Hailey,
+    // Jackson, Maracaibo, Juliaca, Augusta, Huambo, Decatur); the rest are not
+    // in the table today and are listed so the set reads as one idea.
+    'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN',
+    'JAN', 'FEB', 'MAR', 'APR', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
   ]);
+
+  /**
+   * A code written in PARENTHESES is written as a code. "Houston (IAH) to San
+   * Antonio (SAT)" cannot be a weekday, so the stopword list is not applied to
+   * it and a traveller genuinely flying to San Antonio still gets the route.
+   *
+   * The BARE form is refused in both passes, and that is the deliberate trade:
+   * "IAH to SAT" now finds no route rather than a possibly-wrong one, because
+   * relaxing the bare form for an explicit separator brings back the failures
+   * above (a shouty ticket writes "DEPARTS SAT 21:30 ... to JFK" just as
+   * readily as a real one writes "IAH to SAT"). No proposal beats a
+   * confidently wrong one, which is the trade the rest of this module makes.
+   */
+  const inParens = (line, at) => line[at - 1] === '(' && line[at + 3] === ')';
 
   /**
    * A separator sitting between two airport codes: "to", an arrow, a slash or a
@@ -5452,8 +5539,8 @@ const TripLogic = (() => {
   // route, it is two codes that happen to share a line.
   const ROUTE_GAP_MAX = 40;
 
-  function codeIsAirport(code, byIata) {
-    return !CODE_STOPWORDS.has(code) && byIata.has(code);
+  function codeIsAirport(code, byIata, parenthesised) {
+    return byIata.has(code) && (parenthesised === true || !CODE_STOPWORDS.has(code));
   }
 
   /**
@@ -5470,7 +5557,7 @@ const TripLogic = (() => {
     // pattern, and between them they cover most airline confirmations.
     for (let i = 0; i < lines.length; i++) {
       const codes = [...lines[i].matchAll(/\b([A-Z]{3})\b/g)]
-        .filter(m => codeIsAirport(m[1], byIata));
+        .filter(m => codeIsAirport(m[1], byIata, inParens(lines[i], m.index)));
       for (let k = 0; k + 1 < codes.length; k++) {
         const a = codes[k], b = codes[k + 1];
         if (a[1] === b[1]) continue;
@@ -5483,7 +5570,7 @@ const TripLogic = (() => {
     const hits = [];
     for (let i = 0; i < lines.length; i++) {
       for (const m of lines[i].matchAll(/\b([A-Z]{3})\b/g)) {
-        if (codeIsAirport(m[1], byIata) && !hits.some(h => h.code === m[1])) {
+        if (codeIsAirport(m[1], byIata, inParens(lines[i], m.index)) && !hits.some(h => h.code === m[1])) {
           hits.push({ code: m[1], line: i });
         }
       }
@@ -5625,8 +5712,12 @@ const TripLogic = (() => {
         warnings.push(`An arrival line reads ${arr.iso}, which is BEFORE the departure date ${dep.iso}. It was ignored, but one of the two dates is being read wrongly - most likely the day/month order.`);
       }
       // Overnight: an explicit "+1" marker, or an arrival clock earlier than the
-      // departure clock.
-      const plusOne = lines.some(ln => /\+\s?1\b|\bnext day\b/i.test(ln));
+      // departure clock. A "+1" only counts when nothing numeric follows it: a
+      // customer-service footer reading "+1 800 221 1212" marked every American
+      // ticket as landing the next day, while the airline's own "(+1)" notation
+      // has nothing after it. The scan starts at the route line for the same
+      // reason - the marker belongs to the itinerary, not to the letterhead.
+      const plusOne = lines.some((ln, i) => i >= route.line && /\+\s?1(?![-.\s()]*\d)|\bnext day\b/i.test(ln));
       const wrapped = !!(depTime && arrTime && arrTime.t < depTime.t);
       if (dep && (plusOne || wrapped)) {
         const d = new Date(Date.UTC(+dep.iso.slice(0, 4), +dep.iso.slice(5, 7) - 1, +dep.iso.slice(8, 10) + 1));
@@ -5637,6 +5728,9 @@ const TripLogic = (() => {
 
     const flightNo = (() => {
       for (let i = 0; i < lines.length; i++) {
+        // "Departure Gate B12" is shaped exactly like a designator, so the LINE
+        // has to rule it out; the pattern never can.
+        if (/\b(gate|terminal|seat|door)\b/i.test(lines[i])) continue;
         const m = FLIGHT_NO.exec(lines[i]);
         if (m && !codeIsAirport(m[1] + m[2].slice(0, 1), byIata)) return { code: `${m[1]}${m[2]}`, line: i, raw: lines[i].trim() };
       }
@@ -5863,7 +5957,7 @@ const TripLogic = (() => {
       const ln = lines[i];
       if (!out.code) {
         const paren = /\(([A-Z]{3})\)/.exec(ln);
-        if (paren && codeIsAirport(paren[1], byIata)) { out.code = paren[1]; out.codeLine = i; }
+        if (paren && codeIsAirport(paren[1], byIata, true)) { out.code = paren[1]; out.codeLine = i; }
         else {
           const bare = /^\s*([A-Z]{3})\s*$/.exec(ln);
           if (bare && codeIsAirport(bare[1], byIata)) { out.code = bare[1]; out.codeLine = i; }
@@ -6160,9 +6254,17 @@ const TripLogic = (() => {
       .split('\n');
   }
 
-  // "DTSTART;TZID=Europe/Paris:20270112T090000" -> name, params, value
+  // "DTSTART;TZID=Europe/Paris:20270112T090000" -> name, params, value. The
+  // value starts at the first colon OUTSIDE quotes, because a quoted parameter
+  // is allowed to contain one ("TZID=\"GMT+05:00\"").
   function icsProp(line) {
-    const colon = line.indexOf(':');
+    let quoted = false;
+    let colon = -1;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') quoted = !quoted;
+      else if (c === ':' && !quoted) { colon = i; break; }
+    }
     if (colon < 0) return null;
     const head = line.slice(0, colon).split(';');
     return { name: head[0].trim().toUpperCase(), value: line.slice(colon + 1) };
@@ -6181,6 +6283,48 @@ const TripLogic = (() => {
     return { date, time: `${m[4]}:${m[5]}` };
   }
 
+  /**
+   * The same, but tolerant of an UNQUOTED parameter that smuggled a colon into
+   * the value: Outlook writes "DTSTART;TZID=GMT+05:00:20270112T090000", which
+   * splits into a value of "00:20270112T090000" and skipped the event as
+   * unreadable. Retrying after the LAST colon recovers the stamp, and a value
+   * that is simply junk ("not-a-date") still returns null.
+   */
+  function icsDateTimeLoose(value) {
+    const direct = icsDateTime(value);
+    if (direct) return direct;
+    const s = String(value);
+    const cut = s.lastIndexOf(':');
+    return cut >= 0 ? icsDateTime(s.slice(cut + 1)) : null;
+  }
+
+  /**
+   * "PT2H", "PT1H30M", "P1D": the other legal way an .ics says when an event
+   * ends. Without it the end was dropped in silence, so a two-hour tour
+   * imported with no end time at all. Returns whole minutes, or null.
+   */
+  function icsDuration(value) {
+    const m = /^P(?!$)(?:(\d+)W)?(?:(\d+)D)?(?:T(?!$)(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/
+      .exec(String(value).trim().toUpperCase());
+    if (!m) return null;
+    const mins = (+m[1] || 0) * 10080 + (+m[2] || 0) * 1440
+      + (+m[3] || 0) * 60 + (+m[4] || 0) + Math.floor((+m[5] || 0) / 60);
+    return mins > 0 ? mins : null;
+  }
+
+  function icsEndFromDuration(start, value) {
+    const mins = icsDuration(value);
+    if (!mins) return null;
+    // An all-day event's duration is whole days, and the DTEND it stands in for
+    // is EXCLUSIVE, which is the convention the caller already unwinds.
+    if (!start.time) return { date: addDays(start.date, Math.max(1, Math.round(mins / 1440))), time: '' };
+    const d = new Date(Date.parse(`${start.date}T${start.time}:00Z`) + mins * 60000);
+    return {
+      date: iso(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()),
+      time: `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`,
+    };
+  }
+
   function icsProposal(evLines) {
     const props = new Map();
     for (const line of evLines) {
@@ -6189,9 +6333,10 @@ const TripLogic = (() => {
       // calendar app shows the first when one does.
       if (p && !props.has(p.name)) props.set(p.name, p.value);
     }
-    const start = props.has('DTSTART') ? icsDateTime(props.get('DTSTART')) : null;
+    const start = props.has('DTSTART') ? icsDateTimeLoose(props.get('DTSTART')) : null;
     if (!start) return null;
-    const end = props.has('DTEND') ? icsDateTime(props.get('DTEND')) : null;
+    const end = (props.has('DTEND') ? icsDateTimeLoose(props.get('DTEND')) : null)
+      || (props.has('DURATION') ? icsEndFromDuration(start, props.get('DURATION')) : null);
     const text = name => (props.has(name) ? icsUnescape(props.get(name)).trim() : '');
 
     const item = {
@@ -6251,12 +6396,22 @@ const TripLogic = (() => {
   function parseIcsStrict(text) {
     const events = [];
     let current = null;
+    // How deep inside a component NESTED in the event we are. A VALARM's own
+    // DESCRIPTION and SUMMARY sat in the same first-wins map as the event's,
+    // so "Reminder: 30 minutes before" became the trip item's details and the
+    // alarm's title could replace the event's.
+    let nested = 0;
     for (const line of icsUnfold(text)) {
       const flat = line.trim();
-      if (/^BEGIN:VEVENT$/i.test(flat)) { current = []; continue; }
-      if (/^END:VEVENT$/i.test(flat)) { if (current) events.push(current); current = null; continue; }
-      if (current && flat) current.push(line);
+      if (/^BEGIN:VEVENT$/i.test(flat)) { current = []; nested = 0; continue; }
+      if (/^END:VEVENT$/i.test(flat)) { if (current) events.push(current); current = null; nested = 0; continue; }
+      if (current && /^BEGIN:/i.test(flat)) { nested++; continue; }
+      if (current && /^END:/i.test(flat)) { nested = Math.max(0, nested - 1); continue; }
+      if (current && !nested && flat) current.push(line);
     }
+    // A file that stops mid-event is not an empty calendar, and saying "no
+    // events" sent the traveller looking for the fault in their own file.
+    const unclosed = current ? 1 : 0;
     const proposals = [];
     let recurring = 0;
     for (const ev of events) {
@@ -6268,9 +6423,9 @@ const TripLogic = (() => {
     return {
       proposals,
       stats: {
-        events: events.length,
+        events: events.length + unclosed,
         read: proposals.length,
-        skipped: events.length - proposals.length,
+        skipped: events.length + unclosed - proposals.length,
         recurring,
       },
     };

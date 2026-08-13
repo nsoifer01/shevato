@@ -100,7 +100,7 @@
         </div>
       </div>
       <div class="tp-menu" id="tripMenu">
-        <button class="icon-btn" id="tripMenuBtn" title="Trip actions" aria-haspopup="true">⋯</button>
+        <button class="icon-btn" id="tripMenuBtn" title="Trip actions" aria-haspopup="true" aria-expanded="false">⋯</button>
         <div class="tp-menu-panel">
           <div class="tp-menu-cap">Trip</div>
           <button data-act="new-trip">➕ New trip</button>
@@ -189,7 +189,7 @@
     <div class="tb-group tb-filters" role="group" aria-label="Search and filters">
     <span class="search-wrap">
       <svg class="tb-search-ico" aria-hidden="true" viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="4.3"/><line x1="10.3" y1="10.3" x2="14" y2="14"/></svg>
-      <input type="search" id="searchBox" placeholder="Search title, place, details...">
+      <input type="search" id="searchBox" placeholder="Search title, place, details..." aria-label="Search items by title, place, details or confirmation code">
     </span>
     <select id="filterType" aria-label="Filter by type">
       <option value="">All types</option>
@@ -794,7 +794,11 @@
 </div>
 
 <input type="file" id="importFile" accept="application/json,.json" hidden>
-<div class="toasts" id="toasts"></div>
+<!-- polite live region: every confirmation, every error and the 6-second Undo
+     offer land here, and without aria-live none of them ever reached a screen
+     reader. Polite (not assertive): a toast must not talk over the field the
+     traveller is typing in. -->
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
 
 <!-- AI assistant panel (direct child of .trip-planner-app) -->
 <aside class="tp-assist-panel" id="assistPanel" hidden aria-label="AI assistant">
@@ -829,7 +833,7 @@
     <div class="assist-messages" id="assistMessages" aria-live="polite"></div>
   </div>
   <div class="assist-composer" id="assistComposer" hidden>
-    <textarea id="assistInput" rows="3" maxlength="1000" placeholder="Ask the assistant..."></textarea>
+    <textarea id="assistInput" rows="3" maxlength="1000" placeholder="Ask the assistant..." aria-label="Message the assistant"></textarea>
     <p class="assist-composer-hint">Enter sends, Shift+Enter adds a line</p>
     <div class="assist-composer-row">
       <button type="button" class="btn assist-clear" id="assistClearChat">Clear chat</button>
@@ -880,8 +884,8 @@
     }
   </script>
 
-  <script src="js/trip-logic.js?v=34"></script>
-  <script src="js/app.js?v=58"></script>
+  <script src="js/trip-logic.js?v=35"></script>
+  <script src="js/app.js?v=59"></script>
   <script src="/assets/js/back-to-top.js" defer></script>
 </body>
 </html>

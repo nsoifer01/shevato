@@ -59,14 +59,21 @@ function dayBucket(now) { return Math.floor(now / DAY_MS); }
 // calendar boundary and a rolling 30-day window would drift out of step with it.
 function monthBucket(now) { return new Date(now).toISOString().slice(0, 7); }
 
+// Null-prototype per-client maps, same reason as tp-assist-quota.mjs: clientId
+// is attacker-chosen, and on a plain object literal an id of "__proto__" reads
+// Object.prototype (making every remaining-room subtraction NaN, which never
+// shrinks a grant) while its increment silently no-ops, so that one name never
+// hits a per-client cap. With no prototype it is a key like any other.
+const bareMap = src => Object.assign(Object.create(null), src);
+
 function pruneUsage(usage, hb, db, mb) {
   const u = (usage && typeof usage === 'object') ? usage : {};
   return {
     hourBucket: hb,
     dayBucket: db,
     monthBucket: mb,
-    clientHour: (u.hourBucket === hb && u.clientHour && typeof u.clientHour === 'object') ? { ...u.clientHour } : {},
-    clientDay: (u.dayBucket === db && u.clientDay && typeof u.clientDay === 'object') ? { ...u.clientDay } : {},
+    clientHour: (u.hourBucket === hb && u.clientHour && typeof u.clientHour === 'object') ? bareMap(u.clientHour) : Object.create(null),
+    clientDay: (u.dayBucket === db && u.clientDay && typeof u.clientDay === 'object') ? bareMap(u.clientDay) : Object.create(null),
     globalDay: (u.dayBucket === db && typeof u.globalDay === 'number') ? u.globalDay : 0,
     globalMonth: (u.monthBucket === mb && typeof u.globalMonth === 'number') ? u.globalMonth : 0,
     ownerDay: (u.dayBucket === db && typeof u.ownerDay === 'number') ? u.ownerDay : 0,

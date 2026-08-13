@@ -21,7 +21,7 @@
  * MINOR when the strategy changes, MAJOR for a back-compat break.
  */
 
-const CACHE_VERSION = '2.3.0';
+const CACHE_VERSION = '2.4.0';
 const PRECACHE = `trip-precache-${CACHE_VERSION}`;
 const RUNTIME = `trip-runtime-${CACHE_VERSION}`;
 
@@ -30,20 +30,36 @@ const PRECACHE_URLS = [
   './index.html',
   './manifest.webmanifest',
   './css/styles.css?v=56',
-  './js/trip-logic.js?v=34',
-  './js/app.js?v=58',
+  './js/trip-logic.js?v=35',
+  './js/app.js?v=59',
   // The bundled airport table (see scripts/build-airports.mjs). ~260 KB, and
   // precached on purpose: an airport picker that stops working without signal
   // is useless in the one place you most need it.
   './data/airports.json',
   '../../assets/css/main.css',
   '../../assets/css/sync-status.css',
+  '../../assets/css/back-to-top.css',
   '../../assets/js/passive-events-fix.js',
+  '../../assets/js/sync-status.js',
+  '../../assets/js/back-to-top.js',
   '../../assets/js/jquery.min.js',
   '../../assets/js/browser.min.js',
   '../../assets/js/breakpoints.min.js',
   '../../assets/js/util.js',
   '../../assets/js/main.js',
+  // The sync shell. These were the gap between "the timeline works offline"
+  // and the page actually loading clean: index.html requests them, the FIRST
+  // visit runs uncontrolled (registration lands after the subresource
+  // fetches), so nothing runtime-cached them and a first-visit-then-offline
+  // load resolved each to a network error. Sync itself still needs Firebase
+  // online; precaching only makes the failure quiet and complete.
+  '../../sync-system/sync-immediate.js',
+  '../../sync-system/storage-sync-robust.js',
+  '../../sync-system/app-sync-init.js',
+  '../../sync-system/sync-debug.js',
+  '../../sync-system/sync-loading-modal.js',
+  '../../sync-system/sync-modal-integration.js',
+  '../../firebase-config.js',
   '../../images/icon-192.png',
   '../../images/icon-512.png',
   // self-hosted Leaflet (see ensureLeaflet): precached so the Map view is not
@@ -107,7 +123,14 @@ self.addEventListener('fetch', (event) => {
       }
       return res;
     } catch {
-      // offline: fall back to anything cached (runtime or precache)
+      // Offline: RUNTIME first, then the precache. caches.match searches
+      // caches in creation order, and the precache (created at install) came
+      // first, so after a deploy that did not byte-change this worker the
+      // install-time snapshot was served over the fresher copy every later
+      // online visit had runtime-cached.
+      const runtime = await caches.open(RUNTIME);
+      const fresh = await runtime.match(req);
+      if (fresh) return fresh;
       const cached = await caches.match(req);
       if (cached) return cached;
       if (req.mode === 'navigate') {
