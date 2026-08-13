@@ -61,17 +61,29 @@ body.fpl-page {
   --pitch: #101d18;
   --pitch-line: rgba(231, 237, 247, 0.09);
 
-  --radius: 12px;
-  --radius-sm: 8px;
-  --shadow: 0 14px 36px rgba(0, 0, 0, 0.42);
+  --radius: 14px;
+  --radius-sm: 9px;
+  --shadow: 0 18px 44px rgba(0, 0, 0, 0.48);
   --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.3);
+  --shadow-pop: 0 24px 60px rgba(0, 0, 0, 0.55);
+
+  /* Motion: one speed for hovers, one for entrances. Guarded by the
+     prefers-reduced-motion block at the bottom of this file. */
+  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --t-fast: 0.15s;
+  --t-slow: 0.3s;
 
   color-scheme: dark;
 }
 
 body.fpl-page {
   margin: 0;
-  background: var(--bg);
+  /* A faint accent glow at the top of the page, so the app opens onto depth
+     rather than a flat slab. Fixed attachment keeps it at the viewport top. */
+  background:
+    radial-gradient(1100px 420px at 50% -140px, rgba(90, 162, 255, 0.07), transparent 70%),
+    var(--bg);
+  background-attachment: fixed;
 }
 
 /* Typography and colour live on the app root, never on <body>, so they cannot
@@ -102,6 +114,10 @@ body.fpl-page {
   font-weight: 650;
   letter-spacing: -0.015em;
   line-height: 1.2;
+  /* main.css uppercases headings site-wide; this app writes its headings in
+     sentence case and means it. The few labels that ARE uppercase (card
+     heads, stat keys) set text-transform themselves. */
+  text-transform: none;
 }
 .fpl-planner-app p { margin: 0; }
 .fpl-planner-app code {
@@ -138,10 +154,11 @@ body.fpl-page {
   justify-content: center;
   gap: 7px;
   white-space: nowrap;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
 }
 .fpl-planner-app button:hover { background: #232d3e; border-color: #3d4d69; box-shadow: none; }
-.fpl-planner-app button:hover:active { background: #1a2230; }
+.fpl-planner-app button:hover:active { background: #1a2230; transform: translateY(1px); }
 .fpl-planner-app button:focus-visible,
 .fpl-planner-app input:focus-visible,
 .fpl-planner-app select:focus-visible,
@@ -152,11 +169,16 @@ body.fpl-page {
 .fpl-planner-app button:disabled { opacity: 0.55; cursor: default; pointer-events: none; }
 
 .fpl-planner-app .fpl-btn-primary {
-  background: var(--accent-fill);
-  border-color: var(--accent-fill);
+  background: linear-gradient(180deg, #2a6fe0, var(--accent-fill));
+  border-color: #2a6fe0;
+  box-shadow: 0 6px 18px rgba(31, 95, 208, 0.32);
 }
-.fpl-planner-app .fpl-btn-primary:hover { background: #2a6fe0; border-color: #2a6fe0; }
-.fpl-planner-app .fpl-btn-primary:hover:active { background: #1a52b4; }
+.fpl-planner-app .fpl-btn-primary:hover {
+  background: linear-gradient(180deg, #3579e6, #2364d6);
+  border-color: #3579e6;
+  box-shadow: 0 8px 22px rgba(31, 95, 208, 0.4);
+}
+.fpl-planner-app .fpl-btn-primary:hover:active { background: #1a52b4; box-shadow: 0 3px 10px rgba(31, 95, 208, 0.3); }
 
 .fpl-planner-app .fpl-btn-quiet {
   background: transparent;
@@ -226,31 +248,42 @@ body.fpl-page {
 
 /* ---------------------------------------------------------------- landing */
 
-.fpl-planner-app .fpl-landing { max-width: 780px; margin: 0 auto; }
-.fpl-planner-app .fpl-landing-head { padding: 22px 0 4px; }
+.fpl-planner-app .fpl-landing { max-width: 880px; margin: 0 auto; }
+.fpl-planner-app .fpl-landing-head { padding: 34px 0 4px; text-align: center; }
 .fpl-planner-app .fpl-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--accent);
-  margin-bottom: 10px;
+  margin-bottom: 14px;
+  padding: 5px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 999px;
+  background: var(--accent-soft);
 }
-.fpl-planner-app .fpl-landing h1 { font-size: 44px; letter-spacing: -0.03em; }
+.fpl-planner-app .fpl-landing h1 { font-size: 50px; letter-spacing: -0.032em; }
 .fpl-planner-app .fpl-lede {
-  margin-top: 14px;
-  font-size: 17px;
-  line-height: 1.6;
+  margin: 16px auto 0;
+  font-size: 17.5px;
+  line-height: 1.65;
   color: var(--text-dim);
-  max-width: 62ch;
+  max-width: 60ch;
 }
 
 .fpl-planner-app .fpl-onboard {
-  margin: 30px 0 0;
-  padding: 22px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
+  margin: 32px auto 0;
+  max-width: 640px;
+  padding: 24px;
+  background:
+    linear-gradient(var(--bg-card), var(--bg-card)) padding-box,
+    linear-gradient(135deg, rgba(90, 162, 255, 0.45), rgba(167, 139, 250, 0.25) 55%, var(--border) 90%) border-box;
+  border: 1px solid transparent;
   border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
 }
 .fpl-planner-app .fpl-onboard-row { display: flex; gap: 10px; align-items: stretch; }
 .fpl-planner-app .fpl-onboard-row .fpl-input { flex: 1 1 auto; min-width: 0; font-size: 17px; letter-spacing: 0.02em; }
@@ -266,12 +299,61 @@ body.fpl-page {
 }
 .fpl-planner-app .fpl-onboard-hint { margin-top: 14px; color: var(--text-faint); font-size: 13.5px; line-height: 1.6; }
 
-.fpl-planner-app .fpl-landing-prose { margin-top: 40px; display: grid; gap: 30px; }
-.fpl-planner-app .fpl-prose-block h2 { font-size: 20px; margin-bottom: 10px; }
+.fpl-planner-app .fpl-landing-prose { margin-top: 52px; display: grid; gap: 40px; }
+.fpl-planner-app .fpl-prose-block h2 { font-size: 21px; margin-bottom: 10px; }
 .fpl-planner-app .fpl-prose-block p { color: var(--text-dim); line-height: 1.7; max-width: 70ch; }
-.fpl-planner-app .fpl-prose-list { margin: 0; padding-left: 20px; color: var(--text-dim); line-height: 1.7; max-width: 70ch; }
-.fpl-planner-app .fpl-prose-list li { margin-bottom: 7px; }
-.fpl-planner-app .fpl-prose-list strong { color: var(--text); font-weight: 600; }
+
+/* the five method cards */
+.fpl-planner-app .fpl-feature-grid {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+}
+.fpl-planner-app .fpl-feature {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 17px 16px;
+  transition: border-color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.fpl-planner-app .fpl-feature:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+.fpl-planner-app .fpl-feature-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+  color: var(--accent);
+  font-size: 15px;
+  margin-bottom: 12px;
+}
+.fpl-planner-app .fpl-feature h3 { font-size: 15px; margin-bottom: 6px; }
+.fpl-planner-app .fpl-feature p { font-size: 13.5px; line-height: 1.6; color: var(--text-dim); }
+
+/* the two closing blocks, side by side where there is room */
+.fpl-planner-app .fpl-prose-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+}
+.fpl-planner-app .fpl-prose-block.is-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px 20px;
+}
+.fpl-planner-app .fpl-prose-block.is-card h2 { font-size: 17px; }
+.fpl-planner-app .fpl-prose-block.is-card p { font-size: 14px; }
 
 .fpl-planner-app .fpl-attribution {
   margin-top: 42px;
@@ -313,14 +395,25 @@ body.fpl-page {
   vertical-align: middle;
 }
 
+/* Sticky, lightly frosted: the identity and the tab strip stay in reach while
+   the plan scrolls. The negative margins let the bar paint edge to edge across
+   .fpl-main's padding so content does not peek past it while scrolling. */
 .fpl-planner-app .fpl-topbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 14px 20px;
-  padding-bottom: 16px;
+  gap: 12px 20px;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  margin: 0 -20px 20px;
+  padding: 14px 20px 12px;
   border-bottom: 1px solid var(--border-soft);
-  margin-bottom: 20px;
+  /* Nearly opaque on purpose: backdrop-filter support varies (headless and
+     older engines skip it) and content must never read through the bar. */
+  background: color-mix(in srgb, var(--bg) 97%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
 }
 .fpl-planner-app .fpl-identity { min-width: 0; }
 .fpl-planner-app .fpl-team-name {
@@ -347,18 +440,41 @@ body.fpl-page {
    by its labels rather than stretched across the page. */
 .fpl-planner-app .fpl-tabs { display: flex; gap: 3px; width: auto; flex-basis: 100%; }
 .fpl-planner-app .fpl-tabs.fpl-seg { align-self: flex-start; }
+.fpl-planner-app .fpl-tab-icon { font-size: 12px; opacity: 0.75; }
+.fpl-planner-app .fpl-tabs > button.is-on .fpl-tab-icon { opacity: 1; }
 .fpl-planner-app .fpl-view { display: none; }
-.fpl-planner-app .fpl-view.is-active { display: block; }
+.fpl-planner-app .fpl-view.is-active { display: block; animation: fpl-view-in var(--t-slow) var(--ease); }
+@keyframes fpl-view-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
 
 /* ---------------------------------------------------------------- the answer */
 
 .fpl-planner-app .fpl-hero {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(var(--bg-card), var(--bg-card)) padding-box,
+    linear-gradient(135deg, rgba(90, 162, 255, 0.5), rgba(167, 139, 250, 0.28) 45%, var(--border) 85%) border-box;
+  border: 1px solid transparent;
   border-radius: var(--radius);
-  padding: 20px 22px 18px;
+  padding: 22px 24px 20px;
   margin-bottom: 16px;
+  box-shadow: var(--shadow-sm);
 }
+/* a quiet glow in the corner the gradient border starts from */
+.fpl-planner-app .fpl-hero::before {
+  content: "";
+  position: absolute;
+  top: -120px;
+  left: -80px;
+  width: 420px;
+  height: 260px;
+  background: radial-gradient(closest-side, rgba(90, 162, 255, 0.1), transparent);
+  pointer-events: none;
+}
+.fpl-planner-app .fpl-hero > * { position: relative; }
 .fpl-planner-app .fpl-hero-top {
   display: flex;
   align-items: baseline;
@@ -369,20 +485,38 @@ body.fpl-page {
   border-bottom: 1px solid var(--border-soft);
 }
 .fpl-planner-app .fpl-gw-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.11em;
   text-transform: uppercase;
   color: var(--accent);
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
 }
-.fpl-planner-app .fpl-deadline { font-size: 13px; color: var(--text-dim); }
+.fpl-planner-app .fpl-deadline {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--text-dim);
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-sunk);
+}
 .fpl-planner-app .fpl-deadline strong { color: var(--text); font-weight: 650; }
+.fpl-planner-app .fpl-deadline.is-urgent { border-color: color-mix(in srgb, var(--amber) 40%, transparent); background: var(--amber-soft); }
 .fpl-planner-app .fpl-deadline.is-urgent strong { color: var(--amber); }
 
 .fpl-planner-app .fpl-hero-headline {
-  font-size: 31px;
+  font-size: 34px;
   letter-spacing: -0.028em;
-  margin-top: 14px;
+  margin-top: 16px;
 }
 .fpl-planner-app .fpl-hero-sub { margin-top: 7px; color: var(--text-dim); font-size: 15px; line-height: 1.5; }
 .fpl-planner-app .fpl-hero-sub .fpl-pname { color: var(--text); font-weight: 600; }
@@ -455,9 +589,11 @@ body.fpl-page {
   background: var(--bg-sunk);
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-sm);
-  padding: 10px 12px;
+  padding: 11px 13px;
   min-width: 0;
+  transition: border-color var(--t-fast) var(--ease);
 }
+.fpl-planner-app .fpl-fact:hover { border-color: var(--border-strong); }
 .fpl-planner-app .fpl-fact-k {
   font-size: 10.5px;
   font-weight: 600;
@@ -467,8 +603,8 @@ body.fpl-page {
 }
 .fpl-planner-app .fpl-fact-v {
   margin-top: 3px;
-  font-size: 16px;
-  font-weight: 650;
+  font-size: 17px;
+  font-weight: 680;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -484,7 +620,10 @@ body.fpl-page {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   margin-bottom: 16px;
+  transition: border-color var(--t-fast) var(--ease);
 }
+.fpl-planner-app .fpl-card:hover { border-color: var(--border-strong); }
+.fpl-planner-app .fpl-card-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .fpl-planner-app .fpl-card-head {
   display: flex;
   align-items: center;
@@ -574,7 +713,24 @@ body.fpl-page {
   border-radius: var(--radius-sm);
 }
 .fpl-planner-app .fpl-affirm.is-chip { background: var(--violet-soft); border-color: color-mix(in srgb, var(--violet) 34%, transparent); }
-.fpl-planner-app .fpl-affirm-mark { font-size: 17px; line-height: 1.3; }
+.fpl-planner-app .fpl-affirm-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 13px;
+  background: color-mix(in srgb, var(--green) 24%, transparent);
+  border: 1px solid color-mix(in srgb, var(--green) 45%, transparent);
+  color: var(--green);
+}
+.fpl-planner-app .fpl-affirm.is-chip .fpl-affirm-mark {
+  background: color-mix(in srgb, var(--violet) 24%, transparent);
+  border-color: color-mix(in srgb, var(--violet) 45%, transparent);
+  color: var(--violet);
+}
 .fpl-planner-app .fpl-affirm-title { font-size: 16px; font-weight: 650; }
 .fpl-planner-app .fpl-affirm-body { margin-top: 4px; color: var(--text-dim); font-size: 13.5px; line-height: 1.6; }
 
@@ -602,6 +758,19 @@ body.fpl-page {
   right: 12px;
   top: 50%;
   border-top: 1px solid var(--pitch-line);
+  pointer-events: none;
+}
+/* the centre circle, under the cards */
+.fpl-planner-app .fpl-pitch::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 120px;
+  height: 120px;
+  margin: -60px 0 0 -60px;
+  border: 1px solid var(--pitch-line);
+  border-radius: 50%;
   pointer-events: none;
 }
 .fpl-planner-app .fpl-row {
@@ -668,6 +837,18 @@ body.fpl-page {
   position: relative;
   text-align: center;
   box-shadow: var(--shadow-sm);
+  transition: transform var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+/* Clickable cards open the player drawer. The affordance is the lift. */
+.fpl-planner-app .fpl-pp.is-press { cursor: pointer; }
+.fpl-planner-app .fpl-pp.is-press:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+.fpl-planner-app .fpl-pp.is-press:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .fpl-planner-app .fpl-pp.pos-1 { border-top-color: var(--amber); }
 .fpl-planner-app .fpl-pp.pos-2 { border-top-color: var(--accent); }
@@ -795,7 +976,11 @@ body.fpl-page {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-dim);
+  border-radius: var(--radius);
+  transition: color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
 }
+.fpl-planner-app .fpl-disclosure > summary:hover { color: var(--text); background: rgba(231, 237, 247, 0.025); }
+.fpl-planner-app .fpl-disclosure[open] > summary { border-radius: var(--radius) var(--radius) 0 0; }
 .fpl-planner-app .fpl-disclosure > summary::-webkit-details-marker { display: none; }
 .fpl-planner-app .fpl-disclosure > summary::after { content: "\002B"; color: var(--text-faint); font-size: 15px; }
 .fpl-planner-app .fpl-disclosure[open] > summary::after { content: "\2212"; }
@@ -909,6 +1094,9 @@ body.fpl-page {
   list-style: none;
   max-height: 320px;
   overflow-y: auto;
+  /* A popup list, not a modal: the page stays scrollable while it is open,
+     but reaching the list's end must not start scrolling the page. */
+  overscroll-behavior: contain;
   background: var(--bg-card);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
@@ -1013,13 +1201,28 @@ body.fpl-page {
 .fpl-planner-app .fpl-banner-body { flex: 1 1 auto; min-width: 0; }
 .fpl-planner-app .fpl-banner-title { font-size: 15px; font-weight: 650; }
 .fpl-planner-app .fpl-banner-text { margin-top: 4px; color: var(--text-dim); font-size: 13.5px; line-height: 1.6; }
-.fpl-planner-app .fpl-banner-mark { font-size: 16px; line-height: 1.4; }
+.fpl-planner-app .fpl-banner-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 14px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  color: var(--text-dim);
+}
 .fpl-planner-app .fpl-banner.is-warn { background: var(--amber-soft); border-color: color-mix(in srgb, var(--amber) 36%, transparent); }
 .fpl-planner-app .fpl-banner.is-warn .fpl-banner-title { color: var(--amber); }
+.fpl-planner-app .fpl-banner.is-warn .fpl-banner-mark { color: var(--amber); background: var(--amber-soft); border-color: color-mix(in srgb, var(--amber) 40%, transparent); }
 .fpl-planner-app .fpl-banner.is-error { background: var(--red-soft); border-color: color-mix(in srgb, var(--red) 36%, transparent); }
 .fpl-planner-app .fpl-banner.is-error .fpl-banner-title { color: var(--red); }
+.fpl-planner-app .fpl-banner.is-error .fpl-banner-mark { color: var(--red); background: var(--red-soft); border-color: color-mix(in srgb, var(--red) 40%, transparent); }
 .fpl-planner-app .fpl-banner.is-info { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 32%, transparent); }
 .fpl-planner-app .fpl-banner.is-info .fpl-banner-title { color: var(--accent); }
+.fpl-planner-app .fpl-banner.is-info .fpl-banner-mark { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 36%, transparent); }
 .fpl-planner-app .fpl-banner-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 11px; }
 
 /* "What changed": the previous recommendation, the current one, and the fields
@@ -1083,9 +1286,24 @@ body.fpl-page {
 }
 .fpl-planner-app .fpl-bar-fill {
   height: 100%;
-  background: var(--accent-fill);
+  background: linear-gradient(90deg, var(--accent-fill), #4b86e6);
   width: 0;
   transition: width 0.35s ease;
+  position: relative;
+  overflow: hidden;
+}
+/* a soft sheen moving along the filled part, so a stage that takes a while
+   still reads as alive */
+.fpl-planner-app .fpl-bar-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+  transform: translateX(-100%);
+  animation: fpl-sheen 1.6s var(--ease) infinite;
+}
+@keyframes fpl-sheen {
+  to { transform: translateX(100%); }
 }
 .fpl-planner-app .fpl-stages { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
 .fpl-planner-app .fpl-stage { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--text-faint); }
@@ -1103,13 +1321,34 @@ body.fpl-page {
   color: var(--text-faint);
 }
 .fpl-planner-app .fpl-stage.is-active { color: var(--text); }
-.fpl-planner-app .fpl-stage.is-active .fpl-stage-dot { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.fpl-planner-app .fpl-stage.is-active .fpl-stage-dot {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  position: relative;
+}
+/* a slim orbiting arc on the active stage */
+.fpl-planner-app .fpl-stage.is-active .fpl-stage-dot::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: var(--accent);
+  animation: fpl-spin 0.9s linear infinite;
+}
+@keyframes fpl-spin { to { transform: rotate(360deg); } }
 .fpl-planner-app .fpl-stage.is-done { color: var(--text-dim); }
 .fpl-planner-app .fpl-stage.is-done .fpl-stage-dot { border-color: color-mix(in srgb, var(--green) 50%, transparent); background: var(--green-soft); color: var(--green); }
 
 /* ---------------------------------------------------------------- tables */
 
-.fpl-planner-app .fpl-table-wrap { overflow-x: auto; }
+.fpl-planner-app .fpl-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunk);
+}
 .fpl-planner-app table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .fpl-planner-app th {
   text-align: left;
@@ -1118,18 +1357,48 @@ body.fpl-page {
   letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--text-faint);
-  padding: 0 12px 9px 0;
+  padding: 10px 14px 9px;
   white-space: nowrap;
   border-bottom: 1px solid var(--border);
+  background: var(--bg-sunk);
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 .fpl-planner-app td {
-  padding: 10px 12px 10px 0;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--border-soft);
   color: var(--text-dim);
   white-space: nowrap;
 }
+.fpl-planner-app th.is-num,
+.fpl-planner-app td.is-num { text-align: right; font-variant-numeric: tabular-nums; }
+.fpl-planner-app td.is-bad { color: var(--red); }
+.fpl-planner-app td.is-rec { max-width: 380px; overflow: hidden; text-overflow: ellipsis; }
 .fpl-planner-app td.is-strong { color: var(--text); font-weight: 600; }
+.fpl-planner-app tbody tr { transition: background-color var(--t-fast) var(--ease); }
+.fpl-planner-app tbody tr:nth-child(even) { background: rgba(231, 237, 247, 0.015); }
+.fpl-planner-app tbody tr:hover { background: rgba(90, 162, 255, 0.055); }
 .fpl-planner-app tr:last-child td { border-bottom: 0; }
+
+.fpl-planner-app .fpl-gw-pill {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.fpl-planner-app .fpl-chip.is-chip-played {
+  background: var(--violet-soft);
+  border-color: color-mix(in srgb, var(--violet) 40%, transparent);
+  color: var(--violet);
+  font-size: 10.5px;
+  padding: 2px 7px;
+}
 
 /* ---------------------------------------------------------------- status */
 
@@ -1211,7 +1480,7 @@ body.fpl-page {
 .fpl-planner-app .fpl-legality-ok { color: var(--green); font-size: 13.5px; font-weight: 600; }
 .fpl-planner-app .fpl-legality-bad { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; font-size: 13px; color: color-mix(in srgb, var(--red) 62%, var(--text)); }
 
-.fpl-planner-app .fpl-search-results { max-height: 320px; overflow-y: auto; border: 1px solid var(--border-soft); border-radius: var(--radius-sm); margin-top: 12px; }
+.fpl-planner-app .fpl-search-results { max-height: 320px; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--border-soft); border-radius: var(--radius-sm); margin-top: 12px; }
 .fpl-planner-app .fpl-sr {
   display: flex;
   align-items: center;
@@ -1235,6 +1504,411 @@ body.fpl-page {
   font-size: 12.5px;
 }
 
+/* ------------------------------------------------------------------ charts */
+
+/* Shared: a chart never speaks alone; the numbers it draws are printed nearby.
+   Marks carry the accent hue; every label wears a text token. */
+.fpl-planner-app .fpl-chart-block { margin-top: 16px; }
+.fpl-planner-app .fpl-chart-block.is-first { margin-top: 0; margin-bottom: 16px; }
+.fpl-planner-app .fpl-chart-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 4px;
+}
+.fpl-planner-app .fpl-chart-sub { font-size: 12.5px; color: var(--text-faint); margin-bottom: 8px; }
+
+/* tooltips: one per mark, shown on hover or keyboard focus */
+.fpl-planner-app .fpl-tip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(2px);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+  z-index: 20;
+}
+.fpl-planner-app .fpl-tip-t { font-size: 12px; font-weight: 650; color: var(--text); }
+.fpl-planner-app .fpl-tip-b { font-size: 11.5px; color: var(--text-dim); white-space: normal; max-width: 220px; }
+.fpl-planner-app .fpl-col:hover .fpl-tip,
+.fpl-planner-app .fpl-col:focus-visible .fpl-tip,
+.fpl-planner-app .fpl-dot-hit:hover .fpl-tip,
+.fpl-planner-app .fpl-dot-hit:focus-visible .fpl-tip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+/* the first and last marks would clip their tooltip at the card edge */
+.fpl-planner-app .fpl-col:first-child .fpl-tip { left: 0; transform: translateX(0) translateY(2px); }
+.fpl-planner-app .fpl-col:first-child:hover .fpl-tip,
+.fpl-planner-app .fpl-col:first-child:focus-visible .fpl-tip { transform: translateX(0) translateY(0); }
+.fpl-planner-app .fpl-col:last-child .fpl-tip { left: auto; right: 0; transform: translateX(0) translateY(2px); }
+.fpl-planner-app .fpl-col:last-child:hover .fpl-tip,
+.fpl-planner-app .fpl-col:last-child:focus-visible .fpl-tip { transform: translateX(0) translateY(0); }
+
+/* column chart */
+.fpl-planner-app .fpl-chart-cols {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  min-height: 150px;
+}
+.fpl-planner-app .fpl-chart-cols.is-dense { gap: 2px; }
+.fpl-planner-app .fpl-col {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  border-radius: 6px;
+}
+.fpl-planner-app .fpl-col:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.fpl-planner-app .fpl-col-cap {
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.fpl-planner-app .fpl-col-track {
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: 26px;
+  display: flex;
+  align-items: flex-end;
+  min-height: 84px;
+}
+.fpl-planner-app .fpl-col-fill {
+  width: 100%;
+  border-radius: 4px 4px 0 0;
+  background: color-mix(in srgb, var(--accent) 52%, var(--bg-raised));
+  transition: background-color var(--t-fast) var(--ease);
+  min-height: 2px;
+}
+.fpl-planner-app .fpl-col:hover .fpl-col-fill { background: color-mix(in srgb, var(--accent) 72%, var(--bg-raised)); }
+.fpl-planner-app .fpl-col.is-active .fpl-col-fill { background: var(--accent); }
+.fpl-planner-app .fpl-col.is-muted .fpl-col-fill { background: var(--bg-raised); }
+.fpl-planner-app .fpl-col-x {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+.fpl-planner-app .fpl-chart-cols.is-dense .fpl-col-x.is-quiet { visibility: hidden; }
+.fpl-planner-app .fpl-chart-cols.is-dense .fpl-col-cap { font-size: 10px; }
+
+/* trend line */
+.fpl-planner-app .fpl-chart-line { padding-top: 6px; }
+.fpl-planner-app .fpl-line-plot { position: relative; height: 150px; margin-right: 44px; }
+.fpl-planner-app .fpl-line-grid {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.fpl-planner-app .fpl-line-gridrow { position: relative; border-top: 1px solid var(--border-soft); height: 0; }
+.fpl-planner-app .fpl-line-tick {
+  position: absolute;
+  right: -44px;
+  top: -7px;
+  font-size: 10.5px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.fpl-planner-app .fpl-line-svg { position: absolute; inset: 0; display: block; }
+.fpl-planner-app .fpl-line-svg svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.fpl-planner-app .fpl-line-path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.fpl-planner-app .fpl-line-area { fill: rgba(90, 162, 255, 0.09); stroke: none; }
+.fpl-planner-app .fpl-dot-hit {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: none;
+}
+.fpl-planner-app .fpl-dot-hit:hover { background: transparent; }
+.fpl-planner-app .fpl-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-card);
+  opacity: 0;
+  transition: opacity var(--t-fast) var(--ease);
+}
+.fpl-planner-app .fpl-dot-hit:hover .fpl-dot,
+.fpl-planner-app .fpl-dot-hit:focus-visible .fpl-dot,
+.fpl-planner-app .fpl-dot-hit.is-end .fpl-dot { opacity: 1; }
+.fpl-planner-app .fpl-dot.is-static {
+  position: absolute;
+  margin: -4px 0 0 -4px;
+  opacity: 1;
+}
+.fpl-planner-app .fpl-line-endlabel {
+  position: absolute;
+  right: -44px;
+  margin-top: -24px;
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  /* Sits in the tick gutter, so it masks whichever tick it lands on. */
+  background: var(--bg-card);
+  padding: 1px 4px;
+  border-radius: 4px;
+  z-index: 2;
+}
+.fpl-planner-app .fpl-line-x {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+/* sparkline */
+.fpl-planner-app .fpl-spark { position: relative; display: block; width: 100%; margin: 6px 0 10px; }
+.fpl-planner-app .fpl-spark .fpl-line-svg { position: absolute; inset: 2px 4px; }
+
+/* ------------------------------------------------------------------- tiles */
+
+.fpl-planner-app .fpl-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.fpl-planner-app .fpl-tile {
+  background: var(--bg-sunk);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  min-width: 0;
+  transition: border-color var(--t-fast) var(--ease);
+}
+.fpl-planner-app .fpl-tile:hover { border-color: var(--border-strong); }
+.fpl-planner-app .fpl-tile-v { margin-top: 4px; font-size: 20px; font-weight: 680; letter-spacing: -0.015em; }
+
+/* ------------------------------------------------------------ squad table */
+
+.fpl-planner-app .fpl-squad-table td.is-role { width: 34px; padding-right: 4px; }
+.fpl-planner-app .fpl-squad-table td.is-name { display: flex; align-items: center; gap: 8px; }
+.fpl-planner-app .fpl-pos-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: 0 0 8px;
+}
+.fpl-planner-app .fpl-pos-dot.pos-1 { background: var(--amber); }
+.fpl-planner-app .fpl-pos-dot.pos-2 { background: var(--accent); }
+.fpl-planner-app .fpl-pos-dot.pos-3 { background: var(--green); }
+.fpl-planner-app .fpl-pos-dot.pos-4 { background: var(--violet); }
+.fpl-planner-app .fpl-pp-arm.is-inline,
+.fpl-planner-app .fpl-pp-move.is-inline { position: static; display: inline-flex; align-items: center; justify-content: center; }
+.fpl-planner-app .fpl-pp-move.is-inline { margin-left: 2px; }
+.fpl-planner-app .fpl-role-bench {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 21px;
+  height: 21px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 700;
+}
+.fpl-planner-app .fpl-squad-table tr.is-bench td { color: var(--text-faint); }
+.fpl-planner-app .fpl-squad-table tr.is-bench td.is-strong { color: var(--text-dim); }
+.fpl-planner-app .fpl-squad-table tr.is-clickable { cursor: pointer; }
+.fpl-planner-app .fpl-squad-table tr.is-clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.fpl-planner-app .fpl-squad-table td.is-blank-fix { color: var(--text-faint); font-style: italic; }
+.fpl-planner-app th.is-sortable { padding: 0; }
+.fpl-planner-app .fpl-sort-btn {
+  background: transparent;
+  border: 0;
+  min-height: 0;
+  box-shadow: none;
+  padding: 10px 14px 9px;
+  width: 100%;
+  justify-content: flex-start;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  border-radius: 0;
+  gap: 6px;
+}
+.fpl-planner-app th.is-num .fpl-sort-btn { justify-content: flex-end; }
+.fpl-planner-app .fpl-sort-btn:hover { background: rgba(90, 162, 255, 0.07); border: 0; }
+.fpl-planner-app .fpl-sort-icon { font-size: 9px; opacity: 0.6; }
+.fpl-planner-app th[aria-sort="ascending"] .fpl-sort-icon,
+.fpl-planner-app th[aria-sort="descending"] .fpl-sort-icon { opacity: 1; color: var(--accent); }
+
+/* ----------------------------------------------------------- player drawer */
+
+/* Above the shared site chrome: the header sits at z-index 10001 and the sync
+   modals at 10002-10003 (assets/css/main.css), so a modal drawer the user just
+   opened has to clear all of them or its own title renders underneath the
+   fixed header. */
+.fpl-planner-app .fpl-dw-overlay { position: fixed; inset: 0; z-index: 10010; }
+.fpl-planner-app .fpl-dw-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 6, 10, 0.55);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  animation: fpl-fade-in var(--t-fast) var(--ease);
+}
+.fpl-planner-app .fpl-dw {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(430px, 94vw);
+  overflow-y: auto;
+  /* The page is scroll-locked while the drawer is open (ui/scroll-lock.js);
+     this stops momentum/touch scrolling from chaining past the drawer's own
+     top and bottom as well. */
+  overscroll-behavior: contain;
+  background: var(--bg-soft);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-pop);
+  padding: 20px 22px 28px;
+  animation: fpl-slide-in var(--t-slow) var(--ease);
+}
+@keyframes fpl-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fpl-slide-in { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+.fpl-planner-app .fpl-dw-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  border-radius: 50%;
+  justify-content: center;
+}
+.fpl-planner-app .fpl-dw-head { display: flex; gap: 13px; align-items: flex-start; padding-right: 40px; }
+.fpl-planner-app .fpl-dw-posband { width: 4px; align-self: stretch; border-radius: 3px; background: var(--border-strong); }
+.fpl-planner-app .fpl-dw-posband.pos-1 { background: var(--amber); }
+.fpl-planner-app .fpl-dw-posband.pos-2 { background: var(--accent); }
+.fpl-planner-app .fpl-dw-posband.pos-3 { background: var(--green); }
+.fpl-planner-app .fpl-dw-posband.pos-4 { background: var(--violet); }
+.fpl-planner-app .fpl-dw-title h3 { font-size: 21px; letter-spacing: -0.02em; }
+.fpl-planner-app .fpl-dw-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+  color: var(--text-dim);
+  font-size: 13.5px;
+}
+.fpl-planner-app .fpl-dw-news {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--amber-soft);
+  border: 1px solid color-mix(in srgb, var(--amber) 32%, transparent);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+.fpl-planner-app .fpl-dw-section { margin-top: 20px; }
+.fpl-planner-app .fpl-dw-gws { display: grid; gap: 6px; }
+.fpl-planner-app .fpl-dw-gw {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 11px;
+  background: var(--bg-sunk);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+.fpl-planner-app .fpl-dw-gw.is-blank { opacity: 0.65; }
+.fpl-planner-app .fpl-dw-gw-k { font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); flex: 0 0 44px; }
+.fpl-planner-app .fpl-dw-gw-v { font-weight: 650; color: var(--text); flex: 0 0 auto; }
+.fpl-planner-app .fpl-dw-gw-f { color: var(--text-dim); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: auto; }
+.fpl-planner-app .fpl-dw-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; }
+.fpl-planner-app .fpl-dw-stat {
+  background: var(--bg-sunk);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 9px 11px;
+  min-width: 0;
+}
+.fpl-planner-app .fpl-dw-stat-v { font-size: 15px; font-weight: 650; margin-top: 2px; }
+.fpl-planner-app .fpl-dw-breakdown { display: grid; gap: 5px; }
+.fpl-planner-app .fpl-dw-bd-row { display: grid; grid-template-columns: 130px minmax(0, 1fr) 38px; align-items: center; gap: 10px; font-size: 12px; }
+.fpl-planner-app .fpl-dw-bd-k { color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fpl-planner-app .fpl-dw-bd-track { height: 6px; border-radius: 4px; background: var(--bg-sunk); border: 1px solid var(--border-soft); overflow: hidden; display: block; }
+.fpl-planner-app .fpl-dw-bd-fill { display: block; height: 100%; border-radius: 3px; background: color-mix(in srgb, var(--accent) 55%, var(--bg-raised)); }
+.fpl-planner-app .fpl-dw-bd-fill.is-neg { background: color-mix(in srgb, var(--red) 55%, var(--bg-raised)); }
+.fpl-planner-app .fpl-dw-bd-v { text-align: right; font-weight: 650; color: var(--text); font-variant-numeric: tabular-nums; }
+.fpl-planner-app .fpl-dw-bd-v.is-neg { color: var(--red); }
+
+/* ------------------------------------------------------------ empty states */
+
+.fpl-planner-app .fpl-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 26px 16px;
+  text-align: center;
+}
+.fpl-planner-app .fpl-empty-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--bg-sunk);
+  border: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 17px;
+}
+
+/* segmented icon toggles (pitch / list) */
+.fpl-planner-app .fpl-seg-icons > button { padding: 6px 11px; }
+
 /* ---------------------------------------------------------------- responsive */
 
 @media (max-width: 900px) {
@@ -1243,13 +1917,16 @@ body.fpl-page {
 
 @media (max-width: 640px) {
   .fpl-planner-app .fpl-main { padding: 18px 13px 60px; }
-  .fpl-planner-app .fpl-landing h1 { font-size: 32px; }
+  .fpl-planner-app .fpl-landing-head { padding-top: 20px; }
+  .fpl-planner-app .fpl-landing h1 { font-size: 34px; }
   .fpl-planner-app .fpl-lede { font-size: 15.5px; }
   .fpl-planner-app .fpl-onboard { padding: 16px; }
   .fpl-planner-app .fpl-onboard-row { flex-direction: column; }
   .fpl-planner-app .fpl-onboard-row button { width: 100%; }
 
-  .fpl-planner-app .fpl-topbar { gap: 10px 14px; padding-bottom: 12px; margin-bottom: 14px; }
+  /* The full identity + stats + tabs block is too tall to pin on a phone;
+     it scrolls with the page there. */
+  .fpl-planner-app .fpl-topbar { position: static; gap: 10px 14px; margin: 0 -13px 14px; padding: 10px 13px; }
   .fpl-planner-app .fpl-idstats { margin-left: 0; gap: 14px; width: 100%; }
   .fpl-planner-app .fpl-stat-v { font-size: 14px; }
   .fpl-planner-app .fpl-tabs { width: 100%; }
@@ -1320,6 +1997,46 @@ body.fpl-page {
   .fpl-planner-app .fpl-change-rows { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .fpl-planner-app .fpl-change-rows dt { padding-top: 7px; }
   .fpl-planner-app .fpl-change-rows dt:first-child { padding-top: 0; }
+
+  /* charts: shorter plots, quieter labels, and dense x axes hide their middle */
+  .fpl-planner-app .fpl-chart-cols { min-height: 118px; gap: 3px; }
+  .fpl-planner-app .fpl-col-track { min-height: 62px; }
+  .fpl-planner-app .fpl-col-cap { font-size: 9.5px; }
+  .fpl-planner-app .fpl-col-x { font-size: 9px; }
+  .fpl-planner-app .fpl-line-plot { height: 120px; margin-right: 38px; }
+  .fpl-planner-app .fpl-line-tick,
+  .fpl-planner-app .fpl-line-endlabel { right: -38px; font-size: 9.5px; }
+  .fpl-planner-app .fpl-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .fpl-planner-app .fpl-tile-v { font-size: 17px; }
+
+  /* the drawer becomes a bottom sheet a thumb can reach */
+  .fpl-planner-app .fpl-dw {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-height: 86vh;
+    border-left: 0;
+    border-top: 1px solid var(--border-strong);
+    border-radius: 16px 16px 0 0;
+    animation: fpl-rise-in var(--t-slow) var(--ease);
+    padding: 18px 16px 26px;
+  }
+  .fpl-planner-app .fpl-dw-bd-row { grid-template-columns: 108px minmax(0, 1fr) 34px; gap: 8px; }
+}
+@keyframes fpl-rise-in { from { transform: translateY(36px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* Motion is decoration here, never information: every animated surface also
+   states its meaning in text, so removing motion loses nothing. */
+@media (prefers-reduced-motion: reduce) {
+  .fpl-planner-app *,
+  .fpl-planner-app *::before,
+  .fpl-planner-app *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* Very narrow: five across still has to fit without clipping or scrolling. */
@@ -1375,3 +2092,17 @@ body.fpl-page {
 .fpl-planner-app .fpl-btn-primary:hover:active { background-color: #1a52b4; }
 .fpl-planner-app .fpl-seg > button.is-on:hover:active { background-color: #2a6fe0; }
 .fpl-planner-app .fpl-btn-danger:hover:active { background-color: var(--red-soft); }
+
+/* The buttons introduced by the UI overhaul that must NOT read as buttons:
+   table sort headers and chart dot hit-targets. Same counter-pin rules as
+   above (more specific selector + !important beats main.css's), verified with
+   computed styles. */
+.fpl-planner-app .fpl-sort-btn { color: var(--text-faint) !important; }
+.fpl-planner-app .fpl-sort-btn:hover,
+.fpl-planner-app .fpl-sort-btn:focus,
+.fpl-planner-app .fpl-sort-btn:active { color: var(--text-dim) !important; background-color: rgba(90, 162, 255, 0.07); }
+.fpl-planner-app th[aria-sort="ascending"] .fpl-sort-btn,
+.fpl-planner-app th[aria-sort="descending"] .fpl-sort-btn { color: var(--text) !important; }
+.fpl-planner-app .fpl-dot-hit,
+.fpl-planner-app .fpl-dot-hit:hover,
+.fpl-planner-app .fpl-dot-hit:active { background-color: transparent; border: 0; }

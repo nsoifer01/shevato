@@ -34,6 +34,7 @@ import { historyView, planVersionsView } from './ui/history.js';
 import { settingsView } from './ui/settings.js';
 import { preSeasonIntro, manualSquadView, manualSquadState } from './ui/preseason.js';
 import { createPlanRunner } from './ui/plan-runner.js';
+import { createPlayerDrawer } from './ui/player-drawer.js';
 
 /* --------------------------------------------------------------- analytics */
 
@@ -76,6 +77,7 @@ const state = {
   manualIds: [],
   view: 'plan',
   pitchMode: 'recommended',
+  pitchDisplay: 'pitch',
   settings: store.getSettings(),
   fingerprint: null,
   notice: null,
@@ -101,6 +103,7 @@ let appEl = null;
 let landingEl = null;
 let ticker = null;
 let modelPromise = null;
+let drawer = null;
 
 /* --------------------------------------------------------------- utilities */
 
@@ -479,15 +482,21 @@ function topBar() {
   const teamName = squad ? squad.entryName : entry.name;
   const manager = squad ? squad.managerName : `${entry.player_first_name || ''} ${entry.player_last_name || ''}`.trim();
 
-  const tabs = el('div', { class: 'fpl-tabs fpl-seg' }, [
-    ['plan', 'Plan'],
-    ['history', 'History'],
-    ['settings', 'Settings'],
-  ].map(([id, label]) => el('button', {
+  // Not ARIA tabs on purpose: these switch whole views (no tabpanel pairing),
+  // so they stay plain buttons with aria-current marking the active one.
+  const tabs = el('div', { class: 'fpl-tabs fpl-seg', 'aria-label': 'App sections' }, [
+    ['plan', 'Plan', 'fa-clipboard-list'],
+    ['history', 'History', 'fa-clock-rotate-left'],
+    ['settings', 'Settings', 'fa-gear'],
+  ].map(([id, label, icon]) => el('button', {
     type: 'button',
     class: state.view === id ? 'is-on' : '',
+    'aria-current': state.view === id ? 'page' : null,
     onclick: () => selectView(id),
-  }, label)));
+  }, [
+    el('i', { class: `fa-solid ${icon} fpl-tab-icon`, 'aria-hidden': 'true' }),
+    label,
+  ])));
 
   const stats = [];
   // PRE-SEASON HAS NO ACCOUNT STATE. There is no rank, no points total and no
@@ -608,6 +617,9 @@ function planView() {
     gameState: state.gameState,
     initialMode: (bundle.squadState.picks || []).length ? state.pitchMode : 'recommended',
     onModeChange: (mode) => { state.pitchMode = mode; },
+    initialDisplay: state.pitchDisplay,
+    onDisplayChange: (display) => { state.pitchDisplay = display; },
+    onPlayerClick: (id, opts) => { if (drawer) drawer.open(id, opts); },
   }));
 
   nodes.push(whyCard({
@@ -746,6 +758,9 @@ function settingsTab() {
 
 function renderApp() {
   showApp();
+  // A rebuilt screen must not leave a drawer floating over content it no
+  // longer belongs to.
+  if (drawer) drawer.close();
   const body = state.view === 'history'
     ? historyTab()
     : state.view === 'settings'
@@ -831,6 +846,18 @@ async function boot() {
   if (!appEl || !landingEl) return;
   wireOnboarding();
   ensureModel();
+
+  // The drawer overlay lives on the app ROOT WRAPPER, outside the re-rendered
+  // #fpl-app region, so a plan re-render never tears it down mid-read.
+  drawer = createPlayerDrawer({
+    root: appEl.closest('.fpl-planner-app') || appEl.parentElement || appEl,
+    context: () => (state.bundle && state.gameState ? {
+      gameState: state.gameState,
+      projections: state.bundle.projections,
+      gw: state.bundle.current.gw,
+      horizon: state.bundle.current.horizon,
+    } : null),
+  });
 
   const params = new URLSearchParams(window.location.search);
   const view = params.get('view');

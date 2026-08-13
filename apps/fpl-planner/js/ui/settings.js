@@ -50,28 +50,56 @@ function settingRow({ title, text, actions, statusNode }) {
 export function settingsView({
   settings, teamId, squadState, dataStatus, sample, onApply, onChangeTeam, onDataRemoved, now = Date.now(),
 }) {
-  const horizon = el('select', { id: 'fpl-set-horizon', 'aria-label': 'Planning horizon' }, HORIZON_CHOICES.map(n => el('option', {
-    value: String(n), text: `${n} gameweeks`, selected: n === settings.horizon,
-  })));
-  const risk = el('select', { id: 'fpl-set-risk', 'aria-label': 'Risk profile' }, [
-    ['balanced', 'Balanced'],
-    ['aggressive', 'Aggressive'],
-    ['conservative', 'Conservative'],
-  ].map(([value, label]) => el('option', { value, text: label, selected: value === settings.risk })));
+  // Both options are small closed sets, so they render as segmented controls
+  // rather than dropdowns: every choice is visible, and the current one is
+  // marked rather than hidden behind a closed select.
+  let chosenHorizon = settings.horizon;
+  let chosenRisk = settings.risk;
+
+  const segFor = ({ options, chosen, onPick, ariaLabel }) => {
+    const seg = el('div', { class: 'fpl-seg', role: 'group', 'aria-label': ariaLabel }, options.map(([value, label]) => el('button', {
+      type: 'button',
+      class: value === chosen ? 'is-on' : '',
+      dataset: { value: String(value) },
+      'aria-pressed': value === chosen ? 'true' : 'false',
+      onclick: () => {
+        onPick(value);
+        for (const b of seg.children) {
+          const on = b.dataset.value === String(value);
+          b.classList.toggle('is-on', on);
+          b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        }
+      },
+    }, label)));
+    return seg;
+  };
+
+  const horizonSeg = segFor({
+    options: HORIZON_CHOICES.map(n => [n, `${n} gameweeks`]),
+    chosen: chosenHorizon,
+    onPick: (v) => { chosenHorizon = v; },
+    ariaLabel: 'Planning horizon',
+  });
+  const riskSeg = segFor({
+    options: [['balanced', 'Balanced'], ['aggressive', 'Aggressive'], ['conservative', 'Conservative']],
+    chosen: chosenRisk,
+    onPick: (v) => { chosenRisk = v; },
+    ariaLabel: 'Risk profile',
+  });
 
   const planner = card('Planner settings', [
     el('div', { class: 'fpl-opt-row' }, [
       el('div', { class: 'fpl-opt' }, [
-        el('label', { class: 'fpl-field-label', for: 'fpl-set-horizon', text: 'Planning horizon' }),
-        horizon,
+        el('span', { class: 'fpl-field-label', text: 'Planning horizon' }),
+        horizonSeg,
       ]),
       el('div', { class: 'fpl-opt' }, [
-        el('label', { class: 'fpl-field-label', for: 'fpl-set-risk', text: 'Risk profile' }),
-        risk,
+        el('span', { class: 'fpl-field-label', text: 'Risk profile' }),
+        riskSeg,
       ]),
       btn('Apply and recalculate', () => onApply({
-        horizon: Number(horizon.value),
-        risk: risk.value,
+        horizon: Number(chosenHorizon),
+        risk: chosenRisk,
       }), { variant: 'fpl-btn-primary' }),
     ]),
     el('p', { class: 'fpl-setting-text', style: 'margin-top:14px' }, 'The horizon is how many gameweeks a transfer is judged over. The risk profile moves four things at once: how much a hit has to win by, how many hits are allowed, whether upside or a floor is preferred, and how much a banked free transfer is worth.'),

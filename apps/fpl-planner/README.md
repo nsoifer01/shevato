@@ -43,9 +43,16 @@ apps/fpl-planner/
     ui/parts.js          banners, the sample-data label, staged loading
     ui/dashboard.js      hero, transfers, chips, pitch card, why, future, alternatives, status
     ui/pitch.js          formation rows, bench order, player cards
+    ui/charts.js         SVG/HTML column chart, trend line and sparkline (no libraries;
+                         every charted number also appears as text nearby)
+    ui/squad-table.js    the squad as a sortable table, the pitch's alternate view
+    ui/player-drawer.js  modal player drawer: projections, minutes, points breakdown,
+                         season totals, all read from the plan's own inputs
+    ui/scroll-lock.js    reference-counted page scroll lock for modal overlays;
+                         any future modal locks through it, never its own way
     ui/combobox.js       searchable, keyboard-accessible player picker
     ui/plan-diff.js      "what changed" between two stored plan versions
-    ui/history.js        gameweek history and saved plan versions
+    ui/history.js        gameweek history, season-at-a-glance charts, saved plan versions
     ui/settings.js       planner settings and the two deletion actions
     ui/preseason.js      pre-season routing, assisted manual squad entry
     data/api.js          browser FPL client (proxy, caching, freshness, dedupe)

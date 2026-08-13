@@ -407,7 +407,48 @@ ranking, and only the part of a correction that changes ORDER changes decisions
   `button:hover` AND a red `input[type=text]:focus` box-shadow. Every
   interactive element needs counter-pins verified by computed style, never by
   eye. `--text-faint` here is `#77869a` because anything darker fails WCAG AA
-  on its five surfaces; the lightest surface is the binding one.
+  on its five surfaces; the lightest surface is the binding one. EVERY NEW
+  BUTTON CLASS inherits the generic `--text` pin; a button that should read
+  quieter (table sort headers) needs its own explicit pin in the counter-pin
+  section or it silently renders full-brightness.
+- **main.css also uppercases headings site-wide.** The app's `h1-h4` reset
+  (`text-transform: none` on the root wrapper) is what keeps "FPL Planner" and
+  every card heading in the case it was written in; before 2026-08-12 the
+  landing rendered fully uppercase without anyone noticing, because nobody had
+  written a heading whose case mattered. Labels that ARE uppercase (card
+  heads, stat keys) set text-transform themselves.
+- **Site chrome z-index registry** (from main.css): header 10001, sync modals
+  10002-10003. An app-level modal (the player drawer) must sit ABOVE 10003 or
+  its top edge renders underneath the fixed header; the drawer overlay uses
+  10010. First attempt used 1200 and the drawer title was invisible on every
+  viewport, found only by screenshot.
+- **In-app sticky bars must be near-opaque.** `backdrop-filter` is skipped by
+  headless Chromium (and some engines), so a translucent sticky topbar lets
+  content bleed through the bar exactly where screenshots are taken. The
+  topbar uses a 97%-opaque background with blur as progressive enhancement.
+  On phones the identity+stats+tabs block is too tall to pin, so it goes
+  `position: static` under 640px.
+- **Modal overlays lock the page through `ui/scroll-lock.js`**, never their own
+  way. A `position: fixed` overlay does NOT stop the document behind it from
+  scrolling; the shipped drawer scrolled the background until the fixed-body
+  lock landed (pin body at `-scrollY`, compensate the vanished scrollbar with
+  body padding, restore inline styles + `scrollTo` on release; reference-
+  counted so re-entrant opens cannot unlock early). Two adjacent traps found
+  while verifying: `focus()` on close scrolls the trigger into view and undoes
+  the restored offset (always `focus({ preventScroll: true })` around a lock),
+  and Space on a focused close button ACTIVATES it - a probe that "tests
+  keyboard scrolling" by pressing Space on a button is testing button
+  activation. In-page popup lists (combobox, pre-season search results) are
+  not modals: they keep the page scrollable but carry
+  `overscroll-behavior: contain` so their boundary never chains a fling into
+  the page.
+- **UI charts are hand-rolled HTML/SVG** (`ui/charts.js`): single accent hue,
+  thin marks, hairline solid grid, hover/focus tooltips, and every charted
+  value also printed as text nearby (the history table, the future card's
+  per-GW columns, the drawer's per-GW rows), so no number is tooltip-gated.
+  SVG lines use `preserveAspectRatio="none"` + `vector-effect:
+  non-scaling-stroke`, with dots and labels as HTML overlays so nothing
+  distorts when the container resizes.
 - Shared-UI scoping is enforced by
   `sync-system/tests/shared-ui-consistency.test.mjs`: app styles on the ROOT
   WRAPPER div, page tokens on the body class, never style shared chrome.

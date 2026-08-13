@@ -15,7 +15,9 @@ import { combobox } from './combobox.js';
 import { formatMoney, xp, signedXp, points, countdown, dateTime, relativeTime, chipLabel, plural } from './format.js';
 import { actionText, pairUp, chipDecision, getProjection, describePlayer, fixtureLabel, availability } from './plan-model.js';
 import { btn, affirm, banner, kv, sampleTag, confidenceStrip } from './parts.js';
-import { renderPitch } from './pitch.js';
+import { renderPitch, pitchViewModel } from './pitch.js';
+import { renderSquadTable } from './squad-table.js';
+import { columnChart } from './charts.js';
 import { STRENGTH_PARAMS } from '../engine/strength.js';
 import { formatFreeTransfers } from '../engine/transfer-state.js';
 import { assessConfidence } from '../engine/confidence.js';
@@ -290,20 +292,35 @@ export function chipCard({ bundle, gameState }) {
 
 /* ------------------------------------------------------------------- pitch */
 
-export function pitchCard({ bundle, gameState, initialMode = 'recommended', onModeChange = null }) {
+export function pitchCard({
+  bundle, gameState, initialMode = 'recommended', onModeChange = null,
+  initialDisplay = 'pitch', onDisplayChange = null, onPlayerClick = null,
+}) {
   const plan = bundle.current;
   const body = el('div', {});
   let mode = initialMode;
+  let display = initialDisplay === 'list' ? 'list' : 'pitch';
 
   const draw = () => {
-    body.replaceChildren(renderPitch({
-      mode,
-      plan,
-      squadState: bundle.squadState,
-      gameState,
-      projections: bundle.projections,
-      gw: plan.gw,
-    }));
+    const vm = pitchViewModel({ mode, plan, squadState: bundle.squadState, gameState });
+    body.replaceChildren(display === 'list'
+      ? renderSquadTable({
+        vm,
+        gameState,
+        projections: bundle.projections,
+        gw: plan.gw,
+        horizon: plan.horizon,
+        onPlayerClick,
+      })
+      : renderPitch({
+        mode,
+        plan,
+        squadState: bundle.squadState,
+        gameState,
+        projections: bundle.projections,
+        gw: plan.gw,
+        onPlayerClick,
+      }));
   };
 
   const seg = el('div', { class: 'fpl-seg' }, ['current', 'recommended'].map(value => el('button', {
@@ -319,9 +336,33 @@ export function pitchCard({ bundle, gameState, initialMode = 'recommended', onMo
     },
   }, value === 'current' ? 'Current team' : 'Recommended')));
 
+  // Pitch or table: the same squad either way, so this is display, not data.
+  const displaySeg = el('div', { class: 'fpl-seg fpl-seg-icons' }, [
+    ['pitch', 'fa-chess-board', 'Show as pitch'],
+    ['list', 'fa-table-list', 'Show as table'],
+  ].map(([value, icon, label]) => el('button', {
+    type: 'button',
+    class: value === display ? 'is-on' : '',
+    dataset: { display: value },
+    title: label,
+    'aria-label': label,
+    'aria-pressed': value === display ? 'true' : 'false',
+    onclick: (event) => {
+      display = value;
+      for (const b of displaySeg.children) {
+        b.classList.toggle('is-on', b.dataset.display === display);
+        b.setAttribute('aria-pressed', b.dataset.display === display ? 'true' : 'false');
+      }
+      draw();
+      if (onDisplayChange) onDisplayChange(display);
+      event.currentTarget.blur();
+    },
+  }, el('i', { class: `fa-solid ${icon}`, 'aria-hidden': 'true' }))));
+
   draw();
   const hasSquad = (bundle.squadState.picks || []).length > 0;
-  return card('Your team', body, { aside: hasSquad ? seg : null });
+  const aside = el('div', { class: 'fpl-card-tools' }, [hasSquad ? seg : null, displaySeg]);
+  return card('Your team', body, { aside });
 }
 
 /* --------------------------------------------------------------------- why */
@@ -511,6 +552,23 @@ export function futureCard({ bundle, gameState, sources = null, now = Date.now()
     return card('Next gameweeks', el('p', { class: 'fpl-empty', text: 'The horizon ends with this gameweek, so there is nothing further to project.' }));
   }
 
+  // The whole horizon at a glance: this gameweek's projection beside the
+  // future ones it is being traded off against. Same numbers as the columns
+  // below, drawn once so the shape of the horizon is visible.
+  const chart = columnChart({
+    points: [
+      { label: `GW ${bundle.current.gw}`, value: bundle.current.xPointsGw, active: true, note: 'This gameweek' },
+      ...future.map(plan => ({
+        label: `GW ${plan.gw}`,
+        value: plan.xPointsGw,
+        note: actionText(plan, nameOf(gameState)).headline,
+      })),
+    ],
+    formatValue: (v) => `${xp(v)} xP`,
+    ariaLabel: 'Projected points per gameweek over the planning horizon',
+    labelCaps: 'all',
+  });
+
   const cols = future.map(plan => {
     const action = actionText(plan, nameOf(gameState));
     // Each column is scored on its own, so a gameweek that also has an injury
@@ -528,6 +586,7 @@ export function futureCard({ bundle, gameState, sources = null, now = Date.now()
   });
 
   return card('Projected future plan', [
+    el('div', { class: 'fpl-chart-block is-first' }, chart),
     el('div', { class: 'fpl-future' }, cols),
     el('div', { class: 'fpl-uncertain' }, [
       el('span', { text: '!' }),
