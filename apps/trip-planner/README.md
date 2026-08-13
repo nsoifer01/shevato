@@ -134,8 +134,11 @@ apps/trip-planner/
 ├── data/airports.json    # 3,271 IATA airports (generated, committed, precached)
 ├── scripts/build-airports.mjs  # Rebuilds the above from OurAirports:
 │                               #   npm run build:trip-planner:airports
-└── tests/                # node:test suites: trip-logic, booking-extract,
-                          #   gpx-ics, day-share-spend, sw-activate
+├── tests/                # node:test suites: trip-logic, booking-extract,
+│                         #   gpx-ics, day-share-spend, sw-activate
+└── e2e/                  # browser E2E regression suites (headless Chromium via
+                          #   the repo CDP harness): helpers.mjs + core, trips-sync,
+                          #   share, views, ui, pwa. npm run test:trip-planner:e2e
 
 netlify/functions/            # Server-side (unversioned): Tier 3 assistant + venue ratings
 ├── tp-assist.mjs             # Rate-limited Gemini proxy (origin guard, quota, no key leak,
@@ -159,10 +162,32 @@ no Google caching exception covers those fields.
 
 ## Tests
 
+Three layers, lowest appropriate layer wins:
+
 ```
-npm run test:trip-planner
+npm run test:trip-planner        # unit/domain: node --test against trip-logic.js
+npm run test:trip-planner:e2e    # browser E2E: headless Chromium over the real app
+npm run test:trip-planner:e2e:headed   # same, in a visible browser for debugging
 ```
 
-Pure-logic tests via `node --test` against `js/trip-logic.js` (dual-exposed as `window.TripLogic` and a CommonJS module). No installs, no config.
+Pure-logic tests via `node --test` against `js/trip-logic.js` (dual-exposed as
+`window.TripLogic` and a CommonJS module). No installs, no config. The Tier 3
+function's quota math and request guards have their own suite (run by the root
+`npm test`, or on their own with `npm run test:tp-assist-quota`).
 
-The Tier 3 function's quota math and request guards have their own suite (run by the root `npm test`, or on their own with `npm run test:tp-assist-quota`).
+The E2E suites under `e2e/` run on the repo's zero-dependency CDP harness
+(`tests/browser/`, the same one `npm run test:browser` uses, which also runs
+them in CI on every pull request). The runner starts its own static server
+(port 8099) and headless Chromium, runs the suites, and tears both down;
+nothing needs to be running beforehand. Chromium or Chrome on `PATH` (or
+`CHROME_BIN`) is the only requirement. They cover the workflows a DOM-free
+test cannot: bootstrap, create-and-reload persistence, the item lifecycle,
+undo/redo wiring, double-submit guards, multi-trip separation, stale-dialog
+guards, two-tab reconciliation, read-only shares, import-as-mine, XSS
+rendering, filters, warnings navigation, dialog mechanics, keyboard
+shortcuts, Days view, responsive smoke at 1280/390/360, a ~340-item trip,
+and an offline reload against the service worker's precache. External
+providers (Photon, Open-Meteo, Nominatim, Frankfurter, Google, Firebase) are
+blocked per page by default so runs are deterministic; a failing check drops
+a screenshot into `.screenshots/e2e-trip-planner/` (gitignored). See
+FINDINGS "Browser E2E suite" for the architecture and the traps.
