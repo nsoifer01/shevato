@@ -37,9 +37,21 @@ export function sampleBanner() {
   ]);
 }
 
+// Tone decides the icon: callers still pass a text `mark` as the fallback for
+// the odd tone (the plan-change card passes its own), but the three standard
+// tones always render the same recognisable symbol.
+const BANNER_ICONS = {
+  info: 'fa-circle-info',
+  warn: 'fa-triangle-exclamation',
+  error: 'fa-circle-exclamation',
+};
+
 export function banner({ tone = 'info', mark = 'i', title, text = null, list = null, actions = null }) {
+  const icon = BANNER_ICONS[tone];
   return el('div', { class: `fpl-banner is-${tone}` }, [
-    el('div', { class: 'fpl-banner-mark', text: mark }),
+    icon
+      ? el('div', { class: 'fpl-banner-mark', 'aria-hidden': 'true' }, el('i', { class: `fa-solid ${icon}` }))
+      : el('div', { class: 'fpl-banner-mark', text: mark }),
     el('div', { class: 'fpl-banner-body' }, [
       el('div', { class: 'fpl-banner-title', text: title }),
       text ? el('div', { class: 'fpl-banner-text' }, text) : null,
@@ -54,8 +66,11 @@ export function banner({ tone = 'info', mark = 'i', title, text = null, list = n
 // A recommendation to do nothing is still a recommendation. This is what keeps
 // "Roll your transfer" and "Do not use a chip" from reading like empty states.
 export function affirm({ mark = '✓', title, body, tone = '' }) {
+  const icon = mark === '✓' ? 'fa-check' : mark === '★' ? 'fa-star' : null;
   return el('div', { class: `fpl-affirm ${tone}`.trim() }, [
-    el('div', { class: 'fpl-affirm-mark', text: mark }),
+    icon
+      ? el('div', { class: 'fpl-affirm-mark', 'aria-hidden': 'true' }, el('i', { class: `fa-solid ${icon}` }))
+      : el('div', { class: 'fpl-affirm-mark', text: mark }),
     el('div', {}, [
       el('div', { class: 'fpl-affirm-title', text: title }),
       body ? el('div', { class: 'fpl-affirm-body' }, body) : null,
@@ -113,11 +128,34 @@ export function freshness(items) {
   ])));
 }
 
-export function kv(label, value) {
-  return el('div', {}, [
+// `wide` spans the value across the whole grid (for one long sentence in a
+// grid of short facts); `muted` renders it as secondary prose rather than a
+// bold value.
+export function kv(label, value, { wide = false, muted = false } = {}) {
+  const cls = [wide ? 'fpl-kv-wide' : '', muted ? 'fpl-kv-muted' : ''].filter(Boolean).join(' ');
+  return el('div', { class: cls || null }, [
     el('div', { class: 'fpl-kv-k', text: label }),
     el('div', { class: 'fpl-kv-v', text: value }),
   ]);
+}
+
+// Display-only emphasis: wraps the numeric facts inside an engine-written
+// sentence (money, points, formations, gameweeks, percentages) so they can be
+// found at a glance. The text itself is never altered - every character of
+// the input is emitted exactly once, some inside an emphasis span.
+const EM_PATTERN = /(£\d+(?:\.\d+)?m?|\b\d+(?:\.\d+)?\s?(?:xP|points?|pts)\b|\b\d-\d-\d\b|\b(?:GW|Gameweek)\s?\d+\b|\b\d+(?:\.\d+)?%|\b\d+(?:\.\d+)?\b)/g;
+
+export function emphasize(text) {
+  const s = String(text ?? '');
+  const out = [];
+  let last = 0;
+  for (const m of s.matchAll(EM_PATTERN)) {
+    if (m.index > last) out.push(s.slice(last, m.index));
+    out.push(el('strong', { class: 'fpl-em', text: m[0] }));
+    last = m.index + m[0].length;
+  }
+  if (last < s.length) out.push(s.slice(last));
+  return out.length ? out : [s];
 }
 
 // The staged loading screen. The stages are the planner's own

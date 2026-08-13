@@ -14,8 +14,10 @@ import { el, card, disclosure } from './dom.js';
 import { combobox } from './combobox.js';
 import { formatMoney, xp, signedXp, points, countdown, dateTime, relativeTime, chipLabel, plural } from './format.js';
 import { actionText, pairUp, chipDecision, getProjection, describePlayer, fixtureLabel, availability } from './plan-model.js';
-import { btn, affirm, banner, kv, sampleTag, confidenceStrip } from './parts.js';
-import { renderPitch } from './pitch.js';
+import { btn, affirm, banner, kv, sampleTag, confidenceStrip, emphasize } from './parts.js';
+import { renderPitch, pitchViewModel } from './pitch.js';
+import { renderSquadTable } from './squad-table.js';
+import { columnChart } from './charts.js';
 import { STRENGTH_PARAMS } from '../engine/strength.js';
 import { formatFreeTransfers } from '../engine/transfer-state.js';
 import { assessConfidence } from '../engine/confidence.js';
@@ -290,20 +292,35 @@ export function chipCard({ bundle, gameState }) {
 
 /* ------------------------------------------------------------------- pitch */
 
-export function pitchCard({ bundle, gameState, initialMode = 'recommended', onModeChange = null }) {
+export function pitchCard({
+  bundle, gameState, initialMode = 'recommended', onModeChange = null,
+  initialDisplay = 'pitch', onDisplayChange = null, onPlayerClick = null,
+}) {
   const plan = bundle.current;
   const body = el('div', {});
   let mode = initialMode;
+  let display = initialDisplay === 'list' ? 'list' : 'pitch';
 
   const draw = () => {
-    body.replaceChildren(renderPitch({
-      mode,
-      plan,
-      squadState: bundle.squadState,
-      gameState,
-      projections: bundle.projections,
-      gw: plan.gw,
-    }));
+    const vm = pitchViewModel({ mode, plan, squadState: bundle.squadState, gameState });
+    body.replaceChildren(display === 'list'
+      ? renderSquadTable({
+        vm,
+        gameState,
+        projections: bundle.projections,
+        gw: plan.gw,
+        horizon: plan.horizon,
+        onPlayerClick,
+      })
+      : renderPitch({
+        mode,
+        plan,
+        squadState: bundle.squadState,
+        gameState,
+        projections: bundle.projections,
+        gw: plan.gw,
+        onPlayerClick,
+      }));
   };
 
   const seg = el('div', { class: 'fpl-seg' }, ['current', 'recommended'].map(value => el('button', {
@@ -319,17 +336,59 @@ export function pitchCard({ bundle, gameState, initialMode = 'recommended', onMo
     },
   }, value === 'current' ? 'Current team' : 'Recommended')));
 
+  // Pitch or table: the same squad either way, so this is display, not data.
+  const displaySeg = el('div', { class: 'fpl-seg fpl-seg-icons' }, [
+    ['pitch', 'fa-chess-board', 'Show as pitch'],
+    ['list', 'fa-table-list', 'Show as table'],
+  ].map(([value, icon, label]) => el('button', {
+    type: 'button',
+    class: value === display ? 'is-on' : '',
+    dataset: { display: value },
+    title: label,
+    'aria-label': label,
+    'aria-pressed': value === display ? 'true' : 'false',
+    onclick: (event) => {
+      display = value;
+      for (const b of displaySeg.children) {
+        b.classList.toggle('is-on', b.dataset.display === display);
+        b.setAttribute('aria-pressed', b.dataset.display === display ? 'true' : 'false');
+      }
+      draw();
+      if (onDisplayChange) onDisplayChange(display);
+      event.currentTarget.blur();
+    },
+  }, el('i', { class: `fa-solid ${icon}`, 'aria-hidden': 'true' }))));
+
   draw();
   const hasSquad = (bundle.squadState.picks || []).length > 0;
-  return card('Your team', body, { aside: hasSquad ? seg : null });
+  const aside = el('div', { class: 'fpl-card-tools' }, [hasSquad ? seg : null, displaySeg]);
+  return card('Your team', body, { aside });
 }
 
 /* --------------------------------------------------------------------- why */
 
+// Engine sentences with their numeric facts emphasized for scanning. The
+// wording is untouched; only the numbers gain weight.
 function reasonList(reasons) {
   return el('ul', { class: 'fpl-reasons' }, reasons.map(r => el('li', {}, [
-    el('span', { text: r.text }),
+    el('span', { class: 'fpl-reason-text' }, emphasize(r.text)),
   ])));
+}
+
+// A section header inside a panel: an accent tick, the uppercase label, and
+// an optional aside (the confidence pill). One shape for every subsection so
+// "THE PLAN", "CAPTAIN: ..." and "HOLDING YOUR CHIPS" all read as headers.
+function subhead(text, aside = null) {
+  return el('div', { class: 'fpl-subhead' }, [
+    el('span', { class: 'fpl-subhead-t', text }),
+    aside,
+  ]);
+}
+
+// One subsection: header plus its content, spaced as a unit so the panel
+// reads as groups rather than as one continuous column of lines.
+function whyGroup(header, content) {
+  return el('section', { class: 'fpl-why-group' }, [header, content]);
 }
 
 export function whyCard({ bundle, gameState, open = false, onToggle = null, sources = null, now = Date.now() }) {
@@ -337,44 +396,51 @@ export function whyCard({ bundle, gameState, open = false, onToggle = null, sour
   const ex = plan.explanation || {};
   const body = [];
 
-  body.push(el('div', { class: 'fpl-subhead', text: 'The plan' }));
-  body.push(reasonList(ex.bullets || []));
+  body.push(whyGroup(subhead('The plan'), reasonList(ex.bullets || [])));
 
   // The full working behind the band in the hero. Everything that scored
   // against the plan AND everything that scored for it, so a user can see that
-  // a high band was earned rather than assumed.
+  // a high band was earned rather than assumed. The band itself renders as a
+  // pill on the header; each row carries its verdict as a leading dot plus a
+  // trailing tag in the header's own words.
   const band = bandFor(plan, { bundle, gameState, sources, now });
-  body.push(el('div', { class: 'fpl-subhead', text: `How sure is this? ${band.label}` }));
-  body.push(el('ul', { class: 'fpl-reasons' }, band.factors.filter(f => f.text).map(f => el('li', {}, [
-    el('span', { text: `${f.text.charAt(0).toUpperCase()}${f.text.slice(1)}.` }),
-    // The heading above asks "How sure is this?", so each row answers it in the
-    // same words. This used to read "For" and "Against", which left the reader
-    // asking for or against WHAT: it looked like a truncated word rather than a
-    // verdict on the sentence beside it.
-    el('span', {
-      class: `fpl-conf-mark is-${f.weight > 0 ? 'against' : 'for'}`,
-      text: f.weight > 0 ? 'Less sure' : 'More sure',
-    }),
-  ]))));
+  body.push(whyGroup(
+    subhead('How sure is this?', el('span', { class: `fpl-conf-pill is-${band.band}`, text: band.label })),
+    el('ul', { class: 'fpl-reasons is-verdicts' }, band.factors.filter(f => f.text).map(f => {
+      // "For" and "Against" once stood here and read as truncated words; the
+      // heading asks "How sure is this?", so each row answers in those words.
+      const dir = f.weight > 0 ? 'against' : 'for';
+      return el('li', { class: `fpl-conf-row is-${dir}` }, [
+        el('span', { class: 'fpl-conf-dot', 'aria-hidden': 'true' }),
+        el('span', { class: 'fpl-reason-text' }, emphasize(`${f.text.charAt(0).toUpperCase()}${f.text.slice(1)}.`)),
+        el('span', {
+          class: `fpl-conf-mark is-${dir}`,
+          text: f.weight > 0 ? 'Less sure' : 'More sure',
+        }),
+      ]);
+    })),
+  ));
 
   for (const t of ex.transferReasons || []) {
-    body.push(el('div', { class: 'fpl-subhead', text: `${t.outName} out, ${t.inName} in` }));
-    body.push(reasonList(t.reasons || []));
+    body.push(whyGroup(subhead(`${t.outName} out, ${t.inName} in`), reasonList(t.reasons || [])));
   }
 
   if (ex.captainReason) {
-    body.push(el('div', { class: 'fpl-subhead', text: `Captain: ${describePlayer(gameState, ex.captainReason.playerId).name}` }));
-    body.push(reasonList(ex.captainReason.reasons || []));
+    body.push(whyGroup(
+      subhead(`Captain: ${describePlayer(gameState, ex.captainReason.playerId).name}`),
+      reasonList(ex.captainReason.reasons || []),
+    ));
   }
 
   if (ex.chipReason && (ex.chipReason.reasons || []).length) {
-    body.push(el('div', { class: 'fpl-subhead', text: ex.chipReason.decision === 'play' ? 'Playing a chip' : 'Holding your chips' }));
-    body.push(reasonList(ex.chipReason.reasons));
+    body.push(whyGroup(
+      subhead(ex.chipReason.decision === 'play' ? 'Playing a chip' : 'Holding your chips'),
+      reasonList(ex.chipReason.reasons),
+    ));
   }
 
   if (ex.rollReason) {
-    body.push(el('div', { class: 'fpl-subhead', text: 'Keeping the transfer' }));
-    body.push(reasonList(ex.rollReason.reasons || []));
+    body.push(whyGroup(subhead('Keeping the transfer'), reasonList(ex.rollReason.reasons || [])));
   }
 
   const node = disclosure('Why this plan?', body, { open });
@@ -476,17 +542,23 @@ export function renderWhyNot(result, gameState) {
   if ((result.rows || []).length) {
     nodes.push(el('dl', { class: 'fpl-whynot-rows' }, result.rows.flatMap(r => [
       el('dt', { text: r.label }),
-      el('dd', { text: r.text }),
+      el('dd', {}, emphasize(r.text)),
     ])));
   }
 
+  // The working: supporting evidence under the comparison, visually
+  // subordinate to it rather than one more block of the same weight.
   const items = [...(result.blockers || []), ...(result.reasons || [])];
   if (items.length) {
-    nodes.push(el('ul', { class: 'fpl-blockers' }, items.map(r => el('li', { text: r.text }))));
+    nodes.push(el('div', { class: 'fpl-whynot-evidence' },
+      el('ul', { class: 'fpl-blockers' }, items.map(r => el('li', {}, emphasize(r.text))))));
   }
 
   if (result.result) {
-    nodes.push(el('div', { class: 'fpl-whynot-result', text: result.result.text }));
+    nodes.push(el('div', { class: 'fpl-whynot-result' }, [
+      el('span', { class: 'fpl-whynot-result-mark', 'aria-hidden': 'true' }, el('i', { class: 'fa-solid fa-arrow-right-long' })),
+      el('span', {}, emphasize(result.result.text)),
+    ]));
   }
 
   // One primary answer on screen; every other route it looked at is one click
@@ -511,6 +583,23 @@ export function futureCard({ bundle, gameState, sources = null, now = Date.now()
     return card('Next gameweeks', el('p', { class: 'fpl-empty', text: 'The horizon ends with this gameweek, so there is nothing further to project.' }));
   }
 
+  // The whole horizon at a glance: this gameweek's projection beside the
+  // future ones it is being traded off against. Same numbers as the columns
+  // below, drawn once so the shape of the horizon is visible.
+  const chart = columnChart({
+    points: [
+      { label: `GW ${bundle.current.gw}`, value: bundle.current.xPointsGw, active: true, note: 'This gameweek' },
+      ...future.map(plan => ({
+        label: `GW ${plan.gw}`,
+        value: plan.xPointsGw,
+        note: actionText(plan, nameOf(gameState)).headline,
+      })),
+    ],
+    formatValue: (v) => `${xp(v)} xP`,
+    ariaLabel: 'Projected points per gameweek over the planning horizon',
+    labelCaps: 'all',
+  });
+
   const cols = future.map(plan => {
     const action = actionText(plan, nameOf(gameState));
     // Each column is scored on its own, so a gameweek that also has an injury
@@ -528,6 +617,7 @@ export function futureCard({ bundle, gameState, sources = null, now = Date.now()
   });
 
   return card('Projected future plan', [
+    el('div', { class: 'fpl-chart-block is-first' }, chart),
     el('div', { class: 'fpl-future' }, cols),
     el('div', { class: 'fpl-uncertain' }, [
       el('span', { text: '!' }),
@@ -579,14 +669,6 @@ export function statusCard({ bundle, sources = [], runnerMode = 'worker', modelS
     ds.sample ? el('div', { class: 'fpl-sample-banner' }, [sampleTag(), el('span', { text: 'These figures come from the bundled sample dataset, not from Fantasy Premier League.' })]) : null,
     el('div', { class: 'fpl-kv' }, [
       kv('Model version', ds.modelVersion || 'unknown'),
-      // The version above names whatever actually produced the plan. This row
-      // says whether the trained artifact was behind it, and when it was not,
-      // why not: a plan built on the analytic priors looks exactly as confident
-      // as one built on a calibrator measured against held-out seasons. Three
-      // answers are possible, and today's is the middle one: the artifact loads,
-      // and is deliberately not used because replaying past seasons with it lost
-      // points. Do not shorten this to "loaded" or "not loaded".
-      kv('Trained model', describeModelStatus(modelStatus)),
       kv('Horizon', `${ds.horizon} gameweeks`),
       kv('Uncertainty discount', `${ds.discount} per gameweek`),
       kv('Risk profile', ds.risk || 'balanced'),
@@ -595,17 +677,34 @@ export function statusCard({ bundle, sources = [], runnerMode = 'worker', modelS
       kv('Computed', ds.planComputedAt ? relativeTime(ds.planComputedAt, now) : 'unknown'),
       kv('Data fetched', ds.fetchedAt ? age(ds.fetchedAt) : 'unknown'),
       kv('Ran in', runnerMode === 'worker' ? 'a background worker' : 'the page (no worker)'),
-      kv('Legality check', bundle.validation && bundle.validation.ok ? 'Passed' : 'Failed'),
+      // A pass/fail is a status, so it renders as one.
+      el('div', {}, [
+        el('div', { class: 'fpl-kv-k', text: 'Legality check' }),
+        el('div', { class: 'fpl-kv-v' }, el('span', {
+          class: `fpl-status-pill ${bundle.validation && bundle.validation.ok ? 'is-good' : 'is-bad'}`,
+          text: bundle.validation && bundle.validation.ok ? 'Passed' : 'Failed',
+        })),
+      ]),
+      // The version above names whatever actually produced the plan. This row
+      // says whether the trained artifact was behind it, and when it was not,
+      // why not: a plan built on the analytic priors looks exactly as confident
+      // as one built on a calibrator measured against held-out seasons. Three
+      // answers are possible, and today's is the middle one: the artifact loads,
+      // and is deliberately not used because replaying past seasons with it lost
+      // points. Do not shorten this to "loaded" or "not loaded". It is one long
+      // sentence in a grid of short facts, so it spans the full row as
+      // secondary prose instead of stretching one column.
+      kv('Trained model', describeModelStatus(modelStatus), { wide: true, muted: true }),
     ]),
     el('div', { class: 'fpl-subhead', text: 'Sources' }),
-    ...sourceRows,
+    el('div', { class: 'fpl-src-list' }, sourceRows),
     (bundle.squadState.warnings || []).length
       ? el('div', {}, [
         el('div', { class: 'fpl-subhead', text: 'Data quality' }),
         el('ul', { class: 'fpl-missing' }, bundle.squadState.warnings.map(w => el('li', { text: w.message }))),
       ])
       : null,
-    el('p', { class: 'fpl-note', style: 'margin-top:16px' }, 'Every plan is checked for squad size, position counts, the three-per-club limit, affordability at selling prices, formation legality, bench composition, captain and vice, chip windows and hit arithmetic before it is shown. A plan that fails is never rendered.'),
+    el('p', { class: 'fpl-note fpl-footnote' }, 'Every plan is checked for squad size, position counts, the three-per-club limit, affordability at selling prices, formation legality, bench composition, captain and vice, chip windows and hit arithmetic before it is shown. A plan that fails is never rendered.'),
   ], { open });
   if (onToggle) node.addEventListener('toggle', () => onToggle(node.open));
   return node;

@@ -23,7 +23,7 @@ function rawPlayer(gameState, id) {
 }
 
 export function playerCard({
-  playerId, gameState, projections, gw, isCaptain = false, isVice = false, move = null, benchNumber = null, isBenchGk = false,
+  playerId, gameState, projections, gw, isCaptain = false, isVice = false, move = null, benchNumber = null, isBenchGk = false, onClick = null,
 }) {
   const info = describePlayer(gameState, playerId);
   const row = getProjection(projections, playerId, gw);
@@ -43,9 +43,13 @@ export function playerCard({
   if (avail && avail.kind === 'out') flags.push(el('span', { class: 'fpl-chip is-inj', text: avail.label, title: avail.news }));
   if (avail && avail.kind === 'doubt') flags.push(el('span', { class: 'fpl-chip is-doubt', text: avail.label, title: avail.news }));
 
+  if (onClick) classes.push('is-press');
   const card = el('div', {
     class: classes.join(' '),
     title: avail && avail.news ? avail.news : null,
+    tabindex: onClick ? '0' : null,
+    role: onClick ? 'button' : null,
+    'aria-label': onClick ? `${info.name}: open player details` : null,
   }, [
     isCaptain ? el('span', { class: 'fpl-pp-arm is-c', text: 'C', title: 'Captain' }) : null,
     !isCaptain && isVice ? el('span', { class: 'fpl-pp-arm is-v', text: 'V', title: 'Vice-captain' }) : null,
@@ -56,6 +60,16 @@ export function playerCard({
     el('div', { class: 'fpl-pp-xp' }, [row ? xp(row.xPoints) : '-', el('span', { text: 'xP' })]),
     flags.length ? el('div', { class: 'fpl-pp-flags' }, flags) : null,
   ]);
+
+  if (onClick) {
+    card.addEventListener('click', () => onClick(playerId, { trigger: card }));
+    card.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        onClick(playerId, { trigger: card });
+      }
+    });
+  }
 
   if (benchNumber !== null) {
     return el('div', { class: `fpl-bench-slot ${isBenchGk ? 'is-gk' : ''}`.trim() }, [
@@ -112,7 +126,7 @@ export function pitchViewModel({ mode, plan, squadState, gameState }) {
   };
 }
 
-export function renderPitch({ mode, plan, squadState, gameState, projections, gw }) {
+export function renderPitch({ mode, plan, squadState, gameState, projections, gw, onPlayerClick = null }) {
   const vm = pitchViewModel({ mode, plan, squadState, gameState });
   const positionOf = id => {
     const player = rawPlayer(gameState, id);
@@ -127,6 +141,7 @@ export function renderPitch({ mode, plan, squadState, gameState, projections, gw
     isCaptain: id === vm.captain,
     isVice: id === vm.viceCaptain,
     move: moveOf(id),
+    onClick: onPlayerClick,
   })))));
 
   const benchOrder = vm.bench && Array.isArray(vm.bench.order) ? vm.bench.order : [];
@@ -134,10 +149,10 @@ export function renderPitch({ mode, plan, squadState, gameState, projections, gw
     el('div', { class: 'fpl-bench-title', text: 'Bench, in auto-sub order' }),
     el('div', { class: 'fpl-bench-row' }, [
       vm.bench && vm.bench.gk
-        ? playerCard({ playerId: vm.bench.gk, gameState, projections, gw, move: moveOf(vm.bench.gk), benchNumber: 0, isBenchGk: true })
+        ? playerCard({ playerId: vm.bench.gk, gameState, projections, gw, move: moveOf(vm.bench.gk), benchNumber: 0, isBenchGk: true, onClick: onPlayerClick })
         : null,
       ...benchOrder.map((id, i) => playerCard({
-        playerId: id, gameState, projections, gw, move: moveOf(id), benchNumber: i + 1,
+        playerId: id, gameState, projections, gw, move: moveOf(id), benchNumber: i + 1, onClick: onPlayerClick,
       })),
     ]),
   ]);
