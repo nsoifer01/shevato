@@ -12,7 +12,7 @@
 // localStorage and its storage listener reacts to later blocks' writes, which
 // produces convincing phantom failures (seen while writing this suite).
 import {
-  APP, recorder, freshIds, iso, dbOf, standardTrip,
+  APP, recorder, freshIds, iso, item, trip, dbOf, standardTrip,
   openApp, readDb, rowCount, overlayOpenId,
   tpErrors, menuAct, openAddItem, fillItem, saveItem, addItemViaUi,
   switchView, escape, ctrlKey, expandTimeline, closePage, gotoHard, evaluate,
@@ -235,6 +235,52 @@ export async function run({ base, cdpPort }) {
       await t('tp-core E: double submit copies the day ONCE', copies.length === srcCount
         && copies.filter(x => x.title === 'Doubled? (copy)').length === 1, `src=${srcCount} copies=${copies.length}`, s);
     }
+  });
+
+  /* ------------------- S. item count summary chip ------------------------ */
+  // The Items chip is a WHOLE-TRIP count of non-cancelled items (the rule is
+  // pinned in trip-logic tests); this block protects the UI wiring: every
+  // mutation path repaints it, filters never touch it, and it survives trip
+  // switches and reloads.
+  freshIds();
+  const seedS = standardTrip(); // 8 items, one cancelled -> 7 active
+  const soloS = trip({ name: 'Solo count', items: [item({ title: 'Single plan', startDate: iso(80), startTime: '10:00' })] });
+  await withPage('tp-core S', { db: dbOf([seedS, soloS], seedS.id) }, async (s) => {
+    const chipText = () => evaluate(s, `(()=>{const c=[...document.querySelectorAll('#summary .chip')]
+      .find(x=>{const k=x.querySelector('.k'); return k && k.textContent.trim()==='Items'});
+      return c ? c.querySelector('.v').textContent.trim() : null})()`);
+    await t('tp-core S: chip counts active items, not cancelled ones', (await chipText()) === '7 items', `chip=${await chipText()}`, s);
+
+    await addItemViaUi(s, { type: 'activity', title: 'Count me', start: iso(40), time: '09:00' });
+    await t('tp-core S: add raises the count', (await chipText()) === '8 items', `chip=${await chipText()}`, s);
+
+    const added = (await readDb(s)).trips[0].items.find(x => x.title === 'Count me');
+    await setValue(s, `.tp-row[data-id="${added.id}"] .status-sel`, 'cancelled');
+    await sleep(400);
+    await t('tp-core S: cancelling lowers the count', (await chipText()) === '7 items', `chip=${await chipText()}`, s);
+    await setValue(s, `.tp-row[data-id="${added.id}"] .status-sel`, 'to-book');
+    await sleep(400);
+    await t('tp-core S: restoring from Cancelled raises it again', (await chipText()) === '8 items', `chip=${await chipText()}`, s);
+
+    await clickSel(s, `.tp-row[data-id="${added.id}"] [data-act="delete"]`, { settle: 500 });
+    await t('tp-core S: delete lowers the count', (await chipText()) === '7 items', `chip=${await chipText()}`, s);
+    await clickSel(s, '#undoBtn', { settle: 600 });
+    await t('tp-core S: undo restores the count', (await chipText()) === '8 items', `chip=${await chipText()}`, s);
+
+    await setValue(s, '#searchBox', 'zzz-no-match');
+    await sleep(600);
+    await t('tp-core S: filtering never changes the whole-trip count', (await chipText()) === '8 items', `chip=${await chipText()}`, s);
+    await setValue(s, '#searchBox', '');
+    await sleep(400);
+
+    await setValue(s, '#tripSelect', soloS.id);
+    await sleep(600);
+    await t('tp-core S: switching trips switches the count, singular wording', (await chipText()) === '1 item', `chip=${await chipText()}`, s);
+    await setValue(s, '#tripSelect', seedS.id);
+    await sleep(600);
+
+    await gotoHard(s, base + APP, { settle: 900 });
+    await t('tp-core S: the count survives a reload', (await chipText()) === '8 items', `chip=${await chipText()}`, s);
   });
 
   return R;

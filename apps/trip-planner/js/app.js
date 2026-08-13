@@ -23,7 +23,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 59;
+  const TP_BUILD = 60;
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   const TYPE_META = {
@@ -1012,6 +1012,10 @@
         : `${esc(fmtMoney(trip, money.confirmed.total))} <small>of ${esc(figure)}</small>`;
       chips.push(chip('Budget', body + short(missing), (verdict === 'ok' || verdict === 'refund') ? 'ok-chip' : 'warn-chip', spentShare(money.confirmed.total, trip.budget)));
     }
+    // Whole-trip and deliberately filter-blind: tripStats already excludes
+    // cancelled items, so this is the count of things actually on the plan,
+    // not the count of rows a filter happens to be showing.
+    chips.push(chip('Items', `${s.count} ${s.count === 1 ? 'item' : 'items'}`));
     // Problems only: an info line (the pace note) is an observation, so counting
     // it here would put a trip with nothing wrong on an amber "Issues 1" chip
     // and send the traveller into the panel looking for the problem.

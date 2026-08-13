@@ -697,6 +697,27 @@ test('tripStats never counts a `local` span as a booked night', () => {
   assert.equal(L.tripStats(trip).bookedNights, 3);
 });
 
+// `count` feeds the summary bar's Items chip, so its rule is pinned here: it
+// is the whole-trip count of items still ON the plan. Cancelled items are out
+// (cancelling must read as removal from the plan), every live status is in,
+// and an undated note counts the same as a dated flight.
+test('tripStats.count counts non-cancelled items only', () => {
+  assert.equal(L.tripStats({ items: [] }).count, 0);
+  assert.equal(L.tripStats({ items: [
+    { id: 'n', type: 'note', title: 'Undated packing note', startDate: '', status: 'to-book' },
+  ] }).count, 1);
+  const trip = { items: [
+    stay('s', 'Tokyo', '2027-01-01', '2027-01-03'),
+    flight('f', 'SHV to HND', '2027-01-01'),
+    { id: 'a', type: 'activity', title: 'Museum', startDate: '2027-01-02', status: 'decide' },
+    { id: 'c', type: 'activity', title: 'Cancelled tour', startDate: '2027-01-02', status: 'cancelled' },
+  ] };
+  assert.equal(L.tripStats(trip).count, 3);
+  // restoring the cancelled item puts it straight back in the count
+  trip.items.find(x => x.id === 'c').status = 'to-book';
+  assert.equal(L.tripStats(trip).count, 4);
+});
+
 // Stored trips predate `local`: every travel item in them says "transport" and
 // nothing migrates them. A trip saved before this change must render, validate
 // and warn exactly as it did.

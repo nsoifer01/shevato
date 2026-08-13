@@ -47,6 +47,7 @@ export async function run({ base, cdpPort }) {
     await gotoHard(s, base + APP + hash, { settle: 1200 });
     await t('tp-share I: shared banner renders', await evaluate(s, `!!document.getElementById('sharedBanner') && document.getElementById('sharedBanner').innerText.includes('shared copy')`), '', s);
     await t('tp-share I: shared trip renders read-only board', await evaluate(s, `document.getElementById('board').innerText.includes('Cliff walk')`), '', s);
+    await t('tp-share I: informational Items chip renders on a share', await evaluate(s, `[...document.querySelectorAll('#summary .chip .v')].some(v=>v.textContent.trim()==='3 items')`), '', s);
     await t('tp-share I: trip picker disabled', await evaluate(s, `document.getElementById('tripSelect').disabled`), '', s);
     await t('tp-share I: cross-trip search hidden', !(await evaluate(s, `(()=>{const b=document.getElementById('tripSearchBtn'); return !!b && b.offsetParent !== null})()`)), '', s);
     await t('tp-share I: Add item unavailable', !(await evaluate(s, `(()=>{const b=document.getElementById('addBtn'); return !!b && b.offsetParent !== null && !b.disabled})()`)), '', s);
