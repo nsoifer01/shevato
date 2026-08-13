@@ -22,7 +22,9 @@ test('a single lookup reserves one slot in every bucket', () => {
   const r = checkQuota({}, 'c1', T0, 1, limits);
   assert.equal(r.allowed, true);
   assert.equal(r.granted, 1);
-  assert.deepEqual(r.usage.clientHour, { c1: 1 });
+  // entries, not deepEqual on the object: the client maps are deliberately
+  // null-prototype (see pruneUsage), which deepStrictEqual distinguishes
+  assert.deepEqual({ ...r.usage.clientHour }, { c1: 1 });
   assert.equal(r.usage.globalDay, 1);
   assert.equal(r.usage.globalMonth, 1);
 });
@@ -123,4 +125,21 @@ test('releasing nothing is a no-op', () => {
   const reserved = checkQuota({}, 'c1', T0, 2, limits).usage;
   const after = releaseQuota(reserved, 'c1', T0, 0);
   assert.equal(after.globalDay, 2);
+});
+
+test('a clientId of "__proto__" is capped exactly like any other client', () => {
+  // Same hole as tp-assist-quota: on a plain-object map "__proto__" made the
+  // remaining-room subtraction NaN (never shrinking a grant) and its increment
+  // a no-op, so that clientId had no per-client cap. Null-prototype maps fix
+  // it; this pins the cap and the release path both.
+  let usage = {};
+  const a = checkQuota(usage, '__proto__', T0, 5, limits);
+  assert.equal(a.granted, 5);
+  usage = a.usage;
+  assert.equal(usage.clientHour['__proto__'], 5, 'the reservation actually lands');
+  const b = checkQuota(usage, '__proto__', T0, 5, limits);
+  assert.equal(b.granted, 0, 'the hourly cap of 5 binds for __proto__ too');
+  assert.equal(b.allowed, false);
+  const released = releaseQuota(usage, '__proto__', T0, 2);
+  assert.equal(released.clientHour['__proto__'], 3, 'release moves the same counter');
 });

@@ -69,13 +69,12 @@ async function resolveOne(query, { cache, findPlaceId, fetchDetails, now, claim 
     searched = true;
   }
 
-  // (3) Ratings: short-lived cache, checked before any spend.
-  if (placeId) {
-    const cachedDetails = await cache.get(detailsCacheKey(placeId));
-    if (fresh(cachedDetails, RATING_TTL_MS, now)) {
-      return { result: fromDetails(query, cachedDetails.place), spent: 0 };
-    }
-  }
+  // (3) There is deliberately NO rating cache layer here. RATING_TTL_MS is 0
+  // (see the legal note above), which made the old read dead code - and the
+  // matching write was worse than dead: it persisted name/rating/mapsUri
+  // payloads into the blob store forever, unread, exactly the content the
+  // terms say may not be stored. Both sides are gone; the place-ID layer
+  // above is the whole cache.
 
   // (4) Everything past here costs money.
   if (!claim()) {
@@ -109,7 +108,6 @@ async function resolveOne(query, { cache, findPlaceId, fetchDetails, now, claim 
   if (!place) {
     return { result: { query, status: 'unavailable', reason: 'upstream' }, spent: 1 };
   }
-  await cache.set(detailsCacheKey(placeId), { place, at: now });
   return { result: fromDetails(query, place), spent: 1 };
 }
 

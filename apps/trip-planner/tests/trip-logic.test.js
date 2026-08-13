@@ -3461,12 +3461,19 @@ test('assistMapsLink escapes the query into the search URL', () => {
 });
 
 test('placesCacheUpdates rejects a rating with no usable maps link', () => {
-  // the attribution link is mandatory, so a rating we cannot attribute is dropped
+  // The attribution link is mandatory, so a rating we cannot attribute is
+  // never cached as ok - but it IS remembered as a tombstone, because
+  // dropping it entirely re-billed the same venue on every later batch for a
+  // rating that would be refused again. A malformed rating (C) stays dropped
+  // outright: that is a transient response shape, worth a retry.
   assert.deepEqual(L.placesCacheUpdates([
     { query: 'A', status: 'ok', rating: 4.1, userRatingCount: 5, mapsUri: 'javascript:alert(1)' },
     { query: 'B', status: 'ok', rating: 4.1, userRatingCount: 5 },
     { query: 'C', status: 'ok', rating: 'nope', userRatingCount: 5, mapsUri: 'https://maps.google.com/?cid=2' },
-  ]), []);
+  ]), [
+    { key: 'a', entry: { status: 'no_match', reason: 'unattributable' } },
+    { key: 'b', entry: { status: 'no_match', reason: 'unattributable' } },
+  ]);
 });
 
 // ---------- assistant markdown ----------

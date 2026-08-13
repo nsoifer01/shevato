@@ -210,6 +210,73 @@ test('parseIcsToProposals skips an event whose start date cannot be read and cou
   assert.deepEqual(res.stats, { events: 5, read: 1, skipped: 4, recurring: 0 });
 });
 
+test('parseIcsToProposals ignores a VALARM nested inside the event', () => {
+  // The alarm's own SUMMARY and DESCRIPTION went into the same first-wins
+  // property map as the event's, so "Reminder: 30 minutes before" arrived as
+  // the trip item's details and an alarm could rename the event.
+  const res = parseIcsToProposals(ics(
+    'BEGIN:VEVENT',
+    'DTSTART:20270112T093000',
+    'BEGIN:VALARM',
+    'ACTION:DISPLAY',
+    'SUMMARY:Reminder',
+    'DESCRIPTION:Reminder\\, 30 minutes before',
+    'TRIGGER:-PT30M',
+    'END:VALARM',
+    'SUMMARY:Louvre tickets',
+    'DESCRIPTION:Entry via the Pyramid',
+    'END:VEVENT'
+  ));
+  assert.equal(res.proposals[0].item.title, 'Louvre tickets');
+  assert.equal(res.proposals[0].item.details, 'Entry via the Pyramid');
+  assert.deepEqual(res.stats, { events: 1, read: 1, skipped: 0, recurring: 0 });
+});
+
+test('parseIcsToProposals counts an event the file cuts off mid-way', () => {
+  // Reporting {events: 0} told the traveller their calendar was empty and sent
+  // them looking for a fault in a file that is simply truncated.
+  const res = parseIcsToProposals('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nSUMMARY:Cut off\r\nDTSTART:20270112T090000');
+  assert.deepEqual(res.proposals, []);
+  assert.deepEqual(res.stats, { events: 1, read: 0, skipped: 1, recurring: 0 });
+});
+
+test('parseIcsToProposals reads a TZID whose value holds an unquoted colon', () => {
+  // Outlook writes "TZID=GMT+05:00" without quotes, so splitting on the first
+  // colon left a value of "00:20270112T090000" and the event was skipped.
+  const res = parseIcsToProposals(ics(...vevent(
+    'SUMMARY:Zoned',
+    'DTSTART;TZID=GMT+05:00:20270112T090000',
+    'DTEND;TZID=GMT+05:00:20270112T110000'
+  )));
+  assert.equal(res.stats.read, 1);
+  assert.equal(res.proposals[0].item.startDate, '2027-01-12');
+  assert.equal(res.proposals[0].item.startTime, '09:00');
+  assert.equal(res.proposals[0].item.endTime, '11:00');
+  // the quoted form is the legal one and still splits in the right place
+  const quoted = parseIcsToProposals(ics(...vevent('SUMMARY:Quoted', 'DTSTART;TZID="GMT+05:00":20270112T090000')));
+  assert.equal(quoted.proposals[0].item.startTime, '09:00');
+});
+
+test('parseIcsToProposals reads a DURATION when the file prints no DTEND', () => {
+  const res = parseIcsToProposals(ics(
+    ...vevent('SUMMARY:Tour', 'DTSTART:20270112T090000', 'DURATION:PT2H'),
+    ...vevent('SUMMARY:Night', 'DTSTART:20270112T230000', 'DURATION:PT1H30M'),
+    ...vevent('SUMMARY:Festival', 'DTSTART;VALUE=DATE:20270301', 'DURATION:P3D'),
+    ...vevent('SUMMARY:Junk', 'DTSTART:20270112T090000', 'DURATION:whenever')
+  ));
+  assert.equal(res.proposals[0].item.endTime, '11:00');
+  assert.equal(res.proposals[0].item.endDate, '');
+  // past midnight the end DATE is real information, exactly as a DTEND would be
+  assert.equal(res.proposals[1].item.endDate, '2027-01-13');
+  assert.equal(res.proposals[1].item.endTime, '00:30');
+  // an all-day duration stands in for an EXCLUSIVE DTEND, so 3 days ends on the 3rd
+  assert.equal(res.proposals[2].item.endDate, '2027-03-03');
+  // a duration nobody can read costs the end, never the event
+  assert.equal(res.proposals[3].item.startDate, '2027-01-12');
+  assert.equal(res.proposals[3].item.endDate, '');
+  assert.equal(res.proposals[3].item.endTime, '');
+});
+
 test('parseIcsToProposals imports a repeating event once, on its first date', () => {
   // DTSTART is the first occurrence. Expanding an RRULE would drop 52 copies of
   // a standing meeting into a two-week trip; the flag is what lets the dialog

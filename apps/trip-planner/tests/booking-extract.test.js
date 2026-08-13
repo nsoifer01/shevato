@@ -73,11 +73,48 @@ test('parseTime handles 24h and am/pm', () => {
   assert.equal(parseTime('no time'), null);
 });
 
+test('parseTime does not read a dotted DATE as a clock', () => {
+  // "12.08.2027" read as 12:08, which then sat EARLIER than the real 21:30 on
+  // the same line and made the reader land the flight the next morning.
+  assert.equal(parseTime('Departs 12.08.2027 at 21:30'), '21:30');
+  assert.equal(parseTime('12.08.2027'), null);
+  assert.equal(parseTime('Valid 01.02.2027 - 28.02.2027'), null);
+});
+
+test('parseTime does not read money as a clock', () => {
+  assert.equal(parseTime('Total: GBP 12.40'), null);
+  assert.equal(parseTime('Fare EUR 12.40'), null);
+  assert.equal(parseTime('£12.40'), null);
+  // a real clock on a line that also prints a price is still a clock
+  assert.equal(parseTime('Departs 21:30, total GBP 12.40'), '21:30');
+});
+
+test('parseTime reads a European dotted clock only where something says it is one', () => {
+  // A bare "12.40" is a price as often as it is a time, so the dot form needs
+  // a word next to it; the lost times are blank fields, not invented nights.
+  assert.equal(parseTime('Departs at 21.30'), '21:30');
+  assert.equal(parseTime('Abflug kl. 09.05'), '09:05');
+  assert.equal(parseTime('Abflug 21.30 Uhr'), '21:30');
+  assert.equal(parseTime('9.30 PM'), '21:30');
+  assert.equal(parseTime('21.30'), null);
+});
+
 test('parseMoney reads symbols before and codes on either side', () => {
   assert.deepEqual(parseMoney('Total: £1,234.56'), { value: 1234.56, currency: 'GBP' });
   assert.deepEqual(parseMoney('Total EUR 220.00'), { value: 220, currency: 'EUR' });
   assert.deepEqual(parseMoney('220.00 USD'), { value: 220, currency: 'USD' });
   assert.equal(parseMoney('no price'), null);
+});
+
+test('parseMoney reads the comma-decimal amounts most of Europe prints', () => {
+  // "148,00" read as 14800 and "1.234,56" as 23456: a hundredfold error that
+  // looks perfectly ordinary once it is sitting in a budget total.
+  assert.deepEqual(parseMoney('Total EUR 148,00'), { value: 148, currency: 'EUR' });
+  assert.deepEqual(parseMoney('1.234,56 EUR'), { value: 1234.56, currency: 'EUR' });
+  assert.deepEqual(parseMoney('Total EUR 1.234,56'), { value: 1234.56, currency: 'EUR' });
+  assert.deepEqual(parseMoney('Total: €1.234,56'), { value: 1234.56, currency: 'EUR' });
+  // "1,234" could be either and keeps the thousands reading it has always had
+  assert.deepEqual(parseMoney('Total 1,234 USD'), { value: 1234, currency: 'USD' });
 });
 
 test('a booking reference is only read next to a label', () => {
@@ -88,6 +125,30 @@ test('a booking reference is only read next to a label', () => {
   // aircraft type than a PNR, and a confident wrong code is worse than none.
   assert.equal(findConfirmation(toLines('Aircraft B77W Economy Y')), null);
   assert.equal(findConfirmation(toLines('Nothing here at all')), null);
+});
+
+test('an all-digit token beside the label is not a booking code', () => {
+  // The "at least one letter" rule ranged over the rest of the LINE, so any
+  // capitalised word after the number let a pure number through - including a
+  // date stamp, which is what most of these numbers actually are.
+  assert.equal(findConfirmation(toLines('Booking reference: 12345678 KEEP THIS SAFE')), null);
+  assert.equal(findConfirmation(toLines('Booking reference: 20270812 KEEP THIS SAFE')), null);
+  assert.equal(findConfirmation(toLines('Confirmation number\n00123456')), null);
+});
+
+test('a bare "Reservation" heading is not a label, so a hotel name is not a code', () => {
+  assert.equal(findConfirmation(toLines('Reservation\nGRAND HOTEL ASTORIA')), null);
+  assert.equal(findConfirmation(toLines('Confirmation\nGRAND HOTEL ASTORIA')), null);
+  // with a qualifier or a colon it IS a field, and still reads
+  assert.equal(findConfirmation(toLines('Reservation number\nXJ7K2Q')).code, 'XJ7K2Q');
+  assert.equal(findConfirmation(toLines('Confirmation: XJ7K2Q')).code, 'XJ7K2Q');
+});
+
+test('a stopword next to the label skips to the next token instead of failing the line', () => {
+  // "AIRLINE" is not a code, but rejecting the line for it threw away the code
+  // printed right after it.
+  assert.equal(findConfirmation(toLines('Confirmation number: AIRLINE XYZ123')).code, 'XYZ123');
+  assert.equal(findConfirmation(toLines('Booking reference\nFLIGHT AB12CD')).code, 'AB12CD');
 });
 
 // ---------- routes ----------
@@ -108,6 +169,30 @@ test('three-letter words that are also real airports do not become routes', () =
   assert.equal(findRoute(toLines('ALL FARES ARE SUBJECT TO TAX'), byIata), null);
   assert.equal(findRoute(toLines('ONE CAR PER BOOKING'), byIata), null);
   assert.equal(findRoute(toLines('VAT INCLUDED FOR THE NEW FEE'), byIata), null);
+});
+
+test('an all-caps day or month abbreviation does not become an airport', () => {
+  // SAT is San Antonio and SUN is Hailey, so the airport table happily read
+  // "OPEN SAT - SUN 10:00" as a route between them.
+  assert.equal(findRoute(toLines('OPEN SAT - SUN 10:00'), byIata), null);
+  // THU is Pituffik, JAN is Jackson, MAR is Maracaibo: the same trap
+  assert.equal(findRoute(toLines('DEPARTS THU - SUN 10:00'), byIata), null);
+  assert.equal(findRoute(toLines('TRAVEL WINDOW JAN - MAR'), byIata), null);
+  // and on a shouty ticket the real airports win the route instead of the days
+  const r = findRoute(toLines('DEPARTS SAT 21:30 LONDON HEATHROW LHR / ARRIVES SUN 06:45 NEW YORK JFK'), byIata);
+  assert.equal(r.from, 'LHR');
+  assert.equal(r.to, 'JFK');
+});
+
+test('a code written in parentheses is still read, day name or not', () => {
+  // The cost of the list above is that a bare "IAH to SAT" now finds nothing.
+  // "(SAT)" cannot be a Saturday, so the parenthesised form is exempt and a
+  // traveller genuinely flying to San Antonio keeps their route.
+  const r = findRoute(toLines('Houston (IAH) to San Antonio (SAT)'), byIata);
+  assert.equal(r.from, 'IAH');
+  assert.equal(r.to, 'SAT');
+  assert.equal(r.explicit, true);
+  assert.equal(findRoute(toLines('IAH to SAT'), byIata), null);
 });
 
 test('two bare codes are accepted but marked non-explicit', () => {
@@ -448,6 +533,71 @@ Arrives 20 September 2027 at 08:10`).proposals[0];
   assert.match(w, /39 days/);
 });
 
+
+// ---------- lines that are only shaped like an itinerary ----------
+// Every one of these invented a fact: a fabricated overnight leg costs a night
+// of stay coverage, and a fabricated flight number is read out at a desk.
+
+test('a dotted departure date does not steal the departure time', () => {
+  // "12.08.2027" was read as 12:08, and because that is earlier than the real
+  // 21:30 the leg then "wrapped" past midnight and landed a day late.
+  const p = run(`Booking reference: QJ8W2N
+Barcelona BCN to Rome Fiumicino FCO
+Departs 12.08.2027 at 21:30
+Arrives 23:55`).proposals[0];
+  assert.equal(p.item.startTime, '21:30');
+  assert.equal(p.item.endTime, '23:55');
+  assert.equal(p.item.startDate, '2027-12-08');   // still read AS a date
+  assert.equal(p.item.endDate, '');
+});
+
+test('a total below the route line is not the arrival time, and invents no night', () => {
+  const p = run(`Booking reference: QJ8W2N
+Barcelona BCN to Rome Fiumicino FCO
+Departs 12 August 2027 at 21:30
+Total: GBP 12.40`).proposals[0];
+  assert.equal(p.item.endTime, '');
+  assert.equal(p.item.endDate, '');
+  assert.equal(p.item.cost, 12.4);
+  assert.ok(!p.warnings.some(w => /overnight/i.test(w)));
+});
+
+test('a customer-service phone number is not a "+1" overnight marker', () => {
+  const p = run(`Booking reference: AB12CD
+Atlanta ATL to Chicago ORD
+Departs 12 August 2027 at 09:30
+Arrives 10:45
+Questions? Call us at +1 800 221 1212`).proposals[0];
+  assert.equal(p.item.endDate, '');
+  assert.ok(!p.warnings.some(w => /overnight/i.test(w)));
+});
+
+test('the airline\'s own "(+1)" notation still lands the leg the next day', () => {
+  const p = run(`Booking reference: AB12CD
+London LHR to Singapore SIN
+Departs 12 August 2027 at 21:30
+Arrives 17:20 (+1)`).proposals[0];
+  assert.equal(p.item.endDate, '2027-08-13');
+  assert.ok(p.warnings.some(w => /"\+1" marker/.test(w)));
+});
+
+test('a gate is not a flight number', () => {
+  const p = run(`Booking reference: AB12CD
+London LHR to Paris CDG
+Departure Gate B12
+Departs 12 August 2027 at 09:30
+Flight BA 304`).proposals[0];
+  assert.equal(p.item.details, 'Flight BA304');
+});
+
+test('a European total lands on the item as the amount it says', () => {
+  const p = run(`Booking reference: QJ8W2N
+Barcelona BCN to Rome Fiumicino FCO
+Departs 25 December 2027 at 21:30
+Total EUR 148,00`).proposals[0];
+  assert.equal(p.item.cost, 148);
+  assert.equal(p.item.costCurrency, 'EUR');
+});
 
 // ---------- plausibility as a tiebreak ----------
 

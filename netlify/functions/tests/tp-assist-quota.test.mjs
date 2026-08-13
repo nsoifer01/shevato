@@ -129,3 +129,24 @@ test('prunes the hour map but keeps the day map within the same day', () => {
   assert.equal(r.usage.clientDay.alice, 4);
   assert.equal(r.usage.globalDay, 4);
 });
+
+test('a clientId of "__proto__" is capped exactly like any other client', () => {
+  // clientId is client-minted. On a plain-object counter map, "__proto__"
+  // reads Object.prototype (truthy, so every >= cap compare coerces to false)
+  // and its increment silently no-ops, so that one name never hit a per-client
+  // cap at all. The maps are null-prototype now; this pins it.
+  for (const id of ['__proto__', 'constructor', 'hasOwnProperty']) {
+    let usage = {};
+    for (let i = 0; i < DEFAULT_LIMITS.perClientHour; i++) {
+      const r = checkQuota(usage, id, T0);
+      assert.equal(r.allowed, true, `${id} call ${i + 1} allowed`);
+      usage = r.usage;
+    }
+    const over = checkQuota(usage, id, T0);
+    assert.equal(over.allowed, false, `${id} must hit the hourly cap`);
+    assert.equal(over.scope, 'client_hour');
+  }
+  // and the poisoned key must not leak onto other clients' reads
+  const one = checkQuota({}, '__proto__', T0).usage;
+  assert.equal(checkQuota(one, 'innocent', T0).usage.clientHour.innocent, 1);
+});

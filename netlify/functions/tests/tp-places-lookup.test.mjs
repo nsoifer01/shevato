@@ -48,6 +48,12 @@ test('a cold query searches, fetches details and returns the rating', async () =
   });
   assert.equal(spent, 1, 'one billed Place Details call');
   assert.equal(s.calls.search.length, 1);
+  // The legal line (2026-07-20 review): name/rating payloads may never be
+  // STORED, only the place ID. The store must therefore end this lookup
+  // holding exactly the id entry and no 'pd:' details blob - the old write
+  // persisted Google Maps content indefinitely with nothing ever reading it.
+  assert.deepEqual([...cache.map.keys()], [idCacheKey('Ichiran Ramen Shibuya Tokyo')],
+    'only the place ID is persisted, never the details payload');
 });
 
 test('a category query never reaches Google at all', async () => {
