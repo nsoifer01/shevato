@@ -1,6 +1,275 @@
 {
   "updates": [
     {
+      "builtAt": "2026-08-14T07:27:52.281Z",
+      "totals": {
+        "seasons": 66264,
+        "delta": 15
+      },
+      "shapeCounts": {
+        "mid-peak": 4642,
+        "rebound": 10086,
+        "rising": 2907,
+        "slow-burn": 4378,
+        "big-finale": 12139,
+        "u-shaped": 3098,
+        "rollercoaster": 14066,
+        "saved-best-for-last": 1548,
+        "front-loaded": 3473,
+        "declining": 1876,
+        "bad-finale": 4681,
+        "consistent": 2628,
+        "shape-drift": 1644
+      },
+      "shapeDeltas": {
+        "mid-peak": -1,
+        "rebound": -1,
+        "rising": -4,
+        "slow-burn": 3,
+        "big-finale": 14,
+        "u-shaped": 6,
+        "rollercoaster": 7,
+        "saved-best-for-last": 5,
+        "bad-finale": 5,
+        "consistent": -3,
+        "shape-drift": 3
+      },
+      "added": [
+        {
+          "seriesId": "tt9288030",
+          "title": "Reacher",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43673968",
+          "title": "Mourinho",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt27543562",
+          "title": "The Shards",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt22640400",
+          "title": "The Traitors Australia",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt27982433",
+          "title": "Diarra from Detroit",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43725623",
+          "title": "Conversations with a Killer: The Charles Manson Tapes",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1711420",
+          "title": "The Great Food Truck Race",
+          "season": 19,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1236429",
+          "title": "Sid the Science Kid",
+          "season": 2,
+          "seasonYear": 2010
+        },
+        {
+          "seriesId": "tt0211606",
+          "title": "Saber Marionette J to X",
+          "season": 1,
+          "seasonYear": 1998
+        },
+        {
+          "seriesId": "tt12606560",
+          "title": "Are You the One?",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt1294009",
+          "title": "Only Connect",
+          "season": 22,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1720607",
+          "title": "Top Chef: Just Desserts",
+          "season": 2,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt21058238",
+          "title": "Wicked City",
+          "season": 3,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt3214736",
+          "title": "Flesh for the Beast: Tsukiko's Curse",
+          "season": 1,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt32552623",
+          "title": "Dette er humor",
+          "season": 2,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt34577272",
+          "title": "Bovensloters",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt3823972",
+          "title": "Southern Justice",
+          "season": 1,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt42543368",
+          "title": "Chopped Castaways",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43619278",
+          "title": "25 Years of You",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt3121876",
+          "title": "Animal Face Off",
+          "season": 1,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt0877508",
+          "title": "Jigoku sensei Nube",
+          "season": 1,
+          "seasonYear": 1996
+        },
+        {
+          "seriesId": "tt0447579",
+          "title": "Ashita No Nadja",
+          "season": 1,
+          "seasonYear": 2003
+        },
+        {
+          "seriesId": "tt0178148",
+          "title": "M.U.S.C.L.E.",
+          "season": 1,
+          "seasonYear": 1983
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt0061261",
+          "title": "He & She",
+          "season": 1,
+          "from": 7.04,
+          "to": 6.02,
+          "delta": -1.02
+        },
+        {
+          "seriesId": "tt33035777",
+          "title": "PD True",
+          "season": 1,
+          "from": 6.73,
+          "to": 6.05,
+          "delta": -0.68
+        },
+        {
+          "seriesId": "tt36742714",
+          "title": "Santita",
+          "season": 1,
+          "from": 4.43,
+          "to": 5.09,
+          "delta": 0.66
+        },
+        {
+          "seriesId": "tt31501409",
+          "title": "Solo las más",
+          "season": 2,
+          "from": 5.36,
+          "to": 4.84,
+          "delta": -0.52
+        },
+        {
+          "seriesId": "tt2010634",
+          "title": "Secret Mountain Fort Awesome",
+          "season": 2,
+          "from": 7.69,
+          "to": 7.17,
+          "delta": -0.52
+        },
+        {
+          "seriesId": "tt7414406",
+          "title": "All American",
+          "season": 8,
+          "from": 7.98,
+          "to": 7.47,
+          "delta": -0.51
+        },
+        {
+          "seriesId": "tt38718126",
+          "title": "Drag Race México: Latina Royale",
+          "season": 1,
+          "from": 8.23,
+          "to": 7.73,
+          "delta": -0.5
+        },
+        {
+          "seriesId": "tt43648966",
+          "title": "My Bias, My Boss",
+          "season": 1,
+          "from": 6.83,
+          "to": 7.3,
+          "delta": 0.47
+        },
+        {
+          "seriesId": "tt38990474",
+          "title": "Treasure & Dirt",
+          "season": 1,
+          "from": 7.24,
+          "to": 7.7,
+          "delta": 0.46
+        },
+        {
+          "seriesId": "tt32552623",
+          "title": "Dette er humor",
+          "season": 1,
+          "from": 6.7,
+          "to": 7.15,
+          "delta": 0.45
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 24648,
+        "avgRating": 1609,
+        "shapes": 254,
+        "episodeCount": 115,
+        "seriesRating": 392,
+        "poster": 21,
+        "overview": 16,
+        "providers": 15
+      }
+    },
+    {
       "builtAt": "2026-08-13T07:34:52.965Z",
       "totals": {
         "seasons": 66249,
@@ -6621,240 +6890,6 @@
         "episodeCount": 48,
         "poster": 4,
         "providers": 18
-      }
-    },
-    {
-      "builtAt": "2026-07-15T08:26:49.359Z",
-      "totals": {
-        "seasons": 65793,
-        "delta": 7
-      },
-      "shapeCounts": {
-        "mid-peak": 4623,
-        "rebound": 10042,
-        "rising": 2909,
-        "slow-burn": 4361,
-        "big-finale": 12013,
-        "u-shaped": 3073,
-        "rollercoaster": 14008,
-        "saved-best-for-last": 1522,
-        "front-loaded": 3441,
-        "declining": 1856,
-        "bad-finale": 4636,
-        "consistent": 2620,
-        "shape-drift": 1610
-      },
-      "shapeDeltas": {
-        "mid-peak": -3,
-        "rebound": 6,
-        "rising": -3,
-        "slow-burn": -4,
-        "big-finale": -3,
-        "u-shaped": 4,
-        "rollercoaster": -4,
-        "saved-best-for-last": -1,
-        "front-loaded": 4,
-        "declining": -2,
-        "bad-finale": 2,
-        "consistent": 2,
-        "shape-drift": -3
-      },
-      "added": [
-        {
-          "seriesId": "tt0940902",
-          "title": "Notruf Hafenkante",
-          "season": 9,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt32230839",
-          "title": "Smartypants",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39393581",
-          "title": "Marriage's Perfection",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41279522",
-          "title": "The World is Dancing",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43624867",
-          "title": "Verity (MC)",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt7252086",
-          "title": "Patrick Willems Video Essays",
-          "season": 2,
-          "seasonYear": 2017
-        },
-        {
-          "seriesId": "tt12702184",
-          "title": "The Battle of Britain: 3 Days That Saved the Nation",
-          "season": 1,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt20192132",
-          "title": "Rhythm + Flow France",
-          "season": 4,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt28259824",
-          "title": "Blades of the Guardians",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt31448173",
-          "title": "The McBee Dynasty: Real American Cowboys",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39320173",
-          "title": "Dad, I Love You!",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36979936",
-          "title": "Love for You",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt12511004",
-          "title": "Stampy's Lovely World",
-          "season": 14,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt12511004",
-          "title": "Stampy's Lovely World",
-          "season": 13,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt12511004",
-          "title": "Stampy's Lovely World",
-          "season": 17,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt12511004",
-          "title": "Stampy's Lovely World",
-          "season": 15,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt12511004",
-          "title": "Stampy's Lovely World",
-          "season": 16,
-          "seasonYear": 2022
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt0090487",
-          "title": "My Sister Sam",
-          "season": 2,
-          "from": 9.04,
-          "to": 7.3,
-          "delta": -1.74
-        },
-        {
-          "seriesId": "tt0090487",
-          "title": "My Sister Sam",
-          "season": 1,
-          "from": 8.75,
-          "to": 7.37,
-          "delta": -1.38
-        },
-        {
-          "seriesId": "tt32083392",
-          "title": "Gray Shelter",
-          "season": 1,
-          "from": 7.13,
-          "to": 6.16,
-          "delta": -0.97
-        },
-        {
-          "seriesId": "tt0251497",
-          "title": "Big Brother",
-          "season": 28,
-          "from": 5.87,
-          "to": 6.4,
-          "delta": 0.53
-        },
-        {
-          "seriesId": "tt17544192",
-          "title": "SOKO Linz",
-          "season": 1,
-          "from": 4.21,
-          "to": 4.74,
-          "delta": 0.53
-        },
-        {
-          "seriesId": "tt39267868",
-          "title": "Agents of the Four Seasons: Dance of Spring",
-          "season": 1,
-          "from": 8.61,
-          "to": 8.09,
-          "delta": -0.52
-        },
-        {
-          "seriesId": "tt13844214",
-          "title": "Death Walker",
-          "season": 1,
-          "from": 8.1,
-          "to": 7.6,
-          "delta": -0.5
-        },
-        {
-          "seriesId": "tt39281887",
-          "title": "Jaadugar: A Witch in Mongolia",
-          "season": 1,
-          "from": 8.73,
-          "to": 8.3,
-          "delta": -0.43
-        },
-        {
-          "seriesId": "tt3985242",
-          "title": "Merman in My Tub",
-          "season": 1,
-          "from": 6.58,
-          "to": 6.17,
-          "delta": -0.41
-        },
-        {
-          "seriesId": "tt6864602",
-          "title": "The Sea Beyond",
-          "season": 5,
-          "from": 4.63,
-          "to": 5.01,
-          "delta": 0.38
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 20085,
-        "avgRating": 1143,
-        "seriesRating": 390,
-        "shapes": 206,
-        "episodeCount": 84,
-        "overview": 7,
-        "poster": 6
       }
     }
   ]
