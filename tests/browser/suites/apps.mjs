@@ -421,25 +421,21 @@ export async function run({ base, cdpPort }) {
       `(()=>{const grid=document.getElementById('rival-grid')||document.body;
         return /100% win|1W/.test(grid.textContent)})()`));
 
-    // Same day pasted again: the audit found saveDay() has no per-rival,
-    // per-date dedupe, so a repeat paste double-counts the rivalry record.
-    await setValue(s, '#paste-mine-input', '80 90 70 60 50');
+    // Same day pasted again with corrected scores: saveDay() funnels every
+    // pasted day through upsertPastedGame (per-rival/per-date guard, fixed
+    // 2026-08-15), so the repeat paste must UPDATE the stored record in
+    // place - one record for the date, carrying the new scores.
+    await setValue(s, '#paste-mine-input', '75 85 65 55 45');
     await setValue(s, '.paste-rival-textarea', '70 80 60 50 40');
     await setValue(s, '#paste-date', '2026-08-01');
     await waitForExpr(s, "(()=>{const b=document.getElementById('paste-save-all'); return !!b && !b.disabled})()");
     await clickSel(s, '#paste-save-all', { settle: 900 });
-    const dupCount = await evaluate(s, `(()=>{try{const g=JSON.parse(localStorage.getItem('maptapRivalsGames')||'[]');
-      return g.filter(x=>x.date==='2026-08-01').length}catch(e){return -1}})()`);
-    if (dupCount > 1) {
-      skip(`${A}: repeat paste for the same day is guarded`,
-        'KNOWN DEFECT: repeat paste for the same day double-counts - saveDay() (js/app.js) pushes a new game with no per-rival/per-date dedupe');
-    } else if (dupCount === 1) {
-      t(`${A}: repeat paste for the same day is guarded`, false,
-        'unexpectedly passes - the pinned double-count defect no longer reproduces; convert this quarantine into a plain assertion and mark defect 1 resolved in TESTING-AUDIT.md');
-    } else {
-      t(`${A}: repeat paste for the same day is guarded`, false,
-        `could not stage the check: ${dupCount} games stored for 2026-08-01`);
-    }
+    const dup = await evaluate(s, `(()=>{try{const g=JSON.parse(localStorage.getItem('maptapRivalsGames')||'[]')
+      .filter(x=>x.date==='2026-08-01');
+      return {n:g.length, mine:g[0]&&g[0].myScores};}catch(e){return {n:-1}}})()`);
+    t(`${A}: repeat paste for the same day is guarded`,
+      dup.n === 1 && JSON.stringify(dup.mine) === '[75,85,65,55,45]',
+      JSON.stringify(dup));
 
     await trackDownloads(s);
     await clickText(s, 'Export', { exact: true, settle: 1400 });

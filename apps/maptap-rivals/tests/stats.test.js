@@ -1312,19 +1312,18 @@ test('accumulateFinishPositions: no history at all yields no records', () => {
 // Stand-in for app.js's classifyContinent. The whole point of injecting the
 // classifier is that stats.js never needs the real bounding boxes, so a crude
 // longitude split is enough to exercise the bucketing - with ONE box copied
-// verbatim from the real classifier (Africa, js/app.js:6168), because (0, 0)
-// sits inside it and (0, 0) is exactly where a null coordinate lands (see the
-// null-coordinate tests below). A stub that answered 'Unknown' for every
-// coordinate it did not like would hide that seam instead of exercising it.
+// verbatim from the real classifier (Africa, js/app.js), because (0, 0) sits
+// inside it and (0, 0) is where a null coordinate USED to land before the
+// coordNum fix (2026-08-15); the genuine-Gulf-of-Guinea test below still
+// needs the box. A stub that answered 'Unknown' for every coordinate it did
+// not like would hide that seam instead of exercising it.
 //
-// The real classifyContinent cannot be required from node: it lives inside
-// app.js's IIFE, which needs a DOM and Firebase. So no test in this file
-// asserts against the real bounding-box table; the tests below assert the
-// CONTRACT stats.js uses to call it, with this faithful-enough stub standing
-// in for the Africa box.
+// The tests here assert the CONTRACT stats.js uses to call the classifier;
+// the real bounding-box table is unit-tested against the real classifyContinent
+// through the window._testExports seam in tests/app-helpers.test.js.
 const classifyStub = (lat, lng) => {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return 'Unknown';
-  if (lat >= -35 && lat <= 38 && lng >= -20 && lng <= 52) return 'Africa'; // js/app.js:6168
+  if (lat >= -35 && lat <= 38 && lng >= -20 && lng <= 52) return 'Africa'; // real box, js/app.js classifyContinent
   if (lng < -30) return 'North America';
   if (lng < 60) return 'Europe';
   return 'Asia';
@@ -1419,56 +1418,55 @@ test('myAvgByContinent: rounds whose coordinates coerce to NaN are dropped, not 
   assert.equal(out.rows.some(r => r.continent === 'Unknown'), false);
 });
 
-test('myAvgByContinent: null / empty-string coordinates reach the classifier as (0, 0)', () => {
-  // The real call contract, pinned: stats.js classifies with
-  // classify(Number(c.lat), Number(c.lng)) (js/stats.js:726), and Number(null)
-  // and Number('') are both 0, not NaN. So a coordinate-less round is handed to
-  // the classifier as the valid point (0, 0) in the Gulf of Guinea, which the
-  // real classifyContinent (js/app.js:6152) buckets as Africa via its
-  // lat -35..38 / lng -20..52 box - a round the player never played, averaged
-  // into a continent they may never have seen, and counted in that chip's
-  // round count.
-  //
-  // This is the ACTUAL behavior. The correct behavior is asserted by the
-  // failing todo test below.
+test('myAvgByContinent: non-finite raw coordinates never reach the classifier', () => {
+  // The call contract since the 2026-08-15 fix: coordNum (js/stats.js) turns
+  // null, '' and every other non-numeric shape into NaN BEFORE classification
+  // and the caller drops non-finite rounds outright, so the classifier only
+  // ever sees finite pairs. Before the fix, Number(null) and Number('') were
+  // 0, so a coordinate-less round arrived as the valid point (0, 0) in the
+  // Gulf of Guinea and was bucketed as Africa via the real classifier's
+  // lat -35..38 / lng -20..52 box.
+  const seen = [];
+  const spy = (lat, lng) => { seen.push([lat, lng]); return classifyStub(lat, lng); };
+  const cities = [
+    { lat: 48, lng: 2 }, { lat: 52, lng: 13 }, { lat: 41, lng: 12 },
+    { lat: null, lng: null }, { lat: '', lng: '' },
+  ];
+  myAvgByContinent([geoGame('2026-08-01', 'r1', [90, 60, 90, 0, 0], cities)], spy);
+  assert.equal(seen.length, 3); // the two coordinate-less rounds were dropped first
+  assert.ok(seen.every(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng)));
+  assert.equal(seen.some(([lat, lng]) => lat === 0 && lng === 0), false);
+});
+
+test('myAvgByContinent: null / empty-string coordinates are dropped like any other missing coordinate', () => {
+  // Regression test for the fixed defect (2026-08-15): a coordinate-less
+  // round is excluded from the buckets and the round count, never averaged
+  // into Africa.
   const cities = [
     { lat: 48, lng: 2 }, { lat: 52, lng: 13 }, { lat: 41, lng: 12 },
     { lat: null, lng: null }, { lat: '', lng: '' },
   ];
   const out = myAvgByContinent([geoGame('2026-08-01', 'r1', [90, 60, 90, 0, 0], cities)], classifyStub);
-  assert.equal(out.totalRounds, 5);
-  assert.deepEqual(out.rows, [
-    { continent: 'Europe', rounds: 3, myAvg: 80 },
-    { continent: 'Africa', rounds: 2, myAvg: 0 },  // the two coordinate-less rounds
-  ]);
+  assert.equal(out.totalRounds, 3);
+  assert.deepEqual(out.rows, [{ continent: 'Europe', rounds: 3, myAvg: 80 }]);
+  assert.equal(out.rows.some(r => r.continent === 'Africa'), false);
 });
 
-test('myAvgByContinent: null / empty-string coordinates are dropped like any other missing coordinate',
-  { todo: 'KNOWN DEFECT: Number(null) and Number(\'\') are 0, so a coordinate-less round is classified as the point (0, 0) and bucketed as Africa (js/stats.js:726 feeding js/app.js:6153) instead of being dropped as Unknown.' },
-  () => {
-    const cities = [
-      { lat: 48, lng: 2 }, { lat: 52, lng: 13 }, { lat: 41, lng: 12 },
-      { lat: null, lng: null }, { lat: '', lng: '' },
-    ];
-    const out = myAvgByContinent([geoGame('2026-08-01', 'r1', [90, 60, 90, 0, 0], cities)], classifyStub);
-    assert.equal(out.totalRounds, 3);
-    assert.deepEqual(out.rows, [{ continent: 'Europe', rounds: 3, myAvg: 80 }]);
-    assert.equal(out.rows.some(r => r.continent === 'Africa'), false);
-  });
-
-test('myAvgByContinent: a real (0, 0) round is indistinguishable from a null one', () => {
-  // The flip side of the defect above, and why the fix belongs at the coercion
-  // (NaN, not 0) rather than at the classifier: once a null has become 0, no
-  // classifier can tell a missing coordinate from a genuine Gulf of Guinea
-  // round. Both games below produce the exact same band.
+test('myAvgByContinent: a real (0, 0) round is distinguishable from a null one', () => {
+  // Why the fix lives at the coercion (NaN, not 0) rather than inside the
+  // classifier: a genuine Gulf of Guinea round at (0, 0) still counts as
+  // Africa, while a null round vanishes. Under the old Number() coercion the
+  // two games below produced the exact same band.
   const nulled = geoGame('2026-08-01', 'r1', [50, 50, 50, 50, 50],
     [{ lat: null, lng: null }, { lat: null, lng: null }, { lat: null, lng: null },
      { lat: null, lng: null }, { lat: null, lng: null }]);
   const gulf = geoGame('2026-08-02', 'r1', [50, 50, 50, 50, 50],
     [{ lat: 0, lng: 0 }, { lat: 0, lng: 0 }, { lat: 0, lng: 0 },
      { lat: 0, lng: 0 }, { lat: 0, lng: 0 }]);
-  assert.deepEqual(myAvgByContinent([nulled], classifyStub).rows,
-                   myAvgByContinent([gulf], classifyStub).rows);
+  assert.deepEqual(myAvgByContinent([nulled], classifyStub),
+                   { rows: [], totalRounds: 0, days: 1 });
+  assert.deepEqual(myAvgByContinent([gulf], classifyStub).rows,
+                   [{ continent: 'Africa', rounds: 5, myAvg: 50 }]);
 });
 
 test('myAvgByContinent: no games at all yields an empty band', () => {
@@ -1522,23 +1520,21 @@ test('compareWinPctDesc: equal win % is left to the caller tie-break', () => {
 
 // --- repeat paste: two records for the same (date, rival) ------------------
 //
-// What a repeat paste leaves in the log: saveDay (js/app.js:2408) pushes one
-// new game per rival with a fresh uid() and NO check for an existing record on
-// that (date, rivalId). Paste the same day twice - a double click, a reload
-// mid-entry, or just not remembering - and the day is stored twice. The other
-// two write paths do dedupe: MapTap profile sync indexes existing games by
-// date per rival (js/app.js:6420) and the WhatsApp importer builds an
-// existingByRivalDate set (js/app.js:6813), which is what makes the paste path
-// the odd one out rather than a deliberate design.
+// Fixed 2026-08-15: saveDay now funnels every pasted day through
+// upsertPastedGame (js/app.js), which UPDATES the existing record for that
+// (rivalId, date) instead of appending a duplicate; the upsert itself is
+// unit-tested through the window._testExports seam in
+// tests/app-helpers.test.js. The other two write paths always deduped on
+// their own (profile sync indexes existing games by date per rival, the
+// WhatsApp importer skips existing (rival, date) pairs in its preview).
 //
-// None of the functions below can see a duplicate: a game record carries no
-// notion of "the same day already counted", and every one of them is correctly
-// id-agnostic. The tests pin what the stats layer THEREFORE reports, so the
-// blast radius of the missing guard is written down where the fix would be
-// tested from. The guard belongs in saveDay, so none of these are marked todo.
+// The tests below stay: a log can still HOLD duplicates written before the
+// fix (or imported from a backup), the stats functions are correctly
+// id-agnostic and cannot tell such a pair from two real days, and these pin
+// what the layer reports for that input.
 
-// The two records saveDay writes for one day pasted twice: identical payload,
-// different ids.
+// The two records a pre-fix saveDay wrote for one day pasted twice:
+// identical payload, different ids.
 const pastedTwice = (date, rivalId, my, their) => [
   { id: `${date}-${rivalId}-a`, rivalId, date, myScore: my, theirScore: their },
   { id: `${date}-${rivalId}-b`, rivalId, date, myScore: my, theirScore: their },
@@ -1631,18 +1627,21 @@ test('finishPositionsForDay: one player twice in a day is a caller-contract brea
   assert.deepEqual(fieldSharesForDay(clean), { r1: 1, r2: 0 });
 });
 
-// --- player keys the plain-object accumulators cannot hold -----------------
+// --- player keys plain-object accumulators could not hold ------------------
 //
-// positionHitsForDay and accumulateFinishPositions accumulate into `{}` keyed
-// by player key, and the player key is the rival id straight from storage.
-// Ids the app generates (uid(), js/app.js:191) are safe, but importData
-// (js/app.js:7038) assigns `state.rivals` / `state.games` verbatim from a
-// user-supplied backup JSON with no id validation, so '__proto__' is reachable
-// through the Export / import feature.
+// The per-player accumulators key by rival id straight from storage. Ids the
+// app generates (uid(), js/app.js:191) are safe, but importData (js/app.js)
+// assigns `state.rivals` / `state.games` verbatim from a user-supplied backup
+// JSON with no id validation, so '__proto__' is reachable through the
+// Export / import feature. Fixed 2026-08-15: every such accumulator builds in
+// a Map and returns via Object.fromEntries, so any string is a safe key.
 
 test('positionHitsForDay: a rival id of "__proto__" gets a hit record like anyone else',
-  { todo: 'KNOWN DEFECT: the accumulator is a plain {}, so out["__proto__"] = <boolean> hits the __proto__ setter and is silently discarded; the player vanishes from the Spot-on figures (js/stats.js:533-535).' },
   () => {
+    // Regression test for the fixed defect (2026-08-15): the accumulators
+    // build in a Map and return through Object.fromEntries, which defines
+    // own data properties, so '__proto__' can no longer hit the
+    // Object.prototype setter and vanish from the Spot-on figures.
     const day = [
       { key: '__proto__', name: 'Imported', predictedTotal: 900, actualTotal: 900 },
       { key: 'r1', name: 'Bea', predictedTotal: 100, actualTotal: 100 },
@@ -1654,8 +1653,12 @@ test('positionHitsForDay: a rival id of "__proto__" gets a hit record like anyon
   });
 
 test('accumulateFinishPositions: a rival id of "__proto__" does not corrupt the other players',
-  { todo: 'KNOWN DEFECT: out["__proto__"] = <object> sets the accumulator\'s prototype instead of a key, so the player is dropped from Object.keys AND the day\'s field size collapses to 1, making every other player\'s share (n - pos) / (n - 1) divide by zero (js/stats.js:648).' },
   () => {
+    // Regression test for the fixed defect (2026-08-15): before the
+    // Map + Object.fromEntries accumulators, out['__proto__'] = <object> set
+    // the accumulator's prototype, dropping the player from Object.keys and
+    // collapsing the day's field size to 1, which sent every other player's
+    // share (n - pos) / (n - 1) to a divide by zero.
     const out = accumulateFinishPositions(
       [[{ key: '__proto__', total: 900 }, { key: 'r1', total: 100 }]],
       ['2026-08-01'],

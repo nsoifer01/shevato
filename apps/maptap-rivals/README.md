@@ -20,7 +20,7 @@ A game belongs to a rival, so every view reads the game log through the rival li
 | Feature | What it does |
 | ------- | ------------ |
 | Add/edit rivals | Create a named rival with an accent color and icon (and an optional MapTap username); edit or delete from a modal. |
-| Paste daily scores | A collapsible entry panel: paste your MapTap result, and a row per rival shows a live win/loss/tie preview against your score before you save the day's games. |
+| Paste daily scores | A collapsible entry panel: paste your MapTap result, and a row per rival shows a live win/loss/tie preview against your score before you save the day's games. One record per rival per date: saving a day that already has a record for that rival updates it in place (the save bar reads "Updated" instead of "Saved"), so re-pasting corrects a day rather than double-counting it. |
 | MapTap profile auto-sync | Link your MapTap profile (and a rival's username) to pull game history automatically from the public MapTap profile endpoint instead of pasting. |
 | Rival network (opt-in) | Sign in, verify your MapTap profile, and publish a handle claim so other members can find you. Joining publishes only your handle, display name, icon, and the handles of the rivals you track, readable only by rivals you are connected to; scores, games and notes are never published, and leaving deletes all of it. Requires a registered (non-anonymous) account. |
 | Mutual rival connections | Adding a rival whose MapTap handle belongs to another member connects you both at once: a single pair document is created, your card shows a "Connected" chip, and the other person gets the rival added to their own list with a dismissible "added you as a rival" notice. No second person has to search for anyone. Deleting a connected rival tears the pair down. |
@@ -30,7 +30,7 @@ A game belongs to a rival, so every view reads the game log through the rival li
 | Per-rival dashboard | A focused head-to-head view: stat cards, score-over-time and win-distribution and score-differential charts (Chart.js), recent-games table with pagination, and narrative callouts. |
 | Outbound maptap.gg links | In the history and recent-games tables, dates link to that day's puzzle page (`maptap.gg/history/...`) and score numbers link to the player's profile (`maptap.gg/u/...`) when that player has a linked username. |
 | Round-by-round breakdown | Per-round (location) stats, win-rate-per-round chart, a last-10-games round heatmap, carry/choke insights, and a calendar heatmap of game history. |
-| Continent breakdown | Per-continent stats for games that carry synced geo data. There is no Antarctica bucket: rounds below 60°S count as "Other". |
+| Continent breakdown | Per-continent stats for games that carry synced geo data. Rounds without usable coordinates are excluded, never bucketed. There is no Antarctica bucket: rounds below 60°S count as "Other". |
 | Win/loss/tie + streaks | Computes wins, losses, ties, win %, current and longest streaks, biggest win/loss margins, and best/worst scores per rival. |
 | Leaderboard | A sortable table listing every rival alphabetically by default, re-rankable by win %, games, W/L/T, a blended rivalry score, average margin, current streak, and recent form. |
 | Confusion matrix | A cross-participant grid comparing you against each selected rival, and rival-vs-rival on days you played both, with selectable metrics. A "Sort rows" select orders the grid by name (A-Z), win rate, or average score, and the choice is remembered between visits. |
@@ -62,9 +62,11 @@ npm run test:maptap
 
 The rival network's decidable core (pair-document ids, handle canonicalization, the published payload, the reconcile that decides which connections still need a local rival, and the discovery filtering) lives in `js/network.js` on the same terms: a pure dual-export module with no Firebase imports, unit-tested in `tests/network.test.js`.
 
-Both suites (`tests/stats.test.js` and `tests/network.test.js`) are also part of the repo-wide `npm test` target.
+A third suite, `tests/app-helpers.test.js`, reaches inside `js/app.js` itself: the IIFE ends with a `window._testExports` block exposing its pure helpers (`classifyContinent` and its bounding boxes, the per-rival `continentBreakdown`, the matrix cell builders, `rivalSummary`, and `upsertPastedGame`, the per-rival/per-date save guard), and the suite loads the file with `node:vm` into a stubbed-browser sandbox (never-settling `fetch`, Map-backed `localStorage` seeded per test, `init()` never runs). The rest of app.js (the paste panel DOM flow, the WhatsApp importer, import/export, sync, rendering) remains out of unit-test reach and is covered by browser probes and the `.features/` plans.
 
-A handful of tests are marked `{ todo: 'KNOWN DEFECT: ...' }`. Those assert the behavior the app *should* have, fail today, and are reported by `node --test` as expected failures (the run still exits 0), so a shipped defect is pinned in the suite instead of in a comment; each one flips to a pass the moment it is fixed. `js/app.js` is a single IIFE with no exports and cannot be loaded from node, so its logic (the paste panel, `classifyContinent`, the WhatsApp importer, import/export, sync, rendering) is out of unit-test reach by construction. `FINDINGS.md` lists what that leaves uncovered and which defects are currently open.
+All three suites are also part of the repo-wide `npm test` target.
+
+Tests marked `{ todo: 'KNOWN DEFECT: ...' }` assert the behavior the app *should* have while a defect is still shipped; `node --test` reports them as expected failures (the run still exits 0), and each flips to a plain passing test when fixed. As of 2026-08-15 this app's suites carry no todos. `FINDINGS.md` lists what stays uncovered and the history of fixed defects.
 
 ## Deploying the network rules
 
