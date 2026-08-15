@@ -34,6 +34,26 @@
 // same number lives in tests/invariants.test.mjs (PLAN_GENERATION_BUDGET_MS);
 // keep the two equal - the 3000 left behind there from the horizon-3 era is
 // what failed the PR.
+//
+// 2026-08-15: the budgets moved again, and NOT because anything got slower to
+// no purpose. seasonEvidence() corrected the projections, and on this fixture
+// that roughly doubled the work:
+//
+//                        start rate median   pinned at 1.000   wall     CPU
+//   before the fix       1.000               208 of 320        1157ms   1376ms
+//   after the fix        0.508               0 of 320          2312ms   2468ms
+//
+// Two thirds of the pool used to be certain starters, which is a strictly
+// easier problem than the real one: the optimizer had far fewer distinct
+// options to weigh. Paying twice the CPU to stop projecting every player as an
+// ever-present is the trade, and it is the same trade on live data.
+//
+// The development machine still clears the old 5000 comfortably, so this only
+// showed up on CI, which measured 6197ms of CPU here and 5216ms of wall time in
+// invariants.test.mjs. Re-derived from those observations with the same ~1.65x
+// headroom the policy above describes. Reproducing the CI failure locally is
+// not possible by pinning cores (`taskset -c 0,1` still passes): that runner is
+// slower per core, not merely narrower.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -74,8 +94,12 @@ async function fastest(fn) {
   return { elapsed: Math.round(best), wall: bestWall, bundle: last, result: last, ms: Math.round(best) };
 }
 
-const FULL_PLAN_BUDGET_MS = 5000;
-const LONGEST_HORIZON_BUDGET_MS = 10000;
+const FULL_PLAN_BUDGET_MS = 10000;
+// Not raised because it was observed failing: it passed on CI at 10000. It is
+// raised only to keep the ordering true, because the longest horizon is always
+// at least as much work as the default one, and a ceiling equal to the default
+// budget would stop meaning anything.
+const LONGEST_HORIZON_BUDGET_MS = 16000;
 
 const APP = join(dirname(fileURLToPath(import.meta.url)), '..');
 const sample = (name) => JSON.parse(readFileSync(join(APP, 'data', 'sample', `${name}.json`), 'utf8'));

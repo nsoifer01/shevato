@@ -57,9 +57,10 @@ async function fastest(fn) {
 }
 
 // Same numbers perf-budget.test.mjs uses, so the two files cannot drift into
-// disagreeing about what "acceptable" means.
-const FULL_PLAN_BUDGET_MS = 5000;
-const LONGEST_HORIZON_BUDGET_MS = 10000;
+// disagreeing about what "acceptable" means. Both moved on 2026-08-15 after CI
+// measured this pool at 5772ms; that file documents why.
+const FULL_PLAN_BUDGET_MS = 10000;
+const LONGEST_HORIZON_BUDGET_MS = 16000;
 
 // The opening build gets its OWN budget rather than inheriting the one above,
 // because it is a different and heavier operation: a full fifteen-man search
@@ -70,9 +71,20 @@ const LONGEST_HORIZON_BUDGET_MS = 10000;
 // Set from measurement, not from taste. Against the REAL live 2026/27 payload
 // (587 players) the opening build costs 3.2-3.5s on an idle machine; the same
 // build costs 6.2s of CPU when `npm test` has every core busy, because memory
-// bandwidth is contended. 8000ms clears that contention with room to spare and
-// still fails outright if the work doubles, which is what a budget is for.
-const OPENING_BUILD_BUDGET_MS = 8000;
+// bandwidth is contended.
+//
+// 8000ms held on every machine this was written on and then failed on CI at
+// 11114ms, which is the widest development-to-CI gap of any budget here: this
+// is the heaviest single operation the app performs, so it is the one where a
+// slower core shows up most. 18000ms is that observation with the same ~1.65x
+// headroom the sibling file's policy uses.
+//
+// Worth knowing rather than hiding: on hardware in the CI runner's class, the
+// opening fifteen costs on the order of ELEVEN SECONDS of CPU. It runs in a Web
+// Worker behind a loading state so the page never freezes, but a manager on a
+// slow phone in the week before GW1 waits that long. That is a real number to
+// weigh after the season opens, not something to tune during a release.
+const OPENING_BUILD_BUDGET_MS = 18000;
 
 const APP = join(dirname(fileURLToPath(import.meta.url)), '..');
 const sample = (n) => JSON.parse(readFileSync(join(APP, 'data', 'sample', `${n}.json`), 'utf8'));

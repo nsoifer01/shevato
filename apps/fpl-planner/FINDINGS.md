@@ -217,20 +217,53 @@ ranking, and only the part of a correction that changes ORDER changes decisions
   | live pre-season opening build h5 | 4460 ms | 3481 ms | 8000 ms |
   | live pre-season opening build h8 | 7785 ms | 5895 ms | 8000 ms |
   | live in-season h5 | 4855 ms | 4024 ms | 5000 ms |
-  | live in-season h8 | 8516 ms | 7388 ms | 10000 ms |
+  | live in-season h8 | 8516 ms | 7388 ms | 16000 ms |
 
-  **All inside budget, and in-season h5 is the tight one** at 4855 against 5000.
   `perf-live-size.test.mjs` now measures a pool expanded to the live count so a
   regression at production size is visible; the opening build carries its own
-  8000 ms budget because a fifteen-man search is a heavier operation than the
-  transfer path and inheriting the other number would not be honest. Expand the
-  pool from the CHEAPER half of the sample: cloning across the whole price range
+  budget because a fifteen-man search is a heavier operation than the transfer
+  path and inheriting the other number would not be honest. Expand the pool from
+  the CHEAPER half of the sample: cloning across the whole price range
   manufactures premiums and makes the search about twice as hard as reality.
+
+  **These numbers are this machine's, and that is a trap the budgets fell into.**
+  Every budget above was derived here, all of them passed here, and four of them
+  then failed on the GitHub runner (2026-08-15, PR #380): the sample plan at
+  6197 ms of CPU against 5000, its wall-clock twin in `invariants.test.mjs` at
+  5216 ms, the live-sized opening build at **11114 ms** against 8000, and the
+  live-sized plan at 5772 ms. Nothing was slower than designed; the runner is
+  slower per core. Pinning cores locally (`taskset -c 0,1`) does NOT reproduce it
+  - the whole suite still passes - so a budget cannot be validated by narrowing
+  this machine, only by watching CI. The budgets were re-derived from those CI
+  observations with the ~1.65x headroom the policy in `perf-budget.test.mjs`
+  already described, which is the same thing PR #374 did when it moved 3000 to
+  5000.
+
+  The number worth carrying forward is the 11 seconds. On hardware in the
+  runner's class, building the opening fifteen costs on the order of eleven
+  seconds of CPU. It runs in a Web Worker behind a loading state so nothing
+  freezes, but that is what a manager on a slow phone waits in the week before
+  GW1. It is a candidate for the post-GW1 optimisation round, alongside chip
+  gating, and deliberately not something to tune during a release.
 
   **No optimisation was made, and the improvement was not one.** The audit
   measured live in-season h5 at 7269 ms; it is now 4855 ms because the B1 fix
   changed the projections the search runs on (start rates are no longer pinned
-  at 1.000), not because any planner code got faster. The stage profile that
+  at 1.000), not because any planner code got faster.
+
+  B1 moves plan time in BOTH directions, and on the committed fixture it moves
+  it up. Measured on the same machine, master against this branch:
+
+  | apps/fpl-planner/data/sample | start rate median | pinned at 1.000 | wall | CPU |
+  | --- | ---: | ---: | ---: | ---: |
+  | before `seasonEvidence()` | 1.000 | 208 of 320 | 1157 ms | 1376 ms |
+  | after | 0.508 | 0 of 320 | 2312 ms | 2468 ms |
+
+  Two thirds of that pool used to be certain starters, which is a strictly
+  easier problem than the real one, so roughly double the CPU is the price of
+  not projecting every player as an ever-present. This is the direct cause of
+  the CI budget failures above: the budget was calibrated against the degenerate
+  workload. The stage profile that
   motivated a chip-gating change still stands - `evaluateChips` was 5543 ms of a
   7918 ms plan, two unconditional full squad rebuilds - and gating it is
   deliberately NOT done: it can change which chip clears its bar, and that is a
