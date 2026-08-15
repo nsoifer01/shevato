@@ -28,9 +28,6 @@ const NO_CANONICAL = new Set(['404']);
 export async function run({ base, cdpPort }) {
   const R = [];
   const t = (name, pass, detail = '') => R.push({ name, pass: !!pass, detail });
-  // Skips document behavior the product currently lacks (KNOWN DEFECT) or a
-  // precondition the repo cannot supply; they are reported, never failures.
-  const skip = (name, reason) => R.push({ name, pass: true, skipped: true, detail: reason });
 
   const s = await newPage(cdpPort);
   await setViewport(s, 1280, 900);
@@ -121,10 +118,9 @@ export async function run({ base, cdpPort }) {
   await setValue(s, '#app-search', 'zzz-no-app-matches-this');
   t('apps hub: no-match query hides every card',
     await waitForExpr(s, `(${visExpr}) === 0`), `${await evaluate(s, visExpr)} still visible`);
-  // Expected-failure check (executes every run, unlike a plain skip): with a
-  // zero-match query active, a user should see an empty-state message and a
-  // screen reader should get an aria-live results announcement. Today
-  // apps.html has neither, so the grid goes silently blank.
+  // With a zero-match query active, a user must see an empty-state message
+  // and a screen reader must get an aria-live results announcement
+  // (defect 20, fixed 2026-08-15: #app-search-empty + #app-filter-status).
   const emptyState = await evaluate(s, `(()=>{
     const live = [...document.querySelectorAll('[aria-live],[role=status]')]
       .some(el => (el.textContent||'').trim().length > 0);
@@ -133,13 +129,8 @@ export async function run({ base, cdpPort }) {
         && /no (apps|results|matches)/i.test(el.textContent||''));
     return { live, msg };
   })()`);
-  if (!emptyState.live && !emptyState.msg) {
-    skip('apps hub: no-match empty state + SR results announcement',
-      'KNOWN DEFECT: zero-match search shows a blank grid; apps.html has no empty-state message and no aria-live results announcement');
-  } else {
-    t('apps hub: no-match empty state + SR results announcement', false,
-      `unexpectedly passes (live=${emptyState.live}, msg=${emptyState.msg}) - the pinned defect no longer fully reproduces; convert this quarantine into plain assertions and mark defect 20 resolved in TESTING-AUDIT.md`);
-  }
+  t('apps hub: no-match empty state + SR results announcement',
+    emptyState.live && emptyState.msg, `live=${emptyState.live}, msg=${emptyState.msg}`);
 
   await setValue(s, '#app-search', '');
   t('apps hub: clearing search restores all cards',

@@ -270,6 +270,29 @@ needed it.
   oldest-inserted evicted first (entries carry no timestamp; do not add one
   without bumping the key version).
 
+## WCAG AA contrast decisions (2026-08-15 round, was defect 28)
+
+- Days view had 32 axe `color-contrast` serious violations, all traced to
+  four causes; the fixes are token-level, so keep them in mind before
+  re-darkening anything:
+  - `--accent` is `#5d95ff` (was `#4f8cff`, which measured 4.41:1 on the
+    accent-soft chip surface). `--accent-soft` carries the matching rgb.
+  - `--purple` is `#b8a3fc` (was `#a78bfa`, 4.09:1 as `.dc-tag` text on
+    purple-soft over `--bg-raised`). `--purple-soft` matches.
+  - `.dc-daynum small` carries NO opacity (0.75 pulled the accent under
+    4.5:1), and `.dc-daynum b` pins `color: inherit` because main.css paints
+    every `strong, b` `#555555` (1.9:1 here) - the same class of counter-pin
+    the leaflet popup and assistant prose already carry.
+  - `.dc-event.is-cancelled .dc-item` carries NO blanket opacity (0.82
+    multiplied into every text colour inside: title 4.44:1, description
+    3.79:1, Maps label 3.9:1, CANCELLED tag 3.65:1). The faded reading now
+    comes only from the explicit colour steps (line-through --text-dim
+    title, 0.62 `.dc-facts` fade whose base is bright --text, gray tag).
+- The a11y browser suite scans the Days view with the example trip loaded
+  and FAILS on any serious/critical violation (its quarantine entry was
+  removed); a new sub-4.5:1 token combination will fail CI-adjacent runs,
+  not just look dim.
+
 ## Testing
 
 - Three layers, keep each test at the lowest one that can catch its bug:
@@ -369,16 +392,17 @@ needed it.
 - Failure artifacts: one screenshot per failing check in
   `.screenshots/e2e-trip-planner/` (gitignored), path printed in the result
   detail. Green runs write nothing.
-- **Known product defect, pinned by a skipped check** (tp-views T,
-  2026-08-15): after a FAILED exchange-rate fetch, `ensureRates()` calls
-  `render()` from `.catch()` while `ratesFetching` is still true - the
-  `.finally()` that clears the flag runs after that render and repaints
-  nothing - so the totals note is left saying "Fetching exchange rates..."
-  until some unrelated render, instead of the promised "Could not fetch..."
-  note + Retry (app.js ~558-569). The recovery render is green (note + Retry
-  + no fake 1:1 conversion, asserted after one interaction); the unprompted
-  path is a `KNOWN DEFECT` skip asserting the correct behavior, so fixing the
-  sequencing turns the skip into a pass with no test edit.
+- **Rate-fetch failure sequencing (fixed 2026-08-15, was defect 19)**: a
+  failed exchange-rate fetch used to leave the stale "Fetching exchange
+  rates..." note on screen because `ensureRates()` rendered from `.catch()`
+  while `ratesFetching` was still true (the `.finally()` that cleared the
+  flag ran after that render). The flag now clears via a `settle()` helper
+  BEFORE every render in both the success and failure paths, so the failed
+  fetch itself repaints the honest "Could not fetch..." note + Retry. A
+  shaped-but-invalid response (no `base`/`rates`) now also flips
+  `ratesFailed` and renders instead of silently doing nothing. `tp-views T:
+  ... unprompted` is a plain assertion on this; if it fails again, the flag
+  ordering regressed.
 - The booking-import dialog's proposal cards carry the EMPTY `.ap-dist`
   scaffold span every card gets (`proposalDistHtml`); the paint pass only
   fills chips under `#assistMessages`. Assertions about "no chips in the

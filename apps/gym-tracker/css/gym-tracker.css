@@ -9771,7 +9771,10 @@ button.calendar-day {
 }
 
 #program-modal .btn-save-program {
-    background: var(--accent-primary);
+    /* --accent-secondary (deep blue, the "strong fills" token), not
+       --accent-primary: white on the bright azure is 2.77:1 (axe fail);
+       on the deep blue it is ~5.2:1. */
+    background: var(--accent-secondary);
     border: 1px solid transparent;
     color: #ffffff !important;
 }

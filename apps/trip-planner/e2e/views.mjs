@@ -300,24 +300,14 @@ export async function run({ base, cdpPort }) {
       item({ title: 'Paid in euros', startDate: iso(31), startTime: '10:00', status: 'booked', cost: 100, costCurrency: 'EUR' }),
     ],
   });
-  const skip = (name, detail) => R.push({ name, pass: true, skipped: true, detail });
   await withPage('tp-views T', { db: dbOf([tTrip]) }, async (s) => {
     const failNoteExpr = `(()=>{const n=document.querySelector('.totals-note'); return !!n && n.textContent.includes('Could not fetch exchange rates')})()`;
-    // CORRECT behavior: the failed fetch itself re-renders with the failure
-    // note. Today it does not: ensureRates() calls render() from .catch()
-    // while ratesFetching is still true (the .finally() that clears the flag
-    // runs after the render and repaints nothing), so the page is left saying
-    // "Fetching exchange rates..." until some unrelated render.
+    // The failed fetch itself re-renders with the failure note: ensureRates()
+    // clears ratesFetching BEFORE the .catch's render() (defect 19, fixed
+    // 2026-08-15), so no later unrelated render is needed to see it.
     const noteUnprompted = await waitForExpr(s, failNoteExpr, { timeout: 9000 });
-    if (noteUnprompted) {
-      await t('tp-views T: failed rates show the promised note unprompted', false,
-        'unexpectedly passes - the pinned defect no longer reproduces; convert this quarantine into a plain assertion and mark defect 19 resolved in TESTING-AUDIT.md', s);
-    } else {
-      skip('tp-views T: failed rates show the promised note unprompted',
-        'KNOWN DEFECT: ensureRates() renders from .catch() before .finally() clears ratesFetching, so a failed '
-        + 'rate fetch leaves "Fetching exchange rates..." on screen until an unrelated render (app.js ~558-569); '
-        + 'the README-promised "note + Retry" only appears after the next interaction');
-    }
+    await t('tp-views T: failed rates show the promised note unprompted', noteUnprompted,
+      noteUnprompted ? '' : 'still showing the stale fetching note 9s after the failed fetch', s);
     // ...and after ANY later render the honest note + Retry must be there
     // (this is the state a traveller actually reaches on their next action)
     await setValue(s, '#searchBox', 'x');

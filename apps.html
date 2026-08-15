@@ -213,6 +213,12 @@
       transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
     .app-search-bar input[type="search"]::placeholder { color: #9aa1a9; opacity: 1; }
+    .app-search-empty {
+      max-width: 34rem;
+      margin: 0 auto 2rem;
+      text-align: center;
+    }
+    .app-search-empty[hidden] { display: none; }
     .app-search-bar input[type="search"]:hover,
     .app-search-bar input[type="search"]:focus {
       color: #41474f;
@@ -268,6 +274,13 @@
            structure obvious to a sighted user; the heading exists to give the
            cards a parent in the document outline. -->
       <h2 class="sr-only">All apps</h2>
+
+      <!-- Zero-match empty state + polite results announcement for the search
+           and category filters. The visible message keeps the grid from going
+           silently blank; the sr-only live region tells screen-reader users
+           the result set changed. Both are updated by the filter script. -->
+      <p id="app-search-empty" class="app-search-empty" hidden>No apps match your search. Clear it or pick a different category.</p>
+      <p id="app-filter-status" class="sr-only" role="status" aria-live="polite"></p>
 
       <div class="highlights">
         <section data-category="game">
@@ -380,6 +393,8 @@
         (function() {
           var bar = document.querySelector('.app-filter-bar');
           var input = document.getElementById('app-search');
+          var emptyMsg = document.getElementById('app-search-empty');
+          var liveStatus = document.getElementById('app-filter-status');
           var sections = Array.prototype.slice.call(
             document.querySelectorAll('.highlights section[data-category]')
           );
@@ -388,14 +403,25 @@
 
           function apply() {
             var filtered = activeCategory !== 'all' || searchTerm !== '';
+            var visible = 0;
             document.querySelectorAll('.highlights').forEach(function(hl) {
               hl.classList.toggle('is-filtered', filtered);
             });
             sections.forEach(function(sec) {
               var catOk = activeCategory === 'all' || sec.getAttribute('data-category') === activeCategory;
               var textOk = searchTerm === '' || sec.textContent.toLowerCase().indexOf(searchTerm) !== -1;
-              sec.style.display = (catOk && textOk) ? '' : 'none';
+              var show = catOk && textOk;
+              if (show) visible++;
+              sec.style.display = show ? '' : 'none';
             });
+            if (emptyMsg) emptyMsg.hidden = visible !== 0;
+            // Count-free by site convention: the announcement says what
+            // happened, the grid itself says what matched.
+            if (liveStatus) {
+              liveStatus.textContent = visible === 0
+                ? 'No apps match your search.'
+                : (filtered ? 'Matching apps are shown below.' : '');
+            }
           }
 
           if (bar) {

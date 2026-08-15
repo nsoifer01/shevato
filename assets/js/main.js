@@ -170,16 +170,30 @@
       const modal = document.querySelector(SELECTORS.modal);
       if (!modal) return;
 
-      const focusableElements = modal.querySelectorAll(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      // Only VISIBLE focusables can be trap boundaries. The modal always
+      // contains BOTH the signin and signup forms with one display:none'd;
+      // a hidden element can never hold focus, so using it as first/last
+      // meant the wrap condition never matched and Tab escaped the dialog.
+      // Recomputed on every Tab because the visible set changes when the
+      // user switches between the Sign In and Sign Up tabs.
+      const focusableElements = Array.prototype.filter.call(
+        modal.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        ),
+        (el) => !el.disabled
+          && (el.offsetParent !== null || el.getClientRects().length > 0)
       );
+      if (focusableElements.length === 0) return;
       const firstElement = focusableElements[0];
       const lastElement = focusableElements[focusableElements.length - 1];
+      const active = document.activeElement;
+      // If focus already leaked outside the dialog, pull it back in.
+      const outside = !modal.contains(active);
 
-      if (event.shiftKey && document.activeElement === firstElement) {
+      if (event.shiftKey && (active === firstElement || outside)) {
         event.preventDefault();
         lastElement.focus();
-      } else if (!event.shiftKey && document.activeElement === lastElement) {
+      } else if (!event.shiftKey && (active === lastElement || outside)) {
         event.preventDefault();
         firstElement.focus();
       }
@@ -1104,6 +1118,9 @@
         visibleClass: 'is-menu-visible',
         delay: 500,
         hideOnClick: true,
+        // Escape must close the open menu (WCAG 2.1 dismissible); util.js
+        // only binds the keydown handler when this flag is set.
+        hideOnEscape: true,
         hideOnSwipe: true,
         resetScroll: true,
         resetForms: true,

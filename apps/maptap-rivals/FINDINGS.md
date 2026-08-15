@@ -217,6 +217,12 @@ Rival add/delete and a cross-tab `storage` event both land in
 no listener at all and the bar never reads the date, so nothing is needed
 there.
 
+Contrast (2026-08-15, was defect 28): `.paste-collapse-hint` uses
+`var(--muted)`, not `var(--muted-2)` - the darker step measured 3.63:1 on the
+card at 0.72rem (axe serious fail). The a11y browser suite scans this app's
+root and fails on any serious violation, so keep hint-sized text off
+`--muted-2`.
+
 ## What the unit tests reach, and what they still cannot
 
 `tests/stats.test.js` and `tests/network.test.js` `require()` the two dual-

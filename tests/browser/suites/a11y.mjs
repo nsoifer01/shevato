@@ -12,9 +12,10 @@
 //     rule + selector live in the shared header/footer chrome. They are
 //     listed once, on the first page that carries them, and referenced from
 //     the other pages' details instead of re-listed.
-//   - Keyboard checks use real Input.dispatchKeyEvent keys; where the product
-//     genuinely lacks a behavior (Escape on the mobile menu), the truthful
-//     assertion is recorded as a KNOWN DEFECT skip, never weakened to green.
+//   - Keyboard checks use real Input.dispatchKeyEvent keys; if the product
+//     genuinely lacks a behavior, the truthful assertion is recorded as a
+//     KNOWN DEFECT skip (expected-failure convention), never weakened to
+//     green. No keyboard quarantines are open today.
 //
 // Arena note: its Firebase hosts are intercepted and failed BEFORE first
 // navigation, same as suites/apps.mjs, so this scan can never sign in or
@@ -38,9 +39,9 @@ const APP_ROOTS = ['arena', 'football-h2h', 'fpl-planner', 'gym-tracker',
 const FIREBASE_HOSTS = /firestore\.googleapis\.com|firebaseio\.com|identitytoolkit\.googleapis\.com|securetoken\.googleapis\.com/i;
 
 // Quarantine baseline: the ONLY scans allowed to carry serious/critical
-// violations, and exactly which rule ids they may carry. Catalogued in
-// TESTING-AUDIT.md (defects 26-28). Semantics, per the expected-failure
-// convention (tests/browser/README.md):
+// violations, and exactly which rule ids they may carry. Any entry must be
+// catalogued as a defect in TESTING-AUDIT.md. Semantics, per the
+// expected-failure convention (tests/browser/README.md):
 //   - a scan listed here whose violations stay inside its allowed rule set
 //     reports a KNOWN DEFECT skip (the defect is still present);
 //   - a scan listed here that comes back with NO serious/critical violations
@@ -50,11 +51,9 @@ const FIREBASE_HOSTS = /firestore\.googleapis\.com|firebaseio\.com|identitytoolk
 //     allowed set, FAILS outright: it is a new regression, never a silent
 //     addition to the quarantine.
 const QUARANTINED = new Map([
-  ['site moadon-alef', new Set(['color-contrast'])],
-  ['app maptap-rivals', new Set(['color-contrast'])],
-  ['app mario-kart', new Set(['aria-required-children', 'aria-required-parent'])],
-  ['state gym-tracker program-modal', new Set(['color-contrast'])],
-  ['state trip-planner days-view', new Set(['color-contrast'])],
+  // Empty since the 2026-08-15 a11y fix round (defects 26-29 resolved): every
+  // scan must come back with zero serious/critical violations. The map stays
+  // so a future genuine quarantine keeps the same pinned-baseline mechanics.
 ]);
 
 const CLEAR_STORAGE = `(()=>{ try{ for(const k of Object.keys(localStorage)) localStorage.removeItem(k);
@@ -272,17 +271,10 @@ export async function run({ base, cdpPort }) {
   // Behavioral keyboard/focus checks driven with real keys.
   const TAB = (s, shift = false) => pressKey(s, 'Tab', 'Tab', 9, shift ? 8 : 0);
   const ESC = (s) => pressKey(s, 'Escape', 'Escape', 27);
-  // Enter/Space need the `text` field on the keyDown or Chromium treats it as
-  // a rawKeyDown and skips default actions (a button's key-activated click),
-  // which pressKey() does not set. Same Input.dispatchKeyEvent path otherwise.
-  const pressKeyText = async (s, key, code, keyCode, text) => {
-    const p = { key, code, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode };
-    await s.send('Input.dispatchKeyEvent', { type: 'keyDown', ...p, text, unmodifiedText: text });
-    await s.send('Input.dispatchKeyEvent', { type: 'keyUp', ...p });
-    await sleep(200);
-  };
-  const ENTER = (s) => pressKeyText(s, 'Enter', 'Enter', 13, '\r');
-  const SPACE = (s) => pressKeyText(s, ' ', 'Space', 32, ' ');
+  // Enter/Space pass their text so Chromium runs default actions (a button's
+  // key-activated click); pressKey() takes it as its optional last argument.
+  const ENTER = (s) => pressKey(s, 'Enter', 'Enter', 13, 0, '\r');
+  const SPACE = (s) => pressKey(s, ' ', 'Space', 32, 0, ' ');
 
   // B1: home, Tab from the top walks the header nav links in DOM order, and
   // the focused link shows a visible focus indicator.
@@ -361,10 +353,10 @@ export async function run({ base, cdpPort }) {
     } finally { await closePage(cdpPort, s); }
   } catch (e) { t('kbd apps hub: block ran', false, String(e && e.message).slice(0, 140)); }
 
-  // B3: mobile menu at 390x844. The menu is an HTML5UP panel; util.js only
-  // wires Escape when hideOnEscape is set, and main.js does not set it, so
-  // Escape genuinely does nothing. That gap is recorded as a KNOWN DEFECT
-  // skip; the working close path (the labelled close control) is asserted.
+  // B3: mobile menu at 390x844. The menu is an HTML5UP panel; main.js
+  // initializeMenu() sets hideOnEscape, so Escape must close the open menu
+  // (defect 29, fixed 2026-08-15). The labelled close control is asserted on
+  // a second open/close cycle.
   try {
     const s = await newPage(cdpPort);
     try {
@@ -382,23 +374,23 @@ export async function run({ base, cdpPort }) {
       await ESC(s);
       await sleep(600);
       const stillOpen = await evaluate(s, menuVisible);
-      if (stillOpen) {
-        skip('kbd mobile menu: Escape closes the open menu',
-          'KNOWN DEFECT: Escape does not close the open mobile menu - the panel plugin (assets/js/util.js) only binds Escape when hideOnEscape is set and main.js initializeMenu() never sets it');
-      } else {
-        t('kbd mobile menu: Escape closes the open menu', false,
-          'unexpectedly passes - the pinned defect no longer reproduces; convert this quarantine into a plain assertion and mark defect 29 resolved in TESTING-AUDIT.md');
-      }
+      t('kbd mobile menu: Escape closes the open menu', !stillOpen,
+        stillOpen ? 'menu still visible after Escape' : '');
 
-      if (stillOpen) await clickSel(s, '#menu a.close', { settle: 900 });
+      // Reopen (the panel plugin locks for its 500ms delay after a hide) and
+      // close via the labelled close control.
+      await sleep(700);
+      await clickSel(s, 'a[href="#menu"]', { settle: 900 });
+      const reopened = await evaluate(s, menuVisible);
+      await clickSel(s, '#menu a.close', { settle: 900 });
       const closedState = await evaluate(s, `(()=>({
         vis: document.body.classList.contains('is-menu-visible'),
         expanded: (document.querySelector('[data-js="menu-toggle"]')||{getAttribute:()=>null}).getAttribute('aria-expanded'),
         hidden: (document.getElementById('menu')||{getAttribute:()=>null}).getAttribute('aria-hidden'),
       }))()`);
       t('kbd mobile menu: close control closes and syncs aria state',
-        !closedState.vis && closedState.expanded === 'false' && closedState.hidden === 'true',
-        JSON.stringify(closedState));
+        reopened && !closedState.vis && closedState.expanded === 'false' && closedState.hidden === 'true',
+        `reopened=${reopened} ${JSON.stringify(closedState)}`);
     } finally { await closePage(cdpPort, s); }
   } catch (e) { t('kbd mobile menu: block ran', false, String(e && e.message).slice(0, 140)); }
 
@@ -442,13 +434,9 @@ export async function run({ base, cdpPort }) {
             break;
           }
         }
-        if (escaped === null) {
-          t('kbd auth modal: Tab keeps focus inside the open dialog', false,
-            'unexpectedly passes - the pinned defect no longer reproduces; convert this quarantine into a plain assertion and mark defect 26 resolved in TESTING-AUDIT.md');
-        } else {
-          skip('kbd auth modal: Tab keeps focus inside the open dialog',
-            `KNOWN DEFECT: Tab escapes the open auth dialog to "${escaped}" - main.js trapFocus() computes first/last over ALL focusable elements including the hidden signup form, so the boundary element can never hold focus and the wrap never fires`);
-        }
+        t('kbd auth modal: Tab keeps focus inside the open dialog', escaped === null,
+          escaped === null ? '14 Tabs stayed inside'
+            : `Tab escaped the open auth dialog to "${escaped}"`);
 
         await ESC(s);
         await sleep(500);
