@@ -1170,6 +1170,132 @@ body.maptap-rivals-app textarea:focus {
   margin-top: 0.15rem;
 }
 
+/* ---------- Dashboard: my average by continent ----------
+   A compact band under the KPI tiles carrying one chip per continent.
+   Chips instead of more tiles: up to 8 continents would double the height
+   of the strip and collapse on mobile. Same surface / border / accent-bar
+   language as .continent-card on the rival page. Every colour is pinned
+   explicitly, since the sitewide assets/css/main.css overrides unpinned
+   text colours. */
+
+.dash-continents {
+  margin: -0.6rem 0 1.4rem;
+}
+.dash-continents[hidden] { display: none; }
+
+.dash-continents-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.dash-continents-title {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.dash-continents-sub {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Grid, not flex: chip widths come from the column count, never from the
+   text, so every card is exactly as wide as its neighbours and each full
+   row spans the dashboard's content column edge to edge (the same trick
+   .dash-summary uses above).
+
+   14.5rem is the measured natural width of the widest chip ("South America",
+   worst-case "100.0" average) plus ~0.2rem of slack. Measure in rem, never
+   px: assets/css/main.css steps the root font by viewport (11pt/14.667px up
+   to 1680px, 12pt/16px from 481 to 980, 13pt/17.333px above 1680), and the
+   chip scales with it, so the same chip is 209.78px at 11pt, 228.47px at
+   12pt and 247.20px at 13pt - i.e. 14.30 / 14.28 / 14.26rem, one number.
+   The earlier 12.5rem was a raw px measurement divided by 16, so the track
+   came out 26.4px short at 11pt (183.33 vs 209.78) and 30.5px short at 13pt
+   (216.67 vs 247.20), and both American names wrapped, making every card in
+   the row a text line taller.
+   Track floors this rule produces: 212.67px at 11pt, 232px at 12pt,
+   251.33px at 13pt. */
+.dash-continent-chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14.5rem, 1fr));
+  gap: 0.5rem;
+}
+
+/* Wide dashboards: one row, whatever the continent count, flush to both
+   content edges. The page column is capped at 1200px while seven chips on
+   one line would need ~1440px, so the two long continent names wrap inside
+   their own chip; grid still gives every card identical width and height.
+   Bounds are measured, not guessed: a seven-column row needs ~150px per
+   chip to clear the longest word in a continent name (measured: it fails
+   at a 1120px viewport, clears from 1140px), and above 1680px the
+   sitewide stylesheet lifts the root font from 11pt to 13pt while the page
+   column stays at 1200px, so the names no longer clear their own score.
+   Outside those bounds the auto-fit grid above reflows to fewer columns. */
+@media (min-width: 1160px) and (max-width: 1680px) {
+  .dash-continent-chips {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+  }
+}
+.dash-continent-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  padding: 0.4rem 0.65rem 0.4rem 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--cont-color, var(--accent));
+  border-radius: var(--radius-sm);
+}
+.dash-continent-icon {
+  flex: 0 0 auto;
+  width: 1.6rem;
+  height: 1.6rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--cont-color, var(--accent)) 22%, var(--surface-3));
+  font-size: 1rem;
+}
+.dash-continent-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.dash-continent-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.2;
+}
+.dash-continent-rounds {
+  font-size: 0.68rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* Pinned to the chip's right edge now that chips are grid-sized rather than
+   content-sized, and never squeezed by a long continent name. */
+.dash-continent-avg {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-left: 0.3rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- Today's predictions card ----------
    Head-to-head card comparing each player's predicted total against
    their actual once results sync. Visual language mirrors the rival
@@ -4409,6 +4535,10 @@ body.maptap-rivals-app select option {
   /* Fix 5: dashboard KPI strip — 2-up grid instead of colliding auto-fit. */
   .dash-summary { grid-template-columns: repeat(2, 1fr); }
   .dash-summary-card .value { font-size: 1.15rem; }
+
+  /* Continent chips go 2-up on the same grid rhythm as the KPI tiles, so
+     they reflow instead of pushing the page sideways. */
+  .dash-continent-chips { grid-template-columns: repeat(2, 1fr); }
 
   /* Fix 9: predictions card header — date label and status badge wrap cleanly. */
   .todays-card-head { flex-wrap: wrap; justify-content: space-between; }

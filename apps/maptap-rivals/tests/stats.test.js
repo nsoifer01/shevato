@@ -20,6 +20,7 @@ const {
   finishPositionsForDay, fieldSharesForDay, competitionRanksForDay,
   accumulateFinishPositions,
   avgPositionColor, avgPositionColors,
+  myAvgByContinent,
   compareNamesCI, compareWinPctDesc,
 } = require('../js/stats.js');
 
@@ -1272,6 +1273,109 @@ test('accumulateFinishPositions: no history at all yields no records', () => {
   assert.deepEqual(accumulateFinishPositions([]), {});
   assert.deepEqual(accumulateFinishPositions(null), {});
   assert.deepEqual(accumulateFinishPositions([[], [{ key: 'a', total: 700 }]]), {});
+});
+
+// --- myAvgByContinent ------------------------------------------------------
+
+// Stand-in for app.js's classifyContinent. The whole point of injecting the
+// classifier is that stats.js never needs the real bounding boxes, so a crude
+// longitude split is enough to exercise the bucketing.
+const classifyStub = (lat, lng) => {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return 'Unknown';
+  if (lng < -30) return 'North America';
+  if (lng < 60) return 'Europe';
+  return 'Asia';
+};
+// 5 cities, all in Europe unless overridden.
+const euCities = () => [
+  { lat: 48, lng: 2 }, { lat: 52, lng: 13 }, { lat: 41, lng: 12 },
+  { lat: 55, lng: -3 }, { lat: 40, lng: -3 },
+];
+const geoGame = (date, rivalId, myScores, cities) =>
+  ({ id: `${date}-${rivalId}`, rivalId, date, myScores, theirScores: [1, 1, 1, 1, 1], cities });
+
+test('myAvgByContinent: one day logged against 3 rivals counts its rounds once', () => {
+  // The trap: a multi-rival day is stored as one game record per rival, each
+  // repeating the SAME myScores and the SAME cities. Counting every record
+  // would triple the round count and leave the average untouched, so the
+  // skew is invisible without this assertion.
+  const scores = [80, 90, 100, 60, 70];
+  const games = ['r1', 'r2', 'r3'].map(r => geoGame('2026-08-01', r, scores, euCities()));
+  const out = myAvgByContinent(games, classifyStub);
+  assert.equal(out.totalRounds, 5);
+  assert.equal(out.days, 1);
+  assert.deepEqual(out.rows, [{ continent: 'Europe', rounds: 5, myAvg: 80 }]);
+});
+
+test('myAvgByContinent: averages my raw round scores per continent', () => {
+  const cities = [
+    { lat: 48, lng: 2 }, { lat: 52, lng: 13 },      // Europe
+    { lat: 40, lng: -74 }, { lat: 34, lng: -118 },  // North America
+    { lat: 35, lng: 139 },                          // Asia
+  ];
+  const out = myAvgByContinent([geoGame('2026-08-01', 'r1', [90, 80, 60, 40, 100], cities)], classifyStub);
+  assert.equal(out.totalRounds, 5);
+  assert.deepEqual(out.rows, [
+    { continent: 'Europe', rounds: 2, myAvg: 85 },
+    { continent: 'North America', rounds: 2, myAvg: 50 },
+    { continent: 'Asia', rounds: 1, myAvg: 100 },
+  ]);
+});
+
+test('myAvgByContinent: chips sort by rounds desc, then continent name A-Z', () => {
+  // Asia and North America tie on 2 rounds each; Europe leads on 6.
+  const day1 = [
+    { lat: 48, lng: 2 }, { lat: 52, lng: 13 },
+    { lat: 35, lng: 139 }, { lat: 40, lng: -74 }, { lat: 34, lng: -118 },
+  ];
+  const day2 = [
+    { lat: 48, lng: 2 }, { lat: 52, lng: 13 },
+    { lat: 35, lng: 139 }, { lat: 48, lng: 2 }, { lat: 48, lng: 2 },
+  ];
+  const out = myAvgByContinent([
+    geoGame('2026-08-01', 'r1', [50, 50, 50, 50, 50], day1),
+    geoGame('2026-08-02', 'r1', [50, 50, 50, 50, 50], day2),
+  ], classifyStub);
+  assert.deepEqual(out.rows.map(r => [r.continent, r.rounds]), [
+    ['Europe', 6], ['Asia', 2], ['North America', 2],
+  ]);
+});
+
+test('myAvgByContinent: pasted games carry no coordinates and contribute nothing', () => {
+  const out = myAvgByContinent([
+    { id: 'a', rivalId: 'r1', date: '2026-08-01', myScores: [90, 90, 90, 90, 90], theirScores: [1, 1, 1, 1, 1] },
+    { id: 'b', rivalId: 'r1', date: '2026-08-02', myScore: 700, theirScore: 600 },
+    // A short cities array is corrupt geo, not a partial day.
+    { id: 'c', rivalId: 'r1', date: '2026-08-03', myScores: [90, 90, 90, 90, 90], cities: [{ lat: 48, lng: 2 }] },
+  ], classifyStub);
+  assert.deepEqual(out, { rows: [], totalRounds: 0, days: 0 });
+});
+
+test('myAvgByContinent: rival-only days (my side absent) contribute nothing', () => {
+  // Sync writes a game for a day the rival played and I did not. Counting it
+  // would drag every continent average toward 0 with rounds I never played.
+  const out = myAvgByContinent([
+    { id: 'a', rivalId: 'r1', date: '2026-08-01', theirScores: [90, 90, 90, 90, 90], cities: euCities() },
+    geoGame('2026-08-02', 'r1', [60, 60, 60, 60, 60], euCities()),
+  ], classifyStub);
+  assert.equal(out.days, 1);
+  assert.deepEqual(out.rows, [{ continent: 'Europe', rounds: 5, myAvg: 60 }]);
+});
+
+test('myAvgByContinent: rounds with no usable coordinates are dropped, not bucketed', () => {
+  const cities = [
+    { lat: 48, lng: 2 }, { lat: 52, lng: 13 }, { lat: 41, lng: 12 },
+    {}, { lat: 'nope', lng: 'nope' },
+  ];
+  const out = myAvgByContinent([geoGame('2026-08-01', 'r1', [90, 60, 90, 0, 0], cities)], classifyStub);
+  assert.equal(out.totalRounds, 3);
+  assert.deepEqual(out.rows, [{ continent: 'Europe', rounds: 3, myAvg: 80 }]);
+  assert.equal(out.rows.some(r => r.continent === 'Unknown'), false);
+});
+
+test('myAvgByContinent: no games at all yields an empty band', () => {
+  assert.deepEqual(myAvgByContinent([], classifyStub), { rows: [], totalRounds: 0, days: 0 });
+  assert.deepEqual(myAvgByContinent(null, classifyStub), { rows: [], totalRounds: 0, days: 0 });
 });
 
 // --- compareNamesCI --------------------------------------------------------
