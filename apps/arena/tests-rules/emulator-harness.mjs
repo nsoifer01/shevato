@@ -39,8 +39,16 @@ export const FIREBASE_TOOLS_VERSION = '15.27.0';
 export const PROJECT_ID = 'demo-shevato-arena';
 export const EMULATOR_HOST = '127.0.0.1:8085'; // firebase.json emulators.firestore.port
 
-const DOCS_BASE = `http://${EMULATOR_HOST}/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
-const ADMIN_BASE = `http://${EMULATOR_HOST}/emulator/v1/projects/${PROJECT_ID}`;
+// The emulator is multi-project: any project id gets its own isolated
+// namespace, and rules are registered PER project id. The rules suite
+// uses PROJECT_ID throughout; the arena e2e passes the page's real
+// projectId ('shevato-site' from firebase-config.js) so the rules govern
+// the traffic the app actually sends.
+const docsBase = (projectId) =>
+    `http://${EMULATOR_HOST}/v1/projects/${projectId}/databases/(default)/documents`;
+const adminBase = (projectId) =>
+    `http://${EMULATOR_HOST}/emulator/v1/projects/${projectId}`;
+const DOCS_BASE = docsBase(PROJECT_ID);
 
 export function javaAvailable() {
     try {
@@ -53,13 +61,20 @@ export function javaAvailable() {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function emulatorUp() {
+async function portUp(port) {
     try {
-        const res = await fetch(`http://${EMULATOR_HOST}/`, { signal: AbortSignal.timeout(1500) });
-        return res.ok;
+        // Any HTTP response (even 4xx) means the emulator owns the port.
+        await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(1500) });
+        return true;
     } catch {
         return false;
     }
+}
+
+const EMULATOR_PORTS = { firestore: 8085, database: 9000, auth: 9099 }; // firebase.json
+
+function emulatorUp() {
+    return portUp(EMULATOR_PORTS.firestore);
 }
 
 /**
@@ -68,7 +83,7 @@ async function emulatorUp() {
  * process group (npx -> firebase-tools -> java) and waits for the port
  * to free, so a suite can never leave an emulator behind.
  */
-export async function startEmulator({ repoRoot, timeoutMs = 180000 } = {}) {
+export async function startEmulator({ repoRoot, timeoutMs = 180000, only = ['firestore'] } = {}) {
     if (!javaAvailable()) {
         return { ok: false, reason: 'Java not installed (the Firestore emulator is a jar)' };
     }
@@ -77,7 +92,7 @@ export async function startEmulator({ repoRoot, timeoutMs = 180000 } = {}) {
     }
     const child = spawn('npx', [
         '-y', `firebase-tools@${FIREBASE_TOOLS_VERSION}`,
-        'emulators:start', '--only', 'firestore', '--project', PROJECT_ID,
+        'emulators:start', '--only', only.join(','), '--project', PROJECT_ID,
     ], {
         cwd: repoRoot,            // picks up firebase.json (port 8085, UI disabled)
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -91,13 +106,23 @@ export async function startEmulator({ repoRoot, timeoutMs = 180000 } = {}) {
 
     const stop = async () => {
         try { process.kill(-child.pid, 'SIGTERM'); } catch { /* already gone */ }
-        for (let i = 0; i < 40 && await emulatorUp(); i++) await sleep(250);
+        // Wait for the Firestore port AND the emulator hub (4400) to free
+        // so a suite can never report done with an emulator left behind.
+        for (let i = 0; i < 40 && (await emulatorUp() || await portUp(4400)); i++) await sleep(250);
         try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ }
+    };
+
+    const allUp = async () => {
+        for (const name of only) {
+            const port = EMULATOR_PORTS[name];
+            if (port && !(await portUp(port))) return false;
+        }
+        return true;
     };
 
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
-        if (await emulatorUp()) return { ok: true, stop };
+        if (await allUp()) return { ok: true, stop };
         if (exited) {
             return {
                 ok: false,
@@ -114,8 +139,8 @@ export async function startEmulator({ repoRoot, timeoutMs = 180000 } = {}) {
  * Compile + activate a ruleset on the running emulator. Throws on a
  * compile error (HTTP 400 carries rules line numbers).
  */
-export async function loadRules(rulesText) {
-    const res = await fetch(`${ADMIN_BASE}:securityRules`, {
+export async function loadRules(rulesText, projectId = PROJECT_ID) {
+    const res = await fetch(`${adminBase(projectId)}:securityRules`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rules: { files: [{ name: 'security.rules', content: rulesText }] } }),
@@ -125,8 +150,8 @@ export async function loadRules(rulesText) {
     }
 }
 
-export function loadRulesFile(path) {
-    return loadRules(readFileSync(path, 'utf8'));
+export function loadRulesFile(path, projectId = PROJECT_ID) {
+    return loadRules(readFileSync(path, 'utf8'), projectId);
 }
 
 export const DENY_ALL_RULES = `rules_version = '2';
@@ -137,9 +162,25 @@ service cloud.firestore {
 }`;
 
 /** Wipe every document (data persists across runs otherwise, turning creates into updates). */
-export async function clearData() {
-    const res = await fetch(`${ADMIN_BASE}/databases/(default)/documents`, { method: 'DELETE' });
+export async function clearData(projectId = PROJECT_ID) {
+    const res = await fetch(`${adminBase(projectId)}/databases/(default)/documents`, { method: 'DELETE' });
     if (!res.ok) throw new Error(`clearFirestore failed: ${res.status}`);
+}
+
+/**
+ * Owner-bypass raw document fetch for a given project id. Used by the
+ * arena e2e to inspect what the app REALLY persisted (e.g. prove no
+ * cleartext password field exists on a room doc). Returns
+ * { status, doc } where doc is the parsed Firestore REST document (or
+ * null on 404).
+ */
+export async function ownerGetDocRaw(path, projectId = PROJECT_ID) {
+    const res = await fetch(`${docsBase(projectId)}/${path}`, {
+        headers: { Authorization: 'Bearer owner' },
+    });
+    let doc = null;
+    try { doc = await res.json(); } catch { /* non-JSON body */ }
+    return { status: res.status, doc: res.status === 200 ? doc : null };
 }
 
 /**
