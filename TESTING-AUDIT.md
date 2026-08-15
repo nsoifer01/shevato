@@ -378,13 +378,15 @@ Severity: H high, M medium, L low.
 
 ### Offline / platform
 
-16. **[H] Gym Tracker: the service worker never consults its precache.** The
-    fetch handler matches only the RUNTIME cache (sw.js:113-121), so an
-    offline request for a precached-but-never-visited URL gets
-    `respondWith(undefined)` and fails; all install-time precaching is
-    currently dead weight, and the README's offline promise holds only for
-    URLs already visited in the session. Pinned at both the vm and browser
-    layers.
+16. **[H] Gym Tracker: the service worker never consults its precache.**
+    **RESOLVED 2026-08-15** (fix/gym-sw-precache-fallback): the fetch handler
+    now falls back to the gym precache on a runtime-cache miss and
+    `CACHE_VERSION` moved to 1.9.0; the former quarantines are plain
+    regression tests (`sw-offline-behavior.test.mjs`, pwa-gym browser
+    suite). Original finding: the handler matched only the RUNTIME cache
+    (sw.js:113-121), so an offline request for a precached-but-never-visited
+    URL got `respondWith(undefined)` and failed, making all install-time
+    precaching dead weight.
 17. **[L] Gym Tracker: rest-timer ids collide** when two timers start in the
     same millisecond (TimerService.js:21); first interval becomes
     unclearable.
@@ -526,7 +528,8 @@ failure.
 
 ## Recommended next steps (each is a product-code decision, not a test gap)
 
-1. Fix the HIGH defect: make the gym service worker consult its precache.
+1. ~~Fix the HIGH defect: make the gym service worker consult its
+   precache.~~ Done 2026-08-15 (see defect 16).
 2. Stand up the Firebase emulator harness for Arena + rules tests
    (`firebase.json` already declares the ports); then delete the
    blocked-backend compromise checks.

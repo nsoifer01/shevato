@@ -212,15 +212,22 @@ export async function run({ base, cdpPort }) {
       }
     })()`);
     await s.send('Network.setCacheDisabled', { cacheDisabled: false });
-    if (gap && gap.candidate && gap.fetched === false) {
-      skip('gym-pwa: offline fetch of a precached-but-never-fetched URL succeeds',
-        `KNOWN DEFECT: offline cold fetch of precached URL fails (sw fetch handler never consults the precache; sw.js opens only the RUNTIME cache) - ${gap.cold} precached URLs are cold, e.g. ${gap.candidate}: ${gap.error}`);
-    } else if (gap && gap.candidate && gap.fetched && gap.ok) {
+    // Regression check for the 2026-08-15 audit defect (TESTING-AUDIT.md
+    // #16, resolved): the fetch handler now falls back to the gym precache
+    // on a runtime-cache miss, so a precached URL the page never fetched
+    // online must be served offline.
+    if (gap && gap.candidate) {
       t('gym-pwa: offline fetch of a precached-but-never-fetched URL succeeds',
-        false,
-        `unexpected PASS for a pinned defect - investigate: ${JSON.stringify(gap)} (browser HTTP cache was disabled for this fetch)`);
+        gap.fetched === true && gap.ok === true,
+        `${gap.cold} cold precached URL(s); probed ${gap.candidate}: `
+        + (gap.fetched ? `HTTP ok=${gap.ok} status=${gap.status}` : `failed (${gap.error})`));
     } else {
-      t('gym-pwa: offline fetch of a precached-but-never-fetched URL',
+      // Zero cold URLs means every precached URL was already runtime-cached
+      // during this run, so there is nothing left to probe; that can only
+      // happen if the page fetched literally everything, which never occurs
+      // for index.html (navigations request './'). Treat it as a staging
+      // failure so the check cannot silently stop probing.
+      t('gym-pwa: offline fetch of a precached-but-never-fetched URL succeeds',
         false, `could not stage the check: ${JSON.stringify(gap)}`);
     }
 

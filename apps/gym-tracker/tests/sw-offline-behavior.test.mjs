@@ -107,16 +107,32 @@ test('install populates the precache with every PRECACHE_URLS entry', async () =
     assert.ok(store.get(appJsUrl), 'js/app.js landed in the precache');
 });
 
-test('online fetch: response is served and stored in the runtime cache', async () => {
+test('online fetch of a NON-precached URL: network response served and stored in the runtime cache', async () => {
     const worker = loadWorker();
     await install(worker);
-    const url = `${ORIGIN}/apps/gym-tracker/js/views/workout-view.js`;
+    // Deliberately not in PRECACHE_URLS, so the only source online is the network.
+    const url = `${ORIGIN}/apps/gym-tracker/exercises/bench-press/index.html`;
     const { responded, response } = await driveFetch(worker, url);
     assert.equal(responded, true, 'same-origin GET is intercepted');
     assert.equal(response.body, `network:${url}`, 'network response returned');
     // The background cache.put is fire-and-forget; give the microtask a turn.
     await new Promise((r) => setImmediate(r));
     assert.ok(worker.storeFor(RUNTIME_NAME).get(url), 'response cached for next time');
+});
+
+test('online fetch of a precached URL: served instantly from the precache, refreshed into the runtime cache', async () => {
+    // Since the precache-fallback fix (TESTING-AUDIT.md #16), "cached" in the
+    // stale-while-revalidate strategy includes the app's own precache: a
+    // precached URL is served from it even online (instant load), while the
+    // background network refresh still lands in the RUNTIME cache.
+    const worker = loadWorker();
+    await install(worker);
+    const url = `${ORIGIN}/apps/gym-tracker/js/views/workout-view.js`;
+    const { responded, response } = await driveFetch(worker, url);
+    assert.equal(responded, true, 'same-origin GET is intercepted');
+    assert.match(String(response.body), /^precached:/, 'precached copy served without waiting on the network');
+    await new Promise((r) => setImmediate(r));
+    assert.ok(worker.storeFor(RUNTIME_NAME).get(url), 'background refresh stored for next time');
 });
 
 test('offline fetch: a runtime-cached URL is served from cache', async () => {
@@ -145,15 +161,13 @@ test('cross-origin requests (Firebase, fonts) are not intercepted', async () => 
     assert.equal(responded, false);
 });
 
+// Regression test for the 2026-08-15 audit defect (TESTING-AUDIT.md #16,
+// resolved): the fetch handler used to open only the RUNTIME cache, so a
+// first-visit-offline request for a precached URL got respondWith(undefined)
+// and the install-time precache was dead weight. The handler now falls back
+// to the gym precache on a runtime miss.
 test(
     'offline fetch of a PRECACHED URL that was never runtime-fetched is served from the precache',
-    {
-        todo: 'KNOWN DEFECT: sw.js fetch handler only opens the RUNTIME cache and never '
-            + 'consults the precache, so a first-visit-offline request for a precached URL '
-            + 'gets respondWith(undefined) and fails. The install work (precaching every '
-            + 'module) buys nothing until the handler falls back to caches.match / the '
-            + 'PRECACHE cache. sw.js lines ~113-121.',
-    },
     async () => {
         const worker = loadWorker();
         await install(worker);

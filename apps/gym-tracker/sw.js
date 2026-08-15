@@ -18,7 +18,7 @@
  * Old caches are pruned automatically on activate.
  */
 
-const CACHE_VERSION = '1.8.4';
+const CACHE_VERSION = '1.9.0';
 const PRECACHE = `gym-precache-${CACHE_VERSION}`;
 const RUNTIME = `gym-runtime-${CACHE_VERSION}`;
 
@@ -109,10 +109,17 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   // Stale-while-revalidate: serve cached if present, kick off a fresh
-  // fetch in the background to update the cache.
+  // fetch in the background to update the cache. The runtime cache is
+  // consulted first (it holds the freshest copy), then OUR OWN precache:
+  // without that fallback, a precached URL the page had never fetched
+  // online produced respondWith(undefined) offline, so the install-time
+  // precache was dead weight and a cold offline start failed. Only the
+  // gym precache is searched, never other apps' caches on this shared
+  // origin.
   event.respondWith((async () => {
     const cache = await caches.open(RUNTIME);
-    const cached = await cache.match(req);
+    const cached = (await cache.match(req))
+      || (await (await caches.open(PRECACHE)).match(req));
     const networkPromise = fetch(req).then((res) => {
       if (res && res.ok) cache.put(req, res.clone()).catch(() => {});
       return res;
