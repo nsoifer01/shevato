@@ -54,6 +54,14 @@ export const CONFIDENCE_PARAMS = Object.freeze({
   // softer and starts being a guess.
   projectedFirm: 0.8,
   projectedSoft: 0.5,
+  // How old the underlying data may be before the band says so. Deliberately
+  // the SAME six hours the app already uses to withhold a plan on unrefreshed
+  // availability (AVAILABILITY_MAX_AGE_SECONDS in ui/plan-model.js), so one
+  // idea carries one number. A plan a couple of hours old is an ordinary plan
+  // and flagging it would put a caveat on almost every screen, which is how a
+  // caveat stops being read.
+  dataOldSeconds: 6 * 3600,
+
   // Band cut points on the summed factor weights.
   moderateFrom: 2,
   lowFrom: 4,
@@ -236,17 +244,30 @@ function dataFactor({ dataStatus, sources, now }) {
   }
 
   const fetchedAt = ds.fetchedAt ? Date.parse(ds.fetchedAt) : NaN;
-  const ageHours = Number.isFinite(fetchedAt) ? Math.max(0, (now - fetchedAt) / 3600000) : null;
+  const ageSeconds = Number.isFinite(fetchedAt) ? Math.max(0, (now - fetchedAt) / 1000) : null;
+  const ageHours = ageSeconds === null ? null : ageSeconds / 3600;
   const staleSources = list.filter(s => s && s.stale);
-  if (ds.stale || staleSources.length) {
+
+  // AGE COUNTS ON ITS OWN, not only when a source is flagged stale.
+  //
+  // The age was previously computed and then consulted only inside the stale
+  // branch, so a plan built on a fetch three days old reported "the player,
+  // price and injury data behind this plan is up to date" while the freshness
+  // row beside it said "Last synced 3 days ago". Two sentences, one screen,
+  // opposite claims.
+  const flagged = ds.stale || staleSources.length > 0;
+  const old = ageSeconds !== null && ageSeconds >= CONFIDENCE_PARAMS.dataOldSeconds;
+
+  if (flagged || old) {
     return {
       key: 'data',
       weight: 1,
       failed: 0,
       ageHours,
-      reason: ageHours === null
+      reason: ageSeconds === null
         ? makeReason('confidence_data_stale', 'the player, price and injury data behind this plan is not fresh', null, 'none')
-        : makeReason('confidence_data_age', 'the player, price and injury data behind this plan is {v} hours old', ageHours, 'count'),
+        : makeReason('confidence_data_age',
+          `the player, price and injury data behind this plan is ${describeAge(ageSeconds)} old`, ageHours, 'none'),
     };
   }
 
@@ -257,6 +278,21 @@ function dataFactor({ dataStatus, sources, now }) {
     ageHours,
     reason: makeReason('confidence_data_ok', 'the player, price and injury data behind this plan is up to date', null, 'none'),
   };
+}
+
+// Age in the largest unit that still says something useful, matching the
+// thresholds ui/format.js uses for "Last synced ...". The two sentences sit
+// next to each other on screen, so they have to round the same way: an age of
+// ten minutes read as "0 hours old" beside "Last synced 10 minutes ago" was one
+// number formatted two ways.
+export function describeAge(seconds) {
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 90) return 'a minute';
+  if (s < 3600) return `${Math.round(s / 60)} minutes`;
+  if (s < 7200) return 'an hour';
+  if (s < 86400) return `${Math.round(s / 3600)} hours`;
+  if (s < 172800) return 'a day';
+  return `${Math.round(s / 86400)} days`;
 }
 
 // The runner-up, measured against the week-to-week swing on the players the two

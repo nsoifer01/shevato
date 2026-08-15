@@ -28,6 +28,9 @@ const BASE = `http://127.0.0.1:${PORT}`;
 // The trip-planner E2E suites under apps/trip-planner/e2e/ are permanent
 // regression protection for that app's browser workflows; run them alone with
 //   npm run test:trip-planner:e2e        (equivalent to --only=trip-planner)
+// The fpl-planner suites under apps/fpl-planner/e2e/ do the same for that app's
+// interactive scenario workflow and its gameweek lifecycle:
+//   npm run test:fpl-planner:e2e         (equivalent to --only=fpl-planner)
 const SUITES = [
   'tests/browser/suites/site.mjs',
   'tests/browser/suites/apps.mjs',
@@ -37,6 +40,8 @@ const SUITES = [
   'apps/trip-planner/e2e/views.mjs',
   'apps/trip-planner/e2e/ui.mjs',
   'apps/trip-planner/e2e/pwa.mjs',
+  'apps/fpl-planner/e2e/scenario.mjs',
+  'apps/fpl-planner/e2e/lifecycle.mjs',
 ];
 
 // --only=<substring> runs the suites whose path contains it; --headed opens a

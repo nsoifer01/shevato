@@ -37,8 +37,33 @@ export function recommendationLine(entry, gameState) {
 // sum or extreme over rows the table below prints in full, so the charts have a
 // text twin on the same screen. `ordered` is oldest first.
 export function seasonSummary(ordered, gameState) {
-  const played = ordered.filter(r => Number.isFinite(r.points));
-  if (!played.length) return null;
+  const rows = ordered.filter(r => Number.isFinite(r.points));
+  if (!rows.length) return null;
+
+  // A gameweek being played RIGHT NOW has a history row, and its points are
+  // provisional: bonus is not applied until FPL marks the event data-checked,
+  // and its rank is usually null while the games are on. Counting it as a
+  // played gameweek dragged the season average down with a partial score and
+  // blanked the rank tile even though the previous gameweek's rank was sitting
+  // right there. So the season summary is built from FINALISED gameweeks, and
+  // the live one is carried separately for the surfaces that should show it.
+  const finalised = rows.filter(r => isFinalisedEvent(r.event, gameState));
+  const live = rows.find(r => !isFinalisedEvent(r.event, gameState)) || null;
+
+  // Before the first gameweek is finalised there is nothing to average, but the
+  // live row is still worth showing.
+  const played = finalised.length ? finalised : [];
+  if (!played.length) {
+    return {
+      played: [], live, latest: null, best: null,
+      totalPoints: live ? (live.total_points ?? live.points) : 0,
+      hitsCost: live ? (live.event_transfers_cost || 0) : 0,
+      benchPoints: live ? (live.points_on_bench || 0) : 0,
+      transfers: live ? (live.event_transfers || 0) : 0,
+      averages: new Map(), beatAverage: 0, withAverage: 0, meanPoints: null,
+    };
+  }
+
   const latest = played[played.length - 1];
   const best = played.reduce((a, b) => (b.points > a.points ? b : a));
   const totalPoints = latest.total_points ?? played.reduce((s, r) => s + r.points, 0);
@@ -61,25 +86,50 @@ export function seasonSummary(ordered, gameState) {
     averages,
     beatAverage,
     withAverage,
+    live,
     meanPoints: played.reduce((s, r) => s + r.points, 0) / played.length,
   };
+}
+
+// FPL finalises a gameweek in two steps: `finished` when the last match ends,
+// then `data_checked` once bonus and any corrections are applied. Only the
+// second means the score will not move again, which is the distinction between
+// a number worth averaging and one still in play.
+export function isFinalisedEvent(eventId, gameState) {
+  const event = (gameState && gameState.events ? gameState.events : []).find(e => e.id === eventId);
+  if (!event) return true;   // no calendar to judge by: treat history as given
+  return !!(event.finished && event.dataChecked);
 }
 
 function seasonOverviewCard(ordered, gameState) {
   const s = seasonSummary(ordered, gameState);
   if (!s) return null;
 
+  // Every tile below describes FINALISED gameweeks. The one in play is reported
+  // on its own, as provisional, rather than being folded into an average or
+  // allowed to blank a rank that is already known.
+  const liveNote = s.live
+    ? el('p', { class: 'fpl-note', style: 'margin-bottom:12px' }, [
+      `Gameweek ${s.live.event} is being played. `,
+      el('b', { text: `${s.live.points} points so far` }),
+      ' is provisional: bonus is added and any corrections applied when Fantasy Premier League finalises the gameweek, and these totals do not include it yet.',
+    ])
+    : null;
+
   const tiles = el('div', { class: 'fpl-tiles' }, [
-    stat('Total points', String(s.totalPoints), { className: 'fpl-tile', kClass: 'fpl-fact-k', vClass: 'fpl-tile-v' }),
-    stat('Overall rank', rank(s.latest.overall_rank), {
+    stat('Total points', String(s.totalPoints), {
       className: 'fpl-tile', kClass: 'fpl-fact-k', vClass: 'fpl-tile-v',
-      note: `after Gameweek ${s.latest.event}`,
+      note: s.latest ? `after Gameweek ${s.latest.event}` : null,
     }),
-    stat('Best gameweek', `${s.best.points} pts`, {
+    stat('Overall rank', s.latest ? rank(s.latest.overall_rank) : '-', {
       className: 'fpl-tile', kClass: 'fpl-fact-k', vClass: 'fpl-tile-v',
-      note: `Gameweek ${s.best.event}`,
+      note: s.latest ? `after Gameweek ${s.latest.event}` : 'after the first finalised gameweek',
     }),
-    stat('Points per gameweek', xp(s.meanPoints), {
+    stat('Best gameweek', s.best ? `${s.best.points} pts` : '-', {
+      className: 'fpl-tile', kClass: 'fpl-fact-k', vClass: 'fpl-tile-v',
+      note: s.best ? `Gameweek ${s.best.event}` : null,
+    }),
+    stat('Points per gameweek', s.meanPoints === null ? '-' : xp(s.meanPoints), {
       className: 'fpl-tile', kClass: 'fpl-fact-k', vClass: 'fpl-tile-v',
       note: s.withAverage ? `Above the game average in ${s.beatAverage} of ${s.withAverage}` : null,
     }),
@@ -93,7 +143,7 @@ function seasonOverviewCard(ordered, gameState) {
     }),
   ]);
 
-  const pointsChart = columnChart({
+  const pointsChart = !s.played.length ? null : columnChart({
     points: s.played.map(r => ({
       label: String(r.event),
       value: r.points,
@@ -108,6 +158,7 @@ function seasonOverviewCard(ordered, gameState) {
   });
 
   const rankRows = s.played.filter(r => Number.isFinite(r.overall_rank));
+  // eslint-disable-next-line no-unused-vars
   const rankChart = rankRows.length >= 2 ? trendChart({
     points: rankRows.map(r => ({ label: `GW ${r.event}`, value: r.overall_rank })),
     invert: true,
@@ -117,6 +168,7 @@ function seasonOverviewCard(ordered, gameState) {
   }) : null;
 
   return card('Season at a glance', [
+    liveNote,
     tiles,
     el('div', { class: 'fpl-chart-block' }, [
       el('div', { class: 'fpl-chart-title', text: 'Points per gameweek' }),
@@ -162,9 +214,19 @@ export function historyView({ history, planHistory, gameState, captainsByGw = ne
       const stored = planHistory && planHistory[String(r.event)];
       const latest = Array.isArray(stored) && stored.length ? stored[stored.length - 1] : null;
       const line = recommendationLine(latest, gameState);
-      return el('tr', {}, [
-        el('td', {}, el('span', { class: 'fpl-gw-pill', text: `GW ${r.event}` })),
-        el('td', { class: 'is-strong is-num', text: String(r.points) }),
+      // A gameweek still in play is labelled where the number is, not only in a
+      // note above the table: bonus has not been applied to it yet.
+      const provisional = !isFinalisedEvent(r.event, gameState);
+      return el('tr', { class: provisional ? 'is-live' : '' }, [
+        el('td', {}, [
+          el('span', { class: 'fpl-gw-pill', text: `GW ${r.event}` }),
+          provisional ? el('span', { class: 'fpl-chip is-live', text: 'Live', title: 'This gameweek is still being played, so its points are provisional' }) : null,
+        ]),
+        el('td', {
+          class: 'is-strong is-num',
+          text: String(r.points),
+          title: provisional ? 'Provisional: bonus is added when the gameweek is finalised' : null,
+        }),
         el('td', { class: 'is-num', text: r.rank ? r.rank.toLocaleString('en-GB') : '-' }),
         el('td', { class: 'is-num', text: r.overall_rank ? r.overall_rank.toLocaleString('en-GB') : '-' }),
         el('td', { class: 'is-num', text: String(r.event_transfers) }),

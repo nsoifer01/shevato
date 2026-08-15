@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   KEYS, SYNC_NAMESPACE, DEFAULT_SETTINGS, HORIZON_CHOICES, MAX_TEAM_ID, MAX_VERSIONS_PER_GW, MAX_GWS_KEPT,
   validateTeamId, compactPlan, recordPlanVersion, latestVersion, allKeys, disconnectTeamKeys,
+  getSquadSnapshot, setSquadSnapshot, snapshotApplies,
 } from '../js/ui/store.js';
 import { PLANNER_PARAMS } from '../js/engine/planner.js';
 
@@ -116,4 +117,58 @@ test('recording a version never mutates the history it was given', () => {
   const after = recordPlanVersion(before, 13, { plan, reason: 'manual' });
   assert.equal(before['13'].length, 0);
   assert.equal(after['13'].length, 1);
+});
+
+/* ------------------------------------------------ the pre-season snapshot */
+
+// The key was written on every plan and never read, so a manager who typed
+// fifteen players lost them on reload during the one week when typing them in
+// is the only thing the app can do.
+
+// store.js reads `localStorage` lazily, so a fake installed here is what the
+// round-trip actually goes through.
+globalThis.localStorage = (() => {
+  const map = new Map();
+  return {
+    get length() { return map.size; },
+    key: (i) => [...map.keys()][i] ?? null,
+    getItem: (k) => (map.has(k) ? map.get(k) : null),
+    setItem: (k, v) => { map.set(k, String(v)); },
+    removeItem: (k) => { map.delete(k); },
+  };
+})();
+
+test('a snapshot round-trips the squad that was built', () => {
+  const snapshot = {
+    teamId: '1234567', season: '2026/27', gw: 1, source: 'manual',
+    ids: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    savedAt: '2026-08-15T10:00:00Z',
+  };
+  setSquadSnapshot(snapshot);
+  assert.deepEqual(getSquadSnapshot(), snapshot);
+});
+
+test('a snapshot only applies to the team, season and gameweek it was saved for', () => {
+  const snap = { teamId: '1234567', season: '2026/27', gw: 1, ids: [1, 2, 3] };
+  const ctx = { teamId: '1234567', season: '2026/27', gw: 1 };
+
+  assert.equal(snapshotApplies(snap, ctx), true);
+  assert.equal(snapshotApplies(snap, { ...ctx, teamId: '7654321' }), false, 'another manager');
+  assert.equal(snapshotApplies(snap, { ...ctx, season: '2027/28' }), false, 'another season');
+  assert.equal(snapshotApplies(snap, { ...ctx, gw: 2 }), false, 'another gameweek');
+  assert.equal(snapshotApplies(null, ctx), false);
+  assert.equal(snapshotApplies({ ...snap, ids: [] }, ctx), false, 'an empty squad restores nothing');
+});
+
+test('a team id saved as a number still matches one read back as a string', () => {
+  // The id reaches storage from two places and only one of them stringifies it.
+  const snap = { teamId: 1234567, season: '2026/27', gw: 1, ids: [1] };
+  assert.equal(snapshotApplies(snap, { teamId: '1234567', season: '2026/27', gw: 1 }), true);
+});
+
+test('a snapshot with no season recorded is still usable for the same team and gameweek', () => {
+  // Written by a build before the season was recorded; the squad is still that
+  // manager's, so it is restored rather than thrown away.
+  const snap = { teamId: '1234567', gw: 1, ids: [1, 2] };
+  assert.equal(snapshotApplies(snap, { teamId: '1234567', season: '2026/27', gw: 1 }), true);
 });

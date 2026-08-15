@@ -229,6 +229,11 @@ export function combobox({
     node,
     input,
     list,
+    // Show the list without waiting for a keystroke. The picker that replaces a
+    // player opens straight onto the ranked options, because the question there
+    // is "who is available" rather than "find the one I already have in mind".
+    // Existing callers keep the type-to-open behaviour by simply not calling it.
+    open(query) { openList(query); },
     get value() { return selected; },
     get isOpen() { return open; },
     get activeIndex() { return active; },

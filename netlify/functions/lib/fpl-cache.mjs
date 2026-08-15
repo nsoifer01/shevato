@@ -111,17 +111,40 @@ export async function serveFpl({ path, store, fetchUpstream, now }) {
 
   try {
     const res = await fetchUpstream(UPSTREAM_BASE + path + '/');
-    // An unknown team id is a real answer, not an outage: pass it through so
-    // the onboarding screen can say so, and never cache it.
+    // A 404 means two different things and they need different answers.
+    //
+    // With NO cached copy it is the real one: an unknown team id, which the
+    // onboarding screen has to be able to say out loud, and which is never
+    // cached.
+    //
+    // With a cached copy in hand it is almost certainly not: FPL returns 404s
+    // and 503s for entry endpoints while it processes a gameweek, and treating
+    // those as "this team does not exist" threw a manager back to the landing
+    // page mid-season with a perfectly good squad sitting in the store. Serving
+    // the copy, marked stale, is both true and useful.
     if (res.status === 404) {
+      if (cached) {
+        return {
+          status: 200, body: cached.body, cache: 'hit', fetchedAt: cached.fetchedAt,
+          stale: true, ageSeconds: ageSeconds(cached.fetchedAt, now),
+        };
+      }
       return { status: 404, body: { error: 'not_found' }, cache: 'miss', fetchedAt: new Date(now).toISOString(), stale: false, ageSeconds: 0 };
     }
     if (!res.ok) throw new Error('upstream ' + res.status);
     const body = await res.json();
     const fetchedAt = new Date(now).toISOString();
-    await store.setJSON(cacheKey(path), { fetchedAt, body });
-    if (path === 'bootstrap-static') {
-      await store.setJSON(DEADLINE_KEY, { nextDeadline: nextDeadlineFrom(body, now) });
+    // The cache is an optimisation, so a failure to WRITE it must not lose the
+    // body that was successfully fetched. Inside the outer try this threw the
+    // fresh response away and answered 503, or served a day-old copy instead of
+    // the one already in hand.
+    try {
+      await store.setJSON(cacheKey(path), { fetchedAt, body });
+      if (path === 'bootstrap-static') {
+        await store.setJSON(DEADLINE_KEY, { nextDeadline: nextDeadlineFrom(body, now) });
+      }
+    } catch (writeErr) {
+      console.error('fpl cache write failed', path, String(writeErr && writeErr.message));
     }
     return { status: 200, body, cache: 'miss', fetchedAt, stale: false, ageSeconds: 0 };
   } catch (err) {
@@ -144,13 +167,31 @@ function ageSeconds(fetchedAt, now) {
   return Math.max(0, Math.floor((now - ms) / 1000));
 }
 
+// A cache read that throws is a cache miss, not an outage. The store is a
+// speed-up in front of a public API; if it is unreachable the right answer is
+// to go and ask upstream, not to fail the request.
 async function readCache(store, key) {
-  const entry = await store.get(key, { type: 'json' });
+  let entry;
+  try {
+    entry = await store.get(key, { type: 'json' });
+  } catch (err) {
+    console.error('fpl cache read failed', key, String(err && err.message));
+    return null;
+  }
   if (!entry || typeof entry !== 'object' || entry.body === undefined) return null;
+  // An entry whose timestamp cannot be parsed would otherwise be served as
+  // age-zero fresh forever, because ageSeconds() treats an unparseable date as
+  // zero. Refusing it here sends the request upstream instead.
+  if (!Number.isFinite(Date.parse(entry.fetchedAt))) return null;
   return entry;
 }
 
 async function readDeadline(store) {
-  const meta = await store.get(DEADLINE_KEY, { type: 'json' });
-  return (meta && meta.nextDeadline) || null;
+  try {
+    const meta = await store.get(DEADLINE_KEY, { type: 'json' });
+    return (meta && meta.nextDeadline) || null;
+  } catch (err) {
+    console.error('fpl deadline meta read failed', String(err && err.message));
+    return null;
+  }
 }

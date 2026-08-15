@@ -298,3 +298,46 @@ test('recalculation reasons render as sentences, unknown codes pass through', ()
   assert.equal(reasonLabel('something-new'), 'something-new');
   assert.equal(reasonLabel(undefined), 'Recalculated');
 });
+
+/* ------------------------------- what "no squad to import" actually means */
+
+// Absence of picks is not the same fact as the season not having started, and
+// the £100.0m budget the builder then offers is a third claim again. Before
+// this, a mid-season manager whose picks were briefly unavailable was told the
+// season had not started and handed a full budget.
+test('the four reasons a squad cannot be imported are told apart', async () => {
+  const { noSquadReason } = await import('../js/ui/preseason.js');
+  const preSeason = { seasonStarted: false, currentEvent: null, events: [] };
+  const inSeason = { seasonStarted: true, currentEvent: 5, events: [] };
+
+  assert.equal(noSquadReason({ gameState: preSeason, entry: null }), 'preseason');
+  assert.equal(noSquadReason({ gameState: preSeason, entry: { started_event: 1 } }), 'preseason');
+
+  // A manager who enters later this season has genuinely played nothing.
+  assert.equal(noSquadReason({ gameState: inSeason, entry: { started_event: 7 } }), 'new-entry');
+
+  // A manager who started at GW1 and is missing picks in GW5 owns a squad the
+  // API did not hand over. Calling that "the season has not started" is false,
+  // and offering him a full budget is worse.
+  assert.equal(noSquadReason({ gameState: inSeason, entry: { started_event: 1 } }), 'picks-unavailable');
+  assert.equal(noSquadReason({ gameState: inSeason, entry: null }), 'picks-unavailable');
+});
+
+/* --------------------------------------- a gameweek in play is not finished */
+
+test('a gameweek still being played is kept out of the finalised season summary', async () => {
+  const { isFinalisedEvent } = await import('../js/ui/history.js');
+  const gs = {
+    events: [
+      { id: 1, finished: true, dataChecked: true },
+      { id: 2, finished: true, dataChecked: false },   // played, bonus not applied
+      { id: 3, finished: false, dataChecked: false },  // in play
+    ],
+  };
+  assert.equal(isFinalisedEvent(1, gs), true);
+  assert.equal(isFinalisedEvent(2, gs), false, 'finished is not final until the data is checked');
+  assert.equal(isFinalisedEvent(3, gs), false);
+  // A gameweek the calendar does not know about is taken as given rather than
+  // being hidden from a manager's own history.
+  assert.equal(isFinalisedEvent(9, gs), true);
+});

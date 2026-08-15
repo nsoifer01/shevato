@@ -190,8 +190,16 @@ test('buildSquad reports the exact objective of the squad it returns', () => {
 /* ------------------------------------------------- the invariant, by class */
 
 for (const [label, ids] of CLASSES) {
-  test(`forcing in ${label} never beats the unconstrained build`, () => {
-    assert.ok(ids.length > 0, `the sample dataset should contain ${label} outside the built squad`);
+  test(`forcing in ${label} never beats the unconstrained build`, (t) => {
+    // Every class is a property of the squad the optimizer actually builds, so
+    // a class can legitimately empty out when projections change (the club
+    // limit only binds if the built squad holds three from one club). Skipping
+    // visibly is honest; asserting would fail for a reason that has nothing to
+    // do with the invariant under test.
+    if (!ids.length) {
+      t.skip(`the sample dataset offers no ${label} outside the built squad`);
+      return;
+    }
     for (const id of ids) {
       const forced = buildSquad({ ...BUILD, lockedIds: [id] });
       assert.ok(forced.squad.includes(id), `${player(id).webName} was not actually forced in`);
@@ -264,7 +272,16 @@ test('a stale recommendation is surfaced rather than quoted', async () => {
     entry: null, history: null, transfers: null, picks: null, gameState, gw: GW, source: 'draft',
   });
   const planBundle = await buildPlan({ gameState, squadState, options: {} });
-  const stale = buildSquad({ ...BUILD, opts: { discount: DISCOUNT, seed: SEED, restarts: 1, perturbRounds: 0, challengers: 0, descentRounds: 1 } });
+  // Weak by CONSTRUCTION rather than by search budget: two of the cheapest
+  // players in the game are locked in, so the result is worse than the free
+  // build whatever the projections happen to be. Relying on a reduced search to
+  // land somewhere worse made this test depend on the projection scale.
+  const ballast = excluded.slice().sort((a, b) => a.nowCost - b.nowCost || a.id - b.id).slice(0, 2).map(p => p.id);
+  const stale = buildSquad({
+    ...BUILD,
+    lockedIds: ballast,
+    opts: { discount: DISCOUNT, seed: SEED, restarts: 1, perturbRounds: 0, challengers: 0, descentRounds: 1 },
+  });
   assert.ok(value(stale.squad) < unconstrainedValue - TOLERANCE, 'the deliberately weak build should be beatable');
 
   const staleBundle = {
