@@ -23,13 +23,24 @@
  *   data-index.json          slim, fetched on load. Same shape as data.json
  *                            minus episodes/overview, plus an aboveImdb map
  *                            (see below).
- *   data/detail/<id>.json    per series: { seasons: { "<n>": { episodes,
- *                            overview } } }, fetched when a modal opens.
+ *   data/detail/<id>.json    per series: { cast?, seasons: { "<n>": { episodes,
+ *                            overview, ov?, eps? } } }, fetched when a modal
+ *                            opens.
+ *
+ * When data/show-modal-extras.json is present (fetch-data.js downloads it
+ * right before this runs in build:site), each series' slice of it - cast,
+ * per-season plot overview (`ov`), per-episode IMDb ids / runtimes / titles
+ * (`eps`) - is merged into that series' detail file, and the index gets
+ * `extrasInDetail: true`. The app then never fetches the 67 MB extras
+ * monolith at all: one small per-show detail file carries everything a modal
+ * needs. Without the extras file the detail files keep their original shape,
+ * the flag stays off, and the app falls back to fetching the monolith on
+ * first modal open (never at boot).
  *
  * data.json itself is deliberately NOT modified. build-show-pages.js renders
  * per-episode tables and curves into the static SEO pages and needs the full
  * file, and leaving it untouched keeps this script idempotent: re-running it
- * never degrades its own input.
+ * never degrades its own input. show-modal-extras.json is likewise only read.
  *
  * ABOVE-IMDB
  * ----------
@@ -48,6 +59,7 @@ const path = require('path');
 
 const APP_DIR = path.join(__dirname, '..');
 const SRC = path.join(APP_DIR, 'data.json');
+const EXTRAS_SRC = path.join(APP_DIR, 'data', 'show-modal-extras.json');
 const INDEX_OUT = path.join(APP_DIR, 'data-index.json');
 const DETAIL_DIR = path.join(APP_DIR, 'data', 'detail');
 
@@ -61,22 +73,51 @@ function main() {
   const raw = JSON.parse(fs.readFileSync(SRC, 'utf8'));
   const matches = raw.matches || [];
 
+  // Modal extras, optional. Present on every deploy (fetch-data.js downloads
+  // it first in build:site); may be absent on a local tree that only built
+  // data.json. Merged per series into the detail files below so a modal open
+  // costs one small fetch instead of the whole side-file.
+  let extras = null;
+  if (fs.existsSync(EXTRAS_SRC)) {
+    extras = JSON.parse(fs.readFileSync(EXTRAS_SRC, 'utf8'));
+  }
+
   // --- per-series detail + above-IMDb, in one pass over the matches ---
   const detail = new Map();          // seriesId -> { seasons: {} }
   const imdbAcc = new Map();         // seriesId -> { sum, count, seriesRating }
 
   for (const m of matches) {
     let d = detail.get(m.seriesId);
-    if (!d) { d = { seasons: {} }; detail.set(m.seriesId, d); }
+    if (!d) {
+      d = { seasons: {} };
+      // Cast is series-level in the extras file; carry it once per detail file.
+      const ex = extras && extras[m.seriesId];
+      if (ex && ex.cast) d.cast = ex.cast;
+      detail.set(m.seriesId, d);
+    }
     const season = {};
     if (Array.isArray(m.episodes)) season.episodes = m.episodes;
     if (m.overview) season.overview = m.overview;
+    // Season-level extras: `ov` (season plot overview) and `eps` (per-episode
+    // IMDb id / runtime / title map), same keys the monolith uses so app.js
+    // consumes either source through one code path.
+    const exSeason = extras && extras[m.seriesId] && extras[m.seriesId].seasons
+      && extras[m.seriesId].seasons[String(m.season)];
+    if (exSeason) {
+      if (exSeason.ov) season.ov = exSeason.ov;
+      if (exSeason.eps) season.eps = exSeason.eps;
+    }
     d.seasons[String(m.season)] = season;
 
     if (typeof m.seriesRating === 'number' && Array.isArray(m.episodes)) {
       let acc = imdbAcc.get(m.seriesId);
       if (!acc) { acc = { sum: 0, count: 0, seriesRating: m.seriesRating }; imdbAcc.set(m.seriesId, acc); }
-      for (const e of m.episodes) { acc.sum += e.rating; acc.count++; }
+      // Rated episodes only, like the ratedCount/ratingSum fold below and
+      // buildShowAgg: one unrated episode used to make the sum NaN, which
+      // silently dropped the series from aboveImdb (NaN > x is false).
+      for (const e of m.episodes) {
+        if (typeof e.rating === 'number') { acc.sum += e.rating; acc.count++; }
+      }
     }
   }
 
@@ -128,6 +169,11 @@ function main() {
     return rest;
   });
   slim.aboveImdb = aboveImdb;
+  // Tells the app the detail files already carry the modal extras, so it must
+  // never fetch the show-modal-extras.json monolith. Omitted (not false) when
+  // the extras file was absent, keeping the no-extras output byte-identical
+  // to the pre-merge format.
+  if (extras) slim.extrasInDetail = true;
   slim.splitAt = new Date().toISOString();
 
   fs.writeFileSync(INDEX_OUT, JSON.stringify(slim));
@@ -149,7 +195,8 @@ function main() {
   const outSize = fs.statSync(INDEX_OUT).size;
   console.log(
     `[split-data] data-index.json ${mb(outSize)} MB (from ${mb(srcSize)} MB, `
-    + `${(100 - (outSize / srcSize) * 100).toFixed(0)}% smaller) + ${written} detail files, `
+    + `${(100 - (outSize / srcSize) * 100).toFixed(0)}% smaller) + ${written} detail files `
+    + `(${extras ? 'modal extras merged in' : 'no extras file, plain split'}), `
     + `${aboveImdb.length} above-IMDb series, in ${((Date.now() - started) / 1000).toFixed(1)}s`
   );
 }

@@ -619,3 +619,76 @@ test('parseCompareParam: empty or non-string input yields an empty set', () => {
   assert.equal(helpers.parseCompareParam(undefined).length, 0);
 });
 
+
+// ---------------------------------------------------------------------------
+// Watched + Compare persistence
+// Both stores were unreachable from Node until app.js exported them; the
+// assertions below pin the exact localStorage contract the cross-device sync
+// mirrors (namespace `rising-seasons`, kept legacy on purpose), so a key or
+// format change - which would orphan every existing user's data - fails here
+// before it ships.
+// ---------------------------------------------------------------------------
+
+const KEY_WATCHED = 'rising-seasons:watched';
+const KEY_COMPARE = 'rising-seasons:compare';
+
+test('vm harness: Watched and Compare are exported', () => {
+  assert.ok(helpers.Watched, 'js/app.js stopped exporting Watched');
+  assert.ok(helpers.Compare, 'js/app.js stopped exporting Compare');
+});
+
+test('Watched: toggle persists the season key and toggling back removes it', () => {
+  ctx.localStorage.removeItem(KEY_WATCHED);
+  helpers.Watched.set = new ctx.Set();
+  const season = { seriesId: 'tt0903747', season: 2 };
+
+  assert.equal(helpers.Watched.toggle(season), true, 'first toggle marks watched');
+  assert.equal(helpers.Watched.has(season), true);
+  assert.deepEqual(JSON.parse(ctx.localStorage.getItem(KEY_WATCHED)), ['tt0903747:2']);
+
+  assert.equal(helpers.Watched.toggle(season), false, 'second toggle unmarks');
+  assert.deepEqual(JSON.parse(ctx.localStorage.getItem(KEY_WATCHED)), []);
+});
+
+test('Watched: load restores a saved set and survives corrupt JSON', () => {
+  ctx.localStorage.setItem(KEY_WATCHED, JSON.stringify(['tt0903747:1', 'tt0944947:3']));
+  helpers.Watched.load();
+  assert.equal(helpers.Watched.has({ seriesId: 'tt0944947', season: 3 }), true);
+  assert.equal(helpers.Watched.has({ seriesId: 'tt0944947', season: 4 }), false);
+
+  // Corrupt storage must start empty, not throw during boot.
+  ctx.localStorage.setItem(KEY_WATCHED, '{not json');
+  helpers.Watched.load();
+  // The set stays whatever it was (load catches); a subsequent toggle still works.
+  assert.doesNotThrow(() => helpers.Watched.toggle({ seriesId: 'tt1', season: 1 }));
+});
+
+test('Compare: add/remove persist insertion order and enforce the 5-show cap', () => {
+  ctx.localStorage.removeItem(KEY_COMPARE);
+  helpers.Compare.ids = [];
+
+  assert.equal(helpers.Compare.add('tt1'), true);
+  assert.equal(helpers.Compare.add('tt2'), true);
+  assert.equal(helpers.Compare.add('tt1'), false, 'duplicates are rejected');
+  assert.deepEqual(JSON.parse(ctx.localStorage.getItem(KEY_COMPARE)), ['tt1', 'tt2']);
+
+  for (const id of ['tt3', 'tt4', 'tt5']) helpers.Compare.add(id);
+  assert.equal(helpers.Compare.add('tt6'), false, 'cap holds at 5');
+  assert.equal(helpers.Compare.size(), 5);
+
+  assert.equal(helpers.Compare.remove('tt3'), true);
+  assert.equal(helpers.Compare.remove('tt3'), false, 'removing twice reports false');
+  assert.deepEqual(JSON.parse(ctx.localStorage.getItem(KEY_COMPARE)), ['tt1', 'tt2', 'tt4', 'tt5']);
+});
+
+test('Compare: load truncates an oversized stored list to the cap, clear empties storage', () => {
+  // A synced or hand-edited store can exceed the cap; load must clamp it so
+  // the overlay never draws more series than it has legend colors for.
+  ctx.localStorage.setItem(KEY_COMPARE, JSON.stringify(['a', 'b', 'c', 'd', 'e', 'f', 'g']));
+  helpers.Compare.load();
+  assert.deepEqual(helpers.Compare.ids, ['a', 'b', 'c', 'd', 'e']);
+
+  helpers.Compare.clear();
+  assert.equal(helpers.Compare.size(), 0);
+  assert.deepEqual(JSON.parse(ctx.localStorage.getItem(KEY_COMPARE)), []);
+});
