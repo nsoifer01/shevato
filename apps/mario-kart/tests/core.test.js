@@ -3,64 +3,12 @@
 // Pin timezone so date-based filter assertions stay deterministic.
 process.env.TZ = 'UTC';
 
-const fs = require('node:fs');
-const path = require('node:path');
 const vm = require('node:vm');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const JS_DIR = path.join(__dirname, '..', 'js');
-
-// Mario-kart's scripts use the classic globals pattern (no module.exports).
-// Each test loads the relevant file into a fresh vm context with the
-// runtime globals it expects (window, document, races, players, etc.) stubbed.
-function makeContext(extra = {}) {
-  const noopFn = () => null;
-  const sandbox = {
-    console,
-    Date,
-    Intl,
-    JSON,
-    Math,
-    Array,
-    Object,
-    Number,
-    String,
-    Boolean,
-    setTimeout, clearTimeout, setInterval, clearInterval,
-    window: {},
-    document: {
-      getElementById: noopFn,
-      querySelector: noopFn,
-      querySelectorAll: () => [],
-      createElement: () => ({ style: {}, classList: { add() {}, remove() {}, toggle() {} }, appendChild() {} }),
-      body: { appendChild() {}, removeChild() {} },
-      addEventListener() {},
-      removeEventListener() {},
-    },
-    localStorage: (() => {
-      const map = new Map();
-      return {
-        getItem: (k) => (map.has(k) ? map.get(k) : null),
-        setItem: (k, v) => map.set(k, String(v)),
-        removeItem: (k) => map.delete(k),
-        clear: () => map.clear(),
-      };
-    })(),
-    showMessage: () => {},
-    updateDisplay: () => {},
-    updateAchievements: () => {},
-    ...extra,
-  };
-  sandbox.window = sandbox.window || {};
-  sandbox.window.localStorage = sandbox.localStorage;
-  return vm.createContext(sandbox);
-}
-
-function loadInto(ctx, file) {
-  const src = fs.readFileSync(path.join(JS_DIR, file), 'utf8');
-  vm.runInContext(src, ctx, { filename: file });
-}
+// Shared classic-script vm harness (see tests/harness.js for the gotchas).
+const { makeContext, loadInto, evalIn } = require('./harness');
 
 // --- detectActivePlayersFromRaces -----------------------------------------
 
@@ -186,7 +134,10 @@ test('getFilteredRaces: "all" returns every race', () => {
   ];
   const ctx = makeContext({ races, currentView: 'stats' });
   loadInto(ctx, 'dateFilter.js');
-  ctx.currentDateFilter = 'all';
+  // currentDateFilter is a module-local `let`, invisible on the context
+  // object: assigning ctx.currentDateFilter would be inert. Drive it
+  // through the public setter, same as the sibling filter tests.
+  ctx.setDateFilter('all');
   assert.equal(ctx.getFilteredRaces().length, 2);
 });
 
@@ -264,26 +215,30 @@ test('undoRedo: DELETE_RACE then undo restores at original index', () => {
 });
 
 test('undoRedo: history is bounded by MAX_HISTORY (oldest evicted)', () => {
-  // actionHistory and historyPosition are module-local `let` bindings, so
-  // we observe boundedness via behaviour: push 60 ADD_RACE actions, undo
-  // them all, then verify only 50 races were popped (the buffer evicted
-  // the first 10).
+  // actionHistory and historyPosition are module-local `let` bindings, so we
+  // observe boundedness via behaviour: push MAX_HISTORY + 10 ADD_RACE actions,
+  // undo them all, then verify only MAX_HISTORY races were popped (the buffer
+  // evicted the oldest 10). MAX_HISTORY is a top-level `const` read out of the
+  // loaded source rather than hardcoded, so the test follows the app.
   const ctx = makeContext({ races: [] });
   loadInto(ctx, 'undoRedo.js');
-  for (let i = 0; i < 60; i++) {
+  const maxHistory = evalIn(ctx, 'MAX_HISTORY');
+  assert.ok(Number.isInteger(maxHistory) && maxHistory > 0, 'MAX_HISTORY should be a positive integer');
+  const pushed = maxHistory + 10;
+  for (let i = 0; i < pushed; i++) {
     ctx.races.push({ player1: i, date: '2026-01-01' });
     ctx.saveAction('ADD_RACE', { race: { player1: i, date: '2026-01-01' } });
   }
   let undoCount = 0;
-  // Undo until no further effect; cap iterations to avoid runaway loops
-  // if MAX_HISTORY ever changes upward.
-  for (let i = 0; i < 200; i++) {
+  // Undo until no further effect; cap iterations well above the buffer size
+  // to avoid a runaway loop if the eviction ever breaks.
+  for (let i = 0; i < pushed * 4; i++) {
     const before = ctx.races.length;
     ctx.undoLastAction();
     if (ctx.races.length === before) break;
     undoCount++;
   }
-  assert.equal(undoCount, 50);
+  assert.equal(undoCount, maxHistory);
 });
 
 test('undoRedo: redo after undo replays the action', () => {
@@ -312,7 +267,7 @@ function loadStats(players, races) {
     races,
     getFilteredRaces: () => races,
   });
-  // statistics.js calls formatDecimal from utils.js — load it first.
+  // statistics.js calls formatDecimal from utils.js, so load it first.
   loadInto(ctx, 'utils.js');
   loadInto(ctx, 'statistics.js');
   return ctx;
@@ -362,7 +317,7 @@ test('calculateStats: tracks first-place and podium finishes', () => {
   const stats = ctx.calculateStats(races);
   assert.equal(stats.firstPlace.player1, 1);
   assert.equal(stats.firstPlace.player2, 1);
-  assert.equal(stats.podiumFinish.player1, 3); // 1, 3, 2 — all <= 3
+  assert.equal(stats.podiumFinish.player1, 3); // 1, 3, 2 (all <= 3)
   assert.equal(stats.podiumFinish.player2, 1); // only the 1
   assert.equal(stats.racesPlayed.player1, 3);
   assert.equal(stats.racesPlayed.player2, 3);

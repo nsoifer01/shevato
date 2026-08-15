@@ -8,7 +8,7 @@
 // against them and asserts the markers, instead of leaving them to a human who
 // would have to wait for a real blank in the calendar.
 
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -24,7 +24,11 @@ import { renderPitch } from '../js/ui/pitch.js';
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (name) => JSON.parse(readFileSync(join(here, 'fixtures', name), 'utf8'));
 
-installDom();
+// Teardown restores the real globals when the file ends, the same pattern as
+// ui-combobox.test.mjs: an installDom() left in place leaks a fake `document`
+// into any suite the runner loads after this one in the same process.
+const teardownDom = installDom();
+after(() => teardownDom());
 
 const BLANK_GW = 5;
 const DOUBLE_GW = 6;

@@ -34,6 +34,10 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const SUITES = [
   'tests/browser/suites/site.mjs',
   'tests/browser/suites/apps.mjs',
+  'tests/browser/suites/a11y.mjs',
+  'tests/browser/suites/visual.mjs',
+  'tests/browser/suites/perf.mjs',
+  'tests/browser/suites/pwa-gym.mjs',
   'apps/trip-planner/e2e/core.mjs',
   'apps/trip-planner/e2e/trips-sync.mjs',
   'apps/trip-planner/e2e/share.mjs',
@@ -55,6 +59,24 @@ for (const a of args) {
   else if (a === '--headed') headed = true;
   else { console.error(`unknown argument: ${a}\nusage: run.mjs [--only=<path-substring>] [--headed]`); process.exit(2); }
 }
+// Pinned check counts per suite. A suite that silently loses checks (an early
+// return, a refactor that drops a loop, a throw swallowed inside the suite)
+// still "passes" everything it did run; comparing against a pinned total turns
+// that silent shrinkage into an explicit failure. Only site.mjs and apps.mjs
+// are pinned here because their counts are owned by this file's maintainers;
+// the trip-planner and fpl-planner suites are being evolved by their own
+// owners, who are invited to add their suites' counts when the numbers settle.
+// apps.mjs note: the count is invariant whether or not the rising-shows
+// dataset is fetched (the skip path emits the same number of entries).
+const EXPECTED_CHECKS = {
+  'tests/browser/suites/site.mjs': 157,
+  'tests/browser/suites/apps.mjs': 101,
+  'tests/browser/suites/a11y.mjs': 33,
+  'tests/browser/suites/visual.mjs': 86,
+  'tests/browser/suites/perf.mjs': 41,
+  'tests/browser/suites/pwa-gym.mjs': 14,
+};
+
 const selected = only ? SUITES.filter((p) => p.includes(only)) : SUITES;
 if (!selected.length) { console.error(`--only=${only} matches no suite. Suites:\n  ${SUITES.join('\n  ')}`); process.exit(2); }
 
@@ -99,9 +121,22 @@ async function startAll() {
   await waitFor(() => httpOk(`http://127.0.0.1:${CDP_PORT}/json/version`), 30000, 'headless Chrome');
 }
 
+// Waits for a spawned process to actually exit, bounded so a wedged process
+// cannot hang teardown forever.
+function waitForExit(p, timeoutMs) {
+  if (!p || p.exitCode !== null || p.signalCode !== null) return Promise.resolve();
+  return Promise.race([
+    new Promise((res) => p.once('exit', res)),
+    sleep(timeoutMs),
+  ]);
+}
+
 async function stopAll() {
   for (const p of [chrome, server]) { try { p && p.kill(); } catch {} }
-  await sleep(400);
+  // Wait for real exits before removing the profile dir: Chrome still holds
+  // files open right after kill(), and rm-ing under it raced (EBUSY/ENOTEMPTY
+  // or a half-deleted profile left behind).
+  await Promise.all([waitForExit(chrome, 5000), waitForExit(server, 5000)]);
   if (profileDir) { try { await rm(profileDir, { recursive: true, force: true }); } catch {} }
 }
 
@@ -109,9 +144,25 @@ const results = [];
 try {
   await startAll();
   for (const name of selected) {
-    const mod = await import(path.join(REPO, name));
-    process.stdout.write(`\n--- ${path.basename(name, '.mjs')} ---\n`);
-    const r = await mod.run({ base: BASE, cdpPort: CDP_PORT });
+    const suiteName = path.basename(name, '.mjs');
+    process.stdout.write(`\n--- ${suiteName} ---\n`);
+    // Each suite runs inside its own try/catch: one suite throwing (import
+    // error included) records a single failure and the NEXT suite still runs,
+    // instead of the whole remainder of the matrix being aborted.
+    let r;
+    try {
+      const mod = await import(path.join(REPO, name));
+      r = await mod.run({ base: BASE, cdpPort: CDP_PORT });
+    } catch (e) {
+      r = [{ name: `${suiteName}: suite completed`, pass: false, detail: String(e && e.message || e).slice(0, 200) }];
+    }
+    if (EXPECTED_CHECKS[name] != null && r.length !== EXPECTED_CHECKS[name]) {
+      r.push({
+        name: `${suiteName}: expected ${EXPECTED_CHECKS[name]} checks, got ${r.length}`,
+        pass: false,
+        detail: 'a check was silently added or lost; update EXPECTED_CHECKS in run.mjs if intentional',
+      });
+    }
     results.push(...r);
     for (const x of r) {
       if (!x.pass) console.log(`  FAIL ${x.name}${x.detail ? '  [' + x.detail + ']' : ''}`);

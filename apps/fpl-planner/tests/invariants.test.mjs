@@ -479,19 +479,31 @@ test('a full transfer search over the sample dataset stays inside its budget', (
 // and nothing would have failed. This covers the whole `buildPlan` path the
 // user actually waits on, at the shipped default horizon.
 //
-// THE NUMBER IS OWNED BY tests/perf-budget.test.mjs, which documents the
-// measurements behind it; keep the two equal. This line sat at 3000 from the
-// horizon-3 era (local median ~600-800 ms) and was missed when the default
-// moved to horizon 5 (local 1100-1536 ms) because the development machine
-// still cleared it with room - the CI runner, about twice as slow, then failed
-// PR #374 at a median of 3020 ms. A budget constant duplicated across files
-// drifts exactly like the duplicated app lists and free-transfer arithmetic
-// this project keeps re-learning about.
+// THE NUMBER IS OWNED BY tests/perf-live-size.test.mjs (FULL_PLAN_BUDGET_MS),
+// which documents the measurements behind it; keep the two equal. This line
+// sat at 3000 from the horizon-3 era (local median ~600-800 ms) and was missed
+// when the default moved to horizon 5 (local 1100-1536 ms) because the
+// development machine still cleared it with room - the CI runner, about twice
+// as slow, then failed PR #374 at a median of 3020 ms. A budget constant
+// duplicated across files drifts exactly like the duplicated app lists and
+// free-transfer arithmetic this project keeps re-learning about.
 // 2026-08-15: 5000 -> 10000. seasonEvidence() corrected the projections this
 // fixture is planned from, which roughly doubled the search (208 of its 320
 // start rates used to be pinned at 1.000; none are now). CI measured 5216 ms
-// here. perf-budget.test.mjs documents the measurements and owns the number.
+// here. perf-live-size.test.mjs documents the measurements and owns the number.
+//
+// Measured in CPU TIME, not wall time, for the same reason the two perf files
+// are: `npm test` runs the repo's suites in parallel, so wall time here
+// measures how busy the machine is as much as how much work the planner does.
+// This used to be the one wall-clock timing assertion left in the suite, and
+// it flaked exactly when the machine was loaded, never when the planner was
+// slow.
 const PLAN_GENERATION_BUDGET_MS = 10000;
+
+function cpuMs() {
+  const u = process.cpuUsage();
+  return (u.user + u.system) / 1000;
+}
 
 test('end to end plan generation stays inside its budget at the default horizon', async (t) => {
   const names = ['meta', 'bootstrap', 'fixtures', 'entry', 'entry-history', 'entry-transfers', 'entry-picks'];
@@ -508,18 +520,21 @@ test('end to end plan generation stays inside its budget at the default horizon'
   });
 
   const timings = [];
+  const wallTimings = [];
   let out = null;
   for (let run = 0; run < 3; run++) {
-    const started = Date.now();
+    const c0 = cpuMs();
+    const w0 = Date.now();
     out = await buildPlan({ gameState, squadState, options: { seed: 7 } });
-    timings.push(Date.now() - started);
+    timings.push(Math.round(cpuMs() - c0));
+    wallTimings.push(Date.now() - w0);
   }
   const median = timings.slice().sort((a, b) => a - b)[1];
 
-  t.diagnostic(`buildPlan runs: ${timings.join(', ')} ms (median ${median} ms, budget ${PLAN_GENERATION_BUDGET_MS} ms)`);
+  t.diagnostic(`buildPlan runs: ${timings.join(', ')} ms CPU (median ${median} ms, budget ${PLAN_GENERATION_BUDGET_MS} ms; wall ${wallTimings.join(', ')} ms)`);
   t.diagnostic(`horizon used: ${out.current.horizon}, reported durationMs: ${Math.round(out.current.durationMs)}`);
 
-  assert.ok(median < PLAN_GENERATION_BUDGET_MS, `plan generation took ${median} ms`);
+  assert.ok(median < PLAN_GENERATION_BUDGET_MS, `plan generation took ${median} ms of CPU`);
 
   // A budget met by producing nothing, or something illegal, is not a budget.
   assert.equal(out.current.startingXI.length, 11);

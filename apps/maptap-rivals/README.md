@@ -64,6 +64,8 @@ The rival network's decidable core (pair-document ids, handle canonicalization, 
 
 Both suites (`tests/stats.test.js` and `tests/network.test.js`) are also part of the repo-wide `npm test` target.
 
+A handful of tests are marked `{ todo: 'KNOWN DEFECT: ...' }`. Those assert the behavior the app *should* have, fail today, and are reported by `node --test` as expected failures (the run still exits 0), so a shipped defect is pinned in the suite instead of in a comment; each one flips to a pass the moment it is fixed. `js/app.js` is a single IIFE with no exports and cannot be loaded from node, so its logic (the paste panel, `classifyContinent`, the WhatsApp importer, import/export, sync, rendering) is out of unit-test reach by construction. `FINDINGS.md` lists what that leaves uncovered and which defects are currently open.
+
 ## Deploying the network rules
 
 The rival network needs three Firestore collections (`maptapRivalsHandles`, `maptapRivalsNetwork`, `maptapRivalsLinks`) whose security rules live in the repo-root `firestore.rules`. They are not deployed automatically. Until someone runs:

@@ -4,10 +4,19 @@
 // Several apps need a setup step before their controls are reachable at all.
 // Getting these wrong produces convincing false failures, so they are documented
 // where they are applied:
+//   arena - every Firebase backend is intercepted and failed for this suite.
+//     Without that, "Play solo" signs in anonymously and WRITES REAL DOCS to
+//     the production project. Tests must never touch production, so the block
+//     asserts the app's blocked-network behavior instead (toast + sign-in
+//     modal), which is also what a real outage shows users.
 //   football-h2h / mario-kart - Add Game, Add Race, undo/redo and export all
 //     live inside a sidebar that is COLLAPSED by default on desktop.
 //   gym-tracker - a first-run #onboarding-modal (z-index 2000) covers the nav
 //     until dismissed. Dismiss it the way a user does, do not delete the node.
+//   maptap-rivals - the paste panel's inputs are static markup, so wait for
+//     init-RENDERED content (.paste-rival-row) before dispatching into them,
+//     otherwise events land in a page with no listeners (see the app's
+//     FINDINGS.md).
 //   trip-planner - the Days and Map views are correctly `disabled` until the
 //     trip has items, and undo/redo are correctly disabled until something has
 //     happened. Clearing storage needs an explicit per-key removal: the app
@@ -22,25 +31,36 @@
 //     its own "Showing N of M" label rather than counting DOM nodes.
 import {
   newPage, closePage, goto, evaluate, clickText, clickSel, setViewport,
-  setValue, sleep, textPresent, cleanErrors,
+  setValue, sleep, textPresent, cleanErrors, waitForExpr, interceptNetwork,
 } from '../cdp.mjs';
+
+// Hosts that reach the production Firebase project. Failed via interception
+// wherever an app could otherwise sign in / write for real. The SDK itself
+// loads from gstatic.com, which stays reachable so the app boots normally.
+const FIREBASE_HOSTS = /firestore\.googleapis\.com|firebaseio\.com|identitytoolkit\.googleapis\.com|securetoken\.googleapis\.com/i;
 
 export async function run({ base, cdpPort }) {
   const R = [];
   const t = (name, pass, detail = '') => R.push({ name, pass: !!pass, detail });
   // Skipped checks are not failures. Used when a precondition the repo cannot
-  // provide is missing, so a clean clone does not report phantom bugs.
+  // provide is missing, so a clean clone does not report phantom bugs, and for
+  // KNOWN DEFECT markers where the truthful assertion would fail on the
+  // product itself.
   const skip = (name, reason) => R.push({ name, pass: true, skipped: true, detail: reason });
 
+  const CLEAR_STORAGE = `(()=>{ try{ for(const k of Object.keys(localStorage)) localStorage.removeItem(k);
+    localStorage.clear(); sessionStorage.clear(); }catch(e){} return 1 })()`;
+
   // Fresh page with storage genuinely emptied. The double navigation matters:
-  // storage can only be cleared from a page on the target origin.
-  async function fresh(path, settle = 4000) {
+  // storage can only be cleared from a page on the target origin. `ready` is
+  // the app's own readiness signal, polled instead of a long fixed sleep.
+  async function fresh(path, { settle = 1200, ready = null, timeout = 15000 } = {}) {
     const s = await newPage(cdpPort);
     await setViewport(s, 1280, 900);
-    await goto(s, base + path, { settle: 1200 });
-    await evaluate(s, `(()=>{ try{ for(const k of Object.keys(localStorage)) localStorage.removeItem(k);
-      localStorage.clear(); sessionStorage.clear(); }catch(e){} return 1 })()`);
+    await goto(s, base + path, { settle: 1000 });
+    await evaluate(s, CLEAR_STORAGE);
     await goto(s, base + path, { settle });
+    if (ready) await waitForExpr(s, ready, { timeout });
     return s;
   }
 
@@ -54,9 +74,31 @@ export async function run({ base, cdpPort }) {
     return 1 })()`);
 
   /* ------------------------------- ARENA -------------------------------- */
+  // With auth blocked, EVERY join/solo attempt funnels through the guest-auth
+  // gate first (joinRoom() and createRoom() call ensureGuestAuth() before any
+  // validation), so the deterministic user-visible outcome is the "Guest mode
+  // is unavailable" toast plus the sign-in modal - not #join-error. The
+  // length-rejection message is additionally unreachable from typed input
+  // because the input listener truncates to 5 characters as you type.
+  const ARENA_FEEDBACK = `(()=>{
+    const toast=[...document.querySelectorAll('#ba-toast-stack .ba-toast')]
+      .some(x=>/guest mode is unavailable|sign in/i.test(x.textContent));
+    const m=document.getElementById('auth-modal');
+    const modal=!!m && m.classList.contains('auth-modal--visible');
+    const err=document.getElementById('join-error');
+    const joinErr=!!err && !err.hidden && err.textContent.trim().length>0;
+    return toast || modal || joinErr; })()`;
   try {
     const A = 'arena';
-    const s = await fresh('/apps/arena/');
+    const s = await newPage(cdpPort);
+    await setViewport(s, 1280, 900);
+    // Enabled BEFORE first navigation so even boot-time auth traffic is failed.
+    await interceptNetwork(s, (url) => (FIREBASE_HOSTS.test(url) ? 'fail' : null));
+    await goto(s, base + '/apps/arena/', { settle: 1000 });
+    await evaluate(s, CLEAR_STORAGE);
+    await goto(s, base + '/apps/arena/', { settle: 800 });
+    await waitForExpr(s, "!!window.firebaseAuth && document.readyState === 'complete'");
+
     t(`${A}: loads`, await textPresent(s, 'arena'));
     t(`${A}: room-create controls present`, (await evaluate(s, "!!document.getElementById('create-globe-drop-round-type')")));
     t(`${A}: join-code input present`, (await evaluate(s, "!!document.getElementById('join-code')")));
@@ -66,26 +108,71 @@ export async function run({ base, cdpPort }) {
     t(`${A}: private-room toggle flips`, await evaluate(s, `(()=>{const e=document.getElementById('create-private-toggle');
       if(!e) return false; const b=e.checked; e.click(); return e.checked!==b})()`));
 
-    await setValue(s, '#join-code', 'ZZZZZZ');
-    await clickText(s, 'Join room', { settle: 1400 });
-    t(`${A}: bad join code does not crash`, await evaluate(s, "location.pathname.includes('arena')"));
+    const clearFeedback = () => evaluate(s, `(()=>{
+      const st=document.getElementById('ba-toast-stack'); if(st) st.innerHTML='';
+      const m=document.getElementById('auth-modal'); if(m) m.classList.remove('auth-modal--visible');
+      return 1 })()`);
+    const lobbyUsable = `(()=>{const l=document.getElementById('lobby-panel');
+      const j=document.getElementById('join-code');
+      return !!l && l.getBoundingClientRect().height>0 && !!j && !j.disabled})()`;
 
-    await clickText(s, 'Play solo', { settle: 2600 });
-    t(`${A}: solo play responds`, await evaluate(s,
-      "/round|score|guess|map|location|loading/i.test(document.body.innerText)"));
+    // Over-length code (the input truncates it to 'ZZZZZ' while typing).
+    await setValue(s, '#join-code', 'ZZZZZZ');
+    await clickText(s, 'Join room', { settle: 1000 });
+    t(`${A}: bad join code surfaces visible feedback`,
+      await waitForExpr(s, ARENA_FEEDBACK, { timeout: 6000 }),
+      'expected guest-auth toast / sign-in modal / #join-error, saw none');
+    t(`${A}: bad join code stays in the lobby`, await evaluate(s, lobbyUsable));
+
+    // Valid-length code for a room that cannot exist; Firestore is blocked, so
+    // the check is that the app still tells the user SOMETHING.
+    await clearFeedback();
+    await setValue(s, '#join-code', 'QQQQQ');
+    await clickText(s, 'Join room', { settle: 1000 });
+    t(`${A}: join with unreachable backend surfaces visible feedback`,
+      await waitForExpr(s, ARENA_FEEDBACK, { timeout: 6000 }),
+      'expected guest-auth toast / sign-in modal, saw none');
+
+    // Solo play cannot start without auth; the truthful outcome with Firebase
+    // failed is feedback + a still-usable lobby, never a silent hang and never
+    // a production write (interception guarantees the latter).
+    await clearFeedback();
+    await clickText(s, 'Play solo', { settle: 1000 });
+    t(`${A}: solo play with unreachable backend surfaces visible feedback`,
+      await waitForExpr(s, ARENA_FEEDBACK, { timeout: 6000 }),
+      'expected guest-auth toast / sign-in modal, saw none');
+    t(`${A}: lobby remains usable after the blocked solo attempt`, await evaluate(s, lobbyUsable));
+
     t(`${A}: no JS errors`, cleanErrors(s).length === 0, cleanErrors(s).slice(0, 2).join(' | '));
     await closePage(cdpPort, s);
   } catch (e) { t('arena: suite ran', false, String(e.message).slice(0, 140)); }
 
   /* ------------------- FOOTBALL H2H and MARIO KART ---------------------- */
-  // Same sidebar-driven architecture, so the same flow verifies both.
-  for (const [A, path, addLabel, exportLabel] of [
-    ['football-h2h', '/apps/football-h2h/', 'Add Game', 'Export data'],
-    ['mario-kart', '/apps/mario-kart/', 'Add Race', 'Export Data'],
+  // Same sidebar-driven architecture, so the same flow verifies both. Storage
+  // keys and table selectors come from each app's source: football-h2h keeps
+  // games under 'footballH2HGames' (js/football-h2h.js STORAGE_KEY) rendered
+  // into #gamesTableBody; mario-kart keeps races under 'marioKartRaces'
+  // (js/gameVersionManager.js prefix + 'Races', mk8d default) rendered into
+  // #history-body.
+  for (const [A, path, addLabel, exportLabel, storageKey, rowSel, ready] of [
+    ['football-h2h', '/apps/football-h2h/', 'Add Game', 'Export data',
+      'footballH2HGames', '#gamesTableBody tr', 'Array.isArray(window.games)'],
+    // mario row selector counts per-row edit buttons, because the Stats view's
+    // empty state renders a placeholder <tr> that a bare tr count would see.
+    ['mario-kart', '/apps/mario-kart/', 'Add Race', 'Export Data',
+      'marioKartRaces', '#history-body .edit-btn', "typeof window.getStorageKey === 'function'"],
   ]) {
     try {
-      const s = await fresh(path);
+      const s = await fresh(path, { ready });
+      const storedLen = `(()=>{try{const a=JSON.parse(localStorage.getItem(${JSON.stringify(storageKey)})||'[]');
+        return Array.isArray(a)?a.length:-1}catch(e){return -1}})()`;
+      const rowCount = () => evaluate(s, `document.querySelectorAll(${JSON.stringify(rowSel)}).length`);
       t(`${A}: loads`, (await evaluate(s, 'document.body.innerText.length')) > 100);
+
+      // mario-kart boots into the Help view when storage is empty, and the
+      // race-history section is hidden by design on Help/Guide views. Switch
+      // to Stats now, BEFORE the sidebar opens over the view toggles.
+      if (A === 'mario-kart') await clickText(s, 'Stats', { sel: '.toggle-btn', settle: 900 });
 
       await clickText(s, 'Toggle sidebar', { settle: 1100 });
       t(`${A}: sidebar opens`, await evaluate(s,
@@ -103,29 +190,46 @@ export async function run({ base, cdpPort }) {
         `open=${form.open} inputs=${form.n}`);
 
       if (!form.none && form.open) {
-        const filled = await evaluate(s, `(()=>{
+        const rowsBefore = await rowCount();
+        await evaluate(s, `(()=>{
           const f=document.querySelector('#sidebar-game-form,.sidebar-game-form,#sidebar-race-form,.sidebar-race-form');
           const ns=[...f.querySelectorAll('input[type=number]')].filter(e=>e.getBoundingClientRect().height>0);
           ns.forEach((e,i)=>{e.focus(); e.value=String(i+1);
             e.dispatchEvent(new Event('input',{bubbles:true}));
             e.dispatchEvent(new Event('change',{bubbles:true}));});
           return ns.length})()`);
-        await clickText(s, 'Save', { settle: 1600 });
-        t(`${A}: an entry can be filled and saved`, filled >= 1, `${filled} numeric fields`);
-      }
+        await clickText(s, 'Save', { settle: 800 });
+        // Correctness, not reachability: the record must land in storage AND
+        // render as a table row.
+        t(`${A}: saved entry lands in localStorage`,
+          await waitForExpr(s, `(${storedLen}) === 1`), `${await evaluate(s, storedLen)} records under ${storageKey}`);
+        const rowsAfter = await rowCount();
+        t(`${A}: saved entry renders in the table`, rowsAfter === rowsBefore + 1,
+          `${rowsBefore} -> ${rowsAfter} rows`);
 
-      t(`${A}: undo responds`, await clickText(s, 'Undo', { settle: 700 }));
-      t(`${A}: redo responds`, await clickText(s, 'Redo', { settle: 700 }));
+        await clickText(s, 'Undo', { settle: 500 });
+        t(`${A}: undo actually removes the record`,
+          await waitForExpr(s, `(${storedLen}) === 0`), `${await evaluate(s, storedLen)} left in storage`);
+        await clickText(s, 'Redo', { settle: 500 });
+        t(`${A}: redo restores the record`,
+          await waitForExpr(s, `(${storedLen}) === 1`), `${await evaluate(s, storedLen)} in storage`);
+      }
 
       await trackDownloads(s);
       await clickText(s, exportLabel, { settle: 1600 });
       t(`${A}: export produces a file`, (await evaluate(s, "window.__dl||''")) !== '');
 
-      let ranges = 0;
+      // The one record is dated today, so every range must keep showing
+      // exactly it - a chip that hid it (or duplicated it) is a filter bug.
+      let ranges = 0, consistent = 0;
       for (const label of ['Today', 'Last 7 Days', 'Last 30 Days', 'All Time']) {
-        if (await clickText(s, label, { exact: true, settle: 400 })) ranges++;
+        if (await clickText(s, label, { exact: true, settle: 500 })) {
+          ranges++;
+          if ((await rowCount()) === 1) consistent++;
+        }
       }
-      t(`${A}: date-range filters clickable`, ranges >= 3, `${ranges}/4`);
+      t(`${A}: date-range filters keep the today-dated entry`, ranges >= 3 && consistent === ranges,
+        `${consistent}/${ranges} ranges showed exactly 1 row`);
 
       t(`${A}: no JS errors`, cleanErrors(s).length === 0, cleanErrors(s).slice(0, 2).join(' | '));
       await closePage(cdpPort, s);
@@ -135,7 +239,7 @@ export async function run({ base, cdpPort }) {
   /* ---------------------------- GYM TRACKER ----------------------------- */
   try {
     const A = 'gym-tracker';
-    const s = await fresh('/apps/gym-tracker/');
+    const s = await fresh('/apps/gym-tracker/', { ready: '!!window.gymApp' });
 
     const dismissed = (await clickText(s, 'Skip tour', { settle: 900 }))
       || (await clickText(s, 'Close welcome', { settle: 900 }));
@@ -190,7 +294,8 @@ export async function run({ base, cdpPort }) {
       restMode: 'custom', uniformRestSeconds: 90, scheduleDays: [],
       createdAt: '2026-08-01T10:00:00.000Z', updatedAt: '2026-08-01T10:00:00.000Z' }]));
       localStorage.setItem('gymTrackerOnboardingSeen', 'true'); return 1 })()`);
-    await goto(s, base + '/apps/gym-tracker/', { settle: 2500 });
+    await goto(s, base + '/apps/gym-tracker/', { settle: 900 });
+    await waitForExpr(s, '!!window.gymApp');
     await clickText(s, 'Programs', { sel: '.nav-links .nav-link', exact: true, settle: 900 });
     await clickSel(s, '#programs-list [data-action="edit-program"]', { settle: 800 });
     await clickSel(s, '#add-exercise-to-program-btn', { settle: 800 });
@@ -264,7 +369,9 @@ export async function run({ base, cdpPort }) {
   /* --------------------------- MAPTAP RIVALS ---------------------------- */
   try {
     const A = 'maptap-rivals';
-    const s = await fresh('/apps/maptap-rivals/');
+    const s = await fresh('/apps/maptap-rivals/', {
+      ready: "!!document.querySelector('#dash-summary .dash-summary-card, .dash-summary-card, #paste-actions')",
+    });
     t(`${A}: loads`, await textPresent(s, 'maptap'));
     t(`${A}: username field accepts input`,
       (await setValue(s, '#my-name', 'Tester')) || (await setValue(s, '#profile-username-input', 'Tester')));
@@ -285,7 +392,54 @@ export async function run({ base, cdpPort }) {
           return false})()`));
     }
 
-    t(`${A}: score paste box accepts input`, await setValue(s, '#paste-mine-input', '1. Paris 2. Tokyo 3. Lima'));
+    // One real day save through the paste flow (js/app.js saveDay). The panel
+    // lives inside a <details class="paste-collapse"> that is CLOSED by
+    // default; open it first or every element inside reports a rect but is
+    // unreachable by real clicks (closed-details content is not hit-testable).
+    // Then wait for an init-RENDERED row: the textareas are static markup and
+    // polling them says nothing about listeners being attached (FINDINGS.md).
+    await clickSel(s, '.paste-collapse-summary', { settle: 500 });
+    await waitForExpr(s, "(()=>{const d=document.querySelector('details.paste-collapse'); return !!d && d.open})()");
+    await waitForExpr(s, "!!document.querySelector('.paste-rival-row')");
+    await setValue(s, '#paste-mine-input', '80 90 70 60 50');
+    await setValue(s, '.paste-rival-textarea', '70 80 60 50 40');
+    await setValue(s, '#paste-date', '2026-08-01');
+    await waitForExpr(s, "(()=>{const b=document.getElementById('paste-save-all'); return !!b && !b.disabled})()");
+    await clickSel(s, '#paste-save-all', { settle: 900 });
+    const g1 = await evaluate(s, `(()=>{try{const g=JSON.parse(localStorage.getItem('maptapRivalsGames')||'[]');
+      return {n:g.length, date:g[0]&&g[0].date, mine:g[0]&&g[0].myScores, theirs:g[0]&&g[0].theirScores};}catch(e){return {n:-1}}})()`);
+    t(`${A}: pasted day saves a game with the right date and scores`,
+      g1.n === 1 && g1.date === '2026-08-01'
+        && JSON.stringify(g1.mine) === '[80,90,70,60,50]'
+        && JSON.stringify(g1.theirs) === '[70,80,60,50,40]',
+      JSON.stringify(g1));
+    t(`${A}: save summary confirms 1W`, await evaluate(s,
+      `(()=>{const el=document.getElementById('paste-summary');
+        return !!el && /Saved 1 game/.test(el.textContent) && /1W/.test(el.textContent)})()`),
+      String(await evaluate(s, "(document.getElementById('paste-summary')||{}).textContent")));
+    t(`${A}: dashboard reflects the win`, await waitForExpr(s,
+      `(()=>{const grid=document.getElementById('rival-grid')||document.body;
+        return /100% win|1W/.test(grid.textContent)})()`));
+
+    // Same day pasted again: the audit found saveDay() has no per-rival,
+    // per-date dedupe, so a repeat paste double-counts the rivalry record.
+    await setValue(s, '#paste-mine-input', '80 90 70 60 50');
+    await setValue(s, '.paste-rival-textarea', '70 80 60 50 40');
+    await setValue(s, '#paste-date', '2026-08-01');
+    await waitForExpr(s, "(()=>{const b=document.getElementById('paste-save-all'); return !!b && !b.disabled})()");
+    await clickSel(s, '#paste-save-all', { settle: 900 });
+    const dupCount = await evaluate(s, `(()=>{try{const g=JSON.parse(localStorage.getItem('maptapRivalsGames')||'[]');
+      return g.filter(x=>x.date==='2026-08-01').length}catch(e){return -1}})()`);
+    if (dupCount > 1) {
+      skip(`${A}: repeat paste for the same day is guarded`,
+        'KNOWN DEFECT: repeat paste for the same day double-counts - saveDay() (js/app.js) pushes a new game with no per-rival/per-date dedupe');
+    } else if (dupCount === 1) {
+      t(`${A}: repeat paste for the same day is guarded`, false,
+        'unexpectedly passes - the pinned double-count defect no longer reproduces; convert this quarantine into a plain assertion and mark defect 1 resolved in TESTING-AUDIT.md');
+    } else {
+      t(`${A}: repeat paste for the same day is guarded`, false,
+        `could not stage the check: ${dupCount} games stored for 2026-08-01`);
+    }
 
     await trackDownloads(s);
     await clickText(s, 'Export', { exact: true, settle: 1400 });
@@ -298,11 +452,21 @@ export async function run({ base, cdpPort }) {
   /* ---------------------------- RISING SHOWS ---------------------------- */
   try {
     const A = 'rising-shows';
-    const s = await fresh('/apps/rising-shows/', 9000); // large dataset, slower boot
-    const rows = () => evaluate(s, `[...document.querySelectorAll('.show-row,.show-card,tbody tr,[data-series-id]')]
+    const ROWS_SEL = '.show-row,.show-card,tbody tr,[data-series-id]';
+    // Large dataset, slow boot: wait on the app's own render instead of a
+    // fixed 9s sleep. If the dataset is absent the wait times out and the
+    // skip path below takes over.
+    const s = await fresh('/apps/rising-shows/', {
+      ready: `!!document.querySelector(${JSON.stringify(ROWS_SEL)})`, timeout: 20000,
+    });
+    const rows = () => evaluate(s, `[...document.querySelectorAll(${JSON.stringify(ROWS_SEL)})]
       .filter(e=>e.getBoundingClientRect().height>0).length`);
     const total = () => evaluate(s, `(()=>{const m=document.body.innerText.match(/([\\d,]+)\\s+shows?/i);
       return m?m[1]:null})()`);
+    const totalIsExpr = (want) => `(()=>{const m=document.body.innerText.match(/([\\d,]+)\\s+shows?/i);
+      return !!m && ${want}})()`;
+
+    t(`${A}: app shell loads`, await textPresent(s, 'rising shows'));
 
     const baseRows = await rows();
     const baseTotal = await total();
@@ -316,7 +480,6 @@ export async function run({ base, cdpPort }) {
         'min-seasons filter applies', 'sort changes result order', 'clicking a show opens its detail']) {
         skip(`${A}: ${check}`, reason);
       }
-      t(`${A}: app shell loads without data`, await textPresent(s, 'rising shows'));
       t(`${A}: no JS errors`, cleanErrors(s).length === 0, cleanErrors(s).slice(0, 2).join(' | '));
       await closePage(cdpPort, s);
       throw { handled: true };
@@ -326,38 +489,36 @@ export async function run({ base, cdpPort }) {
 
     // Assert on the total, not the page of 24.
     await setValue(s, '#finderSearch', 'breaking bad');
-    await sleep(2600);
-    const searchTotal = await total();
-    t(`${A}: search narrows results`, !!searchTotal && searchTotal !== baseTotal,
-      `${baseTotal} -> ${searchTotal}`);
+    t(`${A}: search narrows results`,
+      await waitForExpr(s, totalIsExpr(`m[1] !== ${JSON.stringify(baseTotal)}`)),
+      `${baseTotal} -> ${await total()}`);
     await setValue(s, '#finderSearch', '');
-    await sleep(1800);
+    await waitForExpr(s, totalIsExpr(`m[1] === ${JSON.stringify(baseTotal)}`));
 
-    await clickText(s, 'Rising', { settle: 2200 });
-    t(`${A}: shape tab filters`, (await rows()) > 0);
+    await clickText(s, 'Rising', { settle: 800 });
+    t(`${A}: shape tab filters`, await waitForExpr(s, `[...document.querySelectorAll(${JSON.stringify(ROWS_SEL)})]
+      .filter(e=>e.getBoundingClientRect().height>0).length > 0`));
 
     await setValue(s, '#finderMinSeasons', '5');
-    await sleep(2000);
-    t(`${A}: min-seasons filter applies`, (await total()) !== baseTotal, `total now ${await total()}`);
+    t(`${A}: min-seasons filter applies`,
+      await waitForExpr(s, totalIsExpr(`m[1] !== ${JSON.stringify(baseTotal)}`)), `total now ${await total()}`);
     await setValue(s, '#finderMinSeasons', '');
-    await sleep(1500);
+    await waitForExpr(s, totalIsExpr(`m[1] === ${JSON.stringify(baseTotal)}`));
 
-    const firstBefore = await evaluate(s, `(()=>{const r=document.querySelector('.show-row,.show-card,tbody tr,[data-series-id]');
+    const firstBefore = await evaluate(s, `(()=>{const r=document.querySelector(${JSON.stringify(ROWS_SEL)});
       return r?r.innerText.slice(0,50):null})()`);
     await evaluate(s, `(()=>{const e=document.getElementById('finderSort');
       if(e&&e.options.length>1){e.selectedIndex=(e.selectedIndex+1)%e.options.length;
         e.dispatchEvent(new Event('change',{bubbles:true}));} return 1})()`);
-    await sleep(2200);
-    const firstAfter = await evaluate(s, `(()=>{const r=document.querySelector('.show-row,.show-card,tbody tr,[data-series-id]');
-      return r?r.innerText.slice(0,50):null})()`);
-    t(`${A}: sort changes result order`, firstBefore !== firstAfter);
+    t(`${A}: sort changes result order`, await waitForExpr(s,
+      `(()=>{const r=document.querySelector(${JSON.stringify(ROWS_SEL)});
+        return !!r && r.innerText.slice(0,50) !== ${JSON.stringify(firstBefore)}})()`));
 
-    const clicked = await clickSel(s, '.show-row,.show-card,tbody tr,[data-series-id]', { settle: 3000 });
-    const modal = await evaluate(s, `(()=>{const vis=e=>e.getBoundingClientRect().height>0;
+    const clicked = await clickSel(s, ROWS_SEL, { settle: 800 });
+    const modalShown = await waitForExpr(s, `(()=>{const vis=e=>e.getBoundingClientRect().height>0;
       const m=[...document.querySelectorAll('#showModal,#detailModal,.modal')].filter(vis)[0];
-      return m?{id:m.id,len:m.innerText.length}:null})()`);
-    t(`${A}: clicking a show opens its detail`, clicked && !!modal && modal.len > 40,
-      modal ? `${modal.id} len=${modal.len}` : 'no modal');
+      return !!m && m.innerText.length > 40})()`);
+    t(`${A}: clicking a show opens its detail`, clicked && modalShown);
 
     t(`${A}: no JS errors`, cleanErrors(s).length === 0, cleanErrors(s).slice(0, 2).join(' | '));
     await closePage(cdpPort, s);
@@ -370,27 +531,28 @@ export async function run({ base, cdpPort }) {
   /* ---------------------------- TRIP PLANNER ---------------------------- */
   try {
     const A = 'trip-planner';
-    const s = await fresh('/apps/trip-planner/');
-
+    const ITEMS = `(()=>{try{const j=JSON.parse(localStorage.getItem('trip-planner:v1')||'{}');
+      const tr=j.trips||j; const first=Array.isArray(tr)?tr[0]:Object.values(tr||{})[0];
+      return ((first&&(first.items||first.entries))||[]).length}catch(e){return -1}})()`;
+    const s = await fresh('/apps/trip-planner/', {
+      ready: `[...document.querySelectorAll('button,a')].some(x=>/load an example trip/i.test(x.textContent))`,
+    });
+    const items = () => evaluate(s, ITEMS);
     const disabled = () => evaluate(s, `(()=>({days:document.getElementById('viewDays').disabled,
       map:document.getElementById('viewMap').disabled}))()`);
-    const items = () => evaluate(s, `(()=>{try{const j=JSON.parse(localStorage.getItem('trip-planner:v1')||'{}');
-      const tr=j.trips||j; const first=Array.isArray(tr)?tr[0]:Object.values(tr||{})[0];
-      return ((first&&(first.items||first.entries))||[]).length}catch(e){return -1}})()`);
 
     const empty = await disabled();
     t(`${A}: Days/Map disabled while empty`, empty.days && empty.map, JSON.stringify(empty));
 
-    await clickText(s, 'Load an example trip', { settle: 3500 });
-    const loadedItems = await items();
+    await clickText(s, 'Load an example trip', { settle: 800 });
+    t(`${A}: sample trip loads items`, await waitForExpr(s, `(${ITEMS}) > 0`), `${await items()} items`);
     const loadedState = await disabled();
-    t(`${A}: sample trip loads items`, loadedItems > 0, `${loadedItems} items`);
     t(`${A}: Days/Map enable once populated`, !loadedState.days && !loadedState.map, JSON.stringify(loadedState));
 
     let views = 0;
     for (const id of ['viewDays', 'viewMap', 'viewTimeline']) {
-      await clickSel(s, `#${id}`, { settle: 2200 });
-      if (await evaluate(s, `/on|active/.test(document.getElementById(${JSON.stringify(id)}).className)`)) views++;
+      await clickSel(s, `#${id}`, { settle: 600 });
+      if (await waitForExpr(s, `/on|active/.test(document.getElementById(${JSON.stringify(id)}).className)`, { timeout: 5000 })) views++;
     }
     t(`${A}: all three views switch`, views === 3, `${views}/3`);
 
@@ -413,13 +575,16 @@ export async function run({ base, cdpPort }) {
     }
 
     // Undo is correctly disabled until something has happened, so assert the
-    // round trip rather than just that the button is clickable.
+    // round trip rather than just that the button is clickable. Storage is
+    // written debounced: wait on it, do not sleep at it.
     const beforeUndo = await items();
-    await clickText(s, 'Undo', { settle: 2000 });
+    await clickText(s, 'Undo', { settle: 500 });
+    t(`${A}: undo reverses a change`, await waitForExpr(s, `(${ITEMS}) < ${beforeUndo}`),
+      `${beforeUndo} -> ${await items()}`);
     const afterUndo = await items();
-    t(`${A}: undo reverses a change`, afterUndo < beforeUndo, `${beforeUndo} -> ${afterUndo}`);
-    await clickText(s, 'Redo', { settle: 2000 });
-    t(`${A}: redo restores it`, (await items()) > afterUndo);
+    await clickText(s, 'Redo', { settle: 500 });
+    t(`${A}: redo restores it`, await waitForExpr(s, `(${ITEMS}) > ${afterUndo}`),
+      `${afterUndo} -> ${await items()}`);
 
     t(`${A}: currency selector changes`, await evaluate(s, `(()=>{const e=document.getElementById('currencySel');
       if(!e||e.options.length<2) return false; e.selectedIndex=1;
@@ -430,22 +595,71 @@ export async function run({ base, cdpPort }) {
   } catch (e) { t('trip-planner: suite ran', false, String(e.message).slice(0, 140)); }
 
   /* --------------------------- MOBILE SWEEP ----------------------------- */
-  for (const [name, path] of [
-    ['arena', '/apps/arena/'], ['football-h2h', '/apps/football-h2h/'],
-    ['fpl-planner', '/apps/fpl-planner/'],
-    ['gym-tracker', '/apps/gym-tracker/'], ['maptap-rivals', '/apps/maptap-rivals/'],
-    ['mario-kart', '/apps/mario-kart/'], ['rising-shows', '/apps/rising-shows/'],
-    ['trip-planner', '/apps/trip-planner/'],
-  ]) {
+  // 390x844 with touch emulation on (setViewport handles it). Each app gets
+  // one REAL interaction with an asserted outcome on top of the overflow /
+  // content / error sweep. Arena's Firebase hosts are blocked here too: a
+  // mobile tap on Join must not reach production either.
+  const MOBILE = [
+    ['arena', '/apps/arena/', async (s) => {
+      await setValue(s, '#join-code', 'QQQQQ');
+      await clickText(s, 'Join room', { settle: 1000 });
+      return ['join attempt surfaces feedback', await waitForExpr(s, ARENA_FEEDBACK, { timeout: 6000 })];
+    }],
+    ['football-h2h', '/apps/football-h2h/', async (s) => {
+      await clickText(s, 'Toggle sidebar', { settle: 800 });
+      return ['sidebar opens', await waitForExpr(s,
+        "(()=>{const sb=document.querySelector('.sidebar');return !!sb&&/open/.test(sb.className)})()")];
+    }],
+    ['fpl-planner', '/apps/fpl-planner/', async (s) => {
+      const typed = await setValue(s, '#fpl-team-id', '123456');
+      return ['team-id input accepts input', typed
+        && (await evaluate(s, "(document.getElementById('fpl-team-id')||{}).value")) === '123456'];
+    }],
+    ['gym-tracker', '/apps/gym-tracker/', async (s) => {
+      // Storage may carry onboarding-seen from the desktop block; dismiss the
+      // modal only if it is up, then drive the mobile bottom nav.
+      await clickText(s, 'Skip tour', { settle: 700 });
+      await clickSel(s, '.bottom-nav .nav-item[data-view="history"]', { settle: 800 });
+      return ['bottom-nav switches to History', await waitForExpr(s,
+        `(()=>{const b=document.querySelector('.bottom-nav .nav-item[data-view="history"]');
+          return !!b && /active/.test(b.className)})()`)];
+    }],
+    ['maptap-rivals', '/apps/maptap-rivals/', async (s) => {
+      await clickText(s, 'Add rival', { settle: 800 });
+      return ['Add rival opens the modal', await waitForExpr(s,
+        "(()=>{const m=document.getElementById('rival-modal');return !!m && m.getBoundingClientRect().height>0})()")];
+    }],
+    ['mario-kart', '/apps/mario-kart/', async (s) => {
+      await clickText(s, 'Toggle sidebar', { settle: 800 });
+      return ['sidebar opens', await waitForExpr(s,
+        "(()=>{const sb=document.querySelector('.sidebar');return !!sb&&/open/.test(sb.className)})()")];
+    }],
+    ['rising-shows', '/apps/rising-shows/', async (s) => {
+      const clicked = await clickSel(s, '#finderSearch', { settle: 300 });
+      return ['search field takes focus', clicked && await evaluate(s,
+        "document.activeElement && document.activeElement.id === 'finderSearch'")];
+    }],
+    ['trip-planner', '/apps/trip-planner/', async (s) => {
+      await clickText(s, 'Add item', { settle: 800 });
+      return ['Add item opens the form', await waitForExpr(s,
+        "(()=>{const m=document.getElementById('itemForm');return !!m && m.getBoundingClientRect().height>0})()")];
+    }],
+  ];
+  for (const [name, path, interact] of MOBILE) {
     try {
       const s = await newPage(cdpPort);
       await setViewport(s, 390, 844, true);
-      await goto(s, base + path, { settle: name === 'rising-shows' ? 8000 : 4500 });
+      if (name === 'arena') await interceptNetwork(s, (url) => (FIREBASE_HOSTS.test(url) ? 'fail' : null));
+      await goto(s, base + path, { settle: 800 });
+      await waitForExpr(s, 'document.body.innerText.trim().length > 100',
+        { timeout: name === 'rising-shows' ? 20000 : 12000 });
       const m = await evaluate(s, `(()=>({
         overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
         painted: document.body.innerText.trim().length }))()`);
       t(`${name}: mobile no horizontal overflow`, m.overflow <= 1, `${m.overflow}px`);
       t(`${name}: mobile renders content`, m.painted > 100, `${m.painted} chars`);
+      const [what, ok] = await interact(s);
+      t(`${name}: mobile interaction - ${what}`, ok);
       t(`${name}: mobile no JS errors`, cleanErrors(s).length === 0, cleanErrors(s).slice(0, 2).join(' | '));
       await closePage(cdpPort, s);
     } catch (e) { t(`${name}: mobile suite ran`, false, String(e.message).slice(0, 140)); }

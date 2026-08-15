@@ -911,6 +911,74 @@ Suites clear this app's storage between blocks. A squad saved by an earlier
 block is otherwise restored on boot, which is the feature working and the test
 lying.
 
+## Test-estate rules (hardened 2026-08-15)
+
+An audit pass over the tests themselves, fixing the assertions that could not
+fail and pinning the surfaces that had none. The rules worth keeping:
+
+- **Performance budgets are CPU time with ONE owner.**
+  `perf-live-size.test.mjs` owns the full-plan ceiling (`FULL_PLAN_BUDGET_MS`),
+  `invariants.test.mjs` mirrors it (keep the two equal), and
+  `perf-budget.test.mjs` deliberately asserts NO full-plan ceiling: the same
+  number on its smaller pool was strictly dominated (320 players cannot breach
+  a ceiling 587 are held under) and a duplicated budget constant is exactly
+  what drifted in PR #374. The invariants budget was also the suite's last
+  wall-clock timing assertion, and it flaked when the machine was busy, never
+  when the planner was slow; it measures `process.cpuUsage()` now.
+- **A count quoted from the docs must be derived from the source of truth.**
+  `experiment.test.mjs` asserted `3 * windows * seeds = 45` after the fourth
+  season qualified: a frozen fact that could never fail. It now derives the
+  season count from `scripts/backtest.mjs KNOWN_SEASONS` and asserts the
+  current 60, so it fails ON PURPOSE when the season list moves, which is the
+  prompt to update the counts in README, this file and the registry.
+- **A silent skip is a coverage change nobody approved.** The archive-gated
+  tests (`player-identity.test.mjs`, 4; `train-dedupe.test.mjs`, 1) each carry
+  a guard that scans the file's own source for the gated-skip count and asserts
+  the exact skip set for the machine's archive state: zero skips with the
+  archive present, exactly the pinned number without it. One further skip is
+  deliberate and self-reporting: `optimizer-consistency.test.mjs` skips a
+  forced-inclusion class when the sample squad does not exercise it
+  (data-dependent, worded in the skip message).
+- **Fixtures never read the wall clock.** `pending-transfers.test.mjs` and
+  `season-rollover.test.mjs` used `new Date()` for `fetchedAt`; both pin the
+  sample's own capture time now, like every other file.
+- **`installDom()` at module scope must return its teardown** and register it
+  with `after()` (the ui-combobox pattern): a leaked fake `document` reaches
+  whatever the runner loads next in the same process. ui-pitch-markers,
+  ui-manual-entry and ui-sandbox now do.
+- **Module-scope state gets a fresh copy per test via a query-string dynamic
+  import** (`import('.../scroll-lock.js?fresh=N')` in
+  `ui-scroll-lock.test.mjs`): each specifier is a distinct module registry
+  entry, so reference-counting tests cannot leak state into each other.
+- **The proxy handler is drivable end to end by stubbing the GLOBAL fetch**
+  (`netlify/functions/tests/fpl.test.mjs`): outside a Netlify Blobs context
+  `fplStore()` throws, so every such request exercises the memoryStore
+  fallback, and the four `x-fpl-*` response headers and the labelled 503 are
+  pinned through the real default export. The handler's own catch around
+  `serveFpl` is NOT reachable by injection (every constructible failure is
+  already caught inside `serveFpl`); it shields future defects and is
+  documented as such in the test file.
+- **The availability env gate is pinned** (`availability-env-gate.test.mjs`):
+  OFF unless `FPL_AVAILABILITY` is exactly `1` or `true`, and the suite fails
+  loudly if the variable is exported in the environment running it, because
+  every replay-driven test would otherwise measure the rejected arm silently.
+- New rendered coverage, all under the mini DOM: the squad table's row model
+  and sort (`ui-squad-table.test.mjs`), the charts including the "every charted
+  number also appears as text" contract (`ui-charts.test.mjs`), the drawer's
+  season-totals caption over the whole evidence enum
+  (`ui-player-drawer.test.mjs`), and the dashboard cards that had none - hero
+  (including exactly ONE "Deadline passed"), transfers in both shapes, why /
+  why-not / renderWhyNot, future, alternatives, chip ledger arithmetic, status
+  panel and the withheld view (`ui-dashboard.test.mjs`).
+- E2E lifecycle assertion repairs, all verified 3x stable at 95/95: the
+  "Check for changes" check was a ternary whose branches were identical (now
+  `after && !before`), "says so exactly once" passed at zero occurrences (now
+  `=== 1`), the made-transfer check built a regex from unescaped `web_name`
+  values and was purely negative (names are escaped and a positive companion
+  asserts a recommendation actually rendered), and the scenario captain reader
+  ran the same `.find()` three times behind an always-true guard (now the
+  vice reader's shape).
+
 ## Open questions / next highest-value work
 
 Ranked 2026-08-12, evening, after 2025-26 qualified (entry 15), bonus closed

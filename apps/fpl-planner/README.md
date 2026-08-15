@@ -440,4 +440,16 @@ The historical replay is NOT covered by that: it runs on a gitignored archive
 that only exists on a machine that has downloaded it. `tests/backtest.test.mjs`
 and `tests/replay-evidence.test.mjs` generate synthetic seasons in the archive's
 own CSV shape and drive the identical code path, so the suite stays hermetic
-while still walking the replay end to end.
+while still walking the replay end to end. The few tests that DO want the real
+archive (`tests/player-identity.test.mjs`, `tests/train-dedupe.test.mjs`) skip
+without it, and each of those files carries a guard test asserting the exact
+skip set for the machine's archive state, so a silently changed skip count
+fails instead of vanishing.
+
+Performance budgets are asserted in CPU time (`process.cpuUsage()`), never
+wall time, because `npm test` runs suites in parallel and wall time then
+measures the machine rather than the planner. The full-plan ceiling has one
+owner, `tests/perf-live-size.test.mjs`, mirrored by `tests/invariants.test.mjs`;
+`tests/perf-budget.test.mjs` keeps the fast fixture-sized measurement without a
+ceiling of its own, because a ceiling on the smaller pool is strictly dominated
+by the same number on the live-sized one.

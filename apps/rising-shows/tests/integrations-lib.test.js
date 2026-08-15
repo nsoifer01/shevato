@@ -18,45 +18,83 @@ const {
 // the same series across multiple shapes, and shapes the export should drop
 // entirely when no series clear the floor.
 const FIXTURE = [
-  // Show A — strong slow-burn S1, strong big-finale S2. Has both IDs.
+  // Show A - strong slow-burn S1, strong big-finale S2. Has both IDs.
   { seriesId: 'tt0000001', title: 'Alpha', season: 1, tmdbId: 1001, tvdbId: 2001, seasonTvdbId: 9001,
     shapes: ['slow-burn'], confidence: { 'slow-burn': 0.9 }, avgRating: 8.5 },
   { seriesId: 'tt0000001', title: 'Alpha', season: 2, tmdbId: 1001, tvdbId: 2001, seasonTvdbId: 9002,
     shapes: ['big-finale'], confidence: { 'big-finale': 0.7 }, avgRating: 8.9 },
 
-  // Show B — strong rebound, only TMDB ID. seasonTvdbId missing — should
+  // Show B - strong rebound, only TMDB ID. seasonTvdbId missing - should
   // appear in collection (tmdb_show) but NOT in overlay output.
   { seriesId: 'tt0000002', title: 'Beta', season: 1, tmdbId: 1002, tvdbId: null,
     shapes: ['rebound'], confidence: { 'rebound': 0.8 }, avgRating: 8.1 },
 
-  // Show C — weak slow-burn, below floor. Should be dropped everywhere.
+  // Show C - weak slow-burn, below floor. Should be dropped everywhere.
   { seriesId: 'tt0000003', title: 'Gamma', season: 1, tmdbId: 1003, tvdbId: 2003, seasonTvdbId: 9003,
     shapes: ['slow-burn'], confidence: { 'slow-burn': 0.10 }, avgRating: 7.0 },
 
-  // Show D — strong big-finale, only TVDB ID. Tests tvdb_show fallback.
+  // Show D - strong big-finale, only TVDB ID. Tests tvdb_show fallback.
   { seriesId: 'tt0000004', title: 'Delta', season: 1, tmdbId: null, tvdbId: 2004, seasonTvdbId: 9004,
     shapes: ['big-finale'], confidence: { 'big-finale': 0.85 }, avgRating: 9.0 },
 
-  // Show E — strong big-finale, gives big-finale 3 series total (meets minSeries=3).
+  // Show E - strong big-finale, gives big-finale 3 series total (meets minSeries=3).
   { seriesId: 'tt0000005', title: 'Epsilon', season: 1, tmdbId: 1005, tvdbId: 2005, seasonTvdbId: 9005,
     shapes: ['big-finale'], confidence: { 'big-finale': 0.55 }, avgRating: 8.3 },
 
-  // Show F — declining, only 1 series for this shape so collection should drop.
+  // Show F - declining, only 1 series for this shape so collection should drop.
   { seriesId: 'tt0000006', title: 'Zeta', season: 1, tmdbId: 1006, tvdbId: 2006, seasonTvdbId: 9006,
     shapes: ['declining'], confidence: { 'declining': 0.9 }, avgRating: 6.0 },
 
-  // Show G — no IDs at all (TMDB enrichment didn't run for it). Should be
+  // Show G - no IDs at all (TMDB enrichment didn't run for it). Should be
   // dropped from every export.
   { seriesId: 'tt0000007', title: 'Eta', season: 1, tmdbId: null, tvdbId: null,
     shapes: ['rising'], confidence: { 'rising': 0.9 }, avgRating: 9.5 },
 ];
 
 test('SHAPE_META has metadata for every collection shape', () => {
+  // These three strings are not decoration: `title` is emitted as a YAML
+  // mapping key (`  ${title}:` in a collection file, `  RS ${title}:` in the
+  // overlay file), `badge` goes inside Kometa's `text(...)` overlay call, and
+  // `blurb` becomes the collection summary. A stray colon or paren silently
+  // produces a YAML file Kometa rejects, and a duplicate title or badge merges
+  // two collections into one.
+  const titles = new Set();
+  const badges = new Set();
   for (const s of COLLECTION_SHAPES) {
     assert.ok(SHAPE_META[s], `missing SHAPE_META for ${s}`);
-    assert.ok(SHAPE_META[s].title.length > 0);
-    assert.ok(SHAPE_META[s].badge.length > 0);
-    assert.ok(SHAPE_META[s].blurb.length > 10);
+    const { title, badge, blurb } = SHAPE_META[s];
+
+    assert.equal(title, title.trim(), `${s}: title must not be padded, it is a YAML key`);
+    assert.ok(!/[:#\n]/.test(title), `${s}: title "${title}" needs quoting as a YAML key`);
+    assert.equal(titles.has(title), false, `${s}: duplicate collection title "${title}"`);
+    titles.add(title);
+
+    // Rendered onto a season poster, so it has to be short as well as safe.
+    assert.ok(/^[A-Z][A-Z+]{0,7}$/.test(badge), `${s}: badge "${badge}" should be a short upper-case tag`);
+    assert.equal(badges.has(badge), false, `${s}: duplicate overlay badge "${badge}"`);
+    badges.add(badge);
+
+    assert.ok(blurb.length > 10 && blurb.endsWith('.'), `${s}: blurb should be a sentence, got "${blurb}"`);
+    assert.ok(!blurb.includes('\n'), `${s}: blurb must stay on one YAML line`);
+  }
+});
+
+test('SHAPE_META strings are what actually lands in the generated YAML', () => {
+  const matches = COLLECTION_SHAPES.flatMap((shape, i) => [1, 2, 3].map((n) => ({
+    seriesId: `tt${i}${n}`, title: `Show ${i}${n}`, season: 1,
+    tmdbId: 1000 + i * 10 + n, tvdbId: 2000 + i * 10 + n, seasonTvdbId: 9000 + i * 10 + n,
+    shapes: [shape], confidence: { [shape]: 0.9 }, avgRating: 8,
+  })));
+  const collections = buildKometaCollections(matches, { minSeries: 3 });
+  const overlays = buildSeasonOverlays(matches);
+  assert.equal(collections.length, COLLECTION_SHAPES.length);
+  for (const shape of COLLECTION_SHAPES) {
+    const meta = SHAPE_META[shape];
+    const file = collections.find((c) => c.shape === shape);
+    assert.ok(file.contents.includes(`\n  ${meta.title}:\n`), `${shape}: collection key`);
+    assert.ok(file.contents.includes(`    summary: ${yamlString(meta.blurb)}\n`), `${shape}: summary`);
+    assert.ok(overlays.contents.includes(`\n  RS ${meta.title}:\n`), `${shape}: overlay key`);
+    assert.ok(overlays.contents.includes(`      name: text(${meta.badge})\n`), `${shape}: overlay badge`);
   }
 });
 
@@ -164,7 +202,7 @@ test('buildSeasonOverlays skips records without seasonTvdbId', () => {
   const beta = fx.find((m) => m.title === 'Beta');
   delete beta.seasonTvdbId;
   const overlays = buildSeasonOverlays(fx, { confidenceFloor: 0.35 });
-  // Beta is the only rebound — so the rebound block should be skipped entirely.
+  // Beta is the only rebound - so the rebound block should be skipped entirely.
   assert.ok(!overlays.contents.includes('RS Rebound Seasons:'), 'no rebound block when no IDs');
 });
 

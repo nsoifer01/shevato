@@ -56,9 +56,13 @@ async function fastest(fn) {
   return { elapsed: Math.round(best), wall: bestWall, bundle: last, result: last, ms: Math.round(best) };
 }
 
-// Same numbers perf-budget.test.mjs uses, so the two files cannot drift into
-// disagreeing about what "acceptable" means. Both moved on 2026-08-15 after CI
-// measured this pool at 5772ms; that file documents why.
+// THIS file owns the full-plan number (tests/invariants.test.mjs mirrors it
+// as PLAN_GENERATION_BUDGET_MS; keep the two equal). perf-budget.test.mjs
+// used to assert the same 10000ms on its smaller pool, which was strictly
+// dominated by this file and was removed - the same operation on 320 players
+// cannot breach a ceiling the 587-player pool is held under. The horizon-8
+// number below is still shared with perf-budget.test.mjs. Both moved on
+// 2026-08-15 after CI measured this pool at 5772ms; that file documents why.
 const FULL_PLAN_BUDGET_MS = 10000;
 const LONGEST_HORIZON_BUDGET_MS = 16000;
 

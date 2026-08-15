@@ -135,8 +135,8 @@ apps/trip-planner/
 ├── data/airports.json    # 3,271 IATA airports (generated, committed, precached)
 ├── scripts/build-airports.mjs  # Rebuilds the above from OurAirports:
 │                               #   npm run build:trip-planner:airports
-├── tests/                # node:test suites: trip-logic, booking-extract,
-│                         #   gpx-ics, day-share-spend, sw-activate
+├── tests/                # node:test suites: trip-logic, trip-logic-hardening,
+│                         #   booking-extract, gpx-ics, day-share-spend, sw-activate
 └── e2e/                  # browser E2E regression suites (headless Chromium via
                           #   the repo CDP harness): helpers.mjs + core, trips-sync,
                           #   share, views, ui, assistant, pwa.
@@ -153,7 +153,9 @@ netlify/functions/            # Server-side (unversioned): Tier 3 assistant + ve
 ├── lib/tp-places-quota.mjs   # Compare-and-swap quota (public + separate owner buckets)
 ├── lib/tp-places-store.mjs   # Blob store handles (config + usage)
 ├── lib/tp-places-usage.mjs   # CAS usage accounting
-└── tests/                    # node:test for the quota math, matching, and handler guards
+└── tests/                    # node:test for the quota math, matching, handler guards,
+                              #   and the full tp-assist handler path (blobs stubbed via
+                              #   a node:module hook, see tp-assist-handler.test.mjs)
 ```
 
 The Places ratings proxy is dormant until an owner writes a `placesKey` (and,
@@ -175,7 +177,10 @@ npm run test:trip-planner:e2e:headed   # same, in a visible browser for debuggin
 Pure-logic tests via `node --test` against `js/trip-logic.js` (dual-exposed as
 `window.TripLogic` and a CommonJS module). No installs, no config. The Tier 3
 function's quota math and request guards have their own suite (run by the root
-`npm test`, or on their own with `npm run test:tp-assist-quota`).
+`npm test`, or on their own with `npm run test:tp-assist-quota`), and
+`tp-assist-handler.test.mjs` drives the handler's blob/quota/upstream steps
+end-to-end locally by redirecting `@netlify/blobs` to an in-memory CAS stub
+through a `node:module` register() hook (no Netlify context needed).
 
 The E2E suites under `e2e/` run on the repo's zero-dependency CDP harness
 (`tests/browser/`, the same one `npm run test:browser` uses, which also runs
@@ -195,8 +200,19 @@ suggestion, the visible walk-or-taxi estimate, a five-candidate slot rendering
 five, travel-leg semantics (no rating, Directions with the right origin and
 mode, its own cost kept), the no-coordinates and same-centroid cases, mobile
 chip wrapping at 390px, and guided vs free-form mode read off the actual
-request body. External
+request body. They also cover the degraded and repair paths: a malformed
+seeded db booting repaired (repairDb) without arming Undo, the hotel picker
+against canned Photon responses (city-biased ranking, lodging-only rows,
+pick seeding the geocode cache) and against a dead Photon (silent empty
+dropdown, per the picker's design), the failed-exchange-rates note + Retry
+with no fake 1:1 conversion, the Map view's truthful could-not-locate
+message with tiles and geocoding blocked, and the booking-import dialog
+rendering proposal cards with no distance chips (chips belong to the
+assistant log alone). External
 providers (Photon, Open-Meteo, Nominatim, Frankfurter, Google, Firebase) are
 blocked per page by default so runs are deterministic; a failing check drops
-a screenshot into `.screenshots/e2e-trip-planner/` (gitignored). See
+a screenshot into `.screenshots/e2e-trip-planner/` (gitignored). Suites wait
+on real DOM/storage conditions (`waitForExpr`) rather than fixed sleeps; the
+only remaining fixed waits sit on NEGATIVE claims (nothing may happen), each
+commented as such. See
 FINDINGS "Browser E2E suite" for the architecture and the traps.

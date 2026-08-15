@@ -2,14 +2,25 @@
 //  1. Rest model split (restSeconds = between-set, restAfterSeconds = between-exercise)
 //  2. Migration of legacy programs (no data loss)
 //  3. Per-exercise plate hints persistence in Settings
-//  4. Auto-collapse re-trigger state machine (via deleteSet logic path)
+//  4. Plate-hints precedence and equipment gating (extracted from workout-view.js)
+//  5. toggleRepRange (extracted from programs-view.js)
+//
+// The collapse state machine, seedCollapseState and setRepValue used to have
+// hand-mirrored copies here; their single homes are now
+// collapse-and-unmark-rest.test.mjs and programs-view-rep-clamp.test.mjs,
+// both running the REAL extracted source.
+process.env.TZ = 'UTC';
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { loadSource, buildMethods } from './helpers/source-extract.mjs';
 
-const { Program, defaultRestForEquipment } = await import('../js/models/Program.js');
+const { Program } = await import('../js/models/Program.js');
 const { Settings } = await import('../js/models/Settings.js');
 const { calculatePlates } = await import('../js/utils/plate-calculator.js');
+
+const workoutViewSrc = loadSource('js/views/workout-view.js');
+const programsViewSrc = loadSource('js/views/programs-view.js');
 
 // ---------------------------------------------------------------------------
 // 1. restAfterSeconds field on new exercises
@@ -129,6 +140,14 @@ test('Program.toJSON: restAfterSeconds is serialized', () => {
     assert.equal(roundTripped.exercises[0].restAfterSeconds, 150, 'survives round-trip');
 });
 
+test('Program uniform mode: restSeconds stays per-exercise regardless of restMode', () => {
+    const p = new Program({ name: 'Uni', restMode: 'uniform', uniformRestSeconds: 60 });
+    p.addExercise('e1', 'Press', 3, 10, '', 90, 120);
+    assert.equal(p.exercises[0].restSeconds, 90, 'between-set rest preserved in uniform mode');
+    assert.equal(p.restMode, 'uniform');
+    assert.equal(p.uniformRestSeconds, 60, 'uniform value is for between-exercise');
+});
+
 // ---------------------------------------------------------------------------
 // 3. Per-exercise plate hints in Settings
 // ---------------------------------------------------------------------------
@@ -169,342 +188,67 @@ test('Settings: exercisePlateHints is a shallow copy (mutations do not bleed)', 
 });
 
 // ---------------------------------------------------------------------------
-// 4. Auto-collapse re-trigger state machine
+// 4a. Plate hints precedence: global OFF overrides per-exercise ON.
 //
-// The actual state machine runs in workout-view.js (browser DOM) so we test
-// the model invariants it depends on. The collapse logic relies on:
-//   - exercise.sets.length >= exercise.targetSets  => "complete"
-//   - deleting a set on a complete exercise => now incomplete => suppression clears
-// We verify the Program model supports these correctly so the view logic can
-// rely on them without DOM coupling.
+// The rule lives as an inline expression in workout-view.js (three render
+// paths). It is extracted here from every occurrence, so both a formula
+// change and a divergence between the render paths fail this test.
 // ---------------------------------------------------------------------------
 
-test('Collapse state machine: targetSets getter matches sets.length after addExercise', () => {
-    const p = new Program({ name: 'Collapse' });
-    p.addExercise('e1', 'Squat', 4, 8);
-    assert.equal(p.exercises[0].targetSets, 4, 'targetSets = 4');
-    assert.equal(p.exercises[0].sets.length, 4, 'sets.length = 4');
+const hintExprMatches = [...workoutViewSrc.matchAll(
+    /const hintsOn\w* = (globalHints\w* && \(perExHints\w* !== undefined \? perExHints\w* : true\));/g
+)];
+
+const hintFns = hintExprMatches.map(([, expr]) => new Function(
+    'g', 'p',
+    `"use strict"; const globalHints = g, globalHintsOn = g, perExHints = p, perExHintsVal = p; return ${expr};`
+));
+
+test('Plate hints precedence: the rule exists on every render path', () => {
+    assert.ok(hintExprMatches.length >= 3,
+        `expected the hintsOn precedence expression on >= 3 render paths, found ${hintExprMatches.length}`);
+    // The "global on" half always reads `plateHintsEnabled !== false` so a
+    // missing setting means on-by-default.
+    assert.ok([...workoutViewSrc.matchAll(/plateHintsEnabled !== false/g)].length >= 3,
+        'global default-on reads plateHintsEnabled !== false');
 });
 
-test('Collapse state machine: exercise with sets.length === targetSets is "complete"', () => {
-    const p = new Program({ name: 'Complete' });
-    p.addExercise('e1', 'Deadlift', 3, 5);
-    const ex = p.exercises[0];
-    // Simulate: all 3 sets committed (sets.length === targetSets)
-    const committedCount = ex.targetSets; // 3
-    assert.ok(committedCount >= ex.targetSets, 'is complete when sets.length >= targetSets');
-});
-
-test('Collapse state machine: reducing committed sets below targetSets is "incomplete"', () => {
-    const p = new Program({ name: 'Incomplete' });
-    p.addExercise('e1', 'Curl', 3, 12);
-    const ex = p.exercises[0];
-    // Two out of 3 sets: should be incomplete
-    const committedCount = 2;
-    assert.ok(committedCount < ex.targetSets, 'is incomplete when sets.length < targetSets');
-});
-
-// Verify the suppression-clear invariant: when wasComplete && !isNowComplete,
-// the collapse map entry must be cleared. We test the condition logic directly.
-test('Collapse state machine: transition complete->incomplete clears suppression', () => {
-    const targetSets = 3;
-    let collapsedExercises = {};
-
-    // Simulate: exercise completes -> auto-collapses
-    collapsedExercises[0] = true;
-
-    // Simulate: user expands manually (sets it false)
-    collapsedExercises[0] = false;
-
-    // Simulate: user unmarks a set -> exercise goes incomplete
-    const wasComplete = true;
-    const committedAfterDelete = targetSets - 1; // 2
-    const isNowComplete = committedAfterDelete >= targetSets; // false
-
-    if (wasComplete && !isNowComplete) {
-        delete collapsedExercises[0];
-    }
-
-    assert.equal(collapsedExercises[0], undefined, 'suppression cleared on complete->incomplete');
-
-    // Simulate: user re-marks last set (exercise complete again)
-    const committedAfterRemark = targetSets; // 3
-    const isCompleteAgain = committedAfterRemark >= targetSets; // true
-
-    if (isCompleteAgain && collapsedExercises[0] !== false) {
-        collapsedExercises[0] = true;
-    }
-
-    assert.equal(collapsedExercises[0], true, 'auto-collapse fires again after re-complete');
-});
-
-test('Collapse state machine: manual-expand while remaining complete preserves suppression', () => {
-    // If the user expands while all-complete, collapsedExercises[i] = false.
-    // A DIFFERENT exercise completing must NOT reset this.
-    const collapsedExercises = { 0: false };
-
-    // Simulating a DIFFERENT exercise (index 1) completing does not touch index 0.
-    const otherIndex = 1;
-    collapsedExercises[otherIndex] = true;
-
-    assert.equal(collapsedExercises[0], false, 'suppression still false for exercise 0');
-});
-
-// ---------------------------------------------------------------------------
-// 5. Plate hints precedence: global OFF overrides per-exercise ON
-// ---------------------------------------------------------------------------
-
-function computeHintsOn(plateHintsEnabled, perExHintsVal) {
-    const globalHintsOn = plateHintsEnabled !== false;
-    return globalHintsOn && (perExHintsVal !== undefined ? perExHintsVal : true);
-}
-
-test('Plate hints: global ON + per-exercise ON = hints on', () => {
-    assert.equal(computeHintsOn(true, true), true);
-});
-
-test('Plate hints: global ON + per-exercise OFF = hints off', () => {
-    assert.equal(computeHintsOn(true, false), false);
-});
-
-test('Plate hints: global ON + no per-exercise pref = hints on (default)', () => {
-    assert.equal(computeHintsOn(true, undefined), true);
-});
-
-test('Plate hints: global OFF + per-exercise ON = hints off (global wins)', () => {
-    assert.equal(computeHintsOn(false, true), false,
-        'global OFF must override even when per-exercise is explicitly ON');
-});
-
-test('Plate hints: global OFF + no per-exercise pref = hints off', () => {
-    assert.equal(computeHintsOn(false, undefined), false);
-});
-
-// ---------------------------------------------------------------------------
-// 6. toggleRepRange collapses to repsMin (keeps the first number)
-// ---------------------------------------------------------------------------
-
-function applyToggleRepRange(row) {
-    if (row.repsMin === row.repsMax) {
-        row.repsMax = Math.min(100, row.repsMin + 2);
-    } else {
-        row.repsMax = row.repsMin;
-    }
-}
-
-test('toggleRepRange: collapsing 8-10 range keeps 8 (repsMin), not 10', () => {
-    const row = { repsMin: 8, repsMax: 10 };
-    applyToggleRepRange(row);
-    assert.equal(row.repsMin, 8, 'repsMin unchanged');
-    assert.equal(row.repsMax, 8, 'repsMax set to repsMin (first number)');
-});
-
-test('toggleRepRange: collapsing 5-8 range keeps 5', () => {
-    const row = { repsMin: 5, repsMax: 8 };
-    applyToggleRepRange(row);
-    assert.equal(row.repsMin, 5);
-    assert.equal(row.repsMax, 5);
-});
-
-test('toggleRepRange: expanding a single rep adds 2 to max', () => {
-    const row = { repsMin: 10, repsMax: 10 };
-    applyToggleRepRange(row);
-    assert.equal(row.repsMin, 10, 'repsMin unchanged on expand');
-    assert.equal(row.repsMax, 12, 'repsMax = repsMin + 2');
-});
-
-test('toggleRepRange: expanding a single rep near cap stops at 100', () => {
-    const row = { repsMin: 99, repsMax: 99 };
-    applyToggleRepRange(row);
-    assert.equal(row.repsMax, 100, 'capped at 100');
-});
-
-// ---------------------------------------------------------------------------
-// 7. Program uniform mode: restSeconds (between-set) always present per exercise
-// ---------------------------------------------------------------------------
-
-test('Program uniform mode: restSeconds stays per-exercise regardless of restMode', () => {
-    const p = new Program({ name: 'Uni', restMode: 'uniform', uniformRestSeconds: 60 });
-    p.addExercise('e1', 'Press', 3, 10, '', 90, 120);
-    assert.equal(p.exercises[0].restSeconds, 90, 'between-set rest preserved in uniform mode');
-    assert.equal(p.restMode, 'uniform');
-    assert.equal(p.uniformRestSeconds, 60, 'uniform value is for between-exercise');
-});
-
-// ---------------------------------------------------------------------------
-// 8. setRepValue single-mode: editing min keeps repsMax in sync (Bug 1A fix)
-// ---------------------------------------------------------------------------
-
-function applySetRepValue(row, minOrMax, rawValue) {
-    const val = Math.max(1, Math.min(100, Math.round(Number(rawValue) || 1)));
-    if (minOrMax === 'min') {
-        const wasSingle = row.repsMin === row.repsMax;
-        row.repsMin = val;
-        if (wasSingle) {
-            row.repsMax = val;
-        } else if (row.repsMax < row.repsMin) {
-            row.repsMax = row.repsMin;
-        }
-    } else {
-        row.repsMax = val;
-        if (row.repsMin > row.repsMax) row.repsMin = row.repsMax;
-    }
-}
-
-test('setRepValue single-mode: editing min to a lower value keeps repsMax = repsMin', () => {
-    const row = { repsMin: 8, repsMax: 8 };
-    applySetRepValue(row, 'min', 6);
-    assert.equal(row.repsMin, 6, 'repsMin updated');
-    assert.equal(row.repsMax, 6, 'repsMax stays in sync with repsMin (single mode preserved)');
-});
-
-test('setRepValue single-mode: editing min to a higher value keeps repsMax = repsMin', () => {
-    const row = { repsMin: 8, repsMax: 8 };
-    applySetRepValue(row, 'min', 12);
-    assert.equal(row.repsMin, 12);
-    assert.equal(row.repsMax, 12, 'repsMax stays in sync in single mode');
-});
-
-test('setRepValue single-mode: clamped to 1-100', () => {
-    const row = { repsMin: 8, repsMax: 8 };
-    applySetRepValue(row, 'min', 0);
-    assert.equal(row.repsMin, 1, 'clamped to min 1');
-    assert.equal(row.repsMax, 1);
-});
-
-test('setRepValue range-mode: editing min below max does not change max', () => {
-    const row = { repsMin: 8, repsMax: 10 };
-    applySetRepValue(row, 'min', 6);
-    assert.equal(row.repsMin, 6, 'repsMin updated');
-    assert.equal(row.repsMax, 10, 'repsMax unchanged when new min is still below it');
-});
-
-test('setRepValue range-mode: editing min above max clamps max up', () => {
-    const row = { repsMin: 8, repsMax: 10 };
-    applySetRepValue(row, 'min', 12);
-    assert.equal(row.repsMin, 12);
-    assert.equal(row.repsMax, 12, 'repsMax clamped to repsMin when min exceeds old max');
-});
-
-test('setRepValue range-mode: editing max below min clamps min down', () => {
-    const row = { repsMin: 8, repsMax: 10 };
-    applySetRepValue(row, 'max', 5);
-    assert.equal(row.repsMax, 5);
-    assert.equal(row.repsMin, 5, 'repsMin clamped to repsMax when max goes below it');
-});
-
-// ---------------------------------------------------------------------------
-// 9. Collapse seeding on session restore (Bug 3 fix)
-// ---------------------------------------------------------------------------
-
-function seedCollapseState(exercises, collapsedExercises, prevCompleteState) {
-    exercises.forEach((exercise, i) => {
-        const targetSets = Math.max(1, exercise.targetSets || 3);
-        const isComplete = exercise.sets.length >= targetSets;
-        if (isComplete) {
-            collapsedExercises[i] = true;
-            prevCompleteState[i] = true;
-        }
+for (const [i, computeHintsOn] of hintFns.entries()) {
+    test(`Plate hints precedence table holds on render path ${i + 1}`, () => {
+        assert.equal(computeHintsOn(true, true), true, 'global ON + per-exercise ON = on');
+        assert.equal(computeHintsOn(true, false), false, 'global ON + per-exercise OFF = off');
+        assert.equal(computeHintsOn(true, undefined), true, 'global ON + no pref = on (default)');
+        assert.equal(computeHintsOn(false, true), false, 'global OFF beats per-exercise ON');
+        assert.equal(computeHintsOn(false, undefined), false, 'global OFF + no pref = off');
     });
 }
 
-test('Collapse seeding: completed exercise is marked collapsed on restore', () => {
-    const exercises = [
-        { sets: [{}, {}, {}], targetSets: 3 },
-        { sets: [{}], targetSets: 3 },
-    ];
-    const collapsed = {};
-    const prevComplete = {};
-    seedCollapseState(exercises, collapsed, prevComplete);
-    assert.equal(collapsed[0], true, 'exercise 0 (complete) is seeded collapsed');
-    assert.equal(collapsed[1], undefined, 'exercise 1 (incomplete) is not seeded');
+// ---------------------------------------------------------------------------
+// 4b. isPlateLoaded equipment gating: the REAL set from workout-view.js
+// ---------------------------------------------------------------------------
+
+const plateSetMatch = /const PLATE_LOADED_EQUIPMENT = new globalThis\.Set\((\[[^\]]*\])\)/.exec(workoutViewSrc);
+
+test('PLATE_LOADED_EQUIPMENT: extracted from workout-view.js', () => {
+    assert.ok(plateSetMatch, 'PLATE_LOADED_EQUIPMENT declaration found');
 });
 
-test('Collapse seeding: incomplete exercise is not collapsed', () => {
-    const exercises = [
-        { sets: [{}, {}], targetSets: 3 },
-    ];
-    const collapsed = {};
-    const prevComplete = {};
-    seedCollapseState(exercises, collapsed, prevComplete);
-    assert.equal(collapsed[0], undefined, 'incomplete exercise stays expanded');
-    assert.equal(prevComplete[0], undefined, 'prevCompleteState not set for incomplete');
+const PLATE_LOADED_EQUIPMENT = new Set(JSON.parse(plateSetMatch[1].replace(/'/g, '"')));
+
+test('isPlateLoaded: barbell, trap-bar, machine, plate and sled are plate-loaded', () => {
+    for (const eq of ['barbell', 'trap-bar', 'machine', 'plate', 'sled']) {
+        assert.equal(PLATE_LOADED_EQUIPMENT.has(eq), true, `${eq} is plate-loaded`);
+    }
 });
 
-test('Collapse seeding: prevCompleteState is set for completed exercises', () => {
-    const exercises = [
-        { sets: [{}, {}, {}], targetSets: 3 },
-    ];
-    const collapsed = {};
-    const prevComplete = {};
-    seedCollapseState(exercises, collapsed, prevComplete);
-    assert.equal(prevComplete[0], true, 'prevCompleteState seeded for completed exercise');
-});
-
-test('Collapse seeding: extra sets beyond targetSets counts as complete', () => {
-    const exercises = [
-        { sets: [{}, {}, {}, {}], targetSets: 3 },
-    ];
-    const collapsed = {};
-    const prevComplete = {};
-    seedCollapseState(exercises, collapsed, prevComplete);
-    assert.equal(collapsed[0], true, '4 sets >= 3 target counts as complete');
-});
-
-test('Collapse seeding: fresh session (empty maps) is not affected', () => {
-    const exercises = [
-        { sets: [], targetSets: 3 },
-    ];
-    const collapsed = {};
-    const prevComplete = {};
-    seedCollapseState(exercises, collapsed, prevComplete);
-    assert.equal(collapsed[0], undefined, 'no sets = not complete');
+test('isPlateLoaded: dumbbell, cable, bodyweight and kettlebell are NOT plate-loaded', () => {
+    for (const eq of ['dumbbell', 'cable', 'bodyweight', 'kettlebell']) {
+        assert.equal(PLATE_LOADED_EQUIPMENT.has(eq), false, `${eq} is not plate-loaded`);
+    }
 });
 
 // ---------------------------------------------------------------------------
-// 10. isPlateLoaded equipment gating
-// ---------------------------------------------------------------------------
-
-const PLATE_LOADED_EQUIPMENT = new Set(['barbell', 'trap-bar', 'machine', 'plate', 'sled']);
-
-test('isPlateLoaded: barbell is plate-loaded', () => {
-    assert.equal(PLATE_LOADED_EQUIPMENT.has('barbell'), true);
-});
-
-test('isPlateLoaded: trap-bar is plate-loaded', () => {
-    assert.equal(PLATE_LOADED_EQUIPMENT.has('trap-bar'), true);
-});
-
-test('isPlateLoaded: machine is plate-loaded', () => {
-    assert.equal(PLATE_LOADED_EQUIPMENT.has('machine'), true);
-});
-
-test('isPlateLoaded: plate is plate-loaded', () => {
-    assert.equal(PLATE_LOADED_EQUIPMENT.has('plate'), true);
-});
-
-test('isPlateLoaded: sled is plate-loaded', () => {
-    assert.equal(PLATE_LOADED_EQUIPMENT.has('sled'), true);
-});
-
-test('isPlateLoaded: dumbbell is NOT plate-loaded', () => {
-    assert.equal(PLATE_LOADED_EQUIPMENT.has('dumbbell'), false);
-});
-
-test('isPlateLoaded: cable is NOT plate-loaded', () => {
-    assert.equal(PLATE_LOADED_EQUIPMENT.has('cable'), false);
-});
-
-test('isPlateLoaded: bodyweight is NOT plate-loaded', () => {
-    assert.equal(PLATE_LOADED_EQUIPMENT.has('bodyweight'), false);
-});
-
-test('isPlateLoaded: kettlebell is NOT plate-loaded', () => {
-    assert.equal(PLATE_LOADED_EQUIPMENT.has('kettlebell'), false);
-});
-
-// ---------------------------------------------------------------------------
-// 11. Bar-weight base: barbell subtracts bar, machine does not
+// 4c. Bar-weight base: barbell subtracts the bar, machine does not
 // ---------------------------------------------------------------------------
 
 const testPlates = [25, 20, 10, 5, 2.5];
@@ -525,4 +269,62 @@ test('calculatePlates: barbell vs machine per-side values differ when bar weight
     assert.notEqual(barbell.perSide, machine.perSide,
         'barbell (base 20) and machine (base 0) must yield different per-side values');
     assert.ok(barbell.perSide < machine.perSide, 'barbell has less per-side because bar weight is subtracted');
+});
+
+// ---------------------------------------------------------------------------
+// 5. toggleRepRange: the REAL method from programs-view.js.
+//
+// Why it matters: collapsing an 8-10 range must keep the FIRST number (8),
+// because that is the working target the user typed first; expanding a single
+// target must seed a sensible small range (min+2, capped at 100), and
+// re-picking the already-active mode from the segmented control is a no-op.
+// ---------------------------------------------------------------------------
+
+function makeRangeEditor(sets) {
+    const document = { querySelector: () => null }; // focus move is out of scope here
+    const methods = buildMethods(programsViewSrc, ['toggleRepRange'], { document }, 'programs-view.js');
+    const view = Object.create(methods);
+    view.currentProgram = new Program({
+        name: 'Range',
+        exercises: [{ exerciseId: 'e1', exerciseName: 'Bench', sets, restSeconds: 90, restAfterSeconds: 90 }],
+    });
+    view.renderProgramExercises = () => {};
+    const row = (si = 0) => view.currentProgram.exercises[0].sets[si];
+    return { view, row };
+}
+
+test('toggleRepRange: collapsing 8-10 keeps 8 (repsMin), not 10', () => {
+    const { view, row } = makeRangeEditor([{ repsMin: 8, repsMax: 10 }]);
+    view.toggleRepRange(0, 0);
+    assert.equal(row().repsMin, 8, 'repsMin unchanged');
+    assert.equal(row().repsMax, 8, 'repsMax set to repsMin (first number)');
+});
+
+test('toggleRepRange: expanding a single rep adds 2 to max', () => {
+    const { view, row } = makeRangeEditor([{ repsMin: 10, repsMax: 10 }]);
+    view.toggleRepRange(0, 0);
+    assert.equal(row().repsMin, 10, 'repsMin unchanged on expand');
+    assert.equal(row().repsMax, 12, 'repsMax = repsMin + 2');
+});
+
+test('toggleRepRange: expanding a single rep near the cap stops at 100', () => {
+    const { view, row } = makeRangeEditor([{ repsMin: 99, repsMax: 99 }]);
+    view.toggleRepRange(0, 0);
+    assert.equal(row().repsMax, 100, 'capped at 100');
+});
+
+test('toggleRepRange: re-picking the already-active mode is a no-op', () => {
+    const single = makeRangeEditor([{ repsMin: 10, repsMax: 10 }]);
+    single.view.toggleRepRange(0, 0, 'single');
+    assert.equal(single.row().repsMax, 10, 'Single re-picked on a single set changes nothing');
+
+    const range = makeRangeEditor([{ repsMin: 8, repsMax: 10 }]);
+    range.view.toggleRepRange(0, 0, 'range');
+    assert.equal(range.row().repsMax, 10, 'Range re-picked on a range set changes nothing');
+});
+
+test('toggleRepRange: explicit mode switches when it differs from the current state', () => {
+    const { view, row } = makeRangeEditor([{ repsMin: 8, repsMax: 10 }]);
+    view.toggleRepRange(0, 0, 'single');
+    assert.equal(row().repsMax, 8, 'range collapsed by an explicit "single" pick');
 });

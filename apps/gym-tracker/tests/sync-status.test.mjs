@@ -107,13 +107,16 @@ test('classifySyncStatus: offline → online transition swaps state', () => {
     assert.equal(classifySyncStatus({ online: true,  status }).state, 'synced');
 });
 
-test('classifySyncStatus: failed-sync simulation surfaces as syncing while queue is non-empty', () => {
-    // The robust sync layer keeps queued writes during retry/backoff, so
-    // a stuck retry shows up as a sustained "Saving…" rather than a
-    // false "Synced". This guards against the pill ever lying about
-    // success while writes are actually piling up.
-    const status = { totalQueueSize: 4, activeNamespaces: 1 };
-    for (let i = 0; i < 3; i++) {
-        assert.equal(classifySyncStatus({ online: true, status }).state, 'syncing');
-    }
+test('classifySyncStatus: a stuck retry surfaces as syncing, and draining flips to synced', () => {
+    // The robust sync layer keeps queued writes during retry/backoff, so a
+    // stuck retry shows up as a sustained "Saving…" rather than a false
+    // "Synced" - and only an actually-drained queue may show success.
+    // (classifySyncStatus is pure, so re-calling with identical input proves
+    // nothing; the meaningful transition is queue > 0 -> queue == 0.)
+    assert.equal(
+        classifySyncStatus({ online: true, status: { totalQueueSize: 4, activeNamespaces: 1 } }).state,
+        'syncing');
+    assert.equal(
+        classifySyncStatus({ online: true, status: { totalQueueSize: 0, activeNamespaces: 1 } }).state,
+        'synced');
 });

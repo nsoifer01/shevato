@@ -43,6 +43,13 @@ export class Session {
     });
   }
   on(fn) { this.handlers.push(fn); }
+  // Removes a handler registered with on(). goto() relies on this: before it
+  // existed every navigation leaked one more load handler, so a long suite
+  // dispatched every event through an ever-growing handler list.
+  off(fn) {
+    const i = this.handlers.indexOf(fn);
+    if (i !== -1) this.handlers.splice(i, 1);
+  }
   send(method, params = {}) {
     const id = ++this.id;
     return new Promise((resolve, reject) => {
@@ -73,14 +80,23 @@ export async function newPage(port) {
 
   s.errors = [];
   s.netFails = [];
+  // requestId -> url, so Network.loadingFailed (which carries no URL of its
+  // own) can be attributed. Without the URL a first-party failure was
+  // indistinguishable from a blocked analytics beacon.
+  s.netReqs = new Map();
   s.on((method, p) => {
     if (method === 'Runtime.exceptionThrown') {
       const d = p.exceptionDetails;
       s.errors.push(String((d.exception && (d.exception.description || d.exception.value)) || d.text));
     } else if (method === 'Log.entryAdded' && p.entry.level === 'error') {
       s.errors.push(String(p.entry.text));
+    } else if (method === 'Network.requestWillBeSent') {
+      s.netReqs.set(p.requestId, (p.request && p.request.url) || '');
     } else if (method === 'Network.loadingFailed') {
-      s.netFails.push(`${p.errorText} ${p.type}`);
+      // Old `${errorText} ${type}` shape kept as the prefix; the URL is
+      // appended so firstPartyFailures() can filter by origin.
+      const url = s.netReqs.get(p.requestId) || '';
+      s.netFails.push(`${p.errorText} ${p.type}${url ? ' ' + url : ''}`);
     } else if (method === 'Network.responseReceived' && p.response.status >= 400) {
       s.netFails.push(`HTTP ${p.response.status} ${p.response.url}`);
     }
@@ -96,13 +112,40 @@ export async function closePage(port, s) {
 export async function goto(s, url, { settle = 2500 } = {}) {
   s.errors.length = 0;
   s.netFails.length = 0;
+  if (s.netReqs) s.netReqs.clear(); // absent on bare connectTarget() sessions
+  s.lastNavTimedOut = false;
+  let h;
   const loaded = new Promise((res) => {
-    const h = (m) => { if (m === 'Page.loadEventFired') res(); };
+    h = (m) => { if (m === 'Page.loadEventFired') res('loaded'); };
     s.on(h);
   });
-  await s.send('Page.navigate', { url });
-  await Promise.race([loaded, sleep(20000)]);
+  try {
+    await s.send('Page.navigate', { url });
+    // The race keeps a dead page from hanging the whole suite, but a timeout
+    // must not be silent: callers can check s.lastNavTimedOut after goto.
+    const outcome = await Promise.race([loaded, sleep(20000).then(() => 'timeout')]);
+    s.lastNavTimedOut = outcome === 'timeout';
+  } finally {
+    // One-shot: without this every navigation leaked a handler (O(n^2) event
+    // dispatch over a long suite).
+    s.off(h);
+  }
   await sleep(settle);
+}
+
+// Entries from s.netFails whose URL is same-origin with base (the local
+// static server). These are the failures that are never environmental noise:
+// a first-party 404 or load failure means the site itself references
+// something broken. Entries recorded without a URL cannot be attributed and
+// are excluded; the recorder in newPage() attaches URLs to everything it can.
+export function firstPartyFailures(s, base) {
+  let origin;
+  try { origin = new URL(base).origin; } catch { origin = String(base); }
+  return s.netFails.filter((entry) => {
+    const m = String(entry).match(/https?:\/\/\S+/);
+    if (!m) return false;
+    try { return new URL(m[0]).origin === origin; } catch { return false; }
+  });
 }
 
 export async function evaluate(s, expression) {
@@ -148,6 +191,31 @@ export async function setViewport(s, width, height, mobile = false) {
     width, height, deviceScaleFactor: 1, mobile,
     screenWidth: width, screenHeight: height,
   });
+  // Touch emulation follows the mobile flag so 390px runs report touch
+  // support the way real phones do (hover:none media queries, maxTouchPoints).
+  // Mouse-based Input.dispatchMouseEvent clicks keep working either way.
+  try {
+    await s.send('Emulation.setTouchEmulationEnabled', { enabled: !!mobile, maxTouchPoints: 5 });
+  } catch { /* older Chromium without the method; metrics override still applied */ }
+}
+
+// Moves the mouse over the centre of the first element matching sel, without
+// clicking, so real hover state (CSS :hover, mouseenter handlers) applies.
+export async function hoverSel(s, sel, { nth = 0, settle = 300 } = {}) {
+  const box = await evaluate(s, `(()=>{
+    const els=[...document.querySelectorAll(${JSON.stringify(sel)})];
+    const el=els[${nth}]; if(!el) return null;
+    el.scrollIntoView({block:'center',inline:'center'});
+    const r=el.getBoundingClientRect();
+    if(r.width===0&&r.height===0) return {zero:true};
+    return {x:r.left+r.width/2, y:r.top+r.height/2};
+  })()`);
+  if (!box || box.zero) return false;
+  await s.send('Input.dispatchMouseEvent', {
+    type: 'mouseMoved', x: Math.round(box.x), y: Math.round(box.y), button: 'none', buttons: 0,
+  });
+  await sleep(settle);
+  return true;
 }
 
 // Real coordinate-based click. Respects hit-testing, unlike element.click().
@@ -254,6 +322,14 @@ export async function count(s, sel) {
 // NOT match "Failed to fetch" style uncaught exceptions: an app fetch dying
 // uncaught is a missing catch in the app, which is exactly the kind of thing
 // the no-errors assertions exist to surface.
+//
+// NOISE also swallows "Failed to load resource", which hides LOCAL 404s from
+// the console-error checks. That is intentional and stays: external hosts are
+// legitimately blocked in the test environment, and console text alone cannot
+// tell a blocked beacon from a broken local reference. The hole is closed on
+// the network side instead: suites assert firstPartyFailures() (above) is
+// empty, which sees every same-origin 404 / load failure with its URL and is
+// immune to console-noise ambiguity.
 export const NOISE = /googletagmanager|google-analytics|ERR_CONNECTION_REFUSED|ERR_FAILED|ERR_INTERNET_DISCONNECTED|ERR_NAME_NOT_RESOLVED|gstatic|firebase|googleapis|favicon|fonts\.|firebaseio|photon\.komoot|open-meteo|frankfurter|nominatim|openstreetmap|Failed to load resource/i;
 export const cleanErrors = (s) => s.errors.filter((e) => !NOISE.test(e));
 
@@ -308,7 +384,7 @@ export async function interceptNetwork(s, rules) {
 
 // Every host the trip planner can call out to. Kept here so a suite can block
 // "everything external" without enumerating providers it does not care about.
-export const EXTERNAL_HOSTS = /photon\.komoot\.io|nominatim\.openstreetmap\.org|geocoding-api\.open-meteo\.com|archive-api\.open-meteo\.com|api\.open-meteo\.com|api\.frankfurter\.(app|dev)|raw\.githubusercontent\.com|tile\.openstreetmap\.org|googletagmanager|google-analytics|gstatic\.com|googleapis\.com|firebaseio\.com|\/\.netlify\/functions\//i;
+export const EXTERNAL_HOSTS = /photon\.komoot\.io|nominatim\.openstreetmap\.org|geocoding-api\.open-meteo\.com|archive-api\.open-meteo\.com|api\.open-meteo\.com|api\.frankfurter\.(app|dev)|api\.openai\.com|raw\.githubusercontent\.com|tile\.openstreetmap\.org|googletagmanager|google-analytics|gstatic\.com|googleapis\.com|firebaseio\.com|\/\.netlify\/functions\//i;
 
 export async function setOffline(s, offline) {
   await s.send('Network.emulateNetworkConditions', {

@@ -16,7 +16,7 @@ import {
   openApp, readDb, rowCount, overlayOpenId,
   tpErrors, menuAct, openAddItem, fillItem, saveItem, addItemViaUi,
   switchView, escape, ctrlKey, expandTimeline, closePage, gotoHard, evaluate,
-  clickSel, setValue, sleep,
+  clickSel, setValue, waitForExpr,
 } from './helpers.mjs';
 
 export async function run({ base, cdpPort }) {
@@ -137,7 +137,7 @@ export async function run({ base, cdpPort }) {
     const stayA = seedC.items.find(x => x.title === 'Tokyo Grand Hotel');
     await clickSel(s, `.tp-row[data-id="${stayA.id}"] [data-act="delete"]`, { settle: 400 });
     await escape(s);
-    await sleep(300);
+    await waitForExpr(s, `!document.querySelector('.overlay.open')`, { timeout: 4000 });
     db = await readDb(s);
     await t('tp-core C: cancelled delete removes nothing', !!db.trips[0].items.find(x => x.id === stayA.id), '', s);
   });
@@ -164,11 +164,11 @@ export async function run({ base, cdpPort }) {
     await fillItem(s, { title: 'Renamed by edit' });
     await saveItem(s);
     await ctrlKey(s, 'z', 90);
-    await sleep(300);
+    await waitForExpr(s, `JSON.parse(localStorage.getItem('trip-planner:v1')).trips[0].items.some(x=>x.id===${JSON.stringify(sushi.id)} && x.title==='Sushi making class')`, { timeout: 6000 });
     let db = await readDb(s);
     await t('tp-core D: Ctrl+Z reverses an edit', db.trips[0].items.find(x => x.id === sushi.id).title === 'Sushi making class', '', s);
     await ctrlKey(s, 'y', 89);
-    await sleep(300);
+    await waitForExpr(s, `JSON.parse(localStorage.getItem('trip-planner:v1')).trips[0].items.some(x=>x.id===${JSON.stringify(sushi.id)} && x.title==='Renamed by edit')`, { timeout: 6000 });
     db = await readDb(s);
     await t('tp-core D: Ctrl+Y restores the edit', db.trips[0].items.find(x => x.id === sushi.id).title === 'Renamed by edit', '', s);
 
@@ -183,7 +183,7 @@ export async function run({ base, cdpPort }) {
     const bus = seedD.items.find(x => x.title === 'Airport Limousine Bus');
     await expandTimeline(s);
     await setValue(s, `.tp-row[data-id="${bus.id}"] .status-sel`, 'booked');
-    await sleep(400);
+    await waitForExpr(s, `JSON.parse(localStorage.getItem('trip-planner:v1')).trips[0].items.find(x=>x.id===${JSON.stringify(bus.id)}).status==='booked'`, { timeout: 6000 });
     db = await readDb(s);
     await t('tp-core D: row status select writes through', db.trips[0].items.find(x => x.id === bus.id).status === 'booked', '', s);
     await clickSel(s, '#undoBtn', { settle: 600 });
@@ -204,7 +204,10 @@ export async function run({ base, cdpPort }) {
     await openAddItem(s);
     await fillItem(s, { type: 'activity', title: 'Doubled?', start: iso(33), time: '18:00' });
     await evaluate(s, `(()=>{ const f=document.getElementById('itemForm'); f.requestSubmit(); f.requestSubmit(); return 1 })()`);
-    await sleep(600);
+    // both submits run synchronously in that evaluate; the wait is only for
+    // the save to be visible in storage, and a wrongly doubled add would
+    // already be there too
+    await waitForExpr(s, `JSON.parse(localStorage.getItem('trip-planner:v1')).trips[0].items.length >= ${n0 + 1}`, { timeout: 6000 });
     let db = await readDb(s);
     await t('tp-core E: double submit adds ONE item', db.trips[0].items.filter(x => x.title === 'Doubled?').length === 1
       && db.trips[0].items.length === n0 + 1, `items=${db.trips[0].items.length}`, s);
@@ -213,7 +216,7 @@ export async function run({ base, cdpPort }) {
     await clickSel(s, '#shiftTripBtn', { settle: 400 });
     await setValue(s, '#shiftDays', '1');
     await evaluate(s, `(()=>{ const f=document.getElementById('shiftForm'); f.requestSubmit(); f.requestSubmit(); return 1 })()`);
-    await sleep(600);
+    await waitForExpr(s, `JSON.parse(localStorage.getItem('trip-planner:v1')).trips[0].items.find(x=>x.type==='flight').startDate !== ${JSON.stringify(iso(30))}`, { timeout: 6000 });
     db = await readDb(s);
     const flightAfter = db.trips[0].items.find(x => x.type === 'flight').startDate;
     await t('tp-core E: double submit shifts dates ONCE', flightAfter === iso(31), `flight now ${flightAfter} (want ${iso(31)})`, s);
@@ -229,7 +232,7 @@ export async function run({ base, cdpPort }) {
       const srcCount = db.trips[0].items.filter(x => x.startDate === srcDate).length;
       await setValue(s, '#dupDayDate', target);
       await evaluate(s, `(()=>{ const f=document.getElementById('dupDayForm'); f.requestSubmit(); f.requestSubmit(); return 1 })()`);
-      await sleep(600);
+      await waitForExpr(s, `JSON.parse(localStorage.getItem('trip-planner:v1')).trips[0].items.some(x=>x.startDate===${JSON.stringify(target)})`, { timeout: 6000 });
       db = await readDb(s);
       const copies = db.trips[0].items.filter(x => x.startDate === target);
       await t('tp-core E: double submit copies the day ONCE', copies.length === srcCount
@@ -249,6 +252,11 @@ export async function run({ base, cdpPort }) {
     const chipText = () => evaluate(s, `(()=>{const c=[...document.querySelectorAll('#summary .chip')]
       .find(x=>{const k=x.querySelector('.k'); return k && k.textContent.trim()==='Items'});
       return c ? c.querySelector('.v').textContent.trim() : null})()`);
+    // waits on the repainted chip itself: the chip IS the thing under test,
+    // so "it eventually reads X" is exactly the observable condition
+    const chipReads = (want) => waitForExpr(s, `(()=>{const c=[...document.querySelectorAll('#summary .chip')]
+      .find(x=>{const k=x.querySelector('.k'); return k && k.textContent.trim()==='Items'});
+      return !!c && c.querySelector('.v').textContent.trim() === ${JSON.stringify(want)}})()`, { timeout: 6000 });
     await t('tp-core S: chip counts active items, not cancelled ones', (await chipText()) === '7 items', `chip=${await chipText()}`, s);
 
     await addItemViaUi(s, { type: 'activity', title: 'Count me', start: iso(40), time: '09:00' });
@@ -256,11 +264,9 @@ export async function run({ base, cdpPort }) {
 
     const added = (await readDb(s)).trips[0].items.find(x => x.title === 'Count me');
     await setValue(s, `.tp-row[data-id="${added.id}"] .status-sel`, 'cancelled');
-    await sleep(400);
-    await t('tp-core S: cancelling lowers the count', (await chipText()) === '7 items', `chip=${await chipText()}`, s);
+    await t('tp-core S: cancelling lowers the count', await chipReads('7 items'), `chip=${await chipText()}`, s);
     await setValue(s, `.tp-row[data-id="${added.id}"] .status-sel`, 'to-book');
-    await sleep(400);
-    await t('tp-core S: restoring from Cancelled raises it again', (await chipText()) === '8 items', `chip=${await chipText()}`, s);
+    await t('tp-core S: restoring from Cancelled raises it again', await chipReads('8 items'), `chip=${await chipText()}`, s);
 
     await clickSel(s, `.tp-row[data-id="${added.id}"] [data-act="delete"]`, { settle: 500 });
     await t('tp-core S: delete lowers the count', (await chipText()) === '7 items', `chip=${await chipText()}`, s);
@@ -268,19 +274,52 @@ export async function run({ base, cdpPort }) {
     await t('tp-core S: undo restores the count', (await chipText()) === '8 items', `chip=${await chipText()}`, s);
 
     await setValue(s, '#searchBox', 'zzz-no-match');
-    await sleep(600);
+    // wait for the filter to have visibly applied (empty board), THEN read the
+    // chip: this is the one wait that cannot key on the chip, because the
+    // claim is that the chip does NOT change
+    await waitForExpr(s, `document.querySelectorAll('#board .tp-row').length === 0`, { timeout: 6000 });
     await t('tp-core S: filtering never changes the whole-trip count', (await chipText()) === '8 items', `chip=${await chipText()}`, s);
     await setValue(s, '#searchBox', '');
-    await sleep(400);
+    await waitForExpr(s, `document.querySelectorAll('#board .tp-row').length > 0`, { timeout: 6000 });
 
     await setValue(s, '#tripSelect', soloS.id);
-    await sleep(600);
-    await t('tp-core S: switching trips switches the count, singular wording', (await chipText()) === '1 item', `chip=${await chipText()}`, s);
+    await t('tp-core S: switching trips switches the count, singular wording', await chipReads('1 item'), `chip=${await chipText()}`, s);
     await setValue(s, '#tripSelect', seedS.id);
-    await sleep(600);
+    await chipReads('8 items');
 
     await gotoHard(s, base + APP, { settle: 900 });
     await t('tp-core S: the count survives a reload', (await chipText()) === '8 items', `chip=${await chipText()}`, s);
+  });
+
+  /* ------------------ Z. repairDb straightens bad storage ---------------- */
+  // The db has no schema migrations: repairDb() normalizes at boot and writes
+  // the repaired shape back, outsideHistory (FINDINGS "Architecture facts").
+  // Seed the kind of db a hand-edit or a partial import leaves behind and
+  // assert the app renders it repaired rather than crashing: unknown type ->
+  // note, unknown status -> to-book, non-ISO currencies -> USD, out-of-range
+  // `order` dropped, and the repair never arms Undo.
+  freshIds();
+  const zGood = item({ title: 'Real plan', startDate: iso(31), startTime: '09:00', status: 'booked', cost: 60, costCurrency: 'usd$' });
+  const zBad = item({ title: 'Mystery banquet', type: 'banquet', status: 'maybe', startDate: iso(30), startTime: '10:00' });
+  zBad.order = 5000; // >= ORDER_MAX: must be dropped, not sorted as a string
+  const zTrip = trip({ name: 'Broken import', currency: 'dollars', items: [zBad, zGood] });
+  await withPage('tp-core Z', { db: dbOf([zTrip]) }, async (s) => {
+    await t('tp-core Z: a malformed db still renders its items',
+      await evaluate(s, `document.getElementById('board').innerText.includes('Mystery banquet') && document.getElementById('board').innerText.includes('Real plan')`), '', s);
+    const db = await readDb(s);
+    const tz = db.trips.find(x => x.id === zTrip.id);
+    const bad = tz.items.find(x => x.id === zBad.id);
+    const good = tz.items.find(x => x.id === zGood.id);
+    await t('tp-core Z: unknown type repairs to note and unknown status to to-book',
+      !!bad && bad.type === 'note' && bad.status === 'to-book', JSON.stringify(bad), s);
+    await t('tp-core Z: out-of-range manual order is dropped', !!bad && bad.order === undefined, JSON.stringify(bad && bad.order), s);
+    await t('tp-core Z: non-ISO currencies repair to USD (trip and item cost alike)',
+      tz.currency === 'USD' && !!good && good.cost === 60 && good.costCurrency === 'USD',
+      JSON.stringify({ trip: tz.currency, cost: good && good.cost, cur: good && good.costCurrency }), s);
+    // the write-back happened (storage now holds the repaired shape), yet the
+    // app straightening its own storage is housekeeping, never an undo step
+    await t('tp-core Z: the repair write never arms Undo',
+      await evaluate(s, `document.getElementById('undoBtn').disabled`), '', s);
   });
 
   return R;

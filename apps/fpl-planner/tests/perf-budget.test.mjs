@@ -29,11 +29,12 @@
 //
 // The GitHub CI runner is about twice as slow as the development machine: PR
 // #374 measured a 3020 ms median for the default-horizon path. The budgets
-// below are set from that CI observation with ~1.65x headroom, so routine
-// runner noise passes and a genuine doubling of the work still fails. The
-// same number lives in tests/invariants.test.mjs (PLAN_GENERATION_BUDGET_MS);
-// keep the two equal - the 3000 left behind there from the horizon-3 era is
-// what failed the PR.
+// are set from CI observations with ~1.65x headroom, so routine runner noise
+// passes and a genuine doubling of the work still fails. The default-horizon
+// full-plan number is owned by tests/perf-live-size.test.mjs and mirrored in
+// tests/invariants.test.mjs (PLAN_GENERATION_BUDGET_MS); keep those two equal
+// - the 3000 left behind in invariants from the horizon-3 era is what failed
+// the PR.
 //
 // 2026-08-15: the budgets moved again, and NOT because anything got slower to
 // no purpose. seasonEvidence() corrected the projections, and on this fixture
@@ -94,7 +95,18 @@ async function fastest(fn) {
   return { elapsed: Math.round(best), wall: bestWall, bundle: last, result: last, ms: Math.round(best) };
 }
 
-const FULL_PLAN_BUDGET_MS = 10000;
+// The full-plan CEILING is asserted by perf-live-size.test.mjs
+// (FULL_PLAN_BUDGET_MS, 10000ms of CPU), not here. The two files briefly
+// carried the same 10000ms number for the same operation on two pool sizes,
+// and the assertion on THIS file's smaller pool was strictly dominated: the
+// same work on 320 players can never breach a ceiling the 587-player pool is
+// held under, so the assertion here could never be the one that failed first.
+// A budget constant duplicated across files is exactly what drifted in PR #374
+// (a 3000 left behind in invariants.test.mjs while this file moved to 5000),
+// so the dominated copy is removed rather than kept "for safety". This file
+// still runs the plan and checks its completeness and the honesty of the
+// reported duration; the live-sized file owns the number.
+//
 // Not raised because it was observed failing: it passed on CI at 10000. It is
 // raised only to keep the ordering true, because the longest horizon is always
 // at least as much work as the default one, and a ceiling equal to the default
@@ -126,7 +138,7 @@ function assertComplete(plan, gw) {
   assert.ok(plan.explanation && plan.explanation.headline, 'a plan always says what to do');
 }
 
-test('full plan generation over a season-sized dataset stays inside its budget', async () => {
+test('full plan generation on the committed fixture is complete and reports its real cost', async () => {
   const { gameState, squadState, planEvent } = realInputs();
   assert.ok(gameState.players.size >= 300, `sample dataset has only ${gameState.players.size} players`);
   assert.ok(gameState.fixtures.length >= 300);
@@ -134,10 +146,10 @@ test('full plan generation over a season-sized dataset stays inside its budget',
   const { elapsed, bundle } = await fastest(() => buildPlan({ gameState, squadState, options: {} }));
 
   assertComplete(bundle.current, planEvent);
-  assert.ok(
-    elapsed < FULL_PLAN_BUDGET_MS,
-    `full plan generation took ${elapsed}ms, over the ${FULL_PLAN_BUDGET_MS}ms budget`,
-  );
+  // No ceiling assertion here on purpose: perf-live-size.test.mjs holds the
+  // same operation under FULL_PLAN_BUDGET_MS on a live-sized pool, which
+  // strictly dominates any ceiling this smaller fixture could carry. See the
+  // comment above LONGEST_HORIZON_BUDGET_MS.
 
   // The status panel reports this number to the user, so it has to be the real
   // cost of the run rather than a stamped-in constant.

@@ -1,39 +1,58 @@
-// Tests for exercise picker selection defaults and tray markup changes.
-// Item 1: removeExerciseFromProgram now requires confirmation (logic-only check).
-// Item 2: picker selection items carry default targetSets/targetReps/restSeconds;
-//         tray rows must NOT contain .tray-steppers.
+// Exercise-picker selection defaults, tray markup, and remove-confirmation,
+// all run from the REAL programs-view.js source text.
+//
+// Why it matters:
+//   - a picked exercise must land in the tray with usable defaults (3 sets of
+//     10, equipment-appropriate rest) so committing without tweaking anything
+//     still produces a sane program row;
+//   - the tray row is a simple name + remove control on purpose: the old
+//     in-tray steppers were removed (targets are edited on the program card),
+//     so .tray-steppers must never come back;
+//   - removing an exercise from a program is destructive and must go through
+//     the confirmation modal.
+process.env.TZ = 'UTC';
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Program, defaultRestForEquipment } from '../js/models/Program.js';
+import { loadSource, buildMethods } from './helpers/source-extract.mjs';
 
-// Reproduce the togglePickerExercise insertion logic from programs-view.js so we
-// can assert what lands in pickerSelection without a DOM.
-function makePickerItem(exercise) {
-    const defRest = defaultRestForEquipment(exercise.equipment);
-    return {
-        id: exercise.id,
-        name: exercise.name,
-        targetSets: 3,
-        targetReps: 10,
-        restSeconds: defRest,
-        restAfterSeconds: defRest,
+// Dependency stub: the real helpers.escapeHtml escapes via a detached DOM
+// element (document.createElement), unavailable under node. This mirrors
+// exactly what textContent -> innerHTML escapes: & < >.
+const escapeHtml = (text) => String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+const src = loadSource('js/views/programs-view.js');
+
+// ---------------------------------------------------------------------------
+// Harness: real togglePickerExercise + renderExercisePickerTray against stubs
+// ---------------------------------------------------------------------------
+
+function makePicker(catalog) {
+    const els = {
+        'exercise-picker-tray': { hidden: true },
+        'exercise-picker-tray-list': { innerHTML: '' },
+        'exercise-picker-tray-count': { textContent: '' },
     };
-}
-
-// Reproduce the tray row markup (post-simplification) from programs-view.js.
-function trayRowHTML(item) {
-    const name = item.name.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    return `
-        <li class="exercise-picker-tray-row" data-exercise-id="${item.id}">
-            <div class="tray-name">${name}</div>
-            <button type="button" class="tray-remove"
-                data-tray-action="remove" data-exercise-id="${item.id}"
-                title="Remove from selection" aria-label="Remove from selection">
-                <i class="fas fa-xmark"></i>
-            </button>
-        </li>
-    `;
+    const document = {
+        getElementById: (id) => els[id] || null,
+        // The picker card the toggle re-paints; absent in this harness (the
+        // method guards with `if (card)`).
+        querySelector: () => null,
+    };
+    const methods = buildMethods(
+        src,
+        ['togglePickerExercise', 'renderExercisePickerTray'],
+        { document, defaultRestForEquipment, escapeHtml },
+        'programs-view.js'
+    );
+    const view = Object.create(methods);
+    view.app = { getExerciseById: (id) => catalog.find(e => e.id === id) || null };
+    view.pickerSelection = new Map();
+    return { view, els };
 }
 
 // -------------------------------------------------------
@@ -41,34 +60,48 @@ function trayRowHTML(item) {
 // -------------------------------------------------------
 
 test('picker item: barbell exercise gets restSeconds=180 (defaultRestForEquipment)', () => {
-    const ex = { id: 3, name: 'Bench Press', equipment: 'barbell' };
-    const item = makePickerItem(ex);
+    const { view } = makePicker([{ id: 3, name: 'Bench Press', equipment: 'barbell' }]);
+    view.togglePickerExercise(3);
+    const item = view.pickerSelection.get(3);
+    assert.equal(item.restSeconds, defaultRestForEquipment('barbell'));
     assert.equal(item.restSeconds, 180);
     assert.equal(item.restAfterSeconds, 180);
 });
 
 test('picker item: bodyweight exercise gets restSeconds=60', () => {
-    const ex = { id: 99, name: 'Push-up', equipment: 'bodyweight' };
-    const item = makePickerItem(ex);
+    const { view } = makePicker([{ id: 99, name: 'Push-up', equipment: 'bodyweight' }]);
+    view.togglePickerExercise(99);
+    const item = view.pickerSelection.get(99);
     assert.equal(item.restSeconds, 60);
     assert.equal(item.restAfterSeconds, 60);
 });
 
-test('picker item: always has targetSets=3', () => {
-    const ex = { id: 1, name: 'Any', equipment: 'dumbbell' };
-    const item = makePickerItem(ex);
+test('picker item: always has targetSets=3 and targetReps=10', () => {
+    const { view } = makePicker([{ id: 1, name: 'Any', equipment: 'dumbbell' }]);
+    view.togglePickerExercise(1);
+    const item = view.pickerSelection.get(1);
     assert.equal(item.targetSets, 3);
-});
-
-test('picker item: always has targetReps=10', () => {
-    const ex = { id: 1, name: 'Any', equipment: 'machine' };
-    const item = makePickerItem(ex);
     assert.equal(item.targetReps, 10);
 });
 
-test('picker item passed to addExercise produces 3-set program exercise', () => {
-    const ex = { id: 3, name: 'Bench Press', equipment: 'barbell' };
-    const item = makePickerItem(ex);
+test('picker toggle: picking again removes the exercise from the selection', () => {
+    const { view } = makePicker([{ id: 5, name: 'Squat', equipment: 'barbell' }]);
+    view.togglePickerExercise(5);
+    assert.equal(view.pickerSelection.size, 1);
+    view.togglePickerExercise(5);
+    assert.equal(view.pickerSelection.size, 0, 'second tap deselects');
+});
+
+test('picker toggle: an unknown exercise id is ignored', () => {
+    const { view } = makePicker([]);
+    view.togglePickerExercise(12345);
+    assert.equal(view.pickerSelection.size, 0);
+});
+
+test('picker item passed to addExercise produces a 3-set program exercise', () => {
+    const { view } = makePicker([{ id: 3, name: 'Bench Press', equipment: 'barbell' }]);
+    view.togglePickerExercise(3);
+    const item = view.pickerSelection.get(3);
     const p = new Program({ name: 'Test' });
     p.addExercise(item.id, item.name, item.targetSets, item.targetReps, '', item.restSeconds, item.restAfterSeconds);
     assert.equal(p.exercises.length, 1);
@@ -81,30 +114,77 @@ test('picker item passed to addExercise produces 3-set program exercise', () => 
 });
 
 // -------------------------------------------------------
-// Tray row markup: no .tray-steppers
+// Tray markup, as the real renderExercisePickerTray paints it
 // -------------------------------------------------------
 
-test('tray row HTML: contains .tray-name with exercise name', () => {
-    const item = makePickerItem({ id: 5, name: 'Squat', equipment: 'barbell' });
-    const html = trayRowHTML(item);
+test('tray: a picked exercise renders a named row with a remove button', () => {
+    const { view, els } = makePicker([{ id: 5, name: 'Squat', equipment: 'barbell' }]);
+    view.togglePickerExercise(5);
+    const html = els['exercise-picker-tray-list'].innerHTML;
     assert.ok(html.includes('class="tray-name"'), 'tray-name div present');
     assert.ok(html.includes('Squat'), 'exercise name present');
-});
-
-test('tray row HTML: contains remove button', () => {
-    const item = makePickerItem({ id: 5, name: 'Squat', equipment: 'barbell' });
-    const html = trayRowHTML(item);
     assert.ok(html.includes('data-tray-action="remove"'), 'remove button present');
+    assert.equal(els['exercise-picker-tray'].hidden, false, 'tray shown');
+    assert.equal(els['exercise-picker-tray-count'].textContent, 'Added 1');
 });
 
-test('tray row HTML: does NOT contain .tray-steppers', () => {
-    const item = makePickerItem({ id: 5, name: 'Squat', equipment: 'barbell' });
-    const html = trayRowHTML(item);
-    assert.ok(!html.includes('tray-steppers'), 'tray-steppers absent from row');
+test('tray: exercise names are HTML-escaped', () => {
+    const { view, els } = makePicker([{ id: 8, name: 'Bench <img src=x onerror=alert(1)>', equipment: 'barbell' }]);
+    view.togglePickerExercise(8);
+    const html = els['exercise-picker-tray-list'].innerHTML;
+    assert.ok(!html.includes('<img'), 'raw markup never lands in the tray');
+    assert.ok(html.includes('&lt;img'), 'escaped form present');
 });
 
-test('tray row HTML: does NOT contain data-tray-stepper elements', () => {
-    const item = makePickerItem({ id: 5, name: 'Squat', equipment: 'barbell' });
-    const html = trayRowHTML(item);
+test('tray: rows carry no steppers (targets are edited on the program card)', () => {
+    const { view, els } = makePicker([{ id: 5, name: 'Squat', equipment: 'barbell' }]);
+    view.togglePickerExercise(5);
+    const html = els['exercise-picker-tray-list'].innerHTML;
+    assert.ok(!html.includes('tray-steppers'), '.tray-steppers absent from row');
     assert.ok(!html.includes('data-tray-stepper'), 'stepper inputs absent from tray row');
+});
+
+test('tray: deselecting the last exercise hides the tray again', () => {
+    const { view, els } = makePicker([{ id: 5, name: 'Squat', equipment: 'barbell' }]);
+    view.togglePickerExercise(5);
+    view.togglePickerExercise(5);
+    assert.equal(els['exercise-picker-tray'].hidden, true);
+    assert.equal(els['exercise-picker-tray-list'].innerHTML, '');
+});
+
+// -------------------------------------------------------
+// Removing an exercise from the program requires confirmation
+// -------------------------------------------------------
+
+function makeRemover(confirmAnswer) {
+    const calls = [];
+    const showConfirmModal = async (opts) => { calls.push(opts); return confirmAnswer; };
+    const methods = buildMethods(
+        src,
+        ['async removeExerciseFromProgram'],
+        { showConfirmModal, escapeHtml },
+        'programs-view.js'
+    );
+    const view = Object.create(methods);
+    view.currentProgram = new Program({
+        name: 'P',
+        exercises: [{ exerciseId: 3, exerciseName: 'Bench Press', sets: [{ repsMin: 10, repsMax: 10 }], restSeconds: 90, restAfterSeconds: 90 }],
+    });
+    view.app = { getExerciseDisplayName: (_id, snapshot) => snapshot };
+    view.renderProgramExercises = () => {};
+    return { view, calls };
+}
+
+test('removeExerciseFromProgram: cancelling the confirm keeps the exercise', async () => {
+    const { view, calls } = makeRemover(false);
+    await view.removeExerciseFromProgram(0);
+    assert.equal(calls.length, 1, 'confirmation modal was shown');
+    assert.equal(calls[0].isDangerous, true, 'styled as a dangerous action');
+    assert.equal(view.currentProgram.exercises.length, 1, 'exercise survives a cancel');
+});
+
+test('removeExerciseFromProgram: confirming removes the exercise', async () => {
+    const { view } = makeRemover(true);
+    await view.removeExerciseFromProgram(0);
+    assert.equal(view.currentProgram.exercises.length, 0);
 });

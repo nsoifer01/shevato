@@ -10,7 +10,7 @@ import {
   LS_KEY, recorder, freshIds, iso, item, trip, dbOf,
   openApp, readDb, rowCount, tpErrors,
   switchView, closePage, evaluate, waitForExpr,
-  clickSel, setValue, sleep,
+  clickSel, setValue, expandTimeline,
 } from './helpers.mjs';
 
 export async function run({ base, cdpPort }) {
@@ -51,9 +51,11 @@ export async function run({ base, cdpPort }) {
     const summaryBefore = await summaryText();
     const stripBefore = await stripCells();
 
-    // text search (filtering force-expands the stay groups)
+    // text search (filtering force-expands the stay groups); wait for the
+    // filtered render itself, not a fixed settle
     await setValue(s, '#searchBox', 'spa');
-    await sleep(700);
+    await waitForExpr(s, `(()=>{const t=[...document.querySelectorAll('#board .tp-row .c-title')].map(e=>e.textContent);
+      return t.some(x=>x.includes('Alex spa')) && !t.some(x=>x.includes('Sam museum'))})()`, { timeout: 6000 });
     // A stay drawn only because something inside it matches keeps its wrapper
     // row (documented app behaviour), so assertions check which ITEMS are
     // visible rather than a bare row count.
@@ -71,12 +73,14 @@ export async function run({ base, cdpPort }) {
     // type + status filters
     await setValue(s, '#searchBox', '');
     await setValue(s, '#filterType', 'activity');
-    await sleep(500);
+    await waitForExpr(s, `(()=>{const t=[...document.querySelectorAll('#board .tp-row .c-title')].map(e=>e.textContent);
+      return t.some(x=>x.includes('Sam museum')) && !t.some(x=>x.includes('Flight out'))})()`, { timeout: 6000 });
     titles = (await rowTitles()).join('|');
     await t('tp-views K: type filter shows only activities', titles.includes('Alex spa') && titles.includes('Sam museum')
       && !titles.includes('Flight out') && !titles.includes('Group note'), titles, s);
     await setValue(s, '#filterStatus', 'to-book');
-    await sleep(500);
+    await waitForExpr(s, `(()=>{const t=[...document.querySelectorAll('#board .tp-row .c-title')].map(e=>e.textContent);
+      return t.some(x=>x.includes('Alex spa')) && !t.some(x=>x.includes('Sam museum'))})()`, { timeout: 6000 });
     titles = (await rowTitles()).join('|');
     await t('tp-views K: filters AND together', titles.includes('Alex spa') && !titles.includes('Sam museum'), titles, s);
 
@@ -84,7 +88,8 @@ export async function run({ base, cdpPort }) {
     await setValue(s, '#filterStatus', '');
     await setValue(s, '#filterType', '');
     await setValue(s, '#filterTraveler', 'Alex');
-    await sleep(500);
+    await waitForExpr(s, `(()=>{const t=[...document.querySelectorAll('#board .tp-row .c-title')].map(e=>e.textContent);
+      return t.some(x=>x.includes('Flight out')) && !t.some(x=>x.includes('Sam museum'))})()`, { timeout: 6000 });
     titles = (await rowTitles()).join('|');
     await t('tp-views K: traveler filter keeps their items plus Everyone items',
       titles.includes('Alex spa') && !titles.includes('Sam museum') && titles.includes('Flight out'), titles, s);
@@ -94,7 +99,17 @@ export async function run({ base, cdpPort }) {
     await clickSel(s, '#clearFiltersBtn', { settle: 500 });
     const state = await evaluate(s, `({q:document.getElementById('searchBox').value, ty:document.getElementById('filterType').value, st:document.getElementById('filterStatus').value, tr:(document.getElementById('filterTraveler')||{}).value, hid:document.getElementById('clearFiltersBtn').hidden})`);
     await t('tp-views K: Clear filters resets everything', state.q === '' && state.ty === '' && state.st === '' && state.tr === '' && state.hid === true, JSON.stringify(state), s);
-    await t('tp-views K: all rows return after clearing', (await rowCount(s)) >= 3, `rows=${await rowCount(s)}`, s);
+    // EXACT recovery, not ">= 3": after clearing and expanding, the visible
+    // item titles are precisely the five the fixture seeded, nothing hidden
+    // and nothing duplicated (wrapper rows repeat a title, so a Set is read).
+    await expandTimeline(s);
+    // .c-title carries decorations after the name (attachment glyph, inline
+    // place), so match on the leading name, still exactly five distinct rows
+    const allTitles = [...new Set(await rowTitles())];
+    const want = ['Alex spa', 'Flight out', 'Group note', 'Sam museum', 'Shared hotel'];
+    await t('tp-views K: all rows return after clearing',
+      allTitles.length === want.length && want.every(w => allTitles.some(x => x.startsWith(w))),
+      JSON.stringify(allTitles), s);
   });
 
   /* ----------------- L. warnings -> row navigation ------------------------ */
@@ -121,7 +136,25 @@ export async function run({ base, cdpPort }) {
     await t('tp-views L: impossible connection flagged', /Doomed leg/.test(text) && /leav|before|arriv/i.test(text), '', s);
     await t('tp-views L: tight connection flagged with minutes', /Tight connection: only 25 minutes/.test(text), '', s);
     await t('tp-views L: past to-book warning present', /"Old ticket" is in the past/.test(text), '', s);
-    await t('tp-views L: booking deadline countdown present', /Book museum: book by .*3 days left/.test(text), '', s);
+    // The countdown is computed by the APP at render time, so asserting the
+    // literal "3 days left" flips whenever local midnight passes between the
+    // fixture's iso(3) and the render. Recompute the expected label from the
+    // stored bookBy date with the same local-calendar math, sampled before and
+    // after the read so a midnight crossing mid-check is tolerated too.
+    const bookByStr = lTrip.items.find(x => x.title === 'Book museum').bookBy;
+    const daysUntil = (d) => {
+      const [y, m, dd] = d.split('-').map(Number);
+      const now = new Date();
+      return Math.round((new Date(y, m - 1, dd) - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 864e5);
+    };
+    const leftBefore = daysUntil(bookByStr);
+    const textNow = await issues();
+    // 3 is the seed-time value (bookBy = iso(3)); it stays a candidate because
+    // the app may have rendered the label before a midnight this check reads after
+    const labels = [...new Set([3, leftBefore, daysUntil(bookByStr)])]
+      .map(n => (n === 0 ? 'today' : `${n} ${n === 1 ? 'day' : 'days'} left`));
+    const deadlineRe = new RegExp(`Book museum: book by .*(${labels.join('|')})`);
+    await t('tp-views L: booking deadline countdown present', deadlineRe.test(textNow), `want ${deadlineRe} in ${textNow.slice(0, 200)}`, s);
 
     // "show" jumps to and flashes the named row
     await clickSel(s, `.issue-jump[data-jump]`, { settle: 600 });
@@ -182,10 +215,15 @@ export async function run({ base, cdpPort }) {
     await t('tp-views O: only tied rows offer a reorder grip', grips.length === 2 && grips.includes(tieA.id) && grips.includes(tieB.id), JSON.stringify(grips), s);
     await evaluate(s, `(()=>{const g=[...document.querySelectorAll('#daysList .dc-grip')].find(x=>x.dataset.grip===${JSON.stringify(tieA.id)}); if(g) g.focus(); return 1})()`);
     await evaluate(s, `(()=>{const g=document.activeElement; if(!g||!g.classList.contains('dc-grip')) return 0; g.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true,cancelable:true})); return 1})()`);
-    await sleep(500);
+    await waitForExpr(s, `JSON.parse(localStorage.getItem(${JSON.stringify(LS_KEY)})).trips[0].items.some(x=>Number.isInteger(x.order))`, { timeout: 6000 });
     const db = await readDb(s);
-    const orderStored = db.trips[0].items.filter(x => Number.isInteger(x.order)).length;
-    await t('tp-views O: keyboard reorder stores a manual order', orderStored >= 2, `ordered=${orderStored}`, s);
+    // EXACTLY the tie pair and nobody else: applyManualOrder writes 0..n-1
+    // onto the tied group and normalizeOrders strips `order` from every item
+    // outside one, so a third ordered item is a regression, not extra credit.
+    const ordered = db.trips[0].items.filter(x => Number.isInteger(x.order)).map(x => x.id).sort();
+    const tiePair = [tieA.id, tieB.id].sort();
+    await t('tp-views O: keyboard reorder stores a manual order on the tie pair only',
+      JSON.stringify(ordered) === JSON.stringify(tiePair), `ordered=${JSON.stringify(ordered)}`, s);
     const tiedNow = await evaluate(s, `[...document.querySelectorAll('#daysList .dc-event[data-tie]')].map(e=>e.dataset.id)`);
     await t('tp-views O: the tied pair actually swapped', JSON.stringify(tiedNow) === JSON.stringify([tieB.id, tieA.id]), JSON.stringify(tiedNow), s);
 
@@ -213,8 +251,15 @@ export async function run({ base, cdpPort }) {
     try {
       const t0 = Date.now();
       s = await openApp(cdpPort, base, { db: dbOf([rTrip]), settle: 1500 });
+      // "boots" is a claim about the RENDER, not about openApp returning: the
+      // summary chip counting all seeded (non-cancelled) items proves the app
+      // computed and painted the whole trip. The old check asserted literal
+      // `true` and could never fail.
+      const booted = await waitForExpr(s, `(()=>{const c=[...document.querySelectorAll('#summary .chip')]
+        .find(x=>{const k=x.querySelector('.k'); return k && k.textContent.trim()==='Items'});
+        return !!c && c.querySelector('.v').textContent.trim() === '${bigItems.length} items'})()`, { timeout: 10000 });
       const bootMs = Date.now() - t0;
-      await t('tp-views R: 320-item trip boots', true, `~${bootMs}ms including navigation`, s);
+      await t(`tp-views R: ${bigItems.length}-item trip boots and computes its summary`, booted, `~${bootMs}ms including navigation`, s);
       const db = await readDb(s);
       await t('tp-views R: every item survives the load', db.trips[0].items.length === bigItems.length, `items=${db.trips[0].items.length}`, s);
       await t('tp-views R: timeline renders rows', (await rowCount(s)) > 0, `rows=${await rowCount(s)}`, s);
@@ -226,11 +271,14 @@ export async function run({ base, cdpPort }) {
       const narrowed = await waitForExpr(s, `(()=>{const r=[...document.querySelectorAll('#board .tp-row')]; return r.length <= 2 && r.some(x=>x.innerText.includes('Dinner 41'))})()`, { timeout: 8000 });
       await t('tp-views R: search stays responsive', narrowed, `rows=${await rowCount(s)}`, s);
       await setValue(s, '#searchBox', '');
-      await sleep(800);
+      await waitForExpr(s, `document.querySelectorAll('#board .tp-row').length > 2`, { timeout: 8000 });
       const tDays = Date.now();
       await switchView(s, 'days', 2000);
       const cards = await evaluate(s, `document.querySelectorAll('.day-card').length`);
-      await t('tp-views R: Days view renders the whole span', cards >= 60, `cards=${cards} in ~${Date.now() - tDays}ms`, s);
+      // EXACTLY one card per day of the seeded span: earliest start iso(10) to
+      // the last stay's checkout iso(57 + 10 + 3) = iso(70), inclusive.
+      const expectedCards = 61;
+      await t('tp-views R: Days view renders the whole span', cards === expectedCards, `cards=${cards} want=${expectedCards} in ~${Date.now() - tDays}ms`, s);
       await t('tp-views R: no page errors at scale', tpErrors(s).length === 0, tpErrors(s).slice(0, 2).join(' | '), s);
     } catch (e) {
       await t('tp-views R: block ran', false, String(e && e.message).slice(0, 140), s);
@@ -238,6 +286,83 @@ export async function run({ base, cdpPort }) {
       if (s) try { await closePage(cdpPort, s); } catch { /* gone */ }
     }
   }
+
+  /* -------------- T. degraded exchange rates (Frankfurter down) ----------- */
+  // README promise: "failed rate fetches show a note + Retry instead of fake
+  // 1:1 rates". api.frankfurter.dev is refused by the default net rule, which
+  // is exactly the outage being pinned.
+  freshIds();
+  const tTrip = trip({
+    name: 'Rates trip',
+    currency: 'USD',
+    items: [
+      item({ title: 'Paid in dollars', startDate: iso(30), startTime: '10:00', status: 'booked', cost: 50, costCurrency: 'USD' }),
+      item({ title: 'Paid in euros', startDate: iso(31), startTime: '10:00', status: 'booked', cost: 100, costCurrency: 'EUR' }),
+    ],
+  });
+  const skip = (name, detail) => R.push({ name, pass: true, skipped: true, detail });
+  await withPage('tp-views T', { db: dbOf([tTrip]) }, async (s) => {
+    const failNoteExpr = `(()=>{const n=document.querySelector('.totals-note'); return !!n && n.textContent.includes('Could not fetch exchange rates')})()`;
+    // CORRECT behavior: the failed fetch itself re-renders with the failure
+    // note. Today it does not: ensureRates() calls render() from .catch()
+    // while ratesFetching is still true (the .finally() that clears the flag
+    // runs after the render and repaints nothing), so the page is left saying
+    // "Fetching exchange rates..." until some unrelated render.
+    const noteUnprompted = await waitForExpr(s, failNoteExpr, { timeout: 9000 });
+    if (noteUnprompted) {
+      await t('tp-views T: failed rates show the promised note unprompted', false,
+        'unexpectedly passes - the pinned defect no longer reproduces; convert this quarantine into a plain assertion and mark defect 19 resolved in TESTING-AUDIT.md', s);
+    } else {
+      skip('tp-views T: failed rates show the promised note unprompted',
+        'KNOWN DEFECT: ensureRates() renders from .catch() before .finally() clears ratesFetching, so a failed '
+        + 'rate fetch leaves "Fetching exchange rates..." on screen until an unrelated render (app.js ~558-569); '
+        + 'the README-promised "note + Retry" only appears after the next interaction');
+    }
+    // ...and after ANY later render the honest note + Retry must be there
+    // (this is the state a traveller actually reaches on their next action)
+    await setValue(s, '#searchBox', 'x');
+    await setValue(s, '#searchBox', '');
+    const noteShown = await waitForExpr(s, failNoteExpr, { timeout: 8000 });
+    await t('tp-views T: failed rates show the promised note', noteShown,
+      await evaluate(s, `(document.querySelector('.totals-note')||{}).textContent || '(no note)'`), s);
+    await t('tp-views T: the note carries a Retry button',
+      await evaluate(s, `!!document.getElementById('ratesRetryBtn')`), '', s);
+    const totals = await evaluate(s, `({
+      confirmed: (document.querySelector('.t.confirmed .v') || {}).textContent || '',
+      incomplete: !!document.querySelector('.t.confirmed.incomplete'),
+      body: document.body.innerText.includes('not converted'),
+    })`);
+    // $50 convertible + EUR 100 unconvertible: the total must be the honest
+    // $50 flagged incomplete, never a silently-relabelled $150
+    await t('tp-views T: no fake 1:1 conversion in the confirmed total',
+      totals.confirmed.includes('50') && !totals.confirmed.includes('150') && totals.incomplete && totals.body,
+      JSON.stringify(totals), s);
+  });
+
+  /* ------------------- U. map view degraded smoke ------------------------- */
+  // Tiles and Nominatim are both refused by the default net rule, so the map
+  // cannot locate anything: #mapStatus must say so truthfully (naming the
+  // cities) instead of leaving a blank slab or throwing.
+  freshIds();
+  const uTrip = trip({
+    name: 'Map trip',
+    items: [
+      item({ type: 'stay', title: 'Lisbon hotel', location: 'Lisbon', startDate: iso(30), endDate: iso(32), status: 'booked' }),
+      item({ type: 'stay', title: 'Porto hotel', location: 'Porto', startDate: iso(32), endDate: iso(34), status: 'booked' }),
+    ],
+  });
+  await withPage('tp-views U', { db: dbOf([uTrip]) }, async (s) => {
+    await switchView(s, 'map');
+    // the geocode queue is serialized at ~1.1s per stop, so allow for both
+    const failed = await waitForExpr(s,
+      `(()=>{const m=document.getElementById('mapStatus'); return !!m && /Could not find those places/i.test(m.innerText)})()`,
+      { timeout: 15000 });
+    await t('tp-views U: blocked geocoding reads as a truthful map message', failed, '', s);
+    await t('tp-views U: the message names the places it could not locate',
+      await evaluate(s, `/Lisbon/.test(document.getElementById('mapStatus').innerText) && /Porto/.test(document.getElementById('mapStatus').innerText)`), '', s);
+    await t('tp-views U: the blank map slab is hidden, not empty-looking',
+      await evaluate(s, `document.getElementById('mapBox').classList.contains('is-blank')`), '', s);
+  });
 
   return R;
 }

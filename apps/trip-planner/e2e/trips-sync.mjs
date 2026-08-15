@@ -12,7 +12,7 @@ import {
   recorder, freshIds, iso, item, trip, dbOf, standardTrip,
   openApp, openTab, readDb, overlayOpenId, toastText, tpErrors,
   menuAct, addItemViaUi, fillItem, expandTimeline,
-  closePage, evaluate, clickSel, setValue, sleep, waitForExpr,
+  closePage, evaluate, clickSel, setValue, waitForExpr,
 } from './helpers.mjs';
 
 export async function run({ base, cdpPort }) {
@@ -20,11 +20,12 @@ export async function run({ base, cdpPort }) {
   const t = recorder(R);
 
   /* ------------------- F. edits stick to the right trip ------------------ */
+  let sF = null;
   try {
     freshIds();
     const tripA = trip({ name: 'Trip Alpha', items: [item({ title: 'Alpha base camp', type: 'stay', startDate: iso(20), endDate: iso(22) })] });
     const tripB = trip({ name: 'Trip Beta', items: [item({ title: 'Beta kickoff', startDate: iso(50), startTime: '09:00' })] });
-    const s = await openApp(cdpPort, base, { db: dbOf([tripA, tripB], tripA.id) });
+    const s = sF = await openApp(cdpPort, base, { db: dbOf([tripA, tripB], tripA.id) });
 
     await t('tp-trips F: picker lists both trips', await evaluate(s, `document.getElementById('tripSelect').options.length`) === 2, '', s);
     await t('tp-trips F: board shows the active trip', await evaluate(s, `document.getElementById('board').innerText.includes('Alpha base camp')`), '', s);
@@ -36,8 +37,8 @@ export async function run({ base, cdpPort }) {
       && !db.trips.find(x => x.id === tripB.id).items.some(x => x.title === 'Added on Alpha'), '', s);
 
     await setValue(s, '#tripSelect', tripB.id);
-    await sleep(700);
-    await t('tp-trips F: switching renders the other trip', await evaluate(s, `document.getElementById('board').innerText.includes('Beta kickoff') && !document.getElementById('board').innerText.includes('Alpha base camp')`), '', s);
+    const switched = await waitForExpr(s, `document.getElementById('board').innerText.includes('Beta kickoff') && !document.getElementById('board').innerText.includes('Alpha base camp')`, { timeout: 6000 });
+    await t('tp-trips F: switching renders the other trip', switched, '', s);
     db = await readDb(s);
     await t('tp-trips F: switch persists as the active trip', db.activeTripId === tripB.id, '', s);
 
@@ -49,8 +50,12 @@ export async function run({ base, cdpPort }) {
     await t('tp-trips F: trip A kept exactly its own items', a.items.length === 2 && b.items.length === 2,
       `A=${a.items.length} B=${b.items.length}`, s);
     await t('tp-trips F: no page errors', tpErrors(s).length === 0, tpErrors(s).slice(0, 2).join(' | '), s);
-    await closePage(cdpPort, s);
-  } catch (e) { await t('tp-trips F: block ran', false, String(e && e.message).slice(0, 140)); }
+  } catch (e) {
+    await t('tp-trips F: block ran', false, String(e && e.message).slice(0, 140), sF);
+  } finally {
+    // a leaked tab shares the profile's localStorage and poisons G/H below
+    if (sF) try { await closePage(cdpPort, sF); } catch { /* gone */ }
+  }
 
   /* ---------- G + H. two tabs: reconciliation and stale dialogs ---------- */
   let s1 = null, s2 = null;
@@ -91,13 +96,13 @@ export async function run({ base, cdpPort }) {
 
     /* G2: item edit dialog open while the item is deleted externally */
     await setValue(s1, '#tripSelect', tripA.id);
-    await sleep(600);
+    await waitForExpr(s1, `document.getElementById('board').innerText.includes('Cross-tab ramen')`, { timeout: 6000 });
     await expandTimeline(s1);
     await clickSel(s1, `.tp-row[data-id="${ramenId}"] [data-act="edit"]`, { settle: 500 });
     await t('tp-trips G: item edit dialog opens', (await overlayOpenId(s1)) === 'itemOverlay', '', s1);
     // external delete in tab 2 (tab 2 is parked on Beta; move it back first)
     await setValue(s2, '#tripSelect', tripA.id);
-    await sleep(600);
+    await waitForExpr(s2, `document.getElementById('board').innerText.includes('Cross-tab ramen')`, { timeout: 6000 });
     await expandTimeline(s2);
     await clickSel(s2, `.tp-row[data-id="${ramenId}"] [data-act="delete"]`, { settle: 700 });
     await waitForExpr(s1, `!JSON.parse(localStorage.getItem('trip-planner:v1')).trips.find(x=>x.id===${JSON.stringify(tripA.id)}).items.some(x=>x.id===${JSON.stringify(ramenId)})`, { timeout: 6000 });

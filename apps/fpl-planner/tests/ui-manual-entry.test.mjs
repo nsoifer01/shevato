@@ -11,7 +11,7 @@
 // What is deliberately NOT claimed here: real keystrokes, focus, IME and the
 // mobile keyboard. Those stay in .features/fpl-planner-human.md.
 
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -24,7 +24,11 @@ import { manualSquadView } from '../js/ui/preseason.js';
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (name) => JSON.parse(readFileSync(join(here, 'fixtures', name), 'utf8'));
 
-installDom();
+// Teardown restores the real globals when the file ends, the same pattern as
+// ui-combobox.test.mjs: an installDom() left in place leaks a fake `document`
+// into any suite the runner loads after this one in the same process.
+const teardownDom = installDom();
+after(() => teardownDom());
 
 const gameState = buildGameState(read('bootstrap.json'), read('fixtures.json'), { fetchedAt: '2026-08-10T10:00:00Z' });
 

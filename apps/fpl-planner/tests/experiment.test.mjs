@@ -24,6 +24,7 @@ import {
   incompleteBeta,
   formatReport,
 } from '../js/engine/experiment.js';
+import { KNOWN_SEASONS } from '../scripts/backtest.mjs';
 
 const ARMS = [{ name: 'control' }, { name: 'candidate' }];
 
@@ -31,9 +32,17 @@ const ARMS = [{ name: 'control' }, { name: 'candidate' }];
 // The plan
 // ---------------------------------------------------------------------------
 
-test('the deciding instrument is 45 trajectories over three seasons', () => {
+test('the deciding instrument is 60 trajectories over the replayable seasons', () => {
   const i = INSTRUMENTS.paired;
-  assert.equal(3 * i.windows.length * i.seeds.length, 45);
+  // The season count comes from the source of truth (scripts/backtest.mjs
+  // KNOWN_SEASONS), not from a literal: this test used to hardcode "3 seasons
+  // = 45", which survived the fourth season qualifying (registry entry 15) and
+  // could never fail again. When THIS fails, the season list moved: update the
+  // literal here and the trajectory counts quoted in README.md, FINDINGS.md
+  // and experiments/registry.md in the same change.
+  assert.equal(KNOWN_SEASONS.length * i.windows.length * i.seeds.length, 60);
+  assert.equal(i.windows.length, 5, 'five sliding windows per season');
+  assert.equal(i.seeds.length, 3, 'three seeds per window');
   assert.equal(i.chips, false);
   assert.equal(i.rank, 3);
   // The seasons are the caller's, not the instrument's: a season label inside

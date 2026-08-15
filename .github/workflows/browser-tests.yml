@@ -9,6 +9,10 @@ name: browser tests
 # means a slow browser run never delays the fast feedback from unit tests.
 on:
   pull_request:
+  # Also on push to master: branch protection makes direct pushes rare, but a
+  # merge that lands without a fresh PR run should still get browser coverage.
+  push:
+    branches: [master]
   workflow_dispatch:
 
 jobs:

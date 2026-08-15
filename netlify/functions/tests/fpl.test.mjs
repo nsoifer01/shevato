@@ -6,10 +6,13 @@ import {
   TTL, DEADLINE_KEY, DEADLINE_TTL_SECONDS, UPSTREAM_BASE, ALLOWED_PATHS,
 } from '../lib/fpl-cache.mjs';
 
-// The handler tests exercise only the paths that return BEFORE any Blob I/O:
-// the origin guard, the method guard and the allowlist. The cache pipeline is
-// covered below through serveFpl, which takes an injected store and fetch, so
-// the whole serve path is tested without a live Netlify Blobs context.
+// The guard tests exercise the paths that return BEFORE any Blob I/O: the
+// origin guard, the method guard and the allowlist. The cache pipeline is
+// covered through serveFpl, which takes an injected store and fetch, so the
+// whole serve path is tested without a live Netlify Blobs context. The
+// end-to-end handler section at the bottom then drives the default export
+// through a stubbed global fetch, which is how the response headers and the
+// store fallback are pinned.
 
 function req(pathParam, { origin = 'https://shevato.com', referer, method = 'GET' } = {}) {
   const headers = {};
@@ -366,4 +369,95 @@ test('a cached entry with an unparseable timestamp is refetched, not served fore
   });
   assert.equal(called, 1, 'an entry that cannot be aged is not a usable cache hit');
   assert.deepEqual(res.body, [{ fresh: true }]);
+});
+
+/* ------------------------------------------------ the handler, end to end */
+
+// These drive the DEFAULT EXPORT through its full path rather than stopping
+// at the guards. The two seams the handler does not expose are worked around
+// and documented:
+//
+// - The store is NOT injectable. Outside a Netlify Blobs context fplStore()
+//   throws at getStore(), so every request below runs on the handler's own
+//   memoryStore fallback - which is exactly the degraded path worth testing:
+//   the app must stay up, uncached, when Blobs is down or misconfigured.
+// - The upstream fetch is fetchFpl over the GLOBAL fetch, so these tests stub
+//   globalThis.fetch and restore it in a finally.
+//
+// UNREACHABLE WITHOUT PRODUCTION CHANGES: the handler's own catch around
+// serveFpl (fpl.mjs, "Nothing below is allowed to escape as an unhandled 500
+// either"). Every failure an injected input can cause - store read, store
+// write, upstream fetch, upstream body - is already caught INSIDE serveFpl
+// and turned into a degraded result there, so no input constructible from
+// this side makes serveFpl itself throw. That catch shields against future
+// defects in serveFpl; its 503 shape is byte-identical to serveFpl's own
+// upstream_unavailable result, which the outage test below does pin through
+// the handler.
+
+async function withFetchStub(stub, fn) {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = stub;
+  try { return await fn(); } finally { globalThis.fetch = realFetch; }
+}
+
+test('a successful proxy response carries all four x-fpl-* headers', async () => {
+  const res = await withFetchStub(
+    async () => new Response(JSON.stringify({ events: [] }), { status: 200 }),
+    () => handler(req('bootstrap-static')),
+  );
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { events: [] });
+  assert.equal(res.headers.get('content-type'), 'application/json');
+  // The freshness contract js/data/api.js reads. A 404 WITHOUT x-fpl-cache is
+  // how the client detects a static server with no function at all, so the
+  // header set is load-bearing, not decoration.
+  assert.equal(res.headers.get('x-fpl-cache'), 'miss');
+  assert.equal(res.headers.get('x-fpl-stale'), 'false');
+  assert.equal(res.headers.get('x-fpl-age-seconds'), '0');
+  assert.ok(Number.isFinite(Date.parse(res.headers.get('x-fpl-fetched-at'))),
+    'x-fpl-fetched-at is a real timestamp');
+});
+
+test('the four headers ride on an in-season 404 too, so the client can tell it from a dead proxy', async () => {
+  const res = await withFetchStub(
+    async () => new Response('{"detail":"Not found."}', { status: 404 }),
+    () => handler(req('entry/999999999')),
+  );
+  assert.equal(res.status, 404);
+  assert.deepEqual(await res.json(), { error: 'not_found' });
+  for (const h of ['x-fpl-cache', 'x-fpl-fetched-at', 'x-fpl-stale', 'x-fpl-age-seconds']) {
+    assert.ok(res.headers.get(h) !== null, `${h} present on the 404`);
+  }
+});
+
+test('without a Blobs context the handler serves uncached instead of failing', async () => {
+  let upstreamCalls = 0;
+  await withFetchStub(
+    async () => { upstreamCalls += 1; return new Response('{"n":1}', { status: 200 }); },
+    async () => {
+      const first = await handler(req('fixtures'));
+      const second = await handler(req('fixtures'));
+      assert.equal(first.status, 200);
+      assert.equal(second.status, 200);
+      assert.equal(second.headers.get('x-fpl-cache'), 'miss',
+        'the fallback store remembers nothing, so nothing can be a hit');
+    },
+  );
+  // The memoryStore price: every request goes upstream. Slower and more
+  // traffic, but working - which is the whole point of the fallback.
+  assert.equal(upstreamCalls, 2);
+});
+
+test('a dead upstream with nothing cached is a labelled 503, never a bodyless 500', async () => {
+  const res = await withFetchStub(
+    async () => { throw new Error('ECONNRESET'); },
+    () => handler(req('bootstrap-static')),
+  );
+  assert.equal(res.status, 503);
+  assert.deepEqual(await res.json(), { error: 'upstream_unavailable' });
+  // The degraded answer keeps the same header contract the client reads.
+  assert.equal(res.headers.get('x-fpl-cache'), 'miss');
+  assert.equal(res.headers.get('x-fpl-stale'), 'false');
+  assert.equal(res.headers.get('x-fpl-age-seconds'), '0');
+  assert.ok(Number.isFinite(Date.parse(res.headers.get('x-fpl-fetched-at'))));
 });

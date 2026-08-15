@@ -57,8 +57,12 @@ export async function run({ base, cdpPort }) {
       hero = await heroRead(s);
       await rec('the app notices the deadline going by', reacted, hero.deadline, s);
 
+      // Exactly once: zero means the hero never worded the crossing, and two is
+      // the guarded defect itself ("Deadline passed Deadline passed", from the
+      // prefix and countdown() both writing it). `<= 1` passed at zero and could
+      // not catch a hero that said nothing.
       const passedCount = (hero.deadline || '').match(/Deadline passed/gi) || [];
-      await rec('and says so exactly once', passedCount.length <= 1,
+      await rec('and says so exactly once', passedCount.length === 1,
         `"${hero.deadline}" contains it ${passedCount.length} times`, s);
 
       await rec('the plan is no longer presented as actionable',
@@ -154,8 +158,11 @@ export async function run({ base, cdpPort }) {
       const before = await evaluate(s, `/Checked for changes/i.test(document.body.textContent)`);
       await clickText(s, 'Check for changes', { settle: 1200 });
       const after = await evaluate(s, `/Checked for changes/i.test(document.body.textContent)`);
+      // The receipt must APPEAR because of the click: present after and absent
+      // before. The old expression (`after && !before === false ? after : after`)
+      // reduced to `after` whatever `before` said.
       await rec('a pre-season "Check for changes" reports that it ran',
-        after && !before === false ? after : after, `before=${before} after=${after}`, s);
+        after && !before, `before=${before} after=${after}`, s);
     } finally { await closePage(cdpPort, s); }
   }
 
@@ -167,14 +174,15 @@ export async function run({ base, cdpPort }) {
     const s = await openPlanner(cdpPort, base, { state: 'gw2-window' });
     try {
       const t = s.payloads.madeTransfer;
-      const names = await evaluate(s, `(()=>{
+      // Switch to the "Current team" view; the evaluate is for its click side
+      // effect only.
+      await evaluate(s, `(()=>{
         const seg=[...document.querySelectorAll('.fpl-card-tools .fpl-seg > button')].find(b=>/Current team/.test(b.textContent));
         if (seg) seg.click();
         return 1;
       })()`);
       await sleep(500);
       const squad = await evaluate(s, `[...document.querySelectorAll('.fpl-pp-name')].map(e=>e.textContent.trim())`);
-      const inName = await evaluate(s, `${JSON.stringify(String(t.inId))} && null`);
 
       // Read the two player names out of the payload the suite served.
       const outLabel = s.payloads.bootstrap.elements.find(e => e.id === t.outId).web_name;
@@ -185,9 +193,19 @@ export async function run({ base, cdpPort }) {
       await rec('and no longer shows the player who was sold',
         !squad.includes(outLabel), `${outLabel}`, s);
 
+      // The negative assertion below passes trivially on a blank page, so first
+      // prove a recommendation is actually on screen to be checked.
+      const rendered = await evaluate(s, `!!document.querySelector('.fpl-hero-headline')
+        && /This gameweek/i.test(document.body.textContent)`);
+      await rec('a recommendation rendered to check the transfer against', rendered, '', s);
+
+      // web_name is player-supplied text ("O'Riley", "N.Williams"): escape it
+      // before building a regex from it, or the dot matches anything and an
+      // apostrophe variant silently never matches.
+      const escapeRe = (v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const body = await evaluate(s, `document.body.textContent`);
       await rec('the plan does not re-recommend the transfer already made',
-        !new RegExp(`${outLabel}[^]{0,80}${inLabel}`).test(body),
+        !new RegExp(`${escapeRe(outLabel)}[^]{0,80}${escapeRe(inLabel)}`).test(body),
         `looked for "${outLabel} -> ${inLabel}" in the recommendation`, s);
 
       const errs = errorsOf(s);

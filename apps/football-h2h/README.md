@@ -51,7 +51,25 @@ Opening `index.html` directly over `file://` works for the core tracker, but the
 ## Running tests
 
 ```sh
-npm run test:football
+npm run test:football          # or: node --test apps/football-h2h/tests/
 ```
 
-This runs `node --test` over `apps/football-h2h/tests/`, which covers the pure match-logic helpers (sorting, ID assignment, import-payload validation) and the player-stats module (per-player stats, penalty-aware match results, streak and run detection, and the comparison-table formatters).
+No browser and no server: everything runs under `node --test`.
+
+### What is covered
+
+| File | Covers |
+| ---- | ------ |
+| `matchLogic.test.js` | The pure helpers in `js/match-logic.js`: table sorting (including zero and negative goal counts), sequential ID assignment, import-payload (envelope) validation. |
+| `playerStats.test.js` | `js/playerStats.js`: per-player stats, penalty-aware match results, streak and run detection, comparison-table formatters. |
+| `sidebarAddGame.test.js` | `submitSidebarGame()`: goal validation (0 is a real score), the draw-requires-a-penalty-result rule, blank custom-team rejection, and the exact record written (id, gameNumber, date stamp, note, undo entry). |
+| `statsAggregates.test.js` | `updateStatisticsWithData()`: wins, 90-minute wins, penalty wins, draws, shootout count, goals per game. Ends with a drift guard asserting these counters agree with `playerStats.matchResult` over the same fixtures, because the same win/draw rule is implemented twice. |
+| `undoRedo.test.js` | `addToHistory` / `undoLastAction` / `redoLastAction`: add, edit and delete round trips, persistence, the 50-action cap, and redo truncation after a new action. |
+| `dateFilters.test.js` | `setDateFilter` / `applyCustomDateFilter` / `getFilteredGames` for all / today / week / month / custom, with the clock pinned inside the sandbox. |
+| `importMigration.test.js` | `migrateGameDates()`, `loadGames()` and the import apply-step after the user confirms (replace-not-merge, player names, migration of undated rows, cancel and error paths). |
+
+### How the classic scripts are loaded
+
+`js/match-logic.js` and `js/playerStats.js` are UMD, so tests `require()` them directly. `js/sidebar.js` and `js/football-h2h.js` are plain `<script>` files with no exports, so they are loaded into a `node:vm` sandbox with a stub `document` / `localStorage` by the shared helper `tests/vm-harness.js` (same approach as `apps/mario-kart/tests/`). In that sandbox `window` is aliased to `globalThis` as in a browser; top-level `let` bindings (`games`, `currentDateFilter`, `actionHistory`) are invisible as context properties and are reached with `runIn()`, and values built inside the sandbox go through `toHost()` before `assert.deepEqual`.
+
+Two things the suite pins on purpose rather than asserting the intuitive reading: "Last 7 Days" / "Last 30 Days" are rolling windows measured as `now - 7*24h` / `now - 30*24h`, not calendar days; and `migrateGameDates` stamps undated games by array position, so it can interleave with games that already have a date. Tests for confirmed defects assert the CORRECT behaviour and carry `{ todo: 'KNOWN DEFECT: ...' }`, so the run stays green while the bug stays documented.

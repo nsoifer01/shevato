@@ -1,144 +1,116 @@
-// Tests for renderActiveWorkout's uniform-rest header behavior.
+// renderActiveWorkout's uniform-rest header behavior.
 //
-// workout-view.js imports the DOM and app singleton so we cannot load it
-// directly in node. Instead we mirror the relevant logic here (the same
-// pattern used by superset-logic.test.mjs and collapse-and-unmark-rest.test.mjs).
+// Why it matters: for uniform-rest programs, the between-exercise rest shows
+// once in the sticky workout header (visible while scrolling) instead of as a
+// repeated banner in the exercise stream. Custom-rest programs have no single
+// value to show, so the header slot must be hidden AND emptied, or a stale
+// value from a previous uniform workout would linger.
 //
-// What we verify:
-//   - In uniform mode: header element is populated + unhidden; content HTML
-//     contains NO .uniform-rest-banner; formatRest produces correct M:SS.
-//   - In custom mode: header element is hidden + empty; no banner in content.
+// The real renderActiveWorkout and formatRest are lifted from workout-view.js
+// source text and run against a stub document (the class is DOM-bound), so a
+// change to the header rule or the M:SS formatting fails here.
+process.env.TZ = 'UTC';
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { loadSource, buildMethods } from './helpers/source-extract.mjs';
 
-// ---------------------------------------------------------------------------
-// Mirror of WorkoutView.formatRest
-// ---------------------------------------------------------------------------
-function formatRest(seconds) {
-    const s = Math.max(0, seconds | 0);
-    const m = Math.floor(s / 60);
-    const r = s % 60;
-    return `${m}:${String(r).padStart(2, '0')}`;
+const src = loadSource('js/views/workout-view.js');
+
+function makeHarness({ program } = {}) {
+    const els = {
+        'workout-title': { textContent: '' },
+        'workout-exercises-list': { innerHTML: '' },
+        'workout-rest-between': { hidden: true },
+        'workout-rest-between-value': { textContent: '' },
+    };
+    const document = { getElementById: (id) => els[id] || null };
+    const methods = buildMethods(src, ['renderActiveWorkout', 'formatRest'], { document }, 'workout-view.js');
+    const view = Object.create(methods);
+    view.currentWorkoutSession = { programId: 7, workoutDayName: 'Push Day', exercises: [{}, {}] };
+    view.app = { getProgramById: (id) => (id === 7 ? program ?? null : null) };
+    // Out-of-scope collaborators renderActiveWorkout calls along the way.
+    view.adjustWorkoutTitleSize = () => {};
+    view.syncPlateHintsButton = () => {};
+    view.syncSessionUnitToggle = () => {};
+    view.dedupePlateHints = () => {};
+    view.renderExerciseList = () => '<div class="exercise-entry">Bench Press</div>';
+    return { view, els };
 }
 
-// ---------------------------------------------------------------------------
-// Minimal DOM stubs (no external dependencies)
-// ---------------------------------------------------------------------------
-function makeHeaderEl() {
-    return { hidden: true, _text: '' };
-}
-function makeValueEl() {
-    return { textContent: '' };
-}
+test('uniform mode: header slot is unhidden with the M:SS value (90s => 1:30)', () => {
+    const { view, els } = makeHarness({ program: { restMode: 'uniform', uniformRestSeconds: 90 } });
+    view.renderActiveWorkout();
+    assert.equal(els['workout-rest-between'].hidden, false, 'header element visible');
+    assert.equal(els['workout-rest-between-value'].textContent, '1:30');
+});
 
-// ---------------------------------------------------------------------------
-// Mirror of the header-update block from renderActiveWorkout
-// ---------------------------------------------------------------------------
-function applyRestBetweenHeader(program, restBetweenEl, restBetweenValueEl) {
-    if (!restBetweenEl || !restBetweenValueEl) return;
-    if (program?.restMode === 'uniform') {
-        const secs = program.uniformRestSeconds ?? 90;
-        restBetweenValueEl.textContent = formatRest(secs);
-        restBetweenEl.hidden = false;
-    } else {
-        restBetweenEl.hidden = true;
-        restBetweenValueEl.textContent = '';
+test('uniform mode: 60s renders as 1:00', () => {
+    const { view, els } = makeHarness({ program: { restMode: 'uniform', uniformRestSeconds: 60 } });
+    view.renderActiveWorkout();
+    assert.equal(els['workout-rest-between-value'].textContent, '1:00');
+});
+
+test('uniform mode: uniformRestSeconds defaults to 90 when absent', () => {
+    const { view, els } = makeHarness({ program: { restMode: 'uniform' } });
+    view.renderActiveWorkout();
+    assert.equal(els['workout-rest-between'].hidden, false);
+    assert.equal(els['workout-rest-between-value'].textContent, '1:30');
+});
+
+test('custom mode: header slot is hidden and its value cleared', () => {
+    const { view, els } = makeHarness({ program: { restMode: 'custom' } });
+    els['workout-rest-between'].hidden = false;
+    els['workout-rest-between-value'].textContent = '1:30'; // stale from a uniform run
+    view.renderActiveWorkout();
+    assert.equal(els['workout-rest-between'].hidden, true, 'hidden in custom mode');
+    assert.equal(els['workout-rest-between-value'].textContent, '', 'stale value cleared');
+});
+
+test('program not found: header slot is hidden (graceful fallback)', () => {
+    const { view, els } = makeHarness({ program: null });
+    els['workout-rest-between'].hidden = false;
+    view.renderActiveWorkout();
+    assert.equal(els['workout-rest-between'].hidden, true);
+    assert.equal(els['workout-rest-between-value'].textContent, '');
+});
+
+test('no uniform-rest banner is injected into the exercise stream in either mode', () => {
+    // The header replaced the old in-stream banner; the exercise container
+    // must hold exactly what renderExerciseList produced, nothing prepended.
+    for (const program of [{ restMode: 'uniform', uniformRestSeconds: 90 }, { restMode: 'custom' }]) {
+        const { view, els } = makeHarness({ program });
+        view.renderActiveWorkout();
+        assert.equal(els['workout-exercises-list'].innerHTML,
+            '<div class="exercise-entry">Bench Press</div>',
+            'container content is the exercise list verbatim');
     }
-}
-
-// ---------------------------------------------------------------------------
-// Mirror of the content-rendering decision (no banner injected in either mode)
-// ---------------------------------------------------------------------------
-function buildContentHTML(program) {
-    // Old code would have prepended uniformBannerHTML — new code never does.
-    // We assert that no .uniform-rest-banner appears in the rendered output.
-    return '<div class="exercise-entry">Bench Press</div>';
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-test('uniform mode: header element is unhidden with M:SS value (90s => 1:30)', () => {
-    const program = { restMode: 'uniform', uniformRestSeconds: 90 };
-    const el = makeHeaderEl();
-    const val = makeValueEl();
-    applyRestBetweenHeader(program, el, val);
-    assert.equal(el.hidden, false, 'header element should be visible');
-    assert.equal(val.textContent, '1:30', 'value should be formatted as 1:30');
-});
-
-test('uniform mode: header element is unhidden with M:SS value (60s => 1:00)', () => {
-    const program = { restMode: 'uniform', uniformRestSeconds: 60 };
-    const el = makeHeaderEl();
-    const val = makeValueEl();
-    applyRestBetweenHeader(program, el, val);
-    assert.equal(el.hidden, false);
-    assert.equal(val.textContent, '1:00');
-});
-
-test('uniform mode: defaults uniformRestSeconds to 90 when absent', () => {
-    const program = { restMode: 'uniform' };
-    const el = makeHeaderEl();
-    const val = makeValueEl();
-    applyRestBetweenHeader(program, el, val);
-    assert.equal(el.hidden, false);
-    assert.equal(val.textContent, '1:30', 'should default to 90s = 1:30');
-});
-
-test('uniform mode: content HTML does NOT contain .uniform-rest-banner', () => {
-    const program = { restMode: 'uniform', uniformRestSeconds: 90 };
-    const content = buildContentHTML(program);
-    assert.ok(!content.includes('uniform-rest-banner'), 'no .uniform-rest-banner in content HTML');
-});
-
-test('custom mode: header element is hidden and value is cleared', () => {
-    const program = { restMode: 'custom' };
-    const el = makeHeaderEl();
-    const val = makeValueEl();
-    el.hidden = false;
-    val.textContent = '1:30';
-    applyRestBetweenHeader(program, el, val);
-    assert.equal(el.hidden, true, 'header element should be hidden in custom mode');
-    assert.equal(val.textContent, '', 'value should be empty in custom mode');
-});
-
-test('custom mode: content HTML does NOT contain .uniform-rest-banner', () => {
-    const program = { restMode: 'custom' };
-    const content = buildContentHTML(program);
-    assert.ok(!content.includes('uniform-rest-banner'), 'no .uniform-rest-banner in content HTML in custom mode');
-});
-
-test('null program: header element is hidden (graceful fallback)', () => {
-    const el = makeHeaderEl();
-    const val = makeValueEl();
-    el.hidden = false;
-    applyRestBetweenHeader(null, el, val);
-    assert.equal(el.hidden, true, 'header hidden when program is null');
-    assert.equal(val.textContent, '');
-});
-
-test('missing header elements: applyRestBetweenHeader does not throw', () => {
-    assert.doesNotThrow(() => applyRestBetweenHeader({ restMode: 'uniform', uniformRestSeconds: 90 }, null, null));
+    assert.ok(!src.includes('uniform-rest-banner'),
+        'workout-view.js no longer references the old .uniform-rest-banner at all');
 });
 
 // ---------------------------------------------------------------------------
-// formatRest corner cases
+// formatRest corner cases (the real method)
 // ---------------------------------------------------------------------------
+
+const { view: fmtView } = makeHarness({});
 
 test('formatRest: 0 => 0:00', () => {
-    assert.equal(formatRest(0), '0:00');
+    assert.equal(fmtView.formatRest(0), '0:00');
 });
 
 test('formatRest: 90 => 1:30', () => {
-    assert.equal(formatRest(90), '1:30');
+    assert.equal(fmtView.formatRest(90), '1:30');
 });
 
 test('formatRest: 65 => 1:05', () => {
-    assert.equal(formatRest(65), '1:05');
+    assert.equal(fmtView.formatRest(65), '1:05');
 });
 
-test('formatRest: 3600 => 60:00', () => {
-    assert.equal(formatRest(3600), '60:00');
+test('formatRest: 3600 => 60:00 (minutes never roll into hours)', () => {
+    assert.equal(fmtView.formatRest(3600), '60:00');
+});
+
+test('formatRest: negative input clamps to 0:00', () => {
+    assert.equal(fmtView.formatRest(-5), '0:00');
 });

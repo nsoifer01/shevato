@@ -11,13 +11,15 @@ import {
   APP, LS_KEY, recorder, freshIds, iso, item, trip, dbOf, standardTrip,
   openApp, readDb, overlayOpenId, tpErrors, openMenu, menuState,
   addItemViaUi, buildShareHash, expandTimeline, gotoHard,
-  closePage, evaluate, clickSel, setValue, pressKey, sleep,
+  closePage, evaluate, clickSel, setValue, pressKey, sleep, waitForExpr,
 } from './helpers.mjs';
 
-// Rows the trip menu must keep live on a shared trip (export-gpx is also
-// allow-listed in the app, but it has its own two-located-stops gate that
-// keeps it disabled here, where geocoding is blocked).
-const SHARED_ALLOWED = ['export-trip', 'export-csv', 'export-ics', 'share-trip', 'timefmt'];
+// Rows the trip menu must keep live on a shared trip. export-gpx is on the
+// app's SHARED_MENU_ACTS allowlist too, so shared mode must NOT native-disable
+// it; its own two-located-stops readiness gate is expressed as aria-disabled
+// (a separate mechanism, asserted separately below) and holds here, where
+// geocoding is blocked and nothing can be located.
+const SHARED_ALLOWED = ['export-trip', 'export-csv', 'export-ics', 'export-gpx', 'share-trip', 'timefmt'];
 const SHARED_BLOCKED = ['new-trip', 'rename-trip', 'duplicate-trip', 'duplicate-template',
   'essentials', 'packing', 'export-all', 'import', 'import-booking', 'delete-trip'];
 
@@ -59,14 +61,22 @@ export async function run({ base, cdpPort }) {
     const menu = await menuState(s);
     await t('tp-share I: writing menu rows disabled', SHARED_BLOCKED.every(a => menu[a] === true), JSON.stringify(menu), s);
     await t('tp-share I: export and share rows stay live', SHARED_ALLOWED.every(a => menu[a] === false), JSON.stringify(menu), s);
+    // export-gpx: shared mode leaves it live (native disabled=false above),
+    // and the separate readiness gate holds because nothing here is located
+    const gpx = await evaluate(s, `(()=>{const b=document.querySelector('.tp-menu-panel [data-act="export-gpx"]');
+      return b ? { ariaDisabled: b.getAttribute('aria-disabled'), title: b.title } : null})()`);
+    await t('tp-share I: export-gpx keeps its own readiness gate on a share',
+      !!gpx && gpx.ariaDisabled === 'true' && /two located places/i.test(gpx.title), JSON.stringify(gpx), s);
     await pressKey(s, 'Escape', 'Escape', 27);
 
-    // keyboard: "n" must not open Add item; "?" still opens the shortcut list
+    // keyboard: "n" must not open Add item; "?" still opens the shortcut list.
+    // The "n" claim is NEGATIVE (no overlay may appear), so a fixed beat is
+    // the only honest wait; the "?" claim waits on the overlay itself.
     await pressKey(s, 'n', 'KeyN', 78);
     await sleep(300);
     await t('tp-share I: "n" shortcut is inert on a shared trip', (await overlayOpenId(s)) === null, `overlay=${await overlayOpenId(s)}`, s);
     await pressKey(s, '?', 'Slash', 191, 8);
-    await sleep(300);
+    await waitForExpr(s, `document.getElementById('shortcutsOverlay').classList.contains('open')`, { timeout: 4000 });
     await t('tp-share I: "?" still opens shortcuts for a visitor', (await overlayOpenId(s)) === 'shortcutsOverlay', '', s);
     await pressKey(s, 'Escape', 'Escape', 27);
 
@@ -116,10 +126,13 @@ export async function run({ base, cdpPort }) {
     sx = await openApp(cdpPort, base, { db: dbOf([evil]) });
     await expandTimeline(sx);
     await evaluate(sx, `document.getElementById('searchBox').focus()`);
+    // sequencing waits only: this block exercises the search render paths
+    // with hostile text, so the condition is "the filtered board is drawn"
+    // (a stay whose child matches keeps its wrapper row, so no !Hotel clause)
     await setValue(sx, '#searchBox', 'Dinner');
-    await sleep(700);
+    await waitForExpr(sx, `[...document.querySelectorAll('#board .tp-row .c-title')].some(e=>e.textContent.includes('Dinner'))`, { timeout: 6000 });
     await setValue(sx, '#searchBox', '');
-    await sleep(500);
+    await waitForExpr(sx, `[...document.querySelectorAll('#board .tp-row .c-title')].some(e=>e.textContent.includes('Hotel'))`, { timeout: 6000 });
     await clickSel(sx, '#viewDays', { settle: 900 });
     const fired = await evaluate(sx, `window.__xss`);
     await t('tp-share Q: seeded payloads never execute', fired == null, `__xss=${fired}`, sx);

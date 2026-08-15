@@ -70,13 +70,42 @@ test('sortGames: by date desc puts newest first, missing dateTime last', () => {
     assert.deepEqual(sorted.map(g => g.id), ['new', 'old', 'noDate']);
 });
 
+// Negative goal counts should not exist: the sidebar's goal inputs carry
+// min="0". submitSidebarGame never re-checks the value though, so a typed "-1"
+// is stored as-is (KNOWN DEFECT, see sidebarAddGame.test.js). These tests pin
+// the comparator's ACTUAL behaviour for such rows: it is a total order on the
+// numbers, so negatives sort below zero rather than being treated as missing.
 test('sortGames: by player1 asc handles negative + zero goals', () => {
-    const games = [{ player1Goals: 3 }, { player1Goals: 0 }, { player1Goals: 1 }];
+    const games = [
+        { player1Goals: 3 },
+        { player1Goals: 0 },
+        { player1Goals: -2 },
+        { player1Goals: 1 },
+        { player1Goals: -1 },
+    ];
     const sorted = sortGames(games, 'player1', 'asc');
-    assert.deepEqual(sorted.map(g => g.player1Goals), [0, 1, 3]);
+    assert.deepEqual(sorted.map(g => g.player1Goals), [-2, -1, 0, 1, 3]);
+});
+
+test('sortGames: by player2 desc puts the negatives last', () => {
+    const games = [{ player2Goals: -1 }, { player2Goals: 2 }, { player2Goals: 0 }];
+    const sorted = sortGames(games, 'player2', 'desc');
+    assert.deepEqual(sorted.map(g => g.player2Goals), [2, 0, -1]);
+});
+
+test('compareGames: a negative goal count is ordered below zero, not treated as missing', () => {
+    assert.equal(compareGames({ player1Goals: -1 }, { player1Goals: 0 }, 'player1', 'asc'), -1);
+    assert.equal(compareGames({ player1Goals: 0 }, { player1Goals: -1 }, 'player1', 'asc'), 1);
+    assert.equal(compareGames({ player2Goals: -3 }, { player2Goals: -1 }, 'player2', 'asc'), -1);
+    assert.equal(compareGames({ player2Goals: -2 }, { player2Goals: -2 }, 'player2', 'asc'), 0);
 });
 
 // --- nextGameId -------------------------------------------------------
+// DEAD PATH: nextGameId has exactly one caller, saveGame() in
+// football-h2h.js, and saveGame is itself unreachable (its modal markup was
+// removed from index.html; the live add-game flow is submitSidebarGame, which
+// uses Date.now() for the id). Kept because the helper is still exported and
+// would be the right primitive if sequential ids ever come back.
 
 test('nextGameId: empty / non-array returns 1', () => {
     assert.equal(nextGameId([]), 1);

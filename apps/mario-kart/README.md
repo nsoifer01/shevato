@@ -124,10 +124,55 @@ mario-kart/
 ├── scripts/
 │   └── sync-courses.mjs # Validate / normalize / regenerate courses.json
 ├── tests/                # node:test suites (run via `npm test` from the repo root)
-│   ├── core.test.js     # Core app logic
+│   ├── harness.js       # Shared vm harness (not a test file)
+│   ├── core.test.js     # Roster, date filters, undo/redo, stats, import, backup
+│   ├── dataManager.test.js # addRace / editRace / migrateRaceData
+│   ├── statistics.test.js  # calculateStats edge cases + chronological ordering
+│   ├── dateFilter.test.js  # Rolling week/month window semantics
+│   ├── charts.test.js      # Chart aggregation helpers
 │   └── courses.test.js  # Course dataset integrity + search ranking
 └── README.md            # This file
 ```
+
+## 🧪 Tests
+
+Run from the repo root:
+
+```bash
+npm test                 # every app
+npm run test:mario-kart  # this app only
+```
+
+### What is covered
+
+- **core.test.js** - roster union (`rosterForCount`, `highestPlayerWithRaces`), date-filter plumbing, undo/redo including the `MAX_HISTORY` bound, H2H statistics, import validation, and version-scoped backup/restore keys.
+- **dataManager.test.js** - `addRace` (min-player rule, position range, duplicate positions, course tagging, timestamp build, localStorage write, undo entry), `editRace` (revalidation, timestamp preserve/rebuild/clear, undo and redo, untouched fields), `migrateRaceData` (legacy `slav`/`mike`/`nikita` keys).
+- **statistics.test.js** - `calculateStats` when a player key is absent rather than null (roster widening) and how the chronological sort behaves with legacy timestamp strings.
+- **dateFilter.test.js** - the week/month filters as rolling 7 x 24h and 30 x 24h windows measured from "now", pinned with a frozen clock.
+- **charts.test.js** - the pure aggregation helpers in `charts.js`: weekly activity buckets, comeback analysis, best/worst racing day, pattern analysis.
+- **courses.test.js** - course dataset integrity and search ranking.
+
+### How the harness works
+
+The app's scripts are classic scripts with globals, not modules, so tests load
+them into a `node:vm` context with the runtime globals they expect stubbed
+(`window`, `document`, `localStorage`, `players`, `races`). `tests/harness.js`
+exports that setup:
+
+- `makeContext(extra)` - fresh context with DOM/localStorage stubs plus any globals a test needs.
+- `loadInto(ctx, 'dataManager.js')` - evaluate an app file in that context.
+- `freezeDate(iso)` - a `Date` replacement whose `new Date()` always returns the same instant (needed for the rolling filters and race timestamps).
+- `evalIn(ctx, expr)` - read a top-level `let`/`const` such as `races` or `MAX_HISTORY`, which `vm` does not mirror onto the context object.
+
+Two recurring traps: assigning `ctx.currentDateFilter` is inert (drive the app's
+own setters instead), and values built inside the vm come from the vm's
+intrinsics, so compare joined strings or copied values rather than
+`assert.deepEqual` against a host array.
+
+Known product defects are covered by a regression test that asserts the
+**correct** behaviour and carries `{ todo: 'KNOWN DEFECT: ...' }`, so the run
+stays green while the bug stays documented. Fixing one of those bugs means
+deleting its `todo` option, not rewriting the assertions.
 
 ## 🗺️ Updating Course Data
 

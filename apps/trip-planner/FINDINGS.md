@@ -113,9 +113,17 @@ why, the traps, and the invariants.
   per-client caps are advisory (clientId rotation) - the global/monthly pools
   are the real cost control ($10/month worst case public tier).
 - tp-assist deliberately does NOT refund quota on upstream failure (fails
-  closed); Google's own free-tier limits bind before ours anyway.
+  closed); Google's own free-tier limits bind before ours anyway. Pinned by
+  tests/tp-assist-handler.test.mjs.
 - The origin check is defense-in-depth only (no CORS enforcement, header is
   forgeable); quotas are the actual control.
+- The whole tp-assist handler (config blob -> quota CAS -> Gemini -> reply
+  guards) IS locally testable despite `@netlify/blobs` not being installed:
+  the store import is lazy (inside the handler), so a `node:module`
+  register() hook in the test process redirects that one specifier to an
+  in-memory CAS stub (tests/tp-assist-blobs-stub.mjs + -hooks.mjs) and global
+  fetch stands in for Gemini. The older belief that steps past the body clamp
+  "need a live Netlify Blobs context" is obsolete.
 
 ## PWA / offline
 
@@ -303,8 +311,24 @@ needed it.
   (`TripLogic.slimTripForShare` + CompressionStream('deflate') +
   `TripLogic.bytesToBase64url`) - headless Chrome cannot grant clipboard, so
   never drive `shareTrip()` itself.
+- **Waiting discipline**: suites wait on the real observable condition
+  (`waitForExpr` over DOM or localStorage) rather than fixed sleeps. The only
+  legitimate fixed waits are on NEGATIVE claims (a shortcut that must stay
+  inert, a dropdown that must not open, a request that must not fire), where
+  there is nothing to wait for; each carries a comment saying so. When a wait
+  cannot key on the asserted thing itself (e.g. "the chip does NOT change"),
+  key it on a sibling effect that proves the action landed (the filtered
+  board), then read the claim.
 - **Traps that produced convincing false failures while building this** (all
   are handled in helpers - keep them handled):
+  - **`closePage` takes `(cdpPort, session)`; called with one argument it is
+    a SILENT no-op** (both internal statements throw and are swallowed). The
+    assistant suite did exactly that at every call site, leaking all of its
+    tabs; the leaked pages' storage listeners then reacted to later blocks'
+    seeds, which surfaced as two intermittent "distance chip is empty"
+    failures in the 2b origin checks (diagnosed 2026-08-15: harness bug, not
+    a product bug - three consecutive green runs after the fix). Close every
+    page in a `finally`, with the port.
   - `Page.navigate` from the app to the same URL with a different fragment is
     a HASH CHANGE, not a reload: share-link entry and deep-link boots silently
     do not run. Use `gotoHard()` (bounces through about:blank).
@@ -345,3 +369,17 @@ needed it.
 - Failure artifacts: one screenshot per failing check in
   `.screenshots/e2e-trip-planner/` (gitignored), path printed in the result
   detail. Green runs write nothing.
+- **Known product defect, pinned by a skipped check** (tp-views T,
+  2026-08-15): after a FAILED exchange-rate fetch, `ensureRates()` calls
+  `render()` from `.catch()` while `ratesFetching` is still true - the
+  `.finally()` that clears the flag runs after that render and repaints
+  nothing - so the totals note is left saying "Fetching exchange rates..."
+  until some unrelated render, instead of the promised "Could not fetch..."
+  note + Retry (app.js ~558-569). The recovery render is green (note + Retry
+  + no fake 1:1 conversion, asserted after one interaction); the unprompted
+  path is a `KNOWN DEFECT` skip asserting the correct behavior, so fixing the
+  sequencing turns the skip into a pass with no test edit.
+- The booking-import dialog's proposal cards carry the EMPTY `.ap-dist`
+  scaffold span every card gets (`proposalDistHtml`); the paint pass only
+  fills chips under `#assistMessages`. Assertions about "no chips in the
+  dialog" must therefore check painted TEXT, not element existence.

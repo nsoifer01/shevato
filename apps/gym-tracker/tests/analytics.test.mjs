@@ -124,11 +124,21 @@ test('getCurrentStreak: zero when no sessions', () => {
     assert.equal(AnalyticsService.getCurrentStreak([]), 0);
 });
 
+// getCurrentStreak reads `new Date()` internally with no injection point, so
+// these tests are real-clock by necessity. The relative day keys are computed
+// with LOCAL calendar arithmetic (setDate), never Date.now() - N*86400000:
+// a DST transition makes a "day" 23 or 25 hours long, and the millisecond
+// shortcut then lands on the wrong local date. TZ=UTC is pinned above, but
+// the keys must stay correct even if that pin ever changes.
+const daysAgoKey = (n) => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - n);
+    return AnalyticsService.toLocalDateKey(d);
+};
+
 test('getCurrentStreak: counts back from today through consecutive days', () => {
-    const today = AnalyticsService.toLocalDateKey(new Date());
-    const yesterday = AnalyticsService.toLocalDateKey(new Date(Date.now() - 24 * 3600 * 1000));
-    const dayBefore = AnalyticsService.toLocalDateKey(new Date(Date.now() - 2 * 24 * 3600 * 1000));
-    const sessions = [today, yesterday, dayBefore].map(date =>
+    const sessions = [daysAgoKey(0), daysAgoKey(1), daysAgoKey(2)].map(date =>
         makeSession({ date, sets: [{ weight: 50, reps: 5 }] })
     );
     assert.equal(AnalyticsService.getCurrentStreak(sessions), 3);
@@ -136,9 +146,22 @@ test('getCurrentStreak: counts back from today through consecutive days', () => 
 
 test('getCurrentStreak: allows a one-day grace if no workout today', () => {
     // Streak ending yesterday with nothing today should still report >= 1.
-    const yesterday = AnalyticsService.toLocalDateKey(new Date(Date.now() - 24 * 3600 * 1000));
-    const sessions = [makeSession({ date: yesterday, sets: [{ weight: 50, reps: 5 }] })];
+    const sessions = [makeSession({ date: daysAgoKey(1), sets: [{ weight: 50, reps: 5 }] })];
     assert.equal(AnalyticsService.getCurrentStreak(sessions), 1);
+});
+
+test('getCurrentStreak: a gap before yesterday ends the streak', () => {
+    // today + yesterday logged, then a hole, then an older session: streak 2.
+    const sessions = [daysAgoKey(0), daysAgoKey(1), daysAgoKey(3)].map(date =>
+        makeSession({ date, sets: [{ weight: 50, reps: 5 }] })
+    );
+    assert.equal(AnalyticsService.getCurrentStreak(sessions), 2);
+});
+
+test('getCurrentStreak: a lone workout the day before yesterday is not current', () => {
+    // The one-day grace covers exactly yesterday; two days back is a dead streak.
+    const sessions = [makeSession({ date: daysAgoKey(2), sets: [{ weight: 50, reps: 5 }] })];
+    assert.equal(AnalyticsService.getCurrentStreak(sessions), 0);
 });
 
 test('startOfIsoWeek: returns the local Monday of the containing week', () => {
