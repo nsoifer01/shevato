@@ -368,11 +368,15 @@ function parseUrlState() {
         const view = url.searchParams.get('view');
         const room = url.searchParams.get('room');
         const postMatch = url.searchParams.get('postMatch');
-        const codeRe = /^[A-Z0-9]{3,8}$/;
+        // Single validity notion for room codes: normalizeRoomCode enforces
+        // both the length and the generator alphabet (defect 24). A code the
+        // generator can never emit is rejected here exactly like it is in
+        // the join form, instead of being carried into a doomed lookup.
+        const norm = (v) => (typeof v === 'string' ? RoomState.normalizeRoomCode(v) : '');
         return {
             view: VALID_VIEWS.has(view) ? view : null,
-            room: (typeof room === 'string' && codeRe.test(room.toUpperCase())) ? room.toUpperCase() : null,
-            postMatch: (typeof postMatch === 'string' && codeRe.test(postMatch.toUpperCase())) ? postMatch.toUpperCase() : null
+            room: norm(room) || null,
+            postMatch: norm(postMatch) || null
         };
     } catch (e) {
         return { view: null, room: null, postMatch: null };
@@ -6562,7 +6566,12 @@ function renderTriviaDetailedStats(host) {
     // each carrying `correct` + `category` + `timeLeftMs` + `totalMs`.
     // Kept as the legacy tile grid since trivia doesn't have multi-
     // player per-question detail to compare in a table.
-    const stats = RoomState.aggregateAnswerStats(state.currentAnswers);
+    // Accuracy divides by the room's TOTAL question count, so a skipped
+    // question counts as a miss - the same rule as Globe Drop's
+    // aggregator (defect 25 decision).
+    const totalRounds = Number(state.roomData && state.roomData.totalQuestions)
+        || state.currentAnswers.length;
+    const stats = RoomState.aggregateAnswerStats(state.currentAnswers, totalRounds);
     const push = (label, value, highlight) => {
         const div = document.createElement('div');
         div.className = 'detailed-stat' + (highlight ? ' is-highlight' : '');

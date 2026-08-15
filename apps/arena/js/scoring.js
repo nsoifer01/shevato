@@ -38,14 +38,17 @@
      * Calculate the speed bonus for an answer submitted with `timeLeftMs`
      * remaining out of `totalMs`. Linear decay: full bonus at t=0, zero at
      * the buzzer. Clamps to [0, max] so a late-arriving write past the
-     * server cutoff still scores nonnegative.
+     * server cutoff still scores nonnegative. Non-finite inputs (NaN,
+     * undefined, Infinity) are treated as zero time left - the result
+     * feeds a Firestore increment, so it must never be NaN.
      * @param {number} timeLeftMs
      * @param {number} totalMs
      * @returns {number} integer bonus
      */
     function speedBonus(timeLeftMs, totalMs) {
-        if (!totalMs || totalMs <= 0) return 0;
-        const fraction = Math.max(0, Math.min(1, timeLeftMs / totalMs));
+        if (!Number.isFinite(totalMs) || totalMs <= 0) return 0;
+        const left = Number.isFinite(timeLeftMs) ? timeLeftMs : 0;
+        const fraction = Math.max(0, Math.min(1, left / totalMs));
         return Math.round(Config.SCORE_SPEED_BONUS_MAX * fraction);
     }
 

@@ -63,6 +63,14 @@ test('normalizeRoomCode: returns "" for wrong-length input', () => {
     assert.equal(normalizeRoomCode('ABCDEFGHIJK'), '');
 });
 
+test('normalizeRoomCode: rejects right-length codes with out-of-alphabet chars', () => {
+    // 0/O/1/I/L are excluded from the generator alphabet, so codes
+    // containing them cannot exist and must be rejected (defect 24).
+    assert.equal(normalizeRoomCode('IL0O1'), '');
+    assert.equal(normalizeRoomCode('ABC0E'), '');
+    assert.equal(normalizeRoomCode('abcl2'), '');
+});
+
 // --- questionPhase + timeLeftMs ---------------------------------------
 
 test('questionPhase: null start time => idle', () => {
@@ -133,6 +141,24 @@ test('aggregateAnswerStats: counts accuracy + per-category + avg response', () =
     assert.equal(s.avgResponseMs, Math.round((1000 + 10000 + 15000) / 3));
     assert.deepEqual(s.byCategory.science, { correct: 1, total: 2 });
     assert.deepEqual(s.byCategory.history, { correct: 1, total: 1 });
+});
+
+test('aggregateAnswerStats: totalRounds denominator counts skipped rounds as misses', () => {
+    // Defect 25 decision (2026-08-15): accuracy divides by the game's
+    // total round count, matching aggregateGlobeDropStats. Response time
+    // and by-category stay answered-only (an unanswered question has no
+    // response time or category), mirroring Globe Drop's distance average.
+    const records = [
+        { correct: true,  timeLeftMs: 14000, totalMs: 15000, category: 'science' },
+        { correct: false, timeLeftMs: 5000,  totalMs: 15000, category: 'science' },
+    ];
+    const s = aggregateAnswerStats(records, 5);
+    assert.equal(s.accuracy, 1 / 5);
+    assert.equal(s.avgResponseMs, Math.round((1000 + 10000) / 2));
+    assert.deepEqual(s.byCategory.science, { correct: 1, total: 2 });
+    // Non-positive / missing totalRounds falls back to the answered count.
+    assert.equal(aggregateAnswerStats(records, 0).accuracy, 1 / 2);
+    assert.equal(aggregateAnswerStats(records).accuracy, 1 / 2);
 });
 
 // --- custom asking duration (host-configurable timer) -------------------
