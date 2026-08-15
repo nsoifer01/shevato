@@ -132,7 +132,6 @@ Each is asserted at its CORRECT behavior with `{ todo: 'KNOWN DEFECT: ...' }`
 so `node --test` reports it without failing; fixing the code flips the todo
 into a pass (then remove the todo option). Current list:
 
-- **sw.js offline precache miss** (above) - `sw-offline-behavior.test.mjs`.
 - **Four `===` id comparisons in StorageService** violating the sameId rule
   (next section): `saveProgram` ~99 (duplicates instead of updating),
   `deleteProgram` ~112 (no-op), `deleteCustomExercise` ~222 (no-op),
@@ -209,13 +208,21 @@ lone exercise in superset chrome during a workout (fixed 2026-08-12,
 - `data/exercises-db.json` is precached; **any catalog edit needs a
   `CACHE_VERSION` PATCH bump in `sw.js`** or existing installs keep serving
   the old catalog until the next unrelated bump.
-- **KNOWN DEFECT: the fetch handler never consults the precache.** It opens
-  only the RUNTIME cache (sw.js ~113-121), so a URL that was precached at
-  install but never fetched while online in this SW generation gets
-  `respondWith(undefined)` offline and fails. The entire install-time
-  precaching buys nothing until the handler falls back to the PRECACHE cache
-  (or `caches.match`). Pinned by a `todo` test in
-  `tests/sw-offline-behavior.test.mjs`.
+- **The fetch handler falls back to the gym precache on a runtime miss**
+  (fixed 2026-08-15, `CACHE_VERSION` 1.9.0; was TESTING-AUDIT.md defect 16:
+  it used to open only the RUNTIME cache, so a URL precached at install but
+  never fetched online in that SW generation got `respondWith(undefined)`
+  offline, and the install-time precaching bought nothing). Semantics since
+  the fix: stale-while-revalidate treats "cached" as runtime-first then OWN
+  precache, so a precached URL is served from the precache even online while
+  the background refresh updates RUNTIME. Only `gym-precache-*` is searched,
+  never other apps' caches on this shared origin. Regression tests:
+  `tests/sw-offline-behavior.test.mjs` (vm) and the pwa-gym browser suite.
+- Same-origin assets OUTSIDE the app dir (`../../assets/*`, sync-system, the
+  two shared mario-kart CSS files) are intercepted but deliberately NOT
+  precached; they ride the runtime cache only, so a fully cold offline first
+  visit still lacks them. Widening the precache to cross-app paths is a
+  product decision, not part of the fallback fix.
 - Two failure modes are pinned by `tests/sw-precache-completeness.test.mjs`:
   a new `js/` module missing from `PRECACHE_URLS` breaks OFFLINE ONLY, and a
   listed-but-deleted file fails the whole install (cache.addAll is atomic),
