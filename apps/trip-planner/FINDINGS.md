@@ -139,12 +139,119 @@ why, the traps, and the invariants.
 - `getComputedStyle` lies after class swaps; trust pixels (screenshots) and
   DOM facts. Serve on 8082+ (8080 owner, 8081 schwabbot).
 
+## Assistant: modes, and where a suggestion is measured from
+
+Two failures reported together on 2026-08-14, with one shape between them:
+something that belongs to the GUIDED picker had been written into the shared
+layer, and something the app already knew had not been given to the layer that
+needed it.
+
+- **Two different things get called "the option count", and only one is the
+  traveller's to choose.** How many SLOTS a day gets (Activities 1-2 / 2-3 /
+  3-4, Drinks Skip / 1-2 / 2-3, which meals) is picked in the UI and carried by
+  `buildPlanRequest`, which prints it back verbatim ("I would like 3-4
+  activities", "Do not suggest breakfast, lunch or drinks"). How many
+  CANDIDATES each slot offers (3 for a meal or drinks slot, 2 for anything
+  else) is fixed, is not exposed anywhere in the picker, and is what the
+  pick-one card is built around. `ASSIST_OPTIONS_PLAN` states only the second
+  and scopes itself to "the slots the traveller asked for", so it cannot
+  override the first; pinned by tests, because "guided respects the controls"
+  and "guided counts stay 3 and 2" are both true and easy to conflate.
+- **A cap on free-form chat is a product rule wearing a technical costume.**
+  The first cut of this replaced "exactly 3" with "up to 8 per slot", which is
+  the same unexplained refusal with a bigger number in it - a traveller asking
+  for ten restaurants is not asking for anything the app cannot render. The
+  chat rule now carries NO number. The real ceiling is reply SIZE, not count:
+  `GENERATION_CONFIG.maxOutputTokens` bounds a Gemini turn and the fenced JSON
+  sits at the END of the answer, so an overrun truncates exactly the part that
+  becomes the cards. That is handled where it lives (the server appends
+  `TRUNCATION_NOTE` on `MAX_TOKENS`) and stated in the prompt as the
+  degradation to prefer: cover what fits, say how much, offer to continue.
+- **A travel leg is not a venue, and it was dressed as one.** The reported
+  "Return to hotel" card carried the hotel's own 4.8 (958) star rating, because
+  `proposalCard` and `mapsHtmlFor` both keyed off "does this have a mapsQuery"
+  rather than "what is this". A leg HAS a real mapsQuery on purpose (see
+  ASSIST_MAPSQUERY: the return action carries the hotel's actual name so the
+  distance chip has something to measure to), which is exactly why the TYPE has
+  to be what decides. `isPlaceType` / `isTravelLeg` own that split now: a place
+  gets the rating and the listing, a leg gets `Directions` from where it starts
+  in the mode its distance implies, and no rating anywhere. A leg's estimated
+  COST stays, because a taxi fare describes the leg; a rating describes a
+  choice nobody is making. Side benefit: a leg makes no billed Places call.
+- **`dayDistanceChain` legs carry `fromQuery`/`toQuery`** alongside the labels,
+  because a label is an item title ("Return to hotel") and routes nowhere. That
+  is what lets a Days-view leg row open directions from the previous stop;
+  Timeline has no chain and stays destination-only, which is honest rather than
+  guessed.
+- **The picker's option counts are the picker's, not the assistant's.**
+  "EXACTLY 3 candidates per meal or drinks slot" lived in
+  `buildAssistSystemPrompt`, which every tier and every turn builds, so a
+  free-form "give me 5 options, not 3" was answered with "my instructions
+  require exactly 3". The prompt now splits into `ASSIST_GROUPS_MECHANIC` (how
+  a set is expressed - permanent contract, the pick-one card is built on the
+  shared group id) and `assistOptionRules(mode)` (how many - `plan` keeps the
+  fixed counts, `chat` honours the traveller's number up to
+  `ASSIST_MAX_OPTIONS`). **The default is `chat` everywhere**, client and
+  server: an unknown or missing mode must never inherit the bounded counts.
+  Mode is per REQUEST, not per conversation, so a follow-up typed into the
+  composer is free-form mid-thread. `runPlanRequest` is the ONLY caller that
+  passes `'plan'`. Nothing downstream ever capped the count - `groupProposals`
+  and the set card render N candidates - so this was a prompt bug alone.
+- **`dayAnchor` and `proposalOrigin` answer different questions.** dayAnchor is
+  "where does this DAY open" and the Days-view chain needs it to be the airport
+  on an arrival day (the first chip is "gate to hotel"). A SUGGESTION lands at
+  an hour: `proposalOrigin(items, date, time, isResolved)` walks the day's own
+  plans for the last one placed before that hour, and a leg is ordered by when
+  it LANDS, never when it leaves (at 10:00 on a flight that departs 09:00 and
+  lands 13:30 the traveller is in the air). Once the day has a bed, a leg that
+  arrived earlier stops being the origin. `dayBaseOrigin` is a third question -
+  "where is the traveller BASED that day" - and exists only for the prompt,
+  which needs one place to reason about a whole day from.
+- **Why the reported card had no distance at all.** All three of: the anchor
+  came from the focus day rather than the card's own day and time, so an
+  arrival-day evening measured from an airport whose table
+  `paintAssistDistances` never loaded; the anchor's own venue query was never
+  queued for a lookup (paintDayDistances does queue it, the assistant path did
+  not); and the airport then fell back to the city centroid the suggestion also
+  fell back to, which `sameSpot` correctly drops as a fake 0.0 km. Cache-cold
+  plus same-centroid renders NOTHING, which is right, and was indistinguishable
+  from broken.
+- **The model has to be told the app measures distance.** Without
+  `ASSIST_DISTANCE` it volunteered "I do not have access to live GPS or
+  real-time traffic data, so I cannot calculate the travel distance" - true of
+  the model, false of the product, and it talked the traveller out of a figure
+  already on screen. The same paragraph forbids inventing one in prose, which
+  is the failure mode the first half invites.
+- The pre-add and post-add figures agree BY CONSTRUCTION, not by a second
+  implementation: an accepted proposal is an ordinary itinerary item and
+  `proposalOrigin` finds it like any other plan for that hour. The old
+  `assistAcceptedPoint` (a "last accepted place" the panel carried alongside
+  the trip) was deleted for exactly that reason - it was a parallel copy of
+  state that had to be kept in step with the day, the clock and the focus.
+- A route line is the order to visit a day's PLACES in, so only `activity`
+  proposals are stops. Routing a `local` "Return to hotel" put a numbered "1"
+  on the ride home and walked home first.
+- Distance wording is NOT split like the weather chips, and that was a
+  correction: the first cut left the travel estimate in the tooltip, which is
+  invisible on a phone and needs a hover on a desktop, so in practice the
+  traveller saw a distance and no time. The chip now carries the time, the
+  distance and the origin (`🚶 ~20 min walk · ~1.3 km / 0.8 mi from Hotel
+  Borg`); only the straight-line caveat and the mode it did not name stay in
+  the tooltip. Minutes are spelled out because `fmtDur`'s "20m" reads as
+  twenty METRES beside a distance - `fmtMins` exists for exactly that, and
+  `fmtDur` is left alone for the route dialog, where there is no distance next
+  to it.
+- Which mode gets named is a judgement, not a threshold for its own sake:
+  under `WALKABLE_KM` the walk is the useful answer for an evening out, above
+  it the walk is computable and useless ("1 hr 3 min on foot" is not how anyone
+  crosses a city) so the ride is named instead. The directions link uses the
+  SAME judgement, so a card cannot promise a walk and hand over driving.
+
 ## Decisions from the 2026-08-13 audit round
 
 - Assistant replies land only in the thread of the trip that asked
   (`handleAssistantReply` guards on trip id; history is keyed by trip id so
-  nothing is lost). Accepting a proposal moves the distance anchor only when
-  the added item is on the focus day.
+  nothing is lost).
 - Rejected feature ideas, on purpose: a "trip readiness" dashboard (the
   warnings panel + Progress chip already answer it; a second surface would
   dilute both), a today-view (trip-in-progress mode + Up next chip cover it),
@@ -177,8 +284,11 @@ why, the traps, and the invariants.
   suite paths, `--only=<substring>` and `--headed`; the driver gained
   `evalAsync`, `waitForExpr`, key modifiers, `interceptNetwork` (CDP Fetch),
   `setOffline`, and service-worker target attachment. Suites live with the app
-  (`e2e/core|trips-sync|share|views|ui|pwa.mjs` + `helpers.mjs`) and are
-  registered in `tests/browser/run.mjs` SUITES.
+  (`e2e/core|trips-sync|share|views|ui|assistant|pwa.mjs` + `helpers.mjs`) and
+  are registered in `tests/browser/run.mjs` SUITES. The assistant suite drives
+  the Tier 1 paste flow, which reaches the same extract -> validate ->
+  renderProposals -> refreshDistances path a live reply takes with no network
+  and no key, and reads guided-vs-free-form mode off the intercepted POST body.
 - **State seeding**: app state is closure-scoped, so `openApp()` seeds
   `trip-planner:v1` and reloads (never pokes internal state). Fixtures build
   deterministic dbs with dates relative to today (`iso(offset)`), ids
@@ -209,6 +319,21 @@ why, the traps, and the invariants.
     "CHECK IN". Match case-insensitively.
   - Double-submit is reproduced with two synchronous `form.requestSubmit()`
     calls - same handler a double-click reaches, but deterministic.
+  - **`openApp`'s seed can be clobbered by the app it is seeding.** The seed
+    must be written on the app's origin, so a page is already running while we
+    clear and re-write under it, and `ensureTrip` then creates an empty default
+    trip and saves it AFTER our `setItem`. A suite whose first assertion needs
+    an ITEM fails; one that only counts rendered cards passes, which is what
+    made it intermittent and very hard to read. `openApp` now verifies the item
+    count the rebooted app actually holds and re-seeds up to three times.
+  - **`waitReady` cannot tell a reloaded page from the one already open**:
+    `__TP_BUILD` and `#board` are equally true of both. Anything that must be
+    read AT BOOT (the geocode and venue caches are read into closure state
+    exactly once) therefore cannot be warmed by write-then-reload and verified
+    by reading localStorage back - the read-back passes on the stale page too.
+    Pass it through `openApp`'s `stores` option instead, which lands before the
+    app's first load; compute cache keys in Node with the app's own
+    `placeCacheKey` so a fixture key can never drift from what the app writes.
   - Offline must be emulated on the page target AND the service-worker
     target(s); page-only lets the worker fetch from the network.
 - **What stays out of E2E**: activate-event cache eviction and update-toast

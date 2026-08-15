@@ -2594,10 +2594,15 @@
      recommendation, and the footer answers "in what order should I do them".
      Both are estimates over straight lines, so both stay quiet: dashed and
      dimmed, never competing with the title or the rating. */
+  /* The chip now names its ORIGIN ("~1.3 km / 0.8 mi from Hotel Borg"), which
+     a hotel name can easily push past a 390px panel, so it wraps instead of
+     running off the card. The radius stays above half the one-line height, so
+     a single-line chip is still a pill and a wrapped one is a rounded box
+     rather than a lozenge with two huge ends. */
   .ap-dist {
-    align-self: flex-start; display: inline-flex; align-items: center;
-    font-size: 11.5px; font-weight: 600; white-space: nowrap; color: var(--text-dim);
-    border: 1px dashed var(--border); border-radius: 999px; padding: 2px 9px;
+    align-self: flex-start; display: inline-flex; align-items: center; max-width: 100%;
+    font-size: 11.5px; font-weight: 600; color: var(--text-dim); overflow-wrap: anywhere;
+    border: 1px dashed var(--border); border-radius: 12px; padding: 2px 9px;
   }
   .ap-dist:empty { display: none; }
   .as-opt .ap-dist { margin-left: 28px; }

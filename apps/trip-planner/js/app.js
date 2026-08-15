@@ -23,7 +23,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 60;
+  const TP_BUILD = 62;
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   const TYPE_META = {
@@ -98,9 +98,11 @@
     FORECAST_DAYS, forecastEligible, forecastKey, forecastFresh, freshForecasts, summarizeForecast, forecastLine, forecastChipParts,
     extractTripActions, validateTripAction, buildAssistPackage, buildAssistSystemPrompt,
     buildPlanRequest, groupProposals, linkifySegments, parseMarkdown,
-    placeCacheKey, planPlacesLookup, placesCacheUpdates, mapsSearchUrl, assistMapsLink, costDisplayParts,
+    normalizePlaceQuery, placeCacheKey, planPlacesLookup, placesCacheUpdates, mapsSearchUrl, assistMapsLink, costDisplayParts,
     normalizeVenueCache, rememberVenue, placesLocationUpdates, pickVenueFeature,
     dayAnchor, dayDistanceChain, shortestRoute, routeStops, distanceChipLabel, distanceChipTitle, routeFooterText,
+    proposalOrigin, dayBaseOrigin, suggestionOrigins, assistDistanceChipLabel, assistDistanceChipTitle,
+    isPlaceType, isTravelLeg, directionsUrl, legTravelMode,
     hasEstimate, displayCostOf, parseMoney, roundMoney, budgetVerdict, refundParts,
     readBudgetRange, normalizeBudgetFrom, budgetFigure,
     matchSampleTrip, sampleTripOptions, buildSampleTrip,
@@ -786,10 +788,28 @@
       + `<span class="tpm-label">Google Maps</span></a>`;
   }
 
+  // A travel leg that names a real destination (a "Return to hotel" carries the
+  // hotel's own name on purpose) opens DIRECTIONS to it rather than a place
+  // listing with a star rating on it: the rating answers "is this worth going
+  // to", and the ride home to a hotel you already booked is not a venue anyone
+  // is choosing. It also costs nothing - no data-place-key means hydrateRatings
+  // never asks Places for it - and the destination's coordinates still arrive
+  // through the stay's own lookup and the Photon top-up, so the distance chip
+  // is unaffected.
+  function tripDirectionsHtml(it) {
+    const dest = itemMapsQuery(it);
+    const href = dest ? directionsUrl('', dest, legTravelMode(it.type, null)) : '';
+    if (!href) return '';
+    return `<a class="tp-maps-link tp-dir-link" data-dir-dest="${esc(dest)}" data-dir-type="${esc(it.type)}"`
+      + ` href="${esc(href)}" target="_blank" rel="noopener">`
+      + `<span class="tpm-label">Directions</span></a>`;
+  }
+
   // The one place both views ask "does this item open on Maps at all?", so a
   // hotel, a restaurant and a museum can never diverge on whether they get the
-  // section (see itemMapsQuery for which types derive a query).
-  const mapsHtmlFor = it => tripMapsRatingHtml(itemMapsQuery(it));
+  // section (see itemMapsQuery for which types derive a query), and a leg can
+  // never diverge from another leg on getting directions instead of a rating.
+  const mapsHtmlFor = it => (isTravelLeg(it) ? tripDirectionsHtml(it) : tripMapsRatingHtml(itemMapsQuery(it)));
 
   // The issue list render() last built. computeIssues is O(n^2) over stays (the
   // overlap check) and over timed items (sameTimeCollisions), and the day view
@@ -5159,12 +5179,12 @@
       const ap = airportPointByIata(d.anchorIata);
       if (ap) return { ...ap, label };
     }
-    const p = placePoint({
-      query: anchor ? d.anchorQ : d.distQ,
-      name: anchor ? d.anchorName : d.distName,
-      city: anchor ? d.anchorCity : d.distCity,
-    });
-    return p ? { ...p, label } : null;
+    const query = anchor ? d.anchorQ : d.distQ;
+    const city = anchor ? d.anchorCity : d.distCity;
+    const p = placePoint({ query, name: anchor ? d.anchorName : d.distName, city });
+    // `query` is what a DIRECTIONS link can be built from, which the coordinates
+    // cannot be: Maps wants a place, not a lat/lon the traveller never typed.
+    return p ? { ...p, label, query: query || city || '' } : null;
   }
   // A venue worth asking Photon about: it has a query of its own and no cached
   // point yet. Collected while painting, so only rows that are on screen right
@@ -5176,6 +5196,16 @@
   function writeDistChip(row, leg) {
     const facts = row.querySelector('.dc-facts');
     if (!facts) return;
+    // A leg row renders its directions link destination-only, because the
+    // Timeline has no chain to ask. In Days view there IS one, so the link can
+    // say where the leg starts and open in the mode the distance implies rather
+    // than the safe transit default.
+    const dir = row.querySelector('.tp-dir-link');
+    if (dir && leg) {
+      const href = directionsUrl(leg.fromQuery || '', dir.dataset.dirDest || '',
+        legTravelMode(dir.dataset.dirType || '', leg.km));
+      if (href && dir.getAttribute('href') !== href) dir.setAttribute('href', href);
+    }
     let chip = facts.querySelector('.dc-dist');
     if (!leg) { if (chip) chip.remove(); return; }
     if (!chip) {
@@ -5213,43 +5243,145 @@
     });
   }
 
-  // The point the assistant's chips measure from: the focus day's own anchor
-  // (its covering stay, else its morning city) until the traveller accepts
-  // something, and after that the place they just accepted, so the next chips
-  // answer "how far from where I have now decided to be".
-  let assistAcceptedPoint = null;
-  function assistAnchorPoint() {
-    if (assistAcceptedPoint) return assistAcceptedPoint;
-    const trip = activeTrip();
-    if (!trip || !isIsoDate(assistFocusDate)) return null;
-    const spec = dayAnchor(trip.items, assistFocusDate, geoResolved);
+  // One spec (from dayAnchor or proposalOrigin) -> a point, against the caches
+  // only. An 'arrival' spec is a travel LEG, not a place: the airports table
+  // (or its city fallback) locates it, never the venue/name rungs. The
+  // hotel-picker rung is offered to a STAY alone, exactly as itemDistAttrs
+  // does it: that rung looks the TITLE up in the geocode cache, which is a
+  // doorstep for a hotel the traveller picked and a coincidence for an
+  // activity that happens to be named after a city.
+  function resolveOriginPoint(spec) {
     if (!spec) return null;
-    // an 'arrival' spec is a travel leg, not a place: the airport rung (or
-    // its city fallback) locates it, never the venue/name rungs
     const p = (spec.iata && airportPointByIata(spec.iata))
       || (spec.item && spec.source !== 'arrival'
-        ? placePoint({ query: itemMapsQuery(spec.item), name: displayTitle(spec.item), city: spec.city })
+        ? placePoint({
+          query: itemMapsQuery(spec.item),
+          name: isStay(spec.item) ? displayTitle(spec.item) : '',
+          city: spec.city,
+        })
         : cityPoint(spec.city));
-    return p ? { ...p, label: spec.label } : null;
+    if (!p) return null;
+    // an arrival names its airport/station as the place to route FROM; anything
+    // else names its own venue, falling back to its city
+    const query = spec.source === 'arrival'
+      ? (spec.label || spec.city || '')
+      : (itemMapsQuery(spec.item || {}) || spec.city || '');
+    return { ...p, label: spec.label, query };
+  }
+
+  // Everything an origin needs before it can answer: its own venue coordinates
+  // (the hotel is a venue like any other, and asking for it is what turns a
+  // "both ends fell back to the same city centroid" non-answer into a real
+  // number), and the airports table when it is an arrival the bundled file can
+  // pin. paintDayDistances does both for the Days grid; the assistant used to
+  // do neither, which is why an arrival-day suggestion silently had no chip.
+  function primeOrigin(spec, wanted) {
+    if (!spec) return;
+    if (spec.iata && !airportRows && !airportKickoff) {
+      airportKickoff = true;
+      loadAirports().then(() => { if (airportRows) refreshDistances(); });
+    }
+    if (spec.item && spec.source !== 'arrival') wantVenue(wanted, itemMapsQuery(spec.item));
+  }
+
+  // Where a given suggestion is measured from. Cached per (date, time) because
+  // one reply routinely carries three candidates for the same slot and a whole
+  // day's worth of slots.
+  function originPointFor(specCache, date, time, wanted) {
+    const key = date + '|' + time;
+    if (specCache.has(key)) return specCache.get(key);
+    const trip = activeTrip();
+    const spec = trip ? proposalOrigin(trip.items, date, time, geoResolved) : null;
+    primeOrigin(spec, wanted);
+    const point = resolveOriginPoint(spec);
+    specCache.set(key, point);
+    return point;
   }
 
   // Scoped to the assistant's own log on purpose: the booking-import dialog
   // renders the SAME proposal cards, and a flight read off a confirmation
-  // measured from the assistant's focus-day hotel would be a number about
-  // nothing. Its cards carry the (empty, hidden) slot and no chip.
+  // measured from an itinerary hotel would be a number about nothing. Its cards
+  // carry the (empty, hidden) slot and no chip.
+  //
+  // Two passes, because a card's origin can be another card: first resolve
+  // every chip's own point, then ask suggestionOrigins which of them (or which
+  // itinerary item) each one starts from, then write the chips. That is what
+  // makes "Return to hotel" at 21:30 read as the leg home from the 20:00 bar
+  // instead of a zero-length hop from the hotel it ends at.
   function paintAssistDistances(wanted) {
-    const anchor = assistAnchorPoint();
-    document.querySelectorAll('#assistMessages .ap-dist').forEach(el => {
+    const specCache = new Map();
+    const chips = [...document.querySelectorAll('#assistMessages .ap-dist')];
+    // A SLOT, not a chip, is the unit the chaining works in: three dinner
+    // candidates are one decision about one place to be, so they all measure
+    // from the same origin, and whatever comes after them measures from the one
+    // the traveller PICKED (its first option until they pick another) rather
+    // than from whichever candidate happened to be rendered last. That is the
+    // same rule routeStops applies to the route line, so the two never disagree.
+    const slots = [];
+    const byCard = new Map();
+    for (const [i, el] of chips.entries()) {
       wantVenue(wanted, el.dataset.distQ);
-      const p = readPoint(el, 'dist');
-      // one leg through the same builder the day chain uses, so a recommendation
-      // at the hotel's own address is suppressed by the same rule
-      const leg = p ? dayDistanceChain(anchor, [{ ...p, id: 0 }])[0] : null;
-      if (!leg) { el.textContent = ''; el.removeAttribute('title'); return; }
-      el.textContent = distanceChipLabel(leg.km);
-      el.title = distanceChipTitle(leg.km, leg.from);
-    });
-    paintAssistRoutes(anchor);
+      const card = el.closest('.assist-proposal');
+      const point = readPoint(el, 'dist');
+      if (!byCard.has(card)) {
+        byCard.set(card, slots.length);
+        slots.push({
+          id: slots.length, card, chips: [],
+          date: (card && card.dataset.date) || '',
+          time: el.dataset.distTime || '',
+        });
+      }
+      slots[byCard.get(card)].chips.push({ el, point: point ? { ...point, id: i } : null });
+    }
+    for (const slot of slots) {
+      const picked = slot.card ? selectedOptionIndex(slot.card) : 0;
+      const at = picked < slot.chips.length ? picked : 0;
+      slot.point = slot.chips[at].point;
+    }
+    const origins = suggestionOrigins(slots, (date, time) => originPointFor(specCache, date, time, wanted));
+    for (const slot of slots) {
+      const origin = origins.get(slot.id);
+      let km = null;
+      for (const chip of slot.chips) {
+        // one leg through the same builder the day chain uses, so a suggestion
+        // at its own origin's address is suppressed by the same rule
+        const leg = chip.point ? dayDistanceChain(origin, [chip.point])[0] : null;
+        if (!leg) { chip.el.textContent = ''; chip.el.removeAttribute('title'); continue; }
+        chip.el.textContent = assistDistanceChipLabel(leg.km, leg.from);
+        chip.el.title = assistDistanceChipTitle(leg.km, leg.from);
+        if (km == null) km = leg.km;
+      }
+      // Now that the leg's start and its length are known, a directions link
+      // can name both. Done here rather than at render time because the origin
+      // is not knowable until the whole batch has been chained.
+      upgradeDirLink(slot.card, origin, km);
+    }
+    paintAssistRoutes(specCache, wanted);
+  }
+
+  // A leg card's directions link is rendered destination-only (see
+  // proposalPlaceHtml) because neither the start nor the distance is known
+  // until the batch has been chained. Once they are, the link says where the
+  // leg starts and opens in the mode the chip just named, so a card cannot
+  // suggest a 20-minute walk and then hand over driving directions.
+  function upgradeDirLink(card, origin, km) {
+    const link = card && card.querySelector('.assist-dir-link');
+    if (!link) return;
+    const href = directionsUrl(
+      (origin && origin.query) || '',
+      link.dataset.dirDest || '',
+      legTravelMode(link.dataset.dirType || '', km),
+    );
+    if (href && link.getAttribute('href') !== href) link.setAttribute('href', href);
+  }
+
+  // Which option of an alternative set is in play. Nothing picked yet stands at
+  // the first, which is the order the candidates are already rendered in; a
+  // plain single card is its own only option.
+  function selectedOptionIndex(card) {
+    if (!card.classList.contains('assist-set')) return 0;
+    const opts = [...card.querySelectorAll('.as-opt')];
+    return Math.max(0, opts.findIndex(el => el.querySelector('input[type="radio"]:checked')));
   }
 
   // The order pill and the footer are painted together and removed together:
@@ -5268,13 +5400,23 @@
     op.insertBefore(pill, op.firstChild);
   }
 
-  function paintAssistRoutes(anchor) {
+  // The walk starts where the DAY starts, not where an individual card starts:
+  // a route line is the order to visit a day's suggestions in, so its anchor is
+  // that day's own origin with no time. One reply can plan several days, and
+  // each group is now anchored to its own day rather than all of them to the
+  // first day's hotel.
+  function paintAssistRoutes(specCache, wanted) {
     document.querySelectorAll('#assistMessages .assist-proposals').forEach(box => {
       box.querySelectorAll('.ap-order').forEach(el => el.remove());
       box.querySelectorAll('.assist-route').forEach(el => el.remove());
-      if (!anchor) return;
       const byDate = new Map();
       box.querySelectorAll('.assist-proposal[data-op="add"]').forEach(card => {
+        // A route is the order to visit a day's PLACES in. A travel leg is not
+        // one of them: "Return to hotel" at 21:30 is where the evening ends by
+        // definition, and letting the optimiser reorder it produced a numbered
+        // "1" on the ride home and a route that walked home first. Only an
+        // activity (a sight, a meal, a bar) is a stop.
+        if ((card.dataset.type || '') !== 'activity') return;
         // an accepted or stale card has had its body replaced, so its slots are
         // gone and it drops out of the route by construction
         const slots = card.classList.contains('assist-set')
@@ -5287,14 +5429,14 @@
         group.push({
           card,
           options: slots.map(el => readPoint(el.querySelector('.ap-dist'), 'dist')),
-          // nothing picked yet: the set stands at its first option, which is
-          // what its cards are already ordered by
-          selected: Math.max(0, slots.findIndex(el => el.querySelector('input[type="radio"]:checked'))),
+          selected: selectedOptionIndex(card),
         });
       });
-      for (const group of byDate.values()) {
+      for (const [date, group] of byDate) {
         const stops = routeStops(group.map((e, i) => ({ id: i, options: e.options, selected: e.selected })));
         if (stops.length < 2) continue;
+        const anchor = originPointFor(specCache, date, '', wanted);
+        if (!anchor) continue;
         const route = shortestRoute(anchor, stops);
         if (!route) continue;
         route.stops.forEach((s, i) => addOrderPill(group[s.id].card, i + 1, anchor.label));
@@ -6427,7 +6569,6 @@
       $('#assistMessages').innerHTML = '';
       assistActions.clear();
       assistFocusDate = null;
-      assistAcceptedPoint = null;
       setupCollapsed = false;
     }
     if (focusDate && isIsoDate(focusDate)) assistFocusDate = focusDate;
@@ -6508,7 +6649,6 @@
       $('#assistMessages').innerHTML = '';
       assistActions.clear();
       assistFocusDate = null;
-      assistAcceptedPoint = null;
       delete panel.dataset.focusDate;
       planMemory.clear(); // another trip's day prefs must not leak into this one
       renderFocusChip();
@@ -6928,16 +7068,40 @@
     el.style.height = Math.min(el.scrollHeight, COMPOSER_MAX_H) + 'px';
   }
 
+  // The composer is FREE-FORM by definition: whatever the traveller typed,
+  // under the chat contract. It must never inherit the guided picker's fixed
+  // option counts, which is exactly what happened while both paths shared one
+  // system prompt - a plain "give me 5 options" came back as "my instructions
+  // require exactly 3".
   function sendChat() {
     const input = $('#assistInput');
     const text = (input.value || '').trim();
     if (!text || assistSending) return;
     input.value = '';
     autoGrowInput();
-    sendMessage(text);
+    sendMessage(text, 'chat');
   }
 
-  async function sendMessage(text) {
+  // The origin the MODEL is told about, so its prose and the cards it triggers
+  // cannot disagree about where the day starts. The same function the chips
+  // use, asked about the focus day with no particular hour, flattened to plain
+  // strings because this travels over the wire to Tier 3 and into the
+  // copy/paste package.
+  function assistOriginContext() {
+    const trip = activeTrip();
+    if (!trip || !isIsoDate(assistFocusDate)) return null;
+    // dayBaseOrigin, not proposalOrigin: the model needs ONE place to reason
+    // about the whole day from, and on the arrival day that is the hotel rather
+    // than the airport the day technically opens at.
+    const spec = dayBaseOrigin(trip.items, assistFocusDate, geoResolved);
+    if (!spec || !spec.label) return null;
+    return { date: assistFocusDate, label: String(spec.label), city: String(spec.city || ''), source: String(spec.source || '') };
+  }
+
+  // `mode` is per TURN, never per conversation: the picker's contract applies
+  // to the turn the picker sent and to nothing after it, so a follow-up typed
+  // into the composer is answered as free-form even mid-thread.
+  async function sendMessage(text, mode) {
     if (assistSending) return;
     const trip = activeTrip();
     if (!trip) return;
@@ -6955,8 +7119,8 @@
     const typing = showTyping();
     try {
       const reply = assistTier === 'site'
-        ? await callSiteAssistant(history, trip)
-        : await callByokProvider(history, trip);
+        ? await callSiteAssistant(history, trip, mode)
+        : await callByokProvider(history, trip, mode);
       typing.remove();
       handleAssistantReply(reply, tripId);
     } catch (err) {
@@ -6971,12 +7135,14 @@
   function assistError(msg) { const e = new Error(msg); e.userMessage = msg; return e; }
 
   // ---------- provider requests ----------
-  async function callByokProvider(history, trip) {
+  async function callByokProvider(history, trip, mode) {
     const provider = assistProvider();
     const model = assistModel();
     const key = loadKey(provider);
     if (!key) throw assistError('Add your ' + PROVIDER_META[provider].label + ' API key first.');
-    const sys = buildAssistSystemPrompt({ trip, focusDate: assistFocusDate, today: todayIso() });
+    const sys = buildAssistSystemPrompt({
+      trip, focusDate: assistFocusDate, today: todayIso(), mode, origin: assistOriginContext(),
+    });
 
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 60000);
@@ -7038,7 +7204,7 @@
   }
 
   // ---------- Tier 3: site assistant ----------
-  async function callSiteAssistant(history, trip) {
+  async function callSiteAssistant(history, trip, mode) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 60000);
     let res;
@@ -7047,7 +7213,10 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tripContext: { trip: slimTripForShare(trip), focusDate: assistFocusDate || null, today: todayIso() },
+          tripContext: {
+            trip: slimTripForShare(trip), focusDate: assistFocusDate || null, today: todayIso(),
+            mode: mode || 'chat', origin: assistOriginContext(),
+          },
           messages: history.slice(-CHAT_CAP),
           clientId: assistClientId(),
         }),
@@ -7416,9 +7585,6 @@
 
   function setAssistFocus(date) {
     assistFocusDate = (date && isIsoDate(date)) ? date : null;
-    // A different day starts from that day's own bed again: the place accepted
-    // on the previous day is not where this one begins.
-    assistAcceptedPoint = null;
     const panel = $('#assistPanel');
     if (assistFocusDate) panel.dataset.focusDate = assistFocusDate; else delete panel.dataset.focusDate;
     renderFocusChip();
@@ -7442,13 +7608,17 @@
   function runPlanRequest() {
     if (!planPrefs || !planUsable(planPrefs) || assistSending) return;
     const text = buildPlanRequest(planPrefs, activeTrip());
+    // The ONE path that carries the guided contract: the picker composed this
+    // request, so its bounded slot counts are what the traveller chose.
     if (assistTier === 'copy') { copyAssistPackage(text); return; }
-    sendMessage(text);
+    sendMessage(text, 'plan');
   }
 
   async function copyAssistPackage(request) {
     const trip = activeTrip();
-    const pkg = buildAssistPackage({ trip, focusDate: assistFocusDate, request });
+    const pkg = buildAssistPackage({
+      trip, focusDate: assistFocusDate, request, mode: 'plan', origin: assistOriginContext(),
+    });
     try { await navigator.clipboard.writeText(pkg); toast('Request copied. Paste it into any AI.'); }
     catch { window.prompt('Copy the assistant package:', pkg); }
   }
@@ -7699,15 +7869,39 @@
   // fields it WOULD create. A remove proposal carries no fields and therefore
   // no chip: it is a place leaving the plan, not one to walk to. No hotel-name
   // rung either, since nothing the model suggests has been through the picker.
+  // The start time rides along because the origin is a question about the HOUR
+  // ("where am I at 21:30"), not just about the day.
   function proposalDistAttrs(p) {
     const f = p.fields;
     if (!f) return '';
     const query = itemMapsQuery({ type: f.type, title: f.title, location: f.location, mapsQuery: p.display.mapsQuery });
     const city = String(f.location || '').trim();
     if (!query && !city) return '';
-    return distAttrs(query, '', city, f.title || '');
+    const time = /^\d{2}:\d{2}$/.test(String(f.startTime || '')) ? f.startTime : '';
+    return distAttrs(query, '', city, f.title || '') + ` data-dist-time="${esc(time)}"`;
   }
   const proposalDistHtml = p => `<span class="ap-dist"${proposalDistAttrs(p)}></span>`;
+
+  // What a proposal's Maps action should BE, which depends on what the proposal
+  // is. A place is somewhere you might choose: it gets the star rating and a
+  // link to the listing. A leg is how you get somewhere: it gets directions,
+  // and no rating, because "Return to hotel · 4.8 (958)" reads as a venue
+  // recommendation for a ride the traveller is not choosing between.
+  //
+  // The href starts destination-only; the distance pass fills the origin and
+  // the travel mode in once it knows where the leg starts and how far it is
+  // (see upgradeDirLink), the same way the ratings pass upgrades a search link
+  // to a resolved place.
+  function proposalPlaceHtml(p) {
+    const d = p.display;
+    const type = (p.fields || {}).type || '';
+    if (!isTravelLeg({ type })) return ratingSlotHtml(d.mapsQuery) + assistMapsLinkHtml(d.mapsQuery);
+    const dest = normalizePlaceQuery(d.mapsQuery || '');
+    if (!dest) return '';
+    const href = directionsUrl('', dest, legTravelMode(type, null));
+    return `<a class="assist-maps-link assist-dir-link" data-dir-dest="${esc(dest)}" data-dir-type="${esc(type)}"`
+      + ` href="${esc(href)}" target="_blank" rel="noopener">🧭 Directions on Google Maps</a>`;
+  }
 
   // ---------- alternative sets ----------
   // Two or more adds sharing a `group` are one decision, not several: the
@@ -7734,8 +7928,7 @@
           </span>
         </label>
         ${proposalDistHtml(p)}
-        ${ratingSlotHtml(d.mapsQuery)}
-        ${assistMapsLinkHtml(d.mapsQuery)}
+        ${proposalPlaceHtml(p)}
       </div>`;
   }
 
@@ -7755,6 +7948,9 @@
     const card = document.createElement('div');
     card.className = 'assist-proposal assist-set';
     card.dataset.setGroup = entry.group;
+    // Every candidate of a set is an add for the same slot, so the first one's
+    // type is the set's type (see the date, just below, for the same reason).
+    card.dataset.type = (entry.candidates[0].fields || {}).type || '';
     // A set is one stop on the day's route (at whichever option is selected), so
     // it carries the same op and day attributes the single cards do. Every
     // candidate in a set is an add for the same slot, so the first one's date is
@@ -7786,12 +7982,13 @@
     card.className = 'assist-proposal';
     card.dataset.op = p.op;
     card.dataset.proposalId = pid;
+    // read by the route pass, which routes places and not travel legs
+    card.dataset.type = (p.fields || {}).type || '';
     // the day this card would land on: the shortest-route footer is per day,
     // and one reply can cover several
     if (isIsoDate(d.startDate)) card.dataset.date = d.startDate;
     const meta = [isIsoDate(d.startDate) ? fmtDate(d.startDate) : '', d.startTime ? fmtTime(d.startTime) : ''].filter(Boolean).join(' · ');
     const costStr = proposalCostStr(d, trip);
-    const maps = assistMapsLinkHtml(d.mapsQuery);
     const acceptLabel = p.op === 'add' ? 'Add to trip' : (p.op === 'update' ? 'Apply change' : 'Remove from trip');
     const opWord = p.op === 'add' ? 'Add' : (p.op === 'update' ? 'Update' : 'Remove');
     // a destructive proposal takes the destructive button, not a green one
@@ -7802,8 +7999,7 @@
       ${meta ? `<div class="ap-meta">${esc(meta)}</div>` : ''}
       ${costStr ? `<div class="ap-cost">${esc(costStr)}</div>` : ''}
       ${proposalDistHtml(p)}
-      ${ratingSlotHtml(d.mapsQuery)}
-      ${maps}
+      ${proposalPlaceHtml(p)}
       <div class="ap-actions">
         <button type="button" class="${acceptCls} assist-accept" data-act="accept-proposal">${acceptLabel}</button>
         <button type="button" class="btn assist-reject" data-act="reject-proposal">Dismiss</button>
@@ -7906,16 +8102,13 @@
     if (p.op === 'add') {
       const added = proposalToItem(p, trip);
       trip.items.push(added);
-      // The traveller has now decided to be here, so this is where the rest of
-      // the day's recommendations are measured from. Only a place that actually
-      // resolved moves the anchor; an unlocatable add leaves it where it was.
-      // And only an add on the FOCUS DAY moves it: accepting a Day-5 card while
-      // planning Day 2 must not make Day 2's remaining chips measure from a
-      // venue nobody visits until Day 5.
-      if (!assistFocusDate || added.startDate === assistFocusDate) {
-        const point = placePoint({ query: itemMapsQuery(added), name: '', city: (added.location || '').trim() });
-        if (point) assistAcceptedPoint = { ...point, label: added.title || '' };
-      }
+      // Nothing else to do for the distance chips: the accepted place is now an
+      // ITINERARY item, so proposalOrigin finds it on the next repaint like any
+      // other plan for that hour, on that day, at its own time. This used to be
+      // a separate "last accepted point" the panel carried alongside the trip,
+      // which was one more thing to keep in step with the day, the clock and
+      // the focus - and the reason a pre-add figure could disagree with the
+      // post-add one.
     } else if (p.op === 'update') {
       const it = trip.items.find(x => x.id === p.targetId);
       if (!it) { assistActions.delete(pid); markProposalStale(card); return; }

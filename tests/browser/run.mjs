@@ -36,6 +36,7 @@ const SUITES = [
   'apps/trip-planner/e2e/share.mjs',
   'apps/trip-planner/e2e/views.mjs',
   'apps/trip-planner/e2e/ui.mjs',
+  'apps/trip-planner/e2e/assistant.mjs',
   'apps/trip-planner/e2e/pwa.mjs',
 ];
 
