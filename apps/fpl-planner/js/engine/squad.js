@@ -11,7 +11,7 @@
 // Everything here is pure and works in integer tenths.
 
 import { sellingPrice, chipAvailableAt } from './rules.js';
-import { initialTransferState, replayTransferState, freeTransfersFor } from './transfer-state.js';
+import { initialTransferState, replayTransferState, freeTransfersFor, transferAccounting, transferStateOf } from './transfer-state.js';
 
 // Accepts either the raw `entry/{id}/event/{gw}/picks/` payload or the bare
 // picks array, because both shapes turn up at call sites.
@@ -72,6 +72,47 @@ export function chipsRemaining({ history, rules, gw }) {
   return names.filter(name => chipAvailableAt(rules, name, gw, used));
 }
 
+// Transfers already made for the gameweek being planned.
+//
+// `entry/{id}/event/{gw}/picks` is FROZEN at that gameweek's deadline: it is
+// what the manager fielded, not what he owns now. The moment the gameweek ends
+// he can transfer for the next one, and those moves appear immediately on
+// `entry/{id}/transfers` and nowhere else. Reading only the picks therefore
+// describes a squad he no longer has: the planner would hold a player he sold,
+// miss the one he bought, recommend the move he had already made, and count a
+// free transfer he had already spent.
+//
+// Applied in time order so a chain inside one window collapses correctly: A for
+// B and then B for C leaves C in the squad and A the one who left.
+export function pendingTransfers({ transfers, gw }) {
+  return sortedTransfers(transfers).filter(t => t.event === gw);
+}
+
+function applyPending({ list, pending }) {
+  const out = list.map(p => ({ ...p }));
+  let moneyIn = 0;
+  let moneyOut = 0;
+  for (const t of pending) {
+    const slot = out.find(p => p.element === t.element_out);
+    // `element_out_cost` is the SELLING price FPL applied at the time, so the
+    // bank moves by exactly what the manager received and paid. Nothing here
+    // re-derives a selling price: the transfer row already states it.
+    moneyIn += t.element_out_cost ?? 0;
+    moneyOut += t.element_in_cost ?? 0;
+    if (slot) {
+      slot.element = t.element_in;
+    } else {
+      // The player leaving is not in the frozen fifteen, which happens when a
+      // pending transfer sells someone an earlier pending transfer bought.
+      // Sorting by time means that case is already handled above; landing here
+      // means the payloads disagree, so the incoming player is added rather
+      // than dropped and the value check downstream reports the mismatch.
+      out.push({ element: t.element_in, position: out.length + 1, multiplier: 0, is_captain: false, is_vice_captain: false });
+    }
+  }
+  return { picks: out, moneyIn, moneyOut, count: pending.length };
+}
+
 export function buildSquadState({ entry, history, transfers, picks, gameState, gw, source }) {
   const rules = gameState.rules;
   const targetGw = gw ?? gameState.nextEvent ?? gameState.currentEvent;
@@ -112,10 +153,27 @@ export function buildSquadState({ entry, history, transfers, picks, gameState, g
     };
   }
 
-  const purchases = reconstructPurchasePrices({ picks, transfers, gameState });
-  const entryHistory = (picks && picks.entry_history) || {};
+  // The squad the manager owns NOW: the frozen picks with any transfer already
+  // made for the gameweek being planned applied on top.
+  const pending = pendingTransfers({ transfers, gw: targetGw });
+  const applied = applyPending({ list, pending });
+  const effective = applied.picks;
 
-  const built = list.map(p => {
+  const purchases = reconstructPurchasePrices({ picks: effective, transfers, gameState });
+  const entryHistory = (picks && picks.entry_history) || {};
+  // The picks payload normally carries the bank and squad value alongside the
+  // fifteen. If it ever arrives without them - which cannot be observed before
+  // a gameweek has actually been scored - every affordability figure would read
+  // as zero and the manager would be told he is broke. Say so instead of
+  // planning on it silently.
+  if (!picks || !picks.entry_history) {
+    warnings.push({
+      code: 'missing_entry_history',
+      message: 'Fantasy Premier League returned your squad without its bank and squad value, so money figures may be wrong until it does. Transfers are still checked against your reconstructed selling prices.',
+    });
+  }
+
+  const built = effective.map(p => {
     const player = gameState.players.get(p.element);
     const nowCost = player ? player.nowCost : 0;
     const purchaseTenths = purchases.get(p.element) ?? nowCost;
@@ -130,24 +188,40 @@ export function buildSquadState({ entry, history, transfers, picks, gameState, g
     };
   });
 
-  const bankTenths = entryHistory.bank ?? 0;
+  // The bank moves with the transfers already made: FPL's frozen
+  // `entry_history.bank` predates them.
+  const bankTenths = (entryHistory.bank ?? 0) + applied.moneyIn - applied.moneyOut;
   // FPL's `entry_history.value` is the TOTAL: selling value of the 15 plus the
   // bank. Do not add the bank to it again downstream.
-  const squadValueTenths = entryHistory.value ?? 0;
+  const frozenValueTenths = entryHistory.value ?? 0;
   const sellingTotal = built.reduce((sum, p) => sum + p.sellingTenths, 0);
+  const squadValueTenths = applied.count ? sellingTotal + bankTenths : frozenValueTenths;
 
   // The one arithmetic check that proves the purchase-price reconstruction was
   // right. It fails when a transfer is missing from the payload or a player was
   // price-changed between the two fetches, and that has to be visible: silently
   // absorbing it would mean recommending transfers the manager cannot afford.
-  if (sellingTotal + bankTenths !== squadValueTenths) {
+  //
+  // It is only meaningful against the FROZEN squad. Once a transfer has been
+  // made for the gameweek being planned, FPL's `value` describes a squad that no
+  // longer exists, so comparing against it would fire on every manager who had
+  // simply used their transfer.
+  if (!applied.count && sellingTotal + bankTenths !== frozenValueTenths) {
     warnings.push({
       code: 'value_mismatch',
-      message: `Reconstructed squad value ${(sellingTotal + bankTenths) / 10} does not match FPL's ${squadValueTenths / 10}. Selling prices may be off by the difference.`,
+      message: `Reconstructed squad value ${(sellingTotal + bankTenths) / 10} does not match FPL's ${frozenValueTenths / 10}. Selling prices may be off by the difference.`,
     });
   }
 
-  const transferState = replayTransferState({ history, rules, upToGw: targetGw });
+  // Free transfers, through the module that owns the arithmetic. The replay
+  // gives the state at the start of the gameweek; the transfers already made
+  // inside it are then spent against that state, so what reaches the planner is
+  // what the manager has LEFT rather than what he started with.
+  const replayed = replayTransferState({ history, rules, upToGw: targetGw });
+  const acct = transferAccounting({ state: replayed, transfersMade: applied.count, chipPlayed: null, rules });
+  const transferState = applied.count
+    ? transferStateOf({ freeTransfers: acct.freeTransfersAfter, gw: targetGw }, rules)
+    : replayed;
 
   return {
     ...base,
@@ -156,6 +230,13 @@ export function buildSquadState({ entry, history, transfers, picks, gameState, g
     squadValueTenths,
     transferState,
     freeTransfers: freeTransfersFor(transferState),
+    // What the manager has already done this window, so the UI can say so and
+    // the planner is never asked to recommend a move that has been made.
+    pendingTransfers: pending.map(t => ({
+      out: t.element_out, in: t.element_in, event: t.event,
+      outCost: t.element_out_cost, inCost: t.element_in_cost,
+    })),
+    hitsAlreadyTaken: acct.hits,
     source: source || 'picks',
   };
 }

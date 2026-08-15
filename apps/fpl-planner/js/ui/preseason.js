@@ -150,11 +150,29 @@ export function searchPlayers(gameState, { query = '', position = 0, limit = 40 
 
 /* ------------------------------------------------------------------ views */
 
-export function preSeasonIntro({ gameState, nextEvent, onBuild, onManual, teamName }) {
-  const event = gameState.events.find(e => e.id === nextEvent) || gameState.events[0];
+// Why there is no squad to import, which is FOUR different situations and used
+// to be described as one.
+//
+// "The season has not started" is only true before the first deadline. Said to
+// a manager mid-season whose picks are briefly unavailable, or to someone who
+// has just joined, it is the app inventing a fact about the world; and the
+// £100.0m budget it then offers is a different claim again, true for a new
+// entry and false for a manager whose squad exists and simply could not be
+// read. `entry.started_event` is what separates the last two.
+export function noSquadReason({ gameState, entry, nextEvent }) {
+  if (!gameState.seasonStarted) return 'preseason';
+  const startedEvent = entry && Number.isFinite(entry.started_event) ? entry.started_event : null;
+  const current = gameState.currentEvent;
+  if (startedEvent !== null && current !== null && startedEvent > current) return 'new-entry';
+  return 'picks-unavailable';
+}
 
-  return el('div', {}, [
-    banner({
+export function preSeasonIntro({ gameState, nextEvent, onBuild, onManual, teamName, entry = null, onRetry = null }) {
+  const event = gameState.events.find(e => e.id === nextEvent) || gameState.events[0];
+  const reason = noSquadReason({ gameState, entry, nextEvent });
+
+  const intro = reason === 'preseason'
+    ? banner({
       tone: 'info',
       mark: 'i',
       title: 'The season has not started yet, so there is no squad to import',
@@ -167,7 +185,32 @@ export function preSeasonIntro({ gameState, nextEvent, onBuild, onManual, teamNa
         event ? `The deadline is ${dateTime(event.deadline)}.` : '',
         ' When it goes live this app switches to the normal import on its own.',
       ]),
-    }),
+    })
+    : reason === 'new-entry'
+      ? banner({
+        tone: 'info',
+        mark: 'i',
+        title: 'This team has not played a gameweek yet',
+        text: el('span', {}, [
+          'The season is under way, and this team enters at Gameweek ',
+          el('b', { text: String(entry && entry.started_event ? entry.started_event : (event ? event.id : 1)) }),
+          '. Until then there are no picks to import, so the full budget is yours to build with.',
+        ]),
+      })
+      : banner({
+        tone: 'warn',
+        mark: '!',
+        title: 'Your squad could not be read just now',
+        text: el('span', {}, [
+          'The season is under way and this team has played, so a squad exists. Fantasy Premier League did not return it, which it does briefly while a gameweek is being processed. ',
+          el('b', { text: 'Nothing below is your team' }),
+          ': it is a fresh build from the full budget, so use it as a sketch rather than as advice about the squad you own, and try again in a few minutes.',
+        ]),
+        actions: onRetry ? [btn('Try again', onRetry, { variant: 'fpl-btn-primary' })] : null,
+      });
+
+  return el('div', {}, [
+    intro,
     card('What we can do now', [
       teamName ? el('p', { class: 'fpl-note', style: 'margin-bottom:14px' }, `Connected to ${teamName}. Prices, fixtures and last season's underlying numbers are all loaded.`) : null,
       el('div', { class: 'fpl-choices' }, [

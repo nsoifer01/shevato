@@ -25,6 +25,29 @@ export const CLIENT_TTL = {
   live: 60,
 };
 
+// Inside this window before a deadline, every client TTL collapses to
+// DEADLINE_TTL_SECONDS.
+//
+// The proxy already does this (netlify/functions/lib/fpl-cache.mjs) because
+// that is when prices, injury news and team news move. The BROWSER cache sits in
+// front of the proxy and short-circuits before it is ever asked, so leaving this
+// out meant a manager in the final hour was reading ten-minute-old prices while
+// the shared cache behind them was two minutes fresh. Same intent, same numbers,
+// both sides.
+export const DEADLINE_WINDOW_SECONDS = 6 * 3600;
+export const DEADLINE_TTL_SECONDS = 120;
+
+// One retry, for the failures that are worth retrying.
+//
+// Deadline day is when FPL is least reliable and when a cold cache key (nobody
+// has ever fetched this manager's GW1 picks) has no copy to fall back on. A
+// single retry with a little jitter turns a one-off blip into a slower success;
+// anything more would be a client hammering an upstream that is already
+// struggling.
+export const RETRY_STATUSES = [500, 502, 503, 504, 408, 429];
+export const RETRY_DELAY_MS = 300;
+export const RETRY_JITTER_MS = 200;
+
 const SOURCE_LABELS = [
   [/^bootstrap-static$/, 'Players, prices and news'],
   [/^fixtures$/, 'Fixtures'],
@@ -109,10 +132,67 @@ export function createFplApi({
   let proxyAvailable = true;
   let sampleBundle = null;
 
-  function ageOf(fetchedAt) {
+  // How old a cached copy is.
+  //
+  // NOT `now() - fetchedAt`: `fetchedAt` is the SERVER's clock and `now()` is
+  // the device's, and subtracting one from the other measures the skew between
+  // them as much as the age. A device an hour slow produced a negative age,
+  // clamped to zero, and therefore a cache entry that never expired: the app
+  // stayed on a pre-season bootstrap after the deadline with no way out but
+  // clearing storage. A device an hour fast reported fresh data as stale.
+  //
+  // So age is measured from the LOCAL receipt time, which shares a clock with
+  // now() by construction, and falls back to the server timestamp only for
+  // entries written before this existed.
+  // TWO different ages, and conflating them is what made this wrong.
+  //
+  // `localAgeOf` is how long THIS BROWSER has held the copy. It shares a clock
+  // with now() by construction, so it is immune to device clock skew, and it is
+  // the only thing a cache expiry may be decided on. A device an hour slow used
+  // to produce a negative age, clamped to zero, and an entry that never expired.
+  //
+  // `ageOf` is how old the DATA is, which is what the user is told. It is the
+  // server's own age at the moment the copy arrived plus the time held since.
+  function localAgeOf(entry) {
+    const receipt = entry && Number.isFinite(entry.receivedAt) ? entry.receivedAt : null;
+    if (receipt === null) return Infinity;   // written before receipts existed: refetch
+    return Math.max(0, Math.floor((now() - receipt) / 1000));
+  }
+
+  function ageOf(fetchedAt, entry) {
+    const held = entry && Number.isFinite(entry.receivedAt)
+      ? Math.max(0, Math.floor((now() - entry.receivedAt) / 1000))
+      : 0;
+    if (entry && Number.isFinite(entry.serverAgeSeconds)) return entry.serverAgeSeconds + held;
     const ms = Date.parse(fetchedAt);
-    if (!Number.isFinite(ms)) return 0;
+    if (!Number.isFinite(ms)) return held;
     return Math.max(0, Math.floor((now() - ms) / 1000));
+  }
+
+  // The TTL for a path right now, collapsed near a deadline exactly as the proxy
+  // does. The deadline comes from the bootstrap this client already holds, so
+  // this costs no extra request.
+  function ttlFor(path) {
+    const base = CLIENT_TTL[kindOf(path)];
+    const deadline = nextDeadlineMs();
+    if (deadline === null) return base;
+    const untilDeadline = (deadline - now()) / 1000;
+    if (untilDeadline <= 0 || untilDeadline > DEADLINE_WINDOW_SECONDS) return base;
+    return Math.min(base, DEADLINE_TTL_SECONDS);
+  }
+
+  // The next deadline in the future, read out of the cached bootstrap.
+  function nextDeadlineMs() {
+    const entry = memory.get('bootstrap-static') || null;
+    const events = entry && entry.data && Array.isArray(entry.data.events) ? entry.data.events : null;
+    if (!events) return null;
+    let best = null;
+    for (const e of events) {
+      const t = Date.parse(e.deadline_time);
+      if (!Number.isFinite(t) || t <= now()) continue;
+      if (best === null || t < best) best = t;
+    }
+    return best;
   }
 
   function readCache(path) {
@@ -134,17 +214,52 @@ export function createFplApi({
   function writeCache(path, entry) {
     memory.set(path, entry);
     if (!store) return;
+
+    // The bootstrap is 2.6 MiB of a roughly 5 MiB per-origin budget shared with
+    // every other app on the domain, and it is re-fetched on every boot anyway
+    // because its TTL is ten minutes. Persisting it bought almost nothing and
+    // cost more than half the quota, so it lives in memory for the session only.
+    if (kindOf(path) === 'bootstrap') return;
+
     const key = CACHE_PREFIX + path;
     const payload = JSON.stringify(entry);
     try {
       store.setItem(key, payload);
     } catch {
-      // shevato.com's apps share one localStorage quota and bootstrap-static is
-      // over a megabyte, so a write can genuinely fail. Drop this app's cache
-      // and try once; if it still fails the memory cache carries the session.
+      // shevato.com's apps share one localStorage quota, so a write can
+      // genuinely fail. Evict the OLDEST entries of this app's cache rather
+      // than all of them: wiping everything threw away the copies that were
+      // still useful and left the session with no persisted cache at all.
+      if (evictOldest() && tryWrite(key, payload)) return;
+      if (evictOldest() && tryWrite(key, payload)) return;
       clearStoredCache();
-      try { store.setItem(key, payload); } catch { /* memory cache only */ }
+      tryWrite(key, payload);
     }
+  }
+
+  function tryWrite(key, payload) {
+    try { store.setItem(key, payload); return true; } catch { return false; }
+  }
+
+  // Drop the least recently received entry this app owns. Returns false when
+  // there is nothing left to drop, so the caller stops rather than looping.
+  function evictOldest() {
+    if (!store) return false;
+    let oldestKey = null;
+    let oldestAt = Infinity;
+    for (let i = 0; i < store.length; i++) {
+      const k = store.key(i);
+      if (!k || !k.startsWith(CACHE_PREFIX)) continue;
+      let at = 0;
+      try {
+        const parsed = JSON.parse(store.getItem(k));
+        at = Number.isFinite(parsed && parsed.receivedAt) ? parsed.receivedAt : Date.parse(parsed && parsed.fetchedAt) || 0;
+      } catch { at = 0; }
+      if (at < oldestAt) { oldestAt = at; oldestKey = k; }
+    }
+    if (!oldestKey) return false;
+    store.removeItem(oldestKey);
+    return true;
   }
 
   function clearStoredCache() {
@@ -163,14 +278,41 @@ export function createFplApi({
       path,
       ok: !error,
       fetchedAt: entry ? entry.fetchedAt : null,
-      ageSeconds: entry ? ageOf(entry.fetchedAt) : null,
+      ageSeconds: entry ? ageOf(entry.fetchedAt, entry) : null,
       stale: entry ? !!entry.stale : false,
       error: error ? String(error.message || error) : null,
     });
   }
 
+  // One retry, and only for the failures a retry can fix.
+  //
+  // A cold key has no cached copy to fall back on (nobody has ever fetched this
+  // manager's GW1 picks before the GW1 deadline), and deadline day is exactly
+  // when a transient 5xx is most likely. A 404 is a real answer and is never
+  // retried; neither is a 403 or a 400.
+  const retryable = (err, status) => RETRY_STATUSES.includes(status)
+    || (err && (err.name === 'AbortError' || err.name === 'TypeError'));
+
+  async function fetchWithRetry(url, init) {
+    let res;
+    let firstErr = null;
+    try {
+      res = await doFetch(url, init);
+      if (!retryable(null, res.status)) return res;
+    } catch (err) {
+      firstErr = err;
+      if (!retryable(err, 0)) throw err;
+    }
+    await new Promise(r => setTimeout(r, RETRY_DELAY_MS + Math.floor(Math.random() * RETRY_JITTER_MS)));
+    try {
+      return await doFetch(url, init);
+    } catch (err) {
+      throw firstErr || err;
+    }
+  }
+
   async function requestProxy(path) {
-    const res = await doFetch(`${proxyUrl}?path=${encodeURIComponent(path)}`, {
+    const res = await fetchWithRetry(`${proxyUrl}?path=${encodeURIComponent(path)}`, {
       headers: { Accept: 'application/json' },
     });
     // Our function always stamps x-fpl-cache. A 404 without it is the static
@@ -184,6 +326,10 @@ export function createFplApi({
       data: await res.json(),
       fetchedAt: res.headers.get('x-fpl-fetched-at') || new Date(now()).toISOString(),
       stale: res.headers.get('x-fpl-stale') === 'true',
+      // The proxy computes this on its own clock, which is the only clock that
+      // can say how old the DATA is. Carried through so freshness never has to
+      // be inferred by subtracting a server timestamp from a device clock.
+      serverAgeSeconds: Number.parseInt(res.headers.get('x-fpl-age-seconds') || '', 10),
     };
   }
 
@@ -224,9 +370,9 @@ export function createFplApi({
     if (sampleBundle) return sampleRead(path);
 
     const cached = readCache(path);
-    if (cached && !force && ageOf(cached.fetchedAt) < CLIENT_TTL[kindOf(path)]) {
+    if (cached && !force && localAgeOf(cached) < ttlFor(path)) {
       record(path, cached, null);
-      return { data: cached.data, fetchedAt: cached.fetchedAt, stale: !!cached.stale, ageSeconds: ageOf(cached.fetchedAt) };
+      return { data: cached.data, fetchedAt: cached.fetchedAt, stale: !!cached.stale, ageSeconds: ageOf(cached.fetchedAt, cached) };
     }
 
     // One in-flight request per path. Without this, a dashboard that asks four
@@ -236,16 +382,24 @@ export function createFplApi({
     const job = (async () => {
       try {
         const fresh = await load(path);
-        const entry = { fetchedAt: fresh.fetchedAt, stale: fresh.stale, data: fresh.data };
+        // `receivedAt` is this device's clock at the moment the copy arrived, so
+        // freshness is later measured against the same clock that recorded it.
+        const entry = {
+          fetchedAt: fresh.fetchedAt,
+          stale: fresh.stale,
+          data: fresh.data,
+          receivedAt: now(),
+          serverAgeSeconds: Number.isFinite(fresh.serverAgeSeconds) ? fresh.serverAgeSeconds : undefined,
+        };
         writeCache(path, entry);
         record(path, entry, null);
-        return { data: entry.data, fetchedAt: entry.fetchedAt, stale: entry.stale, ageSeconds: ageOf(entry.fetchedAt) };
+        return { data: entry.data, fetchedAt: entry.fetchedAt, stale: entry.stale, ageSeconds: ageOf(entry.fetchedAt, entry) };
       } catch (err) {
         record(path, cached, err);
         // A cached copy is better than a dead screen, but it must be flagged
         // stale so the UI can say the plan rests on old numbers.
         if (cached && !(err instanceof NotFoundError)) {
-          return { data: cached.data, fetchedAt: cached.fetchedAt, stale: true, ageSeconds: ageOf(cached.fetchedAt) };
+          return { data: cached.data, fetchedAt: cached.fetchedAt, stale: true, ageSeconds: ageOf(cached.fetchedAt, cached) };
         }
         throw err;
       } finally {

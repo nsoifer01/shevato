@@ -56,7 +56,12 @@ export function banner({ tone = 'info', mark = 'i', title, text = null, list = n
       el('div', { class: 'fpl-banner-title', text: title }),
       text ? el('div', { class: 'fpl-banner-text' }, text) : null,
       list && list.length
-        ? el('ul', { class: 'fpl-missing' }, list.map(item => el('li', { text: item })))
+        // A list entry may be a plain string or `{ text, title }`, so a banner
+        // can show a sentence a person reads while keeping the technical detail
+        // reachable on hover and in the accessibility tree.
+        ? el('ul', { class: 'fpl-missing' }, list.map(item => (typeof item === 'string'
+          ? el('li', { text: item })
+          : el('li', { text: item.text, title: item.title || null }))))
         : null,
       actions && actions.length ? el('div', { class: 'fpl-banner-actions' }, actions) : null,
     ]),

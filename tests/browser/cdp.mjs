@@ -282,12 +282,19 @@ export async function interceptNetwork(s, rules) {
         await s.send('Fetch.failRequest', { requestId: p.requestId, errorReason: 'ConnectionRefused' });
       } else if (verdict && typeof verdict === 'object') {
         const body = typeof verdict.body === 'string' ? verdict.body : JSON.stringify(verdict.body ?? {});
+        // `headers` lets a suite stand in for a real upstream that says
+        // something in its headers rather than its body: the FPL proxy reports
+        // freshness through x-fpl-stale / x-fpl-age-seconds, and a test that
+        // could not set those could not exercise the stale paths at all.
+        const extraHeaders = Object.entries(verdict.headers || {})
+          .map(([name, value]) => ({ name, value: String(value) }));
         await s.send('Fetch.fulfillRequest', {
           requestId: p.requestId,
           responseCode: verdict.status || 200,
           responseHeaders: [
             { name: 'Content-Type', value: verdict.contentType || 'application/json' },
             { name: 'Access-Control-Allow-Origin', value: '*' },
+            ...extraHeaders,
           ],
           body: Buffer.from(body).toString('base64'),
         });

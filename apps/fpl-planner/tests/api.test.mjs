@@ -30,7 +30,10 @@ function proxyResponse(body, { fetchedAt = '2026-08-10T12:00:00Z', cache = 'miss
       'x-fpl-cache': cache,
       'x-fpl-fetched-at': fetchedAt,
       'x-fpl-stale': String(stale),
-      'x-fpl-age-seconds': '0',
+      // Derived from fetchedAt, exactly as the proxy computes it: a fixture
+      // that said "fetched a minute ago, age zero" contradicted itself and
+      // could make either reading of freshness look correct.
+      'x-fpl-age-seconds': String(Math.max(0, Math.round((NOW - Date.parse(fetchedAt)) / 1000))),
     },
   });
 }
@@ -124,14 +127,30 @@ test('one in-flight request per path, however many callers ask at once', async (
 
 test('the cache survives a page reload through localStorage', async () => {
   const storage = fakeStorage();
-  const fetchImpl = recorder(() => proxyResponse({ n: 1 }));
-  await createFplApi({ fetchImpl, storage, now: () => NOW }).getBootstrap();
-  assert.ok(storage.getItem(CACHE_PREFIX + 'bootstrap-static'), 'cached under the unsynced prefix');
+  const fetchImpl = recorder(() => proxyResponse([{ id: 1 }]));
+  await createFplApi({ fetchImpl, storage, now: () => NOW }).getFixtures();
+  assert.ok(storage.getItem(CACHE_PREFIX + 'fixtures'), 'cached under the unsynced prefix');
 
   const reloaded = createFplApi({ fetchImpl, storage, now: () => NOW });
-  const res = await reloaded.getBootstrap();
-  assert.deepEqual(res.data, { n: 1 });
+  const res = await reloaded.getFixtures();
+  assert.deepEqual(res.data, [{ id: 1 }]);
   assert.equal(fetchImpl.calls.length, 1, 'a reload does not re-download');
+});
+
+test('the bootstrap is held in memory rather than written to localStorage', async () => {
+  // It is 2.6 MiB of a roughly 5 MiB per-origin budget shared with every other
+  // app on this domain, and its TTL is ten minutes, so persisting it spent more
+  // than half the quota to save at most one refetch per session. Measured in the
+  // GW1 readiness audit; the quota failure it caused evicted everything else.
+  const storage = fakeStorage();
+  const fetchImpl = recorder(() => proxyResponse({ n: 1, events: [] }));
+  const api = createFplApi({ fetchImpl, storage, now: () => NOW });
+  await api.getBootstrap();
+  assert.equal(storage.getItem(CACHE_PREFIX + 'bootstrap-static'), null, 'not persisted');
+
+  // and it is still cached for this session
+  await api.getBootstrap();
+  assert.equal(fetchImpl.calls.length, 1, 'the memory cache still serves it');
 });
 
 test('a full localStorage degrades to the memory cache instead of failing', async () => {
@@ -325,4 +344,145 @@ test('an unknown team id still reads as not found, never as a proxy problem', as
     assert.equal(err.name, 'NotFoundError');
     return true;
   });
+});
+
+/* ------------------------------------------- deadline window, clocks, quota */
+
+// A bootstrap whose next deadline is `secondsAway` from NOW.
+const bootstrapWithDeadline = (secondsAway) => ({
+  events: [{ id: 1, deadline_time: new Date(NOW + secondsAway * 1000).toISOString() }],
+});
+
+test('inside the six hours before a deadline the client stops holding old copies', async () => {
+  // The proxy collapses every TTL to two minutes in this window because prices
+  // and injury news move. The browser sits IN FRONT of the proxy, so leaving it
+  // on a ten minute TTL meant the shared cache was fresher than the screen.
+  let clock = NOW;
+  const fetchImpl = recorder(() => proxyResponse(bootstrapWithDeadline(90 * 60), { fetchedAt: new Date(clock).toISOString() }));
+  const api = createFplApi({ fetchImpl, storage: fakeStorage(), now: () => clock });
+
+  await api.getBootstrap();
+  assert.equal(fetchImpl.calls.length, 1);
+
+  // Three minutes later: outside a deadline window this is well inside the ten
+  // minute TTL, but the deadline is 90 minutes away so it must refetch.
+  clock += 180 * 1000;
+  await api.getBootstrap();
+  assert.equal(fetchImpl.calls.length, 2, 'a three minute old copy is too old this close to a deadline');
+});
+
+test('far from a deadline the ordinary TTL still applies', async () => {
+  let clock = NOW;
+  const fetchImpl = recorder(() => proxyResponse(bootstrapWithDeadline(72 * 3600), { fetchedAt: new Date(clock).toISOString() }));
+  const api = createFplApi({ fetchImpl, storage: fakeStorage(), now: () => clock });
+  await api.getBootstrap();
+  clock += 180 * 1000;
+  await api.getBootstrap();
+  assert.equal(fetchImpl.calls.length, 1, 'three minutes is well inside the ten minute TTL');
+});
+
+test('a device clock that is hours slow cannot pin the cache forever', async () => {
+  // The server timestamp and the device clock are different clocks. Subtracting
+  // one from the other measured the SKEW, clamped it at zero, and produced an
+  // entry that never expired: the app stayed on a pre-season payload after the
+  // deadline with no way out but clearing storage.
+  const serverNow = NOW;
+  let deviceClock = NOW - 3600 * 1000;          // an hour behind the server
+  const fetchImpl = recorder(() => proxyResponse({ n: 1 }, { fetchedAt: new Date(serverNow).toISOString() }));
+  const storage = fakeStorage();
+  const api = createFplApi({ fetchImpl, storage, now: () => deviceClock });
+
+  await api.getFixtures();
+  assert.equal(fetchImpl.calls.length, 1);
+
+  // Well past the fixtures TTL on the DEVICE's own clock.
+  deviceClock += 2000 * 1000;
+  await api.getFixtures();
+  assert.equal(fetchImpl.calls.length, 2, 'the copy expired on the clock that recorded it');
+});
+
+test('a device clock that is hours fast does not expire good data instantly', async () => {
+  const serverNow = NOW;
+  let deviceClock = NOW + 7 * 3600 * 1000;      // seven hours ahead
+  const fetchImpl = recorder(() => proxyResponse({ n: 1 }, { fetchedAt: new Date(serverNow).toISOString() }));
+  const api = createFplApi({ fetchImpl, storage: fakeStorage(), now: () => deviceClock });
+
+  await api.getFixtures();
+  deviceClock += 5 * 1000;
+  await api.getFixtures();
+  assert.equal(fetchImpl.calls.length, 1, 'five seconds is five seconds whatever the clock reads');
+});
+
+test('the reported data age is the data age, not the time this browser held it', async () => {
+  let clock = NOW;
+  const fetchImpl = recorder(() => proxyResponse({ n: 1 }, { fetchedAt: new Date(NOW - 120 * 1000).toISOString() }));
+  const api = createFplApi({ fetchImpl, storage: fakeStorage(), now: () => clock });
+  const first = await api.getFixtures();
+  assert.equal(first.ageSeconds, 120, 'the proxy had it for two minutes before we did');
+
+  clock += 30 * 1000;
+  const second = await api.getFixtures();
+  assert.equal(second.ageSeconds, 150, 'and thirty seconds later it is thirty seconds older');
+});
+
+test('a quota failure evicts the oldest entry rather than the whole cache', async () => {
+  // Wiping every key on the first failure threw away copies that were still
+  // useful and left the session with nothing persisted at all.
+  // A store with a real capacity: a write of a NEW key fails while it is full,
+  // and succeeds once something has been removed. Modelling "always throws"
+  // would make eviction unobservable.
+  const map = new Map();
+  let capacity = Infinity;
+  const storage = {
+    get length() { return map.size; },
+    key: (i) => [...map.keys()][i] ?? null,
+    getItem: (k) => (map.has(k) ? map.get(k) : null),
+    setItem: (k, v) => {
+      if (!map.has(k) && map.size >= capacity) throw new Error('QuotaExceededError');
+      map.set(k, v);
+    },
+    removeItem: (k) => { map.delete(k); },
+  };
+
+  let clock = NOW;
+  const api = createFplApi({
+    fetchImpl: recorder(() => proxyResponse({ n: 1 })),
+    storage,
+    now: () => clock,
+  });
+
+  await api.getEntry(1);
+  clock += 60_000;
+  await api.getEntryHistory(1);
+  clock += 60_000;
+  const before = [...map.keys()];
+  assert.equal(before.length, 2);
+
+  // Now the origin is full and a third write has to make room.
+  capacity = 2;
+  await api.getEntryTransfers(1);
+
+  const after = [...map.keys()];
+  assert.ok(after.some(k => /transfers/.test(k)), 'the new entry was written');
+  assert.ok(after.some(k => /history/.test(k)), 'the newer of the two existing entries survived');
+  assert.equal(after.some(k => /entry\/1$/.test(k)), false, 'the oldest entry was the one dropped');
+});
+
+test('a transient 5xx is retried once, and a 404 is not', async () => {
+  let attempts = 0;
+  const flaky = recorder(() => {
+    attempts++;
+    if (attempts === 1) return proxyResponse({ error: 'upstream_unavailable' }, { status: 503 });
+    return proxyResponse({ n: 1 });
+  });
+  const api = createFplApi({ fetchImpl: flaky, storage: fakeStorage(), now: () => NOW });
+  const res = await api.getFixtures();
+  assert.deepEqual(res.data, { n: 1 }, 'the retry succeeded');
+  assert.equal(attempts, 2, 'exactly one retry');
+
+  let notFound = 0;
+  const missing = recorder(() => { notFound++; return proxyResponse({ error: 'not_found' }, { status: 404 }); });
+  const api2 = createFplApi({ fetchImpl: missing, storage: fakeStorage(), now: () => NOW });
+  await assert.rejects(() => api2.getEntry(999));
+  assert.equal(notFound, 1, 'an unknown team is a real answer and is never retried');
 });

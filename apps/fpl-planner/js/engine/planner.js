@@ -42,6 +42,7 @@ import { validatePlan } from './validate.js';
 import { evaluateChips, squadTrajectory, discountWeights, xpOf, chipLabel } from './chips.js';
 import { explainPlan } from './explain.js';
 import { advance, transferAccounting, transferStateOf, freeTransfersFor } from './transfer-state.js';
+import { seasonEvidence } from './minutes.js';
 
 export const PLANNER_VERSION = 'planner-1';
 
@@ -754,15 +755,29 @@ function buildFuturePlans({ plan, squadState, projections, gameState, rules, cfg
 function buildDataStatus({ gameState, squadState, cfg, projections, durationMs }) {
   const fetchedAt = gameState.fetchedAt || null;
   const ageMs = fetchedAt ? Date.now() - Date.parse(fetchedAt) : 0;
+  // Staleness is about the AGE OF THE DATA and nothing else.
+  //
+  // Squad warnings used to be folded in here, so a reconstruction disagreeing
+  // with FPL's frozen squad value (which happens on any overnight price move)
+  // was reported to the user as "Working from older data". The data was not
+  // old; the two numbers described different moments. They travel separately
+  // now, and the status card already renders squadState.warnings on their own.
   const staleReasonCodes = [];
   if (fetchedAt && ageMs > STALE_AFTER_MS) staleReasonCodes.push('data_age');
-  for (const w of squadState.warnings || []) staleReasonCodes.push(w.code);
+
+  // Which season the element totals belong to, and whether there is anything to
+  // project from at all. It travels with the plan because the UI has to be able
+  // to refuse to present a recommendation built on no evidence, and because
+  // "why does this look wrong" is answerable only if the state is reported.
+  const evidence = seasonEvidence(gameState);
 
   return {
     fetchedAt,
     planComputedAt: new Date().toISOString(),
     stale: staleReasonCodes.length > 0,
     staleReasonCodes,
+    squadWarnings: (squadState.warnings || []).map(w => ({ code: w.code, message: w.message })),
+    evidence,
     sources: [
       {
         name: 'bootstrap-static',

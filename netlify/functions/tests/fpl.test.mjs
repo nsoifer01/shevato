@@ -272,3 +272,98 @@ test('a corrupt cache entry is ignored rather than served', async () => {
   assert.equal(res.cache, 'miss');
   assert.deepEqual(res.body, { n: 1 });
 });
+
+/* ------------------------------------------------- cache failure isolation */
+
+// The readiness audit found three ways the cache could take the app down while
+// upstream was healthy: a transient 404 discarding a good copy, a write failure
+// throwing away a body already fetched, and a store that could not be read at
+// all turning into a 500. The cache is an optimisation; none of those may cost
+// the user their answer.
+
+test('a transient upstream 404 serves the cached copy, marked stale', async () => {
+  const store = memoryStore();
+  await store.setJSON(cacheKey('entry/7/history'), {
+    fetchedAt: new Date(Date.now() - 400_000).toISOString(),
+    body: { current: [{ event: 1 }] },
+  });
+  const res = await serveFpl({
+    path: 'entry/7/history',
+    store,
+    fetchUpstream: async () => ({ status: 404, ok: false, json: async () => ({}) }),
+    now: Date.now(),
+  });
+  assert.equal(res.status, 200, 'a known team does not vanish because FPL is mid-update');
+  assert.equal(res.stale, true, 'and the copy says it is stale');
+  assert.deepEqual(res.body, { current: [{ event: 1 }] });
+});
+
+test('an unknown team with nothing cached is still a real 404', async () => {
+  const store = memoryStore();
+  const res = await serveFpl({
+    path: 'entry/999999999',
+    store,
+    fetchUpstream: async () => ({ status: 404, ok: false, json: async () => ({}) }),
+    now: Date.now(),
+  });
+  assert.equal(res.status, 404);
+  assert.equal(store.map.size, 0, 'and it is never cached');
+});
+
+test('a cache write failure still returns the body that was fetched', async () => {
+  const store = memoryStore();
+  store.setJSON = async () => { throw new Error('blob quota exceeded'); };
+  const res = await serveFpl({
+    path: 'bootstrap-static',
+    store,
+    fetchUpstream: async () => ({ status: 200, ok: true, json: async () => ({ fresh: true, events: [] }) }),
+    now: Date.now(),
+  });
+  assert.equal(res.status, 200, 'a failed write must not turn a good fetch into an outage');
+  assert.deepEqual(res.body, { fresh: true, events: [] });
+  assert.equal(res.stale, false);
+});
+
+test('a cache write failure does not serve an older copy instead of the fresh one', async () => {
+  const store = memoryStore();
+  await store.setJSON(cacheKey('bootstrap-static'), {
+    fetchedAt: new Date(Date.now() - 86_400_000).toISOString(),
+    body: { day: 'old' },
+  });
+  store.setJSON = async () => { throw new Error('blob write failed'); };
+  const res = await serveFpl({
+    path: 'bootstrap-static',
+    store,
+    fetchUpstream: async () => ({ status: 200, ok: true, json: async () => ({ day: 'new', events: [] }) }),
+    now: Date.now(),
+  });
+  assert.deepEqual(res.body, { day: 'new', events: [] }, 'the fresh body was already in hand');
+  assert.equal(res.stale, false);
+});
+
+test('a cache read failure degrades to a live fetch rather than an error', async () => {
+  const store = memoryStore();
+  store.get = async () => { throw new Error('blobs unreachable'); };
+  const res = await serveFpl({
+    path: 'fixtures',
+    store,
+    fetchUpstream: async () => ({ status: 200, ok: true, json: async () => ([{ id: 1 }]) }),
+    now: Date.now(),
+  });
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body, [{ id: 1 }]);
+});
+
+test('a cached entry with an unparseable timestamp is refetched, not served forever', async () => {
+  const store = memoryStore();
+  await store.setJSON(cacheKey('fixtures'), { fetchedAt: 'nonsense', body: [{ stuck: true }] });
+  let called = 0;
+  const res = await serveFpl({
+    path: 'fixtures',
+    store,
+    fetchUpstream: async () => { called++; return { status: 200, ok: true, json: async () => ([{ fresh: true }]) }; },
+    now: Date.now(),
+  });
+  assert.equal(called, 1, 'an entry that cannot be aged is not a usable cache hit');
+  assert.deepEqual(res.body, [{ fresh: true }]);
+});

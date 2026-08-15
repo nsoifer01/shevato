@@ -29,6 +29,7 @@ inherit it.
 | Cross-season join on `element` ids | the join produced rows | that the rows were the SAME PLAYER |
 | pStart pinned at 1.000 for most of every replayed season | 0 <= pStart <= pAppear <= 1, exhaustively | that the number was ever anything but 1 |
 | 2022-23 replayed as a league with no starters | the column parsed, the season replayed | that a season contains 8,360 starts |
+| The season-statistics rollover collapses every projection | every projection is a finite number | that a gameweek total was ever near 50 rather than 20 |
 
 The last two are 2026-08-12 and they are the same joke as the first three: the
 whole suite passed, because a probability of exactly 1 is a legal probability.
@@ -89,6 +90,22 @@ Raw test count is not evidence of correctness. Do not report it as if it were.
   season's full totals, which is the pre-season feature base.
 - **Selling price** is `purchase + floor((now - purchase)/2)` when the player
   rose, `now` when he fell. `now_cost` is never the sell price.
+- **The pre-season payload publishes ZERO for every per-venue strength field.**
+  Measured on the live 2026/27 bootstrap on 2026-08-14: `strength` is `null` and
+  `strength_attack_home/away` and `strength_defence_home/away` are `0` for all
+  twenty clubs. Only `strength_overall_home/away` carry signal, as a 1-5 tier.
+  `normalize.js` reads exactly those two and nothing else, so the zeros reach
+  nobody - but any future code tempted by the per-venue fields would silently
+  divide by zero for the whole of pre-season.
+- **`entry/{id}` resolves for a 2026/27 team before GW1 while every scoring
+  field is `null`** (`summary_overall_points`, `summary_overall_rank`), and
+  `entry/{id}/history` returns `{current: [], past: [], chips: []}` with
+  `transfers` an empty array. `started_event` is present and is the honest way
+  to tell a late joiner from a manager whose picks simply have not published
+  yet - the app does not use it today, so both land on the draft path.
+- **The live 2026/27 pool is 587 elements**, against the 320 in the committed
+  sample dataset. Anything that reasons about "a live season" from the sample
+  is reasoning about a pool 45% smaller; see the plan-time note under Optimizer.
 
 ## Cross-season player identity (critical)
 
@@ -182,6 +199,77 @@ ranking, and only the part of a correction that changes ORDER changes decisions
   restarts). Chains matter: fitting a premium needs several coordinated
   downgrades and every intermediate state is worse, so 1-swap search cannot
   cross that valley. Full build ~1.8s; `buildPlan` median ~190ms at horizon 3.
+- **The performance budget was measured on a fixture 45% smaller than the live
+  season, which hid the production-sized problem** (found 2026-08-14, addressed
+  2026-08-15). The committed sample carries 320 players; the live 2026/27
+  payload carries 587, and plan time does not scale linearly, so
+  `perf-budget.test.mjs` could pass comfortably while the real thing was over
+  budget. Its comment claiming the sample was "the same size as a live season"
+  is what made that invisible.
+
+  **Current measurements** (2026-08-15, live payload, CPU time, best of three;
+  CPU rather than wall because `npm test` runs suites in parallel and wall time
+  then measures the machine):
+
+  | path | CPU | wall | budget |
+  | --- | ---: | ---: | ---: |
+  | sample in-season h5 (the old reference) | 2246 ms | 2158 ms | - |
+  | live pre-season opening build h5 | 4460 ms | 3481 ms | 8000 ms |
+  | live pre-season opening build h8 | 7785 ms | 5895 ms | 8000 ms |
+  | live in-season h5 | 4855 ms | 4024 ms | 5000 ms |
+  | live in-season h8 | 8516 ms | 7388 ms | 16000 ms |
+
+  `perf-live-size.test.mjs` now measures a pool expanded to the live count so a
+  regression at production size is visible; the opening build carries its own
+  budget because a fifteen-man search is a heavier operation than the transfer
+  path and inheriting the other number would not be honest. Expand the pool from
+  the CHEAPER half of the sample: cloning across the whole price range
+  manufactures premiums and makes the search about twice as hard as reality.
+
+  **These numbers are this machine's, and that is a trap the budgets fell into.**
+  Every budget above was derived here, all of them passed here, and four of them
+  then failed on the GitHub runner (2026-08-15, PR #380): the sample plan at
+  6197 ms of CPU against 5000, its wall-clock twin in `invariants.test.mjs` at
+  5216 ms, the live-sized opening build at **11114 ms** against 8000, and the
+  live-sized plan at 5772 ms. Nothing was slower than designed; the runner is
+  slower per core. Pinning cores locally (`taskset -c 0,1`) does NOT reproduce it
+  - the whole suite still passes - so a budget cannot be validated by narrowing
+  this machine, only by watching CI. The budgets were re-derived from those CI
+  observations with the ~1.65x headroom the policy in `perf-budget.test.mjs`
+  already described, which is the same thing PR #374 did when it moved 3000 to
+  5000.
+
+  The number worth carrying forward is the 11 seconds. On hardware in the
+  runner's class, building the opening fifteen costs on the order of eleven
+  seconds of CPU. It runs in a Web Worker behind a loading state so nothing
+  freezes, but that is what a manager on a slow phone waits in the week before
+  GW1. It is a candidate for the post-GW1 optimisation round, alongside chip
+  gating, and deliberately not something to tune during a release.
+
+  **No optimisation was made, and the improvement was not one.** The audit
+  measured live in-season h5 at 7269 ms; it is now 4855 ms because the B1 fix
+  changed the projections the search runs on (start rates are no longer pinned
+  at 1.000), not because any planner code got faster.
+
+  B1 moves plan time in BOTH directions, and on the committed fixture it moves
+  it up. Measured on the same machine, master against this branch:
+
+  | apps/fpl-planner/data/sample | start rate median | pinned at 1.000 | wall | CPU |
+  | --- | ---: | ---: | ---: | ---: |
+  | before `seasonEvidence()` | 1.000 | 208 of 320 | 1157 ms | 1376 ms |
+  | after | 0.508 | 0 of 320 | 2312 ms | 2468 ms |
+
+  Two thirds of that pool used to be certain starters, which is a strictly
+  easier problem than the real one, so roughly double the CPU is the price of
+  not projecting every player as an ever-present. This is the direct cause of
+  the CI budget failures above: the budget was calibrated against the degenerate
+  workload. The stage profile that
+  motivated a chip-gating change still stands - `evaluateChips` was 5543 ms of a
+  7918 ms plan, two unconditional full squad rebuilds - and gating it is
+  deliberately NOT done: it can change which chip clears its bar, and that is a
+  measurement to make after GW1 rather than a last-week production tweak. Note
+  also that wildcard and free hit are illegal in GW1, so the opening gameweek
+  never pays for those two rebuilds at all.
 - **A search limit must never be written into game state.** The manual
   pre-season squad hardcoded `freeTransfers: 2` "because the search only
   enumerates two moves"; same bug class as the FT=5 display. The reach of the
@@ -210,6 +298,44 @@ ranking, and only the part of a correction that changes ORDER changes decisions
   the following GW1s (the two clean transitions). The pre-season model's 85.2%
   for a nailed starter is correct against the right target. Do not re-litigate
   it with the wrong one.
+- **THE SEASON-STATISTICS ROLLOVER IS A GUARDED SEAM** (found 2026-08-14, fixed
+  2026-08-15). A start rate is `starts / matches`: the numerator is a season
+  total on `bootstrap-static.elements`, the denominator is the count of finished
+  fixtures, and FPL rolls the two over at DIFFERENT moments. Around the first
+  gameweek they therefore describe different seasons, and reading them together
+  is silently wrong in both directions:
+
+  | payload state | fixtures finished | what it used to produce |
+  | --- | --- | --- |
+  | last season's totals | 0 | correct: pStart median 0.53 |
+  | last season's totals | 1 | pStart median **1.000**, 73% of the pool pinned |
+  | totals cleared | 0 | xP median halved, a **20-point** gameweek, a **goalkeeper captain** |
+
+  Neither failure is visible from legality: 1.000 is a legal probability and a
+  collapsed projection is a finite number, so the whole suite stayed green
+  through both.
+
+  **`seasonEvidence()` in `minutes.js` now classifies the payload** from an
+  arithmetic fact about the sport rather than from a date or a gameweek number:
+  a player cannot have started more matches than his club has played. It returns
+  `previous-season` (measure over `rules.totalEvents`), `current-season`
+  (measure over matches played) or `none`, and `teamMatchesPlayed` is that
+  classification rather than a fixture count read in isolation. A payload with
+  no evidence at all reaches the UI through `dataStatus.evidence` and the plan
+  is **withheld** rather than presented, for the same reason a plan built on
+  stale injury news is. `scripts/evidence-probe.mjs` prints the classification
+  and the two quantities that show whether it landed, against the live proxy or
+  a captured payload.
+
+  The regression invariants, in `tests/season-rollover.test.mjs`, are about
+  MEANING rather than legality: start rates must VARY (a pinned pool is legal
+  and wrong), a legal eleven must project 30-100 points, and the captain must
+  not be a goalkeeper, which is what a collapse to appearance points produces.
+
+  **What remains genuinely unobservable** is FPL's own timing: when it clears
+  the element totals relative to the first finished fixture. That does not need
+  observing, because both orderings are handled and neither needs a code change;
+  `GW1-RUNBOOK.md` records which way it actually went.
 - **Whoever builds the numerator owns the denominator.** A start rate is starts
   over MATCHES, and on a live payload there is only one kind of match, because
   FPL resets element totals every August. A caller that assembles totals from
@@ -504,14 +630,39 @@ ranking, and only the part of a correction that changes ORDER changes decisions
   active to 2027. EPL injuries come one season per request with NO pagination,
   so the whole 3-season backfill costs 3 requests.
 
-## Operational state (recorded at the 2026-08-12 pause)
+## Operational state (release state verified 2026-08-15)
 
-- **Release state:** `apps/fpl-planner` lives on the `feature/fpl-planner`
-  branch; `origin/master` is what shevato.com deploys, so the app is live only
-  once that branch is merged there. (No commit counts here on purpose: they go
-  stale with every checkpoint. `git log --oneline origin/master..` is the
-  truth.) Until merge there is no deployed production path to verify, and
-  "production" claims in this file describe the intended architecture.
+- **Release state: THREE DIFFERENT CODE STATES, and they must not be confused**
+  (verified 2026-08-15 by hashing deployed files against both `master` and the
+  working tree):
+
+  | | what it is | GW1 fixes? |
+  | --- | --- | --- |
+  | **Deployed production** | shevato.com/apps/fpl-planner/, byte-identical to `master` | **no** |
+  | **`master`** | the pre-GW1-work app, last commit `cc0f2fd` | **no** |
+  | **`feature/fpl-team-sandbox`** | the GW1 hardening and the team sandbox | yes, **uncommitted** |
+
+  So the app IS live, and the GW1 fixes are NOT: they are uncommitted changes in
+  a working tree, zero commits ahead of `master`, unmerged and undeployed.
+  `js/ui/scenario.js` and `js/ui/sandbox.js` return 404 on production, which is
+  the quickest confirmation. Nothing in this file describing the rollover guard,
+  the deadline transition, the transfer overlay, the cache behaviour or the
+  sandbox is true of what users are running today.
+
+  **Verify before trusting any audit of this app**, because a finding is only
+  about what users hit if the bytes match:
+
+  ```sh
+  for f in js/app.js js/engine/minutes.js js/engine/squad.js js/data/api.js; do
+    printf '%s  branch=%s master=%s prod=%s\n' "$f" \
+      "$(md5sum apps/fpl-planner/$f | cut -c1-8)" \
+      "$(git show master:apps/fpl-planner/$f | md5sum | cut -c1-8)" \
+      "$(curl -s https://shevato.com/apps/fpl-planner/$f | md5sum | cut -c1-8)"
+  done
+  ```
+
+  (No commit counts here on purpose; `git log --oneline origin/master..` is the
+  truth.)
 - **Production is serverless/static; nothing must stay running.** The app is a
   static browser bundle; planning runs in a Web Worker; live reads go through
   the Netlify function proxy with Blob caching. The trained artifact is loaded
@@ -532,15 +683,208 @@ ranking, and only the part of a correction that changes ORDER changes decisions
   API-Football (key active to 2027). No collector was built, on purpose: the
   only ephemeral quantities (live chance_of_playing at deadlines) feed a
   signal this project measured and REJECTED.
-- **Wake-up triggers, in order of likelihood:** (1) GW1 of 2026-27 goes live:
-  validate the real import path once (squad, transfer history, selling
-  prices, live defcon) - a production-validation trigger, not a tuning
-  licence; (2) early 2026-27: confirm vaastav's merged_gw.csv is accumulating
+- **Wake-up triggers, in order of likelihood:** (1) GW1 of 2026-27 goes live
+  on 2026-08-21 17:30Z: validate the real import path once (squad, transfer
+  history, selling prices, live defcon) - a production-validation trigger, not
+  a tuning licence. Four facts about FPL cannot be observed before then and
+  each decides a live behaviour: WHEN the element statistics roll over relative
+  to the first finished fixture (decides which half of the rollover seam
+  fires), whether `picks` is served immediately after the deadline and whether
+  its `entry_history` carries `bank`/`value` for a current unscored gameweek
+  (if not, the planner believes every manager is broke), whether
+  `entry_history.value` tracks daily price moves (decides whether the
+  `value_mismatch` warning is a constant false alarm), and what upstream
+  actually returns while the game is updating. `GW1-RUNBOOK.md` beside this file is the
+  checklist for all four, with the commands and what each answer means; capture
+  the bootstrap at 17:25 and 17:35 and keep both; (2) early 2026-27: confirm vaastav's merged_gw.csv is accumulating
   gameweeks - if that archive ever stops, THEN build the minimal collector;
   (3) a fifth complete season, which un-parks the prior-weight family and any
   underpowered question; (4) discovery of the 2023-24 prior-value channel;
   (5) an observed real-use planner failure, which outranks all speculative
   work.
+
+## The team sandbox (added 2026-08-14)
+
+- **A scenario is a SquadState, and that is the entire design.** Editing
+  produces the same shape `buildSquadState` produces, so "recommend from THIS
+  team" is the ordinary `buildPlan` on a different input rather than a second
+  planning path. Anything that tempts a future session into a parallel engine
+  here is a mistake: the value to change is the squad state, never the planner.
+- **Transfers are the DIFFERENCE between the scenario squad and the imported
+  one, never a log of clicks.** Selling a player and buying him back nets to
+  zero, which is what FPL does with a transfer reversed before the deadline and
+  what keeps a chain (A for B, then B for C) reading as one transfer of A for C.
+  A click log would have charged for all three.
+- **Legality is decided by APPLYING the edit and asking `validate.js`**, then
+  throwing the result away if it fails. That costs one validation per candidate
+  when the pitch marks swap targets, and it buys the guarantee that what the UI
+  offers and what the commit allows cannot drift apart. The cheap pre-checks in
+  `transferBlockedReason` exist only to phrase a refusal in the picker; the
+  commit path always runs the full gate.
+- **`squadHorizonValue` scores a SQUAD, not a chosen eleven.** Every future
+  gameweek inside it is optimized, so an edit that keeps the fifteen and only
+  moves the armband or the eleven leaves the horizon EXACTLY unchanged. Leading
+  the verdict with that number reported "level over the horizon" to a manager
+  who had just cost himself 2.2 points that Saturday. The verdict now leads with
+  the gameweek figure whenever no transfer was made. Anything comparing before
+  and after must ask which quantity actually moves.
+- **Two bugs the browser found that the module tests could not.** The picker
+  opened onto an empty box because `combobox` only opens on a keystroke (it now
+  exposes `open()`, and the picker focuses and opens on mount), and the picker
+  rendered ABOVE the pitch while the button that summoned it sat below the
+  bench, so on a phone nothing appeared to happen. It now takes the action
+  bar's place. Neither is visible from a passing assertion about state.
+- **`.fpl-seg` does not wrap, and a third option in the squad switch pushed the
+  whole PAGE sideways at 390px** (measured 392px of control in a 390px
+  viewport). Fixed for every `.fpl-seg` under 640px, which also fixes the
+  pre-existing horizontal scroll on the Settings horizon control. **Measure
+  `scrollWidth` against the DEVICE width, not `window.innerWidth`**: under
+  mobile emulation `innerWidth` grows to the expanded layout viewport, so the
+  obvious check reports no overflow while the page is visibly scrolling.
+- **Pre-season needed its own branch, twice.** With no picks the diff called all
+  fifteen players transfers (eleven hits for picking a team) and the money
+  ledger reported the full budget as the bank while fifteen players sat in the
+  squad. Both now take the fresh-build path, matching `validate.js`'s own
+  `isFreshBuild`. Separately, the squad-view switch was gated on HOLDING picks,
+  which hid the editable view during the one week it matters most.
+- **Benching a captain must reassign BOTH armbands.** Promoting the vice and
+  leaving the vice field alone produces one player wearing both, which
+  `validate.js` rejects as `captain_vice_same`. `reassignArmbands` is the single
+  rule: the vice inherits, then the vacated vice slot is refilled.
+- Nothing about the scenario is persisted, synced, or counted: no new storage
+  key, and no second analytics event, because `privacy.html` commits this app to
+  exactly one. A hypothetical plan is deliberately absent from plan history, so
+  the diff between stored versions still describes real recommendations only.
+
+## The gameweek boundaries, and what each one broke (fixed 2026-08-15)
+
+Everything in this section was found by driving the shipped code through
+pre-season -> deadline -> matches in progress -> matches finished -> gameweek
+finalised against the LIVE 2026/27 payload, one week before GW1. Every one of
+them is a SEAM between two data states rather than a bug inside either state,
+and the whole suite was green through all of them. They are fixed; what is
+recorded here is the shape, because the next seam will look like these.
+
+- **The season-statistics rollover has two failure windows, and neither is
+  detectable from legality.** A start rate is `starts / matches`: the numerator
+  is a bootstrap season total, the denominator is the finished fixture count,
+  and FPL rolls those over at different moments. Last season's totals with one
+  fixture played reads as 34 starts over 1 match and pins pStart at 1.000 for
+  most of the owned pool; totals already zeroed with nothing played collapses
+  every rate to zero, and the planner then recommends a squad projecting 20
+  points captaining a goalkeeper. Both keep every probability inside [0,1].
+  `seasonEvidence()` in `minutes.js` now classifies the payload from an
+  arithmetic fact about the sport (a player cannot have started more matches
+  than his club has played) into `previous-season` / `current-season` / `none`,
+  the denominator follows the classification, and a payload with NO evidence is
+  reported through `dataStatus.evidence` and withheld by the UI rather than
+  projected from. Regression coverage asserts start rates VARY and that a legal
+  eleven projects a plausible total, not merely that the numbers are finite.
+- **The committed sample dataset is itself in the previous-season shape**: its
+  element totals are full-season sized (3420 minutes, 38 matches) while it
+  declares twelve gameweeks played. Demo mode had therefore been running with
+  pStart pinned at 1.000 for a large part of the pool, and correcting the
+  denominator moved its median to 0.66. Two optimizer tests were built on those
+  pinned projections and had to be repaired; if a sample-derived expectation
+  moves again, check this first.
+- **A deadline is a lifecycle boundary, not a repaint.** The ticker redrew the
+  hero every thirty seconds and never re-read anything, so a tab open across
+  17:30 kept offering transfer advice for a locked gameweek, and pre-season
+  stayed pre-season after the season started. It now detects the crossing once,
+  refetches, discards a bundle whose `seasonStarted` no longer holds, and routes
+  to the import path; `visibilitychange` covers the tab that slept through it.
+  `countdown()` words the passed case, so the hero prints only its own prefix -
+  writing both rendered "Deadline passed Deadline passed".
+- **Frozen picks are not the squad the manager owns.**
+  `entry/{id}/event/{gw}/picks` is frozen at that gameweek's deadline, and a
+  transfer made for the NEXT gameweek appears immediately on
+  `entry/{id}/transfers` and nowhere else. `buildSquadState` now overlays the
+  transfer rows belonging to the gameweek being planned, in time order so a
+  chain collapses to its net effect, moves the bank by the row's own
+  `element_out_cost` / `element_in_cost`, and spends the free transfers through
+  `transferAccounting` rather than a second copy of the arithmetic. The
+  `value_mismatch` warning is only meaningful against the FROZEN squad, so it is
+  suppressed once a transfer has been applied: FPL's `entry_history.value`
+  describes a squad that no longer exists.
+- **The cache is an optimisation and must never be a single point of failure.**
+  A transient upstream 404 (FPL returns them while processing a gameweek) used
+  to discard a perfectly good cached copy and throw the manager back to
+  onboarding; a failed blob WRITE threw away a body already fetched; an
+  unreachable store escaped as a platform 500. Now: a 404 with a cached copy
+  serves it stale, a 404 with nothing cached is still a real unknown-team answer,
+  a write failure is logged and the fresh body still returned, and a store that
+  cannot be acquired degrades to an uncached direct fetch.
+- **Two different ages, and conflating them pinned the browser cache forever.**
+  Cache expiry may only be decided on a clock that shares an origin with the
+  timestamp it is compared against, so it now uses a locally recorded
+  `receivedAt`. The age SHOWN to the user is the data's age, which is the
+  proxy's own `x-fpl-age-seconds` at receipt plus the time held since. Measuring
+  either with the other produced an entry that never expired on a slow device
+  and fresh data reported as stale on a fast one.
+- **The client cache has to honour the deadline window too.** The proxy
+  collapses every TTL to two minutes inside six hours of a deadline; the browser
+  sits in front of the proxy and short-circuits before it is asked, so leaving
+  it on a ten minute TTL meant the shared cache was fresher than the screen in
+  the hour that matters most. It reads the deadline out of the bootstrap it
+  already holds, so this costs no extra request.
+- **The bootstrap is memory-only.** At 2.6 MiB of a roughly 5 MiB per-origin
+  budget shared with every other app on the domain, persisting it spent more
+  than half the quota to save at most one refetch per session, and the old quota
+  handler responded to one failure by deleting every FPL key including the one
+  it had just written. Eviction is now oldest-first.
+- **A key that is written and never read is not persistence.**
+  `fplPlannerSquadSnapshot` was saved on every plan and had no readers, so a
+  hand-built pre-season squad was lost on reload during the one week when
+  building one by hand is the only thing the app can do. It now stores ids plus
+  the team, season and gameweek the ids belong to, is restored on boot when all
+  three still apply, and the draft card carries "Edit this squad" and "Start
+  over" so the restored fifteen can be changed.
+- **`state.busy` is held for the whole of `connectAndPlan`**, so anything called
+  from inside it that guards on `busy` silently does nothing. Restoring a squad
+  through `planManualSquad` from there produced a permanent loading screen with
+  no error; the restore calls `computePlan` directly instead. Check this before
+  adding another entry point.
+- **The card must not answer a question the engine did not ask.** Pre-season the
+  planner takes the draft branch and never evaluates chips, yet the chips card
+  reported "no chip clears its bar"; the per-chip row keyed on `bestGw` alone,
+  so a recommended wildcard rendered "Wildcard: Hold" directly under "Play your
+  Wildcard this gameweek"; and each chip exists twice a season, so one was
+  listed as usable now AND not open until GW20. All three are rendered-card
+  tests now, because none of them is visible from state.
+- **Perf budgets have to be measured at production size, in CPU time.** The
+  existing budget measured the 320-player sample and its comment claimed that
+  was "the same size as a live season"; the live pool is 587 and plan time does
+  not scale linearly. `perf-live-size.test.mjs` expands the sample to the live
+  count (drawing the extra players from the CHEAPER half, because cloning across
+  the whole price range manufactures premiums and makes the search twice as hard
+  as reality). Wall time under `npm test` measures how busy the machine is, so
+  the assertions use `process.cpuUsage()`; the opening build carries its own
+  measured budget because a fifteen-man search is a heavier operation than the
+  transfer path and inheriting the other number would not be honest.
+
+## Browser E2E, and why it exists here now
+
+`apps/fpl-planner/e2e/` follows the trip-planner pattern
+(`npm run test:fpl-planner:e2e`): raw CDP through `tests/browser/cdp.mjs`, no
+framework and no dependency, real coordinate clicks so hit-testing is exercised,
+waits on real application state, and a screenshot written only when a check
+fails. Two things are specific to this app:
+
+- **Readiness is fifteen rendered player cards**, not DOMContentLoaded, because
+  the plan is computed in a Web Worker.
+- **The whole lifecycle is served by INTERCEPTING the proxy.** `payloadsFor()`
+  mutates the committed sample into pre-season, deadline-soon, GW1 locked, GW1
+  live, GW1 finished or a GW2 transfer window, and the page clock is shifted so
+  a deadline crossing needs no waiting. None of those states is reachable from
+  `?demo=1`, which is why the interactive scenario shipped with green unit tests
+  and was unusable: **every interaction bounced the user back to "Recommended"**
+  because the selected view was derived from whether the squad held picks, and
+  pre-season it holds none. A DOM test cannot see that; the state was correct
+  and the view was wrong.
+
+Suites clear this app's storage between blocks. A squad saved by an earlier
+block is otherwise restored on boot, which is the feature working and the test
+lying.
 
 ## Open questions / next highest-value work
 

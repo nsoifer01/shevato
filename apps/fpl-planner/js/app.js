@@ -33,6 +33,11 @@ import {
 import { historyView, planVersionsView } from './ui/history.js';
 import { settingsView } from './ui/settings.js';
 import { preSeasonIntro, manualSquadView, manualSquadState } from './ui/preseason.js';
+import {
+  createScenario, applyTransfer, swapPlayers, setCaptain, setViceCaptain, moveBench,
+  undo as undoScenario, reset as resetScenario, canUndo, isDirty, scenarioSquadState,
+} from './ui/scenario.js';
+import { renderSandbox, transferPicker } from './ui/sandbox.js';
 import { createPlanRunner } from './ui/plan-runner.js';
 import { createPlayerDrawer } from './ui/player-drawer.js';
 
@@ -78,6 +83,27 @@ const state = {
   view: 'plan',
   pitchMode: 'recommended',
   pitchDisplay: 'pitch',
+  // THE SANDBOX, and the rule it exists to keep.
+  //
+  // `squadState` above is the manager's real FPL squad and nothing in here may
+  // touch it. `scenario` is a separate editable copy; `scenarioBundle` is what
+  // the planner says when asked to start from that copy, held apart from
+  // `bundle` so a hypothetical recommendation can never be mistaken for the
+  // real one or written to storage.
+  scenario: null,
+  scenarioBundle: null,
+  scenarioBusy: false,
+  // Set once the deadline for the planned gameweek has been reacted to, so the
+  // reaction is a one-off at the boundary rather than a repeating poll.
+  deadlineHandled: false,
+  // True when the fifteen on screen came back from storage rather than being
+  // built this visit, so the UI can say so and offer to start over.
+  restoredSquad: false,
+  // The last failure to load data, kept so the Plan tab can offer recovery
+  // again after the user has looked at another tab. Cleared by any successful
+  // plan.
+  loadError: null,
+  sandbox: { selection: null, showXp: false, picker: null, error: null },
   settings: store.getSettings(),
   fingerprint: null,
   notice: null,
@@ -239,9 +265,12 @@ async function computePlan(squadState, { reason }) {
   });
 
   state.bundle = bundle;
+  state.loadError = null;
   state.squadState = squadState;
   state.isDraft = squadState.source === 'draft';
   state.fingerprint = inputFingerprint(squadState, state.gameState);
+  // A fresh plan is a fresh deadline to watch.
+  state.deadlineHandled = false;
 
   // Diff BEFORE persisting, or the new version is the one it compares against.
   // Sample mode never reads the stored history: those versions belong to a real
@@ -288,7 +317,17 @@ function versionRecord(bundle, reason) {
 function persistPlan(bundle, record) {
   if (state.sample) return;
   store.setTeamId(state.teamId);
-  store.setSquadSnapshot(bundle.squadState);
+  // Ids and just enough context to know they still apply. `bundle.current.squad`
+  // rather than the squad state's picks, because a pre-season draft has no
+  // picks: the fifteen it recommends IS the squad worth remembering.
+  store.setSquadSnapshot({
+    teamId: state.teamId,
+    season: state.gameState.rules.season,
+    gw: bundle.current.gw,
+    source: bundle.squadState.source,
+    ids: (bundle.current.squad || []).slice(),
+    savedAt: new Date().toISOString(),
+  });
   const history = store.getPlanHistory();
   const latest = store.latestVersion(history, bundle.current.gw);
   // A rerun on identical inputs that lands on the identical answer is not a new
@@ -321,6 +360,27 @@ async function connectAndPlan({ reason = 'first-calculation' } = {}) {
     if (!state.sample) store.setTeamId(state.teamId);
 
     if (state.preSeason) {
+      // A squad built or typed on an earlier visit comes back, rather than the
+      // user being shown the empty intro again and asked to retype fifteen
+      // players. Only when it is about THIS team, season and gameweek.
+      const snapshot = state.sample ? null : store.getSquadSnapshot();
+      if (store.snapshotApplies(snapshot, {
+        teamId: state.teamId,
+        season: state.gameState.rules.season,
+        gw: state.planGw,
+      }) && snapshot.ids.every(id => state.gameState.players.has(id))) {
+        state.manualIds = snapshot.ids.slice();
+        state.restoredSquad = true;
+        // computePlan directly rather than planManualSquad: this branch already
+        // holds the busy flag, and planManualSquad refuses to run while it is
+        // held, so routing through it restored nothing at all and left the user
+        // on a blank screen.
+        await computePlan(
+          manualSquadState({ ids: snapshot.ids, gameState: state.gameState, gw: state.planGw, entry: state.entry }),
+          { reason: 'restored-squad' },
+        );
+        return;
+      }
       state.preSeasonStage = 'intro';
       renderApp();
       return;
@@ -377,25 +437,47 @@ function handleLoadError(err) {
     return;
   }
 
-  const sources = fplApi.getDataStatus().sources;
-  const failed = sources.filter(s => !s.ok);
+  // Remembered so the Plan tab can offer these actions again after the user
+  // has looked at History or Settings. Without it, navigating away from a
+  // failure and back rendered a bare "No plan yet." with no way to recover.
+  state.loadError = err;
   showApp();
-  mount(appEl, [
-    topBar(),
-    banner({
-      tone: 'error',
-      mark: '!',
-      title: 'We could not load the data this plan needs',
-      text: 'No plan is shown, because a plan built on missing data would look exactly as confident as a good one.',
-      list: failed.length
-        ? failed.map(s => `${s.name}: ${s.error || 'could not be loaded'}`)
-        : [String(err.message || err)],
-      actions: [
-        btn('Try again', () => connectAndPlan({ reason: 'manual' }), { variant: 'fpl-btn-primary' }),
-        btn('Use a different Team ID', () => showLanding(null, state.teamId), { variant: 'fpl-btn-quiet' }),
-      ],
-    }),
-  ]);
+  mount(appEl, [topBar(), loadFailureView(err)]);
+}
+
+// What a person is told when the data could not be loaded.
+//
+// The technical text stays reachable (a `title` on the row, and the console
+// already has it), but a raw exception is not an explanation: "Cannot read
+// properties of undefined (reading 'rules')" and "proxy 503 for
+// bootstrap-static" were the primary message a stuck user read.
+function loadFailureView(err) {
+  const failed = fplApi.getDataStatus().sources.filter(s => !s.ok);
+  return banner({
+    tone: 'error',
+    mark: '!',
+    title: 'We could not load the data this plan needs',
+    text: 'No plan is shown, because a plan built on missing data would look exactly as confident as a good one.',
+    list: failed.length
+      ? failed.map(s => ({ text: `${s.name}: ${friendlyFailure(s.error)}`, title: s.error || null }))
+      : [{ text: friendlyFailure(String(err && err.message || err)), title: String(err && err.message || err) }],
+    actions: [
+      btn('Try again', () => connectAndPlan({ reason: 'manual' }), { variant: 'fpl-btn-primary' }),
+      btn('Use a different Team ID', () => showLanding(null, state.teamId), { variant: 'fpl-btn-quiet' }),
+    ],
+  });
+}
+
+// One sentence per failure class, from the shape of the error rather than its
+// text where possible.
+function friendlyFailure(message) {
+  const m = String(message || '');
+  if (/\b(429|rate)/i.test(m)) return 'Fantasy Premier League is rate limiting requests right now.';
+  if (/\b5\d\d\b|upstream_unavailable/i.test(m)) return 'Fantasy Premier League did not respond. This is usually brief, and often happens while a gameweek is being processed.';
+  if (/\b403\b|forbidden/i.test(m)) return 'This copy of the app is not allowed to read Fantasy Premier League data.';
+  if (/\b404\b|not_found/i.test(m)) return 'Fantasy Premier League has no data at that address yet.';
+  if (/network|failed to fetch|abort/i.test(m)) return 'The request did not complete. Check your connection and try again.';
+  return 'It could not be loaded.';
 }
 
 /* ----------------------------------------------------------------- refresh */
@@ -407,9 +489,28 @@ async function refreshInputs() {
   if (state.busy) return;
   state.busy = true;
   try {
+    const wasSeasonStarted = state.gameState ? state.gameState.seasonStarted : false;
     await loadWorld({ force: true });
     await loadTeam({ force: true });
-    if (state.preSeason || !state.picks) { renderApp(); return; }
+    // Recorded here rather than after the in-season branch: a pre-season user
+    // pressing "Check for changes" was otherwise given no evidence the button
+    // had done anything at all.
+    state.lastChecked = Date.now();
+
+    if (state.preSeason || !state.picks) {
+      // The check itself can be what discovers the season has started.
+      if (!wasSeasonStarted && state.gameState.seasonStarted && state.picks) {
+        state.bundle = null;
+        state.scenario = null;
+        state.scenarioBundle = null;
+        state.preSeason = false;
+        state.busy = false;
+        await connectAndPlan({ reason: 'season-started' });
+        return;
+      }
+      renderApp();
+      return;
+    }
     const squadState = buildSquadState({
       entry: state.entry, history: state.history, transfers: state.transfers,
       picks: state.picks, gameState: state.gameState, gw: state.planGw,
@@ -417,7 +518,6 @@ async function refreshInputs() {
     const next = inputFingerprint(squadState, state.gameState);
     state.outdated = outdatedReason(state.fingerprint, next);
     state.pendingSquad = state.outdated ? squadState : null;
-    state.lastChecked = Date.now();
     renderApp();
   } catch (err) {
     handleLoadError(err);
@@ -460,13 +560,13 @@ async function buildOpeningSquad() {
   }
 }
 
-async function planManualSquad(ids) {
+async function planManualSquad(ids, { reason = 'manual' } = {}) {
   if (state.busy) return;
   state.busy = true;
   state.manualIds = ids;
   try {
     const squadState = manualSquadState({ ids, gameState: state.gameState, gw: state.planGw, entry: state.entry });
-    await computePlan(squadState, { reason: 'manual' });
+    await computePlan(squadState, { reason });
   } catch (err) {
     handleLoadError(err);
   } finally {
@@ -589,11 +689,32 @@ function heroSlotContent() {
 
 function planView() {
   const bundle = state.bundle;
+  // A failure screen that is navigated away from and back to used to come back
+  // as a bare "No plan yet.", with the explanation and both recovery buttons
+  // gone and only a reload left. The error is state, so the view can rebuild it.
+  if (!bundle && state.loadError) return [topNotices(), loadFailureView(state.loadError)];
   if (!bundle) return el('p', { class: 'fpl-empty', text: 'No plan yet.' });
 
   const assessment = assessData({ sources: fplApi.getDataStatus().sources });
   if (assessment.withholdPlan) {
     return [topNotices(), withheldView({ assessment, onRetry: () => connectAndPlan({ reason: 'manual' }) })];
+  }
+
+  // A plan built from a payload with no season evidence in it is not a weak
+  // recommendation, it is a confident-looking one assembled out of nothing: at
+  // the statistics rollover every rate reads zero, the projections collapse to
+  // appearance points and the optimizer captains a goalkeeper. Withheld for the
+  // same reason stale injury data is.
+  const evidence = bundle.dataStatus.evidence;
+  if (evidence && evidence.usable === false) {
+    return [topNotices(), withheldView({
+      assessment: {
+        reason: `${evidence.message} Fantasy Premier League clears last season's player totals when it rolls the new season over, and until the first matches are played there is nothing to project from.`,
+        failed: [],
+        stale: [],
+      },
+      onRetry: () => connectAndPlan({ reason: 'manual' }),
+    })];
   }
 
   state.slots.fresh = el('div', {}, freshnessRow());
@@ -605,8 +726,17 @@ function planView() {
     topNotices(),
     state.slots.hero,
     state.slots.fresh,
-    state.isDraft
-      ? draftCard({ bundle, gameState: state.gameState })
+    state.isDraft || bundle.squadState.source === 'manual'
+      ? draftCard({
+        bundle,
+        gameState: state.gameState,
+        // Before the first deadline the squad on screen is a draft, so there
+        // has to be a way back to changing it. Without these the only route to
+        // a different fifteen was clearing storage.
+        onEdit: () => { state.preSeasonStage = 'manual'; state.bundle = null; renderApp(); },
+        onRebuild: () => { state.manualIds = []; state.bundle = null; state.preSeasonStage = 'intro'; renderApp(); },
+        restored: state.restoredSquad,
+      })
       : transfersCard({ bundle, gameState: state.gameState }),
   ];
 
@@ -615,11 +745,20 @@ function planView() {
   nodes.push(pitchCard({
     bundle,
     gameState: state.gameState,
-    initialMode: (bundle.squadState.picks || []).length ? state.pitchMode : 'recommended',
+    // The selected view is APP state, not a property of the squad. Deriving it
+    // from whether picks exist (which is how this read before) pinned the card
+    // to "recommended" on every re-render for anyone without an imported squad,
+    // and since every sandbox edit re-renders, a pre-season user was thrown out
+    // of the scenario on every single click. pitchCard falls back on its own
+    // when the remembered view is not available in the current state.
+    initialMode: state.pitchMode,
     onModeChange: (mode) => { state.pitchMode = mode; },
     initialDisplay: state.pitchDisplay,
     onDisplayChange: (display) => { state.pitchDisplay = display; },
     onPlayerClick: (id, opts) => { if (drawer) drawer.open(id, opts); },
+    // The editable third view. Passed as a thunk so it is only built when the
+    // tab is actually open, and rebuilt from current state each time.
+    sandbox: () => sandboxNode(),
   }));
 
   nodes.push(whyCard({
@@ -656,6 +795,242 @@ function planView() {
   return nodes;
 }
 
+/* ----------------------------------------------------------------- sandbox */
+
+// The editable copy of the squad, created the first time the user opens the
+// scenario tab and kept for the session. It is seeded from the imported squad,
+// or from the recommendation when there are no picks to copy (pre-season).
+function ensureScenario() {
+  if (!state.scenario && state.bundle) {
+    state.scenario = createScenario({
+      squadState: state.squadState,
+      gameState: state.gameState,
+      plan: state.bundle.current,
+      origin: (state.squadState.picks || []).length ? 'current' : 'recommended',
+    });
+  }
+  return state.scenario;
+}
+
+function sandboxContext() {
+  return { gameState: state.gameState, squadState: state.squadState };
+}
+
+// One place where an edit is applied, so every action gets the same treatment:
+// a refusal is shown rather than swallowed, and any successful edit invalidates
+// the stored "planner from this team" answer, which was computed for a squad
+// that no longer exists.
+function applyScenarioEdit(result) {
+  state.sandbox.error = result.error || null;
+  if (!result.error) {
+    state.scenario = result.scenario;
+    state.scenarioBundle = null;
+  }
+}
+
+function handleSandboxAction(type, payload = {}) {
+  const sc = ensureScenario();
+  const ctx = sandboxContext();
+  const sel = state.sandbox.selection;
+  state.sandbox.error = null;
+
+  switch (type) {
+    case 'select': {
+      // In swap mode the second press names the partner. Otherwise a press
+      // selects, and pressing the selected player again clears it.
+      if (sel && sel.mode === 'swap' && sel.playerId !== payload.playerId) {
+        applyScenarioEdit(swapPlayers(sc, ctx, sel.playerId, payload.playerId));
+        state.sandbox.selection = state.sandbox.error ? sel : null;
+      } else if (sel && sel.playerId === payload.playerId && sel.mode !== 'swap') {
+        state.sandbox.selection = null;
+      } else {
+        state.sandbox.selection = { playerId: payload.playerId, mode: 'menu' };
+      }
+      break;
+    }
+    case 'swap-start':
+      state.sandbox.selection = { playerId: payload.playerId, mode: 'swap' };
+      break;
+    case 'cancel':
+      state.sandbox.selection = null;
+      state.sandbox.picker = null;
+      break;
+    case 'captain':
+      applyScenarioEdit(setCaptain(sc, ctx, payload.playerId));
+      state.sandbox.selection = null;
+      break;
+    case 'vice':
+      applyScenarioEdit(setViceCaptain(sc, ctx, payload.playerId));
+      state.sandbox.selection = null;
+      break;
+    case 'bench-up':
+      applyScenarioEdit(moveBench(sc, ctx, payload.playerId, 'up'));
+      break;
+    case 'bench-down':
+      applyScenarioEdit(moveBench(sc, ctx, payload.playerId, 'down'));
+      break;
+    case 'transfer-open':
+      state.sandbox.picker = { outId: payload.playerId };
+      state.sandbox.selection = null;
+      break;
+    case 'transfer-pick':
+      applyScenarioEdit(applyTransfer(sc, ctx, state.sandbox.picker.outId, payload.playerId));
+      if (!state.sandbox.error) state.sandbox.picker = null;
+      break;
+    case 'undo':
+      state.scenario = undoScenario(sc);
+      state.scenarioBundle = null;
+      state.sandbox.selection = null;
+      break;
+    case 'reset':
+      state.scenario = resetScenario(sc, {
+        squadState: state.squadState,
+        gameState: state.gameState,
+        plan: state.bundle ? state.bundle.current : null,
+      });
+      state.scenarioBundle = null;
+      state.sandbox.selection = null;
+      state.sandbox.picker = null;
+      break;
+    case 'toggle-xp':
+      state.sandbox.showXp = !state.sandbox.showXp;
+      break;
+    case 'copy-recommended': {
+      // Start the experiment from the planner's answer instead of from the
+      // current squad. A different question, so it gets its own entry point.
+      state.scenario = createScenario({
+        squadState: state.squadState,
+        gameState: state.gameState,
+        plan: state.bundle.current,
+        origin: 'recommended',
+      });
+      state.scenarioBundle = null;
+      state.sandbox.selection = null;
+      break;
+    }
+    case 'recommend':
+      recommendFromScenario();
+      return;
+    default:
+      break;
+  }
+  renderApp();
+}
+
+// "What do you recommend from THIS team?"
+//
+// The same optimizer, on a SquadState the scenario produced. Deliberately not
+// routed through computePlan: that one owns the real plan, writes plan history
+// and fires the analytics event, and a hypothetical must do none of those.
+async function recommendFromScenario() {
+  if (state.scenarioBusy || !state.scenario) return;
+  state.scenarioBusy = true;
+  state.sandbox.error = null;
+  renderApp();
+  try {
+    const squadState = scenarioSquadState(state.scenario, sandboxContext());
+    state.scenarioBundle = await runner.run({
+      gameState: state.gameState,
+      squadState,
+      options: planOptions(),
+    });
+  } catch (err) {
+    state.sandbox.error = `The planner could not run on this team: ${err.message}`;
+    state.scenarioBundle = null;
+  } finally {
+    state.scenarioBusy = false;
+    renderApp();
+  }
+}
+
+function sandboxNode() {
+  const sc = ensureScenario();
+  if (!sc) return el('p', { class: 'fpl-empty', text: 'No squad to edit yet.' });
+  const ctx = sandboxContext();
+  const picker = state.sandbox.picker
+    ? transferPicker({
+      scenario: sc,
+      ctx,
+      outId: state.sandbox.picker.outId,
+      projections: state.bundle.projections,
+      gw: state.bundle.current.gw,
+      onPick: (playerId) => handleSandboxAction('transfer-pick', { playerId }),
+      onCancel: () => handleSandboxAction('cancel'),
+    })
+    : null;
+
+  return el('div', {}, [
+    sandboxToolbar(sc),
+    state.sandbox.error
+      ? banner({ tone: 'warn', mark: '!', title: 'That change was not made', text: state.sandbox.error })
+      : null,
+    renderSandbox({
+      scenario: sc,
+      ctx,
+      projections: state.bundle.projections,
+      gw: state.bundle.current.gw,
+      horizon: state.settings.horizon,
+      discount: state.bundle.dataStatus.discount,
+      showXp: state.sandbox.showXp,
+      selection: state.sandbox.selection,
+      onAction: handleSandboxAction,
+      onPlayerDetails: (id) => { if (drawer) drawer.open(id); },
+      picker,
+    }),
+    scenarioPlanCard(),
+  ]);
+}
+
+function sandboxToolbar(sc) {
+  const dirty = isDirty(sc, state.squadState);
+  return el('div', { class: 'fpl-sandbox-tools' }, [
+    btn(state.sandbox.showXp ? 'Hide expected points' : 'Show expected points',
+      () => handleSandboxAction('toggle-xp'),
+      { variant: state.sandbox.showXp ? 'fpl-btn-primary' : '', size: 'fpl-btn-sm' }),
+    btn('Undo', () => handleSandboxAction('undo'), { size: 'fpl-btn-sm', disabled: !canUndo(sc) }),
+    btn('Reset to my team', () => handleSandboxAction('reset'), { size: 'fpl-btn-sm', disabled: !dirty }),
+    btn('Start from the recommendation', () => handleSandboxAction('copy-recommended'), { size: 'fpl-btn-sm' }),
+    btn(state.scenarioBusy ? 'Asking the planner...' : 'Ask the planner from this team',
+      () => handleSandboxAction('recommend'),
+      { variant: 'fpl-btn-primary', size: 'fpl-btn-sm', disabled: state.scenarioBusy }),
+  ]);
+}
+
+// What the planner says when it starts from the edited squad. Labelled as a
+// hypothetical everywhere it appears, because the whole risk of this feature is
+// a user reading it as advice about the team they actually own.
+function scenarioPlanCard() {
+  if (!state.scenarioBundle) return null;
+  const plan = state.scenarioBundle.current;
+  const nameOf = (id) => {
+    const p = state.gameState.players.get(id);
+    return p ? p.webName : `Player ${id}`;
+  };
+  const pairs = (plan.transfersOut || []).map((outId, i) => `${nameOf(outId)} out, ${nameOf((plan.transfersIn || [])[i])} in`);
+  return el('section', { class: 'fpl-card fpl-scenario-plan' }, [
+    el('div', { class: 'fpl-card-head' }, [
+      el('h3', { text: 'The planner, starting from your scenario' }),
+    ]),
+    el('div', { class: 'fpl-card-body' }, [
+      el('p', { class: 'fpl-note' }, [
+        'This is advice about ',
+        el('b', { text: 'your edited team' }),
+        ', not about the squad you own in Fantasy Premier League.',
+      ]),
+      el('p', { class: 'fpl-verdict' }, [el('b', { text: plan.explanation ? plan.explanation.headline : 'Plan ready' })]),
+      pairs.length
+        ? el('ul', { class: 'fpl-moves' }, pairs.map(t => el('li', { text: t })))
+        : el('p', { class: 'fpl-note', text: 'It would make no further transfer from here.' }),
+      el('div', { class: 'fpl-kv' }, [
+        stat('Captain', nameOf(plan.captain)),
+        stat('This gameweek', `${plan.xPointsGw.toFixed(1)} xP`),
+        stat(`Next ${plan.horizon} gameweeks`, `${plan.xPointsHorizon.toFixed(1)} xP`),
+        stat('Hit', plan.hitCostPoints ? `-${plan.hitCostPoints}` : 'none'),
+      ]),
+    ]),
+  ]);
+}
+
 function topNotices() {
   const nodes = [];
   if (state.sample) nodes.push(sampleBanner());
@@ -675,13 +1050,28 @@ function topNotices() {
     nodes.push(banner({ tone: 'info', mark: 'i', title: 'Plan rebuilt', text: state.notice.text }));
   }
   if (state.bundle && state.bundle.dataStatus.stale) {
-    const codes = state.bundle.dataStatus.staleReasonCodes || [];
     nodes.push(banner({
       tone: 'warn',
       mark: '!',
       title: 'Working from older data',
+      // No list: the only code that reaches here is `data_age`, and printing
+      // that identifier as a bullet was an internal name for the reason the
+      // sentence above already gives. Squad warnings are a different thing and
+      // get their own banner below.
       text: 'The plan is built from the most recent copy we have, which is not fresh.',
-      list: codes,
+    }));
+  }
+
+  // Squad warnings are their own thing and say so, rather than being reported
+  // as the data being old.
+  const squadWarnings = (state.bundle && state.bundle.dataStatus.squadWarnings) || [];
+  if (squadWarnings.length) {
+    nodes.push(banner({
+      tone: 'warn',
+      mark: '!',
+      title: 'One number does not match Fantasy Premier League',
+      text: 'The squad and prices are read from two Fantasy Premier League endpoints that are not always in step, most often because a price changed overnight. Transfers and affordability are calculated from your reconstructed selling prices.',
+      list: squadWarnings.map(w => w.message),
     }));
   }
   return nodes;
@@ -700,8 +1090,12 @@ function preSeasonView() {
     gameState: state.gameState,
     nextEvent: state.planGw,
     teamName: state.entry ? state.entry.name : null,
+    // The entry says whether this manager has played yet, which is what tells a
+    // genuine new entry apart from a squad the API would not hand over.
+    entry: state.entry,
     onBuild: () => buildOpeningSquad(),
     onManual: () => { state.preSeasonStage = 'manual'; renderApp(); },
+    onRetry: () => connectAndPlan({ reason: 'manual' }),
   });
 }
 
@@ -781,6 +1175,9 @@ function startTicker() {
   if (ticker) clearInterval(ticker);
   ticker = setInterval(() => {
     if (state.view !== 'plan' || !state.bundle || document.hidden) return;
+    // The deadline is checked before anything is redrawn, because past it the
+    // numbers on screen describe a gameweek that can no longer be changed.
+    if (deadlineHasPassed()) { reactToDeadline(); return; }
     if (state.slots.hero && state.slots.hero.isConnected) {
       mount(state.slots.hero, heroSlotContent());
     }
@@ -788,6 +1185,93 @@ function startTicker() {
       mount(state.slots.fresh, freshnessRow());
     }
   }, 30000);
+}
+
+/* --------------------------------------------------------------- deadlines */
+
+// Has the deadline for the gameweek THIS PLAN was built for gone by?
+function deadlineHasPassed(now = Date.now()) {
+  if (!state.bundle || !state.gameState) return false;
+  const event = state.gameState.events.find(e => e.id === state.bundle.current.gw);
+  if (!event || !event.deadline) return false;
+  return Date.parse(event.deadline) <= now;
+}
+
+// The deadline crossed while the app was open.
+//
+// A redraw is not enough here and never was: the plan on screen is advice about
+// a gameweek that has locked, the squad FPL will now serve is a different one,
+// and pre-season becomes in-season at this exact moment. So this re-reads the
+// world rather than re-rendering it, and decides from the new data whether the
+// existing plan can stand.
+//
+// It runs ONCE per crossing (`deadlineHandled`), so this is a reaction to a
+// lifecycle boundary rather than polling.
+async function reactToDeadline() {
+  if (state.busy || state.deadlineHandled) return;
+  state.deadlineHandled = true;
+  state.busy = true;
+  try {
+    const wasSeasonStarted = state.gameState.seasonStarted;
+    const wasPlanGw = state.planGw;
+
+    await loadWorld({ force: true });
+    await loadTeam({ force: true });
+    state.lastChecked = Date.now();
+
+    const seasonJustStarted = !wasSeasonStarted && state.gameState.seasonStarted;
+    const gameweekMoved = state.planGw !== wasPlanGw;
+
+    // The season starting invalidates the whole bundle: a pre-season draft plan
+    // is advice about a squad that no longer describes anything, and the app
+    // has to route to the import path instead of redrawing it.
+    if (seasonJustStarted || state.preSeason !== !state.picks) {
+      state.bundle = null;
+      state.scenario = null;
+      state.scenarioBundle = null;
+      state.preSeason = !state.picks;
+      state.deadlineHandled = false;
+      state.busy = false;
+      await connectAndPlan({ reason: 'deadline-passed' });
+      return;
+    }
+
+    if (gameweekMoved || !state.picks) {
+      state.outdated = {
+        code: 'deadline-passed',
+        text: `The Gameweek ${wasPlanGw} deadline has passed, so this plan can no longer be acted on. Recalculate for Gameweek ${state.planGw}.`,
+      };
+      state.pendingSquad = null;
+    } else {
+      // Same gameweek still being planned (the deadline that passed was an
+      // earlier one). Treat it as an ordinary freshness check.
+      const squadState = buildSquadState({
+        entry: state.entry, history: state.history, transfers: state.transfers,
+        picks: state.picks, gameState: state.gameState, gw: state.planGw,
+      });
+      const next = inputFingerprint(squadState, state.gameState);
+      state.outdated = outdatedReason(state.fingerprint, next) || {
+        code: 'deadline-passed',
+        text: 'The deadline has passed, so this plan can no longer be acted on.',
+      };
+      state.pendingSquad = squadState;
+    }
+    renderApp();
+  } catch (err) {
+    handleLoadError(err);
+  } finally {
+    state.busy = false;
+  }
+}
+
+// A tab that slept through the deadline wakes up on the wrong side of it, and
+// its 30 second timer did not fire while it was hidden. Checking on the way back
+// is what stops a user reloading by hand to find out the world moved.
+function wireVisibility() {
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden || state.view !== 'plan' || !state.bundle) return;
+    if (deadlineHasPassed()) reactToDeadline();
+  });
 }
 
 /* ---------------------------------------------------------------- captains */
@@ -845,6 +1329,7 @@ async function boot() {
   landingEl = qs('fpl-landing');
   if (!appEl || !landingEl) return;
   wireOnboarding();
+  wireVisibility();
   ensureModel();
 
   // The drawer overlay lives on the app ROOT WRAPPER, outside the re-rendered
@@ -852,6 +1337,9 @@ async function boot() {
   drawer = createPlayerDrawer({
     root: appEl.closest('.fpl-planner-app') || appEl.parentElement || appEl,
     context: () => (state.bundle && state.gameState ? {
+      // Which season the player's totals describe, so the drawer can label them
+      // rather than assuming they are this season's.
+      evidence: state.bundle.dataStatus ? state.bundle.dataStatus.evidence : null,
       gameState: state.gameState,
       projections: state.bundle.projections,
       gw: state.bundle.current.gw,

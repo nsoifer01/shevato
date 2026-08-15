@@ -231,7 +231,35 @@ test('a source that failed outweighs a source that is merely old', () => {
   assert.equal(failed.factors.find(f => f.key === 'data').weight, 2);
   assert.equal(stale.factors.find(f => f.key === 'data').weight, 1);
   assert.match(failed.reason, /could not be loaded \(Your squad\)/);
-  assert.match(stale.reason, /is 24 hours old/);
+  // Worded the way ui/format.js words the "Last synced ..." line that sits
+  // directly beside it on screen: one age, one phrasing. "24 hours old" next to
+  // "Last synced a day ago" is the same fact told two ways.
+  assert.match(stale.reason, /is a day old/);
+});
+
+test('the confidence age and the freshness row round the same way', async () => {
+  const { describeAge } = await import('../js/engine/confidence.js');
+  const { relativeTime } = await import('../js/ui/format.js');
+  const now = Date.parse('2026-11-27T12:00:00Z');
+  for (const [seconds, label] of [[600, '10 minutes'], [3 * 3600, '3 hours'], [86400, 'a day'], [3 * 86400, '3 days']]) {
+    assert.equal(describeAge(seconds), label, `${seconds}s`);
+    // relativeTime says "<phrase> ago" for the same gap.
+    assert.match(relativeTime(new Date(now - seconds * 1000).toISOString(), now), new RegExp(label));
+  }
+});
+
+test('data old enough to matter is never called up to date', () => {
+  // The complaint this fixes: a plan built on a three day old fetch reported
+  // "the data behind this plan is up to date" beside a freshness row that said
+  // "Last synced 3 days ago".
+  const w = world();
+  const old = assess(planOf(), w, {
+    dataStatus: { ...FRESH, fetchedAt: '2026-11-24T12:00:00Z' },
+  });
+  const factor = old.factors.find(f => f.key === 'data');
+  assert.equal(factor.weight, 1, 'age alone counts, without a stale flag');
+  assert.match(old.reason, /3 days old/);
+  assert.doesNotMatch(old.reason, /up to date/);
 });
 
 test('fresh, complete data is stated as a reason rather than left silent', () => {

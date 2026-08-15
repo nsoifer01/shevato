@@ -487,7 +487,11 @@ test('a full transfer search over the sample dataset stays inside its budget', (
 // PR #374 at a median of 3020 ms. A budget constant duplicated across files
 // drifts exactly like the duplicated app lists and free-transfer arithmetic
 // this project keeps re-learning about.
-const PLAN_GENERATION_BUDGET_MS = 5000;
+// 2026-08-15: 5000 -> 10000. seasonEvidence() corrected the projections this
+// fixture is planned from, which roughly doubled the search (208 of its 320
+// start rates used to be pinned at 1.000; none are now). CI measured 5216 ms
+// here. perf-budget.test.mjs documents the measurements and owns the number.
+const PLAN_GENERATION_BUDGET_MS = 10000;
 
 test('end to end plan generation stays inside its budget at the default horizon', async (t) => {
   const names = ['meta', 'bootstrap', 'fixtures', 'entry', 'entry-history', 'entry-transfers', 'entry-picks'];

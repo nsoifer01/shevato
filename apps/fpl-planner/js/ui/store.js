@@ -186,12 +186,31 @@ export function setPlanHistory(history) {
   writeJson(KEYS.planHistory, history);
 }
 
+// The squad the user built or typed, in a shape that can be READ BACK.
+//
+// This key was written on every plan and never read, so a manager who typed
+// fifteen players pre-season lost them on reload, during the one week when
+// typing them in is the only thing the app can do. It is deliberately small
+// (ids and the context needed to know they still apply) because it syncs to the
+// account, and it stores ids rather than a serialized SquadState because JSON
+// turns the pre-season `Infinity` free-transfer count into null.
 export function getSquadSnapshot() {
   return readJson(KEYS.squadSnapshot, null);
 }
 
 export function setSquadSnapshot(snapshot) {
   writeJson(KEYS.squadSnapshot, snapshot);
+}
+
+// Is this snapshot about the squad we are looking at now? A snapshot from
+// another team, another season or another gameweek describes something else and
+// restoring it would silently put a stranger's fifteen on screen.
+export function snapshotApplies(snapshot, { teamId, season, gw }) {
+  if (!snapshot || !Array.isArray(snapshot.ids) || !snapshot.ids.length) return false;
+  if (String(snapshot.teamId ?? '') !== String(teamId ?? '')) return false;
+  if (snapshot.season && season && snapshot.season !== season) return false;
+  if (Number.isFinite(snapshot.gw) && Number.isFinite(gw) && snapshot.gw !== gw) return false;
+  return true;
 }
 
 // Removing through localStorage.removeItem is what propagates the deletion to

@@ -2269,3 +2269,297 @@ body.fpl-page {
 .fpl-planner-app .fpl-dot-hit,
 .fpl-planner-app .fpl-dot-hit:hover,
 .fpl-planner-app .fpl-dot-hit:active { background-color: transparent; border: 0; }
+
+/* ==========================================================================
+   The team sandbox
+   --------------------------------------------------------------------------
+   The editable third view of the squad. It reuses the pitch and player-card
+   geometry above so an edited team reads as the same object as the read-only
+   one; everything here is the state that only editing needs (selection, swap
+   targets, refusals, the before/after strip).
+
+   Every colour is a token from the block at the top of this file. main.css
+   paints `button { color:#555 !important }` and a red hover, so any new button
+   class needs the counter-pin section near the end of this file rather than a
+   local colour.
+   ========================================================================== */
+
+.fpl-planner-app .fpl-sandbox-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+/* The one thing this feature must never get wrong: which squad you are looking
+   at. It states it, on every render. */
+.fpl-planner-app .fpl-scenario-flag {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+  background: var(--bg-sunk);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.fpl-planner-app .fpl-scenario-flag b { color: var(--text); }
+.fpl-planner-app .fpl-scenario-flag.is-edited {
+  border-left-color: var(--violet);
+  background: var(--violet-soft);
+}
+
+/* before -> after, four cells */
+.fpl-planner-app .fpl-cmp-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  background: var(--border-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.fpl-planner-app .fpl-cmp { background: var(--bg-card); padding: 10px 12px; }
+.fpl-planner-app .fpl-cmp-k {
+  font-size: 10.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 4px;
+}
+.fpl-planner-app .fpl-cmp-v {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text);
+}
+.fpl-planner-app .fpl-cmp-before { color: var(--text-dim); font-weight: 500; }
+.fpl-planner-app .fpl-cmp-arrow { color: var(--text-faint); font-size: 12px; }
+.fpl-planner-app .fpl-cmp-d { font-size: 12px; color: var(--text-faint); margin-top: 2px; }
+.fpl-planner-app .fpl-cmp-d.is-up { color: var(--green); }
+.fpl-planner-app .fpl-cmp-d.is-down { color: var(--red); }
+
+.fpl-planner-app .fpl-verdict { font-size: 14px; color: var(--text-dim); margin-bottom: 12px; }
+.fpl-planner-app .fpl-verdict b { color: var(--text); }
+.fpl-planner-app .fpl-verdict.is-up b { color: var(--green); }
+.fpl-planner-app .fpl-verdict.is-down b { color: var(--red); }
+
+.fpl-planner-app .fpl-moves { list-style: none; margin: 0; padding: 0; }
+.fpl-planner-app .fpl-moves li { padding: 4px 0; font-size: 13.5px; }
+.fpl-planner-app .fpl-move-out { color: var(--red); }
+.fpl-planner-app .fpl-move-in { color: var(--green); }
+.fpl-planner-app .fpl-move-arrow { color: var(--text-faint); }
+
+/* editable player cards */
+.fpl-planner-app .fpl-pp-edit { cursor: pointer; }
+.fpl-planner-app .fpl-pp-edit:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+.fpl-planner-app .fpl-pp-edit:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.fpl-planner-app .fpl-pp-edit.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft), var(--shadow-sm);
+}
+/* A legal partner during a swap. The dashed ring reads as "drop here" without
+   any dragging being involved. */
+.fpl-planner-app .fpl-pp-edit.is-target {
+  border-color: var(--green);
+  border-style: dashed;
+  background: var(--green-soft);
+}
+.fpl-planner-app .fpl-pp-edit.is-target-blocked { opacity: 0.55; }
+.fpl-planner-app .fpl-pp-blocked {
+  margin-top: 5px;
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: var(--red);
+}
+
+/* "Show expected points" detail, hidden until asked for */
+.fpl-planner-app .fpl-pp-detail {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+}
+.fpl-planner-app .fpl-pp-mins { font-size: 10.5px; color: var(--text-dim); }
+.fpl-planner-app .fpl-pp-gws {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 6px;
+  margin-top: 4px;
+}
+.fpl-planner-app .fpl-pp-gw { font-size: 10px; color: var(--text-dim); white-space: nowrap; }
+.fpl-planner-app .fpl-pp-gw i { color: var(--text-faint); font-style: normal; margin-right: 2px; }
+
+/* the action bar under the pitch */
+/* The scenario control surface.
+   
+   It sticks near the bottom while a player is selected, because selecting
+   someone in the top row of the pitch otherwise puts his actions a screen and a
+   half further down and the press reads as having done nothing. It is deliberately
+   NOT flush with the viewport edge: a bar wedged against the bottom reads as
+   browser chrome, while one floating clear of it reads as part of the app. It
+   appears only when there is a selection, so it never covers the pitch while the
+   user is just looking.
+
+   Near-opaque on purpose: backdrop-filter is skipped by headless Chromium and
+   some engines, and a translucent bar lets the pitch bleed through exactly
+   where the buttons are. */
+.fpl-planner-app .fpl-actionbar {
+  position: sticky;
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  z-index: 3;
+  max-width: 680px;
+  margin: 18px auto calc(14px + env(safe-area-inset-bottom, 0px));
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  box-shadow: var(--shadow-pop);
+}
+.fpl-planner-app .fpl-actionbar.is-swapping {
+  border-color: var(--green);
+  background: var(--green-soft);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+.fpl-planner-app .fpl-actionbar-who {
+  font-size: 13px;
+  color: var(--text-dim);
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  /* A rule rather than whitespace: it separates "who is selected" from "what
+     can be done to him", which are two different kinds of information. */
+  border-bottom: 1px solid var(--border);
+}
+.fpl-planner-app .fpl-actionbar.is-swapping .fpl-actionbar-who {
+  padding-bottom: 0;
+  margin-bottom: 0;
+  border-bottom: 0;
+}
+.fpl-planner-app .fpl-actionbar-who b { color: var(--text); }
+.fpl-planner-app .fpl-actionbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+  justify-content: space-between;
+}
+.fpl-planner-app .fpl-actionbar-group { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+/* The "leave this player alone" actions sit apart from the ones that change the
+   squad, so a press that does nothing to the team never sits next to one that
+   does. */
+.fpl-planner-app .fpl-actionbar-group.is-aside { margin-left: auto; }
+.fpl-planner-app .fpl-sandbox-hint { margin-top: 16px; }
+
+/* the replacement picker */
+.fpl-planner-app .fpl-picker {
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 12px 13px;
+  margin-bottom: 14px;
+}
+.fpl-planner-app .fpl-picker-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 9px;
+  font-size: 13.5px;
+}
+.fpl-planner-app .fpl-picker-msg { margin-top: 8px; font-size: 12.5px; color: var(--text-dim); }
+.fpl-planner-app .fpl-picker-msg.is-bad { color: var(--red); }
+
+.fpl-planner-app .fpl-scenario-plan { margin-top: 16px; }
+
+/* On a phone the eleven is already tight, so the extra projection block and the
+   refusal text both shrink rather than pushing the rows apart. */
+@media (max-width: 640px) {
+  .fpl-planner-app .fpl-sandbox-tools .fpl-btn { flex: 1 1 auto; }
+  .fpl-planner-app .fpl-pp-gws { gap: 2px 4px; }
+  .fpl-planner-app .fpl-pp-gw { font-size: 9px; }
+  .fpl-planner-app .fpl-pp-blocked { font-size: 9.5px; }
+  /* The shared back-to-top button is fixed at the bottom-right (44px, 20px
+     clear of both edges) and it is site chrome this app must not restyle. So
+     the scenario bar keeps its own controls out from under it instead. */
+  .fpl-planner-app .fpl-actionbar {
+    max-width: none;
+    padding-right: 46px;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    margin: 14px 0 calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+  .fpl-planner-app .fpl-actionbar-actions { gap: 8px; }
+  .fpl-planner-app .fpl-actionbar-group { flex: 1 1 100%; }
+  .fpl-planner-app .fpl-actionbar-group.is-aside { margin-left: 0; }
+  .fpl-planner-app .fpl-actionbar-group .fpl-btn { flex: 1 1 auto; }
+}
+
+/* A short viewport (a phone in landscape, a small laptop window) is where a
+   sticky bar does the most damage, so it gives the pitch its space back and
+   simply scrolls with the page. */
+@media (max-height: 520px) {
+  .fpl-planner-app .fpl-actionbar { position: static; margin: 14px 0; box-shadow: var(--shadow-sm); }
+}
+
+/* ------------------------------------------------- narrow-width segmenting ---
+   `.fpl-seg` is an inline-flex row that does not wrap, so a segmented control
+   wider than the viewport pushes the whole PAGE sideways and takes the site
+   header with it. Two of them are wide enough for that to bite at 390px: the
+   planning-horizon control in Settings (three "N gameweeks" options) and the
+   squad view switch once it carries a third view. Wrapping is the fix rather
+   than a horizontal scroller, because a control that has to be scrolled to be
+   discovered is a control most people never find.
+
+   Verified by measuring scrollWidth against the DEVICE width, not against
+   window.innerWidth: under mobile emulation innerWidth grows to the expanded
+   layout viewport, so comparing the two hides exactly this bug. */
+@media (max-width: 640px) {
+  .fpl-planner-app .fpl-seg {
+    display: flex;
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+  .fpl-planner-app .fpl-seg > button {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 6px 10px;
+  }
+  /* The icon-only pitch/table switch is already narrow and should not stretch
+     its two buttons across a whole row. */
+  .fpl-planner-app .fpl-seg.fpl-seg-icons > button { flex: 0 0 auto; }
+  .fpl-planner-app .fpl-card-tools { max-width: 100%; }
+}
+
+/* Draft-squad actions: the way back to changing an opening fifteen. */
+.fpl-planner-app .fpl-draft-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* A gameweek still being played: its points are provisional until Fantasy
+   Premier League applies bonus and finalises the event. */
+.fpl-planner-app .fpl-chip.is-live {
+  margin-left: 6px;
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+.fpl-planner-app tr.is-live td { background: rgba(237, 175, 70, 0.05); }

@@ -270,16 +270,105 @@ function matchesPlayedByTeam(gameState) {
   return counts;
 }
 
-// How many matches each club has played, which is the denominator for a start
-// rate. Pre-season the season totals are LAST season's, so the right
-// denominator is a full season of gameweeks rather than zero.
-function teamMatchesPlayed(gameState) {
-  let maxPerTeam = 0;
-  for (const n of matchesPlayedByTeam(gameState).values()) {
-    if (n > maxPerTeam) maxPerTeam = n;
+// WHICH SEASON THE ELEMENT TOTALS BELONG TO, decided from the payload itself.
+//
+// A start rate is `starts / matches`. The numerator is a season total on the
+// bootstrap; the denominator is the count of finished fixtures. FPL rolls those
+// two over at different moments, so around the first gameweek they routinely
+// describe DIFFERENT seasons, and reading them together is silently wrong in
+// both directions:
+//
+//   totals still last season's, one fixture finished -> 34 starts over 1 match,
+//     which clamps to a start probability of 1.000 for most of the owned pool
+//     and inflates every projection built on it.
+//   totals already rolled to zero, nothing finished  -> every rate is 0 over a
+//     full season, the per-90 priors collapse with them, and the planner
+//     confidently recommends a squad projecting about a third of a real
+//     gameweek, captaining whoever is likeliest to appear (a goalkeeper).
+//
+// Neither is detectable from legality: both keep every probability inside [0,1]
+// and every projection finite. What separates them is an arithmetic fact about
+// the sport - a player cannot have started more matches than his club has
+// played - so that is what this checks, rather than a date or a gameweek number.
+export function seasonEvidence(gameState) {
+  const perTeam = matchesPlayedByTeam(gameState);
+  let maxPlayed = 0;
+  for (const n of perTeam.values()) if (n > maxPlayed) maxPlayed = n;
+
+  let impossible = 0;
+  let withMinutes = 0;
+  let starts = 0;
+  for (const p of gameState.players.values()) {
+    if (p.minutes > 0) withMinutes++;
+    starts += p.starts || 0;
+    const played = perTeam.get(p.teamId) || 0;
+    // The claim only means anything once his club has actually played, and one
+    // player over the line is noise: a squad's worth of them is a season
+    // boundary. `starts` is the cleanest signal because it is bounded by
+    // matches by construction; minutes are bounded by 90 per match, so they
+    // catch the same thing when a payload omits starts.
+    if (played > 0 && ((p.starts || 0) > played || p.minutes > played * 90 + 30)) impossible++;
   }
-  if (maxPerTeam > 0) return maxPerTeam;
-  return gameState.rules.totalEvents;
+
+  const totalEvents = gameState.rules.totalEvents;
+
+  // Nothing has been played AND nobody carries a minute: there is no evidence in
+  // this payload at all, from either season.
+  if (maxPlayed === 0 && withMinutes === 0) {
+    return {
+      kind: 'none',
+      usable: false,
+      teamMatches: totalEvents,
+      finishedMatches: 0,
+      message: 'This payload carries no played minutes and no finished fixtures, so there is nothing to project from yet.',
+    };
+  }
+
+  // Totals that outrun the fixtures played are last season's. Measure them over
+  // a full season, which is the denominator they were accumulated against.
+  if (impossible >= IMPOSSIBLE_STARTS_QUORUM) {
+    return {
+      kind: 'previous-season',
+      usable: true,
+      teamMatches: totalEvents,
+      finishedMatches: maxPlayed,
+      impossible,
+      message: 'Player totals still describe last season, so they are read against a full season rather than the fixtures played so far.',
+    };
+  }
+
+  if (maxPlayed === 0) {
+    // Totals exist but no fixture has finished: the ordinary pre-season shape.
+    return {
+      kind: 'previous-season',
+      usable: true,
+      teamMatches: totalEvents,
+      finishedMatches: 0,
+      impossible,
+      message: 'No fixture has been played yet, so last season\'s totals are read against a full season.',
+    };
+  }
+
+  return {
+    kind: 'current-season',
+    usable: true,
+    teamMatches: maxPlayed,
+    finishedMatches: maxPlayed,
+    impossible,
+    message: null,
+  };
+}
+
+// How many players have to claim more starts than their club has played before
+// the payload is called a previous season's. One is a data quirk; a quorum is a
+// season boundary. Deliberately small: at a real rollover essentially the whole
+// pool trips it at once.
+const IMPOSSIBLE_STARTS_QUORUM = 12;
+
+// The denominator for a start rate, which is now whatever the evidence says it
+// is rather than a count of fixtures read in isolation.
+function teamMatchesPlayed(gameState) {
+  return seasonEvidence(gameState).teamMatches;
 }
 
 // Price percentile within position, used only for players with no minutes.

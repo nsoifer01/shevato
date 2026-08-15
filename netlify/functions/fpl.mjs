@@ -34,13 +34,35 @@ export default async function handler(req) {
   const path = canonicalPath(new URL(req.url).searchParams.get('path'));
   if (!path) return json({ error: 'path_not_allowed' }, 400);
 
-  const store = await fplStore();
-  const result = await serveFpl({
-    path,
-    store,
-    fetchUpstream: fetchFpl,
-    now: Date.now(),
-  });
+  // The cache is an optimisation in front of a public API, so losing it must
+  // cost speed and nothing else. Acquiring the store can fail (a Blobs incident,
+  // a misconfigured deploy, the package missing) and that used to escape as a
+  // platform 500 with the app fully down while upstream was perfectly healthy.
+  let store;
+  try {
+    store = await fplStore();
+  } catch (err) {
+    console.error('fpl blob store unavailable, serving uncached', String(err && err.message));
+    store = memoryStore();
+  }
+
+  let result;
+  try {
+    result = await serveFpl({ path, store, fetchUpstream: fetchFpl, now: Date.now() });
+  } catch (err) {
+    // Nothing below is allowed to escape as an unhandled 500 either: the client
+    // reads a 503 as "temporarily unavailable" and keeps its own cached copy,
+    // while a 500 with no body is just a broken app.
+    console.error('fpl serve failed', path, String(err && err.message));
+    result = {
+      status: 503,
+      body: { error: 'upstream_unavailable' },
+      cache: 'miss',
+      fetchedAt: new Date().toISOString(),
+      stale: false,
+      ageSeconds: 0,
+    };
+  }
 
   return new Response(JSON.stringify(result.body), {
     status: result.status,
@@ -52,6 +74,16 @@ export default async function handler(req) {
       'x-fpl-age-seconds': String(result.ageSeconds),
     },
   });
+}
+
+// A store shaped like the Blobs one that remembers nothing. Used only when the
+// real store cannot be reached, so every request goes straight upstream: slower
+// and more traffic, but working.
+function memoryStore() {
+  return {
+    async get() { return null; },
+    async setJSON() { /* deliberately forgotten */ },
+  };
 }
 
 // A plain identifying User-Agent (verified accepted upstream) and the same

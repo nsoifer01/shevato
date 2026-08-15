@@ -63,7 +63,14 @@ function breakdownList(row) {
   ])));
 }
 
-function drawerContent({ playerId, gameState, projections, gw, horizon }) {
+// The heading over a player's season totals.
+export function seasonTotalsLabel(evidence) {
+  if (evidence && evidence.kind === 'previous-season') return 'Last season';
+  if (evidence && evidence.kind === 'none') return 'Season totals (not published yet)';
+  return 'Season so far';
+}
+
+function drawerContent({ playerId, gameState, projections, gw, horizon, evidence = null }) {
   const info = describePlayer(gameState, playerId);
   const player = rawPlayer(gameState, playerId);
   const avail = player ? availability(player) : null;
@@ -115,7 +122,10 @@ function drawerContent({ playerId, gameState, projections, gw, horizon }) {
   ]) : null;
 
   const season = player ? el('section', { class: 'fpl-dw-section' }, [
-    el('div', { class: 'fpl-subhead', text: 'Season so far' }),
+    // Which season these totals describe is decided by seasonEvidence(), not
+    // assumed: before FPL clears them they are LAST season's, and calling them
+    // "season so far" in August is the app stating something untrue.
+    el('div', { class: 'fpl-subhead', text: seasonTotalsLabel(evidence) }),
     el('div', { class: 'fpl-dw-stats' }, [
       statCell('Points', String(player.totalPoints ?? 0)),
       statCell('Minutes', (player.minutes ?? 0).toLocaleString('en-GB'), Number.isFinite(player.starts) ? `${player.starts} starts` : null),

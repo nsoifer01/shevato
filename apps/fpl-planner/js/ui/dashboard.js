@@ -68,8 +68,11 @@ export function heroCard({ bundle, gameState, event, now, isDraft = false, sourc
         bundle.dataStatus && bundle.dataStatus.sample ? ' ' : null,
         bundle.dataStatus && bundle.dataStatus.sample ? sampleTag() : null,
       ]),
-      el('div', { class: `fpl-deadline ${cd.urgent ? 'is-urgent' : ''}`.trim() }, [
-        cd.passed ? 'Deadline passed ' : 'Deadline in ',
+      // `countdown` already words the passed case, so the prefix belongs only to
+      // the counting one. Writing both rendered "Deadline passed Deadline
+      // passed" from the moment the deadline went by.
+      el('div', { class: `fpl-deadline ${cd.urgent ? 'is-urgent' : ''} ${cd.passed ? 'is-passed' : ''}`.trim() }, [
+        cd.passed ? '' : 'Deadline in ',
         el('strong', { text: cd.text }),
         event ? ` (${dateTime(event.deadline)})` : '',
       ]),
@@ -121,10 +124,19 @@ export function chipInventory(bundle, gameState) {
   const usableNow = (bundle.squadState.chipsAvailable || []).map(chipLabel);
   const later = owned.filter(w => w.startEvent > gw);
 
+  // Which half of the season a window belongs to, so a chip that appears twice
+  // is described as two chips rather than as a contradiction.
+  const halfOf = (w) => {
+    const same = (rules.chips || []).filter(x => x.name === w.name)
+      .sort((a, b) => a.startEvent - b.startEvent);
+    if (same.length < 2) return 'this season';
+    return same[0] === w || same[0].startEvent === w.startEvent ? 'first half' : 'second half';
+  };
+
   return {
     usableNow,
     ownedCount: owned.length,
-    later: later.map(w => ({ label: chipLabel(w.name), fromGw: w.startEvent })),
+    later: later.map(w => ({ label: chipLabel(w.name), fromGw: w.startEvent, half: halfOf(w) })),
   };
 }
 
@@ -223,7 +235,7 @@ export function transfersCard({ bundle, gameState }) {
 
 // Pre-season: there is no OUT -> IN pair to show, so the money story is what
 // the fifteen costs and what is left in the bank.
-export function draftCard({ bundle, gameState }) {
+export function draftCard({ bundle, gameState, onEdit = null, onRebuild = null, restored = false }) {
   const plan = bundle.current;
   const byPosition = new Map();
   for (const id of plan.squad) {
@@ -246,6 +258,18 @@ export function draftCard({ bundle, gameState }) {
       el('span', {}, ['Squad cost ', el('b', { text: formatMoney(plan.moneyOutTenths) })]),
       el('span', {}, ['Left in the bank ', el('b', { text: formatMoney(plan.bankAfterTenths) })]),
     ]),
+    // Before the first deadline this squad is a draft, so it has to be
+    // changeable. `restored` says plainly where it came from, because a squad
+    // that reappears without explanation reads as the app having invented one.
+    restored
+      ? el('p', { class: 'fpl-note', style: 'margin-top:12px', text: 'This is the squad you saved on an earlier visit.' })
+      : null,
+    onEdit || onRebuild
+      ? el('div', { class: 'fpl-draft-actions' }, [
+        onEdit ? btn('Edit this squad', onEdit, { size: 'fpl-btn-sm' }) : null,
+        onRebuild ? btn('Start over', onRebuild, { variant: 'fpl-btn-quiet', size: 'fpl-btn-sm' }) : null,
+      ])
+      : null,
   ]);
 }
 
@@ -256,38 +280,62 @@ export function chipCard({ bundle, gameState }) {
   const decision = chipDecision(plan);
   const reason = decision.reason;
   const reasons = (reason && reason.reasons) || [];
+  const perChip = (reason && reason.perChip) || null;
 
-  const body = affirm({
-    mark: decision.playing ? '★' : '✓',
-    tone: decision.playing ? 'is-chip' : '',
-    title: decision.playing ? `Play your ${decision.label} this gameweek` : 'Keep your chips for now',
-    body: reasons.length
-      ? reasons.map(r => r.text).join(' ')
-      : 'No chip clears its bar this gameweek.',
-  });
+  // NOTHING HERE MAY CLAIM A VERDICT THE ENGINE DID NOT REACH.
+  //
+  // Before the first deadline there is no squad to play a chip with, so the
+  // planner does not evaluate chips at all (planner.js takes the draft branch).
+  // The card used to answer anyway: "Keep your chips for now. No chip clears its
+  // bar this gameweek", which is a measurement that was never made, next to a
+  // list of chips it said were usable.
+  const evaluated = !!perChip && Object.keys(perChip).length > 0;
+
+  const body = evaluated
+    ? affirm({
+      mark: decision.playing ? '★' : '✓',
+      tone: decision.playing ? 'is-chip' : '',
+      title: decision.playing ? `Play your ${decision.label} this gameweek` : 'Keep your chips for now',
+      body: reasons.length ? reasons.map(r => r.text).join(' ') : 'No chip clears its bar this gameweek.',
+    })
+    : affirm({
+      mark: 'i',
+      title: 'Chips are judged once you have a squad',
+      body: 'A chip is worth playing or not because of the fifteen it is played on, so this is decided against your real squad after the first deadline rather than against a draft.',
+    });
 
   const inv = chipInventory(bundle, gameState);
   const inventory = el('div', { class: 'fpl-kv', style: 'margin-top:14px' }, [
     kv('Usable this gameweek', inv.usableNow.length ? inv.usableNow.join(', ') : 'None'),
     kv('Owned for the rest of the season', String(inv.ownedCount)),
+    // Each chip exists TWICE, once per half-season, so "Free Hit" appearing as
+    // both usable now and not open until GW20 is two different chips with one
+    // name. Saying which half removes the contradiction.
     inv.later.length
-      ? kv('Not open yet', inv.later.map(c => `${c.label} from GW${c.fromGw}`).join(', '))
+      ? kv('Not open yet', inv.later.map(c => `${c.label} (${c.half}) from GW${c.fromGw}`).join(', '))
       : null,
   ]);
 
-  const perChip = (reason && reason.perChip) || null;
-  const detail = perChip
+  const detail = evaluated
     ? el('div', { class: 'fpl-kv', style: 'margin-top:14px' }, Object.values(perChip).map(entry => kv(
       chipLabel(entry.chip),
-      entry.available === false
-        ? 'Used or out of window'
-        : entry.bestGw
-          ? `Best around GW${entry.bestGw}`
-          : 'Hold',
+      chipRowStatus(entry, plan),
     )))
     : null;
 
   return card('Chips', [body, inventory, detail]);
+}
+
+// What one chip's row says. It has to agree with the headline: a card that says
+// "Play your Wildcard this gameweek" above a row reading "Wildcard: Hold" is
+// telling the manager two different things about the same chip, and the row was
+// deciding purely on whether a better future gameweek had been identified.
+function chipRowStatus(entry, plan) {
+  if (entry.available === false) return 'Used or out of window';
+  if (plan.chip === entry.chip) return 'Playing it this gameweek';
+  if (entry.recommended) return 'Clears its bar this gameweek';
+  if (entry.bestGw && entry.bestGw !== plan.gw) return `Best around GW${entry.bestGw}`;
+  return 'Hold';
 }
 
 /* ------------------------------------------------------------------- pitch */
@@ -295,6 +343,10 @@ export function chipCard({ bundle, gameState }) {
 export function pitchCard({
   bundle, gameState, initialMode = 'recommended', onModeChange = null,
   initialDisplay = 'pitch', onDisplayChange = null, onPlayerClick = null,
+  // The sandbox is a third view of the same squad. It arrives as a rendered
+  // node rather than as data, because the card's job is to switch between
+  // views, not to know how an editable one is built.
+  sandbox = null,
 }) {
   const plan = bundle.current;
   const body = el('div', {});
@@ -302,6 +354,13 @@ export function pitchCard({
   let display = initialDisplay === 'list' ? 'list' : 'pitch';
 
   const draw = () => {
+    // The sandbox draws its own pitch, so the pitch/table switch does not apply
+    // to it and is hidden rather than left there doing nothing.
+    if (displaySeg) displaySeg.hidden = mode === 'scenario' && !!sandbox;
+    if (mode === 'scenario' && sandbox) {
+      body.replaceChildren(sandbox());
+      return;
+    }
     const vm = pitchViewModel({ mode, plan, squadState: bundle.squadState, gameState });
     body.replaceChildren(display === 'list'
       ? renderSquadTable({
@@ -323,7 +382,25 @@ export function pitchCard({
       }));
   };
 
-  const seg = el('div', { class: 'fpl-seg' }, ['current', 'recommended'].map(value => el('button', {
+  // Three squads exist here and the app must never blur them: the team the
+  // manager actually owns, the one he is experimenting with, and the one the
+  // planner recommends. They get three labelled tabs for exactly that reason.
+  const MODE_LABELS = { current: 'Current team', scenario: 'My scenario', recommended: 'Recommended' };
+  // Pre-season there is no imported squad, so there is no "current team" to
+  // show; the editable view is seeded from the opening 15 instead. Dropping the
+  // whole switch in that state (which is what happens when it is gated on
+  // holding picks) would leave the built 15 uneditable, which is exactly the
+  // week when editing it matters most.
+  const holdsPicks = (bundle.squadState.picks || []).length > 0;
+  const modes = [
+    ...(holdsPicks ? ['current'] : []),
+    ...(sandbox ? ['scenario'] : []),
+    'recommended',
+  ];
+  // A remembered view that this squad state cannot offer (asking for "current
+  // team" before one has been imported) falls back rather than rendering blank.
+  if (!modes.includes(mode)) mode = 'recommended';
+  const seg = el('div', { class: 'fpl-seg' }, modes.map(value => el('button', {
     type: 'button',
     class: value === mode ? 'is-on' : '',
     dataset: { mode: value },
@@ -334,7 +411,7 @@ export function pitchCard({
       if (onModeChange) onModeChange(mode);
       event.currentTarget.blur();
     },
-  }, value === 'current' ? 'Current team' : 'Recommended')));
+  }, MODE_LABELS[value])));
 
   // Pitch or table: the same squad either way, so this is display, not data.
   const displaySeg = el('div', { class: 'fpl-seg fpl-seg-icons' }, [
@@ -360,8 +437,9 @@ export function pitchCard({
   }, el('i', { class: `fa-solid ${icon}`, 'aria-hidden': 'true' }))));
 
   draw();
-  const hasSquad = (bundle.squadState.picks || []).length > 0;
-  const aside = el('div', { class: 'fpl-card-tools' }, [hasSquad ? seg : null, displaySeg]);
+  // One view left means nothing to switch between, so the control does not
+  // appear at all rather than appearing with a single option.
+  const aside = el('div', { class: 'fpl-card-tools' }, [modes.length > 1 ? seg : null, displaySeg]);
   return card('Your team', body, { aside });
 }
 
@@ -654,6 +732,18 @@ export function alternativesCard({ bundle, open = false, onToggle = null }) {
 
 /* ------------------------------------------------------------------ status */
 
+// How the payload's season totals were read, in one line.
+export function evidenceLabel(evidence) {
+  if (!evidence) return 'unknown';
+  if (evidence.kind === 'previous-season') {
+    return `last season's, measured over ${evidence.teamMatches} gameweeks`;
+  }
+  if (evidence.kind === 'current-season') {
+    return `this season's, over ${evidence.finishedMatches} played`;
+  }
+  return 'not published yet, so no plan is shown';
+}
+
 export function statusCard({ bundle, sources = [], runnerMode = 'worker', modelStatus = null, open = false, onToggle = null, now = Date.now() }) {
   const ds = bundle.dataStatus || {};
   // A sample snapshot carries the date it was captured, which is not a point on
@@ -669,6 +759,12 @@ export function statusCard({ bundle, sources = [], runnerMode = 'worker', modelS
     ds.sample ? el('div', { class: 'fpl-sample-banner' }, [sampleTag(), el('span', { text: 'These figures come from the bundled sample dataset, not from Fantasy Premier League.' })]) : null,
     el('div', { class: 'fpl-kv' }, [
       kv('Model version', ds.modelVersion || 'unknown'),
+      // Which season the player totals describe, and how the start rates were
+      // measured against them. This is a diagnostic on purpose: the rollover is
+      // the one input the app cannot observe in advance, and a human checking
+      // the app around the first deadline needs to be able to read what it
+      // decided rather than infer it from the projections.
+      ds.evidence ? kv('Player totals', evidenceLabel(ds.evidence)) : null,
       kv('Horizon', `${ds.horizon} gameweeks`),
       kv('Uncertainty discount', `${ds.discount} per gameweek`),
       kv('Risk profile', ds.risk || 'balanced'),

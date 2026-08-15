@@ -301,12 +301,19 @@ test('a live payload has no evidence field and is measured exactly as before', (
 
   // And the fallback is an identity, not an approximation: declaring exactly
   // the team match count must reproduce the payload that declares nothing.
+  //
+  // The totals here are SELF-CONSISTENT with the two finished fixtures (nobody
+  // starts more matches than his club has played, nobody logs more than ninety
+  // minutes a match) because the denominator is now chosen by comparing the two.
+  // A payload claiming eight starts from two matches is a previous season's,
+  // and is deliberately measured over a full season instead: that behaviour has
+  // its own coverage in season-rollover.test.mjs.
   const build = (extra) => {
     const players = new Map();
     for (let i = 1; i <= 20; i++) {
       players.set(i, {
         id: i, teamId: (i % 2) + 1, position: (i % 4) + 1, nowCost: 50, status: 'a', chanceNext: null,
-        minutes: 60 * i, starts: i % 9, ...extra,
+        minutes: Math.min(180, 18 * i), starts: i % 3, ...extra,
       });
     }
     return {

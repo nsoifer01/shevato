@@ -51,6 +51,10 @@ apps/fpl-planner/
     ui/scroll-lock.js    reference-counted page scroll lock for modal overlays;
                          any future modal locks through it, never its own way
     ui/combobox.js       searchable, keyboard-accessible player picker
+    ui/scenario.js       the editable copy of a squad: edits, money, legality,
+                         and the SquadState the planner is re-asked with
+    ui/sandbox.js        the editable team view (select-then-act, the picker,
+                         the before/after strip); draws and dispatches only
     ui/plan-diff.js      "what changed" between two stored plan versions
     ui/history.js        gameweek history, season-at-a-glance charts, saved plan versions
     ui/settings.js       planner settings and the two deletion actions
@@ -93,7 +97,11 @@ apps/fpl-planner/
                          (the runner's own control) and baseline.mjs
   scripts/               fetch-history, fetch-availability, validate-history,
                          train-model, evaluate-model, backtest, experiment
-                         (+ its worker)
+                         (+ its worker), evidence-probe (what the app makes of
+                         the live payload right now)
+  e2e/                   browser suites (raw CDP): the interactive scenario
+                         workflow and the gameweek lifecycle boundaries
+  GW1-RUNBOOK.md         the live checks to run around the opening deadline
   tests/                 *.test.mjs plus committed fixtures/
 netlify/functions/fpl.mjs           the FPL read proxy
 netlify/functions/lib/fpl-cache.mjs its allowlist, TTL policy and cache pipeline
@@ -116,6 +124,19 @@ Every module under `js/engine/` is a pure ES module with no DOM access, so `node
 Responses are cached in Netlify Blobs, so a thousand visitors cost roughly one upstream fetch per TTL window: 10 minutes for the bootstrap, 30 for fixtures, 5 for entry endpoints, 15 for a player summary and 1 for live scores. Inside the six hours before a deadline every TTL collapses to 2 minutes, because that is when prices and injury news move. If upstream fails, the last cached copy is served with `x-fpl-stale: true` and its age in seconds; only when there is no cached copy at all does the function return 503. An unknown team id passes through as a 404 and is never cached.
 
 `js/data/api.js` wraps that with a memory and `localStorage` cache under the `fpl-planner:cache:` prefix, per-endpoint TTLs, and single-flight de-duplication so a dashboard asking four components for the bootstrap downloads it once. Those cache keys are deliberately **not** in the app's sync namespace: they are large, identical for every user and fully derivable.
+
+The browser cache mirrors the proxy's deadline policy: inside the six hours
+before a deadline its TTLs collapse to two minutes as well, read from the
+deadline in the bootstrap it already holds, so a stale local copy cannot mask a
+fresher shared one in the hour that matters. Freshness is measured from a
+locally recorded receipt time rather than by subtracting a server timestamp from
+the device clock, so a device with a wrong clock neither pins the cache forever
+nor expires good data instantly; the age SHOWN is still the data's age. A
+transient 5xx or aborted request is retried once with jitter, inside the same
+timeout budget. The bootstrap is held in memory only, because at 2.6 MB it is
+over half the origin's localStorage budget and every other app on the domain
+shares it; when a write does fail, the oldest cached endpoint is evicted rather
+than the whole cache.
 
 ## The trained model, and why nothing from it is used
 
@@ -171,6 +192,80 @@ and data status panel reports the version that actually produced the plan
 (`planner-1+analytic-1` today) and, on the "Trained model" row, which of three
 states it is in: loaded and used, loaded and deliberately not used, or not loaded
 with the reason why.
+
+## The team sandbox
+
+"Your team" carries three views of the same fifteen, and keeping them distinct
+is the feature's whole safety property:
+
+- **Current team**, the squad FPL says the manager owns.
+- **My scenario**, an editable copy.
+- **Recommended**, what the planner would do.
+
+The scenario is where a manager answers his own questions. Selecting a player
+offers what can be done to him: swap him with a substitute, transfer him out,
+give him the armband, move him up the bench, or open the existing player drawer.
+Transfers open a ranked picker of same-position replacements carrying club,
+price and projection, with unaffordable or club-limited options left visible and
+annotated rather than hidden. "Show expected points" adds start probability,
+expected minutes and the per-gameweek shape to every card. Undo steps back one
+edit at a time and "Reset to my team" returns to the import.
+
+**The flow is `imported SquadState -> Scenario -> SquadState -> buildPlan`**, and
+only the first arrow copies. `js/ui/scenario.js` owns that value and no rules:
+free transfers and hits come from `transfer-state.js`, selling prices from the
+imported pick or `rules.js`, and legality from `validate.js` — the same gate
+every recommendation passes, which is why a refused edit is explained in the
+validator's own words instead of arriving as a disabled button. "Ask the planner
+from this team" hands the edited squad to the ordinary `buildPlan`, so a
+hypothetical needs no second engine; its answer is held apart from the real one,
+is labelled as being about the edited team, and is never written to plan history
+or counted by analytics.
+
+Two quantities are reported and they measure different things. **This gameweek**
+is the eleven and the armband the manager actually chose. **Squad, next N GWs**
+scores the fifteen with the best eleven each week, because today's lineup does
+not bind next week's — so a change that only moves the armband leaves it
+identical by construction, and the verdict line leads with the gameweek number
+whenever no transfer was made.
+
+Before the first deadline there is no squad to import, so the scenario is seeded
+from the opening fifteen the optimizer built and the "Current team" tab is not
+offered. A change there is a build rather than a transfer: it costs no hit and
+the bank is simply the budget less the fifteen, which is the same distinction
+`validate.js` draws with `isFreshBuild`.
+
+## Which season the numbers describe
+
+`bootstrap-static.elements` carries season totals and the fixture list carries
+the matches played, and Fantasy Premier League rolls those two over at different
+moments. Around the first gameweek they routinely describe different seasons,
+and reading them together is silently wrong in both directions: last season's
+totals against one played match make every regular look like a certain starter,
+while totals already cleared to zero make every player look like he never plays.
+Neither is visible from the numbers themselves, because both stay inside every
+legal range.
+
+`seasonEvidence()` in `js/engine/minutes.js` therefore decides which season the
+totals belong to from an arithmetic fact about football rather than from a date:
+a player cannot have started more matches than his club has played. The start
+rate is measured against a full season when the totals are last season's, and
+against the matches played once they are this season's. A payload carrying no
+evidence at all - totals cleared, nothing played - is reported through
+`dataStatus.evidence` and the plan is **withheld** rather than presented, for
+the same reason a plan built on stale injury news is.
+
+## The squad you own, not the squad you fielded
+
+`entry/{id}/event/{gw}/picks` is frozen at that gameweek's deadline. A transfer
+made for the next gameweek shows up immediately on `entry/{id}/transfers` and
+nowhere else, so the picks alone describe a squad the manager no longer has.
+`buildSquadState` overlays the transfers belonging to the gameweek being
+planned: the players change, the bank moves by the prices in the transfer rows,
+and the free transfers already spent come off the count through
+`transfer-state.js`. Without it the planner recommends a move that has already
+been made and understates a hit by four points for every free transfer already
+used.
 
 ## Answering "why", "why not" and "how sure"
 
@@ -329,7 +424,15 @@ showing a generic network error.
 npm run test:fpl-planner          # apps/fpl-planner/tests/
 node --test netlify/functions/tests/fpl.test.mjs
 npm test                          # everything, from the repo root
+npm run test:fpl-planner:e2e      # the browser suites in e2e/
 ```
+
+`e2e/` drives a real headless browser through the interactive scenario workflow
+and through the gameweek boundaries (pre-season, the deadline crossing, a
+gameweek in play, a transfer made between gameweeks) by intercepting the proxy
+and shifting the page clock. It exists because the states that matter most are
+not reachable from `?demo=1`, and because the interactive squad editor shipped
+with green unit tests while being unusable in a browser.
 
 Engine tests never touch the network. They run against committed fixtures in `tests/fixtures/`, documented in `tests/fixtures/README.md`, which deliberately include an injured player, a doubtful player, promoted-club players with no Premier League minutes, real price movement, a blank gameweek and a double gameweek.
 
