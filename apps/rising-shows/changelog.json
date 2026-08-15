@@ -1,6 +1,277 @@
 {
   "updates": [
     {
+      "builtAt": "2026-08-15T06:45:04.746Z",
+      "totals": {
+        "seasons": 66283,
+        "delta": 19
+      },
+      "shapeCounts": {
+        "mid-peak": 4649,
+        "rebound": 10099,
+        "rising": 2915,
+        "slow-burn": 4383,
+        "big-finale": 12152,
+        "u-shaped": 3099,
+        "rollercoaster": 14067,
+        "saved-best-for-last": 1549,
+        "front-loaded": 3479,
+        "declining": 1873,
+        "bad-finale": 4685,
+        "consistent": 2618,
+        "shape-drift": 1641
+      },
+      "shapeDeltas": {
+        "mid-peak": 7,
+        "rebound": 13,
+        "rising": 8,
+        "slow-burn": 5,
+        "big-finale": 13,
+        "u-shaped": 1,
+        "rollercoaster": 1,
+        "saved-best-for-last": 1,
+        "front-loaded": 6,
+        "declining": -3,
+        "bad-finale": 4,
+        "consistent": -10,
+        "shape-drift": -3
+      },
+      "added": [
+        {
+          "seriesId": "tt31491435",
+          "title": "Tires",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0176095",
+          "title": "The Challenge",
+          "season": 42,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37352716",
+          "title": "My Brilliant Career",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt17371078",
+          "title": "The Ark",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt34883857",
+          "title": "Possession",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt13321232",
+          "title": "Karma's World",
+          "season": 2,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt33347879",
+          "title": "The Traitors",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38683025",
+          "title": "Benidorm Is Murder",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt6417924",
+          "title": "Stephen Hawking's Favorite Places",
+          "season": 1,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt0219457",
+          "title": "Stingers",
+          "season": 1,
+          "seasonYear": 1998
+        },
+        {
+          "seriesId": "tt6440422",
+          "title": "The Zoo",
+          "season": 5,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt4353976",
+          "title": "Antiques Road Trip",
+          "season": 15,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt3121876",
+          "title": "Animal Face Off",
+          "season": 1,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt1632065",
+          "title": "Mother",
+          "season": 1,
+          "seasonYear": 2010
+        },
+        {
+          "seriesId": "tt5605138",
+          "title": "Medieval Murder Mysteries",
+          "season": 1,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt18648594",
+          "title": "Pitbull",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt21194812",
+          "title": "Galaktyczne lektury",
+          "season": 1,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt28305763",
+          "title": "Hip Hop India",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt29472571",
+          "title": "Temptation Island: Brazil",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt42815500",
+          "title": "Little Singles",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2662790",
+          "title": "A Town Where You Live",
+          "season": 1,
+          "seasonYear": 2013
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt0463827",
+          "title": "Mock the Week",
+          "season": 23,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2074166",
+          "title": "Ro-Kyu-Bu!",
+          "season": 1,
+          "seasonYear": 2011
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt0320037",
+          "title": "Jimmy Kimmel Live!",
+          "season": 5,
+          "from": 7.07,
+          "to": 5.89,
+          "delta": -1.18
+        },
+        {
+          "seriesId": "tt0268789",
+          "title": "The Chris Isaak Show",
+          "season": 2,
+          "from": 8.33,
+          "to": 7.15,
+          "delta": -1.18
+        },
+        {
+          "seriesId": "tt0268789",
+          "title": "The Chris Isaak Show",
+          "season": 3,
+          "from": 8.38,
+          "to": 7.37,
+          "delta": -1.01
+        },
+        {
+          "seriesId": "tt0320037",
+          "title": "Jimmy Kimmel Live!",
+          "season": 12,
+          "from": 7.9,
+          "to": 6.98,
+          "delta": -0.92
+        },
+        {
+          "seriesId": "tt0320037",
+          "title": "Jimmy Kimmel Live!",
+          "season": 7,
+          "from": 6.55,
+          "to": 5.83,
+          "delta": -0.72
+        },
+        {
+          "seriesId": "tt4219148",
+          "title": "Isuca",
+          "season": 1,
+          "from": 5.21,
+          "to": 5.9,
+          "delta": 0.69
+        },
+        {
+          "seriesId": "tt0320037",
+          "title": "Jimmy Kimmel Live!",
+          "season": 6,
+          "from": 7.37,
+          "to": 6.74,
+          "delta": -0.63
+        },
+        {
+          "seriesId": "tt32034812",
+          "title": "I'm Living with an Otaku NEET Kunoichi!?",
+          "season": 1,
+          "from": 7.57,
+          "to": 8.2,
+          "delta": 0.63
+        },
+        {
+          "seriesId": "tt14113682",
+          "title": "DNA Family Secrets",
+          "season": 2,
+          "from": 8.18,
+          "to": 7.57,
+          "delta": -0.61
+        },
+        {
+          "seriesId": "tt0268789",
+          "title": "The Chris Isaak Show",
+          "season": 1,
+          "from": 7.43,
+          "to": 6.83,
+          "delta": -0.6
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 24347,
+        "avgRating": 1621,
+        "shapes": 297,
+        "seriesRating": 317,
+        "episodeCount": 107,
+        "poster": 5,
+        "overview": 4,
+        "providers": 3
+      }
+    },
+    {
       "builtAt": "2026-08-14T07:27:52.281Z",
       "totals": {
         "seasons": 66264,
@@ -6705,191 +6976,6 @@
         "overview": 96,
         "providers": 16,
         "poster": 1
-      }
-    },
-    {
-      "builtAt": "2026-07-16T11:29:13.395Z",
-      "totals": {
-        "seasons": 65800,
-        "delta": 7
-      },
-      "shapeCounts": {
-        "mid-peak": 4623,
-        "rebound": 10041,
-        "rising": 2907,
-        "slow-burn": 4362,
-        "big-finale": 12020,
-        "u-shaped": 3074,
-        "rollercoaster": 14015,
-        "saved-best-for-last": 1524,
-        "front-loaded": 3444,
-        "declining": 1858,
-        "bad-finale": 4641,
-        "consistent": 2620,
-        "shape-drift": 1615
-      },
-      "shapeDeltas": {
-        "rebound": -1,
-        "rising": -2,
-        "slow-burn": 1,
-        "big-finale": 7,
-        "u-shaped": 1,
-        "rollercoaster": 7,
-        "saved-best-for-last": 2,
-        "front-loaded": 3,
-        "declining": 2,
-        "bad-finale": 5,
-        "shape-drift": 5
-      },
-      "added": [
-        {
-          "seriesId": "tt43601959",
-          "title": "Untold UK",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt2172496",
-          "title": "The Tales of Majid",
-          "season": 1,
-          "seasonYear": 1990
-        },
-        {
-          "seriesId": "tt13711670",
-          "title": "Naked Attraction Suomi",
-          "season": 2,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt2498968",
-          "title": "Catfish: The TV Show",
-          "season": 9,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt6777360",
-          "title": "Reported Missing",
-          "season": 4,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt0172086",
-          "title": "A come Andromeda",
-          "season": 1,
-          "seasonYear": 1972
-        },
-        {
-          "seriesId": "tt36953849",
-          "title": "Virgin Island",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39779938",
-          "title": "Dil Dhokha Aur Desire",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt4043088",
-          "title": "Great War Diaries",
-          "season": 1,
-          "seasonYear": 2014
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt12768024",
-          "title": "I Want to Be His Prey!",
-          "season": 1,
-          "from": 6.83,
-          "to": 5.7,
-          "delta": -1.13
-        },
-        {
-          "seriesId": "tt12169564",
-          "title": "100 Day Dream Home",
-          "season": 3,
-          "from": 7.14,
-          "to": 6.07,
-          "delta": -1.07
-        },
-        {
-          "seriesId": "tt0965404",
-          "title": "Bubble Guppies",
-          "season": 6,
-          "from": 8.48,
-          "to": 9.12,
-          "delta": 0.64
-        },
-        {
-          "seriesId": "tt29363748",
-          "title": "Judge Dee's Mystery",
-          "season": 1,
-          "from": 8.32,
-          "to": 7.84,
-          "delta": -0.48
-        },
-        {
-          "seriesId": "tt1612716",
-          "title": "Rosary Scissors",
-          "season": 1,
-          "from": 9.33,
-          "to": 8.87,
-          "delta": -0.46
-        },
-        {
-          "seriesId": "tt0498443",
-          "title": "Paradise Kiss",
-          "season": 1,
-          "from": 7.78,
-          "to": 8.22,
-          "delta": 0.44
-        },
-        {
-          "seriesId": "tt1093078",
-          "title": "Crazy, Confused, Normal",
-          "season": 11,
-          "from": 5.27,
-          "to": 5.65,
-          "delta": 0.38
-        },
-        {
-          "seriesId": "tt32907596",
-          "title": "Bodies in the Water",
-          "season": 2,
-          "from": 6.4,
-          "to": 6.77,
-          "delta": 0.37
-        },
-        {
-          "seriesId": "tt0090487",
-          "title": "My Sister Sam",
-          "season": 2,
-          "from": 7.3,
-          "to": 7,
-          "delta": -0.3
-        },
-        {
-          "seriesId": "tt12915960",
-          "title": "The Patrick Star Show",
-          "season": 4,
-          "from": 7.71,
-          "to": 7.44,
-          "delta": -0.27
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 13874,
-        "avgRating": 595,
-        "shapes": 101,
-        "overview": 97,
-        "seriesRating": 143,
-        "episodeCount": 48,
-        "poster": 4,
-        "providers": 18
       }
     }
   ]
