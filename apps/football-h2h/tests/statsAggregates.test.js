@@ -40,6 +40,9 @@ function aggregates(games) {
     for (const id of STAT_IDS) elements[id] = makeElement();
 
     const ctx = makeContext({ elements, console: quietConsole });
+    // Same load order as index.html: the aggregate's missing-score guard
+    // calls through window.FootballPlayerStats.toScore.
+    loadInto(ctx, 'playerStats.js');
     loadInto(ctx, 'football-h2h.js');
     ctx.window.games = games;
     ctx.updateStatisticsWithData(games);
@@ -122,9 +125,27 @@ test('aggregates: goals per game counts both sides, including 0-0', () => {
     assert.equal(a.goalsPerGame, '2');
 });
 
-test('aggregates: a game with missing goals must not print NaN as goals/game', { todo: 'KNOWN DEFECT: updateStatisticsWithData sums player1Goals + player2Goals with no guard, so one imported game missing a score turns the General Stats "Goals / Game" figure into the literal string NaN (import validates the envelope only, never per-game fields).' }, () => {
+test('aggregates: a game with missing goals must not print NaN as goals/game', () => {
+    // The scoreless row is skipped from every counter; goals/game averages
+    // over the counted rows only (the same rows matchResult scores).
     const a = aggregates([game(1, 2, 1), { id: 2, dateTime: '2026-05-02T12:00:00Z' }]);
     assert.notEqual(a.goalsPerGame, 'NaN');
+    assert.equal(a.goalsPerGame, '3');
+    assert.equal(a.player1Wins, 1);
+    assert.equal(a.totalDraws, 0, 'a scoreless row is skipped, not counted as a draw');
+    assert.equal(a.totalGames, 2, 'the header count still reflects every stored row');
+});
+
+test('aggregates: null / empty-string scores are skipped the same way toScore skips them', () => {
+    const a = aggregates([
+        game(1, 1, 0),
+        { id: 2, dateTime: '2026-05-02T12:00:00Z', player1Goals: null, player2Goals: 2 },
+        { id: 3, dateTime: '2026-05-03T12:00:00Z', player1Goals: '', player2Goals: 1 },
+    ]);
+    assert.equal(a.player1Wins, 1);
+    assert.equal(a.player2Wins, 0);
+    assert.equal(a.totalDraws, 0);
+    assert.equal(a.goalsPerGame, '1');
 });
 
 // --- drift guard: this counter vs playerStats.matchResult ---------------
@@ -183,6 +204,24 @@ test('drift guard: a full mixed history agrees with matchResult', () => {
     ]);
 });
 
-test('drift guard: a string penaltyWinner is read the same way by both counters', { todo: 'KNOWN DEFECT: the aggregate counter tests penaltyWinner === 1 and treats anything else truthy as a player-2 win, while playerStats.matchResult treats a non-numeric penaltyWinner as a draw. A game carrying the string "1" (hand-edited or imported legacy data) is therefore counted as a player-2 win on the H2H tab and as a draw on the Player Stats tab.' }, () => {
+test('drift guard: a string penaltyWinner is read the same way by both counters', () => {
+    // Legacy rows carrying '1' / '2' (a removed modal path stored the raw
+    // select string) are normalized on load AND both readers coerce with
+    // Number(), so even an un-migrated row counts identically on both tabs.
     assertNoDrift([game(1, 1, 1, '1'), game(2, 2, 2, '2')]);
+    // And both read a string '1' as a player-1 penalty win, specifically.
+    const a = aggregates([game(1, 1, 1, '1')]);
+    assert.equal(a.player1Wins, 1);
+    assert.equal(a.player1PenaltyWins, 1);
+    assert.equal(a.player2Wins, 0);
+    assert.equal(a.totalDraws, 0);
+    assert.equal(a.penaltyShootouts, 1);
+});
+
+test('drift guard: rows with a missing score are skipped by both counters', () => {
+    assertNoDrift([
+        game(1, 2, 1),
+        { id: 2, dateTime: '2026-05-02T12:00:00Z', player1Goals: null, player2Goals: 1 },
+        { id: 3, dateTime: '2026-05-03T12:00:00Z' },
+    ]);
 });

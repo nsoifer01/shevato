@@ -337,6 +337,19 @@ test('matchResult: missing me or opp score → null', () => {
     assert.equal(matchResult(undefined, undefined, 1, 1), null);
 });
 
+test('matchResult: tolerates a legacy string penaltyWinner (same reading as the H2H counters)', () => {
+    // Live write paths store numbers, and loadGames normalizes legacy rows,
+    // but a not-yet-migrated string '1' / '2' must still read as that
+    // player's shootout win, never as a draw.
+    assert.equal(matchResult(1, 1, '1', 1), 'W');
+    assert.equal(matchResult(1, 1, '1', 2), 'L');
+    assert.equal(matchResult(1, 1, '2', 2), 'W');
+    assert.equal(matchResult(1, 1, '2', 1), 'L');
+    // Junk values still mean "no shootout winner".
+    assert.equal(matchResult(1, 1, 'player1', 1), 'D');
+    assert.equal(matchResult(1, 1, '', 1), 'D');
+});
+
 // -- matchResultsInOrder --
 
 test('matchResultsInOrder: sorts and applies result per game', () => {

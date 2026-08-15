@@ -63,6 +63,9 @@ function addGameCtx(form = {}, existingGames = []) {
     let saveCount = 0;
 
     const ctx = makeContext({ elements, Date: fixedDate(NOW_ISO) });
+    // Same load order as index.html: submitSidebarGame calls through
+    // window.FootballMatchLogic.nextGameNumber.
+    loadInto(ctx, 'match-logic.js');
     loadInto(ctx, 'sidebar.js');
 
     ctx.window.games = existingGames;
@@ -114,11 +117,28 @@ test('add game: a blank second goal field names the second player', () => {
     assert.equal(h.games.length, 0);
 });
 
-test('add game: negative goals are rejected', { todo: 'KNOWN DEFECT: submitSidebarGame does not range-check goals, so a negative value typed into the number input (min="0" is only a browser hint, never re-checked in JS) is stored as-is and pollutes every derived stat.' }, () => {
+test('add game: negative goals are rejected (min="0" is only a browser hint)', () => {
     const h = addGameCtx({ player1Goals: '-3', player2Goals: '1' });
     h.submit();
-    assert.notEqual(h.error, null);
+    assert.equal(h.error, 'Goals for Alex must be a whole number of 0 or more');
     assert.equal(h.games.length, 0);
+    assert.equal(h.saveCount, 0);
+});
+
+test('add game: a negative second goal count names the second player', () => {
+    const h = addGameCtx({ player1Goals: '1', player2Goals: '-1' });
+    h.submit();
+    assert.equal(h.error, 'Goals for Sam must be a whole number of 0 or more');
+    assert.equal(h.games.length, 0);
+});
+
+test('add game: non-integer goal values are rejected, nothing is saved', () => {
+    for (const bad of ['2.5', 'abc', '1e999']) {
+        const h = addGameCtx({ player1Goals: bad, player2Goals: '1' });
+        h.submit();
+        assert.notEqual(h.error, null, `"${bad}" must be rejected`);
+        assert.equal(h.games.length, 0, `"${bad}" must not be stored`);
+    }
 });
 
 // --- draw / penalty rule -----------------------------------------------
@@ -247,11 +267,14 @@ test('add game: the add is pushed onto the undo history and toasted', () => {
     assert.deepEqual(h.toasts, [{ msg: 'Game added successfully!', kind: 'success' }]);
 });
 
-test('add game: gameNumber stays unique after an earlier game is deleted', { todo: 'KNOWN DEFECT: gameNumber is derived from games.length + 1, so deleting any game and adding a new one re-issues a number that is already in use (history table then shows two rows with the same game #).' }, () => {
+test('add game: gameNumber stays unique after an earlier game is deleted', () => {
     // Three games logged, the middle one deleted: numbers in use are 1 and 3.
+    // max(existing gameNumber) + 1 = 4; the old games.length + 1 rule would
+    // have re-issued 3.
     const existing = [{ id: 1, gameNumber: 1 }, { id: 3, gameNumber: 3 }];
     const h = addGameCtx({ player1Goals: '1', player2Goals: '0' }, existing);
     h.submit();
+    assert.equal(h.last().gameNumber, 4);
     const numbers = existing.map((g) => g.gameNumber);
     assert.equal(new Set(numbers).size, numbers.length, `duplicate gameNumber: ${numbers.join(',')}`);
 });

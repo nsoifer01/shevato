@@ -12,7 +12,7 @@ All state lives in the browser's `localStorage`, and there is no backend or acco
 
 | Feature | What it does |
 | ------- | ------------ |
-| Add a game | Sidebar form captures each player's goals, an optional team per player, and an optional note; the game is stamped with the sidebar's current game date and saved to the match list. |
+| Add a game | Sidebar form captures each player's goals, an optional team per player, and an optional note; the game is stamped with the sidebar's current game date and saved to the match list. Goal counts are validated as non-negative whole numbers in JS (the inputs' `min="0"` is only a browser hint), and the game number is issued as max(existing game numbers) + 1 so a deleted game never frees its number for reuse. |
 | Penalty shootouts | When regulation goals are equal, a penalty-result field appears; the winner (Player 1, Player 2, or a true draw) is stored and counts the drawn match as a win for that player. |
 | Game notes | Each game can carry one short free-text note (80 characters max), entered with the game and changeable later; it renders under the date in the history table and on that game's line in the session summary. |
 | Default game date | The sidebar's "Game Date" section is a standing setting for the date stamped on newly added games, with a "Set to Today" shortcut; it stays put across adds and defaults to today on load, so it is not a per-add date field. |
@@ -32,7 +32,7 @@ All state lives in the browser's `localStorage`, and there is no backend or acco
 | History pagination | The history table pages at 10, 25, or 50 rows; the chosen page size is remembered in `localStorage` under `gameHistoryPageSize`. |
 | Date filtering | Filter the history and stats to All Time, Today, Last 7 Days, Last 30 Days, or a custom from/to range. |
 | Undo / redo | Add, edit, and delete actions push to a history stack so the last action can be undone and redone. |
-| Export / import | Export all games and player names to a JSON file; import validates the payload shape before loading it back. |
+| Export / import | Export all games and player names to a JSON file; import validates the payload shape AND each game row (both scores must be non-negative integers), normalizes each row's penalty winner, and skips invalid rows with the skip count disclosed in the confirmation dialog. |
 | Clear all data | The trash button in the sidebar header wipes every saved game after a confirmation prompt; unlike a single delete, this is not undoable. |
 | Cloud sync | Opt-in Firebase sync mirrors the local data across devices; an offline banner shows when sync is unavailable. |
 
@@ -60,16 +60,17 @@ No browser and no server: everything runs under `node --test`.
 
 | File | Covers |
 | ---- | ------ |
-| `matchLogic.test.js` | The pure helpers in `js/match-logic.js`: table sorting (including zero and negative goal counts), sequential ID assignment, import-payload (envelope) validation. |
-| `playerStats.test.js` | `js/playerStats.js`: per-player stats, penalty-aware match results, streak and run detection, comparison-table formatters. |
-| `sidebarAddGame.test.js` | `submitSidebarGame()`: goal validation (0 is a real score), the draw-requires-a-penalty-result rule, blank custom-team rejection, and the exact record written (id, gameNumber, date stamp, note, undo entry). |
-| `statsAggregates.test.js` | `updateStatisticsWithData()`: wins, 90-minute wins, penalty wins, draws, shootout count, goals per game. Ends with a drift guard asserting these counters agree with `playerStats.matchResult` over the same fixtures, because the same win/draw rule is implemented twice. |
+| `matchLogic.test.js` | The pure helpers in `js/match-logic.js`: table sorting (including zero and negative goal counts), sequential ID and game-number assignment (`nextGameId` / `nextGameNumber`), penalty-winner normalization, and import-payload validation (envelope AND per-game rows: score checks, coercion, rejected-row counting). |
+| `playerStats.test.js` | `js/playerStats.js`: per-player stats, penalty-aware match results (including tolerance for legacy string penalty winners), streak and run detection, comparison-table formatters. |
+| `sidebarAddGame.test.js` | `submitSidebarGame()`: goal validation (0 is a real score; negative and non-integer values are rejected), the draw-requires-a-penalty-result rule, blank custom-team rejection, gameNumber uniqueness after a delete, and the exact record written (id, gameNumber, date stamp, note, undo entry). |
+| `editGame.test.js` | The Edit Game modal's `onSave` in `editGame()`: the same non-negative-integer goal rule as the add path, numeric penalty-winner storage, and that a rejected edit leaves the stored game untouched. |
+| `statsAggregates.test.js` | `updateStatisticsWithData()`: wins, 90-minute wins, penalty wins, draws, shootout count, goals per game, and that rows with missing scores are skipped rather than NaN-poisoning the counters. Ends with a drift guard asserting these counters agree with `playerStats.matchResult` over the same fixtures (including legacy string penalty winners and missing-score rows), because the same win/draw rule is implemented twice. |
 | `undoRedo.test.js` | `addToHistory` / `undoLastAction` / `redoLastAction`: add, edit and delete round trips, persistence, the 50-action cap, and redo truncation after a new action. |
 | `dateFilters.test.js` | `setDateFilter` / `applyCustomDateFilter` / `getFilteredGames` for all / today / week / month / custom, with the clock pinned inside the sandbox. |
-| `importMigration.test.js` | `migrateGameDates()`, `loadGames()` and the import apply-step after the user confirms (replace-not-merge, player names, migration of undated rows, cancel and error paths). |
+| `importMigration.test.js` | `migrateGameDates()`, `migratePenaltyWinners()`, `loadGames()` and the import apply-step after the user confirms (replace-not-merge, player names, migration of undated rows, invalid-row skipping and disclosure, cancel and error paths). |
 
 ### How the classic scripts are loaded
 
 `js/match-logic.js` and `js/playerStats.js` are UMD, so tests `require()` them directly. `js/sidebar.js` and `js/football-h2h.js` are plain `<script>` files with no exports, so they are loaded into a `node:vm` sandbox with a stub `document` / `localStorage` by the shared helper `tests/vm-harness.js` (same approach as `apps/mario-kart/tests/`). In that sandbox `window` is aliased to `globalThis` as in a browser; top-level `let` bindings (`games`, `currentDateFilter`, `actionHistory`) are invisible as context properties and are reached with `runIn()`, and values built inside the sandbox go through `toHost()` before `assert.deepEqual`.
 
-Two things the suite pins on purpose rather than asserting the intuitive reading: "Last 7 Days" / "Last 30 Days" are rolling windows measured as `now - 7*24h` / `now - 30*24h`, not calendar days; and `migrateGameDates` stamps undated games by array position, so it can interleave with games that already have a date. Tests for confirmed defects assert the CORRECT behaviour and carry `{ todo: 'KNOWN DEFECT: ...' }`, so the run stays green while the bug stays documented.
+Two things the suite pins on purpose rather than asserting the intuitive reading: "Last 7 Days" / "Last 30 Days" are rolling windows measured as `now - 7*24h` / `now - 30*24h`, not calendar days; and `migrateGameDates` stamps undated games by array position, so it can interleave with games that already have a date. The four `{ todo: 'KNOWN DEFECT: ...' }` quarantines from the 2026-08 testing audit (negative goals, gameNumber collision, NaN goals/game, penalty-winner drift) were all fixed on 2026-08-15 and their tests now assert the corrected behaviour as plain regressions.
