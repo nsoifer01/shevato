@@ -364,9 +364,7 @@ export const scenarioRead = (s) => evaluate(s, `(()=>{
     })),
     xi: qa('.fpl-pitch-edit .fpl-pp-edit').map(c=>c.querySelector('.fpl-pp-name').textContent.trim()),
     bench: qa('.fpl-bench .fpl-pp-edit').map(c=>c.querySelector('.fpl-pp-name').textContent.trim()),
-    captain: (qa('.fpl-pp-edit').find(c=>c.querySelector('.fpl-pp-arm.is-c'))||{querySelector:()=>null}).querySelector
-      ? (qa('.fpl-pp-edit').find(c=>c.querySelector('.fpl-pp-arm.is-c'))||null) && (qa('.fpl-pp-edit').find(c=>c.querySelector('.fpl-pp-arm.is-c'))).querySelector('.fpl-pp-name').textContent.trim()
-      : null,
+    captain: (()=>{const c=qa('.fpl-pp-edit').find(x=>x.querySelector('.fpl-pp-arm.is-c'));return c?c.querySelector('.fpl-pp-name').textContent.trim():null})(),
     vice: (()=>{const c=qa('.fpl-pp-edit').find(x=>x.querySelector('.fpl-pp-arm.is-v'));return c?c.querySelector('.fpl-pp-name').textContent.trim():null})(),
     actionWho: t('.fpl-actionbar-who'),
     actions: qa('.fpl-actionbar-actions .fpl-btn').map(b=>b.textContent.trim()),

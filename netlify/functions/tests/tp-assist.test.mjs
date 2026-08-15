@@ -4,9 +4,11 @@ import handler, { GENERATION_CONFIG, readCandidate, buildSystemInstruction } fro
 import TripLogic from '../../../apps/trip-planner/js/trip-logic.js';
 
 // These exercise only the guard paths that return BEFORE any Blob I/O: the
-// origin/referer guard, the method guard, and the body clamp. The quota logic
-// is covered by tp-assist-quota.test.mjs; the store/upstream path needs a live
-// Netlify Blobs context and is verified by code review + the quota unit tests.
+// origin/referer guard, the method guard, and the body clamp. The quota math
+// is covered by tp-assist-quota.test.mjs, and the store/quota/upstream steps
+// (4-9) are driven end-to-end by tp-assist-handler.test.mjs, which redirects
+// `@netlify/blobs` to an in-memory stub via a node:module register() hook -
+// no live Netlify Blobs context needed.
 
 function req({ origin, referer, method = 'POST', body } = {}) {
   const headers = {};

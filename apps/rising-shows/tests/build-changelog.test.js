@@ -1,6 +1,6 @@
 'use strict';
 
-const { test } = require('node:test');
+const { test, after } = require('node:test');
 const assert = require('node:assert/strict');
 
 const { diffDatasets, appendEntry } = require('../scripts/build-changelog.js');
@@ -186,8 +186,16 @@ function runCli(args) {
   return execFileSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8' });
 }
 
+const tmpDirs = [];
+
+after(() => {
+  for (const dir of tmpDirs) fs.rmSync(dir, { recursive: true, force: true });
+  tmpDirs.length = 0;
+});
+
 function tmpDataset() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rs-changelog-test-'));
+  tmpDirs.push(dir);
   const dataPath = path.join(dir, 'data.json');
   fs.writeFileSync(dataPath, JSON.stringify(dataset([match('tt1', 'Alpha', 1)])));
   return { dir, dataPath, outPath: path.join(dir, 'changelog.json') };

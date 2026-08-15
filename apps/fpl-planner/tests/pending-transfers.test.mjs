@@ -28,7 +28,10 @@ const NAMES = ['meta', 'bootstrap', 'fixtures', 'entry', 'entry-history', 'entry
 const B = assembleSampleBundle(Object.fromEntries(NAMES.map(n => [n, sample(n)])));
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
-const gameState = buildGameState(clone(B.bootstrap), clone(B.fixtures), { fetchedAt: new Date().toISOString() });
+// Pinned to the sample's own capture time, like every other fixture in the
+// suite: `new Date()` here made this the wall clock's business, and a test
+// whose inputs move with the clock cannot fail reproducibly.
+const gameState = buildGameState(clone(B.bootstrap), clone(B.fixtures), { fetchedAt: B.fetchedAt });
 const rules = gameState.rules;
 const PLAN_GW = B.planEvent;
 const P = (id) => gameState.players.get(id);

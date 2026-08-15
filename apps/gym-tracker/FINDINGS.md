@@ -97,6 +97,63 @@ behind a dataset guard and read live control values.
   removal is explicit and confirmed. There is no cascade path from catalog or
   plan changes into workout history.
 
+## Testing DOM-bound view logic: source extraction, never mirrors
+
+The view classes import the DOM and the app singleton, so they cannot be
+loaded under node. The estate's answer is `tests/helpers/source-extract.mjs`:
+lift the REAL method/function text out of the source file (brace-matched,
+default-params-safe) and evaluate it against stubs (`buildMethods` /
+`buildFunctions`). Hand-copied "mirror" logic in tests is banned - the 2026-08
+audit found the collapse-state mirror had ALREADY drifted: the real commit
+path re-arms auto-collapse unconditionally on complete (#23), while the
+mirror still guarded on `!== false`, and the tests kept passing. All former
+mirrors (superset rest rule, collapse machine, steppers, rep clamp, rep-mode
+templates, picker defaults, PLATE_LOADED_EQUIPMENT, calendar offset, plate
+hints precedence) now extract from source; each behavior has exactly ONE test
+home. When stubbing DOM lookups for an extracted method, derive the fake from
+the real markup or parse the real selector, so a rename fails loudly instead
+of the stub silently matching an old string.
+
+Node 20 MockTimers gotchas (hit while testing TimerService, they fake app
+bugs if unknown): `tick(N)` advances the mocked `Date` to the target BEFORE
+draining callbacks (tick in interval-sized steps for real-world semantics);
+`clearInterval` issued inside the interval's own callback is not honored for
+subsequent ticks; `setTime` moves the clock without firing timers but the
+missed fires are delivered as a backlog on the next `tick`.
+
+`tests/firebase-sdk-singleton.test.mjs` walks the repo's HTML but EXCLUDES the
+generated trees (`apps/gym-tracker/exercises/`, `apps/rising-shows/shows/`,
+~35k files, ~3s/run); protection is kept by scanning the generator source
+directories plus a 3-page canary sample of built output.
+
+## Known defects pinned by todo tests (2026-08-15 audit)
+
+Each is asserted at its CORRECT behavior with `{ todo: 'KNOWN DEFECT: ...' }`
+so `node --test` reports it without failing; fixing the code flips the todo
+into a pass (then remove the todo option). Current list:
+
+- **sw.js offline precache miss** (above) - `sw-offline-behavior.test.mjs`.
+- **Four `===` id comparisons in StorageService** violating the sameId rule
+  (next section): `saveProgram` ~99 (duplicates instead of updating),
+  `deleteProgram` ~112 (no-op), `deleteCustomExercise` ~222 (no-op),
+  `getWorkoutSessionsByExercise` ~174 (empty history on type mismatch) -
+  `storage-service.test.mjs`.
+- **validateImportData checks key presence, not types**
+  (settings-view.js ~52): `{"programs":"pwned"}` passes and importAllData
+  overwrites the program store with a string - `import-validation.test.mjs`.
+- **migrateImport mutates the caller's payload** while its docstring promises
+  pure migrators (StorageService.js ~264) - `import-validation.test.mjs`.
+- **TimerService rest-timer ids are `Date.now()`** (~21): two starts in one
+  ms collide and orphan the first interval - `timer-service.test.mjs`.
+- **TimerService.stopWorkoutTimer returns the initial elapsed**, not the
+  elapsed at stop (~110 snapshots the field once); latent, no caller reads
+  the return today - `timer-service.test.mjs`.
+
+Product inconsistency (documented, not a todo): helpers `getTimeFormat`
+defaults to '12' pre-boot while `Settings` defaults to '24' and even upgrades
+a stored '12' to '24', so early-boot surfaces render 12-hour then flip.
+Pinned side by side in `time-format.test.mjs`; owner should pick a side.
+
 ## The sameId rule: never compare ids with ===
 
 Ids arrive as numbers (models), strings (dataset attributes, imports), and
@@ -110,7 +167,10 @@ sameId-tolerant: history/calendar/home session lookups, `getExerciseById`,
 `getWorkoutSessionById` (app + storage), exercises-view history joins and the
 delete-guard. `AnalyticsService` internals still use `===` - both sides come
 from the same session records there, so it holds, but any NEW code path that
-mixes a DOM-sourced id with stored data must go through `sameId`.
+mixes a DOM-sourced id with stored data must go through `sameId`. Four
+StorageService methods were NOT converted and remain live defects
+(`saveProgram`, `deleteProgram`, `deleteCustomExercise`,
+`getWorkoutSessionsByExercise`); see "Known defects pinned by todo tests".
 
 ## Supersets
 
@@ -146,9 +206,29 @@ lone exercise in superset chrome during a workout (fixed 2026-08-12,
 
 ## Service worker
 
-`data/exercises-db.json` is precached; **any catalog edit needs a
-`CACHE_VERSION` PATCH bump in `sw.js`** or existing installs keep serving the
-old catalog until the next unrelated bump.
+- `data/exercises-db.json` is precached; **any catalog edit needs a
+  `CACHE_VERSION` PATCH bump in `sw.js`** or existing installs keep serving
+  the old catalog until the next unrelated bump.
+- **KNOWN DEFECT: the fetch handler never consults the precache.** It opens
+  only the RUNTIME cache (sw.js ~113-121), so a URL that was precached at
+  install but never fetched while online in this SW generation gets
+  `respondWith(undefined)` offline and fails. The entire install-time
+  precaching buys nothing until the handler falls back to the PRECACHE cache
+  (or `caches.match`). Pinned by a `todo` test in
+  `tests/sw-offline-behavior.test.mjs`.
+- Two failure modes are pinned by `tests/sw-precache-completeness.test.mjs`:
+  a new `js/` module missing from `PRECACHE_URLS` breaks OFFLINE ONLY, and a
+  listed-but-deleted file fails the whole install (cache.addAll is atomic),
+  silently freezing existing users on the previous version. That test also
+  pins the semver `CACHE_VERSION` and the `gym-` prefix scoping of the
+  activate cleanup (shared origin; an unscoped delete once wiped
+  trip-planner's shell).
+- `css/exercise-page.css` is intentionally NOT precached: it styles only the
+  generated `/exercises/` pages, which are not part of the offline app shell.
+- Testing approach: `sw.js` is a classic script, so behavior tests load it
+  into a `node:vm` sandbox with a Map-backed fake Cache Storage and a
+  controllable `fetch` (`tests/sw-offline-behavior.test.mjs`); list/structure
+  invariants are plain source-text checks.
 
 ## 2026-08-12 verification round (what was actually run)
 

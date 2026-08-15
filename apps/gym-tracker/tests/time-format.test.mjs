@@ -70,3 +70,34 @@ test('formatTimeOfDay: empty / invalid input returns empty string', () => {
     assert.equal(formatTimeOfDay(''), '');
     assert.equal(formatTimeOfDay('not a date'), '');
 });
+
+// ---------------------------------------------------------------------------
+// PRODUCT INCONSISTENCY, documented deliberately - do NOT "fix" either
+// assertion to hide it:
+//
+//   - helpers.getTimeFormat (js/utils/helpers.js ~133) falls back to '12'
+//     whenever window.gymApp.settings is not readable ("Defaults to 12-hour
+//     for the very early boot window"), so anything rendered before settings
+//     load uses the 12-hour clock.
+//   - models/Settings.js (~72) defaults timeFormat to '24' (owner call,
+//     2026-08-10), and applyDefaultUpgrades (~136) even upgrades a stored
+//     '12' to '24' once.
+//
+// Net effect: during early boot (or any non-app caller) times render 12-hour,
+// then flip to 24-hour once settings arrive. The two defaults should agree
+// (presumably both '24'); until the owner picks a side, this test states both
+// current behaviors side by side so the divergence cannot deepen silently.
+// ---------------------------------------------------------------------------
+
+test('DIVERGENCE: pre-boot helper default is 12-hour while Settings default is 24-hour', async () => {
+    const { Settings } = await import('../js/models/Settings.js');
+
+    delete globalThis.window.gymApp; // the early-boot window: no app singleton yet
+    assert.equal(getTimeFormat(), '12', 'helpers side: pre-boot fallback is 12-hour');
+
+    assert.equal(Settings.getDefault().timeFormat, '24', 'model side: shipped default is 24-hour');
+
+    const upgraded = new Settings({ timeFormat: '12', defaultsVersion: 0 });
+    Settings.applyDefaultUpgrades(upgraded);
+    assert.equal(upgraded.timeFormat, '24', 'model side: v1 upgrade even moves stored 12 to 24');
+});

@@ -161,3 +161,30 @@ test('the real seasons: repeats are dropped, double gameweeks are not', (t) => {
     t.diagnostic(`${season}: ${rows.length} rows, ${duplicates} byte-identical duplicate(s) dropped, ${doubles} double-gameweek player-gameweeks kept`);
   }
 });
+
+/* -------------------------------------------------- the skip set is guarded */
+
+// One test above runs only against the gitignored .data archive and skips
+// silently without it. This guard makes that visible the same way
+// player-identity.test.mjs does: the count of archive-gated skips is pinned by
+// scanning this file's own source (so a gated test added or removed later
+// fails here until the pin moves with it), with the archive present the gate
+// must be open, and without it exactly the pinned number must be skipping.
+test('the archive-gated skip set is exactly what the archive state implies', (t) => {
+  const source = fs.readFileSync(new URL(import.meta.url), 'utf8');
+  const gatedInSource = (source.match(/\bt\.skip\(/g) || []).length;
+  assert.equal(gatedInSource, 1,
+    'archive-gated tests in this file; a changed count means one was added or removed - update this guard in the same change');
+
+  const seasons = fs.existsSync(DATA_DIR)
+    ? fs.readdirSync(DATA_DIR).filter(name => fs.existsSync(path.join(DATA_DIR, name, 'merged_gw.csv')))
+    : [];
+  const skipping = seasons.length ? 0 : 1;
+  t.diagnostic(`archive seasons held: ${seasons.length ? seasons.join(', ') : 'none'}; gated tests skipping: ${skipping} of ${gatedInSource}`);
+
+  if (seasons.length) {
+    assert.equal(skipping, 0, 'with the archive present the real-seasons test must run');
+  } else {
+    assert.equal(skipping, gatedInSource, 'without the archive exactly the gated test skips');
+  }
+});

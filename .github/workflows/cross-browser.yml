@@ -1,0 +1,38 @@
+name: cross-browser smoke
+
+# Firefox + WebKit smoke coverage of every page and app. Chromium depth lives
+# in the browser-tests workflow (the CDP harness); this run exists solely to
+# catch engine-specific breakage in the other two engines the README promises
+# support for.
+#
+# It is the ONLY workflow that installs npm dependencies (Playwright is a dev
+# dependency used by tests/cross-browser/ alone). The push/PR workflows stay
+# dependency-free on purpose. Weekly rather than per-PR: the suite is a wide
+# shallow smoke over hand-written vanilla JS, where engine regressions arrive
+# with browser releases, not with individual commits.
+on:
+  schedule:
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Use Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Install dev dependencies
+        run: npm ci
+
+      - name: Install browsers
+        run: npx playwright install --with-deps firefox webkit
+
+      - name: Run cross-browser smoke suite
+        run: npm run test:cross-browser

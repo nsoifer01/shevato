@@ -111,7 +111,10 @@ function world({ totals, finishedGws = 0, planGw = 1 }) {
   }
   // 'carried' leaves the sample's full-season totals in place.
 
-  const gameState = buildGameState(bootstrap, fixtures, { fetchedAt: new Date().toISOString() });
+  // Pinned to the sample's own capture time, like every other fixture in the
+  // suite: `new Date()` here made this the wall clock's business, and a test
+  // whose inputs move with the clock cannot fail reproducibly.
+  const gameState = buildGameState(bootstrap, fixtures, { fetchedAt: base.fetchedAt });
   return { gameState, bootstrap, fixtures };
 }
 

@@ -1,92 +1,78 @@
-// Pure-logic unit tests for the collapse state machine (Bug A fix) and
-// the unmark-cancels-rest rule (Bugs B+C fix).
+// The auto-collapse state machine and the unmark-cancels-rest rule.
 //
-// The view class depends on the DOM and cannot be loaded here. These tests
-// mirror the exact logic extracted from WorkoutView so that if the view's
-// implementation changes, the tests will catch the divergence.
+// Why it matters: completed exercises collapse to keep the next exercise on
+// screen; a user who expands a completed card to look at it must not have it
+// snap shut on every re-render (the sticky-suppress false), but committing or
+// re-committing a set is a deliberate action that re-arms auto-collapse (#23).
+// Unmarking the set that started a rest timer cancels that rest (Bugs B+C):
+// the exercise is no longer in the post-set state that justified the timer.
+//
+// These tests run the REAL methods lifted from workout-view.js source text
+// (toggleExerciseCollapse, _recomputeExerciseDerivedState, deleteSet,
+// _seedCollapseStateFromSession) against a state stub. The previous version of
+// this file hand-mirrored the logic and had ALREADY drifted: its commit mirror
+// still guarded on `!== false`, while the real commit path re-arms collapse
+// unconditionally when the exercise completes.
+process.env.TZ = 'UTC';
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { loadSource, buildMethods, extractClassMethod } from './helpers/source-extract.mjs';
 
-// ---------------------------------------------------------------------------
-// Helpers mirroring WorkoutView internal logic
-// ---------------------------------------------------------------------------
+const src = loadSource('js/views/workout-view.js');
+const methods = buildMethods(
+    src,
+    ['toggleExerciseCollapse', '_recomputeExerciseDerivedState', 'deleteSet', '_seedCollapseStateFromSession'],
+    {},
+    'workout-view.js'
+);
 
 function makeExercise(committedSets, targetSets) {
-    return { sets: Array(committedSets).fill({}), targetSets };
+    return { sets: Array.from({ length: committedSets }, (_, i) => ({ slot: i })), targetSets };
+}
+
+function makeView(exercises) {
+    const view = Object.create(methods);
+    view.currentWorkoutSession = { exercises };
+    view.collapsedExercises = {};
+    view._prevCompleteState = {};
+    view._feelModalShown = {};
+    view.activeRestExerciseIndex = -1;
+    view.activeRestTimerId = null;
+    view.skipRestCalls = 0;
+    // Collaborators the extracted methods call but whose behavior is out of
+    // scope here. skipRest is counted so the cancel rule is observable.
+    view.rerenderExercise = () => {};
+    view.rebuildSessionPrSlots = () => {};
+    view._exerciseReachesMax = () => false;
+    view.skipRest = function () {
+        this.skipRestCalls++;
+        this.activeRestTimerId = null;
+    };
+    return view;
 }
 
 /**
- * Mirror of WorkoutView.toggleExerciseCollapse logic (post Bug-A fix).
- * Only stores false (sticky-suppress) when the exercise IS currently complete.
- * For incomplete exercises, expand stores undefined (delete) to avoid
- * pre-emptively blocking a future auto-collapse.
- *
- * Invariant: collapsedExercises[i] === false ONLY when the user expanded
- * a complete exercise; any other state must not produce this value.
+ * Drive the commit path's collapse bookkeeping. commitPlannedSet itself is
+ * DOM-heavy (inputs, toasts, PR checks), but its collapse block is the same
+ * rule saveSetEdit reaches through _recomputeExerciseDerivedState(i, true):
+ * a deliberate set action arms auto-collapse unconditionally. The static test
+ * at the bottom pins that equivalence against commitPlannedSet's source.
  */
-function toggleExerciseCollapse(exerciseIndex, exercises, collapsedExercises) {
-    const exercise = exercises[exerciseIndex];
-    const targetSets = Math.max(1, exercise.targetSets || 3);
-    const isComplete = exercise.sets.length >= targetSets;
-    const currentlyCollapsed = isComplete
-        ? (collapsedExercises[exerciseIndex] !== false)
-        : !!collapsedExercises[exerciseIndex];
-
-    if (!currentlyCollapsed) {
-        collapsedExercises[exerciseIndex] = true;
-    } else {
-        if (isComplete) {
-            collapsedExercises[exerciseIndex] = false;
-        } else {
-            delete collapsedExercises[exerciseIndex];
-        }
-    }
+function commitSet(view, i) {
+    const exercise = view.currentWorkoutSession.exercises[i];
+    exercise.sets.push({ slot: exercise.sets.length });
+    return view._recomputeExerciseDerivedState(i, true);
 }
 
-/**
- * Mirror of WorkoutView.commitPlannedSet collapse logic.
- * Returns isNowComplete so callers can verify.
- */
-function commitSet(exerciseIndex, exercises, collapsedExercises, prevCompleteState) {
-    const exercise = exercises[exerciseIndex];
-    exercise.sets.push({});
-    const targetSets = Math.max(1, exercise.targetSets || 3);
-    const isNowComplete = exercise.sets.length >= targetSets;
-    if (isNowComplete) {
-        if (collapsedExercises[exerciseIndex] !== false) {
-            collapsedExercises[exerciseIndex] = true;
-        }
-    }
-    prevCompleteState[exerciseIndex] = isNowComplete;
-    return isNowComplete;
-}
-
-/**
- * Mirror of WorkoutView.deleteSet collapse logic.
- * Returns isStillComplete so callers can verify.
- */
-function deleteSet(exerciseIndex, exercises, collapsedExercises, prevCompleteState) {
-    const exercise = exercises[exerciseIndex];
-    exercise.sets.pop();
-    const targetSets = Math.max(1, exercise.targetSets || 3);
-    const wasComplete = prevCompleteState[exerciseIndex] === true;
-    const isStillComplete = exercise.sets.length >= targetSets;
-    if (wasComplete && !isStillComplete) {
-        delete collapsedExercises[exerciseIndex];
-    }
-    prevCompleteState[exerciseIndex] = isStillComplete;
-    return isStillComplete;
-}
-
-/** Compute effective collapsed state for an exercise (mirrors renderExerciseEntry). */
-function isCollapsed(exerciseIndex, exercises, collapsedExercises) {
-    const exercise = exercises[exerciseIndex];
+/** Effective collapsed state, mirroring how renderExerciseEntry reads it. */
+function isCollapsed(view, i) {
+    const exercise = view.currentWorkoutSession.exercises[i];
     const targetSets = Math.max(1, exercise.targetSets || 3);
     const isComplete = exercise.sets.length >= targetSets;
     return isComplete
-        ? (collapsedExercises[exerciseIndex] !== false)
-        : !!collapsedExercises[exerciseIndex];
+        ? (view.collapsedExercises[i] !== false)
+        : !!view.collapsedExercises[i];
 }
 
 // ---------------------------------------------------------------------------
@@ -94,260 +80,223 @@ function isCollapsed(exerciseIndex, exercises, collapsedExercises) {
 // ---------------------------------------------------------------------------
 
 test('Collapse: completing all sets auto-collapses', () => {
-    const exercises = [makeExercise(0, 3)];
-    const collapsed = {};
-    const prev = {};
-    commitSet(0, exercises, collapsed, prev);
-    commitSet(0, exercises, collapsed, prev);
-    commitSet(0, exercises, collapsed, prev);
-    assert.equal(isCollapsed(0, exercises, collapsed), true, 'exercise collapses after 3/3');
-    assert.equal(collapsed[0], true);
-    assert.equal(prev[0], true);
+    const view = makeView([makeExercise(0, 3)]);
+    commitSet(view, 0);
+    commitSet(view, 0);
+    commitSet(view, 0);
+    assert.equal(isCollapsed(view, 0), true, 'exercise collapses after 3/3');
+    assert.equal(view.collapsedExercises[0], true);
+    assert.equal(view._prevCompleteState[0], true);
 });
 
 test('Collapse: incomplete exercise stays expanded by default', () => {
-    const exercises = [makeExercise(0, 3)];
-    const collapsed = {};
-    const prev = {};
-    commitSet(0, exercises, collapsed, prev);
-    commitSet(0, exercises, collapsed, prev);
-    assert.equal(isCollapsed(0, exercises, collapsed), false, '2/3 stays expanded');
+    const view = makeView([makeExercise(0, 3)]);
+    commitSet(view, 0);
+    commitSet(view, 0);
+    assert.equal(isCollapsed(view, 0), false, '2/3 stays expanded');
 });
 
 // ---------------------------------------------------------------------------
-// 2. Manual expand while complete -> sticky false -> re-complete auto-collapses
+// 2. Manual expand while complete, then unmark and remark
 // ---------------------------------------------------------------------------
 
 test('Collapse: manual expand after complete, then unmark+remark re-collapses', () => {
-    const exercises = [makeExercise(0, 2)];
-    const collapsed = {};
-    const prev = {};
+    const view = makeView([makeExercise(0, 2)]);
+    commitSet(view, 0);
+    commitSet(view, 0);
+    assert.equal(isCollapsed(view, 0), true, 'auto-collapsed');
 
-    // Complete
-    commitSet(0, exercises, collapsed, prev);
-    commitSet(0, exercises, collapsed, prev);
-    assert.equal(isCollapsed(0, exercises, collapsed), true, 'auto-collapsed');
+    view.toggleExerciseCollapse(0);
+    assert.equal(isCollapsed(view, 0), false, 'manually expanded');
+    assert.equal(view.collapsedExercises[0], false, 'sticky false set');
 
-    // Manually expand
-    toggleExerciseCollapse(0, exercises, collapsed);
-    assert.equal(isCollapsed(0, exercises, collapsed), false, 'manually expanded');
-    assert.equal(collapsed[0], false, 'sticky false set');
+    view.deleteSet(0, 1);
+    assert.equal(view.collapsedExercises[0], undefined, 'sticky false cleared on incomplete');
+    assert.equal(view._prevCompleteState[0], false);
 
-    // Unmark last set
-    deleteSet(0, exercises, collapsed, prev);
-    assert.equal(collapsed[0], undefined, 'sticky false cleared on incomplete');
-    assert.equal(prev[0], false);
+    commitSet(view, 0);
+    assert.equal(isCollapsed(view, 0), true, 're-collapsed on re-complete');
+    assert.equal(view.collapsedExercises[0], true);
+});
 
-    // Re-mark last set
-    commitSet(0, exercises, collapsed, prev);
-    assert.equal(isCollapsed(0, exercises, collapsed), true, 're-collapsed on re-complete');
-    assert.equal(collapsed[0], true);
+test('Collapse: #23 - a deliberate re-commit re-arms collapse even while sticky-expanded', () => {
+    // saveSetEdit and commitPlannedSet both treat a set action as deliberate:
+    // if the exercise is complete afterwards it collapses, manual expand or not.
+    const view = makeView([makeExercise(2, 2)]);
+    view._prevCompleteState[0] = true;
+    view.collapsedExercises[0] = false; // user expanded the complete exercise
+    view._recomputeExerciseDerivedState(0, true); // deliberate action (armCollapse)
+    assert.equal(view.collapsedExercises[0], true, 'deliberate action overrides the suppression');
+});
+
+test('Collapse: a passive recompute respects the manual-expand suppression', () => {
+    const view = makeView([makeExercise(2, 2)]);
+    view._prevCompleteState[0] = true;
+    view.collapsedExercises[0] = false;
+    view._recomputeExerciseDerivedState(0); // armCollapse defaults to false
+    assert.equal(view.collapsedExercises[0], false, 'passive paths leave "opened to look" open');
 });
 
 // ---------------------------------------------------------------------------
-// 3. Two full cycles: confirms the cycle is deterministic (Bug A root cause)
+// 3. Two full cycles: the cycle is deterministic (Bug A root cause)
 // ---------------------------------------------------------------------------
 
 test('Collapse: two complete->expand->unmark->remark cycles both auto-collapse', () => {
-    const exercises = [makeExercise(0, 3)];
-    const collapsed = {};
-    const prev = {};
+    const view = makeView([makeExercise(0, 3)]);
+    for (const cycle of [1, 2]) {
+        while (view.currentWorkoutSession.exercises[0].sets.length < 3) commitSet(view, 0);
+        assert.equal(isCollapsed(view, 0), true, `cycle${cycle}: auto-collapsed`);
 
-    // --- Cycle 1 ---
-    commitSet(0, exercises, collapsed, prev);
-    commitSet(0, exercises, collapsed, prev);
-    commitSet(0, exercises, collapsed, prev);
-    assert.equal(isCollapsed(0, exercises, collapsed), true, 'cycle1: auto-collapsed');
+        view.toggleExerciseCollapse(0);
+        assert.equal(isCollapsed(view, 0), false, `cycle${cycle}: expanded`);
 
-    toggleExerciseCollapse(0, exercises, collapsed);
-    assert.equal(isCollapsed(0, exercises, collapsed), false, 'cycle1: expanded');
+        view.deleteSet(0, 2);
+        assert.equal(view.collapsedExercises[0], undefined, `cycle${cycle}: sticky cleared`);
 
-    deleteSet(0, exercises, collapsed, prev);
-    assert.equal(collapsed[0], undefined, 'cycle1: sticky cleared');
-
-    commitSet(0, exercises, collapsed, prev);
-    assert.equal(isCollapsed(0, exercises, collapsed), true, 'cycle1: re-collapsed');
-
-    // --- Cycle 2 ---
-    toggleExerciseCollapse(0, exercises, collapsed);
-    assert.equal(isCollapsed(0, exercises, collapsed), false, 'cycle2: expanded');
-
-    deleteSet(0, exercises, collapsed, prev);
-    assert.equal(collapsed[0], undefined, 'cycle2: sticky cleared');
-
-    commitSet(0, exercises, collapsed, prev);
-    assert.equal(isCollapsed(0, exercises, collapsed), true, 'cycle2: re-collapsed');
+        commitSet(view, 0);
+        assert.equal(isCollapsed(view, 0), true, `cycle${cycle}: re-collapsed`);
+        view.deleteSet(0, 2); // reset for next cycle
+        view.currentWorkoutSession.exercises[0].sets = [];
+        view.collapsedExercises = {};
+        view._prevCompleteState = {};
+    }
 });
 
 // ---------------------------------------------------------------------------
-// 4. Bug A root cause: toggling collapse on an INCOMPLETE exercise must NOT
-//    set the sticky false that blocks future auto-collapse
+// 4. Bug A root cause: expanding an INCOMPLETE exercise must not store the
+//    sticky false that blocks a future auto-collapse
 // ---------------------------------------------------------------------------
 
 test('Collapse: toggle expand on incomplete exercise does not block future auto-collapse', () => {
-    const exercises = [makeExercise(0, 3)];
-    const collapsed = {};
-    const prev = {};
+    const view = makeView([makeExercise(0, 3)]);
 
-    // User collapses the incomplete exercise manually
-    toggleExerciseCollapse(0, exercises, collapsed);
-    assert.equal(collapsed[0], true, 'collapsed incomplete exercise');
+    view.toggleExerciseCollapse(0);
+    assert.equal(view.collapsedExercises[0], true, 'collapsed incomplete exercise');
 
-    // User expands it back
-    toggleExerciseCollapse(0, exercises, collapsed);
-    assert.equal(collapsed[0], undefined,
-        'expanding incomplete exercise uses delete, not false — avoids future suppress');
+    view.toggleExerciseCollapse(0);
+    assert.equal(view.collapsedExercises[0], undefined,
+        'expanding an incomplete exercise deletes the entry instead of storing false');
 
-    // Now complete the exercise: auto-collapse MUST fire
-    commitSet(0, exercises, collapsed, prev);
-    commitSet(0, exercises, collapsed, prev);
-    commitSet(0, exercises, collapsed, prev);
-    assert.equal(isCollapsed(0, exercises, collapsed), true,
-        'auto-collapse fires even after prior toggle on incomplete exercise');
+    commitSet(view, 0);
+    commitSet(view, 0);
+    commitSet(view, 0);
+    assert.equal(isCollapsed(view, 0), true,
+        'auto-collapse fires even after a prior toggle on the incomplete exercise');
 });
 
-test('Collapse: previous code path (false on incomplete expand) would have blocked auto-collapse', () => {
-    // This demonstrates EXACTLY what the old bug was: setting false on an
-    // incomplete expand prevented the next auto-collapse.
-    const exercises = [makeExercise(0, 3)];
-    const collapsed = {};
+test('Invariant: collapsedExercises[i]===false only appears when expanding a complete exercise', () => {
+    const view = makeView([makeExercise(0, 2)]);
 
-    // Simulate the OLD (buggy) behavior: false stored even for incomplete expand
-    collapsed[0] = false; // old toggleExerciseCollapse set this regardless of isComplete
+    commitSet(view, 0);
+    assert.notEqual(view.collapsedExercises[0], false, 'after 1/2 sets, not false');
 
-    // Simulate commitSet checking
-    const wouldAutoCollapse = collapsed[0] !== false; // false !== false = false
-    assert.equal(wouldAutoCollapse, false,
-        'confirms the old bug: false from incomplete expand blocks auto-collapse');
+    commitSet(view, 0);
+    assert.equal(view.collapsedExercises[0], true, 'complete: auto-collapsed');
 
-    // Confirm the fix: undefined (from new correct expand) allows auto-collapse
-    delete collapsed[0];
-    const fixedAutoCollapse = collapsed[0] !== false; // undefined !== false = true
-    assert.equal(fixedAutoCollapse, true,
-        'undefined from corrected expand allows auto-collapse');
+    view.toggleExerciseCollapse(0);
+    assert.equal(view.collapsedExercises[0], false, 'false only here: expanding a complete exercise');
+
+    view.deleteSet(0, 1);
+    assert.equal(view.collapsedExercises[0], undefined, 'false cleared when going incomplete');
 });
 
 // ---------------------------------------------------------------------------
-// 5. Restore seed does not set sticky-expanded flag
+// 5. Restore seed (_seedCollapseStateFromSession)
 // ---------------------------------------------------------------------------
 
-function seedCollapseState(exercises, collapsed, prev) {
-    exercises.forEach((exercise, i) => {
-        const targetSets = Math.max(1, exercise.targetSets || 3);
-        const isComplete = exercise.sets.length >= targetSets;
-        if (isComplete) {
-            collapsed[i] = true;
-            prev[i] = true;
-        }
-    });
-}
-
-test('Restore seed: complete exercises get collapsed=true, not false', () => {
-    const exercises = [
-        makeExercise(3, 3),
-        makeExercise(1, 3),
-    ];
-    const collapsed = {};
-    const prev = {};
-    seedCollapseState(exercises, collapsed, prev);
-
-    assert.equal(collapsed[0], true, 'complete exercise seeded as collapsed');
-    assert.equal(collapsed[1], undefined, 'incomplete exercise not touched');
-    // Crucially: false is NOT present anywhere — that would block future auto-collapse.
-    assert.notEqual(collapsed[0], false);
-    assert.notEqual(collapsed[1], false);
+test('Restore seed: complete exercises get collapsed=true, incomplete are untouched', () => {
+    const view = makeView([makeExercise(3, 3), makeExercise(1, 3)]);
+    view._seedCollapseStateFromSession();
+    assert.equal(view.collapsedExercises[0], true, 'complete exercise seeded collapsed');
+    assert.equal(view._prevCompleteState[0], true, 'prevCompleteState seeded');
+    assert.equal(view.collapsedExercises[1], undefined, 'incomplete exercise not touched');
+    assert.equal(view._prevCompleteState[1], undefined);
 });
 
-test('Restore seed: seeded exercise can be expand->unmark->remark-re-collapse', () => {
-    const exercises = [makeExercise(3, 3)];
-    const collapsed = {};
-    const prev = {};
-    seedCollapseState(exercises, collapsed, prev);
+test('Restore seed: never stores the sticky false that would block auto-collapse', () => {
+    const view = makeView([makeExercise(3, 3), makeExercise(1, 3)]);
+    view._seedCollapseStateFromSession();
+    assert.notEqual(view.collapsedExercises[0], false);
+    assert.notEqual(view.collapsedExercises[1], false);
+});
 
-    // User manually expands after restore
-    toggleExerciseCollapse(0, exercises, collapsed);
-    assert.equal(collapsed[0], false, 'sticky false set (exercise is complete)');
+test('Restore seed: extra sets beyond targetSets count as complete', () => {
+    const view = makeView([makeExercise(4, 3)]);
+    view._seedCollapseStateFromSession();
+    assert.equal(view.collapsedExercises[0], true, '4 sets >= 3 target is complete');
+});
 
-    // Unmark one set
-    deleteSet(0, exercises, collapsed, prev);
-    assert.equal(collapsed[0], undefined, 'sticky cleared after going incomplete');
+test('Restore seed: a seeded exercise supports expand->unmark->remark-re-collapse', () => {
+    const view = makeView([makeExercise(3, 3)]);
+    view._seedCollapseStateFromSession();
 
-    // Re-mark
-    commitSet(0, exercises, collapsed, prev);
-    assert.equal(isCollapsed(0, exercises, collapsed), true, 're-collapsed after remark');
+    view.toggleExerciseCollapse(0);
+    assert.equal(view.collapsedExercises[0], false, 'sticky false set (exercise is complete)');
+
+    view.deleteSet(0, 2);
+    assert.equal(view.collapsedExercises[0], undefined, 'sticky cleared after going incomplete');
+
+    commitSet(view, 0);
+    assert.equal(isCollapsed(view, 0), true, 're-collapsed after remark');
 });
 
 // ---------------------------------------------------------------------------
-// 6. Unmark-cancels-rest logic (Bugs B+C)
+// 6. Unmark cancels rest (Bugs B+C), via the REAL deleteSet
 // ---------------------------------------------------------------------------
 
-// Mirror the rest-cancel check from WorkoutView.deleteSet
-function shouldCancelRest(activeRestExerciseIndex, activeRestTimerId, deletedExerciseIndex) {
-    return activeRestExerciseIndex === deletedExerciseIndex && activeRestTimerId != null;
-}
-
-test('Unmark-cancels-rest: cancels when active rest is for the same exercise', () => {
-    assert.equal(shouldCancelRest(1, 42, 1), true,
-        'rest for exercise 1 is cancelled when exercise 1 unmarks');
+test('Unmark-cancels-rest: deleting a set cancels rest running for the same exercise', () => {
+    const view = makeView([makeExercise(2, 3)]);
+    view.activeRestExerciseIndex = 0;
+    view.activeRestTimerId = 42;
+    view.deleteSet(0, 1);
+    assert.equal(view.skipRestCalls, 1, 'skipRest fired');
 });
 
-test('Unmark-cancels-rest: does not cancel when active rest is for a different exercise', () => {
-    assert.equal(shouldCancelRest(0, 42, 1), false,
-        'rest for exercise 0 is not cancelled when exercise 1 unmarks');
+test('Unmark-cancels-rest: rest for a DIFFERENT exercise keeps running', () => {
+    const view = makeView([makeExercise(2, 3), makeExercise(1, 3)]);
+    view.activeRestExerciseIndex = 0;
+    view.activeRestTimerId = 42;
+    view.deleteSet(1, 0);
+    assert.equal(view.skipRestCalls, 0, 'rest for exercise 0 untouched by exercise 1 unmark');
 });
 
-test('Unmark-cancels-rest: does not cancel when no rest is running', () => {
-    assert.equal(shouldCancelRest(1, null, 1), false,
-        'no active timer (null ID) means nothing to cancel');
-});
-
-test('Unmark-cancels-rest: does not cancel when activeRestExerciseIndex is -1', () => {
-    assert.equal(shouldCancelRest(-1, null, 0), false,
-        'idle state (-1, null) triggers no cancel');
-});
-
-test('Unmark-cancels-rest: applies to both between-set (chip) and between-exercise (bar)', () => {
-    // The rule is purely "same exercise index" — the kind (set vs exercise)
-    // does not matter; skipRest() clears both surfaces.
-    assert.equal(shouldCancelRest(2, 7, 2), true, 'between-set chip cancel');
-    assert.equal(shouldCancelRest(2, 7, 2), true, 'between-exercise bar cancel (same check)');
+test('Unmark-cancels-rest: no active timer means nothing to cancel', () => {
+    const view = makeView([makeExercise(2, 3)]);
+    view.activeRestExerciseIndex = 0;
+    view.activeRestTimerId = null;
+    view.deleteSet(0, 1);
+    assert.equal(view.skipRestCalls, 0);
 });
 
 // ---------------------------------------------------------------------------
-// 7. collapsedExercises false invariant — comprehensive check
+// 7. deleteSet side contracts the state machine depends on
 // ---------------------------------------------------------------------------
 
-test('Invariant: collapsedExercises[i]===false only set when exercise is complete at toggle time', () => {
-    // Cycle through: complete, expand (sets false), incomplete (unmark sets undefined),
-    // re-complete (sets true). The false value must only appear at the expand step.
-    const exercises = [makeExercise(0, 2)];
-    const collapsed = {};
-    const prev = {};
+test('deleteSet: removes by stable slot and preserves sticky values for the row', () => {
+    const view = makeView([{ sets: [{ slot: 0, weight: 60, reps: 8 }, { slot: 1, weight: 80, reps: 5 }], targetSets: 2 }]);
+    view._prevCompleteState[0] = true;
+    view.deleteSet(0, 1);
+    const exercise = view.currentWorkoutSession.exercises[0];
+    assert.equal(exercise.sets.length, 1);
+    assert.equal(exercise.sets[0].slot, 0, 'the other slot survives');
+    assert.deepEqual(
+        { weight: exercise.stickyValues[1].weight, reps: exercise.stickyValues[1].reps },
+        { weight: 80, reps: 5 },
+        'deleted values are kept so re-checking the row repopulates them'
+    );
+});
 
-    // Start: undefined
-    assert.equal(collapsed[0], undefined);
+// ---------------------------------------------------------------------------
+// 8. Pin the commit path's collapse rule in commitPlannedSet's own source, so
+//    the commitSet() driver above cannot drift from the real commit behavior.
+// ---------------------------------------------------------------------------
 
-    // Commit 1 (incomplete): no change to collapsed
-    commitSet(0, exercises, collapsed, prev);
-    assert.notEqual(collapsed[0], false, 'after 1/2 sets, collapsed is not false');
-
-    // Commit 2 (complete): auto-collapse sets true
-    commitSet(0, exercises, collapsed, prev);
-    assert.equal(collapsed[0], true);
-
-    // Expand (complete): sets false
-    toggleExerciseCollapse(0, exercises, collapsed);
-    assert.equal(collapsed[0], false, 'false only appears here: expanding a complete exercise');
-
-    // Unmark: clears to undefined
-    deleteSet(0, exercises, collapsed, prev);
-    assert.equal(collapsed[0], undefined, 'false cleared when going incomplete');
-
-    // Re-mark (re-complete): sets true (auto-collapse)
-    commitSet(0, exercises, collapsed, prev);
-    assert.equal(collapsed[0], true);
-
-    // Expand again: false again
-    toggleExerciseCollapse(0, exercises, collapsed);
-    assert.equal(collapsed[0], false);
+test('commitPlannedSet source arms auto-collapse unconditionally when complete (#23)', () => {
+    const body = extractClassMethod(src, 'commitPlannedSet', 'workout-view.js');
+    const armIdx = body.indexOf('this.collapsedExercises[exerciseIndex] = true;');
+    assert.notEqual(armIdx, -1, 'commit path sets collapsed=true');
+    assert.ok(!body.includes("collapsedExercises[exerciseIndex] !== false"),
+        'commit path must NOT guard on the sticky false (a commit is a deliberate action)');
+    assert.ok(body.includes('this._prevCompleteState[exerciseIndex] = isNowComplete;'),
+        'commit path records complete state for deleteSet\'s re-trigger logic');
 });

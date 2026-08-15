@@ -353,10 +353,35 @@ Users can create custom exercises with:
 4. Create account and start tracking!
 
 ### Testing
-- Test on actual mobile devices for best experience
-- Use Chrome DevTools device emulation
-- Test offline functionality
-- Verify Firebase sync
+
+Unit suites live in `tests/` and run with `node --test apps/gym-tracker/tests/`
+from the repo root (they are part of the root `npm test`). No browser, no
+build step; `todo` entries in the output are known product defects pinned to
+their CORRECT behavior (see `FINDINGS.md`), not failures.
+
+Five loading patterns are in use; pick the first that fits:
+
+1. **Direct import** for pure modules (models, utils, `TimerService`,
+   `AnalyticsService` statics).
+2. **Global stubs then `await import()`** when a module reads globals at call
+   time (`StorageService` + a `localStorage` stub, the analytics bridge + a
+   `window` stub).
+3. **Source extraction** for DOM-bound view methods and module-private
+   functions: `tests/helpers/source-extract.mjs` lifts the real method or
+   function text out of the source file and evaluates it against stubs
+   (`buildMethods` / `buildFunctions`). Never hand-copy ("mirror") view logic
+   into a test; mirrors drift silently and one already had (see FINDINGS).
+4. **Static asset text assertions** for structural invariants
+   (`modal-dom-order`, `sw-precache-completeness`).
+5. **`node:vm` harnesses** for classic scripts like `sw.js`
+   (`sw-offline-behavior`, plus the cross-app activate pins in
+   `apps/trip-planner/tests/sw-activate.test.mjs`).
+
+Timer tests use `node:test` mock timers; timezone-sensitive helpers are tested
+in child processes with `TZ=America/New_York` (`date-timezone.test.mjs`).
+
+Manual/device checks that node cannot reach (touch, keyboards, real offline,
+Firebase sync) live in the `.features/` human test plan.
 
 ## Credits
 

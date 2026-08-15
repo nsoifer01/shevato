@@ -458,3 +458,35 @@ test('start rate persists season to season, which only a correct join can show',
     );
   }
 });
+
+/* -------------------------------------------------- the skip set is guarded */
+
+// Four tests above run only against the gitignored .data archive and skip
+// silently without it. A silent skip is invisible in a green run: a fresh
+// clone reports the same "pass" while a third of this file's evidence never
+// executed, and a gated test added or removed later changes the skip count
+// without anything noticing. This guard turns the skip set into an assertion:
+// the count of archive-gated skips is pinned by scanning this file's own
+// source (so adding or removing one fails here until the pin moves with it),
+// with the archive present every gate must be open, and without it exactly
+// the pinned number must be skipping.
+test('the archive-gated skip set is exactly what the archive state implies', (t) => {
+  const source = fs.readFileSync(new URL(import.meta.url), 'utf8');
+  const gatedInSource = (source.match(/\bt\.skip\(/g) || []).length;
+  assert.equal(gatedInSource, 4,
+    'archive-gated tests in this file; a changed count means one was added or removed - update this guard in the same change');
+
+  const seasons = heldSeasons();
+  // The gates, exactly as the tests above write them: one needs any season at
+  // all, three need a pair to compare.
+  const skipping = (seasons.length === 0 ? 1 : 0) + (seasons.length < 2 ? 3 : 0);
+  t.diagnostic(`archive seasons held: ${seasons.length ? seasons.join(', ') : 'none'}; gated tests skipping: ${skipping} of ${gatedInSource}`);
+
+  if (seasons.length >= 2) {
+    assert.equal(skipping, 0, 'with the archive present nothing above may skip');
+  } else if (seasons.length === 0) {
+    assert.equal(skipping, gatedInSource, 'without the archive exactly the gated tests skip');
+  } else {
+    assert.equal(skipping, gatedInSource - 1, 'one held season runs the header check and skips the three pair comparisons');
+  }
+});

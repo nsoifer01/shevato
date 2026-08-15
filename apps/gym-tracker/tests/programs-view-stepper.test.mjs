@@ -5,8 +5,7 @@
 // #program-exercises-list innerHTML, so a single click on one card's rest "+"
 // destroyed all seven cards and every control in them, and focus fell from the
 // clicked button to <body>, so a user could not press "+" twice without
-// re-aiming. Same story for the program-level "Rest duration" stepper, which
-// rebuilt its own container. So:
+// re-aiming. So:
 //   - the model still does the clamping (Program.updateExercise -> 0..900),
 //     the view only reads the normalized value back and displays it;
 //   - repeated clicks must accumulate (five * +15 from 3m lands on 4:15, which
@@ -15,78 +14,83 @@
 //     the two buttons at the bounds. The value text node is mutated, never
 //     replaced, so nothing under the pointer is torn down.
 //
-// syncStepperUI / adjustExerciseTarget / formatRestLabel are mirrored from
-// js/views/programs-view.js by hand (the real ones hang off a DOM-bound class);
-// keep them in sync. The clamping is NOT mirrored: the real Program model is
-// imported so a change to its bounds fails here.
+// stepperHTML / syncStepperUI / formatRestLabel / adjustExerciseTarget are all
+// the REAL implementations lifted from programs-view.js source text, and the
+// fake stepper elements are built by parsing the markup the real stepperHTML()
+// emits. If production renames a class or reshapes the selector, the fakes
+// return null and the value assertions fail loudly instead of an old
+// hand-mirrored copy silently keeping the test green.
+process.env.TZ = 'UTC';
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { loadSource, buildFunctions, buildMethods } from './helpers/source-extract.mjs';
 
 const { Program } = await import('../js/models/Program.js');
 
-// ---- mirrors of programs-view.js ---------------------------------------
+const src = loadSource('js/views/programs-view.js');
+const { stepperHTML, syncStepperUI, formatRestLabel } =
+    buildFunctions(src, ['stepperHTML', 'syncStepperUI', 'formatRestLabel'], {}, 'programs-view.js');
 
-function formatRestLabel(seconds) {
-    if (!Number.isFinite(seconds) || seconds <= 0) return '0s';
-    if (seconds < 60) return `${seconds}s`;
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return s === 0 ? `${m}m` : `${m}:${String(s).padStart(2, '0')}`;
-}
+// ---- fake elements derived from the REAL stepperHTML() markup ------------
 
-function syncStepperUI(stepper, value, min, max, valueLabel = null) {
-    if (!stepper) return;
-    stepper.querySelector('.pex-stepper-value').firstChild.data = valueLabel ?? String(value);
-    stepper.querySelectorAll('[data-stepper]').forEach(btn => {
-        btn.disabled = Number(btn.dataset.delta) < 0 ? value <= min : value >= max;
-    });
-}
+function fakeStepper(field, index, value) {
+    const html = stepperHTML(field, index, value, 0, 900, `Rest ${field}`, 15, formatRestLabel(value));
 
-// ---- the stepper markup stepperHTML() emits, as objects ----------------
-
-function fakeStepper(field, value, step = 15) {
-    // <span class="pex-stepper-value">3m</span> is a single text node; the
-    // buttons carry data-stepper / data-field / data-delta and start disabled
-    // at the bounds.
-    const textNode = { data: formatRestLabel(value) };
+    // The value display is a single text node inside .pex-stepper-value.
+    const valueText = />([^<>]*)<\/span>/.exec(html.match(/<span class="pex-stepper-value">[^<]*<\/span>/)[0]);
+    const textNode = { data: valueText ? valueText[1] : '' };
     const valueSpan = { firstChild: textNode, get textContent() { return textNode.data; } };
-    const buttons = [-step, step].map(delta => ({
-        dataset: { stepper: '', index: '0', field, delta: String(delta) },
-        disabled: delta < 0 ? value <= 0 : value >= 900,
+
+    // One fake button per <button ... data-stepper ...> tag in the markup.
+    const buttons = [...html.matchAll(/<button[^>]*\bdata-stepper\b[^>]*>/g)].map(([tag]) => ({
+        dataset: {
+            stepper: '',
+            index: /data-index="([^"]*)"/.exec(tag)?.[1],
+            field: /data-field="([^"]*)"/.exec(tag)?.[1],
+            delta: /data-delta="([^"]*)"/.exec(tag)?.[1],
+        },
+        disabled: /\bdisabled\b/.test(tag),
     }));
+
     return {
         field,
+        index,
         textNode,
         buttons,
-        minus: buttons[0],
-        plus: buttons[1],
+        minus: buttons.find(b => Number(b.dataset.delta) < 0),
+        plus: buttons.find(b => Number(b.dataset.delta) > 0),
         shown: () => valueSpan.textContent,
-        querySelector: (sel) => (sel === '.pex-stepper-value' ? valueSpan : null),
-        querySelectorAll: (sel) => (sel === '[data-stepper]' ? buttons : []),
+        // Selector support is derived from the real markup: querying a class
+        // that stepperHTML no longer emits returns null (loud downstream).
+        querySelector: (sel) => (sel.startsWith('.') && html.includes(`class="${sel.slice(1)}"`) ? valueSpan : null),
+        querySelectorAll: (sel) => (sel === '[data-stepper]' && html.includes('data-stepper') ? buttons : []),
     };
 }
 
-// ---- the editor: one program, one stepper per rest field per exercise ---
+// ---- the editor: real Program + real adjustExerciseTarget ---------------
 
 function makeEditor(exercises) {
     const program = new Program({ name: 'Push', exercises });
     const steppers = program.exercises.flatMap((ex, i) => [
-        Object.assign(fakeStepper('rest', ex.restSeconds), { index: i }),
-        Object.assign(fakeStepper('restAfter', ex.restAfterSeconds), { index: i }),
+        fakeStepper('rest', i, ex.restSeconds),
+        fakeStepper('restAfter', i, ex.restAfterSeconds),
     ]);
-    const stepperFor = (index, field) => steppers.find(s => s.index === index && s.field === field);
+    const stepperFor = (index, field) => steppers.find(s => s.index === index && s.field === field) || null;
 
-    // Mirror of ProgramsView.adjustExerciseTarget.
-    function adjustExerciseTarget(index, field, delta) {
-        const ex = program.exercises[index];
-        if (!ex) return;
-        const key = field === 'rest' ? 'restSeconds' : field === 'restAfter' ? 'restAfterSeconds' : null;
-        if (!key) return;
-        program.updateExercise(index, { [key]: ex[key] + delta });
-        const value = program.exercises[index][key];
-        syncStepperUI(stepperFor(index, field), value, 0, 900, formatRestLabel(value));
-    }
+    // adjustExerciseTarget locates its stepper with one compound selector;
+    // parse the index/field back out of it. An unrecognized selector shape
+    // returns null, which the real syncStepperUI treats as "nothing to sync",
+    // and the label assertions below then fail.
+    const document = {
+        querySelector: (sel) => {
+            const m = /\.program-exercise-row\[data-exercise-index="(\d+)"\] \.pex-stepper\[data-field="(\w+)"\]/.exec(sel);
+            return m ? stepperFor(Number(m[1]), m[2]) : null;
+        },
+    };
+    const methods = buildMethods(src, ['adjustExerciseTarget'], { document, syncStepperUI, formatRestLabel }, 'programs-view.js');
+    const view = Object.create(methods);
+    view.currentProgram = program;
 
     // What a user click does: read the delta off the button that was pressed.
     const click = (index, field, sign, times = 1) => {
@@ -94,13 +98,13 @@ function makeEditor(exercises) {
             const st = stepperFor(index, field);
             const btn = sign === '-' ? st.minus : st.plus;
             if (btn.disabled) continue; // a disabled button eats the click
-            adjustExerciseTarget(index, field, Number(btn.dataset.delta));
+            view.adjustExerciseTarget(index, field, Number(btn.dataset.delta));
         }
     };
 
     return {
         click,
-        adjust: adjustExerciseTarget,
+        adjust: (index, field, delta) => view.adjustExerciseTarget(index, field, delta),
         stepper: stepperFor,
         shown: (index, field) => stepperFor(index, field).shown(),
         model: (index, field) => program.exercises[index][field === 'rest' ? 'restSeconds' : 'restAfterSeconds'],
@@ -215,7 +219,7 @@ test('rest stepper: only the two rest fields are writable, and only real rows', 
 });
 
 // -------------------------------------------------------
-// Label formatting the stepper depends on
+// Label formatting the stepper depends on (real formatRestLabel)
 // -------------------------------------------------------
 
 test('formatRestLabel: seconds, whole minutes, and m:ss', () => {

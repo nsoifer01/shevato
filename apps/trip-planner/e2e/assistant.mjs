@@ -24,6 +24,7 @@
 import {
   recorder, freshIds, dbOf, trip, item, iso,
   openApp, tpErrors, closePage, evaluate, clickSel, setValue, waitForExpr,
+  menuAct, overlayOpenId, sleep,
 } from './helpers.mjs';
 import { EXTERNAL_HOSTS } from '../../../tests/browser/cdp.mjs';
 import TripLogic from '../js/trip-logic.js';
@@ -65,6 +66,19 @@ const SET_REPLY = (date) => `Pick a dinner.
 \`\`\``;
 
 const HOTEL = 'Sotetsu Grand Fresa Bangkok';
+
+// A realistic airline confirmation (same shape the booking-extract node tests
+// pin) for the import-dialog scoping block: it must read as ONE flight card.
+const BOOKING_TEXT = `British Airways - Electronic Ticket Receipt
+Booking reference: XJ7K2Q
+Passenger: MR A TRAVELLER
+
+Flight BA 179
+London Heathrow (LHR) to New York JFK (JFK)
+Departs: Sat, 12 Aug 2027 at 21:30
+Arrives: Sun, 13 Aug 2027 at 06:45
+Cabin: World Traveller Plus
+Total fare: GBP 812.40`;
 
 // Coordinates are seeded, never fetched: Photon and tp-places are both refused
 // by the default network rule, which is also the honest offline scenario.
@@ -170,14 +184,21 @@ const waitForChips = (s, n) => waitForExpr(s,
 export async function run({ base, cdpPort }) {
   const R = [];
   const t = recorder(R);
-  let s = null;
+  // Every page is closed in a finally. closePage takes (cdpPort, session);
+  // calling it with one argument used to be a silent no-op that leaked all of
+  // this suite's tabs into every later suite (same profile = same
+  // localStorage, so a leaked tab's storage listener reacts to later seeds
+  // and its ensureTrip can write over them).
+  const done = async (s) => { if (s) { try { await closePage(cdpPort, s); } catch { /* gone */ } } };
+  const noErrors = (label, s) => t(`${label}: no page errors`, tpErrors(s).length === 0, tpErrors(s).slice(0, 2).join(' | '), s);
 
+  let s = null;
+  const day = iso(30); // the trip's arrival + check-in day, shared by most blocks
   try {
     // ---------------------------------------------------------------------
     // 1. A suggestion carries its distance BEFORE anything is added, measured
     //    from the hotel rather than from the airport the day opened at.
     freshIds();
-    const day = iso(30);
     s = await openApp(cdpPort, base, { db: dbOf([bangkokTrip()]), stores: distanceStores() });
 
     await clickSel(s, '#assistBtn', { settle: 700 });
@@ -273,8 +294,14 @@ export async function run({ base, cdpPort }) {
       !!beforeKm && beforeKm === afterKm, `before=${beforeKm} after=${afterKm} ${JSON.stringify(dayChip)}`, s);
     await t('tp-assist: the itinerary chip names the same origin in its tooltip',
       !!dayChip && dayChip.title.includes(HOTEL), JSON.stringify(dayChip && dayChip.title), s);
-    await closePage(s); s = null;
+    await noErrors('tp-assist 1-2', s);
+  } catch (err) {
+    await t('tp-assist: blocks 1-2 ran', false, String(err && err.message || err), s);
+  } finally {
+    await done(s); s = null;
+  }
 
+  try {
     // ---------------------------------------------------------------------
     // 2b. previous activity -> next recommendation. The third origin the report
     //     asked about: something already ON the itinerary earlier that day, not
@@ -308,32 +335,51 @@ export async function run({ base, cdpPort }) {
     const morning = await chips(s);
     await t('tp-assist: a suggestion BEFORE that plan falls back to the bed, not forward',
       morning.some(c => c.text.includes(`from ${HOTEL}`)), JSON.stringify(morning), s);
-    await closePage(s); s = null;
+    await noErrors('tp-assist 2b', s);
+  } catch (err) {
+    await t('tp-assist: block 2b ran', false, String(err && err.message || err), s);
+  } finally {
+    await done(s); s = null;
+  }
 
+  try {
     // ---------------------------------------------------------------------
     // 3. No coordinates for anything: no chip, no invented number, no crash.
     freshIds();
     s = await openApp(cdpPort, base, { db: dbOf([bangkokTrip()]), stores: distanceStores({ venues: {}, cities: {} }) });
     await clickSel(s, '#assistBtn', { settle: 700 });
     await pasteReply(s, REPLY(day), 2);
-    painted = await chips(s);
+    const painted = await chips(s);
     await t('tp-assist: with no located places at all every chip stays empty',
       painted.length === 2 && painted.every(c => c.text === ''), JSON.stringify(painted), s);
     await t('tp-assist: the cards themselves still render without coordinates',
       (await evaluate(s, `document.querySelectorAll('#assistMessages .assist-proposal').length`)) === 2, '', s);
+    await noErrors('tp-assist 3', s);
+  } catch (err) {
+    await t('tp-assist: block 3 ran', false, String(err && err.message || err), s);
+  } finally {
+    await done(s); s = null;
+  }
 
+  try {
     // Both ends falling back to the SAME city centroid is not a distance: the
     // old behaviour printed nothing here too, and it must keep printing nothing
     // rather than "0.0 km".
-    await closePage(s);
+    freshIds();
     s = await openApp(cdpPort, base, { db: dbOf([bangkokTrip()]), stores: distanceStores({ venues: {} }) });
     await clickSel(s, '#assistBtn', { settle: 700 });
     await pasteReply(s, REPLY(day), 2);
-    painted = await chips(s);
+    const painted = await chips(s);
     await t('tp-assist: two ends on the same city centroid print no fake 0.0 km',
       painted.length === 2 && painted.every(c => !c.text.includes('0.0 km')), JSON.stringify(painted), s);
-    await closePage(s); s = null;
+    await noErrors('tp-assist 3b', s);
+  } catch (err) {
+    await t('tp-assist: block 3b ran', false, String(err && err.message || err), s);
+  } finally {
+    await done(s); s = null;
+  }
 
+  try {
     // ---------------------------------------------------------------------
     // 4. An alternative set: every candidate carries its own chip, all three
     //    measured from the same slot origin, and the set is ONE stop on the
@@ -344,7 +390,7 @@ export async function run({ base, cdpPort }) {
     // one card, three candidate rows inside it
     await pasteReply(s, SET_REPLY(day), 1);
     const setPainted = await waitForChips(s, 3);
-    painted = await chips(s);
+    const painted = await chips(s);
     const setOk = setPainted && painted.length === 3 && painted.every(c => c.text.includes('km /'));
     await t('tp-assist: all three candidates of a slot carry a distance', setOk,
       JSON.stringify(painted) + (setOk ? '' : ' ' + await originDiag(s, '19:00')), s);
@@ -376,8 +422,14 @@ export async function run({ base, cdpPort }) {
     await t('tp-assist: every located candidate of a five-option slot is measured',
       fiveChips.length === 5 && fiveChips.filter(x => x.includes('km /')).length === 4,
       JSON.stringify(fiveChips), s);
-    await closePage(s); s = null;
+    await noErrors('tp-assist 4', s);
+  } catch (err) {
+    await t('tp-assist: block 4 ran', false, String(err && err.message || err), s);
+  } finally {
+    await done(s); s = null;
+  }
 
+  try {
     // ---------------------------------------------------------------------
     // 5. The chip names its origin, and a hotel name is long: on a 390px panel
     //    it has to wrap inside the card rather than run off the edge.
@@ -398,8 +450,14 @@ export async function run({ base, cdpPort }) {
     })()`);
     await t('tp-assist: on a 390px panel the chip wraps instead of overflowing its card',
       fit.n === 2 && fit.overflowing === 0 && fit.outside === 0, JSON.stringify(fit), s);
-    await closePage(s); s = null;
+    await noErrors('tp-assist 5', s);
+  } catch (err) {
+    await t('tp-assist: block 5 ran', false, String(err && err.message || err), s);
+  } finally {
+    await done(s); s = null;
+  }
 
+  try {
     // ---------------------------------------------------------------------
     // 6. Guided vs free-form, end to end and over the wire. The picker's option
     //    counts are a property of the PICKER, and the composer must not inherit
@@ -420,8 +478,20 @@ export async function run({ base, cdpPort }) {
     await clickSel(s, '#assistBtn', { settle: 700 });
     await clickSel(s, '#assistTierGroup input[value="site"]', { settle: 600 });
 
-    await clickSel(s, '[data-plan-send]', { settle: 1500 });
-    await waitForExpr(s, `${posts.length} >= 0 && !document.querySelector('.assist-typing')`, { timeout: 12000 });
+    // `posts` fills in NODE (the net rule runs here), so the wait is two-part:
+    // the captured request count is polled in Node, and the page is only read
+    // once its typing indicator is gone. The old wait interpolated
+    // `${posts.length} >= 0` into the page expression, a dead always-true
+    // conjunct evaluated at build time.
+    const waitPosts = async (n, timeout = 12000) => {
+      const t0 = Date.now();
+      while (posts.length < n && Date.now() - t0 < timeout) await sleep(200);
+      return posts.length >= n;
+    };
+    await clickSel(s, '[data-plan-send]', { settle: 400 });
+    const gotPlanPost = await waitPosts(1);
+    await waitForExpr(s, `!document.querySelector('.assist-typing')`, { timeout: 12000 });
+    await t('tp-assist: the Plan my day picker POSTs to the site tier', gotPlanPost, `posts=${posts.length}`, s);
     const planned = posts[posts.length - 1] || {};
     const planCtx = planned.tripContext || {};
     await t('tp-assist: the Plan my day picker sends the guided contract',
@@ -433,29 +503,62 @@ export async function run({ base, cdpPort }) {
       JSON.stringify(planCtx.origin), s);
 
     await setValue(s, '#assistInput', 'Give me 5 options, not 3.');
-    await clickSel(s, '#assistSend', { settle: 1500 });
+    await clickSel(s, '#assistSend', { settle: 400 });
+    const gotChatPost = await waitPosts(2);
     await waitForExpr(s, `!document.querySelector('.assist-typing')`, { timeout: 12000 });
     const typed = posts[posts.length - 1] || {};
     await t('tp-assist: a typed message is free-form, whatever the picker sent before it',
-      (typed.tripContext || {}).mode === 'chat', JSON.stringify((typed.tripContext || {}).mode), s);
+      gotChatPost && (typed.tripContext || {}).mode === 'chat', JSON.stringify((typed.tripContext || {}).mode), s);
     await t('tp-assist: both turns went through the same endpoint', posts.length >= 2, `posts=${posts.length}`, s);
-    await closePage(s); s = null;
+    await noErrors('tp-assist 6', s);
+  } catch (err) {
+    await t('tp-assist: block 6 ran', false, String(err && err.message || err), s);
+  } finally {
+    await done(s); s = null;
+  }
 
+  try {
     // ---------------------------------------------------------------------
-    // 7. Scoping: the booking-import dialog renders the SAME proposal cards for
-    //    a flight read off a confirmation, and a distance from an itinerary
-    //    hotel would be a number about nothing there.
+    // 7. Scoping: the booking-import dialog renders the SAME proposal cards
+    //    for a flight read off a confirmation, and a distance from an
+    //    itinerary hotel would be a number about nothing there. The paint pass
+    //    targets '#assistMessages .assist-proposals' only (app.js
+    //    refreshAssistDistances), and this drives the dialog for real to pin
+    //    it: warm caches, an itinerary to measure from, cards on screen -
+    //    and still no chip anywhere in the dialog or the document.
     freshIds();
     s = await openApp(cdpPort, base, { db: dbOf([bangkokTrip()]), stores: distanceStores() });
-    const outside = await evaluate(s, `document.querySelectorAll('#assistMessages .ap-dist').length`);
-    await t('tp-assist: nothing paints chips outside the assistant log', outside === 0, `found=${outside}`, s);
+    await menuAct(s, 'import-booking');
+    await t('tp-assist: the booking-import dialog opens', (await overlayOpenId(s)) === 'importBookingOverlay', '', s);
+    await setValue(s, '#importBookingPaste', BOOKING_TEXT);
+    // the paste box debounces 400ms, then extraction loads the airports table
+    const gotCard = await waitForExpr(s,
+      `document.querySelectorAll('#importBookingResult .assist-proposal').length >= 1`, { timeout: 10000 });
+    const face = await evaluate(s, `(() => {
+      const c = document.querySelector('#importBookingResult .assist-proposal');
+      return c ? { type: c.dataset.type || '', title: (c.querySelector('.ap-title') || {}).textContent || '' } : null;
+    })()`);
+    await t('tp-assist: a pasted confirmation renders a proposal card in the dialog',
+      gotCard && !!face && face.type === 'flight' && /LHR.*JFK/.test(face.title), JSON.stringify(face), s);
+    // Every proposal card carries an EMPTY .ap-dist scaffold span
+    // (proposalDistHtml); the paint pass fills only the ones under
+    // #assistMessages. So the honest claim is about painted TEXT, not about
+    // the element existing.
+    const chipCounts = await evaluate(s, `({
+      dialogPainted: [...document.querySelectorAll('#importBookingResult .ap-dist')].filter(e => e.textContent.trim()).length,
+      anywherePainted: [...document.querySelectorAll('.ap-dist')].filter(e => e.textContent.trim()).length,
+    })`);
+    await t('tp-assist: nothing paints chips outside the assistant log',
+      !!chipCounts && chipCounts.dialogPainted === 0 && chipCounts.anywherePainted === 0, JSON.stringify(chipCounts), s);
 
-    const errs = await tpErrors(s);
+    // cleanErrors is synchronous (it filters the session's error buffer);
+    // aligned with the other suites, no await.
+    const errs = tpErrors(s);
     await t('tp-assist: no page errors across the suite', errs.length === 0, errs.join(' | '), s);
   } catch (err) {
-    await t('tp-assist: suite completed', false, String(err && err.message || err), s);
+    await t('tp-assist: block 7 ran', false, String(err && err.message || err), s);
   } finally {
-    if (s) await closePage(s);
+    await done(s); s = null;
   }
   return R;
 }

@@ -1,6 +1,7 @@
 // Tests for Item 9: program day-of-week schedule.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { Program } from '../js/models/Program.js';
 import { Settings } from '../js/models/Settings.js';
 import { programsScheduledOnWeekday, weekdayOrder, weekStrip } from '../js/utils/program-schedule.js';
@@ -109,8 +110,14 @@ test('R2-5: legacy data without firstDayOfWeek defaults to Monday', () => {
 // Calendar grid leading-blank offset is a pure formula shared by both column
 // orders: how far the month's first weekday sits from the configured first
 // column. Encodes WHY: blanks before day 1 must align day 1 under its header.
+// The formula is extracted from calendar-view.js source text (it lives inline
+// in the render path), so a change there fails here instead of drifting past
+// a copy written inside the test.
 test('R2-5: calendar leading-blank offset honors firstDayOfWeek', () => {
-    const offset = (firstDayOfMonth, firstDay) => (firstDayOfMonth - firstDay + 7) % 7;
+    const calendarSrc = readFileSync(new URL('../js/views/calendar-view.js', import.meta.url), 'utf8');
+    const m = /const firstWeekday = ([^;\n]+);/.exec(calendarSrc);
+    assert.ok(m, 'leading-blank offset formula found in calendar-view.js');
+    const offset = new Function('firstDayOfMonth', 'firstDay', `"use strict"; return ${m[1]};`);
     // Month starting on a Wednesday (3).
     assert.equal(offset(3, 0), 3); // Sunday-first: Sun,Mon,Tue blank -> 3
     assert.equal(offset(3, 1), 2); // Monday-first: Mon,Tue blank -> 2

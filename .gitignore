@@ -7,6 +7,13 @@
 # Ignore temp files
 .*.sw*
 
+# Root dev dependencies (testing only: Playwright for the cross-browser
+# smoke suite). The runtime site has zero npm dependencies by design.
+/node_modules/
+
+# Coverage reports written by tests/coverage/run.mjs
+/.coverage/
+
 # Environment variables
 .env
 .env.local

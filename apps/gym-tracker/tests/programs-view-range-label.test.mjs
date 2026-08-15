@@ -1,5 +1,6 @@
-// Mirror of the rep-mode segmented control from ProgramsView.renderProgramExercises.
-// If the template changes in programs-view.js, update this file too.
+// The rep-mode segmented control in the program editor, rendered from the
+// REAL template fragments inside ProgramsView.renderProgramExercises.
+//
 // These tests pin the 2026-08-10 editor round's discoverability contract:
 //   - the control shows BOTH modes at once and marks the CURRENT one selected,
 //     replacing the old single button whose label was the mode you'd switch TO
@@ -9,43 +10,32 @@
 //   - the per-card "Each set can be a single target or a range." caption is
 //     gone: the two visible options say the same thing without costing a line
 //     of height in every exercise card.
+//
+// The modeOpt arrow and the .pex-mode-seg wrapper are extracted from
+// programs-view.js source text and re-evaluated, so a template change there
+// fails here instead of drifting past a copy written inside the test.
+process.env.TZ = 'UTC';
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { loadSource, extractClassMethod } from './helpers/source-extract.mjs';
 
-// Reproduce the mode-toggle fragment from programs-view.js.
+const src = loadSource('js/views/programs-view.js');
+const renderSrc = extractClassMethod(src, 'renderProgramExercises', 'programs-view.js');
+
+// The per-set-row mode-option builder (an arrow closing over si/index).
+const modeOptMatch = /const modeOpt = (\(mode, label, on\) => `[\s\S]*?`);/.exec(renderSrc);
+assert.ok(modeOptMatch, 'modeOpt arrow found in renderProgramExercises');
+
+// The segmented-control wrapper that invokes modeOpt for both modes.
+const segMatch = /<span class="pex-mode-seg"[\s\S]*?<\/span>/.exec(renderSrc);
+assert.ok(segMatch, '.pex-mode-seg template fragment found in renderProgramExercises');
+
+/** Render the real segmented control for one set row. */
 function modeSegHTML(setRow, si = 0, index = 0) {
     const isSingle = setRow.repsMin === setRow.repsMax;
-    const modeOpt = (mode, label, on) => `
-                        <button type="button" class="pex-mode-opt${on ? ' is-on' : ''}"
-                            data-action="toggle-rep-range"
-                            data-mode="${mode}"
-                            data-exercise-index="${index}"
-                            data-set-index="${si}"
-                            aria-pressed="${on ? 'true' : 'false'}"
-                            aria-label="Set ${si + 1}: ${mode === 'single' ? 'single rep target' : 'rep range'}"
-                            title="Set ${si + 1}: ${mode === 'single' ? 'single rep target' : 'rep range'}">${label}</button>`;
-    return `
-                    <span class="pex-mode-seg" role="group" aria-label="Set ${si + 1} rep mode">
-                        ${modeOpt('single', 'Single', isSingle)}
-                        ${modeOpt('range', 'Range', !isSingle)}
-                    </span>`;
-}
-
-// Reproduce the per-exercise sets block wrapper from programs-view.js.
-function setsBlockHTML(sets) {
-    const rows = sets.map((setRow, si) => `
-                <div class="pex-set-row" data-set-index="${si}">
-                    <span class="pex-set-label">Set ${si + 1}</span>
-                    ${modeSegHTML(setRow, si)}
-                </div>`).join('');
-    return `
-        <div class="pex-sets-block">
-            ${rows}
-        </div>
-        <button type="button" class="pex-add-set-btn" data-action="add-set-row">
-            <i class="fas fa-plus" aria-hidden="true"></i> Add set
-        </button>`;
+    const modeOpt = new Function('si', 'index', `"use strict"; return ${modeOptMatch[1]};`)(si, index);
+    return new Function('modeOpt', 'si', 'isSingle', `"use strict"; return \`${segMatch[0]}\`;`)(modeOpt, si, isSingle);
 }
 
 const pressed = (html) => [...html.matchAll(/aria-pressed="(true|false)"/g)].map(m => m[1]);
@@ -94,29 +84,29 @@ test('mode control: every option names its set number for screen readers', () =>
     assert.ok(html.includes('aria-label="Set 3 rep mode"'), 'the group names its set');
 });
 
+test('mode control: options carry the exercise and set indices the handler reads', () => {
+    const html = modeSegHTML({ repsMin: 6, repsMax: 10 }, 1, 4);
+    assert.equal([...html.matchAll(/data-exercise-index="4"/g)].length, 2);
+    assert.equal([...html.matchAll(/data-set-index="1"/g)].length, 2);
+});
+
 // -------------------------------------------------------
-// The per-card helper caption is gone
+// The per-card helper caption is gone, and layout order holds
 // -------------------------------------------------------
 
-test('sets block: no per-exercise range hint caption is rendered', () => {
-    const html = setsBlockHTML([
-        { repsMin: 10, repsMax: 10 },
-        { repsMin: 10, repsMax: 10 },
-        { repsMin: 10, repsMax: 10 },
-    ]);
-    assert.ok(!html.includes('pex-range-hint'), 'the hint element is gone');
+test('sets block: no per-exercise range hint caption is rendered anywhere', () => {
+    assert.ok(!src.includes('pex-range-hint'), 'the hint element is gone from programs-view.js');
     assert.ok(
-        !html.includes('Each set can be a single target or a range.'),
+        !src.includes('Each set can be a single target or a range.'),
         'the hint sentence is gone; the segmented control states both options'
     );
 });
 
 test('sets block: "+ Add set" follows the set rows instead of sitting in a header', () => {
-    const html = setsBlockHTML([{ repsMin: 5, repsMax: 5 }, { repsMin: 5, repsMax: 5 }]);
-    const lastRowIdx = html.lastIndexOf('pex-set-row');
-    const addSetIdx = html.indexOf('pex-add-set-btn');
-    assert.ok(lastRowIdx !== -1, 'set rows are present');
-    assert.ok(addSetIdx !== -1, 'add-set button is present');
-    assert.ok(addSetIdx > lastRowIdx, 'add-set comes after the last set row');
-    assert.ok(!html.includes('pex-sets-header'), 'the old sets header no longer exists');
+    const setsBlockIdx = renderSrc.indexOf('pex-sets-block');
+    const addSetIdx = renderSrc.indexOf('pex-add-set-btn');
+    assert.notEqual(setsBlockIdx, -1, 'set rows block is present');
+    assert.notEqual(addSetIdx, -1, 'add-set button is present');
+    assert.ok(addSetIdx > setsBlockIdx, 'add-set comes after the sets block in the card template');
+    assert.ok(!src.includes('pex-sets-header'), 'the old sets header no longer exists');
 });

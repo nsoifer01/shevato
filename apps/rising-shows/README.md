@@ -280,11 +280,38 @@ python3 -m http.server 8000
 
 The browser URL preserves your shape/genre/sort/search selection - paste a link to share a specific view.
 
-## Running tests
+## Tests
 
 ```sh
-npm run test:rising-shows
+npm run test:rising-shows        # this app only
+npm test                         # the whole repo, run this before any commit
 ```
+
+Everything runs under `node --test`: no browser, no server, no fixtures on disk
+outside `os.tmpdir()`.
+
+| File | What it covers |
+| --- | --- |
+| `tests/match.test.js` | the eleven shape detectors and `findMatches` (the vote/episode floors, the projection, `seasonYear`) |
+| `tests/finder-lib.test.js` | `buildShowAgg` (both the full-record and the split-record input shapes), hash parsing, the filter predicates, and the sort comparator |
+| `tests/build-data.test.js` | the IMDb pipeline end to end: rating aggregation, the vote/episode floors, unrated episodes, `\N` season and episode numbers, `seasonYear` / `avgRuntime`, the genre and language tallies, provider normalisation, and the modal side-file split |
+| `tests/split-data.test.js` | the payload split: that the emitted `data-index.json` aggregates identically to the unsplit `data.json` through the real `buildShowAgg`, that index + detail rehydrates losslessly, and the `aboveImdb` rules |
+| `tests/build-changelog.test.js` | `diffDatasets` / `appendEntry`, plus the CLI's missing-baseline guard |
+| `tests/integrations-lib.test.js` | Kometa collection + overlay YAML, MDBList id lists, and the compare-export naming |
+| `tests/render-show-page.test.js`, `render-shape-hub.test.js`, `render-curve.test.js`, `render-sitemap.test.js`, `slugify.test.js` | the static page builders, their JSON-LD, and slug/permalink stability |
+| `tests/app-features.test.js` | browser helpers reached through a `node:vm` sandbox (see below) |
+
+`build-data.js` and `split-data.js` hardcode their input and output paths off
+`__dirname` and take no overrides, so their tests copy the real script into a
+throwaway app tree under `os.tmpdir()` and run it there against tiny TSV / JSON
+fixtures. The bytes under test are the production bytes; only the tree around
+them is a fixture, and the app's real `data.json` is never read or written.
+
+`app-features.test.js` loads `js/app.js` into a `node:vm` context with stubbed
+browser globals (DOM, `localStorage`, `sessionStorage`, `location`, `fetch`) and
+drives whatever `window._rsTestExports` exposes at the bottom of `app.js`.
+Helpers that are not on that list are not reachable from Node, so anything that
+needs coverage has to be exported there first.
 
 ## Plex + Kometa + MDBList integrations
 

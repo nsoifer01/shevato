@@ -184,22 +184,129 @@ recompiling would have deleted 342 selectors of live styling, including the
 Keeping a build input that silently destroys shipped CSS is worse than having
 no build step at all, so the sources were deleted rather than reconciled.
 
-## Tests
+## Testing
 
-Node's built-in test runner is used for the apps and the shared sync system:
+The full audit of this testing system (architecture rationale, coverage
+matrices, known product defects, limitations) lives in `TESTING-AUDIT.md`.
+This section is the working contract for anyone changing the repo.
+
+### Philosophy
+
+Tests protect BEHAVIOR, not implementation details. Every test should be able
+to fail when the user-visible rule it guards breaks, and should not fail when
+an internal detail is refactored without changing that rule. Keep each test at
+the lowest layer that can catch its bug: never move a pure-logic assertion
+into a browser test just because the browser harness exists, and never claim a
+DOM behavior is covered because a copy of its logic passes in Node.
+
+### Layers
+
+| Layer | Runner | Where | What belongs here |
+|---|---|---|---|
+| Static checks | `node --test` | `tests/static/` | Internal-link integrity, duplicate ids, manifest + JSON-LD validity, first-party JS syntax |
+| Unit / integration | `node --test` | `apps/<app>/tests/`, `sync-system/tests/`, `netlify/functions/tests/`, `assets/js/tests/` | Calculations, parsers, business rules, storage/persistence logic, DOM-free view logic, function handlers with injected seams |
+| Browser E2E | custom CDP harness | `tests/browser/`, `apps/{trip-planner,fpl-planner}/e2e/` | Real user workflows in headless Chromium, with console-error and first-party-network-failure gating |
+| Accessibility | CDP + vendored axe-core | `tests/browser/suites/a11y.mjs` | axe WCAG 2.0/2.1 A+AA scans of every page/app plus keyboard/focus behavior checks |
+| Visual | CDP (deterministic geometry) | `tests/browser/suites/visual.mjs` | Overflow, layout relations, dark-theme integrity, `main.css` collision pins at 3 viewports. Pixel baselines were deliberately rejected: font rendering differs per machine and would flake |
+| Performance | CDP (budgets) | `tests/browser/suites/perf.mjs` | First-party byte / request / DOM-size budgets per page, set from measured baselines with headroom |
+| PWA / offline | CDP | `tests/browser/suites/pwa-gym.mjs`, `apps/trip-planner/e2e/pwa.mjs` | Service-worker registration, cache contents, offline reload |
+| Cross-browser | Playwright (dev-dep) + `node --test` | `tests/cross-browser/` | Firefox + WebKit smoke of every page/app. Chromium depth stays in the CDP harness |
+| Coverage | wrapper over `node --test` | `tests/coverage/` | Runs the unit estate under V8 coverage, reports per area, enforces line floors |
+
+### Commands
 
 ```bash
-npm test                            # runs every suite below
-npm run test:gym
-npm run test:football
-npm run test:rising-shows           # render + integrations-lib
-npm run test:mario-kart
-npm run test:arena
-npm run test:sync                   # cross-cutting sync-system invariants
-npm run test:analytics              # shared GA4 helper (privacy + dedupe rules)
+npm test                   # fast gate: all unit/integration + static checks, no browser (CI on every push/PR)
+npm run test:browser       # full browser estate: site, apps, a11y, visual, perf, PWA, app E2E (CI on PRs + master)
+npm run test:all           # "is this change safe to merge": npm test + test:browser
+npm run test:coverage      # coverage report to .coverage/summary.md + per-area floors
+npm run test:cross-browser # Firefox/WebKit smoke (needs: npm install && npx playwright install firefox webkit;
+                           #   WebKit additionally needs system libs, so it runs fully only on CI)
+npm run test:<app>         # one app's unit suite (gym, football, fpl-planner, rising-shows, mario-kart,
+                           #   arena, maptap, trip-planner); test:static, test:sync, test:analytics likewise
+npm run test:trip-planner:e2e | test:fpl-planner:e2e   # one app's browser E2E subset
 ```
 
-The repo has cross-cutting invariant tests under `sync-system/tests/`, so run `npm test` after any non-trivial change before committing.
+For day-to-day development: `npm test` (seconds). Before merging: `npm run
+test:all`. The cross-browser smoke runs weekly on CI and on demand.
+
+### Known-defect quarantine
+
+When a correct test exposes a real product bug, the test is NOT weakened,
+skipped silently, or deleted. Two mechanisms exist, with different
+guarantees; be precise about which you are relying on:
+
+- **`node --test` suites**: the test asserts the CORRECT behavior and is
+  marked `{ todo: 'KNOWN DEFECT: ...' }`. It executes on every `npm test`
+  and is reported in the TODO count without blocking CI. Be aware of the
+  limit: when the bug is fixed the test starts passing, which TAP shows as a
+  passing TODO, but Node does not fail the run for it, so nothing FORCES the
+  cleanup. The PR that fixes the product bug is responsible for removing the
+  todo marker in the same change.
+- **Browser harness suites**: quarantined checks are expected-failure
+  checks, not skips in the ordinary sense. They EXECUTE the defective
+  behavior on every run; while the defect reproduces they report as a skip
+  whose detail starts with `KNOWN DEFECT:`, and if the defect stops
+  reproducing they FAIL loudly with an "unexpectedly passes - remove the
+  quarantine" message. So a product fix that forgets to retire its browser
+  quarantine turns the suite red on purpose. The a11y suite additionally
+  pins the quarantine baseline per page and per axe rule id (`QUARANTINED`
+  in `a11y.mjs`): a new violation class on any page fails outright and can
+  never slide silently into the quarantine.
+
+Every quarantined defect is catalogued in `TESTING-AUDIT.md`, which also
+distinguishes defects pinned by executable tests from findings that are
+documented only (security/architecture items that need an emulator, and
+product decisions where asserting one outcome would presume the answer).
+Fixing the product bug is a separate change from the test that documents it.
+
+### Expectations for future changes
+
+- **New feature**: tests accompany it at the lowest sensible layer.
+- **Bug fix**: add a regression test that reproduces the bug first.
+- **Business-rule / calculation change**: update unit tests covering normal
+  cases and boundaries in the same change.
+- **UI interaction change**: update or extend the browser coverage.
+- **Major layout/visual change**: re-derive the affected `visual.mjs`
+  geometry assertions and `perf.mjs` budgets deliberately, never blindly.
+- **New page or app**: wire it into the static checks, browser suites
+  (site/apps/a11y/visual/perf as applicable), the cross-browser smoke lists,
+  and `package.json`; give its critical workflows real tests. See "Adding a
+  new app" above.
+- **External API change**: update the deterministic fixtures AND the failure
+  scenarios (timeouts, malformed bodies, empty responses).
+
+### What you must NOT do
+
+- Remove or skip a failing test to make CI green; use the known-defect
+  quarantine and document it.
+- Lower a coverage floor (`tests/coverage/floors.json`) without a written
+  justification in `TESTING-AUDIT.md`.
+- Add hard-coded sleeps to fix a race: use `waitForExpr` on a real condition
+  (the two remaining sleep classes in the E2E suites are commented negative
+  claims).
+- Copy production logic into a test ("mirror" tests): extract the real source
+  (see `apps/gym-tracker/tests/helpers/source-extract.mjs`) or test through
+  the real module. A mirror in this repo was found already drifted from the
+  code it claimed to protect.
+- Depend on live third-party APIs in the deterministic suites; every external
+  host is blocked or intercepted in the browser harness on purpose.
+- Depend on test-execution order or leave state behind (pages are closed in
+  `finally`, storage is reset per block, service workers are unregistered).
+- Change an expected value just to accommodate a regression.
+- Write to production Firebase from any test (the Arena browser checks
+  intercept and fail all Firebase hosts; keep it that way).
+
+### Artifacts
+
+- Coverage: `.coverage/summary.md` (gitignored), written by `test:coverage`.
+- Browser failure screenshots: `.screenshots/e2e-trip-planner/` (gitignored);
+  green runs write nothing.
+- The browser runner prints per-suite pass/skip counts and pins expected
+  check counts for the site and apps suites, so a crashed block cannot
+  silently shrink the denominator.
+- CI: `tests` workflow (unit + static + syntax, every push/PR), `browser
+  tests` (PRs + master), `cross-browser smoke` (weekly + manual dispatch).
 
 ## Analytics
 

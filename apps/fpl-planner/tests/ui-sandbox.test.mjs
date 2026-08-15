@@ -7,14 +7,18 @@
 // switch on holding picks is what made the built fifteen uneditable, and only a
 // rendered card shows it.
 
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { installDom, query, queryAll, textOf, click, buttonWith } from './helpers/mini-dom.mjs';
 
-installDom();
+// Teardown restores the real globals when the file ends, the same pattern as
+// ui-combobox.test.mjs: an installDom() left in place leaks a fake `document`
+// into any suite the runner loads after this one in the same process.
+const teardownDom = installDom();
+after(() => teardownDom());
 
 const { assembleSampleBundle } = await import('../js/data/sample.js');
 const { buildGameState } = await import('../js/engine/normalize.js');
