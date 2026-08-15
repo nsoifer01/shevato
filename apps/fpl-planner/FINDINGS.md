@@ -625,6 +625,27 @@ ranking, and only the part of a correction that changes ORDER changes decisions
   `.fpl-pp-meta` cards. Fresh repo-relative `--user-data-dir` per run or you
   will screenshot cached CSS (bit us: a contrast fix "did not work" until the
   profile was deleted). Concurrent CDP runs collide on port 9222.
+- **Testing PRODUCTION is a different exercise from testing the app**, and three
+  traps cost a full run each on 2026-08-15:
+  - *Seed nothing.* The E2E suites seed `fplPlannerTeamId` and intercept the
+    proxy. A real visitor gets neither, lands on the `#fpl-team-id` onboarding
+    form, and a driver that clears storage and waits for a pitch waits forever.
+    Type a Team ID and submit `#fpl-onboard-go`. Team `1234567`, the ID used as
+    the field's own placeholder, is a real entry.
+  - *A deploy preview cannot read FPL data at all.* `originAllowed()` admits
+    shevato.com and local dev only, so the proxy 403s the
+    `deploy-preview-N--shevato.netlify.app` origin and the app correctly refuses
+    to plan. Useful as a free test of the failure UI, useless for testing
+    anything behind it: the sandbox can only be exercised on production.
+  - *Overlap is not coverage.* Asserting that the action bar's rectangle does
+    not intersect the shared back-to-top FAB FAILS while every control is
+    perfectly clickable, because the bar's container legitimately extends under
+    a control that floats above it. The question is whether any BUTTON is
+    covered, which only `document.elementsFromPoint(cx, cy)` at each button's
+    own centre can answer. On production, 0 of 6 are.
+  - Related sequencing trap: an open combobox swallows the next click, so a
+    step that "fails" may simply have been aimed at a picker left open by the
+    step before it. Dismiss deliberately and re-query between actions.
 - The API-Football key lives in NETLIFY PROJECT ENV as `APIFOOTBALL_KEY`
   (`netlify env:get`), NOT in the repo `.env`. Free tier, 100 requests/day,
   active to 2027. EPL injuries come one season per request with NO pagination,
@@ -632,22 +653,26 @@ ranking, and only the part of a correction that changes ORDER changes decisions
 
 ## Operational state (release state verified 2026-08-15)
 
-- **Release state: THREE DIFFERENT CODE STATES, and they must not be confused**
-  (verified 2026-08-15 by hashing deployed files against both `master` and the
-  working tree):
+- **Release state: SHIPPED.** The GW1 hardening and the team sandbox are on
+  production. Merged as PR #380 (`2bd2bd2`) and deployed by Netlify from
+  `master` at 2026-08-15 06:55 UTC (deploy `6a800c98310a1400075aaa6b`).
 
-  | | what it is | GW1 fixes? |
-  | --- | --- | --- |
-  | **Deployed production** | shevato.com/apps/fpl-planner/, byte-identical to `master` | **no** |
-  | **`master`** | the pre-GW1-work app, last commit `cc0f2fd` | **no** |
-  | **`feature/fpl-team-sandbox`** | the GW1 hardening and the team sandbox | yes, **uncommitted** |
+  Verified the only way that means anything, by hashing what the server actually
+  returns against the merged tree: **17 of 17 files matched**, including
+  `js/app.js`, `js/ui/scenario.js`, `js/ui/sandbox.js`, `js/engine/minutes.js`,
+  `js/engine/squad.js`, `js/engine/confidence.js`, `js/engine/planner.js`,
+  `js/ui/history.js`, `js/ui/dashboard.js`, `js/ui/preseason.js`,
+  `js/ui/player-drawer.js`, `js/ui/store.js`, `js/data/api.js`,
+  `css/styles.css` and `index.html`. `js/ui/scenario.js` and `js/ui/sandbox.js`
+  now return 200 where they returned 404, which is the quickest confirmation
+  that this is the new build and not the old one.
 
-  So the app IS live, and the GW1 fixes are NOT: they are uncommitted changes in
-  a working tree, zero commits ahead of `master`, unmerged and undeployed.
-  `js/ui/scenario.js` and `js/ui/sandbox.js` return 404 on production, which is
-  the quickest confirmation. Nothing in this file describing the rollover guard,
-  the deadline transition, the transfer overlay, the cache behaviour or the
-  sandbox is true of what users are running today.
+  Everything this file says about the rollover guard, the deadline transition,
+  the transfer overlay, the cache behaviour and the sandbox is now true of what
+  users are running. Rollback point, if the opening gameweek exposes something
+  the suites missed: deploy `6a7ec55690fee400083c64b1` (commit `5666094`, the
+  last pre-GW1-work production build), restored with
+  `netlify api restoreSiteDeploy --data '{"site_id":"fe5f021f-f41b-4b5a-b553-a03729fe4f6d","deploy_id":"6a7ec55690fee400083c64b1"}'`.
 
   **Verify before trusting any audit of this app**, because a finding is only
   about what users hit if the bytes match:
