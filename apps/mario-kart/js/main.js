@@ -1038,13 +1038,12 @@ function sortTable(column) {
                 if (aVal === null) return sortDirection === 'asc' ? 1 : -1;
                 if (bVal === null) return sortDirection === 'asc' ? -1 : 1;
 
-                // Handle date sorting (including timestamp within same day)
+                // Handle date sorting (including timestamp within same day).
+                // raceDateTimeValue tolerates legacy "24:" stamps and unknown
+                // timezone abbreviations, and never yields NaN.
                 if (sortColumn === 'date') {
-                    // Create full datetime for accurate sorting
-                    const aDateTime = new Date(a.date + (a.timestamp ? ' ' + a.timestamp : ''));
-                    const bDateTime = new Date(b.date + (b.timestamp ? ' ' + b.timestamp : ''));
-                    aVal = aDateTime;
-                    bVal = bDateTime;
+                    aVal = raceDateTimeValue(a);
+                    bVal = raceDateTimeValue(b);
                 }
 
                 if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
@@ -1259,13 +1258,12 @@ function updateDisplay() {
             if (aVal === null) return sortDirection === 'asc' ? 1 : -1;
             if (bVal === null) return sortDirection === 'asc' ? -1 : 1;
 
-            // Handle date sorting (including timestamp within same day)
+            // Handle date sorting (including timestamp within same day).
+            // raceDateTimeValue tolerates legacy "24:" stamps and unknown
+            // timezone abbreviations, and never yields NaN.
             if (sortColumn === 'date') {
-                // Create full datetime for accurate sorting
-                const aDateTime = new Date(a.date + (a.timestamp ? ' ' + a.timestamp : ''));
-                const bDateTime = new Date(b.date + (b.timestamp ? ' ' + b.timestamp : ''));
-                aVal = aDateTime;
-                bVal = bDateTime;
+                aVal = raceDateTimeValue(a);
+                bVal = raceDateTimeValue(b);
             }
 
             if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;

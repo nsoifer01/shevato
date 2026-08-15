@@ -58,7 +58,7 @@ function calculateStats(raceData = null) {
 
     raceData.forEach(race => {
         players.forEach(player => {
-            if (race[player] !== null) {
+            if (isFinitePosition(race[player])) {
                 stats.racesPlayed[player]++;
                 stats.averageFinish[player] += race[player];
                 if (race[player] === 1) stats.firstPlace[player]++;
@@ -86,7 +86,7 @@ function calculateStats(raceData = null) {
                 const player1 = players[i];
                 const player2 = players[j];
 
-                if (race[player1] !== null && race[player2] !== null) {
+                if (isFinitePosition(race[player1]) && isFinitePosition(race[player2])) {
                     if (race[player1] < race[player2]) {
                         stats.h2h[player1][player2]++;
                         stats.h2hByDay[race.date][player1][player2]++;
@@ -160,14 +160,10 @@ function calculateStats(raceData = null) {
         let maxStreak = 0;
 
         // Sort races chronologically by date and timestamp for proper streak calculation
-        const chronologicalRaces = [...raceData].sort((a, b) => {
-            const dateA = new Date(a.date + (a.timestamp ? ' ' + a.timestamp : ''));
-            const dateB = new Date(b.date + (b.timestamp ? ' ' + b.timestamp : ''));
-            return dateA - dateB;
-        });
+        const chronologicalRaces = [...raceData].sort(compareRacesChronologically);
 
         chronologicalRaces.forEach(race => {
-            if (race[player] !== null) {
+            if (isFinitePosition(race[player])) {
                 if (race[player] <= 3) {
                     currentStreak++;
                     maxStreak = Math.max(maxStreak, currentStreak);
@@ -185,11 +181,7 @@ function calculateStats(raceData = null) {
 
 function calculateLongestStreaks(raceData, stats) {
     // Sort races chronologically
-    const chronologicalRaces = [...raceData].sort((a, b) => {
-        const dateA = new Date(a.date + (a.timestamp ? ' ' + a.timestamp : ''));
-        const dateB = new Date(b.date + (b.timestamp ? ' ' + b.timestamp : ''));
-        return dateA - dateB;
-    });
+    const chronologicalRaces = [...raceData].sort(compareRacesChronologically);
 
     // Track current streaks for each player pair dynamically
     const currentStreaks = {};
@@ -212,7 +204,7 @@ function calculateLongestStreaks(raceData, stats) {
                 const player1 = players[i];
                 const player2 = players[j];
 
-                if (race[player1] !== null && race[player2] !== null) {
+                if (isFinitePosition(race[player1]) && isFinitePosition(race[player2])) {
                     const gap1v2 = race[player2] - race[player1];
                     const gap2v1 = race[player1] - race[player2];
                     

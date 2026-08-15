@@ -77,6 +77,20 @@ The tracker works best on modern browsers:
 - **Players**: Supports 1-4 players; layouts verified at all player counts
 - **Browser**: Chrome or Firefox on desktop for best experience
 
+### Race timestamps
+Each race stores a `date` (YYYY-MM-DD) plus an optional `timestamp`
+("HH:MM:SS TZ", hand-formatted on the 00-23 clock; an older formatter wrote
+midnight as "24:MM:SS", which some engines refuse to parse). Everything that
+orders races chronologically (streaks, trends, achievements, the sortable
+history table) goes through one tolerant parser in `js/utils.js`
+(`raceDateTimeValue` / `compareRacesChronologically`): it reads the wall-clock
+part, ignores the timezone abbreviation, maps a legacy hour of 24 to 00, and
+falls back to midnight of the date when the timestamp is absent or
+unparseable, so a bad stamp can never silently disable the sort. On load and
+on import, `migrateRaceData` also rewrites any stored "24:MM:SS" stamp to
+"00:MM:SS" (preserving every other field on the race, course tags included),
+so old data heals forward.
+
 ### Player count vs the race log
 The player-count selector sets how wide the race-entry form is: how many
 people are playing now. It is stored under its own key
@@ -130,6 +144,7 @@ mario-kart/
 │   ├── statistics.test.js  # calculateStats edge cases + chronological ordering
 │   ├── dateFilter.test.js  # Rolling week/month window semantics
 │   ├── charts.test.js      # Chart aggregation helpers
+│   ├── utils.test.js       # Shared position guard + race-datetime parser
 │   └── courses.test.js  # Course dataset integrity + search ranking
 └── README.md            # This file
 ```
@@ -147,7 +162,8 @@ npm run test:mario-kart  # this app only
 
 - **core.test.js** - roster union (`rosterForCount`, `highestPlayerWithRaces`), date-filter plumbing, undo/redo including the `MAX_HISTORY` bound, H2H statistics, import validation, and version-scoped backup/restore keys.
 - **dataManager.test.js** - `addRace` (min-player rule, position range, duplicate positions, course tagging, timestamp build, localStorage write, undo entry), `editRace` (revalidation, timestamp preserve/rebuild/clear, undo and redo, untouched fields), `migrateRaceData` (legacy `slav`/`mike`/`nikita` keys).
-- **statistics.test.js** - `calculateStats` when a player key is absent rather than null (roster widening) and how the chronological sort behaves with legacy timestamp strings.
+- **statistics.test.js** - `calculateStats` when a player key is absent rather than null (roster widening) and chronological ordering across every timestamp shape, including legacy "24:MM:SS" stamps.
+- **utils.test.js** - the shared helpers in `js/utils.js`: `isFinitePosition` (the guard every stat/chart/achievement uses to decide whether a player raced) and `raceDateTimeValue` / `compareRacesChronologically` (the tolerant race-datetime parser behind every chronological sort).
 - **dateFilter.test.js** - the week/month filters as rolling 7 x 24h and 30 x 24h windows measured from "now", pinned with a frozen clock.
 - **charts.test.js** - the pure aggregation helpers in `charts.js`: weekly activity buckets, comeback analysis, best/worst racing day, pattern analysis.
 - **courses.test.js** - course dataset integrity and search ranking.

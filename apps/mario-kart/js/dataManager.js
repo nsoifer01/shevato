@@ -69,14 +69,12 @@ function addRace() {
         raceData[player] = value ? parseInt(value) : null;
     });
 
-    // Generate local time timestamp with timezone
+    // Generate local time timestamp with timezone. Formatted by hand on the
+    // h23 clock: Intl with hour12:false renders midnight as "24:MM:SS" in
+    // V8, an unparseable stamp that used to break the chronological sorts.
     const now = new Date();
-    const localTime = new Intl.DateTimeFormat('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-    }).format(now);
+    const pad2 = (n) => String(n).padStart(2, '0');
+    const localTime = `${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
 
     // Get user's timezone abbreviation
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -431,20 +429,32 @@ function migrateRaceData(races) {
     let migrationNeeded = false;
 
     const migratedRaces = races.map(race => {
-        // Check if this race has old format (slav, mike, nikita)
+        let migratedRace = race;
+
+        // Check if this race has old format (slav, mike, nikita). Rename the
+        // legacy keys onto slots but keep every other field the race carries
+        // (course, courseId, anything future) instead of rebuilding the row.
         if (race.hasOwnProperty('slav') || race.hasOwnProperty('mike') || race.hasOwnProperty('nikita')) {
             migrationNeeded = true;
-            const migratedRace = {
-                date: race.date,
-                timestamp: race.timestamp,
-                player1: race.slav || null,
-                player2: race.mike || null,
-                player3: race.nikita || null,
-                player4: race.player4 || null
-            };
-            return migratedRace;
+            migratedRace = { ...race };
+            migratedRace.player1 = race.slav || null;
+            migratedRace.player2 = race.mike || null;
+            migratedRace.player3 = race.nikita || null;
+            migratedRace.player4 = race.player4 || null;
+            delete migratedRace.slav;
+            delete migratedRace.mike;
+            delete migratedRace.nikita;
         }
-        return race; // Already in new format
+
+        // Heal legacy midnight stamps ("24:MM:SS", from the old h24
+        // formatter) to "00:MM:SS" so stored data parses everywhere.
+        if (typeof migratedRace.timestamp === 'string' && /^24:/.test(migratedRace.timestamp)) {
+            migrationNeeded = true;
+            if (migratedRace === race) migratedRace = { ...race };
+            migratedRace.timestamp = migratedRace.timestamp.replace(/^24:/, '00:');
+        }
+
+        return migratedRace;
     });
 
     if (migrationNeeded) {

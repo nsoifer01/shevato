@@ -278,7 +278,7 @@ test('addRace: appends to an existing log and stays undoable', () => {
   assert.deepEqual(app.stored(), afterUndo, 'the undo is persisted too');
 });
 
-test('addRace: a race logged just after midnight gets a 24:MM:SS timestamp', { todo: 'KNOWN DEFECT: hour12:false + hour "2-digit" formats midnight on the h24 clock, so 00:30 is stamped "24:30:09" - an unparseable time that also breaks the chronological sorts and the edit dialog time input' }, () => {
+test('addRace: a race logged just after midnight gets a parseable 00:MM:SS timestamp', () => {
   const app = makeDataContext({
     now: '2026-03-01T00:30:09Z',
     elementSeed: formSeed({ positions: { player1: 1, player2: 2 } }),
@@ -461,7 +461,7 @@ test('migrateRaceData: a partially legacy log migrates only the legacy rows', ()
   assert.equal(migrated[1].player1, 2);
 });
 
-test('migrateRaceData: keeps course tagging on a migrated race', { todo: 'KNOWN DEFECT: the migration rebuilds the race from date/timestamp/player1-4 only, so course, courseId and any other field on a legacy-keyed race are silently dropped on load and on import' }, () => {
+test('migrateRaceData: keeps course tagging on a migrated race', () => {
   const app = makeDataContext();
   const migrated = app.ctx.migrateRaceData([
     {
@@ -477,4 +477,45 @@ test('migrateRaceData: keeps course tagging on a migrated race', { todo: 'KNOWN 
 
   assert.equal(migrated[0].course, 'Rainbow Road');
   assert.equal(migrated[0].courseId, 'rainbow-road-world');
+});
+
+test('migrateRaceData: preserves fields it does not know about', () => {
+  const app = makeDataContext();
+  const migrated = app.ctx.migrateRaceData([
+    { date: '2026-03-01', timestamp: '10:00:00 EDT', slav: 1, mike: 2, someFutureField: 'kept' },
+  ]);
+
+  assert.equal(migrated[0].someFutureField, 'kept');
+  assert.equal(migrated[0].player1, 1);
+  assert.equal('slav' in migrated[0], false);
+});
+
+test('migrateRaceData: heals a legacy 24:MM:SS midnight stamp and persists it', () => {
+  const app = makeDataContext();
+  const migrated = app.ctx.migrateRaceData([
+    { date: '2026-03-01', timestamp: '24:30:09 EDT', player1: 1, player2: 2, player3: null, player4: null },
+  ]);
+
+  assert.equal(migrated[0].timestamp, '00:30:09 EDT');
+  assert.deepEqual(app.stored(), JSON.parse(JSON.stringify(migrated)), 'the healed log is written back');
+});
+
+test('migrateRaceData: heals the stamp on a legacy-keyed race in the same pass', () => {
+  const app = makeDataContext();
+  const migrated = app.ctx.migrateRaceData([
+    { date: '2026-03-01', timestamp: '24:05:00 EDT', slav: 1, mike: 2, course: 'Rainbow Road' },
+  ]);
+
+  assert.equal(migrated[0].timestamp, '00:05:00 EDT');
+  assert.equal(migrated[0].player1, 1);
+  assert.equal(migrated[0].course, 'Rainbow Road');
+});
+
+test('migrateRaceData: does not touch a valid 00:MM:SS midnight stamp or write back', () => {
+  const app = makeDataContext();
+  const input = [{ date: '2026-03-01', timestamp: '00:30:09 EDT', player1: 1, player2: 2, player3: null, player4: null }];
+  const migrated = app.ctx.migrateRaceData(input);
+
+  assert.equal(JSON.stringify(migrated), JSON.stringify(input));
+  assert.equal(app.stored(), null, 'nothing changed, so nothing is written');
 });

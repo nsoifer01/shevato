@@ -37,7 +37,7 @@ test('calculateStats: an explicit null is skipped for that player', () => {
   assert.equal(stats.averageFinish.player3, '3');
 });
 
-test('calculateStats: a race missing a player key entirely is skipped for that player', { todo: 'KNOWN DEFECT: statistics.js:61 guards with `race[player] !== null`, which lets undefined through when a slot was added after some races were recorded (roster widening). racesPlayed is inflated and averageFinish becomes NaN' }, () => {
+test('calculateStats: a race missing a player key entirely is skipped for that player', () => {
   const races = [
     // Recorded before player3 existed: the key is absent, not null.
     { date: '2026-03-01', player1: 1, player2: 2 },
@@ -77,8 +77,9 @@ const OUT_OF_ORDER = (timeA, timeB) => ([
 ]);
 
 test('calculateStats: legacy "HH:MM:SS EDT" timestamps sort chronologically', () => {
-  // V8 parses the US timezone abbreviations the app emits, so an out-of-order
-  // log is reordered: 03-01 (player2 wins) then 03-02 (player1 wins).
+  // The shared parser reads the wall-clock part and ignores the timezone
+  // abbreviation, so an out-of-order log is reordered: 03-01 (player2 wins)
+  // then 03-02 (player1 wins).
   const races = OUT_OF_ORDER('10:30:00 EDT', '10:15:00 EDT');
   const stats = loadStats(['player1', 'player2'], races).calculateStats(races);
 
@@ -98,7 +99,10 @@ test('calculateStats: a race with no timestamp at all still sorts by date', () =
   assert.equal(stats.h2hCurrentStreaks.player2.player1, 0);
 });
 
-test('calculateStats: races stamped just after midnight still sort chronologically', { todo: 'KNOWN DEFECT: addRace stamps 00:00-00:59 races on the h24 clock ("24:30:00 EDT"), which `new Date()` rejects. The comparator then returns NaN, the chronological sort silently no-ops and streaks are attributed to whoever happens to be last in insertion order' }, () => {
+// Legacy logs can still carry h24 midnight stamps ("24:30:00 EDT") written by
+// the old formatter. raceDateTimeValue maps hour 24 to 00, so these races sort
+// instead of NaN-ing the comparator into a silent no-op.
+test('calculateStats: races stamped just after midnight still sort chronologically', () => {
   const races = OUT_OF_ORDER('24:30:00 EDT', '24:15:00 EDT');
   const stats = loadStats(['player1', 'player2'], races).calculateStats(races);
 
