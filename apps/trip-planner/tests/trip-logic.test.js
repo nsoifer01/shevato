@@ -2792,9 +2792,11 @@ test('buildAssistSystemPrompt still builds when the server has no trip in the pa
 // item holding a whole timetable, meals dropped to two of three, no ride home,
 // and restaurant names in prose that never became actions.
 
+// `build` takes the mode so each assertion can say which contract it belongs
+// to: the agenda and mapsQuery rules are shared, the option COUNTS are not.
 for (const [name, build] of [
-  ['buildAssistSystemPrompt', () => L.buildAssistSystemPrompt({ trip: tripWith([]), focusDate: '', today: '' })],
-  ['buildAssistPackage', () => L.buildAssistPackage({ trip: tripWith([]), focusDate: '', request: 'plan my day' })],
+  ['buildAssistSystemPrompt', (mode) => L.buildAssistSystemPrompt({ trip: tripWith([]), focusDate: '', today: '', mode })],
+  ['buildAssistPackage', (mode) => L.buildAssistPackage({ trip: tripWith([]), focusDate: '', request: 'plan my day', mode })],
 ]) {
   test(`${name} demands one add action per agenda entry with its own startTime`, () => {
     const s = build();
@@ -2827,8 +2829,8 @@ for (const [name, build] of [
     assert.match(build(), /Never introduce a slot type the traveller did not request/);
   });
 
-  test(`${name} scopes the meal-candidates rule to the slots the traveller asked for`, () => {
-    assert.match(build(), /meal slot and each drinks slot the traveller asked for \(and only those\)/);
+  test(`${name} scopes the GUIDED meal-candidates rule to the slots the traveller asked for`, () => {
+    assert.match(build('plan'), /meal slot and each drinks slot the traveller asked for \(and only those\)/);
   });
 
   test(`${name} requires a return-to-hotel action per day within the return-by time`, () => {
@@ -2883,23 +2885,77 @@ for (const [name, build] of [
     assert.match(s, /No link is better than a link to the wrong place/);
   });
 
-  // A single take-it-or-leave-it museum card is a worse offer than a choice of
-  // two, and three dinners is the count the picker's own request line asks for.
-  test(`${name} asks for exactly 3 grouped candidates per meal or drinks slot`, () => {
-    const s = build();
-    assert.match(s, /propose EXACTLY 3 candidates/);
-    assert.match(s, /"group"/);
-    assert.match(s, /dinner-2026-12-31/);
+  // How an alternative SET is expressed is contract in both modes: the pick-one
+  // card is built on the shared group id, whoever asked and however many there
+  // are. How MANY there are is not, and the two used to be one paragraph.
+  test(`${name} always explains the group mechanic and what is never grouped`, () => {
+    for (const mode of ['plan', 'chat']) {
+      const s = build(mode);
+      assert.match(s, /the same "group" value on its action/, mode);
+      assert.match(s, /dinner-2026-12-31/, mode);
+      assert.match(s, /never reuse one group id across two different slots/, mode);
+      assert.match(s, /Transport, local hops, stays and notes are NEVER grouped/, mode);
+      // the old blanket ban on grouping activities is exactly what this replaced
+      assert.doesNotMatch(s, /Do NOT group activities/, mode);
+    }
   });
 
-  test(`${name} asks for a 2-option group per activity and singles for everything else`, () => {
-    const s = build();
+  // A single take-it-or-leave-it museum card is a worse offer than a choice of
+  // two, and three dinners is the count the picker's own request line asks for.
+  test(`${name} asks the GUIDED planner for exactly 3 meal and 2 activity candidates`, () => {
+    const s = build('plan');
+    assert.match(s, /propose EXACTLY 3 candidates/);
     assert.match(s, /For every OTHER activity you suggest/);
     assert.match(s, /propose EXACTLY 2 candidates for that one slot/);
     assert.match(s, /group id of their own/);
-    assert.match(s, /Transport, local hops, stays and notes are NEVER grouped/);
-    // the old blanket ban on grouping activities is exactly what this replaced
-    assert.doesNotMatch(s, /Do NOT group activities/);
+  });
+
+  // The regression this whole split exists for: "Give me 5 options, not 3" was
+  // answered with "my instructions require exactly 3 options for each meal or
+  // drinks slot", because the picker's rule lived in the SYSTEM prompt.
+  test(`${name} never imposes a fixed option count in free-form chat`, () => {
+    for (const mode of ['chat', undefined, '', 'nonsense']) {
+      const s = build(mode);
+      assert.doesNotMatch(s, /EXACTLY 3 candidates/, String(mode));
+      assert.doesNotMatch(s, /EXACTLY 2 candidates/, String(mode));
+      assert.match(s, /How MANY options to offer is the traveller's call/, String(mode));
+      assert.match(s, /give exactly that many/, String(mode));
+      assert.match(s, /You have no maximum and no minimum/, String(mode));
+      assert.match(s, /NEVER tell the traveller that your instructions fix, cap or require a\s+particular number/, String(mode));
+    }
+  });
+
+  // The cap this replaced was 8 per slot, which is the same arbitrary product
+  // rule as "exactly 3" with a bigger number in it. What is left is the ONE
+  // real constraint - a reply has to be complete, because the fenced JSON sits
+  // at the end and a truncated answer loses the cards rather than shortening
+  // them - stated as graceful degradation rather than as a refusal.
+  test(`${name} states a reply-size limit instead of an option-count limit`, () => {
+    const s = build('chat');
+    assert.doesNotMatch(s, /up to \d+ per slot/);
+    assert.doesNotMatch(s, /most you can show/);
+    assert.doesNotMatch(s, /maximum of \d+/);
+    assert.match(s, /a single reply has to be complete/);
+    assert.match(s, /offer to continue in\s+the next message/);
+    assert.match(s, /Never silently drop the rest, and never refuse the request outright/);
+    // quoting what a traveller might ASK for is fine and wanted; what must not
+    // appear is any wording that caps what the assistant may give back
+    assert.doesNotMatch(s, /\bup to \d+/i);
+    assert.doesNotMatch(s, /\bat most \d+/i);
+    assert.doesNotMatch(s, /\bmaximum\b(?!\s+and no minimum)/i);
+    assert.doesNotMatch(s, /\bno more than \d+/i);
+    assert.match(s, /"give me 10"/);   // an explicitly large ask, answered as asked
+  });
+
+  // The other half of the honesty rule: knowing the card carries a figure is
+  // not permission to invent one in prose.
+  test(`${name} says the app measures distance and forbids inventing one`, () => {
+    for (const mode of ['plan', 'chat']) {
+      const s = build(mode);
+      assert.match(s, /This app measures distance itself/, mode);
+      assert.match(s, /never explain that you lack GPS, live traffic, maps or location access/, mode);
+      assert.match(s, /Do not state a distance, a walking time, a driving time, a\s+fare or a journey time as a fact/, mode);
+    }
   });
 
   test(`${name} keeps the six item types and carries the kind in a title prefix`, () => {
@@ -7086,4 +7142,352 @@ test('distance wording prints both units and names where it measured from', () =
   for (const s of [L.distanceChipTitle(2, 'X'), L.routeFooterText('H', ['A'], 2), L.fmtKmMi(3)]) {
     assert.ok(!s.includes('—'), `em dash in "${s}"`);
   }
+});
+
+// ---------- assistant: where a SUGGESTION is measured from ----------
+// The reported bug: a rooftop-bar suggestion for the evening of the hotel
+// check-in day carried no distance at all. dayAnchor answers "where does this
+// DAY open", which on an arrival day is the airport, and both the airport and
+// the suggestion fell back to the same city centroid, so the leg was dropped as
+// a fake 0.0 km. proposalOrigin answers the question a suggestion actually
+// asks: where is the traveller at THAT HOUR.
+
+const BKK_FLIGHT = {
+  id: 'f1', type: 'flight', title: 'Tokyo (HND) to Bangkok (BKK)',
+  startDate: '2027-01-16', startTime: '09:00', endTime: '13:30', status: 'booked',
+};
+const BKK_HOTEL = {
+  id: 's1', type: 'stay', title: 'Sotetsu Grand Fresa Bangkok', location: 'Bangkok',
+  startDate: '2027-01-16', endDate: '2027-01-20', status: 'booked',
+};
+
+test('proposalOrigin: an evening on the arrival day starts at the hotel, not the airport', () => {
+  const items = [BKK_FLIGHT, BKK_HOTEL];
+  // the DAY still opens at the airport - the Days-view chain is untouched
+  assert.equal(L.dayAnchor(items, '2027-01-16').source, 'arrival');
+  // but by 20:00 the traveller has landed AND checked in
+  const evening = L.proposalOrigin(items, '2027-01-16', '20:00');
+  assert.equal(evening.source, 'stay');
+  assert.equal(evening.label, 'Sotetsu Grand Fresa Bangkok');
+  assert.equal(evening.city, 'Bangkok');
+  // ...with no bed booked, the airport is still the honest answer
+  assert.equal(L.proposalOrigin([BKK_FLIGHT], '2027-01-16', '20:00').iata, 'BKK');
+});
+
+test('proposalOrigin: the previous scheduled activity wins over the day anchor', () => {
+  const lunch = {
+    id: 'a1', type: 'activity', title: 'Lunch: Jay Fai', location: 'Bangkok',
+    mapsQuery: 'Jay Fai Bangkok', startDate: '2027-01-17', startTime: '13:00', status: 'to-book',
+  };
+  const items = [BKK_HOTEL, lunch];
+  const after = L.proposalOrigin(items, '2027-01-17', '20:00');
+  assert.equal(after.source, 'item');
+  assert.equal(after.item.id, 'a1');
+  assert.equal(after.label, 'Lunch: Jay Fai');
+  // a suggestion BEFORE it falls back to the bed, not forward to lunch
+  assert.equal(L.proposalOrigin(items, '2027-01-17', '09:00').source, 'stay');
+  // and a cancelled plan is not somewhere the traveller will be
+  assert.equal(L.proposalOrigin([BKK_HOTEL, { ...lunch, status: 'cancelled' }], '2027-01-17', '20:00').source, 'stay');
+});
+
+test('proposalOrigin: a mid-day leg puts the traveller where it LANDS', () => {
+  // no bed that night in the new city: the arrival itself is the origin, and it
+  // keeps the code the bundled airports table can pin exactly
+  const hop = {
+    id: 't1', type: 'transport', title: 'Bangkok to Ayutthaya', location: '',
+    startDate: '2027-01-18', startTime: '10:00', endTime: '11:30', status: 'booked',
+  };
+  const o = L.proposalOrigin([hop], '2027-01-18', '13:00');
+  assert.equal(o.source, 'arrival');
+  assert.equal(o.city, 'Ayutthaya');
+  // an unparseable leg title names nowhere and is skipped rather than guessed
+  assert.equal(L.proposalOrigin([{ ...hop, title: 'Day trip' }], '2027-01-18', '13:00'), null);
+});
+
+test('proposalOrigin: a stay never claims a day it does not cover, and empty is null', () => {
+  // multiple hotels on one trip: each day measures from ITS OWN bed
+  const kyoto = { id: 's2', type: 'stay', title: 'Kyoto Ryokan', location: 'Kyoto', startDate: '2027-01-20', endDate: '2027-01-23', status: 'booked' };
+  const items = [BKK_HOTEL, kyoto];
+  assert.equal(L.proposalOrigin(items, '2027-01-17', '20:00').label, 'Sotetsu Grand Fresa Bangkok');
+  assert.equal(L.proposalOrigin(items, '2027-01-21', '20:00').label, 'Kyoto Ryokan');
+  // nothing at all to measure from: no origin, which renders as no chip
+  assert.equal(L.proposalOrigin([], '2027-01-16', '20:00'), null);
+  assert.equal(L.proposalOrigin(null, '', ''), null);
+  assert.equal(L.proposalOrigin([BKK_HOTEL], 'not-a-date', '20:00'), null);
+});
+
+test('proposalOrigin: a garbage time degrades to the day anchor rather than throwing', () => {
+  const items = [BKK_HOTEL];
+  for (const t of [null, undefined, '', '25:99', 'evening', 7, {}]) {
+    assert.equal(L.proposalOrigin(items, '2027-01-17', t).source, 'stay', String(t));
+  }
+});
+
+// ---------- assistant: chaining a BATCH of suggestions ----------
+
+test('suggestionOrigins: a later card measures from an earlier card, not the hotel', () => {
+  const hotel = { key: 'c:bangkok', lat: 13.75, lon: 100.5, label: 'Sotetsu Grand Fresa Bangkok' };
+  const bar = { key: 'v:above eleven', lat: 13.743, lon: 100.556, label: 'Drinks: Above Eleven' };
+  const cards = [
+    { id: 'bar', date: '2027-01-16', time: '20:00', point: bar },
+    { id: 'home', date: '2027-01-16', time: '21:30', point: hotel },
+  ];
+  const out = L.suggestionOrigins(cards, () => hotel);
+  // the first card of the evening starts at the fallback (the itinerary answer)
+  assert.equal(out.get('bar').label, 'Sotetsu Grand Fresa Bangkok');
+  // the ride home is the leg FROM the bar, which is the whole point of it
+  assert.equal(out.get('home').label, 'Drinks: Above Eleven');
+});
+
+test('suggestionOrigins: candidates sharing a time are one decision, never each other origin', () => {
+  const hotel = { key: 'c:h', lat: 0, lon: 0, label: 'Hotel' };
+  const p = (n) => ({ key: 'v:' + n, lat: n / 100, lon: 0, label: String(n) });
+  const cards = [
+    { id: 'd1', date: 'D', time: '19:00', point: p(1) },
+    { id: 'd2', date: 'D', time: '19:00', point: p(2) },
+    { id: 'd3', date: 'D', time: '19:00', point: p(3) },
+  ];
+  const out = L.suggestionOrigins(cards, () => hotel);
+  for (const id of ['d1', 'd2', 'd3']) assert.equal(out.get(id).label, 'Hotel', id);
+});
+
+test('suggestionOrigins: an unlocatable card is skipped over, and days never mix', () => {
+  const fallback = (date) => ({ key: 'c:' + date, lat: 0, lon: 0, label: 'Bed ' + date });
+  const cards = [
+    { id: 'a', date: 'D1', time: '10:00', point: { key: 'v:a', lat: 1, lon: 1, label: 'A' } },
+    { id: 'b', date: 'D1', time: '12:00', point: null },
+    { id: 'c', date: 'D1', time: '14:00', point: { key: 'v:c', lat: 3, lon: 3, label: 'C' } },
+    { id: 'd', date: 'D2', time: '11:00', point: { key: 'v:d', lat: 4, lon: 4, label: 'D' } },
+  ];
+  const out = L.suggestionOrigins(cards, fallback);
+  assert.equal(out.get('a').label, 'Bed D1');
+  // b resolved to nothing, so c still measures from a rather than breaking
+  assert.equal(out.get('c').label, 'A');
+  // another day starts at its own bed, never at the last card of the day before
+  assert.equal(out.get('d').label, 'Bed D2');
+  // an untimed card cannot be ordered against the batch and takes the fallback
+  const untimed = L.suggestionOrigins([{ id: 'u', date: 'D1', time: '', point: null }], fallback);
+  assert.equal(untimed.get('u').label, 'Bed D1');
+  assert.deepEqual([...L.suggestionOrigins([], fallback)], []);
+  assert.deepEqual([...L.suggestionOrigins(null, fallback)], []);
+});
+
+test('suggestionOrigins tolerates a fallback that is not a function', () => {
+  const out = L.suggestionOrigins([{ id: 'x', date: 'D', time: '10:00', point: null }], null);
+  assert.equal(out.get('x'), null);
+});
+
+// ---------- assistant: distance wording on a suggestion card ----------
+
+test('the assistant chip names the travel time, the distance and the origin', () => {
+  // the time leads, because "20 minutes away" is what a traveller decides on
+  assert.equal(L.assistDistanceChipLabel(1.3, 'Sotetsu Grand Fresa Bangkok'),
+    '\u{1F6B6} ~20 min walk \u00b7 ~1.3 km / 0.8 mi from Sotetsu Grand Fresa Bangkok');
+  // ...and it still carries the same NUMBER the itinerary chip prints, which is
+  // the property that makes a pre-add figure trustworthy after the add
+  assert.ok(L.assistDistanceChipLabel(1.3, 'X').includes(L.distanceChipLabel(1.3)));
+  // past a walkable hop the walk is computable and useless: name the ride
+  assert.match(L.assistDistanceChipLabel(4.2, 'X'), /~8 min by taxi \u00b7 ~4\.2 km/);
+  // past every in-city mode there is nothing honest to say, so nothing is said
+  assert.equal(L.assistDistanceChipLabel(400, 'X'), '~400 km / 249 mi from X');
+  // every part degrades on its own
+  for (const empty of ['', '   ', null, undefined]) {
+    assert.match(L.assistDistanceChipLabel(1.3, empty), /^\u{1F6B6} ~20 min walk \u00b7 ~1\.3 km \/ 0\.8 mi$/u);
+  }
+});
+
+// "20m" next to "1.3 km" reads as twenty METRES, which is the one thing a
+// distance chip must never say.
+test('a duration printed beside a distance spells its minutes out', () => {
+  assert.equal(L.fmtMins(20), '20 min');
+  assert.equal(L.fmtMins(59.6), '1 hr');
+  assert.equal(L.fmtMins(63), '1 hr 3 min');
+  assert.equal(L.fmtMins(120), '2 hr');
+  for (const km of [0.4, 1.3, 4.2, 40]) {
+    assert.doesNotMatch(L.assistDistanceChipLabel(km, 'X'), /~\d+m\b/, String(km));
+  }
+});
+
+test('hopTravel names the mode a traveller would actually use, or nothing', () => {
+  // a walkable hop names the walk; the ride at that range is a 2 minute taxi
+  assert.equal(L.hopTravel(1.3).key, 'walk');
+  assert.equal(L.hopTravel(L.WALKABLE_KM).key, 'walk');
+  // above it the walk is an hour and the ride is the useful figure
+  assert.equal(L.hopTravel(4.2).key, 'ride');
+  assert.equal(L.hopTravel(40).key, 'ride');
+  // derived from modeOptions, so there is one set of speeds in the app
+  const walk = L.modeOptions(1.3, false, false).find(r => r.key === 'walk');
+  assert.equal(L.hopTravel(1.3).min, walk.durMin);
+  // nothing to say rather than a made-up figure
+  for (const bad of [0, -1, null, undefined, NaN]) assert.equal(L.hopTravel(bad), null, String(bad));
+});
+
+test('the assistant tooltip adds a travel estimate from the app own route speeds', () => {
+  // reused from modeOptions, so there is one set of speed assumptions in the app
+  const near = L.assistDistanceChipTitle(1.3, 'Hotel Borg');
+  assert.match(near, /straight-line from Hotel Borg, not a walking route\./);
+  assert.match(near, /on foot/);
+  assert.match(near, /not live traffic/);
+  const far = L.assistDistanceChipTitle(4.2, 'Hotel Borg');
+  assert.match(far, /by taxi or local transit/);
+  // past every in-city mode there is nothing honest to add, so nothing is added
+  assert.equal(L.shortHopHint(400), '');
+  assert.equal(L.shortHopHint(0), '');
+  assert.equal(L.shortHopHint(-3), '');
+  assert.equal(L.assistDistanceChipTitle(400, 'X'), L.distanceChipTitle(400, 'X'));
+});
+
+test('the assistant distance wording carries no em dash', () => {
+  for (const s of [L.assistDistanceChipLabel(2, 'X'), L.assistDistanceChipTitle(2, 'X'),
+    L.assistDistanceChipTitle(6, 'X'), L.assistOriginNote({ date: '2027-01-16', label: 'X', city: 'Y', source: 'stay' }),
+    L.assistOptionRules('chat'), L.assistOptionRules('plan')]) {
+    assert.ok(!s.includes('—'), `em dash in "${s}"`);
+  }
+});
+
+// ---------- assistant: the origin the MODEL is told about ----------
+
+test('assistOriginNote names the origin, why it is the origin, and stays silent without one', () => {
+  const note = L.assistOriginNote({ date: '2027-01-16', label: 'Sotetsu Grand Fresa Bangkok', city: 'Bangkok', source: 'stay' });
+  assert.match(note, /is based on 2027-01-16 at Sotetsu Grand Fresa Bangkok in Bangkok/);
+  assert.match(note, /the place they are booked into that night/);
+  assert.match(note, /Each card is then measured from wherever the traveller will actually be at that hour/);
+  assert.match(L.assistOriginNote({ label: 'Bangkok (BKK)', source: 'arrival' }), /where they arrive that day/);
+  assert.match(L.assistOriginNote({ label: 'Lunch: Jay Fai', source: 'item' }), /the last thing already on their plan before then/);
+  assert.match(L.assistOriginNote({ label: 'Bangkok', source: 'city' }), /the city they are in that day/);
+  // an unknown source still reads as a sentence rather than "undefined"
+  assert.match(L.assistOriginNote({ label: 'X', source: 'nonsense' }), /where they are that day/);
+  // a city that merely repeats the label is not printed twice
+  assert.doesNotMatch(L.assistOriginNote({ label: 'Bangkok', city: 'Bangkok', source: 'city' }), /Bangkok in Bangkok/);
+  // nothing to say
+  for (const bad of [null, undefined, {}, { label: '  ' }, 'string', 5]) {
+    assert.equal(L.assistOriginNote(bad), '', JSON.stringify(bad));
+  }
+});
+
+test('the prompt builders carry the origin only when there is one', () => {
+  const trip = { name: 'T', currency: 'USD', items: [] };
+  const origin = { date: '2027-01-16', label: 'Sotetsu Grand Fresa Bangkok', city: 'Bangkok', source: 'stay' };
+  for (const build of [
+    (o) => L.buildAssistSystemPrompt({ trip, focusDate: '2027-01-16', today: '2027-01-01', origin: o }),
+    (o) => L.buildAssistPackage({ trip, focusDate: '2027-01-16', request: 'rooftop bars', origin: o }),
+  ]) {
+    assert.match(build(origin), /is based on 2027-01-16 at Sotetsu Grand Fresa Bangkok/);
+    assert.doesNotMatch(build(null), /The traveller is based/);
+    assert.doesNotMatch(build(undefined), /The traveller is based/);
+  }
+});
+
+test('dayBaseOrigin names the bed the traveller is based at, even on the arrival day', () => {
+  const items = [BKK_FLIGHT, BKK_HOTEL];
+  // the day still OPENS at the airport, and a 10am chip still says so...
+  assert.equal(L.dayAnchor(items, '2027-01-16').source, 'arrival');
+  assert.equal(L.proposalOrigin(items, '2027-01-16', '10:00').source, 'arrival');
+  // ...but a prompt has to name one place to reason about a whole day from,
+  // and by any hour that matters that place is the hotel
+  const base = L.dayBaseOrigin(items, '2027-01-16');
+  assert.equal(base.source, 'stay');
+  assert.equal(base.label, 'Sotetsu Grand Fresa Bangkok');
+  // no bed that night: the same answer proposalOrigin gives with no hour
+  assert.equal(L.dayBaseOrigin([BKK_FLIGHT], '2027-01-16').source, 'arrival');
+  assert.equal(L.dayBaseOrigin([], '2027-01-16'), null);
+  assert.equal(L.dayBaseOrigin([BKK_HOTEL], 'nope'), null);
+});
+
+test('assistOriginNote says based-at rather than starts-from and does not overclaim', () => {
+  const note = L.assistOriginNote({ date: '2027-01-16', label: 'H', city: 'Bangkok', source: 'stay' });
+  assert.match(note, /is based on 2027-01-16 at H in Bangkok/);
+  // the cards measure per hour, so the prompt must not promise they all match
+  assert.match(note, /unless something you suggested earlier that day has moved them/);
+});
+
+test('proposalOrigin orders a leg by when it LANDS, not when it leaves', () => {
+  const items = [BKK_FLIGHT, BKK_HOTEL];   // departs 09:00, lands 13:30
+  // mid-flight: the traveller is in the air, so the destination is where the
+  // DAY is anchored, never "you are already at the hotel"
+  assert.equal(L.proposalOrigin(items, '2027-01-16', '10:00').source, 'arrival');
+  // after landing, with a bed booked, it is the bed
+  assert.equal(L.proposalOrigin(items, '2027-01-16', '20:00').source, 'stay');
+  // an overnight leg lands on a day it did not start on and still counts there
+  const overnight = {
+    id: 'f9', type: 'flight', title: 'Boston (BOS) to Keflavik (KEF)',
+    startDate: '2027-01-15', startTime: '21:30', endDate: '2027-01-16', endTime: '06:45', status: 'booked',
+  };
+  const after = L.proposalOrigin([overnight], '2027-01-16', '10:00');
+  assert.equal(after.source, 'arrival');
+  assert.equal(after.iata, 'KEF');
+});
+
+test('proposalOrigin: a later plan wins over an earlier one on the same day', () => {
+  const at = (id, time, title) => ({
+    id, type: 'activity', title, location: 'Bangkok', mapsQuery: title + ' Bangkok',
+    startDate: '2027-01-17', startTime: time, status: 'to-book',
+  });
+  const items = [BKK_HOTEL, at('a1', '10:00', 'Wat Pho'), at('a2', '16:00', 'Jim Thompson House')];
+  assert.equal(L.proposalOrigin(items, '2027-01-17', '20:00').item.id, 'a2');
+  assert.equal(L.proposalOrigin(items, '2027-01-17', '12:00').item.id, 'a1');
+  // exactly AT the same time is not "after" it: two things at 16:00 are one
+  // moment, not a leg between them
+  assert.equal(L.proposalOrigin(items, '2027-01-17', '16:00').item.id, 'a1');
+});
+
+// ---------- guided planner: the picker's controls are the contract ----------
+// Two different things were being called "the option count" and only one of
+// them is the traveller's to choose:
+//   - how many SLOTS a day gets (Activities 1-2 / 2-3 / 3-4, Drinks Skip /
+//     1-2 / 2-3, which meals) - picked in the UI, carried by buildPlanRequest;
+//   - how many CANDIDATES each slot offers (3 for a meal or drinks slot, 2 for
+//     any other activity) - fixed, not exposed anywhere in the picker, and the
+//     thing the pick-one card is built around.
+// The regression to guard is the prompt's fixed candidate counts silently
+// overriding a slot count the traveller actually chose.
+const PLAN_BASE = {
+  date: '2027-01-16',
+  meals: { breakfast: true, lunch: true, dinner: true },
+  styles: { activities: [], drinks: [], meals: [] },
+  wakeTime: '08:00', returnTime: '22:00', repeatOk: true, budget: [2], note: '',
+};
+
+test('the guided request carries the SLOT counts the picker selected', () => {
+  const req = (over) => L.buildPlanRequest({ ...PLAN_BASE, ...over }, { name: 'T', currency: 'USD', items: [] });
+  // every Activities range the control offers reaches the model as itself
+  assert.match(req({ activities: 2 }), /I would like 1-2 activities/);
+  assert.match(req({ activities: 3 }), /I would like 2-3 activities/);
+  assert.match(req({ activities: 4 }), /I would like 3-4 activities/);
+  // ...and both Drinks ranges
+  assert.match(req({ drinks: 2 }), /Include 1-2 drinks stops/);
+  assert.match(req({ drinks: 3 }), /Include 2-3 drinks stops/);
+  // Skip is not silence: silence reads as permission, so it is said out loud
+  const skipped = req({ activities: 0, drinks: 0, meals: { breakfast: false, lunch: false, dinner: true } });
+  assert.doesNotMatch(skipped, /I would like .* activities/);
+  assert.doesNotMatch(skipped, /Include .* drinks stops/);
+  assert.match(skipped, /Only plan dinner\./);
+  assert.match(skipped, /Do not suggest activities, breakfast, lunch or drinks\./);
+});
+
+test('the guided candidate counts never override a selected slot count', () => {
+  const prefs = { ...PLAN_BASE, activities: 4, drinks: 3 };
+  const request = L.buildPlanRequest(prefs, { name: 'T', currency: 'USD', items: [] });
+  const sys = L.buildAssistSystemPrompt({ trip: { name: 'T', currency: 'USD', items: [] }, mode: 'plan' });
+  // the per-slot candidate counts are scoped to the slots that were ASKED for,
+  // so neither rule can turn into "and therefore plan 3 activities"
+  assert.match(sys, /each meal slot and each drinks slot the traveller asked for \(and only those\)/);
+  assert.match(sys, /For every OTHER activity you suggest/);
+  // and the two numbers never collide: the request owns how many slots, the
+  // prompt owns how many candidates per slot, and they say different things
+  assert.match(request, /3-4 activities, and give me 2 options for each one/);
+  assert.match(request, /give me 3 options for each one/);
+  // the prompt states no slot count of its own at all
+  assert.doesNotMatch(sys, /\d-\d activities/);
+  assert.doesNotMatch(sys, /drinks stops/);
+});
+
+test('the guided prompt keeps its candidate counts out of free-form chat', () => {
+  const trip = { name: 'T', currency: 'USD', items: [] };
+  const plan = L.buildAssistSystemPrompt({ trip, mode: 'plan' });
+  const chat = L.buildAssistSystemPrompt({ trip, mode: 'chat' });
+  assert.match(plan, /EXACTLY 3 candidates/);
+  assert.doesNotMatch(chat, /EXACTLY \d/);
+  // and neither mode invents a slot the traveller did not ask for
+  for (const s of [plan, chat]) assert.match(s, /Never introduce a slot type the traveller did not request/);
 });

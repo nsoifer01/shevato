@@ -2378,7 +2378,10 @@ const TripLogic = (() => {
     const blocked = list.some(it => !isStay(it) && it.type !== 'flight' && it.type !== 'transport'
       && it.startDate === date && it.startTime && it.startTime < last.time
       && !!(String(it.location || '').trim() || String(it.mapsQuery || '').trim()));
-    return blocked ? null : { item: last.it, ...last.arrival };
+    // `time` rides along so a caller asking about a specific HOUR can tell
+    // "before you land" from "after you land" (proposalOrigin needs exactly
+    // that to stop measuring an evening drink from the airport).
+    return blocked ? null : { item: last.it, time: last.time, ...last.arrival };
   }
 
   // Items that start on this date, in the order they happen.
@@ -3315,9 +3318,15 @@ const TripLogic = (() => {
   // A point is only usable when it carries real coordinates; everything else
   // (an unlocated row, a proposal whose venue nothing resolved) is skipped
   // rather than guessed at.
+  // `query` is the searchable form of the same place (the venue name, or its
+  // city). Coordinates cannot build a directions link a human would recognise,
+  // so a leg that wants to offer one needs this to ride along with the maths.
   function distancePoint(p) {
     if (!p || !validCoord(p.lat, p.lon)) return null;
-    return { id: p.id, key: p.key || '', label: p.label || '', lat: Number(p.lat), lon: Number(p.lon) };
+    return {
+      id: p.id, key: p.key || '', label: p.label || '', query: p.query || '',
+      lat: Number(p.lat), lon: Number(p.lon),
+    };
   }
 
   // Two points close enough that a leg between them would be a lie: they came
@@ -3368,7 +3377,13 @@ const TripLogic = (() => {
       const here = distancePoint(stop);
       if (!here) continue;
       if (prev && !sameSpot(prev, here)) {
-        legs.push({ id: here.id, km: distKm(prev, here), from: prev.label || '', to: here.label || '' });
+        legs.push({
+          id: here.id, km: distKm(prev, here),
+          from: prev.label || '', to: here.label || '',
+          // where the leg STARTS, as a place a map can search for: the label is
+          // an item title ("Return to hotel") and routes nowhere
+          fromQuery: prev.query || '', toQuery: here.query || '',
+        });
       }
       prev = here;
     }
@@ -3378,6 +3393,127 @@ const TripLogic = (() => {
   // Above this many stops an exact answer stops being worth the wait: 8 stops
   // is 40,320 orders (a millisecond), 12 would be 479 million.
   const ROUTE_EXACT_MAX = 8;
+
+  // Where a SUGGESTION starts from, which is a different question from the one
+  // dayAnchor answers. dayAnchor says where a DAY opens; a suggestion lands at
+  // a clock time, and what matters is where the traveller actually is by then.
+  // In order:
+  //   1. the last located thing already scheduled EARLIER the same day - the
+  //      previous activity, or where a mid-day leg put them down (a leg is not
+  //      a place: you end up where it LANDS, which is the same spec an arrival
+  //      anchor produces, so the airports table can pin it exactly);
+  //   2. failing that, the day's own anchor (the arrival that opens the day,
+  //      else the stay covering the night, else the morning city).
+  // Stays are skipped in (1) because (2) already answers with the hotel, and a
+  // check-out row would otherwise claim the morning. null when nothing names an
+  // origin at all, which renders as no chip rather than a guess. The shape
+  // matches dayAnchor's, so ONE resolver in app.js serves both.
+  function proposalOrigin(items, date, time, isResolved) {
+    const list = Array.isArray(items) ? items : [];
+    const at = isClockTime(time) ? String(time) : '';
+    const stayHere = () => {
+      const host = dayHostStay(list, date);
+      return host ? { source: 'stay', item: host, label: displayTitle(host), city: String(host.location || '').trim() } : null;
+    };
+    // "Landed, then checked in." Once the day has a bed, a leg that arrived
+    // EARLIER stops being where the traveller is standing: an 8pm drink on an
+    // arrival day is a hop from the hotel, not from the gate. The airport is
+    // the honest origin only for the day's FIRST stop, which is the question
+    // dayAnchor answers for the Days-view chain, not this one.
+    const afterLeg = (leg, arr) => stayHere()
+      || { source: 'arrival', item: leg, label: arr.label, city: arr.city, iata: arr.iata };
+
+    // When each already-planned thing actually puts the traveller somewhere. For
+    // a LEG that is when it lands, never when it leaves: at 10:00 on a day whose
+    // flight departs at 09:00 and lands at 13:30 the traveller is in the air,
+    // and measuring an activity from the destination would be a fiction. An
+    // overnight leg lands on a day it did not start on, which is why this reads
+    // endDate rather than filtering on startDate up front.
+    const placedAt = (it) => {
+      if (it.type === 'flight' || it.type === 'transport') {
+        if (it.endDate) return it.endDate === date ? String(it.endTime || '') : '';
+        return it.startDate === date ? String(it.endTime || it.startTime || '') : '';
+      }
+      return it.startDate === date ? String(it.startTime || '') : '';
+    };
+    if (isIsoDate(date) && at) {
+      const earlier = list
+        .filter(it => it && it.status !== 'cancelled' && !isStay(it))
+        .map(it => ({ it, at: placedAt(it) }))
+        .filter(x => isClockTime(x.at) && x.at < at)
+        .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : bySortKey(a.it, b.it)));
+      for (let i = earlier.length - 1; i >= 0; i--) {
+        const prev = earlier[i].it;
+        if (prev.type === 'flight' || prev.type === 'transport') {
+          const arr = parseTravelArrival(prev.title);
+          if (arr) return afterLeg(prev, arr);
+          continue;
+        }
+        const city = String(prev.location || '').trim();
+        if (itemMapsQuery(prev) || city) return { source: 'item', item: prev, label: displayTitle(prev), city };
+      }
+    }
+    const anchor = dayAnchor(list, date, isResolved);
+    // Same rule for a leg the scan above could not order (it carries an arrival
+    // time but no departure time, so dayAnchor sees it and the loop does not).
+    if (at && anchor && anchor.source === 'arrival') {
+      const arr = dayArrival(list, date);
+      if (arr && arr.time && at > arr.time) return afterLeg(arr.item, arr);
+    }
+    return anchor;
+  }
+
+  const isClockTime = t => /^\d{2}:\d{2}$/.test(String(t == null ? '' : t));
+
+  // Where the traveller is BASED on a day, which is the version of the question
+  // the model needs and the chips do not. A chip answers about one hour and can
+  // say "from Bangkok (BKK)" for the taxi in from the airport; a prompt has to
+  // name one place to reason about a whole day's convenience from, and on any
+  // day with a bed that place is the bed - including the arrival day, where the
+  // airport is true only until check-in. With no bed it is the same answer
+  // proposalOrigin gives with no hour: where the day opens.
+  function dayBaseOrigin(items, date, isResolved) {
+    const list = Array.isArray(items) ? items : [];
+    const host = isIsoDate(date) ? dayHostStay(list, date) : null;
+    if (host) return { source: 'stay', item: host, label: displayTitle(host), city: String(host.location || '').trim() };
+    return proposalOrigin(list, date, '', isResolved);
+  }
+
+  // The origin for each card in a BATCH of pending suggestions, before any of
+  // them is on the trip. A suggestion is measured from the last place the
+  // traveller would already be at that hour, and an earlier suggestion in the
+  // same batch counts: a "Return to hotel" at 21:30 is the leg home from the
+  // 20:00 bar, not a zero-length hop from the hotel it ends at. That is also
+  // what makes the pre-add chip agree with the post-add itinerary chip, since
+  // the Days-view chain walks the same day in the same time order.
+  //   cards:    [{ id, date, time, point }] - point is resolved coords or null
+  //   fallback: (date, time) -> resolved origin point or null, for a card with
+  //             nothing before it in the batch (the itinerary's own answer)
+  // Candidates SHARING a time (the three dinners of one alternative set) never
+  // become each other's origin: they are one decision about one slot.
+  function suggestionOrigins(cards, fallback) {
+    const list = (Array.isArray(cards) ? cards : []).filter(Boolean);
+    const byDate = new Map();
+    for (const c of list) {
+      if (!byDate.has(c.date)) byDate.set(c.date, []);
+      byDate.get(c.date).push(c);
+    }
+    const out = new Map();
+    for (const group of byDate.values()) {
+      const timed = group.filter(c => isClockTime(c.time)).sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
+      for (const c of group) {
+        let origin = null;
+        if (isClockTime(c.time)) {
+          for (const other of timed) {
+            if (other.id === c.id || !(other.time < c.time)) continue;
+            if (other.point) origin = other.point;
+          }
+        }
+        out.set(c.id, origin || (typeof fallback === 'function' ? fallback(c.date, c.time) : null));
+      }
+    }
+    return out;
+  }
 
   // The order to walk a day's recommendations in, always starting from the
   // anchor (the hotel, or the place just accepted) and visiting every located
@@ -3470,6 +3606,79 @@ const TripLogic = (() => {
     const origin = String(from == null ? '' : from).trim();
     return `${fmtKmMi(km)} straight-line${origin ? ` from ${origin}` : ''}, not a walking route.`;
   }
+  // "20m" is what fmtDur gives, and it is exactly the wrong word next to a
+  // distance: "~20m · ~1.3 km" reads as twenty METRES. Minutes are spelled on
+  // any chip that also carries a distance.
+  function fmtMins(min) {
+    const n = Math.round(min);
+    if (n < 60) return `${n} min`;
+    const h = Math.floor(n / 60), m = n % 60;
+    return m ? `${h} hr ${m} min` : `${h} hr`;
+  }
+
+  // How the traveller would actually cover this hop, and how long it takes,
+  // straight out of modeOptions so there is ONE set of speed assumptions in the
+  // app (it pads a straight line by 25% for a real ground route, the same
+  // padding the route dialog's figures use). Deliberately NOT a traffic or a
+  // timetable claim: nothing here is looked up, and the wording keeps the "~".
+  //
+  // Which mode gets named is the whole judgement. Under WALKABLE_KM the walk is
+  // the useful answer for an evening out; above it the walk is technically
+  // computable and useless ("1 hr 3 min on foot" is not how anyone crosses a
+  // city), so the ride is named instead and the walk moves to the tooltip.
+  // Past every in-city mode there is nothing honest to say, so nothing is said.
+  const WALKABLE_KM = 2;
+  function hopTravel(km) {
+    if (!(km > 0)) return null;
+    const rows = modeOptions(km, false, false);
+    const walk = rows.find(r => r.key === 'walk');
+    const ride = rows.find(r => r.key === 'local');
+    if (km <= WALKABLE_KM && walk && walk.durMin != null) {
+      return { key: 'walk', icon: '🚶', min: walk.durMin, text: `~${fmtMins(walk.durMin)} walk` };
+    }
+    if (ride && ride.durMin != null) {
+      return { key: 'ride', icon: '🚕', min: ride.durMin, text: `~${fmtMins(ride.durMin)} by taxi` };
+    }
+    if (walk && walk.durMin != null) {
+      return { key: 'walk', icon: '🚶', min: walk.durMin, text: `~${fmtMins(walk.durMin)} walk` };
+    }
+    return null;
+  }
+
+  // A suggestion card has room the Days-view row does not, and two thirds of
+  // what makes the figure actionable is not the figure: "~1.3 km / 0.8 mi"
+  // alone says neither how long it takes nor that it is measured from the hotel
+  // you are booked into. So the chip leads with the time (which is what a
+  // traveller actually decides on), then the distance, then the origin:
+  //   "🚶 ~20 min walk · ~1.3 km / 0.8 mi from Hotel Borg"
+  // Every part degrades on its own: no origin drops the "from", and a hop too
+  // long for any in-city mode drops the time and reads as it used to.
+  function assistDistanceChipLabel(km, from) {
+    const origin = String(from == null ? '' : from).trim();
+    const hop = hopTravel(km);
+    const dist = `~${fmtKmMi(km)}${origin ? ` from ${origin}` : ''}`;
+    return hop ? `${hop.icon} ${hop.text} · ${dist}` : dist;
+  }
+
+  // Whatever the chip could not fit: the straight-line caveat, and the mode the
+  // chip did NOT name, so both figures are available without either crowding
+  // the card.
+  function shortHopHint(km) {
+    if (!(km > 0)) return '';
+    const rows = modeOptions(km, false, false);
+    const parts = [];
+    const walk = rows.find(r => r.key === 'walk');
+    const ride = rows.find(r => r.key === 'local');
+    if (walk && walk.durMin != null) parts.push(`${fmtMins(walk.durMin)} on foot`);
+    if (ride && ride.durMin != null) parts.push(`${fmtMins(ride.durMin)} by taxi or local transit`);
+    return parts.join(', or ');
+  }
+
+  function assistDistanceChipTitle(km, from) {
+    const hint = shortHopHint(km);
+    return distanceChipTitle(km, from) + (hint ? ` Roughly ${hint} - an estimate from the distance, not live traffic.` : '');
+  }
+
   // "Shortest route: Hotel Gracery > teamLab > Ichiran · ~5.4 km / 3.4 mi total"
   function routeFooterText(anchorLabel, labels, km) {
     const names = [String(anchorLabel == null ? '' : anchorLabel).trim() || 'Start',
@@ -3745,6 +3954,49 @@ const TripLogic = (() => {
   // a derived query that names no venue is rejected there before it costs
   // anything, and the row keeps its plain "Google Maps" search button.
   const PLACE_TYPES = { stay: 1, activity: 1 };
+
+  // A place is somewhere you go and might choose between; a LEG is how you get
+  // there. The distinction is not cosmetic, and getting it wrong is what put a
+  // "Return to hotel" card on screen carrying the hotel's own 4.8 (958) star
+  // rating: a rating answers "is this worth going to", which is a question
+  // about a venue you are picking, and nobody picks the ride home to a hotel
+  // they have already booked. Same reason a leg wants DIRECTIONS rather than a
+  // place listing - the useful action there is "how do I do this", not "what is
+  // this place like". Note this asks about the item's TYPE, never about whether
+  // it happens to carry a mapsQuery: a return leg carries the real hotel name
+  // on purpose (see ASSIST_MAPSQUERY), which is exactly why the type has to be
+  // what decides.
+  const isPlaceType = item => !!(item && PLACE_TYPES[item.type]);
+  const TRAVEL_TYPES = { flight: 1, transport: 1, local: 1 };
+  const isTravelLeg = item => !!(item && TRAVEL_TYPES[item.type]);
+
+  // Google Maps directions, the same URL shape travelLinks already builds for
+  // the route dialog's transit and driving buttons. `origin` is optional:
+  // Maps accepts a destination-only link and asks for the starting point,
+  // which beats guessing one.
+  const DIRECTION_MODES = { walking: 1, transit: 1, driving: 1 };
+  function directionsUrl(origin, destination, travelmode) {
+    const dest = normalizePlaceQuery(destination);
+    if (!dest) return '';
+    const from = normalizePlaceQuery(origin);
+    const mode = DIRECTION_MODES[travelmode] ? travelmode : 'transit';
+    return 'https://www.google.com/maps/dir/?api=1'
+      + (from ? `&origin=${encodeURIComponent(from)}` : '')
+      + `&destination=${encodeURIComponent(dest)}&travelmode=${mode}`;
+  }
+
+  // Which travelmode a leg's directions link should open in. A local hop is
+  // walked when it is short enough to walk and ridden otherwise (the same
+  // WALKABLE_KM judgement the chip makes, so the card cannot suggest a walk and
+  // link a taxi); anything between cities opens in driving, which is the mode
+  // Maps can actually route for an arbitrary intercity pair. `km` may be null
+  // when nothing located the leg yet, and transit is then the safe default for
+  // a city hop.
+  function legTravelMode(type, km) {
+    if (type !== 'local') return 'driving';
+    if (km == null) return 'transit';
+    return km <= WALKABLE_KM ? 'walking' : 'transit';
+  }
 
   // A meal prefix is a slot label, not part of the venue's name: "Dinner:
   // Fiskfelagid" is searched as "Fiskfelagid". "Cancelled:" goes the same way,
@@ -4243,16 +4495,58 @@ const TripLogic = (() => {
     + 'If an item has no single place (a travel leg, a note, a reminder), omit mapsQuery '
     + 'entirely. No link is better than a link to the wrong place.';
 
-  const ASSIST_GROUPS = 'For each meal slot and each drinks slot the traveller asked for (and only '
-    + 'those), propose EXACTLY 3 candidates and give '
-    + 'every candidate of that slot the same "group" value on its action, for example '
+  // HOW an alternative set is expressed is a permanent contract (the pick-one
+  // card is built on the shared group id). HOW MANY candidates there are is
+  // not: it belongs to whoever is asking. Conflating the two is exactly the bug
+  // this split fixes - the guided picker's "exactly 3" lived in the SYSTEM
+  // prompt, so it applied to every free-form turn of every conversation, and
+  // the assistant answered "give me 5 options" with "my instructions require
+  // exactly 3". The mechanic below ships in both modes; the counts do not.
+  const ASSIST_GROUPS_MECHANIC = 'When you offer several alternatives for the SAME slot, give every '
+    + 'candidate of that slot the same "group" value on its action, for example '
     + '{"op":"add","group":"dinner-2026-12-31","item":{...}}, so the traveller picks one of them. '
     + 'Use a distinct group per slot ("breakfast-2026-12-31", "lunch-2026-12-31", '
-    + '"drinks-2026-12-31"). '
-    + 'For every OTHER activity you suggest (a sight, a museum, a walk, a tour), propose EXACTLY 2 '
-    + 'candidates for that one slot, grouped the same way under a group id of their own, for '
-    + 'example "activity-2026-12-31-morning": one slot, two options, the traveller picks one. '
+    + '"drinks-2026-12-31") and never reuse one group id across two different slots. '
     + 'Transport, local hops, stays and notes are NEVER grouped: each of those is a single proposal.';
+
+  // GUIDED "Plan my day" only. The picker's own request text already asks for
+  // these counts in words ("give me 3 options for each one"); this is the same
+  // contract stated to the model as a rule so a busy day cannot quietly drop to
+  // two dinners. It must never be sent on a free-form turn.
+  const PLAN_MEAL_OPTIONS = 3;
+  const PLAN_ACTIVITY_OPTIONS = 2;
+  const ASSIST_OPTIONS_PLAN = 'For each meal slot and each drinks slot the traveller asked for (and only '
+    + `those), propose EXACTLY ${PLAN_MEAL_OPTIONS} candidates grouped as above, so the traveller picks one of them. `
+    + `For every OTHER activity you suggest (a sight, a museum, a walk, a tour), propose EXACTLY ${PLAN_ACTIVITY_OPTIONS} `
+    + 'candidates for that one slot, grouped the same way under a group id of their own, for '
+    + 'example "activity-2026-12-31-morning": one slot, two options, the traveller picks one.';
+
+  // FREE-FORM chat only, and deliberately WITHOUT a number in it. An earlier
+  // version of this capped chat at 8 per slot, which just replaced one
+  // arbitrary product rule ("exactly 3") with a slightly larger one: a
+  // traveller who asks for ten restaurants is not doing anything the app cannot
+  // render, and being told "8 is the most I can show" is the same unexplained
+  // refusal in a different costume.
+  //
+  // There IS a real ceiling, but it is a reply-size one, not a count: a Gemini
+  // turn is capped at GENERATION_CONFIG.maxOutputTokens (netlify/functions/
+  // tp-assist.mjs) and the ```json block sits at the END of the answer, so
+  // overrunning it truncates exactly the part that becomes the cards. That is
+  // handled where it actually lives - the server appends TRUNCATION_NOTE when
+  // Gemini reports MAX_TOKENS - and stated here as the graceful degradation the
+  // model should choose FIRST: cover what fits, say how much, offer the rest.
+  // Splitting an answer is a much better failure than silently losing its tail.
+  const ASSIST_OPTIONS_CHAT = 'How MANY options to offer is the traveller\'s call, never a fixed rule of yours. '
+    + 'If they ask for a number ("give me 5 options", "show me 8 restaurants", "give me 10"), give exactly that many. '
+    + 'If they ask for "more options", "other options" or "everything from my list that fits", give more than you gave '
+    + 'last time and do not repeat what you already offered. '
+    + `If they name no number at all, ${PLAN_MEAL_OPTIONS} candidates for a meal or drinks slot and ${PLAN_ACTIVITY_OPTIONS} for any other activity is a sensible default. `
+    + 'You have no maximum and no minimum, so NEVER tell the traveller that your instructions fix, cap or require a '
+    + 'particular number of options. '
+    + 'The one real limit is that a single reply has to be complete: the fenced JSON block must be finished, because a '
+    + 'cut-off answer loses the suggestions rather than shortening them. If what they asked for is genuinely too much '
+    + 'for one answer, give as many as you can fully write out, say plainly how many that is, and offer to continue in '
+    + 'the next message. Never silently drop the rest, and never refuse the request outright.';
 
   // The item types are the app's storage schema and cannot grow beyond these
   // six, so meals and drinks ride on `activity` with the kind spelled out in
@@ -4267,7 +4561,57 @@ const TripLogic = (() => {
     + 'as one of these literal prefixes: "Breakfast: ", "Lunch: ", "Dinner: ", "Drinks: " '
     + 'followed by the venue name, for example "Dinner: Narisawa".';
 
-  function buildAssistPackage({ trip, focusDate, request }) {
+  // The app is not the model. It holds cached coordinates for the trip's places
+  // and draws a straight-line distance chip on every suggestion card it renders,
+  // which is why "I do not have access to live GPS or real-time traffic data, so
+  // I cannot calculate or display the specific travel distance" was both true of
+  // the model and wrong about the product it was answering inside: the number
+  // was already on screen, and the sentence talked the traveller out of reading
+  // it. The other half of the rule matters just as much - knowing the card
+  // carries a figure is not permission to invent one in prose.
+  const ASSIST_DISTANCE = 'This app measures distance itself. Every venue you suggest is rendered on a '
+    + 'card that already shows how far it is from where the traveller is starting, in km and miles, '
+    + "computed from the app's own stored coordinates for those places. So NEVER say that you cannot "
+    + 'give distances, and never explain that you lack GPS, live traffic, maps or location access: '
+    + 'the traveller can see the figure. '
+    + 'What you must not do is invent one. Do not state a distance, a walking time, a driving time, a '
+    + 'fare or a journey time as a fact in your prose unless it is given to you above. Describe '
+    + 'proximity only in words you can support from what you know of the city ("in Sukhumvit, close '
+    + 'to your hotel", "the other side of the river"), and let the card carry the number.';
+
+  // The origin is the fact a "which of these is most convenient" question turns
+  // on, and the model had no way to know it: the trip JSON says where the
+  // traveller sleeps but not where they are standing at 8pm on the day being
+  // planned. This is the same origin the cards are measured from, so the prose
+  // and the chips can never disagree about where the day starts.
+  const ORIGIN_WHY = {
+    stay: 'the place they are booked into that night',
+    arrival: 'where they arrive that day',
+    item: 'the last thing already on their plan before then',
+    city: 'the city they are in that day',
+  };
+  function assistOriginNote(origin) {
+    const o = origin && typeof origin === 'object' ? origin : null;
+    const label = o ? String(o.label == null ? '' : o.label).trim() : '';
+    if (!label) return '';
+    const why = ORIGIN_WHY[o.source] || 'where they are that day';
+    const city = String(o.city == null ? '' : o.city).trim();
+    const when = isIsoDate(o.date) ? ` on ${o.date}` : '';
+    return `The traveller is based${when} at ${label}${city && city !== label ? ` in ${city}` : ''} - ${why}. `
+      + 'Measure convenience from there: prefer places that are genuinely near it, or near whatever you '
+      + 'have already suggested earlier the same day, and say which one you are treating as the starting point. '
+      + 'Each card is then measured from wherever the traveller will actually be at that hour, which is this '
+      + 'place unless something you suggested earlier that day has moved them.';
+  }
+
+  // Guided "Plan my day" and free-form chat differ in exactly one paragraph, and
+  // the default is `chat`: an unknown or missing mode must never inherit the
+  // picker's fixed counts, which is the failure this whole split exists to stop.
+  function assistOptionRules(mode) {
+    return mode === 'plan' ? ASSIST_OPTIONS_PLAN : ASSIST_OPTIONS_CHAT;
+  }
+
+  function buildAssistPackage({ trip, focusDate, request, mode, origin }) {
     const parts = [];
     parts.push('You are a travel-planning assistant helping edit a trip itinerary.');
     parts.push(ASSIST_HONESTY);
@@ -4277,8 +4621,12 @@ const TripLogic = (() => {
     parts.push(ASSIST_CONTRACT);
     parts.push(ASSIST_KINDS);
     parts.push(ASSIST_AGENDA);
-    parts.push(ASSIST_GROUPS);
+    parts.push(ASSIST_GROUPS_MECHANIC);
+    parts.push(assistOptionRules(mode));
     parts.push(ASSIST_MAPSQUERY);
+    parts.push(ASSIST_DISTANCE);
+    const originNote = assistOriginNote(origin);
+    if (originNote) parts.push(originNote);
     if (focusDate && isIsoDate(focusDate)) parts.push(`The traveller is focused on this day: ${focusDate}.`);
     parts.push('The traveller asks:');
     parts.push(String(request == null ? '' : request).trim());
@@ -4342,7 +4690,7 @@ const TripLogic = (() => {
     + 'Never say or imply that an item has no notes, and never describe the trip as if the descriptions you can see are all that exist. '
     + 'If a description would change your answer, ask the traveller about that item instead of guessing.';
 
-  function buildAssistSystemPrompt({ trip, focusDate, today, truncated }) {
+  function buildAssistSystemPrompt({ trip, focusDate, today, truncated, mode, origin }) {
     const parts = [];
     parts.push('You are a travel-planning assistant helping edit a trip itinerary.');
     parts.push(ASSIST_HONESTY);
@@ -4350,8 +4698,12 @@ const TripLogic = (() => {
     parts.push(ASSIST_CONTRACT);
     parts.push(ASSIST_KINDS);
     parts.push(ASSIST_AGENDA);
-    parts.push(ASSIST_GROUPS);
+    parts.push(ASSIST_GROUPS_MECHANIC);
+    parts.push(assistOptionRules(mode));
     parts.push(ASSIST_MAPSQUERY);
+    parts.push(ASSIST_DISTANCE);
+    const originNote = assistOriginNote(origin);
+    if (originNote) parts.push(originNote);
     if (today && isIsoDate(today)) parts.push(`Today is ${today}.`);
     if (focusDate && isIsoDate(focusDate)) parts.push(`The traveller is focused on this day: ${focusDate}.`);
     // The server (netlify/functions/tp-assist.mjs) builds this from a network
@@ -6605,14 +6957,17 @@ const TripLogic = (() => {
     FORECAST_CONDITIONS, forecastConditionKey, forecastCondition, forecastChipParts,
     extractTripActions, validateTripAction, buildAssistPackage, buildAssistSystemPrompt,
     fitAssistContext, ASSIST_DETAILS_BUDGET, ASSIST_TRUNCATED_NOTE,
+    assistOptionRules, assistOriginNote, PLAN_MEAL_OPTIONS, PLAN_ACTIVITY_OPTIONS,
     buildPlanRequest, groupProposals, linkifySegments,
     parseMarkdown, parseMarkdownInline,
     normalizePlaceQuery, placeCacheKey, planPlacesLookup, placesCacheUpdates,
     VENUE_TTL_MS, VENUE_CACHE_MAX, venueFresh, normalizeVenueCache, rememberVenue,
     placesLocationUpdates, pickVenueFeature, validCoord,
     SAME_SPOT_KM, sameSpot, distancePoint, dayAnchor, dayDistanceChain,
-    parseTravelArrival, dayArrival,
+    parseTravelArrival, dayArrival, proposalOrigin, dayBaseOrigin, suggestionOrigins,
     ROUTE_EXACT_MAX, shortestRoute, routeStops, fmtKmMi, distanceChipLabel, distanceChipTitle, routeFooterText,
+    assistDistanceChipLabel, assistDistanceChipTitle, shortHopHint, hopTravel, fmtMins, WALKABLE_KM,
+    isPlaceType, isTravelLeg, directionsUrl, legTravelMode,
     mapsSearchUrl, assistMapsLink, itemMapsQuery, displayTitle, showsCostBadge, isFoodOrDrink, isEstimatedCost, costDisplayParts, mealTitlePrefixes,
     hasEstimate, displayCostOf, parseMoney, roundMoney, budgetVerdict, refundParts,
     readBudgetRange, normalizeBudgetFrom, budgetFigure,

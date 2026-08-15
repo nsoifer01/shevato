@@ -203,6 +203,25 @@ function clampBody(body) {
   return { ok: true, clientId, messages, tripContext: fit.ctx, truncated: fit.truncated };
 }
 
+// The two modes the client can ask for. Anything else - a missing field, an
+// old client, a hand-rolled body - is CHAT, because chat is the permissive one:
+// defaulting the other way would put the guided picker's fixed option counts in
+// front of a traveller who never opened the picker, which is the exact bug the
+// client-side split fixes.
+const ASSIST_MODES = ['plan', 'chat'];
+
+// The origin is a small, purely descriptive record (where the traveller starts
+// that day) and it lands in the prompt verbatim, so every field is clamped to a
+// short string here rather than trusted. An origin with no label says nothing
+// and is dropped.
+function clampOrigin(origin) {
+  if (!origin || typeof origin !== 'object') return null;
+  const str = (v, n) => (typeof v === 'string' ? v.slice(0, n).trim() : '');
+  const label = str(origin.label, 120);
+  if (!label) return null;
+  return { date: str(origin.date, 10), label, city: str(origin.city, 80), source: str(origin.source, 20) };
+}
+
 // Exported for the unit tests: the whole instruction comes from the shared
 // client builder, so there is exactly one definition of the contract. The trip
 // itself is already size-bounded by clampBody, which TRIMS an oversize trip and
@@ -214,6 +233,8 @@ export function buildSystemInstruction(ctx, truncated) {
     focusDate: typeof ctx.focusDate === 'string' ? ctx.focusDate.slice(0, 10) : '',
     today: typeof ctx.today === 'string' ? ctx.today.slice(0, 10) : '',
     truncated: !!truncated,
+    mode: ASSIST_MODES.includes(ctx.mode) ? ctx.mode : 'chat',
+    origin: clampOrigin(ctx.origin),
   });
 }
 

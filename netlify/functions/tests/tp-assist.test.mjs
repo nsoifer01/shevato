@@ -129,8 +129,47 @@ const ctx = () => ({
 test('buildSystemInstruction is byte-identical to the client contract builder', () => {
   const c = ctx();
   assert.equal(buildSystemInstruction(c), TripLogic.buildAssistSystemPrompt({
-    trip: c.trip, focusDate: c.focusDate, today: c.today,
+    trip: c.trip, focusDate: c.focusDate, today: c.today, mode: 'chat', origin: null,
   }));
+});
+
+// The guided picker's fixed option counts are the ONE thing this endpoint must
+// not hand out by default: a body with no mode (an old client, a hand-rolled
+// request, a dropped field) is a free-form turn, so the traveller is never told
+// that "instructions require exactly 3" when they never opened the picker.
+test('buildSystemInstruction defaults an absent or unknown mode to free-form chat', () => {
+  for (const mode of [undefined, '', 'plans', 'PLAN', 42, null, {}]) {
+    const sys = buildSystemInstruction({ ...ctx(), mode });
+    assert.match(sys, /How MANY options to offer is the traveller's call/, `mode ${JSON.stringify(mode)}`);
+    assert.doesNotMatch(sys, /propose EXACTLY 3 candidates/, `mode ${JSON.stringify(mode)}`);
+  }
+});
+
+test('buildSystemInstruction carries the guided counts only when mode is plan', () => {
+  const sys = buildSystemInstruction({ ...ctx(), mode: 'plan' });
+  assert.match(sys, /propose EXACTLY 3 candidates/);
+  assert.match(sys, /propose EXACTLY 2 candidates for that one slot/);
+  assert.doesNotMatch(sys, /How MANY options to offer is the traveller's call/);
+});
+
+test('buildSystemInstruction clamps the origin and drops a nameless one', () => {
+  const long = { label: 'H'.repeat(400), city: 'C'.repeat(400), date: '2026-12-31T09:00:00Z', source: 'stay' };
+  const sys = buildSystemInstruction({ ...ctx(), origin: long });
+  assert.match(sys, /The traveller is based on 2026-12-31 at H{120} in C{80} -/);
+  assert.doesNotMatch(sys, /H{121}/);
+  for (const bad of [null, undefined, 'a string', { label: '   ' }, { city: 'Tokyo' }, 7]) {
+    assert.doesNotMatch(buildSystemInstruction({ ...ctx(), origin: bad }), /The traveller is based/,
+      `origin ${JSON.stringify(bad)}`);
+  }
+});
+
+// The app draws the figure; the model used to talk the traveller out of reading
+// it ("I do not have access to live GPS or real-time traffic data").
+test('buildSystemInstruction tells the model the app measures distance itself', () => {
+  const sys = buildSystemInstruction(ctx());
+  assert.match(sys, /This app measures distance itself/);
+  assert.match(sys, /never explain that you lack GPS, live traffic, maps or location access/);
+  assert.match(sys, /Do not state a distance, a walking time, a driving time, a\s+fare or a journey time as a fact/);
 });
 
 test('buildSystemInstruction carries the agenda and grouping rules from trip-logic', () => {
@@ -143,9 +182,8 @@ test('buildSystemInstruction carries the agenda and grouping rules from trip-log
   assert.match(sys, /Never introduce a slot type the traveller did not request/);
   assert.doesNotMatch(sys, /breakfast AND lunch AND dinner/);
   assert.match(sys, /Return to hotel/);
-  // 3 candidates per meal slot, 2 per activity slot, singles for everything else
-  assert.match(sys, /propose EXACTLY 3 candidates/);
-  assert.match(sys, /propose EXACTLY 2 candidates for that one slot/);
+  // the grouping MECHANIC is contract in both modes; the counts are not
+  assert.match(sys, /the same "group" value on its action/);
   assert.match(sys, /Transport, local hops, stays and notes are NEVER grouped/);
   assert.match(sys, /limited to flight, transport, local, activity, stay and note/);
   // tier 3 must inherit the between-cities vs within-a-city split too

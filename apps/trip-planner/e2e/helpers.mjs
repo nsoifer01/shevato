@@ -30,7 +30,7 @@ export const ART_DIR = path.join(REPO, '.screenshots', 'e2e-trip-planner');
 // Result recording with screenshot-on-failure.
 export function recorder(R) {
   return async (name, pass, detail = '', s = null) => {
-    R.push({ name, pass: !!pass, detail: detail ? String(detail).slice(0, 180) : '' });
+    R.push({ name, pass: !!pass, detail: detail ? String(detail).slice(0, 400) : '' });
     if (!pass && s) {
       try {
         await mkdir(ART_DIR, { recursive: true });
@@ -123,19 +123,67 @@ export async function gotoHard(s, url, { settle = 1000 } = {}) {
   return waitReady(s);
 }
 
+// The seed has to be written on the app's own origin, so a page is already
+// running the app while we clear and re-seed under it - and that instance can
+// still write. `ensureTrip` is the one that bites: seeing no trip where the
+// clear just removed one, it creates an empty default and saves it, landing
+// AFTER our setItem and replacing the fixture with a trip that has no items.
+// A test whose first assertion needs an item then fails; one that only counts
+// rendered cards passes, which is what made this intermittent and confusing.
+//
+// So the seed is verified against what the REBOOTED app actually holds, and
+// re-applied if it was clobbered. Verifying is not optional politeness here:
+// re-reading the key we just wrote proves nothing, because the clobber lands
+// between the write and the reload.
+const seedCountExpr = (want) => `(() => {
+  try {
+    const db = JSON.parse(localStorage.getItem(${JSON.stringify(LS_KEY)}) || 'null');
+    if (!db || !Array.isArray(db.trips)) return ${want} === -1;
+    const t = db.trips.find(x => x.id === db.activeTripId) || db.trips[0];
+    return !!t && t.items.length === ${want};
+  } catch (e) { return false; }
+})()`;
+
+// Everything the app reads at boot, written in one go. `stores` is any other
+// trip-planner:* key the fixture needs warm - the geocode and venue caches, for
+// instance, which are read into closure state exactly once and cannot be warmed
+// afterwards without another full reload.
+async function writeSeed(s, db, stores) {
+  const payload = { ...(stores || {}) };
+  if (db) payload[LS_KEY] = db;
+  await evaluate(s, `(() => {
+    const p = ${JSON.stringify(JSON.stringify(payload))};
+    for (const [k, v] of Object.entries(JSON.parse(p))) localStorage.setItem(k, JSON.stringify(v));
+    return 1;
+  })()`);
+}
+
 // Fresh page on the app with storage reset to exactly `db` (or empty). The
 // double navigation matters: storage can only be touched on the app's origin,
 // and app state is read at boot, so seed THEN reload.
-export async function openApp(cdpPort, base, { db = null, hash = '', viewport = [1280, 900], net = defaultNet, settle = 900 } = {}) {
+export async function openApp(cdpPort, base, { db = null, stores = null, hash = '', viewport = [1280, 900], net = defaultNet, settle = 900 } = {}) {
   const s = await newPage(cdpPort);
   await setViewport(s, viewport[0], viewport[1], viewport[0] < 700);
   if (net) await interceptNetwork(s, net);
   await goto(s, base + APP, { settle: 600 });
   await clearTpStorage(s);
-  if (db) await evaluate(s, `(()=>{ localStorage.setItem(${JSON.stringify(LS_KEY)}, ${JSON.stringify(JSON.stringify(db))}); return 1 })()`);
+  if (db || stores) await writeSeed(s, db, stores);
   await goto(s, base + APP + hash, { settle });
   await waitReady(s);
-  return s;
+  if (!db) return s;
+
+  const active = db.trips.find((t) => t.id === db.activeTripId) || db.trips[0];
+  const want = active ? active.items.length : 0;
+  // Nothing to protect when the fixture is an empty trip anyway: an empty trip
+  // is exactly what a clobber would leave behind, so the check cannot tell them
+  // apart and re-seeding would loop for nothing.
+  if (!want) return s;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (await evaluate(s, seedCountExpr(want))) return s;
+    await writeSeed(s, db, stores);
+    await gotoHard(s, base + APP + hash, { settle });
+  }
+  throw new Error(`openApp: the seeded trip did not survive boot (wanted ${want} items)`);
 }
 
 // Second tab onto the SAME storage: no clearing, no seeding.
