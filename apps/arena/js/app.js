@@ -13,10 +13,17 @@
  * Firestore data model:
  *   triviaRooms/{code}
  *     { code, hostUid, status: 'lobby'|'playing'|'finished',
- *       isPrivate, password (only when private), currentQuestionIndex,
+ *       isPrivate, currentQuestionIndex,
  *       questionStartedAt: serverTimestamp, totalQuestions, packId,
  *       questions: [...{id,category,question,choices,correctIndex}],
  *       createdAt, finishedAt }
+ *     (legacy rooms created before 2026-08-15 may still carry a
+ *      cleartext `password` field; new rooms never do - see
+ *      triviaRooms/{code}/private/gate below)
+ *   triviaRooms/{code}/private/gate
+ *     { hash } - SHA-256(password + ':' + code), readable by NO client;
+ *     firestore.rules compares a joiner's member-doc gateHash to it via
+ *     get(). Solo/daily rooms store a random hash nobody can derive.
  *   triviaRooms/{code}/players/{uid}
  *     { uid, displayName, isHost, score, streak, joinedAt,
  *       currentAnswerIndex, currentAnswerAt, lastSeen,
@@ -62,6 +69,7 @@ const Scoring = window.BrainArena.Scoring;
 const Feedback = window.BrainArena.Feedback;
 const Chat = window.BrainArena.Chat;
 const RoomState = window.BrainArena.RoomState;
+const RoomGate = window.BrainArena.RoomGate;
 const LiveQuestions = window.BrainArena.LiveQuestions;
 const GlobeDropScoring = window.BrainArena.GlobeDropScoring;
 const GlobeDropLocations = window.BrainArena.GlobeDropLocations;
@@ -1413,12 +1421,15 @@ async function createRoom(opts) {
         const code = await reserveUniqueRoomCode();
         const ref = doc(db, 'triviaRooms', code);
         const displayName = chosenName;
+        // The password is deliberately NOT part of the room doc: the room
+        // doc is readable by any signed-in user with the code, so a
+        // cleartext password there was world-readable (defect 22). Private
+        // rooms instead persist a hash in /private/gate below.
         const shared = {
             code,
             hostUid: state.user.uid,
             status: 'lobby',
             isPrivate,
-            password: isPrivate ? password : '',
             gameType,
             currentQuestionIndex: 0,
             questionStartedAt: null,
@@ -1513,7 +1524,24 @@ async function createRoom(opts) {
             }));
         }
 
-        await joinPlayer(code, displayName, /* isHost */ true);
+        // Password gate (defect 22). Private multiplayer rooms store
+        // SHA-256(password + ':' + code) in a subdocument no client can
+        // read; firestore.rules verifies a joiner's member-doc gateHash
+        // against it via get(). Solo/daily rooms have no password but
+        // must stay unjoinable by strangers who guess the code, so they
+        // get a random hash no password can ever derive. The gate doc is
+        // written before the host's own player doc because the member-
+        // create rule starts enforcing the gate the moment it exists -
+        // the host passes it with the same hash.
+        let gateHash = null;
+        if (isPrivate) {
+            gateHash = isSoloLike
+                ? RoomGate.randomGateHash()
+                : await RoomGate.computeRoomGateHash(password, code);
+            await setDoc(doc(db, 'triviaRooms', code, 'private', 'gate'), { hash: gateHash });
+        }
+
+        await joinPlayer(code, displayName, /* isHost */ true, -1, gateHash);
         enterRoom(code);
 
         // Solo / daily rooms auto-start so the user lands straight in the
@@ -1623,6 +1651,7 @@ async function joinRoom() {
         return;
     }
 
+    let gateHash = null;
     if (data.isPrivate) {
         const passwordField = $('#join-password-field');
         passwordField.hidden = false;
@@ -1631,9 +1660,21 @@ async function joinRoom() {
             showJoinError('This room is private. Enter the password.');
             return;
         }
-        if (password !== data.password) {
-            showJoinError('Incorrect password.');
-            return;
+        if (typeof data.password === 'string' && data.password) {
+            // Legacy room created before the hashed gate (defect 22): the
+            // cleartext password still sits on the room doc, so compare it
+            // client-side exactly as before. New rooms never write
+            // data.password, so this branch dies out as old rooms expire.
+            if (password !== data.password) {
+                showJoinError('Incorrect password.');
+                return;
+            }
+        } else {
+            // Hashed gate: the proof rides the member-doc create and
+            // firestore.rules verifies it against the unreadable
+            // /private/gate doc. A wrong password surfaces below as
+            // permission-denied on joinPlayer.
+            gateHash = await RoomGate.computeRoomGateHash(password, code);
         }
     }
 
@@ -1649,7 +1690,20 @@ async function joinRoom() {
     // Mark the player as a spectator if they're joining mid-game so the UI
     // can show a "Spectating - joining next round" banner and gate submitting.
     const isSpectator = data.status === 'playing';
-    await joinPlayer(code, displayName, /* isHost */ false, isSpectator ? (data.currentQuestionIndex || 0) : -1);
+    try {
+        await joinPlayer(code, displayName, /* isHost */ false,
+            isSpectator ? (data.currentQuestionIndex || 0) : -1, gateHash);
+    } catch (err) {
+        // The rules gate rejects a bad hash as permission-denied; map it
+        // to the same message the legacy compare shows.
+        if (gateHash && err && err.code === 'permission-denied') {
+            showJoinError('Incorrect password.');
+        } else {
+            console.warn('Join failed:', err);
+            showJoinError('Could not join the room. Please try again.');
+        }
+        return;
+    }
     // Reported only after every guard has passed and the player doc is
     // written, so a wrong password, a full room or an abandoned name prompt is
     // never counted as a join. The room code is a shared secret that grants
@@ -1661,7 +1715,7 @@ async function joinRoom() {
     enterRoom(code);
 }
 
-async function joinPlayer(code, displayName, isHost, joinedAtQuestionIndex) {
+async function joinPlayer(code, displayName, isHost, joinedAtQuestionIndex, gateHash) {
     const pref = doc(db, 'triviaRooms', code, 'players', state.user.uid);
     // Pull the room's current round so we don't carry stale "joinedAt round 1"
     // markers into round 2+. We can't write across players, so each player
@@ -1713,6 +1767,13 @@ async function joinPlayer(code, displayName, isHost, joinedAtQuestionIndex) {
     };
     if (typeof joinedAtQuestionIndex === 'number' && joinedAtQuestionIndex >= 0) {
         doc_data.joinedAtQuestionIndex = joinedAtQuestionIndex;
+    }
+    // Proof-of-password for gated rooms: firestore.rules compares this
+    // against the unreadable /private/gate hash on member CREATE. It is
+    // visible to signed-in users who can read player docs - the password
+    // itself never is (see js/room-gate.js for the boundary discussion).
+    if (gateHash) {
+        doc_data.gateHash = gateHash;
     }
     await setDoc(pref, doc_data, { merge: true });
 }
@@ -1932,6 +1993,13 @@ async function leaveRoom({ silent = false, reason = null } = {}) {
                 // running it unconditionally also tidies up signed-in
                 // rooms instead of leaving orphaned subcollection docs.
                 await deleteRoomChat(code);
+                // The password-gate doc doesn't cascade either; sweep it
+                // so a deleted room leaves no orphaned hash behind. Public
+                // rooms have no gate doc - deleting a missing doc is a
+                // no-op in Firestore, so this runs unconditionally.
+                try {
+                    await deleteDoc(doc(db, 'triviaRooms', code, 'private', 'gate'));
+                } catch (e) { /* best-effort, room delete still proceeds */ }
                 await deleteDoc(doc(db, 'triviaRooms', code));
             } else {
                 const roomSnap = await getDoc(doc(db, 'triviaRooms', code));
