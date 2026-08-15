@@ -172,6 +172,7 @@
     isoWeekId, monthId, periodRecords, runningRivalPeriodRecords, periodTallyText,
     accumulatePositionHits,
     accumulateFinishPositions, avgPositionColor, avgPositionColors,
+    myAvgByContinent,
     compareNamesCI, compareWinPctDesc,
   } = window.MapTapStats;
 
@@ -2205,6 +2206,10 @@
       pasteState.byRivalIdText.set(rival.id, textarea.value);
       pasteState.byRivalId.set(rival.id, parseMapTapScore(textarea.value));
       refreshPasteRivalRow(rival.id);
+      // The save bar reads every rival's parse, so it has to recompute here
+      // too; otherwise it only ever reflects the state as of the last time my
+      // own textarea fired an input event.
+      refreshPasteSaveBar();
     });
     row.appendChild(textarea);
 
@@ -2508,6 +2513,7 @@
     const wrap = $('#dash-summary');
     if (!state.rivals.length) {
       wrap.innerHTML = '';
+      renderDashContinents();
       return;
     }
 
@@ -2546,6 +2552,51 @@
     wrap.appendChild(makeSummaryCard('Today', todayGames, todayGames === 1 ? 'game logged' : 'games logged'));
     if (bestRival) wrap.appendChild(makeSummaryCard('Best matchup', bestRival.rival.name, `${(bestRival.winPct * 100).toFixed(0)}% win rate`));
     if (worstRival && worstRival !== bestRival) wrap.appendChild(makeSummaryCard('Toughest rival', worstRival.rival.name, `${(worstRival.winPct * 100).toFixed(0)}% win rate`));
+
+    renderDashContinents();
+  }
+
+  // "My average by continent": my own raw 0-100 round average per continent
+  // across every rival at once, on the same 0-100 scale (and the same
+  // .toFixed(1) formatting) as the per-rival continent cards. Only synced
+  // games carry coordinates, so the whole band stays hidden until one exists.
+  function renderDashContinents() {
+    const wrap = $('#dash-continents');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    const { rows, totalRounds, days } = state.rivals.length
+      ? myAvgByContinent(state.games, classifyContinent)
+      : { rows: [], totalRounds: 0, days: 0 };
+    if (!rows.length) {
+      wrap.hidden = true;
+      return;
+    }
+    wrap.hidden = false;
+
+    wrap.appendChild(el('div', { class: 'dash-continents-head' }, [
+      el('h3', { class: 'dash-continents-title' }, 'My average by continent'),
+      el('span', { class: 'dash-continents-sub' },
+        `${totalRounds} round${totalRounds === 1 ? '' : 's'} over ${days} day${days === 1 ? '' : 's'}`),
+    ]));
+
+    const chips = el('div', { class: 'dash-continent-chips' });
+    for (const r of rows) {
+      const meta = CONTINENT_META[r.continent] || CONTINENT_META['Other'];
+      chips.appendChild(el('div', {
+        class: 'dash-continent-chip',
+        style: `--cont-color:${meta.color}`,
+        title: `${r.continent}: ${r.myAvg.toFixed(1)} avg over ${r.rounds} round${r.rounds === 1 ? '' : 's'}`,
+      }, [
+        el('span', { class: 'dash-continent-icon', 'aria-hidden': 'true' }, meta.icon),
+        el('span', { class: 'dash-continent-body' }, [
+          el('span', { class: 'dash-continent-name' }, r.continent),
+          el('span', { class: 'dash-continent-rounds' },
+            `${r.rounds} ${r.rounds === 1 ? 'round' : 'rounds'}`),
+        ]),
+        el('span', { class: 'dash-continent-avg' }, r.myAvg.toFixed(1)),
+      ]));
+    }
+    wrap.appendChild(chips);
   }
 
   function makeSummaryCard(label, value, sub) {
@@ -6094,9 +6145,12 @@
   // checked before Europe so Egypt isn't misclassified, etc.). Russia
   // splits at the Ural meridian (~60°E); Anatolia and Pacific islands
   // get explicit carve-outs. Verified against 250 real MapTap rounds.
+  // There is deliberately no Antarctica bucket (owner call, 2026-08-15): a
+  // polar round or two is noise next to the real continents, so everything
+  // below 60°S falls through to 'Other'. No remaining rule reaches that far
+  // south (the lowest floor is South America at -56°).
   function classifyContinent(lat, lng) {
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return 'Unknown';
-    if (lat < -60) return 'Antarctica';
     // Northern Pacific islands (Hawaii) — strict lng cutoff so Mexican
     // Baja (e.g. Cabo at -110) stays in North America below.
     if (lat >= 0 && lat < 30 && lng < -140) return 'Oceania';
@@ -6129,7 +6183,6 @@
     'Oceania':       { icon: '🦘', color: '#10b981' },
     'North America': { icon: '🌎', color: '#8b5cf6' },
     'South America': { icon: '🏔️', color: '#06b6d4' },
-    'Antarctica':    { icon: '🧊', color: '#94a3b8' },
     'Other':         { icon: '🌐', color: '#6b7280' },
     'Unknown':       { icon: '❓', color: '#6b7280' },
   };

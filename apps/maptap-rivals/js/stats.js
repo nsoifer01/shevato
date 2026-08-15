@@ -691,6 +691,59 @@
     return list.map(v => Number.isFinite(v) ? avgPositionColor((v - min) / (max - min)) : null);
   }
 
+  // ---------- continents ----------
+  // My own per-round average bucketed by continent, across every rival at
+  // once (the per-rival version lives in app.js as continentBreakdown).
+  //
+  // `classify(lat, lng) -> continent name` is injected: the bounding-box table
+  // stays in app.js, this module stays free of geography.
+  //
+  // Two traps this guards against:
+  //   1. A day played against 3 rivals is stored as 3 game records carrying
+  //      the SAME myScores and the SAME cities. Counting every record would
+  //      triple-count my rounds, so one qualifying game per date wins.
+  //   2. Only MapTap-synced games have a `cities` array; pasted games have no
+  //      coordinates at all and contribute nothing.
+  //
+  // Rounds classified 'Unknown' (missing or non-finite coordinates) are
+  // dropped from the buckets and from the round counts.
+  function myAvgByContinent(games, classify) {
+    const list = Array.isArray(games) ? games : [];
+    const seenDates = new Set();
+    const buckets = new Map();
+    let totalRounds = 0;
+    let days = 0;
+
+    for (const g of list) {
+      if (!g || !Array.isArray(g.cities) || g.cities.length !== N_LOCS) continue;
+      if (!iPlayed(g) || !Array.isArray(g.myScores) || g.myScores.length !== N_LOCS) continue;
+      const dateKey = String(g.date);
+      if (seenDates.has(dateKey)) continue;
+      seenDates.add(dateKey);
+      days++;
+      for (let i = 0; i < N_LOCS; i++) {
+        const c = g.cities[i] || {};
+        const continent = classify(Number(c.lat), Number(c.lng));
+        if (continent === 'Unknown') continue;
+        if (!buckets.has(continent)) buckets.set(continent, { continent, rounds: 0, mySum: 0 });
+        const b = buckets.get(continent);
+        b.rounds++;
+        b.mySum += Number(g.myScores[i]) || 0;
+        totalRounds++;
+      }
+    }
+
+    const rows = Array.from(buckets.values()).map(b => ({
+      continent: b.continent,
+      rounds: b.rounds,
+      myAvg: b.mySum / b.rounds,
+    }));
+    // Round count first, name A-Z as the tie-break so the chip order never
+    // flaps between renders.
+    rows.sort((a, b) => b.rounds - a.rounds || a.continent.localeCompare(b.continent));
+    return { rows, totalRounds, days };
+  }
+
   // ---------- ordering ----------
   // Case-insensitive name order, used by every rival list outside the Records
   // view. Names differing only in case fall back to the raw comparison so the
@@ -731,6 +784,8 @@
     finishPositionsForDay, fieldSharesForDay, competitionRanksForDay,
     accumulateFinishPositions,
     avgPositionColor, avgPositionColors,
+    // continents
+    myAvgByContinent,
     // ordering
     compareNamesCI, compareWinPctDesc,
   };

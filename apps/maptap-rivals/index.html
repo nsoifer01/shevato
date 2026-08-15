@@ -169,10 +169,36 @@
         <div class="network-card-body" id="network-card-body"></div>
       </section>
 
-      <!-- Paste-mode entry, collapsed by default — the MapTap profile
-           card above is the recommended path. Opens to reveal the
-           paste rows: every rival shows up as its own row with a live
-           W/L/T preview against your score. -->
+      <div id="dash-record-banner" hidden></div>
+
+      <div class="dash-summary" id="dash-summary"></div>
+
+      <!-- My average per continent across every rival. Only games synced
+           from MapTap carry coordinates, so this stays hidden until at
+           least one geo-carrying game exists. -->
+      <div class="dash-continents" id="dash-continents" hidden></div>
+
+      <!-- Today's predictions: predicted vs actual head-to-head card.
+           Filled in by renderTodaysPredictions() once today's puzzle
+           locations are fetched and per-player history is available.
+           Only coordinates are persisted; city names render only behind the
+           "user has played this day" gate and are never written to storage. -->
+      <section class="todays-card" id="todays-card" hidden>
+        <header class="todays-card-head">
+          <div class="todays-card-title">
+            <h2 class="section-title">Today's predictions</h2>
+            <span class="todays-card-sub" id="todays-card-sub"></span>
+          </div>
+          <span class="todays-card-status" id="todays-card-status"></span>
+        </header>
+        <div class="todays-card-body" id="todays-card-body"></div>
+      </section>
+
+      <!-- Paste-mode entry, collapsed by default, sitting right above the
+           rivalry grid: the MapTap profile card at the top of the dashboard
+           is the recommended path. Opens to reveal the paste rows: every
+           rival shows up as its own row with a live W/L/T preview against
+           your score. -->
       <section class="paste-section">
         <details class="paste-collapse">
           <summary class="paste-collapse-summary">
@@ -211,26 +237,6 @@
             </div>
           </div>
         </details>
-      </section>
-
-      <div id="dash-record-banner" hidden></div>
-
-      <div class="dash-summary" id="dash-summary"></div>
-
-      <!-- Today's predictions: predicted vs actual head-to-head card.
-           Filled in by renderTodaysPredictions() once today's puzzle
-           locations are fetched and per-player history is available.
-           Only coordinates are persisted; city names render only behind the
-           "user has played this day" gate and are never written to storage. -->
-      <section class="todays-card" id="todays-card" hidden>
-        <header class="todays-card-head">
-          <div class="todays-card-title">
-            <h2 class="section-title">Today's predictions</h2>
-            <span class="todays-card-sub" id="todays-card-sub"></span>
-          </div>
-          <span class="todays-card-status" id="todays-card-status"></span>
-        </header>
-        <div class="todays-card-body" id="todays-card-body"></div>
       </section>
 
       <div class="dash-controls">
