@@ -19,7 +19,7 @@ The pure game logic (scoring, room state, location/question normalization) is sp
 | Feature | What it does |
 | --- | --- |
 | Private rooms + invite link | Create a room, get a 5-char code and a copyable invite link; friends auto-join when they open the link. |
-| Password-protected rooms | An optional "Private (password required to join)" toggle at creation. Joining a private room (by code or invite link) prompts for the password first. |
+| Password-protected rooms | An optional "Private (password required to join)" toggle at creation. Joining a private room (by code or invite link) prompts for the password first. The password itself is never stored: the room keeps only a salted SHA-256 hash in an unreadable subdocument, and Firestore rules verify a joiner's proof server-side (see "Room password security" below). |
 | Real-time Firestore sync | Players joining, the timer, scores, and the active question/location all update live across every client. |
 | Host controls | Host-only, and lobby-only: switch the game type and edit the round settings inline. |
 | Mid-game controls (any player) | Once the room is playing, every player (not just the host) can pause/resume the timer, propose a restart (all players must accept), or end the game. Each action has a per-player allowance for the room (pause 2, restart 3, end 3) so it can't be used to grief, and the button grays out once the allowance is spent. |
@@ -56,10 +56,20 @@ Scoring (`js/globe-drop-scoring.js`): the base (0-100) blends a sharp exponentia
 - **Phases** - `questionPhase` and `timeLeftMs` derive the lockstep timing from `questionStartedAt` (+ optional early-reveal flag) so clients don't drift.
 - **Decider rotation** - `pickDecider` rotates the category picker by question index over a player order snapshotted at game start.
 - **Question pool** - `availableCategoriesFromPool` / `pickQuestionFromPool` track which questions remain unplayed and pick the next one (falling back to any unplayed question when a category is exhausted).
-- **Stats aggregation** - `aggregateAnswerStats` (Trivia: accuracy, average response time, by-category) and `aggregateGlobeDropStats` (Globe Drop: total points, average base score, closest/farthest guess, bullseye count, by-region) build the end-of-game cards.
+- **Stats aggregation** - `aggregateAnswerStats` (Trivia: accuracy, average response time, by-category) and `aggregateGlobeDropStats` (Globe Drop: total points, average base score, closest/farthest guess, bullseye count, by-region) build the end-of-game cards. Both divide accuracy/score averages by the game's TOTAL round count (a skipped round counts as a miss); response-time and distance averages stay answered-only.
 - **Daily determinism** - `js/globe-drop-daily.js` keys the daily challenge on a UTC `YYYY-MM-DD` string and uses a seeded shuffle (`mulberry32` + FNV-1a hash) so every player gets the same locations on the same day.
 
 All runtime constants (timers, scoring weights, difficulty tiers, continent multipliers, room limits) live in `js/config.js`.
+
+## Room password security
+
+Private rooms are gated by a hash, never by a stored password (since 2026-08-15; previously the cleartext password sat on the world-readable room doc - TESTING-AUDIT.md defect 22):
+
+- **Create**: the host computes `SHA-256(password + ':' + roomCode)` in the browser (`js/room-gate.js`, WebCrypto) and writes it to `triviaRooms/{code}/private/gate`. Firestore rules make that doc readable by NOBODY, writable exactly once and only by the room's creator. The room doc itself may no longer carry a `password` field at all (rules reject such creates).
+- **Join**: the joining client derives the same hash from the typed password and sends it as the `gateHash` field of its member-doc create. The rules compare it against the gate doc via `get()`, which bypasses client read permissions, so the secret never becomes readable. A wrong password surfaces as `permission-denied` and is shown as "Incorrect password."
+- **Solo / daily rooms** have no password but stay `isPrivate`; they store a random 256-bit hash no password can derive, so nobody else can ever join with the code.
+- **Legacy rooms** created before the migration still carry `data.password` and keep the old client-side compare until they expire; new rooms never write it. The last player leaving sweeps the gate doc along with chat before deleting the room.
+- **Documented boundary**: a member's `gateHash` is readable by any signed-in user who has the room code (player docs are readable for the scoreboard), so it can be replayed for room ENTRY. What the design guarantees is that the password itself - the secret people reuse across sites - is never recoverable by anyone.
 
 ## Viewing locally
 
@@ -75,8 +85,14 @@ Live multiplayer needs the shared Firebase/Firestore config at the repo root (`f
 
 ## Running tests
 
+Arena has three suites at three depths:
+
 ```sh
-npm run test:arena
+npm run test:arena           # pure-module unit tests (part of `npm test`)
+npm run test:arena:rules     # Firestore security-rules suite (emulator; needs Java)
+npm run test:arena:emulator  # two-client multiplayer e2e (emulator + headless Chromium)
 ```
 
-The suite (`node --test apps/arena/tests/`) covers the pure modules: trivia scoring and streaks, Globe Drop distance/multiplier/difficulty scoring, room-code generation, daily-challenge determinism, Wikidata/Trivia normalization, and chat sanitization/moderation.
+- **Unit** (`node --test apps/arena/tests/`): trivia scoring and streaks, Globe Drop distance/multiplier/difficulty scoring, room-code generation and alphabet validation, daily-challenge determinism, Wikidata/Trivia normalization, chat sanitization/moderation, and the room-gate hash derivation (pinned against independently computed SHA-256 vectors).
+- **Rules** (`apps/arena/tests-rules/`): runs the real `firestore.rules` inside the Firestore emulator via plain REST - player-doc ownership, the hashed password gate, chat caps and append-only, guest exclusions, admin deletes, plus no-regression pins for the shared non-arena sections. Deliberately NOT part of `npm test`: it needs Java plus a one-time firebase-tools/emulator download (pinned version, cached afterwards), which the dependency-free push/PR CI does not have. Skips cleanly when the environment is missing; CI runs it weekly with `ARENA_RULES_REQUIRE=1` (`.github/workflows/arena-rules.yml`). Rules are loaded through the emulator's `PUT :securityRules` endpoint with a deny-all negative control, because `emulators:start/exec` does not reliably compile updated rules.
+- **Multiplayer e2e** (`apps/arena/e2e/`): two real app instances against the Firestore + Auth + RTDB emulators, connected through the opt-in emulator seam in the shared `firebase-config.js` (loopback hostname AND `localStorage['shevato:firebase-emulators'] = '1'` - inert in production by construction, see `sync-system/firebase-emulator-flag.mjs`). Covers the full room lifecycle: create, join by code, start, lockstep question propagation, simultaneous answers with early reveal, score propagation, rematch, host handoff, the password gate end-to-end, and invalid-code rejection. Production Firebase hosts are intercept-failed on every page as a second line of defense.
