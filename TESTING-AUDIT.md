@@ -361,17 +361,22 @@ Severity: H high, M medium, L low.
     statistics.js:163-167 and charts.js:582-586).
 11. **[L-M] Mario Kart: `migrateRaceData` silently drops course/courseId and
     writes the lossy version back on every load** (js/dataManager.js:437-444).
-12. **[M] Gym Tracker: StorageService still compares ids with `===`** in
-    saveProgram (:99, appends a duplicate), deleteProgram (:112, no-ops),
-    deleteCustomExercise (:222), getWorkoutSessionsByExercise (:174),
-    violating the app's own documented sameId rule; string ids arrive from
-    sync round trips.
+12. **[M] Gym Tracker: StorageService still compares ids with `===`.**
+    **RESOLVED 2026-08-15** (fix/gym-data-integrity): saveProgram,
+    deleteProgram, deleteCustomExercise and getWorkoutSessionsByExercise now
+    go through sameId(); the quarantines are plain regression tests in
+    storage-service.test.mjs. Original finding: a stringified id from a sync
+    round trip duplicated on save, no-opped deletes, and returned empty
+    exercise histories.
 13. **[M] Gym Tracker: import validation is type-blind.**
-    `{"programs":"pwned"}` passes `validateImportData` and overwrites the
-    program store with a string (js/views/settings-view.js:52-71 +
-    StorageService.js:319-334).
-14. **[L] Gym Tracker: `migrateImport` mutates the caller's payload** despite
-    its "pure migrators" docstring.
+    **RESOLVED 2026-08-15** (same branch): validateImportData now requires
+    every present store to carry its expected shape (arrays for
+    programs/sessions/customExercises/measurements/achievements, object for
+    settings). Original finding: `{"programs":"pwned"}` passed and
+    importAllData overwrote the program store with a string.
+14. **[L] Gym Tracker: `migrateImport` mutates the caller's payload.**
+    **RESOLVED 2026-08-15** (same branch): the payload is cloned before the
+    in-place migrators run, so the documented pure contract holds.
 15. **[L] Rising Shows: one unrated episode NaN-poisons `aboveImdb`**
     (scripts/split-data.js:79 folds ratings with no numeric guard); latent
     until an unrated episode enters the dataset.
@@ -535,7 +540,8 @@ failure.
    blocked-backend compromise checks.
 3. Fix the MEDIUM data-integrity defects (maptap duplicate-day guard,
    football negative goals/NaN, mario-kart missing-key stats + 24:MM:SS
-   timestamps, gym `===` id comparisons and import validation).
+   timestamps). The gym group (`===` id comparisons, import validation,
+   migrateImport purity) was fixed 2026-08-15; see defects 12-14.
 4. Add tiny export seams (`window._testExports`) to the maptap and
    rising-shows IIFEs so their pure helpers can move to the unit layer.
 5. Fix the auth-modal focus trap and the mario-kart `role="grid"`; sweep the

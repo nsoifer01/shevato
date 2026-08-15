@@ -44,25 +44,25 @@ test('accepts a real export shape (returns null = no error)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// KNOWN DEFECT: key presence is checked, value types are not
+// Store-value types (regression for the 2026-08-15 audit defect 13,
+// resolved: the validator used to check key presence only, so
+// {"programs":"pwned"} passed and importAllData overwrote the program store
+// with a string. Every present store must now carry its expected shape.)
 // ---------------------------------------------------------------------------
 
 test(
     'rejects a payload whose store keys hold non-array/non-object junk',
-    {
-        todo: 'KNOWN DEFECT: validateImportData (settings-view.js ~52) only '
-            + 'checks hasOwnProperty, never types, so {"programs":"pwned"} '
-            + 'passes validation and importAllData (StorageService.js ~319-334) '
-            + 'then overwrites gymTrackerPrograms with the string "pwned" - the '
-            + 'program list is destroyed until a re-import/sync repair. The '
-            + 'validator should require programs/sessions/customExercises/'
-            + 'measurements to be arrays and settings to be an object.',
-    },
     () => {
         assert.notEqual(validateImportData({ programs: 'pwned' }), null,
-            'correct behavior: a string "programs" store is rejected');
+            'a string "programs" store is rejected');
         assert.notEqual(validateImportData({ sessions: 17 }), null,
-            'correct behavior: a numeric "sessions" store is rejected');
+            'a numeric "sessions" store is rejected');
+        assert.notEqual(validateImportData({ sessions: [], settings: [] }), null,
+            'an array "settings" store is rejected');
+        assert.notEqual(validateImportData({ programs: [], measurements: {} }), null,
+            'a non-array "measurements" store is rejected');
+        assert.equal(validateImportData({ programs: [], sessions: [], settings: {} }), null,
+            'well-typed stores still pass');
     }
 );
 
@@ -70,18 +70,11 @@ test(
 // migrateImport purity contract
 // ---------------------------------------------------------------------------
 
+// Regression for the 2026-08-15 audit defect 14 (resolved): migrateImport
+// now clones its input before running the in-place migrators, so the
+// docstring's pure `(data) => upgradedData` contract actually holds.
 test(
     'migrateImport does not mutate the caller\'s payload',
-    {
-        todo: 'KNOWN DEFECT (contract drift): the migrateImport docstring '
-            + '(StorageService.js ~264-271) says each migrator is "a pure '
-            + 'function (data) => upgradedData", but the 1.0 migrator writes '
-            + 'slots, settings flags and the version field into the caller\'s '
-            + 'own objects in place. Harmless on today\'s only call path (a '
-            + 'just-parsed JSON.parse result), but any future caller holding '
-            + 'onto the payload gets it silently rewritten. Either clone '
-            + 'inside migrateImport or fix the docstring.',
-    },
     async () => {
         const { StorageService } = await import('../js/services/StorageService.js');
         const svc = new StorageService();

@@ -67,6 +67,21 @@ function validateImportData(data) {
         return 'Invalid data structure';
     }
 
+    // Presence is not enough: importAllData writes each present store
+    // verbatim, so a mistyped store (e.g. programs: "pwned") would replace
+    // the real data with junk. Every present store must carry its expected
+    // shape - list stores are arrays, settings is a plain object.
+    const arrayStores = ['programs', 'sessions', 'customExercises', 'measurements', 'achievements'];
+    for (const key of arrayStores) {
+        if (data.hasOwnProperty(key) && !Array.isArray(data[key])) {
+            return `Invalid "${key}" data: expected a list`;
+        }
+    }
+    if (data.hasOwnProperty('settings')
+        && (typeof data.settings !== 'object' || data.settings === null || Array.isArray(data.settings))) {
+        return 'Invalid "settings" data: expected an object';
+    }
+
     return null;
 }
 

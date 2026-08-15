@@ -132,16 +132,6 @@ Each is asserted at its CORRECT behavior with `{ todo: 'KNOWN DEFECT: ...' }`
 so `node --test` reports it without failing; fixing the code flips the todo
 into a pass (then remove the todo option). Current list:
 
-- **Four `===` id comparisons in StorageService** violating the sameId rule
-  (next section): `saveProgram` ~99 (duplicates instead of updating),
-  `deleteProgram` ~112 (no-op), `deleteCustomExercise` ~222 (no-op),
-  `getWorkoutSessionsByExercise` ~174 (empty history on type mismatch) -
-  `storage-service.test.mjs`.
-- **validateImportData checks key presence, not types**
-  (settings-view.js ~52): `{"programs":"pwned"}` passes and importAllData
-  overwrites the program store with a string - `import-validation.test.mjs`.
-- **migrateImport mutates the caller's payload** while its docstring promises
-  pure migrators (StorageService.js ~264) - `import-validation.test.mjs`.
 - **TimerService rest-timer ids are `Date.now()`** (~21): two starts in one
   ms collide and orphan the first interval - `timer-service.test.mjs`.
 - **TimerService.stopWorkoutTimer returns the initial elapsed**, not the
@@ -164,12 +154,20 @@ then `s.id === NaN`), and `StorageService.saveWorkoutSession` would have
 **appended a duplicate session** instead of updating on a type mismatch. Now
 sameId-tolerant: history/calendar/home session lookups, `getExerciseById`,
 `getWorkoutSessionById` (app + storage), exercises-view history joins and the
-delete-guard. `AnalyticsService` internals still use `===` - both sides come
-from the same session records there, so it holds, but any NEW code path that
-mixes a DOM-sourced id with stored data must go through `sameId`. Four
-StorageService methods were NOT converted and remain live defects
-(`saveProgram`, `deleteProgram`, `deleteCustomExercise`,
-`getWorkoutSessionsByExercise`); see "Known defects pinned by todo tests".
+delete-guard. The last four holdouts (`saveProgram`, `deleteProgram`,
+`deleteCustomExercise`, `getWorkoutSessionsByExercise`) were converted on
+2026-08-15 (TESTING-AUDIT.md defect 12), with regression tests in
+`storage-service.test.mjs`, so every StorageService id comparison now goes
+through `sameId`. `AnalyticsService` internals still use `===` - both sides
+come from the same session records there, so it holds, but any NEW code path
+that mixes a DOM-sourced id with stored data must go through `sameId`.
+
+Import hardening landed the same day: `validateImportData` now type-checks
+every present store (arrays for the list stores, object for settings) so a
+mistyped payload can no longer overwrite a real store with junk
+(TESTING-AUDIT.md defect 13), and `migrateImport` clones its input before the
+in-place migrators run, making its documented purity real (defect 14). Both
+pinned in `import-validation.test.mjs`.
 
 ## Supersets
 
