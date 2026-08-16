@@ -56,19 +56,23 @@
    !important a press of a language pill flashes a red tint over the green.
    Pin the green across hover AND the hover:active press state. */
 .lang-btn:hover:active {
-  background: #28a745 !important;
+  /* #1e7e34, not the old #28a745: white text on the lighter green was
+     3.13:1 (axe fail on the active pill); this green carries white at
+     ~5.1:1. Hover matches active so the pressed pill never flashes a
+     second shade of green. */
+  background: #1e7e34 !important;
   color: white !important;
   box-shadow: none !important;
-  border-color: #28a745;
+  border-color: #1e7e34;
   transform: translateY(-2px);
 }
 
 
 .lang-btn.active {
-  background: #28a745 !important;
+  background: #1e7e34 !important;
   color: white !important;
   box-shadow: none !important;
-  border-color: #28a745;
+  border-color: #1e7e34;
 }
 
 

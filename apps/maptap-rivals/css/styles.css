@@ -790,7 +790,10 @@ body.maptap-rivals-app textarea:focus {
   color: var(--muted);
 }
 .paste-collapse-hint {
-  color: var(--muted-2);
+  /* --muted, not --muted-2: the darker step measured 3.63:1 on the card
+     (axe fail at this 0.72rem size); --muted clears 4.5:1 and the hint
+     stays secondary to the title through size alone. */
+  color: var(--muted);
   font-size: 0.72rem;
 }
 .paste-collapse > summary:hover .paste-collapse-title { color: var(--text); }

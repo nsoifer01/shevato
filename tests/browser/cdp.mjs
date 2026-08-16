@@ -264,9 +264,14 @@ export async function setValue(s, sel, value, { nth = 0 } = {}) {
 }
 
 // modifiers is the CDP bitmask: Alt=1, Ctrl=2, Meta=4, Shift=8.
-export async function pressKey(s, key, code, keyCode, modifiers = 0) {
+// text: optional. Without it Chromium treats the keyDown as a rawKeyDown and
+// skips default actions, so keys that ACTIVATE things (Enter '\r', Space ' ')
+// must pass their text to trigger e.g. a focused button's key-activated click.
+export async function pressKey(s, key, code, keyCode, modifiers = 0, text) {
   const p = { key, code: code || key, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode, modifiers };
-  await s.send('Input.dispatchKeyEvent', { type: 'keyDown', ...p });
+  const down = { type: 'keyDown', ...p };
+  if (text !== undefined) { down.text = text; down.unmodifiedText = text; }
+  await s.send('Input.dispatchKeyEvent', down);
   await s.send('Input.dispatchKeyEvent', { type: 'keyUp', ...p });
   await sleep(150);
 }

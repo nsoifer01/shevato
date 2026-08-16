@@ -555,18 +555,26 @@
     // flips ratesFailed, so the note falls back to "Could not fetch..." instead.
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 8000);
+    // The fetching flag MUST clear before the render() below runs: render()
+    // paints "Fetching exchange rates..." whenever ratesFetching is true, so
+    // clearing it in a .finally() (which runs after the .catch's render)
+    // left a failed fetch showing the stale fetching note until some later
+    // unrelated render repainted the honest failure note + Retry.
+    const settle = () => { clearTimeout(timer); ratesFetching = false; };
     fetch('https://api.frankfurter.dev/v1/latest?from=' + encodeURIComponent(base), { signal: ctrl.signal })
       .then(r => { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
       .then(data => {
+        settle();
         if (data && data.base && data.rates) {
           rates = { base: data.base, at: Date.now(), rates: data.rates };
           try { localStorage.setItem(RATES_KEY, JSON.stringify(rates)); } catch { /* best effort */ }
           ratesFailed = false;
-          render();
+        } else {
+          ratesFailed = true;
         }
+        render();
       })
-      .catch(() => { ratesFailed = true; render(); })
-      .finally(() => { clearTimeout(timer); ratesFetching = false; });
+      .catch(() => { settle(); ratesFailed = true; render(); });
   }
 
   // Converted money totals in the trip currency. Returns confirmed/planned as

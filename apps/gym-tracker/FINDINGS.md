@@ -55,6 +55,13 @@ re-added on every open (a fresh closure defeated `removeEventListener`), so
 N opens meant N full list re-renders per keystroke. They are now wired once
 behind a dataset guard and read live control values.
 
+Contrast (2026-08-15, was defect 28): the program-modal Save button
+(`#program-modal .btn-save-program`) fills with `--accent-secondary`
+(#2563eb, the "strong fills" token), NOT `--accent-primary` - white on the
+bright azure is 2.77:1 (axe serious fail); on the deep blue it is ~5.2:1.
+The a11y browser suite scans this exact modal state and fails on any
+serious violation, so do not swap the fill back for looks.
+
 ## Exercise identity: stable ids, snapshot names, display-time resolution
 
 - The catalog (`data/exercises-db.json`, 514 entries) stores **literal numeric

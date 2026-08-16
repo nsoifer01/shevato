@@ -22,8 +22,12 @@
     --text: #e8edf5;
     --text-dim: #9aa7ba;
     --text-faint: #6b7789;
-    --accent: #4f8cff;
-    --accent-soft: rgba(79, 140, 255, 0.14);
+    /* #5d95ff, not the old #4f8cff: axe measured the old value at 4.41:1 on
+       the accent-soft chip surface (#1e2b42), just under WCAG AA 4.5:1; this
+       step lands at ~4.8:1 there and ~4.9:1 on --bg-raised, still reads as
+       the same blue. */
+    --accent: #5d95ff;
+    --accent-soft: rgba(93, 149, 255, 0.14);
     /* --accent is tuned to read as blue TEXT on a dark surface; white on it is
        only 3.2:1. Filled controls (primary buttons, the active view tab, the
        today badge) therefore paint --accent-fill instead, which carries white
@@ -38,8 +42,10 @@
     --green-soft: rgba(52, 201, 142, 0.14);
     --amber: #f0b34e;
     --amber-soft: rgba(240, 179, 78, 0.14);
-    --purple: #a78bfa;
-    --purple-soft: rgba(167, 139, 250, 0.15);
+    /* lightened from #a78bfa: stay tags (.dc-tag) paint this on purple-soft
+       over --bg-raised, which measured 4.09:1; #b8a3fc clears 4.5:1 there. */
+    --purple: #b8a3fc;
+    --purple-soft: rgba(184, 163, 252, 0.15);
     --red: #f2657a;
     --red-soft: rgba(242, 101, 122, 0.13);
     --gray-soft: rgba(154, 167, 186, 0.13);
@@ -1596,6 +1602,11 @@
     padding: 9px 14px; border: 1px solid var(--border-soft); border-radius: 12px;
     background: var(--bg-soft); color: var(--text-dim); font-size: 13px; font-weight: 600;
   }
+  /* Attribution links (Open-Meteo) render at 13px inside the note: pin an
+     explicitly bright link color so the contrast clears WCAG AA on every
+     surface the note can sit on. Caught by the a11y suite on CI after the
+     quarantine was emptied; do not let these fall back to --accent. */
+  .days-note a { color: #9dc0ff; text-decoration: underline; }
   .days-clear { padding: 4px 12px; font-size: 12.5px; }
   /* the weather caveat + its required credit, under the grid rather than in a
      tooltip no touch device can reach */
@@ -1633,8 +1644,14 @@
     min-width: 38px; padding: 4px 7px; border-radius: 9px;
     background: var(--accent-soft); color: var(--accent); white-space: nowrap;
   }
-  .dc-daynum b { font-size: 14px; font-weight: 800; line-height: 1; }
-  .dc-daynum small { font-size: 10px; font-weight: 600; opacity: 0.75; }
+  /* color: inherit, because main.css paints every strong/b #555555 (1.9:1 on
+     this chip) - same counter-pin the leaflet popup and assistant prose carry.
+     Inherit, not var(--accent), so the is-today white variant below still
+     flows through. */
+  .dc-daynum b { font-size: 14px; font-weight: 800; line-height: 1; color: inherit; }
+  /* no opacity dimming: 0.75 pulled the accent under 4.5:1 on the chip; the
+     size/weight step alone keeps the "of N" secondary to the day number */
+  .dc-daynum small { font-size: 10px; font-weight: 600; }
   .day-card.is-today .dc-daynum { background: var(--accent-fill); color: #fff; }
   .dc-headings { display: flex; flex-direction: column; min-width: 0; flex: none; }
   .dc-dow {
@@ -1989,7 +2006,13 @@
   /* the top padding is NOT part of the saving: the rail dot is aligned against
      the type tile, and moving the tile up 2px moves every cancelled row's dot
      off its own time. The height comes off the bottom and out of the gaps. */
-  .dc-event.is-cancelled .dc-item { opacity: 0.82; padding: 7px 9px 5px; }
+  /* No blanket opacity on the item: 0.82 multiplied into every text colour
+     inside (title 4.44:1, description 3.79:1, Maps label 3.9:1, the CANCELLED
+     tag 3.65:1 - all axe fails). The faded reading survives through the
+     explicit colour steps: --text-dim title with line-through, the 0.62 facts
+     fade (whose base is bright --text, so it still clears 5:1), and the gray
+     CANCELLED tag. */
+  .dc-event.is-cancelled .dc-item { padding: 7px 9px 5px; }
   .dc-event.is-cancelled .dc-main { gap: 2px 8px; }
   .dc-event.is-cancelled .dc-title {
     text-decoration: line-through; text-decoration-thickness: 1px;
