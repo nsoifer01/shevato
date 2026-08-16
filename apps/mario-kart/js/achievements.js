@@ -271,7 +271,7 @@ function createSweetSpotBars() {
 
 function calculateAchievements(player, raceData) {
     const achievements = {};
-    const playerRaces = raceData.filter(race => race[player] !== null);
+    const playerRaces = raceData.filter(race => isFinitePosition(race[player]));
 
     if (playerRaces.length === 0) {
         // Return null for all achievements when player has no race data
@@ -282,11 +282,7 @@ function calculateAchievements(player, raceData) {
     }
 
     // Sort races chronologically
-    const chronologicalRaces = [...playerRaces].sort((a, b) => {
-        const dateA = new Date(a.date + (a.timestamp ? ' ' + a.timestamp : ''));
-        const dateB = new Date(b.date + (b.timestamp ? ' ' + b.timestamp : ''));
-        return dateA - dateB;
-    });
+    const chronologicalRaces = [...playerRaces].sort(compareRacesChronologically);
 
     // Win Streak
     let currentWinStreak = 0;
@@ -463,7 +459,7 @@ function calculateAchievements(player, raceData) {
 
     // Group races by date
     chronologicalRaces.forEach(race => {
-        if (race[player] !== null) {
+        if (isFinitePosition(race[player])) {
             if (!dayGroups[race.date]) {
                 dayGroups[race.date] = [];
             }
@@ -864,7 +860,7 @@ function togglePositionHeatDetails(player, rangeIndex) {
         
         const rangeData = ranges[rangeIndex];
         const raceData = getFilteredRaces();
-        const playerRaces = raceData.filter(race => race[player] !== null);
+        const playerRaces = raceData.filter(race => isFinitePosition(race[player]));
         const [min, max] = rangeData.range;
         const racesInRange = playerRaces.filter(race =>
             race[player] >= min && race[player] <= max
@@ -945,12 +941,8 @@ function generateAchievementDetail(achievementKey, achievement, player) {
         if (streakRaces.length === 0) return { isActive: false, breakingPosition: null };
         
         const allRaces = getFilteredRaces();
-        const playerRaces = allRaces.filter(race => race[player] !== null)
-            .sort((a, b) => {
-                const dateA = new Date(a.date + (a.timestamp ? ' ' + a.timestamp : ''));
-                const dateB = new Date(b.date + (b.timestamp ? ' ' + b.timestamp : ''));
-                return dateA - dateB;
-            });
+        const playerRaces = allRaces.filter(race => isFinitePosition(race[player]))
+            .sort(compareRacesChronologically);
         
         if (playerRaces.length === 0) return { isActive: false, breakingPosition: null };
         
@@ -1167,7 +1159,7 @@ function generateAchievementDetail(achievementKey, achievement, player) {
             // Check if today is an active perfect day
             const today = new Date().toLocaleDateString('en-CA');
             const allRaces = getFilteredRaces();
-            const todayRaces = allRaces.filter(race => race[player] !== null && race.date === today);
+            const todayRaces = allRaces.filter(race => isFinitePosition(race[player]) && race.date === today);
             const threshold = getGoodFinishThreshold();
             const isActiveToday = todayRaces.length > 0 && todayRaces.every(race => race[player] <= threshold);
             
@@ -1514,15 +1506,11 @@ function updateAchievements(raceData = null) {
 function checkForActiveStreak(achievementKey, achievement, player, raceData) {
     if (!achievement.details || achievement.current === 0) return false;
     
-    const playerRaces = raceData.filter(race => race[player] !== null);
+    const playerRaces = raceData.filter(race => isFinitePosition(race[player]));
     if (playerRaces.length === 0) return false;
     
     // Sort races chronologically
-    const chronologicalRaces = [...playerRaces].sort((a, b) => {
-        const dateA = new Date(a.date + (a.timestamp ? ' ' + a.timestamp : ''));
-        const dateB = new Date(b.date + (b.timestamp ? ' ' + b.timestamp : ''));
-        return dateA - dateB;
-    });
+    const chronologicalRaces = [...playerRaces].sort(compareRacesChronologically);
     
     const lastRace = chronologicalRaces[chronologicalRaces.length - 1];
     
@@ -1566,14 +1554,10 @@ function checkForActiveStreak(achievementKey, achievement, player, raceData) {
 function getActiveStreakCount(achievementKey, achievement, player, raceData) {
     if (!achievement || !achievement.details || !achievement.current) return 0;
 
-    const playerRaces = raceData.filter(race => race[player] !== null);
+    const playerRaces = raceData.filter(race => isFinitePosition(race[player]));
     if (playerRaces.length === 0) return 0;
 
-    const chronologicalRaces = [...playerRaces].sort((a, b) => {
-        const dateA = new Date(a.date + (a.timestamp ? ' ' + a.timestamp : ''));
-        const dateB = new Date(b.date + (b.timestamp ? ' ' + b.timestamp : ''));
-        return dateA - dateB;
-    });
+    const chronologicalRaces = [...playerRaces].sort(compareRacesChronologically);
 
     switch (achievementKey) {
         case 'winStreak': {
@@ -1824,7 +1808,7 @@ function updateExpandedPositionHeat(raceData) {
             if (isNaN(rangeIndex) || rangeIndex < 0 || rangeIndex >= ranges.length) return;
             
             const rangeData = ranges[rangeIndex];
-            const playerRaces = raceData.filter(race => race[player] !== null);
+            const playerRaces = raceData.filter(race => isFinitePosition(race[player]));
             const [min, max] = rangeData.range;
             const racesInRange = playerRaces.filter(race =>
                 race[player] >= min && race[player] <= max
@@ -1871,7 +1855,7 @@ function updatePositionHeatBars(raceData) {
     const ranges = getPositionRanges();
 
     players.forEach(player => {
-        const playerRaces = raceData.filter(race => race[player] !== null);
+        const playerRaces = raceData.filter(race => isFinitePosition(race[player]));
         const totalRaces = playerRaces.length;
 
         ranges.forEach((rangeData, index) => {
@@ -1973,12 +1957,8 @@ function updatePositionHeatBars(raceData) {
 
 function updateRecentStreakBars(raceData) {
     players.forEach(player => {
-        const playerRaces = raceData.filter(race => race[player] !== null)
-            .sort((a, b) => {
-                const dateA = new Date(a.date + (a.timestamp ? ' ' + a.timestamp : ''));
-                const dateB = new Date(b.date + (b.timestamp ? ' ' + b.timestamp : ''));
-                return dateB - dateA; // Most recent first
-            });
+        const playerRaces = raceData.filter(race => isFinitePosition(race[player]))
+            .sort((a, b) => compareRacesChronologically(b, a)); // Most recent first
 
         // Helper function to get gradient color based on position
         const getPositionColor = (position) => {
@@ -2061,7 +2041,7 @@ function updateRecentStreakBars(raceData) {
 
 function updateSweetSpotBars(raceData) {
     players.forEach(player => {
-        const playerRaces = raceData.filter(race => race[player] !== null);
+        const playerRaces = raceData.filter(race => isFinitePosition(race[player]));
         const positionCounts = {};
 
         // Count occurrences of each position

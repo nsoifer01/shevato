@@ -42,11 +42,7 @@ function createTrendCharts(raceData = null) {
     const ctx = canvas.getContext('2d');
 
     // Sort races chronologically
-    const sortedRaces = [...raceData].sort((a, b) => {
-        const dateA = new Date(a.date + (a.timestamp ? ' ' + a.timestamp : ''));
-        const dateB = new Date(b.date + (b.timestamp ? ' ' + b.timestamp : ''));
-        return dateA - dateB;
-    });
+    const sortedRaces = [...raceData].sort(compareRacesChronologically);
 
     const labels = sortedRaces.map((race, index) => `Race ${index + 1}`);
     // Use global dynamic players array
@@ -261,7 +257,7 @@ function createHeatmapView(raceData = null) {
             
             players.forEach(player => {
                 const playerPositions = dayRaces
-                    .filter(race => race[player] !== null)
+                    .filter(race => isFinitePosition(race[player]))
                     .map(race => race[player]);
                 
                 if (playerPositions.length > 0) {
@@ -578,12 +574,8 @@ function calculateComebackAnalysis(raceData) {
     const analysis = {};
 
     players.forEach(player => {
-        const playerRaces = raceData.filter(race => race[player] !== null)
-            .sort((a, b) => {
-                const dateA = new Date(a.date + (a.timestamp ? ' ' + a.timestamp : ''));
-                const dateB = new Date(b.date + (b.timestamp ? ' ' + b.timestamp : ''));
-                return dateA - dateB;
-            });
+        const playerRaces = raceData.filter(race => isFinitePosition(race[player]))
+            .sort(compareRacesChronologically);
 
         let comebacks = 0;
         let badPositions = 0;
@@ -616,7 +608,7 @@ function calculateBestRacingDay(raceData) {
         // Group races by date for this player
         const racesByDate = {};
         raceData
-            .filter(race => race[player] !== null)
+            .filter(race => isFinitePosition(race[player]))
             .forEach(race => {
                 if (!racesByDate[race.date]) {
                     racesByDate[race.date] = [];
@@ -657,7 +649,7 @@ function calculateWorstRacingDay(raceData) {
         // Group races by date for this player
         const racesByDate = {};
         raceData
-            .filter(race => race[player] !== null)
+            .filter(race => isFinitePosition(race[player]))
             .forEach(race => {
                 if (!racesByDate[race.date]) {
                     racesByDate[race.date] = [];
@@ -704,7 +696,7 @@ function generatePatternAnalysis(raceData) {
         }
 
         players.forEach(player => {
-            if (race[player] !== null) {
+            if (isFinitePosition(race[player])) {
                 datePerformance[race.date].races++;
                 datePerformance[race.date].totalPos += race[player];
             }
@@ -755,7 +747,7 @@ function generatePatternAnalysis(raceData) {
 
     // Average Finish Spread
     const spreadData = raceData.map(race => {
-        const positions = players.map(player => race[player]).filter(p => p !== null);
+        const positions = players.map(player => race[player]).filter(p => isFinitePosition(p));
         if (positions.length < 2) return null;
         return Math.max(...positions) - Math.min(...positions);
     }).filter(spread => spread !== null);
@@ -768,7 +760,7 @@ function generatePatternAnalysis(raceData) {
     // Most competitive races (only show for multiple players)
     if (playerCount > 1) {
         const competitiveRaces = raceData.filter(race => {
-            const positions = players.map(player => race[player]).filter(p => p !== null);
+            const positions = players.map(player => race[player]).filter(p => isFinitePosition(p));
             if (positions.length < 2) return false;
             const range = Math.max(...positions) - Math.min(...positions);
             return range <= 5; // Close races
@@ -781,7 +773,7 @@ function generatePatternAnalysis(raceData) {
     const allPositions = [];
     raceData.forEach(race => {
         players.forEach(player => {
-            if (race[player] !== null) {
+            if (isFinitePosition(race[player])) {
                 allPositions.push(race[player]);
             }
         });
