@@ -18,6 +18,8 @@
     "test:rising-shows": "node --test apps/rising-shows/tests/",
     "test:mario-kart": "node --test apps/mario-kart/tests/",
     "test:arena": "node --test apps/arena/tests/",
+    "test:arena:rules": "node --test apps/arena/tests-rules/",
+    "test:arena:emulator": "node --experimental-websocket apps/arena/e2e/run-emulator.mjs",
     "test:maptap": "node --test apps/maptap-rivals/tests/",
     "test:trip-planner": "node --test apps/trip-planner/tests/",
     "test:tp-assist-quota": "node --test netlify/functions/tests/tp-assist-quota.test.mjs",

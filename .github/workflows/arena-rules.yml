@@ -1,0 +1,53 @@
+name: arena firestore rules
+
+# Runs the Arena security-rules suite (apps/arena/tests-rules/) against the
+# real Firestore emulator. Isolated from the push/PR workflows on purpose,
+# following cross-browser.yml's pattern: this job needs Java plus a
+# firebase-tools/emulator download, and the fast CI stays dependency-free.
+# Weekly rather than per-PR: firestore.rules changes are rare and always land
+# with a local `npm run test:arena:rules` pass; this run exists to catch
+# emulator/tooling drift (a firebase-tools or jar release changing behavior),
+# which arrives on the tools' schedule, not with our commits.
+#
+# ARENA_RULES_REQUIRE=1 turns the suite's local skip-when-unavailable
+# behavior into a hard failure here, so a broken Java setup or download can
+# never fake a green run.
+on:
+  schedule:
+    - cron: '0 7 * * 2'
+  workflow_dispatch:
+
+jobs:
+  rules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Use Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Use Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      # firebase-tools lands in the npx cache, the Firestore emulator jar in
+      # ~/.cache/firebase/emulators. The key pins the firebase-tools version
+      # (see FIREBASE_TOOLS_VERSION in emulator-harness.mjs); bumping the pin
+      # naturally invalidates the cache.
+      - name: Cache firebase-tools and the emulator jar
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm/_npx
+            ~/.cache/firebase/emulators
+          key: arena-rules-firebase-tools-15.27.0
+
+      - name: Run the rules suite against the emulator
+        env:
+          ARENA_RULES_REQUIRE: '1'
+        run: npm run test:arena:rules

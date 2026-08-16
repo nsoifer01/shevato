@@ -34,8 +34,13 @@
     }
 
     /**
-     * Normalize an inbound code: uppercase, trim, strip non-alphanumeric.
-     * Returns '' if invalid length so the caller can show an error.
+     * Normalize an inbound code: uppercase, strip separators/punctuation,
+     * then validate. Returns '' when the result has the wrong length OR
+     * contains any character outside ROOM_CODE_ALPHABET - the generator
+     * can never emit 0/O/1/I/L, so a code carrying one cannot exist and
+     * must be rejected rather than looked up (defect 24). This is the
+     * single validity notion for room codes; parseUrlState in app.js
+     * routes through it too.
      * @param {string} input
      * @returns {string}
      */
@@ -44,6 +49,9 @@
             .toUpperCase()
             .replace(/[^A-Z0-9]/g, '');
         if (cleaned.length !== Config.ROOM_CODE_LENGTH) return '';
+        for (const ch of cleaned) {
+            if (Config.ROOM_CODE_ALPHABET.indexOf(ch) === -1) return '';
+        }
         return cleaned;
     }
 
@@ -253,14 +261,27 @@
      * Aggregate per-player end-of-game stats from a list of per-question
      * answer records. Used to compute the detailed-stats card.
      * Each record: { questionId, correct, timeLeftMs, totalMs, category }
+     *
+     * `totalRounds` is the number of questions in the GAME. Accuracy
+     * divides by it, so a skipped/unanswered question counts as a miss -
+     * the same denominator rule aggregateGlobeDropStats deliberately uses
+     * (defect 25 decision, 2026-08-15: 3 correct answers in a 10-question
+     * game are 30%, never 100%). When omitted, falls back to the answered
+     * count so legacy callers keep working. Response-time and by-category
+     * stats stay answered-only: an unanswered question has no response
+     * time or category to fold in (mirrors Globe Drop's distance average).
      * @param {Array} records
+     * @param {number} [totalRounds]
      * @returns {{ accuracy:number, avgResponseMs:number, byCategory: object }}
      */
-    function aggregateAnswerStats(records) {
+    function aggregateAnswerStats(records, totalRounds) {
         const list = Array.isArray(records) ? records : [];
         if (!list.length) {
             return { accuracy: 0, avgResponseMs: 0, byCategory: {} };
         }
+        const total = (typeof totalRounds === 'number' && totalRounds > 0)
+            ? totalRounds
+            : list.length;
         let correctCount = 0;
         let totalResponseMs = 0;
         const byCategory = {};
@@ -276,7 +297,7 @@
             totalResponseMs += responseMs;
         }
         return {
-            accuracy: correctCount / list.length,
+            accuracy: correctCount / total,
             avgResponseMs: Math.round(totalResponseMs / list.length),
             byCategory
         };

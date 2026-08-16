@@ -24,6 +24,7 @@ import {
   initializeFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
+  connectFirestoreEmulator,
   setLogLevel as setFirestoreLogLevel
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
@@ -40,9 +41,10 @@ setFirestoreLogLevel('error');
 // (`no app file imports Firestore directly except the sync layer`) keeps
 // every consumer routed through this file.
 export * as firestore from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { getDatabase } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { getDatabase, connectDatabaseEmulator } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import {
   getAuth,
+  connectAuthEmulator,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -53,6 +55,11 @@ import {
   browserLocalPersistence
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { createCrossTabChannel, CHANNEL_MESSAGE_TYPES } from './sync-system/cross-tab-channel.mjs';
+import {
+  shouldUseFirebaseEmulators,
+  FIREBASE_EMULATOR_FLAG_KEY,
+  FIREBASE_EMULATOR_PORTS
+} from './sync-system/firebase-emulator-flag.mjs';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDlawczS-pufHS_Oi5LUeU_EzcwTFyU_2I",
@@ -80,6 +87,34 @@ export const db = initializeFirestore(app, {
 });
 export const rtdb = getDatabase(app);
 export { app };
+
+// Test-only emulator seam. Provably inert in production: enabling it
+// requires BOTH a loopback hostname AND an explicit per-origin opt-in
+// (localStorage['shevato:firebase-emulators'] === '1'), so no deployed
+// host can ever qualify and ordinary local development against
+// production Firebase stays unchanged until a developer or a test
+// harness opts in. The decision logic is a pure module
+// (sync-system/firebase-emulator-flag.mjs) with its own unit tests; the
+// Arena emulator e2e (apps/arena/e2e/) is the intended consumer. Must
+// run before any Firestore/Auth/RTDB network traffic, hence directly
+// after the instances are created.
+const useEmulators = (() => {
+  try {
+    return typeof window !== 'undefined' && shouldUseFirebaseEmulators(
+      window.location.hostname,
+      window.localStorage.getItem(FIREBASE_EMULATOR_FLAG_KEY)
+    );
+  } catch (_) {
+    // Storage access can throw (privacy modes); production behavior wins.
+    return false;
+  }
+})();
+if (useEmulators) {
+  connectAuthEmulator(auth, `http://127.0.0.1:${FIREBASE_EMULATOR_PORTS.auth}`, { disableWarnings: true });
+  connectFirestoreEmulator(db, '127.0.0.1', FIREBASE_EMULATOR_PORTS.firestore);
+  connectDatabaseEmulator(rtdb, '127.0.0.1', FIREBASE_EMULATOR_PORTS.database);
+  console.warn('[firebase-config] EMULATOR MODE: all Firebase traffic is routed to local emulators.');
+}
 
 // Persistence — survive reloads across tabs. Best-effort; mobile
 // private mode and quota-exhausted browsers fall back to in-memory.

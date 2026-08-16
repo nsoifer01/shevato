@@ -52,20 +52,64 @@ service cloud.firestore {
     // ---------- Trivia Arena ----------
     // Multiplayer game rooms. Any signed-in user can read any room (so
     // they can join with a code) and write to the room doc (host advances
-    // questions; players touch lastSeen-style fields). App-level password
-    // check gates private rooms — rules deliberately stay loose because
-    // game state is client-of-truth. Tighten with field-level conditions
-    // if abuse shows up.
+    // questions; players touch lastSeen-style fields). Rules deliberately
+    // stay loose on room-doc updates because game state is client-of-truth.
+    //
+    // Room passwords (defect 22): a new room may NEVER carry a cleartext
+    // `password` field - the room doc is world-readable to signed-in
+    // users, so the old cleartext field leaked the password to anyone
+    // with the code. Private rooms instead store a hash in
+    // /private/gate (below). The no-password condition applies to CREATE
+    // only: legacy rooms created before this rule still carry the field
+    // and must stay updatable (host advances questions with updateDoc,
+    // which rewrites the full post-state including the old field) until
+    // they expire.
     match /triviaRooms/{roomCode} {
       allow read: if request.auth != null;
-      allow create, update, delete: if request.auth != null;
+      allow create: if request.auth != null
+        && !request.resource.data.keys().hasAny(['password']);
+      allow update, delete: if request.auth != null;
+    }
+    // Password gate for private rooms: { hash: SHA-256(password + ':' +
+    // code) }. Readable by NOBODY - the member-create rule below reads it
+    // via get(), which bypasses client read permissions, so the hash (and
+    // a fortiori the password) never becomes client-readable through this
+    // doc. Only the room's creator can write it, exactly once (no
+    // updates: a host swapping the hash mid-game would lock the room in a
+    // way the UI never offers). Any signed-in user may delete it, same
+    // looseness as the room doc itself, because the last player leaving
+    // sweeps the gate alongside chat before deleting the room.
+    match /triviaRooms/{roomCode}/private/{gateDoc} {
+      allow read: if false;
+      allow create: if request.auth != null
+        && gateDoc == 'gate'
+        && get(/databases/$(database)/documents/triviaRooms/$(roomCode)).data.hostUid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['hash'])
+        && request.resource.data.hash is string;
+      allow update: if false;
+      allow delete: if request.auth != null;
     }
     // Each player owns their own player doc. Score increments and answer
     // writes happen here under the player's own uid — the host can't
     // silently rewrite someone else's score.
+    //
+    // CREATE additionally enforces the password gate: when a
+    // /private/gate doc exists, the joiner must present a matching
+    // gateHash field (derived client-side from the typed password). A
+    // missing or wrong hash errors the comparison, which denies. Rooms
+    // without a gate doc (public rooms, plus legacy password rooms that
+    // predate the gate and still use the client-side cleartext compare)
+    // join exactly as before. Updates are exempt on purpose: an existing
+    // player doc means the gate was already passed (reconnect-with-grace
+    // rides setDoc/updateDoc on the surviving doc).
     match /triviaRooms/{roomCode}/players/{playerUid} {
       allow read: if request.auth != null;
-      allow create, update, delete: if request.auth != null
+      allow create: if request.auth != null
+        && request.auth.uid == playerUid
+        && (!exists(/databases/$(database)/documents/triviaRooms/$(roomCode)/private/gate)
+            || request.resource.data.gateHash ==
+               get(/databases/$(database)/documents/triviaRooms/$(roomCode)/private/gate).data.hash);
+      allow update, delete: if request.auth != null
         && request.auth.uid == playerUid;
     }
 
