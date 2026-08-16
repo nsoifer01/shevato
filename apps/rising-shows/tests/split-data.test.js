@@ -34,13 +34,17 @@ after(() => {
   tmpDirs.length = 0;
 });
 
-function runSplit(data) {
+function runSplit(data, extras) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rs-split-test-'));
   tmpDirs.push(dir);
   const appDir = path.join(dir, 'app');
   fs.mkdirSync(appDir, { recursive: true });
   fs.cpSync(SCRIPTS_DIR, path.join(appDir, 'scripts'), { recursive: true });
   fs.writeFileSync(path.join(appDir, 'data.json'), JSON.stringify(data));
+  if (extras) {
+    fs.mkdirSync(path.join(appDir, 'data'), { recursive: true });
+    fs.writeFileSync(path.join(appDir, 'data', 'show-modal-extras.json'), JSON.stringify(extras));
+  }
 
   execFileSync(process.execPath, [path.join(appDir, 'scripts', 'split-data.js')], { encoding: 'utf8' });
 
@@ -197,11 +201,14 @@ test('split-data: aboveImdb lists exactly the series whose episodes outscore the
   assert.equal(above.has('tt0000012'), false); // no rated episodes to average
 });
 
-test('split-data: aboveImdb averages the rated episodes only', { todo: 'KNOWN DEFECT: aboveImdb sums e.rating with no numeric guard, so one unrated episode makes the mean NaN and silently drops the series' }, () => {
+test('split-data: aboveImdb averages the rated episodes only', () => {
   // tt0000015 has one rated episode at 9.0 against a series rating of 7.0, so
-  // its episodes plainly outscore its IMDb score and the badge should show.
-  // Every other rated-episode fold in this same file (ratedCount / ratingSum)
-  // and in buildShowAgg skips unrated episodes; this one does not.
+  // its episodes plainly outscore its IMDb score and the badge shows.
+  // Regression pin for the missing numeric guard: the fold used to sum
+  // e.rating unconditionally, so the one unrated episode made the mean NaN
+  // and silently dropped the series (NaN > x is false). Every rated-episode
+  // fold - this one, ratedCount / ratingSum, buildShowAgg - now skips
+  // unrated episodes the same way.
   assert.equal(SPLIT.index.aboveImdb.includes('tt0000015'), true);
 });
 
@@ -233,6 +240,86 @@ test('split-data: index plus detail rehydrates the original data.json record', (
     return rest;
   });
   assert.deepEqual(rehydrated, DATA.matches);
+});
+
+// --- modal extras merged into detail files ----------------------------------
+//
+// When data/show-modal-extras.json is beside data.json (every deploy:
+// fetch-data.js downloads it before split-data runs), each series' slice is
+// merged into its detail file and the index announces it via extrasInDetail.
+// That is what lets the app skip the ~67 MB monolith entirely: one small
+// per-show fetch on modal open carries episodes, overviews, cast, and the
+// per-episode id/runtime/title map.
+
+const EXTRAS = {
+  tt0000010: {
+    cast: [{ id: 1, name: 'Alice Actor', character: 'Lead', profile_path: '/a.jpg' }],
+    seasons: {
+      1: { ov: 'Xray S1 season overview', eps: { 1: { tt: 'tt9000001', rt: 42, n: 'Pilot' } } },
+      2: { eps: { 1: { tt: 'tt9000002' } } },
+    },
+  },
+  // A series that only has cast, no season records.
+  tt0000011: { cast: [{ id: 2, name: 'Bob Builder' }] },
+  // A series in the extras file but not in data.json: must not create a file.
+  tt9999999: { cast: [{ id: 3, name: 'Ghost' }] },
+};
+
+const EXTRAS_SPLIT = runSplit(DATA, EXTRAS);
+
+test('split-data: with the extras file present, detail files carry cast, ov and eps', () => {
+  const xray = EXTRAS_SPLIT.detail.tt0000010;
+  assert.deepEqual(xray.cast, EXTRAS.tt0000010.cast);
+  assert.equal(xray.seasons['1'].ov, 'Xray S1 season overview');
+  assert.deepEqual(xray.seasons['1'].eps, { 1: { tt: 'tt9000001', rt: 42, n: 'Pilot' } });
+  // The split fields still ride along untouched.
+  assert.deepEqual(xray.seasons['1'].episodes, DATA.matches[0].episodes);
+  assert.equal(xray.seasons['1'].overview, 'Xray season one blurb');
+  // Season 2 has eps but no ov in the extras: only what exists is written.
+  assert.deepEqual(xray.seasons['2'].eps, { 1: { tt: 'tt9000002' } });
+  assert.equal('ov' in xray.seasons['2'], false);
+
+  // Cast-only series: cast lands, seasons keep their plain split shape.
+  const yankee = EXTRAS_SPLIT.detail.tt0000011;
+  assert.deepEqual(yankee.cast, EXTRAS.tt0000011.cast);
+  assert.equal('ov' in yankee.seasons['1'], false);
+  assert.equal('eps' in yankee.seasons['1'], false);
+
+  // No extras for this series at all: detail file identical to the plain run.
+  assert.deepEqual(EXTRAS_SPLIT.detail.tt0000013, SPLIT.detail.tt0000013);
+
+  // Extras for a series not in data.json never materialise a file.
+  assert.equal('tt9999999' in EXTRAS_SPLIT.detail, false);
+});
+
+test('split-data: extrasInDetail flags the merge in the index, and only then', () => {
+  // The flag is the app's contract: when set, it never fetches the monolith.
+  assert.equal(EXTRAS_SPLIT.index.extrasInDetail, true);
+  // Without the extras file the key is absent (not false), keeping the
+  // no-extras output byte-identical to the pre-merge format.
+  assert.equal('extrasInDetail' in SPLIT.index, false);
+});
+
+test('split-data: the merge changes nothing else in the index', () => {
+  const a = { ...EXTRAS_SPLIT.index };
+  const b = { ...SPLIT.index };
+  delete a.extrasInDetail;
+  delete a.splitAt;
+  delete b.splitAt;
+  assert.deepEqual(a, b);
+});
+
+test('split-data: re-running with extras present is idempotent too', () => {
+  const first = fs.readFileSync(path.join(EXTRAS_SPLIT.appDir, 'data-index.json'), 'utf8');
+  const firstDetail = fs.readFileSync(path.join(EXTRAS_SPLIT.detailDir, 'tt0000010.json'), 'utf8');
+  execFileSync(process.execPath, [path.join(EXTRAS_SPLIT.appDir, 'scripts', 'split-data.js')], { encoding: 'utf8' });
+  const second = JSON.parse(fs.readFileSync(path.join(EXTRAS_SPLIT.appDir, 'data-index.json'), 'utf8'));
+  const firstParsed = JSON.parse(first);
+  delete firstParsed.splitAt;
+  const secondCopy = { ...second };
+  delete secondCopy.splitAt;
+  assert.deepEqual(secondCopy, firstParsed);
+  assert.equal(fs.readFileSync(path.join(EXTRAS_SPLIT.detailDir, 'tt0000010.json'), 'utf8'), firstDetail);
 });
 
 // --- the file around the matches -------------------------------------------

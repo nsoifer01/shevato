@@ -1,4 +1,7 @@
-# data.json is now committed and refreshed weekly by .github/workflows/refresh-imdb.yml
+# data.json is NOT committed: it lives (with data/show-modal-extras.json) on
+# the rolling rising-shows-data GitHub release, refreshed daily by
+# .github/workflows/refresh-rising-shows.yml and ignored via the root
+# .gitignore. See DATA_README.md.
 
 # User-uploaded Kometa reference files — contain live Plex/Trakt/TMDB/OMDB/MDBList secrets.
 # Kept locally for integration development; never commit.

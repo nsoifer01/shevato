@@ -22,16 +22,28 @@ roughly half a minute of blank page, every time.
 Measured against the real file, two fields dominate `data.json`: `episodes`
 (31.3 MB, 40%) and `overview` (18.2 MB, 24%). Neither is read by the grid, the
 filters or the sort - both are modal-only. So `scripts/split-data.js` runs at
-build time (wired into `build:site` after the page builders) and writes:
+build time (wired into `build:site` after the page builders, and after
+`fetch-data.js` has downloaded both release assets) and writes:
 
 | File | What it is | Fetched |
 |---|---|---|
-| `data-index.json` | `data.json` minus `episodes`/`overview`, ~4.3 MB brotli | on load, the only thing first paint waits for |
-| `data/detail/<seriesId>.json` | exactly those stripped fields, one small file per series (Breaking Bad: 4.3 KB) | when a modal opens, memoised |
-| `data/show-modal-extras.json` | cast, per-season overviews, per-episode ids/runtimes/titles | in the background after the grid renders |
+| `data-index.json` | `data.json` minus `episodes`/`overview`, ~4.3 MB brotli | on load, the only thing first paint waits for, and the ONLY dataset fetch at boot |
+| `data/detail/<seriesId>.json` | the stripped fields PLUS that show's slice of the modal extras: cast, per-season overviews (`ov`), per-episode ids/runtimes/titles (`eps`). Breaking Bad: ~10 KB | when a modal opens, memoised |
+| `data/show-modal-extras.json` | the extras monolith (~67 MB raw). Input to the split and to `build-show-pages.js`; the app itself no longer fetches it on current deploys | legacy fallback only: on first modal open, never at boot, and only when the index lacks the `extrasInDetail` flag (artifacts split before the merge existed) |
 
-Critical-path transfer went from ~38 MB to ~4.3 MB, roughly 31s to 3.4s on
-10 Mbps, and normal HTTP caching now applies so repeat visits cost nothing.
+`data-index.json` carries `extrasInDetail: true` whenever the splitter found
+the extras file and merged it into the detail files; the app takes that flag
+as its contract never to fetch the monolith. Before 2026-08-15 the app
+fetched the whole extras file "in the background" right after the grid
+rendered, which still pushed ~102 MB raw (~26 MB over the wire) at every
+visitor whether or not they ever opened a modal. Measured over a local
+no-gzip server: boot transfer went from 103,506,487 bytes to 35,978,695
+(index + code, -65%), and a first modal open costs one ~10 KB detail file
+instead of the old 4.5 KB file plus the 67 MB monolith riding in the
+background.
+
+Critical-path transfer stays ~4.3 MB brotli, and normal HTTP caching applies
+so repeat visits cost nothing.
 
 Two things the split has to preserve, both covered by tests in
 `tests/finder-lib.test.js`:
@@ -92,7 +104,7 @@ A season can match more than one shape - the card shows all of them.
 | Best / worst badges      | Inline pill on the highest- and lowest-rated season of each series (skipped when all seasons tie). |
 | Clickable shape pills    | The shape pills inside the show modal's season rows and the season detail modal are real buttons (Tab-reachable, Enter/Space activatable), not inert text. Activating one closes the modals and filters the grid to that shape. It also **clears the search box**, because you only ever reach a pill by looking up one specific show and leaving the query in place would AND it with the new shape and hand back that same show. This is a deliberate divergence from the toolbar shape chips, which do preserve the search term: a toolbar chip is a filter you are composing, a pill is a jump-to-similar action. |
 | Season overview          | The season detail modal shows that season's own TMDB plot summary (from `scripts/fetch-season-overviews.js`, merged into `data.json` at build time), falling back to the show-level overview when the season has none. |
-| Cast strip               | The show modal shows a top-billed cast strip, populated from `data/show-modal-extras.json` (the side-file holding cast, per-season overviews, and per-episode IMDb IDs / runtimes / titles, kept out of `data.json` so it stays under GitHub's file-size cap); the section stays hidden for series with no cast data. |
+| Cast strip               | The show modal shows a top-billed cast strip, populated from the show's `data/detail/<seriesId>.json` (split-data merges each show's slice of `data/show-modal-extras.json` - cast, per-season overviews, per-episode IMDb IDs / runtimes / titles - into its detail file, so one small fetch on modal open carries everything); the section stays hidden for series with no cast data. |
 | Watched tracking         | Per-season watched toggle inside the show modal; persists in localStorage; the show modal shows a per-show watched count. |
 | Cross-device sync        | For signed-in users, watched state and the compare set mirror to Firestore through `sync-system/` (namespace `risingSeasonsApp`, legacy `rising-seasons:*` keys kept on purpose so pre-rebrand data carries over). A change made on another device re-loads both sets, re-renders the grid and updates the compare counter, debounced 750 ms. Signed-out users stay fully functional on localStorage alone. |
 | Sensitive posters        | Posters for titles carrying the IMDb "Adult" genre render blurred, with a light overlay: a small eye-off badge flags the content in the top-left corner and a prominent centered "Tap to reveal" pill is the action (badge-only on small thumbnails). The blur is deliberately the only obstruction, so the blurred artwork and the always-visible title still give context. Clicking reveals that one poster without opening its modal; the reveal is per-poster and per-session (re-blurs on reload). Applies to every surface: Finder cards and list rows, both the show and season detail modals, related-show rows, and search-suggestion thumbnails. Adult titles are detected by genre on any season; lightweight surfaces (suggestions) fall back to a precomputed adult-series-ID set. Fallback poster tiles (no TMDB image, just the title) are left legible since they show no art. |
@@ -267,7 +279,7 @@ The default vote floor is deliberately low - IMDb's per-episode vote counts can 
 ## Viewing locally
 
 Serve the directory rather than opening `file://`. Two independent reasons now:
-the page loads `data.json` via `fetch`, and `js/app.js` is a `type="module"`
+the page loads `data-index.json` via `fetch`, and `js/app.js` is a `type="module"`
 script, which the browser refuses to execute from a `file://` origin. The
 module failure is the quieter of the two, since the page still renders its
 shell and simply never becomes interactive.

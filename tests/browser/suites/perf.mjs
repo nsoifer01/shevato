@@ -17,20 +17,26 @@
 // Raising a budget must be a conscious decision in the same change that
 // grows the page.
 //
-// rising-shows exception: data-index.json and data/show-modal-extras.json
-// (~102 MB together) are gitignored, pulled from a GitHub release, and absent
-// on a clean clone, so their bytes are excluded from that page's byte total.
-// The budget there governs the page's CODE weight, which is what this repo
-// owns; dataset growth is owned by the data-release pipeline.
+// rising-shows: boot data transfer is INTENTIONAL and bounded since the
+// 2026-08-15 lazy-extras redesign. The app fetches exactly one dataset file
+// at boot (data-index.json, 32.75 MB raw over this no-gzip server, ~4.3 MB
+// brotli in production); the ~67 MB show-modal-extras.json monolith is never
+// fetched (its content rides inside the per-show data/detail/ files, loaded
+// on modal open). Dataset bytes are therefore COUNTED in that page's budget:
+// the budget is code + the deliberate boot data, and a regression that
+// reintroduces an eager extras fetch (~+67 MB) trips it immediately. The
+// dataset is gitignored and absent on a clean clone, where the page only
+// measures lighter, so the budget stays clean-clone safe.
 import { newPage, closePage, goto, evaluate, evalAsync, setViewport, sleep } from '../cdp.mjs';
 
 // Measured 2026-08-15 (local python server, cache disabled, SW cleared;
 // identical across 3 runs). bytes = same-origin encodedBodySize incl. the
 // document; reqs = same-origin requests incl. the document; dom = total
-// element count. rising-shows measured with the dataset present: 103,499,537
-// raw bytes, 1,629,689 after the dataset exclusion above; its DOM (1,175) and
-// request count (36) are dataset-present ceilings, and a clean clone only
-// measures lower.
+// element count. rising-shows measured with the dataset present, after the
+// lazy-extras redesign: ~35.98 MB (data-index.json 34,341,226 bytes + ~1.63
+// MB of code; zero bytes of show-modal-extras.json or data/detail/ at boot);
+// its DOM (1,175) and request count (35) are dataset-present ceilings, and a
+// clean clone only measures lower (~1.63 MB).
 //
 //                page          measured bytes   reqs   dom
 //                home               1,041,969     24    313
@@ -41,7 +47,7 @@ import { newPage, closePage, goto, evaluate, evalAsync, setViewport, sleep } fro
 //                gym-tracker        2,277,390     75  1,516
 //                maptap-rivals      1,527,770     31    580
 //                mario-kart         1,766,099     76    994
-//                rising-shows       1,629,689*    36  1,175   (*code only)
+//                rising-shows      35,978,695     35  1,175   (incl. dataset)
 //                trip-planner       2,139,101     32    865
 const BUDGETS = {
   'home':          { path: '/home.html',            bytes: 1_550_000, reqs: 36,  dom: 470 },
@@ -52,7 +58,11 @@ const BUDGETS = {
   'gym-tracker':   { path: '/apps/gym-tracker/',    bytes: 3_400_000, reqs: 113, dom: 2_300 },
   'maptap-rivals': { path: '/apps/maptap-rivals/',  bytes: 2_300_000, reqs: 47,  dom: 870 },
   'mario-kart':    { path: '/apps/mario-kart/',     bytes: 2_650_000, reqs: 114, dom: 1_500 },
-  'rising-shows':  { path: '/apps/rising-shows/',   bytes: 2_450_000, reqs: 54,  dom: 1_800 },
+  // rising-shows budget = code + the deliberate boot dataset (see header
+  // note): ~45% headroom over the measured 35,978,695. Growth comes from the
+  // daily-refreshed data-index.json; an eager-extras regression adds ~67 MB
+  // and always trips this.
+  'rising-shows':  { path: '/apps/rising-shows/',   bytes: 52_000_000, reqs: 54,  dom: 1_800 },
   'trip-planner':  { path: '/apps/trip-planner/',   bytes: 3_200_000, reqs: 48,  dom: 1_300 },
 };
 
@@ -70,8 +80,6 @@ const DCL_BUDGET_MS = 8000;
 // only stops the site shell's JS from growing silently).
 const HOME_JS_BUDGET = 310_000;
 
-// Gitignored rising-shows dataset payloads, excluded from byte accounting.
-const RS_DATASET = /\/apps\/rising-shows\/(data\.json|data-index\.json|data\/)/;
 
 export async function run({ base, cdpPort }) {
   const R = [];
@@ -110,11 +118,10 @@ export async function run({ base, cdpPort }) {
           const origin=location.origin;
           const res=performance.getEntriesByType('resource').filter(r=>r.name.startsWith(origin));
           const nav=performance.getEntriesByType('navigation')[0];
-          const counted=res.filter(r=>!${RS_DATASET}.test(r.name));
           const sum=(a,f)=>a.reduce((t2,x)=>t2+(x[f]||0),0);
           const js=res.filter(r=>/\\.m?js(\\?|$)/.test(r.name));
           return {
-            bytes: sum(counted,'encodedBodySize') + (nav?nav.encodedBodySize:0),
+            bytes: sum(res,'encodedBodySize') + (nav?nav.encodedBodySize:0),
             reqs: res.length + 1,
             jsBytes: sum(js,'encodedBodySize'),
             dom: document.querySelectorAll('*').length,

@@ -649,16 +649,20 @@ function bindScrollMemory() {
 async function load() {
   showSkeletons(8);
   try {
-    // data.json carries everything needed to filter, sort, and render the
-    // grid, so it is the ONLY fetch on the critical path.
+    // data-index.json carries everything needed to filter, sort, and render
+    // the grid, so it is the ONLY data fetch at boot - critical path or not.
     //
     // show-modal-extras.json (cast, per-season plot overviews, per-episode
-    // IMDb ids / runtimes / titles) used to be fetched here in parallel and
-    // awaited before first paint. It is ~21.5 MB over the wire against
-    // data.json's ~16.8 MB, so first paint was waiting on ~38 MB of transfer:
-    // roughly 30 seconds on typical 4G, during which the page shows nothing
-    // but skeletons. None of it is needed until a modal opens. It now loads
-    // in the background after the grid renders (see loadExtrasInBackground).
+    // IMDb ids / runtimes / titles) used to be fetched eagerly: first awaited
+    // before first paint, then "in the background" right after the grid
+    // rendered. Background or not, that was ~67 MB raw (~21.5 MB over the
+    // wire) pushed at every visitor whether or not they ever opened a modal.
+    // It is modal-only data, so it now loads lazily: split-data.js merges
+    // each show's slice of it into that show's data/detail/<id>.json, and a
+    // modal open fetches just that one small file (see ensureDetail). The
+    // monolith is only ever fetched as a fallback for a dataset split before
+    // the merge existed, and even then on first modal open, never at boot
+    // (see loadExtrasOnce).
     //
     // `cache: 'no-store'` is also gone. It forced a full re-download on every
     // single visit and reload, which on a file this size is hostile to anyone
@@ -738,25 +742,28 @@ async function load() {
     // scrollHeight reflects the freshly appended cards.
     requestAnimationFrame(() => ScrollMemory.restore());
   }
-  // Everything above this line is what first paint waits for. The extras file
-  // is fetched only now, with the grid already interactive.
-  loadExtrasInBackground();
+  // Deliberately NO extras fetch here: boot transfer is the index plus the
+  // page's own code, nothing else. Modal data arrives per show on open.
 }
 
-// Modal-only data (cast, per-season plot overviews, per-episode IMDb ids,
-// runtimes and titles), ~21.5 MB over the wire. It used to be awaited before
-// first paint alongside data.json, which meant nobody saw a single show until
-// ~38 MB had transferred - about half a minute on typical 4G.
+// LEGACY FALLBACK: fetches the whole show-modal-extras.json monolith (cast,
+// per-season plot overviews, per-episode IMDb ids, runtimes and titles;
+// ~67 MB raw, ~21.5 MB over the wire) and attaches the fields onto the match
+// objects the modals read (`m.cast`, `m.seasonOverview`, `e.tt`, `e.runtime`,
+// `e.name`).
 //
-// Now it arrives while the visitor is already browsing, and the fields are
-// attached onto the same match objects the modals already read, so every
-// downstream reader (`m.cast`, `m.seasonOverview`, `e.tt`, `e.runtime`,
-// `e.name`) is unchanged. A modal opened before this resolves simply shows
-// what data.json already had; extrasReady lets openers re-render once it
-// lands. Failure stays non-fatal, exactly as when it was optional here.
+// On a current deploy this never runs: split-data.js merges each show's
+// extras into its data/detail/<id>.json (announced by `extrasInDetail` in
+// the index), so ensureDetail delivers everything a modal needs in one small
+// per-show fetch. This path only fires against an older artifact set - an
+// index split before the merge existed, or an unsplit data.json served as
+// the index - and even then only on first modal open, never at boot. A modal
+// opened before it resolves shows what the index already had and re-renders
+// once the extras land. Failure stays non-fatal.
 let extrasLoaded = false;
 let extrasData = null;
-function loadExtrasInBackground() {
+function loadExtrasOnce() {
+  if (dataset && dataset.extrasInDetail) return;
   if (extrasLoaded) return;
   extrasLoaded = true;
   fetch('data/show-modal-extras.json')
@@ -766,7 +773,7 @@ function loadExtrasInBackground() {
       // what stops a second boot-time call racing the first), so a failure
       // must hand the flag back or one flaky request means no cast strip and
       // no episode titles for the rest of the session. Modal open retries via
-      // the loadExtrasInBackground() call there, i.e. exactly when the data
+      // the loadExtrasOnce() call there, i.e. exactly when the data
       // is next wanted, so a dead network costs one failed request per open
       // rather than a background retry loop.
       if (!extras) {
@@ -871,12 +878,20 @@ function ensureDetail(seriesId) {
       }
       for (const m of dataset.matches) {
         if (m.seriesId !== seriesId) continue;
+        // Series-level cast rides in the detail file since split-data.js
+        // started merging the modal extras into it.
+        if (detail.cast && !m.cast) m.cast = detail.cast;
         const sRec = detail.seasons[String(m.season)];
         if (!sRec) continue;
         if (Array.isArray(sRec.episodes)) m.episodes = sRec.episodes;
         if (sRec.overview && !m.overview) m.overview = sRec.overview;
-        // Extras may already be in memory; join them on now that the episode
-        // objects exist. If extras land later, its own pass handles it.
+        // Merged season-level extras: `ov` is the season's own plot overview,
+        // `eps` the per-episode id/runtime/title map. Same keys as the legacy
+        // monolith, so applyExtrasToEpisodes serves both sources.
+        if (sRec.ov) m.seasonOverview = sRec.ov;
+        applyExtrasToEpisodes(m, sRec);
+        // Legacy monolith may already be in memory; join it on now that the
+        // episode objects exist. If it lands later, its own pass handles it.
         const ex = extrasData && extrasData[seriesId];
         const exSeason = ex && ex.seasons && ex.seasons[String(m.season)];
         applyExtrasToEpisodes(m, exSeason);
@@ -2269,8 +2284,9 @@ function goBackModalView() {
 // await resolves instantly on a repeat open (memoised in detailCache) and on
 // an unsplit dataset. Callers are fire-and-forget and do not need the promise.
 async function openModal(m, opts = {}) {
-  // Extras retry point, same as openShowModal; no-op when already loaded.
-  loadExtrasInBackground();
+  // Legacy-extras retry point, same as openShowModal; a no-op on a current
+  // deploy (extras arrive inside the detail file) and when already loaded.
+  loadExtrasOnce();
   await ensureDetail(m.seriesId);
   if (!Array.isArray(m.episodes)) m.episodes = [];
   pushModalHistory(opts, `season:${m.seriesId}:${m.season}`);
@@ -2503,9 +2519,9 @@ async function openShowModal(seriesId, opts = {}) {
     .sort((a, b) => a.season - b.season);
   if (seasons.length === 0) return;
 
-  // The extras loader hands its guard flag back on failure; this is its retry
-  // point. A no-op in the common case where the boot-time load succeeded.
-  loadExtrasInBackground();
+  // Legacy-extras fallback; a no-op on a current deploy, where the detail
+  // fetch below already carries the cast strip and episode extras.
+  loadExtrasOnce();
   // Awaited before any rendering so every season row has its episodes. One
   // fetch covers the whole series, and it is memoised, so reopening is free.
   await ensureDetail(seriesId);
@@ -5625,6 +5641,8 @@ if (typeof window !== 'undefined') {
     ScrollMemory,
     buildSeasonShareText,
     parseCompareParam,
+    Watched,
+    Compare,
   };
 }
 

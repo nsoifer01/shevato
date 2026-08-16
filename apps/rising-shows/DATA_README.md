@@ -171,11 +171,22 @@ page) opens moves here, keyed by series ID:
 ```
 
 Consumers merge it back onto each match so downstream code is agnostic
-to the split: `js/app.js` fetches it in parallel with `data.json` at
-load, and `scripts/build-show-pages.js` reads it when rendering static
-show pages. The file is optional for both — if it's missing, the app
-still works, just without cast strips, season overviews, episode
-titles, runtimes, or IMDb episode deep-links.
+to the split. Two consumers, neither of them the browser at boot:
+
+- `scripts/build-show-pages.js` reads it when rendering static show
+  pages.
+- `scripts/split-data.js` (the `build:site` step after the page
+  builders) merges each series' slice of it into that series'
+  `data/detail/<seriesId>.json` and stamps `extrasInDetail: true` into
+  `data-index.json`. The browser app then gets cast, season overviews
+  and per-episode extras from the one small detail file it fetches
+  when a modal opens, and never downloads this monolith at all. (An
+  older artifact set without the flag makes the app fall back to
+  fetching the whole file, on first modal open only - never at boot.)
+
+The file is optional for every consumer - if it's missing, the app and
+the static pages still work, just without cast strips, season
+overviews, episode titles, runtimes, or IMDb episode deep-links.
 
 `build-data.js` logs both file sizes on every build and fails hard if
 either reaches 100 MiB, so the refresh workflow dies at the build step
