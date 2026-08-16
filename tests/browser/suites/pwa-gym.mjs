@@ -1,13 +1,14 @@
 // Gym Tracker offline/PWA suite, modeled on apps/trip-planner/e2e/pwa.mjs
 // (which solved SW target attachment and offline emulation for this harness).
 //
-// The gym SW (apps/gym-tracker/sw.js) has a KNOWN AUDIT FINDING pinned by a
-// vm-level todo test (tests/sw-offline-behavior.test.mjs): the fetch handler
-// only consults the RUNTIME cache and never the precache, so an offline
-// request for a URL that was precached at install but never fetched at
-// runtime fails. This suite exercises both sides of that truthfully: the
-// runtime path that works (offline reload of a visited page) passes, the
-// precache-fallback gap is a KNOWN DEFECT skip.
+// The gym SW (apps/gym-tracker/sw.js) had an audit finding here (defect 16,
+// fixed 2026-08-15): the fetch handler used to consult only the RUNTIME
+// cache, so an offline request for a URL precached at install but never
+// fetched at runtime failed. The handler now falls back to the gym precache
+// on a runtime miss; this suite covers both paths as plain assertions
+// (offline reload of a visited page via RUNTIME, cold fetch of a
+// never-visited URL via the precache). Its vm-level sibling is
+// apps/gym-tracker/tests/sw-offline-behavior.test.mjs.
 //
 // Offline is emulated on BOTH the page target and the service worker target,
 // because the worker issues its own fetch()es (trip-planner pwa.mjs finding).
@@ -187,11 +188,11 @@ export async function run({ base, cdpPort }) {
     t('gym-pwa: seeded program survives the offline reload and renders',
       persisted.stored && persisted.rendered, JSON.stringify(persisted));
 
-    // --- 7. the precache-fallback gap. Pick a URL that IS in the precache
-    // but was never fetched at runtime (so the RUNTIME cache cannot serve
-    // it), disable the browser HTTP cache so it cannot interfere, and fetch
-    // it from the page while offline. Per the defect the SW responds from
-    // RUNTIME-or-network only, so this fails.
+    // --- 7. the precache fallback (regression for resolved defect 16).
+    // Pick a URL that IS in the precache but was never fetched at runtime
+    // (so the RUNTIME cache cannot serve it), disable the browser HTTP
+    // cache so it cannot interfere, and fetch it from the page while
+    // offline: the SW must serve it from the gym precache.
     await s.send('Network.setCacheDisabled', { cacheDisabled: true });
     const gap = await evalAsync(s, `(async () => {
       const names = await caches.keys();

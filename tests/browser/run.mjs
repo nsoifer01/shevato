@@ -62,10 +62,10 @@ for (const a of args) {
 // Pinned check counts per suite. A suite that silently loses checks (an early
 // return, a refactor that drops a loop, a throw swallowed inside the suite)
 // still "passes" everything it did run; comparing against a pinned total turns
-// that silent shrinkage into an explicit failure. Only site.mjs and apps.mjs
-// are pinned here because their counts are owned by this file's maintainers;
-// the trip-planner and fpl-planner suites are being evolved by their own
-// owners, who are invited to add their suites' counts when the numbers settle.
+// that silent shrinkage into an explicit failure. All six harness-owned
+// suites are pinned; the app-owned trip-planner and fpl-planner suites are
+// not, by their owners' choice. Adding or removing a check on purpose means
+// updating the pinned number in the same change.
 // apps.mjs note: the count is invariant whether or not the rising-shows
 // dataset is fetched (the skip path emits the same number of entries).
 const EXPECTED_CHECKS = {

@@ -115,8 +115,9 @@ documented in "Remaining limitations".
   every page and app (closes the local-404 hole); touch emulation on mobile
   viewports; `api.openai.com` added to the blocked external hosts.
 - Runner: one crashing suite no longer aborts the rest; expected check counts
-  pinned for the site and apps suites so a mid-suite crash cannot silently
-  shrink the denominator; teardown waits for real process exit.
+  pinned per suite (all six harness-owned suites today: site 157, apps 101,
+  a11y 33, visual 86, perf 41, pwa-gym 14) so a mid-suite crash cannot
+  silently shrink the denominator; teardown waits for real process exit.
 - Trip-planner e2e: the `closePage` no-op bug fixed everywhere (this alone
   removed both baseline failures; 6+ consecutive green runs since); 27 of 33
   fixed sleeps replaced with condition waits; a midnight-sensitive assertion
@@ -207,12 +208,23 @@ coverage.
 
 ## Final counts
 
+At the end of the AUDIT phase (quarantines still active by design):
+
 - Unit/static (`npm test`): 3,942 tests, 3,917 pass, 0 fail, 1 deliberate
   data-gated skip, 24 known-defect todos, ~2 minutes.
 - Browser (`npm run test:browser`): 785 checks, 774 pass, 11 known-defect
   expected-failure skips, 0 failures; two consecutive full runs identical.
+
+After the remediation round (every quarantine retired):
+
+- Unit/static: 4,023 tests, 4,022 pass, 0 fail, 1 deliberate data-gated
+  skip, **0 todos**.
+- Browser: **785/785, zero quarantine skips** (the only possible skips are
+  the 6 rising-shows checks on a clone without the gitignored dataset).
 - Cross-browser (`npm run test:cross-browser`): Firefox 4/4 locally; WebKit
   4 checks CI-only (clean skips locally with the reason printed).
+- Arena (separate commands): rules 23/23 vs the emulator; multiplayer e2e
+  27/27.
 
 ## Coverage metrics
 
@@ -320,7 +332,10 @@ certification (see limitations).
 
 Historical record. The audit's original constraint was to discover defects
 without changing production code; the remediation round that followed
-(PRs #386-#394, one to two days later) fixed every entry below. Each entry
+(PRs #386-#395 plus the #396 closeout, one to two days later) fixed every
+entry below. Resolution stamps show 2026-08-15 or 2026-08-16 depending on
+whether the merging happened before or after midnight local time; it was
+one continuous round. Each entry
 keeps its original finding text for history, with a RESOLVED line stating
 the fix and PR; every former quarantine is now a plain passing regression
 test. The quarantine MECHANISM remains the convention for future finds:
@@ -452,7 +467,7 @@ Severity: H high, M medium, L low.
     a side-by-side test; the owner should pick one.
     RESOLVED 2026-08-16 (PR #394): decision made for 24-hour (the Settings default, its v1 upgrade, and the README already agreed); the pre-boot fallback now matches, and an explicit stored 12 stays respected.
 
-### Accessibility (axe serious/critical + behavioral, quarantined in a11y.mjs)
+### Accessibility (axe serious/critical + behavioral; quarantines retired, the a11y baseline map is empty)
 
 26. **[RESOLVED] [M] Shared auth modal: the focus trap does not trap.** `trapFocus()`
     in assets/js/main.js (~169) computes its first/last boundaries over ALL
@@ -513,23 +528,20 @@ Severity: H high, M medium, L low.
     unused. Top recommended next step.
     RESOLVED 2026-08-16 (PR #393): a 23-test Firestore-emulator rules suite (apps/arena/tests-rules/, plain REST, deny-all negative control) covers every rules-only invariant plus non-arena no-regression pins; weekly CI via arena-rules.yml.
 
-### Product decision pending (pinned as current-behavior, not judged)
+### Product decision (was pending; decided during remediation)
 
 25. **[RESOLVED] Arena trivia accuracy divides by answered rather than total rounds**
     (room-state.js:279), inconsistent with the deliberately-fixed Globe Drop
     aggregator; 3 correct answers in a 10-question game report 100%. A test
-    in known-defects.test.js pins today's semantics so the choice is made
-    consciously; it is not a todo because asserting either denominator would
-    presume the decision.
-
-Also documented (dead code, latent only): football-h2h's unreachable
-`saveGame` path with its string penalty-winner bug; arena's `scoreAnswer`
-NaN propagation (unreachable in production today, would flow into a
-Firestore increment if reached); fpl `validate-history.mjs` validating
-2025-26 twice per default run.
-
-None of these blocks CI. The quarantine reports them on every run.
+    in known-defects.test.js pinned today's semantics so the choice would be
+    made consciously.
     RESOLVED 2026-08-16 (PR #393): decision made for total-rounds accuracy (consistent with Globe Drop); the aggregator takes the denominator from the room question count and the old semantics are asserted against.
+
+Three latent items the audit documented alongside the defects were also
+fixed during remediation: football-h2h's dead `saveGame` path with its
+string penalty-winner bug (deleted, PR #388), arena's `scoreAnswer` NaN
+propagation (clamped, PR #393), and fpl `validate-history.mjs` validating
+2025-26 twice per default run (deduped, PR #396).
 
 ## Flaky tests discovered and their causes
 

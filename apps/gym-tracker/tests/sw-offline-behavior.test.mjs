@@ -5,9 +5,9 @@
 //
 // What matters here: install must populate the precache, and the fetch
 // handler must actually deliver offline - a cached response has to come back
-// when fetch() rejects. The final test pins the CORRECT offline behavior for
-// precached-but-never-runtime-fetched URLs, which the current worker gets
-// wrong (see the KNOWN DEFECT todo).
+// when fetch() rejects, including for precached-but-never-runtime-fetched
+// URLs (audit defect 16, fixed 2026-08-15: the handler now falls back to the
+// gym precache on a runtime miss; the final test is its regression).
 process.env.TZ = 'UTC';
 
 import vm from 'node:vm';

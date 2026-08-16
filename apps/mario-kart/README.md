@@ -188,7 +188,10 @@ intrinsics, so compare joined strings or copied values rather than
 Known product defects are covered by a regression test that asserts the
 **correct** behaviour and carries `{ todo: 'KNOWN DEFECT: ...' }`, so the run
 stays green while the bug stays documented. Fixing one of those bugs means
-deleting its `todo` option, not rewriting the assertions.
+deleting its `todo` option, not rewriting the assertions. As of 2026-08-15
+this app carries no todos: its four audit defects (missing-player-key stats,
+24:MM:SS midnight stamps, chronological-sort no-ops, the lossy migration)
+are all fixed and their tests run as plain regressions.
 
 ## 🗺️ Updating Course Data
 

@@ -27,7 +27,12 @@
 // reintroduces an eager extras fetch (~+67 MB) trips it immediately. The
 // dataset is gitignored and absent on a clean clone, where the page only
 // measures lighter, so the budget stays clean-clone safe.
-import { newPage, closePage, goto, evaluate, evalAsync, setViewport, sleep } from '../cdp.mjs';
+import { newPage, closePage, goto, evaluate, evalAsync, setViewport, sleep, interceptNetwork } from '../cdp.mjs';
+
+// Same production-protection list as suites/apps.mjs and suites/a11y.mjs.
+// Budgets count SAME-ORIGIN resources only, so failing these off-origin
+// hosts cannot change a measured number.
+const FIREBASE_HOSTS = /firestore\.googleapis\.com|firebaseio\.com|identitytoolkit\.googleapis\.com|securetoken\.googleapis\.com/i;
 
 // Measured 2026-08-15 (local python server, cache disabled, SW cleared;
 // identical across 3 runs). bytes = same-origin encodedBodySize incl. the
@@ -86,6 +91,9 @@ export async function run({ base, cdpPort }) {
   const t = (name, pass, detail = '') => R.push({ name, pass: !!pass, detail });
 
   const s = await newPage(cdpPort);
+  // Session-wide production protection: arena is one of the measured roots
+  // and no page here may ever reach real Firebase.
+  await interceptNetwork(s, (url) => (FIREBASE_HOSTS.test(url) ? 'fail' : null));
   try {
     await setViewport(s, 1280, 900);
     // No browser cache: byte totals must reflect the network, not whatever an
