@@ -103,15 +103,11 @@ test('stopAllRestTimers stops every live timer despite deleting while iterating'
     assert.equal(ticks.length, seen, 'no orphaned interval keeps ticking');
 });
 
+// Regression for TESTING-AUDIT.md defect 17 (resolved 2026-08-15): timer ids
+// used to be Date.now(), so two starts in one millisecond collided and the
+// first interval leaked unclearable. Ids are a monotonic counter now.
 test(
     'two rest timers started in the same millisecond get distinct handles',
-    {
-        todo: 'KNOWN DEFECT: startRestTimer uses Date.now() as the timer id '
-            + '(TimerService.js ~21), so a second timer started in the same ms '
-            + 'returns the SAME id and overwrites the first Map entry; the first '
-            + 'interval is orphaned (never clearable) and keeps firing its '
-            + 'callbacks. Ids should be unique (e.g. a counter).',
-    },
     (t) => {
         t.mock.timers.enable(APIS);
         const svc = new TimerService();
@@ -165,16 +161,11 @@ test('restarting the workout timer replaces the previous one', (t) => {
     assert.deepEqual(second, [1, 2]);
 });
 
+// Regression for TESTING-AUDIT.md defect 18 (resolved 2026-08-15):
+// stopWorkoutTimer used to return the creation-time elapsed snapshot; it now
+// recomputes from startTime at the moment of stopping.
 test(
     'stopWorkoutTimer returns the elapsed seconds at the moment of stopping',
-    {
-        todo: 'KNOWN DEFECT: startWorkoutTimer snapshots `elapsed` into '
-            + 'this.workoutTimer at creation (TimerService.js ~110) and the '
-            + 'interval only reassigns the LOCAL variable, so stopWorkoutTimer '
-            + 'always returns the initialElapsed (usually 0) regardless of how '
-            + 'long the workout ran. Latent today: no caller reads the return '
-            + 'value, but the contract says "finalElapsed".',
-    },
     (t) => {
         t.mock.timers.enable(APIS);
         const svc = new TimerService();

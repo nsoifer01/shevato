@@ -23,9 +23,12 @@ function setSetting(value) {
     globalThis.window.gymApp = { settings: { timeFormat: value } };
 }
 
-test('getTimeFormat: defaults to 12 when no setting present', () => {
+test('getTimeFormat: defaults to 24 when no setting present', () => {
+    // Regression for TESTING-AUDIT.md defect 21 (resolved 2026-08-15): the
+    // pre-boot fallback used to be '12' while Settings shipped '24', so early
+    // boot flashed 12-hour then flipped. Both sides now agree on 24.
     delete globalThis.window.gymApp;
-    assert.equal(getTimeFormat(), '12');
+    assert.equal(getTimeFormat(), '24');
 });
 
 test('getTimeFormat: returns 24 when setting is 24', () => {
@@ -33,9 +36,14 @@ test('getTimeFormat: returns 24 when setting is 24', () => {
     assert.equal(getTimeFormat(), '24');
 });
 
-test('getTimeFormat: any non-24 value coerces to 12', () => {
-    setSetting('garbage');
+test('getTimeFormat: an explicit 12 setting is respected', () => {
+    setSetting('12');
     assert.equal(getTimeFormat(), '12');
+});
+
+test('getTimeFormat: any non-12 value coerces to 24', () => {
+    setSetting('garbage');
+    assert.equal(getTimeFormat(), '24');
 });
 
 test('timeFormatOptions: 12-hour returns hour12 true', () => {
@@ -72,32 +80,28 @@ test('formatTimeOfDay: empty / invalid input returns empty string', () => {
 });
 
 // ---------------------------------------------------------------------------
-// PRODUCT INCONSISTENCY, documented deliberately - do NOT "fix" either
-// assertion to hide it:
-//
-//   - helpers.getTimeFormat (js/utils/helpers.js ~133) falls back to '12'
-//     whenever window.gymApp.settings is not readable ("Defaults to 12-hour
-//     for the very early boot window"), so anything rendered before settings
-//     load uses the 12-hour clock.
-//   - models/Settings.js (~72) defaults timeFormat to '24' (owner call,
-//     2026-08-10), and applyDefaultUpgrades (~136) even upgrades a stored
-//     '12' to '24' once.
-//
-// Net effect: during early boot (or any non-app caller) times render 12-hour,
-// then flip to 24-hour once settings arrive. The two defaults should agree
-// (presumably both '24'); until the owner picks a side, this test states both
-// current behaviors side by side so the divergence cannot deepen silently.
+// Default-agreement regression (was the documented DIVERGENCE, TESTING-AUDIT
+// defect 21, resolved 2026-08-15): the helper's pre-boot fallback and the
+// Settings model default must agree so early boot never flashes one clock
+// and settles on another. Both sides are 24-hour; an explicit stored '12'
+// remains a respected user choice after the one-time v1 upgrade.
 // ---------------------------------------------------------------------------
 
-test('DIVERGENCE: pre-boot helper default is 12-hour while Settings default is 24-hour', async () => {
+test('pre-boot helper default and Settings default agree on 24-hour', async () => {
     const { Settings } = await import('../js/models/Settings.js');
 
     delete globalThis.window.gymApp; // the early-boot window: no app singleton yet
-    assert.equal(getTimeFormat(), '12', 'helpers side: pre-boot fallback is 12-hour');
+    assert.equal(getTimeFormat(), '24', 'helpers side: pre-boot fallback is 24-hour');
 
     assert.equal(Settings.getDefault().timeFormat, '24', 'model side: shipped default is 24-hour');
 
     const upgraded = new Settings({ timeFormat: '12', defaultsVersion: 0 });
     Settings.applyDefaultUpgrades(upgraded);
-    assert.equal(upgraded.timeFormat, '24', 'model side: v1 upgrade even moves stored 12 to 24');
+    assert.equal(upgraded.timeFormat, '24', 'model side: the one-time v1 upgrade moves a stored 12 to 24');
+
+    // A user who re-picks 12 AFTER the upgrade keeps it (defaultsVersion is
+    // already current, so the upgrade never runs again).
+    const chosen = new Settings({ timeFormat: '12', defaultsVersion: Settings.DEFAULTS_VERSION });
+    Settings.applyDefaultUpgrades(chosen);
+    assert.equal(chosen.timeFormat, '12', 'an explicit post-upgrade 12 is preserved');
 });
