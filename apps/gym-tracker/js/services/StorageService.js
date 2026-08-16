@@ -96,7 +96,7 @@ export class StorageService {
 
     saveProgram(program) {
         const programs = this.getPrograms();
-        const index = programs.findIndex(p => p.id === program.id);
+        const index = programs.findIndex(p => sameId(p.id, program.id));
 
         if (index >= 0) {
             programs[index] = program;
@@ -109,7 +109,7 @@ export class StorageService {
 
     deleteProgram(id) {
         const programs = this.getPrograms();
-        const filtered = programs.filter(p => p.id !== id);
+        const filtered = programs.filter(p => !sameId(p.id, id));
         return this.savePrograms(filtered);
     }
 
@@ -171,7 +171,7 @@ export class StorageService {
     getWorkoutSessionsByExercise(exerciseId) {
         const sessions = this.getWorkoutSessions();
         return sessions.filter(s =>
-            s.exercises.some(e => e.exerciseId === exerciseId)
+            s.exercises.some(e => sameId(e.exerciseId, exerciseId))
         );
     }
 
@@ -219,7 +219,7 @@ export class StorageService {
 
     deleteCustomExercise(id) {
         const exercises = this.getCustomExercises();
-        const filtered = exercises.filter(e => e.id !== id);
+        const filtered = exercises.filter(e => !sameId(e.id, id));
         return this.saveCustomExercises(filtered);
     }
 
@@ -271,6 +271,10 @@ export class StorageService {
      */
     migrateImport(data) {
         if (!data || typeof data !== 'object') return data;
+        // Migrators write into their input, so work on a private copy: the
+        // docstring promises pure `(data) => upgradedData` semantics and a
+        // caller holding onto its payload must not see it rewritten.
+        data = structuredClone(data);
         let cur = data.version || '1.0';
 
         // Migrators registry. Keys are the FROM version; each function

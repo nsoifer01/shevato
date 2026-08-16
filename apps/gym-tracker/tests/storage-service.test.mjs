@@ -178,18 +178,15 @@ test('custom exercises: add appends, delete removes (same-typed id)', () => {
 // ---------------------------------------------------------------------------
 // KNOWN DEFECTS: the four remaining === id comparisons.
 // FINDINGS ("The sameId rule") documents that strict === on ids is a bug
-// pattern; these methods have not been converted yet. Each test asserts the
-// CORRECT (sameId-tolerant) behavior.
+// pattern. Regression tests for the 2026-08-15 audit defect 12 (resolved):
+// saveProgram/deleteProgram/deleteCustomExercise/getWorkoutSessionsByExercise
+// used ===, so a stringified id (Firestore round-trip, dataset-sourced)
+// duplicated on save, no-opped deletes, and returned empty histories. All
+// four now go through sameId().
 // ---------------------------------------------------------------------------
 
 test(
     'saveProgram updates in place across a string/number id mismatch',
-    {
-        todo: 'KNOWN DEFECT: StorageService.saveProgram (~99) matches with '
-            + 'p.id === program.id; a stringified id (Firestore round-trip, '
-            + 'dataset-sourced id) misses the existing row and APPENDS A '
-            + 'DUPLICATE program instead of updating. Should use sameId().',
-    },
     () => {
         const svc = freshService();
         svc.saveProgram({ id: 7, name: 'Push' });
@@ -202,11 +199,6 @@ test(
 
 test(
     'deleteProgram deletes across a string/number id mismatch',
-    {
-        todo: 'KNOWN DEFECT: StorageService.deleteProgram (~112) filters with '
-            + 'p.id !== id, so deleting with a string id of a number-id program '
-            + 'silently no-ops. Should use !sameId().',
-    },
     () => {
         const svc = freshService();
         svc.saveProgram({ id: 7, name: 'Push' });
@@ -217,11 +209,6 @@ test(
 
 test(
     'deleteCustomExercise deletes across a string/number id mismatch',
-    {
-        todo: 'KNOWN DEFECT: StorageService.deleteCustomExercise (~222) filters '
-            + 'with e.id !== id; a string id from a dataset attribute no-ops '
-            + 'the delete. Should use !sameId().',
-    },
     () => {
         const svc = freshService();
         svc.addCustomExercise({ id: 900001, name: 'Cable Y-Raise' });
@@ -232,12 +219,6 @@ test(
 
 test(
     'getWorkoutSessionsByExercise finds sessions across an exerciseId type mismatch',
-    {
-        todo: 'KNOWN DEFECT: StorageService.getWorkoutSessionsByExercise (~174) '
-            + 'compares e.exerciseId === exerciseId, so a string exerciseId '
-            + '(or sessions whose exerciseId was stringified in sync) returns '
-            + 'an empty history. Should use sameId().',
-    },
     () => {
         const svc = freshService();
         svc.saveWorkoutSession({ id: 1, date: '2026-08-01', exercises: [{ exerciseId: 42, sets: [] }] });
