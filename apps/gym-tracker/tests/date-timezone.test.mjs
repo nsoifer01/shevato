@@ -95,7 +95,10 @@ test('formatSessionDateTime: a 23:30 EST session shows its local evening time', 
     const out = inZone('America/New_York', LATE_EVENING, `
         print(h.formatSessionDateTime({ date: '2026-03-07', endTime: '2026-03-08T04:30:00.000Z' }));
     `);
-    assert.equal(out, 'Mar 7, 2026, 11:30 PM');
+    // 24-hour output since the default-format alignment (TESTING-AUDIT
+    // defect 21, resolved 2026-08-15): no gymApp singleton in this child
+    // process, so the pre-boot default (now 24-hour) applies.
+    assert.equal(out, 'Mar 7, 2026, 23:30');
 });
 
 test('formatSessionDateTime: an instant inside the DST gap renders as the post-jump time', () => {
@@ -103,7 +106,8 @@ test('formatSessionDateTime: an instant inside the DST gap renders as the post-j
     const out = inZone('America/New_York', LATE_EVENING, `
         print(h.formatSessionDateTime({ date: '2026-03-08', endTime: '2026-03-08T07:01:00.000Z' }));
     `);
-    assert.equal(out, 'Mar 8, 2026, 3:01 AM');
+    // 24-hour for the same reason as the 23:30 test above.
+    assert.equal(out, 'Mar 8, 2026, 03:01');
 });
 
 test('formatSessionDateTime: falls back to the date alone for very old sessions', () => {

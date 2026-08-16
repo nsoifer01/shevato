@@ -7,6 +7,10 @@ export class TimerService {
         this.restTimers = new Map();
         this.workoutTimer = null;
         this.callbacks = new Map();
+        // Monotonic handle source. Date.now() was used before, so two timers
+        // started in the same millisecond collided in the Map and the first
+        // interval leaked unclearable.
+        this.nextTimerId = 1;
     }
 
     // Rest Timer
@@ -18,7 +22,7 @@ export class TimerService {
     // show "55s remaining" instead of the true ~25s. Each tick now reads
     // the true elapsed time and recomputes `remaining` from `endTime`.
     startRestTimer(duration, onTick, onComplete) {
-        const timerId = Date.now();
+        const timerId = this.nextTimerId++;
         const startTime = Date.now();
         let endTime = startTime + duration * 1000;
 
@@ -124,7 +128,10 @@ export class TimerService {
     stopWorkoutTimer() {
         if (this.workoutTimer) {
             clearInterval(this.workoutTimer.interval);
-            const finalElapsed = this.workoutTimer.elapsed;
+            // Recompute from the wall clock: the object's `elapsed` field was
+            // only a creation-time snapshot, so returning it handed callers
+            // the INITIAL elapsed value, not the elapsed time at stop.
+            const finalElapsed = Math.floor((Date.now() - this.workoutTimer.startTime) / 1000);
             this.workoutTimer = null;
             return finalElapsed;
         }

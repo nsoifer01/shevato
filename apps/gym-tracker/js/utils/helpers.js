@@ -126,16 +126,18 @@ export function formatDate(dateString, format = 'short') {
 
 /**
  * Read the user's time-format preference from the live app singleton
- * (window.gymApp.settings.timeFormat). Defaults to 12-hour for the
- * very early boot window before the app has loaded settings, and any
- * call paths outside the gym tracker.
+ * (window.gymApp.settings.timeFormat). Defaults to 24-hour, matching
+ * models/Settings.js (the shipped default, owner call 2026-08-10), so the
+ * early boot window before settings load renders the same clock the app
+ * settles on instead of flashing 12-hour first. An explicit '12' setting
+ * is respected; everything else means 24.
  */
 export function getTimeFormat() {
     try {
         const tf = window.gymApp?.settings?.timeFormat;
-        return tf === '24' ? '24' : '12';
+        return tf === '12' ? '12' : '24';
     } catch (_) {
-        return '12';
+        return '24';
     }
 }
 

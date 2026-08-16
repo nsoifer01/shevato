@@ -128,20 +128,25 @@ directories plus a 3-page canary sample of built output.
 
 ## Known defects pinned by todo tests (2026-08-15 audit)
 
-Each is asserted at its CORRECT behavior with `{ todo: 'KNOWN DEFECT: ...' }`
-so `node --test` reports it without failing; fixing the code flips the todo
-into a pass (then remove the todo option). Current list:
+All gym known defects from the 2026-08-15 audit are now FIXED and their
+quarantines are plain regression tests (see the sameId section below for the
+storage/import group; the SW precache fix is in the service-worker section).
+The last three closed on 2026-08-15 (fix/gym-timers-format):
 
-- **TimerService rest-timer ids are `Date.now()`** (~21): two starts in one
-  ms collide and orphan the first interval - `timer-service.test.mjs`.
-- **TimerService.stopWorkoutTimer returns the initial elapsed**, not the
-  elapsed at stop (~110 snapshots the field once); latent, no caller reads
-  the return today - `timer-service.test.mjs`.
+- TimerService rest-timer ids are a monotonic counter (were `Date.now()`,
+  so two starts in one ms collided and orphaned the first interval);
+  regression in `timer-service.test.mjs`.
+- `stopWorkoutTimer` recomputes final elapsed from the wall clock at stop
+  (used to return the creation-time snapshot); same file.
+- Time-format default unified on 24-hour: `helpers.getTimeFormat` pre-boot
+  fallback now agrees with the Settings model default (owner-consistent
+  call: Settings default, its v1 upgrade, and the README all said 24), so
+  early boot no longer flashes 12-hour and flips. An explicit stored '12'
+  remains respected. Regression in `time-format.test.mjs`; the DST-window
+  formatting expectations in `date-timezone.test.mjs` updated to 24-hour.
 
-Product inconsistency (documented, not a todo): helpers `getTimeFormat`
-defaults to '12' pre-boot while `Settings` defaults to '24' and even upgrades
-a stored '12' to '24', so early-boot surfaces render 12-hour then flip.
-Pinned side by side in `time-format.test.mjs`; owner should pick a side.
+If a NEW product defect is found, quarantine it here with a
+`{ todo: 'KNOWN DEFECT: ...' }` test asserting the correct behavior.
 
 ## The sameId rule: never compare ids with ===
 
