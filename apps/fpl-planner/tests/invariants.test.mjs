@@ -411,10 +411,16 @@ test('an illegal squad is caught rather than quietly optimised', () => {
 // --- performance (SPEC 13.4) ------------------------------------------------
 
 // The documented budget for a full transfer search over a realistic dataset,
-// measured on the sample data (320 players, 380 fixtures). The observed cost on
-// the development machine is roughly 100 ms, so this leaves an order of
-// magnitude of headroom for a slower CI runner before it fails.
-const TRANSFER_SEARCH_BUDGET_MS = 1500;
+// measured on the sample data (320 players, 380 fixtures). Measured in CPU
+// time (process.cpuUsage), not wall clock, for the same reason as the perf
+// suites and the plan-generation budget below: on a loaded machine or a slow
+// shared CI runner, wall time measures how busy the host is, not how much
+// work the search does. This exact assertion failed on a GitHub runner at
+// 1587 ms wall against the old 1500 ms wall budget while the CPU cost was
+// unremarkable. Observed CPU cost on the development machine is ~100 ms, so
+// 1500 ms of CPU leaves an order of magnitude of headroom for slower silicon
+// while still catching an accidental complexity explosion.
+const TRANSFER_SEARCH_BUDGET_CPU_MS = 1500;
 
 test('a full transfer search over the sample dataset stays inside its budget', (t) => {
   const names = ['meta', 'bootstrap', 'fixtures', 'entry', 'entry-history', 'entry-transfers', 'entry-picks'];
@@ -445,10 +451,12 @@ test('a full transfer search over the sample dataset stays inside its budget', (
   });
   assert.equal(squadState.picks.length, rules.squadSize);
 
-  const timings = [];
+  const cpuTimings = [];
+  const wallTimings = [];
   let plans = [];
   for (let run = 0; run < 3; run++) {
-    const started = Date.now();
+    const wall0 = Date.now();
+    const cpu0 = process.cpuUsage();
     plans = searchTransfers({
       squadState,
       projections: sampleProjections,
@@ -456,15 +464,18 @@ test('a full transfer search over the sample dataset stays inside its budget', (
       rules: sampleState.rules,
       horizon: 5,
     });
-    timings.push(Date.now() - started);
+    const cpu = process.cpuUsage(cpu0);
+    cpuTimings.push((cpu.user + cpu.system) / 1000);
+    wallTimings.push(Date.now() - wall0);
   }
-  const median = timings.slice().sort((a, b) => a - b)[1];
+  const median = cpuTimings.slice().sort((a, b) => a - b)[1];
 
-  t.diagnostic(`projections for 320 players over 5 gameweeks: ${projectionMs} ms`);
-  t.diagnostic(`transfer search runs: ${timings.join(', ')} ms (median ${median} ms, budget ${TRANSFER_SEARCH_BUDGET_MS} ms)`);
+  t.diagnostic(`projections for 320 players over 5 gameweeks: ${projectionMs} ms wall`);
+  t.diagnostic(`transfer search runs: ${cpuTimings.map((n) => n.toFixed(0)).join(', ')} ms CPU `
+    + `(wall ${wallTimings.join(', ')} ms; median ${median.toFixed(0)} ms CPU, budget ${TRANSFER_SEARCH_BUDGET_CPU_MS} ms)`);
   t.diagnostic(`plans returned: ${plans.length}, best: ${plans[0].transferCount} transfer(s)`);
 
-  assert.ok(median < TRANSFER_SEARCH_BUDGET_MS, `transfer search took ${median} ms`);
+  assert.ok(median < TRANSFER_SEARCH_BUDGET_CPU_MS, `transfer search took ${median.toFixed(0)} ms CPU`);
 
   // A budget that is met by returning nothing is not a budget.
   assert.ok(plans.length > 1);
