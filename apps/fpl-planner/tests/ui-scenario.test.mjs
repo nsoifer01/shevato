@@ -735,3 +735,57 @@ test('an illegal scenario reports the reason instead of pretending to be fine', 
   assert.equal(s.ok, false);
   assert.ok(s.reason && s.reason.length > 5);
 });
+
+/* ------------------------- every operation, end to end through the planner */
+
+test('a chain of every operation still produces a SquadState buildPlan accepts', async () => {
+  // The full walk the interactive sandbox offers: transfer, starter/sub swap,
+  // captain, vice, bench reorder, then one undo. The point is not any single
+  // edit (each has its own test above) but that the COMPOSITION still hands
+  // the ordinary planner a squad state it can plan from, because "ask the
+  // planner from this team" is the whole reason the scenario is a SquadState.
+  let sc = scenario0();
+  const [outId, inId] = nextLegalTransfer(sc);
+  ({ scenario: sc } = applyTransfer(sc, ctx, outId, inId));
+
+  const sub = sc.benchOrder.find(id => sc.xi.some(x => P(x).position === P(id).position));
+  const starter = sc.xi.find(id => P(id).position === P(sub).position);
+  ({ scenario: sc } = swapPlayers(sc, ctx, starter, sub));
+
+  ({ scenario: sc } = setCaptain(sc, ctx, sc.xi.find(id => id !== sc.captain && id !== sc.viceCaptain)));
+  ({ scenario: sc } = setViceCaptain(sc, ctx, sc.xi.find(id => id !== sc.captain && id !== sc.viceCaptain)));
+  if (sc.benchOrder.length > 1) ({ scenario: sc } = moveBench(sc, ctx, sc.benchOrder[1], 'up'));
+  sc = undo(sc); // the bench reorder steps back; everything before it survives
+
+  const check = validateScenario(sc, ctx);
+  assert.equal(check.ok, true, JSON.stringify(check.violations));
+
+  const ss = scenarioSquadState(sc, ctx);
+  assert.equal(ss.picks.length, rules.squadSize);
+  assert.equal(ss.bankTenths, scenarioMoney(sc, ctx).bankAfterTenths);
+  assert.equal(ss.freeTransfers, scenarioAccounting(sc, ctx).freeTransfersAfter);
+
+  const bundle = await buildPlan({ gameState, squadState: ss, options: { horizon: 3 } });
+  assert.equal(bundle.validation.ok, true, 'the planner plans a legal squad from the edited state');
+  assert.equal(bundle.squadState.picks.some(p => p.playerId === inId), true,
+    'and it starts from the squad the user built, not the imported one');
+});
+
+test('reversing a transfer nets to zero through the whole ledger', () => {
+  // FPL charges for the difference between squads, not for clicks. A transfer
+  // made and reversed must therefore cost nothing: no transfer counted, no
+  // hit, the bank back to the import. This is the net-semantics rule the
+  // interaction rework must never weaken.
+  let sc = scenario0();
+  const [outId, inId] = nextLegalTransfer(sc);
+  ({ scenario: sc } = applyTransfer(sc, ctx, outId, inId));
+  ({ scenario: sc } = applyTransfer(sc, ctx, inId, outId));
+
+  const diff = scenarioDiff(sc, squadState);
+  assert.equal(diff.transfersIn.length, 0);
+  assert.equal(diff.transfersOut.length, 0);
+  assert.equal(scenarioAccounting(sc, ctx).hits, 0);
+  assert.equal(scenarioMoney(sc, ctx).bankAfterTenths, squadState.bankTenths);
+  // Undo history is click history, on purpose: both edits remain undoable.
+  assert.equal(sc.past.length, 2);
+});

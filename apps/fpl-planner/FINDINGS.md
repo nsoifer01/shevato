@@ -756,9 +756,10 @@ ranking, and only the part of a correction that changes ORDER changes decisions
 - **Two bugs the browser found that the module tests could not.** The picker
   opened onto an empty box because `combobox` only opens on a keystroke (it now
   exposes `open()`, and the picker focuses and opens on mount), and the picker
-  rendered ABOVE the pitch while the button that summoned it sat below the
-  bench, so on a phone nothing appeared to happen. It now takes the action
-  bar's place. Neither is visible from a passing assertion about state.
+  originally rendered ABOVE the pitch while the button that summoned it sat
+  below the bench, so on a phone nothing appeared to happen. Since the
+  2026-08-16 rework it renders in the pinned action dock, exactly where the
+  press happened. Neither bug is visible from a passing assertion about state.
 - **`.fpl-seg` does not wrap, and a third option in the squad switch pushed the
   whole PAGE sideways at 390px** (measured 392px of control in a 390px
   viewport). Fixed for every `.fpl-seg` under 640px, which also fixes the
@@ -780,6 +781,88 @@ ranking, and only the part of a correction that changes ORDER changes decisions
   key, and no second analytics event, because `privacy.html` commits this app to
   exactly one. A hypothetical plan is deliberately absent from plan history, so
   the diff between stored versions still describes real recommendations only.
+
+## The sandbox interaction architecture (rework of 2026-08-16)
+
+The scenario shipped correct and felt broken: every click flickered, the page
+jumped, and the workflow read as the app rebuilding itself. The engine was
+untouched by the fix; every root cause was in how the frontend rendered. The
+rules below are what future work must preserve, with the measurements that
+motivated them (probe: scrollY captured at the click event vs settled,
+document-absolute element positions, MutationObserver node counts).
+
+- **Root cause 1, the flicker: every sandbox action called `renderApp()`,
+  which rebuilt the ENTIRE app DOM** (topbar, hero, every dashboard card, the
+  pitch, the sandbox) via `mount(appEl, ...)`. A full subtree replacement
+  repaints everything the user is looking at, throws keyboard focus to
+  `<body>` (measured: focus on BODY after every single action), and defeats
+  the browser's scroll anchoring. It is also invisible to CLS: freshly
+  inserted nodes do not count as "shifted", so the layout-shift metric read
+  0.000 throughout. THE RULE: scenario interactions never call `renderApp()`.
+  They flow through `createSandboxView().update(props)`, which diffs on object
+  identity (exact, because every scenario edit returns a new object) and
+  rewrites only the slots whose inputs changed. A selection click toggles
+  classes on the EXISTING cards; node identity is asserted by unit test and
+  by the E2E probe-mark check. `renderApp()` remains for genuine view-level
+  navigation (tab switches, a new plan), where scroll-to-top is intended.
+- **Root cause 2, the jumping: in-flow content above or at the interaction
+  point changed height.** Three concrete cases, all measured: entering swap
+  mode grew EVERY card by a blocked-reason line (+33px per card, bench pushed
+  +133px); the first transfer mounted the moves disclosure above the pitch and
+  moved the whole pitch 133px; on a phone the verdict wrapping one line longer
+  moved it 22px. THE RULE: everything rendered ABOVE the pitch (flag, summary
+  strip, formation note) keeps a stable height through every edit; reactions
+  to an edit (verdict, moves list, refusal messages) render BELOW the pitch,
+  next to the dock where the edit was made; swap-mode refusals mark cards with
+  classes only (the sentence appears in the dock on press, and stays
+  pre-phrased in the card's aria-label for screen readers).
+- **Root cause 3, "nothing happened" / forced scrolling: the action bar and
+  picker lived below the bench and the picker `scrollIntoView`-ed itself**
+  (+192px of forced page scroll per open, more on a phone). THE RULE: one
+  action dock, a single stable slot after the bench that PINS near the
+  viewport bottom (`position: sticky; bottom`) while a selection or the picker
+  is live. The picker renders into it, its option list opens UPWARD anchored
+  to the picker box (not the input, or the list covers the picker's own
+  header), and nothing in the sandbox ever calls `scrollIntoView` or
+  `scrollTo`. After the rework the app-caused scroll delta is 0px for every
+  interaction on desktop and mobile, with the dock and picker fully inside
+  the viewport.
+- **Root cause 4, a stale async overwrite: "Ask the planner from this team"
+  stored whatever the worker returned**, so an answer computed for a squad the
+  user had already edited away rendered as if it described the newer one. THE
+  RULE: capture the scenario object the question was asked about and compare
+  by identity when the answer lands; discard on mismatch. The busy state never
+  replaces the sandbox, only the answer slot below it. Pinned by the E2E
+  stability block (edit mid-ask, assert the stale card never renders and the
+  edit survives).
+- **The open picker is a cached node keyed on the picker request object**, so
+  an unrelated update (the expected-points toggle) cannot rebuild it and eat
+  the user's typed search. The flip side: any action that changes the squad
+  under an open picker must CLOSE it (`undo`, `reset`, `copy-recommended` do),
+  because a cached candidate list priced against a squad that no longer exists
+  would offer wrong affordability.
+- **Selection is kept across captain/vice edits** (the armband appearing on the
+  selected card is the feedback, and the player's remaining actions stay one
+  press away); it clears on completed swaps and transfers. A completed
+  transfer flashes and focuses the incoming card, so "what changed" is visible
+  on the pitch itself. Focus never falls to `<body>`: a rebuilt dock refocuses
+  the same-labelled button, and a vanished control hands focus to the card the
+  action was about, always with `preventScroll`.
+- **Cost per interaction, before vs after:** a selection click ran
+  `scenarioSummary` (two `squadHorizonValue` lineup optimizations) plus a
+  whole-app rebuild, 3.3-7.5ms of synchronous work on the 320-player sample
+  and strictly worse at live size; it is now 0.4-0.6ms and touches 3 nodes.
+  `scenarioSummary` runs only when the scenario/projections actually changed.
+  Ordinary edits still run NO planner work; the worker is involved only for
+  the explicit "Ask the planner from this team".
+- **The regression net:** `tests/ui-sandbox.test.mjs` pins node identity,
+  slot behaviour, dock content and toolbar state under the mini DOM;
+  `apps/fpl-planner/e2e/scenario.mjs` carries a stability block (desktop AND
+  390px mobile) asserting zero app-caused scroll, card-DOM preservation,
+  dock/picker inside the viewport, unclipped buttons via
+  `elementsFromPoint`, typed-search survival, pitch position unchanged
+  through a completed transfer, the stale-answer discard, and no horizontal
+  overflow.
 
 ## The gameweek boundaries, and what each one broke (fixed 2026-08-15)
 

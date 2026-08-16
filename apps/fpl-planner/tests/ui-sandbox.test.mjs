@@ -1,11 +1,13 @@
-// The sandbox views, rendered with the real modules under the repo's mini DOM.
+// The sandbox view, rendered with the real modules under the repo's mini DOM.
 //
 // The browser drivers cover the in-season flow end to end. What lives here is
-// the part a headless browser cannot reach without a dataset that does not
-// exist: the PRE-SEASON card, where there is no imported squad to switch to and
-// the editable view has to be seeded from the opening 15 instead. Gating that
-// switch on holding picks is what made the built fifteen uneditable, and only a
-// rendered card shows it.
+// what a headless browser cannot reach cheaply, plus the contract the 2026-08
+// interaction rework introduced: the view is created ONCE and updated in
+// place, so a selection click must not destroy the pitch it is selecting on.
+// The original implementation re-rendered the whole app per click, which
+// defeated scroll anchoring (hundreds of pixels of jump per click) and threw
+// focus to <body>; the node-identity assertions here are the regression tests
+// for that root cause.
 
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -25,7 +27,7 @@ const { buildGameState } = await import('../js/engine/normalize.js');
 const { buildSquadState } = await import('../js/engine/squad.js');
 const { buildPlan } = await import('../js/engine/planner.js');
 const { pitchCard } = await import('../js/ui/dashboard.js');
-const { renderSandbox } = await import('../js/ui/sandbox.js');
+const { createSandboxView } = await import('../js/ui/sandbox.js');
 const { createScenario, setCaptain, applyTransfer, isDirty, transferBlockedReason } = await import('../js/ui/scenario.js');
 
 const APP = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -44,29 +46,44 @@ const draftSquad = buildSquadState({ entry: null, history: null, transfers: null
 const inSeasonPlan = await buildPlan({ gameState, squadState: inSeasonSquad, options: { horizon: 3 } });
 const draftPlan = await buildPlan({ gameState, squadState: draftSquad, options: { horizon: 3 } });
 
+// A view plus the base props it renders from, so a test updates the SAME view
+// the way app.js does rather than building a fresh tree per state.
+function makeView(plan, squadState, { onAction = () => {}, onPlayerDetails = () => {}, origin } = {}) {
+  const ctx = { gameState, squadState };
+  const scenario = createScenario({
+    squadState, gameState, plan: plan.current,
+    origin: origin ?? (squadState.picks.length ? 'current' : 'recommended'),
+  });
+  const view = createSandboxView({ onAction, onPlayerDetails });
+  const base = {
+    scenario, ctx, projections: plan.projections, gw: plan.current.gw,
+    horizon: 3, discount: 0.85, showXp: false, selection: null,
+    picker: null, error: null, busy: false, scenarioBundle: null,
+  };
+  view.update(base);
+  return { view, base, ctx, scenario };
+}
+
 const segLabels = (card) => {
   const tools = query(card, 'fpl-card-tools');
   const seg = tools ? query(tools, 'fpl-seg') : null;
   return seg ? seg.childNodes.filter(n => n.nodeType === 1).map(b => textOf(b).trim()) : [];
 };
 
+const sandboxOf = (view) => query(view.node, 'fpl-sandbox');
+
 test('in season the card offers all three views of the squad', () => {
   const card = pitchCard({
-    bundle: inSeasonPlan, gameState, initialMode: 'current', sandbox: () => renderSandboxFor(inSeasonPlan, inSeasonSquad),
+    bundle: inSeasonPlan, gameState, initialMode: 'current', sandbox: () => makeView(inSeasonPlan, inSeasonSquad).view.node,
   });
   assert.deepEqual(segLabels(card), ['Current team', 'My scenario', 'Recommended']);
 });
 
 test('pre-season the card still offers the editable view, without a current team', () => {
-  // There are no picks before the first deadline, so "Current team" would be an
-  // empty tab. The editable one has to survive that, seeded from the plan.
-  assert.equal(draftSquad.picks.length, 0);
   const card = pitchCard({
-    bundle: draftPlan, gameState, initialMode: 'current', sandbox: () => renderSandboxFor(draftPlan, draftSquad),
+    bundle: draftPlan, gameState, initialMode: 'scenario', sandbox: () => makeView(draftPlan, draftSquad).view.node,
   });
-  const labels = segLabels(card);
-  assert.deepEqual(labels, ['My scenario', 'Recommended']);
-  assert.equal(labels.includes('Current team'), false, 'nothing offers a squad that does not exist');
+  assert.deepEqual(segLabels(card), ['My scenario', 'Recommended']);
 });
 
 test('the remembered view survives a squad with no picks', () => {
@@ -76,7 +93,7 @@ test('the remembered view survives a squad with no picks', () => {
   // was unusable. The view is app state and must be honoured wherever it can be.
   const card = pitchCard({
     bundle: draftPlan, gameState, initialMode: 'scenario',
-    sandbox: () => renderSandboxFor(draftPlan, draftSquad),
+    sandbox: () => makeView(draftPlan, draftSquad).view.node,
   });
   const on = query(query(card, 'fpl-card-tools'), 'fpl-seg')
     .childNodes.filter(n => n.nodeType === 1).find(b => (b.className || '').includes('is-on'));
@@ -88,7 +105,7 @@ test('a remembered view this squad cannot offer falls back instead of blanking',
   // Pre-season there is no "Current team" to show.
   const card = pitchCard({
     bundle: draftPlan, gameState, initialMode: 'current',
-    sandbox: () => renderSandboxFor(draftPlan, draftSquad),
+    sandbox: () => makeView(draftPlan, draftSquad).view.node,
   });
   const on = query(query(card, 'fpl-card-tools'), 'fpl-seg')
     .childNodes.filter(n => n.nodeType === 1).find(b => (b.className || '').includes('is-on'));
@@ -98,8 +115,7 @@ test('a remembered view this squad cannot offer falls back instead of blanking',
 test('editing a pre-season build reads as edited and lists the changes', () => {
   // With no imported squad to diff against, "have I changed anything" has to be
   // answered against the fifteen this scenario was seeded from.
-  const ctx = { gameState, squadState: draftSquad };
-  const sc = createScenario({ squadState: draftSquad, gameState, plan: draftPlan.current, origin: 'recommended' });
+  const { view, base, ctx, scenario: sc } = makeView(draftPlan, draftSquad, { origin: 'recommended' });
   assert.equal(isDirty(sc, draftSquad), false);
 
   const outId = sc.xi[4];
@@ -111,17 +127,14 @@ test('editing a pre-season build reads as edited and lists the changes', () => {
   assert.equal(error, null);
   assert.equal(isDirty(edited, draftSquad), true, 'a swapped player is an edit even before the season starts');
 
-  const node = renderSandbox({
-    scenario: edited, ctx, projections: draftPlan.projections, gw: draftPlan.current.gw,
-    horizon: 3, discount: 0.85, showXp: false, selection: null,
-    onAction: () => {}, onPlayerDetails: () => {}, picker: null,
-  });
-  assert.match(textOf(query(node, 'fpl-scenario-flag')), /edited scenario/i);
-  const list = queryAll(node, 'fpl-moves');
+  view.update({ ...base, scenario: edited });
+  const box = sandboxOf(view);
+  assert.match(textOf(query(box, 'fpl-scenario-flag')), /edited scenario/i);
+  const list = queryAll(box, 'fpl-moves');
   assert.equal(list.length, 1, 'the change is listed');
   // and it is NOT called a transfer, because before the deadline it is not one
-  assert.doesNotMatch(textOf(node), /Transfers in this scenario/i);
-  assert.match(textOf(node), /Changes to your opening fifteen/i);
+  assert.doesNotMatch(textOf(box), /Transfers in this scenario/i);
+  assert.match(textOf(box), /Changes to your opening fifteen/i);
 });
 
 test('with no sandbox supplied the card is exactly what it was before', () => {
@@ -129,26 +142,14 @@ test('with no sandbox supplied the card is exactly what it was before', () => {
   assert.deepEqual(segLabels(card), ['Current team', 'Recommended']);
 });
 
-function renderSandboxFor(plan, squadState) {
-  const ctx = { gameState, squadState };
-  const scenario = createScenario({
-    squadState, gameState, plan: plan.current,
-    origin: squadState.picks.length ? 'current' : 'recommended',
-  });
-  return renderSandbox({
-    scenario, ctx, projections: plan.projections, gw: plan.current.gw,
-    horizon: 3, discount: 0.85, showXp: false, selection: null,
-    onAction: () => {}, onPlayerDetails: () => {}, picker: null,
-  });
-}
-
 test('the pre-season sandbox renders the built fifteen and can be edited', () => {
-  const node = renderSandboxFor(draftPlan, draftSquad);
-  const cards = queryAll(node, 'fpl-pp-edit');
+  const { view } = makeView(draftPlan, draftSquad);
+  const box = sandboxOf(view);
+  const cards = queryAll(box, 'fpl-pp-edit');
   assert.equal(cards.length, 15, 'eleven and four');
   // It must not claim a transfer was made just because a squad exists.
-  assert.equal(queryAll(node, 'fpl-moves').length, 0);
-  const flag = query(node, 'fpl-scenario-flag');
+  assert.equal(queryAll(box, 'fpl-moves').length, 0);
+  const flag = query(box, 'fpl-scenario-flag');
   assert.match(textOf(flag), /nothing here is sent to Fantasy Premier League/i);
   // Before the first deadline the manager owns no squad, so this must not be
   // described as the team he has.
@@ -157,43 +158,30 @@ test('the pre-season sandbox renders the built fifteen and can be edited', () =>
 });
 
 test('the editable pitch says which squad it is, every time it renders', () => {
-  const ctx = { gameState, squadState: inSeasonSquad };
-  const clean = createScenario({ squadState: inSeasonSquad, gameState });
-  const untouched = renderSandbox({
-    scenario: clean, ctx, projections: inSeasonPlan.projections, gw,
-    horizon: 3, discount: 0.85, showXp: false, selection: null,
-    onAction: () => {}, onPlayerDetails: () => {}, picker: null,
-  });
-  assert.match(textOf(query(untouched, 'fpl-scenario-flag')), /your team, ready to edit/i);
+  const { view, base, ctx, scenario: clean } = makeView(inSeasonPlan, inSeasonSquad);
+  assert.match(textOf(query(view.node, 'fpl-scenario-flag')), /your team, ready to edit/i);
 
   const { scenario: edited } = setCaptain(clean, ctx, clean.xi.find(id => id !== clean.captain && id !== clean.viceCaptain));
-  const dirty = renderSandbox({
-    scenario: edited, ctx, projections: inSeasonPlan.projections, gw,
-    horizon: 3, discount: 0.85, showXp: false, selection: null,
-    onAction: () => {}, onPlayerDetails: () => {}, picker: null,
-  });
-  assert.match(textOf(query(dirty, 'fpl-scenario-flag')), /edited scenario/i);
-  assert.match(textOf(query(dirty, 'fpl-scenario-flag')), /not your FPL squad/i);
+  view.update({ ...base, scenario: edited });
+  const flag = query(view.node, 'fpl-scenario-flag');
+  assert.match(textOf(flag), /edited scenario/i);
+  assert.match(textOf(flag), /not your FPL squad/i);
 });
 
 test('selecting a player offers actions, and the bench offers ordering', () => {
-  const ctx = { gameState, squadState: inSeasonSquad };
-  const scenario = createScenario({ squadState: inSeasonSquad, gameState });
   const seen = [];
-  const withSelection = (playerId, mode) => renderSandbox({
-    scenario, ctx, projections: inSeasonPlan.projections, gw, horizon: 3, discount: 0.85,
-    showXp: false, selection: { playerId, mode },
-    onAction: (type, payload) => seen.push([type, payload]), onPlayerDetails: () => {}, picker: null,
+  const { view, base, scenario } = makeView(inSeasonPlan, inSeasonSquad, {
+    onAction: (type, payload) => seen.push([type, payload]),
   });
 
-  const starter = withSelection(scenario.xi[2], 'menu');
-  const starterActions = queryAll(query(starter, 'fpl-actionbar'), 'fpl-btn').map(b => textOf(b).trim());
+  view.update({ ...base, selection: { playerId: scenario.xi[2], mode: 'menu' } });
+  const starterActions = queryAll(query(view.node, 'fpl-actionbar'), 'fpl-btn').map(b => textOf(b).trim());
   assert.ok(starterActions.some(a => /Make captain/.test(a)));
   assert.ok(starterActions.some(a => /Transfer out/.test(a)));
   assert.ok(!starterActions.some(a => /bench/i.test(a) && /Move/.test(a)), 'a starter has no bench order');
 
-  const subNode = withSelection(scenario.benchOrder[1], 'menu');
-  const subActions = queryAll(query(subNode, 'fpl-actionbar'), 'fpl-btn').map(b => textOf(b).trim());
+  view.update({ ...base, selection: { playerId: scenario.benchOrder[1], mode: 'menu' } });
+  const subActions = queryAll(query(view.node, 'fpl-actionbar'), 'fpl-btn').map(b => textOf(b).trim());
   assert.ok(subActions.some(a => /Move up the bench/.test(a)));
   assert.ok(subActions.some(a => /Swap into the eleven/.test(a)));
 
@@ -201,32 +189,124 @@ test('selecting a player offers actions, and the bench offers ordering', () => {
   assert.ok(!subActions.some(a => /Make captain/.test(a)), 'a substitute is not offered the armband');
 
   // And the buttons actually dispatch.
-  click(buttonWith(subNode, 'Move up the bench'));
+  click(buttonWith(view.node, 'Move up the bench'));
   assert.deepEqual(seen[seen.length - 1][0], 'bench-up');
 });
 
-test('swap mode marks the players who cannot take the place, with the reason', () => {
-  const ctx = { gameState, squadState: inSeasonSquad };
-  const scenario = createScenario({ squadState: inSeasonSquad, gameState });
-  const node = renderSandbox({
-    scenario, ctx, projections: inSeasonPlan.projections, gw, horizon: 3, discount: 0.85,
-    showXp: false, selection: { playerId: scenario.benchGk, mode: 'swap' },
-    onAction: () => {}, onPlayerDetails: () => {}, picker: null,
-  });
-  const blocked = queryAll(node, 'fpl-pp-blocked');
+test('a selection click updates the existing cards instead of rebuilding the pitch', () => {
+  // THE regression test for the flicker/jump root cause: a click that only
+  // changes which player is selected must not destroy a single card node.
+  // Destroyed nodes are what defeated scroll anchoring and dropped focus.
+  const { view, base, scenario } = makeView(inSeasonPlan, inSeasonSquad);
+  const before = queryAll(view.node, 'fpl-pp-edit');
+
+  view.update({ ...base, selection: { playerId: scenario.xi[2], mode: 'menu' } });
+  const after1 = queryAll(view.node, 'fpl-pp-edit');
+  assert.equal(before.length, after1.length);
+  for (let i = 0; i < before.length; i++) {
+    assert.equal(before[i], after1[i], 'every card node survives a selection change by identity');
+  }
+  const selected = after1.filter(c => (c.className || '').includes('is-selected'));
+  assert.equal(selected.length, 1, 'exactly one card is marked selected');
+  assert.equal(selected[0].getAttribute('aria-pressed'), 'true');
+
+  // Deselecting also touches classes only.
+  view.update({ ...base, selection: null });
+  const after2 = queryAll(view.node, 'fpl-pp-edit');
+  assert.equal(after2.filter(c => (c.className || '').includes('is-selected')).length, 0);
+  assert.equal(before[0], after2[0]);
+});
+
+test('an actual edit rebuilds the pitch, and only then', () => {
+  const { view, base, ctx, scenario } = makeView(inSeasonPlan, inSeasonSquad);
+  const before = queryAll(view.node, 'fpl-pp-edit');
+  const { scenario: edited } = setCaptain(scenario, ctx, scenario.xi.find(id => id !== scenario.captain && id !== scenario.viceCaptain));
+  view.update({ ...base, scenario: edited });
+  const after = queryAll(view.node, 'fpl-pp-edit');
+  assert.equal(after.length, before.length, 'still fifteen cards');
+  assert.notEqual(before[0], after[0], 'the cards were rebuilt for the new squad state');
+});
+
+test('swap mode marks legal and blocked partners on the existing cards', () => {
+  const { view, base, scenario } = makeView(inSeasonPlan, inSeasonSquad);
+  const before = queryAll(view.node, 'fpl-pp-edit');
+  view.update({ ...base, selection: { playerId: scenario.benchGk, mode: 'swap' } });
+  const after = queryAll(view.node, 'fpl-pp-edit');
+  assert.equal(before[0], after[0], 'entering swap mode does not rebuild the pitch either');
+
+  const blocked = after.filter(c => (c.className || '').includes('is-target-blocked'));
+  const legal = after.filter(c => (c.className || '').includes('is-target') && !(c.className || '').includes('is-target-blocked'));
   assert.ok(blocked.length > 0, 'an illegal partner is marked, not silently inert');
-  assert.match(textOf(blocked[0]), /goalkeeper|eleven plays/i);
+  assert.ok(legal.length > 0, 'the starting goalkeeper is a legal partner for the reserve');
+  // The reason is pre-phrased for assistive tech; the visible sentence appears
+  // in the dock when the card is actually pressed.
+  assert.match(blocked[0].getAttribute('aria-label'), /cannot swap/i);
+});
+
+test('a refusal renders in the dock, in the validator\'s words', () => {
+  const { view, base, scenario } = makeView(inSeasonPlan, inSeasonSquad);
+  view.update({
+    ...base,
+    selection: { playerId: scenario.benchGk, mode: 'swap' },
+    error: 'The reserve goalkeeper has his own slot and cannot change places with an outfield substitute.',
+  });
+  const msg = query(view.node, 'fpl-dock-msg');
+  assert.ok(msg, 'the dock carries the refusal');
+  assert.match(textOf(msg), /reserve goalkeeper/i);
+  assert.ok((msg.className || '').includes('is-bad'));
+});
+
+test('the transfer picker takes the dock, and the dock reads as live', () => {
+  const seen = [];
+  const { view, base, scenario } = makeView(inSeasonPlan, inSeasonSquad, {
+    onAction: (type, payload) => seen.push([type, payload]),
+  });
+  const picker = { outId: scenario.xi[3] };
+  view.update({ ...base, picker });
+  const dock = query(view.node, 'fpl-dock');
+  assert.ok((dock.className || '').includes('is-live'), 'the dock pins while the picker is open');
+  assert.ok(query(dock, 'fpl-picker'), 'the picker renders inside the dock');
+  assert.match(textOf(query(dock, 'fpl-picker-head')), /Replace/);
+
+  // The SAME picker object across updates keeps the same node, so typing in the
+  // search box survives unrelated updates.
+  const boxBefore = query(dock, 'fpl-picker');
+  view.update({ ...base, picker, error: 'Some refusal.' });
+  assert.equal(query(view.node, 'fpl-picker'), boxBefore, 'the open picker is not rebuilt by an unrelated update');
+
+  // Closing it returns the hint and unpins.
+  view.update({ ...base, picker: null });
+  assert.ok(!(query(view.node, 'fpl-dock').className || '').includes('is-live'));
+  assert.match(textOf(query(view.node, 'fpl-dock')), /Choose a player/i);
+});
+
+test('the toolbar reflects undo, reset and busy state in place', () => {
+  const { view, base, ctx, scenario } = makeView(inSeasonPlan, inSeasonSquad);
+  const undo = buttonWith(view.node, 'Undo');
+  const reset = buttonWith(view.node, 'Reset to my team');
+  assert.equal(undo.disabled, true, 'nothing to undo yet');
+  assert.equal(reset.disabled, true, 'nothing to reset yet');
+
+  const { scenario: edited } = setCaptain(scenario, ctx, scenario.xi.find(id => id !== scenario.captain && id !== scenario.viceCaptain));
+  view.update({ ...base, scenario: edited });
+  assert.equal(buttonWith(view.node, 'Undo'), undo, 'the toolbar buttons are stable nodes');
+  assert.equal(undo.disabled, false);
+  assert.equal(reset.disabled, false);
+
+  view.update({ ...base, scenario: edited, busy: true });
+  assert.equal(buttonWith(view.node, 'Asking the planner...').disabled, true);
+  assert.match(textOf(query(view.node, 'fpl-scenario-busy')), /stays editable/i, 'the busy note does not replace the scenario');
+  assert.equal(queryAll(view.node, 'fpl-pp-edit').length, 15, 'the pitch is untouched while the planner thinks');
 });
 
 test('the expected-points toggle adds detail and nothing else moves', () => {
-  const ctx = { gameState, squadState: inSeasonSquad };
-  const scenario = createScenario({ squadState: inSeasonSquad, gameState });
-  const base = { scenario, ctx, projections: inSeasonPlan.projections, gw, horizon: 3, discount: 0.85, selection: null, onAction: () => {}, onPlayerDetails: () => {}, picker: null };
-  const off = renderSandbox({ ...base, showXp: false });
-  const on = renderSandbox({ ...base, showXp: true });
-  assert.equal(queryAll(off, 'fpl-pp-detail').length, 0);
-  assert.equal(queryAll(on, 'fpl-pp-detail').length, 15);
-  assert.equal(queryAll(off, 'fpl-pp-edit').length, queryAll(on, 'fpl-pp-edit').length);
+  const { view, base } = makeView(inSeasonPlan, inSeasonSquad);
+  assert.equal(queryAll(view.node, 'fpl-pp-detail').length, 0);
+  view.update({ ...base, showXp: true });
+  assert.equal(queryAll(view.node, 'fpl-pp-detail').length, 15);
+  view.update({ ...base, showXp: false });
+  assert.equal(queryAll(view.node, 'fpl-pp-detail').length, 0);
+  assert.equal(queryAll(view.node, 'fpl-pp-edit').length, 15);
 });
 
 /* ------------------------------------------------------------- chip card */

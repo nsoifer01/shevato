@@ -2377,11 +2377,14 @@ body.fpl-page {
   background: var(--green-soft);
 }
 .fpl-planner-app .fpl-pp-edit.is-target-blocked { opacity: 0.55; }
-.fpl-planner-app .fpl-pp-blocked {
-  margin-top: 5px;
-  font-size: 10.5px;
-  line-height: 1.35;
-  color: var(--red);
+/* A player an edit just brought in: one short glow, so "what changed" is
+   visible on the pitch itself, not only in the transfer list. */
+.fpl-planner-app .fpl-pp-edit.is-just-in {
+  animation: fpl-just-in 1.6s var(--ease) 1;
+}
+@keyframes fpl-just-in {
+  0% { border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+  100% { border-color: var(--border); box-shadow: none; }
 }
 
 /* "Show expected points" detail, hidden until asked for */
@@ -2401,32 +2404,47 @@ body.fpl-page {
 .fpl-planner-app .fpl-pp-gw { font-size: 10px; color: var(--text-dim); white-space: nowrap; }
 .fpl-planner-app .fpl-pp-gw i { color: var(--text-faint); font-style: normal; margin-right: 2px; }
 
-/* the action bar under the pitch */
-/* The scenario control surface.
-   
-   It sticks near the bottom while a player is selected, because selecting
-   someone in the top row of the pitch otherwise puts his actions a screen and a
-   half further down and the press reads as having done nothing. It is deliberately
-   NOT flush with the viewport edge: a bar wedged against the bottom reads as
-   browser chrome, while one floating clear of it reads as part of the app. It
-   appears only when there is a selection, so it never covers the pitch while the
-   user is just looking.
+/* The action dock: the scenario's one control surface.
+
+   It is a single stable slot in the flow after the bench, and the action bar,
+   the transfer picker and the hint all render INTO it, so opening or closing
+   any of them never moves the pitch or the summary above. While a selection or
+   the picker is live it sticks near the bottom of the viewport, because
+   selecting someone in the top row of the pitch otherwise puts his actions a
+   screen and a half further down and the press reads as having done nothing.
+   It is deliberately NOT flush with the viewport edge: a bar wedged against
+   the bottom reads as browser chrome, while one floating clear of it reads as
+   part of the app. The hint state is not pinned, so nothing covers the pitch
+   while the user is just looking.
 
    Near-opaque on purpose: backdrop-filter is skipped by headless Chromium and
    some engines, and a translucent bar lets the pitch bleed through exactly
    where the buttons are. */
-.fpl-planner-app .fpl-actionbar {
+.fpl-planner-app .fpl-dock.is-live {
   position: sticky;
   bottom: calc(14px + env(safe-area-inset-bottom, 0px));
   z-index: 3;
   max-width: 680px;
   margin: 18px auto calc(14px + env(safe-area-inset-bottom, 0px));
+}
+.fpl-planner-app .fpl-actionbar {
   background: var(--bg-raised);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   padding: 12px 14px;
   box-shadow: var(--shadow-pop);
 }
+/* A refusal, in the validator's own words, beside the control that was
+   pressed. */
+.fpl-planner-app .fpl-dock-msg {
+  margin-top: 8px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+}
+.fpl-planner-app .fpl-dock-msg.is-bad { color: var(--red); border-color: var(--red); }
 .fpl-planner-app .fpl-actionbar.is-swapping {
   border-color: var(--green);
   background: var(--green-soft);
@@ -2464,14 +2482,29 @@ body.fpl-page {
    does. */
 .fpl-planner-app .fpl-actionbar-group.is-aside { margin-left: auto; }
 .fpl-planner-app .fpl-sandbox-hint { margin-top: 16px; }
+.fpl-planner-app .fpl-sandbox-hint .fpl-btn { margin-left: 10px; }
 
-/* the replacement picker */
+/* The replacement picker lives in the dock too, so it opens exactly where the
+   "Transfer out" press happened and the page does not move at all. */
 .fpl-planner-app .fpl-picker {
   background: var(--bg-raised);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   padding: 12px 13px;
-  margin-bottom: 14px;
+  box-shadow: var(--shadow-pop);
+}
+/* While the dock is pinned near the viewport bottom, a dropdown that opens
+   DOWNWARD would open off screen, so the option list opens upward instead -
+   and it anchors to the PICKER box rather than the input, so the picker's own
+   header (who is being replaced, the selling price, Cancel) stays visible
+   under it. */
+.fpl-planner-app .fpl-dock.is-live .fpl-picker { position: relative; }
+.fpl-planner-app .fpl-dock.is-live .fpl-cb { position: static; }
+.fpl-planner-app .fpl-dock.is-live .fpl-cb-list {
+  top: auto;
+  bottom: calc(100% + 4px);
+  left: 0;
+  right: 0;
 }
 .fpl-planner-app .fpl-picker-head {
   display: flex;
@@ -2493,16 +2526,16 @@ body.fpl-page {
   .fpl-planner-app .fpl-sandbox-tools .fpl-btn { flex: 1 1 auto; }
   .fpl-planner-app .fpl-pp-gws { gap: 2px 4px; }
   .fpl-planner-app .fpl-pp-gw { font-size: 9px; }
-  .fpl-planner-app .fpl-pp-blocked { font-size: 9.5px; }
-  /* The shared back-to-top button is fixed at the bottom-right (44px, 20px
-     clear of both edges) and it is site chrome this app must not restyle. So
-     the scenario bar keeps its own controls out from under it instead. */
-  .fpl-planner-app .fpl-actionbar {
+  .fpl-planner-app .fpl-dock.is-live {
     max-width: none;
-    padding-right: 46px;
     bottom: calc(10px + env(safe-area-inset-bottom, 0px));
     margin: 14px 0 calc(10px + env(safe-area-inset-bottom, 0px));
   }
+  /* The shared back-to-top button is fixed at the bottom-right (44px, 20px
+     clear of both edges) and it is site chrome this app must not restyle. So
+     the dock keeps its own controls out from under it instead. */
+  .fpl-planner-app .fpl-actionbar,
+  .fpl-planner-app .fpl-picker { padding-right: 46px; }
   .fpl-planner-app .fpl-actionbar-actions { gap: 8px; }
   .fpl-planner-app .fpl-actionbar-group { flex: 1 1 100%; }
   .fpl-planner-app .fpl-actionbar-group.is-aside { margin-left: 0; }
@@ -2510,10 +2543,13 @@ body.fpl-page {
 }
 
 /* A short viewport (a phone in landscape, a small laptop window) is where a
-   sticky bar does the most damage, so it gives the pitch its space back and
+   pinned dock does the most damage, so it gives the pitch its space back and
    simply scrolls with the page. */
 @media (max-height: 520px) {
-  .fpl-planner-app .fpl-actionbar { position: static; margin: 14px 0; box-shadow: var(--shadow-sm); }
+  .fpl-planner-app .fpl-dock.is-live { position: static; margin: 14px 0; }
+  .fpl-planner-app .fpl-actionbar, .fpl-planner-app .fpl-picker { box-shadow: var(--shadow-sm); }
+  /* Not pinned, so the list can open downward again. */
+  .fpl-planner-app .fpl-dock.is-live .fpl-cb-list { top: calc(100% + 4px); bottom: auto; }
 }
 
 /* ------------------------------------------------- narrow-width segmenting ---
