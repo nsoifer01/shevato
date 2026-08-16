@@ -211,6 +211,7 @@ DOM behavior is covered because a copy of its logic passes in Node.
 | Performance | CDP (budgets) | `tests/browser/suites/perf.mjs` | First-party byte / request / DOM-size budgets per page, set from measured baselines with headroom |
 | PWA / offline | CDP | `tests/browser/suites/pwa-gym.mjs`, `apps/trip-planner/e2e/pwa.mjs` | Service-worker registration, cache contents, offline reload |
 | Cross-browser | Playwright (dev-dep) + `node --test` | `tests/cross-browser/` | Firefox + WebKit smoke of every page/app. Chromium depth stays in the CDP harness |
+| Firebase rules + multiplayer | Firestore emulator (npx firebase-tools, Java 21) | `apps/arena/tests-rules/`, `apps/arena/e2e/` | Security-rules suite (deny-all negative control) and a two-client multiplayer e2e against local emulators; never production Firebase |
 | Coverage | wrapper over `node --test` | `tests/coverage/` | Runs the unit estate under V8 coverage, reports per area, enforces line floors |
 
 ### Commands
@@ -222,6 +223,8 @@ npm run test:all           # "is this change safe to merge": npm test + test:bro
 npm run test:coverage      # coverage report to .coverage/summary.md + per-area floors
 npm run test:cross-browser # Firefox/WebKit smoke (needs: npm install && npx playwright install firefox webkit;
                            #   WebKit additionally needs system libs, so it runs fully only on CI)
+npm run test:arena:rules   # Firestore security-rules suite vs the local emulator (needs Java 21;
+npm run test:arena:emulator#   one-time firebase-tools download; weekly CI via arena-rules.yml)
 npm run test:<app>         # one app's unit suite (gym, football, fpl-planner, rising-shows, mario-kart,
                            #   arena, maptap, trip-planner); test:static, test:sync, test:analytics likewise
 npm run test:trip-planner:e2e | test:fpl-planner:e2e   # one app's browser E2E subset
@@ -253,6 +256,10 @@ guarantees; be precise about which you are relying on:
   pins the quarantine baseline per page and per axe rule id (`QUARANTINED`
   in `a11y.mjs`): a new violation class on any page fails outright and can
   never slide silently into the quarantine.
+
+As of 2026-08-16 every defect the audit catalogued is fixed and its
+quarantine retired into a normal regression test; the mechanism below is
+the standing convention for FUTURE finds.
 
 Every quarantined defect is catalogued in `TESTING-AUDIT.md`, which also
 distinguishes defects pinned by executable tests from findings that are
