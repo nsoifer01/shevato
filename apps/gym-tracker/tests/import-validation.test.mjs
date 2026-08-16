@@ -5,9 +5,9 @@
 //
 // Why it matters: importAllData writes whatever passes validation straight
 // into localStorage (`if (data.programs) this.savePrograms(data.programs)`),
-// so a shape the validator waves through becomes the live store. The KNOWN
-// DEFECT todo below pins the correct behavior for the worst case: a payload
-// whose "programs" key holds a string.
+// so a shape the validator waves through becomes the live store. The typed
+// store checks below are the regression for the worst case (a payload whose
+// "programs" key holds a string; audit defect 13, fixed 2026-08-15).
 process.env.TZ = 'UTC';
 
 import { test } from 'node:test';

@@ -90,7 +90,7 @@
 
       <article class="about-shell">
 
-        <p><strong>Last reviewed:</strong> 11 August 2026. <!-- TODO(owner): update this date whenever the behaviour described below changes. --></p>
+        <p><strong>Last reviewed:</strong> 16 August 2026. <!-- TODO(owner): update this date whenever the behaviour described below changes. --></p>
 
         <h2>The short version</h2>
 
@@ -169,6 +169,12 @@
             <div>
               <h3>The leaderboard is shared</h3>
               <p>Playing a multiplayer or daily-challenge game writes your display name, XP, games played, wins, best round score and last-played time to a leaderboard that any signed-in visitor can read. Solo games are not written to it.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h3>Private-room passwords are never stored readably</h3>
+              <p>Since August 2026, creating a private room stores only a salted hash of its password, in a record no player can read; the database's own security rules check a joiner's entry against it, and the record is deleted with the room. The password you type is never written anywhere. Rooms created before this change kept their password readable to signed-in visitors until the room was deleted.</p>
             </div>
           </li>
           <li>

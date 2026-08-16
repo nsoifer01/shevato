@@ -9,8 +9,8 @@
 //     throwing mid-workout;
 //   - ids arrive as numbers (models) AND strings (dataset attributes,
 //     Firestore round-trips). FINDINGS mandates sameId() for every id
-//     comparison; the todo tests below pin the CORRECT behavior for the four
-//     methods still using === (see each KNOWN DEFECT note).
+//     comparison; the regression tests below pin that behavior for the four
+//     methods that used === until the 2026-08-15 fix (audit defect 12).
 process.env.TZ = 'UTC';
 
 import { test } from 'node:test';
@@ -176,7 +176,7 @@ test('custom exercises: add appends, delete removes (same-typed id)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// KNOWN DEFECTS: the four remaining === id comparisons.
+// The sameId regressions (formerly the four === id comparisons).
 // FINDINGS ("The sameId rule") documents that strict === on ids is a bug
 // pattern. Regression tests for the 2026-08-15 audit defect 12 (resolved):
 // saveProgram/deleteProgram/deleteCustomExercise/getWorkoutSessionsByExercise

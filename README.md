@@ -69,8 +69,8 @@ data flow, how to run and test it) and `apps/<app>/FINDINGS.md` is its
 accumulated engineering knowledge (discoveries, root causes, regression risks,
 open questions), maintained as a living document. `CLAUDE.md` requires every
 session working on an app to read both first and keep both current as part of
-finishing the work. The FPL Planner carries both today; other apps gain them
-as meaningful work happens. FPL modelling and planner experiments are recorded
+finishing the work. Seven of the eight apps carry both today (mario-kart has
+a README only). FPL modelling and planner experiments are recorded
 in `apps/fpl-planner/experiments/registry.md` with explicit verdicts.
 
 ## Apps
@@ -217,21 +217,26 @@ DOM behavior is covered because a copy of its logic passes in Node.
 ### Commands
 
 ```bash
-npm test                   # fast gate: all unit/integration + static checks, no browser (CI on every push/PR)
+npm test                   # fast gate: all unit/integration + static checks, no browser
+                           #   (~2 minutes; CI on every push to master and every PR)
 npm run test:browser       # full browser estate: site, apps, a11y, visual, perf, PWA, app E2E (CI on PRs + master)
 npm run test:all           # "is this change safe to merge": npm test + test:browser
 npm run test:coverage      # coverage report to .coverage/summary.md + per-area floors
 npm run test:cross-browser # Firefox/WebKit smoke (needs: npm install && npx playwright install firefox webkit;
                            #   WebKit additionally needs system libs, so it runs fully only on CI)
-npm run test:arena:rules   # Firestore security-rules suite vs the local emulator (needs Java 21;
-npm run test:arena:emulator#   one-time firebase-tools download; weekly CI via arena-rules.yml)
+npm run test:arena:rules   # Firestore security-rules suite vs the local emulator
+npm run test:arena:emulator# two-client multiplayer e2e vs the local emulators
+                           #   (both need Java 21 + a one-time firebase-tools download;
+                           #   the rules suite runs weekly on CI via arena-rules.yml)
 npm run test:<app>         # one app's unit suite (gym, football, fpl-planner, rising-shows, mario-kart,
-                           #   arena, maptap, trip-planner); test:static, test:sync, test:analytics likewise
+                           #   arena, maptap, trip-planner); test:static, test:sync, test:analytics,
+                           #   test:tp-assist-quota likewise
 npm run test:trip-planner:e2e | test:fpl-planner:e2e   # one app's browser E2E subset
+                           #   (append :headed to the trip-planner one to watch it)
 ```
 
-For day-to-day development: `npm test` (seconds). Before merging: `npm run
-test:all`. The cross-browser smoke runs weekly on CI and on demand.
+For day-to-day development: `npm test` (about two minutes). Before merging:
+`npm run test:all`. The cross-browser smoke runs weekly on CI and on demand.
 
 ### Known-defect quarantine
 
@@ -310,7 +315,8 @@ Fixing the product bug is a separate change from the test that documents it.
 - Browser failure screenshots: `.screenshots/e2e-trip-planner/` (gitignored);
   green runs write nothing.
 - The browser runner prints per-suite pass/skip counts and pins expected
-  check counts for the site and apps suites, so a crashed block cannot
+  check counts for all six harness-owned suites (site, apps, a11y, visual,
+  perf, pwa-gym; see EXPECTED_CHECKS in run.mjs), so a crashed block cannot
   silently shrink the denominator.
 - CI: `tests` workflow (unit + static + syntax, every push/PR), `browser
   tests` (PRs + master), `cross-browser smoke` (weekly + manual dispatch).

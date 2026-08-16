@@ -1,6 +1,6 @@
 # Browser regression suite
 
-End-to-end checks that drive the real site and all seven apps in headless
+End-to-end checks that drive the real site and all eight apps in headless
 Chrome. Complements `npm test`, which covers pure logic in Node and never opens
 a browser.
 
@@ -19,9 +19,10 @@ Three runner-level guarantees:
   failure and the next suite still runs.
 - **Check-count pinning.** `EXPECTED_CHECKS` in run.mjs pins the number of
   checks a suite must emit, so a silently lost check (early return, dropped
-  loop) becomes an explicit failure instead of a shrunken green run. Only
-  site.mjs and apps.mjs are pinned today; app-suite owners are invited to add
-  theirs once the counts settle. Adding or removing a check on purpose means
+  loop) becomes an explicit failure instead of a shrunken green run. All six
+  harness-owned suites are pinned (site 157, apps 101, a11y 33, visual 86,
+  perf 41, pwa-gym 14); the app-owned trip-planner/fpl-planner suites are
+  not, by their owners' choice. Adding or removing a check on purpose means
   updating the pinned number in the same change.
 - **Ordered teardown.** kill() is followed by a bounded wait for the actual
   process exits before the Chrome profile dir is removed, so teardown never
@@ -36,10 +37,11 @@ Three runner-level guarantees:
 
 ## Why it is not part of `npm test`
 
-`npm test` runs in CI on every push and finishes in seconds. This suite needs a
-browser binary and takes minutes. Keeping them separate means CI stays fast and
-does not depend on a Chromium install, while this stays available locally and
-before a release.
+`npm test` runs in CI on every push to master and every PR, in about two
+minutes with no browser binary. This suite needs Chromium and takes ~15
+minutes. Keeping them separate means the fast gate stays fast and
+dependency-free, while this runs on PRs, master pushes, and locally before a
+release.
 
 ## Skipped checks
 
@@ -81,7 +83,7 @@ npm run fetch:rising-shows-data
 | `BROWSER_TEST_CDP_PORT` | `9222` | Chrome DevTools Protocol port |
 | `CHROME_BIN` | `chromium` | Browser binary |
 
-Ports 8080 and 8083 are reserved on the maintainer's machine and must never
+Ports 8080 and 8081 are reserved on the maintainer's machine and must never
 become defaults here.
 
 ## Layout
@@ -98,9 +100,21 @@ tests/browser/
   suites/apps.mjs    # the apps: real feature flows with storage/table
                      #   assertions, plus a mobile sweep with one interaction
                      #   per app
+  suites/a11y.mjs    # axe WCAG2A/AA scans (pinned quarantine baseline,
+                     #   currently empty) + real-keyboard focus checks
+  suites/visual.mjs  # deterministic geometry/theme/collision pins at three
+                     #   viewports (pixel baselines deliberately rejected)
+  suites/perf.mjs    # first-party byte / request / DOM budgets per page
+  suites/pwa-gym.mjs # gym service worker: registration, caches, offline
+  vendor/axe.min.js  # vendored axe-core (same convention as site jQuery)
 
 apps/trip-planner/e2e/   # the trip-planner E2E regression suites (registered
                          #   in run.mjs; see that app's README + FINDINGS)
+apps/fpl-planner/e2e/    # fpl-planner scenario + gameweek-lifecycle suites
+                         #   (registered in run.mjs)
+apps/arena/e2e/          # two-client multiplayer suite vs local Firebase
+                         #   emulators: NOT in run.mjs (needs Java); run it
+                         #   with npm run test:arena:emulator
 ```
 
 A suite exports `run({ base, cdpPort })` and returns

@@ -24,10 +24,13 @@
 // never exact pixel positions.
 import {
   newPage, closePage, goto, evaluate, setViewport, clickSel, clickText,
-  waitForExpr, sleep,
+  waitForExpr, sleep, interceptNetwork,
 } from '../cdp.mjs';
 
 const ROOT_PAGES = ['home', 'work', 'apps', 'about', 'contact', 'privacy', '404', 'moadon-alef'];
+
+// Same production-protection list as suites/apps.mjs and suites/a11y.mjs.
+const FIREBASE_HOSTS = /firestore\.googleapis\.com|firebaseio\.com|identitytoolkit\.googleapis\.com|securetoken\.googleapis\.com/i;
 // moadon-alef is a separately branded landing with deliberately no site
 // header (site.mjs documents the decision), so it is excluded from the
 // shared-chrome geometry checks but still swept for overflow.
@@ -146,6 +149,10 @@ export async function run({ base, cdpPort }) {
   const t = (name, pass, detail = '') => R.push({ name, pass: !!pass, detail });
 
   const s = await newPage(cdpPort);
+  // Session-wide production protection, same rule as apps.mjs/a11y.mjs:
+  // arena is one of the app roots this suite loads, and no page here may
+  // ever reach real Firebase. Geometry assertions are unaffected.
+  await interceptNetwork(s, (url) => (FIREBASE_HOSTS.test(url) ? 'fail' : null));
   try {
     /* ------------------- desktop 1280x900: root pages ------------------- */
     try {
