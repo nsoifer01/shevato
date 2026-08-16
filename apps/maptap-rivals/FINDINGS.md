@@ -20,37 +20,37 @@ Consequences for anything that aggregates *my* side:
   identical scores), so the skew is invisible without a unit test: the round
   counts, and any weighting derived from them, are what break.
 
-## Known defect: pasting the same day twice stores it twice
+## Pasting the same day twice updates it (duplicate defect fixed 2026-08-15)
 
-`saveDay()` (js/app.js:2408) pushes one new game per rival with a fresh
-`uid()` and no check for an existing record on that `(date, rivalId)`. Paste
-the same day again (double click, reload mid-entry, or simply not remembering)
-and the log holds two identical records. The other two write paths do dedupe:
-profile sync indexes existing games by date per rival (js/app.js:6420) and the
-WhatsApp importer builds an `existingByRivalDate` set and reports duplicates
-in its preview (js/app.js:6813). The paste path is the odd one out, not a
-deliberate design.
+`saveDay()` (js/app.js) now funnels every pasted day through
+`upsertPastedGame(games, incoming)`: one record per `(rivalId, date)`. A
+repeat paste UPDATES the existing record's four score fields in place instead
+of appending a duplicate, the save bar reads "Updated N games" instead of
+"Saved", and only newly added games count in the `games_logged` analytics
+event (matching the sync path). This brought the paste path in line with the
+other two writers, which always deduped on their own: profile sync indexes
+existing games by date per rival and the WhatsApp importer skips existing
+`(rival, date)` pairs in its preview.
 
-Nothing downstream can undo it. A game record carries no notion of "already
-counted", and every aggregate is correctly id-agnostic, so the duplicate is a
-second real day to all of them. Measured blast radius, all pinned in
-`tests/stats.test.js` under "repeat paste":
+Update semantics worth knowing:
 
-- `periodRecords` counts the day twice in the week/month total AND in the
-  per-rival split (a real 1-1 week reads 2-1, 66.7%).
-- `runningRivalPeriodRecords` can flip which way a period went: one win
-  duplicated against two losses turns a lost week into a 2-2 tied one, so the
-  rival row's "(won-lost-tied)" gains a tie nobody earned.
-- `streaks` reads a single win as W2, and `longestMine` inflates with it.
-- `rivalryScoreFromGames` doubles (volume confidence is `min(1, n / 10)`, so
-  the duplicate buys a real confidence step: 10 becomes 20).
-- `myAvgByContinent` is immune: it already takes one qualifying game per date.
-- The predictions distribution is immune too, but only because
-  `computeFinishPositionRecords` (js/app.js:1632) folds the log into a Map
-  keyed by date then rival id before calling `accumulateFinishPositions`.
+- `id`, `createdAt` and any synced `cities` survive the update, so geo data
+  is not lost when a synced day is corrected by hand.
+- The `note` is reset to the incoming (empty) one ON PURPOSE: profile sync
+  only refreshes scores on games whose note is `'synced from MapTap'`, so a
+  hand-pasted correction must shed that marker or the next sync would
+  silently clobber it back.
+- Duplicates already sitting in a log (written before the fix, or imported
+  from a backup) are NOT pruned; the upsert updates the first match and
+  leaves the rest. Every aggregate is correctly id-agnostic and still counts
+  such a pair as two days; `tests/stats.test.js` ("repeat paste") pins that
+  stats-layer behavior, and `myAvgByContinent` plus the predictions
+  distribution remain immune by their own date-dedupe.
 
-The guard belongs in `saveDay`, so none of those tests are marked todo: they
-document what the stats layer reports for the input it is handed.
+The upsert is unit-tested through the `window._testExports` seam
+(`tests/app-helpers.test.js`) and at browser level (the repeat-paste check in
+`tests/browser/suites/apps.mjs` asserts one record with the corrected
+scores).
 
 ## Geo data exists only on MapTap-synced games
 
@@ -62,29 +62,37 @@ Every continent aggregate therefore starts by requiring
 `myScores` array, and the UI hides its whole band or section rather than
 render an empty shell.
 
-**Known defect, null coordinates become Africa.** `myAvgByContinent` classifies
-with `classify(Number(c.lat), Number(c.lng))` (js/stats.js:726) and
-`classifyContinent` rejects coordinates with `Number.isFinite`
-(js/app.js:6153). `Number(null)` and `Number('')` are `0`, not `NaN`, so a
-coordinate-less city arrives as the valid point (0, 0), lands inside Africa's
-`lat -35..38 / lng -20..52` box (js/app.js:6168), and is averaged into the
-Africa chip and its round count instead of being dropped as `'Unknown'`.
-`{}` and `'nope'` DO coerce to `NaN` and are dropped, which is why the shape
-of the bad data decides whether the round disappears or lies.
+**Null coordinates became Africa (fixed 2026-08-15).** `Number(null)` and
+`Number('')` are `0`, not `NaN`, so a coordinate-less city used to arrive at
+the classifier as the valid point (0, 0), land inside Africa's
+`lat -35..38 / lng -20..52` box, and be averaged into the Africa chip and its
+round count. The fix lives at the coercion, exactly where a `null` becomes a
+`0`: `coordNum` (js/stats.js, exported) maps everything except actual numbers
+and non-empty numeric strings to `NaN`, and BOTH continent aggregates -
+`myAvgByContinent` (js/stats.js) and the per-rival `continentBreakdown`
+(js/app.js) - now run `coordNum` on both fields and EXCLUDE any round without
+a finite lat AND lng before calling the classifier. Sharing one helper is
+what keeps the two views from drifting apart again. A genuine Gulf of Guinea
+round at a literal `(0, 0)` still counts as Africa (that is why the fix could
+never live inside the bounding-box table).
 
-The fix belongs at the coercion, not at the classifier: once a `null` has
-become `0` no bounding-box table can tell it from a genuine Gulf of Guinea
-round (pinned by a test asserting the two produce an identical band). Both
-writers the app owns are safe today (`roundsFromRoundData` runs `Number()`
-over the raw fields and `roundsFromRounds` writes `NaN` outright), so this
-needs hand-built or imported `cities` to surface. Regression test:
-`tests/stats.test.js`, marked `{ todo: 'KNOWN DEFECT: ...' }` so it flips to a
-pass the moment the coercion is fixed.
+Behavior consequence, deliberate: `continentBreakdown` used to render
+coordinate-less rounds as an `'Unknown'` row (e.g. iOS-fallback games, which
+carry `NaN` coords); those rounds are now excluded from the per-rival
+breakdown and its round count entirely, matching how the dashboard band
+always treated them. `classifyContinent` itself still answers `'Unknown'`
+for non-finite input as a contract backstop, and `CONTINENT_META` keeps the
+entry for it.
 
-The classifier stub in `tests/stats.test.js` copies the real Africa box
-verbatim for exactly this reason. Before 2026-08-15 the stub answered
-`'Unknown'` for anything it did not like, which made the null case look
-handled; a stub that cannot express the defect is worse than no test.
+Regression tests: `tests/stats.test.js` (the coercion contract, via a spy
+classifier that must never see a non-finite pair) and
+`tests/app-helpers.test.js` (the real `continentBreakdown` +
+`classifyContinent` through the test seam).
+
+The classifier stub in `tests/stats.test.js` still copies the real Africa box
+verbatim so the genuine-(0, 0) case stays honest. Before 2026-08-15 the stub
+answered `'Unknown'` for anything it did not like, which made the null case
+look handled; a stub that cannot express a defect is worse than no test.
 
 ## The continent classifier stays in app.js, injected into stats.js
 
@@ -108,7 +116,16 @@ rounds and are shared with the per-rival `continentBreakdown` in app.js;
 duplicating them would let the two views drift apart, and moving them would
 drag a lump of presentation-adjacent geography into the pure module. The
 injected form also lets the unit tests use a trivial stub classifier, which
-keeps the bucketing tests about bucketing.
+keeps the bucketing tests about bucketing. The real table is unit-tested
+directly through the `window._testExports` seam (`tests/app-helpers.test.js`).
+
+Rule ORDER in the table is load-bearing. Iceland's box (63..67, -25..-13)
+sits entirely inside Greenland's (>60, -75..-10), so Iceland must be tested
+first; until 2026-08-15 the Greenland rule came first, the Iceland rule was
+dead code, and every Icelandic round classified as North America (found the
+day the seam tests reached the real table). The only other land in Iceland's
+box is open sea; East Greenland's coast is west of -25 and still hits the
+Greenland rule.
 
 ## Dashboard DOM order is the markup order
 
@@ -200,38 +217,48 @@ Rival add/delete and a cross-tab `storage` event both land in
 no listener at all and the bar never reads the date, so nothing is needed
 there.
 
-## What the unit tests reach, and what they structurally cannot
+## What the unit tests reach, and what they still cannot
 
 `tests/stats.test.js` and `tests/network.test.js` `require()` the two dual-
-export modules directly. `js/app.js` is one big IIFE with no exports, so
-NOTHING in it can be loaded from node, at any effort, without changing
-production code. Everything below is therefore outside unit-test reach and is
-covered only by browser probes and the `.features/` human plan: the paste
-panel and `saveDay`, `classifyContinent` and its bounding boxes, the per-rival
-`continentBreakdown`, `locationStats` / `carryChoke`, the predictions card
-assembly, the WhatsApp importer (including `dayBucketDate`'s year
-compensation), export/import, the MapTap sync merge, the network Firestore
-calls, and every render path.
+export modules directly. `js/app.js` is one big IIFE with no module exports,
+but since 2026-08-15 it ends with a `window._testExports` block (rising-shows
+`_rsTestExports` precedent) exposing pure helpers for node:
+`classifyContinent`, `continentBreakdown`, `computeMatrixCell`,
+`mergeMatrixCells`, `matrixCellViewModel`, `rivalSummary`, `upsertPastedGame`.
+`tests/app-helpers.test.js` loads app.js with `node:vm` into a sandbox
+(document stuck at `readyState: 'loading'` so `init()` never runs, a
+never-settling `fetch`, Map-backed localStorage seeded per context so
+`rivalSummary` sees a known game log; `document.baseURI` must exist because
+`FIREBASE_CONFIG_URL` is computed at parse time). vm-realm objects fail
+`assert.deepEqual` from `node:assert/strict` on prototype identity, so the
+harness JSON-projects them (`plain()`) before comparing.
+
+Still outside unit-test reach, covered only by browser probes and the
+`.features/` human plan: the paste panel DOM flow around `saveDay`,
+`locationStats` / `carryChoke`, the predictions card assembly, the WhatsApp
+importer (including `dayBucketDate`'s year compensation), export/import, the
+MapTap sync merge, the network Firestore calls, and every render path.
 
 Where a defect lives in app.js but is *visible through* a pure function's call
 contract, the test file states the contract in a comment and stubs the app.js
-side faithfully rather than conveniently (see the classifier stub above). Tests
-that assert the CORRECT behavior of a defect that is still shipped carry
-`{ todo: 'KNOWN DEFECT: <summary>' }`: `node --test` reports a failing todo as
-expected and keeps the exit code at 0, so the defect ledger lives in the suite
-without breaking CI. Three are open today (2026-08-15): the null-coordinate
-Africa bucket, and two `'__proto__'` player-key cases below.
+side faithfully rather than conveniently (see the classifier stub above).
+Tests asserting the correct behavior of a still-shipped defect carry
+`{ todo: 'KNOWN DEFECT: <summary>' }`; as of 2026-08-15 the maptap suites
+carry ZERO todos - all three (null-coordinate Africa bucket, two
+`'__proto__'` player-key cases) are fixed and their tests flipped to plain
+regressions.
 
-`positionHitsForDay` and `accumulateFinishPositions` accumulate into plain
-`{}` objects keyed by rival id. `uid()` (js/app.js:191) can never produce
-`'__proto__'`, but `importData` (js/app.js:7038) assigns `state.rivals` and
-`state.games` verbatim from a user-supplied backup with no id validation, so a
-hand-edited backup can. `out['__proto__'] = <boolean>` is silently discarded
-and `out['__proto__'] = <object>` sets the accumulator's prototype: the player
-vanishes from the figures, and in `accumulateFinishPositions` the day's field
-size collapses to 1, so every OTHER player's share divides by zero and comes
-out `-Infinity`. Low severity, cross-player blast radius; fix with
-`Object.create(null)` or a Map.
+The `'__proto__'` fix pattern: every accumulator keyed by an id that can come
+verbatim from untrusted data (rival ids via backup import, dates via a remote
+profile payload, network uids via a hand-seeded cache) either builds in a
+`Map` and returns through `Object.fromEntries` (stats.js:
+`positionHitsForDay`, `accumulatePositionHits`, `finishPositionsForDay`,
+`fieldSharesForDay`, `competitionRanksForDay`, `accumulateFinishPositions`,
+the `runningRivalPeriodRecords` snapshots, `mapTapHistoryToRounds`) or is
+`Object.create(null)` (app.js: the calendar `dayMap`, `netStringMap`, both
+network `directory` builders). `Object.fromEntries` defines own data
+properties, so `'__proto__'` lands as data and the plain-object return shape
+(which `assert.deepEqual` and all callers rely on) is preserved.
 
 ## Verifying the dashboard in headless Chrome
 

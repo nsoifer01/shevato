@@ -172,7 +172,7 @@
     isoWeekId, monthId, periodRecords, runningRivalPeriodRecords, periodTallyText,
     accumulatePositionHits,
     accumulateFinishPositions, avgPositionColor, avgPositionColors,
-    myAvgByContinent,
+    coordNum, myAvgByContinent,
     compareNamesCI, compareWinPctDesc,
   } = window.MapTapStats;
 
@@ -2405,6 +2405,37 @@
     refreshAllPasteResults();
   }
 
+  // One record per (rival, date): every pasted day funnels through here so a
+  // repeat paste UPDATES the existing record instead of appending a duplicate
+  // that would double-count W/L records, streaks, averages and the rivalry
+  // score. That matches how a user reads the panel ("this is that day's
+  // result"), so re-pasting corrects a day rather than double-logging it.
+  // The other two writer paths already dedupe on their own (profile sync
+  // indexes existing games by date per rival; the WhatsApp importer skips
+  // existing (rival, date) pairs in its preview), which makes this the
+  // paste path's counterpart of the same guard.
+  //
+  // On update, only the four score fields and the note change: id, createdAt
+  // and any synced `cities` stay, so geo data survives a correcting paste.
+  // The note is reset to the incoming (manual) one on purpose: profile sync
+  // only refreshes scores on games whose note is 'synced from MapTap', so a
+  // hand-pasted correction must shed that marker or the next sync would
+  // silently clobber it back.
+  function upsertPastedGame(games, incoming) {
+    const existing = (Array.isArray(games) ? games : [])
+      .find(g => g && g.rivalId === incoming.rivalId && g.date === incoming.date);
+    if (!existing) {
+      games.push(incoming);
+      return { game: incoming, updated: false };
+    }
+    existing.myScores = incoming.myScores;
+    existing.theirScores = incoming.theirScores;
+    existing.myScore = incoming.myScore;
+    existing.theirScore = incoming.theirScore;
+    existing.note = incoming.note;
+    return { game: existing, updated: true };
+  }
+
   function saveDay() {
     const mine = pasteState.me;
     if (!mine) return;
@@ -2416,6 +2447,7 @@
     if (!targets.length) return;
 
     let w = 0, l = 0, t = 0;
+    let added = 0, updated = 0;
     const now = Date.now();
     const savedGames = [];
     for (const { rival, theirs } of targets) {
@@ -2424,7 +2456,7 @@
       const diff = myT - theirT;
       if (diff > 0) w++; else if (diff < 0) l++; else t++;
 
-      const newGame = {
+      const res = upsertPastedGame(state.games, {
         id: uid(),
         rivalId: rival.id,
         date,
@@ -2434,19 +2466,20 @@
         theirScore: theirT,
         note: '',
         createdAt: now,
-      };
-      state.games.push(newGame);
-      savedGames.push({ game: newGame, rival });
+      });
+      if (res.updated) updated++; else added++;
+      savedGames.push({ game: res.game, rival });
     }
     persistGames();
 
     // One event per save action carrying a count, not one per game: a paste
     // can create a dozen games at once and that would be a dozen events for
-    // a single user gesture.
-    if (savedGames.length) {
+    // a single user gesture. Only NEW games count as logged; an update
+    // corrects a day that was already counted (matches the sync path).
+    if (added) {
       track('trackAction', 'games_logged', {
         entry_method: 'paste',
-        game_count: savedGames.length,
+        game_count: added,
       });
     }
 
@@ -2483,7 +2516,12 @@
       if (w) wlt.push(`${w}W`);
       if (l) wlt.push(`${l}L`);
       if (t) wlt.push(`${t}T`);
-      summary.textContent = `Saved ${targets.length} game${targets.length === 1 ? '' : 's'} · ${wlt.join(' · ') || 'no result'}`;
+      // Honest wording: a day that already had a record for that rival was
+      // UPDATED in place (see upsertPastedGame), not saved as a new game.
+      const parts = [];
+      if (added) parts.push(`Saved ${added} game${added === 1 ? '' : 's'}`);
+      if (updated) parts.push(`Updated ${updated} game${updated === 1 ? '' : 's'}`);
+      summary.textContent = `${parts.join(' · ')} · ${wlt.join(' · ') || 'no result'}`;
     }
     if (pasteActions) {
       pasteActions.querySelectorAll('.paste-share-btn').forEach(b => b.remove());
@@ -3626,8 +3664,10 @@
     snapDate.setDate(snapDate.getDate() - snapDate.getDay()); // rewind to Sunday
     const startISO = snapDate.toISOString().slice(0, 10);
 
-    // Build a map: date → net result.
-    const dayMap = {};
+    // Build a map: date → net result. Null prototype: dates come verbatim
+    // from storage (backup import does no validation), so a '__proto__' date
+    // must land as a key, not as the object's prototype.
+    const dayMap = Object.create(null);
     for (const g of s.games) {
       const r = resultOf(g);
       if (!dayMap[g.date]) dayMap[g.date] = { W: 0, L: 0, T: 0 };
@@ -5560,7 +5600,9 @@
   }
 
   function netStringMap(raw) {
-    const out = {};
+    // Null prototype: keys come from an untrusted doc / hand-seeded cache,
+    // so a '__proto__' key must not hit the Object.prototype setter.
+    const out = Object.create(null);
     if (!raw || typeof raw !== 'object') return out;
     for (const [k, v] of Object.entries(raw)) {
       if (typeof k === 'string' && typeof v === 'string') out[k] = v.slice(0, 128);
@@ -5589,7 +5631,7 @@
       const clean = sanitizeLink(l, l && l.pairKey);
       if (clean) links.push(clean);
     }
-    const directory = {};
+    const directory = Object.create(null); // uid keys are untrusted, see netStringMap
     const rawDir = (c.directory && typeof c.directory === 'object') ? c.directory : {};
     for (const [uid_, entry] of Object.entries(rawDir)) {
       const clean = buildNetworkDoc(entry);
@@ -5837,7 +5879,7 @@
 
       const peers = new Set();
       for (const l of links) for (const u of l.uids) if (u !== c.uid) peers.add(u);
-      const directory = {};
+      const directory = Object.create(null); // uid keys are untrusted, see netStringMap
       for (const p of peers) {
         try {
           const d = await fs.getDoc(fs.doc(db, NET_PROFILES, p));
@@ -6157,8 +6199,14 @@
     // Southern Pacific islands (Easter Island at -109, French Polynesia,
     // Pitcairn, Cook Islands) — no mainland this far south so safe.
     if (lat > -30 && lat < 0 && lng < -100) return 'Oceania';
-    if (lat > 60 && lng > -75 && lng < -10) return 'North America'; // Greenland
+    // Iceland must be tested BEFORE Greenland: its box (63..67, -25..-13)
+    // sits entirely inside Greenland's (>60, -75..-10), so with the old
+    // order the Iceland rule was dead code and Reykjavik came out North
+    // America (found by tests/app-helpers.test.js, fixed 2026-08-15). The
+    // only other land in Iceland's box is open sea; East Greenland's coast
+    // is west of -25 and stays in the Greenland rule.
     if (lat > 63 && lat < 67 && lng > -25 && lng < -13) return 'Europe'; // Iceland
+    if (lat > 60 && lng > -75 && lng < -10) return 'North America'; // Greenland
     if (lat >= 7 && lat <= 84 && lng >= -170 && lng <= -52) return 'North America';
     // South America — widened west to include Galápagos (-91°)
     if (lat >= -56 && lat <= 13 && lng >= -92 && lng <= -34) return 'South America';
@@ -6190,6 +6238,10 @@
   // Continent-level aggregates over a rival's games. Only games that have
   // a `cities` array (i.e. synced from MapTap) contribute; manually-paste
   // games are silently skipped, with the calling UI explaining the gap.
+  // Rounds without a finite numeric lat AND lng are excluded outright (same
+  // coordNum contract as myAvgByContinent in stats.js): Number(null) is 0,
+  // so without the guard a coordinate-less round would reach the classifier
+  // as the valid point (0, 0) and be bucketed as Africa.
   function continentBreakdown(games) {
     const buckets = new Map();
     let totalRounds = 0;
@@ -6198,7 +6250,10 @@
       if (!Array.isArray(g.myScores) || !Array.isArray(g.theirScores)) continue;
       for (let i = 0; i < N_LOCS; i++) {
         const c = g.cities[i] || {};
-        const continent = classifyContinent(Number(c.lat), Number(c.lng));
+        const lat = coordNum(c.lat);
+        const lng = coordNum(c.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+        const continent = classifyContinent(lat, lng);
         if (!buckets.has(continent)) {
           buckets.set(continent, {
             continent, rounds: 0,
@@ -7339,4 +7394,20 @@
     if (e.detail?.source !== 'remote') return;
     window.dispatchEvent(new StorageEvent('storage', { key }));
   });
+
+  // Expose pure helpers for unit tests (node:vm loads this file into a
+  // sandbox that provides a `window` stub; same pattern as rising-shows'
+  // _rsTestExports). Not part of any app contract - nothing in the app or
+  // the sync system reads this.
+  if (typeof window !== 'undefined') {
+    window._testExports = {
+      classifyContinent,
+      continentBreakdown,
+      computeMatrixCell,
+      mergeMatrixCells,
+      matrixCellViewModel,
+      rivalSummary,
+      upsertPastedGame,
+    };
+  }
 })();

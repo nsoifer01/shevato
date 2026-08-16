@@ -39,6 +39,19 @@
 
   function hasLocs(g) { return Array.isArray(g.myScores) && Array.isArray(g.theirScores); }
 
+  // Coerce a raw coordinate field to a number without the Number(null) = 0
+  // trap: Number(null), Number('') and Number([]) are all 0, which turns a
+  // coordinate-less round into the valid point (0, 0) in the Gulf of Guinea
+  // and (before 2026-08-15) bucketed it as Africa. Only actual numbers and
+  // non-empty numeric strings survive; everything else is NaN, which every
+  // continent caller drops before classifying. Shared by myAvgByContinent
+  // here and continentBreakdown in app.js so the two views cannot drift.
+  function coordNum(v) {
+    if (typeof v === 'number') return v;
+    if (typeof v === 'string' && v.trim() !== '') return Number(v);
+    return NaN;
+  }
+
   // Side presence. A rival-only game (saved by sync when the rival played but
   // the user didn't) has theirScores/theirScore but no myScores/myScore.
   // Old totals-only games have both totals defined but no arrays; bothPlayed
@@ -140,22 +153,26 @@
   // being dropped when malformed. That makes this byte-for-byte unchanged for
   // non-iOS players; only entries that omit roundData (iOS) take the fallback.
   // Fallback games still pair on score; their cities are left coordinate-less,
-  // which classifyContinent already tolerates (it buckets them as 'Unknown',
-  // same as any pre-cities game today).
+  // and both continent aggregates drop coordinate-less rounds before
+  // classifying, so those rounds never appear in any continent figure.
   //
   // Either source must yield a clean 5-round score breakdown; entries that
   // don't are rejected so we never store partial data — those days just won't
   // pair.
   function mapTapHistoryToRounds(gameHistory) {
-    const out = {};
+    // Accumulated in a Map (dates come verbatim from a remote payload, so a
+    // '__proto__' key must land as data, never as the object's prototype);
+    // Object.fromEntries defines own properties, so the plain-object return
+    // shape callers index by date is preserved.
+    const out = new Map();
     for (const [date, entry] of Object.entries(gameHistory || {})) {
       if (!entry) continue;
       const parsed = entry.roundData != null
         ? roundsFromRoundData(entry.roundData)
         : roundsFromRounds(entry.rounds);
-      if (parsed) out[date] = parsed;
+      if (parsed) out.set(date, parsed);
     }
-    return out;
+    return Object.fromEntries(out);
   }
 
   // Validate a 5-element score array against MapTap's 0-100 raw range.
@@ -483,11 +500,11 @@
         }
         tally[outcome] += 1;
       }
-      const snapshot = {};
-      running.forEach((tally, rivalId) => {
-        snapshot[rivalId] = Object.assign({}, tally);
-      });
-      out[period.id] = snapshot;
+      // fromEntries defines own properties, so a '__proto__' rival id (
+      // reachable via backup import) lands as data instead of setting the
+      // snapshot's prototype.
+      out[period.id] = Object.fromEntries(
+        Array.from(running, ([rivalId, tally]) => [rivalId, Object.assign({}, tally)]));
     }
     return out;
   }
@@ -525,16 +542,22 @@
   // structurally unable to hit.
   // Players without a prediction, or who sat the day out, are absent from
   // the result and so count toward nobody's eligible days.
+  //
+  // Every per-player accumulator below builds in a Map and returns through
+  // Object.fromEntries: player keys are rival ids straight from storage, and
+  // backup import accepts ids verbatim, so a '__proto__' id must become an
+  // own data property (which fromEntries guarantees) rather than hitting the
+  // Object.prototype setter and vanishing or corrupting the accumulator.
   function positionHitsForDay(entries) {
     const played = (Array.isArray(entries) ? entries : [])
       .filter(e => e && Number.isFinite(e.predictedTotal) && Number.isFinite(e.actualTotal));
     const predictedOrder = rankByScore(played, 'predictedTotal');
     const actualOrder = rankByScore(played, 'actualTotal');
-    const out = {};
+    const out = new Map();
     for (const entry of played) {
-      out[entry.key] = predictedOrder.indexOf(entry.key) === actualOrder.indexOf(entry.key);
+      out.set(entry.key, predictedOrder.indexOf(entry.key) === actualOrder.indexOf(entry.key));
     }
-    return out;
+    return Object.fromEntries(out);
   }
 
   // Accumulate per-player { hits, eligible } over a list of days, each day
@@ -542,16 +565,17 @@
   // from the result, which is what lets the UI skip the badge entirely
   // instead of rendering a meaningless "0/0".
   function accumulatePositionHits(days) {
-    const out = {};
+    const out = new Map();
     for (const entries of Array.isArray(days) ? days : []) {
       const hits = positionHitsForDay(entries);
       for (const key of Object.keys(hits)) {
-        if (!out[key]) out[key] = { hits: 0, eligible: 0 };
-        out[key].eligible += 1;
-        if (hits[key]) out[key].hits += 1;
+        let rec = out.get(key);
+        if (!rec) { rec = { hits: 0, eligible: 0 }; out.set(key, rec); }
+        rec.eligible += 1;
+        if (hits[key]) rec.hits += 1;
       }
     }
-    return out;
+    return Object.fromEntries(out);
   }
 
   // ---------- daily finishing positions ----------
@@ -569,16 +593,16 @@
       .filter(e => e && Number.isFinite(e.total));
     if (played.length < 2) return {};
     const ordered = played.slice().sort((a, b) => b.total - a.total);
-    const out = {};
+    const out = new Map();
     let i = 0;
     while (i < ordered.length) {
       let j = i;
       while (j + 1 < ordered.length && ordered[j + 1].total === ordered[i].total) j++;
       const shared = ((i + 1) + (j + 1)) / 2;
-      for (let k = i; k <= j; k++) out[ordered[k].key] = shared;
+      for (let k = i; k <= j; k++) out.set(ordered[k].key, shared);
       i = j + 1;
     }
-    return out;
+    return Object.fromEntries(out);
   }
 
   // Share of the field a player beat on a day: (N - R) / (N - 1) for their
@@ -591,9 +615,9 @@
     const positions = finishPositionsForDay(entries);
     const keys = Object.keys(positions);
     const n = keys.length;
-    const out = {};
-    for (const key of keys) out[key] = (n - positions[key]) / (n - 1);
-    return out;
+    const out = new Map();
+    for (const key of keys) out.set(key, (n - positions[key]) / (n - 1));
+    return Object.fromEntries(out);
   }
 
   // Integer competition ranks ("1224" style) for the day: tied players all
@@ -608,15 +632,15 @@
       .filter(e => e && Number.isFinite(e.total));
     if (played.length < 2) return {};
     const ordered = played.slice().sort((a, b) => b.total - a.total);
-    const out = {};
+    const out = new Map();
     let i = 0;
     while (i < ordered.length) {
       let j = i;
       while (j + 1 < ordered.length && ordered[j + 1].total === ordered[i].total) j++;
-      for (let k = i; k <= j; k++) out[ordered[k].key] = i + 1;
+      for (let k = i; k <= j; k++) out.set(ordered[k].key, i + 1);
       i = j + 1;
     }
-    return out;
+    return Object.fromEntries(out);
   }
 
   // Accumulate per-player { days, sum, avg, shareSum, share, counts, dates,
@@ -634,7 +658,7 @@
   // qualifying day are absent from the result, which is what lets the UI
   // skip the figure instead of rendering a meaningless "avg 0%".
   function accumulateFinishPositions(days, dayISOs) {
-    const out = {};
+    const out = new Map();
     const list = Array.isArray(days) ? days : [];
     const isos = Array.isArray(dayISOs) ? dayISOs : [];
     for (let i = 0; i < list.length; i++) {
@@ -645,20 +669,24 @@
       const ranks = competitionRanksForDay(entries);
       const field = Object.keys(positions).length;
       for (const key of Object.keys(positions)) {
-        if (!out[key]) out[key] = { days: 0, sum: 0, avg: 0, shareSum: 0, share: 0, counts: {}, dates: {}, maxField: 0 };
-        out[key].days += 1;
-        out[key].sum += positions[key];
-        out[key].shareSum += shares[key];
-        out[key].counts[ranks[key]] = (out[key].counts[ranks[key]] || 0) + 1;
-        if (iso) (out[key].dates[ranks[key]] = out[key].dates[ranks[key]] || []).push(iso);
-        if (field > out[key].maxField) out[key].maxField = field;
+        let rec = out.get(key);
+        if (!rec) {
+          rec = { days: 0, sum: 0, avg: 0, shareSum: 0, share: 0, counts: {}, dates: {}, maxField: 0 };
+          out.set(key, rec);
+        }
+        rec.days += 1;
+        rec.sum += positions[key];
+        rec.shareSum += shares[key];
+        rec.counts[ranks[key]] = (rec.counts[ranks[key]] || 0) + 1;
+        if (iso) (rec.dates[ranks[key]] = rec.dates[ranks[key]] || []).push(iso);
+        if (field > rec.maxField) rec.maxField = field;
       }
     }
-    for (const key of Object.keys(out)) {
-      out[key].avg = out[key].sum / out[key].days;
-      out[key].share = out[key].shareSum / out[key].days;
-    }
-    return out;
+    out.forEach(rec => {
+      rec.avg = rec.sum / rec.days;
+      rec.share = rec.shareSum / rec.days;
+    });
+    return Object.fromEntries(out);
   }
 
   // Comparative color for a set of figures shown side by side. The lowest
@@ -705,8 +733,12 @@
   //   2. Only MapTap-synced games have a `cities` array; pasted games have no
   //      coordinates at all and contribute nothing.
   //
-  // Rounds classified 'Unknown' (missing or non-finite coordinates) are
-  // dropped from the buckets and from the round counts.
+  // Rounds without a finite numeric lat AND lng are dropped from the buckets
+  // and from the round counts BEFORE the classifier is called: coordNum keeps
+  // Number(null) / Number('') from smuggling a coordinate-less round in as
+  // the valid point (0, 0), which the real bounding-box table would bucket
+  // as Africa. A round the classifier itself answers 'Unknown' for is
+  // dropped the same way.
   function myAvgByContinent(games, classify) {
     const list = Array.isArray(games) ? games : [];
     const seenDates = new Set();
@@ -723,7 +755,10 @@
       days++;
       for (let i = 0; i < N_LOCS; i++) {
         const c = g.cities[i] || {};
-        const continent = classify(Number(c.lat), Number(c.lng));
+        const lat = coordNum(c.lat);
+        const lng = coordNum(c.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+        const continent = classify(lat, lng);
         if (continent === 'Unknown') continue;
         if (!buckets.has(continent)) buckets.set(continent, { continent, rounds: 0, mySum: 0 });
         const b = buckets.get(continent);
@@ -785,7 +820,7 @@
     accumulateFinishPositions,
     avgPositionColor, avgPositionColors,
     // continents
-    myAvgByContinent,
+    coordNum, myAvgByContinent,
     // ordering
     compareNamesCI, compareWinPctDesc,
   };
