@@ -53,8 +53,10 @@ apps/fpl-planner/
     ui/combobox.js       searchable, keyboard-accessible player picker
     ui/scenario.js       the editable copy of a squad: edits, money, legality,
                          and the SquadState the planner is re-asked with
-    ui/sandbox.js        the editable team view (select-then-act, the picker,
-                         the before/after strip); draws and dispatches only
+    ui/sandbox.js        the editable team view (select-then-act, the action
+                         dock, the picker, the before/after strip); a
+                         persistent view updated in place, draws and
+                         dispatches only
     ui/plan-diff.js      "what changed" between two stored plan versions
     ui/history.js        gameweek history, season-at-a-glance charts, saved plan versions
     ui/settings.js       planner settings and the two deletion actions
@@ -203,13 +205,25 @@ is the feature's whole safety property:
 - **Recommended**, what the planner would do.
 
 The scenario is where a manager answers his own questions. Selecting a player
-offers what can be done to him: swap him with a substitute, transfer him out,
-give him the armband, move him up the bench, or open the existing player drawer.
-Transfers open a ranked picker of same-position replacements carrying club,
-price and projection, with unaffordable or club-limited options left visible and
-annotated rather than hidden. "Show expected points" adds start probability,
-expected minutes and the per-gameweek shape to every card. Undo steps back one
-edit at a time and "Reset to my team" returns to the import.
+offers what can be done to him in the **action dock**: a control surface that
+lives in the flow after the bench and pins near the bottom of the viewport
+while a selection or the picker is live, so the actions are visible wherever
+on the pitch the press happened. Swap him with a substitute, transfer him out,
+give him the armband, move him up the bench, or open the existing player
+drawer. Transfers open a ranked picker in the same dock, of same-position
+replacements carrying club, price and projection, with unaffordable or
+club-limited options left visible and annotated rather than hidden; its option
+list opens upward so it never leaves the screen. "Show expected points" adds
+start probability, expected minutes and the per-gameweek shape to every card.
+Undo steps back one edit at a time (offered both in the toolbar and beside the
+dock right after an edit) and "Reset to my team" returns to the import.
+
+The view renders through `createSandboxView` in `js/ui/sandbox.js`: one stable
+DOM skeleton, updated in place by diffing props on object identity (every
+scenario edit returns a new object, so `!==` is exact). A selection click
+toggles classes on existing cards; only a real edit rebuilds the pitch; the
+whole app is never re-rendered for a sandbox interaction. FINDINGS.md records
+why that discipline exists and the measurements behind it.
 
 **The flow is `imported SquadState -> Scenario -> SquadState -> buildPlan`**, and
 only the first arrow copies. `js/ui/scenario.js` owns that value and no rules:

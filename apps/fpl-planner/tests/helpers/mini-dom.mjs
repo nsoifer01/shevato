@@ -117,6 +117,26 @@ class ElementNode {
     if (!this.listeners.has(type)) this.listeners.set(type, []);
     this.listeners.get(type).push(fn);
   }
+
+  // The subset of classList the views use, backed by className so tests that
+  // read className and code that writes through classList agree.
+  get classList() {
+    const self = this;
+    const classes = () => new Set(String(self.className || '').split(/\s+/).filter(Boolean));
+    const write = (set) => { self.className = [...set].join(' '); };
+    return {
+      add(...names) { const s = classes(); for (const n of names) s.add(n); write(s); },
+      remove(...names) { const s = classes(); for (const n of names) s.delete(n); write(s); },
+      toggle(name, force) {
+        const s = classes();
+        const on = force === undefined ? !s.has(name) : !!force;
+        if (on) s.add(name); else s.delete(name);
+        write(s);
+        return on;
+      },
+      contains(name) { return classes().has(name); },
+    };
+  }
 }
 
 for (const name of REFLECTED_BOOLEANS) {

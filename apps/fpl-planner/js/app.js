@@ -35,9 +35,9 @@ import { settingsView } from './ui/settings.js';
 import { preSeasonIntro, manualSquadView, manualSquadState } from './ui/preseason.js';
 import {
   createScenario, applyTransfer, swapPlayers, setCaptain, setViceCaptain, moveBench,
-  undo as undoScenario, reset as resetScenario, canUndo, isDirty, scenarioSquadState,
+  undo as undoScenario, reset as resetScenario, scenarioSquadState,
 } from './ui/scenario.js';
-import { renderSandbox, transferPicker } from './ui/sandbox.js';
+import { createSandboxView } from './ui/sandbox.js';
 import { createPlanRunner } from './ui/plan-runner.js';
 import { createPlayerDrawer } from './ui/player-drawer.js';
 
@@ -797,6 +797,13 @@ function planView() {
 
 /* ----------------------------------------------------------------- sandbox */
 
+// The sandbox view is created once and updated in place. Rebuilding the whole
+// app on every scenario click is what made the feature flicker and jump: a full
+// DOM replacement defeats scroll anchoring and throws focus to <body>. The view
+// diffs its props on object identity (every scenario edit returns a new
+// object), so app.js just pushes the current state down after each action.
+let sandboxView = null;
+
 // The editable copy of the squad, created the first time the user opens the
 // scenario tab and kept for the session. It is seeded from the imported squad,
 // or from the recommendation when there are no picks to copy (pre-season).
@@ -856,12 +863,12 @@ function handleSandboxAction(type, payload = {}) {
       state.sandbox.picker = null;
       break;
     case 'captain':
+      // The selection is kept: the armband appearing on the selected card IS
+      // the feedback, and the player's remaining actions stay one press away.
       applyScenarioEdit(setCaptain(sc, ctx, payload.playerId));
-      state.sandbox.selection = null;
       break;
     case 'vice':
       applyScenarioEdit(setViceCaptain(sc, ctx, payload.playerId));
-      state.sandbox.selection = null;
       break;
     case 'bench-up':
       applyScenarioEdit(moveBench(sc, ctx, payload.playerId, 'up'));
@@ -881,6 +888,8 @@ function handleSandboxAction(type, payload = {}) {
       state.scenario = undoScenario(sc);
       state.scenarioBundle = null;
       state.sandbox.selection = null;
+      // An open picker was priced against the squad that just un-happened.
+      state.sandbox.picker = null;
       break;
     case 'reset':
       state.scenario = resetScenario(sc, {
@@ -906,6 +915,7 @@ function handleSandboxAction(type, payload = {}) {
       });
       state.scenarioBundle = null;
       state.sandbox.selection = null;
+      state.sandbox.picker = null;
       break;
     }
     case 'recommend':
@@ -914,7 +924,7 @@ function handleSandboxAction(type, payload = {}) {
     default:
       break;
   }
-  renderApp();
+  syncSandbox();
 }
 
 // "What do you recommend from THIS team?"
@@ -924,111 +934,72 @@ function handleSandboxAction(type, payload = {}) {
 // and fires the analytics event, and a hypothetical must do none of those.
 async function recommendFromScenario() {
   if (state.scenarioBusy || !state.scenario) return;
+  // The squad the question was asked about. If the user edits the scenario
+  // while the worker is thinking, the answer that comes back describes a squad
+  // that no longer exists and is DISCARDED rather than rendered over the newer
+  // state. Identity comparison is exact because every edit returns a new
+  // scenario object.
+  const asked = state.scenario;
   state.scenarioBusy = true;
   state.sandbox.error = null;
-  renderApp();
+  syncSandbox();
   try {
-    const squadState = scenarioSquadState(state.scenario, sandboxContext());
-    state.scenarioBundle = await runner.run({
+    const squadState = scenarioSquadState(asked, sandboxContext());
+    const bundle = await runner.run({
       gameState: state.gameState,
       squadState,
       options: planOptions(),
     });
+    if (state.scenario === asked) state.scenarioBundle = bundle;
   } catch (err) {
-    state.sandbox.error = `The planner could not run on this team: ${err.message}`;
-    state.scenarioBundle = null;
+    if (state.scenario === asked) {
+      state.sandbox.error = `The planner could not run on this team: ${err.message}`;
+      state.scenarioBundle = null;
+    }
   } finally {
     state.scenarioBusy = false;
-    renderApp();
+    syncSandbox();
   }
+}
+
+// The props the sandbox view renders from: a straight read of app state. The
+// view diffs these on identity, so this function allocates nothing but the
+// container object.
+function sandboxProps() {
+  return {
+    scenario: state.scenario,
+    ctx: sandboxContext(),
+    projections: state.bundle.projections,
+    gw: state.bundle.current.gw,
+    horizon: state.settings.horizon,
+    discount: state.bundle.dataStatus.discount,
+    showXp: state.sandbox.showXp,
+    selection: state.sandbox.selection,
+    picker: state.sandbox.picker,
+    error: state.sandbox.error,
+    busy: state.scenarioBusy,
+    scenarioBundle: state.scenarioBundle,
+  };
+}
+
+// Push the current state into the sandbox view IN PLACE. This is the whole
+// render path for a scenario interaction: no renderApp(), no full rebuild, so
+// scroll position, focus and the rest of the page are untouched.
+function syncSandbox() {
+  if (sandboxView && state.scenario && state.bundle) sandboxView.update(sandboxProps());
 }
 
 function sandboxNode() {
   const sc = ensureScenario();
   if (!sc) return el('p', { class: 'fpl-empty', text: 'No squad to edit yet.' });
-  const ctx = sandboxContext();
-  const picker = state.sandbox.picker
-    ? transferPicker({
-      scenario: sc,
-      ctx,
-      outId: state.sandbox.picker.outId,
-      projections: state.bundle.projections,
-      gw: state.bundle.current.gw,
-      onPick: (playerId) => handleSandboxAction('transfer-pick', { playerId }),
-      onCancel: () => handleSandboxAction('cancel'),
-    })
-    : null;
-
-  return el('div', {}, [
-    sandboxToolbar(sc),
-    state.sandbox.error
-      ? banner({ tone: 'warn', mark: '!', title: 'That change was not made', text: state.sandbox.error })
-      : null,
-    renderSandbox({
-      scenario: sc,
-      ctx,
-      projections: state.bundle.projections,
-      gw: state.bundle.current.gw,
-      horizon: state.settings.horizon,
-      discount: state.bundle.dataStatus.discount,
-      showXp: state.sandbox.showXp,
-      selection: state.sandbox.selection,
+  if (!sandboxView) {
+    sandboxView = createSandboxView({
       onAction: handleSandboxAction,
       onPlayerDetails: (id) => { if (drawer) drawer.open(id); },
-      picker,
-    }),
-    scenarioPlanCard(),
-  ]);
-}
-
-function sandboxToolbar(sc) {
-  const dirty = isDirty(sc, state.squadState);
-  return el('div', { class: 'fpl-sandbox-tools' }, [
-    btn(state.sandbox.showXp ? 'Hide expected points' : 'Show expected points',
-      () => handleSandboxAction('toggle-xp'),
-      { variant: state.sandbox.showXp ? 'fpl-btn-primary' : '', size: 'fpl-btn-sm' }),
-    btn('Undo', () => handleSandboxAction('undo'), { size: 'fpl-btn-sm', disabled: !canUndo(sc) }),
-    btn('Reset to my team', () => handleSandboxAction('reset'), { size: 'fpl-btn-sm', disabled: !dirty }),
-    btn('Start from the recommendation', () => handleSandboxAction('copy-recommended'), { size: 'fpl-btn-sm' }),
-    btn(state.scenarioBusy ? 'Asking the planner...' : 'Ask the planner from this team',
-      () => handleSandboxAction('recommend'),
-      { variant: 'fpl-btn-primary', size: 'fpl-btn-sm', disabled: state.scenarioBusy }),
-  ]);
-}
-
-// What the planner says when it starts from the edited squad. Labelled as a
-// hypothetical everywhere it appears, because the whole risk of this feature is
-// a user reading it as advice about the team they actually own.
-function scenarioPlanCard() {
-  if (!state.scenarioBundle) return null;
-  const plan = state.scenarioBundle.current;
-  const nameOf = (id) => {
-    const p = state.gameState.players.get(id);
-    return p ? p.webName : `Player ${id}`;
-  };
-  const pairs = (plan.transfersOut || []).map((outId, i) => `${nameOf(outId)} out, ${nameOf((plan.transfersIn || [])[i])} in`);
-  return el('section', { class: 'fpl-card fpl-scenario-plan' }, [
-    el('div', { class: 'fpl-card-head' }, [
-      el('h3', { text: 'The planner, starting from your scenario' }),
-    ]),
-    el('div', { class: 'fpl-card-body' }, [
-      el('p', { class: 'fpl-note' }, [
-        'This is advice about ',
-        el('b', { text: 'your edited team' }),
-        ', not about the squad you own in Fantasy Premier League.',
-      ]),
-      el('p', { class: 'fpl-verdict' }, [el('b', { text: plan.explanation ? plan.explanation.headline : 'Plan ready' })]),
-      pairs.length
-        ? el('ul', { class: 'fpl-moves' }, pairs.map(t => el('li', { text: t })))
-        : el('p', { class: 'fpl-note', text: 'It would make no further transfer from here.' }),
-      el('div', { class: 'fpl-kv' }, [
-        stat('Captain', nameOf(plan.captain)),
-        stat('This gameweek', `${plan.xPointsGw.toFixed(1)} xP`),
-        stat(`Next ${plan.horizon} gameweeks`, `${plan.xPointsHorizon.toFixed(1)} xP`),
-        stat('Hit', plan.hitCostPoints ? `-${plan.hitCostPoints}` : 'none'),
-      ]),
-    ]),
-  ]);
+    });
+  }
+  sandboxView.update(sandboxProps());
+  return sandboxView.node;
 }
 
 function topNotices() {
