@@ -18,11 +18,12 @@ on:
 jobs:
   browser:
     runs-on: ubuntu-latest
-    # The suite drives 15 pages with real timing plus the trip-planner E2E
-    # suites (apps/trip-planner/e2e/); well above the ~8 min the whole run
-    # takes, but low enough that a hung browser fails instead of burning a
-    # full hour.
-    timeout-minutes: 30
+    # The estate is 785 checks across 15 suites (site, apps, a11y, visual,
+    # perf, pwa-gym, trip-planner + fpl-planner E2E) and takes ~15 min on a
+    # typical runner; a slow runner was observed crossing the old 30-minute
+    # cap on 2026-08-16 with no test at fault. 45 keeps hung-browser runs
+    # from burning a full hour while leaving real headroom for slow silicon.
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v6
