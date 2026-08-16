@@ -204,7 +204,7 @@ export function validateSeason(season, { rules }) {
 
 function main(argv) {
   const only = argv.includes('--season') ? argv[argv.indexOf('--season') + 1] : null;
-  const seasons = only ? [only] : [...KNOWN_SEASONS, '2025-26'];
+  const seasons = only ? [only] : [...new Set([...KNOWN_SEASONS, '2025-26'])];
   const rules = loadRules();
   let failed = 0;
 

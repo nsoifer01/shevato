@@ -1,10 +1,18 @@
 # Testing audit and hardening, 2026-08-15
 
 Repository-wide audit and rebuild of the testing strategy for shevato.com and
-every app under `apps/`. Constraint honored throughout: **zero production code
-was modified**; every change is in tests, test infrastructure, test
-configuration, CI configuration, or documentation. Product bugs discovered by
-new tests are catalogued below and left unfixed by design.
+every app under `apps/`. Constraint honored throughout the AUDIT phase:
+**zero production code was modified**; every change was in tests, test
+infrastructure, test configuration, CI configuration, or documentation.
+Product bugs discovered by the new tests were catalogued below and left
+unfixed by design.
+
+> **STATUS 2026-08-16: fully remediated.** A follow-up round (PRs #386-#395)
+> fixed every catalogued defect, made the two pending product decisions,
+> built the Arena emulator/rules/security architecture, and redesigned
+> Rising Shows' boot loading. Each defect entry below keeps its original
+> finding with a RESOLVED stamp; see "Remediation round" near the end for
+> the beyond-defects work. Zero known-defect quarantines remain active.
 
 ## Executive summary
 
@@ -75,7 +83,6 @@ documented in "Remaining limitations".
    coverage tooling; apps.html search/filters and the moadon-alef language
    switcher completely untested; fpl-planner absent from the desktop browser
    suite.
-
 ## Changes made
 
 ### Framework decisions (Phase 10)
@@ -187,7 +194,7 @@ coverage.
 | Area | U | E | A | V | M | Err | Notes |
 |---|---|---|---|---|---|---|---|
 | Marketing site + hub | part | FULL | FULL | FULL | FULL | part | Search/filters/switcher/nav/forms E2E; main.js auth modal has keyboard checks only |
-| Arena | part | part | FULL | FULL | FULL | part | Extracted modules deep; room lifecycle still browser-smoke only (no emulator; see limitations) |
+| Arena | FULL | FULL | FULL | FULL | FULL | FULL | Extracted modules deep; since 2026-08-16: 23 emulator rules tests + 27-check two-client multiplayer e2e (separate commands, weekly CI) |
 | Football H2H | FULL | FULL | FULL | FULL | FULL | FULL | Live add path now vm-tested; correctness asserted in browser |
 | FPL Planner | FULL | FULL | FULL | FULL | FULL | FULL | Deepest estate; engine + UI + proxy + e2e lifecycle |
 | Gym Tracker | FULL | FULL | FULL | FULL | FULL | FULL | Views via source extraction; SW at unit + browser layers |
@@ -214,8 +221,9 @@ Unit/integration layer, source files only, test files excluded, line-weighted
 
 | | Line | Branch | Functions | Files |
 |---|---|---|---|---|
-| Before (master) | 88.76% | 85.45% | 87.55% | 117 |
-| After | **90.05%** | **85.03%** | **88.11%** | **130** |
+| Before the audit (master 2026-08-15) | 88.76% | 85.45% | 87.55% | 117 |
+| After the testing overhaul (PR #385) | 90.05% | 85.03% | 88.11% | 130 |
+| After the remediation round (2026-08-16) | **90.10%** | **85.07%** | **88.17%** | **132** |
 
 Read these numbers with care, in both directions:
 
@@ -272,10 +280,13 @@ baseline (measured values recorded beside each budget in the suite; e.g.
 home 1.04 MB / 24 requests / 313 nodes against budgets of 1.55 MB / 36 /
 470). Byte, request, and DOM numbers were exactly identical across three
 runs; the only timing check is a deliberately loose 8s DOMContentLoaded
-disaster threshold (measured 93-212 ms). rising-shows' budget excludes the
-gitignored ~102 MB release dataset so it governs code weight and holds on
-clean clones. Lighthouse CI was evaluated and rejected (heavy, CI-flaky);
-these budgets catch the static-site regression class that matters.
+disaster threshold (measured 93-212 ms). rising-shows' budget originally
+excluded the gitignored release dataset as a workaround; since the loading
+redesign (PR #391) the exclusion is gone and the budget (52 MB, measured
+36.0 MB) guards the intentional architecture: code plus the deliberate boot
+index, with the 67.5 MB extras monolith never fetched at boot. Lighthouse
+CI was evaluated and rejected (heavy, CI-flaky); these budgets catch the
+static-site regression class that matters.
 
 ## Accessibility
 
@@ -286,13 +297,13 @@ modal open, trip-planner Days view with the example trip), plus 15
 behavioral keyboard checks driven by real key events (home tab order +
 visible focus, apps-hub filter operability via Enter/Space with
 `aria-pressed`, mobile menu, auth-modal focus behavior, gym modal focus
-trap). Serious/critical violations fail; the ones present today are
-quarantined as named KNOWN DEFECT skips and listed below. Results worth
-stating positively: the shared header/footer carry zero serious violations,
-7 of 8 site pages and 6 of 8 app roots scan completely clean, and
-gym-tracker's own modal focus trap is verified correct (20 tabs contained,
-Escape closes, focus restored). This is automated scanning plus targeted
-behavioral checks, not WCAG certification (see limitations).
+trap). Serious/critical violations fail; the ones found at audit time were
+quarantined, and since the 2026-08-16 remediation (PR #392) the suite scans
+**fully clean: 33/33 checks, zero skips, empty quarantine baseline**. The
+shared header/footer carried zero serious violations even before the round,
+and gym-tracker's own modal focus trap was verified correct from the start.
+This is automated scanning plus targeted behavioral checks, not WCAG
+certification (see limitations).
 
 ## PWA / offline
 
@@ -305,62 +316,81 @@ behavioral checks, not WCAG certification (see limitations).
   cache keys, offline) retained; `sw-activate` unit tests cover both apps'
   workers' activate scoping.
 
-## Known product defects (found by tests; NOT fixed, by design)
+## Known product defects (audit 2026-08-15; ALL RESOLVED 2026-08-15/16)
 
-Two enforcement classes, stated per entry group below; none blocks CI.
+Historical record. The audit's original constraint was to discover defects
+without changing production code; the remediation round that followed
+(PRs #386-#394, one to two days later) fixed every entry below. Each entry
+keeps its original finding text for history, with a RESOLVED line stating
+the fix and PR; every former quarantine is now a plain passing regression
+test. The quarantine MECHANISM remains the convention for future finds:
+`{ todo: 'KNOWN DEFECT...' }` unit tests asserting correct behavior (they
+execute every run and report without failing; the fixing PR removes the
+marker), and browser expected-failure checks (execute the defect every run,
+skip while it reproduces, FAIL loudly when it stops reproducing).
+
+Two findings were product decisions rather than plain bugs; both were
+decided during remediation and are recorded at their entries: 21 (24-hour
+default) and 25 (total-rounds accuracy denominator).
+
 Severity: H high, M medium, L low.
-
-- **Pinned by executable quarantined tests** (defects 1-21, 24, 26-29): a
-  `{ todo: 'KNOWN DEFECT...' }` unit test asserting the correct behavior, or
-  a browser expected-failure check. The browser checks EXECUTE the defective
-  behavior every run: while it reproduces they report as a `KNOWN DEFECT:`
-  skip, and when it stops reproducing they FAIL with an "unexpectedly
-  passes - remove the quarantine" message, so a stale quarantine cannot rot
-  silently. Node `todo` tests also execute every run, but a fixed one shows
-  as a passing TODO without failing the run; the fixing PR must remove the
-  todo marker itself.
-- **Documented, deliberately not asserted** (22, 23, 25, 30): security and
-  architecture findings that need infrastructure this task could not add
-  without production changes (22, 23), a behavior whose correct answer is a
-  pending product decision so a test pins current semantics without judging
-  them (25), and a performance observation explicitly excluded from the
-  budgets (30). The documentation below is their only enforcement; do not
-  read them as test-protected.
 
 ### Data integrity / correctness
 
-1. **[M] MapTap Rivals: repeat paste double-counts.** `saveDay()`
+1. **[RESOLVED] [M] MapTap Rivals: repeat paste double-counts.** `saveDay()`
    (apps/maptap-rivals/js/app.js ~2408) has no per-rival/per-date guard; the
    same pasted day saved twice creates two game records, inflating W/L
    records, streaks and averages. Confirmed at browser level.
-2. **[M] MapTap Rivals: null coordinates classify as Africa.**
+    RESOLVED 2026-08-16 (PR #390): saveDay now upserts one record per (rival, date); repeat paste updates in place; regression at unit + browser layers.
+
+2. **[RESOLVED] [M] MapTap Rivals: null coordinates classify as Africa.**
    `Number(null)` is 0, so a round with null lat/lng lands in the Africa
    bounding box and is averaged (js/stats.js:726 + app.js:6153/6168).
-3. **[L] MapTap Rivals: a `__proto__` rival id breaks plain-object
+    RESOLVED 2026-08-16 (PR #390): rounds without finite coordinates are excluded from continent stats at both call sites (new coordNum contract). Bonus fix: the Iceland rule was dead code shadowed by Greenland and is reordered.
+
+3. **[RESOLVED] [L] MapTap Rivals: a `__proto__` rival id breaks plain-object
    accumulators** (js/stats.js:533-535, 648); reachable via backup import;
    the player vanishes and others' shares go to -Infinity.
-4. **[M] Football H2H: negative goals accepted.** The live add path
+    RESOLVED 2026-08-16 (PR #390): all accumulators keyed by untrusted ids build in Maps / null-prototype objects.
+
+4. **[RESOLVED] [M] Football H2H: negative goals accepted.** The live add path
    validates only blank fields; `-3` is stored and flows into every
    aggregate (js/sidebar.js:817-919; the `min="0"` attribute never enforces
    because there is no form submit).
-5. **[M] Football H2H: Goals/Game renders literal NaN** when an imported
+    RESOLVED 2026-08-16 (PR #388): both write paths reject non-integer and negative goals with the existing feedback style.
+
+5. **[RESOLVED] [M] Football H2H: Goals/Game renders literal NaN** when an imported
    game row lacks a score (js/football-h2h.js:1747, 1776; import validates
    the envelope only).
-6. **[L-M] Football H2H: `gameNumber` collides after a delete**
+    RESOLVED 2026-08-16 (PR #388): import validates every row (rejects bad rows with disclosure) and the aggregate defensively skips legacy bad rows.
+
+6. **[RESOLVED] [L-M] Football H2H: `gameNumber` collides after a delete**
    (`games.length + 1`, js/sidebar.js:924).
-7. **[L] Football H2H: penalty-winner rule drift.** A string `"1"` counts as
+    RESOLVED 2026-08-16 (PR #388): gameNumber derives from max+1 via the shared tested helper.
+
+7. **[RESOLVED] [L] Football H2H: penalty-winner rule drift.** A string `"1"` counts as
    a player-2 win on one tab and a draw on another (football-h2h.js:1756-1765
    vs playerStats.js:244-245). Latent today (live writers store numbers).
-8. **[M] Mario Kart: races missing a player key inflate stats.** The
+    RESOLVED 2026-08-16 (PR #388): penaltyWinner normalized to a numeric canon at every write path, healed at load, readers tolerant; the dead saveGame path carrying the latent bug is deleted.
+
+8. **[RESOLVED] [M] Mario Kart: races missing a player key inflate stats.** The
    `!== null` guard passes `undefined`, over-counting racesPlayed and making
    averageFinish NaN; reachable via roster widening (js/statistics.js:61).
-9. **[M] Mario Kart: midnight races stamped "24:MM:SS"** (`hour12:false`
+    RESOLVED 2026-08-16 (PR #389): a shared isFinitePosition guard replaces the !== null pattern across statistics, achievements and charts.
+
+9. **[RESOLVED] [M] Mario Kart: midnight races stamped "24:MM:SS"** (`hour12:false`
    rendering 00:30 as 24:30, js/dataManager.js:74-87), and consequently:
-10. **[M] Mario Kart: chronological sorts no-op on those timestamps**
+    RESOLVED 2026-08-16 (PR #389): timestamps are hand-formatted 00-23; legacy 24: stamps are healed by the load migration.
+
+10. **[RESOLVED] [M] Mario Kart: chronological sorts no-op on those timestamps**
     (NaN comparator leaves insertion order; wrong streak credit;
     statistics.js:163-167 and charts.js:582-586).
-11. **[L-M] Mario Kart: `migrateRaceData` silently drops course/courseId and
+    RESOLVED 2026-08-16 (PR #389): every chronological sort uses one shared tolerant parser (never NaN, legacy shapes handled).
+
+11. **[RESOLVED] [L-M] Mario Kart: `migrateRaceData` silently drops course/courseId and
     writes the lossy version back on every load** (js/dataManager.js:437-444).
+    RESOLVED 2026-08-16 (PR #389): the migration preserves course/courseId and unknown fields, and only writes back on real change.
+
 12. **[M] Gym Tracker: StorageService still compares ids with `===`.**
     **RESOLVED 2026-08-15** (fix/gym-data-integrity): saveProgram,
     deleteProgram, deleteCustomExercise and getWorkoutSessionsByExercise now
@@ -377,9 +407,10 @@ Severity: H high, M medium, L low.
 14. **[L] Gym Tracker: `migrateImport` mutates the caller's payload.**
     **RESOLVED 2026-08-15** (same branch): the payload is cloned before the
     in-place migrators run, so the documented pure contract holds.
-15. **[L] Rising Shows: one unrated episode NaN-poisons `aboveImdb`**
+15. **[RESOLVED] [L] Rising Shows: one unrated episode NaN-poisons `aboveImdb`**
     (scripts/split-data.js:79 folds ratings with no numeric guard); latent
     until an unrated episode enters the dataset.
+    RESOLVED 2026-08-16 (PR #391): the rating fold guards non-numeric episodes like its sibling folds.
 
 ### Offline / platform
 
@@ -392,79 +423,99 @@ Severity: H high, M medium, L low.
     (sw.js:113-121), so an offline request for a precached-but-never-visited
     URL got `respondWith(undefined)` and failed, making all install-time
     precaching dead weight.
-17. **[L] Gym Tracker: rest-timer ids collide** when two timers start in the
+17. **[RESOLVED] [L] Gym Tracker: rest-timer ids collide** when two timers start in the
     same millisecond (TimerService.js:21); first interval becomes
     unclearable.
-18. **[L] Gym Tracker: stopWorkoutTimer returns the initial elapsed value**
+    RESOLVED 2026-08-16 (PR #394): timer handles come from a monotonic counter.
+
+18. **[RESOLVED] [L] Gym Tracker: stopWorkoutTimer returns the initial elapsed value**
     instead of the final one (TimerService.js:110/127); no current caller
     reads it.
+    RESOLVED 2026-08-16 (PR #394): final elapsed is recomputed from the wall clock at stop.
 
 ### UI honesty / UX
 
-19. **[L] Trip Planner: a failed exchange-rate fetch leaves a stale
+19. **[RESOLVED] [L] Trip Planner: a failed exchange-rate fetch leaves a stale
     "Fetching exchange rates..." note**; the promised failure note + Retry
     appears only after some later unrelated re-render (js/app.js ~558-569:
     render fires before the fetching flag clears).
-20. **[L] Site: apps.html zero-match search is silent.** All cards hide with
+    RESOLVED 2026-08-16 (PR #392): the fetching flag clears before every render, so the failed fetch itself repaints the honest note + Retry.
+
+20. **[RESOLVED] [L] Site: apps.html zero-match search is silent.** All cards hide with
     no empty-state message and no live-region announcement (apps.html inline
     script ~389-426).
-21. **[L] Gym Tracker: 12h/24h time-format default divergence.** Pre-boot
+    RESOLVED 2026-08-16 (PR #392): apps.html gained a visible empty state and a polite live region driven by the filter script.
+
+21. **[RESOLVED] [L] Gym Tracker: 12h/24h time-format default divergence.** Pre-boot
     surfaces render 12-hour then flip to the Settings default of 24-hour
     (js/utils/helpers.js:133 vs js/models/Settings.js:72,136). Documented by
     a side-by-side test; the owner should pick one.
+    RESOLVED 2026-08-16 (PR #394): decision made for 24-hour (the Settings default, its v1 upgrade, and the README already agreed); the pre-boot fallback now matches, and an explicit stored 12 stays respected.
 
 ### Accessibility (axe serious/critical + behavioral, quarantined in a11y.mjs)
 
-26. **[M] Shared auth modal: the focus trap does not trap.** `trapFocus()`
+26. **[RESOLVED] [M] Shared auth modal: the focus trap does not trap.** `trapFocus()`
     in assets/js/main.js (~169) computes its first/last boundaries over ALL
     focusable elements including the hidden signup form, so the wrap never
     fires and Tab escapes the open `aria-modal` dialog to the page body.
     Open-focus and Escape-with-focus-restore work.
-27. **[M] Mario Kart: `role="grid"` on a CSS card layout** (index.html:337,
+    RESOLVED 2026-08-16 (PR #392): trapFocus filters to visible enabled focusables per Tab and recaptures leaks; verified with real keys in both modal states.
+
+27. **[RESOLVED] [M] Mario Kart: `role="grid"` on a CSS card layout** (index.html:337,
     Help view) triggers critical `aria-required-children` /
     `aria-required-parent` violations; the children are articles, not
     rows/gridcells. Fix is removing the role.
-28. **[L-M] Color-contrast failures (axe serious):** trip-planner Days view
+    RESOLVED 2026-08-16 (PR #392): the layout roles are removed; the scan is clean.
+
+28. **[RESOLVED] [L-M] Color-contrast failures (axe serious):** trip-planner Days view
     x32 (day-number labels, weather chips, tags, the "more" button);
     gym-tracker program-modal save button; moadon-alef active language
     button; maptap-rivals paste-panel hint.
-29. **[L] Mobile menu ignores Escape.** The HTML5UP panel plugin supports
+    RESOLVED 2026-08-16 (PR #392): all four surfaces fixed at token level to WCAG AA, including two root causes beyond the scan (the main.css b/strong #555 collision on day numbers, and the cancelled-row opacity fade rebuilt as explicit colors).
+
+29. **[RESOLVED] [L] Mobile menu ignores Escape.** The HTML5UP panel plugin supports
     `hideOnEscape` but `initializeMenu()` in assets/js/main.js never sets
     it. The labelled close control works.
+    RESOLVED 2026-08-16 (PR #392): initializeMenu passes hideOnEscape to the panel plugin.
 
 ### Performance observation (documented only, deliberately not asserted)
 
-30. **Rising Shows eagerly fetches ~102 MB of dataset at boot** when the
+30. **[RESOLVED] Rising Shows eagerly fetches ~102 MB of dataset at boot** when the
     release data is present (data-index.json 34.3 MB + show-modal-extras
     67.5 MB, uncompressed sizes over a local no-gzip server; production
     serves compressed). Worth an owner look; the perf budgets deliberately
     exclude it.
+    RESOLVED 2026-08-16 (PR #391): the boot fetch of the 67.5 MB extras monolith is gone; extras merge into the per-show detail files the modal already fetches. Boot transfer measured 103.5 MB before, 36.0 MB after (65% down); the perf budget now covers the intentional architecture.
 
 ### Arena correctness (pinned in apps/arena/tests/known-defects.test.js)
 
-24. **[L-M] Arena `normalizeRoomCode` accepts characters outside the
+24. **[RESOLVED] [L-M] Arena `normalizeRoomCode` accepts characters outside the
     room-code alphabet** (room-state.js filters only `[^A-Z0-9]`;
     `parseUrlState` uses a third, different validity notion), so codes that
     can never exist are looked up instead of rejected. Pinned by todo, along
     with two NaN-hardening gaps in scoring (`speedBonus(NaN)` and
     `scoreAnswer` with a missing `timeLeftMs` propagate NaN toward a
     Firestore increment; unreachable in production today).
+    RESOLVED 2026-08-16 (PR #393): normalizeRoomCode enforces the alphabet and parseUrlState routes through it.
 
 ### Security-adjacent observations (documented only; no executable pin)
 
-22. **Arena room passwords are stored in cleartext in a world-readable
+22. **[RESOLVED] Arena room passwords are stored in cleartext in a world-readable
     Firestore document and compared client-side** (app.js:1630,
     firestore.rules:59-62). Anyone with the room code can read the password
     from the console. Needs a product decision (rules + hashing or a
     server-side gate). Not automatable without an emulator harness.
-23. **No Firestore security-rules tests exist**; player-doc ownership, chat
+    RESOLVED 2026-08-16 (PR #393): joins are rules-gated against a SHA-256 hash in an unreadable private/gate subdocument; new rooms can never carry a password field (rules-enforced); legacy rooms keep working; boundary documented in apps/arena/README.md.
+
+23. **[RESOLVED] No Firestore security-rules tests exist**; player-doc ownership, chat
     caps, guest exclusions and admin deletes are enforced only by rules that
     nothing verifies. The emulator ports are configured in firebase.json but
     unused. Top recommended next step.
+    RESOLVED 2026-08-16 (PR #393): a 23-test Firestore-emulator rules suite (apps/arena/tests-rules/, plain REST, deny-all negative control) covers every rules-only invariant plus non-arena no-regression pins; weekly CI via arena-rules.yml.
 
 ### Product decision pending (pinned as current-behavior, not judged)
 
-25. **Arena trivia accuracy divides by answered rather than total rounds**
+25. **[RESOLVED] Arena trivia accuracy divides by answered rather than total rounds**
     (room-state.js:279), inconsistent with the deliberately-fixed Globe Drop
     aggregator; 3 correct answers in a 10-question game report 100%. A test
     in known-defects.test.js pins today's semantics so the choice is made
@@ -478,6 +529,7 @@ Firestore increment if reached); fpl `validate-history.mjs` validating
 2025-26 twice per default run.
 
 None of these blocks CI. The quarantine reports them on every run.
+    RESOLVED 2026-08-16 (PR #393): decision made for total-rounds accuracy (consistent with Globe Drop); the aggregator takes the denominator from the room question count and the old semantics are asserted against.
 
 ## Flaky tests discovered and their causes
 
@@ -505,19 +557,34 @@ None of these blocks CI. The quarantine reports them on every run.
 No retry mechanisms were added anywhere; nothing hides a deterministic
 failure.
 
-## Remaining limitations (candid)
+## Remediation round (2026-08-15/16)
 
-- **Arena's multiplayer core is still not behaviorally testable.** Room
-  create/join/start/rematch, two-client sync, host handoff and reconnect run
-  only against real Firebase, and tests must not touch production. The right
-  fix is a Firebase-emulator harness plus extracting pure logic from app.js;
-  both need production-code changes this task was forbidden to make. Current
-  browser checks assert truthful blocked-backend behavior only.
-- **Firestore/RTDB security rules remain untested** (same constraint).
-- **The app-core IIFEs** (trip-planner, maptap, rising-shows app.js) are
-  covered behaviorally through the browser, not by unit tests; internals
-  like maptap's `classifyContinent` tables cannot be unit-tested without an
-  export seam (a one-line production change, recommended).
+The constraint of the original audit (no production changes) was lifted the
+next day and every finding was worked through. What changed beyond the
+defect fixes stamped above:
+
+- **Arena is now behaviorally testable.** A Firestore-emulator harness
+  (plain REST, pinned npx firebase-tools, deny-all negative control, Java
+  21) runs 23 security-rules tests, and a 27-check two-client multiplayer
+  e2e drives create/join/start/answer/reveal/scoreboard/rematch/host-handoff
+  and both password paths against local emulators (`npm run
+  test:arena:rules`, `npm run test:arena:emulator`; weekly CI via
+  arena-rules.yml). The emulator seam in firebase-config.js is
+  double-gated (loopback host AND an explicit localStorage opt-in) and
+  unit-tested; no test can reach production Firebase.
+- **Room passwords** moved from cleartext-in-a-readable-doc to a rules-gated
+  hash in an unreadable subdocument (defect 22 above).
+- **Export seams** landed for the maptap IIFE (`window._testExports`, 18 new
+  unit tests incl. the continent tables, which promptly caught the Iceland
+  bug) and rising-shows' Watched/Compare stores.
+- **Rising Shows boot loading was redesigned** (defect 30 above): 103.5 MB
+  to 36.0 MB measured, extras lazy via the per-show detail files, perf
+  budget now guards the intentional architecture.
+- **pressKey text support** landed in cdp.mjs (Enter/Space default actions).
+- The a11y suite scans **fully clean: 33/33, zero skips** after the fixes.
+
+## Remaining limitations (candid, post-remediation)
+
 - **WebKit runs only on CI** (host libraries); Firefox runs everywhere.
 - **axe + keyboard checks are not WCAG certification**; manual screen-reader
   passes remain in the owner's human test plans (`.features/*-human.md`).
@@ -527,35 +594,43 @@ failure.
 - **True mobile devices are not tested** (viewport + touch emulation only).
 - **tp-assist's `callGemini` upstream behavior** is tested via stubs, not a
   live contract check (a deliberate CI-determinism choice; the fpl proxy has
-  the same property and now verifies its header contract producer-side).
+  the same property and verifies its header contract producer-side).
+- **The RTDB path of the sync engine** stays untested (production pins
+  Firestore; documented in the sync behavioral suite header).
+- **The arena rules/emulator suites need Java plus a one-time
+  firebase-tools download**, so they are separate commands + weekly CI, not
+  part of `npm test`; they skip cleanly (and loudly) where Java is absent.
 - Some browser checks depend on the gitignored rising-shows dataset and skip
   cleanly on a fresh clone (6 checks, reported, with the fetch command).
 
-## Recommended next steps (each is a product-code decision, not a test gap)
+## Recommended next steps (all optional polish; nothing load-bearing open)
 
-1. ~~Fix the HIGH defect: make the gym service worker consult its
-   precache.~~ Done 2026-08-15 (see defect 16).
-2. Stand up the Firebase emulator harness for Arena + rules tests
-   (`firebase.json` already declares the ports); then delete the
-   blocked-backend compromise checks.
-3. Fix the MEDIUM data-integrity defects (maptap duplicate-day guard,
-   football negative goals/NaN, mario-kart missing-key stats + 24:MM:SS
-   timestamps). The gym group (`===` id comparisons, import validation,
-   migrateImport purity) was fixed 2026-08-15; see defects 12-14.
-4. Add tiny export seams (`window._testExports`) to the maptap and
-   rising-shows IIFEs so their pure helpers can move to the unit layer.
-5. Fix the auth-modal focus trap and the mario-kart `role="grid"`; sweep the
-   four contrast findings (all are token-level color changes).
-6. Decide the gym 12h/24h default and the Arena accuracy denominator.
-7. Consider hashing or server-gating Arena room passwords.
-8. Look at Rising Shows' eager ~102 MB dataset fetch at boot.
-9. Harness nicety: give `pressKey()` in cdp.mjs a `text` field variant so
-   Enter/Space trigger button default actions (the a11y suite carries a
-   local helper for this today).
+1. Collapse football-h2h's two games-table renderers (the legacy one is
+   reachable via sortable headers and drifts cosmetically; FINDINGS has the
+   detail).
+2. Arena owner items surfaced during the emulator work (apps/arena/
+   FINDINGS.md): the dead `#end-again-btn` rematch-strip UI path, and the
+   shared sync modal's open+reload behavior likely hitting real first-time
+   guests in production.
+3. Mario-kart cosmetic sibling of defect 8: a widened roster can render
+   "undefined" in a history cell (render-path guards were deliberately left
+   alone).
+4. Decide whether the sync engine's oversize-payload drop (silent beyond
+   console after the retry ladder) deserves a user-visible surface.
+5. Consider registering the arena emulator e2e in a CI job with Java the
+   way arena-rules.yml runs the rules suite, if its runtime stays stable.
 
 ## Files changed
 
-Test infrastructure and suites only (verified against `git diff master`):
+By the original testing-hardening PR (#385), test infrastructure and suites
+only (verified against `git diff master` at the time). The remediation round
+that followed (production fixes included, each PR body enumerating its own
+complete diff): #386 gym service worker, #387 gym data integrity, #388
+football-h2h correctness, #389 mario-kart correctness, #390 maptap-rivals
+correctness + seam, #391 rising-shows data + loading redesign, #392
+site-wide a11y/UX, #393 arena emulator + rules + password security, #394
+gym timers/format, #395 the CPU-time budget conversion, plus the closeout
+PR carrying this document update. Original #385 scope:
 `tests/browser/` (cdp.mjs, run.mjs, all suites, vendor/axe.min.js, README),
 `tests/static/` (new), `tests/coverage/` (new), `tests/cross-browser/` (new),
 `apps/*/tests/` (all eight apps), `apps/{trip-planner,fpl-planner}/e2e/`,
