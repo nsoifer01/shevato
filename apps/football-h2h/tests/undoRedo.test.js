@@ -20,6 +20,7 @@ const quietConsole = Object.assign(Object.create(null), console, { warn: () => {
 function makeHistoryCtx(initialGames = []) {
     const toasts = [];
     const ctx = makeContext({ console: quietConsole });
+    loadInto(ctx, 'playerStats.js');
     loadInto(ctx, 'sidebar.js');
     loadInto(ctx, 'football-h2h.js');
     ctx.window.showToast = (msg) => toasts.push(msg);

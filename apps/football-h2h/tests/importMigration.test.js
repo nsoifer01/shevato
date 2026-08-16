@@ -243,15 +243,67 @@ test('import: a payload with no games array is refused', () => {
     assert.deepEqual(storedGames(h.ctx).map((g) => g.id), [1]);
 });
 
-test('import: per-game fields are NOT validated, only the envelope', () => {
-    // Pinned actual behaviour: parseImportPayload checks the shape of the file,
-    // not of each game, so a malformed row is stored verbatim. That is what
-    // lets a scoreless row reach the stats counters (see the goals/game NaN
-    // case in statsAggregates.test.js).
+test('import: malformed rows are dropped, disclosed up front, and never stored', () => {
     const h = importCtx([]);
-    h.open(JSON.stringify({ games: [{ id: 1, dateTime: NOW, note: 'no scores at all' }] }));
+    h.open(JSON.stringify({
+        games: [
+            { id: 1, player1Goals: 2, player2Goals: 1, dateTime: NOW },
+            { id: 2, dateTime: NOW, note: 'no scores at all' },
+            { id: 3, player1Goals: -4, player2Goals: 0, dateTime: NOW },
+        ],
+    }));
+    assert.ok(h.modals.confirm.message.includes('1 game'), 'only the valid row is counted');
+    assert.ok(
+        h.modals.confirm.message.includes('2 invalid rows'),
+        `the skip must be disclosed before confirming, got: ${h.modals.confirm.message}`,
+    );
     h.confirm();
     const stored = storedGames(h.ctx);
     assert.equal(stored.length, 1);
-    assert.equal(stored[0].player1Goals, undefined);
+    assert.equal(stored[0].id, 1);
+});
+
+test('import: a legacy string penaltyWinner is normalized to a number on the way in', () => {
+    const h = importCtx([]);
+    h.open(JSON.stringify({
+        games: [{ id: 1, player1Goals: 1, player2Goals: 1, penaltyWinner: '2', dateTime: NOW }],
+    }));
+    h.confirm();
+    const stored = storedGames(h.ctx);
+    assert.equal(stored[0].penaltyWinner, 2);
+    assert.equal(typeof stored[0].penaltyWinner, 'number');
+});
+
+// --- migratePenaltyWinners (load-path normalization) ---------------------
+
+test('migratePenaltyWinners: string "1" / "2" become numbers, everything else is untouched', () => {
+    const ctx = appCtx();
+    const games = [
+        { id: 1, penaltyWinner: '1' },
+        { id: 2, penaltyWinner: '2' },
+        { id: 3, penaltyWinner: 1 },
+        { id: 4, penaltyWinner: 'draw' },
+        { id: 5, penaltyWinner: null },
+        { id: 6 },
+    ];
+    assert.equal(ctx.migratePenaltyWinners(games), true);
+    assert.deepEqual(games.map((g) => g.penaltyWinner), [1, 2, 1, 'draw', null, undefined]);
+});
+
+test('migratePenaltyWinners: reports false when nothing needed rewriting', () => {
+    const ctx = appCtx();
+    const games = [{ id: 1, penaltyWinner: 2 }, { id: 2, penaltyWinner: null }];
+    assert.equal(ctx.migratePenaltyWinners(games), false);
+});
+
+test('loadGames: a stored legacy string penaltyWinner is normalized and written back', () => {
+    const ctx = appCtx();
+    ctx.localStorage.setItem('footballH2HGames', JSON.stringify([
+        { id: 1, player1Goals: 1, player2Goals: 1, penaltyWinner: '1', dateTime: '2026-01-01T00:00:00.000Z' },
+    ]));
+    ctx.loadGames();
+    const stored = storedGames(ctx);
+    assert.equal(stored[0].penaltyWinner, 1);
+    assert.equal(typeof stored[0].penaltyWinner, 'number');
+    assert.equal(ctx.window.games[0].penaltyWinner, 1, 'the in-memory list is normalized too');
 });

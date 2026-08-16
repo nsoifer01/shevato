@@ -54,25 +54,83 @@
         return [...games].sort((a, b) => compareGames(a, b, column, direction));
     }
 
-    /**
-     * Compute the next sequential numeric ID for a new game given the
-     * existing games array. Empty array → 1. Non-numeric or missing IDs
-     * are skipped so a partial / corrupt import can't yield NaN.
-     */
-    function nextGameId(games) {
-        if (!Array.isArray(games) || games.length === 0) return 1;
-        let max = 0;
+    // max(numeric values of `key` across games) + 1, skipping non-numeric or
+    // missing values so a partial / corrupt import can't yield NaN.
+    // `floor` is the minimum the max is allowed to start from.
+    function nextSequential(games, key, floor) {
+        let max = floor;
         for (const g of games) {
-            const n = Number(g && g.id);
+            const n = Number(g && g[key]);
             if (Number.isFinite(n) && n > max) max = n;
         }
         return max + 1;
     }
 
     /**
+     * Compute the next sequential numeric ID for a new game given the
+     * existing games array. Empty array → 1.
+     */
+    function nextGameId(games) {
+        if (!Array.isArray(games) || games.length === 0) return 1;
+        return nextSequential(games, 'id', 0);
+    }
+
+    /**
+     * Compute the next display gameNumber: max(existing gameNumber) + 1,
+     * never games.length + 1, so deleting a game can't re-issue a number
+     * already in use. The floor is games.length because rows WITHOUT a
+     * gameNumber render their 1-based position instead, so a fresh number
+     * must clear the positional range too.
+     */
+    function nextGameNumber(games) {
+        if (!Array.isArray(games) || games.length === 0) return 1;
+        return nextSequential(games, 'gameNumber', games.length);
+    }
+
+    /**
+     * Canonical penaltyWinner values are the NUMBER 1, the NUMBER 2, the
+     * string 'draw', or null. Legacy string '1' / '2' (written by a removed
+     * modal path or hand-edited imports) are coerced to numbers; anything
+     * else collapses to null (no shootout).
+     */
+    function normalizePenaltyWinner(value) {
+        if (value === 1 || value === 2 || value === 'draw') return value;
+        if (value === '1' || value === '2') return Number(value);
+        return null;
+    }
+
+    // A goal count is valid when it is (or parses as) a non-negative
+    // integer. Returns the coerced number, or null when invalid. Only
+    // numbers and non-blank strings are considered: [] and null also
+    // coerce to 0 via Number() and must not slip through.
+    function toValidGoals(value) {
+        if (typeof value !== 'number' && (typeof value !== 'string' || value.trim() === '')) {
+            return null;
+        }
+        const n = Number(value);
+        return (Number.isInteger(n) && n >= 0) ? n : null;
+    }
+
+    // Validate and normalize one imported game row. Returns a normalized
+    // copy (numeric goals, canonical penaltyWinner) or null when the row
+    // is not usable (non-object, or either score missing / negative /
+    // non-integer). Everything else on the row is carried across verbatim.
+    function normalizeImportedGame(row) {
+        if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
+        const player1Goals = toValidGoals(row.player1Goals);
+        const player2Goals = toValidGoals(row.player2Goals);
+        if (player1Goals === null || player2Goals === null) return null;
+        return Object.assign({}, row, {
+            player1Goals,
+            player2Goals,
+            penaltyWinner: normalizePenaltyWinner(row.penaltyWinner),
+        });
+    }
+
+    /**
      * Validate the shape of an imported JSON payload from the export
      * button. Returns one of:
-     *   { ok: true, games: [...], players: { player1, player2 } }
+     *   { ok: true, games: [...], players: { player1, player2 }, rejected: n }
      *   { ok: false, error: '...' }
      *
      * The schema we accept (matches what exportData writes):
@@ -82,6 +140,14 @@
      *   }
      *
      * `players` is optional — older exports may not have it.
+     *
+     * Per-game validation: each row must be an object with non-negative
+     * integer scores for both players (numeric strings are coerced).
+     * Valid rows come back normalized (numeric goals, canonical
+     * penaltyWinner: 1 / 2 / 'draw' / null); invalid rows are dropped and
+     * counted in `rejected` so the import UI can report them instead of
+     * storing rows that would NaN-poison the aggregates.
+     *
      * The function never throws on malformed input; non-object payloads,
      * missing games array, etc. all return ok: false with a short reason.
      */
@@ -92,19 +158,28 @@
         if (!Array.isArray(payload.games)) {
             return { ok: false, error: 'Missing games array' };
         }
+        const games = [];
+        let rejected = 0;
+        for (const row of payload.games) {
+            const normalized = normalizeImportedGame(row);
+            if (normalized) games.push(normalized);
+            else rejected += 1;
+        }
         const players = (payload.players && typeof payload.players === 'object')
             ? {
                 player1: typeof payload.players.player1 === 'string' ? payload.players.player1 : 'Player 1',
                 player2: typeof payload.players.player2 === 'string' ? payload.players.player2 : 'Player 2',
             }
             : { player1: 'Player 1', player2: 'Player 2' };
-        return { ok: true, games: payload.games, players };
+        return { ok: true, games, players, rejected };
     }
 
     const api = {
         compareGames,
         sortGames,
         nextGameId,
+        nextGameNumber,
+        normalizePenaltyWinner,
         parseImportPayload,
     };
 

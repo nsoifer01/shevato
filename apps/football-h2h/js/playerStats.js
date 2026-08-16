@@ -240,9 +240,13 @@
         if (m === null || o === null) return null;
         if (m > o) return 'W';
         if (m < o) return 'L';
-        // Regulation tied — penalty decides if there was a winner.
-        if (penaltyWinner === mySide) return 'W';
-        if (penaltyWinner === 1 || penaltyWinner === 2) return 'L';
+        // Regulation tied: penalty decides if there was a winner. Number()
+        // coercion tolerates a legacy string '1' / '2' (all live write paths
+        // store numbers; 'draw' / null / undefined coerce to NaN or 0, which
+        // never equal 1 or 2, so they stay draws).
+        const pw = Number(penaltyWinner);
+        if (pw === mySide) return 'W';
+        if (pw === 1 || pw === 2) return 'L';
         return 'D';
     }
 
@@ -496,6 +500,7 @@
     }
 
     const api = {
+        toScore,
         computePlayerStats,
         scoresInOrder,
         matchResult,

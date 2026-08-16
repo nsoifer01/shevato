@@ -854,10 +854,26 @@ function submitSidebarGame() {
         showSidebarGameError(`Please enter goals for ${currentPlayer2Name}`);
         return;
     }
-    
+
+    // Goals must be non-negative integers. The number inputs carry min="0",
+    // but that is only a browser hint (there is no form submit to enforce
+    // it), so re-check here before anything is stored.
+    const player1GoalsNum = Number(player1Goals);
+    const player2GoalsNum = Number(player2Goals);
+
+    if (!Number.isInteger(player1GoalsNum) || player1GoalsNum < 0) {
+        showSidebarGameError(`Goals for ${currentPlayer1Name} must be a whole number of 0 or more`);
+        return;
+    }
+
+    if (!Number.isInteger(player2GoalsNum) || player2GoalsNum < 0) {
+        showSidebarGameError(`Goals for ${currentPlayer2Name} must be a whole number of 0 or more`);
+        return;
+    }
+
     // Check for penalty result if it's a draw
     let penaltyWinner = null;
-    if (player1Goals === player2Goals) {
+    if (player1GoalsNum === player2GoalsNum) {
         const penaltySelect = document.getElementById('sidebar-penalty-winner');
         const penaltyValue = penaltySelect ? penaltySelect.value : '';
         
@@ -915,13 +931,15 @@ function submitSidebarGame() {
     // Create game object
     const newGame = {
         id: Date.now(),
-        player1Goals: parseInt(player1Goals),
-        player2Goals: parseInt(player2Goals),
+        player1Goals: player1GoalsNum,
+        player2Goals: player2GoalsNum,
         player1Team: player1Team || 'Unknown',
         player2Team: player2Team || 'Unknown',
         penaltyWinner: penaltyWinner,
         dateTime: gameDate.toISOString(),
-        gameNumber: window.games ? window.games.length + 1 : 1,
+        // max(existing gameNumber) + 1, never games.length + 1: after a
+        // delete the latter re-issues a number already in use.
+        gameNumber: window.games ? window.FootballMatchLogic.nextGameNumber(window.games) : 1,
         ...(noteValue ? { note: noteValue } : {})
     };
     

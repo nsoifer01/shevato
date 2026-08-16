@@ -141,12 +141,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }, 100);
     
-    // Set up event listeners for modal forms (if they exist)
-    const player1Goals = document.getElementById('player1Goals');
-    const player2Goals = document.getElementById('player2Goals');
-    if (player1Goals) player1Goals.addEventListener('input', checkForDraw);
-    if (player2Goals) player2Goals.addEventListener('input', checkForDraw);
-    
     // Initialize icon grids
     initializeIconGrids();
     
@@ -279,23 +273,6 @@ function applyPlayerNameChanges(newPlayer1Name, newPlayer2Name) {
     if (playerComparisonP1Header) playerComparisonP1Header.textContent = (playerIcons.player1 || '') + ' ' + player1Name;
     if (playerComparisonP2Header) playerComparisonP2Header.textContent = (playerIcons.player2 || '') + ' ' + player2Name;
 
-    // Update modal labels (if they exist)
-    const modalPlayer1Name = document.getElementById('modalPlayer1Name');
-    const modalPlayer2Name = document.getElementById('modalPlayer2Name');
-    const modalPlayer1TeamLabel = document.getElementById('modalPlayer1TeamLabel');
-    const modalPlayer2TeamLabel = document.getElementById('modalPlayer2TeamLabel');
-    
-    if (modalPlayer1Name) modalPlayer1Name.textContent = player1Name;
-    if (modalPlayer2Name) modalPlayer2Name.textContent = player2Name;
-    if (modalPlayer1TeamLabel) modalPlayer1TeamLabel.textContent = player1Name;
-    if (modalPlayer2TeamLabel) modalPlayer2TeamLabel.textContent = player2Name;
-    
-    // Update penalty options (if they exist)
-    const penaltyPlayer1Option = document.getElementById('penaltyPlayer1Option');
-    const penaltyPlayer2Option = document.getElementById('penaltyPlayer2Option');
-    if (penaltyPlayer1Option) penaltyPlayer1Option.textContent = player1Name;
-    if (penaltyPlayer2Option) penaltyPlayer2Option.textContent = player2Name;
-    
     // Update table headers
     const player1TeamHeader = document.getElementById('player1TeamHeader');
     const player2TeamHeader = document.getElementById('player2TeamHeader');
@@ -309,8 +286,7 @@ function applyPlayerNameChanges(newPlayer1Name, newPlayer2Name) {
 // Assign dates to legacy games that predate the dateTime field. Spreads
 // undated games across past days based on their position so history still
 // renders in a sensible order. Returns true if any game was migrated.
-// No unit test: football-h2h.js is a DOM-coupled classic script with no
-// module exports, and we deliberately do not restructure exports here.
+// Tested via the vm harness in tests/importMigration.test.js.
 function migrateGameDates(gamesArray) {
     let needsUpdate = false;
     gamesArray.forEach((game, index) => {
@@ -327,6 +303,22 @@ function migrateGameDates(gamesArray) {
     return needsUpdate;
 }
 
+// One-time normalization of legacy penaltyWinner values (same load-path
+// migration pattern as migrateGameDates). The canonical representation is
+// the NUMBER 1 / 2, the string 'draw', or null; a removed modal path used
+// to store the raw select string ('1' / '2'), which the two stats readers
+// interpreted differently. Returns true if any game was rewritten.
+function migratePenaltyWinners(gamesArray) {
+    let needsUpdate = false;
+    gamesArray.forEach((game) => {
+        if (game && (game.penaltyWinner === '1' || game.penaltyWinner === '2')) {
+            game.penaltyWinner = Number(game.penaltyWinner);
+            needsUpdate = true;
+        }
+    });
+    return needsUpdate;
+}
+
 // Load games from localStorage
 function loadGames() {
     const savedGames = localStorage.getItem(STORAGE_KEY);
@@ -334,8 +326,11 @@ function loadGames() {
         games = JSON.parse(savedGames);
         window.games = games; // Update global reference
 
-        // Migrate old games without dateTime
-        if (migrateGameDates(games)) {
+        // Migrate old games without dateTime, and legacy string
+        // penaltyWinner values. Single write-back if either fired.
+        const datesMigrated = migrateGameDates(games);
+        const penaltiesMigrated = migratePenaltyWinners(games);
+        if (datesMigrated || penaltiesMigrated) {
             saveGames();
         }
     } else {
@@ -550,141 +545,11 @@ function renderGamesTableLegacy() {
 }
 
 
-// Show add game modal
-function showAddGameModal() {
-    currentEditId = null;
-    document.getElementById('modalTitle').textContent = 'Add New Game';
-    document.getElementById('gameForm').reset();
-    
-    // Set default team types to Ultimate Team
-    document.getElementById('player1TeamType').value = 'Ultimate Team';
-    document.getElementById('player2TeamType').value = 'Ultimate Team';
-    
-    // Hide secondary options
-    updateTeamOptions(1);
-    updateTeamOptions(2);
-    
-    checkForDraw();
-    updatePlayerNames();
-    document.getElementById('gameModal').classList.add('active');
-}
-
-// Close game modal
-function closeGameModal() {
-    document.getElementById('gameModal').classList.remove('active');
-    currentEditId = null;
-}
-
-
-// Check if the game is a draw and show/hide penalty options
-function checkForDraw() {
-    const player1Goals = parseInt(document.getElementById('player1Goals').value) || 0;
-    const player2Goals = parseInt(document.getElementById('player2Goals').value) || 0;
-    const penaltyGroup = document.getElementById('penaltyGroup');
-    
-    // Only show penalty options if both players have entered goals AND it's a draw
-    const hasGoalValues = document.getElementById('player1Goals').value && document.getElementById('player2Goals').value;
-    
-    if (hasGoalValues && player1Goals === player2Goals) {
-        penaltyGroup.style.display = 'block';
-    } else {
-        penaltyGroup.style.display = 'none';
-        document.getElementById('penaltyWinner').value = '';
-    }
-}
-
-// Save game (add or edit)
-function saveGame(event) {
-    event.preventDefault();
-    
-    const player1Goals = parseInt(document.getElementById('player1Goals').value) || 0;
-    const player2Goals = parseInt(document.getElementById('player2Goals').value) || 0;
-    const player1Team = getFinalTeamValue(1);
-    const player2Team = getFinalTeamValue(2);
-    const penaltyWinner = document.getElementById('penaltyWinner').value;
-    
-    // Validation for custom teams
-    if (document.getElementById('player1TeamType').value === 'Other' && !player1Team.trim()) {
-        createErrorModal({
-            icon: '❌',
-            title: 'Missing Team Information',
-            message: 'Please enter a custom team name for Player 1.'
-        });
-        return;
-    }
-    
-    if (document.getElementById('player2TeamType').value === 'Other' && !player2Team.trim()) {
-        createErrorModal({
-            icon: '❌',
-            title: 'Missing Team Information',
-            message: 'Please enter a custom team name for Player 2.'
-        });
-        return;
-    }
-    
-    const gameData = {
-        player1Goals,
-        player2Goals,
-        player1Team,
-        player2Team,
-        penaltyWinner: penaltyWinner || null
-    };
-
-    // Logged after validation passes. Team names are excluded on purpose:
-    // the "Other" option makes them a free-text field.
-    track('trackAction', currentEditId ? 'match_edited' : 'match_logged', {
-        went_to_penalties: Boolean(penaltyWinner),
-    });
-
-    if (currentEditId) {
-        // Edit existing game
-        const gameIndex = games.findIndex(m => m.id === currentEditId);
-        if (gameIndex !== -1) {
-            const originalData = { ...games[gameIndex] };
-            
-            // Preserve the original date when editing
-            const newData = { 
-                ...games[gameIndex], 
-                ...gameData,
-                lastModified: new Date().toISOString()
-            };
-            games[gameIndex] = newData;
-            
-            // Add to undo history
-            if (typeof addToHistory === 'function') {
-                addToHistory({
-                    type: 'edit_game',
-                    data: { originalData, newData }
-                });
-            }
-            
-            showToast(`Game updated: ${player1Name} ${player1Goals} - ${player2Goals} ${player2Name}`, 'success');
-        }
-    } else {
-        // Add new game with current date and time
-        const newGame = {
-            ...gameData,
-            id: window.FootballMatchLogic.nextGameId(games),
-            dateTime: new Date().toISOString(),
-            lastModified: new Date().toISOString()
-        };
-        games.push(newGame);
-        
-        // Add to undo history
-        if (typeof addToHistory === 'function') {
-            addToHistory({
-                type: 'add_game',
-                data: newGame
-            });
-        }
-        
-        showToast(`Game added: ${player1Name} ${player1Goals} - ${player2Goals} ${player2Name}`, 'success');
-    }
-    
-    saveGames();
-    updateUI();
-    closeGameModal();
-}
+// The old add/edit "gameModal" path (showAddGameModal / closeGameModal /
+// checkForDraw / saveGame and its team helpers) was removed 2026-08-15: its
+// markup no longer exists in index.html, so it was unreachable, and its
+// saveGame stored penaltyWinner as a raw string. The live add path is
+// submitSidebarGame() in sidebar.js; the live edit path is editGame() below.
 
 // Edit game
 function editGame(id) {
@@ -857,10 +722,23 @@ function editGame(id) {
                 showFormError(`Please enter goals for ${currentPlayer2Name}`);
                 return false; // Prevent modal from closing
             }
-            
-            const player1Goals = parseInt(formData.player1Goals);
-            const player2Goals = parseInt(formData.player2Goals);
-            
+
+            // Goals must be non-negative integers: min="0" on the number
+            // inputs is only a browser hint, so re-check before storing
+            // (same rule as submitSidebarGame in sidebar.js).
+            const player1Goals = Number(formData.player1Goals);
+            const player2Goals = Number(formData.player2Goals);
+
+            if (!Number.isInteger(player1Goals) || player1Goals < 0) {
+                showFormError(`Goals for ${currentPlayer1Name} must be a whole number of 0 or more`);
+                return false; // Prevent modal from closing
+            }
+
+            if (!Number.isInteger(player2Goals) || player2Goals < 0) {
+                showFormError(`Goals for ${currentPlayer2Name} must be a whole number of 0 or more`);
+                return false; // Prevent modal from closing
+            }
+
             // Check for penalty result if it's a draw
             if (player1Goals === player2Goals && !formData.penaltyWinner) {
                 showFormError('Please select a penalty result for draw games');
@@ -1008,32 +886,6 @@ function editGame(id) {
     }, 100);
 }
 
-// Helper function to set team selection from a team name
-function setTeamFromValue(playerNumber, teamName) {
-    const teamTypeSelect = document.getElementById(`player${playerNumber}TeamType`);
-    
-    if (teamName === 'Ultimate Team') {
-        teamTypeSelect.value = 'Ultimate Team';
-        updateTeamOptions(playerNumber);
-        return;
-    }
-    
-    // Check if it's in any league
-    for (const [league, teams] of Object.entries(TEAMS_DATA)) {
-        if (teams.includes(teamName)) {
-            teamTypeSelect.value = league;
-            updateTeamOptions(playerNumber);
-            document.getElementById(`player${playerNumber}Team`).value = teamName;
-            return;
-        }
-    }
-    
-    // If not found in any league, set as custom
-    teamTypeSelect.value = 'Other';
-    updateTeamOptions(playerNumber);
-    document.getElementById(`player${playerNumber}CustomTeam`).value = teamName;
-}
-
 // Delete game
 function deleteGame(id) {
     const game = games.find(m => m.id === id);
@@ -1171,6 +1023,9 @@ function importData() {
             const currentCount = games.length;
             const plural = (n) => n === 1 ? 'game' : 'games';
             let message = `The selected file contains ${gameCount} ${plural(gameCount)}.`;
+            if (parsed.rejected > 0) {
+                message += `<br>${parsed.rejected} invalid ${parsed.rejected === 1 ? 'row' : 'rows'} (missing or bad scores) will be skipped.`;
+            }
             if (currentCount > 0) {
                 message += `<br>Importing will replace your current ${currentCount} ${plural(currentCount)}.`;
             } else {
@@ -1210,54 +1065,6 @@ function importData() {
     };
     
     input.click();
-}
-
-// Update team options based on selected league/type
-function updateTeamOptions(playerNumber) {
-    const teamType = document.getElementById(`player${playerNumber}TeamType`).value;
-    const teamGroup = document.getElementById(`player${playerNumber}TeamGroup`);
-    const customGroup = document.getElementById(`player${playerNumber}CustomGroup`);
-    const teamSelect = document.getElementById(`player${playerNumber}Team`);
-    
-    // Hide all secondary options first
-    teamGroup.style.display = 'none';
-    customGroup.style.display = 'none';
-    
-    if (teamType === 'Ultimate Team') {
-        // No additional selection needed
-        return;
-    } else if (teamType === 'Other') {
-        // Show custom input
-        customGroup.style.display = 'block';
-        return;
-    } else if (TEAMS_DATA[teamType]) {
-        // Show team selection for the chosen league
-        teamGroup.style.display = 'block';
-        
-        // Populate team options
-        teamSelect.innerHTML = '';
-        TEAMS_DATA[teamType].forEach(team => {
-            const option = document.createElement('option');
-            option.value = team;
-            option.textContent = team;
-            teamSelect.appendChild(option);
-        });
-    }
-}
-
-// Get the final team value for a player
-function getFinalTeamValue(playerNumber) {
-    const teamType = document.getElementById(`player${playerNumber}TeamType`).value;
-    
-    if (teamType === 'Ultimate Team') {
-        return 'Ultimate Team';
-    } else if (teamType === 'Other') {
-        return document.getElementById(`player${playerNumber}CustomTeam`).value.trim() || 'Other';
-    } else if (TEAMS_DATA[teamType]) {
-        return document.getElementById(`player${playerNumber}Team`).value;
-    }
-    
-    return teamType;
 }
 
 // Player Management Functions
@@ -1444,12 +1251,9 @@ updatePlayerNames = function() {
 
 // Close modal when clicking outside
 window.onclick = function(event) {
-    const modal = document.getElementById('gameModal');
     const iconModal = document.getElementById('iconSelectorModal');
-    
-    if (event.target === modal) {
-        closeGameModal();
-    } else if (event.target === iconModal) {
+
+    if (event.target === iconModal) {
         closeIconSelector();
     }
 }
@@ -1742,21 +1546,35 @@ function updateStatisticsWithData(gamesData) {
     let draws = 0;
     let totalGoals = 0;
     let penaltyShootouts = 0;
+    let countedGames = 0;
 
     gamesData.forEach(game => {
-        totalGoals += game.player1Goals + game.player2Goals;
+        // Defensive guard: a legacy-stored row missing a score (imports were
+        // once envelope-validated only) is skipped rather than letting
+        // undefined NaN-poison every counter below. Missing-score rule
+        // matches playerStats.toScore (null / undefined / '' / non-finite)
+        // so this counter and matchResult always skip the same rows.
+        const p1 = window.FootballPlayerStats.toScore(game && game.player1Goals);
+        const p2 = window.FootballPlayerStats.toScore(game && game.player2Goals);
+        if (p1 === null || p2 === null) return;
+        countedGames++;
+        totalGoals += p1 + p2;
 
-        if (game.player1Goals > game.player2Goals) {
+        if (p1 > p2) {
             player1Wins++;
             player1Wins90++;  // Also count as 90-minute win
-        } else if (game.player2Goals > game.player1Goals) {
+        } else if (p2 > p1) {
             player2Wins++;
             player2Wins90++;  // Also count as 90-minute win
         } else {
-            if (game.penaltyWinner && game.penaltyWinner !== 'draw') {
+            // Number() coercion keeps a legacy string '1' / '2' in agreement
+            // with playerStats.matchResult ('draw' and null coerce to NaN / 0,
+            // which never equal 1 or 2).
+            const pw = Number(game.penaltyWinner);
+            if (pw === 1 || pw === 2) {
                 penaltyShootouts++;
                 // Count penalty winner as a win (but NOT as 90-minute win)
-                if (game.penaltyWinner === 1) {
+                if (pw === 1) {
                     player1Wins++;
                     player1PenaltyWins++;
                 } else {
@@ -1771,9 +1589,9 @@ function updateStatisticsWithData(gamesData) {
             }
         }
     });
-    
+
     const totalGames = gamesData.length;
-    const goalsPerGameValue = totalGames > 0 ? (totalGoals / totalGames) : 0;
+    const goalsPerGameValue = countedGames > 0 ? (totalGoals / countedGames) : 0;
     const goalsPerGame = goalsPerGameValue % 1 === 0 ? goalsPerGameValue.toFixed(0) : goalsPerGameValue.toFixed(1);
     
     // Update DOM elements
@@ -2359,18 +2177,14 @@ window.getCurrentPlayerNames = function() {
 
 // Export functions to global scope
 window.switchStatsTab = switchStatsTab;
-window.updateTeamOptions = updateTeamOptions;
-window.showAddGameModal = showAddGameModal;
-window.closeGameModal = closeGameModal;
-window.saveGame = saveGame;
 window.editGame = editGame;
 window.deleteGame = deleteGame;
 window.confirmClearData = confirmClearData;
 window.exportData = exportData;
 window.importData = importData;
 window.migrateGameDates = migrateGameDates;
+window.migratePenaltyWinners = migratePenaltyWinners;
 window.sortGames = sortGames;
-window.checkForDraw = checkForDraw;
 window.openIconSelector = openIconSelector;
 window.closeIconSelector = closeIconSelector;
 window.showIconCategory = showIconCategory;
