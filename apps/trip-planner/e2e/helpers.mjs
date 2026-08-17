@@ -135,12 +135,24 @@ export async function gotoHard(s, url, { settle = 1000 } = {}) {
 // re-applied if it was clobbered. Verifying is not optional politeness here:
 // re-reading the key we just wrote proves nothing, because the clobber lands
 // between the write and the reload.
-const seedCountExpr = (want) => `(() => {
+// Two halves, and BOTH matter. The localStorage half catches an ensureTrip
+// clobber. The rendered half (#tripSelect showing the fixture's name) catches
+// the sneakier failure: a same-URL navigation that never re-booted the app,
+// which leaves the fixture perfectly intact in localStorage while the RUNNING
+// instance still holds pre-seed closure state (empty venue/geo caches, the
+// default trip). Re-reading localStorage cannot detect that one - the page
+// itself has to prove it rendered the seed.
+const seedCountExpr = (want, name) => `(() => {
   try {
     const db = JSON.parse(localStorage.getItem(${JSON.stringify(LS_KEY)}) || 'null');
     if (!db || !Array.isArray(db.trips)) return ${want} === -1;
     const t = db.trips.find(x => x.id === db.activeTripId) || db.trips[0];
-    return !!t && t.items.length === ${want};
+    if (!t || t.items.length !== ${want}) return false;
+    const sel = document.getElementById('tripSelect');
+    // the option text carries OPTION_PAD after the name, so compare trimmed
+    const shown = sel && sel.selectedIndex >= 0
+      ? sel.options[sel.selectedIndex].textContent.replace(/[\\s\\u00a0]+$/, '') : '';
+    return shown === ${JSON.stringify(name)};
   } catch (e) { return false; }
 })()`;
 
@@ -168,8 +180,12 @@ export async function openApp(cdpPort, base, { db = null, stores = null, hash = 
   await goto(s, base + APP, { settle: 600 });
   await clearTpStorage(s);
   if (db || stores) await writeSeed(s, db, stores);
-  await goto(s, base + APP + hash, { settle });
-  await waitReady(s);
+  // HARD navigation, not a plain goto: Page.navigate from the app to its own
+  // URL is exactly the case chromium may treat as not-a-real-load, and
+  // waitReady cannot tell the difference (the pre-seed instance also has
+  // __TP_BUILD). A boot that silently did not happen leaves the app holding
+  // EMPTY closure caches over a perfectly warm localStorage.
+  await gotoHard(s, base + APP + hash, { settle });
   if (!db) return s;
 
   const active = db.trips.find((t) => t.id === db.activeTripId) || db.trips[0];
@@ -179,7 +195,7 @@ export async function openApp(cdpPort, base, { db = null, stores = null, hash = 
   // apart and re-seeding would loop for nothing.
   if (!want) return s;
   for (let attempt = 0; attempt < 3; attempt++) {
-    if (await evaluate(s, seedCountExpr(want))) return s;
+    if (await evaluate(s, seedCountExpr(want, active.name))) return s;
     await writeSeed(s, db, stores);
     await gotoHard(s, base + APP + hash, { settle });
   }
