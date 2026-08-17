@@ -651,28 +651,34 @@ ranking, and only the part of a correction that changes ORDER changes decisions
   active to 2027. EPL injuries come one season per request with NO pagination,
   so the whole 3-season backfill costs 3 requests.
 
-## Operational state (release state verified 2026-08-15)
+## Operational state (release state verified 2026-08-16)
 
-- **Release state: SHIPPED.** The GW1 hardening and the team sandbox are on
-  production. Merged as PR #380 (`2bd2bd2`) and deployed by Netlify from
-  `master` at 2026-08-15 06:55 UTC (deploy `6a800c98310a1400075aaa6b`).
+- **Release state: SHIPPED.** The GW1 hardening, the team sandbox (PR #380,
+  `2bd2bd2`, deployed 2026-08-15) and the sandbox interaction rework (PR #399,
+  merged as `91d5e23`) are all on production. The current production build is
+  Netlify deploy `6a8200c6d0a44e0008bfd662`, published from `master` at
+  2026-08-16 18:27 UTC.
 
-  Verified the only way that means anything, by hashing what the server actually
-  returns against the merged tree: **17 of 17 files matched**, including
-  `js/app.js`, `js/ui/scenario.js`, `js/ui/sandbox.js`, `js/engine/minutes.js`,
-  `js/engine/squad.js`, `js/engine/confidence.js`, `js/engine/planner.js`,
-  `js/ui/history.js`, `js/ui/dashboard.js`, `js/ui/preseason.js`,
-  `js/ui/player-drawer.js`, `js/ui/store.js`, `js/data/api.js`,
-  `css/styles.css` and `index.html`. `js/ui/scenario.js` and `js/ui/sandbox.js`
-  now return 200 where they returned 404, which is the quickest confirmation
-  that this is the new build and not the old one.
+  Verified the only way that means anything, by hashing what the server
+  actually returns against the merged tree. The #380 verification matched 17
+  of 17 files; after #399 the four files that round touched were re-verified
+  on production (`js/ui/sandbox.js`, `js/app.js`, `css/styles.css`,
+  `js/ui/scenario.js`, all md5-identical to `origin/master`) and the live
+  site then passed a 40/40 behavioural check of the reworked scenario
+  workflow at 1280 and 390 (zero app-caused scroll, card DOM preserved on
+  selection, dock and picker pinned in-viewport, stale planner answers
+  discarded, no console errors).
 
   Everything this file says about the rollover guard, the deadline transition,
-  the transfer overlay, the cache behaviour and the sandbox is now true of what
-  users are running. Rollback point, if the opening gameweek exposes something
-  the suites missed: deploy `6a7ec55690fee400083c64b1` (commit `5666094`, the
-  last pre-GW1-work production build), restored with
-  `netlify api restoreSiteDeploy --data '{"site_id":"fe5f021f-f41b-4b5a-b553-a03729fe4f6d","deploy_id":"6a7ec55690fee400083c64b1"}'`.
+  the transfer overlay, the cache behaviour and the sandbox interaction
+  architecture is now true of what users are running. Rollback point, if the
+  opening gameweek exposes something the suites missed: deploy
+  `6a816a845083eb000852c084` (commit `5b97e9a`, the last production build
+  before the interaction rework), restored with
+  `netlify api restoreSiteDeploy --data '{"site_id":"fe5f021f-f41b-4b5a-b553-a03729fe4f6d","deploy_id":"6a816a845083eb000852c084"}'`.
+  That build still contains all of the GW1 hardening; rolling back further,
+  to before PR #380 (`6a7ec55690fee400083c64b1`, commit `5666094`), would
+  also surrender the rollover guard and the sandbox itself.
 
   **Verify before trusting any audit of this app**, because a finding is only
   about what users hit if the bytes match:
