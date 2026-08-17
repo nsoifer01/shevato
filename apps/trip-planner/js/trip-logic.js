@@ -3062,7 +3062,12 @@ const TripLogic = (() => {
 
     const lines = [];
     lines.push(`Plan my day for ${isIsoDate(p.date) ? p.date : 'this day'}.`);
-    lines.push(`I am ready to head out at ${wake} and want to be back at my hotel by ${back}.`);
+    // The time is an ARRIVAL contract, not a wake-up alarm: the traveller
+    // wants the first planned place to start at this time, with the travel to
+    // it happening before. "Ready to head out at 8:00" read as permission to
+    // schedule breakfast AT 8:00, which nobody leaving a hotel at 8:00 can
+    // make.
+    lines.push(`I want to be at my first planned stop at ${wake}, with any travel to it before that time, and want to be back at my hotel by ${back}.`);
 
     if (activities) {
       const s = stylePhrase(styles.activities);
@@ -3590,21 +3595,33 @@ const TripLogic = (() => {
   }
 
   // ---------- distance wording ----------
-  // Both units, in the order and the shape the route dialog already prints them
-  // ("1,240 km / 771 mi"), with one decimal below 10 so a walk across a
-  // neighbourhood does not round to a useless whole number.
+  // ONE unit at a time, chosen by the traveller (the "Miles / Kilometers"
+  // preference), with one decimal below 10 so a walk across a neighbourhood
+  // does not round to a useless whole number. This is the single formatter
+  // every user-visible distance goes through: the old fmtKmMi printed
+  // "0.9 km / 0.6 mi" on every chip, which doubled the noise on every card
+  // for no decision anyone was making.
+  //
+  // The unit lives HERE (module state, set by the host via setDistanceUnit)
+  // rather than being threaded through every call site, because the chips,
+  // tooltips, route footers and totals all format in one pass and the unit is
+  // a display preference, not data. Default 'mi', consistent with the app's
+  // other display defaults (12-hour clock, en-US number formatting).
   const KM_TO_MI = 0.621371;
-  function fmtKmMi(km) {
-    const one = n => (n < 10 ? (Math.round(n * 10) / 10).toFixed(1) : Math.round(n).toLocaleString('en-US'));
-    return `${one(km)} km / ${one(km * KM_TO_MI)} mi`;
+  let distanceUnit = 'mi';
+  function setDistanceUnit(u) { distanceUnit = u === 'km' ? 'km' : 'mi'; }
+  function getDistanceUnit() { return distanceUnit; }
+  const oneDist = n => (n < 10 ? (Math.round(n * 10) / 10).toFixed(1) : Math.round(n).toLocaleString('en-US'));
+  function fmtDist(km) {
+    return distanceUnit === 'km' ? `${oneDist(km)} km` : `${oneDist(km * KM_TO_MI)} mi`;
   }
   // The chip itself is a tilde and the two units; the honesty (straight line,
   // and from WHERE) has no room there and rides in the tooltip, the same split
   // weatherRange and weatherLine already use.
-  const distanceChipLabel = km => `~${fmtKmMi(km)}`;
+  const distanceChipLabel = km => `~${fmtDist(km)}`;
   function distanceChipTitle(km, from) {
     const origin = String(from == null ? '' : from).trim();
-    return `${fmtKmMi(km)} straight-line${origin ? ` from ${origin}` : ''}, not a walking route.`;
+    return `${fmtDist(km)} straight-line${origin ? ` from ${origin}` : ''}, not a walking route.`;
   }
   // "20m" is what fmtDur gives, and it is exactly the wrong word next to a
   // distance: "~20m · ~1.3 km" reads as twenty METRES. Minutes are spelled on
@@ -3646,17 +3663,17 @@ const TripLogic = (() => {
   }
 
   // A suggestion card has room the Days-view row does not, and two thirds of
-  // what makes the figure actionable is not the figure: "~1.3 km / 0.8 mi"
-  // alone says neither how long it takes nor that it is measured from the hotel
-  // you are booked into. So the chip leads with the time (which is what a
-  // traveller actually decides on), then the distance, then the origin:
-  //   "🚶 ~20 min walk · ~1.3 km / 0.8 mi from Hotel Borg"
+  // what makes the figure actionable is not the figure: "~1.3 km" alone says
+  // neither how long it takes nor that it is measured from the hotel you are
+  // booked into. So the chip leads with the time (which is what a traveller
+  // actually decides on), then the distance, then the origin:
+  //   "🚶 ~20 min walk · ~0.8 mi from Hotel Borg"
   // Every part degrades on its own: no origin drops the "from", and a hop too
   // long for any in-city mode drops the time and reads as it used to.
   function assistDistanceChipLabel(km, from) {
     const origin = String(from == null ? '' : from).trim();
     const hop = hopTravel(km);
-    const dist = `~${fmtKmMi(km)}${origin ? ` from ${origin}` : ''}`;
+    const dist = `~${fmtDist(km)}${origin ? ` from ${origin}` : ''}`;
     return hop ? `${hop.icon} ${hop.text} · ${dist}` : dist;
   }
 
@@ -3679,11 +3696,139 @@ const TripLogic = (() => {
     return distanceChipTitle(km, from) + (hint ? ` Roughly ${hint} - an estimate from the distance, not live traffic.` : '');
   }
 
-  // "Shortest route: Hotel Gracery > teamLab > Ichiran · ~5.4 km / 3.4 mi total"
+  // "Shortest route: Hotel Gracery > teamLab > Ichiran · ~3.4 mi total"
   function routeFooterText(anchorLabel, labels, km) {
     const names = [String(anchorLabel == null ? '' : anchorLabel).trim() || 'Start',
       ...(Array.isArray(labels) ? labels : []).map(l => String(l == null ? '' : l).trim() || '(no title)')];
-    return `Shortest route: ${names.join(' > ')} · ~${fmtKmMi(km)} total`;
+    return `Shortest route: ${names.join(' > ')} · ~${fmtDist(km)} total`;
+  }
+
+  // ---------- the day's route, summed and exported ----------
+  // Everything below reads the SAME legs dayDistanceChain built for the chips
+  // and the Directions links: one chain feeds every surface, so the per-card
+  // figure, the day total and the external route can never disagree.
+
+  // Per-mode totals for one day's chain. Each leg is classified by the same
+  // hopTravel judgement its chip prints (walk under WALKABLE_KM, a ride
+  // otherwise), so a day cannot say "9 min walk" on a card and file that leg
+  // under transit in the total. A leg too long for any in-city mode (an
+  // intercity hop that happens to sit inside one day) still counts, under
+  // 'ride': it is travel the day contains, and dropping it would understate
+  // the day.
+  function dayTravelTotals(legs) {
+    const byMode = { walk: 0, ride: 0 };
+    let km = 0;
+    for (const leg of Array.isArray(legs) ? legs : []) {
+      if (!leg || !(leg.km > 0)) continue;
+      const hop = hopTravel(leg.km);
+      byMode[hop && hop.key === 'walk' ? 'walk' : 'ride'] += leg.km;
+      km += leg.km;
+    }
+    return { byMode, km, legCount: (Array.isArray(legs) ? legs : []).filter(l => l && l.km > 0).length };
+  }
+
+  // Which travelmode ONE Google Maps URL for the whole day should open in.
+  // Maps directions URLs accept a single travelmode for the entire waypoint
+  // route, and transit does not support waypoints at all, so a mixed day
+  // cannot be represented faithfully: walking is honest only when every leg
+  // is a walk, and driving is the one mode Maps can always route for the
+  // rest. The internal Day route stays the source of truth for the actual
+  // per-leg modes; this is documented on the link itself (its title).
+  function dayRouteMode(legs) {
+    const real = (Array.isArray(legs) ? legs : []).filter(l => l && l.km > 0);
+    if (!real.length) return 'walking';
+    return real.every(l => l.km <= WALKABLE_KM) ? 'walking' : 'driving';
+  }
+
+  // A directions URL through ordered waypoints, same shape and guards as
+  // directionsUrl. Google's URL API caps waypoints at 9; the caller chunks
+  // (routeUrlChunks) rather than silently dropping stops.
+  function directionsRouteUrl(origin, waypoints, destination, travelmode) {
+    const dest = normalizePlaceQuery(destination);
+    const from = normalizePlaceQuery(origin);
+    if (!dest || !from) return '';
+    const via = (Array.isArray(waypoints) ? waypoints : [])
+      .map(normalizePlaceQuery).filter(Boolean);
+    const mode = travelmode === 'walking' || travelmode === 'driving' ? travelmode : 'driving';
+    return 'https://www.google.com/maps/dir/?api=1'
+      + `&origin=${encodeURIComponent(from)}`
+      + (via.length ? `&waypoints=${encodeURIComponent(via.join('|'))}` : '')
+      + `&destination=${encodeURIComponent(dest)}&travelmode=${mode}`;
+  }
+
+  // Google's directions URL takes at most 9 waypoints between the origin and
+  // the destination. A day with more stops is split into consecutive parts
+  // (each part starting where the previous one ended) so every stop appears
+  // in exactly one link and none is silently dropped.
+  const ROUTE_URL_MAX_WAYPOINTS = 9;
+  function routeUrlChunks(queries, maxWaypoints = ROUTE_URL_MAX_WAYPOINTS) {
+    const q = (Array.isArray(queries) ? queries : []).map(normalizePlaceQuery).filter(Boolean);
+    if (q.length < 2) return [];
+    const perChunk = Math.max(2, maxWaypoints + 2); // origin + waypoints + destination
+    const chunks = [];
+    let start = 0;
+    while (start < q.length - 1) {
+      const end = Math.min(q.length - 1, start + perChunk - 1);
+      chunks.push(q.slice(start, end + 1));
+      start = end;
+    }
+    return chunks;
+  }
+
+  // ---------- pick-one candidate badges ----------
+  // Objective winners inside ONE alternative set, so the traveller can scan
+  // the choices without cross-reading three cards. Same discipline as the
+  // route dialog's routeBadges: every badge is DERIVED from a number the app
+  // already shows, ties break to the first candidate in rendered order so a
+  // repaint can never migrate a badge, and a badge whose data has not
+  // resolved is omitted rather than guessed.
+  //   kms:     per-candidate leg distance from the set's shared origin (the
+  //            same figure the chip prints and shortestRoute optimises), or
+  //            null while unresolved. "Shortest route" is that distance: all
+  //            candidates in a set share one origin, so this compares the
+  //            straight-line leg length, the app's own route metric - it is
+  //            deliberately NOT labelled "fastest", which would claim a
+  //            duration nothing here computes.
+  //   ratings: per-candidate { rating, count } from the resolved Places
+  //            lookup, or null.
+  const CANDIDATE_BADGES = {
+    fastest: { icon: '⚡', label: 'Shortest route', title: 'Shortest travel leg from where you will be before this slot' },
+    rated: { icon: '⭐', label: 'Highest rated', title: 'Highest Google Maps rating of these options' },
+    popular: { icon: '🔥', label: 'Most popular', title: 'Most Google Maps reviews of these options' },
+  };
+  function candidateBadges({ kms, ratings }) {
+    const n = Math.max(Array.isArray(kms) ? kms.length : 0, Array.isArray(ratings) ? ratings.length : 0);
+    const out = Array.from({ length: n }, () => []);
+    if (n < 2) return out; // one option is not a comparison
+    const winner = (val) => {
+      let best = -1, bestV = null, entrants = 0;
+      for (let i = 0; i < n; i++) {
+        const v = val(i);
+        if (v == null) continue;
+        entrants++;
+        // strict comparison: a tie keeps the earlier candidate
+        if (best < 0 || v < bestV) { best = i; bestV = v; }
+      }
+      // a "winner" among fewer than two resolved entrants is not a comparison,
+      // it is missing data wearing a badge
+      return entrants >= 2 ? best : -1;
+    };
+    const km = i => (Array.isArray(kms) && typeof kms[i] === 'number' && kms[i] >= 0 ? kms[i] : null);
+    const rating = i => {
+      const r = Array.isArray(ratings) ? ratings[i] : null;
+      return r && typeof r.rating === 'number' ? -r.rating : null; // negated: winner() minimises
+    };
+    const count = i => {
+      const r = Array.isArray(ratings) ? ratings[i] : null;
+      return r && typeof r.count === 'number' && r.count > 0 ? -r.count : null;
+    };
+    const f = winner(km);
+    if (f >= 0) out[f].push(Object.assign({ id: 'fastest' }, CANDIDATE_BADGES.fastest));
+    const r = winner(rating);
+    if (r >= 0) out[r].push(Object.assign({ id: 'rated' }, CANDIDATE_BADGES.rated));
+    const p = winner(count);
+    if (p >= 0) out[p].push(Object.assign({ id: 'popular' }, CANDIDATE_BADGES.popular));
+    return out;
   }
 
   // ---------- money: reading a price out of untrusted JSON ----------
@@ -7194,9 +7339,10 @@ const TripLogic = (() => {
     placesLocationUpdates, pickVenueFeature, validCoord,
     SAME_SPOT_KM, sameSpot, distancePoint, dayAnchor, dayDistanceChain,
     parseTravelArrival, dayArrival, proposalOrigin, dayBaseOrigin, suggestionOrigins,
-    ROUTE_EXACT_MAX, shortestRoute, routeStops, fmtKmMi, distanceChipLabel, distanceChipTitle, routeFooterText,
+    ROUTE_EXACT_MAX, shortestRoute, routeStops, setDistanceUnit, getDistanceUnit, fmtDist, distanceChipLabel, distanceChipTitle, routeFooterText,
     assistDistanceChipLabel, assistDistanceChipTitle, shortHopHint, hopTravel, fmtMins, WALKABLE_KM,
     isPlaceType, isTravelLeg, directionsUrl, legTravelMode,
+    dayTravelTotals, dayRouteMode, directionsRouteUrl, routeUrlChunks, candidateBadges,
     mapsSearchUrl, assistMapsLink, itemMapsQuery, displayTitle, showsCostBadge, isFoodOrDrink, isEstimatedCost, costDisplayParts, mealTitlePrefixes,
     hasEstimate, displayCostOf, parseMoney, roundMoney, budgetVerdict, refundParts,
     readBudgetRange, normalizeBudgetFrom, budgetFigure,

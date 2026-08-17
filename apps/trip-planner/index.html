@@ -62,7 +62,7 @@
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
   <link rel="stylesheet" href="/assets/css/back-to-top.css">
-  <link rel="stylesheet" href="css/styles.css?v=58">
+  <link rel="stylesheet" href="css/styles.css?v=59">
 
   <!-- Google Analytics. Loaded async + defer so it never blocks first paint;
        all tracking goes through the shared helper in analytics.js, which
@@ -132,6 +132,7 @@
           <div class="sep"></div>
           <div class="tp-menu-cap">Preferences</div>
           <button data-act="timefmt" id="timefmtBtn">🕐 Use 24-hour times</button>
+          <button data-act="distunit" id="distunitBtn">📏 Use kilometers</button>
           <div class="sep"></div>
           <button data-act="delete-trip" class="danger">🗑 Delete trip</button>
           <div class="tp-menu-build" id="buildTag" aria-hidden="true"></div>
@@ -744,6 +745,28 @@
   </form>
 </div>
 
+<!-- one day's route: the day's stops in schedule order on a zoomed-in map,
+     with the same per-leg figures the day card prints. Content is rendered by
+     openDayRoute from the day's own chain; nothing here is trip state. -->
+<div class="overlay" id="dayRouteOverlay">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="dayRouteTitle" tabindex="-1">
+    <div class="m-head">
+      <span class="m-icon" aria-hidden="true">🗺</span>
+      <h2 id="dayRouteTitle">Day route</h2>
+    </div>
+    <div class="m-body">
+      <div class="day-route-map" id="dayRouteMapBox">
+        <div id="dayRouteCanvas"></div>
+        <div class="day-route-note" id="dayRouteNote" hidden></div>
+      </div>
+      <ol class="day-route-stops" id="dayRouteStops"></ol>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" data-close>Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- keyboard shortcuts help: static, read-only, and identical on a shared trip.
      It reads no state and writes none, so it is markup rather than a render. -->
 <div class="overlay" id="shortcutsOverlay">
@@ -884,8 +907,8 @@
     }
   </script>
 
-  <script src="js/trip-logic.js?v=38"></script>
-  <script src="js/app.js?v=62"></script>
+  <script src="js/trip-logic.js?v=39"></script>
+  <script src="js/app.js?v=63"></script>
   <script src="/assets/js/back-to-top.js" defer></script>
 </body>
 </html>

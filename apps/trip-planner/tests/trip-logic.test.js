@@ -3332,7 +3332,7 @@ test('buildPlanRequest states breakfast as the only thing to plan for the report
   }), emptyTrip());
   assert.equal(out, [
     'Plan my day for 2026-12-31.',
-    'I am ready to head out at 6:30 AM and want to be back at my hotel by 8:00 PM.',
+    'I want to be at my first planned stop at 6:30 AM, with any travel to it before that time, and want to be back at my hotel by 8:00 PM.',
     'Plan breakfast, and give me 3 options for each one.',
     'Only plan breakfast. Do not suggest activities, lunch, dinner or drinks.',
     'Keep the whole day splurge-worthy.',
@@ -7206,18 +7206,34 @@ test('routeStops skips a card whose selected option has no coordinates', () => {
   assert.deepEqual(L.routeStops(null), []);
 });
 
-test('distance wording prints both units and names where it measured from', () => {
-  // the route dialog's own convention: km first, miles second
-  assert.equal(L.fmtKmMi(1.2), '1.2 km / 0.7 mi');
-  assert.equal(L.fmtKmMi(0.34), '0.3 km / 0.2 mi');
-  assert.equal(L.fmtKmMi(1240), '1,240 km / 771 mi');
-  assert.equal(L.distanceChipLabel(1.24), '~1.2 km / 0.8 mi');
-  assert.equal(L.distanceChipTitle(1.24, 'Hotel Gracery Shinjuku'),
-    '1.2 km / 0.8 mi straight-line from Hotel Gracery Shinjuku, not a walking route.');
-  assert.equal(L.routeFooterText('Hotel', ['B', 'A', 'C'], 5.4), 'Shortest route: Hotel > B > A > C · ~5.4 km / 3.4 mi total');
-  // UI copy carries no em dash anywhere in this app
-  for (const s of [L.distanceChipTitle(2, 'X'), L.routeFooterText('H', ['A'], 2), L.fmtKmMi(3)]) {
-    assert.ok(!s.includes('—'), `em dash in "${s}"`);
+test('distance wording prints exactly ONE unit, chosen by the preference', () => {
+  // default is miles (matches the 12-hour clock default); kilometers on request
+  try {
+    assert.equal(L.getDistanceUnit(), 'mi');
+    assert.equal(L.fmtDist(1.2), '0.7 mi');
+    assert.equal(L.fmtDist(1240), '771 mi');
+    assert.equal(L.distanceChipLabel(1.24), '~0.8 mi');
+    L.setDistanceUnit('km');
+    assert.equal(L.fmtDist(1.2), '1.2 km');
+    assert.equal(L.fmtDist(0.34), '0.3 km');
+    assert.equal(L.fmtDist(1240), '1,240 km');
+    assert.equal(L.distanceChipLabel(1.24), '~1.2 km');
+    assert.equal(L.distanceChipTitle(1.24, 'Hotel Gracery Shinjuku'),
+      '1.2 km straight-line from Hotel Gracery Shinjuku, not a walking route.');
+    assert.equal(L.routeFooterText('Hotel', ['B', 'A', 'C'], 5.4), 'Shortest route: Hotel > B > A > C · ~5.4 km total');
+    // an unknown value falls back to miles rather than a third state
+    L.setDistanceUnit('bananas');
+    assert.equal(L.getDistanceUnit(), 'mi');
+    // the dual "km / mi" form is gone from every formatter
+    L.setDistanceUnit('km');
+    for (const s of [L.fmtDist(3), L.distanceChipLabel(3), L.distanceChipTitle(3, 'X'),
+      L.assistDistanceChipLabel(1.3, 'X'), L.routeFooterText('H', ['A'], 2)]) {
+      assert.ok(!/km \/|\/ mi/.test(s), `dual units in "${s}"`);
+      // UI copy carries no em dash anywhere in this app
+      assert.ok(!s.includes('—'), `em dash in "${s}"`);
+    }
+  } finally {
+    L.setDistanceUnit('mi');
   }
 });
 
@@ -7357,19 +7373,27 @@ test('suggestionOrigins tolerates a fallback that is not a function', () => {
 // ---------- assistant: distance wording on a suggestion card ----------
 
 test('the assistant chip names the travel time, the distance and the origin', () => {
-  // the time leads, because "20 minutes away" is what a traveller decides on
-  assert.equal(L.assistDistanceChipLabel(1.3, 'Sotetsu Grand Fresa Bangkok'),
-    '\u{1F6B6} ~20 min walk \u00b7 ~1.3 km / 0.8 mi from Sotetsu Grand Fresa Bangkok');
-  // ...and it still carries the same NUMBER the itinerary chip prints, which is
-  // the property that makes a pre-add figure trustworthy after the add
-  assert.ok(L.assistDistanceChipLabel(1.3, 'X').includes(L.distanceChipLabel(1.3)));
-  // past a walkable hop the walk is computable and useless: name the ride
-  assert.match(L.assistDistanceChipLabel(4.2, 'X'), /~8 min by taxi \u00b7 ~4\.2 km/);
-  // past every in-city mode there is nothing honest to say, so nothing is said
-  assert.equal(L.assistDistanceChipLabel(400, 'X'), '~400 km / 249 mi from X');
-  // every part degrades on its own
-  for (const empty of ['', '   ', null, undefined]) {
-    assert.match(L.assistDistanceChipLabel(1.3, empty), /^\u{1F6B6} ~20 min walk \u00b7 ~1\.3 km \/ 0\.8 mi$/u);
+  try {
+    L.setDistanceUnit('km');
+    // the time leads, because "20 minutes away" is what a traveller decides on
+    assert.equal(L.assistDistanceChipLabel(1.3, 'Sotetsu Grand Fresa Bangkok'),
+      '\u{1F6B6} ~20 min walk \u00b7 ~1.3 km from Sotetsu Grand Fresa Bangkok');
+    // ...and it still carries the same NUMBER the itinerary chip prints, which is
+    // the property that makes a pre-add figure trustworthy after the add
+    assert.ok(L.assistDistanceChipLabel(1.3, 'X').includes(L.distanceChipLabel(1.3)));
+    // past a walkable hop the walk is computable and useless: name the ride
+    assert.match(L.assistDistanceChipLabel(4.2, 'X'), /~8 min by taxi \u00b7 ~4\.2 km/);
+    // past every in-city mode there is nothing honest to say, so nothing is said
+    assert.equal(L.assistDistanceChipLabel(400, 'X'), '~400 km from X');
+    // every part degrades on its own
+    for (const empty of ['', '   ', null, undefined]) {
+      assert.match(L.assistDistanceChipLabel(1.3, empty), /^\u{1F6B6} ~20 min walk \u00b7 ~1\.3 km$/u);
+    }
+    // ...and the same chip in miles, so the preference reaches the assistant too
+    L.setDistanceUnit('mi');
+    assert.equal(L.assistDistanceChipLabel(1.3, 'X'), '\u{1F6B6} ~20 min walk \u00b7 ~0.8 mi from X');
+  } finally {
+    L.setDistanceUnit('mi');
   }
 });
 
@@ -7567,4 +7591,125 @@ test('the guided prompt keeps its candidate counts out of free-form chat', () =>
   assert.doesNotMatch(chat, /EXACTLY \d/);
   // and neither mode invents a slot the traveller did not ask for
   for (const s of [plan, chat]) assert.match(s, /Never introduce a slot type the traveller did not request/);
+});
+
+// ---------- the day route: totals, mode, external URLs ----------
+// One chain feeds every surface: these helpers read dayDistanceChain legs
+// verbatim, so the per-card chips, the day totals and the Google Maps route
+// can never disagree about what the day contains.
+
+test('dayTravelTotals sums the chain legs by the same mode judgement the chips print', () => {
+  const legs = [
+    { id: 0, km: 1.2 },  // walk (under WALKABLE_KM)
+    { id: 1, km: 0.6 },  // walk
+    { id: 2, km: 4.8 },  // ride
+    { id: 3, km: 0 },    // no distance: not a leg, not counted
+    null,                // tolerated
+  ];
+  const t = L.dayTravelTotals(legs);
+  assert.ok(Math.abs(t.byMode.walk - 1.8) < 1e-9);
+  assert.ok(Math.abs(t.byMode.ride - 4.8) < 1e-9);
+  assert.ok(Math.abs(t.km - 6.6) < 1e-9);
+  assert.equal(t.legCount, 3);
+  // an intercity hop inside one day still counts, under ride, rather than
+  // silently vanishing from the total
+  assert.ok(L.dayTravelTotals([{ km: 400 }]).byMode.ride === 400);
+  // empty in, empty out
+  assert.deepEqual(L.dayTravelTotals([]).byMode, { walk: 0, ride: 0 });
+  assert.equal(L.dayTravelTotals(undefined).km, 0);
+});
+
+test('dayRouteMode is walking only when EVERY leg is walkable, else driving', () => {
+  assert.equal(L.dayRouteMode([{ km: 0.5 }, { km: 1.9 }]), 'walking');
+  assert.equal(L.dayRouteMode([{ km: 0.5 }, { km: 3.1 }]), 'driving');
+  assert.equal(L.dayRouteMode([{ km: L.WALKABLE_KM }]), 'walking');
+  // no located legs: walking is the harmless default for a link that will not
+  // be offered anyway (the caller needs a chain to build the URL at all)
+  assert.equal(L.dayRouteMode([]), 'walking');
+});
+
+test('directionsRouteUrl carries origin, ordered waypoints, destination and one mode', () => {
+  const url = L.directionsRouteUrl('Hotel Borg', ['Breakfast Cafe', 'Meiji Jingu'], 'Shibuya Sky', 'walking');
+  assert.ok(url.startsWith('https://www.google.com/maps/dir/?api=1'));
+  assert.ok(url.includes('origin=Hotel%20Borg'));
+  assert.ok(url.includes('waypoints=Breakfast%20Cafe%7CMeiji%20Jingu'));
+  assert.ok(url.includes('destination=Shibuya%20Sky'));
+  assert.ok(url.includes('travelmode=walking'));
+  // a whole-day URL needs BOTH ends: destination-only is the single-leg
+  // link's affordance, not the route's
+  assert.equal(L.directionsRouteUrl('', ['A'], 'B', 'walking'), '');
+  assert.equal(L.directionsRouteUrl('A', ['B'], '', 'walking'), '');
+  // transit does not support waypoints in the Maps URL API; anything but the
+  // two supported modes falls back to driving rather than lying
+  assert.match(L.directionsRouteUrl('A', [], 'B', 'transit'), /travelmode=driving/);
+  // unlocatable waypoints are dropped from the URL, never turned into ""
+  assert.ok(!L.directionsRouteUrl('A', ['', null, 'C'], 'B', 'driving').includes('%7C%7C'));
+});
+
+test('routeUrlChunks splits a long day without dropping or duplicating stops', () => {
+  const q = n => Array.from({ length: n }, (_, i) => `Stop ${i}`);
+  // a normal day fits one link
+  assert.deepEqual(L.routeUrlChunks(q(5)), [q(5)]);
+  // fewer than two stops is no route
+  assert.deepEqual(L.routeUrlChunks(q(1)), []);
+  assert.deepEqual(L.routeUrlChunks([]), []);
+  // a 15-stop day exceeds origin + 9 waypoints + destination and splits;
+  // each part starts where the previous ended, and every stop appears
+  const chunks = L.routeUrlChunks(q(15));
+  assert.ok(chunks.length > 1);
+  for (const c of chunks) assert.ok(c.length <= 11, `chunk of ${c.length}`);
+  for (let i = 1; i < chunks.length; i++) {
+    assert.equal(chunks[i][0], chunks[i - 1][chunks[i - 1].length - 1], 'parts must be continuous');
+  }
+  const seen = chunks.flat();
+  // interior boundaries appear twice (end of one part, start of the next)
+  assert.deepEqual([...new Set(seen)], q(15), 'every stop appears, in order');
+});
+
+// ---------- pick-one candidate badges ----------
+test('candidateBadges crowns fastest by leg distance, rated by rating, popular by review count', () => {
+  const out = L.candidateBadges({
+    kms: [1.2, 0.4, 2.0],
+    ratings: [{ rating: 4.1, count: 250 }, { rating: 4.8, count: 90 }, { rating: 4.4, count: 1660 }],
+  });
+  assert.deepEqual(out[0].map(b => b.id), []);
+  assert.deepEqual(out[1].map(b => b.id), ['fastest', 'rated']);
+  assert.deepEqual(out[2].map(b => b.id), ['popular']);
+  // each badge names itself for the card
+  assert.equal(out[1].find(b => b.id === 'fastest').icon, '⚡');
+  assert.equal(out[1].find(b => b.id === 'rated').label, 'Highest rated');
+  assert.equal(out[2][0].label, 'Most popular');
+});
+
+test('candidateBadges ties break to candidate order, deterministically', () => {
+  const out = L.candidateBadges({
+    kms: [0.8, 0.8, 0.8],
+    ratings: [{ rating: 4.5, count: 100 }, { rating: 4.5, count: 100 }, null],
+  });
+  assert.deepEqual(out[0].map(b => b.id), ['fastest', 'rated', 'popular']);
+  assert.deepEqual(out[1], []);
+  assert.deepEqual(out[2], []);
+});
+
+test('candidateBadges never fabricates a comparison from missing data', () => {
+  // no ratings resolved: no rated/popular badge anywhere
+  const noRatings = L.candidateBadges({ kms: [1, 2], ratings: [null, null] });
+  assert.deepEqual(noRatings.flat().map(b => b.id), ['fastest']);
+  // only ONE candidate resolved: that is missing data, not a win
+  const oneKm = L.candidateBadges({ kms: [1, null, null], ratings: [null, null, null] });
+  assert.deepEqual(oneKm.flat(), []);
+  const oneRating = L.candidateBadges({ kms: [null, null], ratings: [{ rating: 5, count: 10 }, null] });
+  assert.deepEqual(oneRating.flat(), []);
+  // a rating with no reviews competes for rated but not for popular
+  const zeroCount = L.candidateBadges({ kms: [null, null], ratings: [{ rating: 4.9, count: 0 }, { rating: 4.1, count: 0 }] });
+  assert.deepEqual(zeroCount.flat().map(b => b.id), ['rated']);
+  // one candidate is not a comparison at all
+  assert.deepEqual(L.candidateBadges({ kms: [1], ratings: [{ rating: 5, count: 5 }] }), [[]]);
+  // one candidate may legitimately win everything
+  const sweep = L.candidateBadges({
+    kms: [0.3, 1.4],
+    ratings: [{ rating: 4.9, count: 900 }, { rating: 4.0, count: 20 }],
+  });
+  assert.deepEqual(sweep[0].map(b => b.id), ['fastest', 'rated', 'popular']);
+  assert.deepEqual(sweep[1], []);
 });

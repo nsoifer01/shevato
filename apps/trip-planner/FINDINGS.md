@@ -182,6 +182,78 @@ why, the traps, and the invariants.
   via `#assistSetupChange` first or the click lands on a zero-rect input and
   silently no-ops.
 
+## One day, one route chain (2026-08-17 pass)
+
+The invariant this round exists for: `previous stop -> current stop` has ONE
+implementation. `dayCardChain` (app.js) reads a day card's anchor + rows and
+runs `dayDistanceChain`; every Days-view route surface consumes THAT chain -
+the per-row chips, each place row's Directions link, the day totals strip
+(`dayTravelTotals`), the Day route modal and the external Google Maps route
+(`directionsRouteUrl` + `routeUrlChunks`). The assistant side consumes the
+same builder through `paintAssistDistances`/`suggestionOrigins`. Do not add a
+new surface that re-derives a leg; read the chain.
+
+- **Day origin** = `dayAnchor` (arrival leg that day, else host stay, else
+  morning city), resolved by `readPoint(cardEl, 'anchor')` against the
+  caches. The first row's leg starts there, arrival airport included, and the
+  first stop's Directions link inherits it via `leg.fromQuery`.
+- **Per-row Directions**: place rows render destination-only (`dc-dir`,
+  `data-dir-type="place"`); `writeDistChip` upgrades origin + travelmode from
+  the row's own chain leg. `place` maps to `legTravelMode('local', km)`
+  (walk/transit by the hop judgement); item-type modes are for LEGS only, so
+  a place must never inherit a flight's `driving`.
+- **Return-to-hotel** is not special-cased: it is the last chain leg (its
+  destination rides on the action's mapsQuery). Its earlier failure mode was
+  RESOLUTION, not chaining: a leg proposal's destination only had the venue
+  and city rungs, while a picker-chosen hotel's coordinates live in the
+  geocode cache under its NAME. `legDestStayName` now stamps the stay's title
+  as the name rung when a leg's destination matches a stay - the same offer
+  `itemDistAttrs` makes for the stay's own row.
+- **Totals** (`dayTravelTotals`) sum the chain legs by the same `hopTravel`
+  walk/ride split the chips print. "Partial" means a stop resolved NOWHERE:
+  a city-centroid fallback counts as located (the chips already print such
+  legs), so a genuinely unplaced stop needs BOTH rungs empty - probes must
+  clear `location` too, not just the venue entry.
+- **External day route**: Google's URL API takes one travelmode for the whole
+  waypoint route and transit supports no waypoints at all, so `dayRouteMode`
+  is walking only when EVERY leg is walkable, else driving, and the link's
+  tooltip says so. `routeUrlChunks` splits past 9 waypoints into consecutive
+  parts (each starting where the previous ended); stops are never dropped.
+- **Distance unit** is `trip-planner:distunit` ('mi' default | 'km'), the
+  exact TIMEFMT architecture: device key, synced (app-sync-init.js allowlist,
+  privacy.html names it), reconciled in the same storage/tp-sync:applied
+  listeners, applied via `TripLogic.setDistanceUnit` so `fmtDist` - the ONLY
+  distance formatter - flips every surface at once. The `fmtKmMi` dual
+  "km / mi" form is deleted; never reintroduce a second formatter.
+- **Pick-one badges** (`candidateBadges`, same discipline as routeBadges):
+  '⚡ Shortest route' = smallest chip leg km (labelled shortest, not fastest:
+  it is a distance comparison and no duration is computed; the internal id
+  stays `fastest`), rated = highest rating, popular = highest
+  review count; one winner each, ties keep rendered order, fewer than two
+  resolved entrants = no badge (a single resolved candidate is missing data
+  wearing a badge, not a comparison). Painted idempotently from chip
+  `dataset.km` + placesCache by BOTH the distance pass and paintPlaces, so
+  whichever data lands last completes them.
+- **Change choice** maps set -> added item through `assistChoice` (WeakMap:
+  card -> { addedId, fingerprint, title, restore }). Replacement is by
+  recorded id in the SAME save as the new add (one undo step). Fingerprint
+  mismatch (traveller edited the item) KEEPS the item and adds alongside
+  with a toast; a deleted item is simply gone. After reopening, the skip
+  button becomes Cancel (back to the stub, or removes the card if the item
+  no longer exists - a stub may not claim "Added" over a deleted item).
+
+Probe traps this round minted:
+- `/~([\d.]+) mi/` matches "~9 **mi**n walk" - a chip regex needs `mi\b`.
+- The rates/weather failures re-render the day list a beat after a view
+  switch. Wait for the COMPLETE end state (last leg's Directions upgraded AND
+  the strip present), then take every fact in ONE atomic evaluate; reads
+  spread over several evaluates straddle rebuilds and produce impossible-
+  looking mixed states.
+- A stay STARTING mid-trip inserts a check-in row at the assumed 15:00, which
+  is a chain stop: an evening suggestion then measures from the hotel, not
+  from lunch. Correct behaviour; fixtures that want a pure
+  anchor->stops chain start the stay the night before.
+
 ## Assistant: modes, and where a suggestion is measured from
 
 Two failures reported together on 2026-08-14, with one shape between them:

@@ -7,11 +7,12 @@
 //      no-bed day, cancelled rows, Maps link, manual tie ordering)
 //   R. large-trip smoke: ~340 items render and stay interactive
 import {
-  LS_KEY, recorder, freshIds, iso, item, trip, dbOf,
+  LS_KEY, APP, recorder, freshIds, iso, item, trip, dbOf,
   openApp, readDb, rowCount, tpErrors,
   switchView, closePage, evaluate, waitForExpr,
-  clickSel, setValue, expandTimeline,
+  clickSel, setValue, expandTimeline, menuAct, gotoHard, escape,
 } from './helpers.mjs';
+import TripLogic from '../js/trip-logic.js';
 
 export async function run({ base, cdpPort }) {
   const R = [];
@@ -352,6 +353,153 @@ export async function run({ base, cdpPort }) {
       await evaluate(s, `/Lisbon/.test(document.getElementById('mapStatus').innerText) && /Porto/.test(document.getElementById('mapStatus').innerText)`), '', s);
     await t('tp-views U: the blank map slab is hidden, not empty-looking',
       await evaluate(s, `document.getElementById('mapBox').classList.contains('is-blank')`), '', s);
+  });
+
+  /* ---------------- S. the day route chain (Days view) -------------------- */
+  // One chain feeds every surface: the per-row chips, each place row's own
+  // Directions link, the day totals strip and the Day route map all read the
+  // legs dayDistanceChain built for the card. A finalized Shibuya day with a
+  // hotel, three walkable stops, one across-town dinner and a return leg
+  // exercises the whole set: first-stop origin, stop-to-stop origins,
+  // walk/ride mode split, mixed-mode totals and the external route.
+  freshIds();
+  const S_HOTEL = 'Shibuya Stream Hotel';
+  const S_VENUES = {
+    [S_HOTEL]: [35.6580, 139.7016],
+    'Breakfast Cafe Shibuya': [35.6600, 139.7040],   // ~0.3 km from the hotel: walk
+    'Meiji Jingu': [35.6764, 139.6993],              // ~1.9 km: walk
+    'Lunch Udon Shibuya': [35.6735, 139.7100],       // ~1.0 km: walk
+    'Dinner Odaiba': [35.6300, 139.7770],            // ~7.8 km: ride
+  };
+  const sStores = (venues) => {
+    const venue = {};
+    const now = Date.now();
+    for (const [q, v] of Object.entries(venues)) venue[TripLogic.placeCacheKey(q)] = { lat: v[0], lon: v[1], at: now };
+    return {
+      'trip-planner:geo:v3': { tokyo: { lat: 35.6762, lon: 139.6503, country: 'Japan', conf: 'confident' } },
+      'trip-planner:venuegeo:v1': venue,
+    };
+  };
+  const sDay = iso(40);
+  // `over` lets one block vary a single item (S2 makes Meiji unlocatable)
+  const sTrip = (over = {}) => trip({
+    name: 'Shibuya day',
+    items: [
+      // the stay starts the night BEFORE, so sDay carries no mid-day check-in
+      // row and the chain reads anchor -> breakfast -> ... -> return
+      item({ type: 'stay', title: S_HOTEL, location: 'Tokyo', startDate: iso(39), endDate: iso(42), status: 'booked', mapsQuery: S_HOTEL }),
+      item({ type: 'activity', title: 'Breakfast Cafe Shibuya', location: 'Tokyo', startDate: sDay, startTime: '09:00', mapsQuery: 'Breakfast Cafe Shibuya' }),
+      item({ type: 'activity', title: 'Meiji Jingu', location: 'Tokyo', startDate: sDay, startTime: '10:30', mapsQuery: 'Meiji Jingu', ...(over.meiji || {}) }),
+      item({ type: 'activity', title: 'Lunch Udon Shibuya', location: 'Tokyo', startDate: sDay, startTime: '13:00', mapsQuery: 'Lunch Udon Shibuya' }),
+      item({ type: 'activity', title: 'Dinner Odaiba', location: 'Tokyo', startDate: sDay, startTime: '19:00', mapsQuery: 'Dinner Odaiba' }),
+      item({ type: 'local', title: 'Return to hotel', location: 'Tokyo', startDate: sDay, startTime: '22:00', mapsQuery: S_HOTEL }),
+    ],
+  });
+  await withPage('tp-views S', { db: dbOf([sTrip()]), stores: sStores(S_VENUES) }, async (s) => {
+    await switchView(s, 'days');
+    // The rates and weather failures re-render the day list a beat after the
+    // switch, so any read spread over several evaluates can straddle a
+    // rebuild. Two rules keep this deterministic: wait for the COMPLETE end
+    // state (the strip painted and the last leg's Directions carrying its
+    // origin), then take every fact in ONE atomic evaluate.
+    await waitForExpr(s, `(() => {
+      const a = [...document.querySelectorAll('#daysList .tp-dir-link')]
+        .find(x => (x.closest('.dc-event') || { dataset: {} }).dataset.distLabel === 'Return to hotel');
+      return !!a && a.href.includes('origin=') && !!document.querySelector('#daysList .dc-route');
+    })()`, { timeout: 10000 });
+    const snap = await evaluate(s, `(() => {
+      const dirs = [...document.querySelectorAll('#daysList .dc-event[data-dist-label] .tp-dir-link')]
+        .map(a => ({ label: a.closest('.dc-event').dataset.distLabel, href: a.getAttribute('href') }));
+      const el = document.querySelector('#daysList .dc-route');
+      return { dirs, strip: el ? { tot: el.querySelector('.dc-route-tot').textContent,
+        gm: (el.querySelector('.dc-route-gm') || {}).href || '',
+        btn: !!el.querySelector('[data-act="day-route"]') } : null };
+    })()`);
+    const dirs = snap.dirs;
+    const dirOf = (label) => (dirs.find(d => d.label === label) || {}).href || '';
+    await t('tp-views S: every place stop offers Directions, plus the return leg',
+      dirs.length === 6, JSON.stringify(dirs.map(d => d.label)), s);
+    // the FIRST stop routes from the day's smart origin (here: the host stay)
+    await t('tp-views S: the first stop routes from the day origin',
+      dirOf('Breakfast Cafe Shibuya').includes('origin=Shibuya%20Stream%20Hotel')
+        && dirOf('Breakfast Cafe Shibuya').includes('travelmode=walking'),
+      dirOf('Breakfast Cafe Shibuya'), s);
+    // every later stop routes from the stop before it, in the chip's own mode
+    await t('tp-views S: each stop routes from the previous stop',
+      dirOf('Meiji Jingu').includes('origin=Breakfast%20Cafe%20Shibuya')
+        && dirOf('Lunch Udon Shibuya').includes('origin=Meiji%20Jingu'),
+      JSON.stringify([dirOf('Meiji Jingu'), dirOf('Lunch Udon Shibuya')]), s);
+    await t('tp-views S: a leg past walking range opens in transit, not walking',
+      dirOf('Dinner Odaiba').includes('origin=Lunch%20Udon%20Shibuya')
+        && dirOf('Dinner Odaiba').includes('travelmode=transit'),
+      dirOf('Dinner Odaiba'), s);
+    await t('tp-views S: the return leg routes from the final real stop to the hotel',
+      dirOf('Return to hotel').includes('origin=Dinner%20Odaiba')
+        && dirOf('Return to hotel').includes('destination=Shibuya%20Stream%20Hotel'),
+      dirOf('Return to hotel'), s);
+    // the totals strip: same legs, split walk vs ride, ONE unit (default mi)
+    const strip = snap.strip;
+    await t('tp-views S: the day strip sums walking and riding separately, in one unit',
+      !!strip && /🚶 [\d.]+ mi/.test(strip.tot) && /🚕 [\d.]+ mi/.test(strip.tot) && !strip.tot.includes('km'),
+      JSON.stringify(strip && strip.tot), s);
+    // the external route: the whole chain in order, one honest mode (driving,
+    // because the day mixes walk and ride and Maps takes one mode per URL)
+    const gmDecoded = strip ? decodeURIComponent(strip.gm) : '';
+    await t('tp-views S: the external route is ordered and single-mode driving',
+      gmDecoded.includes('origin=Shibuya Stream Hotel')
+        && gmDecoded.indexOf('Breakfast Cafe Shibuya') < gmDecoded.indexOf('Meiji Jingu')
+        && gmDecoded.indexOf('Meiji Jingu') < gmDecoded.indexOf('Lunch Udon Shibuya')
+        && gmDecoded.indexOf('Lunch Udon Shibuya') < gmDecoded.indexOf('Dinner Odaiba')
+        && gmDecoded.includes('destination=Shibuya Stream Hotel')
+        && gmDecoded.includes('travelmode=driving'),
+      gmDecoded, s);
+    // the internal Day route: numbered pins in schedule order, scoped to the day
+    await clickSel(s, '[data-act="day-route"]', { settle: 800 });
+    await t('tp-views S: the Day route overlay opens',
+      await evaluate(s, `document.getElementById('dayRouteOverlay').classList.contains('open')`), '', s);
+    const stopsList = await evaluate(s, `[...document.querySelectorAll('#dayRouteStops .drs-label')].map(e => e.textContent)`);
+    await t('tp-views S: the route lists the stops in schedule order',
+      JSON.stringify(stopsList) === JSON.stringify([S_HOTEL, 'Breakfast Cafe Shibuya', 'Meiji Jingu', 'Lunch Udon Shibuya', 'Dinner Odaiba', 'Return to hotel']),
+      JSON.stringify(stopsList), s);
+    const pins = await waitForExpr(s, `document.querySelectorAll('#dayRouteCanvas .stop-pin').length === 6`, { timeout: 8000 });
+    await t('tp-views S: the day map draws one numbered pin per stop',
+      pins, await evaluate(s, `document.querySelectorAll('#dayRouteCanvas .stop-pin').length`), s);
+    await escape(s);
+  });
+
+  // S2: an unresolved stop keeps the total honest, and the unit preference
+  // flips every distance surface at once and persists.
+  freshIds();
+  // Meiji loses BOTH rungs (no venue entry, no city): the city centroid is a
+  // legitimate located fallback, so a truly unplaced stop has neither.
+  const s2Venues = { ...S_VENUES };
+  delete s2Venues['Meiji Jingu'];
+  await withPage('tp-views S2', { db: dbOf([sTrip({ meiji: { location: '' } })]), stores: sStores(s2Venues) }, async (s) => {
+    await switchView(s, 'days');
+    await waitForExpr(s, `!!document.querySelector('#daysList .dc-route') && /not located/.test(document.querySelector('#daysList .dc-route-tot').textContent)`, { timeout: 10000 });
+    const tot = await evaluate(s, `document.querySelector('#daysList .dc-route-tot').textContent`);
+    await t('tp-views S2: an unlocatable stop marks the total as partial',
+      /1 not located/.test(tot), JSON.stringify(tot), s);
+    // flip the preference through its menu row: every chip and the strip
+    // switch to kilometers together, and the choice survives a reload
+    await menuAct(s, 'distunit', 800);
+    const km = await evaluate(s, `({
+      strip: document.querySelector('#daysList .dc-route-tot').textContent,
+      chip: (document.querySelector('#daysList .dc-dist') || {}).textContent || '',
+      stored: localStorage.getItem('trip-planner:distunit'),
+    })`);
+    await t('tp-views S2: the kilometers preference reaches strip and chips together',
+      /km/.test(km.strip) && !/mi\b/.test(km.strip) && /km/.test(km.chip) && km.stored === 'km',
+      JSON.stringify(km), s);
+    await gotoHard(s, `${base}${APP}`, { settle: 1200 });
+    await switchView(s, 'days');
+    await waitForExpr(s, `!!document.querySelector('#daysList .dc-dist')`, { timeout: 10000 });
+    const after = await evaluate(s, `(document.querySelector('#daysList .dc-dist') || {}).textContent || ''`);
+    await t('tp-views S2: the preference persists across a reload',
+      /km/.test(after) && !/mi\b/.test(after), JSON.stringify(after), s);
+    // the 12/24-hour preference is untouched by the distance one
+    const time12 = await evaluate(s, `/9:00 AM/.test(document.querySelector('#daysList').innerText)`);
+    await t('tp-views S2: the clock format preference is independent', time12 === true, '', s);
   });
 
   return R;

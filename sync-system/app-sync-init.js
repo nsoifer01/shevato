@@ -134,7 +134,8 @@ const APP_SYNC_CONFIG = {
     namespace: 'tripPlannerApp',
     keys: [
       'trip-planner:v1',            // All trips + items (the entire planner state)
-      'trip-planner:timefmt'        // 12 / 24-hour time display preference
+      'trip-planner:timefmt',       // 12 / 24-hour time display preference
+      'trip-planner:distunit'       // Miles / kilometers distance display preference
       // trip-planner:geo:v3 (geocode cache) deliberately NOT synced:
       // large, derivable, and device-local by nature.
     ]
