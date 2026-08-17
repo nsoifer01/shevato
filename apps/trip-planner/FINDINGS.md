@@ -345,6 +345,15 @@ What changed:
   fetched eagerly, because a half-resolved set makes the winner badges a lie.
   There is deliberately NO background sweep of the rest of the trip: that is
   precisely the pattern that produced the 429s, and it buys nothing visible.
+- **Two priority lanes, and they mean something.** `urgent` is a comparison the
+  traveller is actively waiting on (an assistant candidate set, a hotel just
+  picked from the picker) and `normal` is an itinerary row that scrolled into
+  view. Both are on screen; the difference is that an unrated row is just a
+  plain link while a half-resolved candidate set renders WRONG badges. An
+  urgent request also `promote()`s any key a row already queued, so overtaking
+  never costs a second lookup. A batch already on the wire cannot be un-sent,
+  so the overtaking is of the waiting queue only - the test says so explicitly,
+  because the first version of it asserted the impossible.
 - **Concurrency 2, batch 12.** Two in flight is enough to halve the wall clock
   on a long trip without bursting; the batch cap is the server's.
 - **A 429 parks the queue, it does not empty it.** The server now returns

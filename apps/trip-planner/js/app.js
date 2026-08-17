@@ -8104,10 +8104,7 @@
         const q = e.target.dataset.placeQuery || '';
         if (q) queries.push(q);
       }
-      if (queries.length) {
-        placesQueue.promote(queries);
-        placesQueue.request(queries, { priority: 'visible' });
-      }
+      if (queries.length) placesQueue.request(queries, { priority: 'normal' });
     }, { rootMargin: PLACES_LOOKAHEAD });
   }
 
@@ -8118,7 +8115,7 @@
     if (placesObserver) placesObserver.observe(el);
     // No IntersectionObserver (very old browser): fall back to asking for
     // everything the render produced, which is what the app did before.
-    else placesQueue.request([el.dataset.placeQuery || ''], { priority: 'visible' });
+    else placesQueue.request([el.dataset.placeQuery || ''], { priority: 'normal' });
   }
 
   // Called once per render. Paints whatever the session already knows (a
@@ -8129,7 +8126,13 @@
     const eager = [...container.querySelectorAll('.ap-rating[data-place-key]')]
       .map(el => el.dataset.placeQuery || '')
       .filter(Boolean);
-    if (eager.length) placesQueue.request(eager, { priority: 'visible' });
+    // Urgent, and PROMOTED if a row already queued the same venue: a candidate
+    // set the traveller is reading must not wait behind a screen of itinerary
+    // rows, because its winner badges are a judgement across the whole set.
+    if (eager.length) {
+      placesQueue.promote(eager);
+      placesQueue.request(eager, { priority: 'urgent' });
+    }
     container.querySelectorAll('.tp-maps-link[data-place-key]').forEach(observeRatingSlot);
   }
 

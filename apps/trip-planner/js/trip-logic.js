@@ -3299,7 +3299,7 @@ const TripLogic = (() => {
     const entries = new Map();    // key -> { key, query, priority, gen, attempts }
     const inFlight = new Set();
     const deferred = new Map();   // key -> earliest retry timestamp
-    let hi = [], lo = [];         // keys, visible first
+    let hi = [], lo = [];         // keys, urgent lane first
     let busy = 0;
     let gen = 0;
     let off = false;              // 503/403/400/405/501: no key configured at all
@@ -3365,7 +3365,7 @@ const TripLogic = (() => {
         if (e.attempts >= maxAttempts) { deferred.set(e.key, now() + deferMs); continue; }
         if (e.gen !== gen) continue;
         entries.set(e.key, e);
-        (e.priority === 'visible' ? hi : lo).push(e.key);
+        (e.priority === 'urgent' ? hi : lo).push(e.key);
       }
     }
 
@@ -3423,26 +3423,31 @@ const TripLogic = (() => {
       // returns so nothing here can be planned twice.
       request(queries, options) {
         const opt = options || {};
-        const priority = opt.priority === 'visible' ? 'visible' : 'background';
+        // 'urgent' is a comparison the traveller is actively waiting on (an
+        // assistant candidate set, a hotel they just picked); 'normal' is an
+        // itinerary row that has scrolled into view. Both are on screen - the
+        // difference is that a half-resolved candidate set makes its winner
+        // badges wrong, while a row without a rating is just a plain link.
+        const priority = opt.priority === 'urgent' ? 'urgent' : 'normal';
         const { misses } = planPlacesLookup(queries, known);
         if (!misses.length) return 0;
         for (const m of misses) {
           entries.set(m.key, { key: m.key, query: m.query, priority, gen, attempts: 0 });
-          (priority === 'visible' ? hi : lo).push(m.key);
+          (priority === 'urgent' ? hi : lo).push(m.key);
         }
         pump();
         return misses.length;
       },
-      // A venue already asked for at background priority is promoted, not
-      // re-added, when it scrolls into view: same reservation, better place in
+      // A venue already queued at normal priority is promoted, not re-added,
+      // when something urgent needs it too: same reservation, better place in
       // the line.
       promote(queries) {
         let moved = 0;
         for (const raw of Array.isArray(queries) ? queries : []) {
           const key = placeCacheKey(raw);
           const e = key && entries.get(key);
-          if (!e || e.priority === 'visible') continue;
-          e.priority = 'visible';
+          if (!e || e.priority === 'urgent') continue;
+          e.priority = 'urgent';
           const i = lo.indexOf(key);
           if (i >= 0) lo.splice(i, 1);
           hi.push(key);

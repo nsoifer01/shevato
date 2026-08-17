@@ -140,26 +140,33 @@ test('concurrency never exceeds the configured ceiling', async () => {
 
 // ---------- priority ----------
 
-test('visible venues are served before background ones', async () => {
-  const h = harness();
-  h.queue.request(venues(12).map(v => 'BG ' + v), { priority: 'background' });
-  h.queue.request(['Visible Venue Tokyo'], { priority: 'visible' });
-  await settle(40);
-  // The first batch drains what was queued first, but the visible entry must
-  // not be stranded behind every background page.
-  assert.ok(h.sent[0].includes('Visible Venue Tokyo') || h.sent[1].includes('Visible Venue Tokyo'),
-    'a visible venue is not queued behind the whole trip');
+test('an urgent comparison is served before ambient itinerary rows', async () => {
+  // A traveller reading a candidate set must not wait behind a screen of rows
+  // that merely scrolled into view: a row without a rating is a plain link,
+  // but a half-resolved candidate set makes its winner badges wrong.
+  // A batch already on the wire cannot be un-sent, so the claim is about the
+  // queue that is still WAITING: 24 rows means one batch leaves at once and
+  // twelve rows queue behind it, and the urgent venue must overtake those.
+  const h = harness({ concurrency: 1 });
+  h.queue.request(venues(24).map(v => 'ROW ' + v), { priority: 'normal' });
+  await settle(4);
+  h.queue.request(['Urgent Candidate Tokyo'], { priority: 'urgent' });
+  await settle(60);
+  assert.equal(h.sent[1][0], 'Urgent Candidate Tokyo',
+    'the urgent venue led the next batch instead of waiting for the rows: ' + JSON.stringify(h.sent[1].slice(0, 3)));
 });
 
-test('scrolling a queued venue into view promotes it instead of re-requesting it', async () => {
+test('a venue an itinerary row already queued is promoted, not requested twice', async () => {
   const h = harness({
     send: async () => new Promise(() => {}),   // never resolves: keep the queue busy
   });
-  h.queue.request(venues(40), { priority: 'background' });
+  h.queue.request(venues(40), { priority: 'normal' });
   const moved = h.queue.promote(['Venue Number 39 Tokyo']);
   assert.equal(moved, 1, 'the queued entry was promoted');
   const again = h.queue.promote(['Venue Number 39 Tokyo']);
   assert.equal(again, 0, 'promoting twice does not duplicate it');
+  // and asking for it urgently now adds nothing new
+  assert.equal(h.queue.request(['Venue Number 39 Tokyo'], { priority: 'urgent' }), 0);
 });
 
 // ---------- 429 handling ----------
