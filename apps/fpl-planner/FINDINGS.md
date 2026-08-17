@@ -199,6 +199,35 @@ ranking, and only the part of a correction that changes ORDER changes decisions
   restarts). Chains matter: fitting a premium needs several coordinated
   downgrades and every intermediate state is worse, so 1-swap search cannot
   cross that valley. Full build ~1.8s; `buildPlan` median ~190ms at horizon 3.
+- **Transfer search performance: the exact bench-ordering was the whole cost,
+  and it was restructured bit-identically** (2026-08-17). The
+  `TRANSFER_SEARCH_BUDGET_CPU_MS` invariant (1500 ms CPU) started flaking on
+  GitHub runners at ~1520-1550 ms on back-to-back CI attempts while master
+  passed, and profiling showed why: the search had grown ~4x since the budget
+  was sized (~100 ms then, ~416 ms local by 2026-08-17), because the exact
+  shortlist re-rank runs ~100 exact `optimizeLineup` calls per search, those
+  consider ~50k elevens, and every considered eleven ran `orderBench` exact:
+  6 bench permutations x `expectedRecovery`, each re-walking ~64 absence
+  states and calling an allocating `simulateSubs` ~3.4M times per search.
+  The fix (in `lineup.js`): evaluate all 6 permutations in ONE shared pass
+  over the absence states; deduplicate `simulateSubs` by the ordered sequence
+  of playing bench players (a compacted all-playing sequence walks the same
+  branches as the masked original); reuse scratch buffers; memoize the
+  rules-derived structures (`fixed`/`outfield`/`posIndex`/`minPlay`/`maxPlay`
+  per rules object in a WeakMap) and `legalFormations` per (rules,
+  headcounts). Result: ~209 ms local median, est. ~750 ms on a GitHub runner.
+  - **Bit-identity was the acceptance test, so this is NOT a registry
+    experiment**: per permutation, additions still accumulate in the exact
+    (state, mask-ascending) order and each permutation's combination
+    probabilities multiply in the original per-slot order, because float
+    arithmetic is not commutative under reordering. Proven by a differential
+    harness importing both engines (working tree vs origin/master) into one
+    process: `searchTransfers` at horizons 1-5 and 400 seeded random squads
+    through `optimizeLineup` (exact and fast), all SHA-identical JSON.
+  - The memoized structures are cached by rules-object identity and shared
+    between calls; consumers must treat them as read-only, and anything that
+    mutates a rules object in place instead of building a new one will get
+    stale derived data.
 - **The performance budget was measured on a fixture 45% smaller than the live
   season, which hid the production-sized problem** (found 2026-08-14, addressed
   2026-08-15). The committed sample carries 320 players; the live 2026/27

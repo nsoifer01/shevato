@@ -227,6 +227,12 @@ function absenceDistribution(rows, cap) {
 // tried first; otherwise the position with the most absences that can spare a
 // slot wins, which is the assignment that lets the most later substitutions
 // still happen.
+// Scratch buffers so the hot path allocates nothing: simulateSubs runs
+// millions of times per transfer search and is never re-entered (the engine is
+// single-threaded and nothing below it calls back up into it).
+let SUBS_SCRATCH_A = new Array(8);
+let SUBS_SCRATCH_C = new Array(8);
+
 function simulateSubs(order, playMask, absent, counts, minPlay, maxPlay, posIndex) {
   const n = order.length;
   const m = absent.length;
@@ -234,8 +240,16 @@ function simulateSubs(order, playMask, absent, counts, minPlay, maxPlay, posInde
   for (let i = 0; i < m; i++) remaining += absent[i];
   if (remaining === 0) return 0;
 
-  const a = absent.slice();
-  const c = counts.slice();
+  if (SUBS_SCRATCH_A.length < m) {
+    SUBS_SCRATCH_A = new Array(m);
+    SUBS_SCRATCH_C = new Array(m);
+  }
+  const a = SUBS_SCRATCH_A;
+  const c = SUBS_SCRATCH_C;
+  for (let i = 0; i < m; i++) {
+    a[i] = absent[i];
+    c[i] = counts[i];
+  }
   let recovered = 0;
 
   for (let j = 0; j < n && remaining > 0; j++) {
@@ -268,22 +282,94 @@ function simulateSubs(order, playMask, absent, counts, minPlay, maxPlay, posInde
   return recovered;
 }
 
-function expectedRecovery(order, dists, counts, minPlay, maxPlay, posIndex, caps) {
-  const n = order.length;
+// Expected recovery for EVERY candidate bench order at once. One order alone
+// is: for each absence scenario across the outfield positions, for each
+// combination of which bench players turned up, weight the simulated
+// substitution recovery by both probabilities. Evaluating the orders together
+// changes none of that arithmetic; it exists because almost all of the work is
+// identical between orders:
+//
+//   - the absence-scenario walk and its probability do not depend on the bench
+//     order at all, so they are done once instead of once per order;
+//   - a (order, played-combination) pair only reaches the simulator through
+//     the SEQUENCE of bench players who actually come on, and different pairs
+//     collapse to the same sequence (every one-player sequence appears in
+//     (n-1)! orders), so each distinct sequence is simulated once per scenario
+//     and the result shared.
+//
+// Bit-identical by construction: each order's total accumulates in the exact
+// (scenario, combination-mask ascending) sequence the one-order version used,
+// with the same probability products, and each order's combination
+// probabilities multiply in the same per-slot sequence. The simulator sees the
+// playing players compacted into a fully-played sequence, which walks the same
+// players through the same branches as the masked walk it replaces.
+// Scratch state for expectedRecoveryAll, reused across its millions of calls
+// per transfer search. Never re-entered: single-threaded, and nothing below
+// this layer calls back up into it.
+const REC_SEQ_INDEX = new Map(); // packed playing-sequence -> sequence index
+let REC_COMBO_PROB = new Float64Array(32);
+let REC_TOTALS = new Float64Array(8);
+
+function expectedRecoveryAll(base, perms, dists, counts, minPlay, maxPlay, posIndex, caps) {
+  const nOrders = perms.length;
+  const n = base.length;
   const combos = 1 << n;
-  const comboProb = new Array(combos);
-  for (let mask = 0; mask < combos; mask++) {
-    let p = 1;
-    for (let j = 0; j < n; j++) {
-      const pa = order[j].pAppear;
-      p *= ((mask >> j) & 1) ? pa : 1 - pa;
+
+  if (REC_COMBO_PROB.length < combos) REC_COMBO_PROB = new Float64Array(combos);
+  if (REC_TOTALS.length < nOrders) REC_TOTALS = new Float64Array(nOrders);
+  const comboProb = REC_COMBO_PROB;
+
+  // Map every surviving (order, mask) to its playing sequence, deduplicated.
+  // A sequence is the playing players in bench order, compacted; simulateSubs
+  // with an all-ones mask over the compacted sequence is the masked original.
+  // Sequences are keyed by their packed base indices, so every one-player
+  // sequence that appears in (n-1)! different orders is simulated once.
+  REC_SEQ_INDEX.clear();
+  const sequences = [];
+  const active = new Array(nOrders); // per order: [mask, pc, seqIdx, ...] flat
+  for (let o = 0; o < nOrders; o++) {
+    const perm = perms[o];
+    // The probability of each played-combination, exactly as the one-order
+    // version computed it: per slot j in bench order, play or miss.
+    for (let mask = 0; mask < combos; mask++) {
+      let p = 1;
+      for (let j = 0; j < n; j++) {
+        const pa = base[perm[j]].pAppear;
+        p *= ((mask >> j) & 1) ? pa : 1 - pa;
+      }
+      comboProb[mask] = p;
     }
-    comboProb[mask] = p;
+    const list = [];
+    for (let mask = 1; mask < combos; mask++) {
+      const pc = comboProb[mask];
+      if (pc <= PROB_EPS) continue;
+      let key = 0;
+      for (let j = 0; j < n; j++) {
+        if ((mask >> j) & 1) key = key * (n + 1) + perm[j] + 1;
+      }
+      let seqIdx = REC_SEQ_INDEX.get(key);
+      if (seqIdx === undefined) {
+        const seq = [];
+        for (let j = 0; j < n; j++) {
+          if ((mask >> j) & 1) seq.push(base[perm[j]]);
+        }
+        seqIdx = sequences.length;
+        REC_SEQ_INDEX.set(key, seqIdx);
+        sequences.push(seq);
+      }
+      list.push(mask, pc, seqIdx);
+    }
+    active[o] = list;
   }
+
+  const fullMask = (1 << n) - 1; // every player in a compacted sequence plays
+  const nSeq = sequences.length;
+  const recBySeq = new Array(nSeq);
 
   const m = caps.length;
   const idx = new Array(m).fill(0);
-  let total = 0;
+  const totals = REC_TOTALS;
+  for (let o = 0; o < nOrders; o++) totals[o] = 0;
 
   for (;;) {
     let pAbs = 1;
@@ -292,11 +378,15 @@ function expectedRecovery(order, dists, counts, minPlay, maxPlay, posIndex, caps
       let any = 0;
       for (let i = 0; i < m; i++) any += idx[i];
       if (any > 0) {
-        for (let mask = 1; mask < combos; mask++) {
-          const pc = comboProb[mask];
-          if (pc <= PROB_EPS) continue;
-          const rec = simulateSubs(order, mask, idx, counts, minPlay, maxPlay, posIndex);
-          if (rec > 0) total += pAbs * pc * rec;
+        for (let s = 0; s < nSeq; s++) {
+          recBySeq[s] = simulateSubs(sequences[s], fullMask, idx, counts, minPlay, maxPlay, posIndex);
+        }
+        for (let o = 0; o < nOrders; o++) {
+          const list = active[o];
+          for (let e = 0; e < list.length; e += 3) {
+            const rec = recBySeq[list[e + 2]];
+            if (rec > 0) totals[o] += pAbs * list[e + 1] * rec;
+          }
         }
       }
     }
@@ -309,24 +399,35 @@ function expectedRecovery(order, dists, counts, minPlay, maxPlay, posIndex, caps
     if (i === m) break;
   }
 
-  return total;
+  return totals;
 }
 
-function permutations(items) {
-  if (items.length <= 1) return [items.slice()];
-  const out = [];
-  for (let i = 0; i < items.length; i++) {
-    const rest = items.slice(0, i).concat(items.slice(i + 1));
-    for (const tail of permutations(rest)) out.push([items[i], ...tail]);
-  }
-  return out;
+// Permutations of [0..n-1], cached: the transfer search orders the same-sized
+// bench hundreds of thousands of times. Generation order matches the
+// first-element-then-recurse order the per-call generator used, which the
+// deterministic tie-break between equal bench orders depends on.
+const PERMUTATION_CACHE = new Map();
+
+function permutationIndices(n) {
+  const cached = PERMUTATION_CACHE.get(n);
+  if (cached) return cached;
+  const build = (items) => {
+    if (items.length <= 1) return [items.slice()];
+    const out = [];
+    for (let i = 0; i < items.length; i++) {
+      const rest = items.slice(0, i).concat(items.slice(i + 1));
+      for (const tail of build(rest)) out.push([items[i], ...tail]);
+    }
+    return out;
+  };
+  const perms = build(Array.from({ length: n }, (_, i) => i));
+  PERMUTATION_CACHE.set(n, perms);
+  return perms;
 }
 
 // Best bench order for a given eleven, plus what that bench is worth.
 export function orderBench(xiRows, benchRows, rules, { exact = true } = {}) {
-  const fixed = new Set(fixedCountPositionIds(rules));
-  const outfield = outfieldPositionIds(rules);
-  const posIndex = new Map(outfield.map((id, i) => [id, i]));
+  const { fixed, outfield, posIndex, minPlay, maxPlay } = benchRulesInfo(rules);
 
   const benchFixed = benchRows.filter(r => fixed.has(r.position)).sort(compareRows);
   const benchOutfield = benchRows.filter(r => !fixed.has(r.position));
@@ -393,24 +494,27 @@ export function orderBench(xiRows, benchRows, rules, { exact = true } = {}) {
   }
 
   const counts = outfield.map(pos => xiRows.reduce((n, r) => n + (r.position === pos ? 1 : 0), 0));
-  const minPlay = outfield.map(pos => rules.positions[pos].minPlay);
-  const maxPlay = outfield.map(pos => rules.positions[pos].maxPlay);
   const dists = outfield.map(pos => absenceDistribution(xiRows.filter(r => r.position === pos), cap));
   const caps = dists.map(d => d.length - 1);
 
-  let best = null;
-  for (const order of permutations(benchOutfield)) {
-    const value = expectedRecovery(order, dists, counts, minPlay, maxPlay, posIndex, caps);
-    if (best === null || value > best.value + 1e-12
-      || (Math.abs(value - best.value) <= 1e-12 && lexLower(order, best.order))) {
-      best = { value, order };
+  const perms = permutationIndices(benchOutfield.length);
+  const values = expectedRecoveryAll(benchOutfield, perms, dists, counts, minPlay, maxPlay, posIndex, caps);
+
+  let bestValue = 0;
+  let bestPerm = null;
+  for (let o = 0; o < perms.length; o++) {
+    const value = values[o];
+    if (bestPerm === null || value > bestValue + 1e-12
+      || (Math.abs(value - bestValue) <= 1e-12 && permLexLower(benchOutfield, perms[o], bestPerm))) {
+      bestValue = value;
+      bestPerm = perms[o];
     }
   }
 
   return {
     gk: gkRow ? gkRow.id : null,
-    order: best.order.map(r => r.id),
-    autosubValue: gkValue + best.value,
+    order: bestPerm.map(i => benchOutfield[i].id),
+    autosubValue: gkValue + bestValue,
     benchXPoints,
     gkValue,
   };
@@ -547,15 +651,61 @@ function autosubCeiling(rows, byPosition, rules) {
   return fixedTerm + Math.min(maxCond * Math.min(slots, absences), richestBench);
 }
 
-// Deterministic tie-break between two equally valuable bench orders.
-function lexLower(a, b) {
+// Deterministic tie-break between two equally valuable bench orders, given as
+// index permutations over the same base array.
+function permLexLower(base, a, b) {
   for (let i = 0; i < a.length; i++) {
-    if (a[i].id !== b[i].id) return a[i].id < b[i].id;
+    if (base[a[i]].id !== base[b[i]].id) return base[a[i]].id < base[b[i]].id;
   }
   return false;
 }
 
+// Everything orderBench derives from the rules alone, cached per rules object:
+// it is rebuilt identically for every one of the hundreds of thousands of
+// elevens a transfer search benches. Consumers treat every field as read-only.
+const BENCH_RULES_MEMO = new WeakMap();
+
+function benchRulesInfo(rules) {
+  let info = BENCH_RULES_MEMO.get(rules);
+  if (!info) {
+    const fixed = new Set(fixedCountPositionIds(rules));
+    const outfield = outfieldPositionIds(rules);
+    info = {
+      fixed,
+      outfield,
+      posIndex: new Map(outfield.map((id, i) => [id, i])),
+      minPlay: outfield.map(id => rules.positions[id].minPlay),
+      maxPlay: outfield.map(id => rules.positions[id].maxPlay),
+    };
+    BENCH_RULES_MEMO.set(rules, info);
+  }
+  return info;
+}
+
 // ---------------------------------------------------------------------------
+
+// legalFormations depends only on the rules and the per-position headcounts,
+// and a transfer search asks for the same handful of headcount shapes tens of
+// thousands of times. Cached per rules object; the formation Maps inside are
+// shared and read-only.
+const FORMATIONS_MEMO = new WeakMap();
+
+function legalFormationsCached(rules, availableCounts) {
+  let byCounts = FORMATIONS_MEMO.get(rules);
+  if (!byCounts) {
+    byCounts = new Map();
+    FORMATIONS_MEMO.set(rules, byCounts);
+  }
+  const ids = Object.values(rules.positions).map(p => p.id).sort((a, b) => a - b);
+  let key = '';
+  for (const id of ids) key += (availableCounts.get(id) || 0) + ',';
+  let formations = byCounts.get(key);
+  if (!formations) {
+    formations = legalFormations(rules, availableCounts);
+    byCounts.set(key, formations);
+  }
+  return formations;
+}
 
 export function optimizeLineup(squadPlayerIds, projections, gw, rules, opts = {}) {
   const params = resolveParams(opts);
@@ -571,7 +721,7 @@ export function optimizeLineup(squadPlayerIds, projections, gw, rules, opts = {}
   for (const list of byPosition.values()) list.sort(compareRows);
 
   const availableCounts = new Map([...byPosition].map(([pos, list]) => [pos, list.length]));
-  const formations = legalFormations(rules, availableCounts);
+  const formations = legalFormationsCached(rules, availableCounts);
   if (!formations.length) {
     throw new Error('No legal formation can be built from this squad: it does not hold enough players in some position.');
   }

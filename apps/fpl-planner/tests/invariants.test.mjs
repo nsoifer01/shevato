@@ -417,9 +417,18 @@ test('an illegal squad is caught rather than quietly optimised', () => {
 // shared CI runner, wall time measures how busy the host is, not how much
 // work the search does. This exact assertion failed on a GitHub runner at
 // 1587 ms wall against the old 1500 ms wall budget while the CPU cost was
-// unremarkable. Observed CPU cost on the development machine is ~100 ms, so
-// 1500 ms of CPU leaves an order of magnitude of headroom for slower silicon
-// while still catching an accidental complexity explosion.
+// unremarkable.
+//
+// The budget has fired for real once. The "~100 ms on the development
+// machine" this budget was originally sized against predated the exact
+// shortlist re-rank and the exact auto-substitution model; by 2026-08-17 the
+// search had grown to ~416 ms locally, which is ~1520-1550 ms on GitHub's
+// slower runners, and CI flaked against the line on back-to-back attempts.
+// That was treated as the tripwire working: the search was profiled and its
+// exact bench-ordering restructured (bit-identical outputs, see
+// FINDINGS.md "Transfer search performance"), which brought it to ~210 ms
+// locally, an estimated ~750 ms on a GitHub runner. If this fires again,
+// profile first; bump the budget only for a deliberate, understood cost.
 const TRANSFER_SEARCH_BUDGET_CPU_MS = 1500;
 
 test('a full transfer search over the sample dataset stays inside its budget', (t) => {
