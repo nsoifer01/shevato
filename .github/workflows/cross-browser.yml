@@ -34,5 +34,24 @@ jobs:
       - name: Install browsers
         run: npx playwright install --with-deps firefox webkit
 
+      # The smoke suite asserts that no first-party request 404s, and the
+      # Rising Shows finder fetches data-index.json at boot. That file is a
+      # build artifact (gitignored, derived from data.json by split-data.js),
+      # so a bare checkout serves a 404 and both "all app pages boot clean"
+      # tests fail in every engine - which is a missing build prerequisite,
+      # not the engine breakage this workflow exists to catch.
+      #
+      # The push/PR workflows deliberately skip this (browser-tests.yml says
+      # so: 111 MB per pull request is not worth six data-dependent checks).
+      # Weekly is a different trade: the download is public, unauthenticated
+      # and takes seconds, and it buys a smoke run against the same artifact
+      # set the deploy serves. Only the two scripts the finder's boot path
+      # needs are run; build-show-pages / build-exercise-pages generate ~35k
+      # SEO pages this suite never visits, so build:site would be pure cost.
+      - name: Prepare the Rising Shows dataset
+        run: |
+          npm run fetch:rising-shows-data
+          npm run build:rising-shows:split
+
       - name: Run cross-browser smoke suite
         run: npm run test:cross-browser
