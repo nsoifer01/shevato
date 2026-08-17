@@ -96,6 +96,22 @@ export function readCandidate(data) {
 }
 
 export { GENERATION_CONFIG };
+
+// The upstream deadline for the Gemini call. This was upstreamSignal()'s 9s
+// default, sized against a believed 10s Netlify ceiling and 2-5s chat turns,
+// and it is the exact bug that broke the Free assistant's "plan my day" path:
+// a plan turn produces ~3,000-4,000 output tokens (one action per slot plus
+// 2-3 candidates per meal/drinks slot) and measured 8.3-14.1s per call against
+// the live model (2026-08-16, 5 runs), so the abort fired on most plan turns
+// and the traveller saw a 502 "could not answer right now" for a request that
+// was succeeding upstream. Netlify's real synchronous execution limit is 60s
+// (docs.netlify.com/build/functions/configuration, verified 2026-08-16), and
+// the browser's own fetch abort is 60s, so there is room to let a long turn
+// finish. 45s covers the worst legitimate case (a full 12,000-token budget at
+// flash-lite generation speed is ~30-35s) while still failing a genuinely hung
+// upstream inside both 60s windows, with margin for our own error path.
+export const ASSIST_UPSTREAM_TIMEOUT_MS = 45000;
+
 const MAX_MESSAGES = 40;
 const MAX_CONTENT = 4000;
 const MAX_TRIP_JSON = 30000;
@@ -161,6 +177,11 @@ export default async function handler(req) {
     reply = await callGemini(geminiKey, sys, contents);
   } catch (err) {
     if (err && err.rateLimited) return json({ error: 'quota_exceeded', scope: 'upstream' }, 429);
+    // Function logs only, never the response: an abort (TimeoutError) or a
+    // network failure reaches here without having logged anything, and that
+    // silence is what made the plan-mode timeout 502 undiagnosable from the
+    // outside. Name + message carry no key and no upstream body.
+    console.error('tp-assist upstream failure', err && err.name, err && err.message);
     return json({ error: 'upstream' }, 502);
   }
 
@@ -251,11 +272,12 @@ async function callGemini(key, sys, contents) {
       contents,
       generationConfig: GENERATION_CONFIG,
     }),
-    // A hung upstream must fail inside Netlify's 10s ceiling so the browser
-    // gets our JSON error (and its "try again / Tier 1" fallback UI), not a
-    // platform gateway page. The abort surfaces as a TypeError from fetch and
-    // takes the same 502 path as any other upstream failure.
-    signal: upstreamSignal(),
+    // A hung upstream must fail inside Netlify's 60s execution limit so the
+    // browser gets our JSON error (and its fallback UI), not a platform
+    // gateway page. NOT the 9s default: a plan turn legitimately runs 8-14s+
+    // (see ASSIST_UPSTREAM_TIMEOUT_MS). The abort surfaces as an exception
+    // from fetch and takes the same 502 path as any other upstream failure.
+    signal: upstreamSignal(ASSIST_UPSTREAM_TIMEOUT_MS),
   });
   if (!res.ok) {
     // function logs only; body helps diagnose, key never logged

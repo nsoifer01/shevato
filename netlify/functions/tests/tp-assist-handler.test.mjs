@@ -17,7 +17,7 @@
 import { register } from 'node:module';
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import handler from '../tp-assist.mjs';
+import handler, { ASSIST_UPSTREAM_TIMEOUT_MS } from '../tp-assist.mjs';
 import { DEFAULT_LIMITS } from '../lib/tp-assist-quota.mjs';
 
 let hooksOk = true;
@@ -168,6 +168,46 @@ test('step 8: an empty reply (safety block / all-thinking turn) answers 502, not
   const res = await handler(req(goodBody()));
   assert.equal(res.status, 502);
   assert.equal((await res.json()).error, 'upstream');
+});
+
+test('step 7: an upstream abort (timeout) answers our JSON 502, not a crash', opts, async () => {
+  // The plan-mode outage of 2026-08: the deadline fired mid-generation and the
+  // resulting exception has to land as our {error:'upstream'} body, never as
+  // an unhandled throw the platform turns into a gateway page.
+  seedBlobs({ config: { geminiKey: 'k' } });
+  fetchCalls = [];
+  globalThis.fetch = async () => { throw new DOMException('The operation timed out', 'TimeoutError'); };
+  const res = await handler(req(goodBody()));
+  assert.equal(res.status, 502);
+  assert.equal((await res.json()).error, 'upstream');
+});
+
+test('step 7: the 502 body never carries the key or the upstream response', opts, async () => {
+  seedBlobs({ config: { geminiKey: 'secret-key-xyz' } });
+  stubGemini(500, 'INTERNAL: model overloaded at backend host abc123');
+  const res = await handler(req(goodBody()));
+  assert.equal(res.status, 502);
+  const raw = await res.text();
+  assert.equal(raw, JSON.stringify({ error: 'upstream' }), 'exactly the opaque error contract');
+  assert.ok(!raw.includes('secret-key-xyz'));
+  assert.ok(!raw.includes('abc123'));
+});
+
+test('upstream deadline: covers a full plan turn and sits inside both 60s windows', opts, async () => {
+  // A plan-mode turn measured 8.3-14.1s live, and a full 12,000-token budget
+  // is ~30-35s; 9s (the old upstreamSignal default) 502'd most plan turns.
+  // The ceiling is Netlify's 60s synchronous limit and the browser's own 60s
+  // abort, minus margin for our error path.
+  assert.ok(ASSIST_UPSTREAM_TIMEOUT_MS >= 30000, 'must cover a full plan-mode generation');
+  assert.ok(ASSIST_UPSTREAM_TIMEOUT_MS <= 50000, 'must answer before the platform and browser 60s cutoffs');
+});
+
+test('steps 5-9: the upstream call carries an abort deadline', opts, async () => {
+  seedBlobs({ config: { geminiKey: 'k' } });
+  stubGemini(200, geminiJson([{ text: 'ok' }]));
+  const res = await handler(req(goodBody()));
+  assert.equal(res.status, 200);
+  assert.ok(fetchCalls[0].init.signal instanceof AbortSignal, 'a hung upstream must not run to the platform kill');
 });
 
 test('step 9: a MAX_TOKENS reply still lands, carrying the visible truncation note', opts, async () => {

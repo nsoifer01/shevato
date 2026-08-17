@@ -6669,7 +6669,11 @@
   // One segmented control plus one line: the line is the honest "where does my
   // trip go" answer for the selected tier and nothing else.
   function renderTierGroup() {
-    const segs = ['copy', 'byok', 'site'].map(t => {
+    // Free assistant leads: it is the zero-setup path, so it reads first.
+    // Order is presentation only - every handler keys off the radio VALUE, and
+    // the default tier stays 'copy' (set explicitly where assistTier is
+    // initialised, never derived from position here).
+    const segs = ['site', 'copy', 'byok'].map(t => {
       const on = t === assistTier;
       return `<label class="tier-opt${on ? ' on' : ''}">
         <input type="radio" name="assistTier" value="${t}" ${on ? 'checked' : ''}>
@@ -7238,14 +7242,17 @@
     if (!res.ok) {
       let body = {};
       try { body = await res.json(); } catch { /* non-JSON error body */ }
-      if (res.status === 503 || body.error === 'not_configured') throw assistError("The site's free assistant isn't set up yet. Try Tier 1 or bring your own key.");
-      if (res.status === 429 || body.error === 'quota_exceeded') throw assistError('The shared assistant is at capacity today. Use Tier 1 or add your own API key.');
+      // "Tier 1/2/3" is internal shorthand; the traveller only ever sees the
+      // segmented labels (Copy & paste / My API key / Free assistant), so the
+      // fallback advice has to use those words.
+      if (res.status === 503 || body.error === 'not_configured') throw assistError("The site's free assistant isn't set up yet. Use Copy & paste, or add your own API key.");
+      if (res.status === 429 || body.error === 'quota_exceeded') throw assistError('The shared assistant is at capacity today. Use Copy & paste, or add your own API key.');
       // The server trims long descriptions to make a heavy trip fit; this is
       // the case where even the dates and titles alone are too big to send. It
       // has to say what happened, because "could not answer right now" would
       // send the traveller into retrying something that can never succeed.
-      if (res.status === 413 || body.error === 'trip_too_large') throw assistError('This trip is too big to send to the shared assistant. Shorten some item descriptions, or split it into two trips. Tier 1 (copy and paste) has no size limit.');
-      throw assistError('The shared assistant could not answer right now. Try again, or use Tier 1.');
+      if (res.status === 413 || body.error === 'trip_too_large') throw assistError('This trip is too big to send to the shared assistant. Shorten some item descriptions, or split it into two trips. Copy & paste has no size limit.');
+      throw assistError('The shared assistant could not answer right now. Try again, or use Copy & paste.');
     }
     let data;
     try { data = await res.json(); } catch { throw assistError('Network error, check your connection and try again.'); }

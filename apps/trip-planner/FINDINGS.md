@@ -105,11 +105,27 @@ why, the traps, and the invariants.
   attacker-minted and `"__proto__"` on a plain object bypassed every
   per-client cap (read coerces NaN, increment no-ops). Regression tests pin
   this in both quota suites.
+- **Netlify's synchronous function limit is 60s, not 10s.** The 10s belief
+  (which sized every upstream deadline at 9s) is stale: current Netlify docs
+  (build/functions/configuration, "Synchronous execution limit", verified
+  2026-08-16) say 60s, streamed responses also 60s. The 9s deadline stays the
+  `upstreamSignal()` DEFAULT because tp-places' lookups run well under a
+  second; tp-assist passes its own 45s budget (`ASSIST_UPSTREAM_TIMEOUT_MS`).
+- **The Free assistant "plan my day" 502 (fixed 2026-08-16) was that 9s
+  deadline, not Gemini.** A plan-mode turn produces ~3,000-4,000 output
+  tokens and measured 8.3-14.1s against live `gemini-3.1-flash-lite` (5
+  runs), so the abort fired on most plan turns while short chat turns
+  (2-5s) kept working, which is why the endpoint looked "sometimes fine".
+  Triage note: the timeout path used to log NOTHING (only HTTP-error
+  responses were logged), which made the 502 undiagnosable from function
+  logs; the handler's catch now logs the error name/message. When timing an
+  assistant change, measure a PLAN turn, not a chat turn.
 - tp-places: reservation-before-spend via etag CAS; resolve step is wrapped
   so a Blobs I/O failure returns the JSON contract (batch `unavailable`) and
   keeps the reservation (never under-count spend). Known accepted edges: two
-  sequential 9s upstream deadlines can exceed Netlify's 10s ceiling (burned
-  reservation until rollover); a failed Place Details call counts as spent;
+  sequential 9s upstream deadlines sit inside the (60s) platform limit but a
+  slow pair still burns the reservation until rollover; a failed Place
+  Details call counts as spent;
   per-client caps are advisory (clientId rotation) - the global/monthly pools
   are the real cost control ($10/month worst case public tier).
 - tp-assist deliberately does NOT refund quota on upstream failure (fails
@@ -146,6 +162,21 @@ why, the traps, and the invariants.
   disabled; the click handler's `SHARED_MENU_ACTS` allowlist is the backstop.
 - `getComputedStyle` lies after class swaps; trust pixels (screenshots) and
   DOM facts. Serve on 8082+ (8080 owner, 8081 schwabbot).
+
+## Assistant: send modes (UI)
+
+- The Step 2 "Send it" segmented control lists Free assistant, Copy & paste,
+  My API key, in that order (Free assistant first since 2026-08-16). The
+  order is presentation only: every handler, CSS rule and test keys off the
+  radio VALUE (`site`/`copy`/`byok`), and the default tier is an explicit
+  `'copy'` where `assistTier` is initialised, never derived from position.
+- "Tier 1/2/3" is internal shorthand and must never reach the traveller:
+  user-facing fallback copy names the segmented labels themselves ("use
+  Copy & paste"), pinned by the e2e assistant suite (block 6b).
+- restoreChat() re-collapses the setup block whenever a thread has history,
+  so any probe clicking the tier radios mid-conversation must reopen setup
+  via `#assistSetupChange` first or the click lands on a zero-rect input and
+  silently no-ops.
 
 ## Assistant: modes, and where a suggestion is measured from
 
