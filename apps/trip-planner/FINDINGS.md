@@ -305,6 +305,59 @@ needed it.
   oldest-inserted evicted first (entries carry no timestamp; do not add one
   without bumping the key version).
 
+## The example library is the app's shop window AND its fixture
+
+- `SAMPLE_TRIPS` in trip-logic.js is not decoration. Every template is
+  asserted over in `trip-logic.test.js`: no uncovered nights, no collisions,
+  no continuity gaps, no rotting into the past, a mapsQuery on every venue,
+  and the six fixture features (estimate, foreign currency, long details,
+  untimed row, cancelled row, `local` leg) present in each one. A template
+  that renders a warning is a bug in the first thing a new visitor sees.
+- **The library used to assume every example was a TWO-city trip.** The
+  30-day `usa` template (added 2026-08-17) broke that assumption and the two
+  places it was written down were both in the tests, not the app:
+  `assert.equal(stays.length, 2)` in the intercity-leg test, and
+  `Math.max(...lengths) === 14` in the shape test. Both were generalised
+  (per-hop connectivity, 7 to 30 days) rather than special-cased. **The app
+  code needed no change at all** - `coverageGaps`, `transportGaps`,
+  `tripStats`, the Days grid and the Timeline stay-grouping all handled 18
+  stays, 17 legs and 161 items on the first run. `MAX_TRIP_DAYS` is 400, so
+  nothing near a month is capped.
+- Each template also declares a DENSITY the suite measures day by day
+  (`sparse | moderate | relaxed | packed | split | road`). `road` is the
+  road-trip shape: no blank days (the driving is the day), more driving days
+  than not, and a dedicated test asserting that a leg scheduled for six hours
+  or more carries at most five other things AND at least one stop located in
+  neither endpoint city. That last assertion is the one worth keeping: "drive
+  eight hours, then do six attractions" is the failure mode an itinerary
+  falls into, and it reads as a bug rather than an ambitious day.
+- **Ambiguous US place names must carry their state in `location`, not just
+  in `mapsQuery`.** `location` is what `geocode()` hands raw to Nominatim, so
+  `Clarksdale`, `Lafayette` and `Cambria` are stored as `Clarksdale,
+  Mississippi` and so on. The stay-to-stay connectivity test compares leg
+  titles to stay locations verbatim, so the legs read `Memphis to Clarksdale,
+  Mississippi` - clunky, and correct.
+- **Map-view cost scales with DISTINCT locations, not items.** The USA
+  example names 40 of them, and `pumpGeo` is a serialized 1.1s queue, so the
+  first Map render takes about 45 seconds behind its "Locating places: n of
+  40" progress line (cached thereafter, and the Map is not the default view).
+  Every other template names roughly a dozen. This is the honest cost of a
+  road trip that stops in Luling, Yermo and Oro Grande; do not "fix" it by
+  stripping the roadside stops of their `location`, which is what puts them
+  on the map at all.
+- **A 30-day example lands between the two share-link thresholds**, which is
+  the useful thing about it: `slimTripForShare` + deflate + base64url puts it
+  at roughly 20,000 URL characters, under the 30,000 hard stop that refuses
+  and points at JSON export, over the 8,000 advisory that warns the link may
+  be truncated by a chat app. So the library now contains a trip that
+  exercises the warning path, which nothing under 14 days did (Japan, the
+  next biggest, is about 3,300).
+- Screenshot harness caveat: the iframe probe runs under
+  `--virtual-time-budget`, which collapses timers but does NOT advance real
+  network time, so the Map view stalls partway through the geocode queue no
+  matter how large `--wait-ms` is. Verify the Map with the CDP browser suite
+  (`npm run test:trip-planner:e2e`), not with screenshot.sh.
+
 ## WCAG AA contrast decisions (2026-08-15 round, was defect 28)
 
 - Days view had 32 axe `color-contrast` serious violations, all traced to

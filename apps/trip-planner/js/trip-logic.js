@@ -4727,17 +4727,19 @@ const TripLogic = (() => {
   // opening hours, ratings or "from" prices, because none of that can be kept
   // true in a static file.
   //
-  // Each template runs 7 to 14 days and shares the same backbone: an inbound
-  // international flight from ANOTHER country, a first-city stay, one intercity
-  // leg by whatever mode actually fits the country (rail, road, ferry or a
-  // domestic flight), a second-city stay, and the flight home. What varies on
+  // Each template runs 7 to 30 days and shares the same backbone: an inbound
+  // international flight from ANOTHER country, a stay, an intercity leg by
+  // whatever mode actually fits the country (rail, road, ferry or a domestic
+  // flight) for every hop between stays, and the flight home. What varies on
   // purpose is the SHAPE: a seven day Iceland road trip carries a handful of
   // stops and long drives between them, Croatia leaves whole days deliberately
-  // blank, Peru and Japan run four or five things a day, and Thailand is packed
-  // in the city half and near empty on the beach. Budgets vary too, from a
-  // backpacker Vietnam to a splurge Iceland, because the money formatting and
-  // the currency conversion path deserve a spread as much as the itinerary
-  // does. The data is also the app's regression fixture, so every template
+  // blank, Peru and Japan run four or five things a day, Thailand is packed in
+  // the city half and near empty on the beach, and the USA runs a month coast
+  // to coast through eighteen overnight stops rather than the two every other
+  // template settles into. Budgets vary too, from a backpacker Vietnam to a
+  // splurge Iceland, because the money formatting and the currency conversion
+  // path deserve a spread as much as the itinerary does. The data is also the
+  // app's regression fixture, so every template
   // deliberately contains an estimate, a foreign-currency cost, a long
   // description, an untimed item, a cancelled item and a `local` leg, while
   // deliberately containing NO uncovered nights, date collisions or continuity
@@ -5268,6 +5270,233 @@ const TripLogic = (() => {
         { d: 12, type: 'activity', title: 'Ao Nang beach afternoon', location: 'Ao Nang', maps: 'Ao Nang Beach Krabi', details: 'Nothing booked and no time set. This is the last full day and it is meant to stay that way.' },
         { d: 12, type: 'activity', title: 'Dinner: Krua Thara Ao Nang', location: 'Ao Nang', time: '19:30', est: 20, maps: 'Krua Thara Restaurant Ao Nang' },
         { d: 13, type: 'flight', title: 'Krabi (KBV) to Singapore (SIN)', time: '14:10', cost: 200 },
+      ],
+    },
+    {
+      // 30 days, and the one that is not a two-city trip: a coast-to-coast
+      // drive with eighteen overnight stops, so the day this template exists
+      // to exercise is the DRIVING day. Long legs carry a light load and a
+      // couple of roadside stops; city days carry a full one. It is also the
+      // only template with a foreign-currency FLIGHT rather than a foreign
+      // -currency attraction, because the ticket is the only thing on a
+      // domestic road trip that gets bought abroad.
+      id: 'usa',
+      startOffset: 210,
+      label: 'USA (New York to San Francisco road trip)',
+      summary: 'Fly in from London, drive coast to coast in thirty days, eighteen overnight stops and a lot of roadside America',
+      keywords: ['usa', 'united states', 'america', 'route 66', 'new york', 'nyc', 'washington dc',
+        'nashville', 'memphis', 'new orleans', 'austin', 'san antonio', 'santa fe',
+        'las vegas', 'vegas', 'los angeles', 'san francisco', 'grand canyon'],
+      localCurrency: 'USD',
+      items: [
+        // ---- New York, three nights ----
+        { d: 0, type: 'flight', title: 'London (LHR) to New York (JFK)', time: '09:15', endTime: '12:20', status: 'booked', cost: 505, cur: 'GBP', details: 'Open jaw: in to New York, home out of San Francisco, booked as one ticket. Seven hours out and five time zones back, so it is still lunchtime when you land.' },
+        { d: 0, type: 'local', title: 'AirTrain and the subway into Manhattan', time: '13:30', status: 'booked', cost: 12 },
+        { d: 0, end: 3, type: 'stay', title: 'Pod 51 Hotel', location: 'New York', status: 'booked', cost: 780, maps: 'Pod 51 Hotel New York', details: 'Three nights in Midtown East. Small rooms on purpose: the car is not collected until day four and nothing here needs parking.' },
+        { d: 0, type: 'activity', title: "Dinner: Katz's Delicatessen", location: 'New York', time: '18:30', est: 32, maps: "Katz's Delicatessen New York" },
+        { d: 0, type: 'activity', title: 'The whispering gallery under Grand Central', location: 'New York', maps: 'Grand Central Terminal New York', details: 'No time set: it is four minutes from the hotel, it is free, and the tiled arches outside the Oyster Bar carry a whisper diagonally across the corner at any hour the station is open.' },
+
+        { d: 1, type: 'activity', title: 'Staten Island Ferry past the Statue of Liberty', location: 'New York', time: '08:30', maps: 'Staten Island Ferry Whitehall Terminal New York', details: 'The best view of the harbour in the city is on a commuter boat that costs nothing, runs every half hour and does not sell tickets because there is nothing to sell. Stay on the west rail going out, walk straight back on at St George, and the whole round trip takes about fifty minutes.' },
+        { d: 1, type: 'activity', title: 'The High Line and Chelsea Market', location: 'New York', time: '11:00', maps: 'The High Line New York' },
+        { d: 1, type: 'activity', title: "Lunch: Joe's Pizza on Carmine Street", location: 'New York', time: '13:00', est: 7, maps: "Joe's Pizza Carmine Street New York" },
+        { d: 1, type: 'activity', title: 'The City Reliquary, Williamsburg', location: 'New York', time: '15:30', cost: 8, maps: 'City Reliquary Museum Brooklyn', details: 'A shopfront museum of New York rubbish held as though it were treasure: seltzer bottles, subway tokens, a chunk of the old Penn Station, a shrine to Jackie Robinson. It opens a few afternoons a week, so check before crossing the river.' },
+        { d: 1, type: 'activity', title: "Drinks: Please Don't Tell", location: 'New York', time: '21:00', est: 45, maps: "Please Don't Tell PDT New York", details: 'Entered through the phone box inside a hot dog shop on St Marks Place. You pick up the receiver, somebody answers, and the back wall opens.' },
+
+        { d: 2, type: 'activity', title: 'Coney Island: the Cyclone and the boardwalk', location: 'New York', time: '11:00', cost: 15, maps: 'Luna Park Coney Island Brooklyn' },
+        { d: 2, type: 'activity', title: "Lunch: Nathan's Famous on Surf Avenue", location: 'New York', time: '13:00', est: 14, maps: "Nathan's Famous Coney Island" },
+        { d: 2, type: 'activity', title: 'Coney Island Circus Sideshow', location: 'New York', time: '15:00', cost: 15, maps: 'Coney Island USA Sideshow Brooklyn', details: 'Sword swallowing, fire eating and a snake charmer, in what is billed as the last permanently housed ten-in-one sideshow in the country. The building upstairs is a museum about itself.' },
+        { d: 2, type: 'local', title: 'Q train back to the hotel', location: 'New York', time: '17:30', cost: 3, maps: 'Pod 51 Hotel New York' },
+        { d: 2, type: 'activity', title: 'Dinner: Grand Central Oyster Bar', location: 'New York', time: '19:30', est: 60, maps: 'Grand Central Oyster Bar New York' },
+        { d: 2, type: 'activity', title: 'Cancelled: Broadway evening show', location: 'New York', time: '20:00', status: 'cancelled', maps: 'Richard Rodgers Theatre New York', details: 'Nothing left under three hundred dollars a seat on these dates. Left on the plan in case a day-of lottery comes through.' },
+
+        // ---- collect the car, Philadelphia on the way, two nights in Washington ----
+        { d: 3, type: 'activity', title: 'Collect the rental car, Midtown West', location: 'New York', time: '08:00', status: 'booked', cost: 1980, maps: 'Hertz West 43rd Street New York', details: 'Twenty-six days one way, New York to San Francisco. The one-way drop charge is most of what makes this number look like that, and it is worth pricing an airport pickup against a Manhattan one before booking: the garage rate here is high and the traffic getting out is worse.' },
+        { d: 3, type: 'transport', title: 'New York to Washington DC', time: '09:00', endTime: '17:00', status: 'booked', cost: 62, details: 'About four and a half hours of actual driving on the New Jersey Turnpike and I-95, split by three hours in Philadelphia. Tolls are the whole cost of this leg; the fuel is barely a third of it.' },
+        { d: 3, type: 'activity', title: 'Run the Rocky steps at the Art Museum', location: 'Philadelphia', time: '11:30', maps: 'Rocky Steps Philadelphia Museum of Art' },
+        { d: 3, type: 'activity', title: "Lunch: Jim's South St cheesesteak", location: 'Philadelphia', time: '12:45', est: 15, maps: "Jim's South Street Philadelphia", details: 'Order it the local way or hold the queue up: the cheese first, then whether you want onions. Whiz wit, provolone witout, and so on.' },
+        { d: 3, type: 'activity', title: "Philadelphia's Magic Gardens", location: 'Philadelphia', time: '14:00', cost: 15, maps: "Philadelphia's Magic Gardens", details: 'Half a city block of tunnels and terraces mosaicked out of broken bottles, bicycle wheels and dinner plates by one man over three decades. He tiled most of the neighbourhood too, so look at the walls on the walk back to the car.' },
+        { d: 3, end: 5, type: 'stay', title: 'Kimpton Hotel Monaco Washington DC', location: 'Washington DC', status: 'booked', cost: 520, maps: 'Kimpton Hotel Monaco Washington DC', details: 'Two nights in Penn Quarter, ten minutes walk from the Mall.' },
+        { d: 3, type: 'activity', title: "Dinner: Ben's Chili Bowl", location: 'Washington DC', time: '19:30', est: 18, maps: "Ben's Chili Bowl Washington DC" },
+
+        { d: 4, type: 'activity', title: 'The Mall monuments by bike', location: 'Washington DC', time: '09:00', cost: 25, maps: 'Lincoln Memorial Washington DC', details: 'The Mall is two miles end to end and everybody underestimates it on foot. A docked bike costs less than a coffee for the morning.' },
+        { d: 4, type: 'activity', title: 'National Air and Space Museum', location: 'Washington DC', time: '11:30', maps: 'National Air and Space Museum Washington DC', details: 'Free, like every Smithsonian, but entry runs on a timed pass you have to claim online first.' },
+        { d: 4, type: 'activity', title: 'Lunch: Union Market', location: 'Washington DC', time: '14:00', est: 20, maps: 'Union Market Washington DC' },
+        { d: 4, type: 'activity', title: 'The Exorcist steps, Georgetown', location: 'Washington DC', time: '16:30', maps: 'The Exorcist Steps Georgetown Washington DC', details: 'Seventy-five near-vertical steps between M Street and Prospect Street, padded with rubber for the film and now an official city landmark. Locals run them for exercise, which is its own kind of horror.' },
+        { d: 4, type: 'activity', title: 'Dinner: Old Ebbitt Grill', location: 'Washington DC', time: '19:30', est: 55, maps: 'Old Ebbitt Grill Washington DC' },
+
+        // ---- the longest drive of the trip: down the Shenandoah Valley ----
+        { d: 5, type: 'transport', title: 'Washington DC to Asheville', time: '07:30', endTime: '18:30', status: 'booked', cost: 78, details: 'Eight hours of road, the longest single leg of the trip: I-81 the whole length of the Shenandoah Valley, then I-26 over the Blue Ridge into North Carolina. Nothing else is booked into this day on purpose, and the one stop in the middle of it is deliberately ridiculous.' },
+        { d: 5, type: 'activity', title: 'Dinosaur Kingdom II, Natural Bridge', location: 'Natural Bridge, Virginia', time: '11:30', cost: 16, maps: 'Dinosaur Kingdom II Natural Bridge Virginia', details: 'A hillside of hand-built dinosaurs fighting Union soldiers, on the premise that the army tried to weaponise them in 1863. Built by the sculptor who also made the full-size polystyrene Stonehenge that used to sit down the road, and every bit as committed to the bit as that sounds.' },
+        { d: 5, type: 'activity', title: 'Lunch: Pink Cadillac Diner, Natural Bridge', location: 'Natural Bridge, Virginia', time: '13:15', est: 16, maps: 'Pink Cadillac Diner Natural Bridge Virginia' },
+        { d: 5, end: 6, type: 'stay', title: 'The Foundry Hotel Asheville', location: 'Asheville', status: 'booked', cost: 215, maps: 'The Foundry Hotel Asheville', details: 'One night downtown, in the old steel works that supplied the Biltmore.' },
+        { d: 5, type: 'activity', title: 'Dinner: Buxton Hall Barbecue', location: 'Asheville', time: '19:45', est: 32, maps: 'Buxton Hall Barbecue Asheville' },
+
+        // ---- over the Smokies to Nashville ----
+        { d: 6, type: 'transport', title: 'Asheville to Nashville', time: '08:00', endTime: '17:45', status: 'booked', cost: 58, details: 'Six and a half hours if you drove it straight, which nobody does: the road crosses Great Smoky Mountains National Park on Newfound Gap Road and comes out the other side in Gatlinburg.' },
+        { d: 6, type: 'activity', title: 'Newfound Gap Road over the Smokies', location: 'Great Smoky Mountains National Park', time: '09:30', maps: 'Newfound Gap Great Smoky Mountains National Park', details: 'The most visited national park in the country and it charges nothing to drive through it. The gap sits at 5,046 feet on the state line, and the pull-off at Morton Overlook is the one worth stopping at.' },
+        { d: 6, type: 'activity', title: 'The Salt and Pepper Shaker Museum, Gatlinburg', location: 'Gatlinburg', time: '12:00', cost: 3, maps: 'Salt and Pepper Shaker Museum Gatlinburg Tennessee', details: 'Twenty thousand sets of salt and pepper shakers in a building off the parkway, assembled by an archaeologist who started collecting pepper mills and could not stop. The three dollars comes off anything you buy.' },
+        { d: 6, type: 'activity', title: 'Lunch: Pancake Pantry, Gatlinburg', location: 'Gatlinburg', time: '13:15', est: 16, maps: 'Pancake Pantry Gatlinburg Tennessee' },
+        { d: 6, end: 8, type: 'stay', title: 'Noelle Nashville', location: 'Nashville', status: 'booked', cost: 470, maps: 'Noelle Nashville', details: 'Two nights on Fourth Avenue, one block off Lower Broadway.' },
+        { d: 6, type: 'activity', title: 'The honky-tonks on Lower Broadway', location: 'Nashville', maps: "Robert's Western World Nashville", details: 'Untimed on purpose. Bands start in the early afternoon and change every couple of hours, nobody charges at the door, and the whole point is walking in and out of four of them until one holds you. Robert\'s is the one that still books proper honky-tonk.' },
+
+        { d: 7, type: 'activity', title: 'The full-size Parthenon in Centennial Park', location: 'Nashville', time: '09:30', cost: 10, maps: 'Parthenon Centennial Park Nashville', details: 'An exact concrete replica of the Parthenon, built for a fair in 1897 and never taken down, with a gilded forty-two foot Athena standing inside it. Nashville has called itself the Athens of the South ever since, and this is the receipt.' },
+        { d: 7, type: 'activity', title: "Lunch: Hattie B's Hot Chicken", location: 'Nashville', time: '12:30', est: 17, maps: "Hattie B's Hot Chicken Nashville", details: 'Order one step below whatever heat you think you can handle. Shut the Cluck Up is not a name they chose lightly.' },
+        { d: 7, type: 'activity', title: 'RCA Studio B on Music Row', location: 'Nashville', time: '15:00', cost: 56, maps: 'RCA Studio B Nashville', details: 'The room where Elvis cut over two hundred sides and Dolly Parton cut Jolene. Tours leave from the Country Music Hall of Fame and the ticket covers both.' },
+        { d: 7, type: 'activity', title: 'Grand Ole Opry', location: 'Nashville', time: '19:00', status: 'booked', cost: 92, maps: 'Grand Ole Opry Nashville' },
+        { d: 7, type: 'local', title: 'Ride back to the hotel from Opryland', location: 'Nashville', time: '22:15', cost: 32, maps: 'Noelle Nashville' },
+
+        // ---- Memphis ----
+        { d: 8, type: 'transport', title: 'Nashville to Memphis', time: '08:30', endTime: '11:45', status: 'booked', cost: 34, details: 'Three hours west on I-40. Casey Jones Village at Jackson is signposted off it if the day needs padding, and it is exactly as odd as it sounds.' },
+        { d: 8, end: 10, type: 'stay', title: 'Central Station Memphis', location: 'Memphis', status: 'booked', cost: 385, maps: 'Central Station Memphis Hotel', details: 'Two nights in the old Illinois Central railway station in South Main, with the Amtrak platform still working underneath.' },
+        { d: 8, type: 'activity', title: 'Graceland', location: 'Memphis', time: '13:30', cost: 85, maps: 'Graceland Memphis', details: 'Kept exactly as it was in 1977, which turns out to be the reason to go: the Jungle Room with green shag carpet on the ceiling, a mirrored stairwell, three televisions set into one wall. The house is smaller than the myth and the taste is louder.' },
+        { d: 8, type: 'activity', title: 'Drinks: live blues at the Rum Boogie Cafe', location: 'Memphis', time: '18:30', est: 26, maps: 'Rum Boogie Cafe Beale Street Memphis' },
+        { d: 8, type: 'activity', title: 'Dinner: Charlie Vergos Rendezvous', location: 'Memphis', time: '20:30', est: 38, maps: 'Charlie Vergos Rendezvous Memphis' },
+
+        { d: 9, type: 'activity', title: 'Sun Studio', location: 'Memphis', time: '09:30', cost: 19, maps: 'Sun Studio Memphis' },
+        { d: 9, type: 'activity', title: 'The Peabody duck march', location: 'Memphis', time: '11:00', maps: 'The Peabody Memphis', details: 'Five mallards take the lift down from a rooftop palace at eleven every morning, walk a red carpet to the lobby fountain to a Sousa march, and ride back up at five. The ducks have been doing it since 1933 and the hotel has employed a Duckmaster to walk them since 1940. Free, and the lobby is three deep by 10:45.' },
+        { d: 9, type: 'activity', title: "Lunch: Gus's World Famous Fried Chicken", location: 'Memphis', time: '13:00', est: 16, maps: "Gus's World Famous Fried Chicken Memphis" },
+        { d: 9, type: 'activity', title: 'National Civil Rights Museum at the Lorraine Motel', location: 'Memphis', time: '15:00', cost: 20, maps: 'National Civil Rights Museum Memphis' },
+        { d: 9, type: 'activity', title: "Dinner: Payne's Bar-B-Q", location: 'Memphis', time: '19:00', est: 15, maps: "Payne's Bar-B-Que Memphis" },
+
+        // ---- one night in the Delta ----
+        { d: 10, type: 'transport', title: 'Memphis to Clarksdale, Mississippi', time: '11:00', endTime: '12:30', status: 'booked', cost: 18, details: 'Ninety minutes south on Highway 61, flat and straight and nearly empty. Deliberately the shortest leg of the trip: the Delta is the point of the day, not the driving.' },
+        { d: 10, end: 11, type: 'stay', title: 'Shack Up Inn', location: 'Clarksdale, Mississippi', status: 'booked', cost: 115, maps: 'Shack Up Inn Clarksdale Mississippi', details: 'One night in a restored sharecropper shack on the old Hopson plantation: tin roof, screen door, a porch swing and a cotton gin next door that is now the bar.' },
+        { d: 10, type: 'activity', title: 'The Crossroads at Highways 61 and 49', location: 'Clarksdale, Mississippi', time: '14:00', maps: 'Crossroads Clarksdale Mississippi', details: 'Three blue guitars on a pole above a petrol station junction, marking where Robert Johnson is supposed to have sold his soul. It is a traffic light with a legend bolted to it, and it is worth the five minutes.' },
+        { d: 10, type: 'activity', title: 'Delta Blues Museum', location: 'Clarksdale, Mississippi', time: '15:00', cost: 10, maps: 'Delta Blues Museum Clarksdale Mississippi' },
+        { d: 10, type: 'activity', title: "Dinner: Abe's Bar-B-Q at the crossroads", location: 'Clarksdale, Mississippi', time: '18:30', est: 15, maps: "Abe's Bar-B-Q Clarksdale Mississippi" },
+        { d: 10, type: 'activity', title: "Drinks: live blues at Red's Lounge", location: 'Clarksdale, Mississippi', time: '21:00', est: 12, maps: "Red's Lounge Clarksdale Mississippi", details: 'A juke joint in the proper sense: red bulbs, mismatched chairs, a space heater, and whoever is playing sets up on the floor rather than a stage. Cash, and it opens when it opens.' },
+
+        // ---- New Orleans, three nights ----
+        { d: 11, type: 'transport', title: 'Clarksdale, Mississippi to New Orleans', time: '08:30', endTime: '15:00', status: 'booked', cost: 56, details: 'Five and a half hours down US-49 and I-55 through Jackson, out of the Delta and into Louisiana. The last half hour crosses the Bonnet Carre spillway on five miles of bridge over open swamp.' },
+        { d: 11, type: 'activity', title: "Lunch: Bully's Restaurant, Jackson", location: 'Jackson, Mississippi', time: '11:45', est: 15, maps: "Bully's Restaurant Jackson Mississippi" },
+        { d: 11, end: 14, type: 'stay', title: 'Hotel Peter and Paul', location: 'New Orleans', status: 'booked', cost: 690, maps: 'Hotel Peter and Paul New Orleans', details: 'Three nights in the Marigny, in a converted church, school, rectory and convent that are still recognisably all four.' },
+        { d: 11, type: 'activity', title: 'Beignets at Cafe du Monde', location: 'New Orleans', time: '17:30', est: 9, maps: 'Cafe du Monde New Orleans' },
+        { d: 11, type: 'activity', title: 'Dinner: Cochon', location: 'New Orleans', time: '20:00', est: 62, maps: 'Cochon Restaurant New Orleans' },
+
+        { d: 12, type: 'activity', title: 'St Louis Cemetery No. 1 and the French Quarter', location: 'New Orleans', time: '09:30', cost: 25, maps: 'St Louis Cemetery No 1 New Orleans', details: 'The cemetery can only be entered with a licensed guide, which is a rule worth knowing before you turn up at the gate. Everything is above ground because the water table is; the tombs are ovens that get reused across generations.' },
+        { d: 12, type: 'activity', title: 'Lunch: Parkway Bakery po-boy', location: 'New Orleans', time: '12:45', est: 17, maps: 'Parkway Bakery and Tavern New Orleans' },
+        { d: 12, type: 'activity', title: 'The Museum of Death, French Quarter', location: 'New Orleans', time: '15:00', cost: 20, maps: 'Museum of Death New Orleans', details: 'Exactly what the sign says, and not remotely a joke: mortician instruments, crime scene photographs, letters from people you would rather not think about. Nobody minds if you leave early, and a fair number do.' },
+        { d: 12, type: 'activity', title: "Dinner: Commander's Palace", location: 'New Orleans', time: '19:00', est: 95, maps: "Commander's Palace New Orleans", details: 'Book weeks out and wear a collar. Lunch here is a third of the price and has twenty-five cent martinis, if the schedule can be bent.' },
+        { d: 12, type: 'activity', title: 'Jazz at Preservation Hall', location: 'New Orleans', time: '21:30', status: 'booked', cost: 50, maps: 'Preservation Hall New Orleans' },
+
+        { d: 13, type: 'activity', title: 'Swamp tour on the Manchac wetlands', location: 'New Orleans', time: '09:00', cost: 58, maps: 'Manchac Swamp Louisiana' },
+        { d: 13, type: 'activity', title: "Lunch: Willie Mae's Scotch House", location: 'New Orleans', time: '14:00', est: 22, maps: "Willie Mae's Scotch House New Orleans" },
+        { d: 13, type: 'activity', title: 'The St Charles streetcar to the Garden District', location: 'New Orleans', time: '16:00', cost: 3, maps: 'St Charles Avenue Streetcar New Orleans', details: 'The oldest continuously running street railway in the world, in olive green cars from 1923 with wooden seats and no air conditioning. A single fare buys the whole length of it.' },
+        { d: 13, type: 'activity', title: 'Dinner: Turkey and the Wolf', location: 'New Orleans', time: '18:30', est: 28, maps: 'Turkey and the Wolf New Orleans' },
+        { d: 13, type: 'activity', title: 'Drinks: Frenchmen Street', location: 'New Orleans', time: '21:00', est: 32, maps: 'Frenchmen Street New Orleans', details: 'Three blocks of live music with no cover at most doors: the Spotted Cat, d.b.a., the Apple Barrel. This is where the city goes when Bourbon Street fills up with everybody else.' },
+
+        // ---- Cajun country, a deliberately short day ----
+        { d: 14, type: 'transport', title: 'New Orleans to Lafayette, Louisiana', time: '09:00', endTime: '15:30', status: 'booked', cost: 32, details: 'Two and a half hours of actual driving stretched across a whole day, and the shortest hop west of the Mississippi. Part of it runs on the Atchafalaya Basin Bridge, eighteen miles of elevated interstate over cypress swamp.' },
+        { d: 14, type: 'activity', title: 'Tabasco factory and Jungle Gardens, Avery Island', location: 'Avery Island, Louisiana', time: '11:30', cost: 16, maps: 'Tabasco Factory Avery Island Louisiana', details: 'The whole world supply comes off a salt dome in a swamp, aged three years in oak. The same family also keeps a bird sanctuary next door with a centuries-old Buddha in it, which nobody involved has ever fully explained.' },
+        { d: 14, type: 'activity', title: 'Lunch: boudin and cracklins at the Best Stop, Scott', location: 'Scott, Louisiana', time: '13:30', est: 11, maps: 'Best Stop Supermarket Scott Louisiana' },
+        { d: 14, end: 15, type: 'stay', title: 'Juliet Hotel Lafayette', location: 'Lafayette, Louisiana', status: 'booked', cost: 135, maps: 'Juliet Hotel Lafayette Louisiana', details: 'One night on Jefferson Street, in the middle of downtown.' },
+        { d: 14, type: 'activity', title: "Dinner: Prejean's", location: 'Lafayette, Louisiana', time: '18:00', est: 34, maps: "Prejean's Restaurant Lafayette Louisiana", details: 'Cajun cooking with a band on most nights and a fourteen-foot alligator in the lobby, which is not a decorating choice anywhere else.' },
+        { d: 14, type: 'activity', title: 'Drinks: Cajun jam at the Blue Moon Saloon', location: 'Lafayette, Louisiana', time: '20:00', est: 14, maps: 'Blue Moon Saloon Lafayette Louisiana', details: 'A back porch behind a guesthouse where the band plays in French and people two-step on the boards. Somebody will show you the step if you look like you want to be shown.' },
+
+        // ---- across Texas: Houston on the way, two nights in Austin ----
+        { d: 15, type: 'transport', title: 'Lafayette, Louisiana to Austin', time: '07:30', endTime: '18:30', status: 'booked', cost: 74, details: 'Six and a half hours of I-10 west across the coastal plain, broken in Houston. The stretch either side of Beaumont is refinery country and looks like nothing else on the trip, especially after dark.' },
+        { d: 15, type: 'activity', title: 'The Beer Can House, Houston', location: 'Houston', time: '11:00', cost: 5, maps: 'Beer Can House Houston', details: 'A bungalow sided, roofed and fenced in flattened beer cans, about fifty thousand of them, by one retired upholsterer who said he just got tired of mowing the lawn. The garlands of pull tabs across the porch move in the wind and the whole house rustles.' },
+        { d: 15, type: 'activity', title: 'Lunch: Truth BBQ, Houston', location: 'Houston', time: '12:30', est: 28, maps: 'Truth Barbeque Houston' },
+        { d: 15, type: 'activity', title: "Buc-ee's, Luling", location: 'Luling, Texas', time: '15:45', est: 12, maps: "Buc-ee's Luling Texas", details: 'A petrol station with over a hundred pumps, a brisket counter, a wall of jerky, a beaver mascot and a national reputation for its lavatories. It is not an ironic stop; it is a genuine Texan institution and the scale of it has to be seen.' },
+        { d: 15, end: 17, type: 'stay', title: 'Hotel San Jose', location: 'Austin', status: 'booked', cost: 480, maps: 'Hotel San Jose Austin', details: 'Two nights on South Congress, a converted 1930s motor court with the rooms opening onto the courtyard.' },
+        { d: 15, type: 'activity', title: 'Dinner: Veracruz All Natural', location: 'Austin', time: '20:30', est: 15, maps: 'Veracruz All Natural Austin' },
+
+        { d: 16, type: 'activity', title: 'Barton Springs Pool', location: 'Austin', time: '09:30', cost: 10, maps: 'Barton Springs Pool Austin', details: 'A three-acre spring-fed pool in the middle of the city that sits at about 20C every day of the year, which is bracing in August and merciful in February.' },
+        { d: 16, type: 'activity', title: 'Cathedral of Junk', location: 'Austin', cost: 10, maps: 'Cathedral of Junk Austin', details: 'Sixty tons of salvage welded into towers, arches and a throne room in a suburban back garden in south Austin. No time set because there are no opening hours: you ring the number, Vince tells you when to come, and that is the booking system.' },
+        { d: 16, type: 'activity', title: 'Lunch: Franklin Barbecue', location: 'Austin', time: '12:30', est: 32, maps: 'Franklin Barbecue Austin', details: 'The queue is the experience and it forms before opening. They sell out most days, so this is a stand-in-line-with-a-folding-chair plan rather than a lunch plan.' },
+        { d: 16, type: 'activity', title: 'The bats under Congress Avenue Bridge', location: 'Austin', time: '20:00', maps: 'Congress Avenue Bridge Austin', details: 'Around a million and a half Mexican free-tailed bats live in the expansion joints under the bridge and pour out at dusk in a column you can see for a mile. Free, from the bridge itself or the lawn on the east bank.' },
+        { d: 16, type: 'activity', title: 'Drinks: the Rainey Street bungalow bars', location: 'Austin', time: '21:30', est: 35, maps: 'Rainey Street Austin' },
+
+        // ---- San Antonio, one night ----
+        { d: 17, type: 'transport', title: 'Austin to San Antonio', time: '10:00', endTime: '11:30', status: 'booked', cost: 18, details: 'Ninety minutes down I-35, the shortest hop of the trip and the last easy one before west Texas.' },
+        { d: 17, end: 18, type: 'stay', title: 'Hotel Havana', location: 'San Antonio', status: 'booked', cost: 195, maps: 'Hotel Havana San Antonio', details: 'One night on the quiet north end of the River Walk, in a 1914 building above the water.' },
+        { d: 17, type: 'activity', title: 'Lunch: Mi Tierra Cafe y Panaderia', location: 'San Antonio', time: '12:30', est: 24, maps: 'Mi Tierra Cafe y Panaderia San Antonio', details: 'Open twenty-four hours since 1941 and decorated for Christmas every day of the year: tinsel, a thousand paper flowers, a mural of every famous Mexican-American the family could think of, and a bakery counter at the front.' },
+        { d: 17, type: 'activity', title: 'The Alamo', location: 'San Antonio', time: '15:00', maps: 'The Alamo San Antonio', details: 'Free, and much smaller than the story: what survives is the chapel and part of the long barrack, in the middle of a downtown that grew up around it.' },
+        { d: 17, type: 'activity', title: 'River Walk barge to the Pearl', location: 'San Antonio', time: '17:30', cost: 16, maps: 'San Antonio River Walk' },
+        { d: 17, type: 'activity', title: 'Drinks: Esquire Tavern', location: 'San Antonio', time: '21:00', est: 22, maps: 'Esquire Tavern San Antonio', details: 'Opened the day Prohibition ended and it has the longest wooden bar in Texas, about a hundred feet of it along the river wall.' },
+
+        // ---- west Texas ----
+        { d: 18, type: 'transport', title: 'San Antonio to Marfa', time: '08:00', endTime: '15:00', status: 'booked', cost: 68, details: 'Six hours on I-10 and then US-90, and the emptiest driving of the whole trip. Past Fort Stockton the towns are an hour apart, the phone signal is not reliable, and it is worth filling the tank before you think you need to. Balmorhea State Park and its spring-fed pool sit just off the interstate at Toyahvale if the day wants a swim in it.' },
+        { d: 18, type: 'activity', title: "Lunch: Cooper's Old Time Pit Bar-B-Que, Junction", location: 'Junction, Texas', time: '11:00', est: 26, maps: "Cooper's Old Time Pit Bar-B-Que Junction Texas", details: 'An early lunch on purpose: this is the last proper barbecue pit before the Davis Mountains, and you order off the pit outside rather than a menu.' },
+        { d: 18, type: 'activity', title: 'Prada Marfa, out towards Valentine', location: 'Valentine, Texas', time: '16:15', maps: 'Prada Marfa Valentine Texas', details: 'A permanently sealed replica of a Prada shop standing alone beside US-90 with real bags in the window, forty minutes west of Marfa and about as far from anything else. It was built to be left to the desert and it has been fighting the desert since 2005.' },
+        { d: 18, end: 19, type: 'stay', title: 'El Cosmico', location: 'Marfa', status: 'booked', cost: 185, maps: 'El Cosmico Marfa Texas', details: 'One night in a restored 1950s trailer on the scrub at the edge of town, with a wood-fired tub and no television anywhere on site.' },
+        { d: 18, type: 'activity', title: 'Dinner: Cochineal', location: 'Marfa', time: '19:00', est: 58, maps: 'Cochineal Marfa Texas' },
+        { d: 18, type: 'activity', title: 'The Marfa Lights viewing area', location: 'Marfa', time: '21:30', maps: 'Marfa Lights Viewing Area Texas', details: 'A purpose-built roadside platform nine miles east of town, pointed at the Chinati foothills, where people have reported unexplained lights since the 1880s. The state built toilets and a car park for it, which is the most Texan part of the story.' },
+
+        // ---- into New Mexico ----
+        { d: 19, type: 'activity', title: 'Breakfast: Marfa Burrito', location: 'Marfa', time: '08:00', est: 9, maps: 'Marfa Burrito Marfa Texas' },
+        { d: 19, type: 'transport', title: 'Marfa to Alamogordo', time: '09:00', endTime: '15:00', status: 'booked', cost: 52, details: 'Four and a half hours through Van Horn and El Paso and up the Tularosa Basin. There is a Border Patrol checkpoint on US-54 north of El Paso; have passports where you can reach them.' },
+        { d: 19, type: 'activity', title: 'White Sands National Park', location: 'White Sands National Park', time: '16:30', cost: 25, maps: 'White Sands National Park New Mexico', details: 'Two hundred and seventy-five square miles of gypsum dune, white as snow and cool underfoot even in high summer. The visitor centre sells plastic sleds for the dunes and buys them back off you on the way out, which is a resale market the National Park Service did not plan for.' },
+        { d: 19, end: 20, type: 'stay', title: 'Hampton Inn Alamogordo', location: 'Alamogordo', status: 'booked', cost: 128, maps: 'Hampton Inn Alamogordo New Mexico', details: 'One night, picked for being fifteen minutes from the dunes rather than for itself.' },
+        { d: 19, type: 'activity', title: "Dinner: Rockin' BZ Burgers", location: 'Alamogordo', time: '19:30', est: 16, maps: "Rockin' BZ Burgers Alamogordo New Mexico", details: 'Green chile cheeseburger, which from here to Arizona is less a dish than a civic obligation.' },
+
+        { d: 20, type: 'transport', title: 'Alamogordo to Santa Fe', time: '08:30', endTime: '12:45', status: 'booked', cost: 44, details: 'Four hours north up the Tularosa Basin, past the Valley of Fires lava flow, climbing about four thousand feet by the end of it. Santa Fe is the highest state capital in the country and the air tells you so.' },
+        { d: 20, end: 21, type: 'stay', title: 'Hotel Chimayo de Santa Fe', location: 'Santa Fe', status: 'booked', cost: 225, maps: 'Hotel Chimayo de Santa Fe', details: 'One night half a block off the Plaza.' },
+        { d: 20, type: 'activity', title: "Lunch: Tia Sophia's", location: 'Santa Fe', time: '13:15', est: 20, maps: "Tia Sophia's Santa Fe" },
+        { d: 20, type: 'activity', title: 'Meow Wolf: House of Eternal Return', location: 'Santa Fe', time: '14:30', status: 'booked', cost: 45, maps: 'Meow Wolf Santa Fe', details: 'A Victorian house you are supposed to climb through: the fridge is a door, so is the fireplace, and behind them are a neon forest, a mastodon rib cage you can play like a harp and a laundromat that opens onto somewhere else. An arts collective built it inside a bowling alley that George R. R. Martin bought for them.' },
+        { d: 20, type: 'activity', title: 'Canyon Road galleries at dusk', location: 'Santa Fe', time: '18:00', maps: 'Canyon Road Santa Fe' },
+        { d: 20, type: 'activity', title: 'Dinner: The Shed', location: 'Santa Fe', time: '20:00', est: 38, maps: 'The Shed Restaurant Santa Fe', details: 'Red or green is the only question anybody will ask you. Christmas means both.' },
+
+        // ---- Route 66 across Arizona ----
+        { d: 21, type: 'transport', title: 'Santa Fe to Flagstaff', time: '07:00', endTime: '17:30', status: 'booked', cost: 82, details: 'Six hours of I-40 if you drive it straight, and it is the old Route 66 alignment for most of that. Two long stops make it the whole day. Arizona keeps its own time and does not move its clocks, so depending on the month you either gain an hour at the state line or you do not.' },
+        { d: 21, type: 'activity', title: 'Petrified Forest and the Painted Desert', location: 'Petrified Forest National Park', time: '11:30', cost: 30, maps: 'Petrified Forest National Park Arizona', details: 'The park road runs twenty-eight miles between two interstate exits, so it is a drive-through rather than a detour. It is also the only national park with a section of Route 66 inside it, marked by a rusted 1932 Studebaker in the scrub.' },
+        { d: 21, type: 'activity', title: "Standin' on the Corner Park, Winslow", location: 'Winslow, Arizona', time: '14:30', maps: "Standin' on the Corner Park Winslow Arizona", details: 'A corner, a trompe-l\'oeil mural, a bronze man with a guitar and a flatbed Ford permanently parked at the kerb, all of it built because of one line in one Eagles song. The town was dying when it put this up and it is not dying now.' },
+        { d: 21, type: 'activity', title: 'Lunch: the Turquoise Room at La Posada, Winslow', location: 'Winslow, Arizona', time: '15:15', est: 38, maps: 'La Posada Hotel Winslow Arizona' },
+        { d: 21, end: 22, type: 'stay', title: 'Hotel Monte Vista', location: 'Flagstaff', status: 'booked', cost: 125, maps: 'Hotel Monte Vista Flagstaff Arizona', details: 'One night in a 1927 Route 66 hotel that names its rooms after the film stars who slept in them and insists several of them never left.' },
+        { d: 21, type: 'activity', title: 'Drinks: the Museum Club, Route 66', location: 'Flagstaff', time: '20:30', est: 18, maps: 'Museum Club Flagstaff Arizona', details: 'A 1931 log cabin roadhouse built around five ponderosa pines, hung with the taxidermy collection it was originally built to display, with a dance floor underneath it all.' },
+
+        { d: 22, type: 'transport', title: 'Flagstaff to Las Vegas', time: '07:30', endTime: '19:30', status: 'booked', cost: 72, details: 'Five and a half hours of driving stretched over twelve by the Grand Canyon in the middle of it. The last stretch drops off the Colorado Plateau and crosses the Hoover Dam bypass bridge, which is worth pulling over for.' },
+        { d: 22, type: 'activity', title: 'Grand Canyon South Rim: Mather Point and the Rim Trail', location: 'Grand Canyon National Park', time: '09:15', status: 'booked', cost: 35, maps: 'Mather Point Grand Canyon National Park', details: 'The entrance fee is per car and covers seven days, so nobody counts heads. Mather Point is the first view past the gate and therefore the busiest; walking twenty minutes west along the Rim Trail loses most of the crowd and none of the canyon.' },
+        { d: 22, type: 'activity', title: "Lunch: Delgadillo's Snow Cap Drive-In, Seligman", location: 'Seligman, Arizona', time: '13:45', est: 15, maps: "Delgadillo's Snow Cap Drive-In Seligman Arizona", details: 'A 1953 drive-in built out of scrap lumber, with a menu offering dead chicken and a staff who have been pulling the same practical jokes on customers for seventy years. Seligman is where the campaign to save Route 66 started, and it is the reason the Cars films look the way they do.' },
+        { d: 22, end: 24, type: 'stay', title: 'The LINQ Hotel and Casino', location: 'Las Vegas', status: 'booked', cost: 265, maps: 'The LINQ Hotel and Casino Las Vegas', details: 'Two nights mid-Strip. The nightly resort fee is not in the room rate and is not optional, which is the local custom.' },
+        { d: 22, type: 'activity', title: 'The Strip after dark, on foot', location: 'Las Vegas', time: '21:30', maps: 'Las Vegas Strip' },
+
+        { d: 23, type: 'activity', title: 'The Neon Museum boneyard', location: 'Las Vegas', time: '10:00', cost: 30, maps: 'Neon Museum Las Vegas', details: 'Two acres of dead casino signs laid out in the dirt: the Stardust script, the Moulin Rouge, a silver slipper the size of a car. Book the evening slot if you can, when about a dozen of them are lit.' },
+        { d: 23, type: 'activity', title: 'Lunch: Lotus of Siam', location: 'Las Vegas', time: '12:30', est: 34, maps: 'Lotus of Siam Las Vegas' },
+        { d: 23, type: 'activity', title: 'The Pinball Hall of Fame', location: 'Las Vegas', time: '15:00', est: 20, maps: 'Pinball Hall of Fame Las Vegas', details: 'Ten thousand square feet of working machines from the 1950s onward, at their original coin price, in a warehouse off the Strip. No bar, no queue, and the profits go to charity.' },
+        { d: 23, type: 'activity', title: 'Dinner: Peppermill Fireside Lounge', location: 'Las Vegas', time: '18:30', est: 42, maps: 'Peppermill Restaurant and Fireside Lounge Las Vegas', details: 'Unchanged since 1972: neon cherry blossom, mirrored ceilings, a fire pit in a pool of water and cocktails served in vessels you need both hands for.' },
+        { d: 23, type: 'activity', title: 'Fremont Street and the old downtown casinos', location: 'Las Vegas', time: '21:00', est: 28, maps: 'Fremont Street Experience Las Vegas' },
+
+        // ---- across the Mojave: the roadside-attraction day ----
+        { d: 24, type: 'transport', title: 'Las Vegas to Los Angeles', time: '08:30', endTime: '18:00', status: 'booked', cost: 58, details: 'Four and a half hours of I-15 across the Mojave, and the best-stocked stretch of roadside America on the whole route. The last hour is not desert, it is traffic, and it is worth timing to miss the worst of it.' },
+        { d: 24, type: 'activity', title: 'Seven Magic Mountains', location: 'Jean, Nevada', time: '09:15', maps: 'Seven Magic Mountains Nevada', details: 'Seven stacks of fluorescent boulders thirty feet high, dropped in the desert twenty minutes south of the Strip. Free, and there is nothing else there at all, which is most of the effect.' },
+        { d: 24, type: 'activity', title: 'Calico Ghost Town', location: 'Yermo, California', time: '11:30', cost: 10, maps: 'Calico Ghost Town Yermo California', details: 'A silver mining town that emptied out in the 1890s, bought and part-rebuilt by the man who went on to found Knott\'s Berry Farm. A third of it is original, the rest is a theme park, and it does not pretend otherwise.' },
+        { d: 24, type: 'activity', title: "Lunch: Peggy Sue's 50s Diner, Yermo", location: 'Yermo, California', time: '13:00', est: 19, maps: "Peggy Sue's 50's Diner Yermo California" },
+        { d: 24, type: 'activity', title: "Elmer's Bottle Tree Ranch, Oro Grande", location: 'Oro Grande, California', time: '14:45', maps: "Elmer's Bottle Tree Ranch Oro Grande California", details: 'Two hundred welded steel trees hung with old glass bottles on a surviving stretch of Route 66, planted one at a time by a retired man out of his father\'s bottle collection. Free, no gate, and the whole thing rings when the wind gets up.' },
+        { d: 24, end: 26, type: 'stay', title: 'Hotel Normandie', location: 'Los Angeles', status: 'booked', cost: 390, maps: 'Hotel Normandie Los Angeles', details: 'Two nights in Koreatown, on the Metro, which is the one part of Los Angeles where the car can stay parked.' },
+        { d: 24, type: 'activity', title: 'Dinner: Guisados, Echo Park', location: 'Los Angeles', time: '20:00', est: 16, maps: 'Guisados Echo Park Los Angeles' },
+
+        { d: 25, type: 'activity', title: 'Venice Beach boardwalk and Muscle Beach', location: 'Los Angeles', time: '09:00', maps: 'Venice Beach Boardwalk Los Angeles' },
+        { d: 25, type: 'activity', title: 'The Museum of Jurassic Technology, Culver City', location: 'Los Angeles', time: '11:30', cost: 12, maps: 'Museum of Jurassic Technology Culver City', details: 'A museum that will not tell you which of its exhibits are true. Somewhere between the horn that grew out of a woman\'s head and the bat that flies through walls you stop trying to work it out, and that is the exhibit.' },
+        { d: 25, type: 'activity', title: 'Lunch: Grand Central Market, downtown', location: 'Los Angeles', time: '13:30', est: 19, maps: 'Grand Central Market Los Angeles' },
+        { d: 25, type: 'activity', title: 'Griffith Observatory at sunset', location: 'Los Angeles', time: '16:30', maps: 'Griffith Observatory Los Angeles', details: 'Free to enter, and the terrace holds both the best view of the Hollywood sign and the best view of the whole basin lighting up. Parking is the hard part; the shuttle from the Greek Theatre is the answer.' },
+        { d: 25, type: 'activity', title: 'Drinks: the Frolic Room, Hollywood Boulevard', location: 'Los Angeles', time: '20:30', est: 22, maps: 'Frolic Room Los Angeles' },
+
+        // ---- up the coast ----
+        { d: 26, type: 'transport', title: 'Los Angeles to Cambria, California', time: '08:00', endTime: '17:00', status: 'booked', cost: 46, details: 'Four and a half hours up US-101 with the ocean on the left from Ventura onward. Hearst Castle is ten minutes past the hotel if you would rather spend the afternoon on a tour than on a beach; it books out days ahead either way.' },
+        { d: 26, type: 'activity', title: 'Santa Barbara: the Funk Zone and the harbour', location: 'Santa Barbara', time: '10:30', maps: 'Funk Zone Santa Barbara' },
+        { d: 26, type: 'activity', title: 'Lunch: La Super-Rica Taqueria, Santa Barbara', location: 'Santa Barbara', time: '12:15', est: 17, maps: 'La Super-Rica Taqueria Santa Barbara' },
+        { d: 26, type: 'activity', title: 'The elephant seal rookery at Piedras Blancas', location: 'San Simeon, California', time: '15:30', maps: 'Piedras Blancas Elephant Seal Rookery California', details: 'A free boardwalk straight off Highway 1 where several thousand elephant seals lie in the sand throwing it over themselves, bellowing and occasionally fighting. No fence, no ticket, no warden, and they are enormous.' },
+        { d: 26, end: 27, type: 'stay', title: 'Cambria Pines Lodge', location: 'Cambria, California', status: 'booked', cost: 195, maps: 'Cambria Pines Lodge California', details: 'One night in the pines above the village, a short walk down to Moonstone Beach.' },
+        { d: 26, type: 'activity', title: "Dinner: Linn's Restaurant, Cambria", location: 'Cambria, California', time: '19:00', est: 32, maps: "Linn's Restaurant Cambria California" },
+
+        { d: 27, type: 'transport', title: 'Cambria, California to San Francisco', time: '08:00', endTime: '18:00', status: 'booked', cost: 48, details: 'The Big Sur run: ninety miles of Highway 1 between Ragged Point and Carmel that take three hours because you keep stopping, then two more up through Monterey and over the hills into the city. Check the road is open before you set off, because landslides close it for months at a time and the inland detour is long.' },
+        { d: 27, type: 'activity', title: 'McWay Falls and Bixby Creek Bridge', location: 'Big Sur, California', time: '09:45', maps: 'McWay Falls Big Sur California' },
+        { d: 27, type: 'activity', title: 'Lunch: Nepenthe, Big Sur', location: 'Big Sur, California', time: '12:30', est: 40, maps: 'Nepenthe Big Sur California' },
+        { d: 27, type: 'activity', title: 'Cannery Row and the 17-Mile Drive', location: 'Monterey', time: '15:00', cost: 12, maps: '17-Mile Drive Pebble Beach California' },
+        { d: 27, end: 29, type: 'stay', title: 'Hotel Zeppelin San Francisco', location: 'San Francisco', status: 'booked', cost: 495, maps: 'Hotel Zeppelin San Francisco', details: 'Two nights off Union Square. Overnight parking is charged separately and is not cheap, which is normal here.' },
+        { d: 27, type: 'activity', title: "Dinner: Tommy's Joynt", location: 'San Francisco', time: '20:30', est: 24, maps: "Tommy's Joynt San Francisco" },
+
+        { d: 28, type: 'activity', title: 'Powell-Hyde cable car over Nob Hill', location: 'San Francisco', time: '09:00', cost: 8, maps: 'Powell Hyde Cable Car Turnaround San Francisco' },
+        { d: 28, type: 'activity', title: 'The Musee Mecanique at Fisherman\'s Wharf', location: 'San Francisco', time: '10:30', est: 10, maps: 'Musee Mecanique San Francisco', details: 'Three hundred working penny-arcade machines from the 1880s onward, still taking coins: fortune tellers, mechanical carnivals, a laughing woman in a glass box who has frightened four generations of children. Free to walk in, and everything costs a quarter.' },
+        { d: 28, type: 'activity', title: 'Lunch: La Taqueria, Mission District', location: 'San Francisco', time: '12:45', est: 15, maps: 'La Taqueria San Francisco' },
+        { d: 28, type: 'activity', title: 'The Wave Organ and the Palace of Fine Arts', location: 'San Francisco', time: '15:00', maps: 'Wave Organ San Francisco', details: 'A wave-activated acoustic sculpture on a jetty in the Marina, built out of marble salvaged from a demolished cemetery. You put your ear to the pipes and the bay plays them, quietly and badly, and it is better at high tide.' },
+        { d: 28, type: 'activity', title: 'Walk the Golden Gate Bridge', location: 'San Francisco', time: '17:00', maps: 'Golden Gate Bridge San Francisco' },
+        { d: 28, type: 'activity', title: 'Dinner: Tadich Grill', location: 'San Francisco', time: '20:00', est: 58, maps: 'Tadich Grill San Francisco', details: 'Running since 1849, which makes it older than the state, and it still does not take bookings.' },
+
+        { d: 29, type: 'activity', title: 'Breakfast: the Ferry Building marketplace', location: 'San Francisco', time: '08:30', est: 19, maps: 'Ferry Building Marketplace San Francisco' },
+        { d: 29, type: 'local', title: 'Drive out to SFO and drop the car', location: 'San Francisco', time: '11:30', status: 'booked', cost: 40, maps: 'San Francisco International Airport', details: 'Fill it before the airport: the return-it-empty rate is roughly double the pump. Four thousand two hundred miles, coast to coast, ends here.' },
+        { d: 29, type: 'flight', title: 'San Francisco (SFO) to London (LHR)', time: '15:20', note: 'Return half of the open-jaw ticket', details: 'Ten and a half hours over the pole, landing the following morning.' },
       ],
     },
   ];
