@@ -1,6 +1,207 @@
 {
   "updates": [
     {
+      "builtAt": "2026-08-17T06:50:55.203Z",
+      "totals": {
+        "seasons": 66303,
+        "delta": 12
+      },
+      "shapeCounts": {
+        "mid-peak": 4657,
+        "rebound": 10098,
+        "rising": 2917,
+        "slow-burn": 4395,
+        "big-finale": 12150,
+        "u-shaped": 3107,
+        "rollercoaster": 14070,
+        "saved-best-for-last": 1552,
+        "front-loaded": 3482,
+        "declining": 1872,
+        "bad-finale": 4691,
+        "consistent": 2620,
+        "shape-drift": 1646
+      },
+      "shapeDeltas": {
+        "mid-peak": 7,
+        "rebound": 2,
+        "rising": 1,
+        "slow-burn": 7,
+        "big-finale": 1,
+        "u-shaped": 8,
+        "rollercoaster": 2,
+        "front-loaded": -1,
+        "declining": -2,
+        "bad-finale": 4,
+        "consistent": 1,
+        "shape-drift": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt0166900",
+          "title": "Belle et Sébastien",
+          "season": 1,
+          "seasonYear": 1965
+        },
+        {
+          "seriesId": "tt23470982",
+          "title": "Hell on Earth",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt0953931",
+          "title": "Doctors",
+          "season": 2,
+          "seasonYear": 2007
+        },
+        {
+          "seriesId": "tt0872306",
+          "title": "Kurau: Phantom Memory",
+          "season": 1,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt7702924",
+          "title": "Calls",
+          "season": 3,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt7901366",
+          "title": "Flunk",
+          "season": 1,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt7256504",
+          "title": "Tokyo Girl",
+          "season": 1,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt26685762",
+          "title": "Die Verräter",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt35801873",
+          "title": "Badly in Love",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43641418",
+          "title": "The Vampire Lestat: After Dark",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43711139",
+          "title": "Craft 1979",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37610423",
+          "title": "Let's Marry Harry",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt0149460",
+          "title": "Futurama",
+          "season": 14,
+          "from": 7.07,
+          "to": 7.75,
+          "delta": 0.68
+        },
+        {
+          "seriesId": "tt36836504",
+          "title": "The All-devouring Whale: Homecoming",
+          "season": 1,
+          "from": 7.02,
+          "to": 6.47,
+          "delta": -0.55
+        },
+        {
+          "seriesId": "tt13084120",
+          "title": "Azur Lane: Slow Ahead!",
+          "season": 1,
+          "from": 6.57,
+          "to": 6.07,
+          "delta": -0.5
+        },
+        {
+          "seriesId": "tt1245687",
+          "title": "30 Days of Night: Dust to Dust",
+          "season": 1,
+          "from": 5.28,
+          "to": 5.77,
+          "delta": 0.49
+        },
+        {
+          "seriesId": "tt4719662",
+          "title": "Acri Creature Feature",
+          "season": 3,
+          "from": 6.17,
+          "to": 6.63,
+          "delta": 0.46
+        },
+        {
+          "seriesId": "tt20737440",
+          "title": "Sam and Colby: The Paranormal",
+          "season": 4,
+          "from": 8.43,
+          "to": 7.99,
+          "delta": -0.44
+        },
+        {
+          "seriesId": "tt20737440",
+          "title": "Sam and Colby: The Paranormal",
+          "season": 3,
+          "from": 8.6,
+          "to": 8.17,
+          "delta": -0.43
+        },
+        {
+          "seriesId": "tt11755260",
+          "title": "The Daily Life of the Immortal King",
+          "season": 5,
+          "from": 8.59,
+          "to": 8.21,
+          "delta": -0.38
+        },
+        {
+          "seriesId": "tt41785451",
+          "title": "Affairs Not the Only Secret",
+          "season": 1,
+          "from": 8.43,
+          "to": 8.78,
+          "delta": 0.35
+        },
+        {
+          "seriesId": "tt11755260",
+          "title": "The Daily Life of the Immortal King",
+          "season": 4,
+          "from": 8.35,
+          "to": 8.03,
+          "delta": -0.32
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 19001,
+        "avgRating": 1009,
+        "shapes": 187,
+        "episodeCount": 65,
+        "seriesRating": 224,
+        "overview": 1
+      }
+    },
+    {
       "builtAt": "2026-08-16T06:43:26.599Z",
       "totals": {
         "seasons": 66291,
@@ -6825,36 +7026,6 @@
         "episodeCount": 90,
         "providers": 1,
         "overview": 1
-      }
-    },
-    {
-      "builtAt": "2026-07-18T15:02:52.171Z",
-      "totals": {
-        "seasons": 65841,
-        "delta": 0
-      },
-      "shapeCounts": {
-        "mid-peak": 4622,
-        "rebound": 10068,
-        "rising": 2895,
-        "slow-burn": 4355,
-        "big-finale": 12009,
-        "u-shaped": 3080,
-        "rollercoaster": 14023,
-        "saved-best-for-last": 1529,
-        "front-loaded": 3443,
-        "declining": 1875,
-        "bad-finale": 4649,
-        "consistent": 2618,
-        "shape-drift": 1621
-      },
-      "shapeDeltas": {},
-      "added": [],
-      "removed": [],
-      "ratingSwings": [],
-      "modifiedCounts": {
-        "avgRating": 1,
-        "episodeCount": 1
       }
     }
   ]

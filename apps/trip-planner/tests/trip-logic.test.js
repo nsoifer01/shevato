@@ -3890,19 +3890,20 @@ const SAMPLE_SHAPES = {
   israel: { days: 12, density: 'moderate' },
   vietnam: { days: 13, density: 'moderate' },
   thailand: { days: 14, density: 'split' },
+  usa: { days: 30, density: 'road' },
 };
 
-test('every template declares a shape and the library spans 7 to 14 days at every density', () => {
+test('every template declares a shape and the library spans 7 to 30 days at every density', () => {
   const ids = samples.map(s => s.opt.id);
   assert.deepEqual([...ids].sort(), Object.keys(SAMPLE_SHAPES).sort());
   const declared = ids.map(id => SAMPLE_SHAPES[id].density);
-  for (const density of ['sparse', 'moderate', 'relaxed', 'packed', 'split']) {
+  for (const density of ['sparse', 'moderate', 'relaxed', 'packed', 'split', 'road']) {
     assert.ok(declared.includes(density), `no template is ${density}`);
   }
   const lengths = new Set(ids.map(id => SAMPLE_SHAPES[id].days));
-  assert.ok(lengths.size >= 7, `only ${lengths.size} distinct trip lengths`);
+  assert.ok(lengths.size >= 8, `only ${lengths.size} distinct trip lengths`);
   assert.equal(Math.min(...lengths), 7);
-  assert.equal(Math.max(...lengths), 14);
+  assert.equal(Math.max(...lengths), 30);
 });
 
 test('the example library covers a real spread of destinations', () => {
@@ -3988,11 +3989,11 @@ for (const { opt, trip } of samples) {
     }
   });
 
-  test(`example ${opt.id}: dates are relative to today and the trip runs 7 to 14 days`, () => {
+  test(`example ${opt.id}: dates are relative to today and the trip runs 7 to 30 days`, () => {
     const stats = L.tripStats(trip);
     assert.equal(stats.start, L.addDays(SAMPLE_TODAY, opt.startOffset));
     const days = L.diffDays(stats.start, stats.end) + 1;
-    assert.ok(days >= 7 && days <= 14, `${opt.id} runs ${days} days`);
+    assert.ok(days >= 7 && days <= 30, `${opt.id} runs ${days} days`);
     assert.equal(days, SAMPLE_SHAPES[opt.id].days, `${opt.id} does not run the length it declares`);
     for (const it of items) {
       // >=, not >: the offset-0 template starts TODAY on purpose, which is the
@@ -4062,20 +4063,35 @@ for (const { opt, trip } of samples) {
       assert.ok(front.some(n => n >= 4), `${where}, the first half has no full day`);
       assert.ok(avg(back) <= 1.5, `${where}, the second half is not relaxed`);
       assert.ok(emptyDays(back) >= 2, `${where}, the second half has no rest days`);
+    } else if (shape.density === 'road') {
+      // a road trip is busy but never blank: the driving is itself the day's
+      // main event, so an empty day would read as a day nobody moved
+      assert.ok(avg(loads) >= 3.5, `${where}, too quiet for a road trip`);
+      assert.equal(emptyDays(loads), 0, `${where}, a road trip has no blank days`);
+      assert.ok(Math.max(...loads) <= 6, `${where}, has an overloaded day`);
+      // more than half the days are spent getting somewhere new
+      const driving = trip.items.filter(it => it.type === 'transport' && it.status !== 'cancelled').length;
+      assert.ok(driving > loads.length / 2, `${where}, only ${driving} driving days`);
     }
   });
 
-  test(`example ${opt.id}: the intercity leg connects the two stay cities`, () => {
-    assert.equal(stays.length, 2, 'each example is a two-city trip');
-    const [a, b] = stays;
-    assert.notEqual(a.location, b.location);
-    const connects = items.some(it => {
-      if (it.type !== 'transport' && it.type !== 'flight') return false;
-      if (it.startDate < a.endDate || it.startDate > b.startDate) return false;
-      const parts = it.title.split(/\s+to\s+/).map(s => L.stripPlaceCode(s));
-      return parts[0] === a.location && parts[1] === b.location;
-    });
-    assert.ok(connects, `no leg reads "${a.location} to ${b.location}"`);
+  // Every template used to be a two-city trip, so this was "the" intercity leg.
+  // It is now per HOP: consecutive stays in different places must be joined by
+  // a leg that names both of them, which is the same assertion for a two-stay
+  // template and seventeen of them for the coast-to-coast one.
+  test(`example ${opt.id}: every hop between stays is a named travel leg`, () => {
+    assert.ok(stays.length >= 2, 'each example moves between at least two places');
+    for (let i = 1; i < stays.length; i++) {
+      const a = stays[i - 1], b = stays[i];
+      assert.notEqual(a.location, b.location);
+      const connects = items.some(it => {
+        if (it.type !== 'transport' && it.type !== 'flight') return false;
+        if (it.startDate < a.endDate || it.startDate > b.startDate) return false;
+        const parts = it.title.split(/\s+to\s+/).map(s => L.stripPlaceCode(s));
+        return parts[0] === a.location && parts[1] === b.location;
+      });
+      assert.ok(connects, `no leg reads "${a.location} to ${b.location}"`);
+    }
   });
 
   test(`example ${opt.id}: opens with an inbound flight from another country and ends going home`, () => {
@@ -4122,6 +4138,64 @@ test('the Israel example draws the local / intercity line with Ramat Gan and Bee
   }
 });
 
+// ---------- the coast-to-coast example ----------
+// The one template that is a ROAD TRIP rather than a two-city trip, so the
+// things worth failing on are the road-trip ones: it crosses the country, it
+// never sleeps in the same place twice in a row, the driving is an explicit
+// timed leg rather than an implied one, and a long drive is not also a full
+// day of sightseeing. The last of those is the whole reason this test exists:
+// "drive eight hours, then do six attractions" is the failure mode a
+// generated itinerary falls into, and it would read as a bug in the shop
+// window.
+const usa = samples.find(s => s.opt.id === 'usa').trip;
+const usaStays = usa.items.filter(it => L.isStay(it) && it.status !== 'cancelled');
+const usaLegs = usa.items.filter(it => it.type === 'transport' && it.status !== 'cancelled');
+
+test('the USA example crosses the country and sleeps somewhere new all the way', () => {
+  assert.equal(L.diffDays(L.tripStats(usa).start, L.tripStats(usa).end) + 1, 30);
+  assert.ok(usaStays.length >= 15, `only ${usaStays.length} overnight stops`);
+  assert.equal(usaStays[0].location, 'New York');
+  assert.equal(usaStays[usaStays.length - 1].location, 'San Francisco');
+  // no place is slept in twice, here or anywhere else in the trip: a road trip
+  // that doubled back would show up as a repeated stay location
+  const places = usaStays.map(s => s.location);
+  assert.equal(new Set(places).size, places.length, 'a stay location repeats');
+  // one hop per pair of stays, all of them driven
+  assert.equal(usaLegs.length, usaStays.length - 1, 'a hop is missing a drive');
+  assert.equal(usa.items.filter(it => it.type === 'flight').length, 2, 'the driving is not all driving');
+});
+
+test('every drive in the USA example is an explicit timed leg', () => {
+  for (const leg of usaLegs) {
+    assert.ok(/^\d{2}:\d{2}$/.test(leg.startTime), `${leg.title} has no departure time`);
+    assert.ok(/^\d{2}:\d{2}$/.test(leg.endTime), `${leg.title} has no arrival time`);
+    assert.ok(L.isLongDetails(leg.details) || leg.details.length > 40, `${leg.title} says nothing about the drive`);
+    assert.equal(leg.endDate, '', `${leg.title} spans a night it should not`);
+  }
+});
+
+test('a long driving day in the USA example is not also a full day of sightseeing', () => {
+  const LONG_MIN = 6 * 60;
+  const loadOn = date => usa.items.filter(it => it.startDate === date
+    && !L.isStay(it) && it.type !== 'note' && it.type !== 'transport' && it.status !== 'cancelled').length;
+  const mins = t => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  let longDays = 0;
+  for (const leg of usaLegs) {
+    const window = mins(leg.endTime) - mins(leg.startTime);
+    if (window < LONG_MIN) continue;
+    longDays++;
+    const [from, to] = leg.title.split(/\s+to\s+/).map(s => L.stripPlaceCode(s));
+    assert.ok(loadOn(leg.startDate) <= 5, `${leg.title} is a ${window / 60}h day carrying ${loadOn(leg.startDate)} other things`);
+    // and it is never JUST a drive: something on the way, somewhere that is
+    // neither the city being left nor the city being reached
+    const enRoute = usa.items.filter(it => it.startDate === leg.startDate && it.type === 'activity'
+      && it.location && it.location !== from && it.location !== to);
+    assert.ok(enRoute.length, `nothing to stop for on the ${window / 60}h ${leg.title} run`);
+    for (const stop of enRoute) assert.ok(stop.mapsQuery, `${stop.title} has no mapsQuery`);
+  }
+  assert.ok(longDays >= 8, `only ${longDays} long driving days in a coast-to-coast trip`);
+});
+
 // ---------- the trip-name matcher ----------
 
 test('matchSampleTrip is forgiving about case, punctuation, years and extra words', () => {
@@ -4138,6 +4212,9 @@ test('matchSampleTrip is forgiving about case, punctuation, years and extra word
     ['The Hague + Utrecht', 'netherlands'], ['Leiden university visit', 'netherlands'],
     ['Israel spring trip', 'israel'], ['Tel-Aviv and Jerusalem', 'israel'],
     ['haifa coast drive', 'israel'], ['Ramat Gan 2028', 'israel'], ['beer sheva desert', 'israel'],
+    ['USA', 'usa'], ['usa 2028', 'usa'], ['coast to coast USA', 'usa'],
+    ['route 66', 'usa'], ['New York to San Francisco', 'usa'], ['Nashville and Memphis', 'usa'],
+    ['santa fe + las vegas', 'usa'], ['Grand Canyon 2029', 'usa'],
   ];
   for (const [name, id] of cases) assert.equal(L.matchSampleTrip(name), id, name);
 });
