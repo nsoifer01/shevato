@@ -111,8 +111,12 @@ why, the traps, and the invariants.
   2026-08-16) say 60s, streamed responses also 60s. The 9s deadline stays the
   `upstreamSignal()` DEFAULT because tp-places' lookups run well under a
   second; tp-assist passes its own 45s budget (`ASSIST_UPSTREAM_TIMEOUT_MS`).
-- **The Free assistant "plan my day" 502 (fixed 2026-08-16) was that 9s
-  deadline, not Gemini.** A plan-mode turn produces ~3,000-4,000 output
+- **The Free assistant "plan my day" 502 (fixed 2026-08-16, PR #403, merged
+  b9631ec) was that 9s deadline, not Gemini.** Verified on production
+  2026-08-17 after the deploy: API-level plan turns completed in 8.6-24.5s
+  with full tripActions blocks (17-22 parsed actions), and the real UI flow
+  (Free assistant -> Send to the assistant) rendered proposal cards with no
+  error. A plan-mode turn produces ~3,000-4,000 output
   tokens and measured 8.3-14.1s against live `gemini-3.1-flash-lite` (5
   runs), so the abort fired on most plan turns while short chat turns
   (2-5s) kept working, which is why the endpoint looked "sometimes fine".
