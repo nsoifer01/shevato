@@ -184,6 +184,14 @@ why, the traps, and the invariants.
 
 ## One day, one route chain (2026-08-17 pass)
 
+Shipped as PR #407 (merge 173e284), verified on production 2026-08-17 with
+live probes: per-stop Directions endpoints and modes, the return-to-hotel
+chip ("~10 min by taxi · ~3.5 mi from Dinner: Kyubey", stay-name rung
+confirmed live), all three pick-one badges from real Places ratings, Change
+choice replacing by id, the unit preference persisting, the Day route modal
+rendering real OSM tiles over its pins, and Google Maps resolving the full
+waypoint day-route URL with every stop in order in driving mode.
+
 The invariant this round exists for: `previous stop -> current stop` has ONE
 implementation. `dayCardChain` (app.js) reads a day card's anchor + rows and
 runs `dayDistanceChain`; every Days-view route surface consumes THAT chain -
