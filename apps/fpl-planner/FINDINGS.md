@@ -558,6 +558,29 @@ ranking, and only the part of a correction that changes ORDER changes decisions
   every generated page at the next deploy.
 
 
+- **A dynamic `import()` one directory level short shipped a production 404,
+  and every test passed** (2026-08-17). `js/ui/settings.js` reached the sync
+  layer through `import('../../../sync-system/storage-sync-robust.js')`. That
+  file sits at `apps/fpl-planner/js/ui/`, so three levels up is `/apps/` and
+  the browser requested `/apps/sync-system/storage-sync-robust.js` - a 404. The
+  canonical module is at the REPO ROOT (`/sync-system/`), which needs four.
+  Two things made it survive from the app's first commit to production:
+  (a) a **dynamic** import is not fetched at page load, so the app booted
+  perfectly and the break was reachable only through Settings -> "Delete all
+  FPL Planner data", and (b) the unit-test resolution hook
+  (`tests/helpers/sync-module-hook.mjs`) matched the specifier with
+  `endsWith('sync-system/storage-sync-robust.js')`, which is true at ANY depth,
+  so the stub answered a path the browser could never load. The user-visible
+  symptom was honest but misleading: the deletion UI correctly reported that
+  the account copy could not be deleted, naming the import failure as the
+  reason. Fixed by the fourth `../`; the hook now resolves the specifier
+  against `parentURL` and refuses to substitute the stub for a path that does
+  not exist on disk, and `tests/static/module-imports.test.mjs` asserts that
+  every relative module specifier in shipped JS resolves to a real, git-tracked
+  file. Rule: **HTML `src` and JS `import` live at different depths in the same
+  app** - `index.html` uses `../../sync-system/`, anything under `js/ui/` needs
+  `../../../../sync-system/`. Gym Tracker's equivalent call in
+  `js/views/settings-view.js` had it right and is the reference.
 - `assets/css/main.css` paints `button { color:#555 !important }`, a red
   `button:hover` AND a red `input[type=text]:focus` box-shadow. Every
   interactive element needs counter-pins verified by computed style, never by

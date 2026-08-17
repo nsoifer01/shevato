@@ -35,7 +35,10 @@ export function deletionOutcomeText({ scope, signedIn, cloudOk, cloudError }) {
 }
 
 async function eraseCloud() {
-  const mod = await import('../../../sync-system/storage-sync-robust.js');
+  // Four levels up: this file is apps/fpl-planner/js/ui/, the canonical sync
+  // layer is /sync-system/ at the repo root. Three would resolve to
+  // /apps/sync-system/, which does not exist and 404s on production.
+  const mod = await import('../../../../sync-system/storage-sync-robust.js');
   await mod.eraseCloudData(SYNC_NAMESPACE);
 }
 
