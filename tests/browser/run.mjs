@@ -43,6 +43,7 @@ const SUITES = [
   'apps/trip-planner/e2e/share.mjs',
   'apps/trip-planner/e2e/views.mjs',
   'apps/trip-planner/e2e/ui.mjs',
+  'apps/trip-planner/e2e/places.mjs',
   'apps/trip-planner/e2e/assistant.mjs',
   'apps/trip-planner/e2e/pwa.mjs',
   'apps/fpl-planner/e2e/scenario.mjs',

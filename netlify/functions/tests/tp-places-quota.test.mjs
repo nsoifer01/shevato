@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkQuota, releaseQuota, DEFAULT_LIMITS } from '../lib/tp-places-quota.mjs';
+import { checkQuota, releaseQuota, resetAtFor, DEFAULT_LIMITS } from '../lib/tp-places-quota.mjs';
+import { quotaExceeded } from '../tp-places.mjs';
 
 // These limits guard real money: every granted slot is a billed Place Details
 // Enterprise call ($0.02 once the 1,000 free monthly calls are gone). The tests
@@ -142,4 +143,57 @@ test('a clientId of "__proto__" is capped exactly like any other client', () => 
   assert.equal(b.allowed, false);
   const released = releaseQuota(usage, '__proto__', T0, 2);
   assert.equal(released.clientHour['__proto__'], 3, 'release moves the same counter');
+});
+
+// ---------- telling the client WHEN, not just NO ----------
+//
+// Every 429 in production on 2026-08-17 carried a scope and nothing else, so
+// the browser guessed a flat hour for all of them: it wasted most of the next
+// hour bucket after a client_hour rejection, and re-asked a monthly cap 24
+// times a day. resetAtFor is the answer the client now gets told.
+
+test('resetAtFor names the moment the rejecting bucket next refills', () => {
+  // 10:59 UTC: an hour-scoped rejection clears in ONE minute, not in an hour.
+  const t = Date.UTC(2026, 7, 17, 10, 59, 0);
+  assert.equal(resetAtFor('client_hour', t), Date.UTC(2026, 7, 17, 11, 0, 0));
+  assert.equal(resetAtFor('client_day', t), Date.UTC(2026, 7, 18, 0, 0, 0));
+  assert.equal(resetAtFor('global_day', t), Date.UTC(2026, 7, 18, 0, 0, 0));
+  assert.equal(resetAtFor('global_month', t), Date.UTC(2026, 8, 1, 0, 0, 0));
+  // Contention is the one genuinely transient scope and clears in seconds.
+  assert.ok(resetAtFor('contention', t) - t <= 5000);
+  // An unknown scope must still be finite and forward-looking.
+  assert.ok(resetAtFor('mystery', t) > t);
+});
+
+test('resetAtFor is consistent with the buckets checkQuota actually uses', () => {
+  const t = Date.UTC(2026, 7, 17, 10, 59, 0);
+  // Spend the hour cap, then confirm the reported reset really does open it.
+  const spent = checkQuota({}, 'c1', t, limits.perClientHour, limits).usage;
+  const blocked = checkQuota(spent, 'c1', t, 1, limits);
+  assert.equal(blocked.allowed, false);
+  assert.equal(blocked.scope, 'client_hour');
+  const at = resetAtFor(blocked.scope, t);
+  assert.equal(checkQuota(spent, 'c1', at, 1, limits).allowed, true,
+    'the moment the response promised is the moment the bucket really opens');
+});
+
+test('a 429 carries the scope, the reset instant and a Retry-After header', async () => {
+  const t = Date.UTC(2026, 7, 17, 10, 59, 0);
+  const res = quotaExceeded('client_hour', t);
+  assert.equal(res.status, 429);
+  assert.equal(res.headers.get('Retry-After'), '60');
+  assert.equal(res.headers.get('Content-Type'), 'application/json');
+  const body = await res.json();
+  assert.equal(body.error, 'quota_exceeded');
+  assert.equal(body.scope, 'client_hour');
+  assert.equal(body.resetAt, Date.UTC(2026, 7, 17, 11, 0, 0));
+});
+
+test('Retry-After is never zero or negative, whatever the scope', async () => {
+  const t = Date.UTC(2026, 7, 17, 10, 59, 59, 900);
+  for (const scope of ['client_hour', 'client_day', 'global_day', 'global_month', 'contention', '']) {
+    const res = quotaExceeded(scope, t);
+    const secs = Number(res.headers.get('Retry-After'));
+    assert.ok(Number.isFinite(secs) && secs >= 1, `${scope} -> ${secs}`);
+  }
 });

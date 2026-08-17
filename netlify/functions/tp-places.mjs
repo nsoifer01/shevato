@@ -47,7 +47,7 @@
 // render next to any rating it shows; see ATTRIBUTION below.
 
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { checkQuota, releaseQuota, DEFAULT_LIMITS, OWNER_LIMITS } from './lib/tp-places-quota.mjs';
+import { checkQuota, releaseQuota, resetAtFor, DEFAULT_LIMITS, OWNER_LIMITS } from './lib/tp-places-quota.mjs';
 import { updateUsage } from './lib/blob-cas.mjs';
 import { originAllowed, json, upstreamSignal } from './lib/tp-http.mjs';
 import { resolveQueries } from './lib/tp-places-lookup.mjs';
@@ -147,9 +147,9 @@ export default async function handler(req) {
     // Sustained CAS contention fails closed: many writers fighting over the
     // counters is exactly the load the quota exists to stop, and reserving
     // without a landed write would be the original race back again.
-    if (!reserved.ok) return json({ error: 'quota_exceeded', scope: 'contention' }, 429);
+    if (!reserved.ok) return quotaExceeded('contention', now);
     const q = reserved.result;
-    if (!q.allowed) return json({ error: 'quota_exceeded', scope: q.scope }, 429);
+    if (!q.allowed) return quotaExceeded(q.scope, now);
     granted = q.granted;
   }
 
@@ -191,6 +191,25 @@ export default async function handler(req) {
   }
 
   return json({ results, attribution: ATTRIBUTION }, 200);
+}
+
+// Every 429 this function emits says WHICH bucket rejected the batch and WHEN
+// that bucket next refills, in a header and in the body. Without it the client
+// can only guess, and its guess (a flat hour) was wrong in both directions:
+// too long after an hourly rejection, absurdly short against a monthly one.
+//
+// Worth stating plainly because the browser console cannot: a 429 from this
+// endpoint is ALWAYS ours. A rejection by Google is caught in resolveOne and
+// comes back as HTTP 200 carrying `{ status: 'unavailable', reason: 'upstream' }`,
+// so an upstream throttle can never reach the browser wearing a 429.
+// Exported for the unit tests.
+export function quotaExceeded(scope, now) {
+  const resetAt = resetAtFor(scope, now);
+  const seconds = Math.max(1, Math.ceil((resetAt - now) / 1000));
+  return new Response(JSON.stringify({ error: 'quota_exceeded', scope, resetAt }), {
+    status: 429,
+    headers: { 'Content-Type': 'application/json', 'Retry-After': String(seconds) },
+  });
 }
 
 // Exported for the unit tests. Duplicate queries collapse to one entry: a day

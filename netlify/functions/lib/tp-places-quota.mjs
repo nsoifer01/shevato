@@ -19,33 +19,56 @@
 // ordinary visitors out; the per-client maps are shared across tiers.
 
 // Defaults justified against $0.02 per billed lookup (Place Details
-// Enterprise, $20 / 1000, first 1,000 calls each month free):
-//   perClientHour 30   ~2 full day-plans of candidates; $0.60 worst case
-//   perClientDay  60   a heavy planning session; $1.20 worst case
+// Enterprise, $20 / 1000, first 1,000 calls each month free; re-verified
+// against developers.google.com/maps/billing-and-pricing/pricing 2026-08-17,
+// where Text Search Essentials IDs-Only is still unlimited and free, which is
+// what keeps the search half of the lookup off the bill):
+//   perClientHour 60   one full read of a large itinerary in an hour
+//   perClientDay 120   a heavy planning session across the day
 //   globalDay    200   $4.00/day ceiling if the site is discovered or abused
 //   globalMonth 1500   THE ONE THAT PROTECTS THE CARD: 1,000 free + 500 paid
-//                      = $10.00/month absolute worst case, and only if every
-//                      single lookup misses the cache.
-// Cache hits are free and must never be counted (see tp-places.mjs), so real
-// spend sits far below these numbers.
+//                      = $10.00/month absolute worst case for the public tier.
+//
+// THE PER-CLIENT NUMBERS MOVED ON 2026-08-17 AND THE POOLS DID NOT, on
+// purpose. Production 429s were all per-CLIENT (`scope: "client_hour"` and
+// `"client_day"`) while globalDay sat at 103/200 and globalMonth at 313/1500:
+// the site was nowhere near its cost ceiling and individual travellers were
+// still being cut off. 30/hour was sized when a rating appeared on assistant
+// candidate cards alone; ratings now paint across Timeline, Days, stays and
+// candidate sets, so one traveller reading one large trip legitimately needs
+// more than two dozen lookups. Raising a per-client cap cannot raise spend -
+// clientId is client-minted, so those caps were only ever advisory smoothing -
+// and the pools below, which ARE the cost control, are untouched.
 export const DEFAULT_LIMITS = {
-  perClientHour: 30,
-  perClientDay: 60,
+  perClientHour: 60,
+  perClientDay: 120,
   globalDay: 200,
   globalMonth: 1500,
 };
 
 // Owner tier, reachable only with the ownerToken secret from the config blob
-// (see tp-places.mjs). Ten times the public limits: high enough that the
-// owner never notices a cap in real use, but still a HARD ceiling on purpose.
-// The token is a bearer secret, and if it ever leaks, globalMonth here is
-// what stands between the leak and the card: 3,000 = 1,000 free + 2,000 paid
-// = $40/month absolute worst case. The keys keep the same names as
-// DEFAULT_LIMITS so checkQuota treats both tiers identically; only the
-// counters they gate differ (owner* vs global*).
+// (see tp-places.mjs). High enough that the owner never notices a cap in real
+// use, but still a HARD ceiling on purpose. The token is a bearer secret, and
+// if it ever leaks, globalMonth here is what stands between the leak and the
+// card: 3,000 = 1,000 free + 2,000 paid = $40/month absolute worst case for
+// this tier. The keys keep the same names as DEFAULT_LIMITS so checkQuota
+// treats both tiers identically; only the counters they gate differ (owner*
+// vs global*).
+//
+// perClientDay sits ABOVE globalDay deliberately, so it can never be the limit
+// that speaks. The owner is ONE browser with ONE clientId, so a per-client day
+// cap below the pool makes that cap the only limit that can ever bind - which
+// is exactly what happened on 2026-08-17, when the production counters read
+// ownerDay 600 against a 1,000 pool and clientDay 600 against a 600 cap: the
+// owner was cut off with 40% of the tier's own daily allowance unspent, and
+// the 429 blamed a per-client cap for what should have been a pool decision.
+// A per-client cap is also no defence for this tier in the first place, since
+// clientId is minted by the client: a leaked token would simply rotate it. So
+// the hour cap stays (it smooths one browser's BURST, which is real) and the
+// day ceiling is the pool's job alone.
 export const OWNER_LIMITS = {
-  perClientHour: 300,
-  perClientDay: 600,
+  perClientHour: 500,
+  perClientDay: 1200,
   globalDay: 1000,
   globalMonth: 3000,
 };
@@ -79,6 +102,29 @@ function pruneUsage(usage, hb, db, mb) {
     ownerDay: (u.dayBucket === db && typeof u.ownerDay === 'number') ? u.ownerDay : 0,
     ownerMonth: (u.monthBucket === mb && typeof u.ownerMonth === 'number') ? u.ownerMonth : 0,
   };
+}
+
+// When the bucket that produced a rejection next refills, as an epoch
+// millisecond. The client used to guess (a flat hour after ANY 429), which is
+// wrong in both directions: it wasted up to 59 minutes of the next hour bucket
+// after a client_hour rejection, and it re-asked a monthly cap 24 times a day.
+// Exported and unit-tested because it is the only thing standing between an
+// exhausted bucket and a retry loop.
+export function resetAtFor(scope, now) {
+  const t = Number(now) || 0;
+  switch (scope) {
+    case 'client_hour': return (hourBucket(t) + 1) * HOUR_MS;
+    case 'client_day':
+    case 'global_day': return (dayBucket(t) + 1) * DAY_MS;
+    case 'global_month': {
+      const d = new Date(t);
+      return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
+    }
+    // Contention is transient by construction (writers fighting over one
+    // counter blob), so it clears in seconds rather than at a bucket edge.
+    case 'contention': return t + 2000;
+    default: return t + 15 * 60000;
+  }
 }
 
 // Which pooled counters a tier spends against. Split so the owner's own use

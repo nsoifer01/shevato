@@ -3226,6 +3226,264 @@ const TripLogic = (() => {
     return out;
   }
 
+  // ---------- the Places lookup queue ----------
+  // ONE owner of every billed rating request in the app. It exists because the
+  // old shape - "each render hands its whole list to an async fetch loop" - had
+  // three measured failure modes, and all three cost the owner real money:
+  //
+  //   1. A render that landed while a multi-batch lookup was still running
+  //      re-planned the batches that had not been SENT yet (only the batch on
+  //      the wire was marked in flight). Measured on a 41-venue trip: 7 POSTs,
+  //      70 lookups, 29 of them duplicates of a venue already queued.
+  //   2. Every rating-eligible item in the WHOLE trip was requested on load,
+  //      including the fortieth day of a trip whose first screen the traveller
+  //      had not finished reading. A rating nobody looked at costs exactly what
+  //      a rating they read costs.
+  //   3. A single 429 abandoned every batch behind it and switched the feature
+  //      off for an hour, so a partial set of ratings looked permanent.
+  //
+  // So: a key is reserved the moment it is PLANNED (not when its batch is
+  // sent), demand is driven by what is on screen, and a 429 puts its batch back
+  // rather than dropping it. Pure and DOM-free - `send`, `now`, `schedule` and
+  // `random` are injected - so node:test drives every branch with no browser.
+  const PLACES_CONCURRENCY = 2;
+  // A key the server could not serve (quota, upstream hiccup) is not cached -
+  // it holds no Google content - but it must not be re-asked by the very next
+  // re-render either, or a failing venue is a request per repaint. Ten minutes
+  // is long enough to outlive a burst of renders and short enough that a
+  // traveller who leaves a tab open gets the rating when capacity returns.
+  const PLACES_DEFER_MS = 10 * 60000;
+  const PLACES_MAX_ATTEMPTS = 3;
+
+  const HOUR = 3600000;   // DAY is already defined at the top of the module
+
+  // How long to stay quiet after a 429, by the scope the server names. The
+  // point is to match the bucket that actually refills: the server's hour
+  // bucket is floor(now / 3600000), so "wait an hour" from a request made at
+  // 10:59 wastes 59 minutes of the 11:00 bucket. Retrying a monthly cap at all
+  // is pointless, so that one parks for the session.
+  function placesRetryDelay(scope, now, attempt = 1, random = Math.random) {
+    const t = Number(now) || 0;
+    switch (scope) {
+      case 'client_hour': return HOUR - (t % HOUR);
+      case 'client_day':
+      case 'global_day': return DAY - (t % DAY);
+      case 'global_month': {
+        const d = new Date(t);
+        return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1) - t;
+      }
+      // Contention is the one genuinely transient rejection (many writers on
+      // one counter blob), so it backs off in seconds with jitter rather than
+      // parking until a bucket rolls over.
+      case 'contention': {
+        const base = Math.min(8000, 1000 * Math.pow(2, Math.max(0, attempt - 1)));
+        return Math.round(base * (0.5 + random() * 0.5));
+      }
+      default: return 15 * 60000;
+    }
+  }
+
+  function createPlacesQueue(opts) {
+    const o = opts || {};
+    const send = o.send;
+    const now = o.now || Date.now;
+    const schedule = o.schedule || ((fn, ms) => setTimeout(fn, ms));
+    const random = o.random || Math.random;
+    const onUpdate = o.onUpdate || (() => {});
+    const batchMax = o.batchMax || PLACES_BATCH_MAX;
+    const concurrency = o.concurrency || PLACES_CONCURRENCY;
+    const deferMs = o.deferMs == null ? PLACES_DEFER_MS : o.deferMs;
+    const maxAttempts = o.maxAttempts || PLACES_MAX_ATTEMPTS;
+
+    const cache = new Map();      // key -> { status:'ok', ... } | { status:'no_match' }
+    const entries = new Map();    // key -> { key, query, priority, gen, attempts }
+    const inFlight = new Set();
+    const deferred = new Map();   // key -> earliest retry timestamp
+    let hi = [], lo = [];         // keys, visible first
+    let busy = 0;
+    let gen = 0;
+    let off = false;              // 503/403/400/405/501: no key configured at all
+    let pausedUntil = 0;
+    let pauseScope = '';
+    let waking = false;
+    let stats = { posts: 0, lookups: 0, batches429: 0 };
+
+    const deferredNow = key => {
+      const at = deferred.get(key);
+      if (at == null) return false;
+      if (at > now()) return true;
+      deferred.delete(key);
+      return false;
+    };
+    // What planPlacesLookup must treat as "already handled": resolved, on the
+    // wire, waiting in the queue, or deliberately parked after a failure. This
+    // is the reservation that closes the duplicate-batch hole.
+    const known = { has: key => cache.has(key) || entries.has(key) || inFlight.has(key) || deferredNow(key) };
+
+    function wake(ms) {
+      if (waking) return;
+      waking = true;
+      schedule(() => { waking = false; pump(); }, Math.max(0, ms));
+    }
+
+    function paused() {
+      if (off) return true;
+      if (!pausedUntil) return false;
+      if (now() < pausedUntil) return true;
+      pausedUntil = 0;
+      pauseScope = '';
+      return false;
+    }
+
+    // Visible work first, and within a priority the order it was asked for.
+    function take() {
+      const batch = [];
+      for (const list of [hi, lo]) {
+        while (list.length && batch.length < batchMax) {
+          const key = list.shift();
+          const e = entries.get(key);
+          // dropped by a generation change, or resolved by an overlapping batch
+          if (!e || cache.has(key)) { entries.delete(key); continue; }
+          entries.delete(key);
+          inFlight.add(key);
+          batch.push(e);
+        }
+        if (batch.length >= batchMax) break;
+      }
+      return batch;
+    }
+
+    // Put a batch that was never served back where it came from, so a 429 or a
+    // dropped connection costs the queue nothing but time. Bounded: a key that
+    // has already failed maxAttempts times parks in `deferred` instead, which
+    // is what stops a hard failure becoming a retry loop.
+    function requeue(batch) {
+      for (const e of batch) {
+        inFlight.delete(e.key);
+        if (cache.has(e.key)) continue;
+        e.attempts += 1;
+        if (e.attempts >= maxAttempts) { deferred.set(e.key, now() + deferMs); continue; }
+        if (e.gen !== gen) continue;
+        entries.set(e.key, e);
+        (e.priority === 'visible' ? hi : lo).push(e.key);
+      }
+    }
+
+    function pump() {
+      if (paused()) {
+        if (!off && pausedUntil) wake(pausedUntil - now());
+        return;
+      }
+      while (busy < concurrency && (hi.length || lo.length)) {
+        const batch = take();
+        if (!batch.length) break;
+        busy += 1;
+        stats.posts += 1;
+        Promise.resolve()
+          .then(() => send(batch.map(e => e.query)))
+          .then(res => settle(batch, res || {}))
+          .catch(() => settle(batch, { ok: false, transient: true }))
+          .then(() => { busy -= 1; pump(); });
+      }
+    }
+
+    function settle(batch, res) {
+      if (res.ok) {
+        for (const e of batch) inFlight.delete(e.key);
+        const results = Array.isArray(res.results) ? res.results : [];
+        for (const u of placesCacheUpdates(results)) cache.set(u.key, u.entry);
+        // `unavailable` holds no Google content and is never cached; it is
+        // parked so the next repaint does not re-ask, and becomes eligible
+        // again once the defer window passes.
+        for (const r of results) {
+          if (!r || r.status !== 'unavailable') continue;
+          const key = placeCacheKey(r.query);
+          if (key && !cache.has(key)) deferred.set(key, now() + deferMs);
+        }
+        stats.lookups += results.filter(r => r && r.status === 'ok').length;
+        onUpdate(results);
+        return;
+      }
+      if (res.off) { off = true; hi = []; lo = []; entries.clear(); for (const e of batch) inFlight.delete(e.key); onUpdate([]); return; }
+      if (res.status === 429) stats.batches429 += 1;
+      const attempt = Math.max(1, ...batch.map(e => e.attempts + 1));
+      const ms = res.retryAfterMs != null
+        ? Math.max(0, res.retryAfterMs)
+        : placesRetryDelay(res.scope || (res.transient ? 'contention' : ''), now(), attempt, random);
+      pausedUntil = Math.max(pausedUntil, now() + ms);
+      pauseScope = res.scope || (res.transient ? 'network' : '');
+      requeue(batch);
+      onUpdate([]);
+      wake(ms);
+    }
+
+    return {
+      // `queries` is raw strings; planPlacesLookup normalizes, drops blanks and
+      // collapses same-venue spellings, and `known` reserves every key it
+      // returns so nothing here can be planned twice.
+      request(queries, options) {
+        const opt = options || {};
+        const priority = opt.priority === 'visible' ? 'visible' : 'background';
+        const { misses } = planPlacesLookup(queries, known);
+        if (!misses.length) return 0;
+        for (const m of misses) {
+          entries.set(m.key, { key: m.key, query: m.query, priority, gen, attempts: 0 });
+          (priority === 'visible' ? hi : lo).push(m.key);
+        }
+        pump();
+        return misses.length;
+      },
+      // A venue already asked for at background priority is promoted, not
+      // re-added, when it scrolls into view: same reservation, better place in
+      // the line.
+      promote(queries) {
+        let moved = 0;
+        for (const raw of Array.isArray(queries) ? queries : []) {
+          const key = placeCacheKey(raw);
+          const e = key && entries.get(key);
+          if (!e || e.priority === 'visible') continue;
+          e.priority = 'visible';
+          const i = lo.indexOf(key);
+          if (i >= 0) lo.splice(i, 1);
+          hi.push(key);
+          moved += 1;
+        }
+        if (moved) pump();
+        return moved;
+      },
+      get: key => cache.get(key),
+      has: key => cache.has(key),
+      // Consumed by the Photon top-up, which must not chase a venue whose
+      // billed lookup is already going to answer with a better point.
+      isPending: key => entries.has(key) || inFlight.has(key),
+      // A trip switch invalidates work that has not been SENT. In-flight
+      // batches are already paid for, so they are left to land in the shared
+      // cache; only the queue is cleared.
+      setGeneration(g) {
+        gen = g;
+        for (const key of [...entries.keys()]) {
+          if (entries.get(key).gen !== gen) entries.delete(key);
+        }
+        hi = hi.filter(k => entries.has(k));
+        lo = lo.filter(k => entries.has(k));
+      },
+      generation: () => gen,
+      pump,
+      status: () => ({
+        off,
+        pausedUntil,
+        scope: pauseScope,
+        paused: off || (pausedUntil > now()),
+        queued: entries.size,
+        inFlight: inFlight.size,
+        cached: cache.size,
+        deferred: deferred.size,
+        busy,
+        ...stats,
+      }),
+    };
+  }
+
   // ---------- distances: venue coordinates, day chains, shortest route ----------
   // Every figure here is straight-line haversine math (distKm) over coordinates
   // the app ALREADY holds: the venue cache the Places lookup seeds, the Photon
@@ -7335,6 +7593,8 @@ const TripLogic = (() => {
     buildPlanRequest, groupProposals, linkifySegments,
     parseMarkdown, parseMarkdownInline,
     normalizePlaceQuery, placeCacheKey, planPlacesLookup, placesCacheUpdates,
+    createPlacesQueue, placesRetryDelay,
+    PLACES_BATCH_MAX, PLACES_CONCURRENCY, PLACES_DEFER_MS, PLACES_MAX_ATTEMPTS,
     VENUE_TTL_MS, VENUE_CACHE_MAX, venueFresh, normalizeVenueCache, rememberVenue,
     placesLocationUpdates, pickVenueFeature, validCoord,
     SAME_SPOT_KM, sameSpot, distancePoint, dayAnchor, dayDistanceChain,

@@ -36,10 +36,27 @@ why, the traps, and the invariants.
   in-flight dedup), Open-Meteo geocoding = city typeahead, Photon = hotel and
   venue typeahead, bundled OurAirports table = airports (offline). Never move
   a lookup between providers without re-reading their usage policies.
-- **Google Places legal lines** (2026-07-20 review): place IDs cacheable 30d,
-  lat/lon cacheable 30d (`trip-planner:venuegeo:v1`, cap 300), names/ratings
-  NEVER stored. The server's rating layer was found still persisting `pd:`
-  details blobs (unread, unbounded); removed 2026-08-13. Keep it removed.
+- **Google Places legal lines** (re-verified against the live terms
+  2026-08-17): place IDs cacheable indefinitely, lat/lon cacheable 30d
+  (`trip-planner:venuegeo:v1`, cap 300), names/ratings NEVER stored. The
+  server's rating layer was found still persisting `pd:` details blobs (unread,
+  unbounded); the CODE was removed 2026-08-13 but 201 stale `pd:` blobs were
+  still sitting in the production store on 2026-08-17 and had to be purged
+  separately. Removing a cache is two jobs: the writer and the data.
+  The sources, quoted, so a future session does not have to re-derive them:
+  - Maps Platform ToS 3.2.3(b): "Customer will not cache Google Maps Content
+    except as expressly permitted under the Maps Service Specific Terms."
+  - Service Specific Terms 14.3 (Places API, Legacy and New): "Customer may
+    temporarily cache latitude and longitude values from the Places API for up
+    to 30 consecutive calendar days, after which Customer must delete the
+    cached latitude and longitude values." That is the ONLY Places field with
+    an express caching permission.
+  - General Service Terms A.3 (Google ID Caching): place_id may be cached; the
+    Places policies page says so too ("You can therefore store place ID values
+    indefinitely").
+  So `RATING_TTL_MS` is 0 and stays 0. Holding a response in memory to paint
+  the elements that asked for it is not caching (the DOM holds the same rating);
+  writing it anywhere that outlives the page is.
 
 ## Sync model (and its sharp edges)
 
@@ -131,7 +148,18 @@ why, the traps, and the invariants.
   slow pair still burns the reservation until rollover; a failed Place
   Details call counts as spent;
   per-client caps are advisory (clientId rotation) - the global/monthly pools
-  are the real cost control ($10/month worst case public tier).
+  are the real cost control.
+- **A 429 from tp-places is ALWAYS ours, never Google's.** An upstream
+  rejection is caught in `resolveOne` and returned as HTTP **200** carrying
+  `{ status: 'unavailable', reason: 'upstream' }`, so a Google throttle cannot
+  reach the browser wearing a 429. When a 429 shows up in the console, read its
+  `scope`: it names one of our own buckets and nothing else can produce it.
+- **The public $10/month and owner $40/month ceilings are NOT additive with two
+  free allowances.** Google's 1,000 complimentary Place Details Enterprise
+  calls are per SKU per PROJECT, and both pools (globalMonth 1500 + ownerMonth
+  3000) draw on that one allowance. Draining both is 4,500 lookups = 1,000 free
+  + 3,500 paid = **$70/month**, not $50. The $10 figure remains correct for
+  what the PUBLIC tier alone can cost, which is what it was always about.
 - tp-assist deliberately does NOT refund quota on upstream failure (fails
   closed); Google's own free-tier limits bind before ours anyway. Pinned by
   tests/tp-assist-handler.test.mjs.
@@ -261,6 +289,112 @@ Probe traps this round minted:
   is a chain stop: an evening suggestion then measures from the hotel, not
   from lunch. Correct behaviour; fixtures that want a pure
   anchor->stops chain start the stay the night before.
+
+## Places ratings: the 2026-08-17 429 round
+
+Reported as "POST /.netlify/functions/tp-places 429" on trips of every size,
+including a 2-item test trip. Written up in full because almost every intuition
+about it was wrong.
+
+**The 429 was ours, and it was PER-CLIENT.** Read straight off the production
+counters blob (`netlify blobs:get trip-planner-places usage`) while the fault
+was live: `globalDay` 103/200 and `globalMonth` 313/1500, i.e. the site was at
+7% of the pools that exist to protect the card - while `clientHour` for one
+browser sat at exactly 30/30 (the public hourly cap) and `clientDay` for the
+owner's browser sat at exactly 600/600 (the owner daily cap). A zero-cost
+production probe confirmed the branch: POSTing with an over-cap clientId
+returns `{"error":"quota_exceeded","scope":"client_day"}` and never reaches
+Google at all. **Nobody was near the cost ceiling; individual travellers were
+being cut off by a limiter that had been sized for a much smaller feature.**
+
+**Why a 2-item trip could fail.** `clientId` is a persistent localStorage value
+(`trip-planner:assist:clientId`), so the hour and day counters follow the
+BROWSER, not the trip. Open a 40-venue trip, spend the 30/hour, then open a
+2-item trip in the same hour and the very first batch is refused. The trip size
+in front of you has nothing to do with it; the trip size an hour ago does.
+
+**Why the demand was so large in the first place.** Ratings may not be cached
+(see the legal lines above), so every rating shown is a billed Place Details
+call, and the client asked for EVERY rating-eligible item in the whole trip on
+every page load. Measured on master with a 250ms round trip: a 40-venue trip
+issued 4 POSTs and 40 billed lookups on load; a 55-venue trip issued 48 and
+then took a 429 with 7 venues never asked about at all. The limiter was written
+when ratings appeared on assistant candidate cards alone; they now paint across
+Timeline, Days, stays and candidate sets, and the quota was never revisited.
+
+**A second, measured amplifier: the in-flight dedup gap.** `fetchRatings`
+marked a batch in flight only when its turn came, so batches 2..N were
+invisible to a planner running in between. Forcing a re-render mid-lookup on a
+41-venue trip produced **7 POSTs, 70 lookups for 41 venues - 29 duplicates**,
+every one of them billed. This is the likeliest explanation for the owner's
+600-lookup day.
+
+**And the failure was self-amplifying in the UI.** One 429 abandoned every
+remaining batch AND set a flat 3,600,000ms pause, so a partial set of ratings
+looked permanent for the session - and because a `client_hour` rejection at
+10:59 waited until 11:59, most of the hour it was waiting for was thrown away.
+
+What changed:
+
+- **One queue owns every billed request** (`createPlacesQueue`, trip-logic.js,
+  pure and injectable). A key is reserved when it is PLANNED, which is what
+  closes the duplicate hole; `planPlacesLookup` still does the normalization
+  and the queue's `known` predicate spans cache + queued + in-flight + deferred.
+- **Demand follows the eye.** Itinerary rows register with an
+  IntersectionObserver (600px lookahead); assistant candidate sets are still
+  fetched eagerly, because a half-resolved set makes the winner badges a lie.
+  There is deliberately NO background sweep of the rest of the trip: that is
+  precisely the pattern that produced the 429s, and it buys nothing visible.
+- **Concurrency 2, batch 12.** Two in flight is enough to halve the wall clock
+  on a long trip without bursting; the batch cap is the server's.
+- **A 429 parks the queue, it does not empty it.** The server now returns
+  `scope` + `resetAt` + a `Retry-After` header (`resetAtFor`), and the client
+  waits for the bucket that actually refills. Retries are bounded
+  (`PLACES_MAX_ATTEMPTS`), `unavailable` results are parked for 10 minutes
+  rather than re-asked by the next repaint, and `global_month` parks until the
+  month turns instead of being retried all day.
+- **Per-client caps were raised; the POOLS were not.** Public 30/60 became
+  60/120, owner 300/600 became 500/1200, while `globalDay` 200, `globalMonth`
+  1500, `ownerDay` 1000 and `ownerMonth` 3000 are untouched. That keeps the
+  public tier's $10/month worst case exactly where it was. Raising a per-client
+  cap cannot raise spend - clientId is client-minted, so those caps were only
+  ever advisory smoothing.
+- **The owner's per-client day cap is now ABOVE the owner pool**, so it can
+  never be the limit that speaks. A per-client cap is no defence for a bearer
+  token anyway (a thief rotates clientId); the pool is the ceiling that means
+  something. Pinned by a test.
+
+Measured after, same harness, 250ms round trip, 1280x900:
+
+| venues | POSTs on load | billed on load | after a full read | 429s |
+|--------|---------------|----------------|-------------------|------|
+| 2      | 1             | 2              | 2                 | 0    |
+| 10     | 1             | 10             | 10                | 0    |
+| 40     | 1             | 11             | 28                | 0    |
+| 55     | 1             | 11             | 28                | 0    |
+
+Zero duplicates in every case, and zero 429s even when the fake server is held
+at the OLD 30/hour cap - the architecture, not the raised limit, is what fixed
+it. Time to the first rating is ~350ms regardless of trip size.
+
+Traps this round minted:
+
+- **The E2E profile leaks localStorage between blocks**, so `openApp`'s first
+  navigation boots the app on the PREVIOUS block's trip and legitimately looks
+  its venues up before the clear-and-seed. Counting those as the current
+  block's requests invented "duplicates" the app never made. Every count in
+  `e2e/places.mjs` is scoped to that block's own venue-name prefix.
+- **`clickSel` on a wrong selector is swallowed by `.catch(() => {})`**, which
+  is how two early probe runs "proved" that view switching was free: the view
+  never switched. The view controls are `#viewTimeline` / `#viewDays` /
+  `#viewMap`, not `[data-view=...]`.
+- A jump straight to the bottom of a long board does NOT fetch the rows it flew
+  past; IntersectionObserver only fires for what actually intersects. That is
+  correct (nobody read them) but it makes "after scroll" counts depend on how
+  the scroll was performed.
+- The unit tests and the browser disagreed on duplicate counts for a while, and
+  the unit tests were right. When they diverge, print the actual POST bodies
+  before changing the implementation.
 
 ## Assistant: modes, and where a suggestion is measured from
 
@@ -551,6 +685,12 @@ needed it.
     `placeCacheKey` so a fixture key can never drift from what the app writes.
   - Offline must be emulated on the page target AND the service-worker
     target(s); page-only lets the worker fetch from the network.
+- **`e2e/places.mjs`** covers the ratings subsystem: fanout on a 50-venue trip,
+  duplicate-freedom across renders/scrolls/view switches, a free view switch,
+  travel legs never billed, a 429 that does not storm, partial responses, and
+  trip switching. It mocks tp-places at the network layer, so a green run costs
+  $0.00 and never touches the real endpoint. Counts are scoped per block (see
+  the leaked-storage trap in the Places section).
 - **What stays out of E2E**: activate-event cache eviction and update-toast
   messaging (tests/sw-activate.test.mjs, driving a real redeploy is flaky),
   cross-DEVICE sync (whole-key LWW via Firestore is a structural limit, see
