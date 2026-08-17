@@ -23,9 +23,14 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 62;
+  const TP_BUILD = 63;
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
+  // Miles or kilometers, everywhere a distance prints. Same architecture as
+  // TIMEFMT_KEY in every respect: a display preference on its own key, never
+  // trip data, synced across signed-in devices (see app-sync-init.js) and
+  // reconciled by the same storage / tp-sync:applied listeners.
+  const DISTUNIT_KEY = 'trip-planner:distunit';
   const TYPE_META = {
     flight:    { label: 'Flight',    icon: '✈️', order: 0, cls: 'type-flight' },
     // transport = between cities, local = getting around inside one city
@@ -100,9 +105,10 @@
     buildPlanRequest, groupProposals, linkifySegments, parseMarkdown,
     normalizePlaceQuery, placeCacheKey, planPlacesLookup, placesCacheUpdates, mapsSearchUrl, assistMapsLink, costDisplayParts,
     normalizeVenueCache, rememberVenue, placesLocationUpdates, pickVenueFeature,
-    dayAnchor, dayDistanceChain, shortestRoute, routeStops, distanceChipLabel, distanceChipTitle, routeFooterText,
+    dayAnchor, dayDistanceChain, sameSpot, shortestRoute, routeStops, distanceChipLabel, distanceChipTitle, routeFooterText,
     proposalOrigin, dayBaseOrigin, suggestionOrigins, assistDistanceChipLabel, assistDistanceChipTitle,
     isPlaceType, isTravelLeg, directionsUrl, legTravelMode,
+    setDistanceUnit, fmtDist, dayTravelTotals, dayRouteMode, directionsRouteUrl, routeUrlChunks, candidateBadges,
     hasEstimate, displayCostOf, parseMoney, roundMoney, budgetVerdict, refundParts,
     readBudgetRange, normalizeBudgetFrom, budgetFigure,
     matchSampleTrip, sampleTripOptions, buildSampleTrip,
@@ -403,6 +409,16 @@
     // the day-card time rail is sized for the format actually being printed:
     // "12:30 PM" needs ~64px of text, "12:30" needs ~36px (see --dc-rail-w)
     document.body.classList.toggle('tp-24h', use24h);
+  }
+  // The distance twin of use24h. TripLogic owns the actual formatting (every
+  // chip, tooltip, footer and total goes through its fmtDist), so the app's
+  // whole job here is to keep that one module-level unit in step with the
+  // stored preference. Default miles, matching the 12-hour default above.
+  let useKm = localStorage.getItem(DISTUNIT_KEY) === 'km';
+  setDistanceUnit(useKm ? 'km' : 'mi');
+  function syncDistunitLabel() {
+    const b = $('#distunitBtn');
+    if (b) b.textContent = useKm ? '📏 Use miles' : '📏 Use kilometers';
   }
   // The traveller's LOCAL date, not a UTC slice of the clock. See localDateIso:
   // the dates on the items are zone-less wall dates, so the countdown, the
@@ -818,6 +834,22 @@
   // section (see itemMapsQuery for which types derive a query), and a leg can
   // never diverge from another leg on getting directions instead of a rating.
   const mapsHtmlFor = it => (isTravelLeg(it) ? tripDirectionsHtml(it) : tripMapsRatingHtml(itemMapsQuery(it)));
+
+  // A Days-view PLACE row's own directions action: how to get HERE from the
+  // stop before it. Rendered destination-only (Maps then asks for the start,
+  // which is the clean degrade when nothing located the leg); the distance
+  // pass upgrades origin + mode from the same chain leg the chip prints.
+  // data-dir-type="place" tells writeDistChip to pick walking/transit by the
+  // leg's own length (the hop judgement), never the intercity 'driving' a
+  // flight's link uses.
+  function dcDirectionsHtml(it) {
+    const dest = itemMapsQuery(it);
+    if (!dest) return '';
+    const href = directionsUrl('', dest, 'transit');
+    return `<a class="tp-maps-link tp-dir-link dc-dir" data-dir-dest="${esc(dest)}" data-dir-type="place"`
+      + ` href="${esc(href)}" target="_blank" rel="noopener" aria-label="Directions to ${esc(displayTitle(it))}">`
+      + `<span class="tpm-label">🧭 Directions</span></a>`;
+  }
 
   // The issue list render() last built. computeIssues is O(n^2) over stays (the
   // overlap check) and over timed items (sameTimeCollisions), and the day view
@@ -2038,6 +2070,12 @@
     // element carries the Google rating inline once the lookup resolves it.
     const details = ev.kind === 'checkout' ? '' : detailsHtml(it, 'dc-details', false);
     const maps = ev.kind === 'checkout' ? '' : mapsHtmlFor(it);
+    // Days view has a chain (Timeline does not), so every PLACE stop can also
+    // offer directions FROM the stop before it: the link renders
+    // destination-only here and writeDistChip fills the origin and the mode in
+    // from the same leg its distance chip prints, so the two can never
+    // disagree. A travel leg already gets its Directions through mapsHtmlFor.
+    const dir = (ev.kind === 'checkout' || isTravelLeg(it)) ? '' : dcDirectionsHtml(it);
     const cost = ev.kind === 'checkout' ? '' : dayCostBadge(trip, it);
     // stay rows carry no real time (the assumed ones are for ordering only), so
     // the when column stays EMPTY for them rather than printing a guess
@@ -2091,7 +2129,7 @@
             <div class="dc-title">${esc(displayTitle(it))}${clip}${loc}</div>
             ${ref}
           </div>
-          <div class="dc-facts">${cost}${maps}</div>
+          <div class="dc-facts">${cost}${maps}${dir}</div>
           <div class="dc-btns">${grip}${edit}${del}</div>
         </div>
         ${details}
@@ -4116,7 +4154,7 @@
   // The 12/24-hour toggle IS on it. It is a device display preference written
   // to its own TIMEFMT_KEY, never to a trip; blocking it would make the one
   // harmless row in the menu look broken for no gain.
-  const SHARED_MENU_ACTS = ['export-trip', 'export-csv', 'export-ics', 'export-gpx', 'share-trip', 'timefmt'];
+  const SHARED_MENU_ACTS = ['export-trip', 'export-csv', 'export-ics', 'export-gpx', 'share-trip', 'timefmt', 'distunit'];
   function syncTripMenuShared() {
     for (const b of $('#tripMenu').querySelectorAll('.tp-menu-panel button[data-act]')) {
       b.disabled = sharedMode && !SHARED_MENU_ACTS.includes(b.dataset.act);
@@ -5210,8 +5248,12 @@
     // than the safe transit default.
     const dir = row.querySelector('.tp-dir-link');
     if (dir && leg) {
-      const href = directionsUrl(leg.fromQuery || '', dir.dataset.dirDest || '',
-        legTravelMode(dir.dataset.dirType || '', leg.km));
+      // a PLACE row's hop is judged like any city hop (walk under WALKABLE_KM,
+      // transit above); the item-type modes are for travel legs, whose own
+      // type says how they move
+      const type = dir.dataset.dirType || '';
+      const mode = type === 'place' ? legTravelMode('local', leg.km) : legTravelMode(type, leg.km);
+      const href = directionsUrl(leg.fromQuery || '', dir.dataset.dirDest || '', mode);
       if (href && dir.getAttribute('href') !== href) dir.setAttribute('href', href);
     }
     let chip = facts.querySelector('.dc-dist');
@@ -5228,27 +5270,85 @@
   }
 
   let airportKickoff = false;
+
+  // THE day's route chain, read off one day card: the anchor (where the day
+  // starts, arrival airport included), the rows in schedule order, their
+  // resolved points, and the legs dayDistanceChain builds between them. Every
+  // Days-view route surface reads THIS - the per-row chips, each row's
+  // Directions link, the day totals, the external Google Maps route and the
+  // Day route map - so none of them can disagree about what the day contains.
+  function dayCardChain(cardEl, wanted) {
+    // an arrival-day anchor needs the airports table; load it once on the
+    // first card that asks and repaint when it lands. On a failed load the
+    // kickoff flag stays set - retrying on every paint would loop - and the
+    // city rung keeps answering for the rest of the session.
+    if (cardEl.dataset.anchorIata && !airportRows && !airportKickoff) {
+      airportKickoff = true;
+      loadAirports().then(() => { if (airportRows) refreshDistances(); });
+    }
+    wantVenue(wanted, cardEl.dataset.anchorQ);
+    const anchor = readPoint(cardEl, 'anchor');
+    const rows = [...cardEl.querySelectorAll('.dc-event[data-dist-label]')];
+    const stops = rows.map((row, i) => {
+      wantVenue(wanted, row.dataset.distQ);
+      const p = readPoint(row, 'dist');
+      return p ? { ...p, id: i } : { id: i };
+    });
+    return { anchor, rows, stops, legs: dayDistanceChain(anchor, stops) };
+  }
+
   function paintDayDistances(wanted) {
     document.querySelectorAll('#daysList .day-card').forEach(cardEl => {
-      // an arrival-day anchor needs the airports table; load it once on the
-      // first card that asks and repaint when it lands. On a failed load the
-      // kickoff flag stays set - retrying on every paint would loop - and the
-      // city rung keeps answering for the rest of the session.
-      if (cardEl.dataset.anchorIata && !airportRows && !airportKickoff) {
-        airportKickoff = true;
-        loadAirports().then(() => { if (airportRows) refreshDistances(); });
-      }
-      wantVenue(wanted, cardEl.dataset.anchorQ);
-      const anchor = readPoint(cardEl, 'anchor');
-      const rows = [...cardEl.querySelectorAll('.dc-event[data-dist-label]')];
-      const stops = rows.map((row, i) => {
-        wantVenue(wanted, row.dataset.distQ);
-        const p = readPoint(row, 'dist');
-        return p ? { ...p, id: i } : { id: i };
-      });
-      const legs = new Map(dayDistanceChain(anchor, stops).map(l => [l.id, l]));
-      rows.forEach((row, i) => writeDistChip(row, legs.get(i)));
+      const chain = dayCardChain(cardEl, wanted);
+      const legs = new Map(chain.legs.map(l => [l.id, l]));
+      chain.rows.forEach((row, i) => writeDistChip(row, legs.get(i)));
+      paintDayRoute(cardEl, chain);
     });
+  }
+
+  // The compact day-route strip at the bottom of a day card: what today's
+  // travel adds up to (summed from the SAME legs the chips just printed, by
+  // the same walk/ride judgement), the internal Day route map, and the
+  // external Google Maps route. Painted only when the chain has at least one
+  // real leg; a day whose stops did not resolve keeps a clean card instead of
+  // an empty strip.
+  function paintDayRoute(cardEl, chain) {
+    const old = cardEl.querySelector('.dc-route');
+    const legs = chain.legs;
+    if (!legs.length) { if (old) old.remove(); return; }
+    const totals = dayTravelTotals(legs);
+    // a stop that wanted a place but resolved nowhere keeps the total honest:
+    // the strip says the figure is partial rather than pretending completeness
+    const unplaced = chain.stops.filter(s => s.lat === undefined && chain.rows[s.id]
+      && (chain.rows[s.id].dataset.distQ || chain.rows[s.id].dataset.distCity)).length;
+    const parts = [];
+    if (totals.byMode.walk > 0) parts.push(`🚶 ${fmtDist(totals.byMode.walk)}`);
+    if (totals.byMode.ride > 0) parts.push(`🚕 ${fmtDist(totals.byMode.ride)}`);
+    const tot = parts.join(' · ') + (unplaced ? ` <span class="dc-route-part">· ${unplaced} not located</span>` : '');
+    // the external route walks the chain itself: consecutive by construction,
+    // chunked so a very busy day never silently drops a stop
+    const queries = [legs[0].fromQuery, ...legs.map(l => l.toQuery)];
+    const mode = dayRouteMode(legs);
+    const chunks = routeUrlChunks(queries);
+    const gmLinks = chunks.map((c, i) => {
+      const href = directionsRouteUrl(c[0], c.slice(1, -1), c[c.length - 1], mode);
+      if (!href) return '';
+      const label = chunks.length > 1 ? `Open in Google Maps (part ${i + 1} of ${chunks.length})` : 'Open day route in Google Maps';
+      return `<a class="tp-maps-link dc-route-gm" href="${esc(href)}" target="_blank" rel="noopener"
+        title="One Google Maps route in ${mode === 'walking' ? 'walking' : 'driving'} mode. Legs that differ (walk vs taxi or transit) are shown per stop above and in Day route.">
+        <span class="tpm-label">${esc(label)}</span></a>`;
+    }).join('');
+    const html = `<span class="dc-route-tot" title="Straight-line distances, summed over today's ${totals.legCount} leg${totals.legCount === 1 ? '' : 's'}. Today's travel.">${tot}</span>
+      <span class="dc-route-acts">
+        <button type="button" class="row-btn dc-route-btn" data-act="day-route" data-date="${cardEl.dataset.date}"
+          title="Show today's stops in order on a map" aria-label="Show the ${esc(fmtDate(cardEl.dataset.date))} route on a map">🗺 Day route</button>
+        ${gmLinks}
+      </span>`;
+    if (old && old.innerHTML === html) return;
+    const box = old || document.createElement('div');
+    box.className = 'dc-route';
+    box.innerHTML = html;
+    if (!old) cardEl.appendChild(box);
   }
 
   // One spec (from dayAnchor or proposalOrigin) -> a point, against the caches
@@ -5354,17 +5454,62 @@
         // one leg through the same builder the day chain uses, so a suggestion
         // at its own origin's address is suppressed by the same rule
         const leg = chip.point ? dayDistanceChain(origin, [chip.point])[0] : null;
-        if (!leg) { chip.el.textContent = ''; chip.el.removeAttribute('title'); continue; }
+        if (!leg) {
+          chip.el.textContent = ''; chip.el.removeAttribute('title');
+          delete chip.el.dataset.km;
+          continue;
+        }
         chip.el.textContent = assistDistanceChipLabel(leg.km, leg.from);
         chip.el.title = assistDistanceChipTitle(leg.km, leg.from);
+        // the raw figure rides on the chip so the badge pass can compare
+        // candidates without re-deriving the chain
+        chip.el.dataset.km = String(leg.km);
         if (km == null) km = leg.km;
       }
       // Now that the leg's start and its length are known, a directions link
       // can name both. Done here rather than at render time because the origin
       // is not knowable until the whole batch has been chained.
       upgradeDirLink(slot.card, origin, km);
+      paintSetBadges(slot.card);
     }
     paintAssistRoutes(specCache, wanted);
+  }
+
+  // The pick-one badges: objective winners inside one alternative set, derived
+  // from the two figures the card already shows (the chip's leg distance and
+  // the resolved Google rating/review count) via TripLogic.candidateBadges.
+  // Idempotent and callable from BOTH passes that can change its inputs - the
+  // distance paint (chips re-measure when a venue resolves or a pick changes)
+  // and paintPlaces (ratings land later, in batches) - so the badges are always
+  // as complete as the data on screen, and never more.
+  function paintSetBadges(card) {
+    if (!card || !card.classList.contains('assist-set')) return;
+    const opts = [...card.querySelectorAll('.as-opt')];
+    if (opts.length < 2) return;
+    const kms = opts.map(o => {
+      const el = o.querySelector('.ap-dist');
+      const v = el && el.dataset.km;
+      return v ? Number(v) : null;
+    });
+    const ratings = opts.map(o => {
+      const slot = o.querySelector('.ap-rating');
+      const entry = slot && placesCache.get(slot.dataset.placeKey || '');
+      return entry && entry.status === 'ok'
+        ? { rating: entry.rating, count: entry.userRatingCount || 0 } : null;
+    });
+    const badges = candidateBadges({ kms, ratings });
+    opts.forEach((o, i) => {
+      o.querySelectorAll('.as-badge').forEach(el => el.remove());
+      const title = o.querySelector('.as-title');
+      if (!title) return;
+      for (const b of badges[i] || []) {
+        const span = document.createElement('span');
+        span.className = 'as-badge as-badge-' + b.id;
+        span.textContent = `${b.icon} ${b.label}`;
+        span.title = b.title;
+        title.appendChild(span);
+      }
+    });
   }
 
   // A leg card's directions link is rendered destination-only (see
@@ -6056,12 +6201,11 @@
     }
 
     const km = distKm(a, b);
-    const mi = km * 0.621371;
     const island = ISLANDISH.test(from) || ISLANDISH.test(to);
     const intl = !!(a.cc && b.cc && a.cc !== b.cc);
     updateRouteLinks({ fromCc: a.cc, toCc: b.cc, island, km });
     const pills = [
-      `<span class="rp">📏 ${Math.round(km).toLocaleString()} km / ${Math.round(mi).toLocaleString()} mi</span>`,
+      `<span class="rp">📏 ${fmtDist(km)}</span>`,
       `<span class="rp">🧭 heading ${compass(a, b)}</span>`,
       intl ? `<span class="rp intl">🛂 international: ${esc(a.country)} → ${esc(b.country)}</span>` : '',
       routeDate ? `<span class="rp">📅 travel day: ${fmtDate(routeDate)}</span>` : '',
@@ -6129,6 +6273,12 @@
     }
     return leafletPromise;
   }
+
+  // One look for a route on ANY map in this app: the trip map and the day
+  // route draw the same numbered pin and the same dashed line, so a stop
+  // reads the same wherever it appears.
+  const ROUTE_LINE_OPTS = { color: '#4f8cff', weight: 3, opacity: 0.8, dashArray: '6 8' };
+  const stopPinIcon = n => L.divIcon({ className: '', html: `<div class="stop-pin">${n}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] });
 
   function mapStops(trip) {
     const stops = [];
@@ -6235,7 +6385,7 @@
     located.forEach((stop, i) => {
       const ll = [stop.lat, stop.lon];
       latlngs.push(ll);
-      const icon = L.divIcon({ className: '', html: `<div class="stop-pin">${i + 1}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] });
+      const icon = stopPinIcon(i + 1);
       const rule = '<hr style="border:none;border-top:1px solid var(--border-soft);margin:6px 0">';
       const lines = stop.items.slice(0, 5).map(it => {
         const range = isStay(it) && isIsoDate(it.endDate) ? fmtRange(it.startDate, it.endDate) : fmtDate(it.startDate);
@@ -6252,11 +6402,77 @@
       L.marker(ll, { icon }).addTo(mapInstance).bindPopup(`<b>${i + 1}. ${esc(stop.name)}</b><br>${lines}${more}`);
     });
     if (latlngs.length > 1) {
-      L.polyline(latlngs, { color: '#4f8cff', weight: 3, opacity: 0.8, dashArray: '6 8' }).addTo(mapInstance);
+      L.polyline(latlngs, ROUTE_LINE_OPTS).addTo(mapInstance);
     }
     mapInstance.fitBounds(L.latLngBounds(latlngs), { padding: [46, 46] });
     status.textContent = `${located.length} stop${located.length === 1 ? '' : 's'} on the route` +
       (failed.length ? ` · could not locate: ${failed.join(', ')} (use a more specific place name)` : '') + '.';
+  }
+
+  // ---------- one day's route on a map ----------
+  // The zoomed-in sibling of the trip map: same Leaflet, same pins, same
+  // dashed line, scoped to ONE day's chain. No geocoding happens here - the
+  // points come from the exact caches the day card's chips were painted from,
+  // so the map can never show a different route than the card describes.
+  let dayRouteMapInstance = null;
+
+  // The ordered pins: the day's anchor first, then every resolved stop in
+  // schedule order. A stop at the same spot as the pin before it (the same
+  // dedupe rule the leg chain applies) would stack two markers on one point,
+  // so it is folded into the previous pin rather than drawn on top of it.
+  function dayRoutePoints(chain) {
+    const pts = [];
+    const anchor = chain.anchor;
+    if (anchor && anchor.lat !== undefined) pts.push({ lat: anchor.lat, lon: anchor.lon, key: anchor.key, label: anchor.label, leg: null });
+    const legById = new Map(chain.legs.map(l => [l.id, l]));
+    for (const s of chain.stops) {
+      if (s.lat === undefined) continue;
+      const prev = pts[pts.length - 1];
+      if (prev && sameSpot(prev, s)) continue;
+      pts.push({ lat: s.lat, lon: s.lon, key: s.key, label: s.label, leg: legById.get(s.id) || null });
+    }
+    return pts;
+  }
+
+  async function openDayRoute(date) {
+    const cardEl = document.querySelector(`#daysList .day-card[data-date="${date}"]`);
+    if (!cardEl) return;
+    const chain = dayCardChain(cardEl, []);
+    const pts = dayRoutePoints(chain);
+    if (pts.length < 2) return; // the button only paints on a card with legs
+    $('#dayRouteTitle').textContent = `Day route · ${fmtDate(date)}`;
+    $('#dayRouteStops').innerHTML = pts.map((p, i) => `<li>
+      <span class="drs-n" aria-hidden="true">${i + 1}</span>
+      <span class="drs-body"><span class="drs-label">${esc(p.label || '(unnamed)')}</span>
+      ${p.leg ? `<span class="drs-leg">${esc(assistDistanceChipLabel(p.leg.km, ''))}</span>` : ''}</span>
+    </li>`).join('');
+    const note = $('#dayRouteNote');
+    note.hidden = true;
+    openOverlay('#dayRouteOverlay');
+    if (dayRouteMapInstance) { dayRouteMapInstance.remove(); dayRouteMapInstance = null; }
+    const ok = navigator.onLine && await ensureLeaflet();
+    // the overlay may have been closed while Leaflet loaded
+    if (!$('#dayRouteOverlay').classList.contains('open')) return;
+    if (!ok) {
+      note.textContent = navigator.onLine
+        ? 'The map could not load. The stop order below still stands.'
+        : 'The map needs an internet connection. The stop order below still stands.';
+      note.hidden = false;
+      return;
+    }
+    dayRouteMapInstance = L.map('dayRouteCanvas', { scrollWheelZoom: true });
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(dayRouteMapInstance);
+    const latlngs = [];
+    pts.forEach((p, i) => {
+      const ll = [p.lat, p.lon];
+      latlngs.push(ll);
+      L.marker(ll, { icon: stopPinIcon(i + 1) }).addTo(dayRouteMapInstance)
+        .bindPopup(`<b>${i + 1}. ${esc(p.label || '')}</b>${p.leg ? `<br><small>${esc(assistDistanceChipLabel(p.leg.km, p.leg.from))}</small>` : ''}`);
+    });
+    if (latlngs.length > 1) L.polyline(latlngs, ROUTE_LINE_OPTS).addTo(dayRouteMapInstance);
+    dayRouteMapInstance.fitBounds(L.latLngBounds(latlngs), { padding: [30, 30] });
   }
 
   // ---------- visa requirements ----------
@@ -7308,6 +7524,10 @@
     meals: ['Local & street food', 'Fine dining', 'Casual sit-down', 'Quick / grab-and-go'],
   };
   const PLAN_MEALS = ['breakfast', 'lunch', 'dinner'];
+  // "First stop at" is an ARRIVAL time: when the first planned place should
+  // begin, with the travel to it before (buildPlanRequest words the contract).
+  // The quick picks are conveniences; the pl-time input beside them takes any
+  // time, so 08:45 is one tap away rather than impossible.
   const WAKE_PICKS = ['06:30', '08:00', '09:30', '11:00'];
   const RETURN_PICKS = ['20:00', '22:00', '00:00', '02:00'];
   const BUDGET_LABELS = { 1: '$', 2: '$$', 3: '$$$', 4: '$$$$' };
@@ -7492,9 +7712,9 @@
               aria-pressed="${!!p.meals[m]}" data-plan-meal="${m}">${m[0].toUpperCase() + m.slice(1)}</button>`).join('')}</div>
           </div>
           ${planMealsOn(p) ? planStyleRow('Meal style', 'meals', p.styles.meals) : ''}
-          ${planTimeRow('Wake up', 'wake', WAKE_PICKS, p.wakeTime)}
+          ${planTimeRow('First stop at', 'wake', WAKE_PICKS, p.wakeTime)}
           ${planTimeRow('Back by', 'return', RETURN_PICKS, p.returnTime)}
-          ${timesOk ? '' : '<div class="pl-err" role="alert">Return time must be after wake time</div>'}
+          ${timesOk ? '' : '<div class="pl-err" role="alert">The return time must be after the first stop</div>'}
           ${planSegRow('Places', 'repeat', [['0', 'New places only'], ['1', 'Repeating is fine']], p.repeatOk ? '1' : '0', v => `data-plan-repeat="${v}"`, true)}
           ${planBudgetRow(p.budget)}
           <div class="pl-row pl-row-wide">
@@ -7757,6 +7977,9 @@
     scope.querySelectorAll('.ap-rating[data-place-key]').forEach(paintRatingSlot);
     scope.querySelectorAll('.assist-maps-link[data-place-key]').forEach(paintMapsLink);
     scope.querySelectorAll('.tp-maps-link[data-place-key]').forEach(paintTripMapsLink);
+    // ratings feed the rated/popular badges, so a batch landing re-judges the
+    // pick-one sets it just informed
+    scope.querySelectorAll('.assist-set').forEach(paintSetBadges);
   }
 
   // Called once per rendered batch of proposal cards. Paints whatever the
@@ -7886,16 +8109,41 @@
   // rung either, since nothing the model suggests has been through the picker.
   // The start time rides along because the origin is a question about the HOUR
   // ("where am I at 21:30"), not just about the day.
-  function proposalDistAttrs(p) {
+  function proposalDistAttrs(p, trip) {
     const f = p.fields;
     if (!f) return '';
     const query = itemMapsQuery({ type: f.type, title: f.title, location: f.location, mapsQuery: p.display.mapsQuery });
     const city = String(f.location || '').trim();
     if (!query && !city) return '';
     const time = /^\d{2}:\d{2}$/.test(String(f.startTime || '')) ? f.startTime : '';
-    return distAttrs(query, '', city, f.title || '') + ` data-dist-time="${esc(time)}"`;
+    // A travel leg's destination can be a place the trip ALREADY knows: the
+    // "Return to hotel" action names the booked hotel on purpose (see
+    // ASSIST_MAPSQUERY), and that hotel's own coordinates may sit in the
+    // geocode cache under its NAME (the hotel-picker rung) without any venue
+    // lookup ever resolving the name as a query. Without this rung the return
+    // card was the one suggestion with no distance: its origin (the last
+    // venue) resolved through the Places response, while its destination
+    // waited on a Photon lookup that can be slow, down, or simply unable to
+    // find a small hotel. Offering the stay's title as the name rung is the
+    // exact offer itemDistAttrs makes for the stay's own row, gated the same
+    // way: only when the destination IS that stay.
+    const stayName = isTravelLeg({ type: f.type }) ? legDestStayName(query, trip) : '';
+    return distAttrs(query, stayName, city, f.title || '') + ` data-dist-time="${esc(time)}"`;
   }
-  const proposalDistHtml = p => `<span class="ap-dist"${proposalDistAttrs(p)}></span>`;
+  // The stay this leg ends at, by its searchable name: a match on the stay's
+  // own maps query or its display title (case-folded) is the trip saying
+  // "that destination is my hotel".
+  function legDestStayName(query, trip) {
+    if (!query || !trip) return '';
+    const q = query.toLowerCase();
+    for (const it of trip.items) {
+      if (!isStay(it) || it.status === 'cancelled') continue;
+      const title = displayTitle(it);
+      if (q === title.toLowerCase() || q === itemMapsQuery(it).toLowerCase()) return title;
+    }
+    return '';
+  }
+  const proposalDistHtml = (p, trip) => `<span class="ap-dist"${proposalDistAttrs(p, trip)}></span>`;
 
   // What a proposal's Maps action should BE, which depends on what the proposal
   // is. A place is somewhere you might choose: it gets the star rating and a
@@ -7942,7 +8190,7 @@
             ${detail ? `<span class="as-detail">${esc(detail)}</span>` : ''}
           </span>
         </label>
-        ${proposalDistHtml(p)}
+        ${proposalDistHtml(p, trip)}
         ${proposalPlaceHtml(p)}
       </div>`;
   }
@@ -8013,7 +8261,7 @@
       <div class="ap-title">${esc(d.title || '(no title)')}</div>
       ${meta ? `<div class="ap-meta">${esc(meta)}</div>` : ''}
       ${costStr ? `<div class="ap-cost">${esc(costStr)}</div>` : ''}
-      ${proposalDistHtml(p)}
+      ${proposalDistHtml(p, trip)}
       ${proposalPlaceHtml(p)}
       <div class="ap-actions">
         <button type="button" class="${acceptCls} assist-accept" data-act="accept-proposal">${acceptLabel}</button>
@@ -8077,11 +8325,34 @@
     card.classList.add('stale');
     card.innerHTML = '<div class="ap-reason">This item already changed, nothing applied.</div>';
   }
-  function markProposalDone(card, op) {
+  // `chosenTitle` is set only for an accepted pick-one set: the done stub then
+  // names what was picked and keeps a way BACK into the choice, because a
+  // traveller planning a whole day routinely discovers three slots later that
+  // another dinner candidate fits better. A plain single card keeps the old
+  // one-line stub.
+  function markProposalDone(card, op, chosenTitle) {
     card.classList.remove('invalid');
     card.classList.add('done');
     const word = op === 'add' ? 'Added to your trip' : (op === 'update' ? 'Updated' : 'Removed');
-    card.innerHTML = `<div class="ap-done">✓ ${word}</div>`;
+    const chosen = chosenTitle
+      ? `<div class="ap-done-choice">${esc(chosenTitle)}</div>
+         <div class="ap-actions"><button type="button" class="btn ap-change" data-act="change-choice">Change choice</button></div>`
+      : '';
+    card.innerHTML = `<div class="ap-done">✓ ${word}</div>${chosen}`;
+  }
+
+  // What "Change choice" needs to replace the earlier pick safely: which
+  // itinerary item this set added (by id, never by title/date guessing), what
+  // that item looked like when the assistant added it (so an item the
+  // traveller has since edited is KEPT rather than destroyed), and how to put
+  // the picker back on screen. Keyed by the card element in a WeakMap so a
+  // cleared chat or a switched trip cannot leak entries.
+  const assistChoice = new WeakMap();
+  // The fields the accept wrote, in a stable order; id and createdAt are the
+  // item's own identity, not the choice, so they stay out of the comparison.
+  function assistItemFingerprint(it) {
+    return JSON.stringify(['type', 'title', 'location', 'startDate', 'endDate', 'startTime', 'endTime',
+      'status', 'details', 'mapsQuery', 'cost', 'costNote', 'estCost'].map(k => it[k] === undefined ? null : it[k]));
   }
 
   // Enough to put a consumed card back if the accept is undone: the raw
@@ -8114,9 +8385,29 @@
     const res = validateTripAction(action, trip); // re-validate against CURRENT state
     if (!res.ok) { assistActions.delete(pid); markProposalStale(card); return; }
     const p = res.proposal;
+    let addedItem = null;
     if (p.op === 'add') {
       const added = proposalToItem(p, trip);
+      // A re-pick after "Change choice" REPLACES the earlier pick from this
+      // same set: the prior item is found by the id recorded at accept time
+      // (never by title/date guessing) and removed in the SAME save as the new
+      // add, so undo restores both together and the itinerary never holds two
+      // dinners from one decision. Two safe outs: an item the traveller
+      // deleted is simply gone (nothing to remove), and an item they EDITED
+      // since (fingerprint mismatch) is kept, because destroying their changes
+      // to honour a card would be worse than one extra row.
+      const prior = assistChoice.get(card);
+      let keptEdited = false;
+      if (prior && prior.addedId) {
+        const idx = trip.items.findIndex(x => x.id === prior.addedId);
+        if (idx >= 0) {
+          if (assistItemFingerprint(trip.items[idx]) === prior.fingerprint) trip.items.splice(idx, 1);
+          else keptEdited = true;
+        }
+      }
       trip.items.push(added);
+      addedItem = added;
+      if (keptEdited) toast('You edited the earlier pick, so it was kept; the new choice was added alongside it.');
       // Nothing else to do for the distance chips: the accepted place is now an
       // ITINERARY item, so proposalOrigin finds it on the next repaint like any
       // other plan for that hour, on that day, at its own time. This used to be
@@ -8143,7 +8434,18 @@
     }
     render();
     assistActions.delete(pid);
-    markProposalDone(card, p.op);
+    // an accepted SET remembers its pick so "Change choice" can reopen it;
+    // the restore closure is the same snapshot undo uses
+    const isSet = card.classList.contains('assist-set');
+    if (isSet && addedItem) {
+      assistChoice.set(card, {
+        addedId: addedItem.id,
+        fingerprint: assistItemFingerprint(addedItem),
+        title: p.display.title || '',
+        restore: putCardBack,
+      });
+    }
+    markProposalDone(card, p.op, isSet && addedItem ? (p.display.title || '') : '');
     // the accepted card leaves the route and every remaining chip re-measures
     // from the new anchor, without a reload
     refreshDistances();
@@ -8423,6 +8725,9 @@
     // not wipe the editing state of the item modal still open underneath it.
     if (o.id === 'itemOverlay') { revokeDocUrls(); ui.editingId = null; }
     if (o.id === 'confirmOverlay') ui.confirmAction = null;
+    // the day-route map is rebuilt per open; a kept instance would come back
+    // sized to a closed box
+    if (o.id === 'dayRouteOverlay' && dayRouteMapInstance) { dayRouteMapInstance.remove(); dayRouteMapInstance = null; }
     o.classList.remove('open');
     const uncovered = topOverlay();
     if (uncovered) {
@@ -8548,6 +8853,34 @@
       refreshDistances();
       return;
     }
+    if (act === 'change-choice') {
+      const entry = assistChoice.get(card);
+      if (!entry) return;
+      // the same snapshot undo uses: picker back, radios reset, actions re-armed
+      entry.restore();
+      // Backing out of a reopened choice must not delete anything, so the
+      // second button stops being "Skip this slot" and becomes Cancel, which
+      // returns to the done stub. A fresh set's skip is untouched.
+      const skip = card.querySelector('[data-act="skip-set"]');
+      if (skip) { skip.textContent = 'Cancel'; skip.dataset.act = 'cancel-change'; }
+      refreshDistances();
+      return;
+    }
+    if (act === 'cancel-change') {
+      const entry = assistChoice.get(card);
+      const pids = setPids(card);
+      for (const p of pids) assistActions.delete(p);
+      const trip = activeTrip();
+      const stillThere = entry && trip && trip.items.some(x => x.id === entry.addedId);
+      // the stub may only claim "Added" while the item is actually still on
+      // the trip; if it was deleted meanwhile (undo, a row delete), backing
+      // out leaves nothing to stand behind and the card goes the way a skip
+      // would
+      if (stillThere) markProposalDone(card, 'add', entry.title);
+      else card.remove();
+      refreshDistances();
+      return;
+    }
     const pid = card.dataset.proposalId;
     // a dismissed card is one stop fewer, so the route line recomputes (and
     // disappears once fewer than two located recommendations are left)
@@ -8591,6 +8924,8 @@
     if (btn.dataset.act === 'more') { toggleDetails(btn); return; }
     const act = btn.dataset.act, date = btn.dataset.date;
     if (act === 'ask-day') openAssist(date);
+    // read-only, like ask-day: a shared trip's visitor can look at the route
+    else if (act === 'day-route') openDayRoute(date);
     else if (sharedMode) return;
     else if (act === 'add-day') openItemModal(null, date);
     else if (act === 'share-day') shareDay(date);
@@ -8867,6 +9202,17 @@
       render();
       toast(use24h ? 'Times now shown as 24-hour' : 'Times now shown as 12-hour');
     }
+    else if (act === 'distunit') {
+      useKm = !useKm;
+      localStorage.setItem(DISTUNIT_KEY, useKm ? 'km' : 'mi');
+      setDistanceUnit(useKm ? 'km' : 'mi');
+      syncDistunitLabel();
+      render();
+      // the assistant's chips live outside render()'s views, so they repaint
+      // through the shared pass like every other distance surface
+      refreshDistances();
+      toast(useKm ? 'Distances now shown in kilometers' : 'Distances now shown in miles');
+    }
     else if (act === 'delete-trip') {
       const t = activeTrip();
       confirmDialog('Delete this trip?', `"${t.name}" and its ${t.items.length} item(s) will be permanently deleted.`, 'Delete trip', () => {
@@ -9114,6 +9460,12 @@
       use24h = localStorage.getItem(TIMEFMT_KEY) === '24';
       syncTimefmtLabel();
       render();
+    } else if (key === DISTUNIT_KEY) {
+      useKm = localStorage.getItem(DISTUNIT_KEY) === 'km';
+      setDistanceUnit(useKm ? 'km' : 'mi');
+      syncDistunitLabel();
+      render();
+      refreshDistances();
     }
   });
 
@@ -9130,6 +9482,14 @@
       use24h = localStorage.getItem(TIMEFMT_KEY) === '24';
       syncTimefmtLabel();
       render();
+      return;
+    }
+    if (e.key === DISTUNIT_KEY) {
+      useKm = localStorage.getItem(DISTUNIT_KEY) === 'km';
+      setDistanceUnit(useKm ? 'km' : 'mi');
+      syncDistunitLabel();
+      render();
+      refreshDistances();
       return;
     }
     if (e.key !== LS_KEY) return;
@@ -9178,6 +9538,7 @@
     $(id).max = DATE_MAX;
   }
   syncTimefmtLabel();
+  syncDistunitLabel();
   // Same reader the view-hash writer consults, so the two can never disagree.
   // A hand-retyped "#SHARE=..." used to boot as a normal load, while that
   // writer (correctly case-insensitive) then refused to touch the fragment, so

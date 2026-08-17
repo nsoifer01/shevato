@@ -213,7 +213,7 @@ export async function run({ base, cdpPort }) {
       allPainted, JSON.stringify(painted) + (allPainted ? '' : ' ' + await originDiag(s, '20:00')), s);
     const bar = painted.find(c => c.label === 'Drinks: Above Eleven');
     await t('tp-assist: a suggestion shows its distance before it is added',
-      !!bar && bar.text.includes('km /') && bar.text.includes('mi'),
+      !!bar && /~[\d.]+ mi\b/.test(bar.text) && !bar.text.includes('km'),
       JSON.stringify(painted), s);
     // hotel -> recommended bar: the traveller reads a TIME first, then how far,
     // then from where. All three are on the card itself, not in a tooltip.
@@ -270,7 +270,7 @@ export async function run({ base, cdpPort }) {
     //    after it. Both sides walk the same day in the same time order through
     //    the same builder, so this is the property that makes the pre-add
     //    number trustworthy rather than a second, drifting estimate.
-    const beforeKm = (bar && bar.text.match(/~([\d.]+) km/) || [])[1];
+    const beforeKm = (bar && bar.text.match(/~([\d.]+) mi\b/) || [])[1];
     await clickSel(s, '.assist-proposal[data-op="add"] [data-act="accept-proposal"]', { settle: 900 });
     const accepted = await evaluate(s, `(() => {
       const db = JSON.parse(localStorage.getItem('trip-planner:v1') || 'null');
@@ -289,7 +289,7 @@ export async function run({ base, cdpPort }) {
       const chip = row && row.querySelector('.dc-dist');
       return chip ? { text: chip.textContent, title: chip.title || '' } : null;
     })()`);
-    const afterKm = (dayChip && dayChip.text.match(/~([\d.]+) km/) || [])[1];
+    const afterKm = (dayChip && dayChip.text.match(/~([\d.]+) mi\b/) || [])[1];
     await t('tp-assist: the itinerary distance agrees with the one shown before the add',
       !!beforeKm && beforeKm === afterKm, `before=${beforeKm} after=${afterKm} ${JSON.stringify(dayChip)}`, s);
     await t('tp-assist: the itinerary chip names the same origin in its tooltip',
@@ -371,7 +371,7 @@ export async function run({ base, cdpPort }) {
     await pasteReply(s, REPLY(day), 2);
     const painted = await chips(s);
     await t('tp-assist: two ends on the same city centroid print no fake 0.0 km',
-      painted.length === 2 && painted.every(c => !c.text.includes('0.0 km')), JSON.stringify(painted), s);
+      painted.length === 2 && painted.every(c => !/0\.0 (km|mi)/.test(c.text)), JSON.stringify(painted), s);
     await noErrors('tp-assist 3b', s);
   } catch (err) {
     await t('tp-assist: block 3b ran', false, String(err && err.message || err), s);
@@ -391,14 +391,28 @@ export async function run({ base, cdpPort }) {
     await pasteReply(s, SET_REPLY(day), 1);
     const setPainted = await waitForChips(s, 3);
     const painted = await chips(s);
-    const setOk = setPainted && painted.length === 3 && painted.every(c => c.text.includes('km /'));
+    const setOk = setPainted && painted.length === 3 && painted.every(c => /~[\d.]+ mi\b/.test(c.text));
     await t('tp-assist: all three candidates of a slot carry a distance', setOk,
       JSON.stringify(painted) + (setOk ? '' : ' ' + await originDiag(s, '19:00')), s);
     await t('tp-assist: candidates of one slot all measure from the same origin',
       painted.every(c => c.text.includes(`from ${HOTEL}`)), JSON.stringify(painted.map(c => c.text)), s);
-    const km = painted.map(c => (c.text.match(/~([\d.]+) km/) || [])[1]);
+    const km = painted.map(c => (c.text.match(/~([\d.]+) mi\b/) || [])[1]);
     await t('tp-assist: the candidates are measured individually, not given one shared figure',
       new Set(km).size === 3, JSON.stringify(km), s);
+
+    // Badges: with distances resolved and NO ratings (the default net refuses
+    // tp-places), exactly one candidate wears "Shortest route" - Gaggan, the
+    // closest of the three to the hotel - and no rating-derived badge is
+    // fabricated from the missing data.
+    const badges = await evaluate(s, `[...document.querySelectorAll('#assistMessages .as-opt')]
+      .map(o => ({ title: o.querySelector('.as-title').childNodes[0].textContent,
+        b: [...o.querySelectorAll('.as-badge')].map(x => x.className.replace(/.*as-badge-/, '')) }))`);
+    await t('tp-assist: the closest candidate alone wears the Shortest route badge',
+      badges.filter(x => x.b.includes('fastest')).length === 1
+        && (badges.find(x => x.b.includes('fastest')) || {}).title.includes('Gaggan'),
+      JSON.stringify(badges), s);
+    await t('tp-assist: no rating or popularity badge is invented without Places data',
+      badges.every(x => !x.b.includes('rated') && !x.b.includes('popular')), JSON.stringify(badges), s);
 
     // A reply carrying FIVE candidates for one slot renders five, both as
     // pickable options and as measured cards. Nothing between the model and the
@@ -420,11 +434,169 @@ export async function run({ base, cdpPort }) {
     await waitForChips(s, 4);
     const fiveChips = await evaluate(s, `[...document.querySelectorAll('#assistMessages .ap-dist')].map(e => e.textContent)`);
     await t('tp-assist: every located candidate of a five-option slot is measured',
-      fiveChips.length === 5 && fiveChips.filter(x => x.includes('km /')).length === 4,
+      fiveChips.length === 5 && fiveChips.filter(x => /~[\d.]+ mi\b/.test(x)).length === 4,
       JSON.stringify(fiveChips), s);
     await noErrors('tp-assist 4', s);
   } catch (err) {
     await t('tp-assist: block 4 ran', false, String(err && err.message || err), s);
+  } finally {
+    await done(s); s = null;
+  }
+
+  try {
+    // ---------------------------------------------------------------------
+    // 1b. The return leg's destination is a place the TRIP already knows. The
+    //     hotel here is absent from the venue cache (Photon may be slow, down,
+    //     or unable to find a small hotel) but present in the geocode cache
+    //     under its NAME - the hotel-picker rung - and that must be enough:
+    //     the reported bug was a Return-to-hotel card whose origin resolved
+    //     through Places while its destination waited forever on Photon.
+    freshIds();
+    s = await openApp(cdpPort, base, {
+      db: dbOf([bangkokTrip()]),
+      stores: distanceStores({
+        venues: { 'Above Eleven Bangkok': [13.7430, 100.5560] }, // no hotel entry
+        cities: { bangkok: [13.7563, 100.5018], [HOTEL.toLowerCase()]: [13.7390, 100.5600] },
+      }),
+    });
+    await clickSel(s, '#assistBtn', { settle: 700 });
+    await pasteReply(s, REPLY(day), 2);
+    const got1b = await waitForChips(s, 2);
+    const painted1b = await chips(s);
+    const home1b = painted1b.find(c => c.label === 'Return to hotel');
+    await t('tp-assist: return-to-hotel resolves the hotel through the stay itself',
+      got1b && !!home1b && home1b.text.includes('from Drinks: Above Eleven'),
+      JSON.stringify(painted1b) + (got1b ? '' : ' ' + await originDiag(s, '21:30')), s);
+    await noErrors('tp-assist 1b', s);
+  } catch (err) {
+    await t('tp-assist: block 1b ran', false, String(err && err.message || err), s);
+  } finally {
+    await done(s); s = null;
+  }
+
+  try {
+    // ---------------------------------------------------------------------
+    // 4b. Ratings resolved: the three badges land on three different
+    //     candidates because the data says so, not for variety. Gaggan is the
+    //     closest (fastest), Bo.lan rates 4.8 (highest rated), Nahm carries
+    //     1,660 reviews (most popular).
+    freshIds();
+    const placesNet = (url) => {
+      if (url.includes('/.netlify/functions/tp-places')) {
+        return { status: 200, body: { results: [
+          { query: 'Gaggan Bangkok', status: 'ok', rating: 4.4, userRatingCount: 500, mapsUri: 'https://maps.google.com/?cid=1', lat: 13.7420, lon: 100.5480 },
+          { query: 'Bo.lan Bangkok', status: 'ok', rating: 4.8, userRatingCount: 90, mapsUri: 'https://maps.google.com/?cid=2', lat: 13.7180, lon: 100.5820 },
+          { query: 'Nahm Bangkok', status: 'ok', rating: 4.1, userRatingCount: 1660, mapsUri: 'https://maps.google.com/?cid=3', lat: 13.7250, lon: 100.5410 },
+        ] } };
+      }
+      return EXTERNAL_HOSTS.test(url) ? 'fail' : null;
+    };
+    s = await openApp(cdpPort, base, { db: dbOf([bangkokTrip()]), net: placesNet, stores: distanceStores() });
+    await clickSel(s, '#assistBtn', { settle: 700 });
+    await pasteReply(s, SET_REPLY(day), 1);
+    await waitForChips(s, 3);
+    const gotAll = await waitForExpr(s, `document.querySelectorAll('#assistMessages .as-badge').length >= 3`, { timeout: 8000 });
+    const badged = await evaluate(s, `[...document.querySelectorAll('#assistMessages .as-opt')]
+      .map(o => ({ title: o.querySelector('.as-title').childNodes[0].textContent,
+        b: [...o.querySelectorAll('.as-badge')].map(x => x.className.replace(/.*as-badge-/, '')) }))`);
+    const byTitle = (n) => (badged.find(x => x.title.includes(n)) || {}).b || [];
+    await t('tp-assist: fastest / highest rated / most popular each land on the right candidate',
+      gotAll && JSON.stringify(byTitle('Gaggan')) === '["fastest"]'
+        && JSON.stringify(byTitle('Bo.lan')) === '["rated"]'
+        && JSON.stringify(byTitle('Nahm')) === '["popular"]',
+      JSON.stringify(badged), s);
+    await noErrors('tp-assist 4b', s);
+  } catch (err) {
+    await t('tp-assist: block 4b ran', false, String(err && err.message || err), s);
+  } finally {
+    await done(s); s = null;
+  }
+
+  try {
+    // ---------------------------------------------------------------------
+    // 4c. Change choice: an accepted pick-one stays reversible. Accepting a
+    //     candidate shows what was picked plus a way back in; picking another
+    //     REPLACES the first (never a duplicate); Cancel backs out without
+    //     touching data; and an item the traveller edited meanwhile is kept.
+    freshIds();
+    s = await openApp(cdpPort, base, { db: dbOf([bangkokTrip()]), stores: distanceStores() });
+    await clickSel(s, '#assistBtn', { settle: 700 });
+    await pasteReply(s, SET_REPLY(day), 1);
+    await waitForChips(s, 3);
+    const dinnersIn = async () => evaluate(s, `(() => {
+      const db = JSON.parse(localStorage.getItem('trip-planner:v1') || 'null');
+      const trip = db && db.trips.find(x => x.id === db.activeTripId);
+      return trip ? trip.items.filter(i => (i.title || '').startsWith('Dinner:')).map(i => i.title) : [];
+    })()`);
+    await clickSel(s, '#assistMessages .assist-set input[type="radio"]', { nth: 1, settle: 300 });
+    await clickSel(s, '[data-act="accept-set"]', { settle: 800 });
+    const done1 = await evaluate(s, `(() => {
+      const c = document.querySelector('#assistMessages .assist-set');
+      return { txt: (c.querySelector('.ap-done-choice') || {}).textContent || '',
+        change: !!c.querySelector('[data-act="change-choice"]') };
+    })()`);
+    await t('tp-assist: the accepted set names the pick and offers Change choice',
+      done1.txt.includes('Bo.lan') && done1.change
+        && JSON.stringify(await dinnersIn()) === '["Dinner: Bo.lan"]',
+      JSON.stringify({ done1, items: await dinnersIn() }), s);
+    // change the mind: reopen, pick Nahm, and the itinerary holds ONE dinner
+    await clickSel(s, '[data-act="change-choice"]', { settle: 500 });
+    const reopened = await evaluate(s, `(() => {
+      const c = document.querySelector('#assistMessages .assist-set');
+      return { radios: c.querySelectorAll('input[type="radio"]').length,
+        cancel: (c.querySelector('[data-act="cancel-change"]') || {}).textContent || '' };
+    })()`);
+    await t('tp-assist: Change choice reopens the candidates with a Cancel way out',
+      reopened.radios === 3 && reopened.cancel === 'Cancel', JSON.stringify(reopened), s);
+    await clickSel(s, '#assistMessages .assist-set input[type="radio"]', { nth: 2, settle: 300 });
+    await clickSel(s, '[data-act="accept-set"]', { settle: 800 });
+    await t('tp-assist: picking another candidate replaces the first, never duplicates',
+      JSON.stringify(await dinnersIn()) === '["Dinner: Nahm"]', JSON.stringify(await dinnersIn()), s);
+    // Cancel: back to the stub, data untouched
+    await clickSel(s, '[data-act="change-choice"]', { settle: 500 });
+    await clickSel(s, '[data-act="cancel-change"]', { settle: 500 });
+    const done2 = await evaluate(s, `((document.querySelector('#assistMessages .ap-done-choice') || {}).textContent || '')`);
+    await t('tp-assist: Cancel returns to the accepted stub without touching the trip',
+      done2.includes('Nahm') && JSON.stringify(await dinnersIn()) === '["Dinner: Nahm"]',
+      JSON.stringify({ done2, items: await dinnersIn() }), s);
+    // an item the traveller EDITED is never destroyed by a later re-pick: the
+    // edit happens through the app's own modal, then the re-pick adds the new
+    // choice ALONGSIDE the renamed item
+    await clickSel(s, '#assistMinBtn', { settle: 400 });
+    await waitForExpr(s, `document.getElementById('assistPanel').classList.contains('is-min')`, { timeout: 4000 });
+    await clickSel(s, '#viewDays', { settle: 800 });
+    const editId = await evaluate(s, `(() => {
+      const db = JSON.parse(localStorage.getItem('trip-planner:v1') || 'null');
+      const trip = db && db.trips.find(x => x.id === db.activeTripId);
+      const it = trip.items.find(i => i.title === 'Dinner: Nahm');
+      return it ? it.id : '';
+    })()`);
+    // every step below waits for the state it needs rather than a fixed
+    // settle: the edit modal must actually be OPEN before the title is typed
+    // and CLOSED before the panel comes back, or the later clicks land on
+    // whatever happens to be at those coordinates
+    await clickSel(s, `#daysList [data-act="edit"][data-id="${editId}"]`, { settle: 400 });
+    await waitForExpr(s, `document.getElementById('itemOverlay').classList.contains('open')`, { timeout: 5000 });
+    await setValue(s, '#inTitle', 'My renamed dinner');
+    await clickSel(s, '#itemSaveBtn', { settle: 400 });
+    await waitForExpr(s, `!document.getElementById('itemOverlay').classList.contains('open')`, { timeout: 5000 });
+    await clickSel(s, '#assistMinBtn', { settle: 400 });
+    await waitForExpr(s, `!document.getElementById('assistPanel').classList.contains('is-min')`, { timeout: 4000 });
+    await clickSel(s, '[data-act="change-choice"]', { settle: 500 });
+    await waitForExpr(s, `document.querySelectorAll('#assistMessages .assist-set input[type="radio"]').length === 3`, { timeout: 5000 });
+    await clickSel(s, '#assistMessages .assist-set input[type="radio"]', { nth: 0, settle: 300 });
+    await clickSel(s, '[data-act="accept-set"]', { settle: 800 });
+    const finalTitles = await evaluate(s, `(() => {
+      const db = JSON.parse(localStorage.getItem('trip-planner:v1') || 'null');
+      const trip = db && db.trips.find(x => x.id === db.activeTripId);
+      return trip.items.filter(i => /Dinner:|renamed/.test(i.title || '')).map(i => i.title).sort();
+    })()`);
+    await t('tp-assist: a re-pick keeps an item the traveller edited meanwhile',
+      JSON.stringify(finalTitles) === '["Dinner: Gaggan","My renamed dinner"]',
+      JSON.stringify(finalTitles), s);
+    await noErrors('tp-assist 4c', s);
+  } catch (err) {
+    await t('tp-assist: block 4c ran', false, String(err && err.message || err), s);
   } finally {
     await done(s); s = null;
   }
@@ -488,6 +660,13 @@ export async function run({ base, cdpPort }) {
 
     await clickSel(s, '#assistTierGroup input[value="site"]', { settle: 600 });
 
+    // The picker's day-start control is an ARRIVAL time with a real time
+    // input: it says "First stop at" and takes any value, not just the picks.
+    await t('tp-assist: the picker labels the day start as First stop at',
+      await evaluate(s, `document.getElementById('assistPlanner').innerText.includes('First stop at')`), '', s);
+    await setValue(s, '#assistPlanner input[data-plan-custom="wake"]', '08:45');
+    await sleep(400);
+
     // `posts` fills in NODE (the net rule runs here), so the wait is two-part:
     // the captured request count is polled in Node, and the page is only read
     // once its typing indicator is gone. The old wait interpolated
@@ -511,6 +690,14 @@ export async function run({ base, cdpPort }) {
     const planCtx = planned.tripContext || {};
     await t('tp-assist: the Plan my day picker sends the guided contract',
       planCtx.mode === 'plan', JSON.stringify(planCtx.mode), s);
+    // The time is an arrival contract: the request says when to BE at the
+    // first stop, not when the traveller heads out - and the picker's label
+    // says the same thing.
+    const planText = ((planned.messages || []).slice(-1)[0] || {}).content || '';
+    await t('tp-assist: the plan request asks to be AT the first stop at the chosen time',
+      planText.includes('I want to be at my first planned stop at 8:45 AM')
+        && !planText.includes('ready to head out'),
+      JSON.stringify(planText.split('\n')[1] || ''), s);
     // ...and the origin the cards are measured from rides along, so the model's
     // prose and the chips cannot disagree about where the day starts
     await t('tp-assist: the request carries the origin the cards measure from',
