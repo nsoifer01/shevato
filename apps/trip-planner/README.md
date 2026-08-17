@@ -97,14 +97,20 @@ netlify blobs:set trip-planner-assist config '{}'
 ```
 
 With no key set the endpoint returns `503 not_configured` and the UI tells the
-traveller to use Tier 1 or bring their own key. Tiers 1 and 2 need no setup.
+traveller to use Copy & paste or bring their own key ("Tier 1/2/3" is internal
+shorthand only; the UI names the modes Free assistant / Copy & paste / My API
+key, listed in that order). Tiers 1 and 2 need no setup.
 
 Two failure modes look alike from the browser but are not: `503 not_configured`
 means the key is missing from *this* project's store, while `502 upstream` means
-the key was found and Gemini itself rejected the call (most often a retired
-`GEMINI_MODEL` pin, see the note in `tp-assist.mjs`). A `429` means a quota was
-hit, either this function's own daily limits or Google's. The function logs the
-upstream status and body; the key is never logged.
+the key was found and the upstream call failed: either Gemini rejected it (most
+often a retired `GEMINI_MODEL` pin, see the note in `tp-assist.mjs`) or the call
+outran the function's own upstream deadline (`ASSIST_UPSTREAM_TIMEOUT_MS`, 45s;
+a plan-mode turn legitimately runs 8-14s, so this only fires on a genuinely hung
+upstream). A `429` means a quota was hit, either this function's own daily
+limits or Google's. The function logs the upstream status and body on an HTTP
+error and the error name/message on a timeout or network failure; the key is
+never logged.
 
 **Google's free tier is the real ceiling, not our limiter.** Measured
 2026-07-19 on a free key: `gemini-3.5-flash` allows 5 requests/minute and

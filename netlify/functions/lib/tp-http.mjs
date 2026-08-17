@@ -24,12 +24,17 @@ export function json(obj, status) {
   });
 }
 
-// Upstream calls get a deadline so a hung provider fails fast. The value must
-// sit UNDER Netlify's 10s synchronous-function ceiling: past that the platform
-// kills the invocation and the browser receives a gateway error page instead
-// of our JSON, so the UI's specific "try again / use Tier 1" handling never
-// runs. 9s leaves ~1s for our own error path; measured flash-lite turns run
-// 2-5s, so this only fires on a genuinely hung upstream.
+// Upstream calls get a deadline so a hung provider fails fast, and the value
+// must sit UNDER Netlify's synchronous-function execution limit: past that the
+// platform kills the invocation and the browser receives a gateway error page
+// instead of our JSON, so the UI's specific fallback handling never runs.
+// That platform limit is 60s (docs.netlify.com/build/functions/configuration,
+// "Synchronous execution limit", verified 2026-08-16; an older 10s belief here
+// sized this at 9s and broke every assistant turn longer than that).
+// 9s stays the DEFAULT because tp-places makes two sequential lookups per
+// request and its Places calls run well under a second; callers whose upstream
+// legitimately works longer (tp-assist generating a full day plan) pass their
+// own budget.
 export const UPSTREAM_TIMEOUT_MS = 9000;
 export function upstreamSignal(ms = UPSTREAM_TIMEOUT_MS) {
   return AbortSignal.timeout(ms);

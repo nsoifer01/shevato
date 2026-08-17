@@ -476,6 +476,16 @@ export async function run({ base, cdpPort }) {
     };
     s = await openApp(cdpPort, base, { db: dbOf([bangkokTrip()]), net: tierNet, stores: distanceStores() });
     await clickSel(s, '#assistBtn', { settle: 700 });
+
+    // The three send modes read Free assistant, Copy & paste, My API key, in
+    // that order, and every behavior keys off the radio VALUE: the pair of
+    // facts that makes the order purely presentational.
+    const tierOrder = await evaluate(s, `[...document.querySelectorAll('#assistTierGroup .tier-opt')]
+      .map(l => l.querySelector('input').value + ':' + l.textContent.trim())`);
+    await t('tp-assist: the send modes render as Free assistant, Copy & paste, My API key',
+      JSON.stringify(tierOrder) === JSON.stringify(['site:Free assistant', 'copy:Copy & paste', 'byok:My API key']),
+      JSON.stringify(tierOrder), s);
+
     await clickSel(s, '#assistTierGroup input[value="site"]', { settle: 600 });
 
     // `posts` fills in NODE (the net rule runs here), so the wait is two-part:
@@ -492,6 +502,11 @@ export async function run({ base, cdpPort }) {
     const gotPlanPost = await waitPosts(1);
     await waitForExpr(s, `!document.querySelector('.assist-typing')`, { timeout: 12000 });
     await t('tp-assist: the Plan my day picker POSTs to the site tier', gotPlanPost, `posts=${posts.length}`, s);
+    // ...and the stubbed 200 reply lands in the thread as an assistant bubble:
+    // the round trip the traveller actually sees.
+    const replyShown = await evaluate(s,
+      `[...document.querySelectorAll('#assistMessages .assist-msg.assistant')].some(m => m.textContent.includes('Here you go.'))`);
+    await t('tp-assist: the shared assistant reply renders in the thread', replyShown === true, String(replyShown), s);
     const planned = posts[posts.length - 1] || {};
     const planCtx = planned.tripContext || {};
     await t('tp-assist: the Plan my day picker sends the guided contract',
@@ -510,9 +525,59 @@ export async function run({ base, cdpPort }) {
     await t('tp-assist: a typed message is free-form, whatever the picker sent before it',
       gotChatPost && (typed.tripContext || {}).mode === 'chat', JSON.stringify((typed.tripContext || {}).mode), s);
     await t('tp-assist: both turns went through the same endpoint', posts.length >= 2, `posts=${posts.length}`, s);
+
+    // Each option still owns its behavior after the reorder. The setup block
+    // folds away whenever a thread is in progress (sendMessage collapses it,
+    // and restoreChat re-collapses it on every switch to a chat tier), so it
+    // is reopened through its own Change affordance before every radio click.
+    const openSetup = async () => {
+      if (await evaluate(s, `document.querySelector('#assistSetup').hidden`)) {
+        await clickSel(s, '#assistSetupChange', { settle: 400 });
+      }
+    };
+    await openSetup();
+    await clickSel(s, '#assistTierGroup input[value="copy"]', { settle: 500 });
+    const copyState = await evaluate(s, `({ paste: !!document.querySelector('#assistPasteBox'), composerHidden: document.querySelector('#assistComposer').hidden })`);
+    await t('tp-assist: Copy & paste shows the paste flow and hides the composer',
+      !!copyState && copyState.paste && copyState.composerHidden, JSON.stringify(copyState), s);
+    await openSetup();
+    await clickSel(s, '#assistTierGroup input[value="byok"]', { settle: 500 });
+    const byokState = await evaluate(s, `({ key: !!document.querySelector('#assistKeyInput'), provider: !!document.querySelector('#assistProviderSelect'), composerHidden: document.querySelector('#assistComposer').hidden })`);
+    await t('tp-assist: My API key shows the key fields and the live composer',
+      !!byokState && byokState.key && byokState.provider && !byokState.composerHidden, JSON.stringify(byokState), s);
+    await openSetup();
+    await clickSel(s, '#assistTierGroup input[value="site"]', { settle: 500 });
+    const siteState = await evaluate(s, `({ key: !!document.querySelector('#assistKeyInput'), paste: !!document.querySelector('#assistPasteBox'), composerHidden: document.querySelector('#assistComposer').hidden })`);
+    await t('tp-assist: Free assistant keeps the live chat with no key fields',
+      !!siteState && !siteState.key && !siteState.paste && !siteState.composerHidden, JSON.stringify(siteState), s);
     await noErrors('tp-assist 6', s);
   } catch (err) {
     await t('tp-assist: block 6 ran', false, String(err && err.message || err), s);
+  } finally {
+    await done(s); s = null;
+  }
+
+  try {
+    // ---------------------------------------------------------------------
+    // 6b. A shared-assistant failure has to name options the traveller can
+    //     actually see. The fallback used to say "use Tier 1", internal
+    //     shorthand that appears nowhere in the panel; the wording now points
+    //     at the segmented labels themselves.
+    freshIds();
+    const failNet = (url) => {
+      if (!url.includes('/.netlify/functions/tp-assist')) return EXTERNAL_HOSTS.test(url) ? 'fail' : null;
+      return { status: 502, body: { error: 'upstream' } };
+    };
+    s = await openApp(cdpPort, base, { db: dbOf([bangkokTrip()]), net: failNet, stores: distanceStores() });
+    await clickSel(s, '#assistBtn', { settle: 700 });
+    await clickSel(s, '#assistTierGroup input[value="site"]', { settle: 600 });
+    await clickSel(s, '[data-plan-send]', { settle: 400 });
+    const gotErr = await waitForExpr(s, `!!document.querySelector('#assistMessages .assist-error')`, { timeout: 12000 });
+    const errText = await evaluate(s, `(document.querySelector('#assistMessages .assist-error') || {}).textContent || ''`);
+    await t('tp-assist: an upstream failure suggests Copy & paste, never "Tier 1"',
+      gotErr && errText.includes('Copy & paste') && !errText.includes('Tier 1'), JSON.stringify(errText), s);
+  } catch (err) {
+    await t('tp-assist: block 6b ran', false, String(err && err.message || err), s);
   } finally {
     await done(s); s = null;
   }
