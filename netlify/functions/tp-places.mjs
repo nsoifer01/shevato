@@ -206,6 +206,12 @@ export default async function handler(req) {
 export function quotaExceeded(scope, now) {
   const resetAt = resetAtFor(scope, now);
   const seconds = Math.max(1, Math.ceil((resetAt - now) / 1000));
+  // Logged because the 2026-08-17 round had to be diagnosed by reading the
+  // counters blob by hand: a rejection wrote NOTHING to the function log, so
+  // "which bucket refused this?" was unanswerable from the logs alone - the
+  // same blind spot the tp-assist timeout had. No clientId (attacker-minted
+  // and not ours to record), just the bucket and how long it is shut.
+  console.warn('tp-places quota_exceeded', scope, 'for', seconds + 's');
   return new Response(JSON.stringify({ error: 'quota_exceeded', scope, resetAt }), {
     status: 429,
     headers: { 'Content-Type': 'application/json', 'Retry-After': String(seconds) },

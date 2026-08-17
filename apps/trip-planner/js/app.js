@@ -565,7 +565,7 @@
     if (lastRateAttempt.base === base && Date.now() - lastRateAttempt.at < 60000) return;
     lastRateAttempt = { base, at: Date.now() };
     ratesFetching = true;
-    // Bound the request the same way the places lookup is (app.js fetchRatingBatch):
+    // Bound the request the same way the places lookup is (sendPlacesBatch):
     // without this, a hung connection leaves ratesFetching true forever and the
     // "Fetching exchange rates..." note never clears. On abort the catch below
     // flips ratesFailed, so the note falls back to "Could not fetch..." instead.
@@ -1592,10 +1592,10 @@
 
     board.innerHTML = html;
     syncSelectUi(selectableIds);
-    // Paint any ratings the session already knows and batch-fetch only the
-    // genuinely-missing queries. Routing through hydrateRatings means a re-render
-    // or a repeat venue costs nothing (placesKnown dedups), and a trip with no
-    // mapsQuery items fires no request at all.
+    // Paint any ratings the session already knows, then register the rest with
+    // the queue: rows are looked up as they approach the viewport, so a
+    // re-render, a repeat venue or a trip with no mapsQuery items all cost
+    // nothing at all.
     hydrateRatings(board);
 
     if (phase.phase === 'during' && !didAutoScroll) {

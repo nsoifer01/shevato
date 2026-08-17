@@ -353,6 +353,14 @@ What changed:
   (`PLACES_MAX_ATTEMPTS`), `unavailable` results are parked for 10 minutes
   rather than re-asked by the next repaint, and `global_month` parks until the
   month turns instead of being retried all day.
+- **Server-side coalescing of concurrent identical lookups was investigated and
+  deliberately NOT built.** Netlify runs one instance per request, so an
+  in-process map would only dedup within one instance and anything real would
+  need distributed locking over the Blobs store. With the client now coalescing
+  by key, a single browser can no longer produce concurrent identical lookups
+  at all; what remains is two DIFFERENT visitors asking for the same venue in
+  the same second, which costs one extra $0.02 Details call. That is not worth
+  a lock.
 - **Per-client caps were raised; the POOLS were not.** Public 30/60 became
   60/120, owner 300/600 became 500/1200, while `globalDay` 200, `globalMonth`
   1500, `ownerDay` 1000 and `ownerMonth` 3000 are untouched. That keeps the
@@ -376,6 +384,29 @@ Measured after, same harness, 250ms round trip, 1280x900:
 Zero duplicates in every case, and zero 429s even when the fake server is held
 at the OLD 30/hour cap - the architecture, not the raised limit, is what fixed
 it. Time to the first rating is ~350ms regardless of trip size.
+
+**The owner tier works, and it is per-BROWSER, not per-person.** Audited end to
+end this round: `ownerToken` lives in the config blob, the owner pastes it into
+`localStorage['trip-planner:places:ownerToken']` once per ORIGIN, and
+`placesRequestBody` attaches it to every request. It has nothing to do with
+being signed in - the site's Firebase auth and this bearer secret never meet.
+Production counters confirm it is live (`ownerDay`/`ownerMonth` were moving
+while `globalDay`/`globalMonth` stayed put), and the bucket separation holds in
+both directions (pinned by tests: a maxed owner cannot lock visitors out, and a
+maxed public pool does not throttle the owner). The ergonomic consequence is
+worth knowing before diagnosing a "why am I rate-limited" report: the owner's
+phone, a second browser, a private window and shevato.com-vs-localhost each
+need their own paste, and any of them without it is an ordinary public visitor
+on 60/hour. Binding that to real auth instead of a pasted bearer secret is the
+obvious improvement and was deliberately NOT done here - it is an auth change,
+not a rate-limit change. (The configured token is also 43 characters against
+the 64+ the setup note asks for; harmless, but rotate it longer next time.)
+
+**Quota rejections now log.** A 429 used to write nothing to the function log,
+so "which bucket refused this?" could only be answered by reading the counters
+blob by hand - the same blind spot that made the tp-assist 502 undiagnosable.
+`quotaExceeded` now `console.warn`s the scope and the shut duration. No
+clientId: it is attacker-minted and not ours to record.
 
 Traps this round minted:
 
