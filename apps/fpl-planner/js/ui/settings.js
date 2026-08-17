@@ -135,7 +135,7 @@ export function settingsView({
     deleteAllRow({ onDataRemoved }),
     settingRow({
       title: 'Deleting your whole Shevato account',
-      text: 'That is not offered here, because it is not this app\'s to delete: your account covers every app on the site. Email nikita@shevato.com and it will be done for you.',
+      text: 'That is not offered here, because it is not this app\'s to delete: your account covers every app on the site. Click your name in the site header, choose Sign Out, then "Delete account and all data" at the bottom of that window. It asks for your password and a typed DELETE before anything is removed.',
       actions: [],
       statusNode: null,
     }),
