@@ -399,10 +399,25 @@ what else could use the same credential, and two paths were live:
 
 **The field name is a version gate.** `resolvePlacesKey` reads
 `cfg.placesKeyV2`, with NO fallback to `cfg.placesKey`. Every function version
-ever deployed before that change looks up `placesKey`, so once that field is
-removed from the blob they all resolve nothing and answer 503 `not_configured`
-forever, spending nothing. A fallback would reopen exactly the hole this
-closes; a test asserts the old field can never configure the endpoint.
+ever deployed before that change looks up `placesKey`, so with that field gone
+they all resolve nothing and answer 503 `not_configured` forever, spending
+nothing. A fallback would reopen exactly the hole this closes; a test asserts
+the old field can never configure the endpoint.
+
+**THE CUTOVER IS DONE (2026-08-18, after #411 `d175ba8` and #413 `8e38a2d`
+deployed).** Verified, not assumed:
+- `placesKey` removed from the live config blob; it now holds exactly
+  `ownerToken` + `placesKeyV2`.
+- The old Google key `tp-places-ratings`
+  (`548bcc54-14c9-4b92-9999-106a60004360`) is DELETED, not disabled.
+  `tp-places-ratings-v2` is the only Places-capable key in the project; the
+  Gemini and Firebase keys are API-restricted to other services.
+- Three old production permalinks that previously resolved a key were re-probed
+  and all answer `503 not_configured` (a $0 probe: `not_configured` is checked
+  BEFORE the generic-query branch, so a `generic_query` reply proves a key was
+  resolved and a 503 proves none was).
+- Production on the new credential still serves ratings, and they still consume
+  the shared budget (`billedMonth` 2 -> 3 on one public lookup).
 
 **Rotation.** A new key (`tp-places-ratings-v2`, restricted to
 `places.googleapis.com`) replaced the old one. Rotation is what kills copies
@@ -592,6 +607,18 @@ clientId: it is attacker-minted and not ours to record.
 
 Traps this round minted:
 
+- **Netlify Blobs reads are eventually consistent.** A status read issued
+  immediately after a lookup can return the PRE-write counters. During the
+  rollout this briefly made a public lookup look as though it had been billed
+  to the owner tier; the settled read reconciled exactly
+  (`billedMonth 2 = owner 1 + public 1`). Always re-read before concluding a
+  counter is wrong, and never diagnose a tier bug from a single fresh read.
+- **GitHub CLOSES a stacked PR when its base branch is deleted.** Merging #411
+  with `--delete-branch` closed #412 (based on that branch) outright, and it
+  could not be reopened because its base no longer existed. The branch itself
+  survived, so the fix was a new PR (#413) from the same branch against master.
+  Merge a stacked pair base-first WITHOUT deleting the base, or expect to
+  re-open the child.
 - **A Netlify deploy preview CANNOT exercise ratings through its own UI.**
   `originAllowed` accepts `shevato.com` and localhost only, so a page served
   from `deploy-preview-N--shevato.netlify.app` gets 403, which the client reads
