@@ -249,6 +249,15 @@ npm run test:trip-planner:e2e    # browser E2E: headless Chromium over the real 
 npm run test:trip-planner:e2e:headed   # same, in a visible browser for debugging
 ```
 
+Every external origin this app fetches (Nominatim, all three Open-Meteo hosts,
+Photon, Frankfurter, GitHub raw, OpenAI, Gemini) also has to be listed in
+`connect-src` in the repo-root `netlify.toml`, which is the only place the
+site's CSP is defined. `tests/static/csp-connect-src.test.mjs` (part of the
+root `npm test`) parses that header and fails if one is missing, because the
+policy is Report-Only and a missing origin otherwise costs nothing but a
+console warning nobody reads. See FINDINGS "Every provider origin has to be in
+the site CSP".
+
 Pure-logic tests via `node --test` against `js/trip-logic.js` (dual-exposed as
 `window.TripLogic` and a CommonJS module). No installs, no config. The Tier 3
 function's quota math and request guards have their own suite (run by the root

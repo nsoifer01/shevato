@@ -369,6 +369,8 @@ In-app navigation deliberately reports `app_view`, never a synthetic
 
 The site is deployed to Netlify. `netlify.toml` defines security headers (HSTS, X-Frame-Options, Permissions-Policy, CSP-Report-Only) and long-cache directives for the gym-tracker assets. Any other static host works identically — just keep the directory layout intact.
 
+`netlify.toml` is the ONLY place the site's CSP is defined (no `_headers` file, no `<meta http-equiv>`, no per-app copy). Because it ships as Report-Only, an origin missing from `connect-src` does not break anything, it just logs a console violation, so `tests/static/csp-connect-src.test.mjs` parses that header and fails when first-party client JS fetches an origin the policy does not allow (and when the policy lists one nothing uses). Adding a `fetch()` to a new origin means adding it to `connect-src` and to that test's inventory in the same change.
+
 ## Browser Support
 
 Latest two versions of Chrome, Edge, Firefox, and Safari (desktop and mobile).
