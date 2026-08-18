@@ -119,18 +119,9 @@ export default async function handler(req) {
   const { placesStore, blobCache, CONFIG_KEY, USAGE_KEY } = await import('./lib/tp-places-store.mjs');
   const store = placesStore();
   const cfg = (await store.get(CONFIG_KEY, { type: 'json' })) || {};
-  // The env key is a LOCAL DEVELOPMENT AFFORDANCE and it now needs a second,
-  // explicit opt-in. `netlify dev` serves functions against a LOCAL blob store,
-  // so a localhost lookup spends REAL money on the shared card while its
-  // counters land in `.netlify/blobs-serve` - a directory that is wiped with
-  // the checkout and is invisible to the production budget. That channel is
-  // measurable: the local store held 129 owner lookups for August 2026 that no
-  // production counter had ever seen. A key alone must therefore not be enough
-  // to bill the card from a laptop; TP_PLACES_ALLOW_LOCAL_SPEND=1 is the
-  // deliberate "yes, charge me" and is never set in production (deployed
-  // functions on this site get no env vars injected at all).
-  const localKey = process.env.TP_PLACES_ALLOW_LOCAL_SPEND === '1' ? process.env.TP_PLACES_KEY : '';
-  const placesKey = cfg.placesKey || localKey;
+  // Which credential, and from where, is decided by resolvePlacesKey below:
+  // the blob's placesKeyV2 (production), or an explicitly opted-in local key.
+  const placesKey = resolvePlacesKey(cfg, process.env);
   if (!placesKey) return json({ error: 'not_configured' }, 503);
 
   // Owner tier: a request carrying the ownerToken secret from the config blob
@@ -222,6 +213,38 @@ export default async function handler(req) {
   }
 
   return json({ results, attribution: ATTRIBUTION }, 200);
+}
+
+// WHICH CREDENTIAL MAY BE USED, and from where. Exported so the rule is pinned
+// by tests rather than living inside the handler.
+//
+// THE FIELD NAME IS A VERSION GATE, and that is its whole point. Netlify keeps
+// every deploy permalink alive forever, and an old deploy runs OLD CODE against
+// the LIVE config blob. Verified on 2026-08-18: a production permalink from
+// before the monthly budget shipped still answered tp-places and still resolved
+// the key, which is a live path to billable Place Details calls that never
+// touch the 850-call guard, reachable by anyone who knows a deploy URL (the
+// origin check is forgeable and is documented as defence-in-depth only).
+//
+// Reading `placesKeyV2` closes it in one move: every function version ever
+// deployed before this line looks up `placesKey`, so once that field is removed
+// from the blob they all get undefined and answer 503, spending nothing,
+// permanently. There is deliberately NO fallback to `cfg.placesKey` - a
+// fallback would reopen exactly the hole this closes.
+//
+// The env key stays a LOCAL DEVELOPMENT AFFORDANCE and needs a second explicit
+// opt-in: `netlify dev` runs against a LOCAL blob store, so a localhost lookup
+// would spend real money while its counters landed somewhere the budget cannot
+// see (measured: 129 such lookups in August 2026). A key alone must not be
+// enough to bill the card from a laptop.
+export function resolvePlacesKey(cfg, env) {
+  const c = cfg || {};
+  const e = env || {};
+  if (typeof c.placesKeyV2 === 'string' && c.placesKeyV2) return c.placesKeyV2;
+  if (e.TP_PLACES_ALLOW_LOCAL_SPEND === '1' && typeof e.TP_PLACES_KEY === 'string' && e.TP_PLACES_KEY) {
+    return e.TP_PLACES_KEY;
+  }
+  return '';
 }
 
 // Every 429 this function emits says WHICH bucket rejected the batch and WHEN

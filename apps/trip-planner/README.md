@@ -227,8 +227,17 @@ curl -s -H "X-TP-Owner-Token: <token>" -H "Origin: https://shevato.com" \
 ```
 
 Local `netlify dev` will NOT spend against the real card on a key alone: it also
-needs `TP_PLACES_ALLOW_LOCAL_SPEND=1`, because a local run's counters land in a
-throwaway local blob store and are invisible to this budget.
+needs `TP_PLACES_ALLOW_LOCAL_SPEND=1`, and the production key is no longer in
+`.env` at all. For paid local testing, create a SEPARATE dev key in Google Cloud
+restricted to `places.googleapis.com`.
+
+**The credential lives in exactly one place**: the `trip-planner-places` config
+blob, under `placesKeyV2`. The field name is a version gate - every function
+version deployed before that field existed reads `placesKey`, so old Netlify
+deploy permalinks (which stay live forever and would otherwise run pre-guard
+code against the live blob) resolve nothing and answer 503. Google also enforces
+a **500/day** cap on `GetPlaceRequest` for the whole project, which bounds any
+path that somehow avoids the guard.
 
 ## Tests
 

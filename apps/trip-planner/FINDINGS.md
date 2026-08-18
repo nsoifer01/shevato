@@ -383,6 +383,49 @@ lookup in **every** tier via the `billedMonth` counter and reported as scope
   month rather than retrying, rows keep their plain `Google Maps` search links,
   the app is otherwise untouched, and the traveller is told once.
 
+### Credential isolation: what may use the Places key (2026-08-18)
+
+The 850 guard only governs calls that pass THROUGH the guarded function. Audited
+what else could use the same credential, and two paths were live:
+
+| caller | could spend outside the guard? | how it was closed |
+|---|---|---|
+| current production (`shevato`, fe5f021f) | no, it IS the guarded path | - |
+| **any old deploy permalink** | **yes** - Netlify keeps every deploy alive forever, and old code reads the LIVE config blob | field rename (below) |
+| **this laptop's `.env`** | **yes** - held the SAME key as production, verified by sha256 | key removed from `.env`, credential rotated |
+| deploy previews | yes, but they run current code, so guarded | - |
+| second Netlify project `shevato-site` (other account) | **no** - probed live, answers `not_configured`, it has no key | - |
+| any other copy ever pasted anywhere | unknown | credential rotated |
+
+**The field name is a version gate.** `resolvePlacesKey` reads
+`cfg.placesKeyV2`, with NO fallback to `cfg.placesKey`. Every function version
+ever deployed before that change looks up `placesKey`, so once that field is
+removed from the blob they all resolve nothing and answer 503 `not_configured`
+forever, spending nothing. A fallback would reopen exactly the hole this
+closes; a test asserts the old field can never configure the endpoint.
+
+**Rotation.** A new key (`tp-places-ratings-v2`, restricted to
+`places.googleapis.com`) replaced the old one. Rotation is what kills copies
+that live OUTSIDE the blob - a laptop, a note, an old paste - because those hit
+Google directly and never read a field name.
+
+**A Google-enforced backstop.** The project's `GetPlaceRequest` daily quota was
+lowered from the default **100,000/day to 500/day**. This is enforced by Google
+for every credential and every path, so it cannot be bypassed by anything. 500
+sits just above the app's own maximum guarded draw (owner 300 + public 150 =
+450/day) and cuts a runaway from roughly $2,000/day to $10/day. It is a
+blast-radius cap, NOT a monthly bound: a daily quota tight enough to bound a
+month under 1,000 would be about 32/day, far below what one legitimate day
+needs. Do not mistake it for the monthly guarantee - `MONTHLY_BUDGET` is that.
+
+**What this cannot do.** A Google API key used for server-to-server REST calls
+cannot be bound to a particular deployment: there is no application restriction
+that fits (referrer restrictions are for browser keys and are not sent on
+server calls; an IP allowlist needs stable egress IPs, which Netlify Functions
+do not have on this plan). So the control is POSSESSION plus the daily quota:
+the credential exists only in the production config blob, and anyone who
+extracted it from there could use it elsewhere, bounded at 500 calls/day.
+
 ### August 2026 is a TRANSITION month - do not reconcile against it
 
 The guard shipped mid-month, so August's numbers cannot be used to validate our
