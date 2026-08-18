@@ -3268,9 +3268,15 @@ const TripLogic = (() => {
       case 'client_hour': return HOUR - (t % HOUR);
       case 'client_day':
       case 'global_day': return DAY - (t % DAY);
-      case 'global_month': {
-        const d = new Date(t);
-        return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1) - t;
+      // The monthly free-allowance budget (see MONTHLY_BUDGET server-side).
+      // Nothing frees up until the billing month turns, so this parks rather
+      // than retries; the 8h shift matches the server's boundary, which is
+      // deliberately no earlier than Google's own reset.
+      case 'global_month':
+      case 'free_month': {
+        const shift = 8 * HOUR;
+        const d = new Date(t - shift);
+        return (Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1) + shift) - t;
       }
       // Contention is the one genuinely transient rejection (many writers on
       // one counter blob), so it backs off in seconds with jitter rather than

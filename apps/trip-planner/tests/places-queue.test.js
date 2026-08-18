@@ -224,8 +224,11 @@ test('the retry delay matches the bucket that actually refills', () => {
   assert.equal(L.placesRetryDelay('client_hour', t), 60000, 'waits for the next hour bucket, not a full hour');
   assert.equal(L.placesRetryDelay('client_day', t), 86400000 - (t % 86400000));
   assert.equal(L.placesRetryDelay('global_day', t), L.placesRetryDelay('client_day', t));
-  const month = L.placesRetryDelay('global_month', t);
-  assert.equal(new Date(t + month).toISOString(), '2026-09-01T00:00:00.000Z');
+  // The month scopes park until the BILLING month turns, which is 08:00Z on
+  // the 1st rather than UTC midnight: the server never resets its free-usage
+  // budget earlier than Google does, and the client must not retry sooner.
+  assert.equal(new Date(t + L.placesRetryDelay('global_month', t)).toISOString(), '2026-09-01T08:00:00.000Z');
+  assert.equal(new Date(t + L.placesRetryDelay('free_month', t)).toISOString(), '2026-09-01T08:00:00.000Z');
   // Contention is the one genuinely transient scope: seconds, with jitter.
   const c = L.placesRetryDelay('contention', t, 1, () => 0.5);
   assert.ok(c >= 500 && c <= 1000, `contention backs off in seconds, got ${c}`);

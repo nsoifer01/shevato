@@ -202,6 +202,34 @@ request (`createPlacesQueue` in trip-logic.js):
   for long enough to matter, the app says so once in a toast rather than putting
   an error badge on forty rows.
 
+### The monthly budget (why ratings can stop, on purpose)
+
+A rating is a Place Details Enterprise call: **1,000 free per calendar month
+per Google project, then $0.02 each**. `MONTHLY_BUDGET` in
+`lib/tp-places-quota.mjs` is a single **850-call ceiling shared by every tier**,
+so owner and public traffic draw on one pot and cannot add up to a bill between
+them. It is enforced inside the same atomic reservation the rest of the quota
+uses, before any call to Google, and it resets at 08:00Z on the 1st (never
+earlier than Google's own reset).
+
+850 rather than 1,000 because our counter is not provably equal to Google's
+billed number - see FINDINGS for the August 2026 reconciliation - so 15% is
+held back. At the ceiling the cost is $0.00.
+
+When it is exhausted the endpoint answers `429 {scope:"free_month"}` with
+`Retry-After`; the client parks for the rest of the month, every row keeps its
+plain `Google Maps` link, and the traveller is told once. Check where the month
+stands with an owner-gated status read:
+
+```
+curl -s -H "X-TP-Owner-Token: <token>" -H "Origin: https://shevato.com" \
+  "https://shevato.com/.netlify/functions/tp-places?status=1"
+```
+
+Local `netlify dev` will NOT spend against the real card on a key alone: it also
+needs `TP_PLACES_ALLOW_LOCAL_SPEND=1`, because a local run's counters land in a
+throwaway local blob store and are invisible to this budget.
+
 ## Tests
 
 Three layers, lowest appropriate layer wins:

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkQuota, releaseQuota, DEFAULT_LIMITS, OWNER_LIMITS } from '../lib/tp-places-quota.mjs';
+import { checkQuota, releaseQuota, MONTHLY_BUDGET, DEFAULT_LIMITS, OWNER_LIMITS } from '../lib/tp-places-quota.mjs';
 import { clampBody, ownerTokenMatches } from '../tp-places.mjs';
 
 // The owner tier: requests carrying the ownerToken secret are governed by
@@ -64,19 +64,29 @@ test('owner limits are an order of magnitude up but still finite', () => {
   // assertion starts failing because the numbers grew, reread that sentence
   // before merging.
   assert.deepEqual(OWNER_LIMITS, {
-    perClientHour: 500,
-    perClientDay: 1200,
-    globalDay: 1000,
-    globalMonth: 3000,
+    perClientHour: 300,
+    perClientDay: 400,
+    globalDay: 300,
+    globalMonth: 600,
   });
-  // The pools are the cost control and did NOT move when the per-client caps
-  // were raised on 2026-08-17; this is the assertion that says so.
-  assert.equal(OWNER_LIMITS.globalMonth, 3000, 'the $40/month owner ceiling is unchanged');
-  assert.equal(OWNER_LIMITS.globalDay, 1000, 'the owner day pool is unchanged');
   for (const k of Object.keys(DEFAULT_LIMITS)) {
-    assert.ok(OWNER_LIMITS[k] > DEFAULT_LIMITS[k], k + ' is above the public limit');
     assert.ok(Number.isFinite(OWNER_LIMITS[k]), k + ' is finite');
   }
+  // The owner may draw FASTER than the public tier...
+  assert.ok(OWNER_LIMITS.perClientHour > DEFAULT_LIMITS.perClientHour);
+  assert.ok(OWNER_LIMITS.perClientDay > DEFAULT_LIMITS.perClientDay);
+  assert.ok(OWNER_LIMITS.globalDay > DEFAULT_LIMITS.globalDay);
+  // ...but its MONTH share is deliberately SMALLER, and that is not a typo:
+  // the owner's own browsing was 1,202 of 1,521 lookups in August 2026, so
+  // without a sub-ceiling a heavy planning day would leave the site's actual
+  // visitors with no ratings for the rest of the month.
+  assert.ok(OWNER_LIMITS.globalMonth < MONTHLY_BUDGET,
+    'the owner cannot take the whole shared budget');
+  assert.ok(MONTHLY_BUDGET - OWNER_LIMITS.globalMonth >= 200,
+    'a meaningful share stays reserved for visitors');
+  // And no tier limit may exceed the shared ceiling.
+  assert.ok(OWNER_LIMITS.globalMonth <= MONTHLY_BUDGET);
+  assert.ok(DEFAULT_LIMITS.globalMonth <= MONTHLY_BUDGET);
 });
 
 // The 2026-08-17 production failure in one assertion. The owner is ONE browser

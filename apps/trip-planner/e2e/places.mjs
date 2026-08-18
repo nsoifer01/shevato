@@ -242,6 +242,52 @@ export async function run({ base, cdpPort }) {
     });
   }
 
+  /* ---- P5b. the month's free allowance is gone: still a usable app ------- */
+  freshIds();
+  {
+    const log = [];
+    const P5b = 'MonthVenue';
+    const t5b = venueTrip(12, 'Exhausted trip', P5b);
+    // scope free_month is the shared monthly budget, the one that protects the
+    // card. Nothing frees up until the billing month turns, so the app must
+    // degrade for the whole session without looking broken.
+    const net = (url, request) => {
+      if (!url.includes('tp-places')) return EXTERNAL_HOSTS.test(url) ? 'fail' : null;
+      let body = {}; try { body = JSON.parse(request.postData || '{}'); } catch { /* empty */ }
+      log.push({ queries: body.queries || [], clientId: body.clientId || '', ownerToken: body.ownerToken || null });
+      return {
+        status: 429,
+        body: { error: 'quota_exceeded', scope: 'free_month', resetAt: Date.now() + 14 * 86400000 },
+        headers: { 'Retry-After': String(14 * 86400) },
+      };
+    };
+    await withPage('tp-places P5b', { db: dbOf([t5b]), net }, async (s) => {
+      await sleep(2500);
+      const asked = totals(log, P5b).posts;
+      await t('tp-places P5b: every row still renders its Maps link',
+        (await slotCount(s)) === 12, String(await slotCount(s)), s);
+      await t('tp-places P5b: no rating is painted and no error badge appears',
+        (await paintedCount(s)) === 0 && (await evaluate(s, `document.querySelectorAll('#board .tpm-rating').length`)) === 0, '', s);
+      await t('tp-places P5b: the Maps links still open a real search',
+        (await evaluate(s, `[...document.querySelectorAll('#board .tp-maps-link[data-place-key]')].every(a => /^https:\\/\\/www\\.google\\.com\\/maps\\/search/.test(a.getAttribute('href')))`)) === true, '', s);
+
+      // The app itself must stay fully usable.
+      await switchView(s, 'days');
+      await sleep(1000);
+      await t('tp-places P5b: Days view still renders',
+        (await evaluate(s, `document.querySelectorAll('#daysList .dc-event').length`)) > 0, '', s);
+      await switchView(s, 'timeline');
+      await sleep(1000);
+      await scrollBoardToEnd(s);
+      await sleep(2000);
+      await t('tp-places P5b: scrolling does not re-ask a month that cannot refill',
+        totals(log, P5b).posts <= Math.max(2, asked),
+        `${asked} before, ${totals(log, P5b).posts} after scrolling the whole trip`, s);
+      await t('tp-places P5b: the traveller is told once, not per row',
+        (await evaluate(s, `[...document.querySelectorAll('#toasts .toast')].filter(x => /allowance/i.test(x.textContent)).length`)) <= 1, '', s);
+    });
+  }
+
   /* ------------- P6/P7. partial results paint what they got --------------- */
   freshIds();
   {

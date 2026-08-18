@@ -7965,7 +7965,7 @@
     if (st.off || !st.pausedUntil) return;
     if (st.pausedUntil - Date.now() < PLACES_NOTICE_MIN_MS) return;
     placesNoticeShown = true;
-    toast('Google ratings are paused for now - the daily lookup allowance is used up. Everything else works as usual.');
+    toast('Google ratings are paused for now - the free lookup allowance is used up. Everything else works as usual.');
   }
 
   const placesQueue = createPlacesQueue({

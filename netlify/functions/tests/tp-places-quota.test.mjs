@@ -86,16 +86,29 @@ test('the daily cap resets the next day and the month counter carries', () => {
   assert.equal(next.usage.globalMonth, 9, 'the month bucket is unchanged by a day rollover');
 });
 
-test('the month counter resets on the calendar boundary, matching Google', () => {
-  // Google's complimentary allowance resets per calendar month, so a rolling
-  // 30-day window would drift out of step with the thing it is protecting.
+test('the month counter resets on the billing boundary, never before Google', () => {
+  // Google's complimentary allowance resets per calendar month on the BILLING
+  // ACCOUNT's clock, not ours. Resetting earlier than Google would hand out a
+  // fresh budget while Google was still counting the old month, which is the
+  // one direction that can produce a bill, so the bucket rolls at 08:00Z on
+  // the 1st (00:00 PST exactly, 01:00 PDT i.e. an hour late).
   let u = {};
   for (let i = 0; i < 12; i++) u = checkQuota(u, 'c' + i, Date.UTC(2026, 6, 31, 23, 0, 0), 1, monthOnly).usage;
-  const blocked = checkQuota(u, 'cx', Date.UTC(2026, 6, 31, 23, 30, 0), 1, monthOnly);
-  assert.equal(blocked.scope, 'global_month');
-  const august = checkQuota(u, 'cx', Date.UTC(2026, 7, 1, 0, 30, 0), 1, monthOnly);
+
+  // Still July's budget at UTC midnight, which is where a naive UTC month
+  // would have reset and started spending Google's already-used allowance.
+  const utcMidnight = checkQuota(u, 'cx', Date.UTC(2026, 7, 1, 0, 30, 0), 1, monthOnly);
+  assert.equal(utcMidnight.allowed, false, 'UTC midnight must NOT open a new month');
+  assert.equal(utcMidnight.scope, 'global_month');
+
+  // Just before the shifted boundary: still closed.
+  assert.equal(checkQuota(u, 'cx', Date.UTC(2026, 7, 1, 7, 59, 0), 1, monthOnly).allowed, false);
+
+  // At 08:00Z on the 1st the new month opens.
+  const august = checkQuota(u, 'cx', Date.UTC(2026, 7, 1, 8, 0, 0), 1, monthOnly);
   assert.equal(august.allowed, true);
   assert.equal(august.usage.globalMonth, 1);
+  assert.equal(august.usage.billedMonth, 1, 'the shared budget rolls with it');
 });
 
 test('stale buckets are pruned so the usage blob cannot grow without bound', () => {
@@ -158,7 +171,9 @@ test('resetAtFor names the moment the rejecting bucket next refills', () => {
   assert.equal(resetAtFor('client_hour', t), Date.UTC(2026, 7, 17, 11, 0, 0));
   assert.equal(resetAtFor('client_day', t), Date.UTC(2026, 7, 18, 0, 0, 0));
   assert.equal(resetAtFor('global_day', t), Date.UTC(2026, 7, 18, 0, 0, 0));
-  assert.equal(resetAtFor('global_month', t), Date.UTC(2026, 8, 1, 0, 0, 0));
+  // The month reset follows the SHIFTED boundary the counter actually honours.
+  assert.equal(resetAtFor('global_month', t), Date.UTC(2026, 8, 1, 8, 0, 0));
+  assert.equal(resetAtFor('free_month', t), Date.UTC(2026, 8, 1, 8, 0, 0));
   // Contention is the one genuinely transient scope and clears in seconds.
   assert.ok(resetAtFor('contention', t) - t <= 5000);
   // An unknown scope must still be finite and forward-looking.

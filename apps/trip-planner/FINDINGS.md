@@ -290,6 +290,111 @@ Probe traps this round minted:
   from lunch. Correct behaviour; fixtures that want a pure
   anchor->stops chain start the stay the night before.
 
+## Places billing: the free allowance is the real ceiling (2026-08-18)
+
+**Google's billing, not our counters, is the source of truth, and they did not
+agree.** Verified in Cloud Billing for project `shevato-site`, SKU
+`Places API Place Details Enterprise` (`2D9A-3DE0-3766`):
+
+| | |
+|---|---|
+| August 2026 usage | **2,915 calls**, $38.30 gross, -$38.30 promotional credit, **$0.00 net** |
+| July 2026 | $9.24 gross, -$9.24 credit, $0.00 net |
+| `GCP Free Credit` | $300 original, **$251.24 remaining**, one-time, **expires 2026-10-18** |
+| `Text Search Essentials (IDs Only)` | 705 calls, **$0.00** (unlimited free; not the expensive one) |
+
+These are HISTORICAL OBSERVATIONS, not constants to build on. **The net $0 is a
+temporary promotional credit, not a free tier.** After 2026-10-18 the same
+2,915 calls would be a $38.30 invoice. Everything below is designed as if the
+credit does not exist.
+
+**Pricing, re-verified:** 1,000 Place Details Enterprise calls free per calendar
+month, per SKU, **per project**; $20/1,000 (i.e. $0.02) past that.
+
+### Why 2,915 when our counter said 1,521
+
+Traced, not assumed. Cloud Monitoring
+(`serviceruntime.googleapis.com/api/request_count`, service
+`places.googleapis.com`) gives the authoritative shape:
+
+- **August 1-18: 2,987 `GetPlace` + `SearchText` split as 2,987 / 1,059**, and
+  5,556 Places requests overall since July. 11 of those were answered **429 by
+  Google itself** - a reminder that an upstream 429 exists and is invisible to
+  the browser, because `resolveOne` turns it into a 200 `unavailable`.
+- **Aug 17 alone was 1,651 `GetPlace` and 651 `SearchText`**, over half the
+  month. The 07:00-08:00Z hour was 753 details + **555 searches**, and a search
+  only fires on a cold place-ID cache, so that hour was ~555 venues nobody had
+  ever looked up. That is the day the 30-day `usa` sample template shipped -
+  **141 rating-eligible items in one trip, 422 distinct venues across all 13
+  templates** - and under the old architecture every page load re-billed every
+  venue in view.
+
+Confirmed channels that spend real money and are INVISIBLE to the production
+counter:
+
+1. **Local `netlify dev`.** `.env` carries a real `TP_PLACES_KEY`, localhost
+   passes the origin guard, and functions run against `.netlify/blobs-serve` -
+   a LOCAL store with its own counters. Its August total was **129 owner
+   lookups** that production had never seen, and the directory is wiped with
+   the checkout, so its historical total is unknowable. Now gated behind
+   `TP_PLACES_ALLOW_LOCAL_SPEND=1`: a key alone can no longer bill the card
+   from a laptop.
+2. **Anything sharing the key outside this deployment.** Only one Places key
+   exists (`tp-places-ratings`), and only one Netlify site is on this account,
+   but a second Netlify project (`shevato-site`, on the other account) builds
+   the same repo and would have its own blob store.
+
+**~1,265 calls could not be reconciled from data that still exists**, because
+the usage blob keeps only the current hour/day/month with no history. That is
+precisely why the budget carries a buffer instead of trusting the counter.
+
+### The guard
+
+`MONTHLY_BUDGET = 850` in `tp-places-quota.mjs`, checked for **every** billable
+lookup in **every** tier via the `billedMonth` counter and reported as scope
+`free_month`.
+
+- **One pot.** The old design had two independent monthly pools (public 1,500 +
+  owner 3,000) against ONE 1,000-call allowance: 4,500 authorised calls where
+  1,000 were free. `billedMonth` is the sum both tiers move, and no tier limit
+  may exceed it (pinned by a test). Owner traffic cannot bypass it.
+- **850, not 1,000**, because our counter is not provably equal to Google's
+  (see the 1,265 above). The 150-call buffer also absorbs the month-boundary
+  skew, manual/dev calls, and the deliberate over-count of a failed Place
+  Details request. At 850 the worst case is **$0.00**: 850 < 1,000 free.
+- **Owner month sub-cap 600**, which protects VISITORS rather than the card:
+  the owner was 1,202 of 1,521 lookups in August, so without it one heavy
+  planning day would leave the site's real visitors with no ratings for the
+  rest of the month. At least 250 always stays for the public.
+- **The month boundary is shifted 8 hours later than UTC** (`BILLING_SHIFT_MS`),
+  so the budget rolls over at 08:00Z on the 1st: 00:00 PST exactly, 01:00 PDT
+  (an hour late), and 8 hours late if the account's zone were UTC. The rule:
+  **never reset before Google does**, because resetting early hands out a fresh
+  850 while Google is still counting the old month. A naive UTC month would
+  have reset 7-8 hours early every single month.
+- **Atomic.** The reservation runs inside the existing etag CAS
+  (`updateUsage`), so 50 concurrent batches arriving with 10 calls left
+  authorise 10, not 600. Pinned by a barrier test that makes every writer read
+  the same counters and etag before any of them writes.
+- **Persistent.** Counters live in the Blob store, so a restart, a redeploy or
+  a cold start reads the same month. Pinned by a test.
+- **Exhausted behaviour:** 429 `free_month` with `Retry-After` and `resetAt`
+  pointing at the next boundary. The client parks the queue for the rest of the
+  month rather than retrying, rows keep their plain `Google Maps` search links,
+  the app is otherwise untouched, and the traveller is told once.
+
+**Inspecting it without opening Cloud Billing** (whose figures lag a day):
+
+```
+curl -s -H "X-TP-Owner-Token: <token>" -H "Origin: https://shevato.com" \
+  "https://shevato.com/.netlify/functions/tp-places?status=1"
+```
+
+Returns month, budget, `billedMonth`, remaining, `exhausted`, `resetsAt` and
+the per-tier day/month split. Owner-gated, and it carries no key, no token and
+no client ids. To change the ceiling, edit `MONTHLY_BUDGET` - and read the
+paragraph above it first, because the number is an argument, not a preference.
+
 ## Places ratings: the 2026-08-17 429 round
 
 Reported as "POST /.netlify/functions/tp-places 429" on trips of every size,
