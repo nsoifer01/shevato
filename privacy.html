@@ -90,7 +90,7 @@
 
       <article class="about-shell">
 
-        <p><strong>Last reviewed:</strong> 17 August 2026. <!-- TODO(owner): update this date whenever the behaviour described below changes. --></p>
+        <p><strong>Last reviewed:</strong> 18 August 2026. <!-- TODO(owner): update this date whenever the behaviour described below changes. --></p>
 
         <h2>The short version</h2>
 
@@ -257,7 +257,11 @@
           </div>
           <div class="skill-row">
             <h3>Open-Meteo</h3>
-            <p>Receives the coordinates and dates of your trip to return historical climate figures. No account or trip identity is attached.</p>
+            <p>Receives the coordinates and dates of your trip to return historical climate figures, and the same for the near-term forecast on trip days close enough to have one. Separately, its geocoding endpoint powers the suggestions in the Trip Planner's place fields, so what you type into one of those fields is sent as you type it, to be answered with matching city names. No account or trip identity is attached to any of these.</p>
+          </div>
+          <div class="skill-row">
+            <h3>Photon (OpenStreetMap)</h3>
+            <p>Powers the hotel suggestions on Trip Planner stay items, so what you type into a stay's name field is sent as you type it, together with the city already in that item's place field when there is one, to be answered with matching lodging. It is also asked for the coordinates of venues in your trip that the ratings lookup did not already place, so the distance chips and route lines can be drawn. No account or trip identity is attached.</p>
           </div>
           <div class="skill-row">
             <h3>Frankfurter</h3>

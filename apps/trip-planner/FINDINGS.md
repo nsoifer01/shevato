@@ -36,6 +36,29 @@ why, the traps, and the invariants.
   in-flight dedup), Open-Meteo geocoding = city typeahead, Photon = hotel and
   venue typeahead, bundled OurAirports table = airports (offline). Never move
   a lookup between providers without re-reading their usage policies.
+- **Every provider origin has to be in the site CSP** (`connect-src` in
+  `netlify.toml`, the only place a CSP is defined - no `_headers` file, no
+  `<meta http-equiv>`, no generated copy). The policy ships as
+  `Content-Security-Policy-Report-Only`, so a missing origin does not break
+  the app: it logs a console violation and works anyway. That silence is why
+  three of this app's own origins - `photon.komoot.io` (hotel picker),
+  `api.open-meteo.com` (near-term forecast) and
+  `geocoding-api.open-meteo.com` (city typeahead) - were still missing on
+  2026-08-18, the second time this list drifted after the 2026-07-20 audit.
+  `tests/static/csp-connect-src.test.mjs` now parses that header and fails
+  when a browser fetch origin is not covered, in both directions (header
+  trimmed, or a new fetch origin added without the header). The three
+  Open-Meteo products are three separate HOSTS behind one brand and are listed
+  one by one; `*.open-meteo.com` is explicitly rejected by the test.
+- **A repeated CSP console warning is not a repeated request.** Chromium fires
+  `securitypolicyviolation` (and logs the console line) TWICE per blocked
+  request under a report-only policy - measured at exactly 2:1 on 2026-08-18,
+  1 request -> 2 reports, 4 requests -> 8 reports. On top of that, the place
+  combobox legitimately queries once per keystroke that survives its 220ms
+  debounce, so typing "Kyoto" is four DIFFERENT queries (`Ky`, `Kyo`, `Kyot`,
+  `Kyoto`), each aborting the one before. Before "fixing" a duplicate-looking
+  warning, count `Network.requestWillBeSent` URLs: the app already caches per
+  query key and aborts in flight, and there is nothing to dedupe.
 - **Google Places legal lines** (re-verified against the live terms
   2026-08-17): place IDs cacheable indefinitely, lat/lon cacheable 30d
   (`trip-planner:venuegeo:v1`, cap 300), names/ratings NEVER stored. The
