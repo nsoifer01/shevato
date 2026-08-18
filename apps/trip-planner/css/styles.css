@@ -3765,6 +3765,11 @@
 .trip-planner-app .issues li .tag.info { background: var(--border-soft); color: var(--text-dim); }
 .trip-planner-app .issues li .issue-mark-booked { font-weight: 700; }
 
+/* "Add transport" is the third action of its kind - a prefilled form, not a
+   jump - so it reads as a sibling of "Add stay" and "Mark booked" rather than
+   as a fourth visual weight on the same line. */
+.trip-planner-app .issues li .issue-add-transport { font-weight: 700; }
+
 /* ---------- day-route pass (badges, change choice, per-day route) ----------
    One coherent round: pick-one candidate badges, the reopenable accepted set,
    each place row's Directions pill, and the day card's route strip + map. */

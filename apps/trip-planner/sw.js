@@ -21,7 +21,7 @@
  * MINOR when the strategy changes, MAJOR for a back-compat break.
  */
 
-const CACHE_VERSION = '2.4.6';
+const CACHE_VERSION = '2.4.7';
 const PRECACHE = `trip-precache-${CACHE_VERSION}`;
 const RUNTIME = `trip-runtime-${CACHE_VERSION}`;
 
@@ -29,9 +29,9 @@ const PRECACHE_URLS = [
   './',
   './index.html',
   './manifest.webmanifest',
-  './css/styles.css?v=59',
-  './js/trip-logic.js?v=40',
-  './js/app.js?v=64',
+  './css/styles.css?v=60',
+  './js/trip-logic.js?v=41',
+  './js/app.js?v=65',
   // The bundled airport table (see scripts/build-airports.mjs). ~260 KB, and
   // precached on purpose: an airport picker that stops working without signal
   // is useless in the one place you most need it.
