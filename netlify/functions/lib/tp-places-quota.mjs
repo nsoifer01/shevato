@@ -12,52 +12,113 @@
 // Usage shape (stale buckets pruned on every call, so the blob stays bounded):
 //   { hourBucket, dayBucket, monthBucket,
 //     clientHour:{id:n}, clientDay:{id:n}, globalDay, globalMonth,
-//     ownerDay, ownerMonth }
+//     ownerDay, ownerMonth, billedMonth }
 // The owner tier (requests carrying the ownerToken secret from the config
-// blob) spends against ownerDay / ownerMonth instead of the global buckets,
-// so a heavy owner session can never exhaust the public allowance and lock
-// ordinary visitors out; the per-client maps are shared across tiers.
+// blob) spends against ownerDay / ownerMonth instead of the global buckets, so
+// the two tiers stay visible apart and neither starves the other. `billedMonth`
+// is the sum both tiers move: it is the authoritative monthly total and the
+// only counter that maps to what Google will bill.
 
-// Defaults justified against $0.02 per billed lookup (Place Details
-// Enterprise, $20 / 1000, first 1,000 calls each month free):
-//   perClientHour 30   ~2 full day-plans of candidates; $0.60 worst case
-//   perClientDay  60   a heavy planning session; $1.20 worst case
-//   globalDay    200   $4.00/day ceiling if the site is discovered or abused
-//   globalMonth 1500   THE ONE THAT PROTECTS THE CARD: 1,000 free + 500 paid
-//                      = $10.00/month absolute worst case, and only if every
-//                      single lookup misses the cache.
-// Cache hits are free and must never be counted (see tp-places.mjs), so real
-// spend sits far below these numbers.
+// Per-tier limits. NONE of these is the cost ceiling any more: MONTHLY_BUDGET
+// below is, and it is checked for every tier. What survives here is SHAPE -
+// how fast one browser or one tier may draw on the shared budget, so that a
+// single heavy day cannot swallow the month and the owner cannot leave
+// visitors with nothing.
+//
+//   perClientHour  60  one full read of a large itinerary in an hour
+//   perClientDay  120  a heavy planning session across the day
+//   globalDay     150  no single day takes more than ~18% of the month
+//   globalMonth   850  no sub-ceiling: the public tier may use the whole
+//                      shared budget if the owner does not
+//
+// The per-client numbers moved on 2026-08-17: production 429s were all
+// per-CLIENT (`client_hour`, `client_day`) while the pools sat at 7% used, so
+// travellers were being cut off by a limiter sized when ratings appeared on
+// assistant cards alone. Raising a per-client cap cannot raise spend -
+// clientId is client-minted, so those caps were only ever advisory smoothing.
 export const DEFAULT_LIMITS = {
-  perClientHour: 30,
-  perClientDay: 60,
-  globalDay: 200,
-  globalMonth: 1500,
+  perClientHour: 60,
+  perClientDay: 120,
+  globalDay: 150,
+  globalMonth: 850,
 };
 
-// Owner tier, reachable only with the ownerToken secret from the config blob
-// (see tp-places.mjs). Ten times the public limits: high enough that the
-// owner never notices a cap in real use, but still a HARD ceiling on purpose.
-// The token is a bearer secret, and if it ever leaks, globalMonth here is
-// what stands between the leak and the card: 3,000 = 1,000 free + 2,000 paid
-// = $40/month absolute worst case. The keys keep the same names as
-// DEFAULT_LIMITS so checkQuota treats both tiers identically; only the
-// counters they gate differ (owner* vs global*).
+// Owner tier, reachable only with the ownerToken secret from the config blob.
+// Higher SHAPE limits than the public tier, drawing on the SAME MONTHLY_BUDGET:
+// the owner cannot bypass the ceiling, only reach it faster.
+//
+//   globalMonth 600  the one real sub-ceiling here, and it exists to protect
+//                    VISITORS rather than the card: the owner's own browsing
+//                    was 1,202 of 1,521 lookups in August 2026, so without
+//                    this a heavy planning day would leave the site's actual
+//                    visitors with no ratings for the rest of the month.
+//                    600 of 850 still leaves at least 250 for the public.
+//   globalDay   300  ~10 full reads of a 55-place trip in a day
+//
+// perClientDay sits above globalDay deliberately so it can never be the limit
+// that speaks: the owner is ONE browser with ONE clientId, and on 2026-08-17
+// a per-client day cap below the pool cut the owner off with 40% of the tier's
+// own allowance unspent. A per-client cap is no defence for a bearer token
+// anyway - a thief rotates clientId - so the pool does the ceiling work.
 export const OWNER_LIMITS = {
   perClientHour: 300,
-  perClientDay: 600,
-  globalDay: 1000,
-  globalMonth: 3000,
+  perClientDay: 400,
+  globalDay: 300,
+  globalMonth: 600,
 };
+
+// THE ONE NUMBER THAT KEEPS THE BILL AT ZERO.
+//
+// Google gives 1,000 complimentary Place Details Enterprise calls per calendar
+// month, per SKU, per PROJECT. Past that it is $0.02 a call against a real
+// card. This budget is checked for EVERY billable lookup, whatever the tier,
+// so owner traffic and public traffic draw on one pot and cannot add up to
+// more than the free allowance between them.
+//
+// WHY 850 AND NOT 1,000. Our counter is not provably equal to Google's. In
+// August 2026 Google billed 2,915 Place Details calls while this counter held
+// 1,521; a local `netlify dev` store accounted for 129 more, and the rest could
+// not be reconciled from the data that exists (the usage blob keeps only the
+// current hour/day/month, with no history, and a local store is wiped with the
+// directory). A ceiling that assumed our count was exact would therefore be a
+// ceiling built on an unproven equality. 150 calls, 15%, is the price of not
+// making that assumption, and it also absorbs the month-boundary skew below,
+// any manual curl or dev call, and the deliberate over-count of a failed
+// Place Details request. Raise it only with evidence that the counter and
+// Google's billing agree.
+export const MONTHLY_BUDGET = 850;
 
 const HOUR_MS = 3600000;
 const DAY_MS = 86400000;
 
+// WHEN GOOGLE'S FREE ALLOWANCE RESETS, verified rather than assumed. Google
+// Maps Platform pricing docs (billing-and-pricing/pay-as-you-go and
+// /overview, both checked 2026-08-18), verbatim:
+//
+//   "This free usage resets on the first day of each month, at midnight
+//    Pacific US time."
+//
+// Midnight Pacific is 07:00Z under PDT (roughly March-November) and 08:00Z
+// under PST. Our bucket is UTC shifted 8 hours later, so it rolls at a fixed
+// 08:00Z on the 1st:
+//
+//   winter (PST): Google 08:00Z, ours 08:00Z  -> exactly aligned
+//   summer (PDT): Google 07:00Z, ours 08:00Z  -> one hour LATE
+//
+// Never earlier, in either season, which is the only property that matters:
+// resetting before Google would hand out a fresh 850 while Google was still
+// counting the old month against the same 1,000 free calls. Being late merely
+// makes us briefly stricter than we need to be. A fixed shift is used instead
+// of a real Pacific calendar because it needs no DST table and no Intl
+// dependency, and the one hour it costs in summer is worth nothing.
+//
+// The residual: a boundary west of UTC-8 (Alaska, Hawaii) would reset after
+// us. Google's documented boundary is Pacific, so that case does not arise.
+const BILLING_SHIFT_MS = 8 * HOUR_MS;
+
 function hourBucket(now) { return Math.floor(now / HOUR_MS); }
 function dayBucket(now) { return Math.floor(now / DAY_MS); }
-// Calendar month in UTC, because Google's complimentary allowance resets on a
-// calendar boundary and a rolling 30-day window would drift out of step with it.
-function monthBucket(now) { return new Date(now).toISOString().slice(0, 7); }
+function monthBucket(now) { return new Date(now - BILLING_SHIFT_MS).toISOString().slice(0, 7); }
 
 // Null-prototype per-client maps, same reason as tp-assist-quota.mjs: clientId
 // is attacker-chosen, and on a plain object literal an id of "__proto__" reads
@@ -78,6 +139,56 @@ function pruneUsage(usage, hb, db, mb) {
     globalMonth: (u.monthBucket === mb && typeof u.globalMonth === 'number') ? u.globalMonth : 0,
     ownerDay: (u.dayBucket === db && typeof u.ownerDay === 'number') ? u.ownerDay : 0,
     ownerMonth: (u.monthBucket === mb && typeof u.ownerMonth === 'number') ? u.ownerMonth : 0,
+    // The authoritative one. ownerMonth and globalMonth stay for observability
+    // (which tier spent what) but neither is a ceiling any more: billedMonth is
+    // every billable lookup this project made this month, whoever asked.
+    billedMonth: (u.monthBucket === mb && typeof u.billedMonth === 'number') ? u.billedMonth : 0,
+  };
+}
+
+// When the bucket that produced a rejection next refills, as an epoch
+// millisecond. The client used to guess (a flat hour after ANY 429), which is
+// wrong in both directions: it wasted up to 59 minutes of the next hour bucket
+// after a client_hour rejection, and it re-asked a monthly cap 24 times a day.
+// Exported and unit-tested because it is the only thing standing between an
+// exhausted bucket and a retry loop.
+export function resetAtFor(scope, now) {
+  const t = Number(now) || 0;
+  switch (scope) {
+    case 'client_hour': return (hourBucket(t) + 1) * HOUR_MS;
+    case 'client_day':
+    case 'global_day': return (dayBucket(t) + 1) * DAY_MS;
+    case 'global_month':
+    case 'free_month': {
+      // The next SHIFTED month boundary, so the reset we promise is the one
+      // the counter actually honours (08:00Z on the 1st, see BILLING_SHIFT_MS).
+      const d = new Date(t - BILLING_SHIFT_MS);
+      return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1) + BILLING_SHIFT_MS;
+    }
+    // Contention is transient by construction (writers fighting over one
+    // counter blob), so it clears in seconds rather than at a bucket edge.
+    case 'contention': return t + 2000;
+    default: return t + 15 * 60000;
+  }
+}
+
+// A read-only view of where the month stands, for the owner status endpoint
+// and for logs. Runs the same pruning the write path does, so a stale month in
+// the blob reports as zero rather than as last month's total. Deliberately
+// carries no clientId and no key: the per-client maps are attacker-supplied
+// strings and there is nothing to learn from them here.
+export function budgetStatus(usage, now) {
+  const u = pruneUsage(usage, hourBucket(now), dayBucket(now), monthBucket(now));
+  return {
+    month: u.monthBucket,
+    monthlyBudget: MONTHLY_BUDGET,
+    billedMonth: u.billedMonth,
+    remaining: Math.max(0, MONTHLY_BUDGET - u.billedMonth),
+    exhausted: u.billedMonth >= MONTHLY_BUDGET,
+    resetsAt: new Date(resetAtFor('free_month', now)).toISOString(),
+    owner: { day: u.ownerDay, month: u.ownerMonth, dayLimit: OWNER_LIMITS.globalDay, monthLimit: OWNER_LIMITS.globalMonth },
+    public: { day: u.globalDay, month: u.globalMonth, dayLimit: DEFAULT_LIMITS.globalDay, monthLimit: DEFAULT_LIMITS.globalMonth },
+    clientsSeenThisDay: Object.keys(u.clientDay).length,
   };
 }
 
@@ -111,6 +222,11 @@ export function checkQuota(usage, clientId, now, cost = 1, limits = DEFAULT_LIMI
     ['client_day', limits.perClientDay - (u.clientDay[id] || 0)],
     ['global_day', limits.globalDay - u[pool.day]],
     ['global_month', limits.globalMonth - u[pool.month]],
+    // Checked for BOTH tiers, and it is the row that actually stands between
+    // this app and a Google invoice. Listed last so that when several caps are
+    // exhausted at once the response names this one, which is the one worth
+    // knowing about.
+    ['free_month', MONTHLY_BUDGET - u.billedMonth],
   ];
   let granted = want;
   let scope = null;
@@ -124,6 +240,7 @@ export function checkQuota(usage, clientId, now, cost = 1, limits = DEFAULT_LIMI
   u.clientDay[id] = (u.clientDay[id] || 0) + granted;
   u[pool.day] += granted;
   u[pool.month] += granted;
+  u.billedMonth += granted;
   return { allowed: true, scope: granted < want ? scope : null, granted, usage: u };
 }
 
@@ -142,5 +259,6 @@ export function releaseQuota(usage, clientId, now, amount, tier = 'public') {
   u.clientDay[id] = Math.max(0, (u.clientDay[id] || 0) - n);
   u[pool.day] = Math.max(0, u[pool.day] - n);
   u[pool.month] = Math.max(0, u[pool.month] - n);
+  u.billedMonth = Math.max(0, u.billedMonth - n);
   return u;
 }

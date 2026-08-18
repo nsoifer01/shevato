@@ -170,6 +170,66 @@ optionally, an `ownerToken` for a higher personal rate tier) into the
 above. Place IDs are cached 30 days; names and ratings are never cached, because
 no Google caching exception covers those fields.
 
+### How a rating gets onto a row
+
+Because a rating may not be stored and costs $0.02 every time it is fetched, the
+client is careful about what it asks for and when. One queue owns every billed
+request (`createPlacesQueue` in trip-logic.js):
+
+- **Demand follows the eye.** An itinerary row registers its venue with an
+  `IntersectionObserver` and is looked up when it comes within 600px of the
+  viewport, so opening a 50-place trip costs the handful of venues on the first
+  screen rather than fifty. Assistant candidate cards are the exception and are
+  fetched at once: they are a comparison the traveller asked for, they arrive
+  together in an open panel, and the winner badges are a judgement across the
+  whole set. There is deliberately no background sweep of the rest of the trip.
+- **A venue is reserved the moment it is planned**, not when its batch reaches
+  the wire, so no number of re-renders, view switches or scrolls can put the
+  same venue on the wire twice.
+- **Batches are capped at 12** (the server's limit) and at most 2 are in flight
+  at once, so a large trip arrives progressively instead of as a burst.
+- **The session cache is the whole cache.** Results live in memory for the life
+  of the page and are never written anywhere; Timeline, Days, the stay picker
+  and the assistant all read the same one, so switching views or trips repaints
+  for free.
+- **A 429 parks the queue, it does not empty it.** The response says which
+  bucket rejected the batch and when it refills (`scope` + `resetAt` +
+  `Retry-After`), the queue waits exactly that long and then serves the same
+  venues. Retries are bounded, and a rejection that will not clear for hours is
+  not re-asked every few seconds.
+- **Degrading is quiet.** A venue with no rating is an ordinary `Google Maps`
+  link, exactly as it looks when no key is configured. If the allowance is gone
+  for long enough to matter, the app says so once in a toast rather than putting
+  an error badge on forty rows.
+
+### The monthly budget (why ratings can stop, on purpose)
+
+A rating is a Place Details Enterprise call: **1,000 free per calendar month
+per Google project, then $0.02 each**. `MONTHLY_BUDGET` in
+`lib/tp-places-quota.mjs` is a single **850-call ceiling shared by every tier**,
+so owner and public traffic draw on one pot and cannot add up to a bill between
+them. It is enforced inside the same atomic reservation the rest of the quota
+uses, before any call to Google, and it resets at 08:00Z on the 1st (never
+earlier than Google's own reset).
+
+850 rather than 1,000 because our counter is not provably equal to Google's
+billed number - see FINDINGS for the August 2026 reconciliation - so 15% is
+held back. At the ceiling the cost is $0.00.
+
+When it is exhausted the endpoint answers `429 {scope:"free_month"}` with
+`Retry-After`; the client parks for the rest of the month, every row keeps its
+plain `Google Maps` link, and the traveller is told once. Check where the month
+stands with an owner-gated status read:
+
+```
+curl -s -H "X-TP-Owner-Token: <token>" -H "Origin: https://shevato.com" \
+  "https://shevato.com/.netlify/functions/tp-places?status=1"
+```
+
+Local `netlify dev` will NOT spend against the real card on a key alone: it also
+needs `TP_PLACES_ALLOW_LOCAL_SPEND=1`, because a local run's counters land in a
+throwaway local blob store and are invisible to this budget.
+
 ## Tests
 
 Three layers, lowest appropriate layer wins:

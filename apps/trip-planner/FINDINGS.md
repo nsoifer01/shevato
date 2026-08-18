@@ -36,10 +36,27 @@ why, the traps, and the invariants.
   in-flight dedup), Open-Meteo geocoding = city typeahead, Photon = hotel and
   venue typeahead, bundled OurAirports table = airports (offline). Never move
   a lookup between providers without re-reading their usage policies.
-- **Google Places legal lines** (2026-07-20 review): place IDs cacheable 30d,
-  lat/lon cacheable 30d (`trip-planner:venuegeo:v1`, cap 300), names/ratings
-  NEVER stored. The server's rating layer was found still persisting `pd:`
-  details blobs (unread, unbounded); removed 2026-08-13. Keep it removed.
+- **Google Places legal lines** (re-verified against the live terms
+  2026-08-17): place IDs cacheable indefinitely, lat/lon cacheable 30d
+  (`trip-planner:venuegeo:v1`, cap 300), names/ratings NEVER stored. The
+  server's rating layer was found still persisting `pd:` details blobs (unread,
+  unbounded); the CODE was removed 2026-08-13 but 201 stale `pd:` blobs were
+  still sitting in the production store on 2026-08-17 and had to be purged
+  separately. Removing a cache is two jobs: the writer and the data.
+  The sources, quoted, so a future session does not have to re-derive them:
+  - Maps Platform ToS 3.2.3(b): "Customer will not cache Google Maps Content
+    except as expressly permitted under the Maps Service Specific Terms."
+  - Service Specific Terms 14.3 (Places API, Legacy and New): "Customer may
+    temporarily cache latitude and longitude values from the Places API for up
+    to 30 consecutive calendar days, after which Customer must delete the
+    cached latitude and longitude values." That is the ONLY Places field with
+    an express caching permission.
+  - General Service Terms A.3 (Google ID Caching): place_id may be cached; the
+    Places policies page says so too ("You can therefore store place ID values
+    indefinitely").
+  So `RATING_TTL_MS` is 0 and stays 0. Holding a response in memory to paint
+  the elements that asked for it is not caching (the DOM holds the same rating);
+  writing it anywhere that outlives the page is.
 
 ## Sync model (and its sharp edges)
 
@@ -131,7 +148,18 @@ why, the traps, and the invariants.
   slow pair still burns the reservation until rollover; a failed Place
   Details call counts as spent;
   per-client caps are advisory (clientId rotation) - the global/monthly pools
-  are the real cost control ($10/month worst case public tier).
+  are the real cost control.
+- **A 429 from tp-places is ALWAYS ours, never Google's.** An upstream
+  rejection is caught in `resolveOne` and returned as HTTP **200** carrying
+  `{ status: 'unavailable', reason: 'upstream' }`, so a Google throttle cannot
+  reach the browser wearing a 429. When a 429 shows up in the console, read its
+  `scope`: it names one of our own buckets and nothing else can produce it.
+- **The public $10/month and owner $40/month ceilings are NOT additive with two
+  free allowances.** Google's 1,000 complimentary Place Details Enterprise
+  calls are per SKU per PROJECT, and both pools (globalMonth 1500 + ownerMonth
+  3000) draw on that one allowance. Draining both is 4,500 lookups = 1,000 free
+  + 3,500 paid = **$70/month**, not $50. The $10 figure remains correct for
+  what the PUBLIC tier alone can cost, which is what it was always about.
 - tp-assist deliberately does NOT refund quota on upstream failure (fails
   closed); Google's own free-tier limits bind before ours anyway. Pinned by
   tests/tp-assist-handler.test.mjs.
@@ -261,6 +289,303 @@ Probe traps this round minted:
   is a chain stop: an evening suggestion then measures from the hotel, not
   from lunch. Correct behaviour; fixtures that want a pure
   anchor->stops chain start the stay the night before.
+
+## Places billing: the free allowance is the real ceiling (2026-08-18)
+
+**Google's billing, not our counters, is the source of truth, and they did not
+agree.** Verified in Cloud Billing for project `shevato-site`, SKU
+`Places API Place Details Enterprise` (`2D9A-3DE0-3766`):
+
+| | |
+|---|---|
+| August 2026 usage | **2,915 calls**, $38.30 gross, -$38.30 promotional credit, **$0.00 net** |
+| July 2026 | $9.24 gross, -$9.24 credit, $0.00 net |
+| `GCP Free Credit` | $300 original, **$251.24 remaining**, one-time, **expires 2026-10-18** |
+| `Text Search Essentials (IDs Only)` | 705 calls, **$0.00** (unlimited free; not the expensive one) |
+
+These are HISTORICAL OBSERVATIONS, not constants to build on. **The net $0 is a
+temporary promotional credit, not a free tier.** After 2026-10-18 the same
+2,915 calls would be a $38.30 invoice. Everything below is designed as if the
+credit does not exist.
+
+**Pricing, re-verified:** 1,000 Place Details Enterprise calls free per calendar
+month, per SKU, **per project**; $20/1,000 (i.e. $0.02) past that.
+
+### Why 2,915 when our counter said 1,521
+
+Traced, not assumed. Cloud Monitoring
+(`serviceruntime.googleapis.com/api/request_count`, service
+`places.googleapis.com`) gives the authoritative shape:
+
+- **August 1-18: 2,987 `GetPlace` + `SearchText` split as 2,987 / 1,059**, and
+  5,556 Places requests overall since July. 11 of those were answered **429 by
+  Google itself** - a reminder that an upstream 429 exists and is invisible to
+  the browser, because `resolveOne` turns it into a 200 `unavailable`.
+- **Aug 17 alone was 1,651 `GetPlace` and 651 `SearchText`**, over half the
+  month. The 07:00-08:00Z hour was 753 details + **555 searches**, and a search
+  only fires on a cold place-ID cache, so that hour was ~555 venues nobody had
+  ever looked up. That is the day the 30-day `usa` sample template shipped -
+  **141 rating-eligible items in one trip, 422 distinct venues across all 13
+  templates** - and under the old architecture every page load re-billed every
+  venue in view.
+
+Confirmed channels that spend real money and are INVISIBLE to the production
+counter:
+
+1. **Local `netlify dev`.** `.env` carries a real `TP_PLACES_KEY`, localhost
+   passes the origin guard, and functions run against `.netlify/blobs-serve` -
+   a LOCAL store with its own counters. Its August total was **129 owner
+   lookups** that production had never seen, and the directory is wiped with
+   the checkout, so its historical total is unknowable. Now gated behind
+   `TP_PLACES_ALLOW_LOCAL_SPEND=1`: a key alone can no longer bill the card
+   from a laptop.
+2. **Anything sharing the key outside this deployment.** Only one Places key
+   exists (`tp-places-ratings`), and only one Netlify site is on this account,
+   but a second Netlify project (`shevato-site`, on the other account) builds
+   the same repo and would have its own blob store.
+
+**~1,265 calls could not be reconciled from data that still exists**, because
+the usage blob keeps only the current hour/day/month with no history. That is
+precisely why the budget carries a buffer instead of trusting the counter.
+
+### The guard
+
+`MONTHLY_BUDGET = 850` in `tp-places-quota.mjs`, checked for **every** billable
+lookup in **every** tier via the `billedMonth` counter and reported as scope
+`free_month`.
+
+- **One pot.** The old design had two independent monthly pools (public 1,500 +
+  owner 3,000) against ONE 1,000-call allowance: 4,500 authorised calls where
+  1,000 were free. `billedMonth` is the sum both tiers move, and no tier limit
+  may exceed it (pinned by a test). Owner traffic cannot bypass it.
+- **850, not 1,000**, because our counter is not provably equal to Google's
+  (see the 1,265 above). The 150-call buffer also absorbs the month-boundary
+  skew, manual/dev calls, and the deliberate over-count of a failed Place
+  Details request. At 850 the worst case is **$0.00**: 850 < 1,000 free.
+- **Owner month sub-cap 600**, which protects VISITORS rather than the card:
+  the owner was 1,202 of 1,521 lookups in August, so without it one heavy
+  planning day would leave the site's real visitors with no ratings for the
+  rest of the month. At least 250 always stays for the public.
+- **The month boundary is shifted 8 hours later than UTC** (`BILLING_SHIFT_MS`),
+  so the budget rolls over at 08:00Z on the 1st: 00:00 PST exactly, 01:00 PDT
+  (an hour late), and 8 hours late if the account's zone were UTC. The rule:
+  **never reset before Google does**, because resetting early hands out a fresh
+  850 while Google is still counting the old month. A naive UTC month would
+  have reset 7-8 hours early every single month.
+- **Atomic.** The reservation runs inside the existing etag CAS
+  (`updateUsage`), so 50 concurrent batches arriving with 10 calls left
+  authorise 10, not 600. Pinned by a barrier test that makes every writer read
+  the same counters and etag before any of them writes.
+- **Persistent.** Counters live in the Blob store, so a restart, a redeploy or
+  a cold start reads the same month. Pinned by a test.
+- **Exhausted behaviour:** 429 `free_month` with `Retry-After` and `resetAt`
+  pointing at the next boundary. The client parks the queue for the rest of the
+  month rather than retrying, rows keep their plain `Google Maps` search links,
+  the app is otherwise untouched, and the traveller is told once.
+
+### August 2026 is a TRANSITION month - do not reconcile against it
+
+The guard shipped mid-month, so August's numbers cannot be used to validate our
+accounting against Google Billing, in either direction:
+
+- `billedMonth` deliberately started at **0** on deploy rather than being
+  seeded with the 2,915 calls Google had already billed. Seeding it would have
+  switched ratings off until September for no saving, because August's Places
+  charges are absorbed by the promotional credit either way.
+- `ownerMonth` was reset from **1,234 to 0** once, on 2026-08-18, as migration
+  cleanup: it had accumulated under the old two-pool architecture and would
+  otherwise have held the owner's own browser against the new 600 sub-cap for
+  no reason. This is a ONE-TIME action; nothing about the design needs a
+  recurring or manual reset, and the shared `billedMonth` ceiling governed all
+  production traffic throughout regardless. Public `globalMonth` (319) was
+  deliberately left alone - it is real public usage and leaving it is the
+  conservative choice.
+- Therefore August's Google total will exceed our `billedMonth` by design.
+
+**September 2026 is the first clean month**: it opens at 08:00Z on 2026-09-01
+with `billedMonth`, `ownerMonth` and `globalMonth` all at 0, entirely governed
+by the 850 ceiling. That is the month to compare our counter against Google's
+Place Details Enterprise usage, and the comparison is what would justify
+raising `MONTHLY_BUDGET` closer to 1,000 later.
+
+**Inspecting it without opening Cloud Billing** (whose figures lag a day):
+
+```
+curl -s -H "X-TP-Owner-Token: <token>" -H "Origin: https://shevato.com" \
+  "https://shevato.com/.netlify/functions/tp-places?status=1"
+```
+
+Returns month, budget, `billedMonth`, remaining, `exhausted`, `resetsAt` and
+the per-tier day/month split. Owner-gated, and it carries no key, no token and
+no client ids. To change the ceiling, edit `MONTHLY_BUDGET` - and read the
+paragraph above it first, because the number is an argument, not a preference.
+
+## Places ratings: the 2026-08-17 429 round
+
+Reported as "POST /.netlify/functions/tp-places 429" on trips of every size,
+including a 2-item test trip. Written up in full because almost every intuition
+about it was wrong.
+
+**The 429 was ours, and it was PER-CLIENT.** Read straight off the production
+counters blob (`netlify blobs:get trip-planner-places usage`) while the fault
+was live: `globalDay` 103/200 and `globalMonth` 313/1500, i.e. the site was at
+7% of the pools that exist to protect the card - while `clientHour` for one
+browser sat at exactly 30/30 (the public hourly cap) and `clientDay` for the
+owner's browser sat at exactly 600/600 (the owner daily cap). A zero-cost
+production probe confirmed the branch: POSTing with an over-cap clientId
+returns `{"error":"quota_exceeded","scope":"client_day"}` and never reaches
+Google at all. **Nobody was near the cost ceiling; individual travellers were
+being cut off by a limiter that had been sized for a much smaller feature.**
+
+**Why a 2-item trip could fail.** `clientId` is a persistent localStorage value
+(`trip-planner:assist:clientId`), so the hour and day counters follow the
+BROWSER, not the trip. Open a 40-venue trip, spend the 30/hour, then open a
+2-item trip in the same hour and the very first batch is refused. The trip size
+in front of you has nothing to do with it; the trip size an hour ago does.
+
+**Why the demand was so large in the first place.** Ratings may not be cached
+(see the legal lines above), so every rating shown is a billed Place Details
+call, and the client asked for EVERY rating-eligible item in the whole trip on
+every page load. Measured on master with a 250ms round trip: a 40-venue trip
+issued 4 POSTs and 40 billed lookups on load; a 55-venue trip issued 48 and
+then took a 429 with 7 venues never asked about at all. The limiter was written
+when ratings appeared on assistant candidate cards alone; they now paint across
+Timeline, Days, stays and candidate sets, and the quota was never revisited.
+
+**A second, measured amplifier: the in-flight dedup gap.** `fetchRatings`
+marked a batch in flight only when its turn came, so batches 2..N were
+invisible to a planner running in between. Forcing a re-render mid-lookup on a
+41-venue trip produced **7 POSTs, 70 lookups for 41 venues - 29 duplicates**,
+every one of them billed. This is the likeliest explanation for the owner's
+600-lookup day.
+
+**And the failure was self-amplifying in the UI.** One 429 abandoned every
+remaining batch AND set a flat 3,600,000ms pause, so a partial set of ratings
+looked permanent for the session - and because a `client_hour` rejection at
+10:59 waited until 11:59, most of the hour it was waiting for was thrown away.
+
+What changed:
+
+- **One queue owns every billed request** (`createPlacesQueue`, trip-logic.js,
+  pure and injectable). A key is reserved when it is PLANNED, which is what
+  closes the duplicate hole; `planPlacesLookup` still does the normalization
+  and the queue's `known` predicate spans cache + queued + in-flight + deferred.
+- **Demand follows the eye.** Itinerary rows register with an
+  IntersectionObserver (600px lookahead); assistant candidate sets are still
+  fetched eagerly, because a half-resolved set makes the winner badges a lie.
+  There is deliberately NO background sweep of the rest of the trip: that is
+  precisely the pattern that produced the 429s, and it buys nothing visible.
+- **Two priority lanes, and they mean something.** `urgent` is a comparison the
+  traveller is actively waiting on (an assistant candidate set, a hotel just
+  picked from the picker) and `normal` is an itinerary row that scrolled into
+  view. Both are on screen; the difference is that an unrated row is just a
+  plain link while a half-resolved candidate set renders WRONG badges. An
+  urgent request also `promote()`s any key a row already queued, so overtaking
+  never costs a second lookup. A batch already on the wire cannot be un-sent,
+  so the overtaking is of the waiting queue only - the test says so explicitly,
+  because the first version of it asserted the impossible.
+- **Concurrency 2, batch 12.** Two in flight is enough to halve the wall clock
+  on a long trip without bursting; the batch cap is the server's.
+- **A 429 parks the queue, it does not empty it.** The server now returns
+  `scope` + `resetAt` + a `Retry-After` header (`resetAtFor`), and the client
+  waits for the bucket that actually refills. Retries are bounded
+  (`PLACES_MAX_ATTEMPTS`), `unavailable` results are parked for 10 minutes
+  rather than re-asked by the next repaint, and `global_month` parks until the
+  month turns instead of being retried all day.
+- **Server-side coalescing of concurrent identical lookups was investigated and
+  deliberately NOT built.** Netlify runs one instance per request, so an
+  in-process map would only dedup within one instance and anything real would
+  need distributed locking over the Blobs store. With the client now coalescing
+  by key, a single browser can no longer produce concurrent identical lookups
+  at all; what remains is two DIFFERENT visitors asking for the same venue in
+  the same second, which costs one extra $0.02 Details call. That is not worth
+  a lock.
+- **Per-client caps were raised; the POOLS were not.** Public 30/60 became
+  60/120, owner 300/600 became 500/1200, while `globalDay` 200, `globalMonth`
+  1500, `ownerDay` 1000 and `ownerMonth` 3000 are untouched. That keeps the
+  public tier's $10/month worst case exactly where it was. Raising a per-client
+  cap cannot raise spend - clientId is client-minted, so those caps were only
+  ever advisory smoothing.
+- **The owner's per-client day cap is now ABOVE the owner pool**, so it can
+  never be the limit that speaks. A per-client cap is no defence for a bearer
+  token anyway (a thief rotates clientId); the pool is the ceiling that means
+  something. Pinned by a test.
+
+Measured after, same harness, 250ms round trip, 1280x900:
+
+| venues | POSTs on load | billed on load | after a full read | 429s |
+|--------|---------------|----------------|-------------------|------|
+| 2      | 1             | 2              | 2                 | 0    |
+| 10     | 1             | 10             | 10                | 0    |
+| 40     | 1             | 11             | 28                | 0    |
+| 55     | 1             | 11             | 28                | 0    |
+
+Zero duplicates in every case, and zero 429s even when the fake server is held
+at the OLD 30/hour cap - the architecture, not the raised limit, is what fixed
+it. Time to the first rating is ~350ms regardless of trip size.
+
+**The owner tier works, and it is per-BROWSER, not per-person.** Audited end to
+end this round: `ownerToken` lives in the config blob, the owner pastes it into
+`localStorage['trip-planner:places:ownerToken']` once per ORIGIN, and
+`placesRequestBody` attaches it to every request. It has nothing to do with
+being signed in - the site's Firebase auth and this bearer secret never meet.
+Production counters confirm it is live (`ownerDay`/`ownerMonth` were moving
+while `globalDay`/`globalMonth` stayed put), and the bucket separation holds in
+both directions (pinned by tests: a maxed owner cannot lock visitors out, and a
+maxed public pool does not throttle the owner). The ergonomic consequence is
+worth knowing before diagnosing a "why am I rate-limited" report: the owner's
+phone, a second browser, a private window and shevato.com-vs-localhost each
+need their own paste, and any of them without it is an ordinary public visitor
+on 60/hour. Binding that to real auth instead of a pasted bearer secret is the
+obvious improvement and was deliberately NOT done here - it is an auth change,
+not a rate-limit change. (The configured token is also 43 characters against
+the 64+ the setup note asks for; harmless, but rotate it longer next time.)
+
+**Quota rejections now log.** A 429 used to write nothing to the function log,
+so "which bucket refused this?" could only be answered by reading the counters
+blob by hand - the same blind spot that made the tp-assist 502 undiagnosable.
+`quotaExceeded` now `console.warn`s the scope and the shut duration. No
+clientId: it is attacker-minted and not ours to record.
+
+Traps this round minted:
+
+- **A Netlify deploy preview CANNOT exercise ratings through its own UI.**
+  `originAllowed` accepts `shevato.com` and localhost only, so a page served
+  from `deploy-preview-N--shevato.netlify.app` gets 403, which the client reads
+  as "not configured" and switches ratings off for the session - silently, and
+  indistinguishably from having no key. To verify a preview end to end: serve
+  the repo on localhost and proxy `/.netlify/functions/*` to the preview with
+  `Origin: https://shevato.com`. The real app then runs against the deployed
+  function (the guard is defence-in-depth and forgeable by design; the quotas
+  are the actual control). Note the preview shares the SITE's blob store, so a
+  preview lookup spends real money and moves the production counters.
+- **Zero-cost ways to probe tp-places in production**, worth knowing before
+  anyone spends to reproduce a bug: a query that `isGenericQuery` rejects never
+  reaches Google, and a clientId already over its cap returns 429 from the
+  quota branch without an upstream call or a blob write. Both exercise the real
+  deployed path for $0.00.
+- **`netlify blobs:delete` rate-limits bursts.** A first pass deleted 112 keys
+  in a row and then failed every remaining call until left alone for a minute;
+  running it under `xargs -P` made every invocation hang instead. Purging a
+  store means serial calls with a pause and a retry. (`while read` also drops a
+  final line with no trailing newline - 85 of 86 keys went, and the survivor
+  looked like a failure that was not.)
+- **The E2E profile leaks localStorage between blocks**, so `openApp`'s first
+  navigation boots the app on the PREVIOUS block's trip and legitimately looks
+  its venues up before the clear-and-seed. Counting those as the current
+  block's requests invented "duplicates" the app never made. Every count in
+  `e2e/places.mjs` is scoped to that block's own venue-name prefix.
+- **`clickSel` on a wrong selector is swallowed by `.catch(() => {})`**, which
+  is how two early probe runs "proved" that view switching was free: the view
+  never switched. The view controls are `#viewTimeline` / `#viewDays` /
+  `#viewMap`, not `[data-view=...]`.
+- A jump straight to the bottom of a long board does NOT fetch the rows it flew
+  past; IntersectionObserver only fires for what actually intersects. That is
+  correct (nobody read them) but it makes "after scroll" counts depend on how
+  the scroll was performed.
+- The unit tests and the browser disagreed on duplicate counts for a while, and
+  the unit tests were right. When they diverge, print the actual POST bodies
+  before changing the implementation.
 
 ## Assistant: modes, and where a suggestion is measured from
 
@@ -551,6 +876,12 @@ needed it.
     `placeCacheKey` so a fixture key can never drift from what the app writes.
   - Offline must be emulated on the page target AND the service-worker
     target(s); page-only lets the worker fetch from the network.
+- **`e2e/places.mjs`** covers the ratings subsystem: fanout on a 50-venue trip,
+  duplicate-freedom across renders/scrolls/view switches, a free view switch,
+  travel legs never billed, a 429 that does not storm, partial responses, and
+  trip switching. It mocks tp-places at the network layer, so a green run costs
+  $0.00 and never touches the real endpoint. Counts are scoped per block (see
+  the leaked-storage trap in the Places section).
 - **What stays out of E2E**: activate-event cache eviction and update-toast
   messaging (tests/sw-activate.test.mjs, driving a real redeploy is flaky),
   cross-DEVICE sync (whole-key LWW via Firestore is a structural limit, see

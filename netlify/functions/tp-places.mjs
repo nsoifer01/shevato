@@ -33,10 +33,17 @@
 //   localStorage.setItem('trip-planner:places:ownerToken', '<the token>')
 // in the devtools console once (per origin: shevato.com and localhost each
 // keep their own localStorage). Requests carrying the matching token are
-// governed by OWNER_LIMITS (10x public, separate buckets) instead of
-// DEFAULT_LIMITS; see the isOwner block below. Rotate or revoke by rewriting
-// the blob. For `netlify dev`, whose local blob store is empty, put the same
-// token in .env as TP_PLACES_OWNER_TOKEN (see the isOwner block).
+// governed by OWNER_LIMITS (faster draw, separate buckets) instead of
+// DEFAULT_LIMITS; see the isOwner block below. Both tiers still share ONE
+// monthly ceiling (MONTHLY_BUDGET) - the owner draws faster, never more.
+// Rotate or revoke by rewriting the blob. For `netlify dev`, whose local blob
+// store is empty, put the same token in .env as TP_PLACES_OWNER_TOKEN, and note
+// that spending from localhost ALSO needs TP_PLACES_ALLOW_LOCAL_SPEND=1.
+//
+// OWNER STATUS READ: how much of the month's free allowance is left, without
+// opening Google Billing (which lags a day):
+//   curl -H "X-TP-Owner-Token: <token>" -H "Origin: https://shevato.com" \
+//     "https://shevato.com/.netlify/functions/tp-places?status=1"
 //
 // The CLI must be linked to the site that actually serves shevato.com before
 // running those commands; the blob store is per-site, so writing it while
@@ -47,7 +54,7 @@
 // render next to any rating it shows; see ATTRIBUTION below.
 
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { checkQuota, releaseQuota, DEFAULT_LIMITS, OWNER_LIMITS } from './lib/tp-places-quota.mjs';
+import { checkQuota, releaseQuota, resetAtFor, budgetStatus, MONTHLY_BUDGET, DEFAULT_LIMITS, OWNER_LIMITS } from './lib/tp-places-quota.mjs';
 import { updateUsage } from './lib/blob-cas.mjs';
 import { originAllowed, json, upstreamSignal } from './lib/tp-http.mjs';
 import { resolveQueries } from './lib/tp-places-lookup.mjs';
@@ -89,26 +96,41 @@ export default async function handler(req) {
   // (1) Origin/Referer guard first: only our own site and local dev.
   if (!originAllowed(req)) return json({ error: 'origin_rejected' }, 403);
 
-  // (2) POST only.
-  if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
+  // (2) POST only, with one exception: an owner-authenticated GET returns the
+  // budget status. This exists so "how much of the free allowance is left?" can
+  // be answered without opening Google Billing (whose figures lag by a day
+  // anyway) or hand-reading the blob. It is gated on the same ownerToken as the
+  // owner tier, returns no key and no client identifiers, and a wrong or absent
+  // token is indistinguishable from the endpoint not offering it at all.
+  const wantsStatus = req.method === 'GET' && new URL(req.url).searchParams.get('status') === '1';
+  if (req.method !== 'POST' && !wantsStatus) return json({ error: 'method_not_allowed' }, 405);
 
-  // (3) Parse + clamp the body.
-  let body;
-  try { body = await req.json(); }
-  catch { return json({ error: 'bad_request' }, 400); }
-  const clamped = clampBody(body);
-  if (!clamped.ok) return json({ error: 'bad_request' }, 400);
+  // (3) Parse + clamp the body. A status GET carries none, so it skips ahead.
+  let clamped = { ok: true, clientId: '', queries: [], ownerToken: '' };
+  if (!wantsStatus) {
+    let body;
+    try { body = await req.json(); }
+    catch { return json({ error: 'bad_request' }, 400); }
+    clamped = clampBody(body);
+    if (!clamped.ok) return json({ error: 'bad_request' }, 400);
+  }
 
   // (4) Shared key from the config blob; absent -> not configured.
   const { placesStore, blobCache, CONFIG_KEY, USAGE_KEY } = await import('./lib/tp-places-store.mjs');
   const store = placesStore();
   const cfg = (await store.get(CONFIG_KEY, { type: 'json' })) || {};
-  // LOCAL DEVELOPMENT AFFORDANCE, not the production path: `netlify dev` serves
-  // functions against a LOCAL blob store, which is empty, so ratings would 503
-  // on localhost. Deployed functions on this site get no env vars injected
-  // (verified), so this fallback is inert in production and the blob remains
-  // the only way the key is ever set there.
-  const placesKey = cfg.placesKey || process.env.TP_PLACES_KEY;
+  // The env key is a LOCAL DEVELOPMENT AFFORDANCE and it now needs a second,
+  // explicit opt-in. `netlify dev` serves functions against a LOCAL blob store,
+  // so a localhost lookup spends REAL money on the shared card while its
+  // counters land in `.netlify/blobs-serve` - a directory that is wiped with
+  // the checkout and is invisible to the production budget. That channel is
+  // measurable: the local store held 129 owner lookups for August 2026 that no
+  // production counter had ever seen. A key alone must therefore not be enough
+  // to bill the card from a laptop; TP_PLACES_ALLOW_LOCAL_SPEND=1 is the
+  // deliberate "yes, charge me" and is never set in production (deployed
+  // functions on this site get no env vars injected at all).
+  const localKey = process.env.TP_PLACES_ALLOW_LOCAL_SPEND === '1' ? process.env.TP_PLACES_KEY : '';
+  const placesKey = cfg.placesKey || localKey;
   if (!placesKey) return json({ error: 'not_configured' }, 503);
 
   // Owner tier: a request carrying the ownerToken secret from the config blob
@@ -122,9 +144,18 @@ export default async function handler(req) {
   // above: `netlify dev`'s empty local blob store left the owner tier
   // unreachable on localhost, dropping the owner into the public 30/hour
   // bucket after two example trips. Inert in production for the same reason.
-  const isOwner = ownerTokenMatches(clamped.ownerToken, cfg.ownerToken || process.env.TP_PLACES_OWNER_TOKEN);
+  const expectedOwner = cfg.ownerToken || process.env.TP_PLACES_OWNER_TOKEN;
+  const headerToken = req.headers.get('x-tp-owner-token') || '';
+  const isOwner = ownerTokenMatches(wantsStatus ? headerToken : clamped.ownerToken, expectedOwner);
   const limits = isOwner ? OWNER_LIMITS : DEFAULT_LIMITS;
   const tier = isOwner ? 'owner' : 'public';
+
+  // Owner status read: counters only, never a key, never a clientId.
+  if (wantsStatus) {
+    if (!isOwner) return json({ error: 'method_not_allowed' }, 405);
+    const usage = (await store.get(USAGE_KEY, { type: 'json' })) || {};
+    return json(budgetStatus(usage, Date.now()), 200);
+  }
 
   // (5) Quota. Reserve an upper bound BEFORE any upstream call so parallel
   // batches cannot overrun the cap, then release what the caches saved. Only
@@ -147,9 +178,9 @@ export default async function handler(req) {
     // Sustained CAS contention fails closed: many writers fighting over the
     // counters is exactly the load the quota exists to stop, and reserving
     // without a landed write would be the original race back again.
-    if (!reserved.ok) return json({ error: 'quota_exceeded', scope: 'contention' }, 429);
+    if (!reserved.ok) return quotaExceeded('contention', now);
     const q = reserved.result;
-    if (!q.allowed) return json({ error: 'quota_exceeded', scope: q.scope }, 429);
+    if (!q.allowed) return quotaExceeded(q.scope, now);
     granted = q.granted;
   }
 
@@ -191,6 +222,31 @@ export default async function handler(req) {
   }
 
   return json({ results, attribution: ATTRIBUTION }, 200);
+}
+
+// Every 429 this function emits says WHICH bucket rejected the batch and WHEN
+// that bucket next refills, in a header and in the body. Without it the client
+// can only guess, and its guess (a flat hour) was wrong in both directions:
+// too long after an hourly rejection, absurdly short against a monthly one.
+//
+// Worth stating plainly because the browser console cannot: a 429 from this
+// endpoint is ALWAYS ours. A rejection by Google is caught in resolveOne and
+// comes back as HTTP 200 carrying `{ status: 'unavailable', reason: 'upstream' }`,
+// so an upstream throttle can never reach the browser wearing a 429.
+// Exported for the unit tests.
+export function quotaExceeded(scope, now) {
+  const resetAt = resetAtFor(scope, now);
+  const seconds = Math.max(1, Math.ceil((resetAt - now) / 1000));
+  // Logged because the 2026-08-17 round had to be diagnosed by reading the
+  // counters blob by hand: a rejection wrote NOTHING to the function log, so
+  // "which bucket refused this?" was unanswerable from the logs alone - the
+  // same blind spot the tp-assist timeout had. No clientId (attacker-minted
+  // and not ours to record), just the bucket and how long it is shut.
+  console.warn('tp-places quota_exceeded', scope, 'for', seconds + 's');
+  return new Response(JSON.stringify({ error: 'quota_exceeded', scope, resetAt }), {
+    status: 429,
+    headers: { 'Content-Type': 'application/json', 'Retry-After': String(seconds) },
+  });
 }
 
 // Exported for the unit tests. Duplicate queries collapse to one entry: a day

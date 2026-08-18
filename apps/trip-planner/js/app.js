@@ -23,7 +23,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 63;
+  const TP_BUILD = 64;
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   // Miles or kilometers, everywhere a distance prints. Same architecture as
@@ -103,7 +103,7 @@
     FORECAST_DAYS, forecastEligible, forecastKey, forecastFresh, freshForecasts, summarizeForecast, forecastLine, forecastChipParts,
     extractTripActions, validateTripAction, buildAssistPackage, buildAssistSystemPrompt,
     buildPlanRequest, groupProposals, linkifySegments, parseMarkdown,
-    normalizePlaceQuery, placeCacheKey, planPlacesLookup, placesCacheUpdates, mapsSearchUrl, assistMapsLink, costDisplayParts,
+    normalizePlaceQuery, placeCacheKey, createPlacesQueue, mapsSearchUrl, assistMapsLink, costDisplayParts,
     normalizeVenueCache, rememberVenue, placesLocationUpdates, pickVenueFeature,
     dayAnchor, dayDistanceChain, sameSpot, shortestRoute, routeStops, distanceChipLabel, distanceChipTitle, routeFooterText,
     proposalOrigin, dayBaseOrigin, suggestionOrigins, assistDistanceChipLabel, assistDistanceChipTitle,
@@ -565,7 +565,7 @@
     if (lastRateAttempt.base === base && Date.now() - lastRateAttempt.at < 60000) return;
     lastRateAttempt = { base, at: Date.now() };
     ratesFetching = true;
-    // Bound the request the same way the places lookup is (app.js fetchRatingBatch):
+    // Bound the request the same way the places lookup is (sendPlacesBatch):
     // without this, a hung connection leaves ratesFetching true forever and the
     // "Fetching exchange rates..." note never clears. On abort the catch below
     // flips ratesFailed, so the note falls back to "Could not fetch..." instead.
@@ -870,6 +870,12 @@
       ensureTrip();
       renderTripSelect();
       const trip = activeTrip();
+      // A trip switch retires the lookups the PREVIOUS trip queued but never
+      // sent: those venues are off screen now and nobody is waiting for them.
+      // Batches already on the wire are left alone - they are paid for, and
+      // their results land in the shared session cache, which is keyed by venue
+      // rather than by trip, so a result can only ever paint the venue it names.
+      placesGeneration(trip && trip.id);
       ensureRates(trip);
       const issues = computeIssues(trip);
       currentIssues = issues;
@@ -1586,10 +1592,10 @@
 
     board.innerHTML = html;
     syncSelectUi(selectableIds);
-    // Paint any ratings the session already knows and batch-fetch only the
-    // genuinely-missing queries. Routing through hydrateRatings means a re-render
-    // or a repeat venue costs nothing (placesKnown dedups), and a trip with no
-    // mapsQuery items fires no request at all.
+    // Paint any ratings the session already knows, then register the rest with
+    // the queue: rows are looked up as they approach the viewport, so a
+    // re-render, a repeat venue or a trip with no mapsQuery items all cost
+    // nothing at all.
     hydrateRatings(board);
 
     if (phase.phase === 'during' && !didAutoScroll) {
@@ -5120,7 +5126,7 @@
       if (!key || venueCache[key] || venueQueued.has(key) || venueMisses.has(key)) continue;
       // the ratings call is in flight for this exact venue and answers with a
       // better point; asking Photon too would be the same lookup twice
-      if (placesInFlight.has(key)) continue;
+      if (placesQueue.isPending(key)) continue;
       venueQueued.add(key);
       venueQueue.push({ key, query: q });
       added++;
@@ -7889,26 +7895,112 @@
   // hard stop the moment the endpoint says it is unconfigured or out of quota.
   // Nothing here can block or break a card: ratings are painted into empty
   // placeholders after the fact, and if they never arrive the card is unchanged.
-  const placesCache = new Map();   // key -> { status:'ok', ... } | { status:'no_match' }
-  const placesInFlight = new Set();
-  let placesOff = false;           // 503/403/400: no key configured, stay silent all session
-  let placesPausedUntil = 0;       // 429 or network trouble: transient, retry later
-  const placesKnown = { has: k => placesCache.has(k) || placesInFlight.has(k) };
-
   // Owner tier: the site owner pastes a secret into localStorage once (see
   // the OWNER TIER note in netlify/functions/tp-places.mjs) and this browser
   // gets the higher owner quota server-side. Everyone else has no token and
   // sends no field; there is no UI for this on purpose.
   const PLACES_OWNER_TOKEN_KEY = 'trip-planner:places:ownerToken';
-  function placesRequestBody(batch) {
-    const body = { clientId: assistClientId(), queries: batch.map(m => m.query) };
+  function placesRequestBody(queries) {
+    const body = { clientId: assistClientId(), queries };
     let token = '';
     try { token = localStorage.getItem(PLACES_OWNER_TOKEN_KEY) || ''; } catch { /* private mode */ }
     if (token) body.ownerToken = token;
     return body;
   }
 
-  function placesUsable() { return !placesOff && Date.now() >= placesPausedUntil; }
+  // The queue's one transport. Returns the SHAPE the queue reasons about
+  // (served / switched off / retry later), never a Response: every decision
+  // about what a status means is made here, once.
+  async function sendPlacesBatch(queries) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 12000);
+    let res;
+    try {
+      res = await fetch('/.netlify/functions/tp-places', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(placesRequestBody(queries)),
+        signal: ctrl.signal,
+      });
+    } catch {
+      return { ok: false, transient: true };   // offline or timed out
+    } finally {
+      clearTimeout(timer);
+    }
+    if (res.ok) {
+      let data;
+      try { data = await res.json(); } catch { return { ok: false, transient: true }; }
+      return { ok: true, results: (data && data.results) || [] };
+    }
+    // 503 not_configured is the default state: the owner has no Places key, so
+    // the feature switches itself off for the session and costs nothing. 501
+    // joins 405 because it means the same thing from a server with no functions
+    // at all (python -m http.server answers POST with 501).
+    if (res.status === 503 || res.status === 403 || res.status === 400 || res.status === 405 || res.status === 501) {
+      return { ok: false, off: true };
+    }
+    // A 429 is OUR limiter, never Google's: an upstream rejection comes back
+    // 200 with `unavailable` results (see tp-places.mjs), so the scope here
+    // always names one of our own buckets and says exactly when it refills.
+    let scope = '', retryAfterMs = null;
+    try {
+      const body = await res.json();
+      if (body && typeof body.scope === 'string') scope = body.scope;
+      if (body && typeof body.resetAt === 'number') retryAfterMs = body.resetAt - Date.now();
+    } catch { /* an error body is a courtesy, not a contract */ }
+    const hdr = Number(res.headers.get('Retry-After'));
+    if (retryAfterMs == null && Number.isFinite(hdr) && hdr >= 0) retryAfterMs = hdr * 1000;
+    return { ok: false, status: res.status, scope, retryAfterMs };
+  }
+
+  // One quiet word per session, and only when the wait is long enough that the
+  // traveller would otherwise wonder why half the rows never got a rating. A
+  // short contention backoff resolves itself in seconds and says nothing; a
+  // per-row error badge on forty rows is exactly the noise this avoids.
+  let placesNoticeShown = false;
+  const PLACES_NOTICE_MIN_MS = 5 * 60000;
+  function placesQuotaNotice() {
+    if (placesNoticeShown) return;
+    const st = placesQueue.status();
+    if (st.off || !st.pausedUntil) return;
+    if (st.pausedUntil - Date.now() < PLACES_NOTICE_MIN_MS) return;
+    placesNoticeShown = true;
+    toast('Google ratings are paused for now - the free lookup allowance is used up. Everything else works as usual.');
+  }
+
+  const placesQueue = createPlacesQueue({
+    send: sendPlacesBatch,
+    onUpdate(results) {
+      paintPlaces(document);
+      // The same response carries the place's coordinates (see the field-mask
+      // note in tp-places.mjs). They cost nothing extra and they are the top
+      // rung of the distance ladder, so a venue this call resolves is never
+      // looked up a second time anywhere else.
+      const located = placesLocationUpdates(results);
+      if (located.length) {
+        for (const u of located) rememberVenuePoint(u.key, u);
+        saveVenueCache();
+        scheduleDistanceRepaint();
+      }
+      placesQuotaNotice();
+    },
+  });
+
+  // Everything that used to read the raw Map still reads exactly one cache;
+  // the queue owns it now so nothing can resolve a venue behind its back.
+  const placesCache = { get: k => placesQueue.get(k), has: k => placesQueue.has(k) };
+
+  // Generations are trip ids, counted rather than compared, so the queue only
+  // ever has to answer "is this still the trip that asked?".
+  let placesTripId = null, placesGen = 0;
+  function placesGeneration(tripId) {
+    const id = tripId || null;
+    if (id === placesTripId) return placesGen;
+    placesTripId = id;
+    placesGen += 1;
+    placesQueue.setGeneration(placesGen);
+    return placesGen;
+  }
 
   // Rendered by every card that has a mapsQuery. Empty until (and unless) a
   // rating arrives, which is what makes the unconfigured case invisible.
@@ -7982,76 +8074,66 @@
     scope.querySelectorAll('.assist-set').forEach(paintSetBadges);
   }
 
-  // Called once per rendered batch of proposal cards. Paints whatever the
-  // session cache already knows (a re-render or a repeat venue costs nothing),
-  // then asks only for what is genuinely missing.
+  // WHAT GETS ASKED FOR, AND WHEN. A rating costs the owner $0.02 whether or
+  // not anyone reads it, and Google's terms forbid keeping one, so a rating
+  // fetched for the fortieth day of a trip whose first screen is still on
+  // screen is money spent on nothing. Demand is therefore split in two:
+  //
+  //   ASSISTANT CANDIDATES (.ap-rating) are asked for immediately. They are a
+  //   comparison the traveller explicitly requested, they arrive together in an
+  //   open panel, and the pick-one badges (candidateBadges) are a judgement
+  //   ACROSS the set - half a set is a worse answer than none.
+  //
+  //   ITINERARY ROWS (.tp-maps-link) are asked for when they come near the
+  //   viewport. A 50-place trip then opens with the handful of ratings its
+  //   first screen can show instead of 50 requests the quota cannot serve, and
+  //   the rest arrive as the traveller scrolls to them. rootMargin does the
+  //   looking-ahead so a row is normally rated before it is read.
+  //
+  // Deliberately NOT done: a background sweep of the rest of the trip. That is
+  // precisely the pattern that produced the 429s, and it buys nothing the
+  // traveller can see.
+  const PLACES_LOOKAHEAD = '600px 0px';
+  let placesObserver = null;
+  if (typeof IntersectionObserver === 'function') {
+    placesObserver = new IntersectionObserver((entries, obs) => {
+      const queries = [];
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        obs.unobserve(e.target);
+        const q = e.target.dataset.placeQuery || '';
+        if (q) queries.push(q);
+      }
+      if (queries.length) placesQueue.request(queries, { priority: 'normal' });
+    }, { rootMargin: PLACES_LOOKAHEAD });
+  }
+
+  // A slot that the session cache can already answer needs neither an observer
+  // nor a request; paintPlaces has just filled it.
+  function observeRatingSlot(el) {
+    if (placesQueue.has(el.dataset.placeKey || '')) return;
+    if (placesObserver) placesObserver.observe(el);
+    // No IntersectionObserver (very old browser): fall back to asking for
+    // everything the render produced, which is what the app did before.
+    else placesQueue.request([el.dataset.placeQuery || ''], { priority: 'normal' });
+  }
+
+  // Called once per render. Paints whatever the session already knows (a
+  // re-render, a view switch or a repeat venue costs nothing at all), then
+  // registers demand for what is genuinely missing.
   function hydrateRatings(container) {
     paintPlaces(container);
-    const queries = [...container.querySelectorAll('.ap-rating[data-place-key], .tp-maps-link[data-place-key]')]
+    const eager = [...container.querySelectorAll('.ap-rating[data-place-key]')]
       .map(el => el.dataset.placeQuery || '')
       .filter(Boolean);
-    if (queries.length) fetchRatings(queries);
-  }
-
-  async function fetchRatings(queries) {
-    if (!placesUsable()) return;
-    const { batches } = planPlacesLookup(queries, placesKnown);
-    for (const batch of batches) {
-      if (!placesUsable()) return;
-      batch.forEach(m => placesInFlight.add(m.key));
-      try {
-        const done = await fetchRatingBatch(batch);
-        if (!done) return; // endpoint is off or paused; leave the rest unasked
-      } finally {
-        batch.forEach(m => placesInFlight.delete(m.key));
-      }
-      paintPlaces(document);
+    // Urgent, and PROMOTED if a row already queued the same venue: a candidate
+    // set the traveller is reading must not wait behind a screen of itinerary
+    // rows, because its winner badges are a judgement across the whole set.
+    if (eager.length) {
+      placesQueue.promote(eager);
+      placesQueue.request(eager, { priority: 'urgent' });
     }
-  }
-
-  // Returns false when the caller should stop asking. Every failure path is
-  // silent by design: no toast, no console noise, no empty star row.
-  async function fetchRatingBatch(batch) {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 12000);
-    let res;
-    try {
-      res = await fetch('/.netlify/functions/tp-places', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(placesRequestBody(batch)),
-        signal: ctrl.signal,
-      });
-    } catch {
-      placesPausedUntil = Date.now() + 60000; // offline or timed out: transient
-      return false;
-    } finally {
-      clearTimeout(timer);
-    }
-    if (!res.ok) {
-      // 503 not_configured is the default state: the owner has no Places key,
-      // so the feature switches itself off for the session and costs nothing.
-      // 501 joins 405 because it means the same thing from a server that has
-      // no functions at all (python -m http.server answers POST with 501):
-      // retrying every 60s only re-logs the browser's network error.
-      if (res.status === 503 || res.status === 403 || res.status === 400 || res.status === 405 || res.status === 501) placesOff = true;
-      else placesPausedUntil = Date.now() + (res.status === 429 ? 3600000 : 60000);
-      return false;
-    }
-    let data;
-    try { data = await res.json(); } catch { return false; }
-    for (const u of placesCacheUpdates(data && data.results)) placesCache.set(u.key, u.entry);
-    // The same response carries the place's coordinates (see the field-mask
-    // note in tp-places.mjs). They cost nothing extra and they are the top rung
-    // of the distance ladder, so a venue this call resolves is never looked up
-    // a second time anywhere else.
-    const located = placesLocationUpdates(data && data.results);
-    if (located.length) {
-      for (const u of located) rememberVenuePoint(u.key, u);
-      saveVenueCache();
-      scheduleDistanceRepaint();
-    }
-    return true;
+    container.querySelectorAll('.tp-maps-link[data-place-key]').forEach(observeRatingSlot);
   }
 
   // ---------- proposal machinery ----------

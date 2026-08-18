@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkQuota, releaseQuota, DEFAULT_LIMITS, OWNER_LIMITS } from '../lib/tp-places-quota.mjs';
+import { checkQuota, releaseQuota, MONTHLY_BUDGET, DEFAULT_LIMITS, OWNER_LIMITS } from '../lib/tp-places-quota.mjs';
 import { clampBody, ownerTokenMatches } from '../tp-places.mjs';
 
 // The owner tier: requests carrying the ownerToken secret are governed by
@@ -65,14 +65,56 @@ test('owner limits are an order of magnitude up but still finite', () => {
   // before merging.
   assert.deepEqual(OWNER_LIMITS, {
     perClientHour: 300,
-    perClientDay: 600,
-    globalDay: 1000,
-    globalMonth: 3000,
+    perClientDay: 400,
+    globalDay: 300,
+    globalMonth: 600,
   });
   for (const k of Object.keys(DEFAULT_LIMITS)) {
-    assert.ok(OWNER_LIMITS[k] > DEFAULT_LIMITS[k], k + ' is above the public limit');
     assert.ok(Number.isFinite(OWNER_LIMITS[k]), k + ' is finite');
   }
+  // The owner may draw FASTER than the public tier...
+  assert.ok(OWNER_LIMITS.perClientHour > DEFAULT_LIMITS.perClientHour);
+  assert.ok(OWNER_LIMITS.perClientDay > DEFAULT_LIMITS.perClientDay);
+  assert.ok(OWNER_LIMITS.globalDay > DEFAULT_LIMITS.globalDay);
+  // ...but its MONTH share is deliberately SMALLER, and that is not a typo:
+  // the owner's own browsing was 1,202 of 1,521 lookups in August 2026, so
+  // without a sub-ceiling a heavy planning day would leave the site's actual
+  // visitors with no ratings for the rest of the month.
+  assert.ok(OWNER_LIMITS.globalMonth < MONTHLY_BUDGET,
+    'the owner cannot take the whole shared budget');
+  assert.ok(MONTHLY_BUDGET - OWNER_LIMITS.globalMonth >= 200,
+    'a meaningful share stays reserved for visitors');
+  // And no tier limit may exceed the shared ceiling.
+  assert.ok(OWNER_LIMITS.globalMonth <= MONTHLY_BUDGET);
+  assert.ok(DEFAULT_LIMITS.globalMonth <= MONTHLY_BUDGET);
+});
+
+// The 2026-08-17 production failure in one assertion. The owner is ONE browser
+// with ONE clientId, so a per-client cap below the tier's own pool means the
+// pool can never be the limit that speaks: the counters read ownerDay 600
+// against a 1,000 pool while clientDay sat at its 600 cap, and the owner was
+// cut off with 40% of the day's allowance unspent.
+test('the owner pool binds before the owner per-client cap, not the other way round', () => {
+  assert.ok(OWNER_LIMITS.perClientDay > OWNER_LIMITS.globalDay,
+    'the per-browser day cap must never be able to bind before the pool');
+
+  // Spend the whole day pool from ONE browser, an hour's worth at a time (the
+  // hourly cap is a burst limit and is meant to bind inside an hour).
+  let usage = {};
+  const hours = Math.ceil(OWNER_LIMITS.globalDay / OWNER_LIMITS.perClientHour);
+  for (let h = 0; h < hours; h++) {
+    const q = checkQuota(usage, 'owner-browser', NOW + h * 3600000, OWNER_LIMITS.perClientHour, OWNER_LIMITS, 'owner');
+    assert.equal(q.allowed, true, `hour ${h} still serves the owner`);
+    usage = q.usage;
+  }
+  assert.equal(usage.ownerDay, OWNER_LIMITS.globalDay, 'one browser reached the whole day pool');
+
+  // And the POOL is what finally says no - not the per-browser cap. Probed in
+  // a FRESH hour (still the same UTC day) so the hourly burst limit, which has
+  // just been spent, cannot be the one answering.
+  const next = checkQuota(usage, 'owner-browser', NOW + hours * 3600000, 1, OWNER_LIMITS, 'owner');
+  assert.equal(next.allowed, false);
+  assert.equal(next.scope, 'global_day');
 });
 
 // ---------- release symmetry ----------
