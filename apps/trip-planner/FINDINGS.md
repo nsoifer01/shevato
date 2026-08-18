@@ -383,6 +383,31 @@ lookup in **every** tier via the `billedMonth` counter and reported as scope
   month rather than retrying, rows keep their plain `Google Maps` search links,
   the app is otherwise untouched, and the traveller is told once.
 
+### August 2026 is a TRANSITION month - do not reconcile against it
+
+The guard shipped mid-month, so August's numbers cannot be used to validate our
+accounting against Google Billing, in either direction:
+
+- `billedMonth` deliberately started at **0** on deploy rather than being
+  seeded with the 2,915 calls Google had already billed. Seeding it would have
+  switched ratings off until September for no saving, because August's Places
+  charges are absorbed by the promotional credit either way.
+- `ownerMonth` was reset from **1,234 to 0** once, on 2026-08-18, as migration
+  cleanup: it had accumulated under the old two-pool architecture and would
+  otherwise have held the owner's own browser against the new 600 sub-cap for
+  no reason. This is a ONE-TIME action; nothing about the design needs a
+  recurring or manual reset, and the shared `billedMonth` ceiling governed all
+  production traffic throughout regardless. Public `globalMonth` (319) was
+  deliberately left alone - it is real public usage and leaving it is the
+  conservative choice.
+- Therefore August's Google total will exceed our `billedMonth` by design.
+
+**September 2026 is the first clean month**: it opens at 08:00Z on 2026-09-01
+with `billedMonth`, `ownerMonth` and `globalMonth` all at 0, entirely governed
+by the 850 ceiling. That is the month to compare our counter against Google's
+Place Details Enterprise usage, and the comparison is what would justify
+raising `MONTHLY_BUDGET` closer to 1,000 later.
+
 **Inspecting it without opening Cloud Billing** (whose figures lag a day):
 
 ```

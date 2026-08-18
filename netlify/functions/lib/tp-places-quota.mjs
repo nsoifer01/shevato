@@ -91,14 +91,29 @@ export const MONTHLY_BUDGET = 850;
 const HOUR_MS = 3600000;
 const DAY_MS = 86400000;
 
-// Google's free allowance resets on the billing account's calendar month, not
-// on ours. Resetting EARLIER than Google would hand out a fresh 850 while
-// Google is still counting the old month, which is the one direction that can
-// produce a bill, so the bucket is shifted 8 hours later than UTC: we roll over
-// at 08:00Z on the 1st, which is 00:00 Pacific Standard Time (exact) or 01:00
-// Pacific Daylight Time (an hour late, i.e. conservative). If the account's
-// zone were UTC we would simply be 8 hours late, which is also safe. The rule
-// this encodes: never reset before Google does.
+// WHEN GOOGLE'S FREE ALLOWANCE RESETS, verified rather than assumed. Google
+// Maps Platform pricing docs (billing-and-pricing/pay-as-you-go and
+// /overview, both checked 2026-08-18), verbatim:
+//
+//   "This free usage resets on the first day of each month, at midnight
+//    Pacific US time."
+//
+// Midnight Pacific is 07:00Z under PDT (roughly March-November) and 08:00Z
+// under PST. Our bucket is UTC shifted 8 hours later, so it rolls at a fixed
+// 08:00Z on the 1st:
+//
+//   winter (PST): Google 08:00Z, ours 08:00Z  -> exactly aligned
+//   summer (PDT): Google 07:00Z, ours 08:00Z  -> one hour LATE
+//
+// Never earlier, in either season, which is the only property that matters:
+// resetting before Google would hand out a fresh 850 while Google was still
+// counting the old month against the same 1,000 free calls. Being late merely
+// makes us briefly stricter than we need to be. A fixed shift is used instead
+// of a real Pacific calendar because it needs no DST table and no Intl
+// dependency, and the one hour it costs in summer is worth nothing.
+//
+// The residual: a boundary west of UTC-8 (Alaska, Hawaii) would reset after
+// us. Google's documented boundary is Pacific, so that case does not arise.
 const BILLING_SHIFT_MS = 8 * HOUR_MS;
 
 function hourBucket(now) { return Math.floor(now / HOUR_MS); }
