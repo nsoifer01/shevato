@@ -1,6 +1,251 @@
 {
   "updates": [
     {
+      "builtAt": "2026-08-18T06:45:01.574Z",
+      "totals": {
+        "seasons": 66320,
+        "delta": 17
+      },
+      "shapeCounts": {
+        "mid-peak": 4650,
+        "rebound": 10100,
+        "rising": 2914,
+        "slow-burn": 4396,
+        "big-finale": 12167,
+        "u-shaped": 3113,
+        "rollercoaster": 14083,
+        "saved-best-for-last": 1550,
+        "front-loaded": 3479,
+        "declining": 1877,
+        "bad-finale": 4687,
+        "consistent": 2622,
+        "shape-drift": 1648
+      },
+      "shapeDeltas": {
+        "mid-peak": -7,
+        "rebound": 2,
+        "rising": -3,
+        "slow-burn": 1,
+        "big-finale": 17,
+        "u-shaped": 6,
+        "rollercoaster": 13,
+        "saved-best-for-last": -2,
+        "front-loaded": -3,
+        "declining": 5,
+        "bad-finale": -4,
+        "consistent": 2,
+        "shape-drift": 2
+      },
+      "added": [
+        {
+          "seriesId": "tt13111078",
+          "title": "Lioness",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0077076",
+          "title": "SOKO 5113",
+          "season": 2,
+          "seasonYear": 1980
+        },
+        {
+          "seriesId": "tt0426765",
+          "title": "Old Bear Stories",
+          "season": 2,
+          "seasonYear": 1994
+        },
+        {
+          "seriesId": "tt12847802",
+          "title": "Adam",
+          "season": 1,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt18470970",
+          "title": "Ancient Superstructures",
+          "season": 3,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt21445928",
+          "title": "Like a Loser",
+          "season": 2,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt30413181",
+          "title": "Flex x Cop",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37962221",
+          "title": "Imprints",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0078670",
+          "title": "Potter",
+          "season": 3,
+          "seasonYear": 1983
+        },
+        {
+          "seriesId": "tt1678635",
+          "title": "Revenge Office",
+          "season": 2,
+          "seasonYear": 2009
+        },
+        {
+          "seriesId": "tt1678635",
+          "title": "Revenge Office",
+          "season": 4,
+          "seasonYear": 2010
+        },
+        {
+          "seriesId": "tt1678635",
+          "title": "Revenge Office",
+          "season": 5,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt1945805",
+          "title": "Marvel Anime",
+          "season": 1,
+          "seasonYear": 2010
+        },
+        {
+          "seriesId": "tt2357837",
+          "title": "Evil, I",
+          "season": 2,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt29494110",
+          "title": "Love Is Blind: Argentina",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt33471826",
+          "title": "Hein",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt37610248",
+          "title": "Das Manko",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43707370",
+          "title": "Game Day Murders",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt12363156",
+          "title": "Immortality",
+          "season": 1,
+          "seasonYear": 2021
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt36231255",
+          "title": "Lost in the Woods",
+          "season": 1,
+          "from": 5.78,
+          "to": 6.66,
+          "delta": 0.88
+        },
+        {
+          "seriesId": "tt0457246",
+          "title": "Kappa Mikey",
+          "season": 2,
+          "from": 8.67,
+          "to": 7.85,
+          "delta": -0.82
+        },
+        {
+          "seriesId": "tt29344040",
+          "title": "Exposure",
+          "season": 1,
+          "from": 7.5,
+          "to": 6.78,
+          "delta": -0.72
+        },
+        {
+          "seriesId": "tt0077076",
+          "title": "SOKO 5113",
+          "season": 42,
+          "from": 7.02,
+          "to": 6.35,
+          "delta": -0.67
+        },
+        {
+          "seriesId": "tt43609776",
+          "title": "Crowned in a Hundred Days",
+          "season": 1,
+          "from": 8.42,
+          "to": 7.79,
+          "delta": -0.63
+        },
+        {
+          "seriesId": "tt2777882",
+          "title": "The Lord of the Skies",
+          "season": 6,
+          "from": 8.2,
+          "to": 7.6,
+          "delta": -0.6
+        },
+        {
+          "seriesId": "tt38990474",
+          "title": "Treasure & Dirt",
+          "season": 1,
+          "from": 7.92,
+          "to": 7.35,
+          "delta": -0.57
+        },
+        {
+          "seriesId": "tt38646055",
+          "title": "Dark Moon: The Blood Altar",
+          "season": 1,
+          "from": 8.38,
+          "to": 7.83,
+          "delta": -0.55
+        },
+        {
+          "seriesId": "tt0856138",
+          "title": "Lascars",
+          "season": 1,
+          "from": 6.32,
+          "to": 6.87,
+          "delta": 0.55
+        },
+        {
+          "seriesId": "tt0149460",
+          "title": "Futurama",
+          "season": 14,
+          "from": 7.75,
+          "to": 7.25,
+          "delta": -0.5
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 26058,
+        "avgRating": 1649,
+        "shapes": 264,
+        "episodeCount": 97,
+        "seriesRating": 391,
+        "poster": 2
+      }
+    },
+    {
       "builtAt": "2026-08-17T06:50:55.203Z",
       "totals": {
         "seasons": 66303,
@@ -6780,252 +7025,6 @@
         "overview": 7,
         "poster": 14,
         "providers": 2
-      }
-    },
-    {
-      "builtAt": "2026-07-19T08:34:41.868Z",
-      "totals": {
-        "seasons": 65858,
-        "delta": 17
-      },
-      "shapeCounts": {
-        "mid-peak": 4623,
-        "rebound": 10076,
-        "rising": 2906,
-        "slow-burn": 4359,
-        "big-finale": 12016,
-        "u-shaped": 3081,
-        "rollercoaster": 14027,
-        "saved-best-for-last": 1527,
-        "front-loaded": 3446,
-        "declining": 1880,
-        "bad-finale": 4641,
-        "consistent": 2617,
-        "shape-drift": 1619
-      },
-      "shapeDeltas": {
-        "mid-peak": 1,
-        "rebound": 8,
-        "rising": 11,
-        "slow-burn": 4,
-        "big-finale": 7,
-        "u-shaped": 1,
-        "rollercoaster": 4,
-        "saved-best-for-last": -2,
-        "front-loaded": 3,
-        "declining": 5,
-        "bad-finale": -8,
-        "consistent": -1,
-        "shape-drift": -2
-      },
-      "added": [
-        {
-          "seriesId": "tt14688458",
-          "title": "Silo",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39246964",
-          "title": "Kaiju Girl Caramelise",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt35051401",
-          "title": "The East Palace",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt33094114",
-          "title": "India's Got Latent",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41054252",
-          "title": "The Frontier Lord Begins with Zero Subjects",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36290385",
-          "title": "Draw This, Then Die!",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39443204",
-          "title": "I Became a Legend after My 10 Year-Long Last Stand",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1230180",
-          "title": "The Angry Video Game Nerd",
-          "season": 20,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38646634",
-          "title": "Hell Mode: The Hardcore Gamer Dominates in Another World with Garbage Balancing",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt4353976",
-          "title": "Antiques Road Trip",
-          "season": 9,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt12347286",
-          "title": "Raktanchal",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt10887470",
-          "title": "Breaking News",
-          "season": 6,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt27422891",
-          "title": "LOL: Last One Laughing Poland",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36856056",
-          "title": "Fated Hearts",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt43440117",
-          "title": "Love in Sync",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43321335",
-          "title": "Bittersweet Love",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39195667",
-          "title": "Dara-san of the Reiwa Era",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41293320",
-          "title": "Please Excuse My Younger Brothers",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt0983197",
-          "title": "Four Corners",
-          "season": 63,
-          "seasonYear": 2023
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt39779622",
-          "title": "Jesy Nelson: Life After Little Mix",
-          "season": 1,
-          "from": 4.77,
-          "to": 5.48,
-          "delta": 0.71
-        },
-        {
-          "seriesId": "tt13763690",
-          "title": "Godmother",
-          "season": 1,
-          "from": 5.23,
-          "to": 5.87,
-          "delta": 0.64
-        },
-        {
-          "seriesId": "tt6859260",
-          "title": "The King's Avatar",
-          "season": 3,
-          "from": 5.85,
-          "to": 6.43,
-          "delta": 0.58
-        },
-        {
-          "seriesId": "tt10023178",
-          "title": "A Little Late with Lilly Singh",
-          "season": 2,
-          "from": 3.75,
-          "to": 4.32,
-          "delta": 0.57
-        },
-        {
-          "seriesId": "tt0784939",
-          "title": "Inspector Mom",
-          "season": 1,
-          "from": 7.01,
-          "to": 6.47,
-          "delta": -0.54
-        },
-        {
-          "seriesId": "tt39309656",
-          "title": "I'm Kishi Knight: Your Private Tutor",
-          "season": 1,
-          "from": 8.42,
-          "to": 7.9,
-          "delta": -0.52
-        },
-        {
-          "seriesId": "tt21086460",
-          "title": "Soho Theatre Live",
-          "season": 2,
-          "from": 7.5,
-          "to": 7.04,
-          "delta": -0.46
-        },
-        {
-          "seriesId": "tt37455125",
-          "title": "Trophy Wife: Murder on Safari",
-          "season": 1,
-          "from": 6.77,
-          "to": 6.37,
-          "delta": -0.4
-        },
-        {
-          "seriesId": "tt40550160",
-          "title": "From Overshadowed to Overpowered: Second Reincarnation of a Talentless Sage",
-          "season": 1,
-          "from": 7.93,
-          "to": 8.32,
-          "delta": 0.39
-        },
-        {
-          "seriesId": "tt0437043",
-          "title": "Untold Stories of the ER",
-          "season": 4,
-          "from": 8.94,
-          "to": 8.57,
-          "delta": -0.37
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 19367,
-        "avgRating": 1173,
-        "shapes": 209,
-        "seriesRating": 323,
-        "episodeCount": 90,
-        "providers": 1,
-        "overview": 1
       }
     }
   ]
