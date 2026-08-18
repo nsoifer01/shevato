@@ -419,6 +419,27 @@ clientId: it is attacker-minted and not ours to record.
 
 Traps this round minted:
 
+- **A Netlify deploy preview CANNOT exercise ratings through its own UI.**
+  `originAllowed` accepts `shevato.com` and localhost only, so a page served
+  from `deploy-preview-N--shevato.netlify.app` gets 403, which the client reads
+  as "not configured" and switches ratings off for the session - silently, and
+  indistinguishably from having no key. To verify a preview end to end: serve
+  the repo on localhost and proxy `/.netlify/functions/*` to the preview with
+  `Origin: https://shevato.com`. The real app then runs against the deployed
+  function (the guard is defence-in-depth and forgeable by design; the quotas
+  are the actual control). Note the preview shares the SITE's blob store, so a
+  preview lookup spends real money and moves the production counters.
+- **Zero-cost ways to probe tp-places in production**, worth knowing before
+  anyone spends to reproduce a bug: a query that `isGenericQuery` rejects never
+  reaches Google, and a clientId already over its cap returns 429 from the
+  quota branch without an upstream call or a blob write. Both exercise the real
+  deployed path for $0.00.
+- **`netlify blobs:delete` rate-limits bursts.** A first pass deleted 112 keys
+  in a row and then failed every remaining call until left alone for a minute;
+  running it under `xargs -P` made every invocation hang instead. Purging a
+  store means serial calls with a pause and a retry. (`while read` also drops a
+  final line with no trailing newline - 85 of 86 keys went, and the survivor
+  looked like a failure that was not.)
 - **The E2E profile leaks localStorage between blocks**, so `openApp`'s first
   navigation boots the app on the PREVIOUS block's trip and legitimately looks
   its venues up before the clear-and-seed. Counting those as the current
