@@ -6416,6 +6416,11 @@
     };
   }
 
+  // Whether a lookup could be biased, and by what. Part of both suggestion
+  // cache keys so a cold unbiased answer is never reused once coordinates land.
+  const biasKey = bias => (Number.isFinite(bias.lat) && Number.isFinite(bias.lon))
+    ? `${bias.lat.toFixed(2)},${bias.lon.toFixed(2)}` : '';
+
   // Put the Place field's city into the geocode cache so pickerCityBias has
   // something to bias WITH. The bias code was always there; the coordinates
   // were not, because until the Map view ran nothing had ever looked the city
@@ -6439,7 +6444,12 @@
     // Keyed on the city too: the same three letters mean different hotels once
     // the traveller fills the Place field in, and a cache that ignored it
     // would serve the pre-city answer for the rest of the session.
-    const key = `${q.toLowerCase()}|${(bias.city || '').toLowerCase()}`;
+    // ...and on whether the request could actually CARRY that city. The city
+    // reaches the geocode cache asynchronously (warmPickerCity), so the first
+    // keystrokes go out unbiased; without the coordinates in the key, that cold
+    // answer was cached under the same key and served for the rest of the
+    // session, so the bias never took effect no matter how warm the cache got.
+    const key = `${q.toLowerCase()}|${(bias.city || '').toLowerCase()}|${biasKey(bias)}`;
     if (hotelSuggestCache.has(key)) return Promise.resolve(hotelSuggestCache.get(key));
     if (hotelAbort) hotelAbort.abort();
     hotelAbort = new AbortController();
@@ -6531,7 +6541,12 @@
   function fetchVenueSuggestions(q, bias) {
     // Keyed on the city for the hotel picker's reason: the same four letters
     // mean a different place once the Place field is filled in.
-    const key = `${q.toLowerCase()}|${(bias.city || '').toLowerCase()}`;
+    // ...and on whether the request could actually CARRY that city. The city
+    // reaches the geocode cache asynchronously (warmPickerCity), so the first
+    // keystrokes go out unbiased; without the coordinates in the key, that cold
+    // answer was cached under the same key and served for the rest of the
+    // session, so the bias never took effect no matter how warm the cache got.
+    const key = `${q.toLowerCase()}|${(bias.city || '').toLowerCase()}|${biasKey(bias)}`;
     if (venueSuggestCache.has(key)) return Promise.resolve(venueSuggestCache.get(key));
     if (venueSuggestAbort) venueSuggestAbort.abort();
     venueSuggestAbort = new AbortController();
