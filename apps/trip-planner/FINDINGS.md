@@ -1253,6 +1253,19 @@ unverifiable is not the same as "crosses water". Where availability still
 cannot be established the CARD says so, since that is what gets read before any
 footnote.
 
+**The bias fix needed a second round, and the PROD smoke is what caught it.**
+Warming the city (above) made `pickerCityBias` able to send coordinates, and
+the e2e passed - because in that suite the geocoder answers instantly, so the
+city was already cached by the time a hotel name was typed and the very first
+lookup carried the bias. Against a real network the order is the other way
+round: the first keystrokes go out unbiased while the city is still resolving,
+and both suggestion caches keyed on `query|city` alone. The cold answer was
+therefore stored under the key a later biased lookup would hit, and Rome kept
+being offered Sarajevo no matter how warm the cache got. The key now carries
+the bias itself (`biasKey`), so a cold answer can never satisfy a warm lookup.
+The lesson: a cache keyed on the INPUTS a request is built from has to include
+every input, and an async-warmed one is an input that changes under you.
+
 **Two of the report's own findings were partly wrong, and the probes were why.**
 Worth repeating because both are easy to make again:
 

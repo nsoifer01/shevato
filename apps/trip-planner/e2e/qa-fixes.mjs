@@ -470,8 +470,15 @@ export async function run({ base, cdpPort }) {
       return { body: JSON.stringify([{ lat: '41.9028', lon: '12.4964', display_name: 'Rome, Italy', importance: 0.9, addresstype: 'city', address: { country_code: 'it', country: 'Italy' } }]), contentType: 'application/json' };
     }
     if (/photon\.komoot\.io/.test(url)) {
-      // record what the app ASKED for; the answer itself does not matter here
-      return { body: JSON.stringify({ features: [] }), contentType: 'application/json' };
+      // Two different answers, so the ROWS say which request produced them: a
+      // biased lookup returns the Rome hotel, an unbiased one does not.
+      const feat = (name, city, country) => ({ type: 'Feature',
+        geometry: { type: 'Point', coordinates: [12.5, 41.9] },
+        properties: { name, city, country, countrycode: 'IT', osm_key: 'tourism', osm_value: 'hotel' } });
+      const biased = /[?&]lat=/.test(url);
+      return { body: JSON.stringify({ features: biased
+        ? [feat('Hotel Art by the Spanish Steps', 'Rome', 'Italy')]
+        : [feat('Hotel Art', 'Sarajevo', 'Bosnia and Herzegovina')] }), contentType: 'application/json' };
     }
     return /^https?:\/\/(localhost|127\.)/.test(url) ? null : 'fail';
   };
@@ -486,15 +493,29 @@ export async function run({ base, cdpPort }) {
     await evaluate(s, `(()=>{const b=[...document.querySelectorAll('#itemForm button')].find(x=>/Stay/.test(x.textContent)); b.click(); return 1})()`);
     await sleep(300);
     await setValue(s, '#inLocation', 'Rome');
-    await evaluate(s, `document.querySelector('#inLocation').dispatchEvent(new Event('change',{bubbles:true}))`);
-    // the city has to reach the geocode cache before the bias can use it
+    // The city has to be in the geocode cache before a bias can be sent. In
+    // this suite the geocoder answers instantly, so that has usually happened
+    // by the time a hotel name is typed; against a real network it has not, and
+    // the first lookup goes out unbiased. Both orders have to end up biased,
+    // which is what the retype below checks - the cold answer must not be
+    // cached under a key that a later, biased lookup would hit.
     await waitForExpr(s, `!!JSON.parse(localStorage.getItem('trip-planner:geo:v3')||'{}')['rome']`, { timeout: 15000 });
     await setValue(s, '#inTitle', 'Hotel Art');
-    await evaluate(s, `document.querySelector('#inTitle').dispatchEvent(new Event('input',{bubbles:true}))`);
+    await sleep(400);
+    await setValue(s, '#inTitle', '');
+    await sleep(300);
+    await setValue(s, '#inTitle', 'Hotel Art');
     const biased = await waitForExpr(s, `window.__photon.some(u=>/[?&]lat=/.test(u) && /[?&]lon=/.test(u))`, { timeout: 15000 }).catch(() => false);
     const urls = await evaluate(s, `window.__photon.join(' ~ ').slice(0,300)`);
-    await t('TP-03: the hotel lookup carries the city coordinates as a bias',
+    await t('TP-03: the lookup carries the city coordinates as a bias',
       biased !== false, urls, s);
+    // and the rows on screen are the ones only a biased request returns
+    const rows = await waitForExpr(s, `(()=>{const c=document.querySelector('#inTitle').getAttribute('aria-controls');
+      const l=c&&document.getElementById(c); return !!l && /Spanish Steps/.test(l.textContent)})()`, { timeout: 10000 }).catch(() => false);
+    await t('TP-03: and the rows shown are the biased answer, not a cached cold one',
+      rows !== false,
+      await evaluate(s, `(()=>{const c=document.querySelector('#inTitle').getAttribute('aria-controls');
+        const l=c&&document.getElementById(c); return l?l.textContent.replace(/\s+/g,' ').slice(0,140):'(no list)'})()`), s);
     await escape(s);
   });
 
