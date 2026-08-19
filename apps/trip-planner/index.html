@@ -131,8 +131,9 @@
           <button data-act="import-booking">📄 Read a booking PDF</button>
           <div class="sep"></div>
           <div class="tp-menu-cap">Preferences</div>
-          <button data-act="timefmt" id="timefmtBtn">🕐 Use 24-hour times</button>
-          <button data-act="distunit" id="distunitBtn">📏 Use kilometers</button>
+          <button data-act="timefmt" id="timefmtBtn">🕐 24-hour times</button>
+          <button data-act="distunit" id="distunitBtn">📏 Kilometers</button>
+          <button data-act="tempunit" id="tempunitBtn">🌡️ Fahrenheit</button>
           <div class="sep"></div>
           <button data-act="delete-trip" class="danger">🗑 Delete trip</button>
           <div class="tp-menu-build" id="buildTag" aria-hidden="true"></div>
@@ -338,7 +339,7 @@
             <label for="inBookBy">Book by <small>(optional)</small></label>
             <input type="date" id="inBookBy">
             <div class="err" id="bookByErr">Book by must be on or before the item date.</div>
-            <div class="hint">Warnings nudge you as this date nears, while the item is still "To book".</div>
+            <div class="hint" id="bookByHint">Warnings nudge you as this date nears, while the item is still "To book".</div>
           </div>
           <div class="field">
             <label for="inPayment">Payment method <small>(optional)</small></label>

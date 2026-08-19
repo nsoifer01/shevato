@@ -125,6 +125,13 @@ function bangkokTrip(base = 30) {
 }
 
 async function pasteReply(s, text, cards) {
+  // The paste box lives on the Copy & paste tier. That used to be the app's
+  // default, so every block here reached the box implicitly; the free one-click
+  // assistant is the default now (QA TP-12), so the tier this helper needs is
+  // selected explicitly rather than assumed. Idempotent: already-on is a no-op.
+  await evaluate(s, `(()=>{const r=document.querySelector('#assistTierGroup input[value="copy"]');
+    if (r && !r.checked) r.click(); return 1})()`);
+  await waitForExpr(s, `!!document.querySelector('#assistPasteBox')`, { timeout: 6000 });
   await setValue(s, '#assistPasteBox', text);
   await clickSel(s, '#assistPasteParse', { settle: 400 });
   // The cards are the precondition for everything below, so wait for THEM

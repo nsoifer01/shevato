@@ -1102,8 +1102,15 @@ test('modeOptions: island legs get a ferry and no train', () => {
 test('modeOptions: fast-rail note only shows for HSR countries', () => {
   const train = modes => modes.find(m => m.name === 'Train');
   assert.match(train(L.modeOptions(370, false, true)).note, /Shinkansen/);
-  assert.equal(train(L.modeOptions(370, false, false)).note, 'where rail exists');
-  assert.equal(train(L.modeOptions(370, false)).note, 'where rail exists');
+  // Without a known high-speed network the card must not imply the LINE exists
+  // or that the number came from a timetable: both hedges are load-bearing, so
+  // they are asserted as properties rather than as one exact sentence.
+  for (const modes of [L.modeOptions(370, false, false), L.modeOptions(370, false)]) {
+    const note = train(modes).note;
+    assert.match(note, /only if a through line runs/);
+    assert.match(note, /estimated from distance, not a timetable/);
+    assert.doesNotMatch(note, /Shinkansen/);
+  }
 });
 
 test('hasFastRail knows HSR countries and rejects the rest', () => {

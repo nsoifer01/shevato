@@ -62,11 +62,16 @@ export async function run({ base, cdpPort }) {
     await t('tp-share I: writing menu rows disabled', SHARED_BLOCKED.every(a => menu[a] === true), JSON.stringify(menu), s);
     await t('tp-share I: export and share rows stay live', SHARED_ALLOWED.every(a => menu[a] === false), JSON.stringify(menu), s);
     // export-gpx: shared mode leaves it live (native disabled=false above),
-    // and the separate readiness gate holds because nothing here is located
+    // and the separate readiness gate holds because nothing here has a Place.
+    // The gate is about the TRIP, not about which views have been opened: the
+    // export resolves its own coordinates now (QA TP-21), so the tooltip must
+    // never tell the traveller to go and open the Map first.
     const gpx = await evaluate(s, `(()=>{const b=document.querySelector('.tp-menu-panel [data-act="export-gpx"]');
       return b ? { ariaDisabled: b.getAttribute('aria-disabled'), title: b.title } : null})()`);
     await t('tp-share I: export-gpx keeps its own readiness gate on a share',
-      !!gpx && gpx.ariaDisabled === 'true' && /two located places/i.test(gpx.title), JSON.stringify(gpx), s);
+      !!gpx && gpx.ariaDisabled === 'true' && /two items with a Place/i.test(gpx.title), JSON.stringify(gpx), s);
+    await t('tp-share I: and its tooltip does not send you to another view',
+      !!gpx && !/open the Map view/i.test(gpx.title), JSON.stringify(gpx), s);
     await pressKey(s, 'Escape', 'Escape', 27);
 
     // keyboard: "n" must not open Add item; "?" still opens the shortcut list.
