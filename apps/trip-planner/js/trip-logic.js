@@ -432,6 +432,40 @@ const TripLogic = (() => {
   // ---------- route helper math ----------
   const ISLANDISH = /\b(koh?|ko|phi phi|railay|samui|lanta|tao|phangan|chang|lipe|similan|island|isla|beach)\b/i;
 
+  // COUNTRIES YOU CANNOT DRIVE OR TAKE A TRAIN OUT OF. Every one of these is an
+  // island state or territory with no land border and no fixed link (bridge or
+  // tunnel) to another country, so a leg between one of them and ANY other
+  // country crosses water by definition.
+  //
+  // The place-name regex above only ever caught tropical resort islands, so
+  // London to Dublin was offered a 5h 31m train and a 7h 14m drive across the
+  // Irish Sea. Country codes are already on both endpoints (the geocoder
+  // records them), which makes this the cheapest honest answer available
+  // offline - no routing service, no new dependency.
+  //
+  // DELIBERATELY ABSENT, because they DO have a fixed link and their land modes
+  // are real: GB (Channel Tunnel), SG (Johor causeway), BH (King Fahd
+  // Causeway), HK and MO (land to CN). Same-country legs are never affected, so
+  // Tokyo to Kyoto keeps its Shinkansen and Sydney to Melbourne keeps its road.
+  const NO_LAND_LINK = new Set([
+    'IE', 'IS', 'JP', 'TW', 'PH', 'LK', 'MG', 'MT', 'CY', 'CU', 'JM',
+    'NZ', 'AU', 'FJ', 'MU', 'MV', 'BS', 'BB', 'TT', 'IM', 'JE', 'GG',
+    'KY', 'SC', 'BM', 'GL',
+  ]);
+
+  /**
+   * Does this leg have to cross water? True only when we can SAY so: two known,
+   * different countries, at least one of which has no land way out. Unknown
+   * country codes answer false, which leaves the modes exactly as they were -
+   * an unverifiable leg is not a sea crossing, it is an unknown.
+   */
+  function seaCrossing(fromCc, toCc) {
+    const a = String(fromCc || '').toUpperCase();
+    const b = String(toCc || '').toUpperCase();
+    if (!a || !b || a === b) return false;
+    return NO_LAND_LINK.has(a) || NO_LAND_LINK.has(b);
+  }
+
   // Countries with an operating high-speed rail network (>=250 km/h lines).
   // Gates the "fast rail roughly halves this" note on the train option.
   const HSR_COUNTRIES = new Set([
@@ -541,10 +575,28 @@ const TripLogic = (() => {
     if (km >= 2 && km < 60) add('local', '🚕', 'Taxi / local transit', ground / 40 * 60, 'metro, city bus or rideshare');
     if (km >= 40 && km < 1200 && !island) {
       add('rail', '🚆', 'Train', ground / (fastRail ? 190 : 105) * 60,
-        fastRail ? 'high-speed line (Shinkansen / TGV / ICE class), city centre to city centre' : 'where rail exists');
+        fastRail
+          ? 'high-speed line (Shinkansen / TGV / ICE class), city centre to city centre'
+          // "where rail exists" was too quiet to carry the weight it had: the
+          // card still printed a confident duration and a fare for city pairs
+          // with no through railway at all (Lima to Cusco). The note now says
+          // plainly that neither the line nor the time is confirmed.
+          : 'only if a through line runs - this time is estimated from distance, not a timetable');
     }
-    if (km >= 40 && km < 900) add('drive', '🚗', 'Drive', ground / 80 * 60, 'your own pace, and stops wherever you like');
-    if (km >= 40 && km < 900) add('bus', '🚌', 'Bus', ground / 70 * 60, km >= 400 ? 'usually the cheapest option, and often overnight on a leg this long' : 'usually the cheapest option');
+    // On a leg that crosses water these two are still REAL - you drive onto a
+    // ferry - but the time here is road time only. Saying so is the difference
+    // between a useful option and a 7h 14m "drive" from London to Dublin that
+    // quietly leaves out the Irish Sea.
+    if (km >= 40 && km < 900) {
+      add('drive', '🚗', 'Drive', ground / 80 * 60, island
+        ? 'needs a ferry crossing, which is NOT in this time - check sailings first'
+        : 'your own pace, and stops wherever you like');
+    }
+    if (km >= 40 && km < 900) {
+      add('bus', '🚌', 'Bus', ground / 70 * 60, island
+        ? 'goes by ferry, which is NOT in this time - check sailings first'
+        : (km >= 400 ? 'usually the cheapest option, and often overnight on a leg this long' : 'usually the cheapest option'));
+    }
     if (km >= 250) {
       add('air', '✈️', 'Flight', km / 750 * 60 + 35, 'add 2 to 3 hours for airports and check-in',
         { dur: `~${fmtDur(km / 750 * 60 + 35)} in the air`, cmpMin: km / 750 * 60 + 35 + 150 });
@@ -1510,6 +1562,18 @@ const TripLogic = (() => {
     ALIAS_PART: 100,
   };
   const AP_BIG_BONUS = 50;
+  // Below this length, a match buried INSIDE a word is far more likely to be a
+  // coincidence than an intention. "rome" is four letters, and it sat inside
+  // Split Saint Je(rome), Dover's "Aird(rome)" keyword and Gustavia's
+  // "Aé(rod)rome", so a traveller typing their destination was offered Croatia,
+  // Delaware and Saint Barthélemy under the two Rome airports with nothing on
+  // the row explaining why. At five letters and up an interior hit is usually
+  // deliberate ("eathrow"), so it is still allowed there.
+  const AP_INTERIOR_MIN = 5;
+  // A query that begins a WORD: "orly" in "Paris-Orly", "rome" in "Romeu Zema".
+  // Those are explainable from the row itself, which is the test that separates
+  // a weak-but-real match from a coincidence.
+  const wordHit = (hay, q) => new RegExp(`\\b${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(hay);
 
   function airportScore(q, a) {
     const iata = a.iata.toLowerCase();
@@ -1527,9 +1591,15 @@ const TripLogic = (() => {
     // "New York City" keyword without "york" also dragging in every row whose
     // alias merely contains those letters.
     else if (new RegExp(`\\b${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(alt)) tier = AP_TIER.ALIAS_WORD;
-    else if (city.includes(q)) tier = AP_TIER.CITY_PART;
-    else if (name.includes(q)) tier = AP_TIER.NAME_PART;
-    else if (alt.includes(q)) tier = AP_TIER.ALIAS_PART;
+    // The weak tiers are word-anchored first. A short query only ever reaches
+    // the interior-substring fallback below if nothing anchored matched, and
+    // only once it is long enough for an interior hit to mean something.
+    else if (wordHit(city, q)) tier = AP_TIER.CITY_PART;
+    else if (wordHit(name, q)) tier = AP_TIER.NAME_PART;
+    else if (wordHit(alt, q)) tier = AP_TIER.ALIAS_PART;
+    else if (q.length >= AP_INTERIOR_MIN && city.includes(q)) tier = AP_TIER.CITY_PART;
+    else if (q.length >= AP_INTERIOR_MIN && name.includes(q)) tier = AP_TIER.NAME_PART;
+    else if (q.length >= AP_INTERIOR_MIN && alt.includes(q)) tier = AP_TIER.ALIAS_PART;
     else return -1;
 
     // THE METRO PROMOTION. A hub whose data files it under a suburb (Otopeni,
@@ -2374,6 +2444,43 @@ const TripLogic = (() => {
     return { date: it.startDate, time: it.startTime, min: stampMin(it.startDate, it.startTime) };
   }
 
+  /**
+   * Things booked in a city the traveller has not reached yet.
+   *
+   * The narrow, low-noise version of "this item is in the wrong place". A blunt
+   * city-mismatch check is unusable - staying in Tokyo and spending a day in
+   * Nikko is a normal itinerary, not a mistake - so the rule is exactly the one
+   * shape that CANNOT be right: an item sitting in the destination of a leg
+   * that leaves that same day and lands on a LATER one. You cannot see the
+   * Eiffel Tower on the evening you fly out of New York.
+   *
+   * The QA round found the app building this itself: the Add-item form opens on
+   * the departure day, the venue picker then moves the Place to the destination
+   * city, and nothing moved the date. The day label is now right about where
+   * you are (dayMorningCity), and this is what says the item is not.
+   */
+  function arrivalConflicts(items) {
+    const list = (Array.isArray(items) ? items : []).filter(it => it && it.status !== 'cancelled');
+    const out = [];
+    for (const leg of list) {
+      if (leg.type !== 'flight' && leg.type !== 'transport') continue;
+      if (!isIsoDate(leg.startDate) || !isIsoDate(leg.endDate)) continue;
+      if (diffDays(leg.startDate, leg.endDate) <= 0) continue; // same-day leg lands the same day
+      const arrival = parseTravelArrival(leg.title);
+      const dest = arrival && String(arrival.city || '').trim();
+      if (!dest) continue;
+      const key = dest.toLowerCase();
+      for (const it of list) {
+        if (it === leg || isStay(it)) continue;          // a stay's own check-in is the arrival
+        if (it.startDate !== leg.startDate) continue;    // only the departure day
+        if (String(it.location || '').trim().toLowerCase() !== key) continue;
+        out.push({ id: it.id, title: it.title || '(untitled)', city: dest,
+          legId: leg.id, legTitle: leg.title || '', arriveDate: leg.endDate });
+      }
+    }
+    return out;
+  }
+
   // Adjacent travel legs (nothing else scheduled between them) where the second
   // one leaves before the first one lands, or so soon after that the change is
   // unlikely to hold.
@@ -2634,14 +2741,44 @@ const TripLogic = (() => {
       .sort(bySortKey);
   }
 
+  // A parenthesised three-letter code ("New York (JFK)", "Tokyo (HND)") is the
+  // shape this app's own forms write and imports follow, and no English phrase
+  // carries one by accident. It is therefore proof that the half really is a
+  // place, available OFFLINE and before any geocode has run.
+  const PLACE_CODE_RE = /\([A-Za-z]{3}\)/;
+
+  // The gate every travel-derived city passes. `isResolved` is app.js's
+  // cache-only geocode probe and stays the primary signal: a title like "Return
+  // to hotel" or "Travel to Shibuya" must never pass "Return"/"Travel"/"hotel"
+  // off as a city, because the chip's name also keys the weather lookup.
+  //
+  // The code check is a SECOND way to say yes, never a way to skip the gate.
+  // Without it the label depended on cache warmth: on a cold cache a departure
+  // day fell through to the destination city sitting on an activity, so the day
+  // you fly OUT of New York was labelled Paris (and drew Paris weather). A
+  // parenthesised code answers the same question the cache was being asked, so
+  // the honest answer no longer waits on the network.
+  function travelCityTrusted(city, rawHalf, isResolved) {
+    if (!city) return false;
+    if (!isResolved) return true;
+    return isResolved(city) || PLACE_CODE_RE.test(String(rawHalf || ''));
+  }
+
   // "Where am I on the MORNING of this day", in precedence order:
-  //   stay -> the bed you woke up in
+  //   stay          -> the bed you woke up in
   //   travel-origin -> the departure city of the day's first travel leg
-  //   location -> the first located item of the day
-  // isResolved is injected (app.js passes a cache-only geocode probe) so a
-  // title like "Return to hotel" or "Travel to Shibuya" cannot pass "Return" or
-  // "Travel" off as a city: the chip's name also keys the weather lookup, so an
-  // unresolvable string would print a temperature for the wrong place.
+  //   arrival       -> where a leg LANDS today, for a day nothing leaves on:
+  //                    the morning you touch down in Paris is a Paris morning,
+  //                    and before this rung existed that day had no city, no
+  //                    weather and no assistant context at all
+  //   location      -> the first located item of the day
+  // Every travel-derived rung passes travelCityTrusted; `location` is the
+  // traveller's own typed text and needs no gate.
+  //
+  // THIS IS THE SINGLE SOURCE OF TRUTH for a day's city: the Days-view chip and
+  // its weather, dayAnchor (and so every day route and distance chip), the
+  // assistant's day list and its context all read it, so a day can never be two
+  // cities on two surfaces.
   function dayMorningCity(items, date, isResolved) {
     const host = dayHostStay(items, date);
     if (host) return { city: host.location.trim(), source: 'stay' };
@@ -2649,7 +2786,14 @@ const TripLogic = (() => {
     const travel = ordered.find(it => it.type === 'flight' || it.type === 'transport');
     if (travel) {
       const origin = parseTravelOrigin(travel.title);
-      if (origin && (!isResolved || isResolved(origin))) return { city: origin, source: 'travel-origin' };
+      const rawOrigin = /^(.*?)\s+to\s+.+$/i.exec(String(travel.title || '').trim());
+      if (travelCityTrusted(origin, rawOrigin ? rawOrigin[1] : '', isResolved)) {
+        return { city: origin, source: 'travel-origin' };
+      }
+    }
+    const landed = dayArrival(items, date);
+    if (landed && travelCityTrusted(landed.city, landed.label, isResolved)) {
+      return { city: landed.city, source: 'arrival' };
     }
     const located = ordered.find(it => (it.location || '').trim());
     if (located) return { city: located.location.trim(), source: 'location' };
@@ -3121,9 +3265,25 @@ const TripLogic = (() => {
     return { lo: loA === null ? null : Math.round(loA), hi: hiA === null ? null : Math.round(hiA), wet };
   }
 
+  // Temperature units, the same shape as the distance unit above: one module
+  // level setting, set from the saved preference at boot and on every change,
+  // so every string built here agrees without threading a flag through a dozen
+  // call sites. Celsius is the source unit (Open-Meteo returns °C) and stays
+  // the default; the app offered miles-or-kilometres but no way to read a day
+  // card in Fahrenheit, which is a mixed unit system for exactly the audience
+  // the mile default is aimed at.
+  let tempUnit = 'c';
+  function setTempUnit(u) { tempUnit = u === 'f' ? 'f' : 'c'; }
+  function getTempUnit() { return tempUnit; }
+  const cToF = c => Math.round(c * 9 / 5 + 32);
+  const tempValue = c => (tempUnit === 'f' ? cToF(c) : Math.round(c));
+
   // A hyphen between two sub-zero numbers reads as "-12--7", so a below-zero
   // span spells the join out instead.
-  const tempSpan = (lo, hi) => (lo < 0 || hi < 0) ? `${lo} to ${hi}°C` : `${lo}-${hi}°C`;
+  const tempSpan = (lo, hi) => {
+    const a = tempValue(lo), b = tempValue(hi), sym = tempUnit === 'f' ? '°F' : '°C';
+    return (a < 0 || b < 0) ? `${a} to ${b}${sym}` : `${a}-${b}${sym}`;
+  };
 
   // Human line for a day card. Deliberately says "Typically ... this time of
   // year" (climate, not a forecast) and never promises what the weather will be.
@@ -5663,6 +5823,15 @@ const TripLogic = (() => {
   // SAMPLE_START_OFFSET is only the fallback for a template that names none.
   const SAMPLE_START_OFFSET = 45;
 
+  // THE CURRENCY EVERY SAMPLE AMOUNT IS WRITTEN IN. A spec may pin its own with
+  // `cur` (one authentic local price per template, which is what makes the
+  // mixed-currency handling visible), and everything else is this. It is
+  // deliberately a constant rather than "whatever currency the trip is in":
+  // sample numbers are USD-scale, so adopting the trip's code turned $310 into
+  // ¥310. Every `cur` pin must be a code the rates provider actually quotes,
+  // or the amount lands in no total at all.
+  const SAMPLE_BASE_CURRENCY = 'USD';
+
   // Added to every template so the sample always says what it is. Untimed on
   // purpose: it is also the "No time set" fixture.
   const SAMPLE_NOTE = {
@@ -5746,11 +5915,11 @@ const TripLogic = (() => {
       keywords: ['morocco', 'marrakesh', 'marrakech', 'fez', 'fes', 'casablanca', 'tangier'],
       localCurrency: 'MAD',
       items: [
-        { d: 0, type: 'flight', title: 'Paris (ORY) to Marrakesh (RAK)', time: '10:25', endTime: '12:45', status: 'booked', cost: 190 },
+        { d: 0, type: 'flight', title: 'Paris (ORY) to Marrakesh (RAK)', time: '10:25', endTime: '12:45', status: 'booked', cost: 175, cur: 'EUR' },
         { d: 0, type: 'local', title: 'Airport taxi to the medina gate', time: '13:30', status: 'booked', cost: 15, details: 'Cars cannot reach most riads, so the last stretch is on foot.' },
         { d: 0, end: 4, type: 'stay', title: 'Riad Yasmine', location: 'Marrakesh', status: 'booked', cost: 460, maps: 'Riad Yasmine Marrakech', details: 'Four nights inside the medina walls.' },
         { d: 0, type: 'activity', title: 'Dinner: Nomad', location: 'Marrakesh', time: '19:30', est: 35, maps: 'Nomad Marrakech' },
-        { d: 1, type: 'activity', title: 'Bahia Palace', location: 'Marrakesh', time: '09:00', status: 'booked', cost: 100, cur: 'MAD', maps: 'Bahia Palace Marrakech', details: 'A nineteenth century palace built around courtyards rather than corridors, which is the whole point of it: the rooms are arranged so that no two open onto each other. Early is cooler and the light in the painted ceilings is better before midday.' },
+        { d: 1, type: 'activity', title: 'Bahia Palace', location: 'Marrakesh', time: '09:00', status: 'booked', cost: 10, maps: 'Bahia Palace Marrakech', details: 'A nineteenth century palace built around courtyards rather than corridors, which is the whole point of it: the rooms are arranged so that no two open onto each other. Early is cooler and the light in the painted ceilings is better before midday.' },
         { d: 1, type: 'activity', title: 'Lunch: Cafe des Epices', location: 'Marrakesh', time: '13:00', est: 15, maps: 'Cafe des Epices Marrakech' },
         { d: 1, type: 'activity', title: 'Jemaa el-Fnaa at dusk', location: 'Marrakesh', maps: 'Jemaa el-Fnaa Marrakech', details: 'Left untimed: the square fills when it fills, somewhere between the late afternoon call to prayer and full dark.' },
         { d: 2, type: 'activity', title: 'Agafay desert day: camel ride and dinner under canvas', location: 'Agafay', time: '15:00', cost: 120, maps: 'Agafay Desert Morocco', details: 'The stony desert an hour outside the city rather than the dunes, which are a long way south and not a day trip from here. Camps run an afternoon ride, dinner and a drive back, so this is a late evening rather than an overnight.' },
@@ -5932,7 +6101,7 @@ const TripLogic = (() => {
         { d: 0, type: 'flight', title: 'Miami (MIA) to Lima (LIM)', time: '16:40', endTime: '22:10', status: 'booked', cost: 480 },
         { d: 0, type: 'local', title: 'Airport transfer to Barranco', time: '23:00', status: 'booked', cost: 25 },
         { d: 0, end: 3, type: 'stay', title: 'Hotel B Lima', location: 'Lima', status: 'booked', cost: 690, maps: 'Hotel B Lima Barranco', details: 'Three nights in Barranco.' },
-        { d: 1, type: 'activity', title: 'Larco Museum', location: 'Lima', time: '09:00', status: 'booked', cost: 45, cur: 'PEN', maps: 'Museo Larco Lima', details: 'A private collection of pre-Columbian pottery laid out chronologically, which is what makes it worth doing before anything in Cusco: the objects arrive with the cultures that made them in an order that actually explains the Inca rather than starting there.' },
+        { d: 1, type: 'activity', title: 'Larco Museum', location: 'Lima', time: '09:00', status: 'booked', cost: 12, maps: 'Museo Larco Lima', details: 'A private collection of pre-Columbian pottery laid out chronologically, which is what makes it worth doing before anything in Cusco: the objects arrive with the cultures that made them in an order that actually explains the Inca rather than starting there.' },
         { d: 1, type: 'activity', title: 'Huaca Pucllana adobe pyramid', location: 'Lima', time: '11:30', cost: 15, maps: 'Huaca Pucllana Lima' },
         { d: 1, type: 'activity', title: 'Lunch: La Mar Cebicheria', location: 'Lima', time: '13:30', est: 45, maps: 'La Mar Cebicheria Lima' },
         { d: 1, type: 'activity', title: 'Malecon clifftop walk in Miraflores', location: 'Lima', time: '17:00', maps: 'Malecon de Miraflores Lima' },
@@ -5956,7 +6125,7 @@ const TripLogic = (() => {
         { d: 5, type: 'activity', title: 'Moray terraces and the Maras salt pans', location: 'Maras', time: '13:00', cost: 25, maps: 'Maras Salt Mines Peru' },
         { d: 5, type: 'activity', title: 'Ollantaytambo terraces', location: 'Ollantaytambo', time: '16:30', maps: 'Ollantaytambo Archaeological Site' },
         { d: 5, type: 'activity', title: 'Dinner: Chuncho Ollantaytambo', location: 'Ollantaytambo', time: '19:00', est: 30, maps: 'Chuncho Restaurant Ollantaytambo' },
-        { d: 6, type: 'activity', title: 'Machu Picchu by train from Ollantaytambo', location: 'Machu Picchu', time: '05:30', status: 'booked', cost: 340, maps: 'Machu Picchu Sanctuary Peru', details: 'Entry is by timed circuit and the train seat is booked separately from the site ticket.' },
+        { d: 6, type: 'activity', title: 'Machu Picchu by train from Ollantaytambo', location: 'Machu Picchu', time: '05:30', status: 'booked', cost: 310, cur: 'EUR', maps: 'Machu Picchu Sanctuary Peru', details: 'Entry is by timed circuit and the train seat is booked separately from the site ticket.' },
         { d: 6, type: 'activity', title: 'Lunch: Indio Feliz Aguas Calientes', location: 'Aguas Calientes', time: '14:00', est: 30, maps: 'Indio Feliz Aguas Calientes' },
         { d: 6, type: 'activity', title: 'Dinner: Limbus Restobar', location: 'Cusco', time: '21:30', est: 35, maps: 'Limbus Restobar Cusco' },
         { d: 7, type: 'activity', title: 'Rainbow Mountain at Vinicunca', location: 'Vinicunca', time: '04:30', cost: 60, maps: 'Vinicunca Rainbow Mountain Peru' },
@@ -6088,11 +6257,11 @@ const TripLogic = (() => {
       keywords: ['vietnam', 'hanoi', 'da nang', 'danang', 'hoi an', 'saigon', 'ho chi minh'],
       localCurrency: 'VND',
       items: [
-        { d: 0, type: 'flight', title: 'Hong Kong (HKG) to Hanoi (HAN)', time: '10:40', endTime: '12:20', status: 'booked', cost: 95 },
+        { d: 0, type: 'flight', title: 'Hong Kong (HKG) to Hanoi (HAN)', time: '10:40', endTime: '12:20', status: 'booked', cost: 740, cur: 'HKD' },
         { d: 0, type: 'local', title: 'Airport bus 86 to the Old Quarter', time: '13:15', status: 'booked', cost: 2 },
         { d: 0, end: 5, type: 'stay', title: 'Hanoi La Siesta Premium Hang Be', location: 'Hanoi', status: 'booked', cost: 175, maps: 'Hanoi La Siesta Premium Hang Be', details: 'Five nights in the Old Quarter, about thirty five a night.' },
         { d: 0, type: 'activity', title: 'Dinner: Cha Ca Thang Long', location: 'Hanoi', time: '19:00', est: 8, maps: 'Cha Ca Thang Long Hanoi' },
-        { d: 1, type: 'activity', title: 'Temple of Literature', location: 'Hanoi', time: '08:30', status: 'booked', cost: 70000, cur: 'VND', maps: 'Temple of Literature Hanoi', details: 'The oldest university in the country, laid out as five courtyards that get quieter the further in you walk. The stone stelae on their tortoises in the third courtyard are the part people miss because they are looking for the pavilion on the banknote.' },
+        { d: 1, type: 'activity', title: 'Temple of Literature', location: 'Hanoi', time: '08:30', status: 'booked', cost: 3, maps: 'Temple of Literature Hanoi', details: 'The oldest university in the country, laid out as five courtyards that get quieter the further in you walk. The stone stelae on their tortoises in the third courtyard are the part people miss because they are looking for the pavilion on the banknote.' },
         { d: 1, type: 'activity', title: 'Lunch: Bun Cha Huong Lien', location: 'Hanoi', time: '12:00', est: 4, maps: 'Bun Cha Huong Lien Hanoi' },
         { d: 1, type: 'activity', title: 'Hoan Kiem lake and Ngoc Son temple', location: 'Hanoi', time: '16:00', cost: 2, maps: 'Ngoc Son Temple Hanoi' },
         { d: 1, type: 'activity', title: 'Drinks: bia hoi on Ta Hien', location: 'Hanoi', time: '20:30', est: 3, maps: 'Ta Hien Street Hanoi' },
@@ -6444,7 +6613,7 @@ const TripLogic = (() => {
   const sampleStartOffset = tpl => (tpl && Number.isInteger(tpl.startOffset) && tpl.startOffset >= 0)
     ? tpl.startOffset : SAMPLE_START_OFFSET;
 
-  function expandSampleItem(spec, tplId, base, index, createdAt, currency) {
+  function expandSampleItem(spec, tplId, base, index, createdAt) {
     const it = {
       id: `sample-${tplId}-${String(index + 1).padStart(2, '0')}`,
       type: spec.type,
@@ -6460,8 +6629,15 @@ const TripLogic = (() => {
       details: spec.details || '',
       createdAt,
     };
-    if (spec.cost != null) it.costCurrency = spec.cur || currency;
-    if (spec.est != null) { it.estCost = spec.est; it.estCostCurrency = spec.estCur || currency; }
+    // The authored currency, never the trip's. Every unpinned sample amount is
+    // written in SAMPLE_BASE_CURRENCY, so stamping the trip's currency on it
+    // reinterpreted the NUMBER: loading the Japan example into a JPY trip
+    // produced a ¥310 international flight and a ¥980 five-night hotel sitting
+    // beside the one item that really is JPY (teamLab, ¥3,800). Storing what
+    // was authored lets the app's own conversion do the rest, exactly as it
+    // does for any real mixed-currency trip.
+    if (spec.cost != null) it.costCurrency = spec.cur || SAMPLE_BASE_CURRENCY;
+    if (spec.est != null) { it.estCost = spec.est; it.estCostCurrency = spec.estCur || SAMPLE_BASE_CURRENCY; }
     if (spec.maps) it.mapsQuery = spec.maps;
     return it;
   }
@@ -6484,7 +6660,7 @@ const TripLogic = (() => {
       label: tpl.label,
       name: `Example: ${tpl.label}`,
       currency,
-      items: specs.map((spec, i) => expandSampleItem(spec, tpl.id, base, i, createdAt, currency)),
+      items: specs.map((spec, i) => expandSampleItem(spec, tpl.id, base, i, createdAt)),
     };
   }
 
@@ -8050,9 +8226,9 @@ const TripLogic = (() => {
     nextUpEvent, NEXT_UP_WINDOW_MIN, defaultPackingItems,
     packingWho, packingRowsFor, packingProgress, packingRosterDrops, applyPackingRoster,
     templateItem, tripAsTemplate, TEMPLATE_CLEARED,
-    isTransitType, isTransitSpan, overnightTransit,
+    isTransitType, isTransitSpan, overnightTransit, arrivalConflicts,
     validateItem, coverageGaps, tripStats, overlappingTrips, MAX_TRIP_DAYS, DATE_MIN, DATE_MAX, isDateInRange,
-    ISLANDISH, distKm, flagEmoji, compass, fmtDur, modeOptions,
+    ISLANDISH, NO_LAND_LINK, seaCrossing, distKm, flagEmoji, compass, fmtDur, modeOptions,
     modeCost, modeCo2, routeBadges, corridorFacts, routeFlags, routeTips,
     routeLinks, modeLink, ROUTE_HONESTY,
     classifyGeoMatch, geoInputIsQualified, geoMatchNote,
@@ -8087,6 +8263,7 @@ const TripLogic = (() => {
     defaultPlanDay, planDayGroups, weatherKey, summarizeClimate, weatherLine, weatherRange, pickMonthSamples, docGuard,
     FORECAST_DAYS, FORECAST_TTL_MS, forecastEligible, forecastKey, forecastFresh, freshForecasts, summarizeForecast, forecastLine,
     FORECAST_CONDITIONS, forecastConditionKey, forecastCondition, forecastChipParts,
+    setTempUnit, getTempUnit, tempSpan,
     extractTripActions, validateTripAction, buildAssistPackage, buildAssistSystemPrompt,
     fitAssistContext, ASSIST_DETAILS_BUDGET, ASSIST_TRUNCATED_NOTE,
     assistOptionRules, assistOriginNote, PLAN_MEAL_OPTIONS, PLAN_ACTIVITY_OPTIONS,
@@ -8108,7 +8285,7 @@ const TripLogic = (() => {
     readBudgetRange, normalizeBudgetFrom, budgetFigure,
     mealKind, isLongDetails,
     matchSampleTrip, normalizeTripName, sampleTrip, sampleTripOptions, buildSampleTrip,
-    SAMPLE_START_OFFSET, sampleStartOffset,
+    SAMPLE_START_OFFSET, sampleStartOffset, SAMPLE_BASE_CURRENCY,
   };
 })();
 

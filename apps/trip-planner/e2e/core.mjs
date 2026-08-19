@@ -254,13 +254,19 @@ export async function run({ base, cdpPort }) {
       return c ? c.querySelector('.v').textContent.trim() : null})()`);
     // waits on the repainted chip itself: the chip IS the thing under test,
     // so "it eventually reads X" is exactly the observable condition
+    // The chip reads "{n} items" plus, when the trip holds any, "+ {n}
+    // cancelled": selection and the delete confirm count cancelled rows, so the
+    // chip has to say which set its own number is about (QA TP-13). These read
+    // the COUNT, and the cancelled tail is asserted separately below.
+    const chipCount = async () => String(await chipText() || '').split('+')[0].trim();
     const chipReads = (want) => waitForExpr(s, `(()=>{const c=[...document.querySelectorAll('#summary .chip')]
       .find(x=>{const k=x.querySelector('.k'); return k && k.textContent.trim()==='Items'});
-      return !!c && c.querySelector('.v').textContent.trim() === ${JSON.stringify(want)}})()`, { timeout: 6000 });
-    await t('tp-core S: chip counts active items, not cancelled ones', (await chipText()) === '7 items', `chip=${await chipText()}`, s);
+      return !!c && c.querySelector('.v').textContent.trim().split('+')[0].trim() === ${JSON.stringify(want)}})()`, { timeout: 6000 });
+    await t('tp-core S: chip counts active items, not cancelled ones', (await chipCount()) === '7 items', `chip=${await chipText()}`, s);
+    await t('tp-core S: and says how many it left out', /\+ 1 cancelled/.test(await chipText()), `chip=${await chipText()}`, s);
 
     await addItemViaUi(s, { type: 'activity', title: 'Count me', start: iso(40), time: '09:00' });
-    await t('tp-core S: add raises the count', (await chipText()) === '8 items', `chip=${await chipText()}`, s);
+    await t('tp-core S: add raises the count', (await chipCount()) === '8 items', `chip=${await chipText()}`, s);
 
     const added = (await readDb(s)).trips[0].items.find(x => x.title === 'Count me');
     await setValue(s, `.tp-row[data-id="${added.id}"] .status-sel`, 'cancelled');
@@ -269,16 +275,16 @@ export async function run({ base, cdpPort }) {
     await t('tp-core S: restoring from Cancelled raises it again', await chipReads('8 items'), `chip=${await chipText()}`, s);
 
     await clickSel(s, `.tp-row[data-id="${added.id}"] [data-act="delete"]`, { settle: 500 });
-    await t('tp-core S: delete lowers the count', (await chipText()) === '7 items', `chip=${await chipText()}`, s);
+    await t('tp-core S: delete lowers the count', (await chipCount()) === '7 items', `chip=${await chipText()}`, s);
     await clickSel(s, '#undoBtn', { settle: 600 });
-    await t('tp-core S: undo restores the count', (await chipText()) === '8 items', `chip=${await chipText()}`, s);
+    await t('tp-core S: undo restores the count', (await chipCount()) === '8 items', `chip=${await chipText()}`, s);
 
     await setValue(s, '#searchBox', 'zzz-no-match');
     // wait for the filter to have visibly applied (empty board), THEN read the
     // chip: this is the one wait that cannot key on the chip, because the
     // claim is that the chip does NOT change
     await waitForExpr(s, `document.querySelectorAll('#board .tp-row').length === 0`, { timeout: 6000 });
-    await t('tp-core S: filtering never changes the whole-trip count', (await chipText()) === '8 items', `chip=${await chipText()}`, s);
+    await t('tp-core S: filtering never changes the whole-trip count', (await chipCount()) === '8 items', `chip=${await chipText()}`, s);
     await setValue(s, '#searchBox', '');
     await waitForExpr(s, `document.querySelectorAll('#board .tp-row').length > 0`, { timeout: 6000 });
 
@@ -288,7 +294,7 @@ export async function run({ base, cdpPort }) {
     await chipReads('8 items');
 
     await gotoHard(s, base + APP, { settle: 900 });
-    await t('tp-core S: the count survives a reload', (await chipText()) === '8 items', `chip=${await chipText()}`, s);
+    await t('tp-core S: the count survives a reload', (await chipCount()) === '8 items', `chip=${await chipText()}`, s);
   });
 
   /* ------------------ Z. repairDb straightens bad storage ---------------- */

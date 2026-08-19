@@ -371,6 +371,20 @@
   @keyframes flash { 0%, 40% { background: var(--accent-soft); } 100% { background: var(--bg-card); } }
   .tp-row.has-err { border-color: var(--red); }
   .tp-row.has-warn { border-color: var(--amber); }
+
+  /* The issue marker that sits ON the row (see issueBadgeHtml). The border
+     colour alone was the only signal a row was involved in a warning, which is
+     unreadable to anyone who cannot separate amber from the default border and
+     invisible to a screen reader. Its accessible name is the warning sentence
+     itself, so the row states the problem rather than hinting at it. */
+  .row-issue {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; margin-left: 6px; padding: 0;
+    font-size: 12px; line-height: 1; vertical-align: middle;
+    background: transparent; border: 0; border-radius: 6px; cursor: pointer;
+  }
+  .row-issue:hover, .row-issue:focus-visible { background: var(--bg-soft); }
+  .row-issue:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .tp-row.is-cancelled .c-title, .tp-row.is-cancelled .c-details, .tp-row.is-cancelled .c-cost { opacity: 0.45; text-decoration: line-through; }
 
   .c-dot {
@@ -2585,7 +2599,10 @@
      destination twice (a three-option pick-one card carried six of them). The
      slot is empty until a rating arrives, so the link stays for every venue
      that never gets one. */
-  .ap-rating:not(:empty) + .assist-maps-link { display: none; }
+  /* Only a real rating chip replaces the Verify link; a "No rating match"
+     slot leaves it in place, because that link is then the only way to go
+     and look the place up. */
+  .ap-rating.has-rating + .assist-maps-link { display: none; }
 
   /* ---------- Google rating chip ----------
      Google Maps Platform attribution: rating, review count and the "Google
@@ -2597,6 +2614,17 @@
      arrives, so an unconfigured or throttled endpoint leaves no trace. */
   .ap-rating { align-self: flex-start; max-width: 100%; }
   .ap-rating:empty { display: none; }
+  /* Scoped to the assistant's option cards (never the Add-item form, whose
+     slot collapses on purpose): hold the chip's height from the start so a
+     card does not grow under the cursor when ratings land a second later. */
+  .as-opt .ap-rating { min-height: 30px; }
+  .as-opt .ap-rating:empty { display: block; }
+  /* The settled "we could not match this" state. Deliberately quiet: it is
+     a fact about the lookup, not a mark against the place. */
+  .apr-none {
+    display: inline-flex; align-items: center; min-height: 30px;
+    font-family: var(--tp-font); font-size: 12px; color: var(--text-dim);
+  }
   .apr-chip {
     display: inline-flex; align-items: center; gap: 6px;
     border: 1px solid var(--border); border-radius: 999px;
@@ -2847,18 +2875,44 @@
     /* On a phone the seven chips stacked two-up cost four rows, and together
        with the coverage strip and the toolbar that was the entire first screen
        before a single itinerary row. They become ONE swipeable row instead:
-       nothing is dropped, the ones that matter on the road (dates, length,
-       countdown) lead, and ~240px of vertical space goes back to the plan.
+       nothing is dropped and ~240px of vertical space goes back to the plan.
        The negative margin lets the strip bleed to the screen edges so the
-       eighth chip is visibly cut off, which is what says "scroll me". */
+       next chip is visibly cut off, which is what says "scroll me".
+
+       TWO things were wrong with that as shipped. Issues is authored LAST, so
+       the one chip that says whether the trip has a problem sat five chips off
+       the right edge; and the scrollbar was hidden outright, so nothing but
+       the bleed suggested there was anything to reach. Order now leads with
+       the two that matter when something is wrong, and the scrollbar is thin
+       rather than absent. */
+    /* Nothing planned yet: stand down every control that needs items to act on,
+       so the empty state's own two buttons are the first thing on screen rather
+       than the last. Add item, the Assistant and the trip menu all stay. */
+    .tp-trip-empty .view-switch,
+    .tp-trip-empty .tb-filters,
+    .tp-trip-empty .tb-pair,
+    .tp-trip-empty #selectBtn,
+    .tp-trip-empty #shiftTripBtn,
+    .tp-trip-empty #routeBtn,
+    .tp-trip-empty .toolbar .tb-sep { display: none; }
+
     .summary {
       display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto;
       margin: 4px -14px 12px; padding: 0 14px 4px;
-      scroll-snap-type: x proximity; scrollbar-width: none;
+      scroll-snap-type: x proximity; scrollbar-width: thin;
+      /* Snapping ignores the strip's own padding, so the first chip parked
+         flush against the screen edge with its left border cut off. Harmless
+         while that chip was Dates; not harmless now Issues leads. */
+      scroll-padding-left: 14px;
     }
-    .summary::-webkit-scrollbar { display: none; }
+    .summary::-webkit-scrollbar { height: 3px; }
+    .summary::-webkit-scrollbar-thumb { background: var(--border-soft); border-radius: 3px; }
     .chip { flex: 0 0 auto; min-width: 0; scroll-snap-align: start; padding: 8px 12px; }
     .chip .v { white-space: nowrap; }
+    /* Status before arithmetic. `order` only reorders the visual row: the DOM
+       order the desktop layout and every screen reader follow is untouched. */
+    .summary .chip--issues { order: -2; }
+    .summary .chip--nights-booked { order: -1; }
 
     /* the coverage legend wrapped to two lines above a 16px strip */
     .strip-box { padding: 10px 12px 9px; }
@@ -3024,6 +3078,18 @@
      .totals .t .k and .tt-head use), not a new one. It is a <div>, so the
      panel's button rules cannot reach it: no hover, no press, and Tab walks
      straight past it to the next action. */
+  /* The on/off mark for the three preference rows. A fixed-width slot so the
+     labels stay aligned whether or not the setting is on, which is what makes
+     the column scannable instead of jittering as things are toggled. */
+  /* A form row whose control no longer applies to the current state: still
+     readable (it explains why), but visibly out of play. */
+  .field.is-muted label, .field.is-muted .hint { opacity: 0.6; }
+  .field.is-muted input:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .pref-tick {
+    display: inline-block; width: 12px; margin-right: 2px;
+    color: var(--green); font-weight: 700;
+  }
   .tp-menu-cap {
     padding: 6px 10px 3px; font-size: 11px; font-weight: 700;
     text-transform: uppercase; letter-spacing: 0.7px; color: var(--text-dim);

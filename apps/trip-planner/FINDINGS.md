@@ -1176,6 +1176,110 @@ Probe traps this round minted, both of which produced convincing false results:
   removed); a new sub-4.5:1 token combination will fail CI-adjacent runs,
   not just look dim.
 
+## The 2026-08-19 exploratory QA round (TP-01..TP-23)
+
+A black-box pass: the app was used as a first-time traveller would, and the
+source only opened once something had been reproduced. Twenty-one findings
+reached implementation. What is worth keeping from it:
+
+**Three findings were the SAME root cause, and it was not the obvious one.**
+TP-02 (a day labelled with the wrong city), TP-03 (hotel search offering
+Sarajevo for a Rome trip) and TP-21 (a GPX export that needed the Map view
+opened first) all came from one thing: **the geocode cache was only ever filled
+as a side effect of rendering the Map**. Every consumer that wanted coordinates
+either got them by luck or silently degraded:
+
+- `pickerCityBias()` already passed `lat`/`lon` to Photon. The bias was never
+  broken; the cache it read was empty, so it passed nothing. It now warms the
+  ONE city the form is about (debounced, skipped when cached or already missed),
+  which is a single request on a deliberate action.
+- The GPX export read `geoCache` directly and shipped whatever happened to be
+  in it. It now resolves what it needs through the same shared, rate-limited
+  queue, with a progress toast.
+- `dayMorningCity` gated its travel-origin rung on a cache-only probe, so on a
+  cold cache it fell through to whatever activity sat on the day. See below.
+
+The lesson for the next round: when a feature "works sometimes", check whether
+it depends on a cache another view happens to fill. Nominatim's 1 req/sec
+policy is why nothing warms speculatively, and that constraint is what pushed
+the geocoding into one view in the first place.
+
+**TP-02: the gate was load-bearing and had to survive the fix.** The obvious
+fix - trust any parsed travel origin - breaks a real, tested safeguard:
+`transport` items titled "Return to hotel" and "Travel to Shibuya" are
+assistant-contract phrasings, and a naive split names the day "Return", then
+fetches that non-place's weather. The gate stays. What was added is a SECOND
+way to say yes: a parenthesised place code ("New York (JFK) to Paris (CDG)")
+is proof the half is a place, available offline and before any geocode. Junk
+titles carry no code, so they are still refused, and the day label no longer
+depends on cache warmth. An `arrival` rung was also added between
+travel-origin and location: before it, the day you actually LAND had no city,
+no weather and no assistant context at all.
+
+**TP-01: "Set currency" was a relabel, and that is a data-loss bug.** It wrote
+`costCurrency` and left the number alone, so $480 became €480, a trip total
+moved by hundreds with no confirmation, and the source currency of every
+mixed-currency item was overwritten. It is now a CONVERSION through the same
+`convertAmount` every total uses, planned in full before anything is written
+(a half-converted selection is the same bug in a new shape) and confirmed with
+the count, the target and anything that cannot be converted. Worth knowing:
+**the undo stack is memory-only and is empty after a reload**, which is what
+turned this from recoverable into permanent. Any future unconfirmed bulk write
+inherits that same exposure.
+
+**TP-04 / TP-07: currency has to have ONE meaning per number.** Sample costs
+took the trip's currency, so the same literal `310` meant dollars in a USD trip
+and yen in a JPY one (a ¥310 international flight next to a ¥3,800 museum
+ticket that really was yen). Samples now carry `SAMPLE_BASE_CURRENCY` and the
+app's own conversion does the rest. Separately, the hardcoded picker list had
+drifted from the provider: BGN sat there after the ECB stopped publishing it,
+so a 100 BGN cost added exactly nothing to every total. The selectable set is
+now read from the live rate payload, with the checked-in list as the floor, and
+three sample pins in currencies the provider does not quote (MAD, PEN, VND)
+were re-authored. `tests/qa-2026-08-19.test.js` asserts every example stays
+inside the provider's set - that is the test that stops this drifting again.
+
+**TP-05: do not replace one fake certainty with another.** London to Dublin
+offered a 5h 31m train across the Irish Sea because "is this an island leg" was
+a regex over the PLACE NAME (`koh`, `samui`, `beach`), which never fires for
+Dublin. It is now decided from the endpoints' country codes, which the geocoder
+already records. Two things were deliberately NOT done: no routing service was
+added (there is no free one that fits the app's constraints), and no country
+adjacency dataset either. `NO_LAND_LINK` lists only countries with no land
+border AND no fixed link, which is why GB is absent (Channel Tunnel) and
+Singapore is absent (Johor causeway) - a naive "island nation" rule would have
+deleted the Eurostar. Unknown country codes change nothing, because
+unverifiable is not the same as "crosses water". Where availability still
+cannot be established the CARD says so, since that is what gets read before any
+footnote.
+
+**Two of the report's own findings were partly wrong, and the probes were why.**
+Worth repeating because both are easy to make again:
+
+- TP-10 claimed overlapping stays produced "no warning sentence". They always
+  had one - `computeIssues` gives every issue a `text` - but the panel is a
+  `<details>`, collapsed by default, and the probe read `document.body.innerText`,
+  which skips collapsed `<details>` content. The real defect was narrower: the
+  ROW carried colour only. It now carries a marker whose accessible name IS the
+  warning sentence.
+- TP-14 claimed the weather chip had no tooltip. It has one, on the chip
+  CONTAINER; the probe checked `.dc-chip-temp`. The real defect was that a
+  tooltip is hover-only and a phone cannot show one, so the chip now wears a
+  visible `Typical` pill, the twin of the existing `Forecast` pill.
+
+**TP-13's root cause was cancelled items, not notes.** The Items chip excludes
+cancelled rows (`tripStats` filters them) while selection includes them, so a
+trip could read "41 items" and "42 selected" at once, and then offer to delete
+42. The chip now discloses what it leaves out.
+
+**Reproductions that came back clean, and were dropped rather than "fixed":**
+the `setItem`/`removeItem` keys visible in `Object.keys(localStorage)` are the
+sync layer's own monkeypatch, not stored data (`localStorage.length` is
+correct); the venue coordinate cache is properly qualified (`"colosseum rome"`,
+not `"colosseum"`); assistant-added items keep `estCost` through an edit; and
+missing ratings on localhost are the unconfigured Places key (503), not a
+product defect - production returns them correctly.
+
 ## Testing
 
 - Three layers, keep each test at the lowest one that can catch its bug:
