@@ -9,7 +9,7 @@
 import {
   recorder, freshIds, dbOf, standardTrip, trip, item, iso,
   openApp, readDb, overlayOpenId, tpErrors, openAddItem,
-  switchView, escape, closePage, evaluate, expandTimeline,
+  switchView, escape, closePage, evaluate, evalAsync, expandTimeline,
   clickSel, pressKey, sleep, setValue, waitForExpr,
 } from './helpers.mjs';
 import { clickAt, typeInto, EXTERNAL_HOSTS } from '../../../tests/browser/cdp.mjs';
@@ -84,6 +84,221 @@ export async function run({ base, cdpPort }) {
     await clickSel(s, '#tripMenuBtn', { settle: 300 });
     await escape(s);
     await t('tp-ui M: Escape closes the trip menu', !(await evaluate(s, `document.getElementById('tripMenu').classList.contains('open')`)), '', s);
+  });
+
+  /* ------------- M2. a dialog always reopens at the TOP ------------------ */
+  // Every overlay is markup that is toggled, never rebuilt, so a scroll
+  // container inside one keeps its offset across a close: the Add-item form
+  // used to reopen halfway down where it was left. The reset lives in
+  // openOverlay, so these checks are really about the SHARED mechanism - the
+  // representative dialogs below inherit it rather than each carrying a fix.
+  //
+  // The viewport is deliberately short so the dialogs genuinely overflow; at
+  // 900x900 several of them fit and there would be nothing to scroll.
+  freshIds();
+  const seedM2 = standardTrip();
+  // 40 real messages, so the assistant thread below has something to scroll and
+  // the panel's own restoreChat paints it (and pins it to the bottom, which is
+  // the intentional position this block exists to protect).
+  const chatM2 = Array.from({ length: 40 }, (_, i) => ({
+    role: i % 2 ? 'assistant' : 'user',
+    content: `message ${i} ${'padding '.repeat(6)}`,
+  }));
+  await withPage('tp-ui M2', {
+    db: dbOf([seedM2]), viewport: [900, 620],
+    stores: { [`trip-planner:chat:${seedM2.id}`]: chatM2 },
+  }, async (s) => {
+    // Scrolls every scrollable box inside an overlay to its end, and reports
+    // what actually moved, so a check can never pass because nothing scrolled.
+    const pushToBottom = (sel) => evaluate(s, `(()=>{const o=document.querySelector('${sel}');
+      const boxes=[o, ...o.querySelectorAll('*')].filter(el=>el.scrollHeight>el.clientHeight+4);
+      boxes.forEach(el=>{el.scrollTop=el.scrollHeight});
+      return boxes.filter(el=>el.scrollTop>0).length})()`);
+    // Every offset still held anywhere inside the overlay, the overlay itself
+    // included: `.m-body` is the modal's scroller and `.overlay` scrolls too.
+    const offsets = (sel) => evaluate(s, `(()=>{const o=document.querySelector('${sel}');
+      return [o, ...o.querySelectorAll('*')].filter(el=>el.scrollTop>0)
+        .map(el=>({what: el.id || String(el.className||'').split(' ')[0], top: Math.round(el.scrollTop)}))})()`);
+    const closeTop = () => evaluate(s, `(()=>{const os=[...document.querySelectorAll('.overlay.open')];
+      const o=os[os.length-1]; const b=o&&o.querySelector('[data-close]');
+      if(b) b.click(); else if(o) o.classList.remove('open'); return 1})()`);
+
+    // 1. THE REPORTED BUG: Add item, scroll, close, reopen.
+    await openAddItem(s);
+    const moved = await pushToBottom('#itemOverlay');
+    const scrolled = await offsets('#itemOverlay');
+    await t('tp-ui M2: the Add-item dialog really does scroll in this viewport',
+      moved > 0 && scrolled.length > 0, JSON.stringify(scrolled), s);
+    await closeTop();
+    await waitForExpr(s, `!document.getElementById('itemOverlay').classList.contains('open')`, { timeout: 4000 });
+    await openAddItem(s);
+    await t('tp-ui M2: Add item reopens at the top',
+      (await offsets('#itemOverlay')).length === 0, JSON.stringify(await offsets('#itemOverlay')), s);
+    await escape(s);
+
+    // 2. A DIFFERENT ENTRY POINT reaches the same reset: the `n` shortcut.
+    await openAddItem(s);
+    await pushToBottom('#itemOverlay');
+    await closeTop();
+    await waitForExpr(s, `!document.getElementById('itemOverlay').classList.contains('open')`, { timeout: 4000 });
+    await pressKey(s, 'n', 'KeyN', 78);
+    await waitForExpr(s, `document.getElementById('itemOverlay').classList.contains('open')`, { timeout: 4000 });
+    await t('tp-ui M2: reopening through another entry point is at the top too',
+      (await offsets('#itemOverlay')).length === 0, JSON.stringify(await offsets('#itemOverlay')), s);
+    await escape(s);
+
+    // 3. THE SHARED MECHANISM: representative dialogs opened from the trip menu.
+    for (const [act, sel, label] of [
+      ['rename-trip', '#tripOverlay', 'Trip settings'],
+      ['packing', '#packingOverlay', 'Packing list'],
+      ['import-booking', '#importBookingOverlay', 'Read a booking PDF'],
+    ]) {
+      await clickSel(s, '#tripMenuBtn', { settle: 260 });
+      await clickSel(s, `.tp-menu-panel [data-act="${act}"]`, { settle: 450 });
+      const n = await pushToBottom(sel);
+      await closeTop();
+      await waitForExpr(s, `!document.querySelector('${sel}').classList.contains('open')`, { timeout: 4000 });
+      await clickSel(s, '#tripMenuBtn', { settle: 260 });
+      await clickSel(s, `.tp-menu-panel [data-act="${act}"]`, { settle: 450 });
+      const left = await offsets(sel);
+      await t(`tp-ui M2: ${label} reopens at the top`, n > 0 && left.length === 0,
+        `scrolledBoxes=${n} left=${JSON.stringify(left)}`, s);
+      await closeTop();
+      await sleep(220);
+    }
+
+    // 4. A NESTED scroller inside a dialog, not just .m-body. #importBookingResult
+    //    only overflows once it holds a reading, so it is filled here.
+    await clickSel(s, '#tripMenuBtn', { settle: 260 });
+    await clickSel(s, '.tp-menu-panel [data-act="import-booking"]', { settle: 450 });
+    const nested = await evaluate(s, `(()=>{const r=document.getElementById('importBookingResult');
+      r.innerHTML = Array.from({length:60},(_,i)=>'<p>line '+i+'</p>').join('');
+      r.scrollTop = r.scrollHeight;
+      return {canScroll: r.scrollHeight > r.clientHeight + 4, top: Math.round(r.scrollTop)}})()`);
+    await closeTop();
+    await waitForExpr(s, `!document.getElementById('importBookingOverlay').classList.contains('open')`, { timeout: 4000 });
+    await clickSel(s, '#tripMenuBtn', { settle: 260 });
+    await clickSel(s, '.tp-menu-panel [data-act="import-booking"]', { settle: 450 });
+    const nestedAfter = await evaluate(s, `Math.round(document.getElementById('importBookingResult').scrollTop)`);
+    await t('tp-ui M2: a nested scroller inside a dialog resets too',
+      nested.canScroll && nested.top > 0 && nestedAfter === 0, `${JSON.stringify(nested)} -> ${nestedAfter}`, s);
+    await closeTop();
+    await sleep(220);
+
+    // 5. THE RESET IS SCOPED to the dialog being opened, and the one scroll
+    //    position in this app that is deliberate has to prove it. The assistant
+    //    thread is pinned to its BOTTOM on purpose (scrollMessages), and it
+    //    lives in a panel rather than an overlay, so no dialog opening over it
+    //    may move it. Checked structurally AND behaviourally: the DOM fact is
+    //    what makes the fix unable to reach it, the reading is what proves it.
+    //
+    //    (There is no overlay-over-overlay path in the app today - every
+    //    confirmDialog call comes from the board or the panel, never from
+    //    inside an open dialog - so this is the reachable version of "another
+    //    layer opened and mine was left alone".)
+    const outsideOverlay = await evaluate(s, `(()=>{const sc=document.querySelector('.tp-assist-scroll');
+      return { exists: !!sc, insideAnOverlay: !!(sc && sc.closest('.overlay')) }})()`);
+    await t('tp-ui M2: the assistant thread is not inside an overlay, so the reset cannot reach it',
+      outsideOverlay.exists && !outsideOverlay.insideAnOverlay, JSON.stringify(outsideOverlay), s);
+
+    // A REAL thread, seeded before boot, not markup injected into the panel:
+    // the panel repaints itself (restoreChat) and would wipe anything faked in,
+    // which reads exactly like a scroll bug and is not one.
+    await clickSel(s, '#assistBtn', { settle: 600 });
+    // Read the thread where the traveller left it, mid-history, the way any
+    // scroll outside an overlay has to be left alone. (Whether the panel pins
+    // itself to the bottom on open is its own business and is not what this
+    // block is about.)
+    const thread = await evaluate(s, `(()=>{const sc=document.querySelector('.tp-assist-scroll');
+      if(!sc) return {missing:true};
+      const can = sc.scrollHeight > sc.clientHeight + 4;
+      sc.scrollTop = Math.round((sc.scrollHeight - sc.clientHeight) / 2);
+      return {canScroll: can, top: Math.round(sc.scrollTop)}})()`);
+    // Stacked with "?" rather than a click: the panel covers that corner of the
+    // toolbar, so a click there never reaches the button and the Escape that
+    // follows closes the PANEL instead - whose scroll then reads 0 because it
+    // is hidden, which looks exactly like the bug this is checking for.
+    await pressKey(s, '?', 'Slash', 191, 8);
+    await waitForExpr(s, `document.getElementById('shortcutsOverlay').classList.contains('open')`, { timeout: 4000 });
+    const duringDialog = await evaluate(s, `({ top: Math.round(document.querySelector('.tp-assist-scroll').scrollTop),
+      dialogOpen: document.getElementById('shortcutsOverlay').classList.contains('open') })`);
+    await escape(s);
+    await waitForExpr(s, `!document.getElementById('shortcutsOverlay').classList.contains('open')`, { timeout: 4000 });
+    const afterDialog = await evaluate(s, `({ top: Math.round(document.querySelector('.tp-assist-scroll').scrollTop),
+      panelStillOpen: !document.getElementById('assistPanel').hidden })`);
+    await t('tp-ui M2: a dialog opening over the assistant leaves its thread where it was',
+      thread.canScroll && thread.top > 0 && duringDialog.dialogOpen
+      && duringDialog.top === thread.top
+      && afterDialog.panelStillOpen && afterDialog.top === thread.top,
+      `${JSON.stringify(thread)} during=${JSON.stringify(duringDialog)} after=${JSON.stringify(afterDialog)}`, s);
+    await escape(s);
+    await sleep(200);
+
+    // 6. NO PAINTED JUMP: the offset is already zero in the same task that
+    //    opens the dialog and still zero on the next frame, so no rendered
+    //    frame ever showed the old position.
+    await openAddItem(s);
+    await pushToBottom('#itemOverlay');
+    await closeTop();
+    await waitForExpr(s, `!document.getElementById('itemOverlay').classList.contains('open')`, { timeout: 4000 });
+    const frames = await evalAsync(s, `(async () => {
+      document.getElementById('addBtn').click();
+      const read = () => Math.round(document.querySelector('#itemOverlay .m-body').scrollTop);
+      const sameTask = read();
+      const nextFrame = await new Promise(r => requestAnimationFrame(() => r(read())));
+      return { sameTask, nextFrame };
+    })()`);
+    await t('tp-ui M2: the dialog is never painted at the old offset',
+      frames.sameTask === 0 && frames.nextFrame === 0, JSON.stringify(frames), s);
+    await escape(s);
+
+    // 7. The page behind must not move. Opening locks body scrolling, and the
+    //    position the traveller was reading has to survive both edges.
+    await evaluate(s, `window.scrollTo(0, 300)`);
+    await sleep(220);
+    const pageBefore = await evaluate(s, `Math.round(window.scrollY)`);
+    await pressKey(s, 'n', 'KeyN', 78);
+    await waitForExpr(s, `document.getElementById('itemOverlay').classList.contains('open')`, { timeout: 4000 });
+    const pageDuring = await evaluate(s, `Math.round(window.scrollY)`);
+    await escape(s);
+    await waitForExpr(s, `!document.getElementById('itemOverlay').classList.contains('open')`, { timeout: 4000 });
+    const pageAfter = await evaluate(s, `Math.round(window.scrollY)`);
+    await t('tp-ui M2: opening and closing a dialog leaves the page where it was',
+      pageBefore > 0 && pageDuring === pageBefore && pageAfter === pageBefore,
+      `before=${pageBefore} during=${pageDuring} after=${pageAfter}`, s);
+
+    // 8. The dialog still WORKS: the reset must not have broken the form.
+    await evaluate(s, `window.scrollTo(0, 0)`);
+    await sleep(200);
+    await openAddItem(s);
+    await clickSel(s, '#typePicker [data-type="activity"]', { settle: 250 });
+    await setValue(s, '#inTitle', 'Scroll reset smoke');
+    await setValue(s, '#inStart', iso(31));
+    await clickSel(s, '#itemSaveBtn', { settle: 700 });
+    const saved = await evaluate(s, `((JSON.parse(localStorage.getItem('trip-planner:v1')||'{"trips":[{"items":[]}]}').trips[0]||{}).items||[])
+      .some(i => i.title === 'Scroll reset smoke')`);
+    await t('tp-ui M2: the dialog still saves normally after the reset', saved, '', s);
+  });
+
+  /* ---------- M3. the trip menu popover reopens at the top too ----------- */
+  // Phone width only: the panel is capped and scrollable below 560px (see the
+  // max-width:560px rule), and it is toggled rather than rebuilt, so it had the
+  // same defect one floor down from the dialogs.
+  freshIds();
+  const seedM3 = standardTrip();
+  await withPage('tp-ui M3', { db: dbOf([seedM3]), viewport: [390, 700] }, async (s) => {
+    await clickSel(s, '#tripMenuBtn', { settle: 320 });
+    const menu = await evaluate(s, `(()=>{const p=document.querySelector('.tp-menu-panel');
+      const can = p.scrollHeight > p.clientHeight + 4;
+      p.scrollTop = p.scrollHeight;
+      return {can, top: Math.round(p.scrollTop)}})()`);
+    await escape(s);
+    await sleep(260);
+    await clickSel(s, '#tripMenuBtn', { settle: 320 });
+    const after = await evaluate(s, `Math.round(document.querySelector('.tp-menu-panel').scrollTop)`);
+    await t('tp-ui M3: the trip menu reopens at the top on a phone',
+      menu.can && menu.top > 0 && after === 0, `${JSON.stringify(menu)} -> ${after}`, s);
+    await escape(s);
   });
 
   /* --------------------- N. keyboard shortcuts --------------------------- */

@@ -23,7 +23,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 65;
+  const TP_BUILD = 66;
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   // Miles or kilometers, everywhere a distance prints. Same architecture as
@@ -4350,6 +4350,12 @@
     syncTripMenuShared();
     syncGpxMenuRow();
     $('#tripMenu').classList.add('open');
+    // Same defect as the dialogs, same fix, one floor down: on a phone the
+    // panel is tall enough to scroll (see the max-width:560px rule) and it is
+    // toggled rather than rebuilt, so it used to reopen wherever it was left.
+    // It is a popover rather than a modal, which is why it needs its own call
+    // instead of inheriting openOverlay's.
+    resetScrollWithin($('#tripMenu'));
     // the search button already reports its state; this popover is the same
     // kind of control and a screen reader deserves the same open/closed answer
     $('#tripMenuBtn').setAttribute('aria-expanded', 'true');
@@ -9034,10 +9040,42 @@
   function modalFocusables(overlay) {
     return [...overlay.querySelectorAll(FOCUSABLE)].filter(el => el.offsetParent !== null);
   }
+  // A dialog reopens at the TOP, every time.
+  //
+  // Every overlay in this app is markup that already exists and is toggled with
+  // a class (`.overlay` is display:none, `.overlay.open` is display:flex), so
+  // nothing is ever recreated - and a scroll container keeps its offset across
+  // that toggle. Scroll to the bottom of the Add-item form, close it, open it
+  // again and the browser hands back the same scroll position, halfway down a
+  // form that is supposed to be fresh.
+  //
+  // Two containers hold an offset, not one, which is why resetting `.m-body`
+  // alone would leave a dialog 30-odd pixels down: `.m-body` is the modal's own
+  // scroller, and `.overlay` ITSELF scrolls when the modal is taller than the
+  // viewport. Nested ones exist too (`#importBookingResult`), so this resets
+  // whatever is actually scrolled rather than a list of selectors that would
+  // have to be kept in step with the CSS.
+  //
+  // Read every offset first and write afterwards: reading `scrollTop` flushes
+  // layout, and interleaving reads with writes would flush it once per element.
+  function resetScrollWithin(root) {
+    if (!root) return;
+    const scrolled = [root, ...root.querySelectorAll('*')].filter(el => el.scrollTop || el.scrollLeft);
+    for (const el of scrolled) { el.scrollTop = 0; el.scrollLeft = 0; }
+  }
+
   function openOverlay(sel) {
     if (!document.querySelector('.overlay.open')) overlayReturnFocus = document.activeElement;
     const o = $(sel);
     o.classList.add('open');
+    // AFTER .open, because a display:none element has no layout to scroll: the
+    // write would be dropped and the old offset would come back with the paint.
+    // Before the focus call below, and before every opener's own focus(), so a
+    // dialog that deliberately focuses a field further down (Trip settings in
+    // template mode) still wins - intent beats the reset, the reset beats the
+    // leftover. No smooth-scroll anywhere in this app's CSS, so this lands in
+    // the same frame and nothing is ever painted at the old position.
+    resetScrollWithin(o);
     document.body.classList.add('tp-modal-open');
     // a modal taller than the viewport gets scrolled into view on focus,
     // which buries its heading under the fixed site header

@@ -1027,6 +1027,64 @@ Overpass, and is refused on Overpass's own policy (quoted above).
   the CSP and already this app's venue-coordinate source, so the strongest
   option was also the one that adds no new dependency at all.
 
+## Dialogs reopen at the top (2026-08-18)
+
+Reported against Add item: scroll down inside it, close it, open it again and it
+came back exactly where it was left, halfway down a form that is supposed to be
+fresh.
+
+- **Root cause is DOM reuse, not the dialog.** Every overlay is markup that
+  already exists and is toggled with a class (`.overlay` display:none,
+  `.overlay.open` display:flex). Nothing is recreated, and a scroll container
+  keeps its offset across that toggle, so the browser hands the old position
+  back on the next open. It applies to all twelve overlays equally, which is why
+  the fix is one call in `openOverlay` and not twelve.
+- **TWO containers hold an offset per dialog, not one.** `.m-body` is the
+  modal's own scroller AND `.overlay` itself scrolls when the modal is taller
+  than the viewport (measured: 1043px on `.m-body` and 32px on the overlay for
+  Add item at 900x620). A fix that reset only `.m-body` would have left every
+  tall dialog ~30px down. Nested ones exist too (`#importBookingResult`), so
+  `resetScrollWithin` resets whatever is ACTUALLY scrolled rather than a list of
+  selectors that would have to be kept in step with the CSS.
+- **Reset AFTER `.open` is added.** A display:none element has no layout: the
+  write is dropped and the retained offset comes back with the paint.
+- **Read all offsets, then write.** Reading `scrollTop` flushes layout, so
+  interleaving reads and writes would flush once per element.
+- **No frame is ever painted at the old offset**, verified rather than assumed:
+  the value reads 0 in the same task that opens the dialog and 0 again on the
+  next animation frame. Nothing in this app's CSS sets `scroll-behavior`, so
+  there is no smooth-scroll to animate either.
+- **The trip menu is a popover, not a modal, and needed its own call.** Below
+  560px the panel is capped and scrollable (see the media query) and it is
+  toggled rather than rebuilt, so it had the identical defect: scrolled to 260,
+  reopened at 260.
+- **Two scroll positions are intentional and are deliberately NOT touched**,
+  both verified from the code rather than assumed: the assistant thread pins
+  itself to the bottom (`scrollMessages`) and lives in an `<aside>` panel, not
+  an overlay, so `resetScrollWithin` cannot reach it; and the trip SEARCH panel
+  keeps its query on purpose ("the query survives a close so you can pick a
+  second result"), with results rebuilt through `innerHTML`, which resets that
+  scroller by construction.
+- **The page behind does not move**, checked because a body-scroll lock is the
+  classic way to break it: 300 before, 300 while open, 300 after. `body.tp-modal-open`
+  sets `overflow: hidden` on the BODY while `html` is the scrolling element, and
+  measured in isolation that combination preserves the offset.
+
+Probe traps this round minted, both of which produced convincing false results:
+- **A hidden overlay reports every scrollTop as 0.** Two draft checks "passed"
+  or "failed" for that reason alone: one clicked a toolbar button while a dialog
+  covered it, so the click hit the backdrop and dismissed the dialog being
+  measured. Any assertion about a dialog's scroll must also assert it is OPEN.
+- **`clickSel` calls `scrollIntoView` before clicking**, which moves the PAGE.
+  An early reading of "opening a modal scrolls the page to the top" was entirely
+  that: driving the same flow with the `n` shortcut, which scrolls nothing,
+  showed the page never moves.
+- **Keyboard shortcuts are dead while a dialog is open** (the keydown handler
+  returns early once `topOverlay()` is truthy), and the app has no
+  overlay-over-overlay path at all today: every `confirmDialog` call comes from
+  the board or the assistant panel, never from inside an open dialog. A test
+  that stacks two overlays is testing something the product cannot do.
+
 ## Decisions from the 2026-08-13 audit round
 
 - Assistant replies land only in the thread of the trip that asked
