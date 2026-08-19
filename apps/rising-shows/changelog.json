@@ -1,6 +1,216 @@
 {
   "updates": [
     {
+      "builtAt": "2026-08-19T06:46:49.573Z",
+      "totals": {
+        "seasons": 66333,
+        "delta": 13
+      },
+      "shapeCounts": {
+        "mid-peak": 4651,
+        "rebound": 10094,
+        "rising": 2912,
+        "slow-burn": 4399,
+        "big-finale": 12169,
+        "u-shaped": 3108,
+        "rollercoaster": 14089,
+        "saved-best-for-last": 1548,
+        "front-loaded": 3485,
+        "declining": 1874,
+        "bad-finale": 4692,
+        "consistent": 2632,
+        "shape-drift": 1650
+      },
+      "shapeDeltas": {
+        "mid-peak": 1,
+        "rebound": -6,
+        "rising": -2,
+        "slow-burn": 3,
+        "big-finale": 2,
+        "u-shaped": -5,
+        "rollercoaster": 6,
+        "saved-best-for-last": -2,
+        "front-loaded": 6,
+        "declining": -3,
+        "bad-finale": 5,
+        "consistent": 10,
+        "shape-drift": 2
+      },
+      "added": [
+        {
+          "seriesId": "tt14321914",
+          "title": "The Chelsea Detective",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0166423",
+          "title": "Commissaire Moulin",
+          "season": 5,
+          "seasonYear": 2000
+        },
+        {
+          "seriesId": "tt7901366",
+          "title": "Flunk",
+          "season": 2,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt2595478",
+          "title": "GJ-bu",
+          "season": 1,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt38066800",
+          "title": "Someone, Someday",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt3117648",
+          "title": "The Ranch",
+          "season": 1,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt10752248",
+          "title": "Christmas Cookie Matchup",
+          "season": 1,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt6742294",
+          "title": "Fear Factor: Khatron Ke Khiladi",
+          "season": 15,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt26440733",
+          "title": "Una Historia de Crímenes",
+          "season": 3,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt32197002",
+          "title": "Ukrainan puolustajat",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt43600847",
+          "title": "Choddobeshi",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43712007",
+          "title": "Duty First, Kiss Later",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0486955",
+          "title": "My Love Patzzi",
+          "season": 1,
+          "seasonYear": 2002
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt6966158",
+          "title": "Larva",
+          "season": 3,
+          "from": 7.59,
+          "to": 6.42,
+          "delta": -1.17
+        },
+        {
+          "seriesId": "tt0320037",
+          "title": "Jimmy Kimmel Live!",
+          "season": 10,
+          "from": 8.2,
+          "to": 7.3,
+          "delta": -0.9
+        },
+        {
+          "seriesId": "tt1401650",
+          "title": "Figaro Pho",
+          "season": 1,
+          "from": 7.72,
+          "to": 6.93,
+          "delta": -0.79
+        },
+        {
+          "seriesId": "tt31131214",
+          "title": "Super Team Canada",
+          "season": 1,
+          "from": 8.09,
+          "to": 7.36,
+          "delta": -0.73
+        },
+        {
+          "seriesId": "tt12765530",
+          "title": "Alien TV",
+          "season": 2,
+          "from": 8.12,
+          "to": 7.48,
+          "delta": -0.64
+        },
+        {
+          "seriesId": "tt1830924",
+          "title": "Almost Naked Animals",
+          "season": 2,
+          "from": 7.67,
+          "to": 7.03,
+          "delta": -0.64
+        },
+        {
+          "seriesId": "tt32603540",
+          "title": "Landyshi",
+          "season": 2,
+          "from": 5.63,
+          "to": 4.99,
+          "delta": -0.64
+        },
+        {
+          "seriesId": "tt1830924",
+          "title": "Almost Naked Animals",
+          "season": 3,
+          "from": 6.78,
+          "to": 6.18,
+          "delta": -0.6
+        },
+        {
+          "seriesId": "tt6966158",
+          "title": "Larva",
+          "season": 2,
+          "from": 7.45,
+          "to": 6.86,
+          "delta": -0.59
+        },
+        {
+          "seriesId": "tt34577272",
+          "title": "Bovensloters",
+          "season": 1,
+          "from": 7.44,
+          "to": 6.85,
+          "delta": -0.59
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 22307,
+        "avgRating": 1377,
+        "seriesRating": 457,
+        "shapes": 250,
+        "episodeCount": 79,
+        "poster": 3,
+        "overview": 1,
+        "providers": 1
+      }
+    },
+    {
       "builtAt": "2026-08-18T06:45:01.574Z",
       "totals": {
         "seasons": 66320,
@@ -6732,299 +6942,6 @@
         "episodeCount": 37,
         "poster": 7,
         "overview": 5
-      }
-    },
-    {
-      "builtAt": "2026-07-20T09:11:01.697Z",
-      "totals": {
-        "seasons": 65877,
-        "delta": 19
-      },
-      "shapeCounts": {
-        "mid-peak": 4630,
-        "rebound": 10071,
-        "rising": 2907,
-        "slow-burn": 4348,
-        "big-finale": 12007,
-        "u-shaped": 3084,
-        "rollercoaster": 14026,
-        "saved-best-for-last": 1527,
-        "front-loaded": 3446,
-        "declining": 1875,
-        "bad-finale": 4645,
-        "consistent": 2615,
-        "shape-drift": 1623
-      },
-      "shapeDeltas": {
-        "mid-peak": 7,
-        "rebound": -5,
-        "rising": 1,
-        "slow-burn": -11,
-        "big-finale": -9,
-        "u-shaped": 3,
-        "rollercoaster": -1,
-        "declining": -5,
-        "bad-finale": 4,
-        "consistent": -2,
-        "shape-drift": 4
-      },
-      "added": [
-        {
-          "seriesId": "tt37532893",
-          "title": "Black Torch",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41278600",
-          "title": "Rich Girl Caretaker: I'm Secretly the Caregiver of the Most Popular Girl in This Rich Kid School",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0775405",
-          "title": "Saturday Night's Main Event",
-          "season": 10,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39113208",
-          "title": "The Ogre's Bride",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt15121038",
-          "title": "Everybody Still Hates Chris",
-          "season": 2,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt41846573",
-          "title": "Ultraman Teo",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0397222",
-          "title": "1990 FIFA World Cup Italy",
-          "season": 1,
-          "seasonYear": 1990
-        },
-        {
-          "seriesId": "tt36495086",
-          "title": "The Map of Longing",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0768816",
-          "title": "Un siècle d'écrivains",
-          "season": 1,
-          "seasonYear": 1997
-        },
-        {
-          "seriesId": "tt43357366",
-          "title": "The Apartment Job",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt42969298",
-          "title": "Kamui: He's Behind You",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0070966",
-          "title": "...And Mother Makes Five",
-          "season": 2,
-          "seasonYear": 1974
-        },
-        {
-          "seriesId": "tt0070966",
-          "title": "...And Mother Makes Five",
-          "season": 1,
-          "seasonYear": 1974
-        },
-        {
-          "seriesId": "tt18396952",
-          "title": "The Ultimatum: Marry or Move On",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41047955",
-          "title": "Grow Up Show",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt10960302",
-          "title": "Klassen",
-          "season": 1,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt0397220",
-          "title": "1982 FIFA World Cup Spain",
-          "season": 2,
-          "seasonYear": 1982
-        },
-        {
-          "seriesId": "tt1773182",
-          "title": "Love It or List It",
-          "season": 1,
-          "seasonYear": 2008
-        },
-        {
-          "seriesId": "tt8544204",
-          "title": "IMDb Supercuts",
-          "season": 7,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt33312074",
-          "title": "She, Damned Soul",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt28070105",
-          "title": "Magicampers",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt42851287",
-          "title": "Dragon Striker: Meet the Players",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt8189276",
-          "title": "Phantom in the Twilight",
-          "season": 1,
-          "seasonYear": 2018
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt27798993",
-          "title": "Beast Reacts",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt37513721",
-          "title": "Descendants: The Rise of Red",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt0489614",
-          "title": "La noche del 10",
-          "season": 1,
-          "seasonYear": 2005
-        },
-        {
-          "seriesId": "tt0138223",
-          "title": "Bamses julerejse",
-          "season": 1,
-          "seasonYear": 1996
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt0212662",
-          "title": "Get Real",
-          "season": 1,
-          "from": 6.24,
-          "to": 4.69,
-          "delta": -1.55
-        },
-        {
-          "seriesId": "tt43562869",
-          "title": "The Crow",
-          "season": 1,
-          "from": 6.6,
-          "to": 5.28,
-          "delta": -1.32
-        },
-        {
-          "seriesId": "tt43658562",
-          "title": "Asirlik Gece",
-          "season": 1,
-          "from": 5.45,
-          "to": 4.43,
-          "delta": -1.02
-        },
-        {
-          "seriesId": "tt0235913",
-          "title": "The Brothers Garcia",
-          "season": 4,
-          "from": 6.93,
-          "to": 6.1,
-          "delta": -0.83
-        },
-        {
-          "seriesId": "tt14597282",
-          "title": "The Green Veil",
-          "season": 1,
-          "from": 7.58,
-          "to": 6.76,
-          "delta": -0.82
-        },
-        {
-          "seriesId": "tt9038406",
-          "title": "Sleepers II",
-          "season": 1,
-          "from": 6.68,
-          "to": 5.93,
-          "delta": -0.75
-        },
-        {
-          "seriesId": "tt0159902",
-          "title": "Pit Pony",
-          "season": 2,
-          "from": 6.94,
-          "to": 6.2,
-          "delta": -0.74
-        },
-        {
-          "seriesId": "tt32252360",
-          "title": "Olympic Highlights with Kevin Hart and Kenan Thompson",
-          "season": 1,
-          "from": 7.07,
-          "to": 6.51,
-          "delta": -0.56
-        },
-        {
-          "seriesId": "tt32645659",
-          "title": "The Heartless",
-          "season": 1,
-          "from": 5.03,
-          "to": 4.52,
-          "delta": -0.51
-        },
-        {
-          "seriesId": "tt43588311",
-          "title": "Bad Nam",
-          "season": 1,
-          "from": 4.86,
-          "to": 4.35,
-          "delta": -0.51
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 19698,
-        "avgRating": 1081,
-        "seriesRating": 278,
-        "shapes": 188,
-        "episodeCount": 87,
-        "overview": 7,
-        "poster": 14,
-        "providers": 2
       }
     }
   ]
