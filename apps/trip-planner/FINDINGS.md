@@ -33,9 +33,39 @@ why, the traps, and the invariants.
   (see the table in README's import/export rows).
 - **Provider split is deliberate**: Nominatim = one-shot geocode only (policy
   forbids autocomplete; 1 req/1.1s serialized queue in `pumpGeo`, now with
-  in-flight dedup), Open-Meteo geocoding = city typeahead, Photon = hotel and
-  venue typeahead, bundled OurAirports table = airports (offline). Never move
-  a lookup between providers without re-reading their usage policies.
+  in-flight dedup), Open-Meteo geocoding = city typeahead, Photon = hotel,
+  venue and activity typeahead plus venue coordinates, bundled OurAirports
+  table = airports (offline). Never move a lookup between providers without
+  re-reading their usage policies. The quotes that decide it, so a future
+  session does not re-derive them (all re-verified 2026-08-18):
+  - **Photon** (github.com/komoot/photon, and photon.komoot.io itself): "You
+    are welcome to use the API for your project as long as the number of
+    requests stay in a reasonable limit. Extensive usage will be throttled or
+    completely banned. We do not give guarantees for availability and reserve
+    the right to implement changes without notice." Plus: "If you have a larger
+    number of requests to make, please consider setting up your own private
+    instance." No key, no stated commercial restriction, `Access-Control-Allow-Origin: *`
+    observed on the live service, and `Cache-Control: max-age=3600` on its own
+    answers. There is NO published request-per-second number, which is exactly
+    why every Photon caller in this app is bounded by construction rather than
+    by a limit to aim at: 3-character minimum, 320ms debounce, abort-in-flight,
+    a per-query+city memo cache, and the distance top-up's separate ceilings
+    (2 concurrent, 6 per repaint, 40 per session).
+  - **Nominatim** (operations.osmfoundation.org/policies/nominatim/): auto-complete
+    search "is not yet supported by Nominatim and you must not implement such a
+    service on the client side using the API", it is listed under "The following
+    uses are strictly forbidden and will get you banned", and the absolute
+    maximum is "1 request per second". That is the whole reason two other
+    providers exist here.
+  - **Overpass** (dev.overpass-api.de/overpass-doc/en/preface/commons.html):
+    lists "Setting up an app for more than just OSM mappers and relying on the
+    public instances as backend" among the things not to do. So the one thing
+    Photon cannot answer - "find me a museum NEAR here", a category search
+    rather than a name search - stays unanswered rather than answered against a
+    service that has asked us not to. Rejected on policy, not on capability.
+  - The OSM data itself is ODbL and is credited on the page (the attribution
+    block names OpenStreetMap, the licence, Nominatim and Photon); the Photon
+    software is Apache-2.0, which is irrelevant to using the hosted instance.
 - **Every provider origin has to be in the site CSP** (`connect-src` in
   `netlify.toml`, the only place a CSP is defined - no `_headers` file, no
   `<meta http-equiv>`, no generated copy). The policy ships as
@@ -760,6 +790,300 @@ needed it.
   it the walk is computable and useless ("1 hr 3 min on foot" is not how anyone
   crosses a city) so the ride is named instead. The directions link uses the
   SAME judgement, so a card cannot promise a walk and hand over driving.
+
+## The automation round (2026-08-18): what a form may answer for itself
+
+The whole round is one product rule with a hard edge: **derive, prefill, never
+overwrite.** Everything below is a consequence of it.
+
+### Where the inference lives
+
+`newItemCity` / `newItemDate` / `newItemType` / `newItemDefaults` /
+`stayDatesFrom` / `flightOriginCode` / `routeSuggestion` /
+`transportPrefillForGap` are pure and in trip-logic, with `tests/smart-defaults.test.js` over them. app.js contributes
+exactly three things and no logic: the DOM reads, the rule that a derived value
+only ever lands in an EMPTY field, and `iataCity`, the injected
+airports-table probe (the same injection style `dayMorningCity` and
+`suggestedPassport` already use to stay pure).
+
+- **`openItemModal` precedence is: the item being edited > the preset > the
+  derived default.** An edit passes `auto = null` and every field short-circuits
+  on the item's own value, so an edit can never be handed a guess. This matters
+  more than it looks: the form REBUILDS the item from its fields on save, so a
+  default leaking into an edit would silently rewrite stored data.
+- **A trip with no dated item derives no date at all.** Today is a guess about
+  intent rather than a reading of the itinerary, and a first item silently dated
+  today defines the trip's whole span - which is then wrong on the night strip,
+  the day cards, the coverage warnings and the totals. The field opens blank, as
+  it did before any of this existed. The same reasoning stops "choose Stay" from
+  inventing a stay on today's date on an empty plan.
+- **The type default is measured, not guessed.** Across the 13 sample
+  templates: 382 of 529 items (72%) are activities, and 13 of 13 open with a
+  flight. Hence flight on an empty plan, activity thereafter, and a test over
+  the library pins both halves so the rule fails loudly if that corpus ever
+  changes shape.
+- **`applyTypeDefaults` is deliberately NOT inside `setModalType`.**
+  `openItemModal` calls setModalType BEFORE it writes the date fields, so a
+  default applied there is overwritten by the very open that asked for it. The
+  type picker's click handler is the only place a type changes under a form
+  already on screen, so that is where it runs.
+- **A flight and a between-cities transport never get a `location`**
+  (`PLACE_DEFAULT_TYPES` = stay, activity, local). Their route lives in the
+  TITLE, which is what `parseTravelOrigin` / `parseTravelArrival` read; giving a
+  flight a city would make `dayMorningCity` read a departure day as its
+  destination. The sample library has always stored them this way and the
+  prefill follows it rather than inventing a second convention.
+- **A bare IATA code is never offered as a city.** `stripPlaceCode` only removes
+  a PARENTHESISED code, so an imported or hand-typed "SHV to HND" leaves "HND"
+  sitting in the arrival-city slot. `BARE_IATA_RE` catches it and either
+  translates it through the airports table or skips the rung. Found while
+  smoke-testing the rung, not in review: it looked completely correct against
+  every title the app writes itself.
+- **With no stays yet, the first bed is needed the night you LAND.** An
+  overnight flight is that night's bed - `tripStats` has always counted it as
+  one - so opening a stay on the departure date was a day early on every
+  red-eye, which is the commonest two-item sequence in the app (log the flight,
+  book the hotel). `stayDatesFrom` answers that case before it looks at
+  coverage, because `coverageGaps` returns [] for an empty stay list and the
+  gap branches are dead there anyway. It LOOPS over overnight legs rather than
+  skipping one, because a long-haul through an overnight layover is two stacked
+  red-eyes and skipping one still books a night spent in the air.
+- **`stayDatesFrom` and `stayCheckoutFor` answer different questions and are
+  not interchangeable.** The first is "where does the next hole START" and is
+  right only when the form has no date the app must respect; the second is "how
+  long is the hole that begins HERE" and is what a check-in already on screen
+  needs. Using the first for both wrote a four-night stay straddling two
+  existing bookings (trip covered the 5th-8th and the 10th-12th, form opened on
+  the 6th). Which one runs is decided by field OWNERSHIP, below.
+- **`stayDatesFrom` must always return a range `validateItem` accepts**, or
+  choosing Stay would open a form that cannot be saved. A trip with full
+  coverage (or no stays at all) therefore falls back to one night from the day
+  in hand rather than to null. Pinned by a test that runs every branch through
+  `validateItem`.
+- **Field ownership is the invariant, not "only write into an empty field".**
+  `autoFilled` (a Set on the item form) records which fields the APP filled on
+  this open; `appOwns(key, el)` is true for those and for anything still empty,
+  and an `input` on the field deletes its key for good. A pick from a dropdown
+  counts as HUMAN and hands the field over too. The blunt earlier rule ("write
+  only into an empty field") failed in both directions and both failures were
+  found by walking a real journey rather than by reading the code:
+  - a derived date BLOCKED a better derived date, which is how the red-eye fix
+    became unreachable from the UI - the date field was already populated by
+    the opening default, so choosing Stay took the typed branch and booked the
+    night on the plane after all;
+  - a derived city was STRANDED on the wrong day, because the toolbar's Add
+    opens on the trip's first day and nothing re-derived the city when the
+    traveller moved the date to the one they meant.
+  `syncDerivedCity` is the single implementation of "what city belongs in this
+  form now", called both when the type changes and when the date changes, so
+  the two paths cannot drift. It also CLEARS an app-written city on a day that
+  cannot justify one, which is the honest half of the same rule.
+- **The venue coordinate is keyed BY CONSTRUCTION, not by convention.** A picked
+  venue's lat/lon is not stored on the pick; it is held in `venuePick` and
+  written on SAVE under `placeCacheKey(itemMapsQuery(it))`, computed from the
+  item that was actually saved. Every read path derives the same key from the
+  same function, so the two cannot drift. The `wrote` guard (the same one
+  `flightPick` uses) means a retyped title drops the coordinates rather than
+  stamping them onto a different place.
+- **privacy.html is part of the diff, not a follow-up.** Its Photon paragraph
+  made a NARROW, checkable promise ("what you type into a stay's name field"),
+  and the venue picker widens it to activity titles. The prose now names both
+  fields, what each is answered with, that nothing is sent before the third
+  character, and that the other four types send nothing at all. Widening what a
+  provider receives without touching that page would have left the policy
+  stating something false.
+- **Prefilling the city has a downstream consequence worth knowing.** A
+  hand-added activity used to carry no `location` unless the traveller typed
+  one, so it was not a Map-view stop and nothing geocoded it. It now usually
+  carries the day's city, which is the shape the sample library has always used
+  (every sample activity has one) and is what puts it on the map. The added
+  geocoding load is ~zero because the string comes FROM another item on the same
+  trip and `geoCache` is keyed by that string; the one case that can introduce a
+  new string is the arrival rung reading a city out of a leg title before any
+  stay exists, which costs one cached Nominatim call the first time the Map is
+  opened.
+- **A prefill must not spend a request.** `openRouteModal` grew an
+  `autoCheck` opt-out for exactly this: clicking a specific leg is a question
+  and still gets answered immediately, but the toolbar's prefilled pair leaves
+  `checkRoute` un-run with focus on the Check button. The general rule for this
+  round: deriving a value is free, acting on it is the traveller's call.
+- The coordinate goes in `trip-planner:venuegeo:v1`, sharing that store's
+  30-day TTL. An OSM coordinate is under no such obligation - the TTL exists for
+  Google's terms - but sharing one store is worth more than a second one, and
+  expiry just means the row is looked up again later.
+
+### The venue picker, and what it is not
+
+Photon is a **name** search. Measured against the live service on 2026-08-18:
+`teamLab` biased to Tokyo answers teamLab Planets then teamLab Borderless;
+`Louvre` answers the museum; `Eiffel` answers the tower; `Central Park` answers
+the park - the best answer was first in every case. But `pizza` answers eight
+places literally NAMED "Pizza" and `museum` answers Museum Square. So the
+feature completes a venue the traveller can already name and is described that
+way in the UI hint; "find me a museum nearby" is a category search, needs
+Overpass, and is refused on Overpass's own policy (quoted above).
+
+- **Exclusions on the wire, an allowlist in the code, and the exclusions must be
+  a SUBSET of what the allowlist rejects.** Photon's `osm_tag` include filter
+  hard-filters, so an include list that misses one class answers an EMPTY list
+  for a real place - the same trap the hotel picker's rejected bbox fell into.
+  `osm_tag=!highway` and friends are safe because they only remove classes
+  `VENUE_CLASSES` would have dropped anyway; a test asserts that, because
+  Photon answers 200 with a shorter list and nothing would ever look broken.
+  Measured: a bare "Eiffel" returns six bus stops in its top eight; with the
+  exclusions it returns the tower, a cafe and a station.
+- **Two ranking bugs found by running the ranker over LIVE payloads rather
+  than over fixtures, and both were invisible in a fixture.** Fixed together;
+  "Sagrada Familia" near Barcelona is the case that shows both.
+  1. **The dedup key has to include the CLASS.** The hotel picker collapses on
+     name+town+country, which is right there (within lodging, one name in one
+     town is one hotel). Barcelona holds a basilica, an ice cream shop, a
+     supermarket, a hotel and six railway stops all called "Sagrada Família",
+     so on that triple the whole lot collapsed into whichever Photon returned
+     first - the ice cream shop - and the basilica was never offered at all.
+  2. **`extent` is the landmark signal.** Photon returns one for a mapped AREA
+     (an OSM way or relation) and nothing for a point, and that is the only
+     field in the response that separates a landmark from the things named
+     after it: the basilica, the Eiffel Tower and the Louvre all carry one
+     while the shops and bus stops sharing their names do not. Worth 80 points,
+     as a BONUS and never a filter, because teamLab Planets is a bare node.
+- **The position weight had to come DOWN from the hotel picker's.** This picker
+  asks for 15 rows against 12 and spans many classes, so at 25 a position the
+  positional spread swamped city, class and area alike (three Sagrada
+  candidates tied on 440). Swept over nine cached live payloads: 20 puts an ice
+  cream shop above the basilica, 6 and 10 let a same-named different restaurant
+  overtake the real second Kyubey, and **14** puts the right answer first in all
+  nine while still letting Photon break same-class ties. Re-run that sweep
+  before touching any of these constants.
+- **The class list is evidence-driven, and two omissions were product bugs.**
+  Swept over 24 realistic live queries and counted every class the allowlist
+  dropped: `railway:stop` led at 43 occurrences and made "Amsterdam Centraal"
+  answer an EMPTY dropdown, because all fifteen rows Photon returned were the
+  track node rather than the station; `water:lake` was next and dropped Lake
+  Bled, Lake Como and Loch Ness, each of which the service returned at position
+  0. Both are now named. Everything else the sweep dropped is correctly dropped
+  (lodging, subway entrances and platforms, villages and suburbs, parking,
+  dentists, police stations).
+- **Dedup on the LABEL, not the raw tag.** `station`, `halt` and `stop` all
+  render "Station", so keying the dedup on the tag put two rows reading exactly
+  "Tsukiji  Station" side by side. Two rows a traveller cannot tell apart are
+  one row; two rows they can (the basilica and the ice cream shop) are two.
+- **A pill may generalise but never upgrade.** `beach_resort` reads "Beach
+  resort" rather than "Beach" and `aerialway:station` reads "Cable car station"
+  rather than "Cable car", because the pill is our wording for somebody else's
+  tag and a traveller reading "Beach" would expect sand.
+- **City context is load-bearing, and it works two different ways.** Measured
+  on live payloads: the lat/lon bias (sent only when the geocode cache knows the
+  typed city) is the dominant lever - "Hard Rock Cafe" biased to Rome answers
+  Rome, biased to Amsterdam answers Amsterdam. When the cache is cold no bias is
+  sent and only the city-name bonus can reorder what came back; that still moved
+  6 of 8 test queries, each to the right answer. It cannot promote a row Photon
+  did not return at all, which is the honest ceiling.
+- **15 asked for, 8 shown.** Rows are dropped AFTER the response, so the fetch
+  limit has to exceed the display cap or a noisy query returns two rows.
+- **Lodging is excluded from the venue picker on purpose** - it has its own field
+  and its own type - and so are cities, towns and villages, which belong in the
+  Place field. A `place:square` or `place:island` IS a stop and is allowed.
+- **One combobox on `#inTitle`, not two.** Two would bind two sets of listeners
+  to one input and open two popups. Which list it offers is decided per search
+  (the type switches under an open form), and each row carries `src` so a pick
+  landing after a type switch is still handled by the code that fetched it.
+- **A venue pick fires NO Google Places call**, unlike a hotel pick. Activities
+  outnumber stays several to one, so the hotel pick's one-rating-on-commit does
+  not generalise; the row gets its rating from the itinerary's own
+  IntersectionObserver queue like every other row. This round adds zero billable
+  requests. Filling `location` more often does not add demand either, because
+  `itemMapsQuery` already derived a query from the title alone.
+
+### Rejected this round, with the reason
+
+- **Destination currency for a new trip.** The trip currency is the one the
+  traveller THINKS in, which is normally home, not destination; per-item
+  currencies with conversion already handle spending abroad. Inferring it would
+  be wrong more often than right and would silently relabel money.
+- **Per-item timezones (the TripIt mechanic).** Genuinely the biggest missing
+  convenience a competitor has, and bundleable offline from timezone polygons.
+  Rejected as a data-model change wearing an automation costume: this app's
+  times are deliberately floating local times (the ICS builder writes them that
+  way, and "a flight may land the same day at an earlier local time" is a
+  documented feature). Worth doing on purpose, not as a side effect.
+- **One-click "optimize this day's route".** Wanderlog and Roadtrippers both
+  have it and `shortestRoute` already exists here. It does not fit the data
+  model: rows are ordered by their own clock times and the manual `order` field
+  only breaks TIES, so reordering geographically would mean rewriting times the
+  traveller chose. Deferred, not dismissed.
+- **Writing `mapsQuery` on a venue pick.** `itemMapsQuery` already derives
+  "<title> <city>", which is the same string; writing it would freeze a field
+  the form does not own and add a share/export decision for no gain.
+- **A category label stored on the item.** The pill is useful while choosing and
+  useless afterwards; storing it would mean a new field in export, share, CSV,
+  ICS and repairDb for a word the title usually already says.
+- **Prefilling the To airport on a new flight** (only From is filled). Guessing
+  the destination would compose a whole title from a guess; guessing the origin
+  only fills a field and writes nothing.
+- **Overpass, Foursquare, Geoapify, LocationIQ and friends** for POI search: the
+  first on its own usage policy, the rest because a key that can be exhausted
+  or billed is a bill waiting to happen. Photon was already approved, already in
+  the CSP and already this app's venue-coordinate source, so the strongest
+  option was also the one that adds no new dependency at all.
+
+## Dialogs reopen at the top (2026-08-18)
+
+Reported against Add item: scroll down inside it, close it, open it again and it
+came back exactly where it was left, halfway down a form that is supposed to be
+fresh.
+
+- **Root cause is DOM reuse, not the dialog.** Every overlay is markup that
+  already exists and is toggled with a class (`.overlay` display:none,
+  `.overlay.open` display:flex). Nothing is recreated, and a scroll container
+  keeps its offset across that toggle, so the browser hands the old position
+  back on the next open. It applies to all twelve overlays equally, which is why
+  the fix is one call in `openOverlay` and not twelve.
+- **TWO containers hold an offset per dialog, not one.** `.m-body` is the
+  modal's own scroller AND `.overlay` itself scrolls when the modal is taller
+  than the viewport (measured: 1043px on `.m-body` and 32px on the overlay for
+  Add item at 900x620). A fix that reset only `.m-body` would have left every
+  tall dialog ~30px down. Nested ones exist too (`#importBookingResult`), so
+  `resetScrollWithin` resets whatever is ACTUALLY scrolled rather than a list of
+  selectors that would have to be kept in step with the CSS.
+- **Reset AFTER `.open` is added.** A display:none element has no layout: the
+  write is dropped and the retained offset comes back with the paint.
+- **Read all offsets, then write.** Reading `scrollTop` flushes layout, so
+  interleaving reads and writes would flush once per element.
+- **No frame is ever painted at the old offset**, verified rather than assumed:
+  the value reads 0 in the same task that opens the dialog and 0 again on the
+  next animation frame. Nothing in this app's CSS sets `scroll-behavior`, so
+  there is no smooth-scroll to animate either.
+- **The trip menu is a popover, not a modal, and needed its own call.** Below
+  560px the panel is capped and scrollable (see the media query) and it is
+  toggled rather than rebuilt, so it had the identical defect: scrolled to 260,
+  reopened at 260.
+- **Two scroll positions are intentional and are deliberately NOT touched**,
+  both verified from the code rather than assumed: the assistant thread pins
+  itself to the bottom (`scrollMessages`) and lives in an `<aside>` panel, not
+  an overlay, so `resetScrollWithin` cannot reach it; and the trip SEARCH panel
+  keeps its query on purpose ("the query survives a close so you can pick a
+  second result"), with results rebuilt through `innerHTML`, which resets that
+  scroller by construction.
+- **The page behind does not move**, checked because a body-scroll lock is the
+  classic way to break it: 300 before, 300 while open, 300 after. `body.tp-modal-open`
+  sets `overflow: hidden` on the BODY while `html` is the scrolling element, and
+  measured in isolation that combination preserves the offset.
+
+Probe traps this round minted, both of which produced convincing false results:
+- **A hidden overlay reports every scrollTop as 0.** Two draft checks "passed"
+  or "failed" for that reason alone: one clicked a toolbar button while a dialog
+  covered it, so the click hit the backdrop and dismissed the dialog being
+  measured. Any assertion about a dialog's scroll must also assert it is OPEN.
+- **`clickSel` calls `scrollIntoView` before clicking**, which moves the PAGE.
+  An early reading of "opening a modal scrolls the page to the top" was entirely
+  that: driving the same flow with the `n` shortcut, which scrolls nothing,
+  showed the page never moves.
+- **Keyboard shortcuts are dead while a dialog is open** (the keydown handler
+  returns early once `topOverlay()` is truthy), and the app has no
+  overlay-over-overlay path at all today: every `confirmDialog` call comes from
+  the board or the assistant panel, never from inside an open dialog. A test
+  that stacks two overlays is testing something the product cannot do.
 
 ## Decisions from the 2026-08-13 audit round
 

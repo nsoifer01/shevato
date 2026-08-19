@@ -342,17 +342,26 @@ const TripLogic = (() => {
   // coverageGaps reported, check-in on the first uncovered night and check-out
   // the morning after the last one. The dialog and the warning that opened it
   // therefore read the same range by construction rather than by agreement.
-  function stayPrefillForGap(gap) {
+  //
+  // `items` is optional and only adds the CITY: the hole is on a known night, so
+  // the itinerary already knows where the traveller is standing on it (see
+  // newItemCity). Callers that do not pass it get exactly the old shape.
+  function stayPrefillForGap(gap, items) {
     if (!gap || !isIsoDate(gap.start) || !isIsoDate(gap.end)) return null;
     const nightsCount = diffDays(gap.start, gap.end);
     if (nightsCount <= 0) return null;
-    return { type: 'stay', startDate: gap.start, endDate: gap.end, nights: nightsCount };
+    const pre = { type: 'stay', startDate: gap.start, endDate: gap.end, nights: nightsCount };
+    if (items) {
+      const where = newItemCity(items, gap.start);
+      if (where.city) pre.location = where.city;
+    }
+    return pre;
   }
 
   // The first contiguous uncovered range, i.e. the one the topmost gap warning
   // is about. coverageGaps walks the calendar forwards, so [0] is the earliest.
-  function firstStayPrefill(gaps) {
-    return stayPrefillForGap((Array.isArray(gaps) ? gaps : [])[0]);
+  function firstStayPrefill(gaps, items) {
+    return stayPrefillForGap((Array.isArray(gaps) ? gaps : [])[0], items);
   }
 
   // ---------- derived totals ----------
@@ -1121,6 +1130,240 @@ const TripLogic = (() => {
       rows.push({ row, score: hotelScore(query, row, cityHint, i) });
     });
     // Array#sort is stable, so rows that tie keep Photon's order.
+    return rows
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit || 8)
+      .map(x => x.row);
+  }
+
+  // ---------- activity picker: venue suggestions (Photon, OpenStreetMap) ----------
+  // The stay picker above asks Photon for lodging. An ACTIVITY needs the rest of
+  // the map: the museum, the ramen counter, the park, the viewpoint, the station.
+  // Same provider for the same reasons (keyless, CORS-open, built for typeahead,
+  // and already this app's venue-coordinate source), the same city bias and the
+  // same position-dominant scoring, so the two pickers share everything but the
+  // class list.
+  //
+  // WHAT PHOTON IS, AND IS NOT. It is a NAME search, not a category search.
+  // Measured against the live service 2026-08-18: "teamLab" biased to Tokyo
+  // answers teamLab Planets then teamLab Borderless; "Louvre" answers the
+  // museum; "Eiffel" answers the tower; "Central Park" answers the park. But
+  // "pizza" answers eight places literally NAMED "Pizza" and "museum" answers
+  // Museum Square, because nothing in the response ranks by category. So this
+  // completes a venue the traveller can already name, and it is deliberately not
+  // sold as "find me a museum nearby": that question needs Overpass, whose usage
+  // policy names "setting up an app for more than just OSM mappers and relying
+  // on the public instances as backend" as exactly what not to do (see FINDINGS).
+  //
+  // WHY AN ALLOWLIST rather than a filter on the wire: Photon's `osm_tag`
+  // include filter hard-filters, so an include list that misses one class
+  // answers an EMPTY list for a real place - the same trap the hotel picker's
+  // rejected bbox fell into. The wire carries EXCLUSIONS only (see
+  // VENUE_EXCLUDE_KEYS), and the class list below decides what may be shown.
+
+  // osm_key -> osm_value -> the word shown on the row. A row whose class is not
+  // in here is DROPPED, not shown unlabelled: a field offering "Eiffel" the bus
+  // stop next to "Eiffel Tower" is worse than a shorter list. Lodging is absent
+  // on purpose - that is the stay picker's field and the stay type's job.
+  const VENUE_CLASSES = new Map([
+    ['tourism', new Map([
+      ['attraction', 'Attraction'], ['museum', 'Museum'], ['gallery', 'Gallery'],
+      ['artwork', 'Artwork'], ['theme_park', 'Theme park'], ['zoo', 'Zoo'],
+      ['aquarium', 'Aquarium'], ['viewpoint', 'Viewpoint'], ['picnic_site', 'Picnic site'],
+    ])],
+    ['amenity', new Map([
+      ['restaurant', 'Restaurant'], ['cafe', 'Cafe'], ['bar', 'Bar'], ['pub', 'Pub'],
+      ['fast_food', 'Fast food'], ['ice_cream', 'Ice cream'], ['biergarten', 'Beer garden'],
+      ['food_court', 'Food court'], ['nightclub', 'Nightclub'], ['casino', 'Casino'],
+      ['theatre', 'Theatre'], ['cinema', 'Cinema'], ['arts_centre', 'Arts centre'],
+      ['marketplace', 'Market'], ['place_of_worship', 'Place of worship'],
+      ['library', 'Library'], ['planetarium', 'Planetarium'], ['public_bath', 'Public bath'],
+    ])],
+    ['leisure', new Map([
+      ['park', 'Park'], ['garden', 'Garden'], ['nature_reserve', 'Nature reserve'],
+      ['water_park', 'Water park'], ['beach_resort', 'Beach resort'], ['sports_centre', 'Sports centre'],
+      ['stadium', 'Stadium'], ['golf_course', 'Golf course'], ['marina', 'Marina'],
+      ['ice_rink', 'Ice rink'], ['bowling_alley', 'Bowling'], ['escape_game', 'Escape game'],
+      ['amusement_arcade', 'Arcade'], ['sauna', 'Sauna'],
+    ])],
+    ['historic', new Map([
+      ['castle', 'Castle'], ['palace', 'Palace'], ['monument', 'Monument'],
+      ['memorial', 'Memorial'], ['ruins', 'Ruins'], ['archaeological_site', 'Historic site'],
+      ['city_gate', 'City gate'], ['fort', 'Fort'], ['tomb', 'Tomb'], ['manor', 'Manor'],
+    ])],
+    ['natural', new Map([
+      ['beach', 'Beach'], ['peak', 'Peak'], ['waterfall', 'Waterfall'],
+      ['cave_entrance', 'Cave'], ['hot_spring', 'Hot spring'], ['spring', 'Spring'],
+      ['glacier', 'Glacier'], ['volcano', 'Volcano'], ['bay', 'Bay'],
+    ])],
+    // Lake Bled, Lake Como and Loch Ness are all `water:lake` and all came back
+    // at position 0; without this the picker dropped every one of them.
+    ['water', new Map([['lake', 'Lake']])],
+    ['man_made', new Map([
+      ['tower', 'Tower'], ['lighthouse', 'Lighthouse'], ['observatory', 'Observatory'],
+      ['pier', 'Pier'], ['windmill', 'Windmill'], ['watermill', 'Watermill'],
+    ])],
+    ['shop', new Map([
+      ['mall', 'Mall'], ['department_store', 'Department store'], ['books', 'Bookshop'],
+      ['bakery', 'Bakery'], ['confectionery', 'Sweets'], ['chocolate', 'Chocolate'],
+      ['wine', 'Wine shop'], ['gift', 'Gift shop'],
+    ])],
+    // A named square or island is somewhere you go; a city, town or village is
+    // what the Place field is for, and offering one here would put a whole
+    // destination in a field that names a stop.
+    ['place', new Map([
+      ['square', 'Square'], ['island', 'Island'], ['islet', 'Island'],
+    ])],
+    // `stop` is the node ON the track where a train stops rather than the
+    // station building, and it is what OSM often carries the name on: without
+    // it "Amsterdam Centraal" answered an EMPTY dropdown, because all fifteen
+    // rows Photon returned were stops. They collapse to one row through the
+    // dedup key, and railway scores 0 so a station never outranks a sight.
+    ['railway', new Map([['station', 'Station'], ['halt', 'Station'], ['stop', 'Station']])],
+    ['public_transport', new Map([['station', 'Station']])],
+    ['aerialway', new Map([['station', 'Cable car station']])],
+  ]);
+
+  // Sent on the wire as `osm_tag=!key`, verified working against the live
+  // service 2026-08-18 (a bare "Eiffel" answered six bus stops; with these it
+  // answers the tower, a cafe and a station). Every key here MUST be one
+  // VENUE_CLASSES rejects anyway, so the exclusion can only ever save bandwidth
+  // and never change which rows a traveller could have seen - a test pins that.
+  const VENUE_EXCLUDE_KEYS = [
+    'highway', 'building', 'barrier', 'power', 'waterway',
+    'landuse', 'boundary', 'information', 'office', 'entrance', 'emergency',
+  ];
+
+  const venueKindLabel = (key, value) => {
+    const byKey = VENUE_CLASSES.get(String(key || ''));
+    return (byKey && byKey.get(String(value || ''))) || '';
+  };
+
+  // Photon's own order is good and stays the base, exactly as it does for
+  // hotels. These nudge inside it: a sightseeing class outranks a bakery at the
+  // same position, and the city in the Place field outranks everything, which is
+  // what makes "kiyomizu" with "Kyoto" in the form answer the temple in Kyoto.
+  // Photon's own order is the base, exactly as it is for hotels - but this
+  // picker asks for 15 rows against the hotel picker's 12 and spans many
+  // classes, so at the hotel weight (25 a position) the positional spread
+  // swamped every other signal and three candidates for "Sagrada Familia" tied
+  // on 440. Swept over nine live queries (teamLab, Eiffel, Louvre, Central
+  // Park, Sagrada Familia, Colosseum, Rijksmuseum, Borough Market, Kyubey):
+  // at 20 the basilica lost to an ice cream shop, at 6 and 10 a same-named
+  // different restaurant overtook the real second Kyubey, and 14 puts the right
+  // answer first in all nine while still letting Photon break same-class ties.
+  const VENUE_POSITION_WEIGHT = 14;
+  const VENUE_CITY_BONUS = 120;
+  const VENUE_PREFIX_BONUS = 60;
+  const VENUE_EXACT_BONUS = 40;
+  // A feature Photon returns an `extent` for is a mapped AREA - an OSM way or
+  // relation with a footprint - rather than a single point, and that turns out
+  // to be the one signal in the response that separates a landmark from the
+  // things named after it. Measured on the live service 2026-08-18: searching
+  // "Sagrada Familia" near Barcelona returns a parking lot, a bus stop, an ice
+  // cream shop and a defibrillator with that name as bare nodes, and the
+  // basilica itself as a relation with an extent; the Eiffel Tower and the
+  // Louvre come back the same way. Without this the ice cream shop outranked
+  // the basilica, because it sat higher in Photon's own order.
+  //
+  // A BONUS and never a filter: teamLab Planets is a plain node with no extent
+  // and is exactly the sort of answer this picker exists for.
+  const VENUE_AREA_BONUS = 80;
+  const VENUE_KEY_BONUS = new Map([
+    ['tourism', 40], ['historic', 35], ['natural', 30], ['leisure', 25],
+    ['man_made', 25], ['amenity', 20], ['place', 15], ['shop', 5],
+    ['water', 30], ['railway', 0], ['public_transport', 0], ['aerialway', 0],
+  ]);
+
+  /**
+   * One Photon GeoJSON feature -> the shape the venue picker renders and stores.
+   * `value` is the BARE venue name, for the same reason the hotel and city rows
+   * are bare: it becomes the item title on every card and in every export.
+   * Returns null for anything the class list does not name.
+   */
+  function normalizeVenueRow(f) {
+    const p = (f && f.properties) || null;
+    const coords = (f && f.geometry && Array.isArray(f.geometry.coordinates)) ? f.geometry.coordinates : [];
+    if (!p || !p.name) return null;
+    const kindLabel = venueKindLabel(p.osm_key, p.osm_value);
+    if (!kindLabel) return null;
+    // Same Gulf-of-Guinea trap as the other two normalizers: Number('') is 0.
+    const lon = numOrNaN(coords[0]);
+    const lat = numOrNaN(coords[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    const name = String(p.name).trim();
+    const locality = String(p.city || p.district || p.state || '').trim();
+    const country = String(p.country || '').trim();
+    const parts = [name, locality, country].filter(Boolean);
+    const deduped = parts.filter((x, i) => i === 0 || foldPlace(x) !== foldPlace(parts[0]));
+    return {
+      value: name,
+      label: deduped.join(', '),
+      detail: deduped.slice(1).join(', '),
+      key: String(p.osm_key || ''),
+      kind: String(p.osm_value || ''),
+      kindLabel,
+      locality,
+      country,
+      cc: String(p.countrycode || '').toUpperCase(),
+      // a mapped footprint rather than a point: see VENUE_AREA_BONUS
+      area: Array.isArray(p.extent) && p.extent.length === 4,
+      lat,
+      lon,
+    };
+  }
+
+  function venueRowScore(query, row, cityHint, position) {
+    const q = foldPlace(query);
+    const name = foldPlace(row.value);
+    let score = Math.max(0, VENUE_POSITION_WEIGHT * (12 - (position || 0)));
+    if (name.startsWith(q)) score += VENUE_PREFIX_BONUS;
+    if (name === q) score += VENUE_EXACT_BONUS;
+    score += VENUE_KEY_BONUS.get(row.key) || 0;
+    if (row.area) score += VENUE_AREA_BONUS;
+    const city = foldPlace(cityHint);
+    // `includes` both ways, the hotel picker's rule and for its reasons: the
+    // Place field may say "Kyoto" while OSM files the venue under "Higashiyama
+    // Ward", and it may say "New York" while OSM says "New York City".
+    if (city && row.locality) {
+      const loc = foldPlace(row.locality);
+      if (loc === city || loc.includes(city) || city.includes(loc)) score += VENUE_CITY_BONUS;
+    }
+    return score;
+  }
+
+  /**
+   * Ranked, de-duplicated venue suggestions from a raw Photon payload.
+   * `cityHint` is whatever is in the Place field and may be empty. Returns []
+   * for anything unusable: Photon answers with an empty feature list rather
+   * than an error when nothing matches, and a payload of nothing but excluded
+   * classes is the same thing one step later.
+   */
+  function rankVenueResults(query, payload, cityHint, limit) {
+    const raw = (payload && Array.isArray(payload.features)) ? payload.features : [];
+    const seen = new Set();
+    const rows = [];
+    raw.forEach((f, i) => {
+      const row = normalizeVenueRow(f);
+      if (!row) return;
+      // OSM holds the same venue as a node and as a way often enough that
+      // Photon returns both, so a duplicate has to collapse - but the CATEGORY
+      // is part of what makes two rows the same row here, which it is not for
+      // the hotel picker. Barcelona holds a basilica, an ice cream shop, a
+      // supermarket, a hotel and six railway stops all called "Sagrada
+      // Família": on the name+town+country triple the lot collapsed into
+      // whichever Photon happened to return first, which was the ice cream
+      // shop, and the basilica was never offered at all.
+      //
+      // The LABEL, not the raw tag: `station`, `halt` and `stop` are three tags
+      // that all render as "Station", so keying on the tag put two rows reading
+      // exactly "Tsukiji  Station" next to each other. Two rows a traveller
+      // cannot tell apart are one row.
+      const key = `${foldPlace(row.value)}|${foldPlace(row.locality)}|${row.cc}|${row.kindLabel}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      rows.push({ row, score: venueRowScore(query, row, cityHint, i) });
+    });
     return rows
       .sort((a, b) => b.score - a.score)
       .slice(0, limit || 8)
@@ -2457,6 +2700,248 @@ const TripLogic = (() => {
     // Parenthesised source: it stays readable both inline on a wide dialog and
     // wrapped onto its own line on a phone.
     return { label, value, source, text: `${label}:${value ? ' ' + value : ''} (${source})` };
+  }
+
+  // ---------- what a blank Add-item form should already say ----------
+  // The form used to open on the same six empty fields whatever the trip
+  // contained, so a traveller adding the fifth thing to a Kyoto day retyped
+  // "Kyoto" and picked the date out of a calendar for the fifth time. Every
+  // answer below is DERIVED from items already entered, so this whole block is
+  // pure, offline and free, and it is a PREFILL: every field it fills is on
+  // screen and editable before anything is saved.
+  //
+  // THE ONE INVARIANT: nothing here ever overwrites. app.js only applies a
+  // default to a field that is empty, and only for a NEW item - never on an
+  // edit, where the item's own values are the answer.
+
+  // Which types carry a `location`, matching what the app has always stored: a
+  // flight and a between-cities transport keep their route in the TITLE ("Tokyo
+  // to Kyoto", parsed by parseTravelOrigin / parseTravelArrival), and giving one
+  // a city would make dayMorningCity read a departure day as its destination.
+  const PLACE_DEFAULT_TYPES = { stay: 1, activity: 1, local: 1 };
+
+  // "HND", not a city. The shape of a bare IATA code left behind by a title
+  // this app did not write (an import, or a hand-typed route).
+  const BARE_IATA_RE = /^[A-Z]{3}$/;
+
+  /**
+   * The city a new item on `date` belongs to, in confidence order:
+   *   1. the stay covering that night (or the one being checked out of) - a bed
+   *      is the strongest statement about where the traveller is;
+   *   2. where a leg LANDS that day, so adding a hotel on an arrival day
+   *      already says the city you are flying into. The title's own text is the
+   *      answer ("Boston (BOS) to Keflavik (KEF)" -> Keflavik), which is the
+   *      same rung the day chain already trusts for a code-less arrival;
+   *      `resolveIata` is an optional injected fallback for a bare-code title
+   *      and answers '' whenever the airports table is not loaded yet;
+   *   3. the last located item at or before that date, which carries the city
+   *      forward through a day nothing has been planned on yet.
+   * '' when the trip says nothing, and '' is a blank field, not a guess.
+   */
+  function newItemCity(items, date, opts = {}) {
+    const list = (Array.isArray(items) ? items : []).filter(Boolean);
+    if (!isIsoDate(date)) return { city: '', source: '' };
+    const host = dayHostStay(list, date);
+    if (host) return { city: String(host.location || '').trim(), source: 'stay' };
+    const arrival = dayArrival(list, date);
+    if (arrival) {
+      // The title's own words first: that is the city the traveller reads on
+      // the row. But stripPlaceCode only removes a PARENTHESISED code, so a
+      // hand-typed or imported "SHV to HND" leaves "HND" sitting in the city
+      // slot - a code is not a place name and must never reach the field, with
+      // or without a table loaded to translate it.
+      const city = String(arrival.city || '').trim();
+      if (city && !BARE_IATA_RE.test(city)) return { city, source: 'arrival' };
+      const code = arrival.iata || (BARE_IATA_RE.test(city) ? city : '');
+      const byCode = code && opts.resolveIata ? String(opts.resolveIata(code) || '').trim() : '';
+      if (byCode) return { city: byCode, source: 'arrival' };
+    }
+    const earlier = list
+      .filter(it => it.status !== 'cancelled' && String(it.location || '').trim()
+        && isIsoDate(it.startDate) && it.startDate <= date)
+      .sort(bySortKey);
+    const last = earlier[earlier.length - 1];
+    if (last) return { city: String(last.location).trim(), source: 'carried' };
+    // Last: where the day's first leg LEAVES from. This is the departure day of
+    // a trip - you are in Boston until the 21:30 flight - and it is the rung
+    // `dayMorningCity` has always used to label that day's card. Without it the
+    // card said "Boston" while this form said nothing, which is two surfaces
+    // disagreeing about the same day. Restricted to flight and transport, whose
+    // titles this app writes as "A to B" (a `local` leg is where "Return to
+    // hotel" lives, and its origin half parses to the word "Return").
+    const outbound = dayItemsInOrder(list, date)
+      .find(it => it.type === 'flight' || it.type === 'transport');
+    if (outbound) {
+      const from = parseTravelOrigin(outbound.title);
+      if (from && !BARE_IATA_RE.test(from)) return { city: from, source: 'departure' };
+    }
+    return { city: '', source: '' };
+  }
+
+  /**
+   * The date a new item should open on. A day card's + button names its own day
+   * and always wins; otherwise today is the answer while the trip is running,
+   * and the trip's first day while it is still being planned or already over.
+   * An empty trip opens on today, which is the only date it can know about.
+   */
+  function newItemDate(trip, opts = {}) {
+    const today = isIsoDate(opts.today) ? opts.today : null;
+    if (isIsoDate(opts.focusDate)) return opts.focusDate;
+    const stats = tripStats(trip || { items: [] });
+    // A trip with no dated item has NOTHING to derive from, and today is a guess
+    // about intent rather than a reading of the itinerary: a first item silently
+    // dated today defines the trip's whole span, which is then wrong on every
+    // surface that reads it. Blank is the honest answer, and it is what this
+    // field did before any of this existed.
+    if (!isIsoDate(stats.start)) return '';
+    if (today && today >= stats.start && today <= (stats.renderEnd || stats.start)) return today;
+    return stats.start;
+  }
+
+  /**
+   * Which type the picker opens on. The first thing logged on an empty trip is
+   * how you get there, which is why `flight` has always been the default and
+   * stays it. After that a trip fills up with things to do far faster than with
+   * anything else, so the segmented control opens on Activity - one visible tap
+   * from any other type, and the tap it saves is the common one.
+   */
+  function newItemType(trip) {
+    const items = ((trip && Array.isArray(trip.items)) ? trip.items : []).filter(it => it && it.status !== 'cancelled');
+    return items.length ? 'activity' : 'flight';
+  }
+
+  /**
+   * Everything a blank Add-item form can answer for itself.
+   * `focusDate` is the day card's date when the form was opened from one.
+   */
+  function newItemDefaults(trip, opts = {}) {
+    const type = TYPE_ORDER[opts.type] !== undefined ? opts.type : newItemType(trip);
+    const startDate = newItemDate(trip, opts);
+    const items = (trip && Array.isArray(trip.items)) ? trip.items : [];
+    const where = PLACE_DEFAULT_TYPES[type] ? newItemCity(items, startDate, opts) : { city: '', source: '' };
+    return { type, startDate, location: where.city, locationSource: where.source };
+  }
+
+  /**
+   * The dates a STAY should open on, so choosing Stay never means picking two
+   * dates out of a calendar the app could read for itself. The first uncovered
+   * night on or after `fromDate` is the answer, clipped to `fromDate` when the
+   * hole has already started (the traveller pressed + on a day inside it and
+   * that day is what they meant). A trip with every night covered - or no stays
+   * at all to compute coverage from - falls back to one night from `fromDate`,
+   * which is the shortest stay that can legally be saved.
+   */
+  function stayDatesFrom(trip, fromDate) {
+    if (!isIsoDate(fromDate)) return null;
+    const items = ((trip && Array.isArray(trip.items)) ? trip.items : []).filter(Boolean);
+    const stays = items.filter(it => isStay(it) && it.status !== 'cancelled'
+      && isIsoDate(it.startDate) && isIsoDate(it.endDate) && diffDays(it.startDate, it.endDate) > 0);
+    // With no stays there is no coverage to read (coverageGaps answers [] for an
+    // empty list), and the night a traveller first needs a bed is the night they
+    // LAND, not the night they left: an overnight flight IS that night's bed,
+    // which is exactly how tripStats already counts it. Without this, the
+    // commonest two-item sequence in the app - log the flight, then book the
+    // hotel - opened the stay a day early on every red-eye.
+    //
+    // A LOOP rather than one lookup: a long-haul routed through an overnight
+    // layover is two stacked red-eyes (out Monday night, land Tuesday, onward
+    // Tuesday night, land Wednesday), and skipping only the first would have
+    // booked a hotel for a night still spent in the air.
+    if (!stays.length) {
+      let start = fromDate;
+      const legs = overnightTransit(items);
+      for (let i = 0; i < legs.length; i++) {
+        const leg = legs.find(t => t.startDate <= start && start < t.endDate);
+        if (!leg) break;
+        start = leg.endDate;
+      }
+      return { startDate: start, endDate: addDays(start, 1) };
+    }
+    const gaps = coverageGaps(stays, tripStats(trip || { items: [] }).end, overnightTransit(items));
+    const inside = gaps.find(g => g.start <= fromDate && fromDate < g.end);
+    if (inside) return { startDate: fromDate, endDate: inside.end };
+    const after = gaps.find(g => g.start >= fromDate);
+    if (after) return { startDate: after.start, endDate: after.end };
+    return { startDate: fromDate, endDate: addDays(fromDate, 1) };
+  }
+
+  /**
+   * The check-out for a stay whose check-in the traveller has ALREADY typed.
+   *
+   * `stayDatesFrom` answers a different question - "where does the next hole
+   * start" - and jumping to it is right only while both date fields are empty.
+   * Applied to a typed check-in it produced a stay that contradicted it: on a
+   * trip covered the 5th-8th and the 10th-12th, opening the form on the 6th and
+   * choosing Stay wrote check-out the 10th, a four-night booking straddling two
+   * existing ones. So a check-in that exists is the anchor, and the only
+   * question left is how long the hole starting there runs: the end of the
+   * uncovered run containing `checkIn`, and otherwise a single night.
+   */
+  function stayCheckoutFor(trip, checkIn) {
+    if (!isIsoDate(checkIn)) return '';
+    const items = ((trip && Array.isArray(trip.items)) ? trip.items : []).filter(Boolean);
+    const stays = items.filter(x => isStay(x) && x.status !== 'cancelled'
+      && isIsoDate(x.startDate) && isIsoDate(x.endDate) && diffDays(x.startDate, x.endDate) > 0);
+    const gaps = coverageGaps(stays, tripStats(trip || { items: [] }).end, overnightTransit(items));
+    const inside = gaps.find(g => g.start <= checkIn && checkIn < g.end);
+    return inside ? inside.end : addDays(checkIn, 1);
+  }
+
+  /**
+   * What the "no flight or transport is logged between A and B" warning fills
+   * the form with when it offers to fix itself. The endpoints and the day are
+   * all already in the warning, so nothing here is inferred: the title is the
+   * "A to B" shape this app writes everywhere else (flightTitleFromAirports
+   * writes it, parseTravelOrigin and parseTravelArrival read it), and the date
+   * is the day the previous stay ends, which is the day the journey happens.
+   * No `location`: see PLACE_DEFAULT_TYPES.
+   */
+  function transportPrefillForGap(gap) {
+    if (!gap) return null;
+    const from = String(gap.fromLocation || '').trim();
+    const to = String(gap.toLocation || '').trim();
+    if (!from || !to || !isIsoDate(gap.gapStart)) return null;
+    return { type: 'transport', title: `${from} to ${to}`, startDate: gap.gapStart };
+  }
+
+  /**
+   * The pair the "how do I get from A to B" dialog should open on when it is
+   * opened from the toolbar rather than from a specific leg. The trip's first
+   * city change with NO leg logged for it is the question the traveller most
+   * likely has (it is the same list the continuity warning is drawn from);
+   * failing that, its first city change of any kind. null when the trip names
+   * fewer than two cities, and the dialog then opens blank as it always did.
+   *
+   * Both cities come from the traveller's own stays, so nothing here is a
+   * guess - but the dialog deliberately does NOT run the lookup on a prefill,
+   * because a modal opening is not a reason to spend a request.
+   */
+  function routeSuggestion(trip) {
+    if (!trip || !Array.isArray(trip.items)) return null;
+    const gap = transportGaps(trip)[0];
+    if (gap) return { from: gap.fromLocation, to: gap.toLocation, date: gap.gapStart };
+    const leg = tripLegs(trip)[0];
+    return leg ? { from: leg.from, to: leg.to, date: leg.date || '' } : null;
+  }
+
+  /**
+   * The airport a new flight most likely leaves from: wherever the itinerary
+   * has already flown TO by that date. Right for the next leg of a multi-city
+   * trip and right for the flight home, which both depart from where the
+   * traveller currently is. Returns the IATA code only - app.js turns it into a
+   * row from the bundled table - and '' when no earlier flight names one, so
+   * nothing is ever guessed from a title this app did not write.
+   */
+  function flightOriginCode(items, date) {
+    const list = (Array.isArray(items) ? items : []).filter(it => it && it.type === 'flight'
+      && it.status !== 'cancelled' && isIsoDate(it.startDate)
+      && (!isIsoDate(date) || it.startDate <= date));
+    const flights = list.sort(bySortKey);
+    for (let i = flights.length - 1; i >= 0; i--) {
+      const arr = parseTravelArrival(flights[i].title);
+      if (arr && arr.iata) return arr.iata;
+    }
+    return '';
   }
 
   function dayCards(trip) {
@@ -7559,7 +8044,9 @@ const TripLogic = (() => {
     shiftFits, applyDayShift, firstItemDate, startDateShift,
     isStay, nights, sortKey, bySortKey, sortedItems, tripLegs,
     tieKey, tieGroups, tieGroupOf, reorderableIds, applyManualOrder, normalizeOrders, moveInTie, ORDER_MAX,
-    stayPrefillForGap, firstStayPrefill,
+    stayPrefillForGap, firstStayPrefill, transportPrefillForGap,
+    newItemCity, newItemDate, newItemType, newItemDefaults, stayDatesFrom,
+    flightOriginCode, routeSuggestion, stayCheckoutFor, PLACE_DEFAULT_TYPES,
     nextUpEvent, NEXT_UP_WINDOW_MIN, defaultPackingItems,
     packingWho, packingRowsFor, packingProgress, packingRosterDrops, applyPackingRoster,
     templateItem, tripAsTemplate, TEMPLATE_CLEARED,
@@ -7573,6 +8060,8 @@ const TripLogic = (() => {
     foldPlace, normalizePlaceRow, placeScore, rankPlaceResults, PLACE_FEATURE_RE, PLACE_POP_WEIGHT, PLACE_PREFIX_BONUS, PLACE_EXACT_BONUS,
     HOTEL_TAGS, normalizeHotelRow, hotelScore, rankHotelResults,
     HOTEL_POSITION_WEIGHT, HOTEL_CITY_BONUS, HOTEL_PREFIX_BONUS, HOTEL_EXACT_BONUS, HOTEL_KIND_BONUS,
+    VENUE_CLASSES, VENUE_EXCLUDE_KEYS, venueKindLabel, normalizeVenueRow, venueRowScore, rankVenueResults,
+    VENUE_POSITION_WEIGHT, VENUE_CITY_BONUS, VENUE_PREFIX_BONUS, VENUE_EXACT_BONUS, VENUE_KEY_BONUS, VENUE_AREA_BONUS,
     airportIndex, airportLabel, airportDetail, airportScore, searchAirports, PRIMARY_HUBS,
     parseBookingDate: parseDate, parseBookingTime: parseTime, parseDocMoney,
     findConfirmation, findRoute, inferDateOrder, implausibility,

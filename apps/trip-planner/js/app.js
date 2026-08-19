@@ -23,7 +23,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 64;
+  const TP_BUILD = 66;
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   // Miles or kilometers, everywhere a distance prints. Same architecture as
@@ -77,6 +77,7 @@
     shiftFits, applyDayShift, firstItemDate, startDateShift,
     isStay, nights, sortKey, sortedItems, tripLegs,
     tieKey, reorderableIds, applyManualOrder, normalizeOrders, moveInTie, ORDER_MAX, stayPrefillForGap,
+    transportPrefillForGap, newItemDefaults, newItemDate, stayDatesFrom, stayCheckoutFor, flightOriginCode, routeSuggestion,
     nextUpEvent, defaultPackingItems,
     packingWho, packingRowsFor, packingProgress, packingRosterDrops, applyPackingRoster,
     tripAsTemplate,
@@ -85,7 +86,7 @@
     routeBadges, routeFlags, routeTips, routeLinks, modeLink, ROUTE_HONESTY,
     classifyGeoMatch, geoMatchNote, GEO_MATCH_RANK, GEO_MATCH_TEXT,
     foldPlace, rankPlaceResults,
-    HOTEL_TAGS, rankHotelResults,
+    HOTEL_TAGS, rankHotelResults, rankVenueResults, VENUE_EXCLUDE_KEYS,
     airportIndex, airportLabel, airportDetail, searchAirports,
     flightTitleFromAirports, parseFlightAirports,
     extractBookings, parseIcsToProposals,
@@ -701,6 +702,11 @@
           level: 'warn',
           text: `No flight or transport is logged between "${g.fromLocation}" and "${g.toLocation}" (${fmtDate(g.gapStart)} to ${fmtDate(g.gapEnd)}).`,
           ids: [g.fromId, g.toId],
+          // `legGap` marks the one warning whose fix the app can fill in
+          // completely: both endpoints and the travel day are already in this
+          // object, so "Add transport" opens a form with nothing left to type
+          // but how you are getting there.
+          legGap: g,
         });
       }
     }
@@ -1147,6 +1153,12 @@
       else if (iss.gap) acts.push(`<button type="button" class="issue-jump" data-gap-show="${idx}">show</button>`);
       if (iss.gap && !sharedMode && stayPrefillForGap(iss.gap)) {
         acts.push(`<button type="button" class="issue-jump issue-add-stay" data-add-stay="${idx}">Add stay</button>`);
+      }
+      // The city-change warning gets the same treatment for the same reason:
+      // it already names both ends and the day, so restating them into a blank
+      // form was work the panel could do itself.
+      if (iss.legGap && !sharedMode && transportPrefillForGap(iss.legGap)) {
+        acts.push(`<button type="button" class="issue-jump issue-add-transport" data-add-transport="${idx}">Add transport</button>`);
       }
       // A warning about ONE item still marked "To book" can be answered without
       // leaving the panel: same status write the Timeline row's <select> makes,
@@ -3132,25 +3144,52 @@
   // self. The list is the one gate the form and an import both check against.
   const PAYMENT_METHODS = ['cash', 'card', 'prepaid'];
 
+  // The city an IATA code names, from the bundled table and nothing else. ''
+  // until the table has loaded, which is a rung newItemCity simply skips.
+  function iataCity(code) {
+    if (!airportRows) return '';
+    const row = airportRows.find(r => r.iata === code);
+    return row ? (row.city || '') : '';
+  }
+
   // `preset` is either the date a day card's + button was pressed on, or a
-  // whole opening shape (type and both dates) for a form somebody else filled
-  // in - today that is the gap warning's "Add stay". It applies to a NEW item
-  // only: an edit opens on what the item actually says.
+  // whole opening shape (type, dates, place, title) for a form somebody else
+  // filled in - the gap warnings' "Add stay" and "Add transport". It applies to
+  // a NEW item only: an edit opens on what the item actually says.
+  //
+  // Anything the preset does NOT name, a new item derives from the trip
+  // (newItemDefaults: the type, the date, the city). The preset always wins,
+  // the item being edited always wins over both, and a derived value only ever
+  // lands in a field that would otherwise have opened empty.
   function openItemModal(itemId, preset) {
     ui.editingId = itemId;
     const pre = typeof preset === 'string' ? { startDate: preset } : (preset || {});
     const it = itemId ? activeTrip().items.find(x => x.id === itemId) : null;
     const preStay = !it && pre.type === 'stay';
+    const auto = it ? null : newItemDefaults(activeTrip(), {
+      today: todayIso(),
+      focusDate: pre.startDate,
+      type: TYPE_META[pre.type] ? pre.type : '',
+      resolveIata: iataCity,
+    });
     $('#itemModalTitle').textContent = it ? 'Edit item' : 'Add item';
     $('#itemSaveBtn').textContent = it ? 'Save changes' : 'Add item';
-    setModalType(it ? it.type : (TYPE_META[pre.type] ? pre.type : 'flight'));
-    $('#inTitle').value = it ? it.title : '';
+    setModalType(it ? it.type : (TYPE_META[pre.type] ? pre.type : auto.type));
+    $('#inTitle').value = it ? it.title : (pre.title || '');
     // A rating belongs to the row a traveller picked in THIS form, never to a
-    // saved item, so opening any item starts without one.
+    // saved item, so opening any item starts without one. The picked-venue
+    // coordinates go with it for the same reason.
     clearStayRating();
+    venuePick = null;
     syncFlightPickers(it);
-    $('#inLocation').value = it ? (it.location || '') : '';
-    $('#inStart').value = it ? (it.startDate || '') : (pre.startDate || '');
+    autoFilled.clear();
+    $('#inLocation').value = it ? (it.location || '') : (pre.location || auto.location);
+    $('#inStart').value = it ? (it.startDate || '') : (pre.startDate || auto.startDate);
+    // Everything a NEW form opened with came from the app, not from a person.
+    if (!it) {
+      if ($('#inLocation').value) autoFilled.add('location');
+      if ($('#inStart').value) autoFilled.add('start');
+    }
     $('#inEnd').value = it && it.type === 'stay' ? (it.endDate || '') : (preStay ? (pre.endDate || '') : '');
     $('#inArrDate').value = it && it.type !== 'stay' ? (it.endDate || '') : '';
     $('#inArrTime').value = it ? (it.endTime || '') : '';
@@ -3184,11 +3223,28 @@
     renderDetailLinks(it);
     syncDocsSection(it);
     clearFieldErrors();
+    // a blank flight form can already say where it leaves from
+    if (!it) prefillFlightOrigin();
     openOverlay('#itemOverlay');
     // preventScroll keeps the modal parked at its heading; without it the
     // overlay scrolls the title field up and hides the heading on phones
     $('#inTitle').focus({ preventScroll: true });
   }
+
+  // WHICH FIELDS THE APP FILLED, and may therefore revise.
+  //
+  // The round's rule is "never overwrite what the traveller typed", and until
+  // this existed the code enforced it by only ever writing into an EMPTY field.
+  // That is too blunt in both directions: it let a derived date block a better
+  // derived date (choosing Stay after the form had already filled a departure
+  // date kept the night spent on the plane), and it left a derived city stranded
+  // on the wrong day when the traveller moved the date.
+  //
+  // So ownership is tracked instead. A field the app filled stays revisable; a
+  // field a human touches leaves the set for good and nothing writes to it
+  // again. Cleared on every open, and an explicit PICK counts as human.
+  const autoFilled = new Set();
+  const appOwns = (key, el) => autoFilled.has(key) || !el.value.trim();
 
   // How the item currently open divides its cost among the people ticked below.
   // Module scope rather than a DOM read because the toggle has to survive the
@@ -3384,9 +3440,99 @@
     const meal = $('#mealHint');
     meal.hidden = t !== 'activity';
     if (t === 'activity') {
-      meal.textContent = 'Start the title with ' + mealTitlePrefixes().map(p => p.trim()).join(' ')
+      // Two facts about this one field, and the venue search goes first because
+      // it is the one a traveller cannot discover by typing: the dropdown only
+      // appears from the third character, so nothing announces it.
+      meal.textContent = 'Type a venue name to look up the real place. Start the title with '
+        + mealTitlePrefixes().map(p => p.trim()).join(' ')
         + ' to mark it as a meal (its own icon and colour).';
     }
+  }
+
+  // What CHANGING the type on a blank form can answer that opening it could
+  // not. Fills empty fields only, and only while adding: an edit's own values
+  // are the answer, and a value the traveller typed is never touched.
+  //
+  // Why it is not inside setModalType: openItemModal calls that BEFORE it
+  // writes the date fields, so a default applied there would be overwritten by
+  // the very open that asked for it. This runs from the type picker instead,
+  // which is the only place a type changes under a form already on screen.
+  function applyTypeDefaults() {
+    if (sharedMode || ui.editingId) return;
+    const trip = activeTrip();
+    if (modalType === 'stay') {
+      // Choosing Stay used to mean picking two dates out of a calendar the app
+      // could already read: the first uncovered night is where a stay belongs.
+      //
+      // The two branches answer different questions, and using the first one
+      // for both was a real bug: `stayDatesFrom` jumps to where the next hole
+      // STARTS, which is only right while the form has no date at all. Against
+      // a check-in already on screen it wrote a check-out belonging to a
+      // different hole - on a trip covered the 5th-8th and 10th-12th, opening
+      // on the 6th produced a four-night stay straddling both bookings. A date
+      // in hand is the anchor, and only its own run length is still in
+      // question.
+      const start = $('#inStart'), end = $('#inEnd');
+      if (appOwns('start', start)) {
+        // The date on screen is the app's own opening guess, so Stay may
+        // improve on it: stayDatesFrom knows the first night that actually
+        // needs a bed, which on a red-eye is the night you LAND, not the one
+        // you left. Without this the commonest sequence in the app - log the
+        // flight, then book the hotel - booked the night spent on the plane.
+        const from = start.value || newItemDate(trip, { today: todayIso() });
+        const dates = from ? stayDatesFrom(trip, from) : null;
+        if (dates) {
+          start.value = dates.startDate;
+          autoFilled.add('start');
+          if (appOwns('end', end)) { end.value = dates.endDate; autoFilled.add('end'); }
+        }
+      } else if (appOwns('end', end)) {
+        // A check-in the traveller owns is the anchor and only its own run
+        // length is still in question.
+        end.value = stayCheckoutFor(trip, start.value);
+        autoFilled.add('end');
+      }
+    }
+    syncDerivedCity();
+    prefillFlightOrigin();
+  }
+
+  // The city the form should be showing for the day and type it is on now.
+  // ONE implementation, called from both places a day or a type can change
+  // under an open form, so the two can never drift: a flight and a
+  // between-cities transport keep their route in the title and take no city,
+  // and everything else inherits the day's own.
+  function syncDerivedCity() {
+    if (sharedMode || ui.editingId) return;
+    const loc = $('#inLocation');
+    if (!appOwns('location', loc)) return;
+    const auto = newItemDefaults(activeTrip(), {
+      today: todayIso(), focusDate: $('#inStart').value, type: modalType, resolveIata: iataCity,
+    });
+    // An empty answer CLEARS an app-written city rather than leaving yesterday's
+    // on a day that cannot justify it; a city a human put there is never touched.
+    if (auto.location !== loc.value) loc.value = auto.location;
+    if (auto.location) autoFilled.add('location'); else autoFilled.delete('location');
+  }
+
+  // The airport a new flight leaves from is wherever the itinerary has already
+  // flown to (see flightOriginCode). Only the FROM field is filled: with one
+  // airport known no title is composed, so nothing is written on the
+  // traveller's behalf until they pick the destination themselves.
+  function prefillFlightOrigin() {
+    if (sharedMode || ui.editingId || modalType !== 'flight') return;
+    const input = $('#inFlightFrom');
+    if (input.value.trim() || flightPick.from) return;
+    const code = flightOriginCode(activeTrip().items, $('#inStart').value || '');
+    if (!code) return;
+    loadAirports().then(list => {
+      // the form may have been closed, switched or filled while the table loaded
+      if (ui.editingId || modalType !== 'flight' || input.value.trim() || flightPick.from) return;
+      const row = (list || []).find(r => r.iata === code);
+      if (!row) return;
+      flightPick.from = row;
+      input.value = airportLabel(row);
+    });
   }
 
   function clearFieldErrors() {
@@ -3608,6 +3754,20 @@
     } else {
       it.createdAt = new Date().toISOString();
       trip.items.push(it);
+    }
+    // A venue picked from the title dropdown knows exactly where it is, so the
+    // coordinate goes into the same 30-day store the ratings call and the Photon
+    // top-up fill, under the key the SAVED item will ask for. Computing that key
+    // from `it` through itemMapsQuery - the same function every read path uses -
+    // is what makes agreement structural rather than a convention two call
+    // sites have to remember. A retyped title no longer matches `wrote`, so the
+    // coordinates are dropped rather than stamped onto a different place.
+    if (venuePick && it.title === venuePick.wrote) {
+      const vq = itemMapsQuery(it);
+      if (vq) {
+        rememberVenuePoint(placeCacheKey(vq), { lat: venuePick.lat, lon: venuePick.lon });
+        saveVenueCache();
+      }
     }
     // the same save tidies the manual order: the group this item joined or left
     // is renumbered, and a row now tying with nobody drops the field entirely
@@ -4190,6 +4350,12 @@
     syncTripMenuShared();
     syncGpxMenuRow();
     $('#tripMenu').classList.add('open');
+    // Same defect as the dialogs, same fix, one floor down: on a phone the
+    // panel is tall enough to scroll (see the max-width:560px rule) and it is
+    // toggled rather than rebuilt, so it used to reopen wherever it was left.
+    // It is a popover rather than a modal, which is why it needs its own call
+    // instead of inheriting openOverlay's.
+    resetScrollWithin($('#tripMenu'));
     // the search button already reports its state; this popover is the same
     // kind of control and a screen reader deserves the same open/closed answer
     $('#tripMenuBtn').setAttribute('aria-expanded', 'true');
@@ -5911,8 +6077,10 @@
 
   // The city already typed into the Place field, and its coordinates if the
   // geocode cache happens to know them. Both are optional: the picker works
-  // with neither, it just ranks worse.
-  function hotelBias() {
+  // with neither, it just ranks worse. Shared by the hotel and the venue
+  // picker, which are the same lookup against the same provider with different
+  // class lists.
+  function pickerCityBias() {
     const city = ($('#inLocation').value || '').trim();
     const hit = city ? geoCache[city.toLowerCase()] : null;
     return {
@@ -5973,7 +6141,9 @@
     // Filling an EMPTY Place field is a convenience; overwriting a filled one
     // would fight a traveller who deliberately wrote "Gion, Kyoto".
     const loc = $('#inLocation');
-    if (!loc.value.trim() && row.locality) loc.value = row.locality;
+    // A pick is a human choice, so the city it fills belongs to the traveller
+    // and no later date change may revise it.
+    if (appOwns('location', loc) && row.locality) { loc.value = row.locality; autoFilled.delete('location'); }
     $('#fTitle').classList.remove('invalid');
     showStayRating(row);
   }
@@ -5999,15 +6169,86 @@
     slot.hidden = true;
   }
 
-  function attachHotelPicker(input) {
+  // ---------- activity picker source (Photon again, general POIs) ----------
+  // See the block over rankVenueResults in trip-logic.js for what this can and
+  // cannot answer (a venue you can NAME, not a category you want to browse).
+  // Exclusions only on the wire: an include filter hard-filters and would
+  // answer an empty list for a real place whose class we forgot, so the class
+  // list that decides what may be shown lives in rankVenueResults.
+  const VENUE_EXCLUDE_Q = VENUE_EXCLUDE_KEYS.map(k => 'osm_tag=' + encodeURIComponent('!' + k)).join('&');
+  // Asked for more than the eight rows shown, because the class list drops rows
+  // AFTER the response: "Central Park" answers a zoo and a carousel worth
+  // showing alongside six dentists and schools worth dropping.
+  const VENUE_FETCH_LIMIT = 15;
+  const venueSuggestCache = new Map();
+  let venueSuggestAbort = null;
+
+  function fetchVenueSuggestions(q, bias) {
+    // Keyed on the city for the hotel picker's reason: the same four letters
+    // mean a different place once the Place field is filled in.
+    const key = `${q.toLowerCase()}|${(bias.city || '').toLowerCase()}`;
+    if (venueSuggestCache.has(key)) return Promise.resolve(venueSuggestCache.get(key));
+    if (venueSuggestAbort) venueSuggestAbort.abort();
+    venueSuggestAbort = new AbortController();
+    const ctrl = venueSuggestAbort;
+    const timeout = setTimeout(() => ctrl.abort(), 7000);
+    // lat/lon only, for the reasons the hotel picker documents: Photon's
+    // location_bias_scale and zoom made the bias worse and a bbox empties the
+    // list. The city bonus in rankVenueResults is what actually decides.
+    const at = (Number.isFinite(bias.lat) && Number.isFinite(bias.lon)) ? `&lat=${bias.lat}&lon=${bias.lon}` : '';
+    return fetch(`${HOTEL_API}?q=${encodeURIComponent(q)}&limit=${VENUE_FETCH_LIMIT}&lang=en&${VENUE_EXCLUDE_Q}${at}`, { signal: ctrl.signal })
+      .then(r => { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+      .then(json => {
+        const rows = rankVenueResults(q, json, bias.city, CB_LIMIT);
+        if (venueSuggestCache.size > 120) venueSuggestCache.clear();
+        venueSuggestCache.set(key, rows);
+        return rows;
+      })
+      // Same posture as the other two pickers: offline or throttled is not an
+      // error worth shouting about. The field is still a plain text input and
+      // typing the name of a place still works.
+      .catch(() => [])
+      .finally(() => clearTimeout(timeout));
+  }
+
+  // A picked venue, held until the item is saved. The COORDINATES are the prize
+  // (see submitItemForm): a hand-added activity used to sit on its city's
+  // centroid until a Photon or Places lookup found it, and now the row the
+  // traveller chose says exactly where it is, for free and immediately.
+  // `wrote` is the same guard flightPick uses: retype the title and the
+  // coordinates stop applying rather than being stamped onto another place.
+  let venuePick = null;
+
+  function rememberPickedVenue(row) {
+    if (!row || !Number.isFinite(row.lat)) { venuePick = null; return; }
+    venuePick = { name: row.value, lat: row.lat, lon: row.lon, wrote: row.value };
+    // Filling an EMPTY Place field is a convenience; overwriting a filled one
+    // would fight a traveller who deliberately wrote "Gion, Kyoto".
+    const loc = $('#inLocation');
+    // Same rule as the venue pick: a chosen hotel's town is the traveller's.
+    if (appOwns('location', loc) && row.locality) { loc.value = row.locality; autoFilled.delete('location'); }
+    $('#fTitle').classList.remove('invalid');
+    // Deliberately NO rating lookup here, unlike the hotel pick: a rating is a
+    // billed Google call, activities outnumber stays several to one, and the
+    // row will get its rating from the itinerary's own on-screen queue anyway.
+    // This feature adds zero billable requests.
+  }
+
+  // ONE combobox on #inTitle, because two would bind two sets of listeners to
+  // one input and open two popups. Which list it offers is decided per search
+  // (the type switches under an open form), and the row carries `src` so a pick
+  // landing after a type switch is still handled by the code that fetched it.
+  function attachTitlePicker(input) {
     return createCombobox(input, {
       minChars: 3,          // "ho" matches half the lodging in the world
       debounce: 320,        // a shared, unpaid, fair-use endpoint: do not type at it
-      enabled: () => modalType === 'stay',
-      rows: q => fetchHotelSuggestions(q, hotelBias()),
+      enabled: () => modalType === 'stay' || modalType === 'activity',
+      rows: q => (modalType === 'stay'
+        ? fetchHotelSuggestions(q, pickerCityBias()).then(rows => rows.map(r => ({ ...r, src: 'hotel' })))
+        : fetchVenueSuggestions(q, pickerCityBias()).then(rows => rows.map(r => ({ ...r, src: 'venue' })))),
       render: row => ({ primary: row.value, secondary: row.detail || '', tag: row.kindLabel }),
       value: row => row.value,
-      onPick: rememberPickedHotel,
+      onPick: row => (row.src === 'hotel' ? rememberPickedHotel(row) : rememberPickedVenue(row)),
     });
   }
 
@@ -6105,7 +6346,11 @@
     + '<span class="me-title">Compare the ways to get there</span>'
     + '<span>Enter two places and hit "Check route" for times, rough costs and CO2 side by side.</span></div>';
 
-  function openRouteModal(from, to, date) {
+  // `autoCheck` is false only for a PREFILLED pair the traveller did not ask
+  // about yet (see openRouteFromTrip): clicking a specific leg is a question, so
+  // that path still answers it immediately, but a dialog merely opening must
+  // never spend a geocode and a route lookup on a guess about what was wanted.
+  function openRouteModal(from, to, date, { autoCheck = true } = {}) {
     routeDate = date || '';
     lastRouteKey = '';
     // Places already used in this trip are no longer pushed into a datalist
@@ -6115,9 +6360,23 @@
     $('#routeTo').value = to || '';
     setRouteResult(ROUTE_BLANK);
     updateRouteLinks();
+    syncRouteCheckBtn();
     openOverlay('#routeOverlay');
-    if (from && to) checkRoute();
+    if (from && to && autoCheck) checkRoute();
+    // With both ends already filled the next action is checking them, so focus
+    // lands on the button that does it rather than on a field needing no edit.
+    else if (from && to) $('#routeCheckBtn').focus();
     else $('#routeFrom').focus();
+  }
+
+  // The toolbar's Route button used to open two empty fields on a trip that
+  // already knew which two cities had no leg between them. It now opens on that
+  // pair (routeSuggestion: the first city change with nothing logged for it,
+  // else the first city change at all) with the lookup still un-run.
+  function openRouteFromTrip() {
+    const s = routeSuggestion(activeTrip());
+    if (!s) return openRouteModal('', '');
+    return openRouteModal(s.from, s.to, s.date, { autoCheck: false });
   }
 
   function setRouteResult(html, isErr) {
@@ -8781,10 +9040,42 @@
   function modalFocusables(overlay) {
     return [...overlay.querySelectorAll(FOCUSABLE)].filter(el => el.offsetParent !== null);
   }
+  // A dialog reopens at the TOP, every time.
+  //
+  // Every overlay in this app is markup that already exists and is toggled with
+  // a class (`.overlay` is display:none, `.overlay.open` is display:flex), so
+  // nothing is ever recreated - and a scroll container keeps its offset across
+  // that toggle. Scroll to the bottom of the Add-item form, close it, open it
+  // again and the browser hands back the same scroll position, halfway down a
+  // form that is supposed to be fresh.
+  //
+  // Two containers hold an offset, not one, which is why resetting `.m-body`
+  // alone would leave a dialog 30-odd pixels down: `.m-body` is the modal's own
+  // scroller, and `.overlay` ITSELF scrolls when the modal is taller than the
+  // viewport. Nested ones exist too (`#importBookingResult`), so this resets
+  // whatever is actually scrolled rather than a list of selectors that would
+  // have to be kept in step with the CSS.
+  //
+  // Read every offset first and write afterwards: reading `scrollTop` flushes
+  // layout, and interleaving reads with writes would flush it once per element.
+  function resetScrollWithin(root) {
+    if (!root) return;
+    const scrolled = [root, ...root.querySelectorAll('*')].filter(el => el.scrollTop || el.scrollLeft);
+    for (const el of scrolled) { el.scrollTop = 0; el.scrollLeft = 0; }
+  }
+
   function openOverlay(sel) {
     if (!document.querySelector('.overlay.open')) overlayReturnFocus = document.activeElement;
     const o = $(sel);
     o.classList.add('open');
+    // AFTER .open, because a display:none element has no layout to scroll: the
+    // write would be dropped and the old offset would come back with the paint.
+    // Before the focus call below, and before every opener's own focus(), so a
+    // dialog that deliberately focuses a field further down (Trip settings in
+    // template mode) still wins - intent beats the reset, the reset beats the
+    // leftover. No smooth-scroll anywhere in this app's CSS, so this lands in
+    // the same frame and nothing is ever painted at the old position.
+    resetScrollWithin(o);
     document.body.classList.add('tp-modal-open');
     // a modal taller than the viewport gets scrolled into view on focus,
     // which buries its heading under the fixed site header
@@ -8863,7 +9154,7 @@
   // ---------- events ----------
   $('#addBtn').addEventListener('click', () => openItemModal(null));
   $('#shiftTripBtn').addEventListener('click', () => openShiftModal(null));
-  $('#routeBtn').addEventListener('click', () => openRouteModal('', ''));
+  $('#routeBtn').addEventListener('click', openRouteFromTrip);
   $('#visaBtn').addEventListener('click', openVisaModal);
   $('#assistBtn').addEventListener('click', () => openAssist(null));
   // openOverlay/closeOverlay own the focus contract, so the shortcut list gets
@@ -9180,7 +9471,11 @@
   $('#essentialsForm').addEventListener('input', syncEssentialsEmpty);
   $('#typePicker').addEventListener('click', e => {
     const b = e.target.closest('button[data-type]');
-    if (b) setModalType(b.dataset.type);
+    if (!b) return;
+    setModalType(b.dataset.type);
+    // the type is what decides which dates and which city a blank form can
+    // answer for itself; see applyTypeDefaults for why it is not in setModalType
+    applyTypeDefaults();
   });
   $('#importBookingBtn').addEventListener('click', () => $('#importBookingFile').click());
   $('#importBookingFile').addEventListener('change', e => {
@@ -9202,9 +9497,23 @@
   attachPlacePicker($('#routeTo'));
   attachAirportPicker($('#inFlightFrom'), a => { flightPick.from = a; syncFlightTitle(); });
   attachAirportPicker($('#inFlightTo'), a => { flightPick.to = a; syncFlightTitle(); });
-  // Gated on the stay type inside the combobox (see `enabled`), so the other
-  // five types keep #inTitle as the plain free-text field it has always been.
-  attachHotelPicker($('#inTitle'));
+  // Gated on the type inside the combobox (see `enabled`): a stay searches
+  // lodging, an activity searches venues, and the other four types keep
+  // #inTitle as the plain free-text field it has always been.
+  attachTitlePicker($('#inTitle'));
+  // Ownership transfer: the moment a human types into one of the derived
+  // fields, the app stops writing to it. `input` is the right event because it
+  // is what a person typing fires and what setValue-style programmatic writes
+  // deliberately do NOT (see the writes in applyTypeDefaults, which must stay
+  // revisable).
+  for (const [key, sel] of [['start', '#inStart'], ['location', '#inLocation'], ['end', '#inEnd']]) {
+    $(sel).addEventListener('input', () => autoFilled.delete(key));
+  }
+  // The city follows the DAY. Moving the date used to leave a city derived for
+  // a different day sitting in the field, or leave it empty when the new day
+  // could answer it - the toolbar's Add opens on the trip's first day, so
+  // anyone adding to a later one hit exactly that.
+  $('#inStart').addEventListener('change', syncDerivedCity);
   $('#inCostCurrency').addEventListener('change', syncCostPrefix);
   // clearing the cost takes the split control with it, and a cost appearing
   // brings it back: there is nothing to divide unevenly without an amount
@@ -9367,7 +9676,18 @@
     if (gapShow) { flashGapNights((currentIssues[Number(gapShow.dataset.gapShow)] || {}).gap); return; }
     const addStay = e.target.closest('button[data-add-stay]');
     if (addStay && !sharedMode) {
-      const pre = stayPrefillForGap((currentIssues[Number(addStay.dataset.addStay)] || {}).gap);
+      // items are passed so the prefill carries the CITY those nights are spent
+      // in as well as their dates - the same derivation a blank form uses
+      const pre = stayPrefillForGap((currentIssues[Number(addStay.dataset.addStay)] || {}).gap, activeTrip().items);
+      if (pre) openItemModal(null, pre);
+      return;
+    }
+    // "No flight or transport is logged between A and B" -> the leg itself,
+    // titled the way this app titles legs and dated the day the previous stay
+    // ends. Saving it clears the warning that offered it.
+    const addLeg = e.target.closest('button[data-add-transport]');
+    if (addLeg && !sharedMode) {
+      const pre = transportPrefillForGap((currentIssues[Number(addLeg.dataset.addTransport)] || {}).legGap);
       if (pre) openItemModal(null, pre);
       return;
     }

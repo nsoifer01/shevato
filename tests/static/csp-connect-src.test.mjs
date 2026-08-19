@@ -37,7 +37,7 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 // ---------------------------------------------------------------------------
 const BROWSER_FETCH_ORIGINS = {
   'https://nominatim.openstreetmap.org': 'Trip Planner one-shot place geocoding',
-  'https://photon.komoot.io': 'Trip Planner hotel typeahead + venue coordinates',
+  'https://photon.komoot.io': 'Trip Planner hotel + venue typeahead, venue coordinates',
   'https://archive-api.open-meteo.com': 'Trip Planner typical-weather (historical) chips',
   'https://api.open-meteo.com': 'Trip Planner near-term forecast chips',
   'https://geocoding-api.open-meteo.com': 'Trip Planner city typeahead in the place fields',
