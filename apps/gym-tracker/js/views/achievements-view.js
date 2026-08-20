@@ -6,7 +6,8 @@ import { app } from '../app.js';
 import { Achievement } from '../models/Achievement.js';
 import { AchievementService } from '../services/AchievementService.js';
 import { DarkSelect } from '../utils/dark-select.js';
-import { escapeHtml, convertWeight, formatDate } from '../utils/helpers.js';
+import { escapeHtml, formatDate } from '../utils/helpers.js';
+import { displayWeight, normalizeWeightUnit, volumeIn } from '../utils/units.js';
 
 const VOLUME_TYPES = new Set(['total-volume', 'daily-volume']);
 
@@ -20,9 +21,22 @@ const CATEGORY_META = {
     'workout-today':      { name: 'Daily Activity',     icon: '⭐', desc: "Show up and train" },
     'daily-volume':       { name: 'Single-Workout Volume', icon: '💪', desc: 'Volume hit in a single workout' },
     'weekly-workouts':    { name: 'Weekly Goals',       icon: '📅', desc: 'Workouts in a single week' },
+    'weekly-distinct-days':{ name: 'Weekly Consistency', icon: '🌈', desc: 'Days trained in a single week' },
     'monthly-workouts':   { name: 'Monthly Goals',      icon: '🗓️', desc: 'Workouts in a single month' },
+    // GT-29: without an entry here the group heading fell back to the raw
+    // requirement slug and rendered "<h2>lift-milestone</h2>" with an empty
+    // description paragraph, sitting among properly titled groups.
+    'lift-milestone':     { name: 'Lift Milestones',    icon: '🏅', desc: 'Landmark loads on the big lifts' },
 };
 const CATEGORY_ORDER = Object.keys(CATEGORY_META);
+
+/** "lift-milestone" -> "Lift Milestone". Last-resort title for a new type. */
+function humanizeCategoryKey(key) {
+    return String(key || 'other')
+        .replace(/[-_]+/g, ' ')
+        .trim()
+        .replace(/\b\w/g, c => c.toUpperCase());
+}
 
 class AchievementsView {
     constructor() {
@@ -97,20 +111,27 @@ class AchievementsView {
 
     /** Current weight unit from settings (defaults to 'kg'). */
     get weightUnit() {
-        return this.app.settings?.weightUnit || 'kg';
+        return normalizeWeightUnit(this.app.settings?.weightUnit);
     }
 
     /**
-     * Replace any 'kg' literal in achievement text with the user's chosen unit.
-     * Note: descriptions look like "Lift 1,000kg total volume" — there's no
-     * space between the digits and "kg", so a leading \b (word boundary)
-     * doesn't fire. Match `kg` followed only by a trailing boundary.
+     * Render an achievement description in the user's unit.
+     *
+     * Volume milestones are DEFINED in kilograms ("Lift 1,000kg total
+     * volume"), so switching to pounds has to convert the number as well as
+     * the suffix. Swapping only the suffix - which is what this used to do -
+     * is the same relabel-without-converting mistake as GT-03, three orders
+     * of magnitude out on the bigger tiers.
      */
     localizeUnit(text) {
         if (!text) return text;
         const unit = this.weightUnit;
         if (unit === 'kg') return text;
-        return text.replace(/kg\b/g, unit);
+        return String(text).replace(/([\d,.]+)\s*kg\b/g, (_match, number) => {
+            const kg = Number(String(number).replace(/,/g, ''));
+            if (!Number.isFinite(kg)) return `${number} ${unit}`;
+            return `${Math.round(volumeIn(kg, unit)).toLocaleString()}${unit}`;
+        });
     }
 
     /** Feature 4: per-exercise strength-PR achievements, newest first. */
@@ -126,18 +147,19 @@ class AchievementsView {
     /**
      * Render the distinct "Strength PRs" section above the standard
      * volume/streak categories. Each row shows exercise name, weight + unit,
-     * and date. Weights are stored canonical kg; convert to the row's saved
-     * display unit. Returns the section HTML (empty string when none exist).
+     * and date. Weights are stored canonical kg and convert to the user's
+     * current display unit. Returns the section HTML ('' when none exist).
      */
     renderPRSection() {
         const prs = this.prAchievements;
         if (prs.length === 0) return '';
+        // The CURRENT display unit, not `prUnit` (the unit the lifter happened
+        // to be reading when the PR was set). Keying off the stored unit is why
+        // a PR card still said "65 kg" while History next to it said lb (GT-03);
+        // prWeightKg is canonical, so it converts like everything else.
+        const unit = this.weightUnit;
         const rows = prs.map(a => {
-            const unit = a.prUnit === 'lb' ? 'lb' : 'kg';
-            const weight = unit === 'lb'
-                ? convertWeight(a.prWeightKg || 0, 'kg', 'lb')
-                : (a.prWeightKg || 0);
-            const weightLabel = `${Number(weight).toLocaleString()} ${unit}`;
+            const weightLabel = `${Number(displayWeight(a.prWeightKg || 0, unit)).toLocaleString()} ${unit}`;
             // Prefer the exercise's CURRENT catalog name (stable id lives in
             // requirement.exerciseId); the stored snapshot covers exercises
             // that no longer resolve (e.g. deleted custom exercises).
@@ -245,7 +267,9 @@ class AchievementsView {
         });
 
         container.innerHTML = prSectionHtml + ordered.map(([type, items]) => {
-            const meta = CATEGORY_META[type] || { name: type, icon: '🏆', desc: '' };
+            // A slug is never shown to a user: an unknown requirement type
+            // gets a readable fallback title rather than its raw key (GT-29).
+            const meta = CATEGORY_META[type] || { name: humanizeCategoryKey(type), icon: '🏆', desc: 'Other goals' };
             const done = items.filter(a => a.unlocked).length;
             const isExpanded = this.expandedCategories.has(type);
             return `
@@ -258,7 +282,7 @@ class AchievementsView {
                         <span class="achievement-category-icon">${meta.icon}</span>
                         <div class="achievement-category-text">
                             <h2>${meta.name}</h2>
-                            <p>${meta.desc}</p>
+                            ${meta.desc ? `<p>${meta.desc}</p>` : ''}
                         </div>
                         <span class="achievement-category-count">
                             <strong>${done}</strong> / ${items.length}
@@ -314,8 +338,10 @@ class AchievementsView {
         const unit = this.weightUnit;
 
         const formatNum = (n) => Number(n || 0).toLocaleString();
+        // Volume progress and targets are canonical kg; convert them so the
+        // bar, the numbers and the description all agree.
         const formatProgress = (n) => isVolume
-            ? `${formatNum(n)} ${unit}`
+            ? `${Math.round(volumeIn(n, unit)).toLocaleString()} ${unit}`
             : formatNum(n);
 
         // Localize description text (replaces literal 'kg' with the user's unit)

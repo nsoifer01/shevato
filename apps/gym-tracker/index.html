@@ -387,48 +387,15 @@
                                 <div class="exercise-picker-search">
                                     <div class="search-input-wrapper">
                                         <i class="fas fa-search search-icon"></i>
-                                        <input type="text" id="swap-exercise-search" placeholder="Search exercises by name or muscle group...">
+                                        <input type="text" id="swap-exercise-search" placeholder="Search by name or muscle">
                                     </div>
                                     <div class="exercise-filters">
+                                        <!-- Options are filled from js/utils/exercise-taxonomy.js, the one definition of these lists (GT-26). -->
                                         <select id="swap-exercise-category-filter" aria-label="Filter by category">
                                             <option value="">All Categories</option>
-                                            <option value="chest">Chest</option>
-                                            <option value="back">Back</option>
-                                            <option value="shoulders">Shoulders</option>
-                                            <option value="biceps">Biceps</option>
-                                            <option value="triceps">Triceps</option>
-                                            <option value="forearms">Forearms</option>
-                                            <option value="quads">Quads</option>
-                                            <option value="hamstrings">Hamstrings</option>
-                                            <option value="glutes">Glutes</option>
-                                            <option value="calves">Calves</option>
-                                            <option value="core">Core</option>
-                                            <option value="abs">Abs</option>
-                                            <option value="obliques">Obliques</option>
-                                            <option value="traps">Traps</option>
-                                            <option value="neck">Neck</option>
-                                            <option value="full-body">Full Body</option>
-                                            <option value="cardio">Cardio</option>
                                         </select>
                                         <select id="swap-exercise-equipment-filter" aria-label="Filter by equipment">
                                             <option value="">All Equipment</option>
-                                            <option value="barbell">Barbell</option>
-                                            <option value="dumbbell">Dumbbell</option>
-                                            <option value="cable">Cable</option>
-                                            <option value="machine">Machine</option>
-                                            <option value="bodyweight">Bodyweight</option>
-                                            <option value="kettlebell">Kettlebell</option>
-                                            <option value="resistance-band">Resistance Band</option>
-                                            <option value="plate">Plate</option>
-                                            <option value="trap-bar">Trap Bar</option>
-                                            <option value="medicine-ball">Medicine Ball</option>
-                                            <option value="battle-ropes">Battle Ropes</option>
-                                            <option value="ab-wheel">Ab Wheel</option>
-                                            <option value="sled">Sled</option>
-                                            <option value="tire">Tire</option>
-                                            <option value="gripper">Gripper</option>
-                                            <option value="towel">Towel</option>
-                                            <option value="various">Various</option>
                                         </select>
                                     </div>
                                 </div>
@@ -471,6 +438,13 @@
                                             <span class="summary-stat-icon"><i class="fas fa-list-check" aria-hidden="true"></i></span>
                                             <span class="value" id="summary-sets" aria-label="Sets completed">0</span>
                                             <span class="label">Sets</span>
+                                        </div>
+                                        <!-- Time under tension is its own metric: a 60-second
+                                             plank is not 60 kg of volume (GT-04). -->
+                                        <div class="summary-stat" id="summary-time-under-tension-stat" hidden>
+                                            <span class="summary-stat-icon"><i class="fas fa-stopwatch" aria-hidden="true"></i></span>
+                                            <span class="value" id="summary-time-under-tension" aria-label="Time held">0s</span>
+                                            <span class="label">Held</span>
                                         </div>
                                         <div class="summary-stat summary-stat--pr" id="summary-prs-stat" hidden>
                                             <span class="summary-stat-icon"><i class="fas fa-trophy" aria-hidden="true"></i></span>
@@ -589,48 +563,15 @@
                 <div class="exercise-search-bar">
                     <div class="search-input-wrapper">
                         <i class="fas fa-search search-icon"></i>
-                        <input type="text" id="exercise-db-search" placeholder="Search exercises by name or muscle group...">
+                        <input type="text" id="exercise-db-search" placeholder="Search by name or muscle">
                     </div>
                     <div class="exercise-filters">
+                        <!-- Options are filled from js/utils/exercise-taxonomy.js, the one definition of these lists (GT-26). -->
                         <select id="exercise-db-category">
                             <option value="">All Categories</option>
-                            <option value="chest">Chest</option>
-                            <option value="back">Back</option>
-                            <option value="shoulders">Shoulders</option>
-                            <option value="biceps">Biceps</option>
-                            <option value="triceps">Triceps</option>
-                            <option value="forearms">Forearms</option>
-                            <option value="quads">Quads</option>
-                            <option value="hamstrings">Hamstrings</option>
-                            <option value="glutes">Glutes</option>
-                            <option value="calves">Calves</option>
-                            <option value="core">Core</option>
-                            <option value="abs">Abs</option>
-                            <option value="obliques">Obliques</option>
-                            <option value="traps">Traps</option>
-                            <option value="neck">Neck</option>
-                            <option value="full-body">Full Body</option>
-                            <option value="cardio">Cardio</option>
                         </select>
                         <select id="exercise-db-equipment">
                             <option value="">All Equipment</option>
-                            <option value="barbell">Barbell</option>
-                            <option value="dumbbell">Dumbbell</option>
-                            <option value="cable">Cable</option>
-                            <option value="machine">Machine</option>
-                            <option value="bodyweight">Bodyweight</option>
-                            <option value="kettlebell">Kettlebell</option>
-                            <option value="resistance-band">Resistance Band</option>
-                            <option value="plate">Plate</option>
-                            <option value="trap-bar">Trap Bar</option>
-                            <option value="medicine-ball">Medicine Ball</option>
-                            <option value="battle-ropes">Battle Ropes</option>
-                            <option value="ab-wheel">Ab Wheel</option>
-                            <option value="sled">Sled</option>
-                            <option value="tire">Tire</option>
-                            <option value="gripper">Gripper</option>
-                            <option value="towel">Towel</option>
-                            <option value="various">Various</option>
                         </select>
                         <select id="exercise-db-history-filter">
                             <option value="all">All Exercises</option>
@@ -686,18 +627,9 @@
                                 </div>
                                 <div class="form-group">
                                     <label for="custom-exercise-category">Category *</label>
+                                    <!-- Options are filled from js/utils/exercise-taxonomy.js, the one definition of these lists (GT-26). -->
                                     <select id="custom-exercise-category" required>
                                         <option value="">Select category...</option>
-                                        <option value="chest">Chest</option>
-                                        <option value="back">Back</option>
-                                        <option value="shoulders">Shoulders</option>
-                                        <option value="quads">Quads</option>
-                                        <option value="hamstrings">Hamstrings</option>
-                                        <option value="calves">Calves</option>
-                                        <option value="biceps">Biceps</option>
-                                        <option value="triceps">Triceps</option>
-                                        <option value="core">Core</option>
-                                        <option value="full-body">Full Body</option>
                                     </select>
                                 </div>
                                 <div class="form-group">
@@ -749,14 +681,6 @@
                                     <label for="custom-exercise-equipment">Equipment *</label>
                                     <select id="custom-exercise-equipment" required>
                                         <option value="">Select equipment...</option>
-                                        <option value="barbell">Barbell</option>
-                                        <option value="dumbbell">Dumbbell</option>
-                                        <option value="cable">Cable</option>
-                                        <option value="machine">Machine</option>
-                                        <option value="bodyweight">Bodyweight</option>
-                                        <option value="kettlebell">Kettlebell</option>
-                                        <option value="resistance-band">Resistance Band</option>
-                                        <option value="other">Other</option>
                                     </select>
                                 </div>
                                 <div class="form-actions custom-exercise-form-actions">
@@ -1221,6 +1145,9 @@
                             <button type="button" class="btn btn-secondary" id="import-data-btn">
                                 <i class="fas fa-upload"></i> Import Data
                             </button>
+                            <button type="button" class="btn btn-secondary" id="recheck-units-btn">
+                                <i class="fas fa-scale-balanced"></i> Re-check stored units
+                            </button>
                             <button type="button" class="btn btn-secondary" id="replay-onboarding-btn">
                                 <i class="fas fa-circle-info"></i> Replay welcome tour
                             </button>
@@ -1231,6 +1158,7 @@
                                 <i class="fas fa-cloud-arrow-down"></i> Delete cloud data
                             </button>
                         </div>
+                        <p class="settings-units-result" id="recheck-units-result" hidden role="status" aria-live="polite"></p>
                         <input type="file" id="import-file-input" accept=".json" style="display: none;">
                     </section>
                 </form>
@@ -1315,7 +1243,13 @@
                 <h2 id="onboarding-title">Welcome to Gym Tracker 💪</h2>
                 <button class="modal-close" id="onboarding-dismiss" aria-label="Close welcome">&times;</button>
             </div>
-            <div class="modal-body onboarding-body">
+            <!-- data-back-to-top goes on the element that actually SCROLLS.
+                 This is the tallest modal in the app (~2,100px of body in a
+                 ~574px viewport), exactly what the sitewide back-to-top
+                 control exists for; the header and footer sit outside the
+                 scroll, so opting the panel in would have done nothing
+                 (GT-35). -->
+            <div class="modal-body onboarding-body" data-back-to-top>
                 <p class="onboarding-intro">A quick tour of everything Gym Tracker can do, from building your first program to reviewing the trends after months of training.</p>
 
                 <section class="onboarding-section">
@@ -1452,37 +1386,22 @@
                 </section>
             </div>
             <div class="modal-footer" style="display:flex;justify-content:flex-end;padding:var(--spacing-md) var(--spacing-lg);gap:var(--spacing-sm);">
+                <!-- Label is lifecycle-aware: "Skip tour" while there is tour
+                     left to read, "Get started" once the reader reaches the
+                     end. Offering only the verb for abandoning it to someone
+                     who just read the whole thing was the complaint (GT-35). -->
                 <button class="btn btn-ghost" id="onboarding-skip">Skip tour</button>
             </div>
         </div>
     </div>
 
-    <!-- Feel picker (Item R3-4): the modal is the actual chooser, shown once
-         per exercise per session when all sets hit max reps. -->
-    <div id="feel-intro-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="feel-intro-title">
-        <div class="modal-content small feel-intro-modal-content">
-            <div class="modal-header feel-modal-header">
-                <h2 id="feel-intro-title">All sets at max reps!</h2>
-                <button class="modal-close" id="feel-modal-skip" aria-label="Skip">&times;</button>
-            </div>
-            <div class="modal-body feel-modal-body">
-                <p class="feel-intro-lead">Felt strong on every set? Mark it so you know to try more weight next time.</p>
-                <div class="feel-modal-actions">
-                    <button type="button" class="feel-modal-btn feel-modal-btn-good" id="feel-modal-good"
-                        aria-label="Felt good, consider more weight next time">
-                        <svg class="feel-modal-smiley" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                            <circle cx="12" cy="12" r="9.3" fill="none" stroke="#0a3a26" stroke-width="2.1"></circle>
-                            <circle cx="9" cy="10" r="1.35" fill="#0a3a26"></circle>
-                            <circle cx="15" cy="10" r="1.35" fill="#0a3a26"></circle>
-                            <path d="M8 14 Q12 17.6 16 14" fill="none" stroke="#0a3a26" stroke-width="2.1" stroke-linecap="round"></path>
-                        </svg>
-                        <span class="feel-modal-btn-label">Felt good</span>
-                    </button>
-                    <button type="button" class="btn btn-ghost feel-modal-skip-secondary" id="feel-modal-skip-btn">Not yet</button>
-                </div>
-            </div>
-        </div>
-    </div>
+    <!-- The feel picker used to be a full-screen modal here. Because reps
+         pre-fill at the TOP of the target range, tapping straight through a
+         normal session satisfied its trigger on most exercises, so it fired
+         after 4 of 8 exercises and blocked the screen each time (GT-22). It
+         is now an inline, self-dismissing prompt rendered onto the exercise
+         card itself (`showFeelPrompt` in js/views/workout-view.js) - same
+         choice, same once-per-exercise rule, no interruption. -->
 
     <!-- Create/Edit Program Modal.
          Lives at document level, NOT inside #programs-view: `.view` animates
@@ -1606,48 +1525,15 @@
                 <div class="exercise-picker-search">
                     <div class="search-input-wrapper">
                         <i class="fas fa-search search-icon"></i>
-                        <input type="text" id="exercise-search" placeholder="Search exercises by name or muscle group...">
+                        <input type="text" id="exercise-search" placeholder="Search by name or muscle">
                     </div>
                     <div class="exercise-filters">
+                        <!-- Options are filled from js/utils/exercise-taxonomy.js, the one definition of these lists (GT-26). -->
                         <select id="exercise-category-filter">
                             <option value="">All Categories</option>
-                            <option value="chest">Chest</option>
-                            <option value="back">Back</option>
-                            <option value="shoulders">Shoulders</option>
-                            <option value="biceps">Biceps</option>
-                            <option value="triceps">Triceps</option>
-                            <option value="forearms">Forearms</option>
-                            <option value="quads">Quads</option>
-                            <option value="hamstrings">Hamstrings</option>
-                            <option value="glutes">Glutes</option>
-                            <option value="calves">Calves</option>
-                            <option value="core">Core</option>
-                            <option value="abs">Abs</option>
-                            <option value="obliques">Obliques</option>
-                            <option value="traps">Traps</option>
-                            <option value="neck">Neck</option>
-                            <option value="full-body">Full Body</option>
-                            <option value="cardio">Cardio</option>
                         </select>
                         <select id="exercise-equipment-filter">
                             <option value="">All Equipment</option>
-                            <option value="barbell">Barbell</option>
-                            <option value="dumbbell">Dumbbell</option>
-                            <option value="cable">Cable</option>
-                            <option value="machine">Machine</option>
-                            <option value="bodyweight">Bodyweight</option>
-                            <option value="kettlebell">Kettlebell</option>
-                            <option value="resistance-band">Resistance Band</option>
-                            <option value="plate">Plate</option>
-                            <option value="trap-bar">Trap Bar</option>
-                            <option value="medicine-ball">Medicine Ball</option>
-                            <option value="battle-ropes">Battle Ropes</option>
-                            <option value="ab-wheel">Ab Wheel</option>
-                            <option value="sled">Sled</option>
-                            <option value="tire">Tire</option>
-                            <option value="gripper">Gripper</option>
-                            <option value="towel">Towel</option>
-                            <option value="various">Various</option>
                         </select>
                     </div>
                 </div>
@@ -1656,14 +1542,23 @@
                 </div>
 
                 <!-- Sticky tray of picked exercises; appears once at least one is selected -->
-                <div id="exercise-picker-tray" class="exercise-picker-tray" hidden>
+                <!-- GT-17: the tray is COLLAPSED by default. Expanded, an
+                     8-exercise selection grew to 352px and left zero result
+                     cards visible on a 390px phone, which turned building a
+                     realistic program into search-blind-tap-search. The count
+                     chip is the summary; the list is one tap away and capped. -->
+                <div id="exercise-picker-tray" class="exercise-picker-tray is-collapsed" hidden>
                     <div class="exercise-picker-tray-header">
-                        <span class="exercise-picker-tray-count" id="exercise-picker-tray-count">Added 0</span>
+                        <button type="button" class="exercise-picker-tray-count" id="exercise-picker-tray-count"
+                                aria-expanded="false" aria-controls="exercise-picker-tray-list">
+                            <i class="fas fa-chevron-up exercise-picker-tray-chevron" aria-hidden="true"></i>
+                            <span id="exercise-picker-tray-count-text">Added 0</span>
+                        </button>
                         <button type="button" class="btn btn-ghost btn-sm" id="exercise-picker-tray-clear">
                             <i class="fas fa-rotate-left"></i> Clear
                         </button>
                     </div>
-                    <ul id="exercise-picker-tray-list" class="exercise-picker-tray-list">
+                    <ul id="exercise-picker-tray-list" class="exercise-picker-tray-list" hidden>
                         <!-- populated by JS -->
                     </ul>
                     <div class="exercise-picker-tray-actions">
@@ -1672,6 +1567,91 @@
                         </button>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import mode chooser (GT-02). Merge and Replace are genuinely
+         different operations; the old single "Import" button promised a merge
+         and performed a replace, destroying programs and achievements the
+         file said nothing about. Sits before #confirm-modal so the
+         replace confirmation paints over it (document order is the stacking
+         order - see FINDINGS). -->
+    <div id="import-mode-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="import-mode-title" aria-hidden="true">
+        <div class="modal-content small import-mode-modal-content">
+            <div class="modal-header">
+                <h2 id="import-mode-title">Import data</h2>
+                <button class="modal-close" aria-label="Cancel import">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="import-mode-summary" id="import-mode-summary"></p>
+                <div class="import-mode-options">
+                    <button type="button" class="import-mode-option import-mode-option--merge" id="import-mode-merge">
+                        <span class="import-mode-option-icon" aria-hidden="true"><i class="fas fa-code-merge"></i></span>
+                        <span class="import-mode-option-text">
+                            <strong>Merge with my data</strong>
+                            <small>Adds what is in the file and keeps everything you already have.</small>
+                        </span>
+                    </button>
+                    <button type="button" class="import-mode-option import-mode-option--replace" id="import-mode-replace">
+                        <span class="import-mode-option-icon" aria-hidden="true"><i class="fas fa-rotate-left"></i></span>
+                        <span class="import-mode-option-text">
+                            <strong>Replace everything</strong>
+                            <small>Restores a full backup. Anything not in the file is deleted.</small>
+                        </span>
+                    </button>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-ghost" id="import-mode-cancel">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Measurement units confirmation. Shown once, only when the stored
+         measurements' original units cannot be PROVEN (an lb account whose
+         records were damaged by the sync race, see utils/data-migrations.js).
+         Measurements carry no per-record evidence of the units they were
+         entered in, so the app asks rather than guessing from whether a waist
+         "looks like" inches or centimetres. -->
+    <div id="measurement-units-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="measurement-units-title" aria-hidden="true">
+        <div class="modal-content small measurement-units-modal-content">
+            <div class="modal-header">
+                <h2 id="measurement-units-title">Confirm your measurement units</h2>
+            </div>
+            <div class="modal-body">
+                <p class="measurement-units-summary">
+                    A Gym Tracker update changed how measurements are stored. Your
+                    workout history has been checked automatically, but
+                    <strong id="measurement-units-count">your saved measurements</strong>
+                    do not record which units they were originally entered in.
+                </p>
+                <p class="measurement-units-sample-intro">Your most recent entry currently reads:</p>
+                <ul class="measurement-units-sample" id="measurement-units-sample"></ul>
+                <p class="measurement-units-question">Which units did you enter these in?</p>
+                <div class="measurement-units-options">
+                    <button type="button" class="measurement-units-option" id="measurement-units-imperial">
+                        <span class="measurement-units-option-icon" aria-hidden="true"><i class="fas fa-weight-hanging"></i></span>
+                        <span class="measurement-units-option-text">
+                            <strong>Pounds and inches</strong>
+                            <small>Converts them to the new storage format. Displayed values stay the same.</small>
+                        </span>
+                    </button>
+                    <button type="button" class="measurement-units-option" id="measurement-units-metric">
+                        <span class="measurement-units-option-icon" aria-hidden="true"><i class="fas fa-ruler"></i></span>
+                        <span class="measurement-units-option-text">
+                            <strong>Kilograms and centimetres</strong>
+                            <small>Keeps the stored numbers exactly as they are.</small>
+                        </span>
+                    </button>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-ghost" id="measurement-units-later">Decide later</button>
+                </div>
+                <p class="measurement-units-note">
+                    A rollback copy is saved before anything changes, and this is
+                    asked only once.
+                </p>
             </div>
         </div>
     </div>

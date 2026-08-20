@@ -44,7 +44,12 @@ test('buildSetsCsv: one row per COMPLETED set, incomplete sets are skipped', () 
     assert.equal(lines[2], '2026-04-24,Push,Bench Press,2,70,8,,560,kg');
 });
 
-test('buildSetsCsv: timed sets report seconds and leave weight/reps empty', () => {
+// GT-04: a timed set has seconds, not kilograms. Writing the duration into
+// the `volume` column under `unit=kg` shipped "60 kg" for a one-minute plank
+// straight into the user's spreadsheet, and the column sum matched the app's
+// (equally wrong) all-time figure, so the error was systemic rather than
+// display-only.
+test('buildSetsCsv: timed sets report seconds and leave weight/reps/volume empty', () => {
     const { csv } = buildSetsCsv([session({
         workoutDayName: 'Conditioning',
         exercises: [{
@@ -53,7 +58,20 @@ test('buildSetsCsv: timed sets report seconds and leave weight/reps empty', () =
         }],
     })], 'kg');
 
-    assert.equal(csv.split('\r\n')[1], '2026-04-24,Conditioning,Plank,1,,,45,45,kg');
+    assert.equal(csv.split('\r\n')[1], '2026-04-24,Conditioning,Plank,1,,,45,,kg');
+});
+
+test('buildSetsCsv: the volume column sums only real weight volume', () => {
+    const { csv } = buildSetsCsv([session({
+        exercises: [
+            { exerciseName: 'Bench', sets: [{ weight: 60, reps: 10, completed: true, slot: 0 }] },
+            { exerciseName: 'Plank', sets: [{ duration: 60, completed: true, slot: 0 }] },
+        ],
+    })], 'kg');
+    const total = csv.split('\r\n').slice(1)
+        .map(line => Number(line.split(',')[7] || 0))
+        .reduce((a, b) => a + b, 0);
+    assert.equal(total, 600, 'the plank adds nothing to the kilogram column');
 });
 
 test('buildSetsCsv: setNumber follows the stable slot, falling back to position on legacy sets', () => {
@@ -74,16 +92,34 @@ test('buildSetsCsv: setNumber follows the stable slot, falling back to position 
     assert.match(lines[2], /,Squat,4,110,3,/);
 });
 
-test('buildSetsCsv: the session unit wins over the account unit', () => {
+// GT-03: stored weights are canonical kilograms, so the export converts once
+// into ONE unit and stamps it on every row. Reading each session's own
+// `sessionUnit` produced a file that silently mixed units between rows, and
+// exporting in the wrong mode shipped numbers that were out by 2.2x.
+test('buildSetsCsv: every row carries the requested display unit', () => {
     const { csv } = buildSetsCsv([session({
         sessionUnit: 'lb',
         exercises: [{
             exerciseName: 'Deadlift',
-            sets: [{ weight: 225, reps: 5, completed: true, slot: 0 }],
+            sets: [{ weight: 100, reps: 5, completed: true, slot: 0 }],
         }],
     })], 'kg');
 
-    assert.ok(csv.split('\r\n')[1].endsWith(',lb'));
+    assert.ok(csv.split('\r\n')[1].endsWith(',kg'), 'the export unit, not the session unit');
+});
+
+test('buildSetsCsv: canonical kg converts into the export unit', () => {
+    const { csv } = buildSetsCsv([session({
+        exercises: [{
+            exerciseName: 'Deadlift',
+            sets: [{ weight: 100, reps: 5, completed: true, slot: 0 }],
+        }],
+    })], 'lb');
+
+    const cols = csv.split('\r\n')[1].split(',');
+    assert.ok(Math.abs(Number(cols[4]) - 220.46) < 0.01, `weight in lb, got ${cols[4]}`);
+    assert.ok(Math.abs(Number(cols[7]) - 1102.31) < 0.02, `volume in lb, got ${cols[7]}`);
+    assert.equal(cols[8], 'lb');
 });
 
 test('buildSetsCsv: fields with commas / quotes are escaped per RFC 4180', () => {

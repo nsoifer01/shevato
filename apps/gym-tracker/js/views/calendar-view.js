@@ -4,6 +4,8 @@
  * filtering, and a selected-day detail panel.
  */
 import { app } from '../app.js';
+import { normalizeWeightUnit, volumeIn } from '../utils/units.js';
+import { performedExerciseCount } from '../utils/session-metrics.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
 import { formatDate, escapeHtml } from '../utils/helpers.js';
 import { DarkSelect } from '../utils/dark-select.js';
@@ -131,13 +133,13 @@ class CalendarView {
         const sessions = this.app.workoutSessions || [];
         const summary = AnalyticsService.getMonthSummary(sessions, this.viewYear, this.viewMonth);
         const streak = AnalyticsService.getCurrentStreak(sessions);
-        const unit = this.app.settings?.weightUnit || 'kg';
+        const unit = normalizeWeightUnit(this.app.settings?.weightUnit);
         const hours = Math.floor(summary.totalDuration / 60);
         const mins = summary.totalDuration % 60;
 
         container.innerHTML = `
             ${this.statCard('dumbbell', 'Workouts', summary.sessionCount, summary.workoutDays === summary.sessionCount ? null : `${summary.workoutDays} days`)}
-            ${this.statCard('weight-hanging', 'Volume', `${Math.round(summary.totalVolume).toLocaleString()} ${unit}`)}
+            ${this.statCard('weight-hanging', 'Volume', `${Math.round(volumeIn(summary.totalVolume, unit)).toLocaleString()} ${unit}`)}
             ${this.statCard('clock', 'Time', summary.totalDuration > 0 ? (hours > 0 ? `${hours}h ${mins}m` : `${mins}m`) : '—')}
             ${this.statCard('fire', 'Streak', `${streak} day${streak === 1 ? '' : 's'}`, null, streak > 0 ? 'is-hot' : '')}
             ${this.statCard('chart-line', 'PR days', summary.prDays)}
@@ -329,7 +331,7 @@ class CalendarView {
             return;
         }
 
-        const unit = this.app.settings?.weightUnit || 'kg';
+        const unit = normalizeWeightUnit(this.app.settings?.weightUnit);
         const progressDates = AnalyticsService.getProgressDates(sessions);
         const isPR = progressDates.has(this.selectedDate);
 
@@ -365,11 +367,11 @@ class CalendarView {
     }
 
     renderSessionSummary(session, unit) {
-        const totalVolume = Math.round(session.totalVolume || 0).toLocaleString();
+        const totalVolume = Math.round(volumeIn(session.totalVolume || 0, unit)).toLocaleString();
         const totalSets = session.totalSets || (session.exercises || []).reduce((n, ex) => n + (ex.sets?.length || 0), 0);
         const dur = session.duration || 0;
         const durStr = dur > 0 ? (dur >= 60 ? `${Math.floor(dur / 60)}h ${dur % 60}m` : `${dur}m`) : '—';
-        const exerciseCount = (session.exercises || []).length;
+        const exerciseCount = performedExerciseCount(session);
 
         return `
             <div class="cal-session"

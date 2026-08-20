@@ -32,10 +32,30 @@ const src = loadSource('js/views/programs-view.js');
 // ---------------------------------------------------------------------------
 
 function makePicker(catalog) {
+    const makeEl = (extra = {}) => ({
+        hidden: false,
+        innerHTML: '',
+        textContent: '',
+        attrs: {},
+        classes: new Set(),
+        classList: {
+            add(c) { this._set.add(c); },
+            remove(c) { this._set.delete(c); },
+            contains(c) { return this._set.has(c); },
+            toggle(c, on) { if (on) this._set.add(c); else this._set.delete(c); },
+        },
+        setAttribute(k, v) { this.attrs[k] = v; },
+        getAttribute(k) { return this.attrs[k]; },
+        ...extra,
+    });
+    const wire = (el) => { el.classList._set = el.classes; return el; };
     const els = {
-        'exercise-picker-tray': { hidden: true },
-        'exercise-picker-tray-list': { innerHTML: '' },
-        'exercise-picker-tray-count': { textContent: '' },
+        'exercise-picker-tray': wire(makeEl({ hidden: true })),
+        'exercise-picker-tray-list': wire(makeEl({ hidden: true })),
+        // GT-17: the chip is a button that expands the list; its text lives in
+        // a child span so the chevron icon survives a re-render.
+        'exercise-picker-tray-count': wire(makeEl()),
+        'exercise-picker-tray-count-text': wire(makeEl()),
     };
     const document = {
         getElementById: (id) => els[id] || null,
@@ -125,7 +145,54 @@ test('tray: a picked exercise renders a named row with a remove button', () => {
     assert.ok(html.includes('Squat'), 'exercise name present');
     assert.ok(html.includes('data-tray-action="remove"'), 'remove button present');
     assert.equal(els['exercise-picker-tray'].hidden, false, 'tray shown');
-    assert.equal(els['exercise-picker-tray-count'].textContent, 'Added 1');
+    assert.equal(els['exercise-picker-tray-count-text'].textContent, '1 added');
+});
+
+// ---------------------------------------------------------------------------
+// GT-17: the tray must not eat the result list.
+//
+// With 8 exercises selected at 390x844 the expanded tray grew to 352px over a
+// 717px sheet and left ZERO exercise cards fully visible, so building an
+// 8-exercise program - the primary onboarding task - degraded to
+// search-blind-tap-search. It now collapses to a count chip by default.
+// ---------------------------------------------------------------------------
+
+test('tray: starts collapsed, so the results list keeps its room', () => {
+    const { view, els } = makePicker([{ id: 5, name: 'Squat', equipment: 'barbell' }]);
+    view.pickerTrayExpanded = false;
+    view.togglePickerExercise(5);
+    assert.equal(els['exercise-picker-tray'].classes.has('is-collapsed'), true);
+    assert.equal(els['exercise-picker-tray-list'].hidden, true, 'the list is not rendered open');
+    assert.equal(els['exercise-picker-tray-count'].attrs['aria-expanded'], 'false');
+});
+
+test('tray: expanding shows the list and flips the control state', () => {
+    const { view, els } = makePicker([{ id: 5, name: 'Squat', equipment: 'barbell' }]);
+    view.togglePickerExercise(5);
+    view.pickerTrayExpanded = true;
+    view.renderExercisePickerTray();
+    assert.equal(els['exercise-picker-tray'].classes.has('is-collapsed'), false);
+    assert.equal(els['exercise-picker-tray-list'].hidden, false);
+    assert.equal(els['exercise-picker-tray-count'].attrs['aria-expanded'], 'true');
+});
+
+test('tray: the count chip singularises and stays accurate as picks accumulate', () => {
+    const catalog = Array.from({ length: 8 }, (_, i) => ({
+        id: i + 1, name: `Exercise ${i + 1}`, equipment: 'barbell',
+    }));
+    const { view, els } = makePicker(catalog);
+    view.togglePickerExercise(1);
+    assert.equal(els['exercise-picker-tray-count-text'].textContent, '1 added');
+    for (let id = 2; id <= 8; id++) view.togglePickerExercise(id);
+    assert.equal(els['exercise-picker-tray-count-text'].textContent, '8 added');
+    assert.equal(els['exercise-picker-tray-list'].hidden, true, 'still collapsed at 8');
+});
+
+test('tray: clearing the last pick hides the tray entirely', () => {
+    const { view, els } = makePicker([{ id: 5, name: 'Squat', equipment: 'barbell' }]);
+    view.togglePickerExercise(5);
+    view.togglePickerExercise(5);
+    assert.equal(els['exercise-picker-tray'].hidden, true);
 });
 
 test('tray: exercise names are HTML-escaped', () => {

@@ -8181,8 +8181,7 @@ button.calendar-day {
 }
 
 /* Small neutral close button matching .gt-iconbtn (decision #8 modal system). */
-.finish-modal-close,
-.feel-intro-modal-content .modal-close {
+.finish-modal-close {
     flex-shrink: 0;
     margin-top: 0;
     width: 26px;
@@ -8193,8 +8192,7 @@ button.calendar-day {
     background: var(--bg-elevated) !important;
     color: var(--text-muted) !important;
 }
-.finish-modal-close:hover,
-.feel-intro-modal-content .modal-close:hover {
+.finish-modal-close:hover {
     background: var(--bg-hover) !important;
     color: var(--text-primary) !important;
 }
@@ -8717,93 +8715,6 @@ button.calendar-day {
 .feel-history-good,
 .feel-history-good i { color: #22c55e !important; }
 
-/* Item R3-4: the feel picker modal. The intro copy + the single "Felt good"
-   icon button (the only choice) + "Not yet". */
-/* #8 Feel modal: shorter, consistent padding, calm rewarding green primary
-   + neutral secondary as one action group. One accent, no stacked glow. */
-.feel-modal-header {
-    padding: var(--spacing-md) var(--spacing-xl);
-    border-bottom: none;
-}
-.feel-modal-header h2 {
-    font-size: 1.15rem;
-}
-.feel-modal-body {
-    /* Roomier: clear top gap below the header, generous side padding, and a
-       comfortable bottom so the actions are not cramped. */
-    padding: var(--spacing-lg) var(--spacing-xl) var(--spacing-xl);
-}
-.feel-intro-lead {
-    margin: 0 0 var(--spacing-lg);
-    color: var(--text-secondary);
-    text-align: left;
-    font-size: 0.9rem;
-    line-height: 1.5;
-}
-.feel-modal-actions {
-    display: flex;
-    align-items: stretch;
-    gap: var(--spacing-md);
-}
-/* "Felt good" — primary. Calm green: solid-tinted, content-hugging row, one
-   border (no glow). Pinned !important to defeat sitewide button color/hover. */
-.feel-modal-btn {
-    appearance: none;
-    flex: 0 1 auto;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    padding: 0.6rem 1.35rem;
-    min-height: 46px;
-    border-radius: var(--radius-lg);
-    border: 1px solid transparent;
-    cursor: pointer;
-    /* Smaller icon so the smiley reads friendly, not heavy. */
-    font-size: 1.05rem;
-    box-shadow: none !important;
-    transition: filter var(--transition-base), box-shadow var(--transition-base);
-}
-.feel-modal-btn-label {
-    font-size: 0.92rem;
-    font-weight: 700;
-}
-.feel-modal-btn-good {
-    background: var(--accent-success) !important;
-    border-color: transparent;
-    color: #0a3a26 !important;
-}
-/* Premium two-tone smiley: a filled darker-green face with the button's green
-   showing through the eyes/smile, so it reads as an intentional crafted mark
-   (not a default emoji). Sized slightly larger than the label for presence and
-   vertically centered with the text. */
-.feel-modal-smiley {
-    width: 1.5em;
-    height: 1.5em;
-    flex-shrink: 0;
-    display: block;
-}
-.feel-modal-btn-good:hover,
-.feel-modal-btn-good:focus-visible {
-    filter: brightness(1.06);
-    color: #0a3a26 !important;
-}
-.feel-modal-btn:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.45) !important;
-}
-/* "Not yet" — clear secondary (neutral ghost), matched height + roomy padding. */
-.feel-modal-skip-secondary,
-.feel-modal-skip-secondary:hover,
-.feel-modal-skip-secondary:focus-visible {
-    flex: 0 0 auto;
-    min-width: 96px;
-    min-height: 46px;
-    padding: 0.6rem 1.35rem;
-    color: var(--text-secondary) !important;
-    border-radius: var(--radius-lg);
-}
-
 /* Item 9: calendar schedule marker (distinct from the workout dot/PR star).
    Positioned bottom-left to avoid overlapping the day number (top-right),
    PR star (top-left) and workout dot (bottom-center). */
@@ -9125,139 +9036,6 @@ button.calendar-day {
     box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.4) !important;
 }
 
-/* ---- Item 1: progression badge + reveal panel -------------------------- */
-/* Both sit on their own line inside the wrapping .set-row flex container,
-   the same placement the restore chip uses. Full-width strip (not a pill):
-   a flex item with basis 100% is sized by the basis, and a half-width pill
-   floating under the inputs reads as debris. */
-.gt-progress-badge,
-.gt-progress-label {
-    flex: 0 0 100%;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    max-width: 100%;
-    margin-top: 0.15rem;
-    padding: 0.25rem 0.5rem;
-    border: 1px solid transparent;
-    border-radius: var(--radius-sm);
-    font-size: 0.68rem;
-    font-weight: 700;
-    line-height: 1.3;
-    letter-spacing: 0.01em;
-    text-align: left;
-    white-space: nowrap;
-}
-
-.gt-progress-badge {
-    cursor: pointer;
-    box-shadow: none !important;
-    -webkit-tap-highlight-color: transparent;
-    transition: background var(--transition-fast), border-color var(--transition-fast);
-}
-
-.gt-progress-badge i,
-.gt-progress-label i { color: inherit !important; font-size: 0.66rem; }
-
-.gt-progress-badge--bump {
-    background: rgba(52, 211, 153, 0.12) !important;
-    border-color: rgba(52, 211, 153, 0.35);
-    color: var(--accent-success) !important;
-}
-
-.gt-progress-badge--bump:hover,
-.gt-progress-badge--bump:focus-visible {
-    background: rgba(52, 211, 153, 0.2) !important;
-    color: var(--accent-success) !important;
-}
-
-.gt-progress-badge--deload {
-    background: rgba(251, 191, 36, 0.12) !important;
-    border-color: rgba(251, 191, 36, 0.35);
-    color: var(--accent-warning) !important;
-}
-
-.gt-progress-badge--deload:hover,
-.gt-progress-badge--deload:focus-visible {
-    background: rgba(251, 191, 36, 0.2) !important;
-    color: var(--accent-warning) !important;
-}
-
-.gt-progress-badge:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.4) !important;
-}
-
-/* Regression label: informational only, never tappable. */
-.gt-progress-label--miss {
-    background: rgba(251, 191, 36, 0.1);
-    border-color: rgba(251, 191, 36, 0.28);
-    color: var(--accent-warning);
-}
-
-.gt-progress-detail {
-    flex: 0 0 100%;
-    margin-top: 0.25rem;
-    padding: 0.4rem 0.5rem;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-}
-
-.gt-progress-detail[hidden] { display: none; }
-
-.gt-progress-history {
-    list-style: none;
-    margin: 0 0 0.35rem 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-}
-
-.gt-progress-history-row {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 0.6rem;
-    font-size: 0.7rem;
-    font-variant-numeric: tabular-nums;
-}
-
-.gt-progress-history-date { color: var(--text-muted); }
-.gt-progress-history-sets { color: var(--text-secondary); font-weight: 600; }
-
-.gt-progress-uselast {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    min-height: 32px;
-    padding: 0.25rem 0.5rem;
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-sm);
-    background: var(--bg-elevated) !important;
-    color: var(--text-secondary) !important;
-    font-size: 0.7rem;
-    font-weight: 600;
-    cursor: pointer;
-    box-shadow: none !important;
-    -webkit-tap-highlight-color: transparent;
-}
-
-.gt-progress-uselast i { color: inherit !important; font-size: 0.66rem; }
-
-.gt-progress-uselast:hover,
-.gt-progress-uselast:focus-visible {
-    background: var(--bg-hover) !important;
-    color: var(--text-primary) !important;
-    border-color: var(--accent-primary);
-}
-
-.gt-progress-uselast:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.4) !important;
-}
-
 /* ---- Item 6: warm-up ramp strip ---------------------------------------- */
 /* Deliberately unlike a set row: amber dashed rail, no set numbers, no pill
    toggle. Nothing in here is a logged set. */
@@ -9452,16 +9230,6 @@ button.calendar-day {
 
     .gt-swap-toggle { position: relative; }
 
-    /* Grow the strip to a real 44px-high tap target. Height (not an overlapping
-       pseudo-element) so it never steals taps from the inputs above it. */
-    .gt-progress-badge,
-    .gt-progress-label {
-        min-height: 44px;
-        padding: 0.4rem 0.6rem;
-        white-space: normal;
-    }
-
-    .gt-progress-uselast,
     .gt-warmup-done {
         min-height: 44px;
         padding-left: 0.75rem;

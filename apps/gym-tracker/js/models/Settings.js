@@ -1,20 +1,57 @@
 /**
  * Settings Model
- * Represents user preferences and settings
+ * Represents user preferences and settings.
+ *
+ * `weightUnit` is a DISPLAY/ENTRY preference only. Every stored weight in the
+ * app is canonical kilograms (see utils/units.js), so switching kg → lb
+ * converts what is shown and never rewrites what is stored.
+ *
+ * Plate/bar configuration is the one place where the unit is part of the
+ * data rather than a view of it: a gym's rack holds physical 20 kg or 45 lb
+ * plates, and those two stacks are unrelated numbers. They are therefore kept
+ * as INDEPENDENT per-unit profiles, so flipping the display unit no longer
+ * reinterprets a kg stack as pounds or silently destroys a customised setup
+ * (GT-21).
  */
+import { normalizeWeightUnit } from '../utils/units.js';
+
 export class Settings {
     /**
-     * Default plate stack for kg (owner call, 2026-08-10). Also the list the
-     * one-time defaults upgrade in app.js recognises as "never customised",
-     * alongside LEGACY_PLATES_KG below.
+     * Default kg plate stack.
+     *
+     * The 2026-08-10 stack included 45 kg and 35 kg plates, which are the
+     * POUND sizes and do not exist in a kg-denominated gym; out of the box it
+     * proposed unloadable hints such as "150 kg → 45 + 25 + 5" (GT-21). This
+     * is the realistic stack. DEFAULTS_VERSION 2 rolls it onto installs that
+     * never customised theirs.
      */
-    static DEFAULT_PLATES_KG = [45, 35, 25, 20, 15, 10, 5, 2.5, 1.25];
+    static DEFAULT_PLATES_KG = [25, 20, 15, 10, 5, 2.5, 1.25];
 
-    /** The kg stack shipped before that change. */
+    /** kg stacks a user never chose, and which a default upgrade may replace. */
     static LEGACY_PLATES_KG = [25, 20, 15, 10, 5, 2.5, 1.25];
+    static SUPERSEDED_PLATES_KG = [45, 35, 25, 20, 15, 10, 5, 2.5, 1.25];
+
+    /** Default lb plate stack and bar. */
+    static DEFAULT_PLATES_LB = [45, 35, 25, 10, 5, 2.5];
+
+    /** Default bar weight per unit. */
+    static DEFAULT_BAR = { kg: 20, lb: 45 };
 
     /** Bumped whenever a shipped default changes; see applyDefaultUpgrades. */
-    static DEFAULTS_VERSION = 1;
+    static DEFAULTS_VERSION = 2;
+
+    /** A fresh, unconfigured equipment profile for one unit. */
+    static defaultPlateProfile(unit) {
+        const u = normalizeWeightUnit(unit);
+        return {
+            barWeight: Settings.DEFAULT_BAR[u],
+            plates: (u === 'lb' ? Settings.DEFAULT_PLATES_LB : Settings.DEFAULT_PLATES_KG).slice(),
+            // Per-exercise bar/base weight overrides, keyed by exercise id, in
+            // THIS profile's unit. An EZ bar is ~7 kg / 15 lb, so the override
+            // belongs with the rest of the unit's equipment (GT-40).
+            exerciseBarWeights: {},
+        };
+    }
 
     constructor(data = {}) {
         this.weightUnit = data.weightUnit || 'kg'; // 'kg' or 'lb'
@@ -53,17 +90,11 @@ export class Settings {
         this.timerCountdownSeconds = Settings.normalizeCountdownSeconds(
             data.timerCountdownSeconds);
 
-        // Plate calculator config. `barWeight` and `plates` are stored in
-        // the user's `weightUnit`. Defaults match the most common gym
-        // setup: a 20 kg / 45 lb bar plus a standard plate stack.
-        this.barWeight = typeof data.barWeight === 'number'
-            ? data.barWeight
-            : (this.weightUnit === 'lb' ? 45 : 20);
-        this.plates = Array.isArray(data.plates)
-            ? data.plates.slice().sort((a, b) => b - a)
-            : (this.weightUnit === 'lb'
-                ? [45, 35, 25, 10, 5, 2.5]
-                : Settings.DEFAULT_PLATES_KG.slice());
+        // Per-unit equipment profiles. `barWeight` / `plates` /
+        // `exerciseBarWeights` below are accessors onto the profile for the
+        // CURRENT weightUnit, so every existing reader keeps working while
+        // the two stacks stay independent.
+        this.plateProfiles = Settings.normalizePlateProfiles(data);
 
         // Time-of-day display preference. '12' renders "6:42 PM";
         // '24' renders "18:42". Used everywhere the app shows a time
@@ -94,6 +125,127 @@ export class Settings {
         this.defaultsVersion = Number.isFinite(data.defaultsVersion) ? data.defaultsVersion : 0;
     }
 
+    /**
+     * Bar weight for the ACTIVE display unit. Assignment writes through to
+     * that unit's profile, so existing `settings.barWeight = n` callers are
+     * unchanged.
+     */
+    get barWeight() {
+        return this.plateConfig().barWeight;
+    }
+
+    set barWeight(value) {
+        const n = Number(value);
+        if (Number.isFinite(n) && n >= 0) this.plateConfig().barWeight = n;
+    }
+
+    /** Available plate sizes for the ACTIVE display unit, descending. */
+    get plates() {
+        return this.plateConfig().plates;
+    }
+
+    set plates(value) {
+        if (!Array.isArray(value)) return;
+        this.plateConfig().plates = value
+            .map(Number)
+            .filter(n => Number.isFinite(n) && n > 0)
+            .sort((a, b) => b - a);
+    }
+
+    /** Per-exercise bar/base weight overrides for the ACTIVE display unit. */
+    get exerciseBarWeights() {
+        return this.plateConfig().exerciseBarWeights;
+    }
+
+    /**
+     * The equipment profile for `unit` (defaults to the active display unit),
+     * creating it from the shipped defaults if it does not exist yet.
+     */
+    plateConfig(unit = this.weightUnit) {
+        const u = normalizeWeightUnit(unit);
+        if (!this.plateProfiles) this.plateProfiles = {};
+        if (!this.plateProfiles[u]) {
+            this.plateProfiles[u] = Settings.defaultPlateProfile(u);
+        }
+        return this.plateProfiles[u];
+    }
+
+    /**
+     * Bar/base weight to use for one exercise, in `unit`: the per-exercise
+     * override when the user set one, otherwise the profile's bar (GT-40).
+     * `exerciseId` is stringified, so a DOM-sourced id and a stored numeric id
+     * resolve to the same entry (the sameId rule, applied to a map key).
+     */
+    barWeightForExercise(exerciseId, unit = this.weightUnit) {
+        const profile = this.plateConfig(unit);
+        const override = profile.exerciseBarWeights?.[String(exerciseId)];
+        return Number.isFinite(Number(override)) && Number(override) >= 0
+            ? Number(override)
+            : profile.barWeight;
+    }
+
+    /** Set (or, with a null/'' value, clear) one exercise's bar override. */
+    setBarWeightForExercise(exerciseId, value, unit = this.weightUnit) {
+        const profile = this.plateConfig(unit);
+        if (!profile.exerciseBarWeights) profile.exerciseBarWeights = {};
+        const key = String(exerciseId);
+        const n = Number(value);
+        if (value === null || value === '' || value === undefined
+            || !Number.isFinite(n) || n < 0) {
+            delete profile.exerciseBarWeights[key];
+            return;
+        }
+        profile.exerciseBarWeights[key] = n;
+    }
+
+    /**
+     * Build both equipment profiles from stored data, tolerating three
+     * shapes: the current `plateProfiles`, the pre-2026-08-19 flat
+     * `barWeight`/`plates` pair (which belonged to whatever unit the account
+     * was on), and nothing at all.
+     */
+    static normalizePlateProfiles(data = {}) {
+        const out = {
+            kg: Settings.defaultPlateProfile('kg'),
+            lb: Settings.defaultPlateProfile('lb'),
+        };
+        const stored = data.plateProfiles;
+        ['kg', 'lb'].forEach((unit) => {
+            const raw = stored && typeof stored === 'object' ? stored[unit] : null;
+            if (!raw || typeof raw !== 'object') return;
+            if (Number.isFinite(Number(raw.barWeight)) && Number(raw.barWeight) >= 0) {
+                out[unit].barWeight = Number(raw.barWeight);
+            }
+            if (Array.isArray(raw.plates)) {
+                const plates = raw.plates
+                    .map(Number)
+                    .filter(n => Number.isFinite(n) && n > 0)
+                    .sort((a, b) => b - a);
+                if (plates.length > 0) out[unit].plates = plates;
+            }
+            if (raw.exerciseBarWeights && typeof raw.exerciseBarWeights === 'object') {
+                out[unit].exerciseBarWeights = { ...raw.exerciseBarWeights };
+            }
+        });
+
+        // Legacy flat config: it was written in the account's unit at the
+        // time, so it seeds THAT profile and leaves the other one at defaults.
+        if (!stored) {
+            const legacyUnit = normalizeWeightUnit(data.weightUnit);
+            if (Number.isFinite(Number(data.barWeight)) && Number(data.barWeight) >= 0) {
+                out[legacyUnit].barWeight = Number(data.barWeight);
+            }
+            if (Array.isArray(data.plates)) {
+                const plates = data.plates
+                    .map(Number)
+                    .filter(n => Number.isFinite(n) && n > 0)
+                    .sort((a, b) => b - a);
+                if (plates.length > 0) out[legacyUnit].plates = plates;
+            }
+        }
+        return out;
+    }
+
     toJSON() {
         return {
             weightUnit: this.weightUnit,
@@ -104,6 +256,10 @@ export class Settings {
             vibrationAlerts: this.vibrationAlerts,
             timerFirstWarningSeconds: this.timerFirstWarningSeconds,
             timerCountdownSeconds: this.timerCountdownSeconds,
+            plateProfiles: this.plateProfiles,
+            // Mirrors of the ACTIVE profile. Kept in the payload so an export
+            // read by an older build (or an older export read by this one)
+            // still finds the plate config where it expects it.
             barWeight: this.barWeight,
             plates: this.plates,
             timeFormat: this.timeFormat,
@@ -120,8 +276,10 @@ export class Settings {
      *
      * Version 1 (2026-08-10): Monday starts the week, times render 24-hour,
      * and the kg plate stack gains 45/35/20/15.
+     * Version 2 (2026-08-19): that kg stack is reverted - 45 kg and 35 kg are
+     * pound sizes and produced unloadable plate hints (GT-21).
      *
-     * A custom plate stack is left alone - only the stack that still matches a
+     * A custom plate stack is left alone - only a stack that still matches a
      * shipped default is replaced. First-day and time-format have no such
      * tell (the old default and a deliberate choice are the same value), so
      * those move once and then never again.
@@ -132,11 +290,19 @@ export class Settings {
         if (!settings) return false;
         if (settings.defaultsVersion >= Settings.DEFAULTS_VERSION) return false;
 
-        if (settings.firstDayOfWeek === 0) settings.firstDayOfWeek = 1;
-        if (settings.timeFormat === '12') settings.timeFormat = '24';
-        if (settings.weightUnit !== 'lb'
-            && Settings.sameStack(settings.plates, Settings.LEGACY_PLATES_KG)) {
-            settings.plates = Settings.DEFAULT_PLATES_KG.slice();
+        const from = settings.defaultsVersion || 0;
+
+        if (from < 1) {
+            if (settings.firstDayOfWeek === 0) settings.firstDayOfWeek = 1;
+            if (settings.timeFormat === '12') settings.timeFormat = '24';
+        }
+
+        // v2: undo v1's kg stack wherever it is still the shipped value. The
+        // kg profile is upgraded regardless of which unit the account
+        // displays, because the profiles are independent now.
+        const kg = settings.plateConfig ? settings.plateConfig('kg') : null;
+        if (kg && Settings.sameStack(kg.plates, Settings.SUPERSEDED_PLATES_KG)) {
+            kg.plates = Settings.DEFAULT_PLATES_KG.slice();
         }
 
         settings.defaultsVersion = Settings.DEFAULTS_VERSION;

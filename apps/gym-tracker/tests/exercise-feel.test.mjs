@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { WorkoutExercise } from '../js/models/WorkoutExercise.js';
-import { setReachesMaxReps, allSetsReachMax, latestFeelForExercise, nextFeel, shouldShowFeelModal } from '../js/utils/exercise-feel.js';
+import { setReachesMaxReps, allSetsReachMax, previousSessionFeelForExercise, nextFeel, shouldShowFeelPrompt } from '../js/utils/exercise-feel.js';
 
 // -------------------------------------------------------
 // WorkoutExercise.feel round-trip
@@ -95,60 +95,138 @@ test('allSetsReachMax: targetSets defaults to >= 1', () => {
     assert.equal(allSetsReachMax([], 1, max12), false);
 });
 
-// -------------------------------------------------------
-// latestFeelForExercise
-// -------------------------------------------------------
+// ---------------------------------------------------------------------------
+// previousSessionFeelForExercise
+//
+// The smiley means "I marked this good LAST time". It lasts exactly one
+// following workout and must be renewed. These cases are the owner's, stated
+// verbatim, because the previous implementation returned the most recent
+// 'good' ANYWHERE in history and the icon therefore never expired.
+// ---------------------------------------------------------------------------
 
-test('latestFeelForExercise: returns most recent non-null feel', () => {
+const TS = (s) => s.sortTimestamp;
+/** A performed exercise entry: at least one completed set. */
+const performed = (id, feel = null, weight = 60, reps = 10) => ({
+    exerciseId: id, feel,
+    sets: [{ weight, reps, duration: 0, completed: true, slot: 0 }],
+});
+const session = (sortTimestamp, exercises) => ({ sortTimestamp, completed: true, exercises });
+
+test('A: good, then a session with no marking -> the smiley is gone', () => {
+    // Workout A marked good; workout B did not. Workout C must show nothing.
     const sessions = [
-        {
-            completed: true,
-            sortTimestamp: '2026-01-01T10:00:00Z',
-            exercises: [{ exerciseId: 'e1', feel: 'bad' }],
-        },
-        {
-            completed: true,
-            sortTimestamp: '2026-03-01T10:00:00Z',
-            exercises: [{ exerciseId: 'e1', feel: 'good' }],
-        },
-        {
-            completed: true,
-            sortTimestamp: '2026-02-01T10:00:00Z',
-            exercises: [{ exerciseId: 'e1', feel: 'bad' }],
-        },
+        session('2026-08-01T18:00:00Z', [performed('e1', 'good')]),
+        session('2026-08-08T18:00:00Z', [performed('e1', null)]),
     ];
-    assert.equal(latestFeelForExercise(sessions, 'e1', s => s.sortTimestamp), 'good');
+    assert.equal(previousSessionFeelForExercise(sessions, 'e1', TS), null);
 });
 
-test('latestFeelForExercise: null when no marking exists', () => {
-    const sessions = [
-        { completed: true, sortTimestamp: '2026-01-01', exercises: [{ exerciseId: 'e1', feel: null }] },
-        { completed: true, sortTimestamp: '2026-02-01', exercises: [{ exerciseId: 'e2', feel: 'good' }] },
-    ];
-    assert.equal(latestFeelForExercise(sessions, 'e1', s => s.sortTimestamp), null);
+test('A: after only the good session, the very next workout DOES show it', () => {
+    const sessions = [session('2026-08-01T18:00:00Z', [performed('e1', 'good')])];
+    assert.equal(previousSessionFeelForExercise(sessions, 'e1', TS), 'good');
 });
 
-test('latestFeelForExercise: ignores sessions without the exercise', () => {
+test('B: heavier weight without an explicit good does not keep the smiley', () => {
     const sessions = [
-        { completed: true, sortTimestamp: '2026-02-01', exercises: [{ exerciseId: 'e9', feel: 'good' }] },
+        session('2026-08-01T18:00:00Z', [performed('e1', 'good', 60, 10)]),
+        session('2026-08-08T18:00:00Z', [performed('e1', null, 80, 8)]),
     ];
-    assert.equal(latestFeelForExercise(sessions, 'e1', s => s.sortTimestamp), null);
+    assert.equal(previousSessionFeelForExercise(sessions, 'e1', TS), null);
 });
 
-test('latestFeelForExercise: legacy bad-only history yields null (no gray icon)', () => {
+test('C: marking good again renews it', () => {
     const sessions = [
-        { completed: true, sortTimestamp: '2026-01-01', exercises: [{ exerciseId: 'e1', feel: 'bad' }] },
-        { completed: true, sortTimestamp: '2026-02-01', exercises: [{ exerciseId: 'e1', feel: 'bad' }] },
+        session('2026-08-01T18:00:00Z', [performed('e1', 'good')]),
+        session('2026-08-08T18:00:00Z', [performed('e1', 'good')]),
     ];
-    assert.equal(latestFeelForExercise(sessions, 'e1', s => s.sortTimestamp), null);
+    assert.equal(previousSessionFeelForExercise(sessions, 'e1', TS), 'good');
 });
 
-test('latestFeelForExercise: a newer bad does not override an older good', () => {
+test('D: an objectively better session without a marking still expires it', () => {
     const sessions = [
-        { completed: true, sortTimestamp: '2026-01-01', exercises: [{ exerciseId: 'e1', feel: 'good' }] },
-        { completed: true, sortTimestamp: '2026-03-01', exercises: [{ exerciseId: 'e1', feel: 'bad' }] },
+        session('2026-08-01T18:00:00Z', [performed('e1', 'good', 60, 8)]),
+        session('2026-08-08T18:00:00Z', [performed('e1', null, 100, 12)]),
     ];
-    assert.equal(latestFeelForExercise(sessions, 'e1', s => s.sortTimestamp), 'good');
+    assert.equal(previousSessionFeelForExercise(sessions, 'e1', TS), null);
+});
+
+test('it is the PREVIOUS session that counts, not the most recent good', () => {
+    // The exact shape the old implementation got wrong: a good far back, then
+    // three unmarked sessions. It used to keep returning 'good' for ever.
+    const sessions = [
+        session('2026-06-01T18:00:00Z', [performed('e1', 'good')]),
+        session('2026-06-08T18:00:00Z', [performed('e1', null)]),
+        session('2026-06-15T18:00:00Z', [performed('e1', null)]),
+        session('2026-06-22T18:00:00Z', [performed('e1', null)]),
+    ];
+    assert.equal(previousSessionFeelForExercise(sessions, 'e1', TS), null);
+});
+
+test('session order in the array does not matter, only the timestamp', () => {
+    const sessions = [
+        session('2026-08-08T18:00:00Z', [performed('e1', null)]),
+        session('2026-08-01T18:00:00Z', [performed('e1', 'good')]),
+    ];
+    assert.equal(previousSessionFeelForExercise(sessions, 'e1', TS), null);
+});
+
+test('two workouts on the SAME DAY resolve by time of day', () => {
+    const sessions = [
+        session('2026-08-08T09:00:00Z', [performed('e1', 'good')]),
+        session('2026-08-08T19:00:00Z', [performed('e1', null)]),
+    ];
+    assert.equal(previousSessionFeelForExercise(sessions, 'e1', TS), null,
+        'the evening session is the previous one');
+});
+
+test('a legacy bad marking expires the smiley like any unmarked session', () => {
+    const sessions = [
+        session('2026-08-01T18:00:00Z', [performed('e1', 'good')]),
+        session('2026-08-08T18:00:00Z', [performed('e1', 'bad')]),
+    ];
+    assert.equal(previousSessionFeelForExercise(sessions, 'e1', TS), null);
+});
+
+test('a session that did not perform the exercise is not "the previous one"', () => {
+    // Skipping an exercise is not evidence about it, so the mark survives.
+    const skipped = { exerciseId: 'e1', feel: null, sets: [{ weight: 60, reps: 0, completed: false, slot: 0 }] };
+    const sessions = [
+        session('2026-08-01T18:00:00Z', [performed('e1', 'good')]),
+        session('2026-08-08T18:00:00Z', [skipped]),
+    ];
+    assert.equal(previousSessionFeelForExercise(sessions, 'e1', TS), 'good');
+});
+
+test('other exercises in the same session are ignored', () => {
+    const sessions = [
+        session('2026-08-01T18:00:00Z', [performed('e1', 'good')]),
+        session('2026-08-08T18:00:00Z', [performed('e2', null)]),
+    ];
+    assert.equal(previousSessionFeelForExercise(sessions, 'e1', TS), 'good');
+    assert.equal(previousSessionFeelForExercise(sessions, 'e2', TS), null);
+});
+
+test('ids compare through sameId: "21" and 21 are one exercise', () => {
+    const sessions = [
+        session('2026-08-01T18:00:00Z', [performed(21, 'good')]),
+        session('2026-08-08T18:00:00Z', [performed('21', null)]),
+    ];
+    assert.equal(previousSessionFeelForExercise(sessions, '21', TS), null,
+        'a string id from an export must not read as a different exercise');
+    assert.equal(previousSessionFeelForExercise(sessions, 21, TS), null);
+});
+
+test('an unfinished session is not counted', () => {
+    const inProgress = { sortTimestamp: '2026-08-08T18:00:00Z', completed: false,
+        exercises: [performed('e1', null)] };
+    const sessions = [session('2026-08-01T18:00:00Z', [performed('e1', 'good')]), inProgress];
+    assert.equal(previousSessionFeelForExercise(sessions, 'e1', TS), 'good');
+});
+
+test('no history, unknown exercise and junk input are all null', () => {
+    assert.equal(previousSessionFeelForExercise([], 'e1', TS), null);
+    assert.equal(previousSessionFeelForExercise(null, 'e1', TS), null);
+    assert.equal(previousSessionFeelForExercise([session('2026-08-01T18:00:00Z', [performed('e1', 'good')])], null, TS), null);
 });
 
 // -------------------------------------------------------
@@ -163,15 +241,15 @@ test('nextFeel: toggles good <-> none (never bad)', () => {
     assert.equal(nextFeel('bad'), 'good');
 });
 
-test('shouldShowFeelModal: only when reaches-max and not already shown', () => {
+test('shouldShowFeelPrompt: only when reaches-max and not already shown', () => {
     const shown = {};
     // Not reaching max: never show.
-    assert.equal(shouldShowFeelModal(shown, 0, false), false);
+    assert.equal(shouldShowFeelPrompt(shown, 0, false), false);
     // Reaches max, not yet shown: show.
-    assert.equal(shouldShowFeelModal(shown, 0, true), true);
+    assert.equal(shouldShowFeelPrompt(shown, 0, true), true);
     // Caller marks it shown; second satisfaction must NOT re-show.
     shown[0] = true;
-    assert.equal(shouldShowFeelModal(shown, 0, true), false);
+    assert.equal(shouldShowFeelPrompt(shown, 0, true), false);
     // A different exercise index is independent.
-    assert.equal(shouldShowFeelModal(shown, 1, true), true);
+    assert.equal(shouldShowFeelPrompt(shown, 1, true), true);
 });

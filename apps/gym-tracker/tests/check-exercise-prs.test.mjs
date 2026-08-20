@@ -117,19 +117,35 @@ test('checkExercisePRs: duration-type sets never earn a strength PR', () => {
     assert.equal(AchievementService.checkExercisePRs(all[2], all).length, 0);
 });
 
-test('checkExercisePRs: in lb mode, stored weight is converted to canonical kg', () => {
+// GT-03: stored set weights ARE canonical kilograms now, so there is nothing
+// left to convert here. The old code read the display preference and divided
+// by 2.205, which was correct only while a stored number meant "whatever the
+// setting currently says"; doing it now would halve every PR an lb user set.
+test('checkExercisePRs: the stored weight is taken as canonical kg, never re-converted', () => {
     reset('lb');
     const all = [
-        session('s1', '2026-06-01', 135),
-        session('s2', '2026-06-05', 145),
-        session('s3', '2026-06-13', 155),
+        session('s1', '2026-06-01', 60),
+        session('s2', '2026-06-05', 65),
+        session('s3', '2026-06-13', 70),
     ];
     const awarded = AchievementService.checkExercisePRs(all[2], all);
     assert.equal(awarded.length, 1);
     const json = awarded[0].toJSON();
-    assert.equal(json.prUnit, 'lb');
-    // 155 lb -> ~70.31 kg; stored canonical, rounded to 2 decimals.
-    assert.ok(Math.abs(json.prWeightKg - 70.31) < 0.05, `expected ~70.31 kg, got ${json.prWeightKg}`);
+    assert.equal(json.prWeightKg, 70, 'the stored kilograms, unchanged');
+    assert.equal(json.prUnit, 'lb', 'the unit the lifter was reading, as metadata');
+});
+
+test('checkExercisePRs: the same session awards the same kg whatever the display unit', () => {
+    const build = (unit) => {
+        reset(unit);
+        const all = [
+            session('s1', '2026-06-01', 60),
+            session('s2', '2026-06-05', 65),
+            session('s3', '2026-06-13', 70),
+        ];
+        return AchievementService.checkExercisePRs(all[2], all)[0].toJSON().prWeightKg;
+    };
+    assert.equal(build('kg'), build('lb'), 'a preference cannot change what was lifted');
 });
 
 test('Achievement.isRenderable: rejects legacy strength-PR records missing weight or date', () => {

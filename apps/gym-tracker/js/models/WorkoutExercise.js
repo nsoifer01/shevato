@@ -2,12 +2,21 @@
  * WorkoutExercise Model
  * Represents an exercise within a workout session with actual performance data
  */
-import { Set } from './Set.js';
+import { Set, setTimedSeconds, setVolume } from './Set.js';
 
 export class WorkoutExercise {
     constructor(data = {}) {
         this.exerciseId = data.exerciseId || null;
         this.exerciseName = data.exerciseName || '';
+        // The exercise this slot came from in the PROGRAM. Normally identical
+        // to exerciseId; an in-workout swap changes exerciseId (so sets, PRs
+        // and history follow the substitute) while this keeps pointing at the
+        // planned row, which is what the rep-range / rest lookups join on.
+        // Without it a swap silently dropped the rep-target label from the
+        // header (GT-13).
+        this.plannedExerciseId = data.plannedExerciseId != null
+            ? data.plannedExerciseId
+            : (data.exerciseId || null);
         this.sets = (data.sets || []).map(s => s instanceof Set ? s : new Set(s));
         this.targetSets = data.targetSets || 3;
         this.targetReps = data.targetReps || 10;
@@ -30,8 +39,19 @@ export class WorkoutExercise {
         this.feel = data.feel === 'good' || data.feel === 'bad' ? data.feel : null;
     }
 
+    /** Weight-volume (kg·reps) across this exercise's sets. Excludes time. */
     get totalVolume() {
-        return this.sets.reduce((sum, set) => sum + set.volume, 0);
+        return this.sets.reduce((sum, set) => sum + setVolume(set), 0);
+    }
+
+    /** Seconds of time-under-tension across this exercise's timed sets. */
+    get totalTimedSeconds() {
+        return this.sets.reduce((sum, set) => sum + setTimedSeconds(set), 0);
+    }
+
+    /** Sets the user actually marked complete. */
+    get completedSetList() {
+        return this.sets.filter(s => s.completed);
     }
 
     get completedSets() {
@@ -52,6 +72,7 @@ export class WorkoutExercise {
         return {
             exerciseId: this.exerciseId,
             exerciseName: this.exerciseName,
+            plannedExerciseId: this.plannedExerciseId,
             sets: this.sets.map(s => s.toJSON()),
             targetSets: this.targetSets,
             targetReps: this.targetReps,

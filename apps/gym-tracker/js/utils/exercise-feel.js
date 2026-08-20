@@ -1,6 +1,7 @@
 /**
  * Pure helpers for the "how did it feel" marking (Item 7).
  */
+import { sameId } from './id-utils.js';
 
 /**
  * Whether a committed set qualifies the exercise for the feel prompt: it must
@@ -45,7 +46,7 @@ export function allSetsReachMax(sets, targetSets, slotMaxOf) {
  * `shownMap` is a plain object of exerciseIndex -> true (mutated by the caller
  * when it actually shows the modal).
  */
-export function shouldShowFeelModal(shownMap, exerciseIndex, reachesMax) {
+export function shouldShowFeelPrompt(shownMap, exerciseIndex, reachesMax) {
     if (!reachesMax) return false;
     return !(shownMap && shownMap[exerciseIndex]);
 }
@@ -59,28 +60,57 @@ export function nextFeel(current) {
 }
 
 /**
- * The most recent 'good' feel marking for `exerciseId` across completed
- * sessions, or null when there is none. Legacy 'bad' markings are ignored so
- * they never surface an icon. Sessions are ordered by their chronological key
- * (most recent first) by the caller-supplied `tsOf`.
+ * Did the IMMEDIATELY PREVIOUS session that performed `exerciseId` mark it
+ * 'good'? Returns 'good' or null.
+ *
+ * The smiley means exactly one thing: "I marked this good last time." It
+ * therefore lasts for exactly one following workout and must be renewed.
+ *
+ * This replaced `latestFeelForExercise`, which scanned the WHOLE history and
+ * returned the most recent 'good' wherever it sat. That made the icon
+ * permanent: mark good once and it showed for ever, because every later
+ * session without a marking was simply skipped over.
+ *
+ * Deliberately NOT coupled to performance. A heavier session, more reps or a
+ * new PR since the marking changes nothing here - the only question is whether
+ * the previous session carried an explicit 'good'. Legacy 'bad' markings read
+ * as "not good", so they expire the icon exactly like an unmarked session.
+ *
+ * "Previous session" means the most recent completed session in which the
+ * exercise was actually PERFORMED (at least one completed set). A session that
+ * merely listed the exercise and logged nothing is not evidence about it, and
+ * skipping an exercise should not silently expire the mark.
+ *
+ * Identity goes through `sameId`, because ids arrive as strings from an export
+ * round trip and as numbers from the catalog.
+ *
+ * @param {Array} sessions completed sessions, any order
+ * @param {string|number} exerciseId
+ * @param {Function} tsOf chronological key for a session
+ * @returns {'good'|null}
  */
-export function latestFeelForExercise(sessions, exerciseId, tsOf) {
+export function previousSessionFeelForExercise(sessions, exerciseId, tsOf) {
     if (!Array.isArray(sessions) || exerciseId == null) return null;
     const ts = typeof tsOf === 'function' ? tsOf : (s) => s.sortTimestamp || s.date;
-    let best = null;
-    let bestTs = null;
+
+    let latestTs = null;
+    let latestFeel = null;
+
     for (const session of sessions) {
         if (!session || session.completed === false) continue;
-        const exercises = session.exercises || [];
-        for (const ex of exercises) {
-            if (ex.exerciseId !== exerciseId) continue;
-            if (ex.feel !== 'good') continue;
+        for (const ex of (session.exercises || [])) {
+            if (!ex || !sameId(ex.exerciseId, exerciseId)) continue;
+            // Performed, not merely planned.
+            if (!(ex.sets || []).some(set => set && set.completed)) continue;
             const t = new Date(ts(session)).getTime();
-            if (bestTs === null || t > bestTs) {
-                bestTs = t;
-                best = ex.feel;
+            if (!Number.isFinite(t)) continue;
+            // Strictly newer wins; ties keep the first seen, which only
+            // matters for two sessions sharing an identical timestamp.
+            if (latestTs === null || t > latestTs) {
+                latestTs = t;
+                latestFeel = ex.feel === 'good' ? 'good' : null;
             }
         }
     }
-    return best;
+    return latestFeel;
 }

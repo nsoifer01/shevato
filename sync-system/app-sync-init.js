@@ -98,7 +98,19 @@ const APP_SYNC_CONFIG = {
       'gymTrackerCustomExercises', // User-created custom exercises
       'gymTrackerMeasurements',   // Body measurements log
       'gymTrackerMeasurementGoals', // Measurement target values + direction
-      'gymTrackerWarmupSettings'  // Warm-up ramp preferences (threshold, ramp rows)
+      'gymTrackerWarmupSettings', // Warm-up ramp preferences (threshold, ramp rows)
+      // Which stored-data migrations have run (apps/gym-tracker/js/utils/
+      // data-migrations.js). It MUST sync: the unit migration rewrites stored
+      // weights once, and a second device that never learned it had already
+      // happened would convert the already-converted data again. No user data
+      // of its own - a single integer.
+      'gymTrackerDataVersion',
+      // The user's answer to the one-time "which units were your existing
+      // measurements entered in?" question. Syncs so a second device never
+      // asks again; it is a single string choice plus a timestamp, no
+      // measurement values of its own. (The rollback copy that repair writes,
+      // gymTrackerMeasurementsBackup, is deliberately NOT synced.)
+      'gymTrackerMeasurementUnits'
     ]
   },
 

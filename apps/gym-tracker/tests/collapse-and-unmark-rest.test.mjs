@@ -36,10 +36,14 @@ function makeView(exercises) {
     view.currentWorkoutSession = { exercises };
     view.collapsedExercises = {};
     view._prevCompleteState = {};
-    view._feelModalShown = {};
+    view._feelPromptShown = {};
     view.activeRestExerciseIndex = -1;
     view.activeRestTimerId = null;
     view.skipRestCalls = 0;
+    // GT-01: every set mutation must reach storage. Counting the calls makes
+    // that observable here rather than only in the browser suite.
+    view.persistCalls = 0;
+    view.persistActiveWorkout = function () { this.persistCalls++; };
     // Collaborators the extracted methods call but whose behavior is out of
     // scope here. skipRest is counted so the cancel rule is observable.
     view.rerenderExercise = () => {};
@@ -299,4 +303,34 @@ test('commitPlannedSet source arms auto-collapse unconditionally when complete (
         'commit path must NOT guard on the sticky false (a commit is a deliberate action)');
     assert.ok(body.includes('this._prevCompleteState[exerciseIndex] = isNowComplete;'),
         'commit path records complete state for deleteSet\'s re-trigger logic');
+});
+
+// ---------------------------------------------------------------------------
+// GT-01: deleting a set persists.
+//
+// The BLOCKER was that the mutation paths never wrote to storage: the UI said
+// "2 / 4 sets" while `gymTrackerActiveWorkout` held `sets: []`, so a reload
+// destroyed the session. This pins the delete half against the real source;
+// the commit / edit / note / swap halves are pinned in
+// active-workout-persistence.test.mjs and driven end to end in the browser
+// suite.
+// ---------------------------------------------------------------------------
+
+test('deleteSet writes the in-progress workout to storage', () => {
+    const view = makeView([makeExercise(2, 3)]);
+    assert.equal(view.persistCalls, 0);
+    view.deleteSet(0, 1);
+    assert.equal(view.persistCalls, 1, 'un-marking a set must survive a reload');
+});
+
+test('deleteSet persists even when there is no rest timer to cancel', () => {
+    const view = makeView([makeExercise(1, 3)]);
+    view.deleteSet(0, 0);
+    assert.equal(view.persistCalls, 1);
+});
+
+test('deleteSet on a slot that does not exist writes nothing', () => {
+    const view = makeView([makeExercise(1, 3)]);
+    view.deleteSet(0, 7);
+    assert.equal(view.persistCalls, 0, 'no mutation, no write');
 });

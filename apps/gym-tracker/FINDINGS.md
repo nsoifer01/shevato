@@ -152,6 +152,12 @@ The last three closed on 2026-08-15 (fix/gym-timers-format):
   remains respected. Regression in `time-format.test.mjs`; the DST-window
   formatting expectations in `date-timezone.test.mjs` updated to 24-hour.
 
+The 2026-08-19 exploratory QA round (41 findings, GT-01..GT-41) is closed the
+same way: every one is fixed with a plain regression test, and no `todo`
+quarantines were opened. Its report is kept verbatim at
+`.reports/gym-tracker-session-report-2026-08-19-1648.md` - the sections below
+record what the fixes actually are.
+
 If a NEW product defect is found, quarantine it here with a
 `{ todo: 'KNOWN DEFECT: ...' }` test asserting the correct behavior.
 
@@ -170,9 +176,16 @@ delete-guard. The last four holdouts (`saveProgram`, `deleteProgram`,
 `deleteCustomExercise`, `getWorkoutSessionsByExercise`) were converted on
 2026-08-15 (TESTING-AUDIT.md defect 12), with regression tests in
 `storage-service.test.mjs`, so every StorageService id comparison now goes
-through `sameId`. `AnalyticsService` internals still use `===` - both sides
-come from the same session records there, so it holds, but any NEW code path
-that mixes a DOM-sourced id with stored data must go through `sameId`.
+through `sameId`. `AnalyticsService` was converted on 2026-08-19: its
+exercise lookups compare a CALLER-supplied id (which can come from the DOM or
+an import) against stored records, so `getPersonalRecords`,
+`getLastWorkoutData`, `getExerciseProgression` and - the one the audit caught
+(GT-18) - `isSetPR` all use `sameId` now. A session whose ids arrived as
+strings from an import was invisible to the PR baseline, so a record the
+lifter had already beaten could be celebrated again.
+`AchievementService.checkExercisePRs` and the workout view's program-row
+lookup went the same way. Any NEW code path that mixes a DOM-sourced or
+imported id with stored data must go through `sameId`.
 
 Import hardening landed the same day: `validateImportData` now type-checks
 every present store (arrays for the list stores, object for settings) so a
@@ -213,6 +226,83 @@ lone exercise in superset chrome during a workout (fixed 2026-08-12,
 - Custom-exercise form muscle options are Title Case values; setting
   lowercase values silently fails validation.
 
+## Two console "errors" that are Chrome policy, not app defects
+
+A headless smoke of the live workout logs these at error level:
+
+    Blocked call to navigator.vibrate because user hasn't tapped on the frame
+    Blocked attempt to show a 'beforeunload' confirmation panel for a frame
+    that never had a user gesture since its load
+
+Both are Chrome refusing a gesture-gated API, because a synthetic `.click()`
+is not a user gesture. The app is doing the right thing in both cases (haptics
+on a set toggle, an unsaved-workout guard on unload) and neither is a JS
+exception - filtering them out of a real run leaves **zero**.
+
+So a "no console errors" assertion in a headless probe has to exclude
+`navigator.vibrate`, `beforeunload` and `chromestatus.com` notices, or it fails
+on behaviour that is correct. Same family as the other synthetic-gesture traps
+in the probe-hazards section.
+
+## Running the browser suite while ALSO driving your own headless browsers
+
+The full `npm run test:browser` run during the 2026-08-20 round reported 5
+`tp-assist` failures (venue distance chips empty). They were not real:
+
+- the same suite passes 63/63 when run alone on the same working tree,
+- it passes 63/63 on the pre-change tree,
+- the diff touched no trip-planner file at all,
+- and photon.komoot.io was up (HTTP 200 in 0.7s) the whole time.
+
+The cause was CPU contention: several of my own headless Chromium instances
+were driving gym-tracker journeys concurrently. The distance chips geocode with
+a **7 second abort**, and under that load the requests did not land in time, so
+the chips rendered empty exactly as they do during a real photon outage.
+
+So: a timing-sensitive suite must be run with nothing else driving a browser,
+and "it failed in the big run" is not evidence until it fails alone. This is
+the same class of hazard as two runs sharing CDP 9222, but it does not need a
+port collision to bite - raw CPU contention is enough.
+
+## Production and a feature branch share one Firestore document
+
+Established 2026-08-20, after the owner saw "weird numbers" on shevato.com.
+
+Facts, verified rather than assumed:
+
+- Deployed production does NOT ship the canonical unit model. `units.js` and
+  `data-migrations.js` are **404 on shevato.com**, and its `history-view.js`
+  contains zero `displayWeight` calls. It reads a stored number as being in
+  `settings.weightUnit`.
+- Local development runs against **production Firebase by default**. The
+  emulator seam (`sync-system/firebase-emulator-flag.mjs`) requires BOTH a
+  loopback host AND an explicit `localStorage['shevato:firebase-emulators']
+  = '1'`; without the opt-in, `localhost` uses project `shevato-site`.
+
+So opening this branch's build while signed in converts the shared document to
+canonical kilograms, and deployed production then renders those kilograms with
+a pound label. That is **not data corruption** - the stored values are correct
+and stamped - it is an old reader meeting a new representation.
+
+**There is no client-side fix.** Deferring the migration does not help: the
+canonical renderers would then read un-migrated numbers and be wrong in the
+other direction. You cannot run half of a storage-format change. A guard that
+blocks the conversion just moves the breakage.
+
+The controls that actually work, in order:
+
+1. Do local work against the emulator, or signed out, whenever the branch
+   changes a storage format.
+2. Deploy the READER before anything writes the new format - i.e. merge, let
+   production build, and only then open the new client on a synced account.
+3. After production understands canonical, every device converges: the
+   per-record reconciler repairs anything still legacy on boot, and
+   Settings > Data > Re-check stored units is the manual lever.
+
+The durable rule: **in this repo a feature branch and production share one
+per-user Firestore document, so any storage-format migration is a deployment
+ordering problem, not just a code problem.**
+
 ## Service worker
 
 - `data/exercises-db.json` is precached; **any catalog edit needs a
@@ -246,6 +336,605 @@ lone exercise in superset chrome during a workout (fixed 2026-08-12,
   into a `node:vm` sandbox with a Map-backed fake Cache Storage and a
   controllable `fetch` (`tests/sw-offline-behavior.test.mjs`); list/structure
   invariants are plain source-text checks.
+
+## Units: canonical storage, converted at the edges
+
+`settings.weightUnit` used to be BOTH the display preference and the implicit
+meaning of every stored number, so switching kg → lb relabelled without
+converting: a 60 kg bench rendered "60 lb", a 13,345 kg session "13,345 lb",
+an 86.5 cm waist "86.5 in", and the CSV export shipped those numbers to a
+spreadsheet. The Strength PR card, which stored a canonical `prWeightKg`, was
+the one surface that did not move - so it showed kg while History next to it
+showed lb, in the same moment (2026-08-19 audit, GT-03).
+
+The model now:
+
+- **Storage is canonical.** Weights in kilograms, lengths in centimetres,
+  durations in seconds. Nothing in localStorage, in an export, or in a sync
+  payload is ever in pounds or inches.
+- **`settings.weightUnit` is a display/entry preference.** Changing it does
+  not write to storage at all, which is the structural reason it cannot drift
+  or corrupt history.
+- **Conversion happens at exactly two boundaries**, both in
+  `js/utils/units.js`: `toCanonicalWeight` on the way in and
+  `displayWeight` / `formatWeight` / `formatVolume` / `volumeIn` on the way
+  out. Views must not interpolate a raw stored number next to a unit string;
+  that is the bug pattern.
+- **The input side is EXACT.** `toCanonicalWeight` / `fromCanonicalWeight` do
+  no rounding; only the display helpers round. Rounding on the way in is what
+  makes 135 lb come back as 134.9.
+- **`WorkoutSession.sessionUnit` is metadata**, not a hint about what the
+  numbers mean: it records the unit the lifter was entering in.
+
+Two things are deliberately NOT canonical kg:
+
+- **Plate/bar configuration.** A kg rack and an lb rack are different physical
+  objects, so `settings.plateProfiles` keeps an independent `{ barWeight,
+  plates, exerciseBarWeights }` per unit. `settings.barWeight` / `.plates` are
+  accessors onto the profile for the CURRENT unit, so every existing reader
+  keeps working. Switching the display unit SWAPS profiles; it never converts
+  or overwrites one with the other (GT-21).
+- **Warm-up thresholds**, which already carried separate kg and lb fields.
+
+`Achievement.prWeightKg` was already canonical kg and must NOT be converted
+again - `checkExercisePRs` used to divide by 2.205 for lb accounts, which is
+correct only while a stored number means "whatever the setting says". Doing it
+now would halve every PR an lb user set.
+
+### The migration (js/utils/data-migrations.js)
+
+Pre-canonical data is converted ONCE, on the first boot after the upgrade,
+guarded by `gymTrackerDataVersion`:
+
+- **v1** reads the numbers exactly the way the user has been reading them:
+  whatever unit the account is set to AT MIGRATION TIME is the unit they were
+  in. A kg account is a strict no-op - not one number changes. An lb account
+  has session set weights, paused-workout sticky values, measurements and
+  measurement goals converted once, and every screen keeps showing the same
+  pounds it showed before.
+- **v2** drops sessions with zero completed sets (see below).
+
+It is pure (`migrateStoredData(snapshot, fromVersion)` takes and returns plain
+data), idempotent, and never mutates its input. `gymTrackerDataVersion` starts
+with `gymTracker`, so the sync layer carries it between a user's devices and a
+second device does not re-run a migration the first one already did.
+
+## Unit provenance: why a version marker was not enough (the 143.3 lb bug)
+
+The canonical-units migration above was correct as a pure function and still
+corrupted real data. A real 65 lb dumbbell bench press started rendering as
+**143.3 lb**. This is the most important thing in this file.
+
+**What happened.** `migrateStoredData()` converts an lb account's numbers once
+and records `gymTrackerDataVersion`. That is right for data already in
+localStorage when the app boots, and only for that data. But:
+
+- `app.init()` runs on `DOMContentLoaded`. It does not wait for sync.
+- `storage-sync-robust.js` rebuilds `localRevisions` **empty on every page
+  load**, so `decideRemoteChange()` takes its `if (!localRev) return 'apply'`
+  branch and writes the remote document over localStorage unconditionally.
+- `applyRemoteChange()` writes through `originalMethods.setItem` - straight
+  past the app.
+- `refreshFromStorage()` calls `loadAllData()` and **never re-ran migrations**.
+
+So on a device whose Firestore document still held pre-canonical numbers:
+
+```
+boot      -> 65 lb becomes 29.4835 kg, version := 2
+snapshot  -> localStorage.gymTrackerSessions := the legacy doc (65 again)
+reload    -> version is 2, so the migration is skipped; 65 is read as 65 KG
+display   -> 65 kg rendered in pounds = 143.3 lb
+```
+
+Worse, `gymTrackerDataVersion` is itself synced, so the bogus "already
+migrated" marker propagates and permanently blesses un-migrated data on every
+device.
+
+**The rule this produced.** A per-INSTALL marker cannot describe records that
+arrive from a channel the marker knows nothing about. Canonical-ness is now a
+property of the RECORD:
+
+- Every session and measurement the app writes carries `unitsCanonical: true`
+  (`CANONICAL_FLAG` in `js/utils/data-migrations.js`).
+- **No conversion step ever touches a stamped record.** Idempotency,
+  re-entrancy and ordering-independence are therefore structural, not guarded.
+- `reconcileUnits()` is safe to run on every boot, after every remote sync and
+  from Settings, because a healthy profile is a pure no-op.
+- `app.js` calls `reconcileStoredUnits()` on `syncSystemReady` AND on every
+  debounced `localStorageSync` remote burst, **before** `refreshFromStorage()`.
+
+**What can and cannot be proven.** This is the part that matters when writing
+any future repair:
+
+- **Sessions have a discriminator, by luck.** The v1 migration stamps
+  `sessionUnit` on everything it converts, and every session created since the
+  remediation sets it at creation. So in an install claiming v>=1, a session
+  with NO `sessionUnit` provably never went through v1 - it is legacy, and
+  repairing it is deterministic. A session that HAS one in a damaged install is
+  genuinely ambiguous (pre-remediation in-workout toggle vs logged-after-the-
+  clobber) and is reported, never converted.
+- **Measurements have nothing.** v1 rewrote `weight` / `waist` / ... in place
+  and left no trace, so a stored `34` is either legacy inches or migrated
+  centimetres and the record cannot tell you which. We DO NOT guess. A
+  plausibility test on body dimensions ("a 34 cm adult waist is impossible")
+  was considered and rejected: it is another silent heuristic, and the owner's
+  standing instruction is to be asked once rather than be quietly wrong.
+  `#measurement-units-modal` asks, the answer is recorded in
+  `gymTrackerMeasurementUnits` (synced, so a second device never re-asks), and
+  `gymTrackerMeasurementsBackup` holds a rollback copy written before the
+  rewrite. A kg account is never asked: for kg, v1 was a no-op on measurements,
+  so the numbers are correct either way.
+
+**Settings > Data > Re-check stored units** is the permanent escape hatch. It
+is a diagnostic, NOT "run all migrations again": it repairs only provable
+cases, reports ambiguous ones, and changes nothing on a healthy profile no
+matter how many times it is pressed or which display unit is selected.
+
+Regression coverage lives in `tests/unit-provenance.test.mjs` (pure, with
+expected kilograms hard-coded from an INDEPENDENT calculation) and
+`e2e/units-migration.mjs` (boots the real app on pre-remediation localStorage).
+The original migration shipped with a passing suite precisely because every
+test called `migrateStoredData()` directly and none booted the app.
+
+## The display boundary is not optional, and one screen skipped it
+
+Found 2026-08-20, by the owner, on real data.
+
+`#history` rendered a 140 lb pulldown as **140lb**. `#exercises` - the exercise
+detail, two taps away, reading the SAME record - rendered it as **63.503 lb**:
+the stored kilograms with a pound label stapled on. Same for 130 -> 58.967,
+110 -> 49.895, 60 -> 27.216, 10 -> 4.536.
+
+The cause was not the migration and not the data. Storage was correct
+(63.5029318 kg, stamped canonical). `history-view.js` passed every number
+through `displayWeight()` / `volumeIn()`; `exercises-view.js` never imported
+`utils/units.js` at all and interpolated raw stored weights beside
+`settings.weightUnit`:
+
+```js
+${bestSet.weight.toLocaleString()} ${unit}   // 63.503 lb
+```
+
+Six sites in that one file: Best Set weight and volume, the per-set history
+chips, the up/down comparison tooltips, the Top weight / Best e1RM tiles, the
+progression chart axis and the 90-day e1RM sparkline (which is why the
+sparkline read "87 lb" for a 192 lb e1RM).
+
+**Why no test caught it.** Every screen was only ever asserted against itself,
+so a screen that was consistently wrong looked consistently right. The unit
+suite proved `displayWeight()` converts; nothing proved that each renderer
+CALLS it.
+
+**The rule, now enforced at the source level** by
+`tests/unit-display-boundary.test.mjs`:
+
+- A stored weight interpolated next to a unit token is a defect. The test
+  greps every file in `js/views/` for that shape and fails on it.
+- Two ways to satisfy it, both of which make the unit legible at the call
+  site: call a conversion (`displayWeight` / `volumeIn` / `formatWeight` /
+  `formatVolume` / `toSessionWeight` / `toDisplay`), or name the local with a
+  **`Shown` suffix** meaning "already through the display boundary, in
+  `unit`" - `bestWeightShown`, `loadShown`.
+- No view may hard-code `2.20462` or `0.45359237`.
+
+Verified to fail against the pre-fix `exercises-view.js` and pass after, so it
+is a real tripwire rather than a restatement of the current code.
+
+The generalisable lesson: when a codebase migrates to canonical storage,
+"the conversion helper is correct" and "every consumer uses it" are different
+claims, and only the second one is what the user sees.
+
+## Automatic weight suggestions: removed, and why the number was wrong anyway
+
+Removed 2026-08-20 at the owner's request. `js/utils/progression.js`, the
+bump/deload badges, the tap-to-reveal panel, "Use last weight", the per-set
+"Repeat weight" warning and all their CSS and tests are gone. A planned row
+now prefills from the lifter's own last session, set for set.
+
+It is worth recording WHY the removal was also a bugfix, because the defect is
+the same shape as the one above:
+
+    _overloadIncrement(exerciseId, unit)   // 'lb' -> 5, meaning FIVE POUNDS
+    evaluateProgression({ lastSets, increment })
+        suggestedWeight = lastWeight + increment
+
+`lastWeight` is canonical KILOGRAMS. So the 5 that meant 5 lb was added as
+5 kg:
+
+    60 lb  = 27.2155 kg  + 5  = 32.2155 kg = 71.02 lb  -> prefilled "71"
+    delta shown = 71 - 60 = 11               -> "+11lb suggested"
+
+Reproduced exactly on a 10 lb Decline Crunch: 4.5359 + 5 = 9.5359 kg = 21 lb,
+badge "+11lb suggested". A display-unit increment crossing into canonical
+arithmetic - the mirror image of the render bug.
+
+The prefill was DOM-only: `gymTrackerActiveWorkout` holds no set until one is
+committed, so a suggested number only reached storage if the lifter actually
+ticked that row. Once committed it is indistinguishable from a deliberate
+entry, which is precisely why nothing may rewrite history on suspicion.
+
+The +/- stepper increment survives as `_stepIncrement`, renamed so the unit is
+legible: it is applied to the DISPLAY-unit value in the input, in that same
+unit, which is why it was always correct.
+
+## Two rules the live workout now keeps
+
+### A user edit to an unfinished row is active-session state
+
+Pre-existing defect, found by the owner 2026-08-20. Type 65x8 into set 2, tick
+set 1, and set 2 snapped back to the prefilled 60x12.
+
+The delegated `input` handler in `wireWorkoutActions` updated everything EXCEPT
+the number: notes went to `exercise.notes`, the bar weight went through
+`setExerciseBarWeight`, but `.set-weight` / `.set-reps` only refreshed the
+plate hint and the restore chip. The typed value lived in the DOM alone, so
+`commitPlannedSet` -> `renderExerciseEntry` rebuilt the row from
+`stickyValues[i] || previousSets[i] || ...` and the edit was gone.
+
+`stickyValues` was already the right store - `unmarkSet` and `setSessionUnit`
+both write it and the renderer already prefers it over the previous workout.
+It simply was never written while the lifter was TYPING. `recordPlannedRowEdit`
+now writes it on every input into a planned row, CANONICAL like every other
+writer, and debounces through `persistActiveWorkoutSoon`, so the edit also
+survives a reload and Resume.
+
+The shape of the rule: **prefill and carry-down INITIALIZE an untouched row;
+once a row is edited, active state owns it.** Verified against every re-render
+trigger - completing another set, un-completing one, adding a set,
+collapse/reopen, the feel prompt on a DIFFERENT exercise appearing and being
+dismissed, and reload + Resume.
+
+An emptied field is recorded as `''` on purpose. Clearing a row is an edit too
+and must not silently repopulate from last time.
+
+### The feel smiley lasts exactly one workout
+
+`latestFeelForExercise` scanned the WHOLE history and returned the most recent
+`'good'` wherever it sat, skipping over every later session that had no
+marking. Mark an exercise good once and the icon was permanent.
+
+`previousSessionFeelForExercise` asks a single question instead: did the
+IMMEDIATELY PREVIOUS session that performed this exercise carry an explicit
+`feel === 'good'`? It lasts one following workout and must be renewed.
+
+Deliberately not coupled to performance - a heavier session, more reps or a new
+PR since the marking changes nothing. A legacy `'bad'` expires it exactly like
+an unmarked session. "Previous session" means the last one in which the
+exercise was actually PERFORMED (at least one completed set), because skipping
+an exercise is not evidence about it. Identity goes through `sameId`, since ids
+arrive as strings from an export round trip and numbers from the catalog.
+
+The old tests encoded the old rule (one was literally "a newer bad does not
+override an older good"), so they were replaced rather than adjusted. The new
+suite fails 8 checks when run against the old implementation.
+
+## Timed work is time, not weight (GT-04)
+
+`Set.volume` returned `this.duration` for a timed set and
+`WorkoutSession.totalVolume` summed all set volumes, so a 60-second plank
+contributed "60 kg" to the finish summary, the completion burst, the History
+card, the session detail, the Home weekly tile, the Insights muscle chart
+("Core 300 kg" for five minutes of planks) and the CSV `volume` column under
+`unit=kg`. The CSV column sum matched the app's all-time figure, so the error
+was systemic, not display-only.
+
+`Set.volume` is now `weight × reps` and ZERO for a timed set; seconds are
+reported by `Set.timedSeconds` / `WorkoutExercise.totalTimedSeconds` /
+`WorkoutSession.totalTimedSeconds`, and surfaced as a separate "Held" figure.
+`js/utils/session-metrics.js` carries the same rules for the plain objects
+that come straight out of storage.
+
+One place still counts time deliberately: `getLastTrainedByCategory` asks "was
+this muscle trained?", which is a yes/no, and a plank IS core work. That is
+the ONLY place seconds and weight-volume are treated alike, and it never
+produces a number with a unit.
+
+## Active workouts are always recoverable (GT-01, was a BLOCKER)
+
+Two independent failures made an in-progress workout disposable:
+
+1. **Nothing wrote.** `workout-view.js` had six `saveActiveWorkout` call sites
+   (start, unit switch, pause, resync, feel, swap) and `commitPlannedSet`,
+   `saveSetEdit` and `deleteSet` were not among them. The stored blob read
+   `sets: []` while the screen read "2 / 4 sets".
+2. **Nothing restored.** Every recovery path gated on `paused === true`
+   (`paused-banner.js`, `app.updateGlobalFab`, `app.handleGlobalFabClick`,
+   `home-view`), and an interrupted workout is stored with `paused: false`. It
+   was unreachable forever, and the stale record lingered invisibly.
+
+The write side is now ONE path: `persistActiveWorkout()`. It writes
+synchronously (a set commit is exactly the moment a tab kill must not cost
+anything) and refreshes `elapsedBeforePause` without touching `paused`, so an
+interrupted workout resumes with its real elapsed time. Only the
+per-keystroke notes field is debounced, via `persistActiveWorkoutSoon()`, and
+`flushPendingPersist()` is called from the notes collapse, from pause, and
+from `pagehide` / `visibilitychange` - the two moments a mobile browser is
+most likely to kill the page. **A new mutation path must call
+`persistActiveWorkout()`**; `tests/active-workout-persistence.test.mjs`
+enumerates them and fails on one that does not.
+
+The read side is `js/utils/active-workout.js`. `readableActiveWorkout()` is
+the single predicate for "may this be offered?": structurally sound, not
+completed, at least one exercise. It deliberately refuses a COMPLETED session,
+so a crash between "save session" and "clear active" cannot resurrect a
+workout the lifter already finished. Paused and interrupted workouts are both
+recoverable and are labelled differently, because one the lifter chose and the
+other happened to them.
+
+## What counts as a workout (GT-14, GT-23)
+
+- A session with **zero completed sets is not a workout**. It holds no logged
+  information: finishing requires at least one completed set, so the only way
+  to reach that state is removing an exercise's history out from under it.
+  `deleteExerciseHistory` prunes such sessions at the source (and says so in
+  its confirmation), and migration v2 cleans up any that already exist. Before
+  this, a `0 kg / 8 exercises / 0 sets` husk still counted toward the weekly
+  tile, the streak, the calendar marker and the monthly total.
+- **Exercise counts mean exercises PERFORMED.** A session lists every planned
+  exercise, so `exercises.length` said "8 exercises" over seven rendered
+  blocks. `performedExerciseCount` (model + `session-metrics.js`) is the
+  count every surface uses.
+
+## "Trained recently" is about work, not tonnage
+
+Found while re-auditing the 2026-08-19 remediation, not in the original audit.
+
+Making volume weight-only (GT-04) was correct, but `getStaleProgramCategories`
+derived "trained recently" from `getVolumeByCategoryInRange`. A category
+trained only with timed work - core, via planks - produces zero weight volume,
+so Insights listed **Core as "not trained recently" while the same row said "7
+days since last trained"**. Pre-remediation this could not happen, because
+volume included duration.
+
+`getLastTrainedByCategory` already had the right rule ("a plank IS core work"),
+so staleness now tests that date against the window and never consults volume.
+The caption reads "Not trained in the last 14 days" rather than "No volume in".
+
+The general shape: when a metric is deliberately narrowed, every consumer that
+used it as a proxy for something BROADER has to be re-derived. Grep the
+narrowed function's callers, not just its own tests.
+
+## Weeks have ONE definition (GT-10, GT-11)
+
+`js/utils/week.js` owns `startOfWeek(date, firstDay)` and `weekKey`. The
+Calendar, the workout week strip and the program-editor day chips honoured the
+first-day-of-week setting; Home, the weekly volume/time tiles and the weekly
+achievements were hard-coded to ISO Monday, so a Sunday-first user's Sunday
+session vanished from their own weekly count. `AnalyticsService.startOfWeek`
+and `AchievementService.sessionsThisWeek` both delegate here;
+`startOfIsoWeek` survives as the Monday-pinned alias its callers already used,
+which is what keeps the audit-verified Monday arithmetic identical.
+
+"Perfect Week" now uses a `weekly-distinct-days` requirement, because
+"Complete a workout every day this week" is a claim about DAYS and it was
+counting sessions (seven sessions over two days unlocked it). Achievement
+definitions are code, so `AchievementService.syncDefinitions` refreshes
+wording, targets and requirement types onto stored records on boot - and when
+a requirement TYPE changes it re-evaluates the unlock, withdrawing a badge
+earned under the old rule unless the lifter genuinely satisfied the new one.
+Leaving a badge standing that its own description contradicts is just a
+quieter version of the same bug.
+
+## Import: merge and replace are different operations (GT-02)
+
+The dialog promised "It will be merged with your existing programs, workouts,
+and settings" and `importAllData` did `if (data.programs)
+this.savePrograms(data.programs)` for each store. Importing a sessions-only
+file destroyed a program and 17 unlocked achievements, with no undo and no
+backup.
+
+`js/utils/import-merge.js` now owns the semantics and `importAllData(data, {
+mode })` takes an explicit mode:
+
+- **Merge** (the default) unions by record id using `sameId`, so a string id
+  from an export matches the numeric one it came from instead of duplicating
+  the record. An EMPTY imported array is "nothing to add", never "delete
+  everything" - that exact shape is what did the damage. Collisions resolve
+  deterministically: newer `updatedAt` / `timestamp` / `createdAt` wins,
+  ties go to the imported record, an unlocked achievement always beats a
+  locked one (an unlock is a fact that happened), and settings merge key by
+  key so a file that omits a setting cannot reset it.
+- **Replace** restores a full backup, says plainly that anything not in the
+  file is deleted, asks for a stronger confirmation, and downloads a rollback
+  file first. Even then it only touches stores the file actually carries, so a
+  "programs only" backup cannot erase a history it says nothing about.
+
+The malformed-payload validation in `settings-view.js` is unchanged and still
+runs first.
+
+## Touch targets and the rest dial (GT-05, GT-19)
+
+The audit measured every control in the live workout below the 44×44 the
+README claimed: steppers 26×38, rest-timer buttons 24px tall, icon buttons
+34×34, Finish 85×34.
+
+What is true now, measured by hit-area probing (`elementsFromPoint` walked
+outward from each centre, not `getBoundingClientRect`, because a 34px box can
+own a 44px tap area and only the probe can tell):
+
+- Everything is **≥44px tall** and **≥36px wide**; most are 44×44.
+- Compact controls get their tap area from a transparent `::after` expander.
+  For the steppers it reaches 7px outward and 7px over their OWN input's edge
+  - never into another control, and the number field keeps its whole centre.
+- The steppers cannot ALSO be 44px wide on a phone: four of them plus two
+  readable number fields do not fit one line at 390px while the row still
+  holds "102.5" (measured - the weight field has ~60px and zero slack). Below
+  360px the reps field takes its own line and they reach a full 44×44 there.
+- Hit-area expanders need room: the header icons were 34px on a 2.4px gap, so
+  adjacent 44px expanders overlapped and each button really owned ~36px. The
+  gap is 0.62rem for that reason, and `.set-row-actions` likewise.
+- `.gt-stepper-group` is 46px so its 1px border leaves a 44px INNER box, and
+  it must keep `overflow: visible` or the expanders are clipped for
+  hit-testing too.
+
+**The visual regression this caused, and the rule from it.** Making the dial
+non-blocking was right; making it SMALLER was not. The first attempt shrank the
+dial to 128px on phones and grew the buttons to 34x62 for the 44px target. Two
+62px buttons plus the gap are ~129px inside a 128px circle, so `+30s` and
+`Skip` were pushed 11px through the ring on both sides at 390px and 320px - the
+component looked broken. The dial keeps its **146px production diameter** and
+the buttons keep their **24x46 production size**; the 44px target comes from
+the transparent `::after` expander, which is the whole point of that technique.
+A hit-area fix must never move the artwork. Verified by measuring each button's
+four corners against the circle's radius, not by eye.
+
+The rest dial was worse than a small target: its 146px SVG ring intercepted
+taps across a far larger area than the dial looked, and hit-testing found 9
+controls of the next exercise unusable for the whole rest period. Two changes,
+both needed: nothing in the dial except its two buttons takes pointer events,
+and the exercise list reserves bottom padding while the dial is visible
+(`body.gt-rest-bar-visible #workout-exercises-list`), so in the ordinary
+scroll position it overlaps nothing at all. The disc is also translucent, so
+tapping "through" it is comprehensible rather than uncanny.
+
+## The sitewide button height, which min-height cannot beat
+
+`assets/css/main.css` gives EVERY button `height: 3.25rem; line-height: 3.25rem`
+(47.67px at this app's root size). A plain `height` beats any `min-height`, so
+an app rule that sets `min-height: 28px` still renders 48px tall and the
+control silently comes out nearly twice its intended size. The inline feel
+prompt's buttons measured 48px for exactly this reason.
+
+The pin is the one `button.gt-note` already uses:
+
+    height: auto !important;
+    min-height: <n>px !important;
+
+Worth checking with a computed-style probe whenever a compact button "ignores"
+its CSS - it is the same family as the `button { color:#555 !important }` trap
+already documented below.
+
+## Theme collisions found in this round
+
+- `assets/css/main.css` `button { line-height: 3.25rem }` inflated the
+  week-strip pill's label line box to 47.67px inside a 48px column-flex pill;
+  with both children `flex-shrink: 1` the label won and the scheduled-day dot
+  rendered 5px wide by **0px tall**, so program scheduling looked broken
+  (GT-09). Fixed by pinning the pill's line-height and giving the dot
+  `flex: 0 0 6px`. This is the same class of bug the repo CLAUDE.md warns
+  about; a computed-style check on the DOT, not the pill, is what catches it.
+- `.set-col-head` at 0.56rem of `--gt-muted-2` measured 8.21px at 3.92:1 - 16
+  axe "serious" nodes on the only element telling a lifter which field is
+  which. The app's root font-size is ~14.7px, so rem-based sizes read smaller
+  than they look in the stylesheet; 0.85rem lands at ~12.5px. #8b94a6 clears
+  4.5:1 on every surface the caption sits on.
+
+## Exercise search (GT-24)
+
+`js/utils/exercise-search.js` is shared by the Exercise Database, the program
+picker and the in-workout swap picker. Normalisation folds case, hyphens,
+apostrophes and a trailing plural "s", so "Pull-Ups", "pull up" and "pullup"
+all reach the same tokens; a term may also be a run of consecutive name words
+written without separators (`matchesTokenRun`), which is anchored at token
+boundaries on purpose - a bare `squashedName.includes(term)` gives "row" a
+full-strength match inside "Nar-row- Chest Press Machine", which is the exact
+mis-ranking the module exists to remove. EVERY query term must match
+something, which is what lets "triceps pushdown" combine a name word with a
+category word. A mid-word substring scores almost nothing, so it can only ever
+break a tie.
+
+## One exercise taxonomy, four surfaces (GT-26)
+
+The category and equipment lists were written out four times in `index.html`:
+the Exercise Database browse filters, the create-custom form, the program
+picker and the in-workout swap picker. Three had drifted. The create form
+offered 10 categories where browse offered 17, so a custom exercise could not
+be filed under forearms, glutes, abs, obliques, traps, neck or cardio, and one
+filed elsewhere then failed to appear under the filter its catalog neighbours
+used.
+
+`js/utils/exercise-taxonomy.js` is now the single definition, and every one of
+the four selects is filled from it by `populateSelect()` at open time. The
+markup still carries a static list so the page is usable before the module
+runs, but it is no longer the source of truth: the view overwrites it. The
+picker filters preserve their behaviour across repopulation (the swap picker
+still pre-selects the current exercise's category), and
+`tests/exercise-search.test.mjs` asserts both that the taxonomy covers every
+value the real 514-exercise catalog uses and that all three view files still
+populate from it, so a fifth hand-written copy cannot creep back in.
+
+## The estate's own gotchas, extended
+
+- **Escape closes a modal by clicking its `.modal-close`**
+  (`modal-focus.js` `closeModal`), so wiring that button to a guarded close
+  gives Escape the same guard for free. That is how the program editor's
+  discard confirmation covers Cancel, X and Escape with one change (GT-08).
+- **`extractClassMethod` now finds `async` and `get` methods too.** The marker
+  used to be `\n    name(` only, so an `async` method was invisible to the
+  test estate.
+- **A docstring quoting old code can satisfy a `doesNotMatch` assertion.**
+  `tests/active-workout-persistence.test.mjs` strips comments before asserting
+  that the `paused`-only gate is gone, because the fix's own comment quotes it.
+- **Driving the app headlessly: navigate by `[data-view=...]`, not by label.**
+  The app renders BOTH the mobile bottom nav and the desktop side nav, so a
+  text match lands on a zero-height duplicate and the click silently does
+  nothing.
+- **Measure touch targets by probing, not by `getBoundingClientRect`.** A
+  control half under the sticky header also measures short for a reason that
+  is not its target size, so scroll it into view first.
+
+## Other decisions from the 2026-08-19 round
+
+- **The shared auth modal is white BY DESIGN** (GT-41). `assets/css/firebase-auth.css`
+  pins `color-scheme: light` on `.auth-modal` / `.signout-modal` and neutralises
+  Chrome's autofill paint with the inset box-shadow technique, because these
+  overlays are appended to `<body>` and inherited the app page's dark scheme,
+  flipping UA autofill/native-widget rendering to grey inside the white card.
+  `sync-system/tests/shared-ui-consistency.test.mjs` enforces both. This round
+  therefore re-points only the ACCENT (the #667eea → #764ba2 gradient CTA, the
+  active tab, the links) at the app's azure, scoped
+  `body.gym-tracker #auth-modal ...` - the id is required to outrank that
+  stylesheet's own `body #auth-modal ...` rules. Do not fork the surface per
+  app without re-solving the autofill problem it closed.
+- **The picker's search + filters are the other half of GT-17.** Collapsing the
+  selection tray was necessary but not sufficient: the stacked search box and
+  two filter selects took ~230px of a 717px sheet and each result card was
+  ~140px tall, so barely one card was readable while multi-selecting. Phone
+  breakpoints put the filters on one row and compact the cards, which is what
+  takes "cards fully visible with 8 selected" from 0 to 5.
+- **The onboarding tour's scroller is `.onboarding-body`, not `.modal-content`.**
+  The header and footer sit outside the scroll on purpose. Anything that
+  watches the tour's scroll position - the back-to-top opt-in, the footer
+  label - has to hang off the body, or it reads a 2,100px tour as already
+  finished the moment it opens (GT-35).
+- **`getWeekStats` etc. take the first day of week as a PARAMETER** rather than
+  reading settings, so `AnalyticsService` stays free of app state and the
+  Monday-pinned callers keep their exact previous behaviour by passing 1.
+- **Program set rows gained `targetSeconds`** (null on a reps exercise). The
+  model cannot know whether a row is timed - only the catalog does - so the
+  VIEW decides which control to render and falls back to
+  `DEFAULT_TARGET_SECONDS` when a legacy timed row has none. Nothing rewrites
+  the meaningless `repsMin/repsMax` those rows carry.
+- **`WorkoutExercise.plannedExerciseId`** records the PROGRAM row a session
+  slot came from. An in-workout swap changes `exerciseId` (so sets, history
+  and PRs follow the substitute) and leaves `plannedExerciseId` alone (so the
+  rep target, per-slot ranges and rest values survive) - GT-13.
+
+## 2026-08-19 verification round (what was actually run)
+
+Everything below was driven against the real app over CDP (coordinate clicks
+and `elementsFromPoint`, never bare `element.click()` for anything
+hit-sensitive), at 390x844, 320x700 and 1280x900:
+
+- **GT-01 end to end**: start -> log sets -> confirm storage matches the screen
+  -> reload WITHOUT pausing -> the recovery banner -> resume -> every set,
+  note and swap restored; then un-mark, edit and note, each re-checked in
+  storage; then finish and confirm the workout is not offered again.
+- **GT-03 across surfaces**: history card, session-detail set rows, exercise
+  trend, measurement tiles and the CSV, read in kg, then in lb, then back in
+  kg, with the raw localStorage value asserted unchanged throughout.
+- **Touch targets by hit-area PROBING** (`elementsFromPoint` walked outward
+  from each centre after scrolling the control into view), not
+  `getBoundingClientRect`, at both phone widths, alongside a
+  no-horizontal-overflow check.
+- **The rest dial hit-tested**: every control overlapping its box, before and
+  after, plus +30s and Skip still working.
+- **axe-core (wcag2a + wcag2aa)** on the live workout: zero serious/critical.
+- A full **human-like journey** from a clean profile: first run, build a
+  program by searching the way a person types, schedule it, train it on a
+  phone, let a rest timer run, swap, note,
+  interrupt mid-workout, resume, finish, review History and Insights, add a
+  measurement, switch units, export, reload.
 
 ## 2026-08-12 verification round (what was actually run)
 

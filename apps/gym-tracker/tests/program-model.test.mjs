@@ -9,7 +9,7 @@ import path from 'node:path';
 
 // We need generateNumericId from helpers — stub it out via a simple shim.
 // helpers.js uses crypto.randomUUID which is available in Node 18+.
-const { Program, defaultRestForEquipment } = await import('../js/models/Program.js');
+const { Program, defaultRestForEquipment, DEFAULT_TARGET_SECONDS } = await import('../js/models/Program.js');
 
 // -------------------------------------------------------
 // defaultRestForEquipment
@@ -120,9 +120,11 @@ test('Program.fromJSON: new-shape exercise with sets[] is preserved', () => {
     const p = Program.fromJSON(json);
     const ex = p.exercises[0];
     assert.equal(ex.sets.length, 3);
-    assert.deepEqual(ex.sets[0], { repsMin: 11, repsMax: 12 });
-    assert.deepEqual(ex.sets[1], { repsMin: 8,  repsMax: 10 });
-    assert.deepEqual(ex.sets[2], { repsMin: 6,  repsMax: 8  });
+    // `targetSeconds` is the planned hold for a DURATION exercise (GT-12);
+    // a reps exercise carries it as null rather than acquiring a phantom one.
+    assert.deepEqual(ex.sets[0], { repsMin: 11, repsMax: 12, targetSeconds: null });
+    assert.deepEqual(ex.sets[1], { repsMin: 8,  repsMax: 10, targetSeconds: null });
+    assert.deepEqual(ex.sets[2], { repsMin: 6,  repsMax: 8, targetSeconds: null });
     assert.equal(ex.targetSets, 3);
     assert.equal(ex.targetReps, 12); // first set repsMax
 });
@@ -241,4 +243,65 @@ test('addExercise: restAfterSeconds stored and round-tripped correctly', () => {
     const clone = Program.fromJSON(p.toJSON());
     assert.equal(clone.exercises[0].restSeconds, 90);
     assert.equal(clone.exercises[0].restAfterSeconds, 120);
+});
+
+// ---------------------------------------------------------------------------
+// GT-12: timed exercises are planned in SECONDS.
+//
+// A Plank added to a program used to show "Set 1: 10 reps" with a
+// Single/Range toggle, and the workout header then advertised "10 reps" as the
+// target for a hold. The rep fields are left alone (stored user data is never
+// reinterpreted); a parallel `targetSeconds` carries the real plan.
+// ---------------------------------------------------------------------------
+
+test('Program: a set row can carry a planned hold in seconds', () => {
+    const p = Program.fromJSON({
+        id: 9, name: 'Core', exercises: [{
+            exerciseId: 463, exerciseName: 'Plank',
+            sets: [{ repsMin: 10, repsMax: 10, targetSeconds: 90 }],
+            restSeconds: 60, notes: '', order: 0,
+        }],
+    });
+    assert.equal(p.exercises[0].sets[0].targetSeconds, 90);
+});
+
+test('Program: targetSeconds is clamped to [5, 3600]', () => {
+    const p = Program.fromJSON({
+        id: 10, name: 'Core', exercises: [{
+            exerciseId: 463, exerciseName: 'Plank',
+            sets: [
+                { repsMin: 10, repsMax: 10, targetSeconds: 1 },
+                { repsMin: 10, repsMax: 10, targetSeconds: 99999 },
+            ],
+            restSeconds: 60, notes: '', order: 0,
+        }],
+    });
+    assert.equal(p.exercises[0].sets[0].targetSeconds, 5);
+    assert.equal(p.exercises[0].sets[1].targetSeconds, 3600);
+});
+
+test('Program: a legacy timed row keeps null rather than inventing a hold', () => {
+    // The view falls back to DEFAULT_TARGET_SECONDS at render time. Writing a
+    // number into storage here would be the model guessing at user intent.
+    const p = Program.fromJSON({
+        id: 11, name: 'Core', exercises: [{
+            exerciseId: 463, exerciseName: 'Plank',
+            sets: [{ repsMin: 10, repsMax: 10 }],
+            restSeconds: 60, notes: '', order: 0,
+        }],
+    });
+    assert.equal(p.exercises[0].sets[0].targetSeconds, null);
+    assert.equal(DEFAULT_TARGET_SECONDS, 60, 'the documented fallback');
+});
+
+test('Program: targetSeconds survives a clone', () => {
+    const p = Program.fromJSON({
+        id: 12, name: 'Core', exercises: [{
+            exerciseId: 463, exerciseName: 'Plank',
+            sets: [{ repsMin: 10, repsMax: 10, targetSeconds: 120 }],
+            restSeconds: 60, notes: '', order: 0,
+        }],
+    });
+    const copy = Program.clone(p);
+    assert.equal(copy.exercises[0].sets[0].targetSeconds, 120);
 });

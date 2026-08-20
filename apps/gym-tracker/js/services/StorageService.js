@@ -3,6 +3,7 @@
  * Manages all data storage operations (localStorage + Firebase sync)
  */
 import { sameId } from '../utils/id-utils.js';
+import { IMPORT_MODES, mergeImportedData } from '../utils/import-merge.js';
 
 export class StorageService {
     constructor() {
@@ -19,7 +20,21 @@ export class StorageService {
             ONBOARDING_SEEN: 'gymTrackerOnboardingSeen',
             MEASUREMENTS: 'gymTrackerMeasurements',
             MEASUREMENT_GOALS: 'gymTrackerMeasurementGoals',
-            WARMUP_SETTINGS: 'gymTrackerWarmupSettings'
+            WARMUP_SETTINGS: 'gymTrackerWarmupSettings',
+            // Which generation of the STORED DATA schema this install has been
+            // migrated to (see utils/data-migrations.js). Distinct from
+            // SCHEMA_VERSION, which versions an export payload.
+            DATA_VERSION: 'gymTrackerDataVersion',
+            // How the user answered the one-time "which units were your
+            // existing measurements entered in?" question. Measurements carry
+            // no per-record evidence of their original units, so this is the
+            // record of an explicit human decision, never an inference.
+            // Syncs, so a second device never re-asks.
+            MEASUREMENT_UNITS: 'gymTrackerMeasurementUnits',
+            // Pre-repair copy of the measurements, written immediately before
+            // the answer above is applied. Local-only rollback; deliberately
+            // NOT synced (it is a snapshot of one device's decision point).
+            MEASUREMENTS_BACKUP: 'gymTrackerMeasurementsBackup'
         };
     }
 
@@ -223,6 +238,56 @@ export class StorageService {
         return this.saveCustomExercises(filtered);
     }
 
+    // Stored-data schema version (utils/data-migrations.js)
+    getDataVersion() {
+        const raw = this.get(this.keys.DATA_VERSION, 0);
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : 0;
+    }
+
+    saveDataVersion(version) {
+        return this.set(this.keys.DATA_VERSION, Number(version) || 0);
+    }
+
+    /**
+     * The measurement-units decision record.
+     * `{ status: 'unresolved'|'resolved', choice, resolvedAt }`.
+     */
+    getMeasurementUnits() {
+        const raw = this.get(this.keys.MEASUREMENT_UNITS, null);
+        return raw && typeof raw === 'object' ? raw : null;
+    }
+
+    saveMeasurementUnits(record) {
+        return this.set(this.keys.MEASUREMENT_UNITS, record);
+    }
+
+    /** True once the user has answered; the question is then never re-asked. */
+    measurementUnitsResolved() {
+        return this.getMeasurementUnits()?.status === 'resolved';
+    }
+
+    /** Rollback copy taken immediately before measurements are rewritten. */
+    saveMeasurementsBackup(measurements) {
+        return this.set(this.keys.MEASUREMENTS_BACKUP, {
+            takenAt: new Date().toISOString(),
+            measurements,
+        });
+    }
+
+    getMeasurementsBackup() {
+        return this.get(this.keys.MEASUREMENTS_BACKUP, null);
+    }
+
+    // Measurement goals
+    getMeasurementGoals() {
+        return this.get(this.keys.MEASUREMENT_GOALS, {});
+    }
+
+    saveMeasurementGoals(goals) {
+        return this.set(this.keys.MEASUREMENT_GOALS, goals);
+    }
+
     // Active Workout (in-progress workout that can be resumed)
     getActiveWorkout() {
         return this.get(this.keys.ACTIVE_WORKOUT, null);
@@ -320,20 +385,74 @@ export class StorageService {
         return data;
     }
 
-    importAllData(data) {
+    /** The current contents of every importable store, as one snapshot. */
+    snapshotStores() {
+        return {
+            programs: this.getPrograms(),
+            sessions: this.getWorkoutSessions(),
+            settings: this.getSettings(),
+            achievements: this.getAchievements(),
+            customExercises: this.getCustomExercises(),
+            measurements: this.getMeasurements(),
+            activeProgram: this.get(this.keys.ACTIVE_PROGRAM),
+        };
+    }
+
+    /** Write a full snapshot back over the stores. Used by both import modes. */
+    writeStores(snapshot) {
+        this.savePrograms(snapshot.programs || []);
+        this.saveWorkoutSessions(snapshot.sessions || []);
+        if (snapshot.settings) this.saveSettings(snapshot.settings);
+        this.saveAchievements(snapshot.achievements || []);
+        this.saveCustomExercises(snapshot.customExercises || []);
+        this.saveMeasurements(snapshot.measurements || []);
+        if (snapshot.activeProgram) {
+            this.set(this.keys.ACTIVE_PROGRAM, snapshot.activeProgram);
+        } else {
+            this.remove(this.keys.ACTIVE_PROGRAM);
+        }
+    }
+
+    /**
+     * Import a payload.
+     *
+     * `mode` is REQUIRED to be meaningful, and defaults to MERGE - the
+     * behaviour the dialog has always promised. REPLACE is the explicit
+     * restore-a-backup path and is the ONLY way an import can remove data
+     * the file does not contain (GT-02).
+     *
+     * Returns { ok, mode, before, after } so the caller can report what
+     * actually changed instead of guessing.
+     */
+    importAllData(data, { mode = IMPORT_MODES.MERGE } = {}) {
         try {
-            data = this.migrateImport(data);
-            if (data.programs) this.savePrograms(data.programs);
-            if (data.sessions) this.saveWorkoutSessions(data.sessions);
-            if (data.settings) this.saveSettings(data.settings);
-            if (data.achievements) this.saveAchievements(data.achievements);
-            if (data.customExercises) this.saveCustomExercises(data.customExercises);
-            if (Array.isArray(data.measurements)) this.saveMeasurements(data.measurements);
-            if (data.activeProgram) this.set(this.keys.ACTIVE_PROGRAM, data.activeProgram);
-            return true;
+            const payload = this.migrateImport(data);
+            const before = this.snapshotStores();
+
+            if (mode === IMPORT_MODES.REPLACE) {
+                // A replace still only touches stores the file actually
+                // carries; a "programs only" backup must not silently erase a
+                // history it says nothing about.
+                const after = {
+                    programs: Array.isArray(payload.programs) ? payload.programs : before.programs,
+                    sessions: Array.isArray(payload.sessions) ? payload.sessions : before.sessions,
+                    settings: payload.settings || before.settings,
+                    achievements: Array.isArray(payload.achievements) ? payload.achievements : before.achievements,
+                    customExercises: Array.isArray(payload.customExercises)
+                        ? payload.customExercises : before.customExercises,
+                    measurements: Array.isArray(payload.measurements) ? payload.measurements : before.measurements,
+                    activeProgram: payload.activeProgram || null,
+                };
+                this.writeStores(after);
+                return { ok: true, mode, before, after };
+            }
+
+            const after = mergeImportedData(before, payload);
+            this.writeStores(after);
+            return { ok: true, mode: IMPORT_MODES.MERGE, before, after };
         } catch (error) {
             console.error('Error importing data:', error);
-            return false;
+            return { ok: false, mode, before: null, after: null };
         }
     }
 
@@ -351,8 +470,9 @@ export class StorageService {
         return backup;
     }
 
+    /** A backup restore is a REPLACE by definition. */
     restoreBackup(backup) {
-        return this.importAllData(backup);
+        return this.importAllData(backup, { mode: IMPORT_MODES.REPLACE });
     }
 }
 

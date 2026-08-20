@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { classifySyncStatus } from '../js/utils/sync-status.js';
+import { classifySyncStatus , reconnectMessage } from '../js/utils/sync-status.js';
 
 test('classifySyncStatus: offline beats every other signal', () => {
     // Even with a healthy status object, a non-online browser should
@@ -119,4 +119,39 @@ test('classifySyncStatus: a stuck retry surfaces as syncing, and draining flips 
     assert.equal(
         classifySyncStatus({ online: true, status: { totalQueueSize: 0, activeNamespaces: 1 } }).state,
         'synced');
+});
+
+// ---------------------------------------------------------------------------
+// GT-36: the reconnect banner must not claim a sync that never happened.
+//
+// With no account at all (desktop shows "Local only", the More-nav dot is
+// grey), going offline and back online announced "Back online. Synced".
+// Nothing had been synced anywhere - there was nowhere to sync to.
+// ---------------------------------------------------------------------------
+
+test('reconnect wording: a signed-out, local-only user is told only that they are back', () => {
+    assert.equal(reconnectMessage('idle'), 'Back online');
+});
+
+test('reconnect wording: "Synced" is reserved for an actual completed sync', () => {
+    assert.equal(reconnectMessage('synced'), 'Back online. Synced');
+});
+
+test('reconnect wording: work still queued says so instead of claiming success', () => {
+    assert.equal(reconnectMessage('syncing'), 'Back online. Syncing…');
+});
+
+test('reconnect wording: signed in but not attached yet is "Connecting"', () => {
+    assert.equal(reconnectMessage('connecting'), 'Back online. Connecting…');
+});
+
+test('reconnect wording: an unknown state never invents a sync', () => {
+    assert.equal(reconnectMessage('offline'), 'Back online');
+    assert.equal(reconnectMessage(undefined), 'Back online');
+});
+
+test('the local-only state is exactly the one that must not say "Synced"', () => {
+    const state = classifySyncStatus({ online: true, status: { totalQueueSize: 0, activeNamespaces: 0 }, signedIn: false });
+    assert.equal(state.state, 'idle');
+    assert.equal(reconnectMessage(state.state), 'Back online');
 });

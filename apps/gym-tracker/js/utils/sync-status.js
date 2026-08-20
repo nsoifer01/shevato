@@ -70,10 +70,27 @@ function applyToPill(el, { state, label }) {
 }
 
 /**
+ * The reconnect message that matches the state we came back to (GT-36).
+ *
+ *   synced     - a signed-in account whose queue has drained. "Synced" is true.
+ *   syncing    - signed in, work still queued. Say it is in flight.
+ *   idle       - no account at all. Local-only, so nothing synced anywhere.
+ *   connecting - signed in but the sync layer has not attached yet.
+ */
+export function reconnectMessage(state) {
+    switch (state) {
+        case 'synced': return 'Back online. Synced';
+        case 'syncing': return 'Back online. Syncing…';
+        case 'connecting': return 'Back online. Connecting…';
+        default: return 'Back online';
+    }
+}
+
+/**
  * Decide what the mobile banner should show.
  *
  *   - state === 'offline' → persistent banner.
- *   - prev was 'offline' and now isn't → green "Synced" for ~2 s, then hide.
+ *   - prev was 'offline' and now isn't → a brief reconnect line, then hide.
  *   - any other transition → hide.
  */
 function updateBanner(prev, next) {
@@ -93,16 +110,19 @@ function updateBanner(prev, next) {
     if (justRecovered) {
         clearTimeout(recoveryTimer);
         bannerEl.hidden = false;
-        bannerEl.dataset.state = 'synced';
+        bannerEl.dataset.state = next.state === 'synced' ? 'synced' : 'online';
         bannerEl.dataset.fading = 'false';
-        bannerEl.textContent = 'Back online. Synced';
+        // GT-36: only claim a sync when one actually happened. A signed-out,
+        // local-only user reconnecting was told "Back online. Synced" - there
+        // was no account and nothing had been synced anywhere.
+        bannerEl.textContent = reconnectMessage(next.state);
         recoveryTimer = setTimeout(() => {
             if (!bannerEl) return;
             bannerEl.dataset.fading = 'true';
             // Wait for the CSS opacity transition before fully hiding,
             // so screen readers don't get a jarring re-announce.
             setTimeout(() => {
-                if (bannerEl && bannerEl.dataset.state === 'synced') {
+                if (bannerEl && bannerEl.dataset.state !== 'offline') {
                     bannerEl.hidden = true;
                     bannerEl.dataset.fading = 'false';
                 }
@@ -127,8 +147,15 @@ function render() {
     lastRender = next;
 
     for (const el of pillEls) applyToPill(el, next);
-    for (const el of dotEls) el.dataset.state = next.state;
+    for (const el of dotEls) applyToDot(el, next);
     updateBanner(prev, next);
+}
+
+/** Give the compact dot the same meaning the pill states in words. */
+function applyToDot(el, { state, label }) {
+    el.dataset.state = state;
+    el.setAttribute('aria-label', `Cloud sync: ${label}`);
+    el.title = `Cloud sync: ${label}`;
 }
 
 function createPill() {
@@ -158,7 +185,12 @@ export function mountSyncStatusPill() {
     // Same state colour mapping as the pill, but no text — these are
     // pre-existing elements in the markup, so we just track them.
     dotEls = Array.from(document.querySelectorAll('[data-sync-status-dot]'));
-    dotEls.forEach((el) => { el.dataset.state = 'connecting'; });
+    dotEls.forEach((el) => {
+        el.dataset.state = 'connecting';
+        // The dot had no name and no tooltip, so "what is the small grey dot
+        // on More?" had no answer anywhere in the product (GT-36, ancillary).
+        el.setAttribute('role', 'img');
+    });
 
     bannerEl = document.getElementById('sync-banner');
 

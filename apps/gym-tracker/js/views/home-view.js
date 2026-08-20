@@ -4,9 +4,12 @@
  */
 import { app } from '../app.js';
 import { storageService } from '../services/StorageService.js';
-import { formatDate, formatWeight, showConfirmModal, showToast, formatSessionDateTime, parseLocalDate, escapeHtml } from '../utils/helpers.js';
+import { formatDate, showConfirmModal, showToast, formatSessionDateTime, parseLocalDate, escapeHtml, pluralize } from '../utils/helpers.js';
 import { orderPrograms } from '../utils/program-order.js';
 import { renderPausedBannerHTML, wirePausedBannerActions } from './paused-banner.js';
+import { readableActiveWorkout, wasExplicitlyPaused } from '../utils/active-workout.js';
+import { normalizeWeightUnit, volumeIn } from '../utils/units.js';
+import { isLoggedSession, performedExerciseCount } from '../utils/session-metrics.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
 import { sameId } from '../utils/id-utils.js';
 
@@ -99,8 +102,14 @@ class HomeView {
         }
         section.hidden = false;
 
-        const stats = AnalyticsService.getWeekStats(this.app.workoutSessions);
-        const unit = this.app.settings.weightUnit;
+        // GT-10: the same week window the Calendar, the workout week strip
+        // and the weekly achievements use - the one the user configured.
+        // GT-14: a session with nothing logged is not a workout.
+        const stats = AnalyticsService.getWeekStats(
+            this.app.workoutSessions.filter(isLoggedSession),
+            this.app.firstDayOfWeek,
+        );
+        const unit = normalizeWeightUnit(this.app.settings.weightUnit);
 
         const fmtDelta = (n, { positiveBetter = true, suffix = '' } = {}) => {
             if (n === 0) return '<span class="week-tile-delta">— vs last week</span>';
@@ -123,8 +132,8 @@ class HomeView {
             </div>
             <div class="week-tile">
                 <span class="week-tile-label">Volume</span>
-                <span class="week-tile-value">${Math.round(stats.volume).toLocaleString()} ${unit}</span>
-                ${fmtDelta(Math.round(stats.volumeDelta), { suffix: ` ${unit}` })}
+                <span class="week-tile-value">${Math.round(volumeIn(stats.volume, unit)).toLocaleString()} ${unit}</span>
+                ${fmtDelta(Math.round(volumeIn(stats.volumeDelta, unit)), { suffix: ` ${unit}` })}
             </div>
             <div class="week-tile">
                 <span class="week-tile-label">Time</span>
@@ -195,7 +204,8 @@ class HomeView {
         const sortMode = storageService.getProgramSort() || 'custom';
         const savedOrder = storageService.getProgramOrder() || [];
         const programs = orderPrograms(this.app.programs, sortMode, savedOrder);
-        const pausedWorkout = storageService.getActiveWorkout();
+        // Any recoverable workout, not just an explicitly paused one (GT-01).
+        const pausedWorkout = readableActiveWorkout(storageService.getActiveWorkout());
 
         if (programs.length === 0) {
             container.innerHTML = `
@@ -213,7 +223,7 @@ class HomeView {
                 <h3>Your Programs</h3>
                 <div class="quick-programs">
                     ${programs.map(program => {
-                        const isPaused = pausedWorkout && pausedWorkout.paused && sameId(pausedWorkout.programId, program.id);
+                        const isPaused = !!pausedWorkout && sameId(pausedWorkout.programId, program.id);
                         const hasExercises = program.exercises.length > 0;
 
                         if (isPaused) {
@@ -221,7 +231,7 @@ class HomeView {
                                 <div class="quick-program-item paused" data-action="resume-paused" role="button" tabindex="0">
                                     <div class="program-info">
                                         <strong>${escapeHtml(program.name)}</strong>
-                                        <span class="paused-label"><i class="fas fa-pause"></i> Paused</span>
+                                        <span class="paused-label"><i class="fas fa-pause"></i> ${wasExplicitlyPaused(pausedWorkout) ? 'Paused' : 'Unfinished'}</span>
                                     </div>
                                     <i class="fas fa-play-circle"></i>
                                 </div>
@@ -231,7 +241,7 @@ class HomeView {
                                 <div class="quick-program-item" data-action="start-program" data-program-id="${program.id}" role="button" tabindex="0">
                                     <div class="program-info">
                                         <strong>${escapeHtml(program.name)}</strong>
-                                        <span>${program.exercises.length} exercises</span>
+                                        <span>${pluralize(program.exercises.length, 'exercise')}</span>
                                     </div>
                                     <i class="fas fa-play-circle"></i>
                                 </div>
@@ -271,7 +281,7 @@ class HomeView {
             return;
         }
 
-        const unit = this.app.settings.weightUnit;
+        const unit = normalizeWeightUnit(this.app.settings.weightUnit);
         container.innerHTML = recentSessions.map(session => `
             <div class="workout-card clickable" data-action="show-session" data-session-id="${session.id}" role="button" tabindex="0">
                 <div class="workout-card-header">
@@ -281,11 +291,11 @@ class HomeView {
                 <div class="workout-card-stats">
                     <div class="stat">
                         <i class="fas fa-weight"></i>
-                        ${Math.round(session.totalVolume).toLocaleString()}${unit}
+                        ${Math.round(volumeIn(session.totalVolume, unit)).toLocaleString()}${unit}
                     </div>
                     <div class="stat">
                         <i class="fas fa-list"></i>
-                        ${session.exercises.length} exercises
+                        ${pluralize(performedExerciseCount(session), 'exercise')}
                     </div>
                     ${session.duration ? `
                         <div class="stat">
@@ -339,13 +349,14 @@ class HomeView {
     }
 
     async startWorkoutWithProgram(programId) {
-        const pausedWorkout = storageService.getActiveWorkout();
+        const pausedWorkout = readableActiveWorkout(storageService.getActiveWorkout());
 
-        // Check if there's a paused workout
-        if (pausedWorkout && pausedWorkout.paused) {
+        // Any recoverable workout blocks a fresh start, paused or interrupted.
+        if (pausedWorkout) {
+            const label = wasExplicitlyPaused(pausedWorkout) ? 'paused' : 'unfinished';
             const confirmed = await showConfirmModal({
                 title: 'Workout In Progress',
-                message: `You have a paused workout "<strong>${escapeHtml(pausedWorkout.workoutDayName)}</strong>" with saved progress.<br><br>Starting a new workout will <strong>discard</strong> your paused workout.<br><br>Do you want to continue?`,
+                message: `You have a ${label} workout "<strong>${escapeHtml(pausedWorkout.workoutDayName)}</strong>" with saved progress.<br><br>Starting a new workout will <strong>discard</strong> it.<br><br>Do you want to continue?`,
                 confirmText: 'Start New Workout',
                 cancelText: 'Cancel',
                 isDangerous: true

@@ -67,14 +67,40 @@ test('getVolumeByCategoryInRange: unknown exerciseId buckets into other', () => 
     assert.deepEqual(out, [{ category: 'other', volume: 250 }]);
 });
 
-test('getVolumeByCategoryInRange: duration-only sets count toward volume', () => {
+// GT-04: seconds are not kilograms. A 60-second plank used to add "60" to
+// the kilogram volume of its muscle group, which is how Insights came to
+// report "Core 300 kg" for five minutes of planks.
+test('getVolumeByCategoryInRange: duration-only sets contribute NO weight volume', () => {
     const sessions = [session('2026-04-01', [
         { exerciseId: 3, sets: [{ duration: 60 }, { duration: 90 }] },
     ])];
     const start = AnalyticsService.toLocalDate('2026-04-01');
     const end = AnalyticsService.toLocalDate('2026-04-08');
     const out = AnalyticsService.getVolumeByCategoryInRange(sessions, db, start, end);
-    assert.deepEqual(out, [{ category: 'legs', volume: 150 }]);
+    assert.deepEqual(out, [], 'a category with only holds has no weight volume to chart');
+});
+
+test('getVolumeByCategoryInRange: a mixed session reports only its weight volume', () => {
+    const sessions = [session('2026-04-01', [
+        { exerciseId: 1, sets: [{ weight: 100, reps: 5 }] },   // 500
+        { exerciseId: 3, sets: [{ duration: 300 }] },          // 5 minutes held
+    ])];
+    const start = AnalyticsService.toLocalDate('2026-04-01');
+    const end = AnalyticsService.toLocalDate('2026-04-08');
+    const out = AnalyticsService.getVolumeByCategoryInRange(sessions, db, start, end);
+    const legs = out.find(o => o.category === 'legs');
+    assert.equal(legs, undefined, 'the plank category is not inflated by its seconds');
+    assert.equal(out.reduce((n, o) => n + o.volume, 0), 500);
+});
+
+test('getLastTrainedByCategory: a hold still counts as having trained the muscle', () => {
+    // Volume and "did you train this?" are different questions: a plank is
+    // real core work even though it carries no load.
+    const sessions = [session('2026-04-01', [
+        { exerciseId: 3, sets: [{ duration: 60 }] },
+    ])];
+    const out = AnalyticsService.getLastTrainedByCategory(sessions, db);
+    assert.equal(out.get('legs'), '2026-04-01');
 });
 
 test('getDailyVolumeMap: keys by date, sums sessions on the same day', () => {
@@ -91,4 +117,42 @@ test('getDailyVolumeMap: keys by date, sums sessions on the same day', () => {
 test('getDailyVolumeMap: returns empty map for empty input', () => {
     const map = AnalyticsService.getDailyVolumeMap([]);
     assert.equal(map.size, 0);
+});
+
+/**
+ * Regression: a category trained ONLY with timed work must not be reported as
+ * "not trained recently".
+ *
+ * The GT-04 fix made volume weight-only, and the staleness check was derived
+ * from volume, so core (planks) was permanently listed as neglected while the
+ * same row said "7 days since last trained". Staleness is about training, not
+ * tonnage.
+ */
+test('timed-only training keeps a category off the stale list', () => {
+    const db = [
+        { id: 463, name: 'Plank', category: 'core' },
+        { id: 3, name: 'Barbell Bench Press', category: 'chest' },
+    ];
+    const programs = [{ exercises: [{ exerciseId: 463 }, { exerciseId: 3 }] }];
+    const today = new Date('2026-08-19T12:00:00');
+    const sessions = [{
+        date: '2026-08-12',
+        exercises: [
+            // Planks only: real core work, zero weight volume.
+            { exerciseId: 463, sets: [{ weight: 0, reps: 0, duration: 90, completed: true }] },
+            { exerciseId: 3, sets: [{ weight: 100, reps: 5, duration: 0, completed: true }] },
+        ],
+    }];
+
+    const stale = AnalyticsService.getStaleProgramCategories(programs, sessions, db, { days: 14, today });
+    assert.equal(stale.find(x => x.category === 'core'), undefined,
+        'core was trained 7 days ago with planks and must not be stale');
+    assert.equal(stale.find(x => x.category === 'chest'), undefined);
+
+    // Outside the window it SHOULD be reported, with an honest day count.
+    const later = new Date('2026-09-15T12:00:00');
+    const staleLater = AnalyticsService.getStaleProgramCategories(programs, sessions, db, { days: 14, today: later });
+    const core = staleLater.find(x => x.category === 'core');
+    assert.ok(core, 'core is stale a month later');
+    assert.equal(core.daysSince, 34);
 });

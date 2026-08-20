@@ -2,6 +2,7 @@
  * Helper Utilities
  * Common utility functions used throughout the app
  */
+import { fromCanonicalWeight, KG_PER_LB } from './units.js';
 
 /**
  * Convert a raw muscleGroup string from the exercise database into a
@@ -165,10 +166,22 @@ export function formatTimeOfDay(value) {
 }
 
 /**
- * Format weight with unit
+ * "1 set" / "2 sets" - a count with its correctly inflected noun.
+ *
+ * The app shipped "1 sets", "1 exercises" and "9 exercises / 1 sets" on the
+ * history cards and the Home recent list (GT-33) because each call site
+ * hand-appended an "s". One helper, used everywhere a count is rendered.
+ *
+ * `plural` defaults to `singular + 's'`, which covers every noun the app
+ * actually counts; pass it explicitly for anything irregular.
  */
-export function formatWeight(weight, unit = 'kg') {
-    return `${weight}${unit}`;
+export function pluralize(count, singular, plural = `${singular}s`) {
+    return `${count} ${Math.abs(Number(count)) === 1 ? singular : plural}`;
+}
+
+/** The noun alone, correctly inflected - for "Sets: 1 set" style layouts. */
+export function pluralLabel(count, singular, plural = `${singular}s`) {
+    return Math.abs(Number(count)) === 1 ? singular : plural;
 }
 
 /**
@@ -187,17 +200,22 @@ export function formatSessionDateTime(session) {
 }
 
 /**
- * Convert weight between units
+ * Convert a weight between units, rounded to one decimal FOR DISPLAY.
+ *
+ * Kept for display-only call sites. Anything that stores the result must use
+ * `utils/units.js` `toCanonicalWeight` / `fromCanonicalWeight` instead:
+ * rounding on the way into storage is what makes a kg → lb → kg round trip
+ * drift (135 lb would come back as 134.9).
  */
 export function convertWeight(weight, fromUnit, toUnit) {
     if (fromUnit === toUnit) return weight;
 
     if (fromUnit === 'kg' && toUnit === 'lb') {
-        return Math.round(weight * 2.20462 * 10) / 10;
+        return Math.round((weight / KG_PER_LB) * 10) / 10;
     }
 
     if (fromUnit === 'lb' && toUnit === 'kg') {
-        return Math.round(weight * 0.453592 * 10) / 10;
+        return Math.round((weight * KG_PER_LB) * 10) / 10;
     }
 
     return weight;
@@ -315,10 +333,15 @@ export const SETS_CSV_HEADER = [
  * Flatten every COMPLETED set across all sessions into a per-set CSV.
  *
  * One row per completed set. Timed sets (duration > 0) report seconds in
- * `duration` and leave weight/reps empty; rep sets report weight + reps and
- * leave duration empty. `volume` mirrors the app's Set.volume rule (duration
- * for timed sets, weight × reps otherwise). `unit` is the session's temporary
- * unit when it has one, else the account unit.
+ * `duration` and leave weight, reps AND volume empty - a hold has no
+ * weight-volume, and the old behaviour of writing the seconds into `volume`
+ * under `unit=kg` shipped "60 kg" for a one-minute plank straight into the
+ * user's spreadsheet (GT-04). Rep sets report weight + reps and leave
+ * duration empty.
+ *
+ * Weights are stored canonically in kilograms and converted once here into
+ * `displayUnit`, which is stamped on every row - so the file is internally
+ * consistent instead of mixing units per session (GT-03).
  *
  * Returns { csv, rowCount } so callers can tell "nothing logged yet" from
  * "header plus rows" without re-walking the data.
@@ -328,11 +351,15 @@ export const SETS_CSV_HEADER = [
  * renamed exercise exports under ONE name instead of splitting rows
  * between the old and new spellings. Defaults to the snapshot as-is.
  */
-export function buildSetsCsv(sessions, defaultUnit = 'kg', resolveName = (id, fallback) => fallback) {
+export function buildSetsCsv(sessions, displayUnit = 'kg', resolveName = (id, fallback) => fallback) {
+    const unit = displayUnit === 'lb' ? 'lb' : 'kg';
     const lines = [SETS_CSV_HEADER.join(',')];
+    const show = (kg) => {
+        const converted = fromCanonicalWeight(kg, unit);
+        return converted === null ? '' : Math.round(converted * 100) / 100;
+    };
 
     (sessions || []).forEach((session) => {
-        const unit = session.sessionUnit || defaultUnit;
         (session.exercises || []).forEach((exercise) => {
             (exercise.sets || []).forEach((set, index) => {
                 if (!set.completed) return;
@@ -348,10 +375,10 @@ export function buildSetsCsv(sessions, defaultUnit = 'kg', resolveName = (id, fa
                     session.workoutDayName,
                     resolveName(exercise.exerciseId, exercise.exerciseName),
                     setNumber,
-                    timed ? '' : weight,
+                    timed ? '' : show(weight),
                     timed ? '' : reps,
                     timed ? duration : '',
-                    timed ? duration : weight * reps,
+                    timed ? '' : show(weight * reps),
                     unit,
                 ].map(escapeCsvField).join(','));
             });
@@ -386,6 +413,13 @@ export function computeGoalProgress(baseline, current, goal) {
     }
     return Math.max(0, Math.min(100, Math.round((moved / span) * 100)));
 }
+
+/**
+ * Distance from the bottom of the viewport the first toast sits at. The CSS
+ * adds the bottom-nav height on top via a calc(), so this is the gap ABOVE
+ * whatever chrome the current breakpoint has.
+ */
+const TOAST_BASE_OFFSET = 12;
 
 /**
  * Show toast notification.
@@ -424,16 +458,21 @@ export function showToast(message, type = 'info', duration = 3000, opts = {}) {
 
     document.body.appendChild(toast);
 
-    // Stack toasts vertically by calculating offset based on existing toasts.
-    // Initial top clears the fixed site header + sticky workout header so a
-    // toast never covers the workout controls (Item R2-8).
-    const existingToasts = document.querySelectorAll('.toast.show');
-    let offset = 116; // Initial top position
-    existingToasts.forEach(existingToast => {
-        const rect = existingToast.getBoundingClientRect();
-        offset = Math.max(offset, rect.bottom + 10);
+    // Toasts stack UPWARD from the bottom of the viewport.
+    //
+    // They used to be pinned to the top, which put "Program saved
+    // successfully" squarely over the Programs SORT row - the control the
+    // user reaches for next (GT-37). The bottom of the screen holds only the
+    // nav (which the offset clears) and, during rest, the timer dial (which
+    // CSS lifts them above), so nothing a user is about to press lives there.
+    const existing = Array.from(document.querySelectorAll('.toast.show'));
+    let offset = TOAST_BASE_OFFSET;
+    existing.forEach((el) => {
+        const rect = el.getBoundingClientRect();
+        const fromBottom = window.innerHeight - rect.top;
+        offset = Math.max(offset, fromBottom + 10);
     });
-    toast.style.top = `${offset}px`;
+    toast.style.bottom = `${offset}px`;
 
     setTimeout(() => { toast.classList.add('show'); }, 10);
 

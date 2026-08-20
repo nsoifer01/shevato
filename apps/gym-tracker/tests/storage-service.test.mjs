@@ -265,7 +265,7 @@ test('migrateImport passes an unknown future version through with data intact', 
 
 test('importAllData writes every present store and round-trips', () => {
     const svc = freshService();
-    const ok = svc.importAllData({
+    const result = svc.importAllData({
         version: '2.0',
         programs: [{ id: 1, name: 'Push' }],
         sessions: [{ id: 9, date: '2026-08-01', exercises: [] }],
@@ -273,7 +273,7 @@ test('importAllData writes every present store and round-trips', () => {
         customExercises: [{ id: 900001, name: 'Y-Raise' }],
         measurements: [{ id: 3, metric: 'waist', value: 82 }],
     });
-    assert.equal(ok, true);
+    assert.equal(result.ok, true);
     assert.equal(svc.getPrograms()[0].name, 'Push');
     assert.equal(svc.getWorkoutSessions()[0].id, 9);
     assert.equal(svc.getSettings().weightUnit, 'lb');
