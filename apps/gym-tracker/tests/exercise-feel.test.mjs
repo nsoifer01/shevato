@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { WorkoutExercise } from '../js/models/WorkoutExercise.js';
-import { setReachesMaxReps, allSetsReachMax, previousSessionFeelForExercise, nextFeel, shouldShowFeelModal } from '../js/utils/exercise-feel.js';
+import { setReachesMaxReps, allSetsReachMax, previousSessionFeelForExercise, nextFeel, shouldShowFeelPrompt } from '../js/utils/exercise-feel.js';
 
 // -------------------------------------------------------
 // WorkoutExercise.feel round-trip
@@ -241,15 +241,15 @@ test('nextFeel: toggles good <-> none (never bad)', () => {
     assert.equal(nextFeel('bad'), 'good');
 });
 
-test('shouldShowFeelModal: only when reaches-max and not already shown', () => {
+test('shouldShowFeelPrompt: only when reaches-max and not already shown', () => {
     const shown = {};
     // Not reaching max: never show.
-    assert.equal(shouldShowFeelModal(shown, 0, false), false);
+    assert.equal(shouldShowFeelPrompt(shown, 0, false), false);
     // Reaches max, not yet shown: show.
-    assert.equal(shouldShowFeelModal(shown, 0, true), true);
+    assert.equal(shouldShowFeelPrompt(shown, 0, true), true);
     // Caller marks it shown; second satisfaction must NOT re-show.
     shown[0] = true;
-    assert.equal(shouldShowFeelModal(shown, 0, true), false);
+    assert.equal(shouldShowFeelPrompt(shown, 0, true), false);
     // A different exercise index is independent.
-    assert.equal(shouldShowFeelModal(shown, 1, true), true);
+    assert.equal(shouldShowFeelPrompt(shown, 1, true), true);
 });

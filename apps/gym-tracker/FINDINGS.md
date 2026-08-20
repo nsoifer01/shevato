@@ -226,6 +226,24 @@ lone exercise in superset chrome during a workout (fixed 2026-08-12,
 - Custom-exercise form muscle options are Title Case values; setting
   lowercase values silently fails validation.
 
+## Two console "errors" that are Chrome policy, not app defects
+
+A headless smoke of the live workout logs these at error level:
+
+    Blocked call to navigator.vibrate because user hasn't tapped on the frame
+    Blocked attempt to show a 'beforeunload' confirmation panel for a frame
+    that never had a user gesture since its load
+
+Both are Chrome refusing a gesture-gated API, because a synthetic `.click()`
+is not a user gesture. The app is doing the right thing in both cases (haptics
+on a set toggle, an unsaved-workout guard on unload) and neither is a JS
+exception - filtering them out of a real run leaves **zero**.
+
+So a "no console errors" assertion in a headless probe has to exclude
+`navigator.vibrate`, `beforeunload` and `chromestatus.com` notices, or it fails
+on behaviour that is correct. Same family as the other synthetic-gesture traps
+in the probe-hazards section.
+
 ## Running the browser suite while ALSO driving your own headless browsers
 
 The full `npm run test:browser` run during the 2026-08-20 round reported 5

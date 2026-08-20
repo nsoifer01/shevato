@@ -48,7 +48,7 @@ A comprehensive, mobile-first workout tracking application built with vanilla Ja
 - Time format (12-hour or 24-hour; defaults to 24-hour)
 - First day of week (Sunday or Monday; defaults to Monday)
 - Show program schedule toggle (adds scheduled days to the calendar and workout screen)
-- Configurable rest timer
+- Configurable rest timer. It renders as a compact ~146px circular dial floating above the bottom nav: countdown and "Next set in" / "Next exercise in" centred, with **+30s** and **Skip** side by side INSIDE the circle. Only those two buttons take pointer events - the ring, the glow and the disc are passive, so the dial never intercepts a tap meant for the workout controls it floats over
 - Separate sound and vibration toggles, plus the seconds-left thresholds for the first warning sound and the countdown
 - Plate calculator configuration, kept as INDEPENDENT per-unit equipment profiles: a kg rack and an lb rack are different physical objects, so each unit has its own bar weight, plate list and per-exercise bar overrides, and switching the display unit swaps profiles rather than reinterpreting one as the other. The kg stack defaults to 25, 20, 15, 10, 5, 2.5, 1.25 and the lb stack to 45, 35, 25, 10, 5, 2.5, each with a live preview
 - Per-exercise bar/base weight: bar-based exercises show the bar their plate hints are solved against and let you override it (an EZ or trap bar is not the olympic bar), with one tap to return to the profile default

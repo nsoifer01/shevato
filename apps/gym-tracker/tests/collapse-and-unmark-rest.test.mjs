@@ -36,7 +36,7 @@ function makeView(exercises) {
     view.currentWorkoutSession = { exercises };
     view.collapsedExercises = {};
     view._prevCompleteState = {};
-    view._feelModalShown = {};
+    view._feelPromptShown = {};
     view.activeRestExerciseIndex = -1;
     view.activeRestTimerId = null;
     view.skipRestCalls = 0;

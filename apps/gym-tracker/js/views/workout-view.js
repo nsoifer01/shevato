@@ -17,7 +17,7 @@ import { AnalyticsService } from '../services/AnalyticsService.js';
 import { AchievementService } from '../services/AchievementService.js';
 import { calculatePlates, formatPlateStack } from '../utils/plate-calculator.js';
 import { restTickCues, isWorkoutComplete } from '../utils/rest-cues.js';
-import { allSetsReachMax, previousSessionFeelForExercise, nextFeel, shouldShowFeelModal } from '../utils/exercise-feel.js';
+import { allSetsReachMax, previousSessionFeelForExercise, nextFeel, shouldShowFeelPrompt } from '../utils/exercise-feel.js';
 import { recordPrSupersede, uniquePrChainCount, recomputePrSlots } from '../utils/pr-session.js';
 import { mergeSessionWithProgram } from '../utils/session-merge.js';
 import { weekStrip } from '../utils/program-schedule.js';
@@ -71,7 +71,7 @@ class WorkoutView {
         // Item R3-4: per-session bookkeeping of exercise indices for which the
         // feel modal has already been shown, so it appears at most once per
         // exercise per session.
-        this._feelModalShown = {};
+        this._feelPromptShown = {};
         // Item 6: warm-up strip state, keyed `"<exerciseIndex>:<rampIndex>"` for
         // ticked-off ramp rows and by exercise index for the expanded strip.
         // View-only on purpose: a warm-up row is never a Set, so it can never
@@ -917,13 +917,13 @@ case 'toggle-warmup':
         this.collapsedExercises = {};
         this._prevCompleteState = {};
         this._activeRestType = null;
-        this._feelModalShown = {};
+        this._feelPromptShown = {};
         this.warmupDone = {};
         this.warmupExpanded = {};
         // Item R3-4: don't re-pop the feel modal on resume for exercises that
         // already satisfy the all-sets-at-max condition. The modal only fires on
         // the commit transition; mark satisfied exercises as already shown.
-        this._seedFeelModalShownFromSession();
+        this._seedFeelPromptShownFromSession();
         this._seedCollapseStateFromSession();
 
         // Start timer with saved elapsed time
@@ -1222,7 +1222,7 @@ case 'toggle-warmup':
         this.collapsedExercises = {};
         this._prevCompleteState = {};
         this._activeRestType = null;
-        this._feelModalShown = {};
+        this._feelPromptShown = {};
         this.warmupDone = {};
         this.warmupExpanded = {};
 
@@ -1941,7 +1941,7 @@ case 'toggle-warmup':
      * Item R3-4: whether the exercise newly satisfies the all-sets-at-max
      * condition (every target set completed at the max of its rep range).
      * Duration exercises never qualify. Shared by the render path and the
-     * commit/resume feel-modal triggers.
+     * commit/resume feel-prompt triggers.
      */
     _exerciseReachesMax(exercise) {
         if (!exercise) return false;
@@ -1967,10 +1967,10 @@ case 'toggle-warmup':
      * all-sets-at-max condition as "modal already shown" so the picker does not
      * re-pop for them (it only fires on the commit transition).
      */
-    _seedFeelModalShownFromSession() {
+    _seedFeelPromptShownFromSession() {
         const exercises = this.currentWorkoutSession?.exercises || [];
         exercises.forEach((exercise, i) => {
-            if (this._exerciseReachesMax(exercise)) this._feelModalShown[i] = true;
+            if (this._exerciseReachesMax(exercise)) this._feelPromptShown[i] = true;
         });
     }
 
@@ -1982,13 +1982,13 @@ case 'toggle-warmup':
      * closes without recording (the exercise still auto-collapses because it is
      * complete).
      */
-    maybeShowFeelModal(exerciseIndex) {
+    maybeShowFeelPrompt(exerciseIndex) {
         const exercise = this.currentWorkoutSession?.exercises[exerciseIndex];
         if (!exercise) return;
         const reaches = this._exerciseReachesMax(exercise);
-        if (!shouldShowFeelModal(this._feelModalShown, exerciseIndex, reaches)) return;
+        if (!shouldShowFeelPrompt(this._feelPromptShown, exerciseIndex, reaches)) return;
 
-        this._feelModalShown[exerciseIndex] = true;
+        this._feelPromptShown[exerciseIndex] = true;
         this.showFeelPrompt(exerciseIndex);
     }
 
@@ -2905,7 +2905,7 @@ case 'toggle-warmup':
         // Item R3-4: if this commit just made the exercise satisfy the
         // all-sets-at-max condition, show the feel picker modal (once per
         // exercise per session). Picking collapses the exercise.
-        this.maybeShowFeelModal(exerciseIndex);
+        this.maybeShowFeelPrompt(exerciseIndex);
 
         // Final set of the LAST exercise -> workout complete: no rest of any
         // kind, and jump to the top where the Finish button lives.
@@ -3145,14 +3145,14 @@ case 'toggle-warmup':
 
     /**
      * Item R2-4 / #18: after a set is edited or deleted, the per-exercise derived
-     * state (auto-collapse, _prevCompleteState, _feelModalShown) must equal a
+     * state (auto-collapse, _prevCompleteState, _feelPromptShown) must equal a
      * fresh evaluation — the commit path keeps these in sync, the edit/delete
      * paths historically did not. Mirrors commitPlannedSet's bookkeeping:
      *   - re-evaluate complete/collapse (respecting the user-explicit-expand
      *     invariant collapsedExercises[i] === false, and clearing that
      *     suppression on a complete->incomplete transition so auto-collapse can
      *     fire again);
-     *   - clear _feelModalShown when the exercise no longer reaches max, so
+     *   - clear _feelPromptShown when the exercise no longer reaches max, so
      *     bringing it back to max re-shows the modal (left as-is if it still
      *     reaches max, since the modal already fired).
      * Returns the freshly computed `isNowComplete` so callers can decide whether
@@ -3183,7 +3183,7 @@ case 'toggle-warmup':
         this._prevCompleteState[exerciseIndex] = isNowComplete;
 
         if (!this._exerciseReachesMax(exercise)) {
-            this._feelModalShown[exerciseIndex] = false;
+            this._feelPromptShown[exerciseIndex] = false;
         }
 
         return isNowComplete;
@@ -3233,10 +3233,10 @@ case 'toggle-warmup':
         if (pr && !hadPr) this.announcePR(pr);
 
         // #18: keep the per-exercise derived state (collapse / complete /
-        // feel-modal) consistent with the edited reps, then mirror the commit
+        // feel-prompt) consistent with the edited reps, then mirror the commit
         // path by (re)showing the feel modal if the edit newly satisfies the
-        // all-sets-at-max condition. maybeShowFeelModal self-guards via
-        // shouldShowFeelModal, so it won't double-show or fire when incomplete.
+        // all-sets-at-max condition. maybeShowFeelPrompt self-guards via
+        // shouldShowFeelPrompt, so it won't double-show or fire when incomplete.
         // #23: a save IS a deliberate set action, so re-arm auto-collapse on a
         // still-complete exercise even if the user had manually expanded it.
         this._recomputeExerciseDerivedState(exerciseIndex, true);
@@ -3244,7 +3244,7 @@ case 'toggle-warmup':
         this.persistActiveWorkout();
         this.rerenderExercise(exerciseIndex);
 
-        this.maybeShowFeelModal(exerciseIndex);
+        this.maybeShowFeelPrompt(exerciseIndex);
     }
 
     /**
@@ -3306,10 +3306,10 @@ case 'toggle-warmup':
         // the earlier set's badge, so patching a single slot is not enough.
         this.rebuildSessionPrSlots();
 
-        // #18: keep collapse / complete / feel-modal derived state consistent
+        // #18: keep collapse / complete / feel-prompt derived state consistent
         // with the post-delete sets. This clears the manual-expand suppression on
         // a complete->incomplete transition (so auto-collapse re-fires later) and
-        // resets _feelModalShown when the exercise no longer reaches max (so
+        // resets _feelPromptShown when the exercise no longer reaches max (so
         // re-reaching max re-shows the modal).
         this._recomputeExerciseDerivedState(exerciseIndex);
 

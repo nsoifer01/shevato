@@ -46,7 +46,7 @@ export function allSetsReachMax(sets, targetSets, slotMaxOf) {
  * `shownMap` is a plain object of exerciseIndex -> true (mutated by the caller
  * when it actually shows the modal).
  */
-export function shouldShowFeelModal(shownMap, exerciseIndex, reachesMax) {
+export function shouldShowFeelPrompt(shownMap, exerciseIndex, reachesMax) {
     if (!reachesMax) return false;
     return !(shownMap && shownMap[exerciseIndex]);
 }

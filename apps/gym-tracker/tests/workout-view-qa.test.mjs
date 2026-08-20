@@ -319,9 +319,9 @@ test('the feel prompt sits outside the collapsible body so a complete card still
 });
 
 test('the feel prompt still fires at most once per exercise per session', () => {
-    const body = extractClassMethod(src, 'maybeShowFeelModal', 'workout-view.js');
-    assert.match(body, /shouldShowFeelModal\(this\._feelModalShown/);
-    assert.match(body, /this\._feelModalShown\[exerciseIndex\] = true/);
+    const body = extractClassMethod(src, 'maybeShowFeelPrompt', 'workout-view.js');
+    assert.match(body, /shouldShowFeelPrompt\(this\._feelPromptShown/);
+    assert.match(body, /this\._feelPromptShown\[exerciseIndex\] = true/);
 });
 
 test('timed exercises are still excluded from the feel prompt', () => {
