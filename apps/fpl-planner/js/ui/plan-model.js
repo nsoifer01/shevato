@@ -232,15 +232,24 @@ export function assessData(dataStatus, { now = Date.now() } = {}) {
 // covers everything that would change the answer: the gameweek, exactly which
 // players are held, the money and free transfers available, and each held
 // player's price and availability status.
-export function inputFingerprint(squadState, gameState) {
+export function inputFingerprint(squadState, gameState, plan = null) {
   if (!squadState) return '';
+  // A draft squad state holds no picks and banks the whole budget; the squad
+  // and the money it describes only exist on the plan. Fingerprinting the raw
+  // draft state made a built draft and its restored manual twin read as
+  // different inputs, so every reload recorded a phantom new version. With
+  // `plan` given (every post-plan call site), a draft fingerprints as the
+  // squad the plan settled on, exactly what the restore will hold as picks.
+  const isDraft = squadState.source === 'draft' && plan;
   const parts = [
     `gw:${squadState.gw}`,
-    `bank:${squadState.bankTenths}`,
+    `bank:${isDraft ? plan.bankAfterTenths : squadState.bankTenths}`,
     `ft:${squadState.freeTransfers}`,
     `chips:${(squadState.chipsAvailable || []).slice().sort().join(',')}`,
   ];
-  const ids = (squadState.picks || []).map(p => p.playerId).slice().sort((a, b) => a - b);
+  const ids = isDraft
+    ? (plan.squad || []).slice().sort((a, b) => a - b)
+    : (squadState.picks || []).map(p => p.playerId).slice().sort((a, b) => a - b);
   for (const id of ids) {
     const p = gameState && gameState.players ? readPlayer(gameState, id) : null;
     parts.push(p ? `${id}:${p.nowCost}:${p.status}` : `${id}`);

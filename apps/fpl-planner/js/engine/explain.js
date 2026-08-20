@@ -15,6 +15,7 @@
 
 import { makeReason, fmtValue, squadTrajectory, chipLabel, xpOf, discountWeights } from './chips.js';
 import { hitCost, transferStateOf, isUnlimited } from './transfer-state.js';
+import { openingSquadMoney } from './squad.js';
 
 // The exact neutral wording used whenever the squad on file differs from what
 // was recommended last time. Exported so the UI cannot reinvent it in a less
@@ -78,8 +79,11 @@ const STATUS_WORDS = {
 // ---------------------------------------------------------------------------
 
 export function planHeadline(plan, { isDraft } = {}) {
-  if (isDraft) return 'Build this opening 15';
+  // A chip outranks the opening-squad frame: a manual pre-season squad can
+  // legally play Bench Boost or Triple Captain in GW1, and that decision is
+  // the headline. A built draft never carries a chip, so drafts are unmoved.
   if (plan.chip) return `Play your ${chipLabel(plan.chip)}`;
+  if (isDraft) return 'Build this opening 15';
   if (plan.transferCount === 0) {
     return plan.freeTransfersAfter > 0 ? 'Roll your transfer' : 'Make no transfers';
   }
@@ -404,7 +408,10 @@ export function explainPlan(plan, context = {}) {
     bullets.push(makeReason(
       'draft_spend',
       'The 15 costs {v} of your budget.',
-      plan.moneyOutTenths,
+      // Through the one pre-season money derivation: for a draft this is the
+      // plan's moneyOut, and for a manual squad (moneyOut 0, the fifteen is
+      // already held) it is what the fifteen actually costs of the budget.
+      openingSquadMoney({ plan, rules: ctx.rules }).spendTenths,
       'tenths',
     ));
   }

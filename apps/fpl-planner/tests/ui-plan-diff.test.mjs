@@ -251,6 +251,34 @@ test('the action key ignores what does not change the advice and catches what do
   assert.notEqual(actionKey(base), actionKey({ ...base, transfersIn: [103] }));
 });
 
+/* ------------------------------------------------------------- pre-season */
+
+test('pre-season versions never claim the bank moved', () => {
+  // Before GW1 the same squad is stored in two money conventions: a draft
+  // version banks the whole budget, its restored manual twin banks what is
+  // left after the fifteen. Free transfers are Infinity pre-season, which
+  // JSON round-trips to null, and that is the marker: with no finite transfer
+  // count on both sides the bank comparison is across conventions, not across
+  // events, and must stay silent.
+  const before = inputs({ bank: 1000, ft: null });
+  const after = inputs({ bank: 0, ft: null });
+  const out = diff(before, after, { nextPlan: ROLL });
+  assert.equal(out.changed, false);
+  assert.ok(!out.reasons.some(r => r.code === 'bank_moved'),
+    `no bank_moved before the first deadline, got: ${out.why}`);
+});
+
+test('planInputs records draft money in the remaining-budget convention', () => {
+  // A draft squad state holds the whole budget (nothing is bought until the
+  // plan exists), so its comparable bank is what the plan leaves over, the
+  // same quantity a manual squad state carries directly.
+  const projections = { gwFrom: 1, byPlayer: new Map() };
+  const draftState = { source: 'draft', picks: [], bankTenths: 1000, freeTransfers: Infinity, chipsAvailable: [] };
+  const plan = { gw: 1, squad: [], transfersOut: [], transfersIn: [], bankAfterTenths: 160 };
+  const snap = planInputs({ plan, projections, squadState: draftState, gameState, dataStatus: null });
+  assert.equal(snap.bank, 160);
+});
+
 /* --------------------------------------------- the snapshot that makes it work */
 
 test('the stored snapshot covers every player either plan could name, and nothing else', () => {

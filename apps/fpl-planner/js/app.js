@@ -267,8 +267,13 @@ async function computePlan(squadState, { reason }) {
   state.bundle = bundle;
   state.loadError = null;
   state.squadState = squadState;
-  state.isDraft = squadState.source === 'draft';
-  state.fingerprint = inputFingerprint(squadState, state.gameState);
+  // "Draft" to the UI means "a pre-season opening squad", whichever way it
+  // was encoded: built by the optimizer (source 'draft') or typed/restored
+  // (source 'manual', which only exists before GW1). Keying this off 'draft'
+  // alone gave the restored squad the in-season hero, chip card and money
+  // copy while the header said transfers were unlimited.
+  state.isDraft = squadState.source === 'draft' || squadState.source === 'manual';
+  state.fingerprint = inputFingerprint(squadState, state.gameState, bundle.current);
   // A fresh plan is a fresh deadline to watch.
   state.deadlineHandled = false;
 
@@ -726,7 +731,7 @@ function planView() {
     topNotices(),
     state.slots.hero,
     state.slots.fresh,
-    state.isDraft || bundle.squadState.source === 'manual'
+    state.isDraft
       ? draftCard({
         bundle,
         gameState: state.gameState,

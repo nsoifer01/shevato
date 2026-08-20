@@ -26,9 +26,10 @@ const { buildSquadState } = await import('../js/engine/squad.js');
 const { buildPlan } = await import('../js/engine/planner.js');
 const { formatMoney, xp } = await import('../js/ui/format.js');
 const {
-  heroCard, transfersCard, whyCard, whyNotCard, renderWhyNot, futureCard,
+  heroCard, transfersCard, draftCard, whyCard, whyNotCard, renderWhyNot, futureCard,
   alternativesCard, statusCard, withheldView, chipInventory, evidenceLabel,
 } = await import('../js/ui/dashboard.js');
+const { manualSquadState } = await import('../js/ui/preseason.js');
 
 const APP = join(dirname(fileURLToPath(import.meta.url)), '..');
 const sample = (name) => JSON.parse(readFileSync(join(APP, 'data', 'sample', `${name}.json`), 'utf8'));
@@ -134,6 +135,41 @@ test('a hit is priced in points on the money row', () => {
     explanation: { ...plan.explanation, transferReasons: [{ out: outId, in: inId, gwGain: 2, horizonGain: 5, reasons: [] }] },
   });
   assert.match(textOf(transfersCard({ bundle: hitPlan, gameState })), /Points cost\s*-4/);
+});
+
+/* ---------------------------------------------------------- opening squad */
+
+test('the opening-squad card tells one money story for both pre-season encodings', async () => {
+  const escapeRe = (v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const budget = gameState.rules.budgetTenths;
+
+  // The manual encoding: the fifteen held as picks, the remaining budget in
+  // the bank. This is what a typed squad and a restored snapshot both produce,
+  // and it is the encoding that used to render as "£0.0m of the £0.0m budget".
+  const ids = squadState.picks.map(p => p.playerId);
+  const manual = manualSquadState({ ids, gameState, gw, entry: files.entry });
+  const mb = await buildPlan({ gameState, squadState: manual, options: { horizon: 3, seed: 7 } });
+  const mText = textOf(draftCard({ bundle: mb, gameState }));
+  const mSpend = budget - mb.current.bankAfterTenths;
+
+  assert.match(mText, new RegExp(`costs ${escapeRe(formatMoney(mSpend))} of the ${escapeRe(formatMoney(budget))} budget`),
+    `the fifteen is priced against the real budget, got: ${mText.slice(0, 160)}`);
+  assert.doesNotMatch(mText, /£0\.0m of the £0\.0m/);
+  assert.match(mText, new RegExp(`Budget ${escapeRe(formatMoney(budget))}`));
+  assert.match(mText, new RegExp(`Squad cost ${escapeRe(formatMoney(mSpend))}`));
+  assert.match(mText, new RegExp(`Left in the bank ${escapeRe(formatMoney(mb.current.bankAfterTenths))}`));
+
+  // The draft encoding: no picks yet, the plan carries the fifteen. Same
+  // card, same derivation, same story.
+  const draftState = {
+    entry: files.entry, history: files.history, transfers: files.transfers,
+    picks: null, gameState, gw,
+  };
+  const db = await buildPlan({ gameState, squadState: buildSquadState(draftState), options: { horizon: 3, seed: 7 } });
+  const dText = textOf(draftCard({ bundle: db, gameState }));
+  const dSpend = budget - db.current.bankAfterTenths;
+  assert.match(dText, new RegExp(`costs ${escapeRe(formatMoney(dSpend))} of the ${escapeRe(formatMoney(budget))} budget`));
+  assert.doesNotMatch(dText, /£0\.0m of the £0\.0m/);
 });
 
 /* --------------------------------------------------------------------- why */

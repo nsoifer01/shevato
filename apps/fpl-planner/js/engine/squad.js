@@ -113,6 +113,24 @@ function applyPending({ list, pending }) {
   return { picks: out, moneyIn, moneyOut, count: pending.length };
 }
 
+// The one money story a pre-season squad has, whichever way it was encoded.
+//
+// Before the first deadline the same fifteen exists in two SquadState shapes:
+// a DRAFT holds no picks yet (the whole budget sits in the bank and the plan's
+// moneyOut is what the fifteen costs), while a MANUAL squad, typed in or
+// restored from a snapshot, holds the fifteen as picks with only the change
+// left in the bank. Both are correct for the engine, but any screen that reads
+// bankBeforeTenths as "the budget" is right for one encoding and nonsense for
+// the other; that is how a restored squad came to read "It costs £0.0m of the
+// £0.0m budget". Because a pre-season squad's value IS the budget, one formula
+// covers both encodings, including a plan that reshapes the fifteen: what is
+// left is the plan's closing bank, and the spend is everything else.
+export function openingSquadMoney({ plan, rules }) {
+  const budgetTenths = rules.budgetTenths;
+  const remainingTenths = plan.bankAfterTenths;
+  return { budgetTenths, spendTenths: budgetTenths - remainingTenths, remainingTenths };
+}
+
 export function buildSquadState({ entry, history, transfers, picks, gameState, gw, source }) {
   const rules = gameState.rules;
   const targetGw = gw ?? gameState.nextEvent ?? gameState.currentEvent;

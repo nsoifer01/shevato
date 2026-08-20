@@ -22,6 +22,7 @@ import { buildSquadState } from '../js/engine/squad.js';
 import { buildPlan } from '../js/engine/planner.js';
 import { fmtValue, discountWeights, xpOf, CHIP_PARAMS } from '../js/engine/chips.js';
 import { explainPlan, whyNot, planHeadline, REBUILD_NOTICE, EXPLAIN_PARAMS } from '../js/engine/explain.js';
+import { manualSquadState } from '../js/ui/preseason.js';
 import { assembleSampleBundle } from '../js/data/sample.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -368,6 +369,39 @@ test('every number in every sentence of a roll, a chip and a draft is an engine 
   });
   assert.equal(draft.current.explanation.headline, 'Build this opening 15');
   sweep(draft, draft.current, draft.current.explanation, 5, 'draft');
+});
+
+test('a manual pre-season squad is explained as an opening 15, never as an in-season roll', async () => {
+  // The squad exactly as the app builds it when a fifteen is typed in or
+  // restored from a snapshot before GW1: the real manualSquadState, planned
+  // for gameweek one. This is the second encoding of the pre-season squad
+  // (the fifteen held as picks, the remaining budget in the bank), and its
+  // explanation must tell the same story the draft encoding tells.
+  const players = roster();
+  const gameState = makeGameState(players, 1);
+  const projections = makeProjections(gameState, 1, 9, () => 6);
+  // Chips withheld: flat projections make a bench boost look enormous, and a
+  // chip headline outranks the opening-squad one by design. This test is
+  // about the no-chip, no-transfer shape, the one every restored squad hits.
+  const squadState = { ...manualSquadState({ ids: SQUAD_IDS, gameState, gw: 1 }), chipsUsed: NO_CHIPS, chipsAvailable: [] };
+  const bundle = await buildPlan({
+    gameState, squadState, options: { horizon: 5, seed: 3, projections, strength: {} },
+  });
+  const plan = bundle.current;
+
+  assert.equal(plan.transferCount, 0, 'flat projections leave no gain to transfer for');
+  assert.equal(plan.explanation.headline, 'Build this opening 15',
+    'the headline is the opening-squad one, not "Roll your transfer"');
+
+  const spend = plan.explanation.bullets.find(b => b.code === 'draft_spend');
+  assert.ok(spend, 'the spend bullet is present for the manual encoding too');
+  assert.equal(spend.value, RULES.budgetTenths - plan.bankAfterTenths,
+    'and it prices the fifteen against the real budget, not against the empty bank');
+
+  const roll = plan.explanation.rollReason;
+  assert.ok(roll && roll.reasons.some(r => r.code === 'roll_preseason'),
+    'the roll reasoning is the pre-season sentence, not banked-transfer value');
+  sweep(bundle, plan, plan.explanation, 5, 'manual-preseason');
 });
 
 test('the plan-level bullets carry the plan-level numbers, to the digit', async () => {

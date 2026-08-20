@@ -257,6 +257,30 @@ test('the fingerprint is order independent, so a reordered squad is not a change
   assert.equal(inputFingerprint(squadA, gameState), inputFingerprint(reordered, gameState));
 });
 
+test('a built draft and its restored manual squad carry the same fingerprint', () => {
+  // Before GW1 the same fifteen exists in two encodings: the draft the
+  // optimizer just built (no picks yet, the full budget in the bank, the plan
+  // carrying the squad) and the manual squad a reload restores (the fifteen
+  // held as picks, the remaining budget in the bank). If their fingerprints
+  // differ, every reload records a phantom new version of an unchanged plan
+  // and the differ then narrates a bank move that never happened.
+  const ids = [...gameState.players.keys()].slice(0, 15);
+  const chips = ['3xc', 'bboost'];
+  const draftState = {
+    gw: 1, bankTenths: 1000, freeTransfers: Infinity, chipsAvailable: chips,
+    picks: [], source: 'draft',
+  };
+  const plan = { squad: ids.slice().reverse(), bankAfterTenths: 160 };
+  const manualState = {
+    gw: 1, bankTenths: 160, freeTransfers: Infinity, chipsAvailable: chips,
+    picks: ids.map(playerId => ({ playerId })), source: 'manual',
+  };
+  assert.equal(
+    inputFingerprint(draftState, gameState, plan),
+    inputFingerprint(manualState, gameState),
+  );
+});
+
 test('a price or status change moves the fingerprint', () => {
   const before = inputFingerprint(squadA, gameState);
   const id = squadA.picks[0].playerId;

@@ -72,7 +72,14 @@ export function planInputs({ plan, projections, squadState, gameState, dataStatu
   }
 
   return {
-    bank: squadState ? squadState.bankTenths : null,
+    // A draft squad state banks the whole budget because nothing is bought
+    // until the plan exists; the comparable quantity across versions is what
+    // the plan LEAVES, which is what a manual/restored squad state carries
+    // directly. Recording the raw draft bank made every restore of an
+    // unchanged squad look like the bank collapsing from £100.0m to £0.0m.
+    bank: squadState
+      ? (squadState.source === 'draft' ? plan.bankAfterTenths : squadState.bankTenths)
+      : null,
     ft: squadState ? squadState.freeTransfers : null,
     chips: squadState ? (squadState.chipsAvailable || []).slice().sort() : [],
     horizon: dataStatus ? dataStatus.horizon : null,
@@ -182,7 +189,14 @@ function priceReasons(before, after, gameState, named) {
 
 function budgetReasons(before, after) {
   const out = [];
-  if (Number.isFinite(before.bank) && Number.isFinite(after.bank) && before.bank !== after.bank) {
+  // Pre-season free transfers are Infinity, which a JSON round trip stores as
+  // null, so a version with no finite transfer count is a pre-deadline one.
+  // Across those, the bank is not an account that "moves": the squad is not
+  // bought yet, and versions recorded before this rule normalised draft money
+  // carry the whole budget as bank. Say nothing rather than narrate an
+  // encoding difference as a price event.
+  const inSeason = Number.isFinite(before.ft) && Number.isFinite(after.ft);
+  if (inSeason && Number.isFinite(before.bank) && Number.isFinite(after.bank) && before.bank !== after.bank) {
     out.push({
       code: 'bank_moved',
       text: `Your bank ${after.bank > before.bank ? 'rose' : 'fell'} from ${formatMoney(before.bank)} to ${formatMoney(after.bank)}.`,

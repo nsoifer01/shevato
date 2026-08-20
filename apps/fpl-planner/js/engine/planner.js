@@ -606,7 +606,13 @@ export async function buildPlan({ gameState, squadState, options = {}, onProgres
     chipEvaluation,
     scored: primary,
     scoredList,
-    isDraft,
+    // The explanation's "draft" is wider than the search's: a manual squad
+    // (typed in or restored from a snapshot before GW1) is planned like an
+    // owned squad, but it is still a pre-season opening fifteen and must be
+    // narrated as one. Explaining it with the in-season vocabulary is how a
+    // restored squad came to be told to "Roll your transfer" while the header
+    // said transfers were unlimited.
+    isDraft: isDraft || squadState.source === 'manual',
     rollValue: bankedTransferValue(primary.acct, cfg.rollBonus),
   };
   plan.explanation = explainPlan(plan, explainContext);

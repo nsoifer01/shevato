@@ -22,6 +22,8 @@ Plans are scored over a rolling horizon, and the default is **5 gameweeks**. It 
 
 The 2026/27 season has not started. No event carries `is_current`, and `entry/{id}/event/{gw}/picks` returns 404 for every gameweek, so **no real squad can be imported yet**. That is a normal state, not an error: `buildGameState` reports `seasonStarted: false` and `currentEvent: null`, `buildSquadState` returns a `source: 'draft'` squad state with the full 100.0m budget, and the app routes to the pre-season squad builder. When GW1 goes live the normal import path takes over with no code change.
 
+A pre-season squad exists in two encodings: the optimizer's draft (`source: 'draft'`, no picks, the budget in the bank) and a typed or snapshot-restored squad (`source: 'manual'`, the fifteen held as picks with the change in the bank). Everything that shows pre-season money reads it through `openingSquadMoney` in `engine/squad.js`, and every "is this a draft?" question outside the transfer search treats both sources as the opening squad, so the two encodings can never tell different stories on screen (FINDINGS, "The two pre-season encodings").
+
 To exercise the in-season experience today, load the app with **`?demo=1`**. See "Sample data" below.
 
 ## Layout
