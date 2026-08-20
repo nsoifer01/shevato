@@ -410,5 +410,122 @@ export async function run({ base, cdpPort }) {
     t('gym-units J: no "Repeat weight" instruction', !/repeat weight/i.test(row.body));
   });
 
+  /* --- K. the smiley lasts exactly one following workout ----------------- */
+  // It used to be the most recent 'good' ANYWHERE in history, so marking once
+  // showed the icon for ever. It now means "I marked this good last time".
+  await withPage('gym-units K', async (s) => {
+    const sess = (id, date, feel) => ({
+      id, programId: 'p1', workoutDayName: 'Push', date,
+      startTime: `${date}T18:00:00.000Z`, endTime: `${date}T19:00:00.000Z`,
+      exercises: [{
+        exerciseId: 21, exerciseName: 'Dumbbell Bench Press', feel,
+        sets: [{ weight: 60, reps: 12, duration: 0, completed: true, slot: 0 }],
+        targetSets: 1, targetReps: 12, restSeconds: 90, notes: '', order: 0,
+        completed: true, stickyValues: {}, groupId: null,
+      }],
+      notes: '', completed: true, sessionUnit: null, paused: false,
+      elapsedBeforePause: 0, timestamp: `${date}T18:00:00.000Z`,
+    });
+    const program = {
+      id: 'p1', name: 'Push', description: '',
+      exercises: [{
+        exerciseId: 21, exerciseName: 'Dumbbell Bench Press',
+        sets: [{ repsMin: 8, repsMax: 12 }],
+        restSeconds: 90, restAfterSeconds: 120, notes: '', order: 0, groupId: null,
+      }],
+      restMode: 'custom', uniformRestSeconds: 90, scheduleDays: [],
+      createdAt: '2026-05-01T10:00:00.000Z', updatedAt: '2026-05-01T10:00:00.000Z',
+    };
+    const base = {
+      gymTrackerSettings: { weightUnit: 'lb', firstDayOfWeek: 1, timeFormat: '24' },
+      gymTrackerOnboardingSeen: true, gymTrackerActiveProgram: 'p1',
+      gymTrackerPrograms: [program],
+    };
+    const smileyShowing = () => evaluate(s, `(async () => {
+      const wt = ms => new Promise(r => setTimeout(r, ms));
+      document.querySelector('.nav-item[data-view="workout"]').click(); await wt(1100);
+      const b = [...document.querySelectorAll('#workout-view button')]
+        .find(x => /start workout/i.test(x.textContent) && x.offsetParent);
+      if (b) { b.click(); await wt(1700); }
+      return !!document.querySelector('#exercise-0 .feel-history-good');
+    })()`);
+
+    // Marked good LAST session -> shown.
+    await boot(s, { ...base, gymTrackerSessions: [sess(1, '2026-08-01', 'good')] });
+    t('gym-units K: shown after an explicit good last time', await smileyShowing());
+
+    // Marked good, then a session WITHOUT a marking -> gone.
+    await boot(s, { ...base, gymTrackerSessions: [sess(1, '2026-08-01', 'good'), sess(2, '2026-08-08', null)] });
+    t('gym-units K: expires when the next session is unmarked', !(await smileyShowing()));
+
+    // Marked good twice -> renewed.
+    await boot(s, { ...base, gymTrackerSessions: [sess(1, '2026-08-01', 'good'), sess(2, '2026-08-08', 'good')] });
+    t('gym-units K: renewed by marking good again', await smileyShowing());
+
+    // A better session without a marking still expires it.
+    const better = sess(3, '2026-08-08', null);
+    better.exercises[0].sets = [{ weight: 100, reps: 12, duration: 0, completed: true, slot: 0 }];
+    await boot(s, { ...base, gymTrackerSessions: [sess(1, '2026-08-01', 'good'), better] });
+    t('gym-units K: performance alone never keeps it', !(await smileyShowing()));
+  });
+
+  /* --- L. a manual edit to an unfinished row is session state ------------- */
+  await withPage('gym-units L', async (s) => {
+    await boot(s, {
+      gymTrackerSettings: { weightUnit: 'lb', firstDayOfWeek: 1, timeFormat: '24' },
+      gymTrackerOnboardingSeen: true, gymTrackerActiveProgram: 'p1',
+      gymTrackerPrograms: [{
+        id: 'p1', name: 'Push', description: '',
+        exercises: [{
+          exerciseId: 21, exerciseName: 'Dumbbell Bench Press',
+          sets: [{ repsMin: 8, repsMax: 12 }, { repsMin: 8, repsMax: 12 }, { repsMin: 8, repsMax: 12 }],
+          restSeconds: 90, restAfterSeconds: 120, notes: '', order: 0, groupId: null,
+        }],
+        restMode: 'custom', uniformRestSeconds: 90, scheduleDays: [],
+        createdAt: '2026-05-01T10:00:00.000Z', updatedAt: '2026-05-01T10:00:00.000Z',
+      }],
+      gymTrackerSessions: [{
+        id: 9, programId: 'p1', workoutDayName: 'Push', date: '2026-08-12',
+        startTime: '2026-08-12T18:00:00.000Z', endTime: '2026-08-12T19:00:00.000Z',
+        exercises: [{
+          exerciseId: 21, exerciseName: 'Dumbbell Bench Press', feel: null,
+          sets: [0, 1, 2].map(slot => ({ weight: 60, reps: 10, duration: 0, completed: true, slot })),
+          targetSets: 3, targetReps: 10, restSeconds: 90, notes: '', order: 0,
+          completed: true, stickyValues: {}, groupId: null,
+        }],
+        notes: '', completed: true, sessionUnit: null, paused: false,
+        elapsedBeforePause: 0, timestamp: '2026-08-12T18:00:00.000Z',
+      }],
+    });
+
+    const out = await evaluate(s, `(async () => {
+      const wt = ms => new Promise(r => setTimeout(r, ms));
+      document.querySelector('.nav-item[data-view="workout"]').click(); await wt(1100);
+      [...document.querySelectorAll('#workout-view button')]
+        .find(x => /start workout/i.test(x.textContent) && x.offsetParent).click(); await wt(1800);
+      const rowAt = (slot) => [...document.querySelectorAll('#exercise-0 li.set-row')]
+        .find(r => r.dataset.slot === String(slot));
+      const valsAt = (slot) => { const r = rowAt(slot); if (!r) return null;
+        const i = [...r.querySelectorAll('input')]; return { w: i[0]?.value, reps: i[1]?.value }; };
+      const type = (el, v) => { el.focus(); el.value = v;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true })); };
+
+      const r2 = rowAt(1); const i2 = [...r2.querySelectorAll('input')];
+      type(i2[0], '65'); type(i2[1], '8'); await wt(400);
+      const edited = valsAt(1);
+      rowAt(0).querySelector('.set-toggle:not(.set-toggle--ghost)').click(); await wt(1200);
+      return { edited, afterComplete: valsAt(1),
+               sticky: JSON.parse(localStorage.getItem('gymTrackerActiveWorkout'))
+                 ?.exercises?.[0]?.stickyValues ?? null };
+    })()`);
+
+    t('gym-units L: prefill starts at the previous session', out.edited.w === '65', JSON.stringify(out.edited));
+    t('gym-units L: the edit survives completing another set',
+      out.afterComplete.w === '65' && out.afterComplete.reps === '8', JSON.stringify(out.afterComplete));
+    t('gym-units L: it is stored canonically in the active workout',
+      !!out.sticky && Math.abs(out.sticky['1'].weight - KG_FOR_65_LB) < 1e-9, JSON.stringify(out.sticky));
+  });
+
   return R;
 }

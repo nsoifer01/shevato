@@ -4135,65 +4135,110 @@ body.gym-tracker .exercise-picker-tray-list[hidden] { display: none; }
    Replaces the full-screen modal that fired after most exercises. Sits on
    the exercise card, under the header and OUTSIDE `.exercise-body` so a
    completed (auto-collapsed) card still shows it. */
+/* ---- The inline "Felt good?" prompt ------------------------------------
+   A completion question, not a feature. It used to render as a green-tinted
+   panel with a full sentence and two 48px pills, nested inside a card that is
+   ALREADY green because the exercise just completed - 109px tall on a phone
+   for one optional tap, and it read as a card inside a card.
+
+   Now it is a single row that belongs to the card: a hairline divider instead
+   of a border, no fill, and green used only as an accent on the icon and the
+   affirmative. Visible height is ~32px; both controls still own 44px of tap
+   area through a transparent ::after, the same technique the header controls
+   and the rest dial use. */
 body.gym-tracker .gt-feel-prompt {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
-    flex-wrap: wrap;
-    margin: 0 0.75rem 0.6rem;
-    padding: 0.45rem 0.6rem;
-    border: 1px solid rgba(52, 211, 153, 0.35);
-    border-radius: var(--gt-radius-inner, 8px);
-    background: rgba(52, 211, 153, 0.10);
+    margin: 0 0.75rem;
+    padding: 0.3rem 0 0.35rem;
+    border-top: 1px solid var(--gt-border, #262b3d);
+    background: transparent;
 }
 
-body.gym-tracker .gt-feel-prompt-text {
-    color: var(--gt-text, #e6e9f0);
-    font-size: 0.8rem;
+body.gym-tracker .gt-feel-prompt-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+    color: var(--gt-text-dim, #9aa3b8);
+    font-size: 0.78rem;
     font-weight: 600;
+    white-space: nowrap;
+}
+
+body.gym-tracker .gt-feel-prompt-label i {
+    color: #34d399;
+    font-size: 0.85rem;
 }
 
 body.gym-tracker .gt-feel-prompt-actions {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: 0.3rem;
+    flex: 0 0 auto;
 }
 
 body.gym-tracker .gt-feel-prompt-yes,
 body.gym-tracker .gt-feel-prompt-dismiss {
+    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.3rem;
-    min-height: 44px;
-    padding: 0 0.7rem;
+    box-sizing: border-box;
+    /* assets/css/main.css gives every button a sitewide height of 3.25rem, and
+       a plain height beats any min-height we set - which is why these measured
+       48px tall instead of 28px. Same pin as button.gt-note. */
+    height: auto !important;
+    min-height: 28px !important;
+    padding: 0 0.6rem !important;
     border-radius: 999px;
-    border: 1px solid rgba(52, 211, 153, 0.45);
-    background: transparent;
-    color: #34d399 !important;
     font: inherit;
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     font-weight: 700;
     line-height: 1 !important;
+    white-space: nowrap;
     cursor: pointer;
     box-shadow: none !important;
 }
 
+/* The affirmative carries the accent; nothing else is filled. */
+body.gym-tracker .gt-feel-prompt-yes {
+    border: 1px solid rgba(52, 211, 153, 0.45);
+    background: transparent;
+    color: #34d399 !important;
+}
+
+/* Worded, so the escape route is never a mystery glyph. */
 body.gym-tracker .gt-feel-prompt-dismiss {
-    min-width: 44px;
-    padding: 0;
-    border-color: rgba(255, 255, 255, 0.14);
-    color: var(--gt-muted, #9aa3b2) !important;
+    border: 0;
+    background: transparent;
+    color: var(--gt-text-dim, #9aa3b8) !important;
+    font-weight: 600;
 }
 
-body.gym-tracker .gt-feel-prompt-yes:hover {
-    background: rgba(52, 211, 153, 0.18);
+body.gym-tracker .gt-feel-prompt-yes:hover,
+body.gym-tracker .gt-feel-prompt-yes:focus-visible {
+    background: rgba(52, 211, 153, 0.14);
 }
 
-body.gym-tracker .gt-feel-prompt-dismiss:hover {
-    background: rgba(255, 255, 255, 0.08);
+body.gym-tracker .gt-feel-prompt-dismiss:hover,
+body.gym-tracker .gt-feel-prompt-dismiss:focus-visible {
     color: var(--gt-text, #e6e9f0) !important;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+/* 44px of tap area without 44px of artwork. */
+body.gym-tracker .gt-feel-prompt-yes::after,
+body.gym-tracker .gt-feel-prompt-dismiss::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 44px;
+    transform: translateY(-50%);
 }
 
 /* ---- GT-15. Visible form validation -----------------------------------

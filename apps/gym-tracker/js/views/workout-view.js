@@ -17,7 +17,7 @@ import { AnalyticsService } from '../services/AnalyticsService.js';
 import { AchievementService } from '../services/AchievementService.js';
 import { calculatePlates, formatPlateStack } from '../utils/plate-calculator.js';
 import { restTickCues, isWorkoutComplete } from '../utils/rest-cues.js';
-import { allSetsReachMax, latestFeelForExercise, nextFeel, shouldShowFeelModal } from '../utils/exercise-feel.js';
+import { allSetsReachMax, previousSessionFeelForExercise, nextFeel, shouldShowFeelModal } from '../utils/exercise-feel.js';
 import { recordPrSupersede, uniquePrChainCount, recomputePrSlots } from '../utils/pr-session.js';
 import { mergeSessionWithProgram } from '../utils/session-merge.js';
 import { weekStrip } from '../utils/program-schedule.js';
@@ -156,8 +156,18 @@ class WorkoutView {
             if (!(t instanceof HTMLInputElement)) return;
             // Feature 6: a weight/reps edit on a planned row may surface (or hide)
             // the "same as last time" restore chip.
-            if (t.classList.contains('set-weight') || t.classList.contains('set-reps')) {
-                this.maybeToggleRestoreChip(t.closest('.set-row-planned'));
+            // A manual edit to an UNFINISHED row is active-session state, not a
+            // transient DOM value. Without this the number lived only in the
+            // input, and committing ANY other set re-rendered the exercise and
+            // rebuilt this row from the previous-session prefill - so editing
+            // set 2 to 65x8 and then ticking set 1 silently restored 60x12.
+            if (t.classList.contains('set-weight') || t.classList.contains('set-reps')
+                || t.classList.contains('duration-min') || t.classList.contains('duration-sec')) {
+                const plannedRow = t.closest('.set-row-planned');
+                if (plannedRow) {
+                    this.recordPlannedRowEdit(plannedRow);
+                    this.maybeToggleRestoreChip(plannedRow);
+                }
             }
             const target = t.dataset.plateHintTarget;
             if (!target) return;
@@ -459,6 +469,66 @@ case 'toggle-warmup':
         this.persistActiveWorkout();
         this.syncSessionUnitToggle();
         this.renderActiveWorkout();
+    }
+
+    /**
+     * Capture a planned row's current inputs into the active session.
+     *
+     * `stickyValues[slot]` is already the app's "this slot's value belongs to
+     * the session, not to the prefill" store - `unmarkSet` and `setSessionUnit`
+     * both write it, and `renderExerciseEntry` prefers it over the previous
+     * workout. It simply was never written while the lifter was TYPING, so an
+     * edit to an unfinished row existed only in the DOM and any re-render
+     * (completing another set, un-completing one, adding a set, the feel
+     * prompt appearing) reconstructed the row from defaults.
+     *
+     * Weight is stored CANONICAL, matching every other writer of this store,
+     * so a mid-workout unit switch converts it rather than relabelling it.
+     * An emptied field is recorded as '' on purpose: clearing a row is an edit
+     * too, and must not silently repopulate from last time.
+     *
+     * Debounced through persistActiveWorkoutSoon (the notes path does the
+     * same), so a resume after an unexpected reload restores what was typed.
+     */
+    recordPlannedRowEdit(row) {
+        if (!row || !this.currentWorkoutSession) return;
+        const slot = Number(row.dataset.slot);
+        if (!Number.isFinite(slot)) return;
+
+        const host = row.closest('.exercise-entry');
+        const exerciseIndex = Number(String(host?.id || '').split('-')[1]);
+        const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
+        if (!exercise) return;
+
+        if (!exercise.stickyValues) exercise.stickyValues = {};
+        const prev = exercise.stickyValues[slot] || {};
+
+        const weightInput = row.querySelector('.set-weight');
+        const repsInput = row.querySelector('.set-reps');
+        const minInput = row.querySelector('.duration-min');
+        const secInput = row.querySelector('.duration-sec');
+
+        let weight = prev.weight !== undefined ? prev.weight : '';
+        if (weightInput) {
+            weight = weightInput.value === ''
+                ? ''
+                : (this.toStoredWeight(weightInput.value) ?? '');
+        }
+
+        let reps = prev.reps !== undefined ? prev.reps : '';
+        if (repsInput) {
+            reps = repsInput.value === '' ? '' : Number(repsInput.value);
+        }
+
+        let duration = prev.duration !== undefined ? prev.duration : 0;
+        if (minInput || secInput) {
+            const mins = parseInt(minInput?.value, 10) || 0;
+            const secs = parseInt(secInput?.value, 10) || 0;
+            duration = (mins * 60) + secs;
+        }
+
+        exercise.stickyValues[slot] = { weight, reps, duration };
+        this.persistActiveWorkoutSoon();
     }
 
     /** Reflect the active session unit in the header toggle button states. */
@@ -1352,20 +1422,6 @@ case 'toggle-warmup':
             equipment, isDuration, unit, workingWeight, exerciseId: exercise.exerciseId,
         });
 
-        // Two different kinds of note, placed by two different rules.
-        //
-        // A bump or deload changes the weight for the WHOLE exercise, so it is
-        // one badge on the first eligible row; repeating it under every set
-        // read as noise and one glance says it all.
-        //
-        // A missed target belongs to a SET. Missing is per set by nature - a
-        // lifter can hit set 1's target, fall short on set 2 and hit set 3's -
-        // so every set that fell short carries its own warning, and a set that
-        // hit its target is never accused of one.
-        //
-        // Eligible = not already committed this session, and not holding a
-        // sticky value (once the user types their own number the advice about
-        // the prefill is stale).
         let rowsHTML = '';
         for (let i = 0; i < totalRows; i++) {
             const committed = setsBySlot.get(i);
@@ -1424,11 +1480,13 @@ case 'toggle-warmup':
         // prompt row is gone; the picker is the modal (see commitPlannedSet).
         const sessionFeelHTML = !isDuration ? this.renderFeelToggleIcon(index, exercise.feel) : '';
 
-        // Item 7: last feel marking for this exercise across prior sessions,
-        // shown next to the name to inform progression (history, unchanged). Only
-        // when there is no session feel chosen yet so the two icons don't stack.
+        // Item 7: the smiley means "I marked this good LAST time", nothing more.
+        // It lasts exactly one following workout and expires unless renewed, so
+        // this asks only about the immediately previous session that performed
+        // the exercise - never the most recent 'good' anywhere in history.
+        // Only when there is no session feel chosen yet so the two icons don't stack.
         const lastFeel = (!isDuration && exercise.feel !== 'good')
-            ? latestFeelForExercise(this.app.workoutSessions, exercise.exerciseId, s => s.sortTimestamp)
+            ? previousSessionFeelForExercise(this.app.workoutSessions, exercise.exerciseId, s => s.sortTimestamp)
             : null;
         const lastFeelHTML = lastFeel ? this.renderFeelHistoryIcon(lastFeel) : '';
 
@@ -1959,15 +2017,20 @@ case 'toggle-warmup':
         const prompt = document.createElement('div');
         prompt.className = 'gt-feel-prompt';
         prompt.setAttribute('role', 'status');
+        // One compact line. The old version explained itself in a sentence and
+        // sat in its own green-tinted panel INSIDE an already-green completed
+        // card - 109px tall on a phone, for an optional one-tap answer. The
+        // question is short enough to be its own explanation, and the dismiss
+        // is a worded control rather than a bare X.
         prompt.innerHTML = `
-            <span class="gt-feel-prompt-text">All sets at the top of the range. Felt good?</span>
+            <span class="gt-feel-prompt-label">
+                <i class="fas fa-face-smile" aria-hidden="true"></i> Felt good?
+            </span>
             <span class="gt-feel-prompt-actions">
-                <button type="button" class="gt-feel-prompt-yes" aria-label="Felt good, consider more weight next time">
-                    <i class="fas fa-face-smile" aria-hidden="true"></i> Felt good
-                </button>
-                <button type="button" class="gt-feel-prompt-dismiss" aria-label="Dismiss">
-                    <i class="fas fa-xmark" aria-hidden="true"></i>
-                </button>
+                <button type="button" class="gt-feel-prompt-yes"
+                    aria-label="Yes, that felt good - consider more weight next time">Yes</button>
+                <button type="button" class="gt-feel-prompt-dismiss"
+                    aria-label="Not now, dismiss this question">Not now</button>
             </span>
         `;
 

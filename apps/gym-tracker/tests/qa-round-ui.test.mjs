@@ -204,10 +204,36 @@ test('the blocking feel modal is gone from the markup', () => {
     assert.doesNotMatch(html, /id="feel-modal-good"/);
 });
 
-test('the inline prompt is styled and its buttons are real targets', () => {
+test('the inline prompt is compact artwork with real 44px targets', () => {
     assert.ok(refresh.includes('.gt-feel-prompt'), 'the replacement must be styled');
-    const block = ruleFor(refresh, 'body.gym-tracker .gt-feel-prompt-yes,');
-    assert.match(block, /min-height: 44px/);
+
+    // It sits inside a card that is already green because the exercise just
+    // completed. A second filled green panel there read as a card-in-a-card
+    // (109px tall on a phone for one optional tap), so the row carries a
+    // hairline divider and no fill of its own.
+    const row = ruleFor(refresh, 'body.gym-tracker .gt-feel-prompt {');
+    assert.match(row, /background: transparent/, 'no second green slab');
+    assert.match(row, /border-top: 1px solid/, 'a divider, not a panel border');
+
+    // Compact artwork...
+    const btn = ruleFor(refresh, 'body.gym-tracker .gt-feel-prompt-yes,');
+    assert.match(btn, /min-height: 28px/);
+    assert.doesNotMatch(btn, /min-height: 44px/, 'the target must not come from the box');
+    // ...with the target supplied by the transparent expander instead.
+    assert.match(ruleFor(refresh, 'body.gym-tracker .gt-feel-prompt-yes::after,'), /height: 44px/);
+});
+
+test('the prompt asks a short question and names its dismiss', () => {
+    // The old copy was a sentence plus a bare X: "All sets at the top of the
+    // range. Felt good?" with an icon-only circle to escape it.
+    const view = loadSource('js/views/workout-view.js');
+    assert.doesNotMatch(view, /All sets at the top of the range/,
+        'the question is short enough to be its own explanation');
+    assert.match(view, /Felt good\?/);
+    assert.match(view, /gt-feel-prompt-dismiss[\s\S]{0,200}>Not now</,
+        'the escape route must be worded, not a mystery glyph');
+    assert.match(view, /aria-label="Not now, dismiss this question"/);
+    assert.match(view, /aria-label="Yes, that felt good - consider more weight next time"/);
 });
 
 // ---------------------------------------------------------------------------

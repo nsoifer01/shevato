@@ -539,6 +539,57 @@ The +/- stepper increment survives as `_stepIncrement`, renamed so the unit is
 legible: it is applied to the DISPLAY-unit value in the input, in that same
 unit, which is why it was always correct.
 
+## Two rules the live workout now keeps
+
+### A user edit to an unfinished row is active-session state
+
+Pre-existing defect, found by the owner 2026-08-20. Type 65x8 into set 2, tick
+set 1, and set 2 snapped back to the prefilled 60x12.
+
+The delegated `input` handler in `wireWorkoutActions` updated everything EXCEPT
+the number: notes went to `exercise.notes`, the bar weight went through
+`setExerciseBarWeight`, but `.set-weight` / `.set-reps` only refreshed the
+plate hint and the restore chip. The typed value lived in the DOM alone, so
+`commitPlannedSet` -> `renderExerciseEntry` rebuilt the row from
+`stickyValues[i] || previousSets[i] || ...` and the edit was gone.
+
+`stickyValues` was already the right store - `unmarkSet` and `setSessionUnit`
+both write it and the renderer already prefers it over the previous workout.
+It simply was never written while the lifter was TYPING. `recordPlannedRowEdit`
+now writes it on every input into a planned row, CANONICAL like every other
+writer, and debounces through `persistActiveWorkoutSoon`, so the edit also
+survives a reload and Resume.
+
+The shape of the rule: **prefill and carry-down INITIALIZE an untouched row;
+once a row is edited, active state owns it.** Verified against every re-render
+trigger - completing another set, un-completing one, adding a set,
+collapse/reopen, the feel prompt on a DIFFERENT exercise appearing and being
+dismissed, and reload + Resume.
+
+An emptied field is recorded as `''` on purpose. Clearing a row is an edit too
+and must not silently repopulate from last time.
+
+### The feel smiley lasts exactly one workout
+
+`latestFeelForExercise` scanned the WHOLE history and returned the most recent
+`'good'` wherever it sat, skipping over every later session that had no
+marking. Mark an exercise good once and the icon was permanent.
+
+`previousSessionFeelForExercise` asks a single question instead: did the
+IMMEDIATELY PREVIOUS session that performed this exercise carry an explicit
+`feel === 'good'`? It lasts one following workout and must be renewed.
+
+Deliberately not coupled to performance - a heavier session, more reps or a new
+PR since the marking changes nothing. A legacy `'bad'` expires it exactly like
+an unmarked session. "Previous session" means the last one in which the
+exercise was actually PERFORMED (at least one completed set), because skipping
+an exercise is not evidence about it. Identity goes through `sameId`, since ids
+arrive as strings from an export round trip and numbers from the catalog.
+
+The old tests encoded the old rule (one was literally "a newer bad does not
+override an older good"), so they were replaced rather than adjusted. The new
+suite fails 8 checks when run against the old implementation.
+
 ## Timed work is time, not weight (GT-04)
 
 `Set.volume` returned `this.duration` for a timed set and
@@ -717,6 +768,23 @@ and the exercise list reserves bottom padding while the dial is visible
 (`body.gt-rest-bar-visible #workout-exercises-list`), so in the ordinary
 scroll position it overlaps nothing at all. The disc is also translucent, so
 tapping "through" it is comprehensible rather than uncanny.
+
+## The sitewide button height, which min-height cannot beat
+
+`assets/css/main.css` gives EVERY button `height: 3.25rem; line-height: 3.25rem`
+(47.67px at this app's root size). A plain `height` beats any `min-height`, so
+an app rule that sets `min-height: 28px` still renders 48px tall and the
+control silently comes out nearly twice its intended size. The inline feel
+prompt's buttons measured 48px for exactly this reason.
+
+The pin is the one `button.gt-note` already uses:
+
+    height: auto !important;
+    min-height: <n>px !important;
+
+Worth checking with a computed-style probe whenever a compact button "ignores"
+its CSS - it is the same family as the `button { color:#555 !important }` trap
+already documented below.
 
 ## Theme collisions found in this round
 
