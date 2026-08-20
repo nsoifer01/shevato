@@ -24,8 +24,9 @@ const CATEGORY_LABEL = {
     'full-body': 'Full body', cardio: 'Cardio', other: 'Other',
 };
 
-// Item 4: a programmed category with no volume inside this trailing window
-// counts as "not trained recently".
+// Item 4: a programmed category not TRAINED inside this trailing window
+// counts as "not trained recently". Deliberately about work rather than
+// weight volume, so planks keep core off this list.
 const STALE_WINDOW_DAYS = 14;
 
 class InsightsView {
@@ -135,7 +136,9 @@ class InsightsView {
             return;
         }
         section.hidden = false;
-        if (caption) caption.textContent = `No volume in the last ${STALE_WINDOW_DAYS} days`;
+        // The section is about training, not tonnage: a category trained only
+        // with timed work counts as trained.
+        if (caption) caption.textContent = `Not trained in the last ${STALE_WINDOW_DAYS} days`;
 
         list.innerHTML = stale.map(({ category, daysSince }) => {
             const label = CATEGORY_LABEL[category] || (category[0]?.toUpperCase() + category.slice(1));

@@ -47,6 +47,7 @@ const SUITES = [
   'apps/trip-planner/e2e/assistant.mjs',
   'apps/trip-planner/e2e/qa-fixes.mjs',
   'apps/trip-planner/e2e/pwa.mjs',
+  'apps/gym-tracker/e2e/units-migration.mjs',
   'apps/fpl-planner/e2e/scenario.mjs',
   'apps/fpl-planner/e2e/lifecycle.mjs',
 ];

@@ -35,6 +35,13 @@ export class WorkoutSession {
             ? data.sessionUnit
             : null;
 
+        // Unit provenance (utils/data-migrations.js). True means "the set
+        // weights in this session are canonical kilograms" and is what stops
+        // any migration or repair pass from converting them a second time.
+        // Preserved, never inferred: a record that arrives without it is
+        // classified by the reconciler, not assumed to be canonical here.
+        this.unitsCanonical = data.unitsCanonical === true;
+
         // Pause/Resume state
         this.paused = data.paused || false;
         this.pausedAt = data.pausedAt || null;
@@ -141,6 +148,7 @@ export class WorkoutSession {
             maxHeartRate: this.maxHeartRate,
             caloriesBurned: this.caloriesBurned,
             sessionUnit: this.sessionUnit,
+            unitsCanonical: this.unitsCanonical,
             paused: this.paused,
             pausedAt: this.pausedAt,
             elapsedBeforePause: this.elapsedBeforePause,

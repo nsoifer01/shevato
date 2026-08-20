@@ -281,6 +281,18 @@ class SettingsView {
             });
         }
 
+        // Re-check stored units. A DIAGNOSTIC, not "run every migration
+        // again": it classifies each record's unit provenance, repairs only
+        // the cases that can be PROVEN legacy, asks about ambiguous
+        // measurements rather than guessing, and never touches a record
+        // already stamped canonical. Running it on a healthy profile - or
+        // twice, or after switching display units - changes nothing.
+        const recheckBtn = document.getElementById('recheck-units-btn');
+        if (recheckBtn && !recheckBtn.dataset.wired) {
+            recheckBtn.dataset.wired = '1';
+            recheckBtn.addEventListener('click', () => this.runUnitsRecheck());
+        }
+
         // Item R2-9: unsaved-changes guard modal actions.
         const unsavedModal = document.getElementById('unsaved-settings-modal');
         if (unsavedModal && !unsavedModal.dataset.wired) {
@@ -338,6 +350,57 @@ class SettingsView {
             console.error('Failed to delete cloud data:', error);
             showToast('Could not delete cloud data. Check your connection.', 'error', 5000);
         }
+    }
+
+    /**
+     * Run the unit-provenance scan and report what it found in plain terms.
+     *
+     * The summary distinguishes the four states the scan can reach, because
+     * "nothing to do" and "I could not prove this either way" are very
+     * different answers and collapsing them is what hid the original bug.
+     */
+    runUnitsRecheck() {
+        const out = document.getElementById('recheck-units-result');
+        const report = this.app.reconcileStoredUnits();
+
+        if (!report) {
+            if (out) {
+                out.hidden = false;
+                out.textContent = 'Could not read stored data. Nothing was changed.';
+            }
+            showToast('Unit check failed', 'error');
+            return;
+        }
+
+        const n = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
+        const parts = [`Scanned ${n(report.sessionsScanned, 'workout')} and ${n(report.measurementsScanned, 'measurement')}.`];
+
+        if (report.sessionsRepaired > 0) {
+            parts.push(`Repaired ${n(report.sessionsRepaired, 'legacy workout record')}.`);
+        }
+        if (report.activeWorkoutRepaired) parts.push('Repaired the in-progress workout.');
+        if (report.sessionsAmbiguous > 0) {
+            parts.push(`${n(report.sessionsAmbiguous, 'workout')} could not be proven either way and ${report.sessionsAmbiguous === 1 ? 'was' : 'were'} left untouched.`);
+        }
+        if (report.measurementsNeedingConfirmation > 0) {
+            parts.push(`${n(report.measurementsNeedingConfirmation, 'measurement')} need their original units confirmed.`);
+        }
+        if (report.sessionsRepaired === 0 && !report.activeWorkoutRepaired
+            && report.sessionsAmbiguous === 0 && report.measurementsNeedingConfirmation === 0) {
+            parts.push('No repairs needed.');
+        }
+
+        const summary = parts.join(' ');
+        if (out) { out.hidden = false; out.textContent = summary; }
+
+        if (report.measurementsNeedingConfirmation > 0) {
+            this.app.openMeasurementUnitsModal();
+        } else {
+            showToast(report.changed ? 'Stored units repaired' : 'Stored units are correct',
+                report.changed ? 'success' : 'info');
+        }
+
+        if (report.changed) this.app.refreshFromStorage();
     }
 
     render() {

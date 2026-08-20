@@ -104,7 +104,13 @@ const APP_SYNC_CONFIG = {
       // weights once, and a second device that never learned it had already
       // happened would convert the already-converted data again. No user data
       // of its own - a single integer.
-      'gymTrackerDataVersion'
+      'gymTrackerDataVersion',
+      // The user's answer to the one-time "which units were your existing
+      // measurements entered in?" question. Syncs so a second device never
+      // asks again; it is a single string choice plus a timestamp, no
+      // measurement values of its own. (The rollback copy that repair writes,
+      // gymTrackerMeasurementsBackup, is deliberately NOT synced.)
+      'gymTrackerMeasurementUnits'
     ]
   },
 

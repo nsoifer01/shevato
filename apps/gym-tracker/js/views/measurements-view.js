@@ -507,12 +507,16 @@ class MeasurementsView {
             const updated = new Measurement({
                 ...this.app.measurements[idx].toJSON(),
                 ...data,
+                // The form always submits canonical kg/cm (readCanonical
+                // converts on the way out of the inputs), so an edited record
+                // is canonical whatever the original was.
+                unitsCanonical: true,
             });
             this.app.measurements[idx] = updated;
             this.app.saveMeasurements();
             showToast('Measurement updated', 'success');
         } else {
-            this.app.addMeasurement(new Measurement(data));
+            this.app.addMeasurement(new Measurement({ ...data, unitsCanonical: true }));
             showToast('Measurement saved', 'success');
         }
 

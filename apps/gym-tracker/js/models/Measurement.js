@@ -41,6 +41,11 @@ export class Measurement {
         this.thighRight = num(data.thighRight);
         this.notes = data.notes || '';
         this.createdAt = data.createdAt || new Date().toISOString();
+        // Unit provenance (utils/data-migrations.js): true means weight is
+        // canonical kg and the circumferences are canonical cm. Measurements
+        // carry no other evidence of which units they were entered in, so
+        // this flag is the only thing that keeps a repair pass off them.
+        this.unitsCanonical = data.unitsCanonical === true;
     }
 
     toJSON() {
@@ -58,6 +63,7 @@ export class Measurement {
             thighRight: this.thighRight,
             notes: this.notes,
             createdAt: this.createdAt,
+            unitsCanonical: this.unitsCanonical,
         };
     }
 

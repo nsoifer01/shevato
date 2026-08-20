@@ -118,3 +118,41 @@ test('getDailyVolumeMap: returns empty map for empty input', () => {
     const map = AnalyticsService.getDailyVolumeMap([]);
     assert.equal(map.size, 0);
 });
+
+/**
+ * Regression: a category trained ONLY with timed work must not be reported as
+ * "not trained recently".
+ *
+ * The GT-04 fix made volume weight-only, and the staleness check was derived
+ * from volume, so core (planks) was permanently listed as neglected while the
+ * same row said "7 days since last trained". Staleness is about training, not
+ * tonnage.
+ */
+test('timed-only training keeps a category off the stale list', () => {
+    const db = [
+        { id: 463, name: 'Plank', category: 'core' },
+        { id: 3, name: 'Barbell Bench Press', category: 'chest' },
+    ];
+    const programs = [{ exercises: [{ exerciseId: 463 }, { exerciseId: 3 }] }];
+    const today = new Date('2026-08-19T12:00:00');
+    const sessions = [{
+        date: '2026-08-12',
+        exercises: [
+            // Planks only: real core work, zero weight volume.
+            { exerciseId: 463, sets: [{ weight: 0, reps: 0, duration: 90, completed: true }] },
+            { exerciseId: 3, sets: [{ weight: 100, reps: 5, duration: 0, completed: true }] },
+        ],
+    }];
+
+    const stale = AnalyticsService.getStaleProgramCategories(programs, sessions, db, { days: 14, today });
+    assert.equal(stale.find(x => x.category === 'core'), undefined,
+        'core was trained 7 days ago with planks and must not be stale');
+    assert.equal(stale.find(x => x.category === 'chest'), undefined);
+
+    // Outside the window it SHOULD be reported, with an honest day count.
+    const later = new Date('2026-09-15T12:00:00');
+    const staleLater = AnalyticsService.getStaleProgramCategories(programs, sessions, db, { days: 14, today: later });
+    const core = staleLater.find(x => x.category === 'core');
+    assert.ok(core, 'core is stale a month later');
+    assert.equal(core.daysSince, 34);
+});

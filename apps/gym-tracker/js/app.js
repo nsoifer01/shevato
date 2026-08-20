@@ -22,7 +22,11 @@ import { mountSyncStatusPill } from './utils/sync-status.js';
 import { emit, EVENTS } from './utils/event-bus.js';
 import { sameId } from './utils/id-utils.js';
 import { track } from './utils/analytics.js';
-import { migrateStoredData, DATA_SCHEMA_VERSION } from './utils/data-migrations.js';
+import {
+    migrateStoredData, DATA_SCHEMA_VERSION, reconcileUnits,
+    resolveMeasurementUnits, MEASUREMENT_CHOICE_LATER,
+    MEASUREMENT_CHOICE_IMPERIAL, MEASUREMENT_CHOICE_METRIC,
+} from './utils/data-migrations.js';
 import { IMPORT_MODES, summarizeMerge } from './utils/import-merge.js';
 import { normalizeFirstDayOfWeek } from './utils/week.js';
 import { isLoggedSession } from './utils/session-metrics.js';
@@ -123,6 +127,10 @@ class GymTrackerApp {
         // the modal stays dismissed (flag persists).
         this.maybeShowOnboarding();
 
+        // Only fires when the stored measurements' original units cannot be
+        // proven; a healthy or provably-legacy profile never sees it.
+        this.maybeAskMeasurementUnits();
+
         debugLog('✅ Gym Tracker App initialized');
     }
 
@@ -137,7 +145,6 @@ class GymTrackerApp {
     runStoredDataMigrations() {
         try {
             const from = storageService.getDataVersion();
-            if (from >= DATA_SCHEMA_VERSION) return;
 
             const result = migrateStoredData({
                 sessions: storageService.getWorkoutSessions(),
@@ -145,21 +152,125 @@ class GymTrackerApp {
                 activeWorkout: storageService.getActiveWorkout(),
                 goals: storageService.getMeasurementGoals(),
                 settings: storageService.getSettings() || {},
-            }, from);
+            }, from, { measurementsResolved: storageService.measurementUnitsResolved() });
 
-            if (!result.changed) return;
+            this.lastUnitsReport = result.report;
 
-            storageService.saveWorkoutSessions(result.sessions);
-            storageService.saveMeasurements(result.measurements);
-            if (result.goals) storageService.saveMeasurementGoals(result.goals);
-            if (result.activeWorkout) storageService.saveActiveWorkout(result.activeWorkout);
-            storageService.saveDataVersion(result.version);
-            debugLog(`Stored data migrated ${from} → ${result.version}`);
+            if (result.changed) {
+                storageService.saveWorkoutSessions(result.sessions);
+                storageService.saveMeasurements(result.measurements);
+                if (result.goals) storageService.saveMeasurementGoals(result.goals);
+                if (result.activeWorkout) storageService.saveActiveWorkout(result.activeWorkout);
+                debugLog(`Stored data migrated ${from} → ${result.version}`);
+            }
+            // Recorded even on a no-op run so the marker reflects the code
+            // that last inspected this profile.
+            if (from !== result.version) storageService.saveDataVersion(result.version);
+            return result.report;
         } catch (error) {
             // A failed migration must never block boot; the guard stays
             // un-bumped so the next load retries.
             console.error('Stored-data migration failed:', error);
+            return null;
         }
+    }
+
+    /**
+     * Re-run the unit-provenance reconciler over whatever is in storage NOW.
+     *
+     * This exists because a version marker cannot describe records that
+     * arrive later: the Firestore snapshot lands after `init()` has already
+     * migrated, and `applyRemoteChange()` writes straight into localStorage.
+     * Before this, an un-migrated remote document silently replaced freshly
+     * converted weights and nothing ever looked again - which is how a real
+     * 65 lb bench press started rendering as 143.3 lb.
+     *
+     * Safe to call as often as we like: every record the app writes is
+     * stamped canonical and `reconcileUnits()` never touches a stamped
+     * record, so a healthy profile is a pure no-op.
+     *
+     * @returns {object|null} the scan report, or null if the scan threw
+     */
+    reconcileStoredUnits() {
+        try {
+            const report = this.applyUnitReconciliation();
+            if (report?.changed) debugLog('Unit provenance repaired after sync', report);
+            return report;
+        } catch (error) {
+            console.error('Unit reconciliation failed:', error);
+            return null;
+        }
+    }
+
+    /**
+     * The scan itself, shared by boot, post-sync reconciliation and the
+     * Settings "Re-check stored units" action. Writes back only what changed.
+     */
+    applyUnitReconciliation() {
+        const result = reconcileUnits({
+            sessions: storageService.getWorkoutSessions(),
+            measurements: storageService.getMeasurements(),
+            activeWorkout: storageService.getActiveWorkout(),
+            goals: storageService.getMeasurementGoals(),
+        }, {
+            accountUnit: (storageService.getSettings() || {}).weightUnit,
+            dataVersion: storageService.getDataVersion(),
+            measurementsResolved: storageService.measurementUnitsResolved(),
+        });
+
+        if (result.report.changed) {
+            storageService.saveWorkoutSessions(result.sessions);
+            storageService.saveMeasurements(result.measurements);
+            if (result.goals) storageService.saveMeasurementGoals(result.goals);
+            if (result.activeWorkout) storageService.saveActiveWorkout(result.activeWorkout);
+        }
+        this.lastUnitsReport = result.report;
+        return result.report;
+    }
+
+    /**
+     * Does the user still owe us an answer about their measurement units?
+     * True only for the ambiguous case: an lb account whose measurements can
+     * be proven neither legacy nor canonical (see data-migrations.js).
+     */
+    needsMeasurementUnitsConfirmation() {
+        if (storageService.measurementUnitsResolved()) return false;
+        const report = this.lastUnitsReport;
+        return !!(report && report.measurementsNeedingConfirmation > 0);
+    }
+
+    /**
+     * Apply the user's answer to the measurement-units question.
+     *
+     * 'imperial' converts lb/in into canonical kg/cm; 'metric' stamps the
+     * stored numbers as already canonical; 'later' records nothing, so the
+     * question is asked again next boot. A rollback copy is written before
+     * anything is rewritten.
+     *
+     * @param {'imperial'|'metric'|'later'} choice
+     * @returns {{converted: boolean, count: number}|null}
+     */
+    applyMeasurementUnitsChoice(choice) {
+        if (choice === MEASUREMENT_CHOICE_LATER) return null;
+
+        const current = storageService.getMeasurements();
+        // Rollback snapshot BEFORE the rewrite, so a wrong answer is undoable.
+        storageService.saveMeasurementsBackup(current);
+
+        const { measurements, goals, converted } = resolveMeasurementUnits(
+            current, storageService.getMeasurementGoals(), choice);
+
+        storageService.saveMeasurements(measurements);
+        if (goals) storageService.saveMeasurementGoals(goals);
+        storageService.saveMeasurementUnits({
+            status: 'resolved',
+            choice,
+            resolvedAt: new Date().toISOString(),
+        });
+
+        this.measurements = measurements.map(m => new Measurement(m));
+        this.lastUnitsReport = this.applyUnitReconciliation();
+        return { converted, count: measurements.length };
     }
 
     /**
@@ -177,6 +288,81 @@ class GymTrackerApp {
      * the modal before. Running sync listeners can't retroactively
      * trigger this — the modal is strictly day-one.
      */
+    /**
+     * Ask the measurement-units question, once, if it cannot be answered from
+     * the data. Deliberately after onboarding so a brand-new profile (which
+     * has no measurements at all) never sees it.
+     */
+    maybeAskMeasurementUnits() {
+        if (!this.needsMeasurementUnitsConfirmation()) return;
+        this.openMeasurementUnitsModal();
+    }
+
+    /**
+     * The units-confirmation dialog. Renders the most recent measurement as it
+     * currently reads so the user judges real numbers rather than an abstract
+     * question, then applies their answer through
+     * `applyMeasurementUnitsChoice`.
+     */
+    openMeasurementUnitsModal() {
+        const modal = document.getElementById('measurement-units-modal');
+        if (!modal) return;
+
+        const count = this.lastUnitsReport?.measurementsNeedingConfirmation || 0;
+        const countEl = document.getElementById('measurement-units-count');
+        if (countEl) {
+            countEl.textContent = count === 1
+                ? 'your 1 saved measurement'
+                : `your ${count} saved measurements`;
+        }
+
+        // Show the newest entry exactly as stored, unconverted: these are the
+        // numbers whose meaning we are asking about.
+        const latest = (storageService.getMeasurements() || [])
+            .slice()
+            .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+            .pop();
+        const sample = document.getElementById('measurement-units-sample');
+        if (sample) {
+            const rows = [
+                ['Body weight', latest?.weight, 'lb', 'kg'],
+                ['Waist', latest?.waist, 'in', 'cm'],
+                ['Chest', latest?.chest, 'in', 'cm'],
+            ].filter(([, v]) => v !== null && v !== undefined && v !== '');
+            sample.innerHTML = rows.length
+                ? rows.map(([label, value, imp, met]) =>
+                    `<li><span>${label}</span><strong>${value} ${imp} or ${value} ${met}?</strong></li>`).join('')
+                : '<li><span>No values recorded</span></li>';
+        }
+
+        const close = () => {
+            modal.classList.remove('active');
+            modal.setAttribute('aria-hidden', 'true');
+        };
+
+        const answer = (choice) => {
+            const result = this.applyMeasurementUnitsChoice(choice);
+            close();
+            if (result) {
+                this.refreshFromStorage();
+                showToast(result.converted
+                    ? `Converted ${result.count} measurement${result.count === 1 ? '' : 's'} from pounds and inches`
+                    : 'Measurements kept as they were', 'success');
+            }
+        };
+
+        document.getElementById('measurement-units-imperial')
+            ?.addEventListener('click', () => answer(MEASUREMENT_CHOICE_IMPERIAL), { once: true });
+        document.getElementById('measurement-units-metric')
+            ?.addEventListener('click', () => answer(MEASUREMENT_CHOICE_METRIC), { once: true });
+        // "Decide later" records nothing, so the question returns next boot.
+        document.getElementById('measurement-units-later')
+            ?.addEventListener('click', close, { once: true });
+
+        modal.classList.add('active');
+        modal.setAttribute('aria-hidden', 'false');
+    }
+
     maybeShowOnboarding() {
         const seen = storageService.hasSeenOnboarding();
         const hasData = this.programs.length > 0 || this.workoutSessions.length > 0;
@@ -791,6 +977,12 @@ class GymTrackerApp {
             window.addEventListener('syncSystemReady', () => {
                 debugLog('🔄 Sync system ready, refreshing data');
                 setTimeout(() => {
+                    // Records that arrived from Firestore have never been
+                    // through a migration: applyRemoteChange() writes them
+                    // straight into localStorage. Reconcile BEFORE loading
+                    // them into models, or pre-canonical weights get read as
+                    // kilograms (the 65 lb -> 143.3 lb bug).
+                    this.reconcileStoredUnits();
                     this.refreshFromStorage();
                 }, 1000);
             }, { once: true });
@@ -811,6 +1003,10 @@ class GymTrackerApp {
             clearTimeout(remoteRefreshTimer);
             remoteRefreshTimer = setTimeout(() => {
                 debugLog('🔄 Remote sync update — refreshing data');
+                // Same reason as the initial merge above: a device still
+                // running an older build can push pre-canonical numbers at
+                // any time, and the version marker cannot see them.
+                this.reconcileStoredUnits();
                 this.refreshFromStorage();
             }, 750);
         });

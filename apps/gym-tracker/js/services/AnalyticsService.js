@@ -317,19 +317,20 @@ export class AnalyticsService {
         const endExclusive = new Date(end);
         endExclusive.setDate(endExclusive.getDate() + 1); // inclusive of today
 
-        const recent = new Set(
-            this.getVolumeByCategoryInRange(sessions || [], exerciseDatabase, windowStart, endExclusive)
-                .map(t => t.category),
-        );
+        // "Trained recently" is a yes/no about WORK, not about weight volume.
+        // Deriving it from getVolumeByCategoryInRange (weight-only since
+        // GT-04) made a category trained purely with timed work - core, via
+        // planks - permanently "not trained recently", while the very same
+        // row reported "7 days since last trained". getLastTrainedByCategory
+        // already counts a plank as core work, so the window test goes there.
         const lastTrained = this.getLastTrainedByCategory(sessions || [], exerciseDatabase);
 
         const out = [];
         programmed.forEach(category => {
-            if (recent.has(category)) return;
             const lastDate = lastTrained.get(category) || null;
-            const daysSince = lastDate
-                ? Math.round((end - this.toLocalDate(lastDate)) / 86400000)
-                : null;
+            const last = lastDate ? this.toLocalDate(lastDate) : null;
+            if (last && last >= windowStart && last < endExclusive) return;
+            const daysSince = last ? Math.round((end - last) / 86400000) : null;
             out.push({ category, lastDate, daysSince });
         });
 

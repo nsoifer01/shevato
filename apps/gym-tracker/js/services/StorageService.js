@@ -24,7 +24,17 @@ export class StorageService {
             // Which generation of the STORED DATA schema this install has been
             // migrated to (see utils/data-migrations.js). Distinct from
             // SCHEMA_VERSION, which versions an export payload.
-            DATA_VERSION: 'gymTrackerDataVersion'
+            DATA_VERSION: 'gymTrackerDataVersion',
+            // How the user answered the one-time "which units were your
+            // existing measurements entered in?" question. Measurements carry
+            // no per-record evidence of their original units, so this is the
+            // record of an explicit human decision, never an inference.
+            // Syncs, so a second device never re-asks.
+            MEASUREMENT_UNITS: 'gymTrackerMeasurementUnits',
+            // Pre-repair copy of the measurements, written immediately before
+            // the answer above is applied. Local-only rollback; deliberately
+            // NOT synced (it is a snapshot of one device's decision point).
+            MEASUREMENTS_BACKUP: 'gymTrackerMeasurementsBackup'
         };
     }
 
@@ -237,6 +247,36 @@ export class StorageService {
 
     saveDataVersion(version) {
         return this.set(this.keys.DATA_VERSION, Number(version) || 0);
+    }
+
+    /**
+     * The measurement-units decision record.
+     * `{ status: 'unresolved'|'resolved', choice, resolvedAt }`.
+     */
+    getMeasurementUnits() {
+        const raw = this.get(this.keys.MEASUREMENT_UNITS, null);
+        return raw && typeof raw === 'object' ? raw : null;
+    }
+
+    saveMeasurementUnits(record) {
+        return this.set(this.keys.MEASUREMENT_UNITS, record);
+    }
+
+    /** True once the user has answered; the question is then never re-asked. */
+    measurementUnitsResolved() {
+        return this.getMeasurementUnits()?.status === 'resolved';
+    }
+
+    /** Rollback copy taken immediately before measurements are rewritten. */
+    saveMeasurementsBackup(measurements) {
+        return this.set(this.keys.MEASUREMENTS_BACKUP, {
+            takenAt: new Date().toISOString(),
+            measurements,
+        });
+    }
+
+    getMeasurementsBackup() {
+        return this.get(this.keys.MEASUREMENTS_BACKUP, null);
     }
 
     // Measurement goals

@@ -3923,12 +3923,18 @@ body.gym-tracker .btn-set-action::after {
 
 /* Rest-timer actions: 24px tall was the worst target in the app, and it is
    pressed mid-rest with chalky hands. */
+/* The visible pill keeps its PRODUCTION size (24px tall, 46px wide): two of
+   them plus the gap are 96.8px inside a 146px dial, which is what keeps
+   "+30s" and "Skip" within the ring. Growing the pill itself to 34x62 put
+   129px of buttons inside a 128px circle and pushed both of them through the
+   edge. The 44px touch target is supplied by the ::after below instead, so
+   the target grows without the artwork moving. */
 body.gym-tracker .rest-timer-btn,
 body.gym-tracker .rest-timer-btn:hover,
 body.gym-tracker .rest-timer-btn:focus-visible {
-    height: 34px;
-    min-width: 62px;
-    font-size: 0.7rem;
+    height: 24px;
+    min-width: 46px;
+    font-size: 0.64rem;
     position: relative;
 }
 
@@ -4004,14 +4010,10 @@ body.gym-tracker .rest-timer-dial {
     backdrop-filter: blur(6px);
 }
 
-/* A smaller footprint on phones, where the columns it covers are narrowest. */
-@media (max-width: 480px) {
-    body.gym-tracker .rest-timer-dial {
-        width: 128px;
-        height: 128px;
-    }
-    body.gym-tracker .rest-timer-value { font-size: 1.3rem; }
-}
+/* The dial deliberately keeps its 146px production diameter on phones. It was
+   shrunk to 128px here to cover fewer columns, but the dial no longer blocks
+   anything (pointer-events above), so the only thing the shrink achieved was
+   to push the two buttons outside the ring. */
 
 /* ---- GT-09. Scheduled-day dots in the week strip ----------------------
    The classes were right and the rule matched, yet the dot rendered 5px
@@ -4524,3 +4526,126 @@ body.gym-tracker .set-row-inputs .duration-sec {
         flex: 0 1 100px;
     }
 }
+
+/* ---- Measurement units confirmation ----------------------------------
+   Shown once when the stored measurements' original units cannot be proven
+   from the data (see js/utils/data-migrations.js). Mirrors the import-mode
+   dialog's option-list so the two one-off data decisions look alike.
+   Colours are pinned because assets/css/main.css sets `button { color:#555
+   !important }`, which otherwise greys the option text out. */
+body.gym-tracker .measurement-units-summary,
+body.gym-tracker .measurement-units-question,
+body.gym-tracker .measurement-units-sample-intro {
+    color: var(--gt-text, #e6e9f0);
+    font-size: 0.86rem;
+    line-height: 1.45;
+    margin: 0 0 0.7rem;
+}
+
+body.gym-tracker .measurement-units-question {
+    font-weight: 700;
+}
+
+body.gym-tracker .measurement-units-sample-intro {
+    margin-bottom: 0.35rem;
+    color: var(--gt-text-dim, #9aa3b8);
+}
+
+body.gym-tracker .measurement-units-sample {
+    list-style: none;
+    margin: 0 0 0.9rem;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--gt-border, #262b3d);
+    border-radius: var(--gt-radius-inner, 8px);
+    background: var(--gt-surface-2, #14172a);
+}
+
+body.gym-tracker .measurement-units-sample li {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.6rem;
+    padding: 0.18rem 0;
+    font-size: 0.82rem;
+    color: var(--gt-text-dim, #9aa3b8);
+}
+
+body.gym-tracker .measurement-units-sample strong {
+    color: var(--gt-text, #e6e9f0);
+    font-variant-numeric: tabular-nums;
+}
+
+body.gym-tracker .measurement-units-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin-bottom: 1rem;
+}
+
+body.gym-tracker .measurement-units-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.7rem;
+    width: 100%;
+    min-height: 44px;
+    padding: 0.75rem 0.8rem;
+    text-align: left;
+    border: 1px solid var(--gt-border, #262b3d);
+    border-radius: var(--gt-radius-inner, 8px);
+    background: var(--gt-surface-2, #14172a);
+    color: var(--gt-text, #e6e9f0) !important;
+    font: inherit;
+    line-height: 1.35 !important;
+    cursor: pointer;
+    box-shadow: none !important;
+}
+
+body.gym-tracker .measurement-units-option:hover,
+body.gym-tracker .measurement-units-option:focus-visible {
+    border-color: var(--gt-accent, #5b9bff);
+    background: var(--gt-surface-3, #1a1e30);
+    color: var(--gt-text, #e6e9f0) !important;
+}
+
+body.gym-tracker .measurement-units-option-icon {
+    color: var(--gt-accent, #5b9bff);
+    font-size: 0.95rem;
+    padding-top: 0.1rem;
+}
+
+body.gym-tracker .measurement-units-option-text strong {
+    display: block;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--gt-text, #e6e9f0);
+}
+
+body.gym-tracker .measurement-units-option-text small {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.76rem;
+    color: var(--gt-text-dim, #9aa3b8);
+}
+
+body.gym-tracker .measurement-units-note {
+    margin: 0.75rem 0 0;
+    font-size: 0.74rem;
+    color: var(--gt-text-dim, #9aa3b8);
+    line-height: 1.4;
+}
+
+/* Result line for Settings > Data > Re-check stored units. Reports what the
+   scan proved, so "nothing needed repair" and "I could not prove this either
+   way" stay visibly different answers. */
+body.gym-tracker .settings-units-result {
+    margin: 0.6rem 0 0;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--gt-border, #262b3d);
+    border-radius: var(--gt-radius-inner, 8px);
+    background: var(--gt-surface-2, #14172a);
+    color: var(--gt-text, #e6e9f0);
+    font-size: 0.8rem;
+    line-height: 1.45;
+}
+
+body.gym-tracker .settings-units-result[hidden] { display: none; }

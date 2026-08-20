@@ -226,6 +226,26 @@ lone exercise in superset chrome during a workout (fixed 2026-08-12,
 - Custom-exercise form muscle options are Title Case values; setting
   lowercase values silently fails validation.
 
+## Running the browser suite while ALSO driving your own headless browsers
+
+The full `npm run test:browser` run during the 2026-08-20 round reported 5
+`tp-assist` failures (venue distance chips empty). They were not real:
+
+- the same suite passes 63/63 when run alone on the same working tree,
+- it passes 63/63 on the pre-change tree,
+- the diff touched no trip-planner file at all,
+- and photon.komoot.io was up (HTTP 200 in 0.7s) the whole time.
+
+The cause was CPU contention: several of my own headless Chromium instances
+were driving gym-tracker journeys concurrently. The distance chips geocode with
+a **7 second abort**, and under that load the requests did not land in time, so
+the chips rendered empty exactly as they do during a real photon outage.
+
+So: a timing-sensitive suite must be run with nothing else driving a browser,
+and "it failed in the big run" is not evidence until it fails alone. This is
+the same class of hazard as two runs sharing CDP 9222, but it does not need a
+port collision to bite - raw CPU contention is enough.
+
 ## Service worker
 
 - `data/exercises-db.json` is precached; **any catalog edit needs a
@@ -322,6 +342,83 @@ data), idempotent, and never mutates its input. `gymTrackerDataVersion` starts
 with `gymTracker`, so the sync layer carries it between a user's devices and a
 second device does not re-run a migration the first one already did.
 
+## Unit provenance: why a version marker was not enough (the 143.3 lb bug)
+
+The canonical-units migration above was correct as a pure function and still
+corrupted real data. A real 65 lb dumbbell bench press started rendering as
+**143.3 lb**. This is the most important thing in this file.
+
+**What happened.** `migrateStoredData()` converts an lb account's numbers once
+and records `gymTrackerDataVersion`. That is right for data already in
+localStorage when the app boots, and only for that data. But:
+
+- `app.init()` runs on `DOMContentLoaded`. It does not wait for sync.
+- `storage-sync-robust.js` rebuilds `localRevisions` **empty on every page
+  load**, so `decideRemoteChange()` takes its `if (!localRev) return 'apply'`
+  branch and writes the remote document over localStorage unconditionally.
+- `applyRemoteChange()` writes through `originalMethods.setItem` - straight
+  past the app.
+- `refreshFromStorage()` calls `loadAllData()` and **never re-ran migrations**.
+
+So on a device whose Firestore document still held pre-canonical numbers:
+
+```
+boot      -> 65 lb becomes 29.4835 kg, version := 2
+snapshot  -> localStorage.gymTrackerSessions := the legacy doc (65 again)
+reload    -> version is 2, so the migration is skipped; 65 is read as 65 KG
+display   -> 65 kg rendered in pounds = 143.3 lb
+```
+
+Worse, `gymTrackerDataVersion` is itself synced, so the bogus "already
+migrated" marker propagates and permanently blesses un-migrated data on every
+device.
+
+**The rule this produced.** A per-INSTALL marker cannot describe records that
+arrive from a channel the marker knows nothing about. Canonical-ness is now a
+property of the RECORD:
+
+- Every session and measurement the app writes carries `unitsCanonical: true`
+  (`CANONICAL_FLAG` in `js/utils/data-migrations.js`).
+- **No conversion step ever touches a stamped record.** Idempotency,
+  re-entrancy and ordering-independence are therefore structural, not guarded.
+- `reconcileUnits()` is safe to run on every boot, after every remote sync and
+  from Settings, because a healthy profile is a pure no-op.
+- `app.js` calls `reconcileStoredUnits()` on `syncSystemReady` AND on every
+  debounced `localStorageSync` remote burst, **before** `refreshFromStorage()`.
+
+**What can and cannot be proven.** This is the part that matters when writing
+any future repair:
+
+- **Sessions have a discriminator, by luck.** The v1 migration stamps
+  `sessionUnit` on everything it converts, and every session created since the
+  remediation sets it at creation. So in an install claiming v>=1, a session
+  with NO `sessionUnit` provably never went through v1 - it is legacy, and
+  repairing it is deterministic. A session that HAS one in a damaged install is
+  genuinely ambiguous (pre-remediation in-workout toggle vs logged-after-the-
+  clobber) and is reported, never converted.
+- **Measurements have nothing.** v1 rewrote `weight` / `waist` / ... in place
+  and left no trace, so a stored `34` is either legacy inches or migrated
+  centimetres and the record cannot tell you which. We DO NOT guess. A
+  plausibility test on body dimensions ("a 34 cm adult waist is impossible")
+  was considered and rejected: it is another silent heuristic, and the owner's
+  standing instruction is to be asked once rather than be quietly wrong.
+  `#measurement-units-modal` asks, the answer is recorded in
+  `gymTrackerMeasurementUnits` (synced, so a second device never re-asks), and
+  `gymTrackerMeasurementsBackup` holds a rollback copy written before the
+  rewrite. A kg account is never asked: for kg, v1 was a no-op on measurements,
+  so the numbers are correct either way.
+
+**Settings > Data > Re-check stored units** is the permanent escape hatch. It
+is a diagnostic, NOT "run all migrations again": it repairs only provable
+cases, reports ambiguous ones, and changes nothing on a healthy profile no
+matter how many times it is pressed or which display unit is selected.
+
+Regression coverage lives in `tests/unit-provenance.test.mjs` (pure, with
+expected kilograms hard-coded from an INDEPENDENT calculation) and
+`e2e/units-migration.mjs` (boots the real app on pre-remediation localStorage).
+The original migration shipped with a passing suite precisely because every
+test called `migrateStoredData()` directly and none booted the app.
+
 ## Timed work is time, not weight (GT-04)
 
 `Set.volume` returned `this.duration` for a timed set and
@@ -388,6 +485,25 @@ other happened to them.
   exercise, so `exercises.length` said "8 exercises" over seven rendered
   blocks. `performedExerciseCount` (model + `session-metrics.js`) is the
   count every surface uses.
+
+## "Trained recently" is about work, not tonnage
+
+Found while re-auditing the 2026-08-19 remediation, not in the original audit.
+
+Making volume weight-only (GT-04) was correct, but `getStaleProgramCategories`
+derived "trained recently" from `getVolumeByCategoryInRange`. A category
+trained only with timed work - core, via planks - produces zero weight volume,
+so Insights listed **Core as "not trained recently" while the same row said "7
+days since last trained"**. Pre-remediation this could not happen, because
+volume included duration.
+
+`getLastTrainedByCategory` already had the right rule ("a plank IS core work"),
+so staleness now tests that date against the window and never consults volume.
+The caption reads "Not trained in the last 14 days" rather than "No volume in".
+
+The general shape: when a metric is deliberately narrowed, every consumer that
+used it as a proxy for something BROADER has to be re-derived. Grep the
+narrowed function's callers, not just its own tests.
 
 ## Weeks have ONE definition (GT-10, GT-11)
 
@@ -461,6 +577,17 @@ own a 44px tap area and only the probe can tell):
 - `.gt-stepper-group` is 46px so its 1px border leaves a 44px INNER box, and
   it must keep `overflow: visible` or the expanders are clipped for
   hit-testing too.
+
+**The visual regression this caused, and the rule from it.** Making the dial
+non-blocking was right; making it SMALLER was not. The first attempt shrank the
+dial to 128px on phones and grew the buttons to 34x62 for the 44px target. Two
+62px buttons plus the gap are ~129px inside a 128px circle, so `+30s` and
+`Skip` were pushed 11px through the ring on both sides at 390px and 320px - the
+component looked broken. The dial keeps its **146px production diameter** and
+the buttons keep their **24x46 production size**; the 44px target comes from
+the transparent `::after` expander, which is the whole point of that technique.
+A hit-area fix must never move the artwork. Verified by measuring each button's
+four corners against the circle's radius, not by eye.
 
 The rest dial was worse than a small target: its 146px SVG ring intercepted
 taps across a far larger area than the dial looked, and hit-testing found 9

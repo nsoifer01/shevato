@@ -18,7 +18,7 @@
  * Old caches are pruned automatically on activate.
  */
 
-const CACHE_VERSION = '1.10.0';
+const CACHE_VERSION = '1.11.0';
 const PRECACHE = `gym-precache-${CACHE_VERSION}`;
 const RUNTIME = `gym-runtime-${CACHE_VERSION}`;
 

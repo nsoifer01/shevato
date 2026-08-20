@@ -257,6 +257,23 @@ Designed for gym environments with low lighting:
   `js/views/workout-view.js`). Only the per-keystroke notes field is
   debounced, and every lifecycle exit flushes it
 - `gymTrackerDataVersion` records which stored-data migrations have run
+- Every session and measurement carries `unitsCanonical: true`, the per-record
+  proof that its numbers are canonical kg/cm. No migration or repair pass ever
+  touches a stamped record, which is what makes the unit reconciler safe to run
+  on every boot and after every remote sync. A version marker alone was not
+  enough: sync writes straight into `localStorage` after `init()` has already
+  migrated, so pre-canonical numbers could arrive behind an "already migrated"
+  flag and be read as kilograms. See "Unit provenance" in `FINDINGS.md`
+- `gymTrackerMeasurementUnits` records the user's answer to the one-time
+  "which units were your existing measurements entered in?" question (synced,
+  so a second device never re-asks); `gymTrackerMeasurementsBackup` is the
+  local-only rollback copy taken immediately before that answer is applied.
+  Measurements carry no evidence of their original units, so the app asks
+  rather than inferring from whether a value "looks like" inches or centimetres
+- **Settings → Data → Re-check stored units** rescans every unit-bearing
+  record on demand, repairs only what can be proven legacy, reports anything
+  ambiguous, and changes nothing on a healthy profile however often it is run
+  or whichever display unit is selected
 
 ### Firebase Integration
 - Real-time database sync

@@ -1145,6 +1145,9 @@
                             <button type="button" class="btn btn-secondary" id="import-data-btn">
                                 <i class="fas fa-upload"></i> Import Data
                             </button>
+                            <button type="button" class="btn btn-secondary" id="recheck-units-btn">
+                                <i class="fas fa-scale-balanced"></i> Re-check stored units
+                            </button>
                             <button type="button" class="btn btn-secondary" id="replay-onboarding-btn">
                                 <i class="fas fa-circle-info"></i> Replay welcome tour
                             </button>
@@ -1155,6 +1158,7 @@
                                 <i class="fas fa-cloud-arrow-down"></i> Delete cloud data
                             </button>
                         </div>
+                        <p class="settings-units-result" id="recheck-units-result" hidden role="status" aria-live="polite"></p>
                         <input type="file" id="import-file-input" accept=".json" style="display: none;">
                     </section>
                 </form>
@@ -1600,6 +1604,54 @@
                 <div class="form-actions">
                     <button type="button" class="btn btn-ghost" id="import-mode-cancel">Cancel</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Measurement units confirmation. Shown once, only when the stored
+         measurements' original units cannot be PROVEN (an lb account whose
+         records were damaged by the sync race, see utils/data-migrations.js).
+         Measurements carry no per-record evidence of the units they were
+         entered in, so the app asks rather than guessing from whether a waist
+         "looks like" inches or centimetres. -->
+    <div id="measurement-units-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="measurement-units-title" aria-hidden="true">
+        <div class="modal-content small measurement-units-modal-content">
+            <div class="modal-header">
+                <h2 id="measurement-units-title">Confirm your measurement units</h2>
+            </div>
+            <div class="modal-body">
+                <p class="measurement-units-summary">
+                    A Gym Tracker update changed how measurements are stored. Your
+                    workout history has been checked automatically, but
+                    <strong id="measurement-units-count">your saved measurements</strong>
+                    do not record which units they were originally entered in.
+                </p>
+                <p class="measurement-units-sample-intro">Your most recent entry currently reads:</p>
+                <ul class="measurement-units-sample" id="measurement-units-sample"></ul>
+                <p class="measurement-units-question">Which units did you enter these in?</p>
+                <div class="measurement-units-options">
+                    <button type="button" class="measurement-units-option" id="measurement-units-imperial">
+                        <span class="measurement-units-option-icon" aria-hidden="true"><i class="fas fa-weight-hanging"></i></span>
+                        <span class="measurement-units-option-text">
+                            <strong>Pounds and inches</strong>
+                            <small>Converts them to the new storage format. Displayed values stay the same.</small>
+                        </span>
+                    </button>
+                    <button type="button" class="measurement-units-option" id="measurement-units-metric">
+                        <span class="measurement-units-option-icon" aria-hidden="true"><i class="fas fa-ruler"></i></span>
+                        <span class="measurement-units-option-text">
+                            <strong>Kilograms and centimetres</strong>
+                            <small>Keeps the stored numbers exactly as they are.</small>
+                        </span>
+                    </button>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-ghost" id="measurement-units-later">Decide later</button>
+                </div>
+                <p class="measurement-units-note">
+                    A rollback copy is saved before anything changes, and this is
+                    asked only once.
+                </p>
             </div>
         </div>
     </div>

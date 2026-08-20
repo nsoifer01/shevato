@@ -1132,6 +1132,11 @@ class WorkoutView {
             // canonical kg either way; this is metadata, and the in-workout
             // toggle rewrites it.
             sessionUnit: normalizeWeightUnit(this.app.settings.weightUnit),
+            // Everything this session records is written through
+            // toCanonicalWeight(), so it is canonical kg from the first set.
+            // Stamping it here is what makes every later migration and the
+            // Settings re-check a guaranteed no-op for it.
+            unitsCanonical: true,
             exercises: program.exercises.map(ex => new WorkoutExercise({
                 exerciseId: ex.exerciseId,
                 plannedExerciseId: ex.exerciseId,
