@@ -3333,12 +3333,16 @@ body.gym-tracker .set-heads {
 body.gym-tracker .set-col-head {
     flex: 1 1 0;
     min-width: 0;
-    color: #8b94a6;
-    /* The app's root font-size is ~14.7px, so 0.85rem lands at ~12.5px -
-       nearly half again the 8.21px the audit measured. */
-    font-size: 0.85rem;
+    /* GT-20 was a CONTRAST failure (3.92:1), and only secondarily a legibility
+       one at 8.21px. The first fix answered it with size alone - 0.85rem, about
+       12.5px, half again production's caption - which made the captions shout
+       over the numbers they label. Contrast now does the accessible work
+       (#9aa3b8 clears 4.5:1 on the row) and the size comes most of the way back
+       to production: ~10px, still a clear step up from 8.21px. */
+    color: #9aa3b8;
+    font-size: 0.68rem;
     font-weight: 700;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.07em;
     text-transform: uppercase;
     line-height: 1.2;
     text-align: center;
@@ -3948,27 +3952,77 @@ body.gym-tracker .rest-timer-btn::after {
     transform: translateY(-50%);
 }
 
-/* Finish workout: the button that ends the session. */
-body.gym-tracker #finish-workout-btn {
-    min-height: 44px;
-    padding-inline: 0.9rem;
-}
+/* ---- GT-19, corrected: the header keeps its PRODUCTION size --------------
+   The first attempt met the 44px target by growing the visible chrome: the
+   unit track went 80x34 -> 96x46, each half 34x28 -> 44x44 and Finish
+   85x34 -> 88x44, while Pause was left at 34x34. The header ended up both
+   bigger than production AND internally inconsistent, which reads as worse
+   design, not better ergonomics.
 
-/* Per-session unit toggle: the track was 44px but each half was 34x28. */
-/* The track is 44px tall with a 1px border and `overflow: hidden`, so a 44px
-   button inside it was CLIPPED to the 42px content box - and the sticky
-   header's own padding trimmed it further, leaving ~32px of real target. The
-   track grows to fit its buttons instead of bounding them. */
+   Same philosophy as the rest dial: the ARTWORK is production-sized and the
+   TAP AREA is expanded invisibly with a transparent ::after. Every control in
+   the row is treated the same way, so the visual weight stays even. */
+
+/* The track is production's 80x34 again. `overflow: hidden` clipped anything
+   reaching past it, so the rounding moves onto the buttons themselves and the
+   track lets their hit expanders out. Visually identical - same radius, same
+   fill, same divider - but a ::after can now escape the box. */
 body.gym-tracker .workout-unit-toggle {
-    height: auto;
-    min-height: 46px;
+    height: 34px;
+    overflow: visible;
     align-items: stretch;
 }
 
 body.gym-tracker .workout-unit-btn {
-    min-height: 44px;
-    min-width: 44px;
+    position: relative;
+    min-height: 0;
+    min-width: 40px;
+    padding: 0 0.7rem;
     align-self: stretch;
+}
+
+body.gym-tracker .workout-unit-btn:first-child {
+    border-radius: var(--gt-radius, 10px) 0 0 var(--gt-radius, 10px);
+}
+
+body.gym-tracker .workout-unit-btn:last-child {
+    border-radius: 0 var(--gt-radius, 10px) var(--gt-radius, 10px) 0;
+}
+
+/* 44px tall, and only as wide as this half, so the two halves never fight
+   over the boundary between them. */
+body.gym-tracker .workout-unit-btn::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 44px;
+    transform: translateY(-50%);
+}
+
+/* Finish and Pause: production's 85x34 and 34x34, each with a 44px target. */
+body.gym-tracker #finish-workout-btn,
+body.gym-tracker #pause-workout-btn {
+    position: relative;
+    min-height: 34px;
+    height: 34px;
+}
+
+body.gym-tracker #finish-workout-btn {
+    padding-inline: 0.7rem;
+}
+
+body.gym-tracker #finish-workout-btn::after,
+body.gym-tracker #pause-workout-btn::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    min-width: 44px;
+    width: 100%;
+    height: 44px;
+    transform: translate(-50%, -50%);
 }
 
 /* Edit / delete on a completed row: 34px buttons with 44px hit areas, so the

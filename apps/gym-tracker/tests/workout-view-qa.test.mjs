@@ -66,31 +66,21 @@ function makeCard(exerciseIndex, weights, { priorWeight } = {}) {
         return { row, weightInput, slot };
     });
 
-    const badge = { removed: false, remove() { this.removed = true; } };
     const host = {
         id: `exercise-${exerciseIndex}`,
         querySelectorAll(sel) {
             if (sel === '.set-row-planned') return rows.map(r => r.row);
             return [];
         },
-        querySelector(sel) {
-            if (sel === '.gt-progress-badge') return badge;
-            return null;
-        },
+        querySelector() { return null; },
     };
-    return { rows, host, badge };
+    return { rows, host };
 }
 
-function makeView(card, exerciseIndex, { lastWeight = '60' } = {}) {
-    const detail = {
-        removed: false,
-        remove() { this.removed = true; },
-        querySelector: () => ({ dataset: { lastWeight } }),
-    };
+function makeView(card, exerciseIndex) {
     const byId = new Map();
     card.rows.forEach(({ weightInput }) => byId.set(weightInput.id, weightInput));
     byId.set(`exercise-${exerciseIndex}`, card.host);
-    byId.set(`progression-detail-${exerciseIndex}-0`, detail);
 
     const document = {
         getElementById: (id) => byId.get(id) || null,
@@ -100,7 +90,7 @@ function makeView(card, exerciseIndex, { lastWeight = '60' } = {}) {
 
     const methods = buildMethods(
         src,
-        ['useLastWeight', 'carryWeightDown', '_setPlannedInputValue'],
+        ['carryWeightDown', '_setPlannedInputValue'],
         { document },
         'workout-view.js',
     );
@@ -109,52 +99,8 @@ function makeView(card, exerciseIndex, { lastWeight = '60' } = {}) {
     view.refreshPlateHint = () => {};
     view.maybeToggleRestoreChip = () => {};
     view.dedupePlateHints = () => {};
-    return { view, detail, document };
+    return { view, document };
 }
-
-// ---------------------------------------------------------------------------
-// GT-06: "Use last weight" is an EXERCISE-level decision
-// ---------------------------------------------------------------------------
-
-test('useLastWeight reverts every row still showing the suggestion', () => {
-    // The audit's exact plan: four rows pre-filled at the suggested 62.5.
-    const card = makeCard(0, ['62.5', '62.5', '62.5', '62.5'], { priorWeight: 62.5 });
-    const { view } = makeView(card, 0, { lastWeight: '60' });
-    view.useLastWeight(0, 0);
-    assert.deepEqual(card.rows.map(r => r.weightInput.value), ['60', '60', '60', '60'],
-        'not 60 / 62.5 / 62.5 / 62.5');
-});
-
-test('useLastWeight leaves a row the lifter typed their own number into', () => {
-    // Rejecting the app's suggestion is not licence to overwrite the lifter's.
-    const card = makeCard(0, ['62.5', '62.5', '70', '62.5']);
-    const { view } = makeView(card, 0, { lastWeight: '60' });
-    view.useLastWeight(0, 0);
-    assert.deepEqual(card.rows.map(r => r.weightInput.value), ['60', '60', '70', '60']);
-});
-
-test('useLastWeight fills rows that are still empty', () => {
-    const card = makeCard(0, ['62.5', '', '']);
-    const { view } = makeView(card, 0, { lastWeight: '60' });
-    view.useLastWeight(0, 0);
-    assert.deepEqual(card.rows.map(r => r.weightInput.value), ['60', '60', '60']);
-});
-
-test('useLastWeight moves the restore baseline with the value', () => {
-    const card = makeCard(0, ['62.5', '62.5'], { priorWeight: 62.5 });
-    const { view } = makeView(card, 0, { lastWeight: '60' });
-    view.useLastWeight(0, 0);
-    card.rows.forEach(({ row }) => assert.equal(row.dataset.priorWeight, '60',
-        'the "same as last time" chip must stay truthful'));
-});
-
-test('useLastWeight removes the badge and its panel once the exercise is reverted', () => {
-    const card = makeCard(0, ['62.5', '62.5']);
-    const { view, detail } = makeView(card, 0, { lastWeight: '60' });
-    view.useLastWeight(0, 0);
-    assert.equal(card.badge.removed, true, 'the badge explained a prefill that is gone');
-    assert.equal(detail.removed, true);
-});
 
 // ---------------------------------------------------------------------------
 // GT-32: carry the first weight down an untouched exercise

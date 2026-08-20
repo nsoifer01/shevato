@@ -20,6 +20,9 @@ import { newPage, closePage, goto } from '../../../tests/browser/cdp.mjs';
 
 /** Independently computed: 65 x 0.45359237. Not derived from app code. */
 const KG_FOR_65_LB = 29.48350405;
+/** Independently computed: 140 x 0.45359237 and 10 x 0.45359237. */
+const KG_FOR_140_LB = 63.5029318;
+const KG_FOR_10_LB = 4.5359237;
 
 const legacySession = (weight, unitTag = null) => ({
   id: 1717000000003, programId: 'prog-1', workoutDayId: null,
@@ -86,16 +89,25 @@ export async function run({ base, cdpPort }) {
   const storedWeight = (s) => evaluate(s,
     `JSON.parse(localStorage.getItem('gymTrackerSessions'))[0].exercises[0].sets[0].weight`);
 
-  /** What History actually renders for that set. */
-  const renderedHistory = (s) => evaluate(s, `(async () => {
+  /**
+   * What History actually renders for a given exercise. Any open modal is
+   * dismissed first: the exercise-detail dialog sits over the nav, so leaving
+   * it open makes History look empty rather than wrong.
+   */
+  const renderedHistory = (s, needle = 'Dumbbell Bench') => evaluate(s, `(async () => {
+    const w = ms => new Promise(r => setTimeout(r, ms));
+    document.querySelectorAll('.modal.active').forEach(m => m.classList.remove('active'));
+    await w(300);
     document.querySelector('.nav-item[data-view="history"]').click();
-    await new Promise(r => setTimeout(r, 1200));
-    const card = document.querySelector('#history-view .history-card, #history-view [class*="card"]');
-    if (card) { card.click(); await new Promise(r => setTimeout(r, 800)); }
-    const txt = document.getElementById('history-view').innerText;
-    const i = txt.indexOf('Dumbbell Bench');
-    return i >= 0 ? txt.slice(i, i + 120) : '(not found)';
-  })()`);
+    await w(1200);
+    const v = document.getElementById('history-view');
+    const card = v.querySelector('.workout-card');
+    if (card) { card.click(); await w(900); }
+    const m = document.getElementById('workout-detail-modal');
+    const txt = (m && m.classList.contains('active')) ? m.innerText : v.innerText;
+    const i = txt.indexOf(${JSON.stringify('%NEEDLE%')});
+    return i >= 0 ? txt.slice(i, i + 160) : '(not found)';
+  })()`.replace('%NEEDLE%', needle));
 
   const withPage = async (label, fn) => {
     let s = null;
@@ -284,6 +296,118 @@ export async function run({ base, cdpPort }) {
       Math.abs(out[0] - canonical) < 1e-9, `${out[0]}`);
     t('gym-units H: the stale record was repaired (135 lb -> 61.235 kg)',
       Math.abs(out[1] - 61.23496995) < 1e-9, `${out[1]}`);
+  });
+
+  /* --- I. #history and #exercises must agree on the SAME record ---------- */
+  // The exercise detail read canonical kilograms and appended the account's
+  // unit label, so a real 140 lb pulldown rendered "63.503 lb" while History
+  // - two taps away, same record - correctly said 140lb.
+  await withPage('gym-units I', async (s) => {
+    await boot(s, {
+      gymTrackerSettings: { weightUnit: 'lb', firstDayOfWeek: 1, timeFormat: '24' },
+      gymTrackerOnboardingSeen: true,
+      gymTrackerSessions: [{
+        id: 1717000009, programId: 'p1', workoutDayName: 'Pull A', date: '2026-08-12',
+        startTime: '2026-08-12T18:00:00.000Z', endTime: '2026-08-12T19:00:00.000Z',
+        exercises: [{
+          // 101 = Neutral-Grip Lat Pulldown, 452 = Decline Crunch.
+          exerciseId: 101, exerciseName: 'Neutral-Grip Lat Pulldown',
+          sets: [
+            { weight: 140, reps: 10, duration: 0, completed: true, slot: 0 },
+            { weight: 140, reps: 9, duration: 0, completed: true, slot: 1 },
+          ],
+          targetSets: 2, targetReps: 10, restSeconds: 90, notes: '', order: 0,
+          completed: true, stickyValues: {}, groupId: null, feel: null,
+        }, {
+          exerciseId: 452, exerciseName: 'Decline Crunch',
+          sets: [{ weight: 10, reps: 15, duration: 0, completed: true, slot: 0 }],
+          targetSets: 1, targetReps: 15, restSeconds: 60, notes: '', order: 1,
+          completed: true, stickyValues: {}, groupId: null, feel: null,
+        }],
+        notes: '', completed: true, sessionUnit: null, paused: false,
+        elapsedBeforePause: 0, timestamp: '2026-08-12T18:00:00.000Z',
+      }],
+    });
+
+    const stored = await evaluate(s,
+      `JSON.parse(localStorage.getItem('gymTrackerSessions'))[0].exercises[0].sets[0].weight`);
+    t('gym-units I: 140 lb stored as canonical kg',
+      Math.abs(stored - KG_FOR_140_LB) < 1e-9, `stored ${stored}`);
+
+    const detail = await evaluate(s, `(async () => {
+      const w = ms => new Promise(r => setTimeout(r, ms));
+      document.querySelector('.nav-item[data-view="more"]').click(); await w(700);
+      document.querySelector('[data-view="exercises"]').click(); await w(1300);
+      const q = document.getElementById('exercise-db-search');
+      q.value = 'Neutral-Grip Lat'; q.dispatchEvent(new Event('input', { bubbles: true }));
+      await w(800);
+      const row = document.querySelector('#exercise-db-list [data-action="show-exercise-history"]');
+      if (!row) return '(no row)';
+      row.click(); await w(1300);
+      const d = document.getElementById('exercise-detail-modal');
+      return d && d.classList.contains('active') ? d.innerText : '(closed)';
+    })()`);
+    t('gym-units I: #exercises shows 140 lb', /140 lb/.test(detail), detail.slice(0, 120));
+    t('gym-units I: #exercises does NOT show 63.5', !/63\.5/.test(detail));
+    t('gym-units I: e1RM is converted too, not raw kg',
+      !/latest: (8[0-9]|9[0-9]) lb/.test(detail), (detail.match(/latest: [^\n]*/) || [''])[0]);
+
+    const hist = await renderedHistory(s, 'Neutral-Grip Lat');
+    t('gym-units I: #history agrees with #exercises', /140lb/.test(hist), hist.slice(0, 90));
+  });
+
+  /* --- J. no automatic next-weight recommendation ------------------------ */
+  // Two clean sessions used to trigger a bump. The increment was defined in
+  // the DISPLAY unit and added to a CANONICAL-kg weight, so 60 lb came back
+  // as 71 lb behind a "+11lb suggested" badge. The feature is gone; the
+  // prefill is the lifter's own last session.
+  await withPage('gym-units J', async (s) => {
+    const session = (id, date, weight) => ({
+      id, programId: 'p1', workoutDayName: 'Push', date,
+      startTime: `${date}T18:00:00.000Z`, endTime: `${date}T19:00:00.000Z`,
+      exercises: [{
+        exerciseId: 21, exerciseName: 'Dumbbell Bench Press',
+        sets: [0, 1, 2].map(slot => ({ weight, reps: 12, duration: 0, completed: true, slot })),
+        targetSets: 3, targetReps: 12, restSeconds: 90, notes: '', order: 0,
+        completed: true, stickyValues: {}, groupId: null, feel: null,
+      }],
+      notes: '', completed: true, sessionUnit: null, paused: false,
+      elapsedBeforePause: 0, timestamp: `${date}T18:00:00.000Z`,
+    });
+    await boot(s, {
+      gymTrackerSettings: { weightUnit: 'lb', firstDayOfWeek: 1, timeFormat: '24' },
+      gymTrackerOnboardingSeen: true,
+      gymTrackerActiveProgram: 'p1',
+      gymTrackerPrograms: [{
+        id: 'p1', name: 'Push', description: '',
+        exercises: [{
+          exerciseId: 21, exerciseName: 'Dumbbell Bench Press',
+          sets: [{ repsMin: 8, repsMax: 12 }, { repsMin: 8, repsMax: 12 }, { repsMin: 8, repsMax: 12 }],
+          restSeconds: 90, restAfterSeconds: 120, notes: '', order: 0, groupId: null,
+        }],
+        restMode: 'custom', uniformRestSeconds: 90, scheduleDays: [],
+        createdAt: '2026-05-01T10:00:00.000Z', updatedAt: '2026-05-01T10:00:00.000Z',
+      }],
+      // Both sessions at the top of the rep range: the old bump condition.
+      gymTrackerSessions: [session(1717000010, '2026-07-29', 60), session(1717000011, '2026-08-12', 60)],
+    });
+
+    const row = await evaluate(s, `(async () => {
+      const w = ms => new Promise(r => setTimeout(r, ms));
+      document.querySelector('.nav-item[data-view="workout"]').click(); await w(1100);
+      const b = [...document.querySelectorAll('#workout-view button')]
+        .find(x => /start workout/i.test(x.textContent) && x.offsetParent);
+      if (b) { b.click(); await w(1800); }
+      const rows = [...document.querySelectorAll('li.set-row')]
+        .map(r => [...r.querySelectorAll('input')][0]?.value);
+      return { rows, body: document.getElementById('workout-view').innerText };
+    })()`);
+    t('gym-units J: prefill is the real previous weight, not 71',
+      row.rows.every(v => v === '60'), JSON.stringify(row.rows));
+    t('gym-units J: no "suggested" badge anywhere', !/suggested/i.test(row.body));
+    t('gym-units J: no "deload" badge anywhere', !/deload/i.test(row.body));
+    t('gym-units J: no "Use last weight" control', !/use last weight/i.test(row.body));
+    t('gym-units J: no "Repeat weight" instruction', !/repeat weight/i.test(row.body));
   });
 
   return R;

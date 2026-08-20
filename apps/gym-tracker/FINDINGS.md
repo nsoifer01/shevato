@@ -246,6 +246,45 @@ and "it failed in the big run" is not evidence until it fails alone. This is
 the same class of hazard as two runs sharing CDP 9222, but it does not need a
 port collision to bite - raw CPU contention is enough.
 
+## Production and a feature branch share one Firestore document
+
+Established 2026-08-20, after the owner saw "weird numbers" on shevato.com.
+
+Facts, verified rather than assumed:
+
+- Deployed production does NOT ship the canonical unit model. `units.js` and
+  `data-migrations.js` are **404 on shevato.com**, and its `history-view.js`
+  contains zero `displayWeight` calls. It reads a stored number as being in
+  `settings.weightUnit`.
+- Local development runs against **production Firebase by default**. The
+  emulator seam (`sync-system/firebase-emulator-flag.mjs`) requires BOTH a
+  loopback host AND an explicit `localStorage['shevato:firebase-emulators']
+  = '1'`; without the opt-in, `localhost` uses project `shevato-site`.
+
+So opening this branch's build while signed in converts the shared document to
+canonical kilograms, and deployed production then renders those kilograms with
+a pound label. That is **not data corruption** - the stored values are correct
+and stamped - it is an old reader meeting a new representation.
+
+**There is no client-side fix.** Deferring the migration does not help: the
+canonical renderers would then read un-migrated numbers and be wrong in the
+other direction. You cannot run half of a storage-format change. A guard that
+blocks the conversion just moves the breakage.
+
+The controls that actually work, in order:
+
+1. Do local work against the emulator, or signed out, whenever the branch
+   changes a storage format.
+2. Deploy the READER before anything writes the new format - i.e. merge, let
+   production build, and only then open the new client on a synced account.
+3. After production understands canonical, every device converges: the
+   per-record reconciler repairs anything still legacy on boot, and
+   Settings > Data > Re-check stored units is the manual lever.
+
+The durable rule: **in this repo a feature branch and production share one
+per-user Firestore document, so any storage-format migration is a deployment
+ordering problem, not just a code problem.**
+
 ## Service worker
 
 - `data/exercises-db.json` is precached; **any catalog edit needs a
@@ -418,6 +457,87 @@ expected kilograms hard-coded from an INDEPENDENT calculation) and
 `e2e/units-migration.mjs` (boots the real app on pre-remediation localStorage).
 The original migration shipped with a passing suite precisely because every
 test called `migrateStoredData()` directly and none booted the app.
+
+## The display boundary is not optional, and one screen skipped it
+
+Found 2026-08-20, by the owner, on real data.
+
+`#history` rendered a 140 lb pulldown as **140lb**. `#exercises` - the exercise
+detail, two taps away, reading the SAME record - rendered it as **63.503 lb**:
+the stored kilograms with a pound label stapled on. Same for 130 -> 58.967,
+110 -> 49.895, 60 -> 27.216, 10 -> 4.536.
+
+The cause was not the migration and not the data. Storage was correct
+(63.5029318 kg, stamped canonical). `history-view.js` passed every number
+through `displayWeight()` / `volumeIn()`; `exercises-view.js` never imported
+`utils/units.js` at all and interpolated raw stored weights beside
+`settings.weightUnit`:
+
+```js
+${bestSet.weight.toLocaleString()} ${unit}   // 63.503 lb
+```
+
+Six sites in that one file: Best Set weight and volume, the per-set history
+chips, the up/down comparison tooltips, the Top weight / Best e1RM tiles, the
+progression chart axis and the 90-day e1RM sparkline (which is why the
+sparkline read "87 lb" for a 192 lb e1RM).
+
+**Why no test caught it.** Every screen was only ever asserted against itself,
+so a screen that was consistently wrong looked consistently right. The unit
+suite proved `displayWeight()` converts; nothing proved that each renderer
+CALLS it.
+
+**The rule, now enforced at the source level** by
+`tests/unit-display-boundary.test.mjs`:
+
+- A stored weight interpolated next to a unit token is a defect. The test
+  greps every file in `js/views/` for that shape and fails on it.
+- Two ways to satisfy it, both of which make the unit legible at the call
+  site: call a conversion (`displayWeight` / `volumeIn` / `formatWeight` /
+  `formatVolume` / `toSessionWeight` / `toDisplay`), or name the local with a
+  **`Shown` suffix** meaning "already through the display boundary, in
+  `unit`" - `bestWeightShown`, `loadShown`.
+- No view may hard-code `2.20462` or `0.45359237`.
+
+Verified to fail against the pre-fix `exercises-view.js` and pass after, so it
+is a real tripwire rather than a restatement of the current code.
+
+The generalisable lesson: when a codebase migrates to canonical storage,
+"the conversion helper is correct" and "every consumer uses it" are different
+claims, and only the second one is what the user sees.
+
+## Automatic weight suggestions: removed, and why the number was wrong anyway
+
+Removed 2026-08-20 at the owner's request. `js/utils/progression.js`, the
+bump/deload badges, the tap-to-reveal panel, "Use last weight", the per-set
+"Repeat weight" warning and all their CSS and tests are gone. A planned row
+now prefills from the lifter's own last session, set for set.
+
+It is worth recording WHY the removal was also a bugfix, because the defect is
+the same shape as the one above:
+
+    _overloadIncrement(exerciseId, unit)   // 'lb' -> 5, meaning FIVE POUNDS
+    evaluateProgression({ lastSets, increment })
+        suggestedWeight = lastWeight + increment
+
+`lastWeight` is canonical KILOGRAMS. So the 5 that meant 5 lb was added as
+5 kg:
+
+    60 lb  = 27.2155 kg  + 5  = 32.2155 kg = 71.02 lb  -> prefilled "71"
+    delta shown = 71 - 60 = 11               -> "+11lb suggested"
+
+Reproduced exactly on a 10 lb Decline Crunch: 4.5359 + 5 = 9.5359 kg = 21 lb,
+badge "+11lb suggested". A display-unit increment crossing into canonical
+arithmetic - the mirror image of the render bug.
+
+The prefill was DOM-only: `gymTrackerActiveWorkout` holds no set until one is
+committed, so a suggested number only reached storage if the lifter actually
+ticked that row. Once committed it is indistinguishable from a deliberate
+entry, which is precisely why nothing may rewrite history on suspicion.
+
+The +/- stepper increment survives as `_stepIncrement`, renamed so the unit is
+legible: it is applied to the DISPLAY-unit value in the input, in that same
+unit, which is why it was always correct.
 
 ## Timed work is time, not weight (GT-04)
 
@@ -726,7 +846,7 @@ hit-sensitive), at 390x844, 320x700 and 1280x900:
 - **axe-core (wcag2a + wcag2aa)** on the live workout: zero serious/critical.
 - A full **human-like journey** from a clean profile: first run, build a
   program by searching the way a person types, schedule it, train it on a
-  phone, use the progression controls, let a rest timer run, swap, note,
+  phone, let a rest timer run, swap, note,
   interrupt mid-workout, resume, finish, review History and Insights, add a
   measurement, switch units, export, reload.
 

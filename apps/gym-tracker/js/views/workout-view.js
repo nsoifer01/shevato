@@ -23,12 +23,6 @@ import { mergeSessionWithProgram } from '../utils/session-merge.js';
 import { weekStrip } from '../utils/program-schedule.js';
 import { readableActiveWorkout } from '../utils/active-workout.js';
 import {
-    evaluateProgression,
-    PROGRESSION_BUMP,
-    PROGRESSION_DELOAD,
-    PROGRESSION_REPEAT,
-} from '../utils/progression.js';
-import {
     normalizeWarmupSettings,
     shouldShowWarmup,
     buildWarmupRamp,
@@ -268,15 +262,7 @@ class WorkoutView {
                     e.preventDefault();
                     this.stepReps(exerciseIndex, slot, target.dataset.stepDir === 'up' ? 1 : -1);
                     break;
-                case 'toggle-progression-detail':
-                    e.preventDefault();
-                    this.toggleProgressionDetail(target);
-                    break;
-                case 'use-last-weight':
-                    e.preventDefault();
-                    this.useLastWeight(exerciseIndex, slot);
-                    break;
-                case 'toggle-warmup':
+case 'toggle-warmup':
                     e.preventDefault();
                     this.toggleWarmup(exerciseIndex);
                     break;
@@ -1380,25 +1366,6 @@ class WorkoutView {
         // Eligible = not already committed this session, and not holding a
         // sticky value (once the user types their own number the advice about
         // the prefill is stale).
-        const progression = previousSets.progression || null;
-        const eligibleSlots = [];
-        for (let i = 0; i < totalRows; i++) {
-            if (setsBySlot.get(i)) continue;
-            if (exercise.stickyValues && exercise.stickyValues[i]) continue;
-            eligibleSlots.push(i);
-        }
-        const isRepeat = progression?.status === PROGRESSION_REPEAT;
-        // slot -> the miss detail for that set, for the per-row warnings.
-        const missBySlot = new Map();
-        if (isRepeat) {
-            (progression.misses || []).forEach(m => {
-                if (eligibleSlots.includes(m.slot)) missBySlot.set(m.slot, m);
-            });
-        }
-        // A deload badge already tells the lifter to drop the weight, so it
-        // supersedes the per-set "repeat" advice rather than contradicting it.
-        const badgeSlot = (progression && !isRepeat) ? eligibleSlots[0] : undefined;
-
         let rowsHTML = '';
         for (let i = 0; i < totalRows; i++) {
             const committed = setsBySlot.get(i);
@@ -1429,12 +1396,7 @@ class WorkoutView {
                 // pre-fills from the PLANNED hold instead of 0:00.
                 const slotTargetSeconds = isDuration
                     ? this.plannedSecondsFor(progSets, i) : 0;
-                // Item 1: the bump/deload badge explains the PREFILL and lands
-                // on exactly one row; a miss warning lands on each set that
-                // actually fell short (see above).
-                const rowProgression = i === badgeSlot ? progression : null;
-                const rowMiss = missBySlot.get(i) || null;
-                rowsHTML += this.renderPlannedRow(index, i, prior, isDuration, unit, slotTargetReps, isPlateLoaded, usesBarWeight, slotRepLabel, rowProgression, rowMiss, slotTargetSeconds);
+                rowsHTML += this.renderPlannedRow(index, i, prior, isDuration, unit, slotTargetReps, isPlateLoaded, usesBarWeight, slotRepLabel, slotTargetSeconds);
             }
         }
 
@@ -1622,7 +1584,7 @@ class WorkoutView {
      * set and starts the rest timer. The row itself is NOT tappable — users
      * deliberately flick the toggle to complete.
      */
-    renderPlannedRow(exerciseIndex, slot, prior, isDuration, unit, targetReps, isPlateLoaded = false, usesBarWeight = false, repLabel = null, progression = null, miss = null, targetSeconds = 0) {
+    renderPlannedRow(exerciseIndex, slot, prior, isDuration, unit, targetReps, isPlateLoaded = false, usesBarWeight = false, repLabel = null, targetSeconds = 0) {
         const setLabel = `${slot + 1}`;
         const toggle = this.renderSetToggle(false, 'commit-planned-set', exerciseIndex, slot, 'Mark set complete');
 
@@ -1680,10 +1642,7 @@ class WorkoutView {
             : '';
 
         // Item 1: explain the prefill whenever it is not simply "what you lifted
-        // last time". Sticky rows pass progression = null (see renderExerciseEntry).
-        const progressionHTML = this.renderProgressionNote(exerciseIndex, slot, weight, unit, progression)
-            + this.renderMissNote(slot, miss);
-        const step = this._overloadIncrement(
+        const step = this._stepIncrement(
             this.currentWorkoutSession?.exercises[exerciseIndex]?.exerciseId,
             unit,
         );
@@ -1715,7 +1674,7 @@ class WorkoutView {
                     ${repLabel ? `<span class="set-rep-target" aria-label="Target: ${repLabel}">${repLabel}</span>` : ''}
                     ${plateHintHTML ? `<div class="plate-hint" id="plate-hint-${exerciseIndex}-${slot}">${plateHintHTML}</div>` : ''}
                 </div>` : ''}
-                <div class="set-row-notes">${progressionHTML}</div>
+                <div class="set-row-notes"></div>
             </li>
         `;
     }
@@ -1739,80 +1698,6 @@ class WorkoutView {
     }
 
     /**
-     * The per-SET miss warning. Rendered on each set whose own last-session
-     * reps fell under its own target, and on no others.
-     *
-     * Deliberately terse on screen - "Repeat weight" beside a warning icon.
-     * Repeated down a card, the old "Missed target - repeat weight" sentence
-     * was heavier than the information it carried. The full reasoning, with
-     * this set's actual numbers, lives in the title/aria-label so it stays
-     * available to a hover, a long-press and a screen reader.
-     */
-    renderMissNote(slot, miss) {
-        if (!miss) return '';
-        const target = miss.min === miss.max ? `${miss.min}` : `${miss.min}-${miss.max}`;
-        const explanation = `Set ${slot + 1}: last time you got ${miss.reps} `
-            + `${miss.reps === 1 ? 'rep' : 'reps'} against a target of ${target}. `
-            + 'Repeat the same weight and try to reach it.';
-        return `<span class="gt-note gt-note--warn gt-note--compact gt-progress-label gt-progress-label--miss"
-            title="${escapeHtml(explanation)}" aria-label="${escapeHtml(explanation)}">
-            <i class="fas fa-triangle-exclamation" aria-hidden="true"></i> Repeat weight
-        </span>`;
-    }
-
-    /**
-     * Item 1: the badge under a planned row that explains the prefilled weight
-     * for the whole exercise - a tappable bump/deload badge whose panel shows
-     * the two prior sessions and a "Use last weight" control.
-     *
-     * Per-set misses are NOT handled here; see renderMissNote.
-     * Nothing renders when the prefill IS the literal last-session weight.
-     */
-    renderProgressionNote(exerciseIndex, slot, weight, unit, progression) {
-        if (!progression) return '';
-        const { status } = progression;
-        // Bodyweight-style history (no load) has no weight to talk about.
-        if (!(progression.lastWeight > 0)) return '';
-        if (status !== PROGRESSION_BUMP && status !== PROGRESSION_DELOAD) return '';
-
-        const lastWeight = this.toSessionWeight(progression.lastWeight);
-        if (weight === '' || lastWeight === '' || Number(weight) === Number(lastWeight)) return '';
-
-        const delta = Math.round((Number(weight) - Number(lastWeight)) * 10) / 10;
-        const isBump = status === PROGRESSION_BUMP;
-        const text = isBump
-            ? `+${delta}${unit} suggested`
-            : `${delta}${unit} deload suggested`;
-        const detailId = `progression-detail-${exerciseIndex}-${slot}`;
-        const historyHTML = (progression.history || []).map(h => `
-            <li class="gt-progress-history-row">
-                <span class="gt-progress-history-date">${escapeHtml(formatDate(h.date, 'short'))}</span>
-                <span class="gt-progress-history-sets">${this.toSessionWeight(h.weight)}${unit} × ${h.reps.join(', ')}</span>
-            </li>
-        `).join('');
-
-        return `
-            <button type="button" class="gt-note gt-note--${isBump ? 'good' : 'warn'} gt-progress-badge gt-progress-badge--${isBump ? 'bump' : 'deload'}"
-                data-action="toggle-progression-detail"
-                data-exercise-index="${exerciseIndex}" data-slot="${slot}"
-                aria-expanded="false" aria-controls="${detailId}"
-                title="Why this weight? Tap for the last two sessions.">
-                <i class="fas fa-arrow-trend-${isBump ? 'up' : 'down'}" aria-hidden="true"></i>
-                <span class="gt-progress-badge-text">${text}</span>
-            </button>
-            <div class="gt-progress-detail" id="${detailId}" hidden>
-                <ul class="gt-progress-history">${historyHTML}</ul>
-                <button type="button" class="gt-progress-uselast"
-                    data-action="use-last-weight"
-                    data-exercise-index="${exerciseIndex}" data-slot="${slot}"
-                    data-last-weight="${lastWeight}">
-                    <i class="fas fa-rotate-left" aria-hidden="true"></i> Use last weight (${lastWeight}${unit})
-                </button>
-            </div>
-        `;
-    }
-
-    /**
      * Item 2: nudge the weight input by the exercise's overload increment.
      * Floors at 0 and re-uses the row's own 'input' event path so the plate
      * hint and the restore chip stay in sync.
@@ -1821,7 +1706,7 @@ class WorkoutView {
         const input = document.getElementById(`weight-${exerciseIndex}-${slot}`);
         if (!input) return;
         const exerciseId = this.currentWorkoutSession?.exercises[exerciseIndex]?.exerciseId;
-        const step = this._overloadIncrement(exerciseId, this.sessionUnit());
+        const step = this._stepIncrement(exerciseId, this.sessionUnit());
         const current = input.value === '' ? 0 : Number(input.value);
         const next = Math.max(0, Math.round((current + dir * step) * 100) / 100);
         this._setPlannedInputValue(input, next);
@@ -1845,60 +1730,6 @@ class WorkoutView {
         input.value = String(value);
         if (this.app.settings?.vibrationAlerts !== false) vibrate(10);
         input.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-
-    /** Item 1: reveal/hide the two prior sessions behind a progression badge. */
-    toggleProgressionDetail(badge) {
-        const detail = document.getElementById(badge.getAttribute('aria-controls'));
-        if (!detail) return;
-        const open = detail.hidden;
-        detail.hidden = !open;
-        badge.setAttribute('aria-expanded', open ? 'true' : 'false');
-    }
-
-    /**
-     * Item 1: drop the suggestion and go back to last session's weight.
-     *
-     * The badge lives on ONE row but the suggestion is an EXERCISE-level
-     * decision: every planned row was pre-filled at the bumped weight. Only
-     * rewriting the badge's own row left a 60 / 62.5 / 62.5 / 62.5 plan with
-     * no obvious way back, and that mixed session then fed the progression
-     * engine (GT-06).
-     *
-     * So every planned row of this exercise that still shows the SUGGESTED
-     * weight reverts. A row the user has already typed their own number into
-     * is left exactly as they set it - rejecting the app's suggestion is not
-     * a licence to overwrite the lifter's.
-     */
-    useLastWeight(exerciseIndex, slot) {
-        const input = document.getElementById(`weight-${exerciseIndex}-${slot}`);
-        const row = input?.closest('.set-row-planned');
-        if (!input || !row) return;
-        const detail = document.getElementById(`progression-detail-${exerciseIndex}-${slot}`);
-        const lastWeight = detail?.querySelector('.gt-progress-uselast')?.dataset.lastWeight;
-        if (lastWeight === undefined) return;
-
-        const suggested = input.value;
-        const host = document.getElementById(`exercise-${exerciseIndex}`);
-        const rows = host ? host.querySelectorAll('.set-row-planned') : [row];
-
-        rows.forEach((plannedRow) => {
-            const weightInput = plannedRow.querySelector('.set-weight');
-            if (!weightInput) return;
-            // Only rows still holding the suggestion (or empty) follow along.
-            const current = weightInput.value;
-            const isSuggested = current === suggested
-                || (current !== '' && suggested !== '' && Number(current) === Number(suggested));
-            if (!isSuggested && current !== '') return;
-            if (plannedRow.dataset.priorWeight !== undefined) {
-                plannedRow.dataset.priorWeight = lastWeight;
-            }
-            this._setPlannedInputValue(weightInput, lastWeight);
-        });
-
-        // The badge explained a prefill that no longer exists.
-        host?.querySelector('.gt-progress-badge')?.remove();
-        detail.remove();
     }
 
     /**
@@ -1973,8 +1804,7 @@ class WorkoutView {
         // Compact, muted helper line: a history icon + "Previous: 130lb × 8".
         // Reads as secondary metadata beneath the inputs while staying tappable.
         chip.innerHTML = `<i class="fas fa-clock-rotate-left" aria-hidden="true"></i><span class="gt-restore-chip-text">Previous: ${priorWeight}${unit} × ${priorReps}</span>`;
-        // Into the row's notes strip, alongside any progression pill, so the
-        // status notes share one full-width line beneath the inputs.
+        // Into the row's notes strip beneath the inputs.
         (row.querySelector('.set-row-notes') || row).appendChild(chip);
     }
 
@@ -2363,10 +2193,13 @@ class WorkoutView {
         const rowsHTML = ramp.map((row, i) => {
             const done = !!this.warmupDone[`${exerciseIndex}:${i}`];
             const label = row.isBar ? 'Bar' : `${row.pct}%`;
+            // buildWarmupRamp is fed a display-unit workingWeight (and a
+            // display-unit bar), so every ramp load is already in `unit`.
+            const loadShown = row.weight;
             return `
                 <li class="gt-warmup-row${done ? ' gt-warmup-row--done' : ''}">
                     <span class="gt-warmup-pct">${label}</span>
-                    <span class="gt-warmup-load">${row.weight}${unit} × ${row.reps}</span>
+                    <span class="gt-warmup-load">${loadShown}${unit} × ${row.reps}</span>
                     <button type="button" class="gt-warmup-done"
                         data-action="toggle-warmup-set"
                         data-exercise-index="${exerciseIndex}" data-warmup-index="${i}"
@@ -2874,88 +2707,35 @@ class WorkoutView {
         const { session: lastSession, exercise: lastExercise, completedSets: lastSets } = recentSessions[0];
         const prev = recentSessions[1] || null;
 
-        // Item 1: the prefill is a coaching decision (bump / repeat / deload),
-        // resolved against each set's OWN rep target so per-set rep ranges are
-        // honored. The row renders a badge for whichever branch fired.
-        const unit = this.app.settings.weightUnit;
-        const increment = this._overloadIncrement(exerciseId, unit);
-        const repRangeForSet = (set, arrIdx) =>
-            this._repRangeForPriorSet(exerciseId, set, arrIdx, lastExercise.targetReps);
-        const progression = evaluateProgression({
-            lastSets,
-            prevSets: prev ? prev.completedSets : null,
-            repRangeForSet,
-            increment,
-        });
-
-        const usesSuggested = progression.status === PROGRESSION_BUMP
-            || progression.status === PROGRESSION_DELOAD;
-
+        // The prefill is the lifter's OWN last session, set for set. The app
+        // does not decide what they should lift: an automatic next-weight
+        // recommendation used to sit here, and besides being unwanted it added
+        // a display-unit increment to a canonical-kg weight, so a 60 lb bench
+        // came back as 71 lb ("+11lb suggested" = 5 read as 5 kg).
         const sets = lastSets.map(set => ({
-            weight: usesSuggested ? progression.suggestedWeight : set.weight,
+            weight: set.weight,
             reps: set.reps,
             duration: set.duration,
-            // Pass original weight so the chip can show "auto-bumped from Xkg"
             originalWeight: set.weight,
         }));
-
-        sets.suggestIncrement = progression.status === PROGRESSION_BUMP;
-        sets.increment = increment;
-        sets.previousWeight = progression.lastWeight;
-        // Everything the planned row needs to explain itself: the branch that
-        // fired, the literal last-session weight to fall back to, and the two
-        // prior sessions for the tap-to-reveal panel.
-        sets.progression = {
-            ...progression,
-            history: [
-                this._progressionHistoryEntry(lastSession, lastSets),
-                prev ? this._progressionHistoryEntry(prev.session, prev.completedSets) : null,
-            ].filter(Boolean),
-        };
 
         return sets;
     }
 
-    /**
-     * Rep RANGE for a set logged in a PRIOR session: the current program's
-     * range for that slot, falling back to the exercise-level targetReps
-     * carried on the historical entry (a fixed target, so min === max).
-     *
-     * Both ends matter: falling under `min` is a miss, reaching `max` on every
-     * set earns the bump, and anything between is a good set that holds the
-     * weight (see progression.js).
-     */
-    _repRangeForPriorSet(exerciseId, set, arrIdx, fallbackTargetReps) {
-        const session = this.currentWorkoutSession;
-        const sessionEx = session?.exercises.find(e => sameId(e.exerciseId, exerciseId));
-        const progEx = sessionEx
-            ? this.programRowFor(sessionEx)
-            : this.app.getProgramById(session?.programId)?.exercises
-                .find(e => sameId(e.exerciseId, exerciseId));
-        const progSets = (progEx?.sets && progEx.sets.length > 0) ? progEx.sets : null;
-        const slot = set.slot != null ? set.slot : arrIdx;
-        if (progSets && slot < progSets.length) {
-            const progSet = progSets[slot];
-            return { min: progSet.repsMin, max: progSet.repsMax };
-        }
-        const fixed = fallbackTargetReps || 0;
-        return { min: fixed, max: fixed };
-    }
-
-    /** One row of the tap-to-reveal progression panel: "Jul 3 - 60kg x 8, 8, 7". */
-    _progressionHistoryEntry(session, sets) {
-        return {
-            date: session.date,
-            weight: sets[0]?.weight || 0,
-            reps: sets.map(s => s.reps || 0),
-        };
-    }
 
     /**
      * Return the progressive-overload increment for an exercise.
      * Lower-body compound movements get a larger step.
      */
-    _overloadIncrement(exerciseId, unit) {
+    /**
+     * How much one tap of the +/- stepper moves the weight input.
+     *
+     * Purely a manual convenience: it is applied to the DISPLAY-unit value in
+     * the input, in that same unit, so 5 means 5 lb on an lb account. The
+     * removed auto-progression passed this same number into canonical-kg
+     * arithmetic, which is how 60 lb became 71 lb.
+     */
+    _stepIncrement(exerciseId, unit) {
         const exerciseData = this.app.getExerciseById(exerciseId);
         const name = (exerciseData?.name || '').toLowerCase();
         const isLower = /squat|deadlift|leg press|lunge/.test(name);

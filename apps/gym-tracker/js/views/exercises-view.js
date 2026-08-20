@@ -16,6 +16,11 @@ import {
     CUSTOM_EXERCISE_NAME_MAX, EXERCISE_CATEGORIES, EXERCISE_EQUIPMENT, populateSelect,
 } from '../utils/exercise-taxonomy.js';
 import { isLoggedSession } from '../utils/session-metrics.js';
+// The display boundary. Stored weights are canonical kilograms; every number
+// this view puts on screen next to a unit label must come through here, the
+// same way history-view.js does it. Interpolating a raw stored weight beside
+// `settings.weightUnit` is what printed a 140 lb pulldown as "63.503 lb".
+import { displayWeight, volumeIn } from '../utils/units.js';
 
 const EXERCISE_SORT_KEY = 'gymTrackerExerciseSort';
 const EXERCISE_PAGE_SIZE = 15;
@@ -747,9 +752,9 @@ class ExercisesView {
             `;
         } else {
             statsHTML = `
-                ${this.statBox('Weight', `${bestSet.weight.toLocaleString()} ${unit}`)}
+                ${this.statBox('Weight', `${Number(displayWeight(bestSet.weight, unit)).toLocaleString()} ${unit}`)}
                 ${this.statBox('Reps', bestSet.reps.toLocaleString())}
-                ${this.statBox('Volume', `${Math.round(bestSet.volume).toLocaleString()} ${unit}`)}
+                ${this.statBox('Volume', `${Math.round(volumeIn(bestSet.volume, unit)).toLocaleString()} ${unit}`)}
                 ${this.statBox('On', fmtDate(bestSet.date))}
             `;
         }
@@ -806,7 +811,7 @@ class ExercisesView {
                     }
                 } else {
                     const setVolume = set.weight * set.reps;
-                    label = `Set ${idx + 1} · ${set.weight.toLocaleString()} ${unit} × ${set.reps}`;
+                    label = `Set ${idx + 1} · ${Number(displayWeight(set.weight, unit)).toLocaleString()} ${unit} × ${set.reps}`;
 
                     if (isBestRow && setVolume === bestSet.volume) {
                         stateClass = 'set-best';
@@ -814,10 +819,10 @@ class ExercisesView {
                         // Primary: weight. If weight equal: compare reps.
                         if (set.weight > prevSet.weight) {
                             stateClass = 'set-improved';
-                            title = `Up from ${prevSet.weight.toLocaleString()} ${unit} last time`;
+                            title = `Up from ${Number(displayWeight(prevSet.weight, unit)).toLocaleString()} ${unit} last time`;
                         } else if (set.weight < prevSet.weight) {
                             stateClass = 'set-worse';
-                            title = `Down from ${prevSet.weight.toLocaleString()} ${unit} last time`;
+                            title = `Down from ${Number(displayWeight(prevSet.weight, unit)).toLocaleString()} ${unit} last time`;
                         } else if (set.reps > prevSet.reps) {
                             stateClass = 'set-improved';
                             title = `+${set.reps - prevSet.reps} reps vs last time`;
@@ -922,13 +927,17 @@ class ExercisesView {
             month: 'short', day: 'numeric',
         });
 
+        // Convert ONCE, here, so the axis ticks, the dot tooltips and the stat
+        // tiles below all read the same display-unit numbers. Scaling is a
+        // linear transform, so the plotted shape is identical either way.
+        const toDisplay = (kg) => Number(displayWeight(kg, unit));
         const series = isDuration
             ? points.map(p => ({ x: p.date, y: p.maxDuration }))
-            : points.map(p => ({ x: p.date, y: p.maxWeight }));
+            : points.map(p => ({ x: p.date, y: toDisplay(p.maxWeight) }));
 
         const e1rmSeries = isDuration
             ? null
-            : points.map(p => ({ x: p.date, y: Math.round(p.e1rm) }));
+            : points.map(p => ({ x: p.date, y: Math.round(toDisplay(p.e1rm)) }));
 
         const yMin = Math.min(...series.map(p => p.y), e1rmSeries ? Math.min(...e1rmSeries.map(p => p.y)) : Infinity);
         const yMax = Math.max(...series.map(p => p.y), e1rmSeries ? Math.max(...e1rmSeries.map(p => p.y)) : -Infinity);
@@ -956,8 +965,9 @@ class ExercisesView {
         const firstLabel = fmtDate(series[0].x);
         const lastLabel = fmtDate(series[series.length - 1].x);
 
-        const bestWeight = Math.max(...points.map(p => p.maxWeight));
-        const bestE1rm = Math.max(...points.map(p => p.e1rm));
+        // `Shown` = already through the display boundary, in `unit`.
+        const bestWeightShown = Math.max(...points.map(p => toDisplay(p.maxWeight)));
+        const bestE1rmShown = Math.max(...points.map(p => toDisplay(p.e1rm)));
         const bestDuration = Math.max(...points.map(p => p.maxDuration));
 
         const firstY = series[0].y;
@@ -974,8 +984,8 @@ class ExercisesView {
 
         const statTiles = isDuration
             ? `<div class="stat-box"><span class="stat-label">Best</span><span class="stat-value">${fmtY(bestDuration)}</span></div>`
-            : `<div class="stat-box"><span class="stat-label">Top weight</span><span class="stat-value">${Math.round(bestWeight)} ${unit}</span></div>
-               <div class="stat-box"><span class="stat-label">Best e1RM</span><span class="stat-value">${Math.round(bestE1rm)} ${unit}</span></div>`;
+            : `<div class="stat-box"><span class="stat-label">Top weight</span><span class="stat-value">${Math.round(bestWeightShown)} ${unit}</span></div>
+               <div class="stat-box"><span class="stat-label">Best e1RM</span><span class="stat-value">${Math.round(bestE1rmShown)} ${unit}</span></div>`;
 
         const dotsPrimary = series.map((p, i) =>
             `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(p.y).toFixed(1)}" r="3" class="progression-dot"><title>${fmtDate(p.x)}: ${fmtY(p.y)}</title></circle>`
@@ -1052,7 +1062,11 @@ class ExercisesView {
             month: 'short', day: 'numeric',
         });
 
-        const series = points.map(p => ({ x: p.date, y: Math.round(p.e1rm) }));
+        // e1RM is canonical kg out of AnalyticsService; convert before rounding
+        // so the label, the tooltips and the caption agree with History.
+        const series = points.map(p => ({
+            x: p.date, y: Math.round(Number(displayWeight(p.e1rm, unit))),
+        }));
         const vals = series.map(p => p.y);
         const yMin = Math.min(...vals);
         const yMax = Math.max(...vals);

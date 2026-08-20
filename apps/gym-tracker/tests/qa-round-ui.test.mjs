@@ -124,11 +124,30 @@ test('the rest-timer buttons carry a 44px-tall hit area', () => {
     assert.match(block, /height: 44px/);
 });
 
-test('Finish workout and the unit toggle clear 44px', () => {
-    assert.match(ruleFor(refresh, 'body.gym-tracker #finish-workout-btn {'), /min-height: 44px/);
+test('the header controls keep production ARTWORK and gain a 44px hit area', () => {
+    // The first fix grew the visible chrome instead: the unit track went
+    // 80x34 -> 96x46, each half 34x28 -> 44x44, Finish 85x34 -> 88x44, and
+    // Pause was left at 34x34 - bigger than production AND uneven. The rule is
+    // the rest dial's: production-sized artwork, target from a transparent
+    // ::after. So assert BOTH halves of that, for every control in the row.
+    const toggle = ruleFor(refresh, 'body.gym-tracker .workout-unit-toggle {');
+    assert.match(toggle, /height: 34px/, 'the track is production height again');
+    assert.match(toggle, /overflow: visible/, 'or the expander is clipped away');
+
     const unit = ruleFor(refresh, 'body.gym-tracker .workout-unit-btn {');
-    assert.match(unit, /min-height: 44px/);
-    assert.match(unit, /min-width: 44px/);
+    assert.match(unit, /min-width: 40px/);
+    assert.doesNotMatch(unit, /min-height: 44px/, 'the artwork must not be 44px tall');
+
+    const btns = ruleFor(refresh, 'body.gym-tracker #finish-workout-btn,\nbody.gym-tracker #pause-workout-btn {');
+    assert.match(btns, /height: 34px/, 'Finish and Pause are the same height as production');
+
+    // Every one of the three carries a real 44px target.
+    for (const sel of [
+        'body.gym-tracker .workout-unit-btn::after {',
+        'body.gym-tracker #finish-workout-btn::after,\nbody.gym-tracker #pause-workout-btn::after {',
+    ]) {
+        assert.match(ruleFor(refresh, sel), /height: 44px/, `${sel} must expand to 44px`);
+    }
 });
 
 test('the steppers keep a usable width as well as a full-height box', () => {
@@ -147,12 +166,17 @@ test('the steppers keep a usable width as well as a full-height box', () => {
 // GT-20: the WEIGHT / REPS captions
 // ---------------------------------------------------------------------------
 
-test('the column captions are legible: bigger, and above 4.5:1', () => {
-    // Measured 8.21px bold at 3.92:1 (#6f7785 on #14172a); 16 axe "serious"
-    // nodes. #8b94a6 clears 4.5:1 on every surface the caption sits on.
+test('the column captions are accessible without shouting', () => {
+    // GT-20 measured 8.21px bold at 3.92:1 (#6f7785 on #14172a), 16 axe
+    // "serious" nodes. The failure was CONTRAST first; answering it with size
+    // alone (0.85rem, ~12.5px) made the captions louder than the numbers they
+    // label. Contrast does the accessible work now and the size comes most of
+    // the way back to production's 0.56rem.
     const block = ruleFor(refresh, 'body.gym-tracker .set-col-head {\n    flex: 1 1 0;');
-    assert.match(block, /font-size: 0\.85rem/);
-    assert.match(block, /color: #8b94a6/);
+    const size = Number(block.match(/font-size: ([\d.]+)rem/)[1]);
+    assert.ok(size > 0.56, `${size}rem is not a step up from production's 0.56rem`);
+    assert.ok(size <= 0.7, `${size}rem is oversized next to production's 0.56rem`);
+    assert.match(block, /color: #9aa3b8/);
 });
 
 test('the caption colour really does clear WCAG AA on the app surfaces', () => {
@@ -166,7 +190,7 @@ test('the caption colour really does clear WCAG AA on the app surfaces', () => {
         return (l1 + 0.05) / (l2 + 0.05);
     };
     for (const bg of ['#14172a', '#0a0c14', '#1a1e30']) {
-        assert.ok(ratio('#8b94a6', bg) >= 4.5, `#8b94a6 on ${bg} is ${ratio('#8b94a6', bg).toFixed(2)}:1`);
+        assert.ok(ratio('#9aa3b8', bg) >= 4.5, `#9aa3b8 on ${bg} is ${ratio('#9aa3b8', bg).toFixed(2)}:1`);
     }
 });
 
