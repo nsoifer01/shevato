@@ -18,7 +18,7 @@ import { fplApi, NotFoundError, ProxyUnavailableError } from './data/api.js';
 import { isDemoRequested, loadSampleData } from './data/sample.js';
 import { loadModel } from './data/model.js';
 import { buildGameState } from './engine/normalize.js';
-import { buildSquadState } from './engine/squad.js';
+import { buildSquadState, picksCarryLineup } from './engine/squad.js';
 import { formatFreeTransfers } from './engine/transfer-state.js';
 import { el, mount, clear, stat } from './ui/dom.js';
 import { relativeTime, dateTime, formatMoney, rank, points } from './ui/format.js';
@@ -818,7 +818,10 @@ function ensureScenario() {
       squadState: state.squadState,
       gameState: state.gameState,
       plan: state.bundle.current,
-      origin: (state.squadState.picks || []).length ? 'current' : 'recommended',
+      // "Current" only when the picks encode a real lineup. A manual squad
+      // holds fifteen picks but no arrangement, so its sandbox seeds from
+      // the plan, the same as a draft's.
+      origin: picksCarryLineup(state.squadState) ? 'current' : 'recommended',
     });
   }
   return state.scenario;

@@ -1080,6 +1080,24 @@ recorded here is the shape, because the next seam will look like these.
   localStorage and the restore bug looked like a same-visit flip. Same family
   as the known snap `/tmp` screenshot gotcha: give probes a repo-relative
   profile dir, one per run.
+- **Second member of the class, found by the post-merge production sweep
+  (fixed 2026-08-20 evening): manual picks are a ROSTER, not a LINEUP.**
+  `manualSquadState` assigns slots in the order the fifteen arrived
+  (position-ordered from a restored snapshot, goalkeepers first), every
+  multiplier 1, nobody flagged captain. Two consumers read those slots as
+  FPL-assigned lineup slots: `createScenario`'s "current" seed and
+  `pitchViewModel`'s "Current team" view. On production, a restored squad
+  that opened "My scenario" was greeted with "This team is not legal yet:
+  that would field 2 GKP" about a squad it never edited, with slot-1 Raya
+  auto-captained; the "Current team" pitch tab showed the same arrangement.
+  Pre-existing (identical code on the pre-#424 deploy), reachable since the
+  sandbox shipped; the scenario E2E suite missed it because its pre-season
+  state is the DRAFT (no picks), which seeds from the plan. The fix is
+  `picksCarryLineup` in `engine/squad.js` (false for `source === 'manual'`):
+  the sandbox seeds from the plan (origin 'recommended', whose banner copy
+  already fits) and no "Current team" view is offered before a real lineup
+  exists. Pinned by a unit test reproducing the literal symptom (2 GKP in
+  the seeded eleven) and two lifecycle checks, all failing pre-fix.
 
 ## Browser E2E, and why it exists here now
 

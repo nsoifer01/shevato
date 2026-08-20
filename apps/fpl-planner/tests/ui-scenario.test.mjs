@@ -52,6 +52,30 @@ const rules = gameState.rules;
 const P = (id) => gameState.players.get(id);
 const scenario0 = () => createScenario({ squadState, gameState });
 
+test('a manual squad seeds the scenario from the plan, because its picks carry no lineup', async () => {
+  // manualSquadState assigns slots in position order with no captain flags:
+  // its picks are a roster, not a lineup. Seeding "current" from those slots
+  // put both goalkeepers in the eleven and greeted a restored pre-season
+  // squad with "This team is not legal yet" before the user touched anything.
+  const { manualSquadState } = await import('../js/ui/preseason.js');
+  // Position-ordered, exactly how the restored snapshot stores plan.squad
+  // (both goalkeepers first). This is the ordering that put 2 GKP in slots
+  // 1-11 when the slots were read as a lineup.
+  const ids = squadState.picks.map(p => p.playerId)
+    .sort((a, b) => P(a).position - P(b).position || a - b);
+  const manual = manualSquadState({ ids, gameState, gw });
+  const mb = await buildPlan({ gameState, squadState: manual, options: { horizon: 3, seed: 7 } });
+  const sc = createScenario({ squadState: manual, gameState, plan: mb.current, origin: 'current' });
+
+  const gkId = goalkeeperPositionId(rules);
+  const gkCount = sc.xi.filter(id => P(id).position === gkId).length;
+  assert.equal(gkCount, 1, `one goalkeeper in the seeded eleven, got ${gkCount}`);
+  assert.deepEqual(sc.xi.slice().sort((a, b) => a - b), mb.current.startingXI.slice().sort((a, b) => a - b),
+    'the seed is the plan\'s eleven');
+  assert.equal(sc.captain, mb.current.captain, 'and the plan\'s captain');
+  assert.equal(sc.origin, 'recommended', 'labelled as seeded from the recommendation');
+});
+
 // A squad player of a given position who is NOT in the scenario, cheap enough
 // to be affordable, so a test can name a real replacement rather than guess.
 // A replacement that is genuinely legal RIGHT NOW: same position, affordable

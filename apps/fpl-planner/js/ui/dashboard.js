@@ -20,7 +20,7 @@ import { renderSquadTable } from './squad-table.js';
 import { columnChart } from './charts.js';
 import { STRENGTH_PARAMS } from '../engine/strength.js';
 import { formatFreeTransfers } from '../engine/transfer-state.js';
-import { openingSquadMoney } from '../engine/squad.js';
+import { openingSquadMoney, picksCarryLineup } from '../engine/squad.js';
 import { assessConfidence } from '../engine/confidence.js';
 import { describeModelStatus } from '../data/model.js';
 
@@ -398,7 +398,10 @@ export function pitchCard({
   // whole switch in that state (which is what happens when it is gated on
   // holding picks) would leave the built 15 uneditable, which is exactly the
   // week when editing it matters most.
-  const holdsPicks = (bundle.squadState.picks || []).length > 0;
+  // A lineup view needs a lineup: manual picks are a roster in position
+  // order, and rendering their slots as "Current team" fielded two
+  // goalkeepers. Pre-season the plan's arrangement is the only real one.
+  const holdsPicks = picksCarryLineup(bundle.squadState);
   const modes = [
     ...(holdsPicks ? ['current'] : []),
     ...(sandbox ? ['scenario'] : []),

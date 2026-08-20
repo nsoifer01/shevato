@@ -29,6 +29,7 @@
 // captaincy that moved because the captain was sold, and a snapshot does not.
 
 import { sellingPrice } from '../engine/rules.js';
+import { picksCarryLineup } from '../engine/squad.js';
 import { transferAccounting, transferStateOf } from '../engine/transfer-state.js';
 import { validatePlan, formationOf, goalkeeperPositionId, benchOutfieldSlots } from '../engine/validate.js';
 import { squadHorizonValue } from '../engine/lineup.js';
@@ -68,7 +69,10 @@ export function withProjectionGet(projections) {
 // of it.
 export function createScenario({ squadState, gameState, plan = null, origin = 'current' }) {
   const picks = (squadState && Array.isArray(squadState.picks) ? squadState.picks : []).slice();
-  if (picks.length && origin === 'current') {
+  // Only picks that really encode a lineup may be copied as one. A manual
+  // squad's picks are a roster (position-ordered slots, no captain flags), so
+  // it falls through to the plan seed below, exactly like a draft.
+  if (picks.length && origin === 'current' && picksCarryLineup(squadState)) {
     const sorted = picks.slice().sort((a, b) => a.slot - b.slot);
     const gkId = goalkeeperPositionId(gameState.rules);
     const xi = sorted.filter(p => p.slot <= 11).map(p => p.playerId);
