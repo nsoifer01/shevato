@@ -1028,6 +1028,59 @@ recorded here is the shape, because the next seam will look like these.
   measured budget because a fifteen-man search is a heavier operation than the
   transfer path and inheriting the other number would not be honest.
 
+## The two pre-season encodings (fixed 2026-08-20, the day before GW1)
+
+- **Before GW1 the same fifteen exists in two SquadState encodings, and any
+  screen that assumes one of them is nonsense for the other.** A DRAFT
+  (optimizer-built) holds no picks: the whole budget sits in `bankTenths` and
+  the plan's `moneyOutTenths` is what the fifteen costs. A MANUAL squad (typed
+  in, or restored from `fplPlannerSquadSnapshot` on a reload) holds the
+  fifteen as picks with only the change in the bank. Both are correct for the
+  engine. On production, reloading a saved opening squad produced: "It costs
+  £0.0m of the £0.0m budget" (draftCard read `bankBeforeTenths` as the
+  budget), a "Roll your transfer / bank this week's transfer, 1 free transfer"
+  hero directly under a header saying transfers are unlimited (every is-this-a-
+  draft predicate tested `source === 'draft'` only), "Plan unchanged. Your
+  bank fell from £100.0m to £0.0m" (the version differ compared bank across
+  the two conventions), and a CHIPS card that appeared only after the reload.
+  The plan itself (squad, captain, XI, 53.1 xP) was correct throughout; every
+  defect was presentation reading engine encoding as user truth.
+- **The fix is one adapter plus one predicate.** `openingSquadMoney` in
+  `engine/squad.js` is the single pre-season money derivation (budget from
+  rules, remaining = the plan's closing bank, spend = the difference; valid
+  for both encodings because a pre-season squad's value IS the budget), used
+  by draftCard and the explain draft_spend bullet. "Draft" to the UI and to
+  the explanation layer now means `source === 'draft' || source === 'manual'`
+  (manual only exists pre-season); the SEARCH keeps the narrow predicate,
+  because a draft searches for a fifteen and a manual squad must keep the
+  user's. `inputFingerprint` and `planInputs` record a draft as the squad the
+  plan settled on, so a built draft and its restored twin carry the SAME
+  fingerprint (no phantom version per reload), and `budgetReasons` stays
+  silent on bank when either version has no finite free-transfer count (the
+  pre-season marker; also covers versions stored before this fix).
+  `planHeadline` checks the chip before the opening-squad frame: a manual GW1
+  squad can legally play Bench Boost, a built draft never carries a chip.
+- **Why five audits missed it: every prior check asserted persistence, never
+  the story.** The E2E reload test (lifecycle section 7) asserted the same 15
+  names came back, the "saved on an earlier visit" note, and the edit buttons,
+  all of which pass with the broken money copy on screen. The typed-squad
+  variant had shipped broken since the first release (b64e649, 2026-08-12) and
+  the restore path since 2026-08-15 (8f46685); no commit after the 2026-08-16
+  audit touched any of it. That audit was scoped to the scenario interaction
+  rework, and the runbook's "a squad built or typed here survives a browser
+  reload" is likewise a survival check. Section 7 now also asserts the STORY:
+  hero headline, no roll copy in the hero, real budget figures, no bank-moved
+  notice, unlimited-transfers wording, and that the reload renders the exact
+  card set the build rendered. Five unit tests pin the layers underneath
+  (headline wiring, spend bullet, fingerprint equality, planInputs
+  convention, differ silence). All were proven to fail on the pre-fix code.
+- **Probe-harness trap that muddied the diagnosis: snap chromium silently
+  remaps a `/tmp` `--user-data-dir` into its private namespace and shared it
+  across "fresh" profiles**, so later probe runs carried the earlier run's
+  localStorage and the restore bug looked like a same-visit flip. Same family
+  as the known snap `/tmp` screenshot gotcha: give probes a repo-relative
+  profile dir, one per run.
+
 ## Browser E2E, and why it exists here now
 
 `apps/fpl-planner/e2e/` follows the trip-planner pattern

@@ -216,11 +216,44 @@ export async function run({ base, cdpPort }) {
   /* -------------------- 7. a pre-season squad survives a reload ------------- */
   {
     const s = await openPlanner(cdpPort, base, { state: 'preseason', waitFor: 'intro' });
+
+    // The user-visible STORY of the pre-season plan, not just its contents.
+    // The reload used to keep the squad but swap the story: the restored plan
+    // re-entered through the manual path, and every surface that read money or
+    // transfer state straight off the plan flipped to "£0.0m of the £0.0m
+    // budget", "Roll your transfer" and "Your bank fell from £100.0m to
+    // £0.0m" while the squad itself was perfectly intact. Asserting the story
+    // is identical before and after the reload is what pins the class.
+    const storyOf = () => evaluate(s, `(() => {
+      const t = document.body.innerText;
+      const h = document.querySelector('.fpl-hero-headline');
+      // Roll copy is judged on the hero only: the future-plan card correctly
+      // says "Roll your transfer" for the gameweeks AFTER the first deadline.
+      const hero = document.querySelector('.fpl-hero');
+      const heroText = hero ? hero.innerText : '';
+      return JSON.stringify({
+        headline: h ? h.textContent.trim() : '',
+        rollCopy: /Roll your transfer|Bank this week's transfer|go into next week with/i.test(heroText),
+        zeroBudget: /£0\\.0m of the £0\\.0m/.test(t),
+        unlimited: /Unlimited until the GW\\d+ deadline/i.test(t),
+        bankMoved: /bank (fell|rose)/i.test(t),
+        cards: [...document.querySelectorAll('.fpl-card .fpl-card-head h3')].map(e => e.textContent.trim()),
+      });
+    })()`).then(JSON.parse);
+
     try {
       await clickText(s, 'Build the optimal 15', { settle: 600 });
       await waitPlan(s);
       const before = await evaluate(s, `[...document.querySelectorAll('.fpl-pp-name')].map(e=>e.textContent.trim()).sort()`);
       await rec('a squad can be built pre-season', before.length >= 15, `${before.length} players`, s);
+
+      const built = await storyOf();
+      await rec('the built squad reads as an opening 15, not an in-season roll',
+        built.headline === 'Build this opening 15' && !built.rollCopy, built.headline, s);
+      await rec('the built squad prices itself against the real budget',
+        !built.zeroBudget, '', s);
+      await rec('and says transfers are unlimited until the first deadline',
+        built.unlimited, '', s);
 
       const saved = await evaluate(s, `(()=>{ const raw=localStorage.getItem('fplPlannerSquadSnapshot');
         if(!raw) return null; const v=JSON.parse(raw); return {ids:(v.ids||[]).length, gw:v.gw, source:v.source}; })()`);
@@ -241,6 +274,19 @@ export async function run({ base, cdpPort }) {
         /saved on an earlier visit/i.test(await evaluate(s, `document.body.textContent`)), '', s);
       await rec('and offers a way to change it',
         /Edit this squad|Start over/i.test(await evaluate(s, `document.body.textContent`)), '', s);
+
+      const back = await storyOf();
+      await rec('the restored squad still reads as an opening 15, not an in-season roll',
+        back.headline === 'Build this opening 15' && !back.rollCopy, back.headline, s);
+      await rec('the restored squad still prices itself against the real budget',
+        !back.zeroBudget, '', s);
+      await rec('restoring does not claim the bank moved',
+        !back.bankMoved, '', s);
+      await rec('transfers still read as unlimited until the first deadline',
+        back.unlimited, '', s);
+      await rec('the reload renders the same set of cards it rendered when built',
+        JSON.stringify(back.cards) === JSON.stringify(built.cards),
+        `built [${built.cards.join(', ')}] vs restored [${back.cards.join(', ')}]`, s);
     } finally { await closePage(cdpPort, s); }
   }
 

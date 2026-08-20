@@ -50,7 +50,12 @@ Check:
 - [ ] open the app: the plan renders, the hero counts **down** to the deadline,
       the deadline appears **once**, and Model and data status shows a "Player
       totals" line agreeing with the probe.
-- [ ] a squad built or typed here survives a browser reload.
+- [ ] a squad built or typed here survives a browser reload, and comes back
+      with the SAME story: "Build this opening 15", money read against the
+      £100.0m budget (never "£0.0m of the £0.0m"), "Unlimited until the GW1
+      deadline", no "Roll your transfer" in the hero, and no "Your bank fell"
+      notice. (The 2026-08-20 fix; the squad surviving while the story flipped
+      was the exact pre-fix failure.)
 
 **If the probe says `none`:** the app will withhold the plan and say why. That is
 the designed behaviour, not a fault. Note it and continue.

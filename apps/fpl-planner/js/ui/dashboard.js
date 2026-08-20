@@ -20,6 +20,7 @@ import { renderSquadTable } from './squad-table.js';
 import { columnChart } from './charts.js';
 import { STRENGTH_PARAMS } from '../engine/strength.js';
 import { formatFreeTransfers } from '../engine/transfer-state.js';
+import { openingSquadMoney } from '../engine/squad.js';
 import { assessConfidence } from '../engine/confidence.js';
 import { describeModelStatus } from '../data/model.js';
 
@@ -244,19 +245,25 @@ export function draftCard({ bundle, gameState, onEdit = null, onRebuild = null, 
     byPosition.get(info.positionShort).push(info);
   }
 
+  // NEVER read bankBeforeTenths/moneyOutTenths as the budget here: those are
+  // encoding-dependent (a restored manual squad has both at zero, which is how
+  // this card once read "It costs £0.0m of the £0.0m budget"). The one
+  // derivation in openingSquadMoney is right for every pre-season squad.
+  const money = openingSquadMoney({ plan, rules: gameState.rules });
+
   return card('Your opening squad', [
     affirm({
       mark: '✓',
       title: (plan.explanation && plan.explanation.headline) || 'Build this opening 15',
-      body: `It costs ${formatMoney(plan.moneyOutTenths)} of the ${formatMoney(plan.bankBeforeTenths)} budget and projects ${xp(plan.xPointsGw)} points in Gameweek ${plan.gw}.`,
+      body: `It costs ${formatMoney(money.spendTenths)} of the ${formatMoney(money.budgetTenths)} budget and projects ${xp(plan.xPointsGw)} points in Gameweek ${plan.gw}.`,
     }),
     el('div', { class: 'fpl-kv', style: 'margin-top:16px' }, [
       ...[...byPosition.entries()].map(([short, list]) => kv(short, list.map(p => p.name).join(', '))),
     ]),
     el('div', { class: 'fpl-money-row' }, [
-      el('span', {}, ['Budget ', el('b', { text: formatMoney(plan.bankBeforeTenths) })]),
-      el('span', {}, ['Squad cost ', el('b', { text: formatMoney(plan.moneyOutTenths) })]),
-      el('span', {}, ['Left in the bank ', el('b', { text: formatMoney(plan.bankAfterTenths) })]),
+      el('span', {}, ['Budget ', el('b', { text: formatMoney(money.budgetTenths) })]),
+      el('span', {}, ['Squad cost ', el('b', { text: formatMoney(money.spendTenths) })]),
+      el('span', {}, ['Left in the bank ', el('b', { text: formatMoney(money.remainingTenths) })]),
     ]),
     // Before the first deadline this squad is a draft, so it has to be
     // changeable. `restored` says plainly where it came from, because a squad
