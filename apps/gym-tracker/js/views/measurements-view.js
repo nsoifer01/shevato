@@ -19,7 +19,12 @@ import {
     escapeHtml,
     getTodayDateString,
     computeGoalProgress,
+    pluralize,
 } from '../utils/helpers.js';
+import {
+    displayLength, displayWeight, lengthUnitFor, normalizeWeightUnit,
+    toCanonicalLength, toCanonicalWeight,
+} from '../utils/units.js';
 import { trapModalFocus } from '../utils/modal-focus.js';
 import { on, EVENTS } from '../utils/event-bus.js';
 import { DarkCalendar } from '../utils/dark-calendar.js';
@@ -33,17 +38,39 @@ import { storageService } from '../services/StorageService.js';
  */
 const GOALS_KEY = 'gymTrackerMeasurementGoals';
 
+/**
+ * Every tracked metric, with the KIND of quantity it is.
+ *
+ * `kind` drives both storage and display: 'weight' values are stored in
+ * canonical kilograms, 'length' values in canonical centimetres, and
+ * 'percent' values are unitless. The view converts on the way in and on the
+ * way out (utils/units.js), so switching kg to lb converts an 81.5 kg body
+ * weight to 179.7 lb rather than relabelling it "81.5 lb" (GT-03).
+ */
 const METRICS = [
-    { key: 'weight',     label: 'Body weight', unitFromSettings: true },
-    { key: 'bodyFat',    label: 'Body fat %',  unit: '%' },
-    { key: 'chest',      label: 'Chest' },
-    { key: 'waist',      label: 'Waist' },
-    { key: 'hips',       label: 'Hips' },
-    { key: 'armLeft',    label: 'Arm (L)' },
-    { key: 'armRight',   label: 'Arm (R)' },
-    { key: 'thighLeft',  label: 'Thigh (L)' },
-    { key: 'thighRight', label: 'Thigh (R)' },
+    { key: 'weight',     label: 'Body weight', kind: 'weight', unitFromSettings: true },
+    { key: 'bodyFat',    label: 'Body fat %',  kind: 'percent', unit: '%' },
+    { key: 'chest',      label: 'Chest', kind: 'length' },
+    { key: 'waist',      label: 'Waist', kind: 'length' },
+    { key: 'hips',       label: 'Hips', kind: 'length' },
+    { key: 'armLeft',    label: 'Arm (L)', kind: 'length' },
+    { key: 'armRight',   label: 'Arm (R)', kind: 'length' },
+    { key: 'thighLeft',  label: 'Thigh (L)', kind: 'length' },
+    { key: 'thighRight', label: 'Thigh (R)', kind: 'length' },
 ];
+
+/** The input id for each metric, so the form and the model stay in step. */
+const METRIC_INPUT_IDS = {
+    weight: 'm-weight',
+    bodyFat: 'm-bodyfat',
+    chest: 'm-chest',
+    waist: 'm-waist',
+    hips: 'm-hips',
+    armLeft: 'm-armleft',
+    armRight: 'm-armright',
+    thighLeft: 'm-thighleft',
+    thighRight: 'm-thighright',
+};
 
 class MeasurementsView {
     constructor() {
@@ -144,9 +171,52 @@ class MeasurementsView {
 
     /** Display unit for a metric, matching the tile / history rendering. */
     unitForMetric(metric) {
-        const weightUnit = this.app.settings?.weightUnit || 'kg';
-        const lengthUnit = weightUnit === 'lb' ? 'in' : 'cm';
-        return metric.unit || (metric.unitFromSettings ? weightUnit : lengthUnit);
+        if (metric.kind === 'percent') return metric.unit || '%';
+        const weightUnit = normalizeWeightUnit(this.app.settings?.weightUnit);
+        return metric.kind === 'weight' ? weightUnit : lengthUnitFor(weightUnit);
+    }
+
+    /** A canonical stored value -> the number to show for that metric. */
+    displayValue(metric, canonical) {
+        if (canonical === null || canonical === undefined || canonical === '') return null;
+        if (metric.kind === 'weight') {
+            return Number(displayWeight(canonical, normalizeWeightUnit(this.app.settings?.weightUnit)));
+        }
+        if (metric.kind === 'length') {
+            return Number(displayLength(canonical, lengthUnitFor(this.app.settings?.weightUnit)));
+        }
+        return Number(canonical);
+    }
+
+    /** A user-entered value -> the canonical value to store. */
+    canonicalValue(metric, entered) {
+        if (entered === '' || entered === null || entered === undefined) return '';
+        if (metric.kind === 'weight') {
+            return toCanonicalWeight(entered, normalizeWeightUnit(this.app.settings?.weightUnit));
+        }
+        if (metric.kind === 'length') {
+            return toCanonicalLength(entered, lengthUnitFor(this.app.settings?.weightUnit));
+        }
+        return Number(entered);
+    }
+
+    /**
+     * GT-31: the entry form used to ask for "Body weight", "Chest", "Waist"
+     * with a bare dash placeholder and no unit anywhere, so the user only
+     * discovered what was expected after saving. Every label now carries the
+     * active unit, and the placeholder shows it too.
+     */
+    syncFormUnitLabels() {
+        METRICS.forEach((metric) => {
+            const id = METRIC_INPUT_IDS[metric.key];
+            const input = document.getElementById(id);
+            if (!input) return;
+            const unit = this.unitForMetric(metric);
+            const label = document.querySelector(`label[for="${id}"]`);
+            if (label) label.textContent = `${metric.label} (${unit})`;
+            input.placeholder = unit;
+            input.setAttribute('aria-label', `${metric.label} in ${unit}`);
+        });
     }
 
     render() {
@@ -180,16 +250,17 @@ class MeasurementsView {
         const caption = document.getElementById('measurements-trends-caption');
         if (!grid) return;
 
-        const settings = this.app.settings || {};
-        const weightUnit = settings.weightUnit || 'kg';
-        const lengthUnit = weightUnit === 'lb' ? 'in' : 'cm';
         const goals = this.loadGoals();
 
-        const tiles = METRICS.map(({ key, label, unitFromSettings, unit }) => {
-            // chronological for sparkline + delta math
+        const tiles = METRICS.map((metric) => {
+            const { key, label } = metric;
+            // Chronological, and already converted into the display unit, so
+            // the sparkline, the delta and the goal maths all agree with the
+            // number printed above them.
             const series = items
                 .filter(m => m[key] !== null && m[key] !== undefined)
-                .map(m => ({ date: m.date, value: Number(m[key]) }))
+                .map(m => ({ date: m.date, value: this.displayValue(metric, m[key]) }))
+                .filter(p => Number.isFinite(p.value))
                 .sort((a, b) => parseLocalDate(a.date) - parseLocalDate(b.date));
             if (series.length === 0) return '';
 
@@ -200,15 +271,20 @@ class MeasurementsView {
             const baseline = series.find(p => parseLocalDate(p.date) >= cutoff) || series[0];
             const delta = round1(latest.value - baseline.value);
 
-            const tileUnit = unit || (unitFromSettings ? weightUnit : lengthUnit);
+            const tileUnit = this.unitForMetric(metric);
             const deltaSign = delta > 0 ? '+' : '';
             const deltaClass = delta === 0 ? '' : (delta > 0 ? 'is-up' : 'is-down');
 
             // Goal progress runs from the earliest logged value (baseline)
             // toward the target, so it reflects the whole tracked span.
-            const goal = goals[key];
+            // Goal targets are stored canonically too, so they convert with
+            // everything else rather than being read as the current unit.
+            const rawGoal = goals[key];
+            const goalTarget = rawGoal ? this.displayValue(metric, rawGoal.target) : null;
+            const goal = rawGoal && Number.isFinite(goalTarget)
+                ? { ...rawGoal, target: goalTarget } : null;
             const percent = goal ? computeGoalProgress(series[0].value, latest.value, goal) : null;
-            const goalLabel = goal && Number.isFinite(Number(goal.target))
+            const goalLabel = goal
                 ? `Goal: ${round1(goal.target)} ${tileUnit}`
                 : 'Set goal';
 
@@ -241,7 +317,7 @@ class MeasurementsView {
 
         grid.innerHTML = tiles;
 
-        if (caption) caption.textContent = `${items.length} ${items.length === 1 ? 'entry' : 'entries'}`;
+        if (caption) caption.textContent = pluralize(items.length, 'entry', 'entries');
     }
 
     /** Tiny inline-SVG sparkline. Skips when fewer than 2 points. */
@@ -270,17 +346,14 @@ class MeasurementsView {
     renderHistory(items) {
         const list = document.getElementById('measurements-history');
         if (!list) return;
-        const settings = this.app.settings || {};
-        const weightUnit = settings.weightUnit || 'kg';
-        const lengthUnit = weightUnit === 'lb' ? 'in' : 'cm';
-
         list.innerHTML = items.map(m => {
             const stats = METRICS
-                .map(({ key, label, unit, unitFromSettings }) => {
-                    const v = m[key];
+                .map((metric) => {
+                    const v = m[metric.key];
                     if (v === null || v === undefined) return null;
-                    const u = unit || (unitFromSettings ? weightUnit : lengthUnit);
-                    return `<span class="m-stat"><b>${escapeHtml(label)}:</b> ${round1(v)} ${escapeHtml(u)}</span>`;
+                    const shown = this.displayValue(metric, v);
+                    const u = this.unitForMetric(metric);
+                    return `<span class="m-stat"><b>${escapeHtml(metric.label)}:</b> ${round1(shown)} ${escapeHtml(u)}</span>`;
                 })
                 .filter(Boolean)
                 .join('');
@@ -325,15 +398,15 @@ class MeasurementsView {
         // Push the value through the wrapped DarkCalendar so its trigger
         // label shows the same date as the underlying input.
         if (this.dateCalendar) this.dateCalendar.selectDate(parseLocalDate(dateValue));
-        setVal('#m-weight', m?.weight);
-        setVal('#m-bodyfat', m?.bodyFat);
-        setVal('#m-chest', m?.chest);
-        setVal('#m-waist', m?.waist);
-        setVal('#m-hips', m?.hips);
-        setVal('#m-armleft', m?.armLeft);
-        setVal('#m-armright', m?.armRight);
-        setVal('#m-thighleft', m?.thighLeft);
-        setVal('#m-thighright', m?.thighRight);
+
+        // GT-31: labels say which unit is expected, and stored canonical
+        // values are converted into that unit before they reach the inputs.
+        this.syncFormUnitLabels();
+        METRICS.forEach((metric) => {
+            const id = METRIC_INPUT_IDS[metric.key];
+            const shown = m ? this.displayValue(metric, m[metric.key]) : null;
+            setVal(`#${id}`, Number.isFinite(shown) ? round1(shown) : '');
+        });
         setVal('#m-notes', m?.notes || '');
 
         modal.classList.add('active');
@@ -354,7 +427,10 @@ class MeasurementsView {
         if (unitEl) unitEl.textContent = `(${this.unitForMetric(metric)})`;
 
         const targetInput = document.getElementById('goal-target');
-        if (targetInput) targetInput.value = goal ? goal.target : '';
+        if (targetInput) {
+            const shown = goal ? this.displayValue(metric, goal.target) : null;
+            targetInput.value = Number.isFinite(shown) ? round1(shown) : '';
+        }
         const directionSelect = document.getElementById('goal-direction');
         if (directionSelect) {
             directionSelect.value = goal?.direction === 'increase' ? 'increase' : 'decrease';
@@ -378,8 +454,13 @@ class MeasurementsView {
             ? 'increase'
             : 'decrease';
 
+        // Stored canonically (kg / cm), like the measurements it is compared
+        // against, so the goal keeps its meaning across a unit switch.
+        const metric = METRICS.find(m => m.key === this.goalMetricKey);
+        const canonicalTarget = metric ? this.canonicalValue(metric, target) : target;
+
         const goals = this.loadGoals();
-        goals[this.goalMetricKey] = { target, direction };
+        goals[this.goalMetricKey] = { target: canonicalTarget, direction };
         this.saveGoals(goals);
 
         document.getElementById('measurement-goal-modal').classList.remove('active');
@@ -403,19 +484,15 @@ class MeasurementsView {
 
     saveFromForm() {
         const get = (id) => document.getElementById(id)?.value ?? '';
+        // Entered in the display unit; stored canonically (kg / cm), so the
+        // record keeps its meaning when the preference changes later.
         const data = {
             date: get('m-date') || getTodayDateString(),
-            weight: get('m-weight'),
-            bodyFat: get('m-bodyfat'),
-            chest: get('m-chest'),
-            waist: get('m-waist'),
-            hips: get('m-hips'),
-            armLeft: get('m-armleft'),
-            armRight: get('m-armright'),
-            thighLeft: get('m-thighleft'),
-            thighRight: get('m-thighright'),
             notes: get('m-notes').trim(),
         };
+        METRICS.forEach((metric) => {
+            data[metric.key] = this.canonicalValue(metric, get(METRIC_INPUT_IDS[metric.key]));
+        });
 
         const hasAnyValue = METRICS.some(({ key }) => data[key] !== '' && data[key] != null);
         if (!hasAnyValue) {

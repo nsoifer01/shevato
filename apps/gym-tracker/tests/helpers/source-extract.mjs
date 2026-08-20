@@ -21,11 +21,16 @@ export function loadSource(relPath) {
 /**
  * Extract one class method's source text. Class methods sit at 4-space
  * indentation ("\n    name("), which call sites never do (they carry a
- * "this." or deeper indentation), so the marker is unambiguous.
- * The returned text is object-literal-shorthand compatible.
+ * "this." or deeper indentation), so the marker is unambiguous. Getters and
+ * `async` methods carry their keyword in the same position, and the returned
+ * text stays object-literal-shorthand compatible either way.
  */
 export function extractClassMethod(src, name, file = 'source') {
-    return extractAt(src, `\n    ${name}(`, `${name}()`, file);
+    for (const prefix of ['', 'async ', 'get ']) {
+        const marker = `\n    ${prefix}${name}(`;
+        if (src.indexOf(marker) !== -1) return extractAt(src, marker, `${name}()`, file);
+    }
+    throw new Error(`${name}() not found in ${file}`);
 }
 
 /** Extract a module-level `function name(...) { ... }` declaration. */

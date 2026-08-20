@@ -18,7 +18,7 @@
  * Old caches are pruned automatically on activate.
  */
 
-const CACHE_VERSION = '1.9.0';
+const CACHE_VERSION = '1.10.0';
 const PRECACHE = `gym-precache-${CACHE_VERSION}`;
 const RUNTIME = `gym-runtime-${CACHE_VERSION}`;
 
@@ -61,6 +61,14 @@ const PRECACHE_URLS = [
   './js/utils/session-merge.js',
   './js/utils/paginator.js',
   './js/utils/sync-status.js',
+  './js/utils/active-workout.js',
+  './js/utils/data-migrations.js',
+  './js/utils/exercise-search.js',
+  './js/utils/exercise-taxonomy.js',
+  './js/utils/import-merge.js',
+  './js/utils/session-metrics.js',
+  './js/utils/units.js',
+  './js/utils/week.js',
   './js/views/achievements-view.js',
   './js/views/calendar-view.js',
   './js/views/exercises-view.js',

@@ -1502,6 +1502,10 @@ body.gym-tracker .onboarding-modal-content {
     border: 1px solid var(--gt-border);
     border-radius: 18px;
     box-shadow: 0 32px 80px -10px rgba(0,0,0,0.75), 0 8px 24px -4px rgba(0,0,0,0.4);
+    /* The header and footer stay fixed outside the scroll: `.onboarding-body`
+       is the scroller (see `.onboarding-body` in gym-tracker.css), which is
+       why the tour's back-to-top opt-in and its footer-label watcher both hang
+       off THAT element rather than this one (GT-35). */
     overflow: hidden;
 }
 
@@ -3071,8 +3075,12 @@ body.gym-tracker .exercise-subtitle .rest-countdown-chip {
    ghost buttons: no resting fill or border, surface only on hover/focus. The
    visible box shrinks to 34px but an invisible ::after keeps a 44px tap
    target, so they are easier to hit than they look. */
+/* The 44x44 hit areas below are wider than the 34px buttons, so at a 2.4px
+   gap adjacent expanders overlapped and each button only really owned ~36px.
+   A 0.62rem gap gives every icon its own 44px column (GT-19); the exercise
+   name gives up the ~22px, which it can afford (it clamps to two lines). */
 body.gym-tracker .exercise-header-controls {
-    gap: 0.15rem;
+    gap: 0.62rem;
 }
 
 body.gym-tracker .exercise-header-controls .gt-iconbtn {
@@ -3216,12 +3224,19 @@ body.gym-tracker .set-row-inputs {
 body.gym-tracker .set-row-inputs .gt-stepper-group {
     flex: 1 1 0;
     min-width: 0;
-    height: 40px;
+    /* 46px outer, so the 1px border leaves a 44px INNER box: the steppers and
+       the number field inside are the actual touch targets and they are the
+       ones that have to clear 44 (GT-19). */
+    height: 46px;
+    /* The stepper hit areas extend a few px past this box (see below); with
+       `overflow: hidden` the overflowing part is clipped for hit-testing too,
+       which would silently undo the expansion. Nothing paints outside the box
+       (the steppers and the input are both transparent), so nothing is lost. */
+    overflow: visible;
     gap: 0;
     border: 1px solid var(--gt-border);
     border-radius: var(--gt-radius-inner);
     background: var(--gt-surface-2);
-    overflow: hidden;
     transition: border-color var(--transition-fast), background var(--transition-fast);
 }
 
@@ -3266,10 +3281,14 @@ body.gym-tracker .set-row-inputs .gt-stepper-group input::placeholder {
     color: var(--gt-muted-2);
 }
 
-/* Steppers: secondary, flat, but still a full-height 34px column. */
+/* Steppers: secondary, flat, and a full-height 40px column. The audit
+   measured them at 26x38 - the control a lifter hits mid-set with chalk on
+   their hands. Width narrows at the phone breakpoints below, because the row
+   must still hold "102.5" in the weight field and "10" in the reps field. */
 body.gym-tracker .set-row-inputs .gt-stepper {
-    flex: 0 0 34px;
-    width: 34px;
+    position: relative;
+    flex: 0 0 40px;
+    width: 40px;
     height: 100%;
     border: 0;
     border-radius: 0;
@@ -3308,13 +3327,18 @@ body.gym-tracker .set-heads {
     min-height: 0;
 }
 
+/* GT-20: 0.56rem of --gt-muted-2 measured 8.21px at 3.92:1 - 16 axe
+   "serious" nodes, on the one element that tells a lifter which field is
+   which, in a dim gym. #8b94a6 clears 4.5:1 on every surface it sits on. */
 body.gym-tracker .set-col-head {
     flex: 1 1 0;
     min-width: 0;
-    color: var(--gt-muted-2);
-    font-size: 0.56rem;
+    color: #8b94a6;
+    /* The app's root font-size is ~14.7px, so 0.85rem lands at ~12.5px -
+       nearly half again the 8.21px the audit measured. */
+    font-size: 0.85rem;
     font-weight: 700;
-    letter-spacing: 0.09em;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
     line-height: 1.2;
     text-align: center;
@@ -3739,12 +3763,12 @@ body.gym-tracker #active-workout .superset-block {
    the cohesive field no longer needs (the field itself is the 44px-tall
    target). Keeping them at 34px is what lets weight and reps share one line. */
 @media (max-width: 480px) {
-    /* 30px rather than 34: the 8px this frees per field is what keeps a
+    /* 36px rather than 40: the 8px this frees per field is what keeps a
        two-digit rep count and a five-character weight from clipping. The
-       control is still 40px tall, so the target stays comfortable. */
+       control is 44px tall, so the target stays comfortable. */
     body.gym-tracker .set-row-inputs .gt-stepper {
-        flex: 0 0 30px;
-        width: 30px;
+        flex: 0 0 36px;
+        width: 36px;
         height: 100%;
     }
 
@@ -3770,17 +3794,733 @@ body.gym-tracker #active-workout .superset-block {
    cannot hold two 30px steppers per side AND a 35px reps value. Two measured
    reclamations, no stacking:
      - the completion toggle's transparent tap-border shrinks horizontally
-       only (9px -> 6px), keeping the 40px height while returning 6px;
-     - steppers go to 26px wide, still 40px tall.
-   Verified at 360px: weight field 54px (needs 51 for "102.5"), reps 40px
-   (needs 35 for "10"). */
+       only (9px -> 6px), keeping the vertical half (and so the 44px height)
+       while returning 6px;
+     - steppers go to 30px wide, still full height.
+   Verified at 320px and 360px: the weight field still holds "102.5" and the
+   reps field still holds "10", with no horizontal page overflow. */
 @media (max-width: 400px) {
     body.gym-tracker .set-row-inputs .gt-stepper {
-        flex: 0 0 26px;
-        width: 26px;
+        flex: 0 0 30px;
+        width: 30px;
+    }
+}
+
+/* =========================================================================
+   14. 2026-08-19 exploratory-QA round
+   Fixes for the visual, mobile and accessibility findings (GT-05, GT-09,
+   GT-17, GT-19, GT-20, GT-22, GT-30, GT-37, GT-41) plus the styling for the
+   components those fixes introduced. Everything is scoped to
+   `body.gym-tracker` (or to an id inside the app) so nothing here can reach
+   another app on the shared origin.
+   ========================================================================= */
+
+/* ---- GT-20. WEIGHT / REPS captions ------------------------------------
+   The size and colour are fixed at their source rule in section 5b; this only
+   gives the taller caption a little breathing room. */
+body.gym-tracker .set-heads {
+    padding-bottom: 0.2rem;
+}
+
+/* ---- GT-19. Touch targets in the live workout -------------------------
+   Every control the lifter hits mid-set was under the 44x44 the README
+   promises: steppers 26x38, timer buttons 24px tall, icon buttons 34x34,
+   Finish 85x34. Height is raised to 44px across the board; width follows
+   wherever the row has the room, and where it genuinely does not (the four
+   steppers of a [- weight +][- reps +] line at 390px) the visible box stays
+   compact while the HIT AREA is grown with a transparent pseudo-element. */
+
+/* The weight/reps field and its steppers are sized at their source rules in
+   section 5, so the phone refinements that follow them keep winning.
+   The visible stepper cannot be 44px WIDE on a phone - four of them plus two
+   readable number fields do not fit one line at 390px, and the row must still
+   hold "102.5". So the visible box stays compact and the HIT AREA is grown
+   7px in each direction: outward into the dead space beside the field, and
+   7px over its own input's edge. It never reaches into another CONTROL, and
+   the input keeps the whole of its centre, which is where a number field is
+   actually tapped. Below 360px there is no room for even that, and the reps
+   field wraps onto its own line instead (see below). */
+body.gym-tracker .set-row-inputs .gt-stepper::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 44px;
+    width: calc(100% + 14px);
+}
+
+body.gym-tracker .set-row-inputs .gt-stepper--minus::after { right: -7px; }
+body.gym-tracker .set-row-inputs .gt-stepper--plus::after { left: -7px; }
+
+/* Under ~360px the one-line layout cannot hold two usable fields at all - the
+   weight input measured 23px against a 39px content width, so "102.5" clipped.
+   The reps field takes its own line, which also lets both fields' steppers
+   reach a full 44x44. */
+@media (max-width: 360px) {
+    body.gym-tracker .set-row-inputs {
+        flex-wrap: wrap;
+        row-gap: 0.35rem;
     }
 
+    body.gym-tracker .set-row-inputs .gt-stepper-group,
+    body.gym-tracker .set-row-inputs .gt-stepper-group:first-child {
+        flex: 1 0 100%;
+    }
+
+    body.gym-tracker .set-row-inputs .gt-stepper {
+        flex: 0 0 44px;
+        width: 44px;
+    }
+
+    body.gym-tracker .set-row-inputs .gt-stepper::after { content: none; }
+}
+
+/* The completion toggle: 22px track inside a transparent tap border. The
+   vertical half of that border grows so the whole control clears 44px, while
+   the visible pill and the horizontal footprint are untouched. */
+body.gym-tracker .set-row .set-toggle {
+    border-width: 11px 9px;
+}
+
+@media (max-width: 400px) {
     body.gym-tracker .set-row .set-toggle {
-        border-width: 9px 6px;
+        border-width: 11px 6px;
+    }
+}
+
+/* GT-05, second half: while the dial is on screen the exercise list reserves
+   room for it, so in the ordinary scroll position it overlaps no set row at
+   all rather than relying on pointer-events to make the overlap survivable. */
+body.gym-tracker.gt-rest-bar-visible #workout-exercises-list {
+    padding-bottom: 172px;
+}
+
+@media (min-width: 768px) {
+    body.gym-tracker.gt-rest-bar-visible #workout-exercises-list {
+        padding-bottom: 190px;
+    }
+}
+
+/* Icon buttons in the exercise header (swap, notes, plate hints, collapse)
+   and the completed-row edit/delete pair. The visible chip stays 34px so the
+   header does not grow; the tap box is expanded symmetrically. */
+body.gym-tracker .gt-iconbtn,
+body.gym-tracker .btn-set-action {
+    position: relative;
+}
+
+body.gym-tracker .gt-iconbtn::after,
+body.gym-tracker .btn-set-action::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+    border-radius: inherit;
+}
+
+/* Rest-timer actions: 24px tall was the worst target in the app, and it is
+   pressed mid-rest with chalky hands. */
+body.gym-tracker .rest-timer-btn,
+body.gym-tracker .rest-timer-btn:hover,
+body.gym-tracker .rest-timer-btn:focus-visible {
+    height: 34px;
+    min-width: 62px;
+    font-size: 0.7rem;
+    position: relative;
+}
+
+body.gym-tracker .rest-timer-btn::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 44px;
+    transform: translateY(-50%);
+}
+
+/* Finish workout: the button that ends the session. */
+body.gym-tracker #finish-workout-btn {
+    min-height: 44px;
+    padding-inline: 0.9rem;
+}
+
+/* Per-session unit toggle: the track was 44px but each half was 34x28. */
+/* The track is 44px tall with a 1px border and `overflow: hidden`, so a 44px
+   button inside it was CLIPPED to the 42px content box - and the sticky
+   header's own padding trimmed it further, leaving ~32px of real target. The
+   track grows to fit its buttons instead of bounding them. */
+body.gym-tracker .workout-unit-toggle {
+    height: auto;
+    min-height: 46px;
+    align-items: stretch;
+}
+
+body.gym-tracker .workout-unit-btn {
+    min-height: 44px;
+    min-width: 44px;
+    align-self: stretch;
+}
+
+/* Edit / delete on a completed row: 34px buttons with 44px hit areas, so the
+   gap has to be wide enough that they do not eat into each other. */
+body.gym-tracker .set-row-actions {
+    gap: 0.62rem;
+}
+
+/* ---- GT-05. The rest dial must not swallow taps -----------------------
+   The dial is 146px of absolutely-positioned SVG ring plus an opaque disc,
+   parked bottom-centre - directly over the weight and reps columns of the
+   next exercise. For the whole rest period (up to 3 minutes) nine controls
+   underneath were untappable: the tap landed on the <svg> and
+   `document.activeElement` never moved.
+   Nothing in the dial except its two buttons is interactive, so nothing else
+   claims pointer events. The disc also becomes translucent + blurred rather
+   than opaque, so the row underneath stays readable while you tap it. */
+body.gym-tracker #rest-timer-bar,
+body.gym-tracker .rest-timer-dial,
+body.gym-tracker .rest-timer-ring,
+body.gym-tracker .rest-timer-dial-content {
+    pointer-events: none;
+}
+
+body.gym-tracker .rest-timer-actions,
+body.gym-tracker .rest-timer-btn {
+    pointer-events: auto;
+}
+
+/* Translucent + blurred rather than opaque: the row underneath stays
+   readable, so tapping "through" the dial is comprehensible rather than
+   uncanny. */
+body.gym-tracker .rest-timer-dial.rest-timer-dial,
+body.gym-tracker .rest-timer-dial {
+    background:
+        radial-gradient(circle at 50% 40%, rgba(255, 255, 255, 0.05), rgba(0, 0, 0, 0) 70%),
+        color-mix(in srgb, var(--gt-surface-2, #14172a) 82%, transparent);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+}
+
+/* A smaller footprint on phones, where the columns it covers are narrowest. */
+@media (max-width: 480px) {
+    body.gym-tracker .rest-timer-dial {
+        width: 128px;
+        height: 128px;
+    }
+    body.gym-tracker .rest-timer-value { font-size: 1.3rem; }
+}
+
+/* ---- GT-09. Scheduled-day dots in the week strip ----------------------
+   The classes were right and the rule matched, yet the dot rendered 5px
+   wide by 0px tall: the sitewide `button { line-height: 3.25rem }` inflated
+   the label's line box to 47.67px inside a 48px column-flex pill, and with
+   both children `flex-shrink: 1` the label won and the dot collapsed. Pin
+   the pill's line-height and refuse to let the dot shrink. */
+body.gym-tracker .week-day-pill {
+    line-height: 1.2 !important;
+    min-height: 52px;
+}
+
+body.gym-tracker .week-day-pill-label {
+    flex: 0 0 auto;
+    line-height: 1.2 !important;
+}
+
+body.gym-tracker .week-day-pill-dot {
+    flex: 0 0 6px;
+    width: 6px;
+    height: 6px;
+    min-height: 6px;
+}
+
+/* ---- GT-17. Exercise-picker selection tray ----------------------------
+   Expanded, an 8-exercise selection grew the tray to 352px over a 717px
+   sheet and left ZERO result cards fully visible. Collapsed by default to a
+   count chip; expanded, the list is capped and scrolls inside itself. */
+body.gym-tracker .exercise-picker-tray-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-height: 36px;
+    padding: 0 0.5rem;
+    border: 0;
+    border-radius: var(--gt-radius-inner, 8px);
+    background: transparent;
+    color: var(--gt-text, #e6e9f0) !important;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+body.gym-tracker .exercise-picker-tray-count:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+body.gym-tracker .exercise-picker-tray-chevron {
+    font-size: 0.7rem;
+    transition: transform var(--transition-fast);
+}
+
+body.gym-tracker .exercise-picker-tray.is-collapsed .exercise-picker-tray-chevron {
+    transform: rotate(180deg);
+}
+
+body.gym-tracker .exercise-picker-tray-list {
+    max-height: 30vh;
+    overflow-y: auto;
+}
+
+body.gym-tracker .exercise-picker-tray-list[hidden] { display: none; }
+
+/* ---- GT-22. Inline "how did it feel" prompt ---------------------------
+   Replaces the full-screen modal that fired after most exercises. Sits on
+   the exercise card, under the header and OUTSIDE `.exercise-body` so a
+   completed (auto-collapsed) card still shows it. */
+body.gym-tracker .gt-feel-prompt {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin: 0 0.75rem 0.6rem;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid rgba(52, 211, 153, 0.35);
+    border-radius: var(--gt-radius-inner, 8px);
+    background: rgba(52, 211, 153, 0.10);
+}
+
+body.gym-tracker .gt-feel-prompt-text {
+    color: var(--gt-text, #e6e9f0);
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+body.gym-tracker .gt-feel-prompt-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+body.gym-tracker .gt-feel-prompt-yes,
+body.gym-tracker .gt-feel-prompt-dismiss {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    min-height: 44px;
+    padding: 0 0.7rem;
+    border-radius: 999px;
+    border: 1px solid rgba(52, 211, 153, 0.45);
+    background: transparent;
+    color: #34d399 !important;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1 !important;
+    cursor: pointer;
+    box-shadow: none !important;
+}
+
+body.gym-tracker .gt-feel-prompt-dismiss {
+    min-width: 44px;
+    padding: 0;
+    border-color: rgba(255, 255, 255, 0.14);
+    color: var(--gt-muted, #9aa3b2) !important;
+}
+
+body.gym-tracker .gt-feel-prompt-yes:hover {
+    background: rgba(52, 211, 153, 0.18);
+}
+
+body.gym-tracker .gt-feel-prompt-dismiss:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--gt-text, #e6e9f0) !important;
+}
+
+/* ---- GT-15. Visible form validation -----------------------------------
+   The required <select>s are hidden behind dark-select, so the browser's own
+   validation UI could never appear. This is the app's replacement: a ring on
+   the field and a message that is actually rendered. */
+body.gym-tracker .form-group.has-error input,
+body.gym-tracker .form-group.has-error select,
+body.gym-tracker .form-group.has-error .dark-select-trigger,
+body.gym-tracker .form-group.has-error .dark-select__trigger {
+    border-color: var(--gt-danger, #f87171) !important;
+    box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.22) !important;
+}
+
+body.gym-tracker .gt-field-error {
+    margin: 0.35rem 0 0;
+    color: #fca5a5;
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+body.gym-tracker .gt-field-error[hidden] { display: none; }
+
+/* ---- GT-02. Import mode chooser ---------------------------------------- */
+body.gym-tracker .import-mode-summary {
+    margin: 0 0 0.9rem;
+    color: var(--gt-muted, #9aa3b2);
+    font-size: 0.88rem;
+}
+
+body.gym-tracker .import-mode-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin-bottom: 1rem;
+}
+
+body.gym-tracker .import-mode-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.7rem;
+    width: 100%;
+    min-height: 44px;
+    padding: 0.75rem 0.8rem;
+    text-align: left;
+    border: 1px solid var(--gt-border, #262b3d);
+    border-radius: var(--gt-radius-inner, 8px);
+    background: var(--gt-surface-2, #14172a);
+    color: var(--gt-text, #e6e9f0) !important;
+    font: inherit;
+    line-height: 1.35 !important;
+    cursor: pointer;
+    box-shadow: none !important;
+}
+
+body.gym-tracker .import-mode-option:hover,
+body.gym-tracker .import-mode-option:focus-visible {
+    border-color: var(--gt-accent, #5b9bff);
+    background: var(--gt-surface-3, #1a1e30);
+    color: var(--gt-text, #e6e9f0) !important;
+}
+
+body.gym-tracker .import-mode-option-icon {
+    flex: 0 0 auto;
+    color: var(--gt-accent, #5b9bff);
+}
+
+body.gym-tracker .import-mode-option--replace .import-mode-option-icon {
+    color: var(--gt-danger, #f87171);
+}
+
+body.gym-tracker .import-mode-option-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+body.gym-tracker .import-mode-option-text small {
+    color: var(--gt-muted, #9aa3b2);
+    font-size: 0.78rem;
+}
+
+/* ---- GT-28. Disabled-looking delete that explains itself --------------- */
+body.gym-tracker .delete-exercise-btn--blocked {
+    opacity: 0.4;
+    cursor: help;
+}
+
+/* ---- GT-01. Interrupted-workout recovery banner ------------------------ */
+body.gym-tracker .paused-workout-banner--interrupted .paused-workout-icon {
+    color: var(--gt-accent, #5b9bff);
+}
+
+body.gym-tracker .paused-workout-note {
+    margin: 0.3rem 0 0;
+    color: var(--gt-muted, #9aa3b2);
+    font-size: 0.78rem;
+}
+
+/* ---- GT-30. 12-month heatmap on a phone --------------------------------
+   53 week-columns squeezed into ~350px produced ~4px cells with month labels
+   running together and the last one clipped. Give the cells a real minimum
+   size and let the grid scroll horizontally instead, scrolled to the most
+   recent weeks on open. Desktop is unaffected. */
+@media (max-width: 767px) {
+    body.gym-tracker .insights-heatmap {
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+        padding-bottom: 0.5rem;
+    }
+
+    /* Fixed 12px columns instead of `1fr`, so the grid overflows its
+       container and scrolls rather than crushing every cell to ~4px. The
+       inline `repeat(N, 1fr)` the renderer writes is beaten with !important;
+       `--hm-weeks` carries N across from the same render. */
+    body.gym-tracker .insights-heatmap .hm-grid,
+    body.gym-tracker .insights-heatmap .hm-month-row {
+        grid-template-columns: repeat(var(--hm-weeks, 53), 12px) !important;
+        width: max-content;
+    }
+
+    body.gym-tracker .insights-heatmap .hm-cell {
+        width: 12px;
+        height: 12px;
+        aspect-ratio: auto;
+    }
+
+    /* Month labels get room to read instead of colliding. */
+    body.gym-tracker .insights-heatmap .hm-month-label {
+        font-size: 0.6rem;
+        white-space: nowrap;
+    }
+
+    body.gym-tracker .insights-heatmap .hm-legend .hm-cell {
+        width: 12px;
+        height: 12px;
+    }
+}
+
+/* ---- GT-37. Toasts must not cover the next control ---------------------
+   "Program saved successfully" landed squarely over the Programs SORT row,
+   hiding the control the user reaches for next. Toasts move to the BOTTOM of
+   the viewport inside the app, above the bottom nav, where nothing the user
+   is about to press lives. Scoped to the gym app so other apps' toasts are
+   untouched. */
+body.gym-tracker .toast {
+    /* `showToast` sets an inline `bottom` (the stack offset); this only has
+       to defeat the old top-pinned rules, including the 600px one that pinned
+       `top: 192px !important`. */
+    top: auto !important;
+    /* The bottom-nav band the inline offset is measured from. */
+    margin-bottom: calc(var(--bottom-nav-height, 64px) + env(safe-area-inset-bottom, 0px));
+    /* Toasts rise from below now, so the entry transform follows. */
+    transform: translateY(12px);
+}
+
+body.gym-tracker .toast.show { transform: translateY(0); }
+
+@media (min-width: 768px) {
+    body.gym-tracker .toast {
+        margin-bottom: 12px;
+    }
+}
+
+/* While the rest dial owns the bottom-centre, toasts clear it. */
+body.gym-tracker.gt-rest-bar-visible .toast {
+    margin-bottom: calc(var(--bottom-nav-height, 64px) + env(safe-area-inset-bottom, 0px) + 150px);
+}
+
+/* ---- GT-41. The site auth modal, over the app --------------------------
+   The sign-in dialog is SITE-level markup (assets/js/main.js) styled by the
+   shared assets/css/firebase-auth.css, which every app and marketing page
+   shares. Two parts of what the audit saw are not the same kind of problem:
+
+   - The WHITE SURFACE is deliberate. firebase-auth.css pins
+     `color-scheme: light` on these overlays on purpose (2026-07-18): they are
+     appended to <body>, so on a dark app page they inherited `color-scheme:
+     dark` and Chrome's UA rendering flipped autofill backgrounds, native
+     widgets and scrollbars to grey INSIDE the white card. The stylesheet also
+     neutralises autofill's paint with the inset box-shadow technique, and
+     `sync-system/tests/shared-ui-consistency.test.mjs` pins both. Forking
+     that per app would re-open exactly the bug it closed, on the darkest page
+     in the estate, so the surface is left alone.
+   - The PURPLE/INDIGO ACCENT is not part of that contract. #667eea -> #764ba2
+     matches nothing in this app (or, for that matter, the site's azure), and
+     it is what makes the dialog read as a different product. It is re-pointed
+     at the app's own accent tokens.
+
+   Every selector below is anchored on `body.gym-tracker` AND `#auth-modal`:
+   the class scope keeps other apps and the marketing pages untouched, and the
+   id is needed to outrank the shared sheet's own `body #auth-modal ...`
+   rules. */
+body.gym-tracker #auth-modal .auth-form__button,
+body.gym-tracker #auth-modal button.auth-form__button {
+    background: var(--gt-accent-strong, #2563eb) !important;
+    background-image: none !important;
+    border: 1px solid var(--gt-accent-strong, #2563eb) !important;
+    color: #ffffff !important;
+}
+
+body.gym-tracker #auth-modal .auth-form__button:hover,
+body.gym-tracker #auth-modal button.auth-form__button:hover,
+body.gym-tracker #auth-modal .auth-form__button:focus,
+body.gym-tracker #auth-modal button.auth-form__button:focus {
+    background: var(--gt-accent, #5b9bff) !important;
+    background-image: none !important;
+    border-color: var(--gt-accent, #5b9bff) !important;
+}
+
+body.gym-tracker #auth-modal .auth-tab--active {
+    color: var(--gt-accent-strong, #2563eb) !important;
+    border-bottom-color: var(--gt-accent-strong, #2563eb) !important;
+}
+
+body.gym-tracker #auth-modal .auth-form__forgot,
+body.gym-tracker #auth-modal .auth-modal__link,
+body.gym-tracker #auth-modal a {
+    color: var(--gt-accent-strong, #2563eb) !important;
+}
+
+/* ---- GT-40. Per-exercise bar / base weight -----------------------------
+   The chip on the exercise header states which bar the plate hints below it
+   are solved against, so "20 kg" on a Barbell Curl is visible rather than
+   assumed; tapping it opens the inline override. `--custom` marks an
+   exercise the lifter has moved off the default. */
+body.gym-tracker .gt-bar-chip {
+    width: auto;
+    min-width: 44px;
+    padding: 0 0.5rem;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+body.gym-tracker .gt-bar-chip--custom {
+    border-color: rgba(91, 155, 255, 0.5) !important;
+    color: var(--gt-accent, #5b9bff) !important;
+}
+
+body.gym-tracker .gt-bar-config {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin: 0 0.75rem 0.6rem;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid var(--gt-border, #262b3d);
+    border-radius: var(--gt-radius-inner, 8px);
+    background: var(--gt-surface-2, #14172a);
+}
+
+body.gym-tracker .gt-bar-config[hidden] { display: none; }
+
+body.gym-tracker .gt-bar-config-label {
+    color: var(--gt-muted, #9aa3b2);
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+body.gym-tracker .gt-bar-config-input {
+    width: 88px;
+    height: 44px;
+    padding: 0 0.5rem;
+    border: 1px solid var(--gt-border, #262b3d);
+    border-radius: var(--gt-radius-inner, 8px);
+    background: var(--gt-surface-3, #1a1e30);
+    color: var(--gt-text, #e6e9f0);
+    font: inherit;
+    font-weight: 700;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+body.gym-tracker .gt-bar-config-reset {
+    min-height: 44px;
+    padding: 0 0.7rem;
+    border: 1px solid var(--gt-border, #262b3d);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--gt-muted, #9aa3b2) !important;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1 !important;
+    cursor: pointer;
+    box-shadow: none !important;
+}
+
+body.gym-tracker .gt-bar-config-reset:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--gt-text, #e6e9f0) !important;
+}
+
+/* ---- Ancillary QA observations ----------------------------------------- */
+
+/* 1. Long exercise names truncated in the mobile program-editor header even
+      though the row had spare width: `-webkit-line-clamp: 2` clipped
+      "Cable Rope Pushdown" to "Cable Rope Pus..." because the name shared its
+      line with the action cluster. The name owns the full row width, so two
+      clamped lines are two FULL lines. */
+@media (max-width: 640px) {
+    body.gym-tracker #program-modal .pex-name-main {
+        overflow-wrap: anywhere;
+        word-break: normal;
+    }
+}
+
+/* 2. The picker's search placeholder clipped to "Search exercises by name or
+      musc..." on a phone. The placeholder is a label, so it gets a caption
+      size that fits the field instead of the value's size. */
+@media (max-width: 640px) {
+    body.gym-tracker #exercise-search::placeholder,
+    body.gym-tracker #swap-exercise-search::placeholder,
+    body.gym-tracker #exercise-db-search::placeholder {
+        font-size: 0.8rem;
+    }
+}
+
+/* ---- GT-17 (second half). The picker's results need room --------------
+   Collapsing the tray was necessary but not sufficient: on a 390px phone the
+   stacked search + two filter selects took ~230px of the sheet and each
+   result card was ~140px tall, so barely one card was readable at a time
+   while multi-selecting. The filters share one row and the cards lose the
+   padding and the line breaks they did not need. Desktop is untouched. */
+@media (max-width: 767px) {
+    body.gym-tracker #exercise-picker-modal .exercise-picker-search,
+    body.gym-tracker #swap-exercise-modal .exercise-picker-search {
+        gap: 0.5rem;
+        padding: 0.6rem;
+    }
+
+    body.gym-tracker #exercise-picker-modal .exercise-filters,
+    body.gym-tracker #swap-exercise-modal .exercise-filters {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.5rem;
+    }
+
+    body.gym-tracker #exercise-picker-modal .exercise-picker-card,
+    body.gym-tracker #swap-exercise-modal .exercise-picker-card {
+        padding: 0.6rem 0.7rem;
+        border-width: 1px;
+    }
+
+    body.gym-tracker #exercise-picker-modal .exercise-picker-card h4,
+    body.gym-tracker #swap-exercise-modal .exercise-picker-card h4 {
+        margin: 0 0 0.25rem;
+        font-size: 0.95rem;
+    }
+
+    body.gym-tracker #exercise-picker-modal .exercise-picker-card .exercise-meta,
+    body.gym-tracker #swap-exercise-modal .exercise-picker-card .exercise-meta {
+        margin: 0;
+        gap: 0.3rem;
+    }
+
+    body.gym-tracker #exercise-picker-modal .exercise-picker-card .badge,
+    body.gym-tracker #swap-exercise-modal .exercise-picker-card .badge {
+        padding: 0.12rem 0.4rem;
+        font-size: 0.68rem;
+    }
+
+    /* The muscle group is already on the badges; a third line for it is pure
+       height on a phone. */
+    body.gym-tracker #exercise-picker-modal .exercise-picker-card > p,
+    body.gym-tracker #swap-exercise-modal .exercise-picker-card > p {
+        display: none;
+    }
+}
+
+/* ---- Timed set rows -----------------------------------------------------
+   `.duration-min` / `.duration-sec` are `flex: 1` with no cap, so on a wide
+   screen a plank's min:sec pair stretched to ~400px each while the reps rows
+   beside them sit at their capped 152px. They now match the reps field's
+   height (the 44px touch target) everywhere and its capped width on desktop,
+   so a timed exercise reads as the same kind of row as the others. */
+body.gym-tracker .set-row-inputs .duration-min,
+body.gym-tracker .set-row-inputs .duration-sec {
+    height: 46px;
+}
+
+@media (min-width: 768px) {
+    body.gym-tracker .set-row-inputs .duration-min,
+    body.gym-tracker .set-row-inputs .duration-sec {
+        flex: 0 1 100px;
     }
 }

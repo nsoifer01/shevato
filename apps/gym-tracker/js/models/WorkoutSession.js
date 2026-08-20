@@ -25,9 +25,12 @@ export class WorkoutSession {
         this.maxHeartRate = data.maxHeartRate || null;
         this.caloriesBurned = data.caloriesBurned || null;
 
-        // Temporary per-session weight unit (Item 8). Display + entry unit for
-        // THIS workout only; canonical Set weights stay in the account unit.
-        // null means "follow the account unit". Survives pause/resume via JSON.
+        // The unit this workout was ENTERED in - the in-workout kg|lbs toggle
+        // (Item 8). Stored Set weights are always canonical kilograms
+        // (utils/units.js), so this is metadata about how the lifter was
+        // working, never a hint about what the numbers mean. Populated at
+        // session start; null on legacy sessions logged before it was
+        // recorded. Survives pause/resume via JSON.
         this.sessionUnit = data.sessionUnit === 'kg' || data.sessionUnit === 'lb'
             ? data.sessionUnit
             : null;
@@ -65,12 +68,40 @@ export class WorkoutSession {
         return this.endTime || this.startTime || this.timestamp || this.date;
     }
 
+    /**
+     * Weight-volume for the whole session, in canonical kg·reps.
+     *
+     * Timed sets contribute NOTHING here (see Set.volume): seconds are not
+     * kilograms, and every consumer renders this with a weight unit. Time
+     * under tension is reported separately by `totalTimedSeconds`.
+     */
     get totalVolume() {
         return this.exercises.reduce((sum, ex) => sum + ex.totalVolume, 0);
     }
 
+    /** Total seconds held across every timed set in the session. */
+    get totalTimedSeconds() {
+        return this.exercises.reduce((sum, ex) => sum + ex.totalTimedSeconds, 0);
+    }
+
     get totalSets() {
         return this.exercises.reduce((sum, ex) => sum + ex.sets.length, 0);
+    }
+
+    /** Sets the user marked complete - the count that means "work done". */
+    get completedSetCount() {
+        return this.exercises.reduce(
+            (sum, ex) => sum + (ex.sets || []).filter(s => s.completed).length, 0);
+    }
+
+    /**
+     * Exercises with at least one completed set. A session lists every
+     * planned exercise, so the raw `exercises.length` counted ones the lifter
+     * never touched (GT-23).
+     */
+    get performedExerciseCount() {
+        return this.exercises.filter(
+            ex => (ex.sets || []).some(s => s.completed)).length;
     }
 
     startWorkout() {

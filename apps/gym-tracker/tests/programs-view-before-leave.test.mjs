@@ -14,35 +14,30 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { buildMethods as extractMethods, loadSource } from './helpers/source-extract.mjs';
 
-const src = readFileSync(new URL('../js/views/programs-view.js', import.meta.url), 'utf8');
+const src = loadSource('js/views/programs-view.js');
 
-function methodSource(name) {
-    const start = src.indexOf(`\n    ${name}(`);
-    assert.notEqual(start, -1, `${name}() not found in programs-view.js`);
-    let depth = 0;
-    let i = src.indexOf('{', start);
-    const bodyStart = i;
-    for (; i < src.length; i++) {
-        if (src[i] === '{') depth++;
-        else if (src[i] === '}' && --depth === 0) break;
-    }
-    return src.slice(start + 1, i + 1).trim();
-}
+const METHODS = [
+    'beforeLeave',
+    'closeProgramModal',
+    'closeExercisePicker',
+    'editorSnapshot',
+    'isEditorDirty',
+    'requestCloseProgramModal',
+];
 
-// Object-literal shorthand matches the class-method syntax exactly, so the
-// extracted text can be evaluated as-is with `document` shadowed by a stub.
-const buildMethods = new Function(
-    'document',
-    `"use strict"; return { ${methodSource('beforeLeave')}, ${methodSource('closeProgramModal')}, ${methodSource('closeExercisePicker')} };`
-);
+// The REAL method text, evaluated against stubs. No mirror: if
+// programs-view.js changes shape or behaviour these tests move with it.
+const buildMethods = (document, showConfirmModal) =>
+    extractMethods(src, METHODS, { document, showConfirmModal }, 'programs-view.js');
 
-function makeEl(id, classes = []) {
+function makeEl(id, classes = [], value = '') {
     const set = new Set(classes);
     return {
         id,
         hidden: false,
+        value,
         classList: {
             add: c => set.add(c),
             remove: c => set.delete(c),
@@ -52,9 +47,25 @@ function makeEl(id, classes = []) {
     };
 }
 
+// GT-08: the discard guard asks before throwing unsaved edits away. The fake
+// records every prompt so a test can assert both that it fired and what the
+// user's answer did.
+function makeConfirm() {
+    const calls = [];
+    let answer = true;
+    const fn = (opts) => { calls.push(opts); return Promise.resolve(answer); };
+    fn.calls = calls;
+    fn.answerWith = (v) => { answer = v; };
+    return fn;
+}
+
 // `open` mirrors the DOM after openProgramModal(): editor active, picker closed.
-function makeView({ open = true, workoutMode = false, pickerOpen = false, returnToView = null } = {}) {
+function makeView({
+    open = true, workoutMode = false, pickerOpen = false, returnToView = null, dirty = false,
+} = {}) {
     const els = {
+        'program-name': makeEl('program-name', [], 'Push Day A'),
+        'program-description': makeEl('program-description', [], ''),
         'program-modal': makeEl('program-modal', [
             ...(open ? ['modal', 'active'] : ['modal']),
             ...(workoutMode ? ['program-editor-workout-mode'] : []),
@@ -69,14 +80,22 @@ function makeView({ open = true, workoutMode = false, pickerOpen = false, return
     const document = { getElementById: id => els[id] || null };
     const shown = [];
     const stored = [{ id: 1, name: 'Push Day A', exercises: [{ sets: [{ repsMin: 6, repsMax: 8 }] }] }];
-    const view = Object.create(buildMethods(document));
+    const confirm = makeConfirm();
+    const view = Object.create(buildMethods(document, confirm));
     view.app = { showView: v => shown.push(v), programs: stored };
     view.returnToView = returnToView;
     view.enteredFromWorkout = workoutMode;
     // The staged deep clone the editor mutates; Cancel and this hook discard it.
-    view.currentProgram = { id: 1, name: 'Push Day A EDITED', exercises: [{ sets: [{ repsMin: 3, repsMax: 3 }] }] };
+    const staged = { id: 1, name: 'Push Day A EDITED', exercises: [{ sets: [{ repsMin: 3, repsMax: 3 }] }] };
+    staged.toJSON = () => ({ id: staged.id, name: staged.name, exercises: staged.exercises });
+    view.currentProgram = staged;
+    // A baseline captured at open time is what makes the editor "clean";
+    // `dirty: true` seeds a baseline that no longer matches the staged clone.
+    view.editorBaseline = dirty
+        ? JSON.stringify({ name: 'something else', description: '', program: staged.toJSON() })
+        : view.editorSnapshot();
 
-    return { view, els, shown, stored };
+    return { view, els, shown, stored, confirm };
 }
 
 test('beforeLeave dismisses the open editor so it cannot float over the next view', () => {
@@ -150,4 +169,81 @@ test('beforeLeave with the editor already closed touches nothing', () => {
     assert.deepEqual(shown, []);
     assert.equal(els['program-modal'].classList.contains('active'), false);
     assert.equal(view.returnToView, 'home', 'a pending return target is left for closeProgramModal');
+});
+
+// ---------------------------------------------------------------------------
+// GT-08: closing the editor with unsaved work asks before discarding it.
+//
+// Escape, Cancel and the X all funnel through requestCloseProgramModal, and
+// leaving the Programs view funnels through beforeLeave. Building an
+// 8-exercise program with per-set rep ranges is the longest flow in the app,
+// and every one of those routes used to throw it away instantly and silently.
+// ---------------------------------------------------------------------------
+
+test('a clean editor closes immediately, with no prompt', async () => {
+    const { view, els, confirm } = makeView();
+    assert.equal(view.isEditorDirty(), false);
+    const closed = await view.requestCloseProgramModal();
+    assert.equal(closed, true);
+    assert.equal(confirm.calls.length, 0, 'nothing changed, so nothing to ask about');
+    assert.equal(els['program-modal'].classList.contains('active'), false);
+});
+
+test('a dirty editor asks before discarding, and closes when confirmed', async () => {
+    const { view, els, confirm } = makeView({ dirty: true });
+    assert.equal(view.isEditorDirty(), true);
+    const closed = await view.requestCloseProgramModal();
+    assert.equal(closed, true);
+    assert.equal(confirm.calls.length, 1);
+    assert.match(confirm.calls[0].title, /discard/i);
+    assert.equal(els['program-modal'].classList.contains('active'), false);
+});
+
+test('declining the prompt keeps the editor open and the staged clone alive', async () => {
+    const { view, els, confirm } = makeView({ dirty: true });
+    confirm.answerWith(false);
+    const closed = await view.requestCloseProgramModal();
+    assert.equal(closed, false);
+    assert.equal(els['program-modal'].classList.contains('active'), true, 'still editing');
+    assert.notEqual(view.currentProgram, null, 'the staged edits survive');
+});
+
+test('a typed program name counts as dirty even before it reaches the clone', () => {
+    // The name and description live in the inputs until save, so the snapshot
+    // has to read the DOM as well as the staged clone.
+    const { view, els } = makeView();
+    assert.equal(view.isEditorDirty(), false);
+    els['program-name'].value = 'Push Day A v2';
+    assert.equal(view.isEditorDirty(), true);
+});
+
+test('an exercise added to the staged clone counts as dirty', () => {
+    const { view } = makeView();
+    assert.equal(view.isEditorDirty(), false);
+    view.currentProgram.exercises.push({ sets: [{ repsMin: 8, repsMax: 10 }] });
+    assert.equal(view.isEditorDirty(), true);
+});
+
+test('beforeLeave defers navigation while the discard prompt is open', async () => {
+    const { view, shown, confirm } = makeView({ dirty: true });
+    confirm.answerWith(false);
+    assert.equal(view.beforeLeave('home'), false, 'navigation waits for the answer');
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.deepEqual(shown, [], 'and does not happen when the user keeps editing');
+});
+
+test('beforeLeave completes the navigation once the user confirms the discard', async () => {
+    const { view, shown, confirm } = makeView({ dirty: true, returnToView: 'home' });
+    assert.equal(view.beforeLeave('calendar'), false);
+    // Let the confirm promise and its continuation settle.
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    assert.deepEqual(shown, ['calendar'], 'lands where the user asked, not on returnToView');
+    assert.equal(confirm.calls.length, 1);
+});
+
+test('beforeLeave on a CLEAN editor still proceeds without a prompt', () => {
+    const { view, confirm } = makeView();
+    assert.notEqual(view.beforeLeave('home'), false);
+    assert.equal(confirm.calls.length, 0);
 });

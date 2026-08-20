@@ -8,7 +8,7 @@ import { WorkoutExercise } from '../models/WorkoutExercise.js';
 import { Set } from '../models/Set.js';
 import { timerService } from '../services/TimerService.js';
 import { storageService } from '../services/StorageService.js';
-import { showToast, showConfirmModal, formatMuscleGroup, vibrate, playSound, escapeHtml, debugLog, convertWeight, formatDate } from '../utils/helpers.js';
+import { showToast, showConfirmModal, formatMuscleGroup, vibrate, playSound, escapeHtml, debugLog, formatDate, pluralLabel } from '../utils/helpers.js';
 import { trapModalFocus } from '../utils/modal-focus.js';
 import { renderPausedBannerHTML, wirePausedBannerActions } from './paused-banner.js';
 import { orderPrograms } from '../utils/program-order.js';
@@ -21,6 +21,7 @@ import { allSetsReachMax, latestFeelForExercise, nextFeel, shouldShowFeelModal }
 import { recordPrSupersede, uniquePrChainCount, recomputePrSlots } from '../utils/pr-session.js';
 import { mergeSessionWithProgram } from '../utils/session-merge.js';
 import { weekStrip } from '../utils/program-schedule.js';
+import { readableActiveWorkout } from '../utils/active-workout.js';
 import {
     evaluateProgression,
     PROGRESSION_BUMP,
@@ -33,6 +34,13 @@ import {
     buildWarmupRamp,
 } from '../utils/warmup.js';
 import { track } from '../utils/analytics.js';
+import {
+    displayWeight, formatDuration, formatDurationLong, normalizeWeightUnit,
+    roundForDisplay, toCanonicalWeight, volumeIn,
+} from '../utils/units.js';
+import { searchExercises } from '../utils/exercise-search.js';
+import { EXERCISE_CATEGORIES, EXERCISE_EQUIPMENT, populateSelect } from '../utils/exercise-taxonomy.js';
+import { DEFAULT_TARGET_SECONDS } from '../models/Program.js';
 
 const PLATE_LOADED_EQUIPMENT = new globalThis.Set(['barbell', 'trap-bar', 'machine', 'plate', 'sled']);
 
@@ -94,7 +102,24 @@ class WorkoutView {
         this.app.viewControllers.workout = this;
         this.setupEventListeners();
         this.setupNavigationGuard();
+        this.setupPersistenceGuards();
         this.wireWorkoutActions();
+    }
+
+    /**
+     * Last-chance flush. `pagehide` fires on a real tab close / bfcache
+     * eviction and `visibilitychange` fires when a phone locks or the user
+     * switches apps - the two moments a mobile browser is most likely to
+     * kill the page. Everything except the debounced notes field is already
+     * written synchronously, so this only ever has that one field to save,
+     * but it is the difference between losing a form cue and not.
+     */
+    setupPersistenceGuards() {
+        if (typeof window === 'undefined') return;
+        window.addEventListener('pagehide', () => this.flushPendingPersist());
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') this.flushPendingPersist();
+        });
     }
 
     /**
@@ -122,10 +147,16 @@ class WorkoutView {
                 const exercise = this.currentWorkoutSession?.exercises[eIdx];
                 if (exercise) {
                     exercise.notes = t.value;
-                    storageService.saveActiveWorkout(this.currentWorkoutSession.toJSON());
+                    this.persistActiveWorkoutSoon();
                     const toggle = document.querySelector(`.gt-notes-toggle[data-exercise-index="${eIdx}"]`);
                     if (toggle) toggle.classList.toggle('gt-notes-toggle--has-notes', t.value.trim() !== '');
                 }
+                return;
+            }
+            // GT-40: per-exercise bar/base weight, applied live so the plate
+            // hints below it re-solve as the number is typed.
+            if (t instanceof HTMLInputElement && t.classList.contains('gt-bar-config-input')) {
+                this.setExerciseBarWeight(Number(t.dataset.exerciseIndex), t.value, { rerender: false });
                 return;
             }
             if (!(t instanceof HTMLInputElement)) return;
@@ -138,6 +169,8 @@ class WorkoutView {
             if (!target) return;
             const [eIdx, slot] = target.split('-').map(Number);
             this.refreshPlateHint(eIdx, slot, t.value);
+            // GT-32: seed the still-empty rows below with what was just typed.
+            if (t.classList.contains('set-weight')) this.carryWeightDown(eIdx, slot);
         });
 
         view.addEventListener('click', (e) => {
@@ -206,6 +239,14 @@ class WorkoutView {
                 case 'toggle-exercise-plate-hints':
                     e.preventDefault();
                     this.toggleExercisePlateHints(exerciseIndex);
+                    break;
+                case 'toggle-bar-config':
+                    e.preventDefault();
+                    this.toggleBarConfig(exerciseIndex);
+                    break;
+                case 'reset-bar-weight':
+                    e.preventDefault();
+                    this.setExerciseBarWeight(exerciseIndex, '');
                     break;
                 case 'cycle-feel':
                     e.preventDefault();
@@ -350,25 +391,46 @@ class WorkoutView {
         });
     }
 
-    /** The unit weights are DISPLAYED/ENTERED in for this session. */
+    /**
+     * The unit weights are DISPLAYED/ENTERED in for this session - the
+     * in-workout kg|lbs toggle, falling back to the account preference.
+     * Stored weights are canonical kilograms regardless (utils/units.js).
+     */
     sessionUnit() {
-        return this.currentWorkoutSession?.sessionUnit || this.app.settings.weightUnit;
+        return normalizeWeightUnit(
+            this.currentWorkoutSession?.sessionUnit || this.app.settings.weightUnit);
     }
 
-    /** True when the session display unit differs from the account unit. */
-    unitsDiffer() {
-        return this.sessionUnit() !== this.app.settings.weightUnit;
-    }
-
-    /** Convert a canonical (account-unit) weight into the session display unit. */
+    /** Canonical kg → the session display unit, rounded for an input/label. */
     toSessionWeight(weight) {
         if (weight === '' || weight === null || weight === undefined) return weight;
-        return convertWeight(Number(weight), this.app.settings.weightUnit, this.sessionUnit());
+        return displayWeight(weight, this.sessionUnit());
     }
 
-    /** Convert a session-unit input value back to the canonical account unit. */
-    toAccountWeight(weight) {
-        return convertWeight(Number(weight), this.sessionUnit(), this.app.settings.weightUnit);
+    /** A session-unit input value → canonical kg (exact, never rounded). */
+    toStoredWeight(weight) {
+        return toCanonicalWeight(weight, this.sessionUnit()) ?? 0;
+    }
+
+    /** The plate/bar equipment profile for the unit this session is using. */
+    sessionPlateConfig() {
+        const settings = this.app.settings;
+        return typeof settings?.plateConfig === 'function'
+            ? settings.plateConfig(this.sessionUnit())
+            : { barWeight: 20, plates: [], exerciseBarWeights: {} };
+    }
+
+    /**
+     * Bar/base weight for one exercise in the session unit: the per-exercise
+     * override if the lifter set one (an EZ bar is not an olympic bar),
+     * else the profile default (GT-40).
+     */
+    sessionBarWeight(exerciseId) {
+        const settings = this.app.settings;
+        if (typeof settings?.barWeightForExercise === 'function') {
+            return Number(settings.barWeightForExercise(exerciseId, this.sessionUnit())) || 0;
+        }
+        return Number(this.sessionPlateConfig().barWeight) || 0;
     }
 
     /**
@@ -381,10 +443,11 @@ class WorkoutView {
         if (unit !== 'kg' && unit !== 'lb') return;
         if (this.sessionUnit() === unit) return;
 
-        const account = this.app.settings.weightUnit;
-        // Read current planned-row weight inputs (in the OLD session unit) and
-        // carry their canonical values onto stickyValues so the re-render
-        // repopulates them converted into the new unit.
+        // Read the planned-row weight inputs (still in the OLD session unit)
+        // and carry their CANONICAL values onto stickyValues, so the
+        // re-render repopulates them converted into the new unit rather than
+        // relabelled. Committed sets need no work at all: they were already
+        // stored in kilograms.
         const oldUnit = this.sessionUnit();
         this.currentWorkoutSession.exercises.forEach((exercise, eIdx) => {
             const list = document.querySelectorAll(`#exercise-${eIdx} .set-row-planned`);
@@ -392,7 +455,8 @@ class WorkoutView {
                 const slot = Number(row.dataset.slot);
                 const input = row.querySelector('.set-weight');
                 if (!input || input.value === '') return;
-                const canonical = convertWeight(Number(input.value), oldUnit, account);
+                const canonical = toCanonicalWeight(input.value, oldUnit);
+                if (canonical === null) return;
                 if (!exercise.stickyValues) exercise.stickyValues = {};
                 const reps = row.querySelector('.set-reps');
                 exercise.stickyValues[slot] = {
@@ -403,8 +467,10 @@ class WorkoutView {
             });
         });
 
-        this.currentWorkoutSession.sessionUnit = unit === account ? null : unit;
-        storageService.saveActiveWorkout(this.currentWorkoutSession.toJSON());
+        // Always store the unit explicitly: it is a record of how the lifter
+        // was working, not a diff against a preference that may change later.
+        this.currentWorkoutSession.sessionUnit = unit;
+        this.persistActiveWorkout();
         this.syncSessionUnitToggle();
         this.renderActiveWorkout();
     }
@@ -606,6 +672,62 @@ class WorkoutView {
         });
     }
 
+    /**
+     * GT-01: the ONE way in-progress workout state reaches storage.
+     *
+     * Before this there were six scattered `saveActiveWorkout` calls (start,
+     * unit switch, pause, resync, feel, swap) and the ones that mattered
+     * most - completing, editing and deleting a set - were not among them.
+     * The stored blob said `sets: []` while the screen said "2 / 4 sets", so
+     * a reload, a tab eviction or a crash destroyed the whole workout.
+     *
+     * Every mutation now routes through here, and it writes SYNCHRONOUSLY:
+     * a set commit is exactly the moment an unexpected tab kill must not
+     * cost anything, and one localStorage write of a few KB is far cheaper
+     * than the render that follows it. `elapsedBeforePause` is refreshed on
+     * every write (without touching `paused`), so an interrupted workout
+     * resumes with its real elapsed time rather than 0:00.
+     *
+     * The debounced variant below exists only for per-keystroke text.
+     */
+    persistActiveWorkout() {
+        const session = this.currentWorkoutSession;
+        if (!session || session.completed) return;
+        try {
+            if (!session.paused) {
+                const elapsed = timerService.getWorkoutElapsed();
+                if (Number.isFinite(elapsed) && elapsed >= 0) {
+                    session.elapsedBeforePause = elapsed;
+                }
+            }
+            storageService.saveActiveWorkout(session.toJSON());
+        } catch (error) {
+            console.error('Could not save the in-progress workout:', error);
+        }
+    }
+
+    /**
+     * Coalesce the writes behind a high-frequency text field (exercise
+     * notes). A trailing flush is guaranteed by `flushPendingPersist`, which
+     * every lifecycle exit calls, so the last keystroke is never the one
+     * that gets lost.
+     */
+    persistActiveWorkoutSoon(delay = 400) {
+        if (this._persistTimer) clearTimeout(this._persistTimer);
+        this._persistTimer = setTimeout(() => {
+            this._persistTimer = null;
+            this.persistActiveWorkout();
+        }, delay);
+    }
+
+    /** Write any pending debounced state immediately. */
+    flushPendingPersist() {
+        if (!this._persistTimer) return;
+        clearTimeout(this._persistTimer);
+        this._persistTimer = null;
+        this.persistActiveWorkout();
+    }
+
     pauseAndSaveWorkout() {
         if (!this.currentWorkoutSession || this.currentWorkoutSession.completed) {
             return;
@@ -615,6 +737,7 @@ class WorkoutView {
         const elapsed = timerService.getWorkoutElapsed();
 
         // Mark workout as paused
+        this.flushPendingPersist();
         this.currentWorkoutSession.pauseWorkout(elapsed);
 
         // Save to storage
@@ -680,7 +803,9 @@ class WorkoutView {
         timerService.stopWorkoutTimer();
         this.skipRest();
         this.disarmBackGuard();
+        this.flushPendingPersist();
         storageService.clearActiveWorkout();
+        this.resetFinishWorkoutForm();
         document.getElementById('active-workout').classList.remove('active');
         document.getElementById('workout-selection').classList.add('active');
         this.currentWorkoutSession = null;
@@ -707,9 +832,13 @@ class WorkoutView {
     }
 
     async resumeWorkout(opts = {}) {
-        const pausedWorkout = storageService.getActiveWorkout();
+        // Any RECOVERABLE workout resumes, not just an explicitly paused one
+        // (GT-01). readableActiveWorkout also rejects a finished or corrupt
+        // blob, so a crash between "save session" and "clear active" can
+        // never resurrect a completed workout.
+        const pausedWorkout = readableActiveWorkout(storageService.getActiveWorkout());
         if (!pausedWorkout) {
-            showToast('No paused workout found', 'error');
+            showToast('No unfinished workout to resume', 'error');
             return;
         }
 
@@ -754,6 +883,9 @@ class WorkoutView {
         this.renderActiveWorkout();
         this.armBackGuard();
         this.app.updateGlobalFab();
+        // Resuming clears the paused flag; write that through so a second
+        // interruption is still recognised as an interrupted (not paused) run.
+        this.persistActiveWorkout();
     }
 
     /**
@@ -784,7 +916,7 @@ class WorkoutView {
             }),
         );
         this.currentWorkoutSession.exercises = merged.map(e => WorkoutExercise.fromJSON(e));
-        storageService.saveActiveWorkout(this.currentWorkoutSession.toJSON());
+        this.persistActiveWorkout();
     }
 
     /**
@@ -807,17 +939,19 @@ class WorkoutView {
 
     async discardPausedWorkout() {
         const confirmed = await showConfirmModal({
-            title: 'Discard Paused Workout',
-            message: 'Are you sure you want to discard this paused workout?<br><br><strong>All progress will be lost.</strong>',
+            title: 'Discard Unfinished Workout',
+            message: 'Are you sure you want to discard this workout?<br><br><strong>All progress will be lost.</strong>',
             confirmText: 'Discard',
             cancelText: 'Keep',
             isDangerous: true
         });
 
         if (confirmed) {
+            if (this._persistTimer) { clearTimeout(this._persistTimer); this._persistTimer = null; }
             storageService.clearActiveWorkout();
+            this.resetFinishWorkoutForm();
             this.render();
-            showToast('Paused workout discarded', 'info');
+            showToast('Unfinished workout discarded', 'info');
             this.app.showView('home');
         }
     }
@@ -994,8 +1128,13 @@ class WorkoutView {
             programId: program.id,
             workoutDayId: null,
             workoutDayName: program.name,
+            // Record the unit the lifter is entering in. Storage stays
+            // canonical kg either way; this is metadata, and the in-workout
+            // toggle rewrites it.
+            sessionUnit: normalizeWeightUnit(this.app.settings.weightUnit),
             exercises: program.exercises.map(ex => new WorkoutExercise({
                 exerciseId: ex.exerciseId,
+                plannedExerciseId: ex.exerciseId,
                 // Snapshot the exercise's CURRENT catalog name into the new
                 // session: program rows can carry a pre-rename snapshot.
                 exerciseName: this.app.getExerciseDisplayName(ex.exerciseId, ex.exerciseName),
@@ -1013,6 +1152,10 @@ class WorkoutView {
 
         this.currentWorkoutSession.startWorkout();
 
+        // GT-07: a NEW workout gets a clean finish form. Reopening the finish
+        // dialog for the SAME session keeps whatever the user typed.
+        this.resetFinishWorkoutForm();
+
         // Reset per-session state.
         this.sessionPrSlots = {};
         this.collapsedExercises = {};
@@ -1026,6 +1169,10 @@ class WorkoutView {
         timerService.startWorkoutTimer((elapsed) => {
             this.updateWorkoutTimer(elapsed);
         });
+
+        // The session is recoverable from the moment it exists, not from the
+        // first set (GT-01).
+        this.persistActiveWorkout();
 
         // Switch to active workout screen
         document.getElementById('workout-selection').classList.remove('active');
@@ -1142,9 +1289,11 @@ class WorkoutView {
         const unit = this.sessionUnit();
 
         // Task 6: rep-range labels from the program exercise's sets[].
-        // Fall back gracefully for old sessions/programs that lack sets[].
+        // Resolved through the PLANNED id so a swapped-in substitute keeps the
+        // slot's guidance (GT-13). Falls back gracefully for old
+        // sessions/programs that lack sets[].
         const program = this.app.getProgramById(this.currentWorkoutSession?.programId);
-        const progEx = program?.exercises.find(e => e.exerciseId === exercise.exerciseId);
+        const progEx = this.programRowFor(exercise);
         const progSets = (progEx?.sets && progEx.sets.length > 0) ? progEx.sets : null;
         // Plate calculator only meaningful for plate-loaded exercises.
         const equipment = exerciseData?.equipment || '';
@@ -1177,11 +1326,21 @@ class WorkoutView {
             ? (this.collapsedExercises[index] !== false)  // default collapsed when complete
             : !!this.collapsedExercises[index];           // default expanded when in-progress
 
-        // Task 6: determine if all programmed sets share the same rep target.
+        // Task 6: determine if all programmed sets share the same target.
         // When they do, show once at exercise level instead of repeating per row.
+        //
+        // GT-12: a timed exercise is planned in SECONDS, not reps. It used to
+        // borrow the rep machinery and advertise "10 reps" as a plank target,
+        // which means nothing; it now shows "Target 1:00".
         let allSameRepRange = false;
         let sharedRepLabel = '';
-        if (progSets && progSets.length > 0) {
+        if (isDuration) {
+            const seconds = progSets
+                ? progSets.map((_row, i) => this.plannedSecondsFor(progSets, i))
+                : [DEFAULT_TARGET_SECONDS];
+            allSameRepRange = seconds.every(v => v === seconds[0]);
+            if (allSameRepRange) sharedRepLabel = `Target ${formatDuration(seconds[0])}`;
+        } else if (progSets && progSets.length > 0) {
             const first = progSets[0];
             allSameRepRange = progSets.every(s => s.repsMin === first.repsMin && s.repsMax === first.repsMax);
             if (allSameRepRange) {
@@ -1199,7 +1358,7 @@ class WorkoutView {
             ? this.toSessionWeight(firstPrior.weight)
             : 0;
         const warmupHTML = this.renderWarmupStrip(index, {
-            equipment, isDuration, unit, workingWeight,
+            equipment, isDuration, unit, workingWeight, exerciseId: exercise.exerciseId,
         });
 
         // Two different kinds of note, placed by two different rules.
@@ -1255,17 +1414,22 @@ class WorkoutView {
                 // the programmed count. Extra added-set rows show nothing.
                 const slotProgSet = (!allSameRepRange && progSets && i < progSets.length)
                     ? progSets[i] : null;
-                const slotRepLabel = slotProgSet
-                    ? this.formatRepRange(slotProgSet.repsMin, slotProgSet.repsMax) : null;
+                const slotRepLabel = isDuration
+                    ? (allSameRepRange ? null : `Target ${formatDuration(this.plannedSecondsFor(progSets, i))}`)
+                    : (slotProgSet ? this.formatRepRange(slotProgSet.repsMin, slotProgSet.repsMax) : null);
                 // Prefill each row with its own set's top-of-range target, not set 1's.
                 const slotTargetReps = (progSets && i < progSets.length)
                     ? progSets[i].repsMax : exercise.targetReps;
+                // GT-12: with no previous session to copy, a timed row
+                // pre-fills from the PLANNED hold instead of 0:00.
+                const slotTargetSeconds = isDuration
+                    ? this.plannedSecondsFor(progSets, i) : 0;
                 // Item 1: the bump/deload badge explains the PREFILL and lands
                 // on exactly one row; a miss warning lands on each set that
                 // actually fell short (see above).
                 const rowProgression = i === badgeSlot ? progression : null;
                 const rowMiss = missBySlot.get(i) || null;
-                rowsHTML += this.renderPlannedRow(index, i, prior, isDuration, unit, slotTargetReps, isPlateLoaded, usesBarWeight, slotRepLabel, rowProgression, rowMiss);
+                rowsHTML += this.renderPlannedRow(index, i, prior, isDuration, unit, slotTargetReps, isPlateLoaded, usesBarWeight, slotRepLabel, rowProgression, rowMiss, slotTargetSeconds);
             }
         }
 
@@ -1305,8 +1469,7 @@ class WorkoutView {
         // Idle, it renders the duration as a static GRAY number; when a set is
         // completed the same element becomes the live colored countdown, then
         // reverts to gray. No "Between sets"/"After exercise" pills.
-        const progEx2 = program?.exercises.find(e => e.exerciseId === exercise.exerciseId);
-        const betweenSetActive = progEx2?.restSeconds ?? exercise.restSeconds ?? 90;
+        const betweenSetActive = progEx?.restSeconds ?? exercise.restSeconds ?? 90;
         const isRestingHere = this.activeRestExerciseIndex === index && this._activeRestType === 'set';
         const restChipHTML = `
             <div class="rest-countdown-chip${isRestingHere ? '' : ' rest-countdown-chip--idle'}"
@@ -1317,12 +1480,31 @@ class WorkoutView {
         // Per-exercise plate-hints toggle.
         // Global OFF overrides everything: hints hidden for ALL exercises.
         // Global ON: per-exercise preference applies (defaults to ON).
-        // Item 8: plate config is in account units, so hide the toggle and
-        // hints entirely while the session unit differs from the account unit.
-        const globalHints = this.app.settings?.plateHintsEnabled !== false && !this.unitsDiffer();
+        const globalHints = this.app.settings?.plateHintsEnabled !== false;
         const perExHints = this.app.settings?.exercisePlateHints?.[exercise.exerciseId];
         const hintsOnForExercise = globalHints && (perExHints !== undefined ? perExHints : true);
         // Per-exercise toggle is only meaningful when global hints are ON.
+        // GT-40: one global bar weight computed a Barbell Curl against the
+        // 20 kg olympic bar; real EZ / curl bars are 7-10 kg, and trap and
+        // specialty bars differ again. Bar-based exercises get a chip showing
+        // the bar they are actually computed against, and tapping it opens an
+        // inline override. Exercises with no bar/base-weight concept (cables,
+        // machines, dumbbells) never see it.
+        const barWeight = usesBarWeight ? this.sessionBarWeight(exercise.exerciseId) : 0;
+        const hasBarOverride = usesBarWeight
+            && this.app.settings?.plateConfig
+            && this.app.settings.plateConfig(unit).exerciseBarWeights?.[String(exercise.exerciseId)] !== undefined;
+        const barChipHTML = (usesBarWeight && globalHints && hintsOnForExercise) ? `
+            <button type="button" class="gt-iconbtn gt-bar-chip${hasBarOverride ? ' gt-bar-chip--custom' : ''}"
+                data-action="toggle-bar-config"
+                data-exercise-index="${index}"
+                aria-expanded="false"
+                aria-label="Bar weight for this exercise: ${barWeight}${unit}. Tap to change."
+                title="Bar weight: ${barWeight}${unit}">
+                <span class="gt-bar-chip-text">${barWeight}${unit}</span>
+            </button>
+        ` : '';
+
         const plateToggleHTML = (isPlateLoaded && globalHints) ? `
             <button type="button" class="gt-iconbtn btn-icon-plates--per-ex${hintsOnForExercise ? '' : ' btn-icon-plates--off'}"
                 data-action="toggle-exercise-plate-hints"
@@ -1370,6 +1552,7 @@ class WorkoutView {
                             title="Notes for this exercise">
                             <i class="fas fa-pen" aria-hidden="true"></i>
                         </button>
+                        ${barChipHTML}
                         ${plateToggleHTML}
                         <button type="button" class="gt-iconbtn exercise-collapse-toggle"
                             data-action="toggle-exercise-collapse"
@@ -1382,6 +1565,17 @@ class WorkoutView {
                 </div>
 
                 <div class="exercise-body">
+                    <div class="gt-bar-config" id="bar-config-${index}" hidden>
+                        <label class="gt-bar-config-label" for="bar-weight-${index}">Bar weight (${unit})</label>
+                        <input type="number" class="gt-bar-config-input" id="bar-weight-${index}"
+                            data-exercise-index="${index}" min="0" step="0.5"
+                            value="${barWeight}" inputmode="decimal">
+                        <button type="button" class="gt-bar-config-reset"
+                            data-action="reset-bar-weight" data-exercise-index="${index}">
+                            Use default
+                        </button>
+                    </div>
+
                     <div class="gt-exercise-notes" id="exercise-notes-${index}" hidden>
                         <textarea class="gt-exercise-notes-input" data-exercise-index="${index}"
                             placeholder="Notes for this exercise (form cues, how it felt, etc.)"
@@ -1423,13 +1617,16 @@ class WorkoutView {
      * set and starts the rest timer. The row itself is NOT tappable — users
      * deliberately flick the toggle to complete.
      */
-    renderPlannedRow(exerciseIndex, slot, prior, isDuration, unit, targetReps, isPlateLoaded = false, usesBarWeight = false, repLabel = null, progression = null, miss = null) {
+    renderPlannedRow(exerciseIndex, slot, prior, isDuration, unit, targetReps, isPlateLoaded = false, usesBarWeight = false, repLabel = null, progression = null, miss = null, targetSeconds = 0) {
         const setLabel = `${slot + 1}`;
         const toggle = this.renderSetToggle(false, 'commit-planned-set', exerciseIndex, slot, 'Mark set complete');
 
         if (isDuration) {
-            const mins = prior ? Math.floor(prior.duration / 60) : 0;
-            const secs = prior ? prior.duration % 60 : 0;
+            // Previous session first (the audit confirmed that prefill works),
+            // then the programmed target, then empty (GT-12).
+            const seeded = (prior && prior.duration > 0) ? prior.duration : (targetSeconds || 0);
+            const mins = Math.floor(seeded / 60);
+            const secs = seeded % 60;
             return `
                 <li class="set-row set-row-planned" data-slot="${slot}">
                     <span class="set-row-num">${setLabel}</span>
@@ -1443,11 +1640,15 @@ class WorkoutView {
                             value="${secs.toString().padStart(2, '0')}" placeholder="Sec" aria-label="Seconds">
                     </div>
                     ${toggle}
+                    ${repLabel ? `
+                    <div class="set-row-meta">
+                        <span class="set-rep-target" aria-label="Target: ${escapeHtml(repLabel)}">${escapeHtml(repLabel)}</span>
+                    </div>` : ''}
                 </li>
             `;
         }
 
-        // Prior weights are canonical (account-unit); convert into the session
+        // Prior weights are canonical kilograms; convert into the session
         // display unit for prefill (Item 8). One decimal via convertWeight.
         const weight = prior && prior.weight !== '' && prior.weight != null
             ? this.toSessionWeight(prior.weight)
@@ -1457,12 +1658,13 @@ class WorkoutView {
         // while the session unit differs from the account unit (Item 8).
         const sessionExercise = this.currentWorkoutSession?.exercises[exerciseIndex];
         const exerciseId = sessionExercise?.exerciseId;
-        const globalHintsOn = this.app.settings?.plateHintsEnabled !== false && !this.unitsDiffer();
+        const globalHintsOn = this.app.settings?.plateHintsEnabled !== false;
         const perExHintsVal = exerciseId !== undefined
             ? this.app.settings?.exercisePlateHints?.[exerciseId]
             : undefined;
         const hintsOn = globalHintsOn && (perExHintsVal !== undefined ? perExHintsVal : true);
-        const plateHintHTML = (isPlateLoaded && hintsOn) ? this.renderPlateHint(weight, unit, usesBarWeight) : '';
+        const plateHintHTML = (isPlateLoaded && hintsOn)
+            ? this.renderPlateHint(weight, unit, usesBarWeight, exerciseId) : '';
 
         // Feature 6: prior pre-filled values stored on the row so an input that
         // drifts from them can surface a "same as last time" restore chip. Only
@@ -1650,10 +1852,18 @@ class WorkoutView {
     }
 
     /**
-     * Item 1: drop the suggestion for this row - reset the weight input to the
-     * literal last-session weight and remove the badge (and its panel) in
-     * place, no re-render. The row's restore baseline moves with it so the
-     * "same as last time" chip stays truthful.
+     * Item 1: drop the suggestion and go back to last session's weight.
+     *
+     * The badge lives on ONE row but the suggestion is an EXERCISE-level
+     * decision: every planned row was pre-filled at the bumped weight. Only
+     * rewriting the badge's own row left a 60 / 62.5 / 62.5 / 62.5 plan with
+     * no obvious way back, and that mixed session then fed the progression
+     * engine (GT-06).
+     *
+     * So every planned row of this exercise that still shows the SUGGESTED
+     * weight reverts. A row the user has already typed their own number into
+     * is left exactly as they set it - rejecting the app's suggestion is not
+     * a licence to overwrite the lifter's.
      */
     useLastWeight(exerciseIndex, slot) {
         const input = document.getElementById(`weight-${exerciseIndex}-${slot}`);
@@ -1662,10 +1872,58 @@ class WorkoutView {
         const detail = document.getElementById(`progression-detail-${exerciseIndex}-${slot}`);
         const lastWeight = detail?.querySelector('.gt-progress-uselast')?.dataset.lastWeight;
         if (lastWeight === undefined) return;
-        if (row.dataset.priorWeight !== undefined) row.dataset.priorWeight = lastWeight;
-        row.querySelector('.gt-progress-badge')?.remove();
+
+        const suggested = input.value;
+        const host = document.getElementById(`exercise-${exerciseIndex}`);
+        const rows = host ? host.querySelectorAll('.set-row-planned') : [row];
+
+        rows.forEach((plannedRow) => {
+            const weightInput = plannedRow.querySelector('.set-weight');
+            if (!weightInput) return;
+            // Only rows still holding the suggestion (or empty) follow along.
+            const current = weightInput.value;
+            const isSuggested = current === suggested
+                || (current !== '' && suggested !== '' && Number(current) === Number(suggested));
+            if (!isSuggested && current !== '') return;
+            if (plannedRow.dataset.priorWeight !== undefined) {
+                plannedRow.dataset.priorWeight = lastWeight;
+            }
+            this._setPlannedInputValue(weightInput, lastWeight);
+        });
+
+        // The badge explained a prefill that no longer exists.
+        host?.querySelector('.gt-progress-badge')?.remove();
         detail.remove();
-        this._setPlannedInputValue(input, lastWeight);
+    }
+
+    /**
+     * GT-32: carry a first-set weight down the exercise.
+     *
+     * On an exercise with no previous session there is nothing to pre-fill
+     * from, so every planned row started empty and a 27-set first workout
+     * meant typing the same number 27 times. Typing set 1's weight now seeds
+     * the rows below it.
+     *
+     * Strictly additive: it only ever writes into rows that are still EMPTY,
+     * so a deliberately different back-off set, an already-typed row and a
+     * prefilled row are all untouched. Once a row has a value, the lifter
+     * owns it.
+     */
+    carryWeightDown(exerciseIndex, fromSlot) {
+        const host = document.getElementById(`exercise-${exerciseIndex}`);
+        const source = document.getElementById(`weight-${exerciseIndex}-${fromSlot}`);
+        if (!host || !source || source.value === '') return;
+
+        host.querySelectorAll('.set-row-planned').forEach((plannedRow) => {
+            const slot = Number(plannedRow.dataset.slot);
+            if (!Number.isFinite(slot) || slot <= fromSlot) return;
+            const weightInput = plannedRow.querySelector('.set-weight');
+            if (!weightInput || weightInput.value !== '') return;
+            weightInput.value = source.value;
+            this.refreshPlateHint(exerciseIndex, slot, weightInput.value);
+            this.maybeToggleRestoreChip(plannedRow);
+        });
+        this.dedupePlateHints(exerciseIndex);
     }
 
     /**
@@ -1772,7 +2030,7 @@ class WorkoutView {
         if (!exercise) return;
         exercise.feel = feel === 'good' ? 'good' : null;
         if (this.app.settings?.vibrationAlerts !== false) vibrate(20);
-        storageService.saveActiveWorkout(this.currentWorkoutSession.toJSON());
+        this.persistActiveWorkout();
         this.rerenderExercise(exerciseIndex);
     }
 
@@ -1796,8 +2054,7 @@ class WorkoutView {
         if (!exercise) return false;
         const exerciseData = this.app.getExerciseById(exercise.exerciseId);
         if (exerciseData && exerciseData.exerciseType === 'duration') return false;
-        const program = this.app.getProgramById(this.currentWorkoutSession?.programId);
-        const progEx = program?.exercises.find(e => e.exerciseId === exercise.exerciseId);
+        const progEx = this.programRowFor(exercise);
         const progSets = (progEx?.sets && progEx.sets.length > 0) ? progEx.sets : null;
         const targetSets = Math.max(1, exercise.targetSets || 3);
         return allSetsReachMax(
@@ -1837,34 +2094,105 @@ class WorkoutView {
         if (!exercise) return;
         const reaches = this._exerciseReachesMax(exercise);
         if (!shouldShowFeelModal(this._feelModalShown, exerciseIndex, reaches)) return;
-        const modal = document.getElementById('feel-intro-modal');
-        if (!modal) return;
 
         this._feelModalShown[exerciseIndex] = true;
+        this.showFeelPrompt(exerciseIndex);
+    }
 
-        modal.classList.add('active');
-        trapModalFocus(modal);
+    /**
+     * GT-22: offer the feel marking WITHOUT interrupting the workout.
+     *
+     * The feature is right and the audit confirmed it works; the problem was
+     * the delivery. Reps pre-fill at the TOP of the target range, so simply
+     * tapping through a normal session satisfies "every set reached max" on
+     * most exercises - it fired after 4 of 8 exercises in one run - and each
+     * time it threw a full-screen blocking modal in front of a lifter trying
+     * to move to the next machine. A celebration that fires every time is a
+     * tap tax.
+     *
+     * It is now an inline, dismissable prompt attached to the exercise card:
+     * same choice, same one-per-exercise-per-session rule, same persistence,
+     * but nothing to dismiss before carrying on. Timed exercises are still
+     * excluded upstream by `_exerciseReachesMax`.
+     */
+    showFeelPrompt(exerciseIndex) {
+        const host = document.getElementById(`exercise-${exerciseIndex}`);
+        if (!host) return;
+        // Never stack two prompts on one card.
+        host.querySelector('.gt-feel-prompt')?.remove();
 
-        const close = () => {
-            // R3-6: blur the clicked choice before hiding (no focused descendant
-            // under a closing dialog).
-            if (modal.contains(document.activeElement)) document.activeElement.blur();
-            modal.classList.remove('active');
-            goodBtn?.removeEventListener('click', onGood);
-            skipX?.removeEventListener('click', close);
-            skipBtn?.removeEventListener('click', close);
-        };
-        const onGood = () => {
+        const prompt = document.createElement('div');
+        prompt.className = 'gt-feel-prompt';
+        prompt.setAttribute('role', 'status');
+        prompt.innerHTML = `
+            <span class="gt-feel-prompt-text">All sets at the top of the range. Felt good?</span>
+            <span class="gt-feel-prompt-actions">
+                <button type="button" class="gt-feel-prompt-yes" aria-label="Felt good, consider more weight next time">
+                    <i class="fas fa-face-smile" aria-hidden="true"></i> Felt good
+                </button>
+                <button type="button" class="gt-feel-prompt-dismiss" aria-label="Dismiss">
+                    <i class="fas fa-xmark" aria-hidden="true"></i>
+                </button>
+            </span>
+        `;
+
+        // Directly under the header, OUTSIDE `.exercise-body`: a completed
+        // exercise auto-collapses and hides its body, which would have made
+        // the prompt invisible exactly when it fires.
+        const body = host.querySelector('.exercise-body');
+        if (body) host.insertBefore(prompt, body);
+        else host.appendChild(prompt);
+
+        const remove = () => { if (prompt.isConnected) prompt.remove(); };
+        prompt.querySelector('.gt-feel-prompt-yes')?.addEventListener('click', () => {
+            remove();
             this.setExerciseFeel(exerciseIndex, 'good');
-            close();
-        };
+        });
+        prompt.querySelector('.gt-feel-prompt-dismiss')?.addEventListener('click', remove);
+        // Self-clears if ignored, so it can never accumulate down the screen.
+        setTimeout(remove, 12000);
+    }
 
-        const goodBtn = document.getElementById('feel-modal-good');
-        const skipX = document.getElementById('feel-modal-skip');
-        const skipBtn = document.getElementById('feel-modal-skip-btn');
-        goodBtn?.addEventListener('click', onGood);
-        skipX?.addEventListener('click', close);
-        skipBtn?.addEventListener('click', close);
+    /**
+     * GT-13: the PROGRAM row a session exercise came from.
+     *
+     * Joining on `exercise.exerciseId` broke the moment a lifter swapped an
+     * exercise: the substitute's id is not in the program, the lookup
+     * returned undefined, and the header silently lost its rep-target label
+     * (and its per-slot rep ranges and rest values with it) while the plan
+     * data underneath was perfectly intact. `plannedExerciseId` keeps
+     * pointing at the planned slot, so the guidance survives the swap.
+     *
+     * sameId, not ===: program rows and session rows can disagree on whether
+     * an id is a number or a string after an import round trip.
+     */
+    programRowFor(exercise) {
+        if (!exercise) return null;
+        const program = this.app.getProgramById(this.currentWorkoutSession?.programId);
+        if (!program) return null;
+        const plannedId = exercise.plannedExerciseId != null
+            ? exercise.plannedExerciseId
+            : exercise.exerciseId;
+        return program.exercises.find(e => sameId(e.exerciseId, plannedId))
+            || program.exercises.find(e => sameId(e.exerciseId, exercise.exerciseId))
+            || null;
+    }
+
+    /** True when the catalog marks this exercise as duration-based. */
+    isDurationExercise(exerciseId) {
+        return this.app.getExerciseById(exerciseId)?.exerciseType === 'duration';
+    }
+
+    /**
+     * GT-12: the planned hold for one slot of a timed exercise, in seconds.
+     * Legacy program rows carry only the meaningless repsMin/repsMax pair, so
+     * they fall back to the shipped default rather than advertising "10 reps"
+     * as a plank target.
+     */
+    plannedSecondsFor(progSets, slot) {
+        const row = progSets && slot < progSets.length ? progSets[slot] : null;
+        const seconds = Number(row?.targetSeconds);
+        return Number.isFinite(seconds) && seconds > 0 ? seconds : DEFAULT_TARGET_SECONDS;
     }
 
     /** Format a rep range for display: "8 reps" or "8-10 reps". */
@@ -1878,11 +2206,14 @@ class WorkoutView {
      * the user's plate-calculator settings. Returns '' (suppress) when
      * either the weight is empty or the user hasn't configured plates.
      */
-    renderPlateHint(weight, unit, usesBarWeight = true) {
-        const settings = this.app.settings;
-        const bar = usesBarWeight ? Number(settings?.barWeight) : 0;
-        const plates = Array.isArray(settings?.plates) ? settings.plates : [];
-        if (usesBarWeight && !Number.isFinite(Number(settings?.barWeight))) return '';
+    renderPlateHint(weight, unit, usesBarWeight = true, exerciseId = undefined) {
+        // Plate config is per UNIT (a rack holds 20 kg plates or 45 lb ones,
+        // never both), and the bar can be overridden per exercise so an EZ-bar
+        // curl is not computed against the olympic bar (GT-40).
+        const profile = this.sessionPlateConfig();
+        const bar = usesBarWeight ? Number(this.sessionBarWeight(exerciseId)) : 0;
+        const plates = Array.isArray(profile?.plates) ? profile.plates : [];
+        if (usesBarWeight && !Number.isFinite(bar)) return '';
         if (plates.length === 0) return '';
         // The "Plates per side:" wording is wrapped in .plate-hint-label-text
         // so the mobile media query can hide it; the dumbbell icon alone
@@ -1902,8 +2233,10 @@ class WorkoutView {
     refreshPlateHint(exerciseIndex, slot, weight) {
         const hintEl = document.getElementById(`plate-hint-${exerciseIndex}-${slot}`);
         if (!hintEl) return;
-        if (this.unitsDiffer()) return;
-        const unit = this.app.settings.weightUnit;
+        // The session's own unit, with its own plate profile - hints stay
+        // correct even when the workout is entered in the non-default unit
+        // (they used to be suppressed entirely in that case).
+        const unit = this.sessionUnit();
         const sessionExercise = this.currentWorkoutSession?.exercises[exerciseIndex];
         const exerciseId = sessionExercise?.exerciseId;
         const globalHintsOn = this.app.settings?.plateHintsEnabled !== false;
@@ -1915,7 +2248,7 @@ class WorkoutView {
         const exerciseData = exerciseId !== undefined ? this.app.getExerciseById(exerciseId) : null;
         const equipment = exerciseData?.equipment || '';
         const usesBarWeight = equipment === 'barbell' || equipment === 'trap-bar';
-        const html = this.renderPlateHint(weight, unit, usesBarWeight);
+        const html = this.renderPlateHint(weight, unit, usesBarWeight, exerciseId);
         if (html) hintEl.innerHTML = html;
         this.dedupePlateHints(exerciseIndex);
     }
@@ -1983,19 +2316,20 @@ class WorkoutView {
 
     /**
      * Snap a session-unit target to a weight the user's plates can actually
-     * make. The plate config is stored in ACCOUNT units, so round there and
-     * convert back. Without a plate config, fall back to the nearest 0.5.
+     * make, using the equipment profile for THAT unit. Without a plate
+     * config, fall back to the nearest 0.5.
      */
-    _loadableWeight(sessionWeight) {
-        const settings = this.app.settings;
-        const bar = Number(settings?.barWeight);
-        const plates = Array.isArray(settings?.plates) ? settings.plates : [];
+    _loadableWeight(sessionWeight, exerciseId = undefined) {
+        const profile = this.sessionPlateConfig();
+        const bar = Number(this.sessionBarWeight(exerciseId));
+        const plates = Array.isArray(profile?.plates) ? profile.plates : [];
         if (!Number.isFinite(bar) || plates.length === 0) {
             return Math.round(Number(sessionWeight) * 2) / 2;
         }
-        const account = this.toAccountWeight(Number(sessionWeight));
-        const result = calculatePlates(account, bar, plates);
-        return this.toSessionWeight(result.achievable);
+        // The profile is already in the session unit, so the whole
+        // calculation stays there - no conversion round trip to lose
+        // precision in.
+        return calculatePlates(Number(sessionWeight), bar, plates).achievable;
     }
 
     /**
@@ -2003,16 +2337,16 @@ class WorkoutView {
      * work. Warm-up rows are display-only: ticking one never creates a Set, so
      * they cannot touch exercise completion, volume or PR checks.
      */
-    renderWarmupStrip(exerciseIndex, { equipment, isDuration, unit, workingWeight }) {
+    renderWarmupStrip(exerciseIndex, { equipment, isDuration, unit, workingWeight, exerciseId }) {
         const settings = this._warmupSettings();
         if (!shouldShowWarmup({ settings, unit, equipment, isDuration, workingWeight })) return '';
 
-        const barWeight = this.toSessionWeight(Number(this.app.settings?.barWeight) || 0);
+        const barWeight = Number(this.sessionBarWeight(exerciseId)) || 0;
         const ramp = buildWarmupRamp({
             settings,
             workingWeight,
             barWeight,
-            roundWeight: (w) => this._loadableWeight(w),
+            roundWeight: (w) => this._loadableWeight(w, exerciseId),
         });
         if (ramp.length === 0) return '';
 
@@ -2127,8 +2461,8 @@ class WorkoutView {
             const secs = set.duration % 60;
             details = `<span class="duration-value">${mins}:${secs.toString().padStart(2, '0')}</span>`;
         } else {
-            // set.weight is canonical (account unit); display in session unit.
-            const shown = this.toSessionWeight(set.weight);
+            // set.weight is canonical kilograms; display in the session unit.
+            const shown = Number(this.toSessionWeight(set.weight));
             details = `${shown.toLocaleString()}${unit} × ${set.reps}`;
         }
 
@@ -2136,7 +2470,7 @@ class WorkoutView {
 
         const pr = this.sessionPrSlots?.[`${exerciseIndex}:${slot}`];
         const prBadge = pr
-            ? `<span class="pr-badge" aria-label="Personal record, ${this.formatPrDelta(pr, unit)}"><i class="fas fa-trophy" aria-hidden="true"></i> PR ${this.formatPrDelta(pr, unit)}</span>`
+            ? `<span class="pr-badge" aria-label="${escapeHtml(this.prDeltaAriaLabel(pr, unit))}"><i class="fas fa-trophy" aria-hidden="true"></i> PR ${escapeHtml(this.formatPrDelta(pr, unit))}</span>`
             : '';
         return `
             <li class="set-row set-row-complete${pr ? ' set-row--pr' : ''}" data-slot="${slot}">
@@ -2167,6 +2501,7 @@ class WorkoutView {
         const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
         if (!exercise) return;
         exercise.targetSets = Math.max(exercise.targetSets || 0, exercise.sets.length) + 1;
+        this.persistActiveWorkout();
         this.rerenderExercise(exerciseIndex);
     }
 
@@ -2190,6 +2525,7 @@ class WorkoutView {
         const floor = Math.max(1, maxSlot + 1);
         if ((exercise.targetSets || 0) <= floor) return;
         exercise.targetSets -= 1;
+        this.persistActiveWorkout();
         this.rerenderExercise(exerciseIndex);
     }
 
@@ -2261,6 +2597,8 @@ class WorkoutView {
 
     /** Feature 5: collapse the notes region for an exercise (text preserved). */
     _collapseExerciseNotes(exerciseIndex) {
+        // Whatever the debounce still owes storage, pay it now.
+        this.flushPendingPersist();
         const region = document.getElementById(`exercise-notes-${exerciseIndex}`);
         const btn = document.querySelector(`.gt-notes-toggle[data-exercise-index="${exerciseIndex}"]`);
         if (region) region.hidden = true;
@@ -2276,6 +2614,52 @@ class WorkoutView {
         if (handler) {
             document.removeEventListener('pointerdown', handler, true);
             delete this._notesOutsideHandlers[exerciseIndex];
+        }
+    }
+
+    /**
+     * GT-40: show/hide the per-exercise bar-weight editor. Same pattern as the
+     * notes region - an inline panel toggled in place, never a re-render, so
+     * a half-typed number is not thrown away.
+     */
+    toggleBarConfig(exerciseIndex) {
+        const region = document.getElementById(`bar-config-${exerciseIndex}`);
+        const btn = document.querySelector(`.gt-bar-chip[data-exercise-index="${exerciseIndex}"]`);
+        if (!region) return;
+        const willOpen = region.hidden;
+        region.hidden = !willOpen;
+        btn?.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+        if (willOpen) region.querySelector('.gt-bar-config-input')?.focus({ preventScroll: true });
+    }
+
+    /**
+     * Set (or, with an empty value, clear) the bar/base weight override for
+     * one exercise, in the SESSION's unit - the same unit its plate profile
+     * is in, so nothing is converted. Persisted to settings, keyed by stable
+     * exercise id, so it applies to every future workout too.
+     */
+    setExerciseBarWeight(exerciseIndex, value, { rerender = true } = {}) {
+        const exercise = this.currentWorkoutSession?.exercises[exerciseIndex];
+        const settings = this.app.settings;
+        if (!exercise || typeof settings?.setBarWeightForExercise !== 'function') return;
+
+        settings.setBarWeightForExercise(exercise.exerciseId, value, this.sessionUnit());
+        this.app.saveSettings();
+
+        if (rerender) {
+            this.rerenderExercise(exerciseIndex);
+            return;
+        }
+        // Live path: re-solve the visible plate hints without rebuilding the
+        // card (which would blur the input mid-keystroke).
+        document.querySelectorAll(`#exercise-${exerciseIndex} .set-row-planned`).forEach((row) => {
+            const slot = Number(row.dataset.slot);
+            const input = row.querySelector('.set-weight');
+            if (input) this.refreshPlateHint(exerciseIndex, slot, input.value);
+        });
+        const chip = document.querySelector(`.gt-bar-chip[data-exercise-index="${exerciseIndex}"] .gt-bar-chip-text`);
+        if (chip) {
+            chip.textContent = `${this.sessionBarWeight(exercise.exerciseId)}${this.sessionUnit()}`;
         }
     }
 
@@ -2350,6 +2734,11 @@ class WorkoutView {
         const search = document.getElementById('swap-exercise-search');
         const category = document.getElementById('swap-exercise-category-filter');
         const equipment = document.getElementById('swap-exercise-equipment-filter');
+        // GT-26: same taxonomy as every other exercise surface, so a category
+        // can never exist in the database and be missing from this filter.
+        populateSelect(category, EXERCISE_CATEGORIES, 'All Categories');
+        populateSelect(equipment, EXERCISE_EQUIPMENT, 'All Equipment');
+
         if (search) search.value = '';
         if (category) category.value = current?.category || '';
         if (equipment) equipment.value = '';
@@ -2371,19 +2760,22 @@ class WorkoutView {
     renderSwapPicker() {
         const container = document.getElementById('swap-exercise-list');
         if (!container) return;
-        const searchTerm = (document.getElementById('swap-exercise-search')?.value || '').toLowerCase();
+        const searchTerm = document.getElementById('swap-exercise-search')?.value || '';
         const category = document.getElementById('swap-exercise-category-filter')?.value || '';
         const equipment = document.getElementById('swap-exercise-equipment-filter')?.value || '';
         const currentId = this.currentWorkoutSession?.exercises[this.swapTargetIndex]?.exerciseId;
 
-        const exercises = this.app.exerciseDatabase.filter(ex => {
+        // Same relevance rules as the Exercise Database and the program
+        // picker (GT-24), so "pull up" finds Pull-Ups here too.
+        const pool = this.app.exerciseDatabase.filter(ex => {
             if (sameId(ex.id, currentId)) return false;
-            if (searchTerm && !ex.name.toLowerCase().includes(searchTerm)
-                && !ex.muscleGroup.toLowerCase().includes(searchTerm)) return false;
             if (category && ex.category !== category) return false;
             if (equipment && ex.equipment !== equipment) return false;
             return true;
         });
+        const exercises = searchTerm
+            ? searchExercises(pool, searchTerm)
+            : pool.slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
 
         if (exercises.length === 0) {
             container.innerHTML = '<div class="empty-state"><p>No exercises found</p></div>';
@@ -2393,7 +2785,7 @@ class WorkoutView {
         container.innerHTML = exercises.map(exercise => `
             <div class="exercise-picker-card" role="button" tabindex="0"
                  data-action="pick-swap-exercise" data-exercise-id="${escapeHtml(String(exercise.id))}">
-                <h4>${escapeHtml(exercise.name)}</h4>
+                <h4>${escapeHtml(exercise.name)}${exercise.isCustom ? ' <span class="badge badge-custom">Custom</span>' : ''}</h4>
                 <div class="exercise-meta">
                     <span class="badge">${escapeHtml(exercise.category)}</span>
                     <span class="badge">${escapeHtml(exercise.equipment)}</span>
@@ -2427,6 +2819,9 @@ class WorkoutView {
             if (!confirmed) return;
         }
 
+        // plannedExerciseId is deliberately NOT touched: the substitute owns
+        // the sets, the history and the PRs, but the PLAN row it stands in for
+        // still owns the rep target, the rep ranges and the rest values.
         exercise.exerciseId = replacement.id;
         exercise.exerciseName = replacement.name;
         // Sticky values are the OLD exercise's numbers; they would prefill the
@@ -2443,7 +2838,7 @@ class WorkoutView {
 
         // PR badges were resolved against the old exercise's history.
         this.rebuildSessionPrSlots();
-        storageService.saveActiveWorkout(this.currentWorkoutSession.toJSON());
+        this.persistActiveWorkout();
         this.renderActiveWorkout();
         showToast(`Swapped to ${replacement.name}`, 'success');
     }
@@ -2526,8 +2921,12 @@ class WorkoutView {
      * weight (see progression.js).
      */
     _repRangeForPriorSet(exerciseId, set, arrIdx, fallbackTargetReps) {
-        const program = this.app.getProgramById(this.currentWorkoutSession?.programId);
-        const progEx = program?.exercises.find(e => sameId(e.exerciseId, exerciseId));
+        const session = this.currentWorkoutSession;
+        const sessionEx = session?.exercises.find(e => sameId(e.exerciseId, exerciseId));
+        const progEx = sessionEx
+            ? this.programRowFor(sessionEx)
+            : this.app.getProgramById(session?.programId)?.exercises
+                .find(e => sameId(e.exerciseId, exerciseId));
         const progSets = (progEx?.sets && progEx.sets.length > 0) ? progEx.sets : null;
         const slot = set.slot != null ? set.slot : arrIdx;
         if (progSets && slot < progSets.length) {
@@ -2601,8 +3000,8 @@ class WorkoutView {
                 showToast('Please enter weight and reps', 'error');
                 return;
             }
-            // The input is in the session unit; store canonical (account unit).
-            const weight = this.toAccountWeight(entered);
+            // The input is in the session unit; storage is canonical kg.
+            const weight = this.toStoredWeight(entered);
             set = new Set({ weight, reps, completed: true, slot });
         }
 
@@ -2645,6 +3044,10 @@ class WorkoutView {
         // Track complete state for deleteSet's re-trigger logic.
         this._prevCompleteState[exerciseIndex] = isNowComplete;
 
+        // GT-01: a logged set is the highest-value state in the app. Persist
+        // before rendering, so even a crash inside the render keeps the set.
+        this.persistActiveWorkout();
+
         this.rerenderExercise(exerciseIndex);
         // The green "just logged" pulse belongs to THIS row only. It used to
         // live on .set-row-complete itself, which meant every already-logged
@@ -2670,7 +3073,7 @@ class WorkoutView {
         if (this.shouldStartRestForSet(exerciseIndex, exercise)) {
             const program = this.app.getProgramById(this.currentWorkoutSession?.programId);
             const isUniform = program?.restMode === 'uniform';
-            const progEx = program?.exercises.find(e => e.exerciseId === exercise.exerciseId);
+            const progEx = this.programRowFor(exercise);
 
             if (isNowComplete) {
                 // Between-exercise rest -> bottom bar (program-derived; not adjustable mid-workout)
@@ -2788,13 +3191,26 @@ class WorkoutView {
      */
     formatPrDelta(pr, unit) {
         if (pr.kind === 'duration') {
-            const mins = Math.floor(pr.delta / 60);
-            const secs = pr.delta % 60;
-            return `+${mins}:${String(secs).padStart(2, '0')}`;
+            // A longer hold: the delta is seconds and reads as time.
+            return `+${formatDuration(pr.delta)}`;
         }
-        // pr.delta is in the account unit; convert to the display unit (Item 8).
-        const delta = convertWeight(pr.delta, this.app.settings.weightUnit, unit);
-        return `+${Math.round(delta)} ${unit}`;
+        if (pr.kind === 'weight') {
+            // More on the bar than ever before - the delta really is a weight.
+            return `+${displayWeight(pr.weightDelta, unit)}${unit}`;
+        }
+        // Otherwise the record broken is SET VOLUME (weight x reps), and its
+        // delta is kg-reps. Rendering it as "+50 kg" read as "you added 50 kg
+        // to the bar" when the lifter had added five (GT-18).
+        return `+${roundForDisplay(volumeIn(pr.delta, unit), 0)} ${unit}\u00b7reps`;
+    }
+
+    /** Spoken form of the PR badge, so the label and the a11y name agree. */
+    prDeltaAriaLabel(pr, unit) {
+        if (pr.kind === 'duration') return `Personal record, ${formatDuration(pr.delta)} longer`;
+        if (pr.kind === 'weight') {
+            return `Personal record, ${displayWeight(pr.weightDelta, unit)} ${unit} heavier`;
+        }
+        return `Personal record, ${roundForDisplay(volumeIn(pr.delta, unit), 0)} ${unit} times reps more set volume`;
     }
 
     /**
@@ -2802,9 +3218,8 @@ class WorkoutView {
      * prWeightKg is canonical kg; show it in the user's current display unit.
      */
     _formatPrAchievementWeight(pr) {
-        const unit = this.app.settings.weightUnit;
-        const shown = convertWeight(pr.prWeightKg, 'kg', unit);
-        return `${Math.round(shown * 10) / 10}${unit}`;
+        const unit = normalizeWeightUnit(this.app.settings.weightUnit);
+        return `${displayWeight(pr.prWeightKg, unit)}${unit}`;
     }
 
     /**
@@ -2954,8 +3369,8 @@ class WorkoutView {
                 showToast('Please enter valid weight and reps', 'error');
                 return;
             }
-            // Input is in the session unit; store canonical (account unit).
-            set.weight = this.toAccountWeight(entered);
+            // Input is in the session unit; storage is canonical kg.
+            set.weight = this.toStoredWeight(entered);
             set.reps = reps;
         }
 
@@ -2978,6 +3393,7 @@ class WorkoutView {
         // still-complete exercise even if the user had manually expanded it.
         this._recomputeExerciseDerivedState(exerciseIndex, true);
 
+        this.persistActiveWorkout();
         this.rerenderExercise(exerciseIndex);
 
         this.maybeShowFeelModal(exerciseIndex);
@@ -3057,6 +3473,7 @@ class WorkoutView {
             this.skipRest();
         }
 
+        this.persistActiveWorkout();
         this.rerenderExercise(exerciseIndex);
     }
 
@@ -3257,8 +3674,40 @@ class WorkoutView {
         return `${m}:${String(r).padStart(2, '0')}`;
     }
 
+    /**
+     * GT-07: clear every session-specific control in the finish dialog.
+     *
+     * The dialog is a persistent bit of DOM, so whatever the last workout
+     * left in it was still sitting there for the next one - a second session
+     * of the day was saved with the first one's notes and heart rate, which
+     * the lifter never typed. Called when a NEW session starts (and on
+     * finish/discard), never when the SAME session's dialog is reopened
+     * after a temporary close, so stepping out of the dialog to add one more
+     * set does not wipe what was already typed.
+     */
+    resetFinishWorkoutForm() {
+        ['workout-notes', 'avg-heart-rate', 'max-heart-rate', 'calories-burned']
+            .forEach((id) => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+        const msg = document.getElementById('finish-inline-message');
+        if (msg) msg.hidden = true;
+        this._finishFormSessionId = null;
+    }
+
     openFinishWorkoutModal() {
         if (!this.currentWorkoutSession) return;
+
+        // Belt and braces for the leak: if the dialog is still holding a
+        // DIFFERENT session's values (a workout started before this build,
+        // or any path that skipped the reset), clear them now.
+        if (this._finishFormSessionId !== undefined
+            && this._finishFormSessionId !== null
+            && !sameId(this._finishFormSessionId, this.currentWorkoutSession.id)) {
+            this.resetFinishWorkoutForm();
+        }
+        this._finishFormSessionId = this.currentWorkoutSession.id;
 
         const finishModal = document.getElementById('finish-workout-modal');
 
@@ -3282,7 +3731,7 @@ class WorkoutView {
         const duration = timerService.getWorkoutElapsed();
         const minutes = Math.floor(duration / 60);
 
-        const unit = this.app.settings.weightUnit;
+        const unit = normalizeWeightUnit(this.app.settings.weightUnit);
 
         const durationText = `${minutes} min`;
         document.getElementById('summary-duration').textContent = durationText;
@@ -3292,11 +3741,22 @@ class WorkoutView {
         const titleEl = document.getElementById('finish-workout-title');
         if (titleEl) titleEl.textContent = this.currentWorkoutSession.workoutDayName || 'Finish Workout';
 
+        // Weight-volume only, converted from canonical kg into the display
+        // unit. Seconds held are a separate metric and get their own tile
+        // (GT-04) instead of being added in as kilograms.
         const totalVolume = this.currentWorkoutSession.totalVolume;
         document.getElementById('summary-volume').textContent =
-            `${Math.round(totalVolume).toLocaleString()} ${unit}`;
+            `${Math.round(volumeIn(totalVolume, unit)).toLocaleString()} ${unit}`;
         document.getElementById('summary-sets').textContent =
             this.currentWorkoutSession.totalSets;
+
+        const timed = this.currentWorkoutSession.totalTimedSeconds;
+        const timeStat = document.getElementById('summary-time-under-tension-stat');
+        const timeValue = document.getElementById('summary-time-under-tension');
+        if (timeStat && timeValue) {
+            timeStat.hidden = timed <= 0;
+            timeValue.textContent = formatDurationLong(timed);
+        }
 
         // Feature 7: volume delta vs the previous session of the SAME program.
         // First session for a program shows raw totals only (no delta).
@@ -3402,6 +3862,7 @@ class WorkoutView {
 
         const completedSession = this.currentWorkoutSession;
         this.currentWorkoutSession = null;
+        this.resetFinishWorkoutForm();
 
         this.showCompletionBurst(completedSession);
         this.render();
@@ -3414,10 +3875,12 @@ class WorkoutView {
      * container element isn't in the DOM.
      */
     showCompletionBurst(session) {
-        const unit = this.app.settings.weightUnit;
+        const unit = normalizeWeightUnit(this.app.settings.weightUnit);
         const duration = session.duration || 0;
-        const volume = Math.round(session.totalVolume).toLocaleString();
-        const exerciseCount = session.exercises.length;
+        const volume = Math.round(volumeIn(session.totalVolume, unit)).toLocaleString();
+        // GT-23: exercises actually performed, not every row on the plan.
+        const exerciseCount = session.performedExerciseCount;
+        const timedSeconds = session.totalTimedSeconds;
         const prCount = this.sessionPrCount;
 
         const overlay = document.createElement('div');
@@ -3440,8 +3903,13 @@ class WorkoutView {
                     </div>
                     <div class="completion-burst-stat">
                         <span class="completion-burst-value">${exerciseCount}</span>
-                        <span class="completion-burst-label">exercises</span>
+                        <span class="completion-burst-label">${pluralLabel(exerciseCount, 'exercise')}</span>
                     </div>
+                    ${timedSeconds > 0 ? `
+                    <div class="completion-burst-stat">
+                        <span class="completion-burst-value">${formatDurationLong(timedSeconds)}</span>
+                        <span class="completion-burst-label">held</span>
+                    </div>` : ''}
                     ${prCount > 0 ? `
                     <div class="completion-burst-stat completion-burst-stat--pr">
                         <span class="completion-burst-value">🏆 ${prCount}</span>
@@ -3495,10 +3963,10 @@ class WorkoutView {
         if (duration > 0) {
             chips.push(`<span class="psc-chip"><i class="fas fa-clock" aria-hidden="true"></i>${duration} min</span>`);
         }
-        const unit = this.app.settings.weightUnit;
+        const unit = normalizeWeightUnit(this.app.settings.weightUnit);
         const volume = session.totalVolume;
         if (volume > 0) {
-            chips.push(`<span class="psc-chip"><i class="fas fa-weight-hanging" aria-hidden="true"></i>${Math.round(volume).toLocaleString()} ${unit}</span>`);
+            chips.push(`<span class="psc-chip"><i class="fas fa-weight-hanging" aria-hidden="true"></i>${Math.round(volumeIn(volume, unit)).toLocaleString()} ${unit}</span>`);
         }
         if (session.caloriesBurned) {
             chips.push(`<span class="psc-chip"><i class="fas fa-fire" aria-hidden="true"></i>${session.caloriesBurned} kcal</span>`);
@@ -3557,7 +4025,9 @@ class WorkoutView {
             timerService.stopWorkoutTimer();
             this.skipRest();
             this.disarmBackGuard();
+            if (this._persistTimer) { clearTimeout(this._persistTimer); this._persistTimer = null; }
             storageService.clearActiveWorkout();
+            this.resetFinishWorkoutForm();
             document.getElementById('active-workout').classList.remove('active');
             document.getElementById('workout-selection').classList.add('active');
             this.currentWorkoutSession = null;

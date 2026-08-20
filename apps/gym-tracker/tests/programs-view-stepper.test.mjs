@@ -26,11 +26,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadSource, buildFunctions, buildMethods } from './helpers/source-extract.mjs';
 
-const { Program } = await import('../js/models/Program.js');
+const { Program, DEFAULT_TARGET_SECONDS } = await import('../js/models/Program.js');
+const { formatDuration } = await import('../js/utils/units.js');
 
 const src = loadSource('js/views/programs-view.js');
-const { stepperHTML, syncStepperUI, formatRestLabel } =
-    buildFunctions(src, ['stepperHTML', 'syncStepperUI', 'formatRestLabel'], {}, 'programs-view.js');
+// formatRestLabel delegates to the shared M:SS formatter (GT-34), so the real
+// one is handed in rather than re-implemented.
+const { stepperHTML, syncStepperUI, formatRestLabel } = buildFunctions(
+    src,
+    ['stepperHTML', 'syncStepperUI', 'formatRestLabel'],
+    { formatDuration },
+    'programs-view.js',
+);
 
 // ---- fake elements derived from the REAL stepperHTML() markup ------------
 
@@ -88,7 +95,12 @@ function makeEditor(exercises) {
             return m ? stepperFor(Number(m[1]), m[2]) : null;
         },
     };
-    const methods = buildMethods(src, ['adjustExerciseTarget'], { document, syncStepperUI, formatRestLabel }, 'programs-view.js');
+    const methods = buildMethods(
+        src,
+        ['adjustExerciseTarget'],
+        { document, syncStepperUI, formatRestLabel, formatDuration, DEFAULT_TARGET_SECONDS },
+        'programs-view.js',
+    );
     const view = Object.create(methods);
     view.currentProgram = program;
 
@@ -119,7 +131,7 @@ const oneExercise = [{ exerciseId: 'e1', exerciseName: 'Bench', restSeconds: 180
 
 test('rest stepper: one "+" advances the model and the label together', () => {
     const ed = makeEditor(oneExercise);
-    assert.equal(ed.shown(0, 'rest'), '3m');
+    assert.equal(ed.shown(0, 'rest'), '3:00');
     ed.click(0, 'rest', '+');
     assert.equal(ed.model(0, 'rest'), 195);
     assert.equal(ed.shown(0, 'rest'), '3:15', 'the displayed label is refreshed from the model');
@@ -149,7 +161,7 @@ test('rest stepper: the floor is the model\'s 0, and "-" disables there', () => 
     const ed = makeEditor(oneExercise);
     ed.click(0, 'rest', '-', 40); // 180 / 15 = 12 clicks reach 0, the rest are eaten
     assert.equal(ed.model(0, 'rest'), 0, 'Program.updateExercise clamps at 0');
-    assert.equal(ed.shown(0, 'rest'), '0s');
+    assert.equal(ed.shown(0, 'rest'), '0:00');
     assert.equal(ed.stepper(0, 'rest').minus.disabled, true, 'cannot go lower');
     assert.equal(ed.stepper(0, 'rest').plus.disabled, false, 'can still go up');
 });
@@ -158,7 +170,7 @@ test('rest stepper: the ceiling is the model\'s 900, and "+" disables there', ()
     const ed = makeEditor(oneExercise);
     ed.click(0, 'rest', '+', 70);
     assert.equal(ed.model(0, 'rest'), 900, 'Program.updateExercise clamps at 900');
-    assert.equal(ed.shown(0, 'rest'), '15m');
+    assert.equal(ed.shown(0, 'rest'), '15:00');
     assert.equal(ed.stepper(0, 'rest').plus.disabled, true, 'cannot go higher');
     assert.equal(ed.stepper(0, 'rest').minus.disabled, false);
 });
@@ -202,9 +214,9 @@ test('rest stepper: a click on one exercise leaves the other exercises alone', (
     ]);
     ed.click(1, 'rest', '+', 2);
     assert.equal(ed.model(1, 'rest'), 120);
-    assert.equal(ed.shown(1, 'rest'), '2m');
+    assert.equal(ed.shown(1, 'rest'), '2:00');
     assert.equal(ed.model(0, 'rest'), 180, 'exercise 1 is untouched');
-    assert.equal(ed.shown(0, 'rest'), '3m', 'and its stepper was never rewritten');
+    assert.equal(ed.shown(0, 'rest'), '3:00', 'and its stepper was never rewritten');
 });
 
 test('rest stepper: only the two rest fields are writable, and only real rows', () => {
@@ -215,17 +227,29 @@ test('rest stepper: only the two rest fields are writable, and only real rows', 
     ed.adjust(9, 'rest', 15);
     assert.equal(ed.model(0, 'rest'), 180);
     assert.equal(ed.model(0, 'restAfter'), 180);
-    assert.equal(ed.shown(0, 'rest'), '3m');
+    assert.equal(ed.shown(0, 'rest'), '3:00');
 });
 
 // -------------------------------------------------------
 // Label formatting the stepper depends on (real formatRestLabel)
 // -------------------------------------------------------
 
-test('formatRestLabel: seconds, whole minutes, and m:ss', () => {
-    assert.equal(formatRestLabel(0), '0s');
-    assert.equal(formatRestLabel(45), '45s');
-    assert.equal(formatRestLabel(60), '1m');
+// GT-34: ONE rest format. The editor used to render round minutes as "3m",
+// sub-minute values as "45s" and everything else as "M:SS", so a single
+// program list stacked "3m / 1:30 / 1m / 1:15" and the reader had to work out
+// that those were the same kind of number.
+test('formatRestLabel: every rest value renders as M:SS', () => {
+    assert.equal(formatRestLabel(0), '0:00');
+    assert.equal(formatRestLabel(45), '0:45');
+    assert.equal(formatRestLabel(60), '1:00');
     assert.equal(formatRestLabel(90), '1:30');
-    assert.equal(formatRestLabel(900), '15m');
+    assert.equal(formatRestLabel(180), '3:00');
+    assert.equal(formatRestLabel(900), '15:00');
+});
+
+test('formatRestLabel: no value in a program list can render in two formats', () => {
+    // The concrete list from the audit: 3m / 1:30 / 1m / 1:15.
+    const rendered = [180, 90, 60, 75].map(formatRestLabel);
+    assert.deepEqual(rendered, ['3:00', '1:30', '1:00', '1:15']);
+    assert.ok(rendered.every(v => /^\d+:\d{2}$/.test(v)), 'all one shape');
 });

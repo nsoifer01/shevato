@@ -11,6 +11,7 @@
  */
 
 import { app } from '../app.js';
+import { normalizeWeightUnit, volumeIn } from '../utils/units.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
 import { escapeHtml, parseLocalDate } from '../utils/helpers.js';
 import { on, EVENTS } from '../utils/event-bus.js';
@@ -84,7 +85,7 @@ class InsightsView {
         const totals = AnalyticsService.getVolumeByCategoryInRange(
             sessions, this.app.exerciseDatabase || [], start, end,
         );
-        const unit = this.app.settings?.weightUnit || 'kg';
+        const unit = normalizeWeightUnit(this.app.settings?.weightUnit);
 
         if (caption) {
             const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -105,7 +106,7 @@ class InsightsView {
                     <div class="insights-bar-track">
                         <span class="insights-bar-fill" style="width: ${pct}%"></span>
                     </div>
-                    <div class="insights-bar-value">${Math.round(volume).toLocaleString()} ${escapeHtml(unit)}</div>
+                    <div class="insights-bar-value">${Math.round(volumeIn(volume, unit)).toLocaleString()} ${escapeHtml(unit)}</div>
                 </div>
             `;
         }).join('');
@@ -211,6 +212,12 @@ class InsightsView {
             `<span class="hm-month-label" style="grid-column-start: ${idx + 1};">${monthNames[month]}</span>`,
         ).join('');
 
+        // GT-30: `repeat(N, 1fr)` fits 53 week-columns to whatever width is
+        // available, which at 390px is ~4px per cell - unreadable, untappable,
+        // and with the month labels running into each other. `--hm-weeks`
+        // lets the phone breakpoint switch the same grid to a fixed cell size
+        // and scroll instead (see refresh.css). Desktop keeps the fitted grid.
+        host.style.setProperty('--hm-weeks', String(weekIdx));
         host.innerHTML = `
             <div class="hm-month-row" style="grid-template-columns: repeat(${weekIdx}, 1fr);">${monthLabelsHTML}</div>
             <div class="hm-grid" style="grid-template-columns: repeat(${weekIdx}, 1fr);">${cells.join('')}</div>
@@ -229,6 +236,12 @@ class InsightsView {
             const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
             caption.textContent = `${fmt(start)} – ${fmt(today)}`;
         }
+
+        // Land on the most recent weeks, which is the part anyone opening the
+        // heatmap actually wants; the rest of the year is a scroll away.
+        requestAnimationFrame(() => {
+            if (host.scrollWidth > host.clientWidth) host.scrollLeft = host.scrollWidth;
+        });
     }
 }
 

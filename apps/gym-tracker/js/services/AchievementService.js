@@ -5,7 +5,8 @@
 import { Achievement } from '../models/Achievement.js';
 import { AnalyticsService } from './AnalyticsService.js';
 import { storageService } from './StorageService.js';
-import { convertWeight } from '../utils/helpers.js';
+import { weekKey } from '../utils/week.js';
+import { sameId } from '../utils/id-utils.js';
 
 export class AchievementService {
     /**
@@ -219,7 +220,10 @@ export class AchievementService {
 
             // ----- Additional Weekly -----
             new Achievement({ id: 'weekly-6-workouts', name: '6-Day Warrior', description: 'Complete 6 workouts this week', type: 'weekly', icon: '🗡️', requirement: { type: 'weekly-workouts' }, target: 6 }),
-            new Achievement({ id: 'weekly-7-workouts', name: 'Perfect Week', description: 'Complete a workout every day this week', type: 'weekly', icon: '🌈', requirement: { type: 'weekly-workouts' }, target: 7 }),
+            // GT-11: this one really does mean "every day", so it counts
+            // DISTINCT training days rather than sessions. Seven sessions
+            // spread over two days used to unlock it.
+            new Achievement({ id: 'weekly-7-workouts', name: 'Perfect Week', description: 'Train on all 7 days this week', type: 'weekly', icon: '🌈', requirement: { type: 'weekly-distinct-days' }, target: 7 }),
 
             // ----- Additional Monthly -----
             new Achievement({ id: 'monthly-15-workouts', name: 'Half Month', description: 'Complete 15 workouts this month', type: 'monthly', icon: '🌓', requirement: { type: 'monthly-workouts' }, target: 15 }),
@@ -361,12 +365,14 @@ export class AchievementService {
      * objects (from getLiftMilestoneAchievements) so the caller can fire
      * toasts / update stored achievements.
      *
-     * `bodyweight` — latest body weight in the same unit as sets. May be null.
-     * `unit` — 'kg' or 'lb'. Thresholds are kg; multiply by 2.205 for lb.
+     * `bodyweight` - latest body weight in canonical kilograms. May be null.
+     *
+     * Set weights, milestone thresholds and body weight are all canonical
+     * kilograms now, so the old `unit`/2.205 factor is gone: it existed only
+     * because stored weights used to mean whatever the account unit said.
      */
-    static checkLiftMilestones(sessions, unlockedIds, bodyweight, unit = 'kg') {
+    static checkLiftMilestones(sessions, unlockedIds, bodyweight) {
         const milestones = this.getLiftMilestoneAchievements();
-        const factor = unit === 'lb' ? 2.205 : 1;
         const newlyUnlocked = [];
 
         for (const m of milestones) {
@@ -374,13 +380,13 @@ export class AchievementService {
 
             const threshold = m.bwMultiplier != null
                 ? (bodyweight != null ? bodyweight * m.bwMultiplier : null)
-                : m.threshold * factor;
+                : m.threshold;
 
             if (threshold == null) continue;
 
             const hit = sessions.some(s =>
                 s.exercises.some(ex => {
-                    if (!ex.exerciseName.toLowerCase().includes(m.exerciseMatch)) return false;
+                    if (!(ex.exerciseName || '').toLowerCase().includes(m.exerciseMatch)) return false;
                     return (ex.sets || []).some(set => (set.weight || 0) >= threshold && set.completed);
                 })
             );
@@ -413,9 +419,9 @@ export class AchievementService {
     static checkExercisePRs(finishedSession, allSessions) {
         if (!finishedSession || !Array.isArray(allSessions)) return [];
 
-        // Display unit comes from current settings; stored set weights are in
-        // that account unit, so the comparison space is consistent and we only
-        // convert to kg for the persisted canonical value.
+        // Stored set weights ARE canonical kilograms, so no conversion is
+        // needed; `prUnit` records the unit the lifter was reading at the
+        // time purely as metadata.
         const unit = storageService.getSettings()?.weightUnit === 'lb' ? 'lb' : 'kg';
 
         const stored = storageService.getAchievements() || [];
@@ -426,7 +432,7 @@ export class AchievementService {
         const topWeight = (session, exerciseId) => {
             let best = null;
             (session.exercises || []).forEach(ex => {
-                if (ex.exerciseId !== exerciseId) return;
+                if (!sameId(ex.exerciseId, exerciseId)) return;
                 (ex.sets || []).forEach(set => {
                     if (!set.completed) return;
                     // Duration-type set: skip (not a weighted lift).
@@ -439,14 +445,14 @@ export class AchievementService {
             return best;
         };
 
-        const priorSessions = allSessions.filter(s => s.id !== finishedSession.id);
+        const priorSessions = allSessions.filter(s => !sameId(s.id, finishedSession.id));
         const newlyAwarded = [];
         const seenExerciseIds = new Set();
 
         for (const ex of (finishedSession.exercises || [])) {
             const exId = ex.exerciseId;
-            if (!exId || seenExerciseIds.has(exId)) continue;
-            seenExerciseIds.add(exId);
+            if (!exId || seenExerciseIds.has(String(exId))) continue;
+            seenExerciseIds.add(String(exId));
 
             const sessionTop = topWeight(finishedSession, exId);
             if (sessionTop == null) continue; // no completed weighted set
@@ -468,9 +474,7 @@ export class AchievementService {
             const id = `pr-${exId}-${date}`;
             if (existingIds.has(id)) continue;       // idempotent by id
 
-            const weightKg = unit === 'lb'
-                ? convertWeight(sessionTop, 'lb', 'kg')
-                : sessionTop;
+            const weightKg = sessionTop;
 
             const achievement = new Achievement({
                 id,
@@ -501,9 +505,9 @@ export class AchievementService {
     /**
      * Update all achievement progress based on sessions
      */
-    static updateAchievementProgress(achievements, sessions) {
+    static updateAchievementProgress(achievements, sessions, opts = {}) {
         achievements.forEach(achievement => {
-            const progress = this.calculateProgress(achievement, sessions);
+            const progress = this.calculateProgress(achievement, sessions, opts);
             achievement.updateProgress(progress);
         });
 
@@ -513,8 +517,11 @@ export class AchievementService {
     /**
      * Calculate progress for a specific achievement
      */
-    static calculateProgress(achievement, sessions) {
+    static calculateProgress(achievement, sessions, opts = {}) {
         const reqType = achievement.requirement.type;
+        // GT-10: weekly windows follow the user's first-day-of-week setting,
+        // the same one the Calendar and the workout week strip use.
+        const firstDayOfWeek = opts.firstDayOfWeek === 0 ? 0 : 1;
 
         switch (reqType) {
             case 'total-workouts':
@@ -543,11 +550,14 @@ export class AchievementService {
             }
 
             case 'weekly-workouts': {
-                const weekStart = AnalyticsService.startOfIsoWeek(new Date());
-                const weeklySessions = sessions.filter(s =>
-                    AnalyticsService.toLocalDate(s.date) >= weekStart
-                );
-                return weeklySessions.length;
+                return this.sessionsThisWeek(sessions, firstDayOfWeek).length;
+            }
+
+            // GT-11: distinct DATES trained inside the configured week.
+            case 'weekly-distinct-days': {
+                const days = new Set(
+                    this.sessionsThisWeek(sessions, firstDayOfWeek).map(s => s.date));
+                return days.size;
             }
 
             case 'monthly-workouts': {
@@ -586,6 +596,76 @@ export class AchievementService {
     }
 
     /**
+     * Reconcile stored achievements with the CURRENT definitions.
+     *
+     * An achievement's wording, icon, target and requirement are code, not
+     * user data - only `unlocked` / `unlockedAt` / `progress` belong to the
+     * user. Refreshing them here is what lets a definition be corrected in a
+     * release and actually reach existing installs.
+     *
+     * The corrective case this exists for is GT-11: "Perfect Week" claimed to
+     * mean "a workout every day this week" but counted SESSIONS, so seven
+     * sessions across two days unlocked it. Its requirement type changes to
+     * `weekly-distinct-days`, and an unlock earned under the old, wrong rule
+     * is withdrawn unless the lifter genuinely satisfied the new one in some
+     * week. Leaving a badge standing that its own description contradicts
+     * would just be a quieter version of the same bug.
+     *
+     * Returns true when anything changed and the caller should persist.
+     */
+    static syncDefinitions(achievements, sessions = [], opts = {}) {
+        const defaults = new Map(this.getDefaultAchievements().map(a => [a.id, a]));
+        let changed = false;
+
+        (achievements || []).forEach((achievement) => {
+            const def = defaults.get(achievement.id);
+            if (!def) return;
+
+            const requirementChanged =
+                achievement.requirement?.type !== def.requirement?.type;
+
+            if (achievement.name !== def.name
+                || achievement.description !== def.description
+                || achievement.icon !== def.icon
+                || achievement.type !== def.type
+                || achievement.target !== def.target
+                || requirementChanged) {
+                achievement.name = def.name;
+                achievement.description = def.description;
+                achievement.icon = def.icon;
+                achievement.type = def.type;
+                achievement.target = def.target;
+                achievement.requirement = { ...def.requirement };
+                changed = true;
+            }
+
+            // A rule change invalidates an unlock earned under the old rule.
+            if (requirementChanged && achievement.unlocked) {
+                const earned = this.getRepetitionCount(achievement, sessions, opts) > 0
+                    || this.calculateProgress(achievement, sessions, opts) >= achievement.target;
+                if (!earned) {
+                    achievement.unlocked = false;
+                    achievement.unlockedAt = null;
+                    achievement.progress = 0;
+                    changed = true;
+                }
+            }
+        });
+
+        return changed;
+    }
+
+    /**
+     * Sessions inside the week containing today, per the configured first
+     * day of the week. One definition, shared by every weekly requirement.
+     */
+    static sessionsThisWeek(sessions, firstDayOfWeek = 1) {
+        const today = weekKey(new Date(), firstDayOfWeek);
+        return (sessions || []).filter(
+            s => weekKey(AnalyticsService.toLocalDate(s.date), firstDayOfWeek) === today);
+    }
+
+    /**
      * Get newly unlocked achievements
      */
     static getNewlyUnlocked(oldAchievements, newAchievements) {
@@ -609,9 +689,10 @@ export class AchievementService {
      * Count how many times a recurring achievement has been completed historically.
      * Returns 0 for non-recurring achievements (lifetime/global goals).
      */
-    static getRepetitionCount(achievement, sessions) {
+    static getRepetitionCount(achievement, sessions, opts = {}) {
         const reqType = achievement.requirement?.type;
         const target = achievement.target || 1;
+        const firstDayOfWeek = opts.firstDayOfWeek === 0 ? 0 : 1;
 
         switch (reqType) {
             case 'workout-today': {
@@ -628,20 +709,25 @@ export class AchievementService {
                 return count;
             }
             case 'weekly-workouts': {
-                const weekKey = (date) => {
-                    const d = new Date(date);
-                    const day = d.getDay();
-                    const diff = day === 0 ? 6 : day - 1;
-                    d.setDate(d.getDate() - diff);
-                    return d.toISOString().split('T')[0];
-                };
                 const sessionsByWeek = new Map();
                 sessions.forEach(s => {
-                    const k = weekKey(s.date);
+                    const k = weekKey(AnalyticsService.toLocalDate(s.date), firstDayOfWeek);
                     sessionsByWeek.set(k, (sessionsByWeek.get(k) || 0) + 1);
                 });
                 let count = 0;
                 sessionsByWeek.forEach(v => { if (v >= target) count++; });
+                return count;
+            }
+
+            case 'weekly-distinct-days': {
+                const daysByWeek = new Map();
+                sessions.forEach(s => {
+                    const k = weekKey(AnalyticsService.toLocalDate(s.date), firstDayOfWeek);
+                    if (!daysByWeek.has(k)) daysByWeek.set(k, new Set());
+                    daysByWeek.get(k).add(s.date);
+                });
+                let count = 0;
+                daysByWeek.forEach(v => { if (v.size >= target) count++; });
                 return count;
             }
             case 'monthly-workouts': {
@@ -667,7 +753,8 @@ export class AchievementService {
      * Whether an achievement is a recurring (resets each period) goal.
      */
     static isRecurring(achievement) {
-        return ['workout-today', 'daily-volume', 'weekly-workouts', 'monthly-workouts']
+        return ['workout-today', 'daily-volume', 'weekly-workouts',
+            'weekly-distinct-days', 'monthly-workouts']
             .includes(achievement.requirement?.type);
     }
 

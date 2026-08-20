@@ -22,6 +22,11 @@ import { mountSyncStatusPill } from './utils/sync-status.js';
 import { emit, EVENTS } from './utils/event-bus.js';
 import { sameId } from './utils/id-utils.js';
 import { track } from './utils/analytics.js';
+import { migrateStoredData, DATA_SCHEMA_VERSION } from './utils/data-migrations.js';
+import { IMPORT_MODES, summarizeMerge } from './utils/import-merge.js';
+import { normalizeFirstDayOfWeek } from './utils/week.js';
+import { isLoggedSession } from './utils/session-metrics.js';
+import { hasRecoverableWorkout } from './utils/active-workout.js';
 
 class GymTrackerApp {
     constructor() {
@@ -50,6 +55,12 @@ class GymTrackerApp {
         // second network round trip.
         await loadExerciseDatabase();
 
+        // Bring stored data up to the current schema BEFORE anything reads it.
+        // v1 makes every stored weight canonical kilograms; running it after
+        // loadAllData would mean the first paint rendered pre-migration
+        // numbers. See utils/data-migrations.js.
+        this.runStoredDataMigrations();
+
         // Load data from storage
         this.loadAllData();
 
@@ -66,6 +77,17 @@ class GymTrackerApp {
                 this.achievements.push(...missing);
                 this.saveAchievements();
             }
+        }
+
+        // Achievement definitions live in code: refresh wording, targets and
+        // requirement types on stored records, and withdraw an unlock earned
+        // under a rule that has since been corrected (GT-11).
+        if (AchievementService.syncDefinitions(
+            this.achievements,
+            this.workoutSessions.filter(isLoggedSession),
+            { firstDayOfWeek: this.firstDayOfWeek },
+        )) {
+            this.saveAchievements();
         }
 
         // Self-heal: if loadAllData filtered out malformed achievement records
@@ -105,6 +127,51 @@ class GymTrackerApp {
     }
 
     /**
+     * Run any pending stored-data migrations, once per install.
+     *
+     * Reads and writes localStorage directly (rather than going through the
+     * loaded in-memory models) so it can move raw records before any model
+     * or view has interpreted them. Guarded by `gymTrackerDataVersion`, so a
+     * second boot is a cheap version comparison and nothing else.
+     */
+    runStoredDataMigrations() {
+        try {
+            const from = storageService.getDataVersion();
+            if (from >= DATA_SCHEMA_VERSION) return;
+
+            const result = migrateStoredData({
+                sessions: storageService.getWorkoutSessions(),
+                measurements: storageService.getMeasurements(),
+                activeWorkout: storageService.getActiveWorkout(),
+                goals: storageService.getMeasurementGoals(),
+                settings: storageService.getSettings() || {},
+            }, from);
+
+            if (!result.changed) return;
+
+            storageService.saveWorkoutSessions(result.sessions);
+            storageService.saveMeasurements(result.measurements);
+            if (result.goals) storageService.saveMeasurementGoals(result.goals);
+            if (result.activeWorkout) storageService.saveActiveWorkout(result.activeWorkout);
+            storageService.saveDataVersion(result.version);
+            debugLog(`Stored data migrated ${from} → ${result.version}`);
+        } catch (error) {
+            // A failed migration must never block boot; the guard stays
+            // un-bumped so the next load retries.
+            console.error('Stored-data migration failed:', error);
+        }
+    }
+
+    /**
+     * Configured first day of the week (0 = Sunday, 1 = Monday), normalised.
+     * The one place the preference is read; `utils/week.js` turns it into an
+     * actual window (GT-10).
+     */
+    get firstDayOfWeek() {
+        return normalizeFirstDayOfWeek(this.settings?.firstDayOfWeek);
+    }
+
+    /**
      * Show the welcome modal to first-time users. A user is "first-time"
      * if they have no programs, no sessions, and have never dismissed
      * the modal before. Running sync listeners can't retroactively
@@ -140,7 +207,43 @@ class GymTrackerApp {
         trapModalFocus(modal);
 
         document.getElementById('onboarding-dismiss')?.addEventListener('click', close, { once: true });
-        document.getElementById('onboarding-skip')?.addEventListener('click', close, { once: true });
+
+        // GT-35: the footer action is lifecycle-aware. The tour body is
+        // ~2,100px in a ~574px viewport, so a reader who works all the way
+        // through it was offered a single button labelled "Skip tour" - the
+        // verb for abandoning something they had just finished. Reaching the
+        // end turns it into "Get started".
+        const skipBtn = document.getElementById('onboarding-skip');
+        // The SCROLLER is the body: the header and footer sit outside the
+        // scroll by design (`.onboarding-body`), so watching `.modal-content`
+        // read a 2,100px tour as already finished the moment it opened.
+        // Fall back to the panel for any future layout that scrolls there.
+        const body = modal.querySelector('.onboarding-body, .modal-body');
+        const panel = modal.querySelector('.modal-content');
+        const overflows = (el) => !!el && el.scrollHeight - el.clientHeight > 1;
+        const scroller = overflows(body) ? body : (overflows(panel) ? panel : body || panel);
+        if (skipBtn) {
+            skipBtn.textContent = 'Skip tour';
+            skipBtn.classList.remove('btn-primary');
+            skipBtn.classList.add('btn-ghost');
+            skipBtn.addEventListener('click', close, { once: true });
+
+            if (scroller) {
+                const syncLabel = () => {
+                    const remaining = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+                    // 24px of slack: sub-pixel layout means an exact 0 is not
+                    // reliably reached even when the user is visibly at the end.
+                    const atEnd = remaining <= 24;
+                    skipBtn.textContent = atEnd ? 'Get started' : 'Skip tour';
+                    skipBtn.classList.toggle('btn-primary', atEnd);
+                    skipBtn.classList.toggle('btn-ghost', !atEnd);
+                };
+                scroller.addEventListener('scroll', syncLabel, { passive: true });
+                // A short enough tour (large desktop viewport) is already
+                // "read" on open, so evaluate once the modal has laid out.
+                requestAnimationFrame(syncLabel);
+            }
+        }
 
         const goTo = (id, view) => {
             document.getElementById(id)?.addEventListener('click', () => {
@@ -326,9 +429,13 @@ class GymTrackerApp {
      */
     updateAchievements() {
         const before = JSON.stringify(this.achievements.map(a => a.toJSON()));
+        // Zero-completed-set records are not workouts and must not feed any
+        // counter (GT-14); every achievement counts real training only.
+        const logged = this.workoutSessions.filter(isLoggedSession);
         this.achievements = AchievementService.updateAchievementProgress(
             this.achievements,
-            this.workoutSessions
+            logged,
+            { firstDayOfWeek: this.firstDayOfWeek },
         );
 
         // Feature 7: lift-specific PR milestone achievements.
@@ -344,11 +451,12 @@ class GymTrackerApp {
                 new Date(b.date) - new Date(a.date)
               ).find(m => m.weight != null)?.weight ?? null
             : null;
+        // Milestone thresholds and the latest body weight are both canonical
+        // kilograms now, so no unit factor is involved.
         const newMilestones = AchievementService.checkLiftMilestones(
-            this.workoutSessions,
+            logged,
             unlockedIds,
             latestBW,
-            this.settings.weightUnit,
         );
         for (const m of newMilestones) {
             showToast(`🎉 Lift milestone: ${m.icon} ${m.name}`, 'success', 5000);
@@ -588,7 +696,8 @@ class GymTrackerApp {
      * Show/hide + label the global FAB based on current state:
      *   - Hidden when there are no programs (nothing to start).
      *   - Hidden anywhere on the Workout view (the user is already there).
-     *   - "Resume workout" (green) when a paused session exists.
+     *   - "Resume workout" (green) when ANY recoverable session exists,
+     *     paused or merely interrupted (GT-01).
      *   - "Start workout" otherwise.
      *
      * The FAB is a shortcut TO the Workout view, so on that view it had
@@ -603,7 +712,7 @@ class GymTrackerApp {
         if (!fab) return;
 
         const hasPrograms = this.programs.length > 0;
-        const paused = storageService.getActiveWorkout();
+        const resumable = hasRecoverableWorkout(storageService.getActiveWorkout());
         const onWorkoutView = this.currentView === 'workout';
 
         if (!hasPrograms || onWorkoutView) {
@@ -615,14 +724,14 @@ class GymTrackerApp {
         const label = fab.querySelector('.workout-fab-label');
         const icon = fab.querySelector('i');
 
-        if (paused && paused.paused) {
+        if (resumable) {
             fab.classList.add('workout-fab--resume');
             if (label) label.textContent = 'Resume workout';
             if (icon) {
                 icon.classList.remove('fa-play');
                 icon.classList.add('fa-play-circle');
             }
-            fab.setAttribute('aria-label', 'Resume paused workout');
+            fab.setAttribute('aria-label', 'Resume unfinished workout');
         } else {
             fab.classList.remove('workout-fab--resume');
             if (label) label.textContent = 'Start workout';
@@ -636,16 +745,15 @@ class GymTrackerApp {
 
     /**
      * Start or resume a workout from anywhere:
-     *   - Paused → resume the saved session.
+     *   - A recoverable workout (paused OR interrupted) → resume it.
      *   - Exactly one program with exercises → auto-start it.
      *   - Otherwise → route to the workout view's program picker.
      */
     handleGlobalFabClick() {
         window.scrollTo(0, 0);
         const workoutCtrl = this.viewControllers.workout;
-        const paused = storageService.getActiveWorkout();
 
-        if (paused && paused.paused) {
+        if (hasRecoverableWorkout(storageService.getActiveWorkout())) {
             this.showView('workout');
             setTimeout(() => workoutCtrl?.resumeWorkout(), 100);
             return;
@@ -730,18 +838,36 @@ class GymTrackerApp {
     }
 
     /**
-     * Import data
+     * Import data in an explicit mode.
+     *
+     * MERGE keeps everything the file does not mention; REPLACE is the
+     * restore-a-backup path and says so in its confirmation. The caller
+     * (settings-view) is responsible for asking which one the user wants and
+     * for downloading a rollback file before a replace.
      */
-    importData(data) {
-        const success = storageService.importAllData(data);
-        if (success) {
-            this.loadAllData();
-            this.updateAchievements();
-            showToast('Data imported successfully', 'success');
-        } else {
+    importData(data, { mode = IMPORT_MODES.MERGE } = {}) {
+        const result = storageService.importAllData(data, { mode });
+        if (!result || !result.ok) {
             showToast('Failed to import data', 'error');
+            return false;
         }
-        return success;
+
+        // An imported payload can carry pre-canonical weights (exported by an
+        // older build), so re-run the stored-data migrations over the merged
+        // result before anything reads it.
+        storageService.saveDataVersion(0);
+        this.runStoredDataMigrations();
+
+        this.loadAllData();
+        this.updateAchievements();
+        showToast(
+            result.mode === IMPORT_MODES.REPLACE
+                ? 'Data replaced from file'
+                : summarizeMerge(result.before, result.after),
+            'success',
+            4000,
+        );
+        return true;
     }
 
     /**

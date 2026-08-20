@@ -2,7 +2,9 @@
  * History View Controller
  */
 import { app } from '../app.js';
-import { formatDate, showToast, showConfirmModal, formatSessionDateTime, escapeHtml } from '../utils/helpers.js';
+import { formatDate, showToast, showConfirmModal, formatSessionDateTime, escapeHtml, pluralize } from '../utils/helpers.js';
+import { displayWeight, formatDurationLong, normalizeWeightUnit, volumeIn } from '../utils/units.js';
+import { performedExerciseCount, sessionTimedSeconds } from '../utils/session-metrics.js';
 import { trapModalFocus } from '../utils/modal-focus.js';
 import { DarkCalendar } from '../utils/dark-calendar.js';
 import { DarkSelect } from '../utils/dark-select.js';
@@ -267,7 +269,7 @@ class HistoryView {
         this._pagination.page = info.page;
 
         const pageSessions = sessions.slice(info.start, info.end);
-        const unit = this.app.settings.weightUnit;
+        const unit = normalizeWeightUnit(this.app.settings.weightUnit);
 
         const cardsHTML = pageSessions.map(session => {
             const hasAdditionalMetrics = session.avgHeartRate || session.maxHeartRate || session.caloriesBurned;
@@ -286,16 +288,22 @@ class HistoryView {
                     <div class="workout-card-stats">
                         <div class="stat">
                             <i class="fas fa-weight"></i>
-                            ${Math.round(session.totalVolume).toLocaleString()}${unit}
+                            ${Math.round(volumeIn(session.totalVolume, unit)).toLocaleString()}${unit}
                         </div>
                         <div class="stat">
                             <i class="fas fa-list"></i>
-                            ${session.exercises.length} exercises
+                            ${pluralize(performedExerciseCount(session), 'exercise')}
                         </div>
                         <div class="stat">
                             <i class="fas fa-chart-bar"></i>
-                            ${session.totalSets} sets
+                            ${pluralize(session.totalSets, 'set')}
                         </div>
+                        ${sessionTimedSeconds(session) > 0 ? `
+                            <div class="stat">
+                                <i class="fas fa-stopwatch"></i>
+                                ${formatDurationLong(sessionTimedSeconds(session))} held
+                            </div>
+                        ` : ''}
                         ${session.duration ? `
                             <div class="stat">
                                 <i class="fas fa-clock"></i>
@@ -384,7 +392,7 @@ class HistoryView {
         const session = this.app.workoutSessions.find(s => sameId(s.id, sessionId));
         if (!session) return;
 
-        const unit = this.app.settings.weightUnit;
+        const unit = normalizeWeightUnit(this.app.settings.weightUnit);
         const modal = document.getElementById('workout-detail-modal');
         const title = document.getElementById('workout-detail-title');
         const content = document.getElementById('workout-detail-content');
@@ -440,7 +448,7 @@ class HistoryView {
                     </div>
                     <div class="detail-stat">
                         <span class="label">Total Volume</span>
-                        <span class="value">${Math.round(session.totalVolume).toLocaleString()}${unit}</span>
+                        <span class="value">${Math.round(volumeIn(session.totalVolume, unit)).toLocaleString()}${unit}</span>
                     </div>
                     <div class="detail-stat">
                         <span class="label">Total Sets</span>
@@ -448,8 +456,13 @@ class HistoryView {
                     </div>
                     <div class="detail-stat">
                         <span class="label">Exercises</span>
-                        <span class="value">${session.exercises.length}</span>
+                        <span class="value">${performedExerciseCount(session)}</span>
                     </div>
+                    ${sessionTimedSeconds(session) > 0 ? `
+                    <div class="detail-stat">
+                        <span class="label">Time Held</span>
+                        <span class="value">${formatDurationLong(sessionTimedSeconds(session))}</span>
+                    </div>` : ''}
                 </div>
             </div>
 
@@ -503,9 +516,9 @@ class HistoryView {
                         html += `<td>${mins}:${secs.toString().padStart(2, '0')}</td>`;
                     } else {
                         html += `
-                            <td>${set.weight.toLocaleString()}${unit}</td>
+                            <td>${Number(displayWeight(set.weight, unit)).toLocaleString()}${unit}</td>
                             <td>${set.reps}</td>
-                            <td>${Math.round(set.volume).toLocaleString()}${unit}</td>
+                            <td>${Math.round(volumeIn(set.volume, unit)).toLocaleString()}${unit}</td>
                         `;
                     }
 
@@ -587,11 +600,13 @@ class HistoryView {
 
         const points = this.app.workoutSessions
             .map(session => {
-                const ex = (session.exercises || []).find(e => e.exerciseId === exerciseId);
+                const ex = (session.exercises || []).find(e => sameId(e.exerciseId, exerciseId));
                 if (!ex) return null;
                 const weight = topWeightFor(ex);
                 if (weight == null) return null;
-                return { ts: session.sortTimestamp, weight };
+                // Canonical kg -> the display unit, so the axis labels and the
+                // shape both mean what the rest of the screen means (GT-03).
+                return { ts: session.sortTimestamp, weight: Number(displayWeight(weight, unit)) };
             })
             .filter(Boolean)
             .sort((a, b) => new Date(a.ts) - new Date(b.ts))
@@ -677,9 +692,9 @@ class HistoryView {
         const session = this.app.workoutSessions.find(s => sameId(s.id, sessionId));
         if (!session) return;
 
-        const exerciseCount = session.exercises.length;
-        const exerciseLabel = exerciseCount === 1 ? 'exercise' : 'exercises';
-        const message = `Are you sure you want to delete this workout?<br><br><strong>${escapeHtml(session.workoutDayName)}</strong><br>${formatSessionDateTime(session)}<br><br>This workout included ${exerciseCount} ${exerciseLabel} and ${Math.round(session.totalVolume).toLocaleString()}${this.app.settings.weightUnit} total volume.<br><br><strong>This action cannot be undone.</strong>`;
+        const unit = normalizeWeightUnit(this.app.settings.weightUnit);
+        const exerciseCount = performedExerciseCount(session);
+        const message = `Are you sure you want to delete this workout?<br><br><strong>${escapeHtml(session.workoutDayName)}</strong><br>${formatSessionDateTime(session)}<br><br>This workout included ${pluralize(exerciseCount, 'exercise')} and ${Math.round(volumeIn(session.totalVolume, unit)).toLocaleString()}${unit} total volume.<br><br><strong>This action cannot be undone.</strong>`;
 
         const confirmed = await showConfirmModal({
             title: 'Delete Workout',

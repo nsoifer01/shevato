@@ -130,11 +130,18 @@ export function defaultRestForEquipment(equipment) {
     return REST_DEFAULTS_BY_EQUIPMENT[equipment] ?? 90;
 }
 
+/** Planned hold for a timed exercise when the program never set one (GT-12). */
+export const DEFAULT_TARGET_SECONDS = 60;
+
 /**
  * Coerce a raw exercise entry into the canonical program-exercise shape.
  *
- * New shape: `sets` is an array of `{ repsMin, repsMax }` where
- * repsMin === repsMax means a single-rep-target (no range).
+ * New shape: `sets` is an array of `{ repsMin, repsMax, targetSeconds }`.
+ * repsMin === repsMax means a single-rep-target (no range). `targetSeconds`
+ * is the planned hold for a DURATION exercise and is null on a reps
+ * exercise; the editor and the workout header read whichever one the
+ * catalog says applies, so a plank stops advertising "10 reps" as its
+ * target while its stored (meaningless) rep numbers are left untouched.
  *
  * Backward compat: old entries carry `targetSets`/`targetReps` but no `sets`.
  * We expand them here so downstream code always sees `sets[]`.
@@ -213,7 +220,14 @@ function normalizeScheduleDays(value) {
 function normalizeSetRow(s) {
     const repsMin = clampInt(s.repsMin, 1, 100, 10);
     const repsMax = clampInt(s.repsMax, 1, 100, repsMin);
-    return { repsMin, repsMax: Math.max(repsMin, repsMax) };
+    // Absent stays absent: a reps exercise must not acquire a phantom hold,
+    // and a legacy timed row must not have one invented for it in storage
+    // (the view falls back to DEFAULT_TARGET_SECONDS at render time).
+    const rawSeconds = s.targetSeconds;
+    const targetSeconds = rawSeconds === null || rawSeconds === undefined || rawSeconds === ''
+        ? null
+        : clampInt(rawSeconds, 5, 3600, DEFAULT_TARGET_SECONDS);
+    return { repsMin, repsMax: Math.max(repsMin, repsMax), targetSeconds };
 }
 
 function clampInt(value, min, max, fallback) {

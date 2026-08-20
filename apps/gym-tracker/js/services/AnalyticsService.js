@@ -9,6 +9,10 @@
  * workouts into the wrong day/week/month on the dashboard, calendar,
  * streaks, etc. Use `toLocalDate()` / `toLocalDateKey()` below instead.
  */
+import { sameId } from '../utils/id-utils.js';
+import { setTimedSeconds, setVolume } from '../models/Set.js';
+import { startOfWeek, weekKey } from '../utils/week.js';
+
 export class AnalyticsService {
     /**
      * Parse a local YYYY-MM-DD (or full timestamp) into a Date anchored
@@ -48,7 +52,7 @@ export class AnalyticsService {
         const exerciseSessions = sessions
             .map(s => ({
                 date: s.date,
-                exercises: s.exercises.filter(e => e.exerciseId === exerciseId)
+                exercises: s.exercises.filter(e => sameId(e.exerciseId, exerciseId))
             }))
             .filter(s => s.exercises.length > 0);
 
@@ -69,7 +73,7 @@ export class AnalyticsService {
                     if (set.reps > maxReps) {
                         maxReps = set.reps;
                     }
-                    const volume = set.volume;
+                    const volume = setVolume(set);
                     if (volume > maxVolume) {
                         maxVolume = volume;
                     }
@@ -90,7 +94,7 @@ export class AnalyticsService {
      */
     static getLastWorkoutData(exerciseId, sessions, beforeDate = null) {
         let filteredSessions = sessions.filter(s =>
-            s.exercises.some(e => e.exerciseId === exerciseId)
+            s.exercises.some(e => sameId(e.exerciseId, exerciseId))
         );
 
         if (beforeDate) {
@@ -106,7 +110,7 @@ export class AnalyticsService {
         filteredSessions.sort((a, b) => this.toLocalDate(b.date) - this.toLocalDate(a.date));
 
         const lastSession = filteredSessions[0];
-        const exercise = lastSession.exercises.find(e => e.exerciseId === exerciseId);
+        const exercise = lastSession.exercises.find(e => sameId(e.exerciseId, exerciseId));
 
         return {
             date: lastSession.date,
@@ -121,8 +125,8 @@ export class AnalyticsService {
     static hasImproved(currentSets, previousSets) {
         if (!previousSets || previousSets.length === 0) return null;
 
-        const currentVolume = currentSets.reduce((sum, set) => sum + set.volume, 0);
-        const previousVolume = previousSets.reduce((sum, set) => sum + set.volume, 0);
+        const currentVolume = currentSets.reduce((sum, set) => sum + setVolume(set), 0);
+        const previousVolume = previousSets.reduce((sum, set) => sum + setVolume(set), 0);
 
         if (currentVolume > previousVolume) return true;
         if (currentVolume < previousVolume) return false;
@@ -151,7 +155,7 @@ export class AnalyticsService {
     /**
      * Get volume trends over time
      */
-    static getVolumeTrends(sessions, groupBy = 'week') {
+    static getVolumeTrends(sessions, groupBy = 'week', firstDayOfWeek = 1) {
         const sorted = [...sessions].sort((a, b) => this.toLocalDate(a.date) - this.toLocalDate(b.date));
 
         const groups = new Map();
@@ -161,7 +165,7 @@ export class AnalyticsService {
             let key;
 
             if (groupBy === 'week') {
-                const weekStart = this.startOfIsoWeek(date);
+                const weekStart = startOfWeek(date, firstDayOfWeek);
                 key = this.toLocalDateKey(weekStart);
             } else if (groupBy === 'month') {
                 key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
@@ -228,10 +232,10 @@ export class AnalyticsService {
             (s.exercises || []).forEach(ex => {
                 const data = byId.get(ex.exerciseId);
                 const category = (data && data.category) || 'other';
-                const vol = (ex.sets || []).reduce(
-                    (sum, set) => sum + ((set.weight || 0) * (set.reps || 0)) + (set.duration || 0),
-                    0,
-                );
+                // Weight-volume ONLY. Adding `set.duration` here is what
+                // produced "Core 300 kg" out of five minutes of planks
+                // (GT-04); time under tension is reported separately.
+                const vol = (ex.sets || []).reduce((sum, set) => sum + setVolume(set), 0);
                 if (vol <= 0) return;
                 totals.set(category, (totals.get(category) || 0) + vol);
             });
@@ -254,7 +258,7 @@ export class AnalyticsService {
             const vol = (s.totalVolume != null)
                 ? s.totalVolume
                 : (s.exercises || []).reduce((sum, ex) => sum + (ex.sets || []).reduce(
-                    (k, set) => k + ((set.weight || 0) * (set.reps || 0)) + (set.duration || 0), 0), 0);
+                    (k, set) => k + setVolume(set), 0), 0);
             out.set(key, (out.get(key) || 0) + vol);
         });
         return out;
@@ -274,11 +278,11 @@ export class AnalyticsService {
             (s.exercises || []).forEach(ex => {
                 const data = byId.get(ex.exerciseId);
                 const category = (data && data.category) || 'other';
-                const vol = (ex.sets || []).reduce(
-                    (sum, set) => sum + ((set.weight || 0) * (set.reps || 0)) + (set.duration || 0),
-                    0,
-                );
-                if (vol <= 0) return;
+                // "Was this trained?" is a yes/no, so time counts here even
+                // though it never counts as volume: a plank IS core work.
+                const worked = (ex.sets || []).some(
+                    set => setVolume(set) > 0 || setTimedSeconds(set) > 0);
+                if (!worked) return;
                 const prev = out.get(category);
                 if (!prev || s.date > prev) out.set(category, s.date);
             });
@@ -368,11 +372,11 @@ export class AnalyticsService {
      */
     static getExerciseProgression(exerciseId, sessions, { limit } = {}) {
         const exerciseSessions = sessions
-            .filter(s => s.exercises.some(e => e.exerciseId === exerciseId))
+            .filter(s => s.exercises.some(e => sameId(e.exerciseId, exerciseId)))
             .sort((a, b) => this.toLocalDate(a.date) - this.toLocalDate(b.date));
 
         const points = exerciseSessions.map(session => {
-            const exercise = session.exercises.find(e => e.exerciseId === exerciseId);
+            const exercise = session.exercises.find(e => sameId(e.exerciseId, exerciseId));
             const sets = exercise.sets || [];
             const maxWeight = Math.max(...sets.map(s => s.weight || 0), 0);
             const maxDuration = Math.max(...sets.map(s => s.duration || 0), 0);
@@ -439,7 +443,10 @@ export class AnalyticsService {
         const priorSets = [];
         sessions.forEach(s => {
             s.exercises.forEach(ex => {
-                if (ex.exerciseId === exerciseId) {
+                // sameId, not ===: an imported session can carry string ids,
+                // which would make its sets invisible to the PR baseline and
+                // hand out a PR the lifter had already beaten (GT-18).
+                if (sameId(ex.exerciseId, exerciseId)) {
                     (ex.sets || []).forEach(set => priorSets.push(set));
                 }
             });
@@ -466,16 +473,29 @@ export class AnalyticsService {
             (m, s) => Math.max(m, (s.weight || 0) * (s.reps || 0)), 0
         );
         const newVolume = (newSet.weight || 0) * (newSet.reps || 0);
-        if (newVolume > prevMaxVolume) {
-            return {
-                kind: 'volume',
-                value: newVolume,
-                previous: prevMaxVolume,
-                delta: newVolume - prevMaxVolume,
-            };
-        }
+        if (newVolume <= prevMaxVolume) return null;
 
-        return null;
+        // WHAT was broken, so the badge can say it honestly. The trigger is
+        // unchanged (set volume, the documented rule the audit verified);
+        // this only records whether the lifter ALSO put more on the bar, so
+        // "PR +5 kg" can be shown where it is true and "+50 kg·reps"
+        // everywhere else. Rendering the volume delta as bare kilograms read
+        // as "you added 50 kg to the bar" (GT-18).
+        const prevMaxWeight = priorSets.reduce(
+            (m, s) => Math.max(m, ((s.duration || 0) > 0 ? 0 : (s.weight || 0))), 0
+        );
+        const newWeight = newSet.weight || 0;
+        const isWeightPr = newWeight > prevMaxWeight;
+
+        return {
+            kind: isWeightPr ? 'weight' : 'volume',
+            value: newVolume,
+            previous: prevMaxVolume,
+            delta: newVolume - prevMaxVolume,
+            weight: newWeight,
+            previousWeight: prevMaxWeight,
+            weightDelta: newWeight - prevMaxWeight,
+        };
     }
 
     /**
@@ -505,7 +525,9 @@ export class AnalyticsService {
      * Does NOT mutate the stored set.
      */
     static effectiveSetVolume(set, exerciseName, bodyweight) {
-        if (set.duration > 0) return set.duration;
+        // A hold has no weight-volume; its seconds belong to the time
+        // metric, never to a kilogram total (GT-04).
+        if (set.duration > 0) return 0;
         const w = (set.weight === 0 || set.weight == null)
             && bodyweight != null
             && this.isBodyweightExercise(exerciseName)
@@ -531,12 +553,19 @@ export class AnalyticsService {
     /**
      * Weekly summary stats for the Home dashboard.
      *
-     * Returns totals for the current ISO week (Mon–Sun) plus deltas vs
-     * the prior week. "Volume" sums weight*reps across all sets.
+     * Returns totals for the week containing today plus deltas vs the prior
+     * week. The window honours the configured first day of the week
+     * (`firstDayOfWeek`, 0 = Sunday, 1 = Monday) - it used to be hard-coded
+     * to ISO Monday, so a Sunday-first user's Sunday session silently fell
+     * out of "this week" while their Calendar counted it (GT-10). Passing 1
+     * reproduces the previous behaviour exactly.
+     *
+     * "Volume" sums weight × reps in canonical kilograms; timed sets
+     * contribute to nothing here (see Set.volume).
      */
-    static getWeekStats(sessions) {
+    static getWeekStats(sessions, firstDayOfWeek = 1) {
         const now = new Date();
-        const thisMonday = this.startOfIsoWeek(now);
+        const thisMonday = startOfWeek(now, firstDayOfWeek);
         const lastMonday = new Date(thisMonday);
         lastMonday.setDate(thisMonday.getDate() - 7);
         const nextMonday = new Date(thisMonday);
@@ -572,15 +601,25 @@ export class AnalyticsService {
     }
 
     /**
-     * Monday 00:00 of the week containing `date`. Used by week stats.
+     * Local midnight on the first day of the week containing `date`.
+     *
+     * Delegates to `utils/week.js`, the single week-boundary definition
+     * shared with the Calendar, the workout week strip, the program-editor
+     * day chips and the weekly achievements. `startOfIsoWeek` is retained as
+     * the Monday-pinned alias its callers already used.
      */
+    static startOfWeek(date, firstDayOfWeek = 1) {
+        return startOfWeek(date, firstDayOfWeek);
+    }
+
+    /** Monday 00:00 of the week containing `date` (ISO week). */
     static startOfIsoWeek(date) {
-        const d = new Date(date);
-        const day = d.getDay();
-        const diff = day === 0 ? 6 : day - 1;
-        d.setDate(d.getDate() - diff);
-        d.setHours(0, 0, 0, 0);
-        return d;
+        return startOfWeek(date, 1);
+    }
+
+    /** Stable key for the week containing `date`, honouring the preference. */
+    static weekKeyFor(date, firstDayOfWeek = 1) {
+        return weekKey(date, firstDayOfWeek);
     }
 
     /**

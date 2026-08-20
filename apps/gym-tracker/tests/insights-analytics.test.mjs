@@ -67,14 +67,40 @@ test('getVolumeByCategoryInRange: unknown exerciseId buckets into other', () => 
     assert.deepEqual(out, [{ category: 'other', volume: 250 }]);
 });
 
-test('getVolumeByCategoryInRange: duration-only sets count toward volume', () => {
+// GT-04: seconds are not kilograms. A 60-second plank used to add "60" to
+// the kilogram volume of its muscle group, which is how Insights came to
+// report "Core 300 kg" for five minutes of planks.
+test('getVolumeByCategoryInRange: duration-only sets contribute NO weight volume', () => {
     const sessions = [session('2026-04-01', [
         { exerciseId: 3, sets: [{ duration: 60 }, { duration: 90 }] },
     ])];
     const start = AnalyticsService.toLocalDate('2026-04-01');
     const end = AnalyticsService.toLocalDate('2026-04-08');
     const out = AnalyticsService.getVolumeByCategoryInRange(sessions, db, start, end);
-    assert.deepEqual(out, [{ category: 'legs', volume: 150 }]);
+    assert.deepEqual(out, [], 'a category with only holds has no weight volume to chart');
+});
+
+test('getVolumeByCategoryInRange: a mixed session reports only its weight volume', () => {
+    const sessions = [session('2026-04-01', [
+        { exerciseId: 1, sets: [{ weight: 100, reps: 5 }] },   // 500
+        { exerciseId: 3, sets: [{ duration: 300 }] },          // 5 minutes held
+    ])];
+    const start = AnalyticsService.toLocalDate('2026-04-01');
+    const end = AnalyticsService.toLocalDate('2026-04-08');
+    const out = AnalyticsService.getVolumeByCategoryInRange(sessions, db, start, end);
+    const legs = out.find(o => o.category === 'legs');
+    assert.equal(legs, undefined, 'the plank category is not inflated by its seconds');
+    assert.equal(out.reduce((n, o) => n + o.volume, 0), 500);
+});
+
+test('getLastTrainedByCategory: a hold still counts as having trained the muscle', () => {
+    // Volume and "did you train this?" are different questions: a plank is
+    // real core work even though it carries no load.
+    const sessions = [session('2026-04-01', [
+        { exerciseId: 3, sets: [{ duration: 60 }] },
+    ])];
+    const out = AnalyticsService.getLastTrainedByCategory(sessions, db);
+    assert.equal(out.get('legs'), '2026-04-01');
 });
 
 test('getDailyVolumeMap: keys by date, sums sessions on the same day', () => {

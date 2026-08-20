@@ -12,8 +12,10 @@ import {
 import { DarkSelect } from '../utils/dark-select.js';
 import { WARMUP_DEFAULTS } from '../utils/warmup.js';
 import { Settings } from '../models/Settings.js';
+import { IMPORT_MODES } from '../utils/import-merge.js';
+import { normalizeWeightUnit } from '../utils/units.js';
 import { storageService } from '../services/StorageService.js';
-import { closeModalSafely } from '../utils/modal-focus.js';
+import { closeModalSafely, trapModalFocus } from '../utils/modal-focus.js';
 
 /**
  * Item 6: warm-up ramp configuration. Stored under its own localStorage key
@@ -85,6 +87,27 @@ function validateImportData(data) {
     return null;
 }
 
+/**
+ * A short, honest description of what a file actually contains, so the user
+ * chooses merge vs replace against the real payload rather than a guess.
+ */
+function describeImport(data) {
+    const count = (key) => (Array.isArray(data?.[key]) ? data[key].length : 0);
+    const parts = [];
+    const add = (n, singular, plural = `${singular}s`) => {
+        if (n > 0) parts.push(`<strong>${n}</strong> ${n === 1 ? singular : plural}`);
+    };
+    add(count('programs'), 'program');
+    add(count('sessions'), 'workout');
+    add(count('customExercises'), 'custom exercise');
+    add(count('measurements'), 'measurement');
+    add(count('achievements'), 'achievement');
+    if (data?.settings) parts.push('your settings');
+    if (parts.length === 0) return 'This file contains no recognisable data.';
+    const last = parts.pop();
+    return `This file contains ${parts.length ? `${parts.join(', ')} and ${last}` : last}.`;
+}
+
 class SettingsView {
     constructor() {
         this.app = app;
@@ -105,7 +128,16 @@ class SettingsView {
         }
         // React to weight-unit changes so we can enable/disable Save
         if (weightUnitSelect) {
-            weightUnitSelect.addEventListener('change', () => this.checkDirty());
+            weightUnitSelect.addEventListener('change', () => {
+                // GT-21: the plate panel describes PHYSICAL equipment, and a
+                // kg rack and an lb rack are different objects. Picking a unit
+                // therefore swaps to that unit's saved profile instead of
+                // leaving a kg stack sitting under an "lb" label. Nothing is
+                // converted and nothing is lost: switching back brings the
+                // other profile back exactly as it was.
+                this.renderPlateSettings(weightUnitSelect.value);
+                this.checkDirty();
+            });
         }
 
         // Time format dropdown — same DarkSelect treatment.
@@ -343,12 +375,8 @@ class SettingsView {
         const scheduleToggle = document.getElementById('show-program-schedule');
         if (scheduleToggle) scheduleToggle.checked = settings.showProgramSchedule !== false;
 
-        // Plate calculator
-        const barInput = document.getElementById('bar-weight');
-        if (barInput) barInput.value = settings.barWeight ?? '';
-        const platesInput = document.getElementById('plates-input');
-        if (platesInput) platesInput.value = (settings.plates || []).join(', ');
-        this.refreshPlatesPreview();
+        // Plate calculator (per-unit equipment profile)
+        this.renderPlateSettings(settings.weightUnit);
 
         this.renderWarmupSettings();
 
@@ -426,13 +454,59 @@ class SettingsView {
             .sort((a, b) => b - a);
     }
 
+    /**
+     * GT-21: fill the plate panel from the profile for `unit`, and say which
+     * unit it is everywhere.
+     *
+     * Every symptom in that finding came from the panel having no idea what
+     * unit it was editing: the BAR WEIGHT field carried no unit label at all,
+     * the "Accepted:" echo was hard-coded to kg in lb mode, and a unit switch
+     * left a 20 (kg) bar and a kg stack in place under lb labels.
+     */
+    renderPlateSettings(unitValue) {
+        const unit = normalizeWeightUnit(unitValue ?? this.app.settings?.weightUnit);
+        this.plateProfileUnit = unit;
+        const profile = typeof this.app.settings?.plateConfig === 'function'
+            ? this.app.settings.plateConfig(unit)
+            : { barWeight: '', plates: [] };
+
+        const barInput = document.getElementById('bar-weight');
+        if (barInput) {
+            barInput.value = profile.barWeight ?? '';
+            barInput.placeholder = unit === 'lb' ? '45' : '20';
+        }
+        const barLabel = document.querySelector('label[for="bar-weight"]');
+        if (barLabel) barLabel.textContent = `Bar weight (${unit})`;
+
+        const platesInput = document.getElementById('plates-input');
+        if (platesInput) {
+            platesInput.value = (profile.plates || []).join(', ');
+            platesInput.placeholder = unit === 'lb'
+                ? 'e.g. 45, 35, 25, 10, 5, 2.5'
+                : 'e.g. 25, 20, 15, 10, 5, 2.5, 1.25';
+        }
+        const platesLabel = document.querySelector('label[for="plates-input"] small');
+        if (platesLabel) {
+            platesLabel.textContent = `(comma-separated, in ${unit}, per-side selection)`;
+        }
+        this.refreshPlatesPreview();
+    }
+
+    /** The unit the plate panel is currently editing. */
+    activePlateUnit() {
+        return normalizeWeightUnit(
+            this.plateProfileUnit
+            || document.getElementById('weight-unit')?.value
+            || this.app.settings?.weightUnit);
+    }
+
     /** Render the live preview line under the plates input. */
     refreshPlatesPreview() {
         const previewEl = document.getElementById('plates-preview');
         if (!previewEl) return;
         const raw = document.getElementById('plates-input')?.value ?? '';
         const parsed = this.parsePlatesInput(raw);
-        const unit = this.app.settings?.weightUnit || 'kg';
+        const unit = this.activePlateUnit();
         previewEl.textContent = parsed.length === 0
             ? 'No plates configured.'
             : `Accepted: ${parsed.map(p => `${p}${unit}`).join(', ')}`;
@@ -474,7 +548,7 @@ class SettingsView {
     saveSettings() {
         const settings = this.app.settings;
 
-        settings.weightUnit = document.getElementById('weight-unit').value;
+        settings.weightUnit = normalizeWeightUnit(document.getElementById('weight-unit').value);
         const timeFormatEl = document.getElementById('time-format');
         if (timeFormatEl) {
             const v = timeFormatEl.value === '24' ? '24' : '12';
@@ -502,13 +576,22 @@ class SettingsView {
         const scheduleToggle = document.getElementById('show-program-schedule');
         if (scheduleToggle) settings.showProgramSchedule = scheduleToggle.checked;
 
+        // Equipment writes into the profile for the unit the panel is
+        // editing, which is the unit just selected above.
+        const plateUnit = this.activePlateUnit();
+        const profile = typeof settings.plateConfig === 'function'
+            ? settings.plateConfig(plateUnit)
+            : null;
         const barInput = document.getElementById('bar-weight');
-        if (barInput && barInput.value !== '') {
+        if (profile && barInput && barInput.value !== '') {
             const bar = Number(barInput.value);
-            if (Number.isFinite(bar) && bar >= 0) settings.barWeight = bar;
+            if (Number.isFinite(bar) && bar >= 0) profile.barWeight = bar;
         }
         const platesInput = document.getElementById('plates-input');
-        if (platesInput) settings.plates = this.parsePlatesInput(platesInput.value);
+        if (profile && platesInput) {
+            const parsed = this.parsePlatesInput(platesInput.value);
+            if (parsed.length > 0) profile.plates = parsed;
+        }
 
         this.app.saveSettings();
         showToast('Settings saved successfully', 'success');
@@ -550,6 +633,75 @@ class SettingsView {
         showToast(`Exported ${rowCount} ${rowCount === 1 ? 'set' : 'sets'} to CSV`, 'success');
     }
 
+    /**
+     * GT-02: ask what "import" is supposed to mean, instead of promising one
+     * thing and doing the other.
+     *
+     * The dialog used to say the file "will be merged with your existing
+     * programs, workouts, and settings" while `importAllData` overwrote every
+     * store the file contained - importing a sessions-only export destroyed
+     * the user's program and all 17 unlocked achievements, with no undo and
+     * no backup. Merge and replace are genuinely different operations and are
+     * now presented as such, with merge the default.
+     *
+     * Resolves to an IMPORT_MODES value, or null if the user cancels.
+     */
+    async askImportMode(data) {
+        const modal = document.getElementById('import-mode-modal');
+        const summary = document.getElementById('import-mode-summary');
+        if (summary) summary.innerHTML = describeImport(data);
+
+        // No modal in the DOM (very old cached shell): fall back to the safe
+        // operation rather than guessing at the destructive one.
+        if (!modal) return IMPORT_MODES.MERGE;
+
+        return new Promise((resolve) => {
+            const mergeBtn = document.getElementById('import-mode-merge');
+            const replaceBtn = document.getElementById('import-mode-replace');
+            const cancelBtn = document.getElementById('import-mode-cancel');
+            const closeBtn = modal.querySelector('.modal-close');
+
+            const cleanup = () => {
+                closeModalSafely(modal);
+                mergeBtn?.removeEventListener('click', onMerge);
+                replaceBtn?.removeEventListener('click', onReplace);
+                cancelBtn?.removeEventListener('click', onCancel);
+                closeBtn?.removeEventListener('click', onCancel);
+                modal.removeEventListener('keydown', onKey);
+            };
+            const onMerge = () => { cleanup(); resolve(IMPORT_MODES.MERGE); };
+            const onReplace = () => { cleanup(); resolve(IMPORT_MODES.REPLACE); };
+            const onCancel = () => { cleanup(); resolve(null); };
+            const onKey = (e) => { if (e.key === 'Escape') onCancel(); };
+
+            mergeBtn?.addEventListener('click', onMerge);
+            replaceBtn?.addEventListener('click', onReplace);
+            cancelBtn?.addEventListener('click', onCancel);
+            closeBtn?.addEventListener('click', onCancel);
+            modal.addEventListener('keydown', onKey);
+
+            modal.setAttribute('aria-hidden', 'false');
+            modal.classList.add('active');
+            trapModalFocus(modal);
+        });
+    }
+
+    /**
+     * Download the current data before a destructive replace, so "I picked
+     * the wrong file" is recoverable by importing the rollback back.
+     */
+    downloadRollbackBackup() {
+        try {
+            const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            downloadJSON(this.app.exportData(), `gym-tracker-rollback-${stamp}.json`);
+            showToast('Rollback backup downloaded', 'info', 4000);
+        } catch (error) {
+            console.error('Could not write the rollback backup:', error);
+            showToast('Could not write a rollback backup - import cancelled', 'error', 5000);
+            throw error;
+        }
+    }
+
     importData(file) {
         if (!file) return;
 
@@ -564,16 +716,27 @@ class SettingsView {
                     return;
                 }
 
-                const confirmed = await showConfirmModal({
-                    title: 'Import Data',
-                    message: 'Import this data? It will be merged with your existing programs, workouts, and settings.',
-                    confirmText: 'Import',
-                    cancelText: 'Cancel',
-                    isDangerous: false,
-                });
-                if (confirmed) {
-                    this.app.importData(data);
+                const mode = await this.askImportMode(data);
+                if (!mode) return;
+
+                if (mode === IMPORT_MODES.REPLACE) {
+                    const confirmed = await showConfirmModal({
+                        title: 'Replace all data?',
+                        message: describeImport(data)
+                            + '<br><br>This will <strong>REPLACE</strong> your programs, workouts, achievements, '
+                            + 'measurements and custom exercises with what is in this file. '
+                            + 'Anything not in the file is <strong>deleted</strong>.',
+                        warning: 'A rollback backup of your current data downloads first, so you can import it back if this was a mistake.',
+                        confirmText: 'Replace everything',
+                        cancelText: 'Cancel',
+                        isDangerous: true,
+                    });
+                    if (!confirmed) return;
+                    // Rollback file BEFORE the destructive write, never after.
+                    this.downloadRollbackBackup();
                 }
+
+                this.app.importData(data, { mode });
             } catch (error) {
                 showToast('Invalid JSON file', 'error');
                 console.error('Import error:', error);

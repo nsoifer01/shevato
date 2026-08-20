@@ -94,13 +94,15 @@ test('isSetPR: second set at same new max is NOT a PR (in-session dedupe)', () =
     // Set 1 at 100x5 beats history (450 -> 500) -> PR.
     const set1 = { weight: 100, reps: 5 };
     const pr1 = AnalyticsService.isSetPR(100, set1, sessions, []);
-    assert.equal(pr1.kind, 'volume');
+    // 100 also beats the 90 that came before it, so the record broken is the
+    // WEIGHT one (GT-18: the badge must not call a volume delta kilograms).
+    assert.equal(pr1.kind, 'weight');
     // Set 2 at 100x5 ties set 1's session volume -> NOT a PR.
     const pr2 = AnalyticsService.isSetPR(100, { weight: 100, reps: 5 }, sessions, [set1]);
     assert.equal(pr2, null);
     // Set 3 at 105x5 beats both -> PR again.
     const pr3 = AnalyticsService.isSetPR(100, { weight: 105, reps: 5 }, sessions, [set1, { weight: 100, reps: 5 }]);
-    assert.equal(pr3.kind, 'volume');
+    assert.equal(pr3.kind, 'weight');
 });
 
 test('isSetPR: equal-weight-more-reps still PRs across in-session sets', () => {
@@ -224,4 +226,61 @@ test('getExerciseProgression: limit caps to the most recent N points', () => {
     ];
     const out = AnalyticsService.getExerciseProgression(100, sessions, { limit: 2 });
     assert.deepEqual(out.map(p => p.date), ['2026-04-08', '2026-04-15']);
+});
+
+// ---------------------------------------------------------------------------
+// GT-18: a PR badge must name the record it actually broke.
+//
+// The trigger is unchanged (set volume beat the prior best, the documented
+// rule the audit verified). What changed is what the result SAYS: the row used
+// to render the volume delta with a weight unit, so adding 5 kg to the bar
+// showed "PR +50 kg" and read as "you added 50 kg".
+// ---------------------------------------------------------------------------
+
+test('isSetPR: more weight than ever reports a WEIGHT record and its weight delta', () => {
+    const sessions = [makeSession({ date: '2026-04-01', sets: [{ weight: 60, reps: 10 }] })];
+    const pr = AnalyticsService.isSetPR(100, { weight: 65, reps: 10 }, sessions);
+    assert.equal(pr.kind, 'weight');
+    assert.equal(pr.weightDelta, 5, 'the number a lifter would recognise');
+    assert.equal(pr.previousWeight, 60);
+    assert.equal(pr.delta, 50, 'the volume delta is still carried, just not shown as kg');
+});
+
+test('isSetPR: more reps at the SAME weight reports a volume record', () => {
+    const sessions = [makeSession({ date: '2026-04-01', sets: [{ weight: 60, reps: 10 }] })];
+    const pr = AnalyticsService.isSetPR(100, { weight: 60, reps: 12 }, sessions);
+    assert.equal(pr.kind, 'volume', 'nothing new went on the bar');
+    assert.equal(pr.delta, 120);
+    assert.equal(pr.weightDelta, 0);
+});
+
+test('isSetPR: a timed set reports a duration record', () => {
+    const sessions = [makeSession({ date: '2026-04-01', sets: [{ weight: 0, reps: 0, duration: 45 }] })];
+    const pr = AnalyticsService.isSetPR(100, { weight: 0, reps: 0, duration: 60 }, sessions);
+    assert.equal(pr.kind, 'duration');
+    assert.equal(pr.delta, 15);
+});
+
+test('isSetPR: prior sets are found through sameId, not strict equality', () => {
+    // An imported session can carry string ids. With `===` its sets were
+    // invisible to the baseline and a beaten record was celebrated again.
+    const sessions = [{
+        date: '2026-04-01',
+        exercises: [{ exerciseId: '100', sets: [{ weight: 100, reps: 10 }] }],
+    }];
+    assert.equal(
+        AnalyticsService.isSetPR(100, { weight: 80, reps: 10 }, sessions),
+        null,
+        'the string-id history counts as history',
+    );
+});
+
+test('isSetPR: a timed prior set never seeds the weight baseline', () => {
+    const sessions = [makeSession({ date: '2026-04-01', sets: [
+        { weight: 0, reps: 0, duration: 300 },
+        { weight: 40, reps: 10 },
+    ] })];
+    const pr = AnalyticsService.isSetPR(100, { weight: 50, reps: 10 }, sessions);
+    assert.equal(pr.kind, 'weight');
+    assert.equal(pr.previousWeight, 40, 'the 300-second hold is not a 300 kg lift');
 });

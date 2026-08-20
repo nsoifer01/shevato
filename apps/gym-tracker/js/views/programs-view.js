@@ -11,6 +11,10 @@ import { DarkSelect } from '../utils/dark-select.js';
 import { orderPrograms } from '../utils/program-order.js';
 import { weekdayOrder } from '../utils/program-schedule.js';
 import { sameId } from '../utils/id-utils.js';
+import { matchesQuery, searchExercises } from '../utils/exercise-search.js';
+import { EXERCISE_CATEGORIES, EXERCISE_EQUIPMENT, populateSelect } from '../utils/exercise-taxonomy.js';
+import { formatDuration } from '../utils/units.js';
+import { DEFAULT_TARGET_SECONDS } from '../models/Program.js';
 
 class ProgramsView {
     constructor() {
@@ -42,7 +46,10 @@ class ProgramsView {
             const modal = btn.closest('.modal');
             if (!modal) return;
             if (modal.id === 'program-modal') {
-                btn.addEventListener('click', () => this.closeProgramModal());
+                // Guarded close: every X / Cancel path (and Escape, which
+                // modal-focus routes into `.modal-close`) asks before
+                // discarding unsaved edits.
+                btn.addEventListener('click', () => this.requestCloseProgramModal());
             } else if (modal.id === 'exercise-picker-modal') {
                 btn.addEventListener('click', () => this.closeExercisePicker());
             } else {
@@ -393,6 +400,11 @@ class ProgramsView {
         modal.classList.add('active');
         trapModalFocus(modal);
 
+        // GT-08: remember exactly what the editor opened with, so closing it
+        // can tell "nothing changed, just close" from "you are about to throw
+        // away eight exercises of work".
+        this.editorBaseline = this.editorSnapshot();
+
         // #15: the scroll container retains its previous scrollTop when the
         // modal is reopened, so a mid-workout "Edit program" could surface the
         // bottom of the form. Reset to the top once the modal is visible. Scroll
@@ -447,6 +459,13 @@ class ProgramsView {
      * resumes the paused workout directly (not back to the programs list).
      */
     cancelWorkoutEdit() {
+        // Guarded like every other editor exit (GT-08); the workout-mode
+        // teardown runs only once the user has confirmed.
+        this.requestCloseProgramModal(() => this._cancelWorkoutEditNow());
+    }
+
+    /** The actual workout-mode teardown, after the discard guard. */
+    _cancelWorkoutEditNow() {
         const modal = document.getElementById('program-modal');
         if (modal) {
             modal.classList.remove('active');
@@ -456,6 +475,7 @@ class ProgramsView {
         // outlives the editor, and the staged clone is released.
         this.closeExercisePicker();
         this.currentProgram = null;
+        this.editorBaseline = null;
         this.enteredFromWorkout = false;
         const actions = document.getElementById('program-modal-workout-actions');
         if (actions) actions.hidden = true;
@@ -637,10 +657,40 @@ class ProgramsView {
                 </button>
             `;
 
+            // GT-12: a duration exercise is planned in SECONDS. It used to
+            // borrow the rep machinery wholesale, so a Plank showed
+            // "Set 1: 10 reps" with a Single/Range toggle and the workout
+            // header then advertised "10 reps" as the target - a number that
+            // means nothing for a hold. Timed rows get an M:SS stepper and no
+            // rep chrome; their (meaningless) stored repsMin/repsMax are left
+            // untouched rather than reinterpreted.
+            const isTimed = details?.exerciseType === 'duration';
+
             // Per-set rows: one row per entry in exercise.sets[].
             const setRowsHTML = exercise.sets.map((setRow, si) => {
                 const isSingle = setRow.repsMin === setRow.repsMax;
                 const canRemove = exercise.sets.length > 1;
+                if (isTimed) {
+                    const seconds = Number.isFinite(Number(setRow.targetSeconds))
+                        && Number(setRow.targetSeconds) > 0
+                        ? Number(setRow.targetSeconds)
+                        : DEFAULT_TARGET_SECONDS;
+                    return `
+                <div class="pex-set-row pex-set-row--timed" data-set-index="${si}">
+                    <span class="pex-set-label">Set ${si + 1}</span>
+                    ${stepperHTML(`targetSeconds-${si}`, index, seconds, 5, 3600,
+                        `Set ${si + 1} target hold`, 5, formatDuration(seconds), 'Hold')}
+                    <button type="button" class="pex-icon-btn pex-icon-btn-danger pex-set-remove"
+                        data-action="remove-set-row"
+                        data-exercise-index="${index}"
+                        data-set-index="${si}"
+                        title="Remove set ${si + 1}"
+                        aria-label="Remove set ${si + 1}"
+                        ${canRemove ? '' : 'disabled'}>
+                        <i class="fas fa-trash-can" aria-hidden="true"></i>
+                    </button>
+                </div>`;
+                }
                 // Item 5: a two-option segmented control showing the CURRENT
                 // mode as selected. Both options carry the existing
                 // `toggle-rep-range` action; `data-mode` makes re-picking the
@@ -931,6 +981,34 @@ class ProgramsView {
         if (!this.currentProgram) return;
         const ex = this.currentProgram.exercises[index];
         if (!ex) return;
+
+        // GT-12: `targetSeconds-<setIndex>` steps one timed set row's planned
+        // hold. Same in-place stepper contract as rest: mutate one number and
+        // sync that one pill rather than rebuilding the list under the finger
+        // that is pressing it.
+        const timedMatch = /^targetSeconds-(\d+)$/.exec(field || '');
+        if (timedMatch) {
+            const si = Number(timedMatch[1]);
+            const rows = ex.sets || [];
+            if (!rows[si]) return;
+            const current = Number.isFinite(Number(rows[si].targetSeconds))
+                && Number(rows[si].targetSeconds) > 0
+                ? Number(rows[si].targetSeconds)
+                : DEFAULT_TARGET_SECONDS;
+            const next = Math.max(5, Math.min(3600, current + delta));
+            const sets = rows.map((row, i) => (
+                i === si ? { ...row, targetSeconds: next } : { ...row }
+            ));
+            this.currentProgram.updateExercise(index, { sets });
+            syncStepperUI(
+                document.querySelector(
+                    `#program-exercises-list .program-exercise-row[data-exercise-index="${index}"] .pex-stepper[data-field="${field}"]`
+                ),
+                next, 5, 3600, formatDuration(next),
+            );
+            return;
+        }
+
         const key = field === 'rest' ? 'restSeconds' : field === 'restAfter' ? 'restAfterSeconds' : null;
         if (!key) return;
         // #16 again, this time for the steppers: a +/- click changes one number,
@@ -955,8 +1033,12 @@ class ProgramsView {
         const ex = this.currentProgram.exercises[exerciseIndex];
         if (!ex || !Array.isArray(ex.sets)) return;
         // Clone last set as default for the new row.
-        const last = ex.sets[ex.sets.length - 1] || { repsMin: 10, repsMax: 10 };
-        ex.sets.push({ repsMin: last.repsMin, repsMax: last.repsMax });
+        const last = ex.sets[ex.sets.length - 1] || { repsMin: 10, repsMax: 10, targetSeconds: null };
+        ex.sets.push({
+            repsMin: last.repsMin,
+            repsMax: last.repsMax,
+            targetSeconds: last.targetSeconds ?? null,
+        });
         this.currentProgram.updatedAt = new Date().toISOString();
         this.renderProgramExercises();
     }
@@ -1246,6 +1328,57 @@ class ProgramsView {
      * another view, take them back there. Used by every close path —
      * Cancel button, X button, and after a successful save.
      */
+    /**
+     * GT-08: a snapshot of everything the editor can change.
+     *
+     * The staged clone already covers exercises, sets, rest, schedule and
+     * rest mode; the name and description live in the inputs until save, so
+     * they are read straight from the DOM. Comparing two snapshots is how
+     * "did the user actually change anything?" is answered without tracking
+     * a dirty flag through a dozen mutation sites.
+     */
+    editorSnapshot() {
+        if (!this.currentProgram) return null;
+        return JSON.stringify({
+            name: document.getElementById('program-name')?.value ?? '',
+            description: document.getElementById('program-description')?.value ?? '',
+            program: this.currentProgram.toJSON(),
+        });
+    }
+
+    /** True when the editor holds edits that saving would keep. */
+    isEditorDirty() {
+        if (!this.currentProgram || !this.editorBaseline) return false;
+        return this.editorSnapshot() !== this.editorBaseline;
+    }
+
+    /**
+     * GT-08: the guarded way out of the editor.
+     *
+     * Building an 8-exercise program with per-set rep ranges is the longest,
+     * most tedious flow in the app, and Escape / Cancel / a stray tap threw
+     * all of it away instantly with no confirmation - in an app that
+     * otherwise confirms every destructive action. Nothing changed still
+     * closes immediately; unsaved work asks first.
+     *
+     * `onClose` lets the workout-mode cancel path run its own teardown.
+     */
+    async requestCloseProgramModal(onClose = null) {
+        if (this.isEditorDirty()) {
+            const confirmed = await showConfirmModal({
+                title: 'Discard unsaved changes?',
+                message: 'This program has edits you have not saved.<br><br>Closing now will <strong>discard</strong> them.',
+                confirmText: 'Discard changes',
+                cancelText: 'Keep editing',
+                isDangerous: true,
+            });
+            if (!confirmed) return false;
+        }
+        if (onClose) onClose();
+        else this.closeProgramModal();
+        return true;
+    }
+
     closeProgramModal() {
         const modal = document.getElementById('program-modal');
         modal.classList.remove('active');
@@ -1256,6 +1389,7 @@ class ProgramsView {
         // is released so a stray commit can't write into a discarded program.
         this.closeExercisePicker();
         this.currentProgram = null;
+        this.editorBaseline = null;
         // Item 4: closing via Cancel/X (not the Return button) abandons the
         // workout-edit context. The paused workout stays resumable from the
         // banner; we just stop offering the in-editor return button.
@@ -1282,9 +1416,23 @@ class ProgramsView {
      * `active` class also holds the body scroll lock, so clear that as well.
      * Navigation always proceeds: this hook never defers.
      */
-    beforeLeave() {
+    beforeLeave(targetView) {
         const modal = document.getElementById('program-modal');
         if (modal && modal.classList.contains('active')) {
+            // GT-08: leaving the app's Programs view is just another way to
+            // close the editor, so it asks the same question. Unsaved work
+            // defers the navigation until the user answers; a clean editor
+            // closes and lets the navigation through unchanged.
+            if (this.isEditorDirty()) {
+                // Cleared first, for the same reason the clean path clears it:
+                // closeProgramModal() would otherwise route the user back to
+                // returnToView instead of where they just asked to go.
+                this.returnToView = null;
+                this.requestCloseProgramModal().then((closed) => {
+                    if (closed && targetView) this.app.showView(targetView);
+                });
+                return false;
+            }
             // Cleared first: closeProgramModal() would otherwise call
             // showView() from inside the showView() that invoked us.
             this.returnToView = null;
@@ -1301,18 +1449,32 @@ class ProgramsView {
     duplicateProgram(programId) {
         const source = this.app.getProgramById(programId);
         if (!source) return;
+        const hadSchedule = (source.scheduleDays || []).length > 0;
         const copy = new Program({
             name: `${source.name} (Copy)`,
             description: source.description,
-            exercises: source.exercises.map(ex => ({ ...ex })),
-            scheduleDays: [...(source.scheduleDays || [])],
+            exercises: source.exercises.map(ex => ({
+                ...ex,
+                sets: (ex.sets || []).map(row => ({ ...row })),
+            })),
+            // GT-38: a duplicate copies STRUCTURE, not the calendar. Carrying
+            // the weekdays over made both programs claim the same days, both
+            // mark the same calendar cells, and both present themselves as
+            // "today's scheduled workout" - a conflict the user never asked
+            // for. The copy starts unscheduled; the editor is one tap away.
+            scheduleDays: [],
             restMode: source.restMode,
             uniformRestSeconds: source.uniformRestSeconds,
         });
         this.app.programs.push(copy);
         this.app.savePrograms();
         this.render();
-        showToast(`"${copy.name}" created`, 'success');
+        showToast(
+            hadSchedule
+                ? `"${copy.name}" created - set its days when you're ready`
+                : `"${copy.name}" created`,
+            'success',
+        );
     }
 
     async deleteProgram(programId) {
@@ -1359,10 +1521,17 @@ class ProgramsView {
         // search/filter controls, so the full list shown matches the inputs
         // (previously a leftover search term sat above an unfiltered list).
         this.pickerSelection = new Map();
+        // Each picker session starts with the tray collapsed to its chip.
+        this.pickerTrayExpanded = false;
         const searchInput = document.getElementById('exercise-search');
         const categoryFilter = document.getElementById('exercise-category-filter');
         const equipmentFilter = document.getElementById('exercise-equipment-filter');
         if (searchInput) searchInput.value = '';
+        // GT-26: the picker's own filters come from the SAME taxonomy as the
+        // Exercise Database and the create-custom form, so a category can
+        // never exist on one surface and be missing from another.
+        populateSelect(categoryFilter, EXERCISE_CATEGORIES, 'All Categories');
+        populateSelect(equipmentFilter, EXERCISE_EQUIPMENT, 'All Equipment');
         if (categoryFilter) categoryFilter.value = '';
         if (equipmentFilter) equipmentFilter.value = '';
 
@@ -1414,6 +1583,14 @@ class ProgramsView {
             commitBtn.addEventListener('click', () => this.commitExercisePickerSelection());
             commitBtn.dataset.wired = '1';
         }
+        const countToggle = document.getElementById('exercise-picker-tray-count');
+        if (countToggle && !countToggle.dataset.wired) {
+            countToggle.addEventListener('click', () => {
+                this.pickerTrayExpanded = !this.pickerTrayExpanded;
+                this.renderExercisePickerTray();
+            });
+            countToggle.dataset.wired = '1';
+        }
         if (clearBtn && !clearBtn.dataset.wired) {
             clearBtn.addEventListener('click', () => {
                 this.pickerSelection = new Map();
@@ -1450,15 +1627,6 @@ class ProgramsView {
 
         let exercises = [...this.app.exerciseDatabase];
 
-        // Filter by search term
-        if (searchTerm) {
-            const lower = searchTerm.toLowerCase();
-            exercises = exercises.filter(ex =>
-                ex.name.toLowerCase().includes(lower) ||
-                ex.muscleGroup.toLowerCase().includes(lower)
-            );
-        }
-
         // Filter by category
         if (category) {
             exercises = exercises.filter(ex => ex.category === category);
@@ -1468,6 +1636,15 @@ class ProgramsView {
         if (equipment) {
             exercises = exercises.filter(ex => ex.equipment === equipment);
         }
+
+        // GT-24 / GT-25: one search implementation shared with the Exercise
+        // Database, and the SAME global A-Z resting order. The picker used to
+        // walk the raw catalog, which is grouped by category, so the list read
+        // as alphabetical for ~40 items and then silently restarted at "back"
+        // with nothing on screen explaining why.
+        exercises = searchTerm
+            ? searchExercises(exercises, searchTerm)
+            : exercises.sort((a, b) => String(a.name).localeCompare(String(b.name)));
 
         // Update dropdown states
         this.updatePickerDropdownStates(searchTerm, category, equipment);
@@ -1488,7 +1665,8 @@ class ProgramsView {
                     <span class="exercise-picker-check" aria-hidden="true">
                         <i class="fas ${picked ? 'fa-check-circle' : 'fa-circle'}"></i>
                     </span>
-                    <h4>${escapeHtml(exercise.name)}</h4>
+                    <h4>${escapeHtml(exercise.name)}${exercise.isCustom
+                        ? ' <span class="badge badge-custom">Custom</span>' : ''}</h4>
                     <div class="exercise-meta">
                         <span class="badge">${escapeHtml(exercise.category)}</span>
                         <span class="badge">${escapeHtml(exercise.equipment)}</span>
@@ -1548,14 +1726,26 @@ class ProgramsView {
     renderExercisePickerTray() {
         const tray = document.getElementById('exercise-picker-tray');
         const list = document.getElementById('exercise-picker-tray-list');
-        const count = document.getElementById('exercise-picker-tray-count');
+        const count = document.getElementById('exercise-picker-tray-count-text');
+        const toggle = document.getElementById('exercise-picker-tray-count');
         if (!tray || !list || !count) return;
 
         const items = Array.from((this.pickerSelection || new Map()).values());
         const n = items.length;
 
         tray.hidden = n === 0;
-        count.textContent = `Added ${n}`;
+        // GT-17: the chip alone when collapsed, so the results list keeps the
+        // room it needs while the user is still choosing.
+        count.textContent = n === 1 ? '1 added' : `${n} added`;
+        const expanded = !!this.pickerTrayExpanded && n > 0;
+        tray.classList.toggle('is-collapsed', !expanded);
+        list.hidden = !expanded;
+        if (toggle) {
+            toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            toggle.setAttribute('aria-label', expanded
+                ? `Hide the ${n} selected ${n === 1 ? 'exercise' : 'exercises'}`
+                : `Show the ${n} selected ${n === 1 ? 'exercise' : 'exercises'}`);
+        }
 
         list.innerHTML = items.map((item) => `
             <li class="exercise-picker-tray-row" data-exercise-id="${item.id}">
@@ -1633,7 +1823,7 @@ class ProgramsView {
 
                 // Count exercises that would match if this category was selected
                 const count = this.app.exerciseDatabase.filter(ex => {
-                    const matchesSearch = !searchTerm || ex.name.toLowerCase().includes(searchTerm) || ex.muscleGroup.toLowerCase().includes(searchTerm);
+                    const matchesSearch = !searchTerm || matchesQuery(ex, searchTerm);
                     const matchesThisCategory = ex.category === option.value;
                     const matchesEquipment = !currentEquipment || ex.equipment === currentEquipment;
 
@@ -1766,13 +1956,16 @@ function syncStepperUI(stepper, value, min, max, valueLabel = null) {
     });
 }
 
-/** "1:30", "45s", "0s" — short display optimized for the stepper pill. */
+/**
+ * "3:00", "1:30", "0:45" - one M:SS format for every rest value.
+ *
+ * It used to special-case round minutes as "3m" and sub-minute values as
+ * "45s", so a single program list stacked "3m / 1:30 / 1m / 1:15" and the
+ * reader had to work out that those were the same kind of number (GT-34).
+ * M:SS matches the stepper the editor already uses.
+ */
 function formatRestLabel(seconds) {
-    if (!Number.isFinite(seconds) || seconds <= 0) return '0s';
-    if (seconds < 60) return `${seconds}s`;
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return s === 0 ? `${m}m` : `${m}:${String(s).padStart(2, '0')}`;
+    return formatDuration(Number.isFinite(seconds) ? seconds : 0);
 }
 
 // Initialize

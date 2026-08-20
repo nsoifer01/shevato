@@ -2,12 +2,20 @@
  * Exercises View Controller
  */
 import { app } from '../app.js';
-import { showToast, parseLocalDate, showConfirmModal, escapeHtml, generateNumericId, formatTimeOfDay } from '../utils/helpers.js';
+import {
+    showToast, parseLocalDate, showConfirmModal, escapeHtml, generateNumericId,
+    formatTimeOfDay, pluralize,
+} from '../utils/helpers.js';
 import { trapModalFocus } from '../utils/modal-focus.js';
 import { DarkSelect } from '../utils/dark-select.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
 import { makePaginatorState, paginatorInfo, paginatorDualHTML } from '../utils/paginator.js';
 import { sameId } from '../utils/id-utils.js';
+import { matchesQuery, normalizeSearchText, searchExercises } from '../utils/exercise-search.js';
+import {
+    CUSTOM_EXERCISE_NAME_MAX, EXERCISE_CATEGORIES, EXERCISE_EQUIPMENT, populateSelect,
+} from '../utils/exercise-taxonomy.js';
+import { isLoggedSession } from '../utils/session-metrics.js';
 
 const EXERCISE_SORT_KEY = 'gymTrackerExerciseSort';
 const EXERCISE_PAGE_SIZE = 15;
@@ -46,6 +54,11 @@ class ExercisesView {
                     e.preventDefault();
                     e.stopPropagation();
                     this.deleteCustomExercise(id);
+                    break;
+                case 'explain-delete-blocked':
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.explainDeleteBlocked(id);
                     break;
                 case 'show-exercise-history':
                     if (fromKeyboard && target.tagName === 'BUTTON') return;
@@ -119,14 +132,43 @@ class ExercisesView {
             });
         }
 
-        // Custom exercise form
+        // Custom exercise form. `novalidate`: the three required selects are
+        // hidden behind dark-select, so the browser could never show or focus
+        // its own validation UI - it just refused to submit, silently (GT-15).
+        // Validation is ours now, and it is visible.
         const customForm = document.getElementById('custom-exercise-form');
         if (customForm) {
+            customForm.noValidate = true;
             customForm.addEventListener('submit', (e) => {
                 e.preventDefault();
                 this.createCustomExercise();
             });
+            // Clear a field's error as soon as the user addresses it.
+            ['custom-exercise-name', 'custom-exercise-category',
+                'custom-exercise-muscle', 'custom-exercise-equipment'].forEach((id) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                const clear = () => { if (el.value) this.clearFieldError(id); };
+                el.addEventListener('input', clear);
+                el.addEventListener('change', clear);
+            });
         }
+
+        // GT-26: category + equipment options come from ONE definition, so
+        // the create form can no longer offer 10 categories while the browse
+        // filter offers 17 (custom glute / ab / cardio exercises were
+        // uncreatable under their own category).
+        populateSelect(categoryFilter, EXERCISE_CATEGORIES, 'All Categories');
+        populateSelect(equipmentFilter, EXERCISE_EQUIPMENT, 'All Equipment');
+        populateSelect(document.getElementById('custom-exercise-category'),
+            EXERCISE_CATEGORIES, 'Select category...');
+        populateSelect(document.getElementById('custom-exercise-equipment'),
+            EXERCISE_EQUIPMENT, 'Select equipment...');
+
+        // GT-39: a hard cap on the interactive path. Legacy/imported longer
+        // names keep rendering; only new input is bounded.
+        const nameInput = document.getElementById('custom-exercise-name');
+        if (nameInput) nameInput.maxLength = CUSTOM_EXERCISE_NAME_MAX;
 
         // Custom-exercise modal — wrap the three native selects with DarkSelect
         this.customExerciseDropdowns = {};
@@ -157,15 +199,15 @@ class ExercisesView {
     }
 
     filterExercises() {
-        const searchTerm = document.getElementById('exercise-db-search')?.value.toLowerCase() || '';
+        const searchTerm = document.getElementById('exercise-db-search')?.value || '';
         const category = document.getElementById('exercise-db-category')?.value || '';
         const equipment = document.getElementById('exercise-db-equipment')?.value || '';
         const historyFilter = document.getElementById('exercise-db-history-filter')?.value || 'all';
         const sortValue = document.getElementById('exercise-db-sort')?.value || 'name-asc';
 
         this.filteredExercises = this.app.exerciseDatabase.filter(ex => {
-            const matchesSearch = ex.name.toLowerCase().includes(searchTerm) ||
-                ex.muscleGroup.toLowerCase().includes(searchTerm);
+            // GT-24: relevance matching, shared with both pickers.
+            const matchesSearch = !searchTerm || matchesQuery(ex, searchTerm);
             const matchesCategory = !category || ex.category === category;
             const matchesEquipment = !equipment || ex.equipment === equipment;
 
@@ -196,6 +238,10 @@ class ExercisesView {
                 if (tB !== tA) return tB - tA;
                 return a.name.localeCompare(b.name);
             });
+        } else if (searchTerm) {
+            // A query has its own answer to "what should be first"; only fall
+            // back to A-Z when the user has not asked for anything specific.
+            this.filteredExercises = searchExercises(this.filteredExercises, searchTerm);
         } else {
             // name-asc (default)
             this.filteredExercises.sort((a, b) => a.name.localeCompare(b.name));
@@ -250,7 +296,7 @@ class ExercisesView {
 
                 // Count exercises that would match if this category was selected
                 const count = this.app.exerciseDatabase.filter(ex => {
-                    const matchesSearch = !searchTerm || ex.name.toLowerCase().includes(searchTerm) || ex.muscleGroup.toLowerCase().includes(searchTerm);
+                    const matchesSearch = !searchTerm || matchesQuery(ex, searchTerm);
                     const matchesThisCategory = ex.category === option.value;
                     const matchesEquipment = !currentEquipment || ex.equipment === currentEquipment;
                     const hasHistory = this.exerciseHasHistory(ex.id);
@@ -274,7 +320,7 @@ class ExercisesView {
 
                 // Count exercises that would match if this equipment was selected
                 const count = this.app.exerciseDatabase.filter(ex => {
-                    const matchesSearch = !searchTerm || ex.name.toLowerCase().includes(searchTerm) || ex.muscleGroup.toLowerCase().includes(searchTerm);
+                    const matchesSearch = !searchTerm || matchesQuery(ex, searchTerm);
                     const matchesCategory = !currentCategory || ex.category === currentCategory;
                     const matchesThisEquipment = ex.equipment === option.value;
                     const hasHistory = this.exerciseHasHistory(ex.id);
@@ -387,21 +433,142 @@ class ExercisesView {
         }
 
         // Clear any leftover error states from the previous attempt
-        modal.querySelectorAll('.has-error').forEach(el => el.classList.remove('has-error'));
+        ['custom-exercise-name', 'custom-exercise-category',
+            'custom-exercise-muscle', 'custom-exercise-equipment']
+            .forEach(id => this.clearFieldError(id));
 
         modal.classList.add('active');
         trapModalFocus(modal);
     }
 
-    createCustomExercise() {
+    /**
+     * GT-15: visible, programmatic validation for the custom-exercise form.
+     *
+     * The three selects are `required` but sit behind the custom `dark-select`
+     * control, so they are `display:none` to the browser. A hidden required
+     * control cannot be focused, so Chrome refused to submit, logged
+     * "An invalid form control with name='' is not focusable" three times,
+     * and showed the user absolutely nothing - a dead button.
+     *
+     * Validation therefore happens here, in the app's own UI: the offending
+     * field gets an `.has-error` ring, an inline message the screen reader
+     * announces via aria-describedby, and focus moves to the VISIBLE
+     * dark-select trigger rather than the hidden native control.
+     *
+     * Returns true when the form is valid.
+     */
+    validateCustomExerciseForm(fields) {
+        const modal = document.getElementById('custom-exercise-modal');
+        modal?.querySelectorAll('.has-error').forEach(el => el.classList.remove('has-error'));
+        modal?.querySelectorAll('.gt-field-error').forEach(el => { el.textContent = ''; el.hidden = true; });
+
+        const problems = [];
+        if (!fields.name) problems.push(['custom-exercise-name', 'Give the exercise a name.']);
+        else if (fields.name.length > CUSTOM_EXERCISE_NAME_MAX) {
+            problems.push(['custom-exercise-name',
+                `Keep the name to ${CUSTOM_EXERCISE_NAME_MAX} characters or fewer.`]);
+        }
+        if (!fields.category) problems.push(['custom-exercise-category', 'Pick a category.']);
+        if (!fields.muscleGroup) problems.push(['custom-exercise-muscle', 'Pick a primary muscle group.']);
+        if (!fields.equipment) problems.push(['custom-exercise-equipment', 'Pick the equipment used.']);
+
+        if (problems.length === 0) return true;
+
+        problems.forEach(([id, message]) => this.showFieldError(id, message));
+        this.focusFieldControl(problems[0][0]);
+        showToast(problems[0][1], 'error');
+        return false;
+    }
+
+    /** Attach a visible + announced error message to one form control. */
+    showFieldError(controlId, message) {
+        const control = document.getElementById(controlId);
+        const group = control?.closest('.form-group');
+        if (!group) return;
+        group.classList.add('has-error');
+
+        let error = group.querySelector('.gt-field-error');
+        if (!error) {
+            error = document.createElement('p');
+            error.className = 'gt-field-error';
+            error.id = `${controlId}-error`;
+            error.setAttribute('role', 'alert');
+            group.appendChild(error);
+        }
+        error.textContent = message;
+        error.hidden = false;
+
+        // The hidden native control still owns the a11y relationship; its
+        // visible proxy gets the invalid state a user can actually perceive.
+        const visible = this.visibleControlFor(controlId) || control;
+        visible?.setAttribute?.('aria-invalid', 'true');
+        visible?.setAttribute?.('aria-describedby', error.id);
+    }
+
+    /**
+     * The element a user can actually focus for a form control: the
+     * dark-select trigger when one exists, otherwise the control itself.
+     */
+    visibleControlFor(controlId) {
+        const control = document.getElementById(controlId);
+        if (!control) return null;
+        if (control.tagName !== 'SELECT') return control;
+        const group = control.closest('.form-group');
+        return group?.querySelector('.dark-select-trigger, .dark-select__trigger, button, [tabindex]')
+            || control;
+    }
+
+    /** Move attention to the first invalid VISIBLE control. */
+    focusFieldControl(controlId) {
+        const target = this.visibleControlFor(controlId);
+        if (!(target instanceof HTMLElement)) return;
+        target.focus({ preventScroll: true });
+        target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+
+    /** Clear the error state on one control (called as the user fixes it). */
+    clearFieldError(controlId) {
+        const control = document.getElementById(controlId);
+        const group = control?.closest('.form-group');
+        if (!group) return;
+        group.classList.remove('has-error');
+        const error = group.querySelector('.gt-field-error');
+        if (error) { error.textContent = ''; error.hidden = true; }
+        const visible = this.visibleControlFor(controlId) || control;
+        visible?.removeAttribute?.('aria-invalid');
+        visible?.removeAttribute?.('aria-describedby');
+    }
+
+    async createCustomExercise() {
         const name = document.getElementById('custom-exercise-name').value.trim();
         const category = document.getElementById('custom-exercise-category').value;
         const muscleGroup = document.getElementById('custom-exercise-muscle').value;
         const equipment = document.getElementById('custom-exercise-equipment').value;
 
-        if (!name || !category || !muscleGroup || !equipment) {
-            showToast('Please fill in all required fields', 'error');
-            return;
+        if (!this.validateCustomExerciseForm({ name, category, muscleGroup, equipment })) return;
+
+        // GT-16: an exact normalized name collision splits history, PRs and
+        // progression across two identities with no visible symptom, so it is
+        // worth one question. Near-matches are legitimate variants and are
+        // never blocked.
+        const clash = this.app.exerciseDatabase.find(
+            ex => normalizeSearchText(ex.name) === normalizeSearchText(name));
+        if (clash) {
+            const kind = clash.isCustom ? 'custom exercise' : 'exercise in the catalog';
+            const confirmed = await showConfirmModal({
+                title: 'Name already exists',
+                message: `There is already an ${kind} called <strong>"${escapeHtml(clash.name)}"</strong>.`
+                    + `<br><br>Two exercises with the same name are hard to tell apart when picking one, `
+                    + `and logging against the wrong one splits your history, PRs and progression between them.`,
+                warning: 'Give yours a distinct name (e.g. add your gym or the bar type) unless you really want a second entry.',
+                confirmText: 'Create anyway',
+                cancelText: 'Change the name',
+                isDangerous: false,
+            });
+            if (!confirmed) {
+                this.focusFieldControl('custom-exercise-name');
+                return;
+            }
         }
 
         // High-entropy numeric ID — generateNumericId combines timestamp,
@@ -455,6 +622,11 @@ class ExercisesView {
                 : '';
             const cursorClass = hasHistory ? 'has-history' : 'no-history';
             const canDelete = exercise.isCustom && !hasHistory;
+            // GT-28: the safety rule is right, its discoverability was not.
+            // A custom exercise with history simply had no delete button and
+            // no explanation, so "how do I delete this?" had no answer on
+            // screen. Show the control, disabled, saying exactly what to do.
+            const blockedDelete = exercise.isCustom && hasHistory;
 
             return `
                 <div class="exercise-db-card ${cursorClass}" ${cardActionAttrs}>
@@ -465,6 +637,12 @@ class ExercisesView {
                             ${exercise.isCustom ? '<span class="badge badge-custom">Custom</span>' : ''}
                         </h3>
                         ${canDelete ? `<button class="btn-icon delete-exercise-btn" data-action="delete-custom-exercise" data-exercise-id="${exercise.id}" title="Delete custom exercise">
+                            <i class="fas fa-trash"></i>
+                        </button>` : ''}
+                        ${blockedDelete ? `<button class="btn-icon delete-exercise-btn delete-exercise-btn--blocked"
+                            data-action="explain-delete-blocked" data-exercise-id="${exercise.id}"
+                            aria-label="Why can't I delete this exercise?"
+                            title="This exercise has logged history. Remove its logged history before deleting it.">
                             <i class="fas fa-trash"></i>
                         </button>` : ''}
                     </div>
@@ -935,9 +1113,20 @@ class ExercisesView {
         if (!exercise) return;
 
         const sessionCount = this.getExerciseHistoryCount(exerciseId);
+        // Count the sessions this would empty out, so the wording matches what
+        // actually happens (GT-14).
+        const wouldEmpty = (this.app.workoutSessions || []).filter((session) => {
+            if (!isLoggedSession(session)) return false;
+            const remaining = (session.exercises || [])
+                .filter(ex => !sameId(ex.exerciseId, exerciseId));
+            return !isLoggedSession({ exercises: remaining });
+        }).length;
+
         const message = `Remove all logged history for <strong>"${escapeHtml(exercise.name)}"</strong>?<br><br>`
-            + `This will erase ${sessionCount} session${sessionCount === 1 ? '' : 's'} worth of sets for this exercise. `
-            + `The sessions themselves are kept; only the entries for this exercise are removed.<br><br>`
+            + `This will erase ${pluralize(sessionCount, 'session')} worth of sets for this exercise. `
+            + (wouldEmpty > 0
+                ? `${pluralize(wouldEmpty, 'workout')} would be left with nothing logged at all and ${wouldEmpty === 1 ? 'is' : 'are'} removed too; other sessions are kept.<br><br>`
+                : `The sessions themselves are kept; only the entries for this exercise are removed.<br><br>`)
             + `<strong>This cannot be undone.</strong>`;
 
         const confirmed = await showConfirmModal({
@@ -955,9 +1144,27 @@ class ExercisesView {
             session.exercises = session.exercises.filter(ex => !sameId(ex.exerciseId, exerciseId));
         });
 
-        this.app.saveWorkoutSessions();
+        // GT-14: a session stripped of its last completed set is no longer a
+        // workout - it held 0 kg and 0 sets yet still counted toward the
+        // weekly tile, the streak, the calendar marker and the monthly total.
+        // Finishing a workout requires at least one completed set, so this
+        // state is only ever produced right here, and pruning it at the source
+        // is what keeps every counting surface honest without any of them
+        // needing a special case.
+        const before = this.app.workoutSessions.length;
+        this.app.workoutSessions = this.app.workoutSessions.filter(isLoggedSession);
+        const pruned = before - this.app.workoutSessions.length;
 
-        showToast(`History removed for ${exercise.name}`, 'info');
+        this.app.saveWorkoutSessions();
+        this.app.updateAchievements();
+
+        showToast(
+            pruned > 0
+                ? `History removed for ${exercise.name}. ${pluralize(pruned, 'empty workout')} removed too.`
+                : `History removed for ${exercise.name}`,
+            'info',
+            pruned > 0 ? 5000 : 3000,
+        );
 
         // Close the detail modal and refresh the list
         const modal = document.getElementById('exercise-detail-modal');
@@ -965,6 +1172,34 @@ class ExercisesView {
 
         this._detailExerciseId = null;
         this.render();
+    }
+
+    /**
+     * GT-28: answer "why is there no delete button?" in the app rather than
+     * leaving the user to guess. Opens the exercise's own detail modal, which
+     * is where the "Remove logged history" action lives, so the explanation
+     * comes with the path out of it.
+     */
+    async explainDeleteBlocked(exerciseId) {
+        const exercise = this.app.getExerciseById(exerciseId);
+        if (!exercise) return;
+        const sessionCount = this.getExerciseHistoryCount(exerciseId);
+        const proceed = await showConfirmModal({
+            title: 'Delete is locked',
+            message: `<strong>"${escapeHtml(exercise.name)}"</strong> has logged history in `
+                + `${pluralize(sessionCount, 'workout')}, so deleting it would orphan those sets.`
+                + `<br><br>Remove its logged history first, then the delete button appears on its card.`,
+            confirmText: 'Remove its history',
+            cancelText: 'Not now',
+            isDangerous: false,
+        });
+        if (proceed) this.showExerciseHistory(exerciseId);
+    }
+
+    /** Programs that still contain a row for this exercise (GT-27). */
+    programsUsingExercise(exerciseId) {
+        return (this.app.programs || []).filter(
+            p => (p.exercises || []).some(ex => sameId(ex.exerciseId, exerciseId)));
     }
 
     async deleteCustomExercise(exerciseId) {
@@ -976,8 +1211,28 @@ class ExercisesView {
 
         const hasHistory = this.exerciseHasHistory(exerciseId);
         if (hasHistory) {
-            showToast('Cannot delete exercise with workout history', 'error');
+            showToast('Remove this exercise\'s logged history before deleting it', 'error', 4500);
             return;
+        }
+
+        // GT-27: deleting an exercise a live program still references left the
+        // program row behind, rendering from its stored name snapshot with its
+        // muscle sub-label gone, and the user was told none of it. Say which
+        // programs, and let them decide.
+        const usedBy = this.programsUsingExercise(exerciseId);
+        if (usedBy.length > 0) {
+            const names = usedBy.map(p => `<strong>${escapeHtml(p.name)}</strong>`).join(', ');
+            const proceed = await showConfirmModal({
+                title: 'Still used by a program',
+                message: `<strong>"${escapeHtml(exercise.name)}"</strong> is part of ${pluralize(usedBy.length, 'program')}: ${names}.`
+                    + `<br><br>Deleting it leaves ${usedBy.length === 1 ? 'that program' : 'those programs'} with a row that keeps the name `
+                    + `but loses its muscle group and equipment details.`,
+                warning: 'Remove it from the program first if you want the plan to stay complete.',
+                confirmText: 'Delete anyway',
+                cancelText: 'Keep it',
+                isDangerous: true,
+            });
+            if (!proceed) return;
         }
 
         const message = `Are you sure you want to delete <strong>"${escapeHtml(exercise.name)}"</strong>?<br><br>This custom exercise will be permanently removed.<br><br><strong>This action cannot be undone.</strong>`;
