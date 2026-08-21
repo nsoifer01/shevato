@@ -287,6 +287,43 @@ export async function run({ base, cdpPort }) {
       await rec('the reload renders the same set of cards it rendered when built',
         JSON.stringify(back.cards) === JSON.stringify(built.cards),
         `built [${built.cards.join(', ')}] vs restored [${back.cards.join(', ')}]`, s);
+
+      // A manual squad's picks are a roster in position order, not a lineup:
+      // seeding the sandbox "current" from those slots used to put both
+      // goalkeepers in the eleven and greet the user with "This team is not
+      // legal yet", and the pitch offered a "Current team" view of the same
+      // nonsense arrangement. The scenario must seed from the plan, and no
+      // current-team view exists before a real lineup does.
+      await clickText(s, 'My scenario', { settle: 800 });
+      await sleep(1500);
+      const sandbox = await evaluate(s, `(() => {
+        const t = document.body.innerText;
+        return JSON.stringify({
+          seeded: /ready to edit/i.test(t),
+          notLegal: /This team is not legal yet|would field 2 GKP/i.test(t),
+          currentTab: [...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Current team'),
+        });
+      })()`).then(JSON.parse);
+      await rec('the restored squad seeds a LEGAL scenario from the plan',
+        sandbox.seeded && !sandbox.notLegal, JSON.stringify(sandbox), s);
+      await rec('no "Current team" view is offered before a real lineup exists',
+        !sandbox.currentTab, '', s);
+
+      // The comparison strip must compare against the seed, not against an
+      // eleven fabricated from roster slots: untouched, "This gameweek"
+      // reads level, never a phantom gain over a two-goalkeeper baseline.
+      const cmp = await evaluate(s, `(() => {
+        const cell = [...document.querySelectorAll('.fpl-cmp')]
+          .find(c => /This gameweek/i.test(c.textContent));
+        if (!cell) return JSON.stringify({ found: false });
+        return JSON.stringify({
+          found: true,
+          before: (cell.querySelector('.fpl-cmp-before') || {}).textContent || '',
+          after: (cell.querySelector('.fpl-cmp-after') || {}).textContent || '',
+        });
+      })()`).then(JSON.parse);
+      await rec('an untouched restored scenario compares level, not against a fabricated eleven',
+        cmp.found && cmp.before === cmp.after, JSON.stringify(cmp), s);
     } finally { await closePage(cdpPort, s); }
   }
 

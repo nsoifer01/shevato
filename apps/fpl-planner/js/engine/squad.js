@@ -131,6 +131,22 @@ export function openingSquadMoney({ plan, rules }) {
   return { budgetTenths, spendTenths: budgetTenths - remainingTenths, remainingTenths };
 }
 
+// Whether this squad's picks describe a real LINEUP, not just a roster.
+//
+// Picks imported from FPL carry the slots FPL assigned (1-11 start, 12-15
+// bench in auto-sub order) plus the captain flags. A manual squad's picks are
+// synthetic: slots follow the order the fifteen was typed or restored in
+// (position-ordered from a snapshot, goalkeepers first), every multiplier is
+// 1 and nobody is flagged captain. Reading those slots as a lineup fielded
+// two goalkeepers and called the user's own squad illegal. Anything that
+// wants "the team as it stands" must check here first and fall back to the
+// plan's arrangement when the answer is no.
+export function picksCarryLineup(squadState) {
+  return !!squadState
+    && squadState.source !== 'manual'
+    && (squadState.picks || []).length > 0;
+}
+
 export function buildSquadState({ entry, history, transfers, picks, gameState, gw, source }) {
   const rules = gameState.rules;
   const targetGw = gw ?? gameState.nextEvent ?? gameState.currentEvent;

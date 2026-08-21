@@ -52,6 +52,45 @@ const rules = gameState.rules;
 const P = (id) => gameState.players.get(id);
 const scenario0 = () => createScenario({ squadState, gameState });
 
+test('a manual squad seeds the scenario from the plan, because its picks carry no lineup', async () => {
+  // manualSquadState assigns slots in position order with no captain flags:
+  // its picks are a roster, not a lineup. Seeding "current" from those slots
+  // put both goalkeepers in the eleven and greeted a restored pre-season
+  // squad with "This team is not legal yet" before the user touched anything.
+  const { manualSquadState } = await import('../js/ui/preseason.js');
+  // Position-ordered, exactly how the restored snapshot stores plan.squad
+  // (both goalkeepers first). This is the ordering that put 2 GKP in slots
+  // 1-11 when the slots were read as a lineup.
+  const ids = squadState.picks.map(p => p.playerId)
+    .sort((a, b) => P(a).position - P(b).position || a - b);
+  const manual = manualSquadState({ ids, gameState, gw });
+  const mb = await buildPlan({ gameState, squadState: manual, options: { horizon: 3, seed: 7 } });
+  const sc = createScenario({ squadState: manual, gameState, plan: mb.current, origin: 'current' });
+
+  const gkId = goalkeeperPositionId(rules);
+  const gkCount = sc.xi.filter(id => P(id).position === gkId).length;
+  assert.equal(gkCount, 1, `one goalkeeper in the seeded eleven, got ${gkCount}`);
+  assert.deepEqual(sc.xi.slice().sort((a, b) => a - b), mb.current.startingXI.slice().sort((a, b) => a - b),
+    'the seed is the plan\'s eleven');
+  assert.equal(sc.captain, mb.current.captain, 'and the plan\'s captain');
+  assert.equal(sc.origin, 'recommended', 'labelled as seeded from the recommendation');
+
+  // The comparison strip must not measure against a lineup fabricated from
+  // roster slots either: untouched, the scenario compares level against the
+  // seed, not "+3.9 xP" against a two-goalkeeper captainless eleven.
+  const cmp = comparison(sc, { gameState, squadState: manual }, {
+    projections: mb.projections, gw: mb.current.gw, horizon: mb.current.horizon, discount: 0.85,
+  });
+  assert.equal(cmp.gw.before, cmp.gw.after,
+    `an untouched scenario compares level this gameweek, got ${cmp.gw.before} -> ${cmp.gw.after}`);
+  assert.equal(cmp.captainChanged, false, 'and the captain is not reported as changed');
+  // The transfer count is the PLAN's own, never fifteen phantom buys against
+  // a roster misread. (In this fixture the plan legitimately recommends
+  // moves, so the squad-level delta is the plan's real gain, not zero.)
+  assert.equal(cmp.transfers, mb.current.transferCount,
+    'the strip tells the plan\'s transfer story');
+});
+
 // A squad player of a given position who is NOT in the scenario, cheap enough
 // to be affordable, so a test can name a real replacement rather than guess.
 // A replacement that is genuinely legal RIGHT NOW: same position, affordable

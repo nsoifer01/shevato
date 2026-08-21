@@ -29,6 +29,7 @@
 // captaincy that moved because the captain was sold, and a snapshot does not.
 
 import { sellingPrice } from '../engine/rules.js';
+import { picksCarryLineup } from '../engine/squad.js';
 import { transferAccounting, transferStateOf } from '../engine/transfer-state.js';
 import { validatePlan, formationOf, goalkeeperPositionId, benchOutfieldSlots } from '../engine/validate.js';
 import { squadHorizonValue } from '../engine/lineup.js';
@@ -68,7 +69,10 @@ export function withProjectionGet(projections) {
 // of it.
 export function createScenario({ squadState, gameState, plan = null, origin = 'current' }) {
   const picks = (squadState && Array.isArray(squadState.picks) ? squadState.picks : []).slice();
-  if (picks.length && origin === 'current') {
+  // Only picks that really encode a lineup may be copied as one. A manual
+  // squad's picks are a roster (position-ordered slots, no captain flags), so
+  // it falls through to the plan seed below, exactly like a draft.
+  if (picks.length && origin === 'current' && picksCarryLineup(squadState)) {
     const sorted = picks.slice().sort((a, b) => a.slot - b.slot);
     const gkId = goalkeeperPositionId(gameState.rules);
     const xi = sorted.filter(p => p.slot <= 11).map(p => p.playerId);
@@ -415,9 +419,23 @@ export function horizonPoints(squadIds, ctx, { projections, gw, horizon, discoun
 export function comparison(sc, ctx, { projections, gw, horizon, discount }) {
   const { squadState } = ctx;
   const baseIds = baseSquadIds(squadState);
-  const basePicks = (squadState.picks || []).slice().sort((a, b) => a.slot - b.slot);
-  const baseXi = basePicks.filter(p => p.slot <= 11).map(p => p.playerId);
-  const baseCaptain = (basePicks.find(p => p.isCaptain) || {}).playerId ?? null;
+  // The "before" eleven exists only when the picks encode a real lineup. A
+  // manual squad's picks are a roster (position-ordered slots, no captain),
+  // and reading them as a lineup scored a two-goalkeeper, captainless eleven
+  // as the baseline, so an untouched restored squad reported a phantom xP
+  // gain. For those squads the baseline is the seed the scenario opened from
+  // (the plan's arrangement of the same fifteen), which makes an untouched
+  // scenario read level, and an edit read as the edit's own effect.
+  let baseXi = [];
+  let baseCaptain = null;
+  if (picksCarryLineup(squadState)) {
+    const basePicks = squadState.picks.slice().sort((a, b) => a.slot - b.slot);
+    baseXi = basePicks.filter(p => p.slot <= 11).map(p => p.playerId);
+    baseCaptain = (basePicks.find(p => p.isCaptain) || {}).playerId ?? null;
+  } else if (baseIds.length && sc.seed) {
+    baseXi = sc.seed.xi.slice();
+    baseCaptain = sc.seed.captain;
+  }
 
   const money = scenarioMoney(sc, ctx);
   const acct = scenarioAccounting(sc, ctx);
