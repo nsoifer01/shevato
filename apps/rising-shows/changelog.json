@@ -1,6 +1,276 @@
 {
   "updates": [
     {
+      "builtAt": "2026-08-21T06:58:21.491Z",
+      "totals": {
+        "seasons": 66365,
+        "delta": 21
+      },
+      "shapeCounts": {
+        "mid-peak": 4638,
+        "rebound": 10113,
+        "rising": 2908,
+        "slow-burn": 4401,
+        "big-finale": 12169,
+        "u-shaped": 3102,
+        "rollercoaster": 14096,
+        "saved-best-for-last": 1552,
+        "front-loaded": 3484,
+        "declining": 1881,
+        "bad-finale": 4693,
+        "consistent": 2630,
+        "shape-drift": 1653
+      },
+      "shapeDeltas": {
+        "mid-peak": -12,
+        "rebound": 12,
+        "rising": 1,
+        "slow-burn": 2,
+        "big-finale": 1,
+        "u-shaped": -5,
+        "rollercoaster": 10,
+        "saved-best-for-last": 5,
+        "front-loaded": 2,
+        "declining": 2,
+        "bad-finale": 2,
+        "consistent": -3,
+        "shape-drift": 3
+      },
+      "added": [
+        {
+          "seriesId": "tt0446622",
+          "title": "Hard Knocks: Training Camp",
+          "season": 21,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0213341",
+          "title": "Dinosaucers",
+          "season": 1,
+          "seasonYear": 1987
+        },
+        {
+          "seriesId": "tt1601141",
+          "title": "WWE NXT",
+          "season": 7,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt0044301",
+          "title": "The Unexpected",
+          "season": 1,
+          "seasonYear": 1952
+        },
+        {
+          "seriesId": "tt43138820",
+          "title": "Million Dollar Nannies",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt44126845",
+          "title": "The World in the Shadows",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt44126845",
+          "title": "The World in the Shadows",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1780701",
+          "title": "Vertiges",
+          "season": 1,
+          "seasonYear": 1997
+        },
+        {
+          "seriesId": "tt0083485",
+          "title": "Een stor familie",
+          "season": 1,
+          "seasonYear": 1982
+        },
+        {
+          "seriesId": "tt0083485",
+          "title": "Een stor familie",
+          "season": 2,
+          "seasonYear": 1983
+        },
+        {
+          "seriesId": "tt0468607",
+          "title": "Miami Guns",
+          "season": 1,
+          "seasonYear": 2000
+        },
+        {
+          "seriesId": "tt13321232",
+          "title": "Karma's World",
+          "season": 3,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt40893763",
+          "title": "Secret Sex Lives of Tyrants",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt44126845",
+          "title": "The World in the Shadows",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt7112114",
+          "title": "Nosotros los guapos",
+          "season": 3,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt12098786",
+          "title": "Yu-Gi-Oh! Sevens",
+          "season": 2,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt6476388",
+          "title": "Snapped: Notorious",
+          "season": 3,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt6476388",
+          "title": "Snapped: Notorious",
+          "season": 2,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt3406870",
+          "title": "Benefits Street",
+          "season": 2,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt43358063",
+          "title": "Jogada de Risco",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4437732",
+          "title": "El Chapulín Colorado",
+          "season": 1,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt4437732",
+          "title": "El Chapulín Colorado",
+          "season": 5,
+          "seasonYear": 2016
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt6476388",
+          "title": "Snapped: Notorious",
+          "season": 1,
+          "seasonYear": 2017
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt5106590",
+          "title": "IMDb Originals",
+          "season": 9,
+          "from": 8.62,
+          "to": 7.35,
+          "delta": -1.27
+        },
+        {
+          "seriesId": "tt0320037",
+          "title": "Jimmy Kimmel Live!",
+          "season": 8,
+          "from": 7.73,
+          "to": 6.77,
+          "delta": -0.96
+        },
+        {
+          "seriesId": "tt7112114",
+          "title": "Nosotros los guapos",
+          "season": 4,
+          "from": 8.17,
+          "to": 7.49,
+          "delta": -0.68
+        },
+        {
+          "seriesId": "tt3406870",
+          "title": "Benefits Street",
+          "season": 1,
+          "from": 7.15,
+          "to": 6.53,
+          "delta": -0.62
+        },
+        {
+          "seriesId": "tt0397800",
+          "title": "JoJo's Circus",
+          "season": 2,
+          "from": 8.4,
+          "to": 7.83,
+          "delta": -0.57
+        },
+        {
+          "seriesId": "tt11238614",
+          "title": "The Giorgi Lemonjava Show",
+          "season": 1,
+          "from": 9.24,
+          "to": 8.71,
+          "delta": -0.53
+        },
+        {
+          "seriesId": "tt34956643",
+          "title": "Sangmin Dinneaw",
+          "season": 1,
+          "from": 7.83,
+          "to": 7.3,
+          "delta": -0.53
+        },
+        {
+          "seriesId": "tt8911552",
+          "title": "Hyperdrive",
+          "season": 1,
+          "from": 7.41,
+          "to": 7.86,
+          "delta": 0.45
+        },
+        {
+          "seriesId": "tt36508039",
+          "title": "In höchster Not - Bergretter im Einsatz",
+          "season": 2,
+          "from": 9.33,
+          "to": 8.9,
+          "delta": -0.43
+        },
+        {
+          "seriesId": "tt1661326",
+          "title": "Shake It Up",
+          "season": 2,
+          "from": 5.41,
+          "to": 5.83,
+          "delta": 0.42
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20981,
+        "avgRating": 1429,
+        "shapes": 259,
+        "episodeCount": 98,
+        "seriesRating": 321,
+        "poster": 4,
+        "overview": 2
+      }
+    },
+    {
       "builtAt": "2026-08-20T06:57:42.479Z",
       "totals": {
         "seasons": 66344,
@@ -6581,353 +6851,6 @@
         "poster": 1,
         "overview": 1,
         "providers": 1
-      }
-    },
-    {
-      "builtAt": "2026-07-22T08:45:21.720Z",
-      "totals": {
-        "seasons": 65924,
-        "delta": 34
-      },
-      "shapeCounts": {
-        "mid-peak": 4628,
-        "rebound": 10063,
-        "rising": 2917,
-        "slow-burn": 4363,
-        "big-finale": 12002,
-        "u-shaped": 3088,
-        "rollercoaster": 14038,
-        "saved-best-for-last": 1530,
-        "front-loaded": 3454,
-        "declining": 1881,
-        "bad-finale": 4646,
-        "consistent": 2621,
-        "shape-drift": 1636
-      },
-      "shapeDeltas": {
-        "mid-peak": -3,
-        "rebound": -4,
-        "rising": 11,
-        "slow-burn": 15,
-        "big-finale": -4,
-        "rollercoaster": 5,
-        "saved-best-for-last": 7,
-        "front-loaded": 5,
-        "declining": 3,
-        "consistent": 8,
-        "shape-drift": 11
-      },
-      "added": [
-        {
-          "seriesId": "tt36034547",
-          "title": "You and I Are Polar Opposites",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38939446",
-          "title": "Sparks of Tomorrow",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39304754",
-          "title": "Love Unseen Beneath the Clear Night Sky",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41278615",
-          "title": "Oh Boy, Was I Wrong About Her",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38049145",
-          "title": "Goodbye, Lara",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt28919914",
-          "title": "The 100 Girlfriends Who Really, Really, Really, Really, REALLY Love You",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt8086718",
-          "title": "Grand Blue Dreaming",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt31849235",
-          "title": "The Westies",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0118375",
-          "title": "King of the Hill",
-          "season": 15,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41293112",
-          "title": "Sekai Saikyou no Kouei: Meikyuukoku no Shinjin Tansakusha",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt2577388",
-          "title": "Shuga",
-          "season": 1,
-          "seasonYear": 2009
-        },
-        {
-          "seriesId": "tt39028251",
-          "title": "Dream to You",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt42963873",
-          "title": "Tetsunabe no Jan!",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0297536",
-          "title": "Cosmo Warrior Zero",
-          "season": 1,
-          "seasonYear": 2001
-        },
-        {
-          "seriesId": "tt14476236",
-          "title": "Skeleton Knight in Another World",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt33014623",
-          "title": "In the Eye of the Storm",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0327277",
-          "title": "David Copperfield",
-          "season": 1,
-          "seasonYear": 1966
-        },
-        {
-          "seriesId": "tt39551287",
-          "title": "A Livid Lady's Guide to Getting Even: How I Crushed My Homeland with My Mighty Grimoires",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt32862795",
-          "title": "The Insipid Prince's Furtive Grab for the Throne",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41277587",
-          "title": "The Duke's Son Claims He Won't Love Me, But Showers Me with Adoration",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt37443650",
-          "title": "Overdo",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1587934",
-          "title": "American Ninja Warrior",
-          "season": 18,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt12719686",
-          "title": "Super Sema",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt15372356",
-          "title": "Encouragement of Climb: Next Summit",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt31939466",
-          "title": "After",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt42205302",
-          "title": "Twenty One",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt6546832",
-          "title": "YouTube Money",
-          "season": 1,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt0805825",
-          "title": "Dinosapien",
-          "season": 1,
-          "seasonYear": 2007
-        },
-        {
-          "seriesId": "tt11168052",
-          "title": "The Art Mysteries",
-          "season": 2,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt19362818",
-          "title": "Close Friend",
-          "season": 2,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt23030000",
-          "title": "Jet Lag: The Game",
-          "season": 18,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt32751895",
-          "title": "2024-2025 UEFA Champions League",
-          "season": 4,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt38068966",
-          "title": "The Chit Show",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt40906144",
-          "title": "In the Eye of the Storm: Chasers",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43686248",
-          "title": "Roblox Analog Horror",
-          "season": 1,
-          "seasonYear": 2025
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt33312074",
-          "title": "She, Damned Soul",
-          "season": 1,
-          "seasonYear": 2025
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt38689352",
-          "title": "The F Ward",
-          "season": 1,
-          "from": 6.37,
-          "to": 5.1,
-          "delta": -1.27
-        },
-        {
-          "seriesId": "tt43658562",
-          "title": "Asirlik Gece",
-          "season": 1,
-          "from": 4.15,
-          "to": 3.11,
-          "delta": -1.04
-        },
-        {
-          "seriesId": "tt32907375",
-          "title": "Meet You at the Blossom",
-          "season": 1,
-          "from": 8.82,
-          "to": 7.86,
-          "delta": -0.96
-        },
-        {
-          "seriesId": "tt11161138",
-          "title": "Dr. Gokú Super",
-          "season": 3,
-          "from": 6.47,
-          "to": 7.4,
-          "delta": 0.93
-        },
-        {
-          "seriesId": "tt0212662",
-          "title": "Get Real",
-          "season": 1,
-          "from": 4.44,
-          "to": 3.52,
-          "delta": -0.92
-        },
-        {
-          "seriesId": "tt0320037",
-          "title": "Jimmy Kimmel Live!",
-          "season": 13,
-          "from": 7.13,
-          "to": 6.41,
-          "delta": -0.72
-        },
-        {
-          "seriesId": "tt36144166",
-          "title": "Love Overboard",
-          "season": 1,
-          "from": 7.3,
-          "to": 6.66,
-          "delta": -0.64
-        },
-        {
-          "seriesId": "tt39366612",
-          "title": "Morpheus",
-          "season": 1,
-          "from": 7.61,
-          "to": 8.23,
-          "delta": 0.62
-        },
-        {
-          "seriesId": "tt43440117",
-          "title": "Love in Sync",
-          "season": 1,
-          "from": 7.93,
-          "to": 8.53,
-          "delta": 0.6
-        },
-        {
-          "seriesId": "tt43351313",
-          "title": "Muhtemel ask",
-          "season": 1,
-          "from": 8.73,
-          "to": 8.14,
-          "delta": -0.59
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 24247,
-        "avgRating": 1742,
-        "shapes": 315,
-        "episodeCount": 120,
-        "seriesRating": 537,
-        "poster": 5,
-        "overview": 5,
-        "providers": 2
       }
     }
   ]
