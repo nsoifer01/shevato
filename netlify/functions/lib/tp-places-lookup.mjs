@@ -126,7 +126,15 @@ function fromDetails(query, place) {
   // is a DIFFERENT business, so it gets no coordinates for the same reason it
   // gets no rating.
   const at = coords(place);
-  if (typeof place.rating !== 'number') return { query, status: 'no_match', reason: 'unrated', ...at };
+  // Opening hours travel with every CONFIDENT match, rated or not, for the
+  // same reason the coordinates do: they came from the same billed call, and
+  // an unrated venue still opens and closes. A low-confidence hit is a
+  // DIFFERENT business, so it gets no hours for the same reason it gets no
+  // rating. `hours` is null when Google has none - the client treats that as
+  // "unknown", never as "open" - and it is passed through, never cached (no
+  // Google caching exception covers any hours field).
+  const hours = place.hours && typeof place.hours === 'object' ? { hours: place.hours } : {};
+  if (typeof place.rating !== 'number') return { query, status: 'no_match', reason: 'unrated', ...at, ...hours };
   return {
     query,
     status: 'ok',
@@ -136,6 +144,7 @@ function fromDetails(query, place) {
     mapsUri: place.mapsUri || '',
     confidence: score,
     ...at,
+    ...hours,
   };
 }
 

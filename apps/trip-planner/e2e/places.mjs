@@ -16,7 +16,7 @@
 import {
   APP, recorder, freshIds, iso, item, trip, dbOf,
   openApp, tpErrors, switchView, closePage, evaluate, waitForExpr, sleep,
-  clickSel, gotoHard,
+  clickSel, gotoHard, menuAct,
 } from './helpers.mjs';
 import { EXTERNAL_HOSTS } from '../../../tests/browser/cdp.mjs';
 
@@ -333,6 +333,73 @@ export async function run({ base, cdpPort }) {
       await t('tp-places P8: a result can only ever paint the venue it names',
         (await evaluate(s, `[...document.querySelectorAll('#board .tp-maps-link[data-place-key]')].every(el => el.dataset.placeKey.includes('golfvenue'))`)) === true,
         '', s);
+    });
+  }
+
+  /* ------------- P10. opening hours on the Days view ----------------------
+     The hours ride the same mocked response the ratings do, so this block
+     spends nothing extra by construction. Pins: the closed state at the
+     scheduled time (the screenshot's shape, on the itinerary side), an
+     ordinary split-hours line, unknown hours staying SILENT, no hours UI on
+     a travel leg, and the line flipping with the 12/24-hour preference. */
+  freshIds();
+  {
+    const day7 = (o, c) => [0, 1, 2, 3, 4, 5, 6].map(d => ({ open: { day: d, min: o }, close: { day: d, min: c } }));
+    const P10_HOURS = {
+      'P10 Grid Bar Tokyo': { always: false, periods: day7(16 * 60, 23 * 60), special: [] },
+      'P10 Cafe Tokyo': { always: false, periods: [...day7(11 * 60, 14 * 60), ...day7(17 * 60, 23 * 60)], special: [] },
+      // 'P10 Mystery Deck Tokyo' deliberately absent: rated, hours unknown
+    };
+    const hoursMock = (url, request) => {
+      if (!url.includes('tp-places')) return EXTERNAL_HOSTS.test(url) ? 'fail' : null;
+      let body = {};
+      try { body = JSON.parse(request.postData || '{}'); } catch { /* fine */ }
+      const queries = Array.isArray(body.queries) ? body.queries : [];
+      return { status: 200, body: { results: queries.map((q, i) => ({
+        query: q, status: 'ok', name: q, rating: 4.3, userRatingCount: 40 + i,
+        mapsUri: 'https://maps.google.com/?cid=' + i,
+        ...(P10_HOURS[q] ? { hours: P10_HOURS[q] } : {}),
+      })), attribution: { text: 'Google Maps', url: 'https://www.google.com/maps' } } };
+    };
+    const hoursTrip = trip({ name: 'Hours trip', items: [
+      item({ type: 'activity', title: 'Drinks: P10 Grid Bar', location: 'Tokyo', startDate: iso(12), startTime: '23:00' }),
+      item({ type: 'activity', title: 'Lunch: P10 Cafe', location: 'Tokyo', startDate: iso(12), startTime: '12:00' }),
+      item({ type: 'activity', title: 'P10 Mystery Deck', location: 'Tokyo', startDate: iso(12), startTime: '18:00' }),
+      item({ type: 'flight', title: 'Tokyo (HND) to Osaka (ITM)', startDate: iso(12), startTime: '08:00' }),
+    ] });
+    await withPage('tp-places P10', { db: dbOf([hoursTrip]), net: hoursMock }, async (s) => {
+      await switchView(s, 'days');
+      const painted = await waitForExpr(s, `!!document.querySelector('#daysList .dc-hours.is-closed')`, { timeout: 8000 });
+      const rows = () => evaluate(s, `[...document.querySelectorAll('#daysList .dc-event')].map(r => ({
+        title: (r.querySelector('.dc-title') || {}).textContent || '',
+        travel: r.classList.contains('is-travel'),
+        slots: r.querySelectorAll('.dc-hours').length,
+        hours: ((r.querySelector('.dc-hours') || {}).textContent || '').trim(),
+        closed: !!r.querySelector('.dc-hours.is-closed'),
+      }))`);
+      let got = await rows();
+      const row = (n) => got.find(r => r.title.includes(n)) || {};
+      await t('tp-places P10: a 23:00 row at a 23:00-closing bar reads closed, with the verified hours',
+        painted && row('Grid Bar').closed === true && row('Grid Bar').hours === 'Closed at 11:00 PM · Hours: 4:00 PM–11:00 PM',
+        JSON.stringify(row('Grid Bar')), s);
+      await t('tp-places P10: an open row carries a compact split-hours line for its own day',
+        row('Cafe').closed === false && row('Cafe').hours === 'Hours · 11:00 AM–2:00 PM, 5:00 PM–11:00 PM',
+        JSON.stringify(row('Cafe')), s);
+      await t('tp-places P10: unknown hours stay silent - a rated venue with no hours paints nothing',
+        row('Mystery').slots === 1 && row('Mystery').hours === '', JSON.stringify(row('Mystery')), s);
+      await t('tp-places P10: a travel leg gets no hours UI',
+        got.filter(r => r.travel).every(r => r.slots === 0) && got.some(r => r.travel), JSON.stringify(got.filter(r => r.travel)), s);
+      // The 12/24-hour preference is the ONE formatter these lines go through:
+      // flipping it re-renders every chip in 24-hour form.
+      await menuAct(s, 'timefmt');
+      const flipped = await waitForExpr(s,
+        `((document.querySelector('#daysList .dc-hours.is-closed') || {}).textContent || '').includes('16:00–23:00')`,
+        { timeout: 8000 });
+      got = await rows();
+      await t('tp-places P10: the hours line follows the 24-hour preference',
+        flipped && row('Grid Bar').hours === 'Closed at 23:00 · Hours: 16:00–23:00'
+          && row('Cafe').hours === 'Hours · 11:00–14:00, 17:00–23:00',
+        JSON.stringify({ grid: row('Grid Bar'), cafe: row('Cafe') }), s);
     });
   }
 

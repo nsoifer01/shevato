@@ -59,6 +59,10 @@ import { updateUsage } from './lib/blob-cas.mjs';
 import { originAllowed, json, upstreamSignal } from './lib/tp-http.mjs';
 import { resolveQueries } from './lib/tp-places-lookup.mjs';
 import { isGenericQuery } from './lib/tp-places-match.mjs';
+// The hours normalizer is shared with the client (trip-logic.js is dual-exposed
+// exactly for this, the same way tp-assist imports the shared prompt), so the
+// shape the server emits and the shape the client validates can never drift.
+import TripLogic from '../../apps/trip-planner/js/trip-logic.js';
 
 // The Blob store pulls in @netlify/blobs (installed only in the Netlify build,
 // gitignored locally). It is imported lazily below, after the origin/method/
@@ -90,7 +94,18 @@ const SEARCH_FIELD_MASK = 'places.id';
 // this mask, so the request stays billed at Enterprise and the price of a
 // lookup does not move. It is what lets the client show how far a venue is
 // from the hotel without a second, separately-billed geocode.
-const DETAILS_FIELD_MASK = 'displayName,googleMapsUri,rating,userRatingCount,location';
+// regularOpeningHours and currentOpeningHours are BOTH "Place Details
+// Enterprise" fields (checked against developers.google.com/maps/documentation/
+// places/web-service/data-fields on 2026-08-21), the exact tier this request
+// already bills at for `rating`, so requesting them changes neither the SKU nor
+// the price nor the request count: the closed-venue check and the hours line
+// ride the lookup the ratings already pay for. Do NOT add any field from the
+// "Enterprise + Atmosphere" tier (reviews, allowsDogs, ...) - that WOULD
+// promote every lookup to a more expensive SKU. Exported so a test pins the
+// exact mask. No hours field has a caching exception in Google's terms, so
+// hours are normalized and passed through but never stored (see fromDetails
+// and the id-only blob cache in tp-places-lookup.mjs).
+export const DETAILS_FIELD_MASK = 'displayName,googleMapsUri,rating,userRatingCount,location,regularOpeningHours,currentOpeningHours';
 
 export default async function handler(req) {
   // (1) Origin/Referer guard first: only our own site and local dev.
@@ -363,5 +378,9 @@ async function fetchDetails(key, placeId) {
     mapsUri: typeof data.googleMapsUri === 'string' ? data.googleMapsUri : '',
     lat: typeof loc.latitude === 'number' ? loc.latitude : null,
     lon: typeof loc.longitude === 'number' ? loc.longitude : null,
+    // Normalized weekly + dated opening hours, or null when Google has none.
+    // Null MATTERS downstream: it is the "hours unknown" state, and no layer
+    // may ever read it as "open". Passed through, never stored.
+    hours: TripLogic.normalizeGoogleHours(data.regularOpeningHours, data.currentOpeningHours),
   };
 }

@@ -23,7 +23,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 66;
+  const TP_BUILD = 67;
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   // Miles or kilometers, everywhere a distance prints. Same architecture as
@@ -110,6 +110,7 @@
     extractTripActions, validateTripAction, buildAssistPackage, buildAssistSystemPrompt,
     buildPlanRequest, groupProposals, linkifySegments, parseMarkdown,
     normalizePlaceQuery, placeCacheKey, createPlacesQueue, mapsSearchUrl, assistMapsLink, costDisplayParts,
+    hoursVerdict, hoursIntervalsForDate, hoursLineText, HOURS_CLOSING_SOON_MIN,
     normalizeVenueCache, rememberVenue, placesLocationUpdates, pickVenueFeature,
     dayAnchor, dayDistanceChain, sameSpot, shortestRoute, routeStops, distanceChipLabel, distanceChipTitle, routeFooterText,
     proposalOrigin, dayBaseOrigin, suggestionOrigins, assistDistanceChipLabel, assistDistanceChipTitle,
@@ -902,6 +903,22 @@
     return `<a class="tp-maps-link" data-place-key="${esc(key)}" data-place-query="${esc(mapsQuery)}"`
       + ` href="${esc(mapsSearchUrl(mapsQuery))}" target="_blank" rel="noopener">`
       + `<span class="tpm-label">Google Maps</span></a>`;
+  }
+
+  // The empty scaffold an opening-hours line paints into once the SAME Places
+  // response that carries the rating resolves this venue (the hours fields ride
+  // the existing lookup at the existing SKU; see tp-places.mjs). Empty is the
+  // honest default and stays empty when hours are unknown: a venue nobody
+  // could verify must read as UNVERIFIED, never as open. The date is the
+  // itinerary's scheduled date - what the traveller's plan asks about - and
+  // deliberately not the real-world clock, so nothing here can claim "open
+  // now" about a day months away. The optional time is what the closed /
+  // closes-soon verdict is judged against.
+  function hoursSlotHtml(cls, mapsQuery, date, time) {
+    const key = placeCacheKey(mapsQuery);
+    if (!key || !isIsoDate(date)) return '';
+    const t = /^\d{2}:\d{2}$/.test(String(time || '')) ? time : '';
+    return `<span class="${cls} tp-hours" data-place-key="${esc(key)}" data-hours-date="${esc(date)}"${t ? ` data-hours-time="${esc(t)}"` : ''}></span>`;
   }
 
   // A travel leg that names a real destination (a "Return to hotel" carries the
@@ -2317,6 +2334,17 @@
     // from the same leg its distance chip prints, so the two can never
     // disagree. A travel leg already gets its Directions through mapsHtmlFor.
     const dir = (ev.kind === 'checkout' || isTravelLeg(it)) ? '' : dcDirectionsHtml(it);
+    // Opening hours go to ACTIVITY rows alone: restaurants, bars, museums and
+    // sights all ride that type, which is exactly the set of rows where "will
+    // it be open when I get there" is a real question. Flights, transport,
+    // local legs and notes are not places anyone walks into (same rule as the
+    // rating), a stay's check-in/check-out rows describe a booking rather than
+    // a visit (and hotels mostly read "Open 24 hours", which is noise), and a
+    // cancelled row's hours answer a question nobody is asking. The slot is
+    // painted from the SAME session cache the rating pass fills, so rendering
+    // it never costs a request the row was not already making.
+    const hrs = (ev.kind === 'checkout' || cancelled || it.type !== 'activity') ? ''
+      : hoursSlotHtml('dc-hours', itemMapsQuery(it), it.startDate, it.startTime);
     const cost = ev.kind === 'checkout' ? '' : dayCostBadge(trip, it);
     // stay rows carry no real time (the assumed ones are for ordering only), so
     // the when column stays EMPTY for them rather than printing a guess
@@ -2370,7 +2398,7 @@
             <div class="dc-title">${esc(displayTitle(it))}${clip}${loc}${issueBadge}</div>
             ${ref}
           </div>
-          <div class="dc-facts">${cost}${maps}${dir}</div>
+          <div class="dc-facts">${cost}${maps}${dir}${hrs}</div>
           <div class="dc-btns">${grip}${edit}${del}</div>
         </div>
         ${details}
@@ -8739,11 +8767,78 @@
     el.appendChild(seg);
   }
 
+  // Opening hours for the scheduled date, painted from the same session cache
+  // the ratings live in. Three visual states and one deliberate silence:
+  //   (nothing)   - hours unknown. The place resolved without hours, the lookup
+  //                 has not landed, the quota is out, or the app is offline.
+  //                 Unknown NEVER paints as open; the absence of the line IS
+  //                 the unverified state, and nothing else may claim otherwise.
+  //   Hours ...   - verified hours for that calendar day (via the dated
+  //                 special periods when Google supplied them for that date,
+  //                 else the weekly pattern), through fmtTime so the 12/24-hour
+  //                 preference applies.
+  //   Closes at X - open at the scheduled time but within HOURS_CLOSING_SOON_MIN
+  //                 of closing: legal, tight, worth a warning.
+  //   Closed ...  - the scheduled time falls at/after close or outside every
+  //                 interval (a start AT closing time is closed; see
+  //                 hoursVerdict). On an assistant card this also demotes the
+  //                 candidate so it can never read as a normal recommendation.
+  const hhmmMin = t => (+String(t).slice(0, 2)) * 60 + (+String(t).slice(3, 5));
+  const minToHHMM = m => `${String(Math.floor((m % 1440) / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  function paintHoursSlot(el) {
+    if (el.dataset.painted === '1') return;
+    const entry = placesCache.get(el.dataset.placeKey || '');
+    if (!entry) return;
+    const date = el.dataset.hoursDate || '';
+    const day = hoursIntervalsForDate(entry.hours, date);
+    if (!day.known) {
+      // A settled lookup with no hours stays settled (and silent) for the
+      // session; an 'unavailable' entry never lands in the cache, so a later
+      // batch may still fill this slot in.
+      el.dataset.painted = '1';
+      return;
+    }
+    el.dataset.painted = '1';
+    const line = hoursLineText(day, fmtTime);
+    const time = /^\d{2}:\d{2}$/.test(el.dataset.hoursTime || '') ? el.dataset.hoursTime : '';
+    const v = time ? hoursVerdict(entry.hours, date, time) : null;
+    const when = `${fmtDow(date)}, ${fmtDate(date)}`;
+    let text = `Hours · ${line === 'Closed' ? 'Closed that day' : line}`;
+    let title = `Opening hours on Google Maps for ${when}: ${line}.`;
+    if (v && v.status === 'closed') {
+      el.classList.add('is-closed');
+      text = day.intervals.length ? `Closed at ${fmtTime(time)} · Hours: ${line}` : 'Closed that day';
+      title += ` The scheduled time, ${fmtTime(time)}, falls outside them (a start at closing time counts as closed).`;
+    } else if (v && v.status === 'open' && v.closesMin != null && v.closesMin - hhmmMin(time) <= HOURS_CLOSING_SOON_MIN) {
+      el.classList.add('is-closing');
+      text = `Closes at ${fmtTime(minToHHMM(v.closesMin))}`;
+      title += ` The venue closes within an hour of the scheduled time.`;
+    }
+    el.dataset.verdict = v ? v.status : 'none';
+    el.title = title;
+    el.textContent = text;
+    // The demotion: a candidate whose verified hours refuse its own start time
+    // is not a normal recommendation any more. The pick stays PHYSICALLY
+    // possible (provider hours can be stale, and a dead-end slot helps nobody)
+    // but the option reads as rejected, and acceptProposal backs this up with
+    // an explicit are-you-sure that names the hours - so nothing closed can be
+    // added silently, raced paints included.
+    if (el.classList.contains('is-closed')) {
+      const opt = el.closest('.as-opt');
+      if (opt) opt.classList.add('is-closed');
+      else {
+        const card = el.closest('.assist-proposal');
+        if (card && !card.classList.contains('assist-set')) card.classList.add('is-closed-time');
+      }
+    }
+  }
+
   function paintPlaces(root) {
     const scope = root && root.querySelectorAll ? root : document;
     scope.querySelectorAll('.ap-rating[data-place-key]').forEach(paintRatingSlot);
     scope.querySelectorAll('.assist-maps-link[data-place-key]').forEach(paintMapsLink);
     scope.querySelectorAll('.tp-maps-link[data-place-key]').forEach(paintTripMapsLink);
+    scope.querySelectorAll('.tp-hours[data-place-key]').forEach(paintHoursSlot);
     // ratings feed the rated/popular badges, so a batch landing re-judges the
     // pick-one sets it just informed
     scope.querySelectorAll('.assist-set').forEach(paintSetBadges);
@@ -8923,6 +9018,18 @@
       + ` href="${esc(href)}" target="_blank" rel="noopener">🧭 Directions on Google Maps</a>`;
   }
 
+  // The proposal's opening-hours scaffold: place-type proposals only (a leg is
+  // not a venue, same split as the rating), judged against the proposal's OWN
+  // date and start time - the exact claim the card is making. It paints from
+  // the same eager lookup the candidate ratings already trigger, so a reply
+  // costs exactly what it cost before hours existed.
+  function proposalHoursHtml(p) {
+    const f = p.fields;
+    if (!f || !isPlaceType({ type: f.type })) return '';
+    const query = itemMapsQuery({ type: f.type, title: f.title, location: f.location, mapsQuery: p.display.mapsQuery });
+    return hoursSlotHtml('ap-hours', query, p.display.startDate, p.display.startTime);
+  }
+
   // ---------- alternative sets ----------
   // Two or more adds sharing a `group` are one decision, not several: the
   // traveller picks at most one and the rest are discarded. Nothing is
@@ -8949,6 +9056,7 @@
         </label>
         ${proposalDistHtml(p, trip)}
         ${proposalPlaceHtml(p)}
+        ${proposalHoursHtml(p)}
       </div>`;
   }
 
@@ -9020,6 +9128,7 @@
       ${costStr ? `<div class="ap-cost">${esc(costStr)}</div>` : ''}
       ${proposalDistHtml(p, trip)}
       ${proposalPlaceHtml(p)}
+      ${proposalHoursHtml(p)}
       <div class="ap-actions">
         <button type="button" class="${acceptCls} assist-accept" data-act="accept-proposal">${acceptLabel}</button>
         <button type="button" class="btn assist-reject" data-act="reject-proposal">Dismiss</button>
@@ -9134,7 +9243,36 @@
     };
   }
 
-  function acceptProposal(pid, card, restore) {
+  // The deterministic write-path gate: would this proposal put a venue on the
+  // plan at a time its VERIFIED hours refuse? Returns the facts for the
+  // confirm dialog, or null when the answer is open or unknown. Unknown never
+  // blocks (blocking would switch the assistant off whenever the quota is out
+  // or the app is offline) and equally never claims open - it simply has
+  // nothing to say, which is the documented degradation. This runs at accept
+  // time, not render time, so a verdict that landed AFTER the cards painted
+  // still gates the write.
+  function closedHoursFor(p, trip) {
+    if (!p || (p.op !== 'add' && p.op !== 'update')) return null;
+    let probe;
+    if (p.op === 'add') {
+      probe = { type: p.fields.type, title: p.fields.title, location: p.fields.location, mapsQuery: p.fields.mapsQuery };
+    } else {
+      const target = (trip.items || []).find(x => x.id === p.targetId);
+      if (!target) return null;
+      probe = { ...target, ...p.fields };
+    }
+    if (!isPlaceType(probe)) return null;
+    const date = p.display.startDate, time = p.display.startTime;
+    if (!isIsoDate(date) || !/^\d{2}:\d{2}$/.test(String(time || ''))) return null;
+    const entry = placesCache.get(placeCacheKey(itemMapsQuery(probe)));
+    const hours = entry && entry.hours;
+    if (!hours) return null;
+    if (hoursVerdict(hours, date, time).status !== 'closed') return null;
+    const day = hoursIntervalsForDate(hours, date);
+    return { date, time, allDay: !day.always && !day.intervals.length, line: hoursLineText(day, fmtTime) };
+  }
+
+  function acceptProposal(pid, card, restore, hoursConfirmed) {
     const action = assistActions.get(pid);
     if (!action) return;
     const putCardBack = restore || assistCardSnapshot(card);
@@ -9142,6 +9280,25 @@
     const res = validateTripAction(action, trip); // re-validate against CURRENT state
     if (!res.ok) { assistActions.delete(pid); markProposalStale(card); return; }
     const p = res.proposal;
+    // A venue whose verified hours refuse the proposed time is never applied
+    // silently: the traveller confirms with the hours in front of them (the
+    // one legitimate reason being that they know something the listing does
+    // not), or cancels and the card stands untouched. Nothing is written
+    // before this returns.
+    if (!hoursConfirmed) {
+      const closed = closedHoursFor(p, trip);
+      if (closed) {
+        const what = closed.allDay
+          ? `closed all day on ${fmtDate(closed.date)}`
+          : `closed at ${fmtTime(closed.time)} on ${fmtDate(closed.date)} (hours that day: ${closed.line})`;
+        confirmDialog(
+          'Closed at that time',
+          `Google Maps lists "${p.display.title || 'this venue'}" as ${what}. Add it to the trip anyway?`,
+          'Add anyway',
+          () => acceptProposal(pid, card, putCardBack, true));
+        return;
+      }
+    }
     let addedItem = null;
     if (p.op === 'add') {
       const added = proposalToItem(p, trip);

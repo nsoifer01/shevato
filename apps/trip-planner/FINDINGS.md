@@ -91,7 +91,9 @@ why, the traps, and the invariants.
   query key and aborts in flight, and there is nothing to dedupe.
 - **Google Places legal lines** (re-verified against the live terms
   2026-08-17): place IDs cacheable indefinitely, lat/lon cacheable 30d
-  (`trip-planner:venuegeo:v1`, cap 300), names/ratings NEVER stored. The
+  (`trip-planner:venuegeo:v1`, cap 300), names/ratings/opening hours NEVER
+  stored (no hours field has a caching exception; they follow the exact
+  session-only rule ratings do - see "Opening hours" below). The
   server's rating layer was found still persisting `pd:` details blobs (unread,
   unbounded); the CODE was removed 2026-08-13 but 201 stale `pd:` blobs were
   still sitting in the production store on 2026-08-17 and had to be purged
@@ -682,6 +684,92 @@ Traps this round minted:
 - The unit tests and the browser disagreed on duplicate counts for a while, and
   the unit tests were right. When they diverge, print the actual POST bodies
   before changing the implementation.
+
+## Opening hours: the closed-venue gate (2026-08-21)
+
+The reported failure: the assistant scheduled `Drinks: Above The Grid` at
+23:00 on a day the bar CLOSES at 23:00, and the app presented it as an
+ordinary recommendation. Root cause is a combination: the model was never
+given hours information (and could not be trusted with it if it were), and
+the app accepted a timed venue action with no deterministic check - the
+Places pipeline was already resolving every candidate for ratings, so the
+venue identity existed; hours were simply never requested. The fix requests
+them on the SAME lookup and validates deterministically. The invariant:
+
+> A venue with verified hours is never presented as a valid timed
+> recommendation at a time outside those hours, and absence of hours data is
+> never read as proof of being open.
+
+- **Where hours truth comes from.** `regularOpeningHours` (weekly pattern) +
+  `currentOpeningHours` (dated periods for the next ~7 days, holiday-aware)
+  on the EXISTING Place Details call. Both are "Place Details Enterprise"
+  fields (verified against the data-fields doc 2026-08-21) - the tier
+  `rating` already bills - so the field-mask addition changes neither the SKU
+  nor the price nor the request count. Zero new requests by construction:
+  every surface paints from the session cache entry the ratings lookup
+  already creates, and `tests/tp-places-hours.test.mjs` pins the mask, the
+  single billed call and the id-only blob cache. Do NOT add any
+  "Enterprise + Atmosphere" field (reviews etc.); that WOULD raise the SKU.
+- **One normalized shape, one validator.** The server normalizes Google's
+  shape through `TripLogic.normalizeGoogleHours` (trip-logic is dual-exposed;
+  tp-assist already imports it the same way) and the client re-validates the
+  wire payload with `sanitizeHours`, so the two cannot drift and malformed
+  network data collapses to null = unknown. Times are minutes past midnight
+  in the VENUE'S OWN local time, which is also what every itinerary time is
+  (floating local times, venue in that day's city), so no timezone math
+  exists anywhere in the feature.
+- **The boundary rule** (`hoursVerdict`): open <= t < close. A start AT the
+  closing minute is CLOSED (the reported case: 23:00 at a 23:00 close);
+  22:59 is open. Overnight periods (18:00-02:00) cover past midnight into
+  the next calendar day - the dd/dl walk in `weeklyCovering` handles
+  overnight, week-wrap (Sat->Sun) and multi-day periods with no special
+  cases. Google's no-close convention = open 24 hours. Dated periods beat
+  the weekly pattern for the dates they name; a date they name with no
+  covering period is closed BY them; a date they never mention falls back to
+  weekly (absence from a 7-day window is not evidence).
+- **Unknown is a first-class verdict and it means SILENCE.** No key, spent
+  quota, offline, a failed request, an unresolved place, or a place Google
+  has no hours for: all paint nothing and block nothing. Blocking on unknown
+  would switch the assistant off whenever the ratings budget runs out, and
+  painting "open" would be a lie; the absence of the hours line IS the
+  unverified state. Decided and deliberate: only VERIFIED-closed demotes.
+- **Two enforcement points, both deterministic.** (1) Paint: `paintHoursSlot`
+  marks a closed candidate's `.ap-hours` and demotes its card/option
+  (`is-closed` / `is-closed-time`), so it never reads as a normal
+  recommendation - but the radio stays live, because provider hours can be
+  stale and a dead-end slot helps nobody. (2) Write: `acceptProposal` runs
+  `closedHoursFor` at accept time (so a verdict landing after the cards
+  painted still gates) and routes through the existing `confirmDialog` with
+  "Add anyway" naming the verified hours. Nothing closed is ever written
+  silently; updates are gated too, and existing traveller items are never
+  auto-moved. The PROMPT also tells the model to respect hours
+  (`ASSIST_HOURS`), but that is defence-in-depth only - model knowledge of
+  hours is not evidence.
+- **Why no automatic replacement of a closed candidate.** Tier 1
+  (copy/paste) has no model round trip to make, and for tiers 2/3 a
+  constrained retry would double latency and spend for a case the demotion
+  already communicates; the traveller can ask the open panel for a
+  replacement in one message. Revisit only if closed candidates turn out to
+  be common in practice.
+- **Display.** Days view: activity rows only (travel legs, notes, stays,
+  cancelled rows get nothing - a leg's hours are a category error and a
+  hotel's "Open 24 hours" is noise), always against the row's SCHEDULED
+  date, never the real-world clock, and never a green "open" badge. Formats
+  through `fmtTime` via injected-formatter `hoursLineText`, so the 12/24
+  preference applies and no second time formatter exists. `Closes at X`
+  warns when the start sits within `HOURS_CLOSING_SOON_MIN` (60) of closing.
+  Timeline deliberately carries no hours line (Days is where a day is read);
+  the chips sit beside the visible `Google Maps` wordmark element, which is
+  what visually groups them with the rest of the Google-sourced content.
+- **What this still cannot guarantee.** Holiday/special closures beyond
+  Google's ~7-day dated window; a full-day special closure INSIDE that
+  window (a closed date simply has no dated period, which is
+  indistinguishable from "not covered", so the weekly pattern is trusted
+  instead - conservative in the direction of never wrongly demoting);
+  provider hours that are stale or wrong; venues the confidence gate refuses
+  to match (unknown, silent); and anything proposed while hours are
+  unverifiable. The traveller-facing mitigation is the same one ratings use:
+  the card's own Google Maps link for self-verification.
 
 ## Assistant: modes, and where a suggestion is measured from
 

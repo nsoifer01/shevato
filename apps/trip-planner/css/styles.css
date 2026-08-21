@@ -2640,6 +2640,38 @@
     color: var(--text); white-space: nowrap;
     padding-left: 7px; border-left: 1px solid var(--border);
   }
+  /* ---------- opening hours (assistant cards + Days rows) ----------
+     Paints only when the Places session cache holds VERIFIED hours for the
+     row's own scheduled date; an empty slot is the "hours unknown" state and
+     collapses to nothing (never a green "open", never a guess). Three tones:
+     plain dim for an ordinary hours line, amber when the venue closes within
+     the hour after the scheduled time, red when the scheduled time falls
+     outside the verified hours entirely. */
+  .tp-hours {
+    align-self: flex-start; display: inline-flex; align-items: center; max-width: 100%;
+    font-family: var(--tp-font); font-size: 11.5px; font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+  .tp-hours:empty { display: none; }
+  .as-opt .ap-hours { margin-left: 28px; }
+  .dc-hours { font-weight: 500; }
+  /* pinned against main.css's sitewide content colors, like .ap-dist above */
+  .trip-planner-app .tp-hours { color: var(--text-dim) !important; }
+  .trip-planner-app .tp-hours.is-closing { color: var(--amber) !important; }
+  .trip-planner-app .tp-hours.is-closed { color: var(--red) !important; }
+  /* A candidate whose verified hours refuse its own start time is demoted: it
+     must never read as a normal recommendation. The text dims, the option
+     tints, and the hours line stays at full strength because it is the
+     explanation. The radio stays live on purpose (provider hours can be
+     stale) and acceptProposal still confirms before anything is written. */
+  .as-opt.is-closed { background: var(--red-soft); }
+  .as-opt.is-closed .as-body { opacity: 0.55; }
+  .trip-planner-app .assist-proposal.is-closed-time {
+    border-color: color-mix(in srgb, var(--red) 45%, var(--border));
+    background: var(--red-soft);
+  }
+  .assist-proposal.is-closed-time .ap-title { opacity: 0.65; }
+
   /* ---------- distance chip + shortest-route footer ----------
      The chip answers "how far is this from where I am now" on every
      recommendation, and the footer answers "in what order should I do them".

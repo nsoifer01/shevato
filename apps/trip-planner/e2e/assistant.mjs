@@ -819,5 +819,154 @@ export async function run({ base, cdpPort }) {
   } finally {
     await done(s); s = null;
   }
+
+  try {
+    // ---------------------------------------------------------------------
+    // 8. Opening hours: the screenshot regression. A 23:00 drinks proposal for
+    //    a venue whose VERIFIED hours end at 23:00 must never render as an
+    //    ordinary valid recommendation (a start AT closing time is closed),
+    //    and accepting it anyway must go through an explicit confirm naming
+    //    the hours. Alongside it: split hours mark a mid-gap time closed, an
+    //    overnight bar keeps a 23:00 start valid, closing-soon warns, unknown
+    //    hours stay SILENT (never painted as open), and a travel leg gets no
+    //    hours UI at all.
+    freshIds();
+    const dayN = (o, c, spill) => [0, 1, 2, 3, 4, 5, 6].map(d => ({ open: { day: d, min: o }, close: { day: spill ? (d + 1) % 7 : d, min: c } }));
+    const HOURS_BY_VENUE = {
+      // the screenshot shape: closes 23:00 every day
+      'Octave Rooftop Bangkok': { always: false, periods: dayN(16 * 60, 23 * 60, false), special: [] },
+      // overnight: 18:00 - 02:00, so 23:00 is legitimately open
+      'Tichuca Rooftop Bar Bangkok': { always: false, periods: dayN(18 * 60, 120, true), special: [] },
+      // split hours: 11:00-14:00 and 17:00-23:00, so 15:00 is closed
+      'Gap Cafe Bangkok': { always: false, periods: [...dayN(11 * 60, 14 * 60, false), ...dayN(17 * 60, 23 * 60, false)], special: [] },
+      // 'Sky Bar Bangkok' deliberately absent: resolved, rated, hours UNKNOWN
+    };
+    const hoursNet = (url, request) => {
+      if (!url.includes('/.netlify/functions/tp-places')) return EXTERNAL_HOSTS.test(url) ? 'fail' : null;
+      let body = {};
+      try { body = JSON.parse(request.postData || '{}'); } catch { /* fine */ }
+      const queries = Array.isArray(body.queries) ? body.queries : [];
+      return { status: 200, body: { results: queries.map((q, i) => ({
+        query: q, status: 'ok', name: q, rating: 4.5, userRatingCount: 100 + i,
+        mapsUri: 'https://maps.google.com/?cid=' + i,
+        ...(HOURS_BY_VENUE[q] ? { hours: HOURS_BY_VENUE[q] } : {}),
+      })), attribution: { text: 'Google Maps', url: 'https://www.google.com/maps' } } };
+    };
+    const HOURS_REPLY = (date) => `Late options, and lunch.
+
+\`\`\`json
+{"tripActions":[
+ {"op":"add","group":"drinks-${date}","item":{"type":"activity","title":"Drinks: Octave","location":"Bangkok","startDate":"${date}","startTime":"23:00","mapsQuery":"Octave Rooftop Bangkok"}},
+ {"op":"add","group":"drinks-${date}","item":{"type":"activity","title":"Drinks: Tichuca","location":"Bangkok","startDate":"${date}","startTime":"23:00","mapsQuery":"Tichuca Rooftop Bar Bangkok"}},
+ {"op":"add","item":{"type":"activity","title":"Lunch: Gap Cafe","location":"Bangkok","startDate":"${date}","startTime":"15:00","mapsQuery":"Gap Cafe Bangkok"}},
+ {"op":"add","item":{"type":"activity","title":"Drinks: Octave nightcap","location":"Bangkok","startDate":"${date}","startTime":"22:30","mapsQuery":"Octave Rooftop Bangkok"}},
+ {"op":"add","item":{"type":"activity","title":"Drinks: Sky Bar","location":"Bangkok","startDate":"${date}","startTime":"22:00","mapsQuery":"Sky Bar Bangkok"}},
+ {"op":"add","item":{"type":"local","title":"Return to hotel","location":"Bangkok","startDate":"${date}","startTime":"23:30","mapsQuery":"${HOTEL}"}}
+]}
+\`\`\``;
+    s = await openApp(cdpPort, base, { db: dbOf([bangkokTrip()]), net: hoursNet, stores: distanceStores() });
+    await clickSel(s, '#assistBtn', { settle: 700 });
+    await pasteReply(s, HOURS_REPLY(day), 5);
+    // the ratings batch resolves eagerly for candidate cards; wait for the two
+    // closed verdicts (Octave-at-23:00 in the set, Gap-Cafe-at-15:00 single)
+    const painted = await waitForExpr(s,
+      `document.querySelectorAll('#assistMessages .ap-hours.is-closed').length === 2`, { timeout: 8000 });
+    const faces = await evaluate(s, `[...document.querySelectorAll('#assistMessages .assist-proposal')].map(c => ({
+      title: (c.querySelector('.ap-title, .as-lead') || {}).textContent || '',
+      closedCard: c.classList.contains('is-closed-time'),
+      opts: [...c.querySelectorAll('.as-opt')].map(o => ({
+        title: (o.querySelector('.as-title') || {}).textContent || '',
+        closed: o.classList.contains('is-closed'),
+        hours: ((o.querySelector('.ap-hours') || {}).textContent || '').trim(),
+      })),
+      hours: ((c.querySelector(':scope > .ap-hours') || {}).textContent || '').trim(),
+      verdict: (c.querySelector('.ap-hours') || { dataset: {} }).dataset.verdict || '',
+      hoursSlots: c.querySelectorAll('.ap-hours').length,
+    }))`);
+    const byTitle = (n) => faces.find(f => f.title.includes(n) || f.opts.some(o => o.title.includes(n))) || {};
+    const setCard = byTitle('Octave');
+    const octave = (setCard.opts || []).find(o => o.title.includes('Octave')) || {};
+    const tichuca = (setCard.opts || []).find(o => o.title.includes('Tichuca')) || {};
+    await t('tp-hours: a 23:00 start at a 23:00-closing bar is demoted, never a normal candidate',
+      painted && octave.closed === true && /Closed at 11:00 PM/.test(octave.hours) && /Hours:/.test(octave.hours),
+      JSON.stringify(octave), s);
+    await t('tp-hours: the overnight bar keeps its 23:00 start as an ordinary open candidate',
+      tichuca.closed === false && /^Hours · /.test(tichuca.hours) && /2:00 AM/.test(tichuca.hours),
+      JSON.stringify(tichuca), s);
+    await t('tp-hours: split hours mark 15:00 closed on a single card, and the card is demoted',
+      byTitle('Gap Cafe').closedCard === true && /Closed at 3:00 PM/.test(byTitle('Gap Cafe').hours),
+      JSON.stringify(byTitle('Gap Cafe')), s);
+    await t('tp-hours: 22:30 against a 23:00 close warns "Closes at 11:00 PM"',
+      byTitle('nightcap').hours === 'Closes at 11:00 PM' && byTitle('nightcap').closedCard === false,
+      JSON.stringify(byTitle('nightcap')), s);
+    await t('tp-hours: unknown hours stay silent - resolved and rated, but never painted open',
+      byTitle('Sky Bar').hours === '' && byTitle('Sky Bar').closedCard === false,
+      JSON.stringify(byTitle('Sky Bar')), s);
+    await t('tp-hours: a travel leg gets no hours UI at all',
+      byTitle('Return to hotel').hoursSlots === 0, JSON.stringify(byTitle('Return to hotel')), s);
+
+    // Accepting the closed lunch card asks first, names the hours, and cancels
+    // clean: nothing is written until "Add anyway".
+    const clickAccept = (name) => evaluate(s, `(() => {
+      const card = [...document.querySelectorAll('#assistMessages .assist-proposal')]
+        .find(c => ((c.querySelector('.ap-title') || {}).textContent || '').includes(${JSON.stringify(name)}));
+      const btn = card && card.querySelector('.assist-accept');
+      if (btn) btn.click();
+      return !!btn;
+    })()`);
+    const itemCount = () => evaluate(s, `(() => {
+      const db = JSON.parse(localStorage.getItem('trip-planner:v1') || 'null');
+      const trip = db && db.trips.find(x => x.id === db.activeTripId);
+      return trip ? trip.items.length : -1;
+    })()`);
+    const before = await itemCount();
+    await clickAccept('Gap Cafe');
+    const asked = await waitForExpr(s, `document.querySelector('#confirmOverlay').classList.contains('open')`, { timeout: 4000 });
+    const confirmFace = await evaluate(s, `({
+      text: document.querySelector('#confirmText').textContent,
+      yes: document.querySelector('#confirmYes').textContent,
+    })`);
+    await clickSel(s, '#confirmOverlay [data-close]', { settle: 300 });
+    const afterCancel = await itemCount();
+    await t('tp-hours: accepting a closed proposal asks first, with the verified hours in the question',
+      asked && /closed at 3:00 PM/.test(confirmFace.text) && /hours that day/.test(confirmFace.text)
+        && confirmFace.yes === 'Add anyway' && afterCancel === before,
+      JSON.stringify({ asked, confirmFace, before, afterCancel }), s);
+    await clickAccept('Gap Cafe');
+    await waitForExpr(s, `document.querySelector('#confirmOverlay').classList.contains('open')`, { timeout: 4000 });
+    await clickSel(s, '#confirmYes', { settle: 400 });
+    const afterYes = await itemCount();
+    const added = await evaluate(s, `(() => {
+      const db = JSON.parse(localStorage.getItem('trip-planner:v1') || 'null');
+      const trip = db && db.trips.find(x => x.id === db.activeTripId);
+      return trip ? trip.items.map(i => i.title).join('|') : '';
+    })()`);
+    await t('tp-hours: "Add anyway" is an explicit, deliberate act and then writes exactly one item',
+      afterYes === before + 1 && added.includes('Lunch: Gap Cafe'), JSON.stringify({ afterYes, added }), s);
+
+    // The open candidate accepts with no interrogation: pick Tichuca, add it.
+    await evaluate(s, `(() => {
+      const card = document.querySelector('#assistMessages .assist-set');
+      const radios = [...card.querySelectorAll('.as-opt')];
+      const opt = radios.find(o => (o.querySelector('.as-title') || {}).textContent.includes('Tichuca'));
+      opt.querySelector('input[type="radio"]').click();
+      return 1;
+    })()`);
+    await evaluate(s, `document.querySelector('#assistMessages .assist-set [data-act="accept-set"]').click()`);
+    await sleep(500); // negative claim: no confirm dialog may appear for an open venue
+    const openAccepted = await evaluate(s, `({
+      confirmed: document.querySelector('#confirmOverlay').classList.contains('open'),
+      count: (() => { const db = JSON.parse(localStorage.getItem('trip-planner:v1') || 'null');
+        const trip = db && db.trips.find(x => x.id === db.activeTripId); return trip ? trip.items.length : -1; })(),
+    })`);
+    await t('tp-hours: an open-at-that-time candidate adds without any confirm step',
+      openAccepted && openAccepted.confirmed === false && openAccepted.count === before + 2,
+      JSON.stringify(openAccepted), s);
+    await noErrors('tp-hours block 8', s);
+  } catch (err) {
+    await t('tp-hours: block 8 ran', false, String(err && err.message || err), s);
+  } finally {
+    await done(s); s = null;
+  }
   return R;
 }
