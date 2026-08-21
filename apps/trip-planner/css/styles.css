@@ -2674,6 +2674,17 @@
     background: var(--red-soft);
   }
   .assist-proposal.is-closed-time .ap-title { opacity: 0.65; }
+  /* closingSoon: technically open but with less than the category's minimum
+     recommendation window remaining. Demoted exactly like closed (no badges,
+     accept refused) but in AMBER, so "shut" and "too tight to recommend"
+     never read as the same claim. */
+  .as-opt.is-closing { background: var(--amber-soft); }
+  .as-opt.is-closing .as-body { opacity: 0.6; }
+  .trip-planner-app .assist-proposal.is-closing-time {
+    border-color: color-mix(in srgb, var(--amber) 45%, var(--border));
+    background: var(--amber-soft);
+  }
+  .assist-proposal.is-closing-time .ap-title { opacity: 0.7; }
 
   /* ---------- distance chip + shortest-route footer ----------
      The chip answers "how far is this from where I am now" on every

@@ -261,6 +261,96 @@ test('placesCacheUpdates sanitizes hours coming off the wire', () => {
   assert.equal(updates[0].entry.hours, undefined);
 });
 
+// ---------- the minimum recommendation window: closingSoon ----------
+// "Technically open" and "worth recommending" are different claims. The
+// window is INCLUSIVE at the boundary (remaining == window is still open),
+// measured to the close of the interval CONTAINING the proposed time, and it
+// exists only for callers that pass it: without a window the verdict is
+// exactly what it always was, which is what keeps manual Days-view rows
+// advisory-only.
+
+test('restaurant window (30): exactly 30 min before close is open, 29 is closingSoon, at close is closed', () => {
+  // closes 23:00 every day
+  assert.equal(L.hoursVerdict(EVERY_DAY_16_23, SAT, '22:29', 30).status, 'open');
+  assert.equal(L.hoursVerdict(EVERY_DAY_16_23, SAT, '22:30', 30).status, 'open');
+  const soon = L.hoursVerdict(EVERY_DAY_16_23, SAT, '22:31', 30);
+  assert.equal(soon.status, 'closingSoon');
+  assert.equal(soon.closesMin, 23 * 60, 'closingSoon still reports the covering close for the "only N min" line');
+  assert.equal(L.hoursVerdict(EVERY_DAY_16_23, SAT, '23:00', 30).status, 'closed');
+});
+
+test('bar window (45): exactly 45 min before close is open, 44 is closingSoon', () => {
+  assert.equal(L.hoursVerdict(EVERY_DAY_16_23, SAT, '22:15', 45).status, 'open');
+  assert.equal(L.hoursVerdict(EVERY_DAY_16_23, SAT, '22:16', 45).status, 'closingSoon');
+});
+
+test('museum window (60): exactly 60 min before close is open, 59 is closingSoon', () => {
+  const hours = { always: false, periods: [P(6, '09:00', 6, '17:00')], special: [] };
+  assert.equal(L.hoursVerdict(hours, SAT, '16:00', 60).status, 'open');
+  assert.equal(L.hoursVerdict(hours, SAT, '16:01', 60).status, 'closingSoon');
+  assert.equal(L.hoursVerdict(hours, SAT, '17:00', 60).status, 'closed');
+});
+
+test('overnight 18:00-02:00 with a 45 window: the buffer works past midnight', () => {
+  const hours = { always: false, periods: [P(6, '18:00', 0, '02:00')], special: [] };
+  assert.equal(L.hoursVerdict(hours, SUN, '00:30', 45).status, 'open');
+  assert.equal(L.hoursVerdict(hours, SUN, '01:15', 45).status, 'open');
+  assert.equal(L.hoursVerdict(hours, SUN, '01:16', 45).status, 'closingSoon');
+  assert.equal(L.hoursVerdict(hours, SUN, '02:00', 45).status, 'closed');
+  // and from the opening date's own side of midnight the remaining time is
+  // measured through the wrap, not to it
+  assert.equal(L.hoursVerdict(hours, SAT, '23:00', 45).status, 'open');
+});
+
+test('split hours: the buffer measures to the end of the CURRENT interval, not the last close', () => {
+  const hours = { always: false, periods: [P(6, '11:00', 6, '14:00'), P(6, '17:00', 6, '23:00')], special: [] };
+  assert.equal(L.hoursVerdict(hours, SAT, '13:30', 30).status, 'open');
+  const lunchTail = L.hoursVerdict(hours, SAT, '13:31', 30);
+  assert.equal(lunchTail.status, 'closingSoon');
+  assert.equal(lunchTail.closesMin, 14 * 60, 'the 14:00 interval end decides, never the 23:00 close later that day');
+  assert.equal(L.hoursVerdict(hours, SAT, '15:00', 30).status, 'closed');
+  assert.equal(L.hoursVerdict(hours, SAT, '22:30', 30).status, 'open');
+  assert.equal(L.hoursVerdict(hours, SAT, '22:31', 30).status, 'closingSoon');
+});
+
+test('unknown hours stay unknown under a window, and a 24h venue can never be closingSoon', () => {
+  assert.equal(L.hoursVerdict(null, SAT, '22:45', 45).status, 'unknown');
+  assert.equal(L.hoursVerdict({ always: false, periods: [], special: [] }, SAT, '22:45', 45).status, 'unknown');
+  const always = L.hoursVerdict({ always: true, periods: [], special: [] }, SAT, '23:59', 45);
+  assert.equal(always.status, 'open');
+  assert.equal(always.closesMin, null);
+});
+
+test('no window (or zero) means no closingSoon at all: the pre-window verdict is unchanged', () => {
+  assert.equal(L.hoursVerdict(EVERY_DAY_16_23, SAT, '22:31').status, 'open');
+  assert.equal(L.hoursVerdict(EVERY_DAY_16_23, SAT, '22:31', 0).status, 'open');
+  assert.equal(L.hoursVerdict(EVERY_DAY_16_23, SAT, '22:59').status, 'open');
+});
+
+test('recommendWindowMin: structured meal/drinks prefixes first, then unambiguous words, then 45', () => {
+  const w = (title, mapsQuery = '') => L.recommendWindowMin({ type: 'activity', title, mapsQuery });
+  // structured (the assistant title contract)
+  assert.equal(w('Breakfast: Bricolage Bread & Co'), 30);
+  assert.equal(w('Lunch: Konoba Hvaranin'), 30);
+  assert.equal(w('Dinner: Narisawa'), 30);
+  assert.equal(w('Drinks: Above The Grid'), 45);
+  // unambiguous category words in the title or maps query
+  assert.equal(w('British Museum', 'British Museum London'), 60);
+  assert.equal(w('Visit the National Gallery', 'National Gallery London'), 45);
+  assert.equal(w('Cafe Central', 'Cafe Central Vienna'), 30);
+  assert.equal(w('Borough Market', 'Borough Market London'), 30);
+  assert.equal(w('Le Petit Bistro', 'Le Petit Bistro Paris'), 30);
+  assert.equal(w('Harry\'s Bar', 'Harry\'s Bar Venice'), 45);
+  // no structure, no unambiguous word: the conservative 45 default
+  assert.equal(w('Louvre', 'Louvre Paris'), 45);
+  assert.equal(w('Tokyo Tower', 'Tokyo Tower'), 45);
+  // not a visit at all: no window (closed-only verdicts remain for stays)
+  assert.equal(L.recommendWindowMin({ type: 'stay', title: 'Hotel Niwa' }), null);
+  assert.equal(L.recommendWindowMin({ type: 'local', title: 'Return to hotel' }), null);
+  assert.equal(L.recommendWindowMin({ type: 'flight', title: 'HND to BKK' }), null);
+  assert.equal(L.recommendWindowMin(null), null);
+});
+
 // ---------- closed candidates are out of every winner-badge contention ----------
 
 const badgeIds = out => out.map(b => b.map(x => x.id));

@@ -4032,26 +4032,92 @@ const TripLogic = (() => {
 
   // The deterministic verdict the whole feature hangs on: is this venue open at
   // (dateIso, timeHHMM)? Answers 'open' (with closesMin, null for no known
-  // close), 'closed', or 'unknown' - and unknown is a first-class answer, never
-  // collapsed into open. Dated hours beat weekly hours for the dates they
-  // cover; a date that HAS dated periods but none covering the time is closed
-  // by those dated hours, and a date the dated table never mentions falls back
-  // to the weekly pattern (absence from the 7-day window is not evidence).
-  function hoursVerdict(hours, dateIso, timeHHMM) {
+  // close), 'closingSoon' (technically open, but with less than `windowMin`
+  // minutes left before the covering interval closes - a recommendation-
+  // quality state, NOT another definition of closed), 'closed', or 'unknown' -
+  // and unknown is a first-class answer, never collapsed into open OR into
+  // closingSoon. Dated hours beat weekly hours for the dates they cover; a
+  // date that HAS dated periods but none covering the time is closed by those
+  // dated hours, and a date the dated table never mentions falls back to the
+  // weekly pattern (absence from the 7-day window is not evidence).
+  //
+  // `windowMin` is the caller's minimum recommendation window (see
+  // recommendWindowMin); omitted or 0 means no closingSoon state at all, which
+  // is exactly what the Days view's advisory-only surfaces pass. The boundary
+  // is INCLUSIVE: remaining time equal to the window is still 'open' (a
+  // restaurant closing at 23:00 with a 30-minute window is open at 22:30 and
+  // closingSoon at 22:31), computed against the close of the interval that
+  // CONTAINS the proposed time - split hours measure to the end of the
+  // current interval, never to a later interval's close, and an overnight
+  // interval's close counts past midnight through closesMin's relative form.
+  function hoursVerdict(hours, dateIso, timeHHMM, windowMin) {
     const t = hhmmToMin(timeHHMM);
     if (!hours || typeof hours !== 'object' || !isIsoDate(dateIso) || t == null) return { status: 'unknown', closesMin: null };
-    if (hours.always) return { status: 'open', closesMin: null };
+    const win = typeof windowMin === 'number' && windowMin > 0 ? windowMin : 0;
+    const openAt = closesMin => {
+      if (closesMin != null && win && closesMin - t < win) return { status: 'closingSoon', closesMin };
+      return { status: 'open', closesMin };
+    };
+    if (hours.always) return openAt(null);
     const special = Array.isArray(hours.special) ? hours.special : [];
     const hit = specialCovering(special, dateIso, t);
-    if (hit) return { status: 'open', closesMin: hit.closesMin };
+    if (hit) return openAt(hit.closesMin);
     if (special.some(p => p.open.date === dateIso)) return { status: 'closed', closesMin: null };
     const periods = Array.isArray(hours.periods) ? hours.periods : [];
     if (!periods.length) return { status: 'unknown', closesMin: null };
     // A period spilling over from the previous day (or earlier) is what keeps
     // 01:00 inside "18:00-02:00" open; weeklyCovering's dd/dl walk covers it.
     const w = weeklyCovering(periods, hoursDow(dateIso), t);
-    if (w) return { status: 'open', closesMin: w.closesMin };
+    if (w) return openAt(w.closesMin);
     return { status: 'closed', closesMin: null };
+  }
+
+  // ---------- the minimum recommendation window, per venue category ----------
+  // "Technically open" and "a good recommendation" are different claims: a
+  // museum entered 10 minutes before closing is open and pointless. These are
+  // the minimum minutes that must remain before the covering interval closes
+  // for the ASSISTANT to offer a timed venue as a normal recommendation.
+  // Deliberately small for meals - the published closing time is treated as an
+  // arrival constraint, not a finish-the-meal deadline - and larger where the
+  // visit itself needs time. Manual traveller items never consult this: hours
+  // are advisory for a person's own plan.
+  const RECOMMEND_HOURS_WINDOWS = {
+    meal: 30,       // restaurant / breakfast / lunch / dinner
+    drinks: 45,     // bar / drinks
+    museum: 60,     // museum / major attraction
+    gallery: 45,    // gallery / smaller attraction
+    cafe: 30,       // cafe / bakery
+    shop: 30,       // shop / market
+    default: 45,    // any other visitable activity: conservative middle
+  };
+  // What kind of visit is this proposal? STRUCTURED context first: the meal /
+  // drinks title prefixes are part of the assistant contract (ASSIST_KINDS)
+  // and are read through the same mealKind every other surface uses. Beyond
+  // those the action carries no category field, so only UNAMBIGUOUS category
+  // words in the title or maps query are consulted ("museum", "gallery",
+  // "cafe"...) - a venue name that says none of them falls to the 45-minute
+  // default rather than to a guess, which mislabels a museum called only
+  // "Louvre" by 15 conservative-side minutes and never invents a category.
+  // Applies to `activity` alone: travel legs and notes are not visits, and a
+  // stay's check-in is a booking, not a recommendation window.
+  const RECOMMEND_KIND_RES = [
+    [/\bmuseums?\b/, 'museum'],
+    [/\bgaller(?:y|ies|ia)\b/, 'gallery'],
+    [/\b(?:cafes?|cafés?|coffee|bakery|bakeries|patisserie)\b/, 'cafe'],
+    [/\b(?:shops?|stores?|markets?|bazaars?)\b/, 'shop'],
+    [/\b(?:restaurants?|bistros?|brasseries?|diners?|trattorias?|ristorantes?)\b/, 'meal'],
+    [/\b(?:bars?|pubs?|izakayas?)\b/, 'drinks'],
+  ];
+  function recommendWindowMin(item) {
+    if (!item || item.type !== 'activity') return null;
+    const kind = mealKind(item.title);
+    if (kind === 'drinks') return RECOMMEND_HOURS_WINDOWS.drinks;
+    if (kind) return RECOMMEND_HOURS_WINDOWS.meal;
+    const text = `${item.title == null ? '' : item.title} ${item.mapsQuery == null ? '' : item.mapsQuery}`.toLowerCase();
+    for (const [re, k] of RECOMMEND_KIND_RES) {
+      if (re.test(text)) return RECOMMEND_HOURS_WINDOWS[k];
+    }
+    return RECOMMEND_HOURS_WINDOWS.default;
   }
 
   // The intervals that START on dateIso, for the "Hours" line a row or card
@@ -8527,7 +8593,7 @@ const TripLogic = (() => {
     normalizePlaceQuery, placeCacheKey, planPlacesLookup, placesCacheUpdates,
     createPlacesQueue, placesRetryDelay,
     sanitizeHours, normalizeGoogleHours, hoursVerdict, hoursIntervalsForDate, hoursLineText,
-    HOURS_CLOSING_SOON_MIN,
+    HOURS_CLOSING_SOON_MIN, RECOMMEND_HOURS_WINDOWS, recommendWindowMin,
     PLACES_BATCH_MAX, PLACES_CONCURRENCY, PLACES_DEFER_MS, PLACES_MAX_ATTEMPTS,
     VENUE_TTL_MS, VENUE_CACHE_MAX, venueFresh, normalizeVenueCache, rememberVenue,
     placesLocationUpdates, pickVenueFeature, validCoord,

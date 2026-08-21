@@ -732,6 +732,36 @@ them on the SAME lookup and validates deterministically. The invariant:
   the weekly pattern for the dates they name; a date they name with no
   covering period is closed BY them; a date they never mention falls back to
   weekly (absence from a 7-day window is not evidence).
+- **closingSoon: "technically open" is not "worth recommending" (2026-08-21
+  refinement).** `hoursVerdict` takes an optional fourth argument, the
+  minimum recommendation window in minutes: a covered time whose interval
+  closes in LESS than that window answers `closingSoon` instead of `open`.
+  The verdict states are open / closingSoon / closed / unknown, and
+  closingSoon is a recommendation-quality state, never another definition of
+  closed - the hard closed rule above is untouched. The boundary is
+  INCLUSIVE (remaining == window is open: a 30-window restaurant closing
+  23:00 is open at 22:30, closingSoon at 22:31), and the remaining time is
+  measured to the close of the interval CONTAINING the proposed time - the
+  covering hit's own `closesMin` - so split hours measure to the current
+  sitting (13:31 in an 11:00-14:00 sitting is closingSoon even though the
+  venue reopens 17:00-23:00) and overnight intervals measure through
+  midnight (`closesMin` is relative to the queried date, 02:00 next day =
+  1560). Without the argument (or 0) the verdict is exactly the pre-window
+  one, which is what every Days-view slot passes: manual rows keep the
+  purely advisory `Closes at X` line and are never demoted or blocked.
+- **The category -> window mapping** lives in `RECOMMEND_HOURS_WINDOWS` +
+  `recommendWindowMin` (trip-logic): meals 30 (the published close is an
+  ARRIVAL constraint, not a finish-the-meal deadline - deliberate), drinks
+  45, museum 60, gallery 45, cafe/bakery 30, shop/market 30, and a
+  45-minute default for any other visitable activity. Classification is
+  STRUCTURED first - the meal/drinks title prefixes of the assistant
+  contract, read through the same `mealKind` every surface uses - and only
+  then unambiguous category words in the title/maps query ("museum",
+  "gallery", "cafe", "market"...); a name that says neither ("Louvre",
+  "Tokyo Tower") gets the default rather than a guess, which at worst
+  under-buffers an unnamed museum by 15 minutes and never invents a
+  category. Activities only: travel legs and notes are not visits, and a
+  stay keeps closed-only verdicts (`recommendWindowMin` returns null).
 - **Unknown is a first-class verdict and it means SILENCE, worded as
   UNVERIFIED.** No key, spent quota, offline, a failed request, an
   unresolved place, or a place Google has no hours for: all paint nothing
@@ -740,32 +770,38 @@ them on the SAME lookup and validates deterministically. The invariant:
   the absence of the hours line IS the unverified state, and no wording
   anywhere may imply that every venue was checked. Decided and deliberate:
   only VERIFIED-closed demotes, refuses or excludes.
-- **Three enforcement points, all deterministic.** (1) Paint:
-  `paintHoursSlot` marks a closed candidate's `.ap-hours` and demotes its
-  card/option (`is-closed` / `is-closed-time`), so it never reads as a
-  normal recommendation; the radio stays clickable for transparency only.
-  (2) Badges: `candidateBadges` takes a per-candidate `closed` array (fed
-  from the painted verdicts) and drops verified-closed candidates from
-  EVERY winner contention - a card marked closed must never simultaneously
-  be promoted as `Highest rated`/`Most popular`/`Shortest route`; exclusion
-  that leaves fewer than two open entrants omits the badge, exactly as
-  unresolved data does, and unknown-hours candidates still compete (they
-  are unverified, not closed). (3) Write: `acceptProposal` runs
-  `closedHoursFor` at accept time (so a verdict landing after the cards
-  painted still gates) and REFUSES - there is no "add anyway" for an
-  assistant recommendation. The refusal dialog quotes the verified hours
-  and its one action hands off to the item form (prefilled via
-  `openItemModal`'s preset, now carrying `startTime`/`details`), where the
-  time sits in front of the traveller to change and whatever they save is a
-  MANUAL traveller item. The manual boundary is deliberate and sharp: the
-  item form never gates on hours in either direction - a person scheduling
-  against a listing is a deliberate act the app only flags (red Days-view
-  line), never blocks - so traveller-created items are entirely unaffected
-  by the restriction. Updates are gated like adds (a closed-time update
-  hands off to editing the target item); existing traveller items are never
-  auto-moved. The PROMPT also tells the model to respect hours
-  (`ASSIST_HOURS`), but that is defence-in-depth only - model knowledge of
-  hours is not evidence.
+- **Three enforcement points, all deterministic, and both demoted states go
+  through all three.** (1) Paint: `paintHoursSlot` stamps the verdict on
+  the `.ap-hours` slot and demotes the card/option - closed in red
+  (`is-closed` / `is-closed-time`), closingSoon in amber (`is-closing` /
+  `is-closing-time`) with the reason on the card ("Closes at 11:00 PM ·
+  only 20 min remaining") - so neither reads as a normal recommendation;
+  the radio stays clickable for transparency only. The two states demote in
+  different colours on purpose: "shut" and "too tight to recommend" are
+  different claims. (2) Badges: `candidateBadges` takes a per-candidate
+  `closed` array (fed from the painted verdicts, closingSoon included) and
+  drops demoted candidates from EVERY winner contention - a demoted card
+  must never simultaneously be promoted as `Highest rated`/`Most popular`/
+  `Shortest route`; exclusion that leaves fewer than two open entrants
+  omits the badge, exactly as unresolved data does, and unknown-hours
+  candidates still compete (they are unverified, not closed). (3) Write:
+  `acceptProposal` runs `closedHoursFor` at accept time (so a verdict
+  landing after the cards painted still gates; it re-derives the same
+  category window) and REFUSES - there is no "add anyway" for an assistant
+  recommendation. The refusal names its state ("Closed at that time" /
+  "Too close to closing", the latter saying how many minutes remain and
+  what the category needs) and its one action hands off to the item form
+  (prefilled via `openItemModal`'s preset, now carrying
+  `startTime`/`details`), where the time sits in front of the traveller to
+  change and whatever they save is a MANUAL traveller item. The manual
+  boundary is deliberate and sharp: the item form never gates on hours in
+  any state - a person scheduling against a listing is a deliberate act the
+  app only flags (Days-view line), never blocks - so traveller-created
+  items are entirely unaffected by the restriction. Updates are gated like
+  adds (a refused update hands off to editing the target item); existing
+  traveller items are never auto-moved. The PROMPT also tells the model to
+  respect hours (`ASSIST_HOURS`), but that is defence-in-depth only - model
+  knowledge of hours is not evidence.
 - **Why no automatic replacement of a closed candidate.** Tier 1
   (copy/paste) has no model round trip to make, and for tiers 2/3 a
   constrained retry would double latency and spend for a case the demotion

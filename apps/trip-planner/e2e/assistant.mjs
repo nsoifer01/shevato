@@ -822,17 +822,20 @@ export async function run({ base, cdpPort }) {
 
   try {
     // ---------------------------------------------------------------------
-    // 8. Opening hours: the screenshot regression. A 23:00 drinks proposal for
-    //    a venue whose VERIFIED hours end at 23:00 must never render as an
-    //    ordinary valid recommendation (a start AT closing time is closed),
-    //    must win NO badge whatever its numbers, and must be impossible to
-    //    accept UNCHANGED: the accept refuses and hands off to the item form,
-    //    where whatever the traveller saves is a manual item of their own.
-    //    Alongside it: split hours mark a mid-gap time closed, an overnight
-    //    bar keeps a 23:00 start valid, closing-soon warns, unknown hours
-    //    stay SILENT (unverified, never painted as open, still competing for
-    //    badges), a travel leg gets no hours UI, and the manual item form
-    //    never gates on hours at all.
+    // 8. Opening hours: the screenshot regression, plus the recommendation
+    //    window. A 23:00 drinks proposal for a venue whose VERIFIED hours end
+    //    at 23:00 must never render as an ordinary valid recommendation (a
+    //    start AT closing time is closed), and one at a venue closing 23:40
+    //    is closingSoon (40 min < the 45 a drinks slot needs) - technically
+    //    open, demoted in amber, told apart from closed. BOTH states must win
+    //    NO badge whatever their numbers and must be impossible to accept
+    //    UNCHANGED: the accept refuses (each with its own wording) and hands
+    //    off to the item form, where whatever the traveller saves is a manual
+    //    item of their own. Alongside it: split hours mark a mid-gap time
+    //    closed, an overnight bar keeps a 23:00 start valid (180 min left),
+    //    unknown hours stay SILENT (unverified, never painted as open, still
+    //    competing for badges), a travel leg gets no hours UI, and the manual
+    //    item form never gates on hours in either state.
     freshIds();
     const dayN = (o, c, spill) => [0, 1, 2, 3, 4, 5, 6].map(d => ({ open: { day: d, min: o }, close: { day: spill ? (d + 1) % 7 : d, min: c } }));
     const HOURS_BY_VENUE = {
@@ -842,13 +845,17 @@ export async function run({ base, cdpPort }) {
       'Tichuca Rooftop Bar Bangkok': { always: false, periods: dayN(18 * 60, 120, true), special: [] },
       // split hours: 11:00-14:00 and 17:00-23:00, so 15:00 is closed
       'Gap Cafe Bangkok': { always: false, periods: [...dayN(11 * 60, 14 * 60, false), ...dayN(17 * 60, 23 * 60, false)], special: [] },
+      // closes 23:40: a 23:00 drinks start leaves 40 min, under the 45 a
+      // drinks slot needs -> closingSoon, technically open
+      'Grid Late Bar Bangkok': { always: false, periods: dayN(16 * 60, 23 * 60 + 40, false), special: [] },
       // 'Sky Bar Bangkok' deliberately absent: resolved, rated, hours UNKNOWN
     };
-    // Octave gets the BEST rating and review count on purpose: it would sweep
-    // the badges, and being verified-closed at its own start time must strip
-    // it of every one of them.
+    // Octave (closed) and Grid Late (closingSoon) get the BEST numbers on
+    // purpose: either would sweep the badges, and both demoted states must
+    // strip them of every one.
     const RATING_BY_VENUE = {
       'Octave Rooftop Bangkok': { rating: 4.9, count: 900 },
+      'Grid Late Bar Bangkok': { rating: 5.0, count: 2000 },
       'Tichuca Rooftop Bar Bangkok': { rating: 4.2, count: 120 },
       'Sky Bar Bangkok': { rating: 4.0, count: 50 },
     };
@@ -871,6 +878,7 @@ export async function run({ base, cdpPort }) {
 {"tripActions":[
  {"op":"add","group":"drinks-${date}","item":{"type":"activity","title":"Drinks: Octave","location":"Bangkok","startDate":"${date}","startTime":"23:00","mapsQuery":"Octave Rooftop Bangkok"}},
  {"op":"add","group":"drinks-${date}","item":{"type":"activity","title":"Drinks: Tichuca","location":"Bangkok","startDate":"${date}","startTime":"23:00","mapsQuery":"Tichuca Rooftop Bar Bangkok"}},
+ {"op":"add","group":"drinks-${date}","item":{"type":"activity","title":"Drinks: Grid Late","location":"Bangkok","startDate":"${date}","startTime":"23:00","mapsQuery":"Grid Late Bar Bangkok"}},
  {"op":"add","group":"drinks-${date}","item":{"type":"activity","title":"Drinks: Sky Bar","location":"Bangkok","startDate":"${date}","startTime":"23:00","mapsQuery":"Sky Bar Bangkok"}},
  {"op":"add","item":{"type":"activity","title":"Lunch: Gap Cafe","location":"Bangkok","startDate":"${date}","startTime":"15:00","mapsQuery":"Gap Cafe Bangkok"}},
  {"op":"add","item":{"type":"activity","title":"Drinks: Octave nightcap","location":"Bangkok","startDate":"${date}","startTime":"22:30","mapsQuery":"Octave Rooftop Bangkok"}},
@@ -890,9 +898,11 @@ export async function run({ base, cdpPort }) {
     const faces = await evaluate(s, `[...document.querySelectorAll('#assistMessages .assist-proposal')].map(c => ({
       title: (c.querySelector('.ap-title, .as-lead') || {}).textContent || '',
       closedCard: c.classList.contains('is-closed-time'),
+      closingCard: c.classList.contains('is-closing-time'),
       opts: [...c.querySelectorAll('.as-opt')].map(o => ({
         title: (o.querySelector('.as-title') || {}).textContent || '',
         closed: o.classList.contains('is-closed'),
+        closingSoon: o.classList.contains('is-closing'),
         hours: ((o.querySelector('.ap-hours') || {}).textContent || '').trim(),
         badges: [...o.querySelectorAll('.as-badge')].map(x => x.className.replace(/.*as-badge-/, '')),
       })),
@@ -903,23 +913,30 @@ export async function run({ base, cdpPort }) {
     const byTitle = (n) => faces.find(f => f.title.includes(n) || f.opts.some(o => o.title.includes(n))) || {};
     const setCard = byTitle('Octave');
     const opt = (n) => (setCard.opts || []).find(o => o.title.includes(n)) || {};
-    const octave = opt('Octave'), tichuca = opt('Tichuca'), sky = opt('Sky Bar');
+    const octave = opt('Octave'), gridLate = opt('Grid Late'), tichuca = opt('Tichuca'), sky = opt('Sky Bar');
     await t('tp-hours: a 23:00 start at a 23:00-closing bar is demoted, never a normal candidate',
       painted && octave.closed === true && /Closed at 11:00 PM/.test(octave.hours) && /Hours:/.test(octave.hours),
       JSON.stringify(octave), s);
-    await t('tp-hours: the closed candidate wins NO badge despite the best rating and review count',
+    await t('tp-hours: a 23:00 drinks start against a 23:40 close is closingSoon - demoted amber, told apart from closed',
+      gridLate.closingSoon === true && gridLate.closed === false
+        && gridLate.hours === 'Closes at 11:40 PM · only 40 min remaining',
+      JSON.stringify(gridLate), s);
+    await t('tp-hours: neither the closed nor the closingSoon candidate wins ANY badge, whatever their numbers',
       badged && JSON.stringify(octave.badges) === '[]'
+        && JSON.stringify(gridLate.badges) === '[]'
         && JSON.stringify(tichuca.badges) === '["rated","popular"]'
         && JSON.stringify(sky.badges) === '[]',
-      JSON.stringify({ octave: octave.badges, tichuca: tichuca.badges, sky: sky.badges }), s);
+      JSON.stringify({ octave: octave.badges, gridLate: gridLate.badges, tichuca: tichuca.badges, sky: sky.badges }), s);
     await t('tp-hours: the overnight bar keeps its 23:00 start as an ordinary open candidate',
-      tichuca.closed === false && /^Hours · /.test(tichuca.hours) && /2:00 AM/.test(tichuca.hours),
+      tichuca.closed === false && tichuca.closingSoon === false
+        && /^Hours · /.test(tichuca.hours) && /2:00 AM/.test(tichuca.hours),
       JSON.stringify(tichuca), s);
     await t('tp-hours: split hours mark 15:00 closed on a single card, and the card is demoted',
       byTitle('Gap Cafe').closedCard === true && /Closed at 3:00 PM/.test(byTitle('Gap Cafe').hours),
       JSON.stringify(byTitle('Gap Cafe')), s);
-    await t('tp-hours: 22:30 against a 23:00 close warns "Closes at 11:00 PM"',
-      byTitle('nightcap').hours === 'Closes at 11:00 PM' && byTitle('nightcap').closedCard === false,
+    await t('tp-hours: 22:30 drinks against a 23:00 close is closingSoon and says why (30 < the 45 drinks need)',
+      byTitle('nightcap').hours === 'Closes at 11:00 PM · only 30 min remaining'
+        && byTitle('nightcap').closingCard === true && byTitle('nightcap').closedCard === false,
       JSON.stringify(byTitle('nightcap')), s);
     await t('tp-hours: unknown hours are UNVERIFIED - painted as nothing, not as open, and still competing',
       sky.hours === '' && sky.closed === false,
@@ -1025,6 +1042,46 @@ export async function run({ base, cdpPort }) {
     await t('tp-hours: a manual traveller item at the closed hour saves with no gate at all',
       manual && manual.confirmed === false && manual.items.includes('Drinks: Octave@23:00'),
       JSON.stringify(manual), s);
+
+    // closingSoon is refused as a recommendation too - with its own heading
+    // and the reason spelled out - and cancelling writes nothing.
+    const beforeSoon = (await tripItems()).length;
+    await clickAccept('nightcap');
+    const askedSoon = await waitForExpr(s, `document.querySelector('#confirmOverlay').classList.contains('open')`, { timeout: 4000 });
+    const soonFace = await evaluate(s, `({
+      heading: document.querySelector('#confirmTitle').textContent,
+      text: document.querySelector('#confirmText').textContent,
+      yes: document.querySelector('#confirmYes').textContent,
+    })`);
+    await clickSel(s, '#confirmOverlay [data-close]', { settle: 300 });
+    const afterSoonCancel = await tripItems();
+    await t('tp-hours: a closingSoon proposal cannot be accepted unchanged; the refusal says how tight and why',
+      askedSoon && soonFace.heading === 'Too close to closing'
+        && /only 30 minutes after/.test(soonFace.text) && /under the 45 minutes/.test(soonFace.text)
+        && soonFace.yes === 'Edit time & add myself' && afterSoonCancel.length === beforeSoon,
+      JSON.stringify({ askedSoon, soonFace, beforeSoon, after: afterSoonCancel.length }), s);
+
+    // ...while the SAME 22:30 entered by hand through the Add form saves with
+    // no gate: closingSoon is a recommendation-quality state, not a rule
+    // about the traveller's own plan.
+    await clickSel(s, '#addBtn', { settle: 500 });
+    await waitForExpr(s, `document.getElementById('itemOverlay').classList.contains('open')`, { timeout: 4000 });
+    await setValue(s, '#inTitle', 'Drinks: Octave nightcap');
+    await setValue(s, '#inLocation', 'Bangkok');
+    await setValue(s, '#inStart', day);
+    await setValue(s, '#inTime', '22:30');
+    await evaluate(s, `(()=>{ document.getElementById('itemForm').requestSubmit(); return 1 })()`);
+    await waitForExpr(s, `!document.getElementById('itemOverlay').classList.contains('open')`, { timeout: 4000 });
+    await sleep(300); // negative claim: no dialog may have appeared
+    const manualSoon = await evaluate(s, `({
+      confirmed: document.querySelector('#confirmOverlay').classList.contains('open'),
+      items: (() => { const db = JSON.parse(localStorage.getItem('trip-planner:v1') || 'null');
+        const trip = db && db.trips.find(x => x.id === db.activeTripId);
+        return trip ? trip.items.map(i => i.title + '@' + (i.startTime || '')) : null; })(),
+    })`);
+    await t('tp-hours: the same closingSoon time entered manually remains saveable, no dialog',
+      manualSoon && manualSoon.confirmed === false && manualSoon.items.includes('Drinks: Octave nightcap@22:30'),
+      JSON.stringify(manualSoon), s);
     await noErrors('tp-hours block 8', s);
   } catch (err) {
     await t('tp-hours: block 8 ran', false, String(err && err.message || err), s);

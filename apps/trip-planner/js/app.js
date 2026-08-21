@@ -110,7 +110,7 @@
     extractTripActions, validateTripAction, buildAssistPackage, buildAssistSystemPrompt,
     buildPlanRequest, groupProposals, linkifySegments, parseMarkdown,
     normalizePlaceQuery, placeCacheKey, createPlacesQueue, mapsSearchUrl, assistMapsLink, costDisplayParts,
-    hoursVerdict, hoursIntervalsForDate, hoursLineText, HOURS_CLOSING_SOON_MIN,
+    hoursVerdict, hoursIntervalsForDate, hoursLineText, HOURS_CLOSING_SOON_MIN, recommendWindowMin,
     normalizeVenueCache, rememberVenue, placesLocationUpdates, pickVenueFeature,
     dayAnchor, dayDistanceChain, sameSpot, shortestRoute, routeStops, distanceChipLabel, distanceChipTitle, routeFooterText,
     proposalOrigin, dayBaseOrigin, suggestionOrigins, assistDistanceChipLabel, assistDistanceChipTitle,
@@ -913,12 +913,17 @@
   // itinerary's scheduled date - what the traveller's plan asks about - and
   // deliberately not the real-world clock, so nothing here can claim "open
   // now" about a day months away. The optional time is what the closed /
-  // closes-soon verdict is judged against.
-  function hoursSlotHtml(cls, mapsQuery, date, time) {
+  // closes-soon verdict is judged against. `windowMin` (assistant slots only)
+  // is the category's minimum recommendation window: with it the verdict can
+  // also come back 'closingSoon' - technically open, too little time left to
+  // recommend. Days-view slots pass none, so a traveller's own rows keep the
+  // purely advisory behaviour.
+  function hoursSlotHtml(cls, mapsQuery, date, time, windowMin) {
     const key = placeCacheKey(mapsQuery);
     if (!key || !isIsoDate(date)) return '';
     const t = /^\d{2}:\d{2}$/.test(String(time || '')) ? time : '';
-    return `<span class="${cls} tp-hours" data-place-key="${esc(key)}" data-hours-date="${esc(date)}"${t ? ` data-hours-time="${esc(t)}"` : ''}></span>`;
+    const win = Number.isInteger(windowMin) && windowMin > 0 ? ` data-hours-window="${windowMin}"` : '';
+    return `<span class="${cls} tp-hours" data-place-key="${esc(key)}" data-hours-date="${esc(date)}"${t ? ` data-hours-time="${esc(t)}"` : ''}${win}></span>`;
   }
 
   // A travel leg that names a real destination (a "Return to hotel" carries the
@@ -6024,16 +6029,18 @@
       return entry && entry.status === 'ok'
         ? { rating: entry.rating, count: entry.userRatingCount || 0 } : null;
     });
-    // A candidate whose verified hours refuse its own start time is out of
-    // every badge contention (candidateBadges' closed rule): the same card
-    // cannot read "Closed at 11:00 PM" and "Highest rated" at once. The
-    // verdict is read off the painted hours slot, which the same paintPlaces
-    // pass fills BEFORE the sets are re-judged, and which persists across the
-    // distance pass's own repaints. Unknown hours are unverified, not closed,
-    // so they still compete.
+    // A candidate whose verified hours refuse its own start time (closed) or
+    // leave too little of the visit (closingSoon) is out of every badge
+    // contention (candidateBadges' closed rule): the same card cannot read
+    // "Closed at 11:00 PM" - or "only 20 min remaining" - and "Highest rated"
+    // at once. The verdict is read off the painted hours slot, which the same
+    // paintPlaces pass fills BEFORE the sets are re-judged, and which persists
+    // across the distance pass's own repaints. Unknown hours are unverified,
+    // not closed, so they still compete.
     const closed = opts.map(o => {
       const h = o.querySelector('.ap-hours');
-      return !!h && h.dataset.verdict === 'closed';
+      const verdict = h ? h.dataset.verdict : '';
+      return verdict === 'closed' || verdict === 'closingSoon';
     });
     const badges = candidateBadges({ kms, ratings, closed });
     opts.forEach((o, i) => {
@@ -8819,7 +8826,12 @@
     el.dataset.painted = '1';
     const line = hoursLineText(day, fmtTime);
     const time = /^\d{2}:\d{2}$/.test(el.dataset.hoursTime || '') ? el.dataset.hoursTime : '';
-    const v = time ? hoursVerdict(entry.hours, date, time) : null;
+    // The minimum recommendation window rides only on ASSISTANT slots (see
+    // hoursSlotHtml): with it the verdict can come back 'closingSoon'.
+    // Days-view slots carry none, so a traveller's own rows can never be
+    // demoted by it - their only closes-soon state is the advisory below.
+    const win = Number(el.dataset.hoursWindow) || 0;
+    const v = time ? hoursVerdict(entry.hours, date, time, win) : null;
     const when = `${fmtDow(date)}, ${fmtDate(date)}`;
     let text = `Hours · ${line === 'Closed' ? 'Closed that day' : line}`;
     let title = `Opening hours on Google Maps for ${when}: ${line}.`;
@@ -8827,6 +8839,14 @@
       el.classList.add('is-closed');
       text = day.intervals.length ? `Closed at ${fmtTime(time)} · Hours: ${line}` : 'Closed that day';
       title += ` The scheduled time, ${fmtTime(time)}, falls outside them (a start at closing time counts as closed).`;
+    } else if (v && v.status === 'closingSoon') {
+      // Technically open, too little of the visit left to recommend: visibly
+      // distinct from closed (amber), and it says how much remains and why
+      // that is short.
+      el.classList.add('is-closing');
+      const left = v.closesMin - hhmmMin(time);
+      text = `Closes at ${fmtTime(minToHHMM(v.closesMin))} · only ${left} min remaining`;
+      title += ` Open at the scheduled time, but only ${left} minutes remain before closing - under the ${win} minutes this kind of stop needs to be worth recommending.`;
     } else if (v && v.status === 'open' && v.closesMin != null && v.closesMin - hhmmMin(time) <= HOURS_CLOSING_SOON_MIN) {
       el.classList.add('is-closing');
       text = `Closes at ${fmtTime(minToHHMM(v.closesMin))}`;
@@ -8836,19 +8856,23 @@
     el.title = title;
     el.textContent = text;
     // The demotion: a candidate whose verified hours refuse its own start time
-    // is not a normal recommendation any more, and the verdict stamped here is
-    // also what takes it out of every winner-badge contention (paintSetBadges
-    // reads it). The radio stays clickable for transparency - the traveller
-    // can still read, compare and pick it - but acceptProposal REFUSES to
-    // apply it at the closed time and hands off to the item form instead, so
-    // no verified-closed recommendation is ever accepted unchanged, raced
-    // paints included.
-    if (el.classList.contains('is-closed')) {
+    // (closed) or leave too little of the visit (closingSoon) is not a normal
+    // recommendation any more, and the verdict stamped here is also what takes
+    // it out of every winner-badge contention (paintSetBadges reads it). The
+    // radio stays clickable for transparency - the traveller can still read,
+    // compare and pick it - but acceptProposal REFUSES to apply either state
+    // unchanged and hands off to the item form instead, raced paints included.
+    // The two states demote in different colours, so "shut" and "too tight"
+    // never read as the same claim.
+    const demote = !v ? '' : (v.status === 'closed' ? 'is-closed' : (v.status === 'closingSoon' ? 'is-closing' : ''));
+    if (demote) {
       const opt = el.closest('.as-opt');
-      if (opt) opt.classList.add('is-closed');
+      if (opt) opt.classList.add(demote);
       else {
         const card = el.closest('.assist-proposal');
-        if (card && !card.classList.contains('assist-set')) card.classList.add('is-closed-time');
+        if (card && !card.classList.contains('assist-set')) {
+          card.classList.add(demote === 'is-closed' ? 'is-closed-time' : 'is-closing-time');
+        }
       }
     }
   }
@@ -9047,7 +9071,10 @@
     const f = p.fields;
     if (!f || !isPlaceType({ type: f.type })) return '';
     const query = itemMapsQuery({ type: f.type, title: f.title, location: f.location, mapsQuery: p.display.mapsQuery });
-    return hoursSlotHtml('ap-hours', query, p.display.startDate, p.display.startTime);
+    // The category's minimum recommendation window rides on the slot so the
+    // paint pass can judge closingSoon; null (a stay) means closed-only.
+    const win = recommendWindowMin({ type: f.type, title: f.title, mapsQuery: query });
+    return hoursSlotHtml('ap-hours', query, p.display.startDate, p.display.startTime, win);
   }
 
   // ---------- alternative sets ----------
@@ -9288,12 +9315,21 @@
     if (!isPlaceType(probe)) return null;
     const date = p.display.startDate, time = p.display.startTime;
     if (!isIsoDate(date) || !/^\d{2}:\d{2}$/.test(String(time || ''))) return null;
-    const entry = placesCache.get(placeCacheKey(itemMapsQuery(probe)));
+    const query = itemMapsQuery(probe);
+    const entry = placesCache.get(placeCacheKey(query));
     const hours = entry && entry.hours;
     if (!hours) return null;
-    if (hoursVerdict(hours, date, time).status !== 'closed') return null;
+    // The same category window the card's slot was judged by: closingSoon is
+    // a refusal-worthy state for a RECOMMENDATION exactly as closed is, and
+    // the two are told apart in `kind` so the dialog can say which.
+    const win = recommendWindowMin({ ...probe, mapsQuery: query }) || 0;
+    const v = hoursVerdict(hours, date, time, win);
+    if (v.status !== 'closed' && v.status !== 'closingSoon') return null;
     const day = hoursIntervalsForDate(hours, date);
-    return { date, time, allDay: !day.always && !day.intervals.length, line: hoursLineText(day, fmtTime) };
+    return {
+      kind: v.status, date, time, closesMin: v.closesMin, windowMin: win,
+      allDay: !day.always && !day.intervals.length, line: hoursLineText(day, fmtTime),
+    };
   }
 
   function acceptProposal(pid, card, restore) {
@@ -9304,26 +9340,38 @@
     const res = validateTripAction(action, trip); // re-validate against CURRENT state
     if (!res.ok) { assistActions.delete(pid); markProposalStale(card); return; }
     const p = res.proposal;
-    // A proposal whose verified hours refuse the proposed time is REFUSED,
-    // not confirmed through: there is no "add anyway" for an assistant
-    // recommendation, because accepting it unchanged is exactly the claim
-    // the verification exists to stop. The card stays on screen, demoted,
-    // and the traveller's ways forward are the honest ones - pick another
-    // candidate, ask the assistant for a different time or venue, or take
-    // the hand-off below into the ITEM FORM, where the time sits in front of
-    // them to change and whatever they save is a manual traveller item (the
-    // form deliberately never gates on hours: a person scheduling against a
-    // listing is a deliberate act, and the Days view still flags it in red).
-    const closed = closedHoursFor(p, trip);
-    if (closed) {
+    // A proposal whose verified hours refuse the proposed time (closed), or
+    // leave less of the visit than its category's minimum recommendation
+    // window (closingSoon), is REFUSED, not confirmed through: there is no
+    // "add anyway" for an assistant recommendation, because accepting it
+    // unchanged is exactly the claim the verification exists to stop. The
+    // card stays on screen, demoted, and the traveller's ways forward are
+    // the honest ones - pick another candidate, ask the assistant for a
+    // different time or venue, or take the hand-off below into the ITEM
+    // FORM, where the time sits in front of them to change and whatever they
+    // save is a manual traveller item (the form deliberately never gates on
+    // hours, in either state: a person scheduling against a listing is a
+    // deliberate act, and the Days view still flags it instead).
+    const refused = closedHoursFor(p, trip);
+    if (refused) {
       const title = p.display.title || 'this venue';
-      const what = closed.allDay
-        ? `closed all day on ${fmtDate(closed.date)}`
-        : `closed at ${fmtTime(closed.time)} on ${fmtDate(closed.date)} (verified hours that day: ${closed.line})`;
+      let heading, sentence;
+      if (refused.kind === 'closingSoon') {
+        const left = refused.closesMin - hhmmMin(refused.time);
+        heading = 'Too close to closing';
+        sentence = `Google Maps lists "${title}" as closing at ${fmtTime(minToHHMM(refused.closesMin))} `
+          + `on ${fmtDate(refused.date)} - only ${left} minutes after the proposed ${fmtTime(refused.time)} start, `
+          + `under the ${refused.windowMin} minutes this kind of stop needs. The assistant cannot recommend it at this time.`;
+      } else {
+        heading = 'Closed at that time';
+        const what = refused.allDay
+          ? `closed all day on ${fmtDate(refused.date)}`
+          : `closed at ${fmtTime(refused.time)} on ${fmtDate(refused.date)} (verified hours that day: ${refused.line})`;
+        sentence = `Google Maps lists "${title}" as ${what}, so the assistant cannot add it at this time.`;
+      }
       confirmDialog(
-        'Closed at that time',
-        `Google Maps lists "${title}" as ${what}, so the assistant cannot add it at this time. `
-          + 'Pick another option, ask the assistant for a different time or venue, '
+        heading,
+        `${sentence} Pick another option, ask the assistant for a different time or venue, `
           + 'or edit the time and add it yourself.',
         'Edit time & add myself',
         () => {
