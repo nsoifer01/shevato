@@ -3840,8 +3840,18 @@ const TripLogic = (() => {
       if (!key) continue;
       // The reason rides along because "generic_query" is the server telling us,
       // for free and before any billing, that this query names no venue at all.
+      // An UNRATED confident match still carries the place's opening hours (the
+      // same billed response found them; only the star was missing), so the
+      // hours surfaces are not blinded by a venue Google has no rating for. A
+      // low-confidence or not-found result carries none: that is a different
+      // business, and its hours would be as wrong as its rating.
       if (r.status === 'no_match') {
-        out.push({ key, entry: { status: 'no_match', reason: typeof r.reason === 'string' ? r.reason : '' } });
+        const entry = { status: 'no_match', reason: typeof r.reason === 'string' ? r.reason : '' };
+        if (entry.reason === 'unrated') {
+          const hours = sanitizeHours(r.hours);
+          if (hours) entry.hours = hours;
+        }
+        out.push({ key, entry });
         continue;
       }
       if (r.status !== 'ok' || typeof r.rating !== 'number' || !isFinite(r.rating)) continue;
@@ -3857,18 +3867,300 @@ const TripLogic = (() => {
         continue;
       }
       const count = Number(r.userRatingCount);
-      out.push({
-        key,
-        entry: {
-          status: 'ok',
-          name: typeof r.name === 'string' ? r.name : '',
-          rating: Math.round(r.rating * 10) / 10,
-          userRatingCount: isFinite(count) && count > 0 ? Math.floor(count) : 0,
-          mapsUri: uri,
-        },
-      });
+      const entry = {
+        status: 'ok',
+        name: typeof r.name === 'string' ? r.name : '',
+        rating: Math.round(r.rating * 10) / 10,
+        userRatingCount: isFinite(count) && count > 0 ? Math.floor(count) : 0,
+        mapsUri: uri,
+      };
+      // Session-only, like the rating beside it: Google's caching terms cover
+      // no hours field, so this entry must never be written anywhere durable.
+      const hours = sanitizeHours(r.hours);
+      if (hours) entry.hours = hours;
+      out.push({ key, entry });
     }
     return out;
+  }
+
+  // ---------- opening hours: normalize, then answer "is it open then?" ----------
+  // The hours ride the SAME Place Details response the rating does (both are
+  // Place Details Enterprise fields, so requesting them changes neither the SKU
+  // nor the request count - see DETAILS_FIELD_MASK in tp-places.mjs). Google's
+  // caching terms cover none of the hours fields, so they live only in the
+  // session cache exactly as ratings do: never localStorage, never the trip db,
+  // never a blob.
+  //
+  // The normalized shape both sides speak (null when nothing usable):
+  //   { always: bool,                      // open 24/7 (Google's no-close convention)
+  //     periods: [{ open: {day, min}, close: {day, min} }],   // weekly, day 0=Sunday
+  //     special: [{ open: {date, min}, close: {date, min}|null }] }  // dated (next ~7 days)
+  //
+  // All times are minutes past midnight IN THE VENUE'S OWN LOCAL TIME, which is
+  // also what every itinerary time is (the app's times are floating local
+  // times, and a day's venues are in that day's city), so the comparison needs
+  // no timezone math at all.
+  //
+  // THE BOUNDARY RULE: a venue is open at t when open <= t < close. A start
+  // time AT the closing minute is closed - arriving as the staff lock up is
+  // not a visit - and a start at the opening minute is open.
+  const HOURS_MAX_PERIODS = 56;
+  const HOURS_CLOSING_SOON_MIN = 60;
+  const hhmmToMin = t => (/^\d{2}:\d{2}$/.test(String(t || '')) ? (+t.slice(0, 2)) * 60 + (+t.slice(3, 5)) : null);
+  const hoursDow = date => new Date(date + 'T00:00:00Z').getUTCDay();
+
+  // One validator owns the shape. The server builds through it (so what goes on
+  // the wire is valid by construction) and the client re-runs it on what came
+  // OFF the wire (network data is untrusted whatever built it). Anything
+  // malformed drops to null, which every consumer reads as "hours unknown" -
+  // never as "open".
+  function sanitizeHours(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const day = v => (Number.isInteger(v) && v >= 0 && v <= 6);
+    const min = v => (Number.isInteger(v) && v >= 0 && v <= 1439);
+    const periods = [];
+    for (const p of Array.isArray(raw.periods) ? raw.periods : []) {
+      if (periods.length >= HOURS_MAX_PERIODS) break;
+      if (!p || typeof p !== 'object' || !p.open || !p.close) continue;
+      if (!day(p.open.day) || !min(p.open.min) || !day(p.close.day) || !min(p.close.min)) continue;
+      periods.push({ open: { day: p.open.day, min: p.open.min }, close: { day: p.close.day, min: p.close.min } });
+    }
+    const special = [];
+    for (const p of Array.isArray(raw.special) ? raw.special : []) {
+      if (special.length >= HOURS_MAX_PERIODS) break;
+      if (!p || typeof p !== 'object' || !p.open) continue;
+      if (!isIsoDate(p.open.date) || !min(p.open.min)) continue;
+      if (p.close == null) { special.push({ open: { date: p.open.date, min: p.open.min }, close: null }); continue; }
+      if (!isIsoDate(p.close.date) || !min(p.close.min) || p.close.date < p.open.date) continue;
+      special.push({ open: { date: p.open.date, min: p.open.min }, close: { date: p.close.date, min: p.close.min } });
+    }
+    const always = raw.always === true;
+    if (!always && !periods.length && !special.length) return null;
+    return { always, periods: always ? [] : periods, special };
+  }
+
+  // Google's Place Details shape -> ours. `regular` is regularOpeningHours
+  // (weekly, day 0=Sunday, {day,hour,minute}); `current` is currentOpeningHours
+  // (the next ~7 days with real dates, so holiday hours beat the weekly
+  // pattern for imminent days). A period with no close is Google's "always
+  // open" convention for the weekly table; a DATED period with no close is
+  // kept as open-ended for its own date. An empty or missing payload returns
+  // null: no hours is UNKNOWN, and unknown is never invented into a schedule.
+  function normalizeGoogleHours(regular, current) {
+    const toMin = o => (o && Number.isInteger(o.hour) ? o.hour * 60 + (Number.isInteger(o.minute) ? o.minute : 0) : null);
+    const toDate = o => {
+      const d = o && o.date;
+      if (!d || !Number.isInteger(d.year) || !Number.isInteger(d.month) || !Number.isInteger(d.day)) return null;
+      const iso = `${String(d.year).padStart(4, '0')}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`;
+      return isIsoDate(iso) ? iso : null;
+    };
+    let always = false;
+    const periods = [];
+    for (const p of (regular && Array.isArray(regular.periods)) ? regular.periods : []) {
+      if (!p || !p.open) continue;
+      const om = toMin(p.open);
+      if (om == null || !Number.isInteger(p.open.day)) continue;
+      if (!p.close) { always = true; continue; }
+      const cm = toMin(p.close);
+      if (cm == null || !Number.isInteger(p.close.day)) continue;
+      periods.push({ open: { day: p.open.day, min: om }, close: { day: p.close.day, min: cm } });
+    }
+    const special = [];
+    for (const p of (current && Array.isArray(current.periods)) ? current.periods : []) {
+      if (!p || !p.open) continue;
+      const om = toMin(p.open);
+      const od = toDate(p.open);
+      if (om == null || !od) continue;
+      if (!p.close) { special.push({ open: { date: od, min: om }, close: null }); continue; }
+      const cm = toMin(p.close);
+      const cd = toDate(p.close);
+      if (cm == null || !cd) continue;
+      special.push({ open: { date: od, min: om }, close: { date: cd, min: cm } });
+    }
+    return sanitizeHours({ always, periods, special });
+  }
+
+  // Does any dated period cover (date, t)? Returns { closesMin } relative to
+  // the queried date (a close on the next day reads 1440 + its minutes, which
+  // is what the closing-soon arithmetic needs), or null. `closesMin: null`
+  // inside a hit means open-ended.
+  function specialCovering(special, date, t) {
+    let best = null;
+    for (const p of special) {
+      const od = p.open.date, om = p.open.min;
+      if (!p.close) {
+        if (date === od && t >= om) best = { closesMin: null };
+        continue;
+      }
+      const cd = p.close.date, cm = p.close.min;
+      let hit = false;
+      if (date === od) hit = cd > od ? t >= om : (t >= om && t < cm);
+      else if (date > od && date < cd) hit = true;
+      else if (date === cd && date > od) hit = t < cm;
+      if (!hit) continue;
+      const closes = cm + 1440 * diffDays(date, cd);
+      if (!best || best.closesMin == null || closes > best.closesMin) best = { closesMin: closes };
+      if (best.closesMin == null) break;
+    }
+    return best;
+  }
+
+  // Does any weekly period cover (dow, t)? Same contract as specialCovering.
+  // dd is how many days into the period the queried day sits, dl how many days
+  // the period spans; the four cases fall out of that pair, overnight and
+  // multi-day periods included, so "Sat 18:00 - Sun 02:00" wraps the week
+  // without a special case.
+  function weeklyCovering(periods, dow, t) {
+    let best = null;
+    for (const p of periods) {
+      const dd = (dow - p.open.day + 7) % 7;
+      const dl = (p.close.day - p.open.day + 7) % 7;
+      const om = p.open.min, cm = p.close.min;
+      let closes = null;
+      if (dl === 0) {
+        if (cm > om) { if (dd === 0 && t >= om && t < cm) closes = cm; }
+        // same-day close at/before open: treat as wrapping past midnight
+        else if (dd === 0 && (t >= om || t < cm)) closes = t >= om ? cm + 1440 : cm;
+      } else if (dd === 0) { if (t >= om) closes = cm + 1440 * dl; }
+      else if (dd < dl) closes = cm + 1440 * (dl - dd);
+      else if (dd === dl) { if (t < cm) closes = cm; }
+      if (closes == null) continue;
+      if (!best || closes > best.closesMin) best = { closesMin: closes };
+    }
+    return best;
+  }
+
+  // The deterministic verdict the whole feature hangs on: is this venue open at
+  // (dateIso, timeHHMM)? Answers 'open' (with closesMin, null for no known
+  // close), 'closingSoon' (technically open, but with less than `windowMin`
+  // minutes left before the covering interval closes - a recommendation-
+  // quality state, NOT another definition of closed), 'closed', or 'unknown' -
+  // and unknown is a first-class answer, never collapsed into open OR into
+  // closingSoon. Dated hours beat weekly hours for the dates they cover; a
+  // date that HAS dated periods but none covering the time is closed by those
+  // dated hours, and a date the dated table never mentions falls back to the
+  // weekly pattern (absence from the 7-day window is not evidence).
+  //
+  // `windowMin` is the caller's minimum recommendation window (see
+  // recommendWindowMin); omitted or 0 means no closingSoon state at all, which
+  // is exactly what the Days view's advisory-only surfaces pass. The boundary
+  // is INCLUSIVE: remaining time equal to the window is still 'open' (a
+  // restaurant closing at 23:00 with a 30-minute window is open at 22:30 and
+  // closingSoon at 22:31), computed against the close of the interval that
+  // CONTAINS the proposed time - split hours measure to the end of the
+  // current interval, never to a later interval's close, and an overnight
+  // interval's close counts past midnight through closesMin's relative form.
+  function hoursVerdict(hours, dateIso, timeHHMM, windowMin) {
+    const t = hhmmToMin(timeHHMM);
+    if (!hours || typeof hours !== 'object' || !isIsoDate(dateIso) || t == null) return { status: 'unknown', closesMin: null };
+    const win = typeof windowMin === 'number' && windowMin > 0 ? windowMin : 0;
+    const openAt = closesMin => {
+      if (closesMin != null && win && closesMin - t < win) return { status: 'closingSoon', closesMin };
+      return { status: 'open', closesMin };
+    };
+    if (hours.always) return openAt(null);
+    const special = Array.isArray(hours.special) ? hours.special : [];
+    const hit = specialCovering(special, dateIso, t);
+    if (hit) return openAt(hit.closesMin);
+    if (special.some(p => p.open.date === dateIso)) return { status: 'closed', closesMin: null };
+    const periods = Array.isArray(hours.periods) ? hours.periods : [];
+    if (!periods.length) return { status: 'unknown', closesMin: null };
+    // A period spilling over from the previous day (or earlier) is what keeps
+    // 01:00 inside "18:00-02:00" open; weeklyCovering's dd/dl walk covers it.
+    const w = weeklyCovering(periods, hoursDow(dateIso), t);
+    if (w) return openAt(w.closesMin);
+    return { status: 'closed', closesMin: null };
+  }
+
+  // ---------- the minimum recommendation window, per venue category ----------
+  // "Technically open" and "a good recommendation" are different claims: a
+  // museum entered 10 minutes before closing is open and pointless. These are
+  // the minimum minutes that must remain before the covering interval closes
+  // for the ASSISTANT to offer a timed venue as a normal recommendation.
+  // Deliberately small for meals - the published closing time is treated as an
+  // arrival constraint, not a finish-the-meal deadline - and larger where the
+  // visit itself needs time. Manual traveller items never consult this: hours
+  // are advisory for a person's own plan.
+  const RECOMMEND_HOURS_WINDOWS = {
+    meal: 30,       // restaurant / breakfast / lunch / dinner
+    drinks: 45,     // bar / drinks
+    museum: 60,     // museum / major attraction
+    gallery: 45,    // gallery / smaller attraction
+    cafe: 30,       // cafe / bakery
+    shop: 30,       // shop / market
+    default: 45,    // any other visitable activity: conservative middle
+  };
+  // What kind of visit is this proposal? STRUCTURED context first: the meal /
+  // drinks title prefixes are part of the assistant contract (ASSIST_KINDS)
+  // and are read through the same mealKind every other surface uses. Beyond
+  // those the action carries no category field, so only UNAMBIGUOUS category
+  // words in the title or maps query are consulted ("museum", "gallery",
+  // "cafe"...) - a venue name that says none of them falls to the 45-minute
+  // default rather than to a guess, which mislabels a museum called only
+  // "Louvre" by 15 conservative-side minutes and never invents a category.
+  // Applies to `activity` alone: travel legs and notes are not visits, and a
+  // stay's check-in is a booking, not a recommendation window.
+  const RECOMMEND_KIND_RES = [
+    [/\bmuseums?\b/, 'museum'],
+    [/\bgaller(?:y|ies|ia)\b/, 'gallery'],
+    [/\b(?:cafes?|cafés?|coffee|bakery|bakeries|patisserie)\b/, 'cafe'],
+    [/\b(?:shops?|stores?|markets?|bazaars?)\b/, 'shop'],
+    [/\b(?:restaurants?|bistros?|brasseries?|diners?|trattorias?|ristorantes?)\b/, 'meal'],
+    [/\b(?:bars?|pubs?|izakayas?)\b/, 'drinks'],
+  ];
+  function recommendWindowMin(item) {
+    if (!item || item.type !== 'activity') return null;
+    const kind = mealKind(item.title);
+    if (kind === 'drinks') return RECOMMEND_HOURS_WINDOWS.drinks;
+    if (kind) return RECOMMEND_HOURS_WINDOWS.meal;
+    const text = `${item.title == null ? '' : item.title} ${item.mapsQuery == null ? '' : item.mapsQuery}`.toLowerCase();
+    for (const [re, k] of RECOMMEND_KIND_RES) {
+      if (re.test(text)) return RECOMMEND_HOURS_WINDOWS[k];
+    }
+    return RECOMMEND_HOURS_WINDOWS.default;
+  }
+
+  // The intervals that START on dateIso, for the "Hours" line a row or card
+  // prints. An overnight interval reads naturally ("6:00 PM-2:00 AM"); an
+  // interval that started the PREVIOUS evening belongs to that day's line, not
+  // this one, which is also how a human reads a posted hours sign. known:false
+  // means hours unknown (say nothing); known with zero intervals means closed
+  // all day (say that).
+  function hoursIntervalsForDate(hours, dateIso) {
+    if (!hours || typeof hours !== 'object' || !isIsoDate(dateIso)) return { known: false, always: false, intervals: [] };
+    if (hours.always) return { known: true, always: true, intervals: [] };
+    const special = Array.isArray(hours.special) ? hours.special : [];
+    const periods = Array.isArray(hours.periods) ? hours.periods : [];
+    let intervals;
+    if (special.some(p => p.open.date === dateIso)) {
+      intervals = special.filter(p => p.open.date === dateIso).map(p => ({
+        startMin: p.open.min,
+        endMin: p.close ? p.close.min : 1440,
+        nextDay: !!(p.close && p.close.date > p.open.date),
+      }));
+    } else if (periods.length) {
+      const dow = hoursDow(dateIso);
+      intervals = periods.filter(p => p.open.day === dow).map(p => ({
+        startMin: p.open.min,
+        endMin: p.close.min,
+        nextDay: p.close.day !== p.open.day || p.close.min <= p.open.min,
+      }));
+    } else {
+      return { known: false, always: false, intervals: [] };
+    }
+    intervals.sort((a, b) => a.startMin - b.startMin);
+    return { known: true, always: false, intervals };
+  }
+
+  // The display line, through the caller's OWN time formatter so the 12/24-hour
+  // preference applies here exactly as it does everywhere else - this module
+  // never grows a second formatter. Times are handed over as "HH:MM".
+  function hoursLineText(day, fmtTime) {
+    if (!day || !day.known) return '';
+    if (day.always) return 'Open 24 hours';
+    if (!day.intervals.length) return 'Closed';
+    const f = m => fmtTime(`${String(Math.floor((m % 1440) / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
+    return day.intervals.map(iv => `${f(iv.startMin)}–${f(iv.endMin)}`).join(', ');
   }
 
   // ---------- the Places lookup queue ----------
@@ -4705,12 +4997,19 @@ const TripLogic = (() => {
   //            duration nothing here computes.
   //   ratings: per-candidate { rating, count } from the resolved Places
   //            lookup, or null.
+  //   closed:  per-candidate true when the candidate's VERIFIED opening hours
+  //            refuse its own start time (hoursVerdict said 'closed'). A
+  //            closed candidate is out of EVERY contention: a card the app
+  //            has marked closed must never simultaneously be promoted as a
+  //            winner, whatever its rating, review count or distance. Only a
+  //            verified-closed verdict excludes - unknown hours are merely
+  //            unverified and still compete.
   const CANDIDATE_BADGES = {
     fastest: { icon: '⚡', label: 'Shortest route', title: 'Shortest travel leg from where you will be before this slot' },
     rated: { icon: '⭐', label: 'Highest rated', title: 'Highest Google Maps rating of these options' },
     popular: { icon: '🔥', label: 'Most popular', title: 'Most Google Maps reviews of these options' },
   };
-  function candidateBadges({ kms, ratings }) {
+  function candidateBadges({ kms, ratings, closed }) {
     const n = Math.max(Array.isArray(kms) ? kms.length : 0, Array.isArray(ratings) ? ratings.length : 0);
     const out = Array.from({ length: n }, () => []);
     if (n < 2) return out; // one option is not a comparison
@@ -4727,12 +5026,18 @@ const TripLogic = (() => {
       // it is missing data wearing a badge
       return entrants >= 2 ? best : -1;
     };
-    const km = i => (Array.isArray(kms) && typeof kms[i] === 'number' && kms[i] >= 0 ? kms[i] : null);
+    // Verified-closed candidates are not entrants at all (see the note above
+    // CANDIDATE_BADGES); dropping below two entrants then omits the badge,
+    // exactly as unresolved data does.
+    const shut = i => Array.isArray(closed) && closed[i] === true;
+    const km = i => (!shut(i) && Array.isArray(kms) && typeof kms[i] === 'number' && kms[i] >= 0 ? kms[i] : null);
     const rating = i => {
+      if (shut(i)) return null;
       const r = Array.isArray(ratings) ? ratings[i] : null;
       return r && typeof r.rating === 'number' ? -r.rating : null; // negated: winner() minimises
     };
     const count = i => {
+      if (shut(i)) return null;
       const r = Array.isArray(ratings) ? ratings[i] : null;
       return r && typeof r.count === 'number' && r.count > 0 ? -r.count : null;
     };
@@ -5554,6 +5859,20 @@ const TripLogic = (() => {
     + 'If an item has no single place (a travel leg, a note, a reminder), omit mapsQuery '
     + 'entirely. No link is better than a link to the wrong place.';
 
+  // Defence-in-depth ONLY. The app verifies every timed suggestion against the
+  // venue's Google opening hours deterministically (hoursVerdict) and marks the
+  // closed ones; this paragraph exists so the model wastes fewer slots on
+  // venues the check will flag, not because its knowledge of hours is trusted.
+  // The 23:00-drinks-at-a-23:00-closing-bar failure is the shape it names.
+  const ASSIST_HOURS = 'Think about opening hours and days. Never schedule a venue at or after the '
+    + 'time it closes, and not before it opens: a start time equal to the closing time IS closed, '
+    + 'because arriving as the staff lock up is not a visit. Mind the day of the week too - many '
+    + 'museums close one weekday, many restaurants close between lunch and dinner, and bars often '
+    + 'open only in the evening. For a late slot prefer venues known to stay open late. The app '
+    + 'independently checks every timed suggestion against the venue\'s Google Maps opening hours '
+    + 'for that exact date and visibly flags any that would be closed, so a suggestion at a closed '
+    + 'hour is a wasted slot, never a harmless guess.';
+
   // HOW an alternative set is expressed is a permanent contract (the pick-one
   // card is built on the shared group id). HOW MANY candidates there are is
   // not: it belongs to whoever is asking. Conflating the two is exactly the bug
@@ -5683,6 +6002,7 @@ const TripLogic = (() => {
     parts.push(ASSIST_GROUPS_MECHANIC);
     parts.push(assistOptionRules(mode));
     parts.push(ASSIST_MAPSQUERY);
+    parts.push(ASSIST_HOURS);
     parts.push(ASSIST_DISTANCE);
     const originNote = assistOriginNote(origin);
     if (originNote) parts.push(originNote);
@@ -5760,6 +6080,7 @@ const TripLogic = (() => {
     parts.push(ASSIST_GROUPS_MECHANIC);
     parts.push(assistOptionRules(mode));
     parts.push(ASSIST_MAPSQUERY);
+    parts.push(ASSIST_HOURS);
     parts.push(ASSIST_DISTANCE);
     const originNote = assistOriginNote(origin);
     if (originNote) parts.push(originNote);
@@ -8271,6 +8592,8 @@ const TripLogic = (() => {
     parseMarkdown, parseMarkdownInline,
     normalizePlaceQuery, placeCacheKey, planPlacesLookup, placesCacheUpdates,
     createPlacesQueue, placesRetryDelay,
+    sanitizeHours, normalizeGoogleHours, hoursVerdict, hoursIntervalsForDate, hoursLineText,
+    HOURS_CLOSING_SOON_MIN, RECOMMEND_HOURS_WINDOWS, recommendWindowMin,
     PLACES_BATCH_MAX, PLACES_CONCURRENCY, PLACES_DEFER_MS, PLACES_MAX_ATTEMPTS,
     VENUE_TTL_MS, VENUE_CACHE_MAX, venueFresh, normalizeVenueCache, rememberVenue,
     placesLocationUpdates, pickVenueFeature, validCoord,

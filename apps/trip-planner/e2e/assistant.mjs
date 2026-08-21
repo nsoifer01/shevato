@@ -819,5 +819,274 @@ export async function run({ base, cdpPort }) {
   } finally {
     await done(s); s = null;
   }
+
+  try {
+    // ---------------------------------------------------------------------
+    // 8. Opening hours: the screenshot regression, plus the recommendation
+    //    window. A 23:00 drinks proposal for a venue whose VERIFIED hours end
+    //    at 23:00 must never render as an ordinary valid recommendation (a
+    //    start AT closing time is closed), and one at a venue closing 23:40
+    //    is closingSoon (40 min < the 45 a drinks slot needs) - technically
+    //    open, demoted in amber, told apart from closed. BOTH states must win
+    //    NO badge whatever their numbers and must be impossible to accept
+    //    UNCHANGED: the accept refuses (each with its own wording) and hands
+    //    off to the item form, where whatever the traveller saves is a manual
+    //    item of their own. Alongside it: split hours mark a mid-gap time
+    //    closed, an overnight bar keeps a 23:00 start valid (180 min left),
+    //    unknown hours stay SILENT (unverified, never painted as open, still
+    //    competing for badges), a travel leg gets no hours UI, and the manual
+    //    item form never gates on hours in either state.
+    freshIds();
+    const dayN = (o, c, spill) => [0, 1, 2, 3, 4, 5, 6].map(d => ({ open: { day: d, min: o }, close: { day: spill ? (d + 1) % 7 : d, min: c } }));
+    const HOURS_BY_VENUE = {
+      // the screenshot shape: closes 23:00 every day
+      'Octave Rooftop Bangkok': { always: false, periods: dayN(16 * 60, 23 * 60, false), special: [] },
+      // overnight: 18:00 - 02:00, so 23:00 is legitimately open
+      'Tichuca Rooftop Bar Bangkok': { always: false, periods: dayN(18 * 60, 120, true), special: [] },
+      // split hours: 11:00-14:00 and 17:00-23:00, so 15:00 is closed
+      'Gap Cafe Bangkok': { always: false, periods: [...dayN(11 * 60, 14 * 60, false), ...dayN(17 * 60, 23 * 60, false)], special: [] },
+      // closes 23:40: a 23:00 drinks start leaves 40 min, under the 45 a
+      // drinks slot needs -> closingSoon, technically open
+      'Grid Late Bar Bangkok': { always: false, periods: dayN(16 * 60, 23 * 60 + 40, false), special: [] },
+      // 'Sky Bar Bangkok' deliberately absent: resolved, rated, hours UNKNOWN
+    };
+    // Octave (closed) and Grid Late (closingSoon) get the BEST numbers on
+    // purpose: either would sweep the badges, and both demoted states must
+    // strip them of every one.
+    const RATING_BY_VENUE = {
+      'Octave Rooftop Bangkok': { rating: 4.9, count: 900 },
+      'Grid Late Bar Bangkok': { rating: 5.0, count: 2000 },
+      'Tichuca Rooftop Bar Bangkok': { rating: 4.2, count: 120 },
+      'Sky Bar Bangkok': { rating: 4.0, count: 50 },
+    };
+    const hoursNet = (url, request) => {
+      if (!url.includes('/.netlify/functions/tp-places')) return EXTERNAL_HOSTS.test(url) ? 'fail' : null;
+      let body = {};
+      try { body = JSON.parse(request.postData || '{}'); } catch { /* fine */ }
+      const queries = Array.isArray(body.queries) ? body.queries : [];
+      return { status: 200, body: { results: queries.map((q, i) => ({
+        query: q, status: 'ok', name: q,
+        rating: (RATING_BY_VENUE[q] || {}).rating || 4.5,
+        userRatingCount: (RATING_BY_VENUE[q] || {}).count || 100 + i,
+        mapsUri: 'https://maps.google.com/?cid=' + i,
+        ...(HOURS_BY_VENUE[q] ? { hours: HOURS_BY_VENUE[q] } : {}),
+      })), attribution: { text: 'Google Maps', url: 'https://www.google.com/maps' } } };
+    };
+    const HOURS_REPLY = (date) => `Late options, and lunch.
+
+\`\`\`json
+{"tripActions":[
+ {"op":"add","group":"drinks-${date}","item":{"type":"activity","title":"Drinks: Octave","location":"Bangkok","startDate":"${date}","startTime":"23:00","mapsQuery":"Octave Rooftop Bangkok"}},
+ {"op":"add","group":"drinks-${date}","item":{"type":"activity","title":"Drinks: Tichuca","location":"Bangkok","startDate":"${date}","startTime":"23:00","mapsQuery":"Tichuca Rooftop Bar Bangkok"}},
+ {"op":"add","group":"drinks-${date}","item":{"type":"activity","title":"Drinks: Grid Late","location":"Bangkok","startDate":"${date}","startTime":"23:00","mapsQuery":"Grid Late Bar Bangkok"}},
+ {"op":"add","group":"drinks-${date}","item":{"type":"activity","title":"Drinks: Sky Bar","location":"Bangkok","startDate":"${date}","startTime":"23:00","mapsQuery":"Sky Bar Bangkok"}},
+ {"op":"add","item":{"type":"activity","title":"Lunch: Gap Cafe","location":"Bangkok","startDate":"${date}","startTime":"15:00","mapsQuery":"Gap Cafe Bangkok"}},
+ {"op":"add","item":{"type":"activity","title":"Drinks: Octave nightcap","location":"Bangkok","startDate":"${date}","startTime":"22:30","mapsQuery":"Octave Rooftop Bangkok"}},
+ {"op":"add","item":{"type":"local","title":"Return to hotel","location":"Bangkok","startDate":"${date}","startTime":"23:30","mapsQuery":"${HOTEL}"}}
+]}
+\`\`\``;
+    s = await openApp(cdpPort, base, { db: dbOf([bangkokTrip()]), net: hoursNet, stores: distanceStores() });
+    await clickSel(s, '#assistBtn', { settle: 700 });
+    await pasteReply(s, HOURS_REPLY(day), 4);
+    // the ratings batch resolves eagerly for candidate cards; wait for the two
+    // closed verdicts (Octave-at-23:00 in the set, Gap-Cafe-at-15:00 single)
+    // AND for the badge pass over the resolved set
+    const painted = await waitForExpr(s,
+      `document.querySelectorAll('#assistMessages .ap-hours.is-closed').length === 2`, { timeout: 8000 });
+    const badged = await waitForExpr(s,
+      `document.querySelectorAll('#assistMessages .as-badge').length >= 2`, { timeout: 8000 });
+    const faces = await evaluate(s, `[...document.querySelectorAll('#assistMessages .assist-proposal')].map(c => ({
+      title: (c.querySelector('.ap-title, .as-lead') || {}).textContent || '',
+      closedCard: c.classList.contains('is-closed-time'),
+      closingCard: c.classList.contains('is-closing-time'),
+      opts: [...c.querySelectorAll('.as-opt')].map(o => ({
+        title: (o.querySelector('.as-title') || {}).textContent || '',
+        closed: o.classList.contains('is-closed'),
+        closingSoon: o.classList.contains('is-closing'),
+        hours: ((o.querySelector('.ap-hours') || {}).textContent || '').trim(),
+        badges: [...o.querySelectorAll('.as-badge')].map(x => x.className.replace(/.*as-badge-/, '')),
+      })),
+      hours: ((c.querySelector(':scope > .ap-hours') || {}).textContent || '').trim(),
+      verdict: (c.querySelector('.ap-hours') || { dataset: {} }).dataset.verdict || '',
+      hoursSlots: c.querySelectorAll('.ap-hours').length,
+    }))`);
+    const byTitle = (n) => faces.find(f => f.title.includes(n) || f.opts.some(o => o.title.includes(n))) || {};
+    const setCard = byTitle('Octave');
+    const opt = (n) => (setCard.opts || []).find(o => o.title.includes(n)) || {};
+    const octave = opt('Octave'), gridLate = opt('Grid Late'), tichuca = opt('Tichuca'), sky = opt('Sky Bar');
+    await t('tp-hours: a 23:00 start at a 23:00-closing bar is demoted, never a normal candidate',
+      painted && octave.closed === true && /Closed at 11:00 PM/.test(octave.hours) && /Hours:/.test(octave.hours),
+      JSON.stringify(octave), s);
+    await t('tp-hours: a 23:00 drinks start against a 23:40 close is closingSoon - demoted amber, told apart from closed',
+      gridLate.closingSoon === true && gridLate.closed === false
+        && gridLate.hours === 'Closes at 11:40 PM · only 40 min remaining',
+      JSON.stringify(gridLate), s);
+    await t('tp-hours: neither the closed nor the closingSoon candidate wins ANY badge, whatever their numbers',
+      badged && JSON.stringify(octave.badges) === '[]'
+        && JSON.stringify(gridLate.badges) === '[]'
+        && JSON.stringify(tichuca.badges) === '["rated","popular"]'
+        && JSON.stringify(sky.badges) === '[]',
+      JSON.stringify({ octave: octave.badges, gridLate: gridLate.badges, tichuca: tichuca.badges, sky: sky.badges }), s);
+    await t('tp-hours: the overnight bar keeps its 23:00 start as an ordinary open candidate',
+      tichuca.closed === false && tichuca.closingSoon === false
+        && /^Hours · /.test(tichuca.hours) && /2:00 AM/.test(tichuca.hours),
+      JSON.stringify(tichuca), s);
+    await t('tp-hours: split hours mark 15:00 closed on a single card, and the card is demoted',
+      byTitle('Gap Cafe').closedCard === true && /Closed at 3:00 PM/.test(byTitle('Gap Cafe').hours),
+      JSON.stringify(byTitle('Gap Cafe')), s);
+    await t('tp-hours: 22:30 drinks against a 23:00 close is closingSoon and says why (30 < the 45 drinks need)',
+      byTitle('nightcap').hours === 'Closes at 11:00 PM · only 30 min remaining'
+        && byTitle('nightcap').closingCard === true && byTitle('nightcap').closedCard === false,
+      JSON.stringify(byTitle('nightcap')), s);
+    await t('tp-hours: unknown hours are UNVERIFIED - painted as nothing, not as open, and still competing',
+      sky.hours === '' && sky.closed === false,
+      JSON.stringify(sky), s);
+    await t('tp-hours: a travel leg gets no hours UI at all',
+      byTitle('Return to hotel').hoursSlots === 0, JSON.stringify(byTitle('Return to hotel')), s);
+
+    // Accepting the closed lunch card is REFUSED: no path adds it unchanged.
+    // The dialog names the verified hours and offers the item-form hand-off;
+    // Cancel writes nothing, and the hand-off adds nothing until the
+    // traveller saves the form themselves.
+    const clickAccept = (name) => evaluate(s, `(() => {
+      const card = [...document.querySelectorAll('#assistMessages .assist-proposal')]
+        .find(c => ((c.querySelector('.ap-title') || {}).textContent || '').includes(${JSON.stringify(name)}));
+      const btn = card && card.querySelector('.assist-accept');
+      if (btn) btn.click();
+      return !!btn;
+    })()`);
+    const tripItems = () => evaluate(s, `(() => {
+      const db = JSON.parse(localStorage.getItem('trip-planner:v1') || 'null');
+      const trip = db && db.trips.find(x => x.id === db.activeTripId);
+      return trip ? trip.items.map(i => i.title + '@' + (i.startTime || '')) : null;
+    })()`);
+    const before = (await tripItems()).length;
+    await clickAccept('Gap Cafe');
+    const asked = await waitForExpr(s, `document.querySelector('#confirmOverlay').classList.contains('open')`, { timeout: 4000 });
+    const confirmFace = await evaluate(s, `({
+      text: document.querySelector('#confirmText').textContent,
+      yes: document.querySelector('#confirmYes').textContent,
+    })`);
+    await clickSel(s, '#confirmOverlay [data-close]', { settle: 300 });
+    const afterCancel = await tripItems();
+    await t('tp-hours: accepting a closed proposal is refused, with the verified hours in the refusal',
+      asked && /closed at 3:00 PM/.test(confirmFace.text) && /verified hours that day/.test(confirmFace.text)
+        && /cannot add it at this time/.test(confirmFace.text)
+        && confirmFace.yes === 'Edit time & add myself' && afterCancel.length === before,
+      JSON.stringify({ asked, confirmFace, before, afterCancel }), s);
+    // The hand-off: the item form opens PREFILLED with the proposal (time in
+    // front of the traveller to change), and still nothing has been written.
+    await clickAccept('Gap Cafe');
+    await waitForExpr(s, `document.querySelector('#confirmOverlay').classList.contains('open')`, { timeout: 4000 });
+    await clickSel(s, '#confirmYes', { settle: 400 });
+    const handOff = await evaluate(s, `({
+      open: document.getElementById('itemOverlay').classList.contains('open'),
+      title: document.getElementById('inTitle').value,
+      date: document.getElementById('inStart').value,
+      time: document.getElementById('inTime').value,
+    })`);
+    const beforeSave = await tripItems();
+    await t('tp-hours: the refusal hands off to the item form, prefilled, with nothing written yet',
+      handOff.open && handOff.title === 'Lunch: Gap Cafe' && handOff.date === day && handOff.time === '15:00'
+        && beforeSave.length === before,
+      JSON.stringify({ handOff, count: beforeSave.length }), s);
+    // Change the time to a verified-open hour and save: what lands is a
+    // MANUAL traveller item, through the ordinary form path.
+    await setValue(s, '#inTime', '12:00');
+    await evaluate(s, `(()=>{ document.getElementById('itemForm').requestSubmit(); return 1 })()`);
+    await waitForExpr(s, `!document.getElementById('itemOverlay').classList.contains('open')`, { timeout: 4000 });
+    const afterEdit = await tripItems();
+    await t('tp-hours: the edited time saves as a manual item; the closed 15:00 never lands',
+      afterEdit.length === before + 1 && afterEdit.includes('Lunch: Gap Cafe@12:00')
+        && !afterEdit.some(x => x.endsWith('@15:00')),
+      JSON.stringify(afterEdit), s);
+
+    // The open candidate accepts with no interrogation: pick Tichuca, add it.
+    await evaluate(s, `(() => {
+      const card = document.querySelector('#assistMessages .assist-set');
+      const radios = [...card.querySelectorAll('.as-opt')];
+      const opt = radios.find(o => (o.querySelector('.as-title') || {}).textContent.includes('Tichuca'));
+      opt.querySelector('input[type="radio"]').click();
+      return 1;
+    })()`);
+    await evaluate(s, `document.querySelector('#assistMessages .assist-set [data-act="accept-set"]').click()`);
+    await sleep(500); // negative claim: no dialog may appear for an open venue
+    const openAccepted = await evaluate(s, `({
+      confirmed: document.querySelector('#confirmOverlay').classList.contains('open'),
+      count: (() => { const db = JSON.parse(localStorage.getItem('trip-planner:v1') || 'null');
+        const trip = db && db.trips.find(x => x.id === db.activeTripId); return trip ? trip.items.length : -1; })(),
+    })`);
+    await t('tp-hours: an open-at-that-time candidate adds without any refusal or dialog',
+      openAccepted && openAccepted.confirmed === false && openAccepted.count === before + 2,
+      JSON.stringify(openAccepted), s);
+
+    // Manual traveller items are OUTSIDE the restriction: the ordinary Add
+    // form saves an item at the closed venue's closed hour with no dialog
+    // and no gate - a person scheduling against a listing is a deliberate
+    // act, and the Days view flags it in red instead.
+    await clickSel(s, '#addBtn', { settle: 500 });
+    await waitForExpr(s, `document.getElementById('itemOverlay').classList.contains('open')`, { timeout: 4000 });
+    await setValue(s, '#inTitle', 'Drinks: Octave');
+    await setValue(s, '#inLocation', 'Bangkok');
+    await setValue(s, '#inStart', day);
+    await setValue(s, '#inTime', '23:00');
+    await evaluate(s, `(()=>{ document.getElementById('itemForm').requestSubmit(); return 1 })()`);
+    await waitForExpr(s, `!document.getElementById('itemOverlay').classList.contains('open')`, { timeout: 4000 });
+    await sleep(300); // negative claim: no dialog may have appeared
+    const manual = await evaluate(s, `({
+      confirmed: document.querySelector('#confirmOverlay').classList.contains('open'),
+      items: (() => { const db = JSON.parse(localStorage.getItem('trip-planner:v1') || 'null');
+        const trip = db && db.trips.find(x => x.id === db.activeTripId);
+        return trip ? trip.items.map(i => i.title + '@' + (i.startTime || '')) : null; })(),
+    })`);
+    await t('tp-hours: a manual traveller item at the closed hour saves with no gate at all',
+      manual && manual.confirmed === false && manual.items.includes('Drinks: Octave@23:00'),
+      JSON.stringify(manual), s);
+
+    // closingSoon is refused as a recommendation too - with its own heading
+    // and the reason spelled out - and cancelling writes nothing.
+    const beforeSoon = (await tripItems()).length;
+    await clickAccept('nightcap');
+    const askedSoon = await waitForExpr(s, `document.querySelector('#confirmOverlay').classList.contains('open')`, { timeout: 4000 });
+    const soonFace = await evaluate(s, `({
+      heading: document.querySelector('#confirmTitle').textContent,
+      text: document.querySelector('#confirmText').textContent,
+      yes: document.querySelector('#confirmYes').textContent,
+    })`);
+    await clickSel(s, '#confirmOverlay [data-close]', { settle: 300 });
+    const afterSoonCancel = await tripItems();
+    await t('tp-hours: a closingSoon proposal cannot be accepted unchanged; the refusal says how tight and why',
+      askedSoon && soonFace.heading === 'Too close to closing'
+        && /only 30 minutes after/.test(soonFace.text) && /under the 45 minutes/.test(soonFace.text)
+        && soonFace.yes === 'Edit time & add myself' && afterSoonCancel.length === beforeSoon,
+      JSON.stringify({ askedSoon, soonFace, beforeSoon, after: afterSoonCancel.length }), s);
+
+    // ...while the SAME 22:30 entered by hand through the Add form saves with
+    // no gate: closingSoon is a recommendation-quality state, not a rule
+    // about the traveller's own plan.
+    await clickSel(s, '#addBtn', { settle: 500 });
+    await waitForExpr(s, `document.getElementById('itemOverlay').classList.contains('open')`, { timeout: 4000 });
+    await setValue(s, '#inTitle', 'Drinks: Octave nightcap');
+    await setValue(s, '#inLocation', 'Bangkok');
+    await setValue(s, '#inStart', day);
+    await setValue(s, '#inTime', '22:30');
+    await evaluate(s, `(()=>{ document.getElementById('itemForm').requestSubmit(); return 1 })()`);
+    await waitForExpr(s, `!document.getElementById('itemOverlay').classList.contains('open')`, { timeout: 4000 });
+    await sleep(300); // negative claim: no dialog may have appeared
+    const manualSoon = await evaluate(s, `({
+      confirmed: document.querySelector('#confirmOverlay').classList.contains('open'),
+      items: (() => { const db = JSON.parse(localStorage.getItem('trip-planner:v1') || 'null');
+        const trip = db && db.trips.find(x => x.id === db.activeTripId);
+        return trip ? trip.items.map(i => i.title + '@' + (i.startTime || '')) : null; })(),
+    })`);
+    await t('tp-hours: the same closingSoon time entered manually remains saveable, no dialog',
+      manualSoon && manualSoon.confirmed === false && manualSoon.items.includes('Drinks: Octave nightcap@22:30'),
+      JSON.stringify(manualSoon), s);
+    await noErrors('tp-hours block 8', s);
+  } catch (err) {
+    await t('tp-hours: block 8 ran', false, String(err && err.message || err), s);
+  } finally {
+    await done(s); s = null;
+  }
   return R;
 }

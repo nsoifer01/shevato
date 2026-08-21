@@ -91,7 +91,9 @@ why, the traps, and the invariants.
   query key and aborts in flight, and there is nothing to dedupe.
 - **Google Places legal lines** (re-verified against the live terms
   2026-08-17): place IDs cacheable indefinitely, lat/lon cacheable 30d
-  (`trip-planner:venuegeo:v1`, cap 300), names/ratings NEVER stored. The
+  (`trip-planner:venuegeo:v1`, cap 300), names/ratings/opening hours NEVER
+  stored (no hours field has a caching exception; they follow the exact
+  session-only rule ratings do - see "Opening hours" below). The
   server's rating layer was found still persisting `pd:` details blobs (unread,
   unbounded); the CODE was removed 2026-08-13 but 201 stale `pd:` blobs were
   still sitting in the production store on 2026-08-17 and had to be purged
@@ -320,7 +322,10 @@ new surface that re-derives a leg; read the chain.
   stays `fastest`), rated = highest rating, popular = highest
   review count; one winner each, ties keep rendered order, fewer than two
   resolved entrants = no badge (a single resolved candidate is missing data
-  wearing a badge, not a comparison). Painted idempotently from chip
+  wearing a badge, not a comparison). Since the 2026-08-21 hours round a
+  verified-closed candidate is not an entrant at all (the `closed` input;
+  see "Opening hours" above) - exclusion can therefore also drop a badge to
+  fewer than two entrants and omit it. Painted idempotently from chip
   `dataset.km` + placesCache by BOTH the distance pass and paintPlaces, so
   whichever data lands last completes them.
 - **Change choice** maps set -> added item through `assistChoice` (WeakMap:
@@ -682,6 +687,150 @@ Traps this round minted:
 - The unit tests and the browser disagreed on duplicate counts for a while, and
   the unit tests were right. When they diverge, print the actual POST bodies
   before changing the implementation.
+
+## Opening hours: the closed-venue gate (2026-08-21)
+
+The reported failure: the assistant scheduled `Drinks: Above The Grid` at
+23:00 on a day the bar CLOSES at 23:00, and the app presented it as an
+ordinary recommendation. Root cause is a combination: the model was never
+given hours information (and could not be trusted with it if it were), and
+the app accepted a timed venue action with no deterministic check - the
+Places pipeline was already resolving every candidate for ratings, so the
+venue identity existed; hours were simply never requested. The fix requests
+them on the SAME lookup and validates deterministically. The invariant:
+
+> A venue with verified hours must never be accepted as a normal timed
+> assistant recommendation when the proposed time falls outside those hours,
+> and absence of hours data is never read as proof of being open: unknown
+> means UNVERIFIED, and the app never claims a venue was checked when Places
+> data is unavailable.
+
+- **Where hours truth comes from.** `regularOpeningHours` (weekly pattern) +
+  `currentOpeningHours` (dated periods for the next ~7 days, holiday-aware)
+  on the EXISTING Place Details call. Both are "Place Details Enterprise"
+  fields (verified against the data-fields doc 2026-08-21) - the tier
+  `rating` already bills - so the field-mask addition changes neither the SKU
+  nor the price nor the request count. Zero new requests by construction:
+  every surface paints from the session cache entry the ratings lookup
+  already creates, and `tests/tp-places-hours.test.mjs` pins the mask, the
+  single billed call and the id-only blob cache. Do NOT add any
+  "Enterprise + Atmosphere" field (reviews etc.); that WOULD raise the SKU.
+- **One normalized shape, one validator.** The server normalizes Google's
+  shape through `TripLogic.normalizeGoogleHours` (trip-logic is dual-exposed;
+  tp-assist already imports it the same way) and the client re-validates the
+  wire payload with `sanitizeHours`, so the two cannot drift and malformed
+  network data collapses to null = unknown. Times are minutes past midnight
+  in the VENUE'S OWN local time, which is also what every itinerary time is
+  (floating local times, venue in that day's city), so no timezone math
+  exists anywhere in the feature.
+- **The boundary rule** (`hoursVerdict`): open <= t < close. A start AT the
+  closing minute is CLOSED (the reported case: 23:00 at a 23:00 close);
+  22:59 is open. Overnight periods (18:00-02:00) cover past midnight into
+  the next calendar day - the dd/dl walk in `weeklyCovering` handles
+  overnight, week-wrap (Sat->Sun) and multi-day periods with no special
+  cases. Google's no-close convention = open 24 hours. Dated periods beat
+  the weekly pattern for the dates they name; a date they name with no
+  covering period is closed BY them; a date they never mention falls back to
+  weekly (absence from a 7-day window is not evidence).
+- **closingSoon: "technically open" is not "worth recommending" (2026-08-21
+  refinement).** `hoursVerdict` takes an optional fourth argument, the
+  minimum recommendation window in minutes: a covered time whose interval
+  closes in LESS than that window answers `closingSoon` instead of `open`.
+  The verdict states are open / closingSoon / closed / unknown, and
+  closingSoon is a recommendation-quality state, never another definition of
+  closed - the hard closed rule above is untouched. The boundary is
+  INCLUSIVE (remaining == window is open: a 30-window restaurant closing
+  23:00 is open at 22:30, closingSoon at 22:31), and the remaining time is
+  measured to the close of the interval CONTAINING the proposed time - the
+  covering hit's own `closesMin` - so split hours measure to the current
+  sitting (13:31 in an 11:00-14:00 sitting is closingSoon even though the
+  venue reopens 17:00-23:00) and overnight intervals measure through
+  midnight (`closesMin` is relative to the queried date, 02:00 next day =
+  1560). Without the argument (or 0) the verdict is exactly the pre-window
+  one, which is what every Days-view slot passes: manual rows keep the
+  purely advisory `Closes at X` line and are never demoted or blocked.
+- **The category -> window mapping** lives in `RECOMMEND_HOURS_WINDOWS` +
+  `recommendWindowMin` (trip-logic): meals 30 (the published close is an
+  ARRIVAL constraint, not a finish-the-meal deadline - deliberate), drinks
+  45, museum 60, gallery 45, cafe/bakery 30, shop/market 30, and a
+  45-minute default for any other visitable activity. Classification is
+  STRUCTURED first - the meal/drinks title prefixes of the assistant
+  contract, read through the same `mealKind` every surface uses - and only
+  then unambiguous category words in the title/maps query ("museum",
+  "gallery", "cafe", "market"...); a name that says neither ("Louvre",
+  "Tokyo Tower") gets the default rather than a guess, which at worst
+  under-buffers an unnamed museum by 15 minutes and never invents a
+  category. Activities only: travel legs and notes are not visits, and a
+  stay keeps closed-only verdicts (`recommendWindowMin` returns null).
+- **Unknown is a first-class verdict and it means SILENCE, worded as
+  UNVERIFIED.** No key, spent quota, offline, a failed request, an
+  unresolved place, or a place Google has no hours for: all paint nothing
+  and block nothing. Blocking on unknown would switch the assistant off
+  whenever the ratings budget runs out, and painting "open" would be a lie;
+  the absence of the hours line IS the unverified state, and no wording
+  anywhere may imply that every venue was checked. Decided and deliberate:
+  only VERIFIED-closed demotes, refuses or excludes.
+- **Three enforcement points, all deterministic, and both demoted states go
+  through all three.** (1) Paint: `paintHoursSlot` stamps the verdict on
+  the `.ap-hours` slot and demotes the card/option - closed in red
+  (`is-closed` / `is-closed-time`), closingSoon in amber (`is-closing` /
+  `is-closing-time`) with the reason on the card ("Closes at 11:00 PM ·
+  only 20 min remaining") - so neither reads as a normal recommendation;
+  the radio stays clickable for transparency only. The two states demote in
+  different colours on purpose: "shut" and "too tight to recommend" are
+  different claims. (2) Badges: `candidateBadges` takes a per-candidate
+  `closed` array (fed from the painted verdicts, closingSoon included) and
+  drops demoted candidates from EVERY winner contention - a demoted card
+  must never simultaneously be promoted as `Highest rated`/`Most popular`/
+  `Shortest route`; exclusion that leaves fewer than two open entrants
+  omits the badge, exactly as unresolved data does, and unknown-hours
+  candidates still compete (they are unverified, not closed). (3) Write:
+  `acceptProposal` runs `closedHoursFor` at accept time (so a verdict
+  landing after the cards painted still gates; it re-derives the same
+  category window) and REFUSES - there is no "add anyway" for an assistant
+  recommendation. The refusal names its state ("Closed at that time" /
+  "Too close to closing", the latter saying how many minutes remain and
+  what the category needs) and its one action hands off to the item form
+  (prefilled via `openItemModal`'s preset, now carrying
+  `startTime`/`details`), where the time sits in front of the traveller to
+  change and whatever they save is a MANUAL traveller item. The manual
+  boundary is deliberate and sharp: the item form never gates on hours in
+  any state - a person scheduling against a listing is a deliberate act the
+  app only flags (Days-view line), never blocks - so traveller-created
+  items are entirely unaffected by the restriction. Updates are gated like
+  adds (a refused update hands off to editing the target item); existing
+  traveller items are never auto-moved. The PROMPT also tells the model to
+  respect hours (`ASSIST_HOURS`), but that is defence-in-depth only - model
+  knowledge of hours is not evidence.
+- **Why no automatic replacement of a closed candidate.** Tier 1
+  (copy/paste) has no model round trip to make, and for tiers 2/3 a
+  constrained retry would double latency and spend for a case the demotion
+  already communicates; the traveller can ask the open panel for a
+  replacement in one message. Revisit only if closed candidates turn out to
+  be common in practice.
+- **Display.** Days view: activity rows only (travel legs, notes, stays,
+  cancelled rows get nothing - a leg's hours are a category error and a
+  hotel's "Open 24 hours" is noise), always against the row's SCHEDULED
+  date, never the real-world clock, and never a green "open" badge. Formats
+  through `fmtTime` via injected-formatter `hoursLineText`, so the 12/24
+  preference applies and no second time formatter exists. `Closes at X`
+  warns when the start sits within `HOURS_CLOSING_SOON_MIN` (60) of closing.
+  Timeline deliberately carries no hours line (Days is where a day is read);
+  the chips sit beside the visible `Google Maps` wordmark element, which is
+  what visually groups them with the rest of the Google-sourced content.
+- **What this still cannot guarantee.** Provider hours can themselves be
+  stale or incomplete. Beyond that: holiday/special closures outside
+  Google's ~7-day dated window; a full-day special closure INSIDE that
+  window (a closed date simply has no dated period, which is
+  indistinguishable from "not covered", so the weekly pattern is trusted
+  instead - conservative in the direction of never wrongly demoting);
+  last-entry times, kitchen-closing times, reservation-only seatings and
+  other venue-specific restrictions that no hours field represents (a
+  museum whose doors close at 17:00 may refuse entry from 16:15, and the
+  data cannot say so); venues the confidence gate refuses to match
+  (unverified, silent); and anything proposed while hours are unverifiable.
+  The traveller-facing mitigation is the same one ratings use: the card's
+  own Google Maps link for self-verification.
 
 ## Assistant: modes, and where a suggestion is measured from
 
