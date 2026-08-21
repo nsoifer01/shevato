@@ -322,7 +322,10 @@ new surface that re-derives a leg; read the chain.
   stays `fastest`), rated = highest rating, popular = highest
   review count; one winner each, ties keep rendered order, fewer than two
   resolved entrants = no badge (a single resolved candidate is missing data
-  wearing a badge, not a comparison). Painted idempotently from chip
+  wearing a badge, not a comparison). Since the 2026-08-21 hours round a
+  verified-closed candidate is not an entrant at all (the `closed` input;
+  see "Opening hours" above) - exclusion can therefore also drop a badge to
+  fewer than two entrants and omit it. Painted idempotently from chip
   `dataset.km` + placesCache by BOTH the distance pass and paintPlaces, so
   whichever data lands last completes them.
 - **Change choice** maps set -> added item through `assistChoice` (WeakMap:
@@ -696,9 +699,11 @@ Places pipeline was already resolving every candidate for ratings, so the
 venue identity existed; hours were simply never requested. The fix requests
 them on the SAME lookup and validates deterministically. The invariant:
 
-> A venue with verified hours is never presented as a valid timed
-> recommendation at a time outside those hours, and absence of hours data is
-> never read as proof of being open.
+> A venue with verified hours must never be accepted as a normal timed
+> assistant recommendation when the proposed time falls outside those hours,
+> and absence of hours data is never read as proof of being open: unknown
+> means UNVERIFIED, and the app never claims a venue was checked when Places
+> data is unavailable.
 
 - **Where hours truth comes from.** `regularOpeningHours` (weekly pattern) +
   `currentOpeningHours` (dated periods for the next ~7 days, holiday-aware)
@@ -727,21 +732,37 @@ them on the SAME lookup and validates deterministically. The invariant:
   the weekly pattern for the dates they name; a date they name with no
   covering period is closed BY them; a date they never mention falls back to
   weekly (absence from a 7-day window is not evidence).
-- **Unknown is a first-class verdict and it means SILENCE.** No key, spent
-  quota, offline, a failed request, an unresolved place, or a place Google
-  has no hours for: all paint nothing and block nothing. Blocking on unknown
-  would switch the assistant off whenever the ratings budget runs out, and
-  painting "open" would be a lie; the absence of the hours line IS the
-  unverified state. Decided and deliberate: only VERIFIED-closed demotes.
-- **Two enforcement points, both deterministic.** (1) Paint: `paintHoursSlot`
-  marks a closed candidate's `.ap-hours` and demotes its card/option
-  (`is-closed` / `is-closed-time`), so it never reads as a normal
-  recommendation - but the radio stays live, because provider hours can be
-  stale and a dead-end slot helps nobody. (2) Write: `acceptProposal` runs
+- **Unknown is a first-class verdict and it means SILENCE, worded as
+  UNVERIFIED.** No key, spent quota, offline, a failed request, an
+  unresolved place, or a place Google has no hours for: all paint nothing
+  and block nothing. Blocking on unknown would switch the assistant off
+  whenever the ratings budget runs out, and painting "open" would be a lie;
+  the absence of the hours line IS the unverified state, and no wording
+  anywhere may imply that every venue was checked. Decided and deliberate:
+  only VERIFIED-closed demotes, refuses or excludes.
+- **Three enforcement points, all deterministic.** (1) Paint:
+  `paintHoursSlot` marks a closed candidate's `.ap-hours` and demotes its
+  card/option (`is-closed` / `is-closed-time`), so it never reads as a
+  normal recommendation; the radio stays clickable for transparency only.
+  (2) Badges: `candidateBadges` takes a per-candidate `closed` array (fed
+  from the painted verdicts) and drops verified-closed candidates from
+  EVERY winner contention - a card marked closed must never simultaneously
+  be promoted as `Highest rated`/`Most popular`/`Shortest route`; exclusion
+  that leaves fewer than two open entrants omits the badge, exactly as
+  unresolved data does, and unknown-hours candidates still compete (they
+  are unverified, not closed). (3) Write: `acceptProposal` runs
   `closedHoursFor` at accept time (so a verdict landing after the cards
-  painted still gates) and routes through the existing `confirmDialog` with
-  "Add anyway" naming the verified hours. Nothing closed is ever written
-  silently; updates are gated too, and existing traveller items are never
+  painted still gates) and REFUSES - there is no "add anyway" for an
+  assistant recommendation. The refusal dialog quotes the verified hours
+  and its one action hands off to the item form (prefilled via
+  `openItemModal`'s preset, now carrying `startTime`/`details`), where the
+  time sits in front of the traveller to change and whatever they save is a
+  MANUAL traveller item. The manual boundary is deliberate and sharp: the
+  item form never gates on hours in either direction - a person scheduling
+  against a listing is a deliberate act the app only flags (red Days-view
+  line), never blocks - so traveller-created items are entirely unaffected
+  by the restriction. Updates are gated like adds (a closed-time update
+  hands off to editing the target item); existing traveller items are never
   auto-moved. The PROMPT also tells the model to respect hours
   (`ASSIST_HOURS`), but that is defence-in-depth only - model knowledge of
   hours is not evidence.
@@ -761,15 +782,19 @@ them on the SAME lookup and validates deterministically. The invariant:
   Timeline deliberately carries no hours line (Days is where a day is read);
   the chips sit beside the visible `Google Maps` wordmark element, which is
   what visually groups them with the rest of the Google-sourced content.
-- **What this still cannot guarantee.** Holiday/special closures beyond
+- **What this still cannot guarantee.** Provider hours can themselves be
+  stale or incomplete. Beyond that: holiday/special closures outside
   Google's ~7-day dated window; a full-day special closure INSIDE that
   window (a closed date simply has no dated period, which is
   indistinguishable from "not covered", so the weekly pattern is trusted
   instead - conservative in the direction of never wrongly demoting);
-  provider hours that are stale or wrong; venues the confidence gate refuses
-  to match (unknown, silent); and anything proposed while hours are
-  unverifiable. The traveller-facing mitigation is the same one ratings use:
-  the card's own Google Maps link for self-verification.
+  last-entry times, kitchen-closing times, reservation-only seatings and
+  other venue-specific restrictions that no hours field represents (a
+  museum whose doors close at 17:00 may refuse entry from 16:15, and the
+  data cannot say so); venues the confidence gate refuses to match
+  (unverified, silent); and anything proposed while hours are unverifiable.
+  The traveller-facing mitigation is the same one ratings use: the card's
+  own Google Maps link for self-verification.
 
 ## Assistant: modes, and where a suggestion is measured from
 

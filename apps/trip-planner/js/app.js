@@ -3477,7 +3477,11 @@
     $('#inEnd').value = it && it.type === 'stay' ? (it.endDate || '') : (preStay ? (pre.endDate || '') : '');
     $('#inArrDate').value = it && it.type !== 'stay' ? (it.endDate || '') : '';
     $('#inArrTime').value = it ? (it.endTime || '') : '';
-    $('#inTime').value = it ? (it.startTime || '') : '';
+    // A preset may carry the time (the closed-proposal hand-off does: the
+    // whole point of that hand-off is putting the time in front of the
+    // traveller to change), and a preset value is a PREFILL like any other -
+    // on screen, editable, saved only when they save.
+    $('#inTime').value = it ? (it.startTime || '') : (pre.startTime || '');
     $('#inStatus').value = it ? it.status : 'to-book';
     syncBookByRow();
     const base = activeTrip().currency || 'USD';
@@ -3504,7 +3508,7 @@
     // happened to be first
     $('#inPayment').value = it && PAYMENT_METHODS.includes(it.payment) ? it.payment : '';
     renderWhoFor(it);
-    $('#inDetails').value = it ? (it.details || '') : '';
+    $('#inDetails').value = it ? (it.details || '') : (pre.details || '');
     renderDetailLinks(it);
     syncDocsSection(it);
     clearFieldErrors();
@@ -6020,7 +6024,18 @@
       return entry && entry.status === 'ok'
         ? { rating: entry.rating, count: entry.userRatingCount || 0 } : null;
     });
-    const badges = candidateBadges({ kms, ratings });
+    // A candidate whose verified hours refuse its own start time is out of
+    // every badge contention (candidateBadges' closed rule): the same card
+    // cannot read "Closed at 11:00 PM" and "Highest rated" at once. The
+    // verdict is read off the painted hours slot, which the same paintPlaces
+    // pass fills BEFORE the sets are re-judged, and which persists across the
+    // distance pass's own repaints. Unknown hours are unverified, not closed,
+    // so they still compete.
+    const closed = opts.map(o => {
+      const h = o.querySelector('.ap-hours');
+      return !!h && h.dataset.verdict === 'closed';
+    });
+    const badges = candidateBadges({ kms, ratings, closed });
     opts.forEach((o, i) => {
       o.querySelectorAll('.as-badge').forEach(el => el.remove());
       const title = o.querySelector('.as-title');
@@ -8782,7 +8797,10 @@
   //   Closed ...  - the scheduled time falls at/after close or outside every
   //                 interval (a start AT closing time is closed; see
   //                 hoursVerdict). On an assistant card this also demotes the
-  //                 candidate so it can never read as a normal recommendation.
+  //                 candidate (never a normal recommendation, never a badge
+  //                 winner) and acceptProposal refuses to apply it unchanged.
+  // "Unknown" here means UNVERIFIED - the lookup could not vouch either way -
+  // and the one honest rendering of unverified is nothing at all.
   const hhmmMin = t => (+String(t).slice(0, 2)) * 60 + (+String(t).slice(3, 5));
   const minToHHMM = m => `${String(Math.floor((m % 1440) / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
   function paintHoursSlot(el) {
@@ -8818,11 +8836,13 @@
     el.title = title;
     el.textContent = text;
     // The demotion: a candidate whose verified hours refuse its own start time
-    // is not a normal recommendation any more. The pick stays PHYSICALLY
-    // possible (provider hours can be stale, and a dead-end slot helps nobody)
-    // but the option reads as rejected, and acceptProposal backs this up with
-    // an explicit are-you-sure that names the hours - so nothing closed can be
-    // added silently, raced paints included.
+    // is not a normal recommendation any more, and the verdict stamped here is
+    // also what takes it out of every winner-badge contention (paintSetBadges
+    // reads it). The radio stays clickable for transparency - the traveller
+    // can still read, compare and pick it - but acceptProposal REFUSES to
+    // apply it at the closed time and hands off to the item form instead, so
+    // no verified-closed recommendation is ever accepted unchanged, raced
+    // paints included.
     if (el.classList.contains('is-closed')) {
       const opt = el.closest('.as-opt');
       if (opt) opt.classList.add('is-closed');
@@ -9245,12 +9265,16 @@
 
   // The deterministic write-path gate: would this proposal put a venue on the
   // plan at a time its VERIFIED hours refuse? Returns the facts for the
-  // confirm dialog, or null when the answer is open or unknown. Unknown never
-  // blocks (blocking would switch the assistant off whenever the quota is out
-  // or the app is offline) and equally never claims open - it simply has
-  // nothing to say, which is the documented degradation. This runs at accept
+  // refusal dialog, or null when the answer is open or unknown. Unknown means
+  // UNVERIFIED, never "open": it does not block (blocking would switch the
+  // assistant off whenever the quota is out or the app is offline), but
+  // nothing anywhere claims such a venue was checked. This runs at accept
   // time, not render time, so a verdict that landed AFTER the cards painted
-  // still gates the write.
+  // still gates the write. The invariant it enforces: a venue with verified
+  // hours is never accepted as a timed assistant recommendation when the
+  // proposed time falls outside those hours - only manual traveller edits
+  // through the item form can schedule against verified hours, and the Days
+  // view then says so in red.
   function closedHoursFor(p, trip) {
     if (!p || (p.op !== 'add' && p.op !== 'update')) return null;
     let probe;
@@ -9272,7 +9296,7 @@
     return { date, time, allDay: !day.always && !day.intervals.length, line: hoursLineText(day, fmtTime) };
   }
 
-  function acceptProposal(pid, card, restore, hoursConfirmed) {
+  function acceptProposal(pid, card, restore) {
     const action = assistActions.get(pid);
     if (!action) return;
     const putCardBack = restore || assistCardSnapshot(card);
@@ -9280,24 +9304,38 @@
     const res = validateTripAction(action, trip); // re-validate against CURRENT state
     if (!res.ok) { assistActions.delete(pid); markProposalStale(card); return; }
     const p = res.proposal;
-    // A venue whose verified hours refuse the proposed time is never applied
-    // silently: the traveller confirms with the hours in front of them (the
-    // one legitimate reason being that they know something the listing does
-    // not), or cancels and the card stands untouched. Nothing is written
-    // before this returns.
-    if (!hoursConfirmed) {
-      const closed = closedHoursFor(p, trip);
-      if (closed) {
-        const what = closed.allDay
-          ? `closed all day on ${fmtDate(closed.date)}`
-          : `closed at ${fmtTime(closed.time)} on ${fmtDate(closed.date)} (hours that day: ${closed.line})`;
-        confirmDialog(
-          'Closed at that time',
-          `Google Maps lists "${p.display.title || 'this venue'}" as ${what}. Add it to the trip anyway?`,
-          'Add anyway',
-          () => acceptProposal(pid, card, putCardBack, true));
-        return;
-      }
+    // A proposal whose verified hours refuse the proposed time is REFUSED,
+    // not confirmed through: there is no "add anyway" for an assistant
+    // recommendation, because accepting it unchanged is exactly the claim
+    // the verification exists to stop. The card stays on screen, demoted,
+    // and the traveller's ways forward are the honest ones - pick another
+    // candidate, ask the assistant for a different time or venue, or take
+    // the hand-off below into the ITEM FORM, where the time sits in front of
+    // them to change and whatever they save is a manual traveller item (the
+    // form deliberately never gates on hours: a person scheduling against a
+    // listing is a deliberate act, and the Days view still flags it in red).
+    const closed = closedHoursFor(p, trip);
+    if (closed) {
+      const title = p.display.title || 'this venue';
+      const what = closed.allDay
+        ? `closed all day on ${fmtDate(closed.date)}`
+        : `closed at ${fmtTime(closed.time)} on ${fmtDate(closed.date)} (verified hours that day: ${closed.line})`;
+      confirmDialog(
+        'Closed at that time',
+        `Google Maps lists "${title}" as ${what}, so the assistant cannot add it at this time. `
+          + 'Pick another option, ask the assistant for a different time or venue, '
+          + 'or edit the time and add it yourself.',
+        'Edit time & add myself',
+        () => {
+          if (p.op === 'update') { openItemModal(p.targetId); return; }
+          const f = p.fields;
+          openItemModal(null, {
+            type: f.type, title: f.title || '', location: f.location || '',
+            startDate: p.display.startDate || '', startTime: p.display.startTime || '',
+            details: f.details || '',
+          });
+        });
+      return;
     }
     let addedItem = null;
     if (p.op === 'add') {

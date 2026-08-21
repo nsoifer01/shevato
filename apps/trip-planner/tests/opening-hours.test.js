@@ -261,6 +261,54 @@ test('placesCacheUpdates sanitizes hours coming off the wire', () => {
   assert.equal(updates[0].entry.hours, undefined);
 });
 
+// ---------- closed candidates are out of every winner-badge contention ----------
+
+const badgeIds = out => out.map(b => b.map(x => x.id));
+
+test('a verified-closed candidate wins no badge, however good its numbers', () => {
+  // Candidate 0 would sweep all three: shortest leg, highest rating, most
+  // reviews. Closed at its own start time, it wins nothing, and every badge
+  // falls to the best OPEN candidate instead.
+  const out = L.candidateBadges({
+    kms: [0.2, 1.5, 3.0],
+    ratings: [{ rating: 4.9, count: 900 }, { rating: 4.2, count: 120 }, { rating: 4.0, count: 50 }],
+    closed: [true, false, false],
+  });
+  assert.deepEqual(badgeIds(out), [[], ['fastest', 'rated', 'popular'], []]);
+});
+
+test('exclusion that leaves fewer than two open entrants omits the badge entirely', () => {
+  // Two candidates, the better one closed: one open entrant is not a
+  // comparison, so nothing wears a badge - a badge on the survivor would be
+  // missing data dressed as a win.
+  const out = L.candidateBadges({
+    kms: [0.2, 1.5],
+    ratings: [{ rating: 4.9, count: 900 }, { rating: 4.2, count: 120 }],
+    closed: [true, false],
+  });
+  assert.deepEqual(badgeIds(out), [[], []]);
+});
+
+test('all candidates closed means no badges at all', () => {
+  const out = L.candidateBadges({
+    kms: [0.2, 1.5],
+    ratings: [{ rating: 4.9, count: 900 }, { rating: 4.2, count: 120 }],
+    closed: [true, true],
+  });
+  assert.deepEqual(badgeIds(out), [[], []]);
+});
+
+test('unknown hours are unverified, not closed: without a closed flag the contest is unchanged', () => {
+  const inputs = {
+    kms: [0.2, 1.5],
+    ratings: [{ rating: 4.9, count: 900 }, { rating: 4.2, count: 120 }],
+  };
+  const bare = L.candidateBadges(inputs);
+  const flagged = L.candidateBadges({ ...inputs, closed: [false, false] });
+  assert.deepEqual(badgeIds(bare), [['fastest', 'rated', 'popular'], []]);
+  assert.deepEqual(badgeIds(flagged), badgeIds(bare));
+});
+
 // ---------- the prompt carries the defence-in-depth paragraph ----------
 
 test('both prompt builders tell the model about opening hours (defence-in-depth only)', () => {

@@ -4931,12 +4931,19 @@ const TripLogic = (() => {
   //            duration nothing here computes.
   //   ratings: per-candidate { rating, count } from the resolved Places
   //            lookup, or null.
+  //   closed:  per-candidate true when the candidate's VERIFIED opening hours
+  //            refuse its own start time (hoursVerdict said 'closed'). A
+  //            closed candidate is out of EVERY contention: a card the app
+  //            has marked closed must never simultaneously be promoted as a
+  //            winner, whatever its rating, review count or distance. Only a
+  //            verified-closed verdict excludes - unknown hours are merely
+  //            unverified and still compete.
   const CANDIDATE_BADGES = {
     fastest: { icon: '⚡', label: 'Shortest route', title: 'Shortest travel leg from where you will be before this slot' },
     rated: { icon: '⭐', label: 'Highest rated', title: 'Highest Google Maps rating of these options' },
     popular: { icon: '🔥', label: 'Most popular', title: 'Most Google Maps reviews of these options' },
   };
-  function candidateBadges({ kms, ratings }) {
+  function candidateBadges({ kms, ratings, closed }) {
     const n = Math.max(Array.isArray(kms) ? kms.length : 0, Array.isArray(ratings) ? ratings.length : 0);
     const out = Array.from({ length: n }, () => []);
     if (n < 2) return out; // one option is not a comparison
@@ -4953,12 +4960,18 @@ const TripLogic = (() => {
       // it is missing data wearing a badge
       return entrants >= 2 ? best : -1;
     };
-    const km = i => (Array.isArray(kms) && typeof kms[i] === 'number' && kms[i] >= 0 ? kms[i] : null);
+    // Verified-closed candidates are not entrants at all (see the note above
+    // CANDIDATE_BADGES); dropping below two entrants then omits the badge,
+    // exactly as unresolved data does.
+    const shut = i => Array.isArray(closed) && closed[i] === true;
+    const km = i => (!shut(i) && Array.isArray(kms) && typeof kms[i] === 'number' && kms[i] >= 0 ? kms[i] : null);
     const rating = i => {
+      if (shut(i)) return null;
       const r = Array.isArray(ratings) ? ratings[i] : null;
       return r && typeof r.rating === 'number' ? -r.rating : null; // negated: winner() minimises
     };
     const count = i => {
+      if (shut(i)) return null;
       const r = Array.isArray(ratings) ? ratings[i] : null;
       return r && typeof r.count === 'number' && r.count > 0 ? -r.count : null;
     };

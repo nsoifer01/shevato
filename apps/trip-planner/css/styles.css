@@ -2660,10 +2660,13 @@
   .trip-planner-app .tp-hours.is-closing { color: var(--amber) !important; }
   .trip-planner-app .tp-hours.is-closed { color: var(--red) !important; }
   /* A candidate whose verified hours refuse its own start time is demoted: it
-     must never read as a normal recommendation. The text dims, the option
-     tints, and the hours line stays at full strength because it is the
-     explanation. The radio stays live on purpose (provider hours can be
-     stale) and acceptProposal still confirms before anything is written. */
+     must never read as a normal recommendation, and it is excluded from the
+     winner badges too (candidateBadges' closed rule). The text dims, the
+     option tints, and the hours line stays at full strength because it is
+     the explanation. The radio stays live for transparency, but
+     acceptProposal refuses to apply a verified-closed proposal unchanged -
+     the only way to schedule against verified hours is a manual traveller
+     edit through the item form. */
   .as-opt.is-closed { background: var(--red-soft); }
   .as-opt.is-closed .as-body { opacity: 0.55; }
   .trip-planner-app .assist-proposal.is-closed-time {
