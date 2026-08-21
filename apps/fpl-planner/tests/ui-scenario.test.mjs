@@ -74,6 +74,21 @@ test('a manual squad seeds the scenario from the plan, because its picks carry n
     'the seed is the plan\'s eleven');
   assert.equal(sc.captain, mb.current.captain, 'and the plan\'s captain');
   assert.equal(sc.origin, 'recommended', 'labelled as seeded from the recommendation');
+
+  // The comparison strip must not measure against a lineup fabricated from
+  // roster slots either: untouched, the scenario compares level against the
+  // seed, not "+3.9 xP" against a two-goalkeeper captainless eleven.
+  const cmp = comparison(sc, { gameState, squadState: manual }, {
+    projections: mb.projections, gw: mb.current.gw, horizon: mb.current.horizon, discount: 0.85,
+  });
+  assert.equal(cmp.gw.before, cmp.gw.after,
+    `an untouched scenario compares level this gameweek, got ${cmp.gw.before} -> ${cmp.gw.after}`);
+  assert.equal(cmp.captainChanged, false, 'and the captain is not reported as changed');
+  // The transfer count is the PLAN's own, never fifteen phantom buys against
+  // a roster misread. (In this fixture the plan legitimately recommends
+  // moves, so the squad-level delta is the plan's real gain, not zero.)
+  assert.equal(cmp.transfers, mb.current.transferCount,
+    'the strip tells the plan\'s transfer story');
 });
 
 // A squad player of a given position who is NOT in the scenario, cheap enough

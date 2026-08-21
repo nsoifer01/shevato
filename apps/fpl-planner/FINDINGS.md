@@ -1098,6 +1098,22 @@ recorded here is the shape, because the next seam will look like these.
   already fits) and no "Current team" view is offered before a real lineup
   exists. Pinned by a unit test reproducing the literal symptom (2 GKP in
   the seeded eleven) and two lifecycle checks, all failing pre-fix.
+- **Third member, found by auditing the STATE MODEL forwards instead of a
+  symptom backwards: the scenario comparison's "before" eleven.**
+  `comparison()` in `ui/scenario.js` built its baseline from the same roster
+  slots (2 GKP, no captain), so an UNTOUCHED restored squad's sandbox strip
+  read "This gameweek 42.7 -> 54.1" - a phantom gain over a fabricated
+  eleven. For squads whose picks carry no lineup the baseline is now the
+  scenario's own seed (the plan's arrangement of the same fifteen): untouched
+  compares level, an edit reads as the edit's own effect. The full sweep that
+  found it enumerated every SquadState representation (draft, manual,
+  imported picks, scenario, planner-internal projected) and every consumer of
+  every field whose meaning differs between them; the ONLY raw readers of
+  pick slots/captain flags in the app are createScenario, pitchViewModel and
+  comparison (all now guarded by `picksCarryLineup`) plus
+  `projectedSquadState`, whose roster-style picks are engine-internal
+  (membership, selling prices and transfer state only; each future gameweek's
+  eleven is re-optimized, never read from those slots).
 
 ## Browser E2E, and why it exists here now
 
