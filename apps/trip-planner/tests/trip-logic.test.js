@@ -4041,7 +4041,14 @@ for (const { opt, trip } of samples) {
     assert.ok(items.some(it => it.status === 'booked'), 'nothing is booked');
     assert.ok(items.some(it => it.status === 'to-book'), 'nothing is left to book');
     assert.ok(items.some(it => L.isStay(it) && L.nights(it) > 1), 'no multi-night stay');
-    assert.ok(items.some(it => L.isFoodOrDrink(it.title)), 'no meals or drinks');
+    // Structured, not prefixed: the templates are authored with the
+    // "Dinner: Narisawa" shorthand but BUILD the shape the form now saves, so
+    // this asks the same question the app asks (itemMealKind), and the titles
+    // it walks past are bare venue names.
+    assert.ok(items.some(it => L.itemMealKind(it)), 'no meals or drinks');
+    for (const it of items) {
+      assert.ok(!L.mealKind(it.title), `${it.title} still carries a meal prefix in its title`);
+    }
   });
 
   test(`example ${opt.id}: the declared density holds day by day`, () => {
@@ -6065,13 +6072,27 @@ test('both fields survive the real share link round trip and the receiver guards
     [{ id: 'x1', title: 'Museum', date: '2027-02-10', daysLeft: 2, kind: 'due' }]);
 });
 
-test('buildCsv appends bookBy and paymentMethod LAST, leaving every prior column where it was', () => {
+test('buildCsv APPENDS new columns, leaving every prior column where it was', () => {
   const cols = L.csvColumns('USD');
-  assert.deepEqual(cols.slice(-2), ['bookBy', 'paymentMethod']);
-  // the columns a spreadsheet may already be built against keep their indexes
+  // the running contract: every column added since the first export has gone
+  // on the END, so a spreadsheet built against an older file keeps its indexes
+  assert.deepEqual(cols.slice(-3), ['bookBy', 'paymentMethod', 'category']);
   assert.equal(cols.indexOf('cost'), 10);
   assert.equal(cols.indexOf('confirmation'), 16);
   assert.equal(cols.indexOf('travelers'), 17);
+});
+
+test('CSV carries the food & drink category in its own column, never in the title', () => {
+  const trip = { name: 'T', currency: 'USD', items: [
+    bookedItem({ id: 'a', type: 'activity', title: 'Saba', meal: 'dinner' }),
+    bookedItem({ id: 'b', type: 'activity', title: 'Hot Tin', meal: 'drinks', startDate: '2027-03-02' }),
+    bookedItem({ id: 'c', type: 'activity', title: 'The National WWII Museum', startDate: '2027-03-03' }),
+  ] };
+  const rows = parseCsv(L.buildCsv(trip, 'USD', null));
+  const head = rows[0];
+  const titleCol = head.indexOf('title'), catCol = head.indexOf('category');
+  assert.deepEqual(rows.slice(1).map(r => r[titleCol]), ['Saba', 'Hot Tin', 'The National WWII Museum']);
+  assert.deepEqual(rows.slice(1).map(r => r[catCol]), ['Dinner', 'Drinks', '']);
 });
 
 test('CSV prints the payment wording a person reads, not the stored token', () => {

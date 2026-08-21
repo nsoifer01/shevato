@@ -5,12 +5,15 @@
 //      "Mark booked")
 //   O. Days view rendering (check-in/out, timed rows, covered-empty day,
 //      no-bed day, cancelled rows, Maps link, manual tie ordering)
+//   O2. the day-card header overflow menu (open/close/Escape/outside click)
+//   O3. Food & Drink as a real type + category (migration, form, filters,
+//       icon-only cards with an accessible category name)
 //   R. large-trip smoke: ~340 items render and stay interactive
 import {
   LS_KEY, APP, recorder, freshIds, iso, item, trip, dbOf,
   openApp, readDb, rowCount, tpErrors,
   switchView, closePage, evaluate, waitForExpr,
-  clickSel, setValue, expandTimeline, menuAct, gotoHard, escape,
+  clickSel, setValue, expandTimeline, menuAct, gotoHard, escape, sleep,
 } from './helpers.mjs';
 import TripLogic from '../js/trip-logic.js';
 
@@ -233,6 +236,166 @@ export async function run({ base, cdpPort }) {
     await switchView(s, 'timeline');
     await switchView(s, 'days');
     await t('tp-views O: switching views never writes data', (await evaluate(s, `localStorage.getItem(${JSON.stringify(LS_KEY)})`)) === bytesAfterOrder && bytesAfterOrder !== bytesBefore, '', s);
+  });
+
+  /* ---------------- O3. Food & Drink: structured, not prefixed ------------ */
+  // The round that replaced "type Dinner: into the title" with a real type and
+  // a real category field. What this block owns is the WIRING - the form, the
+  // storage, the filters and what a card renders; the vocabulary, the legacy
+  // split and every pure surface are pinned in tests/food-drink.test.js.
+  freshIds();
+  const fdTrip = trip({
+    name: 'Food trip',
+    items: [
+      // seeded in the LEGACY shape, exactly as a saved trip holds it today
+      item({ type: 'activity', title: 'Dinner: Saba', location: 'New Orleans', startDate: iso(40), startTime: '19:00', status: 'to-book' }),
+      item({ type: 'activity', title: 'Drinks: Hot Tin', location: 'New Orleans', startDate: iso(40), startTime: '21:30', status: 'to-book' }),
+      item({ type: 'activity', title: 'The National WWII Museum', location: 'New Orleans', startDate: iso(40), startTime: '10:00', status: 'booked' }),
+      item({ type: 'activity', title: 'Sunset dinner cruise', location: 'New Orleans', startDate: iso(40), startTime: '17:00', status: 'to-book' }),
+    ],
+  });
+  await withPage('tp-views O3', { db: dbOf([fdTrip]) }, async (s) => {
+    const stored = () => evaluate(s, `(() => {
+      const db = JSON.parse(localStorage.getItem(${JSON.stringify(LS_KEY)}));
+      const t = db.trips.find(x => x.id === db.activeTripId) || db.trips[0];
+      return t.items.map(i => ({ id: i.id, type: i.type, meal: i.meal === undefined ? null : i.meal, title: i.title }));
+    })()`);
+    let items = await stored();
+    const byTitle = t => items.find(i => i.title === t);
+    await t('tp-views O3: a legacy "Dinner: X" is migrated at boot to meal + bare title',
+      !!byTitle('Saba') && byTitle('Saba').meal === 'dinner' && byTitle('Saba').type === 'activity',
+      JSON.stringify(items), s);
+    await t('tp-views O3: a legacy "Drinks: X" migrates the same way',
+      !!byTitle('Hot Tin') && byTitle('Hot Tin').meal === 'drinks', JSON.stringify(items), s);
+    await t('tp-views O3: a title that merely MENTIONS a meal is never rewritten',
+      !!byTitle('Sunset dinner cruise') && byTitle('Sunset dinner cruise').meal === null, JSON.stringify(items), s);
+
+    await switchView(s, 'days');
+    const rows = () => evaluate(s, `[...document.querySelectorAll('#daysList .dc-event')].map(r => ({
+      title: ((r.querySelector('.dc-title') || {}).childNodes[0] || {}).textContent || '',
+      icon: (r.querySelector('.dc-ico') || {}).textContent || '',
+      label: (r.querySelector('.dc-ico') || {}).getAttribute('aria-label'),
+      meal: /tp-t-meal/.test(r.className),
+    }))`);
+    const drawn = await rows();
+    const saba = drawn.find(r => r.title.startsWith('Saba'));
+    await t('tp-views O3: the card shows the venue name with NO category word',
+      !!saba && saba.title.trim() === 'Saba', JSON.stringify(drawn), s);
+    await t('tp-views O3: the category rides on the icon + accent instead',
+      !!saba && saba.icon === '🍽️' && saba.meal === true, JSON.stringify(saba), s);
+    // icon-only categories must still SAY what they mean to a screen reader
+    await t('tp-views O3: the icon carries the category as its accessible name',
+      !!saba && saba.label === 'Dinner'
+        && (drawn.find(r => r.title.startsWith('Hot Tin')) || {}).label === 'Drinks',
+      JSON.stringify(drawn.map(r => [r.title, r.label])), s);
+    await t('tp-views O3: no row anywhere repeats a category prefix',
+      drawn.every(r => !/^\s*(Breakfast|Brunch|Lunch|Dinner|Drinks|Cafe|Snack)\s*:/i.test(r.title)),
+      JSON.stringify(drawn.map(r => r.title)), s);
+
+    // Editing a legacy item: the form speaks the new vocabulary and the title
+    // field holds only the venue - the traveller never deletes a prefix.
+    await clickSel(s, `#daysList [data-act="edit"][data-id="${byTitle('Saba').id}"]`, { settle: 500 });
+    const form = () => evaluate(s, `({
+      type: (document.querySelector('#typePicker button.on') || {}).dataset.type,
+      meal: document.getElementById('inMeal').value,
+      mealShown: document.getElementById('fMeal').style.display !== 'none',
+      title: document.getElementById('inTitle').value,
+      hint: document.getElementById('mealHint').hidden ? '' : document.getElementById('mealHint').textContent,
+    })`);
+    let f = await form();
+    await t('tp-views O3: editing a legacy dinner opens Food & Drink / Dinner / "Saba"',
+      f.type === 'food' && f.meal === 'dinner' && f.mealShown && f.title === 'Saba', JSON.stringify(f), s);
+    await t('tp-views O3: the helper text no longer teaches a title prefix',
+      !/Breakfast:|Lunch:|Dinner:|Drinks:/.test(f.hint), f.hint, s);
+    // saving it back keeps the structure rather than re-prefixing the title
+    await clickSel(s, '#itemSaveBtn', { settle: 600 });
+    items = await stored();
+    await t('tp-views O3: saving an edited legacy item keeps meal + bare title',
+      !!byTitle('Saba') && byTitle('Saba').meal === 'dinner', JSON.stringify(items), s);
+
+    // An ordinary activity is untouched by any of it.
+    await clickSel(s, `#daysList [data-act="edit"][data-id="${byTitle('The National WWII Museum').id}"]`, { settle: 500 });
+    f = await form();
+    await t('tp-views O3: an attraction still opens as Activity with no subtype control',
+      f.type === 'activity' && !f.mealShown, JSON.stringify(f), s);
+    await escape(s);
+
+    // Adding through the form: choose the type, choose the category, type the
+    // venue name. No syntax anywhere.
+    await clickSel(s, '#addBtn', { settle: 450 });
+    await clickSel(s, '#typePicker [data-type="food"]', { settle: 300 });
+    await setValue(s, '#inMeal', 'brunch');
+    await setValue(s, '#inTitle', 'Elizabeths');
+    await setValue(s, '#inStart', iso(40));
+    await setValue(s, '#inTime', '11:00');
+    await clickSel(s, '#itemSaveBtn', { settle: 600 });
+    items = await stored();
+    await t('tp-views O3: adding Food & Drink stores type activity + the chosen kind',
+      !!byTitle('Elizabeths') && byTitle('Elizabeths').meal === 'brunch'
+        && byTitle('Elizabeths').type === 'activity',
+      JSON.stringify(byTitle('Elizabeths')), s);
+
+    // The two filters over one storage type.
+    const filterTo = async (v) => {
+      // the toolbar selects listen for `input`, not `change`
+      await evaluate(s, `(() => { const el = document.getElementById('filterType');
+        el.value = ${JSON.stringify(v)}; el.dispatchEvent(new Event('input', { bubbles: true })); return 1 })()`);
+      await sleep(500);
+      return evaluate(s, `[...document.querySelectorAll('#daysList .dc-title')].map(e => e.textContent)`);
+    };
+    const food = await filterTo('food');
+    await t('tp-views O3: the Food & drink filter shows meals only',
+      food.some(x => x.includes('Saba')) && food.some(x => x.includes('Elizabeths'))
+        && !food.some(x => x.includes('WWII')) && !food.some(x => x.includes('Sunset dinner cruise')),
+      JSON.stringify(food), s);
+    const acts = await filterTo('activity');
+    await t('tp-views O3: the Activities filter excludes every meal',
+      acts.some(x => x.includes('WWII')) && acts.some(x => x.includes('Sunset dinner cruise'))
+        && !acts.some(x => x.includes('Saba') || x.includes('Hot Tin')),
+      JSON.stringify(acts), s);
+  });
+
+  /* ------------------ O2. day-card header overflow menu ------------------- */
+  // The occasional day actions (copy as text / copy to another date / delete
+  // the day's items) live behind one "..." toggle since the 2026-08-21 polish
+  // round. State is DOM-held: open class on the wrap, hidden on the menu,
+  // aria-expanded on the toggle, and has-open-menu on the card (which lifts
+  // the card's overflow clip + stacking order while the popover is up).
+  freshIds();
+  const o2Trip = trip({
+    name: 'Menu day',
+    items: [item({ title: 'Louvre', location: 'Paris', startDate: iso(40), startTime: '10:00' })],
+  });
+  await withPage('tp-views O2', { db: dbOf([o2Trip]) }, async (s) => {
+    await switchView(s, 'days');
+    const state = () => evaluate(s, `(()=>{const w=document.querySelector('.day-card .dc-menu-wrap');
+      if(!w) return null;
+      const m=w.querySelector('.dc-menu'), b=w.querySelector('[data-act="day-menu"]');
+      return { open: w.classList.contains('open'), hidden: m.hidden,
+        expanded: b.getAttribute('aria-expanded'),
+        lifted: w.closest('.day-card').classList.contains('has-open-menu'),
+        acts: [...m.querySelectorAll('[data-act]')].map(x=>x.dataset.act),
+        focusOnToggle: document.activeElement === b };
+    })()`);
+    let st = await state();
+    await t('tp-views O2: menu exists and starts closed',
+      !!st && st.open === false && st.hidden === true && st.expanded === 'false', JSON.stringify(st), s);
+    await clickSel(s, '.day-card [data-act="day-menu"]', { settle: 300 });
+    st = await state();
+    await t('tp-views O2: toggle opens it and lifts the card',
+      !!st && st.open === true && st.hidden === false && st.expanded === 'true' && st.lifted === true, JSON.stringify(st), s);
+    await t('tp-views O2: it holds exactly the three day operations',
+      !!st && JSON.stringify(st.acts) === JSON.stringify(['share-day', 'duplicate-day', 'clear-day']), JSON.stringify(st && st.acts), s);
+    await escape(s);
+    st = await state();
+    await t('tp-views O2: Escape closes it and hands focus back to the toggle',
+      !!st && st.open === false && st.hidden === true && st.focusOnToggle === true, JSON.stringify(st), s);
+    await clickSel(s, '.day-card [data-act="day-menu"]', { settle: 300 });
+    // any click outside the wrap closes it (the day badge is outside the wrap)
+    await clickSel(s, '.day-card .dc-daynum', { settle: 300 });
+    st = await state();
+    await t('tp-views O2: an outside click closes it',
+      !!st && st.open === false && st.hidden === true && st.lifted === false, JSON.stringify(st), s);
   });
 
   /* ------------------------ R. large-trip smoke --------------------------- */
