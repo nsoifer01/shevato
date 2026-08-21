@@ -338,6 +338,35 @@ export function seasonEvidence(gameState) {
   }
 
   if (maxPlayed === 0) {
+    // Totals exist and no fixture has finished, which has two causes that look
+    // alike from the fixture list alone and mean opposite things.
+    //
+    // Pre-season, the totals are LAST season's and nearly the whole pool
+    // carries minutes (two thirds of it, in the payload FPL served on the
+    // morning of 2026-08-21). Read against a full season, they are the best
+    // evidence available and the plan is sound.
+    //
+    // But once FPL clears the totals at the rollover and the opening match
+    // kicks off, a handful of players carry THIS season's minutes and everyone
+    // else is a legitimate zero (22 of 600, that same evening). Reading that
+    // against a full season makes almost every player a non-starter, collapses
+    // the projections, and inverts the advice: a player who has just started a
+    // match measures 1 start in 38 while one who has never played keeps his
+    // untouched price prior. Having played must never be evidence against a
+    // player, so this payload is reported as no evidence rather than projected
+    // from. The share is the discriminator because the two cases are nowhere
+    // near each other - two thirds of the pool against one twenty-seventh.
+    const pool = gameState.players.size;
+    if (pool > 0 && withMinutes * CLEARED_TOTALS_SHARE < pool) {
+      return {
+        kind: 'none',
+        usable: false,
+        teamMatches: totalEvents,
+        finishedMatches: 0,
+        impossible,
+        message: 'Fantasy Premier League has cleared last season\'s player totals and the opening matches are still being played, so there is not yet enough of this season to project from.',
+      };
+    }
     // Totals exist but no fixture has finished: the ordinary pre-season shape.
     return {
       kind: 'previous-season',
@@ -364,6 +393,14 @@ export function seasonEvidence(gameState) {
 // season boundary. Deliberately small: at a real rollover essentially the whole
 // pool trips it at once.
 const IMPOSSIBLE_STARTS_QUORUM = 12;
+
+// Before a fixture has finished, what share of the pool must carry minutes for
+// the totals to be last season's rather than freshly cleared. Expressed as a
+// divisor: minutes-carrying players must be at least a quarter of the pool.
+// Measured either side of the 2026-08-21 rollover, the two states sit at 66.7%
+// (400 of 600, last season's totals) and 3.7% (22 of 600, cleared with one
+// match under way), so a quarter is nowhere near either edge.
+const CLEARED_TOTALS_SHARE = 4;
 
 // The denominator for a start rate, which is now whatever the evidence says it
 // is rather than a count of fixtures read in isolation.
