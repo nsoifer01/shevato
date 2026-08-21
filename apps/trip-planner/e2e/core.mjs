@@ -221,10 +221,13 @@ export async function run({ base, cdpPort }) {
     const flightAfter = db.trips[0].items.find(x => x.type === 'flight').startDate;
     await t('tp-core E: double submit shifts dates ONCE', flightAfter === iso(31), `flight now ${flightAfter} (want ${iso(31)})`, s);
 
-    // duplicate-day dialog: each item on the day is copied once, not twice
+    // duplicate-day dialog: each item on the day is copied once, not twice.
+    // The action lives in the day card's "..." overflow menu now, so the menu
+    // opens first (a hidden menu item is a zero-rect and clickSel refuses it).
     await switchView(s, 'days');
     const srcDate = iso(34); // post-shift home of 'Doubled?' (33+1) and 'Buy JR Pass' (30+3+1)
     const target = iso(60);
+    await clickSel(s, `.day-card[data-date="${srcDate}"] [data-act="day-menu"]`, { settle: 300 });
     await clickSel(s, `.day-card[data-date="${srcDate}"] [data-act="duplicate-day"]`, { settle: 500 });
     const dupOpen = (await overlayOpenId(s)) === 'dupDayOverlay';
     await t('tp-core E: duplicate-day dialog opens', dupOpen, `date=${srcDate} overlay=${await overlayOpenId(s)}`, s);

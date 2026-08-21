@@ -333,8 +333,13 @@ export async function run({ base, cdpPort }) {
     await waitForChips(s, 2);
     const afterLunch = await chips(s);
     const evening = afterLunch.find(c => c.label === 'Drinks: Above Eleven');
+    // The origin names the ITEM, and an item's name is now the venue alone:
+    // the seeded "Lunch: Jay Fai" is repaired to meal:'lunch' + title:'Jay
+    // Fai' at boot, so the chip reads "from Jay Fai" rather than repeating a
+    // slot label the traveller never typed.
     await t('tp-assist: a suggestion after an existing plan measures from that plan',
-      !!evening && evening.text.includes('from Lunch: Jay Fai'), JSON.stringify(afterLunch), s);
+      !!evening && evening.text.includes('from Jay Fai') && !/from Lunch:/.test(evening.text),
+      JSON.stringify(afterLunch), s);
     // and the morning is still measured from the bed, not forward to lunch
     await evaluate(s, `document.getElementById('assistMessages').innerHTML = ''`);
     await pasteReply(s, REPLY(iso(31)).replace(/20:00/, '09:00').replace(/21:30/, '10:30'), 2);
@@ -530,10 +535,15 @@ export async function run({ base, cdpPort }) {
     await clickSel(s, '#assistBtn', { settle: 700 });
     await pasteReply(s, SET_REPLY(day), 1);
     await waitForChips(s, 3);
+    // The accepted dinners AS STORED. The assistant's wire contract still
+    // sends "Dinner: Bo.lan", but the accept converts at the boundary, so an
+    // added dinner is meal:'dinner' + the bare venue name - which is what
+    // this reads, kind included, so a regression that dropped the structure
+    // and kept the prefix could not pass.
     const dinnersIn = async () => evaluate(s, `(() => {
       const db = JSON.parse(localStorage.getItem('trip-planner:v1') || 'null');
       const trip = db && db.trips.find(x => x.id === db.activeTripId);
-      return trip ? trip.items.filter(i => (i.title || '').startsWith('Dinner:')).map(i => i.title) : [];
+      return trip ? trip.items.filter(i => i.meal === 'dinner').map(i => i.meal + '/' + i.title) : [];
     })()`);
     await clickSel(s, '#assistMessages .assist-set input[type="radio"]', { nth: 1, settle: 300 });
     await clickSel(s, '[data-act="accept-set"]', { settle: 800 });
@@ -544,7 +554,7 @@ export async function run({ base, cdpPort }) {
     })()`);
     await t('tp-assist: the accepted set names the pick and offers Change choice',
       done1.txt.includes('Bo.lan') && done1.change
-        && JSON.stringify(await dinnersIn()) === '["Dinner: Bo.lan"]',
+        && JSON.stringify(await dinnersIn()) === '["dinner/Bo.lan"]',
       JSON.stringify({ done1, items: await dinnersIn() }), s);
     // change the mind: reopen, pick Nahm, and the itinerary holds ONE dinner
     await clickSel(s, '[data-act="change-choice"]', { settle: 500 });
@@ -558,13 +568,13 @@ export async function run({ base, cdpPort }) {
     await clickSel(s, '#assistMessages .assist-set input[type="radio"]', { nth: 2, settle: 300 });
     await clickSel(s, '[data-act="accept-set"]', { settle: 800 });
     await t('tp-assist: picking another candidate replaces the first, never duplicates',
-      JSON.stringify(await dinnersIn()) === '["Dinner: Nahm"]', JSON.stringify(await dinnersIn()), s);
+      JSON.stringify(await dinnersIn()) === '["dinner/Nahm"]', JSON.stringify(await dinnersIn()), s);
     // Cancel: back to the stub, data untouched
     await clickSel(s, '[data-act="change-choice"]', { settle: 500 });
     await clickSel(s, '[data-act="cancel-change"]', { settle: 500 });
     const done2 = await evaluate(s, `((document.querySelector('#assistMessages .ap-done-choice') || {}).textContent || '')`);
     await t('tp-assist: Cancel returns to the accepted stub without touching the trip',
-      done2.includes('Nahm') && JSON.stringify(await dinnersIn()) === '["Dinner: Nahm"]',
+      done2.includes('Nahm') && JSON.stringify(await dinnersIn()) === '["dinner/Nahm"]',
       JSON.stringify({ done2, items: await dinnersIn() }), s);
     // an item the traveller EDITED is never destroyed by a later re-pick: the
     // edit happens through the app's own modal, then the re-pick adds the new
@@ -575,7 +585,7 @@ export async function run({ base, cdpPort }) {
     const editId = await evaluate(s, `(() => {
       const db = JSON.parse(localStorage.getItem('trip-planner:v1') || 'null');
       const trip = db && db.trips.find(x => x.id === db.activeTripId);
-      const it = trip.items.find(i => i.title === 'Dinner: Nahm');
+      const it = trip.items.find(i => i.title === 'Nahm');
       return it ? it.id : '';
     })()`);
     // every step below waits for the state it needs rather than a fixed
@@ -596,10 +606,10 @@ export async function run({ base, cdpPort }) {
     const finalTitles = await evaluate(s, `(() => {
       const db = JSON.parse(localStorage.getItem('trip-planner:v1') || 'null');
       const trip = db && db.trips.find(x => x.id === db.activeTripId);
-      return trip.items.filter(i => /Dinner:|renamed/.test(i.title || '')).map(i => i.title).sort();
+      return trip.items.filter(i => i.meal === 'dinner' || /renamed/.test(i.title || '')).map(i => i.title).sort();
     })()`);
     await t('tp-assist: a re-pick keeps an item the traveller edited meanwhile',
-      JSON.stringify(finalTitles) === '["Dinner: Gaggan","My renamed dinner"]',
+      JSON.stringify(finalTitles) === '["Gaggan","My renamed dinner"]',
       JSON.stringify(finalTitles), s);
     await noErrors('tp-assist 4c', s);
   } catch (err) {
@@ -979,15 +989,23 @@ export async function run({ base, cdpPort }) {
     await clickAccept('Gap Cafe');
     await waitForExpr(s, `document.querySelector('#confirmOverlay').classList.contains('open')`, { timeout: 4000 });
     await clickSel(s, '#confirmYes', { settle: 400 });
+    // Prefilled in the FORM'S OWN vocabulary: the contract's "Lunch: Gap
+    // Cafe" opens as the Food & Drink type with the Lunch category chosen and
+    // the bare venue name in the field, so the traveller changes the time and
+    // nothing else - never deletes a prefix the form itself put there.
     const handOff = await evaluate(s, `({
       open: document.getElementById('itemOverlay').classList.contains('open'),
+      type: (document.querySelector('#typePicker button.on') || {}).dataset.type,
+      meal: document.getElementById('inMeal').value,
+      mealShown: document.getElementById('fMeal').style.display !== 'none',
       title: document.getElementById('inTitle').value,
       date: document.getElementById('inStart').value,
       time: document.getElementById('inTime').value,
     })`);
     const beforeSave = await tripItems();
     await t('tp-hours: the refusal hands off to the item form, prefilled, with nothing written yet',
-      handOff.open && handOff.title === 'Lunch: Gap Cafe' && handOff.date === day && handOff.time === '15:00'
+      handOff.open && handOff.title === 'Gap Cafe' && handOff.date === day && handOff.time === '15:00'
+        && handOff.type === 'food' && handOff.meal === 'lunch' && handOff.mealShown
         && beforeSave.length === before,
       JSON.stringify({ handOff, count: beforeSave.length }), s);
     // Change the time to a verified-open hour and save: what lands is a
@@ -997,7 +1015,7 @@ export async function run({ base, cdpPort }) {
     await waitForExpr(s, `!document.getElementById('itemOverlay').classList.contains('open')`, { timeout: 4000 });
     const afterEdit = await tripItems();
     await t('tp-hours: the edited time saves as a manual item; the closed 15:00 never lands',
-      afterEdit.length === before + 1 && afterEdit.includes('Lunch: Gap Cafe@12:00')
+      afterEdit.length === before + 1 && afterEdit.includes('Gap Cafe@12:00')
         && !afterEdit.some(x => x.endsWith('@15:00')),
       JSON.stringify(afterEdit), s);
 

@@ -832,6 +832,141 @@ them on the SAME lookup and validates deterministically. The invariant:
   The traveller-facing mitigation is the same one ratings use: the card's
   own Google Maps link for self-verification.
 
+## Food & Drink is a FIELD, not a seventh type (2026-08-21)
+
+The reported problem: `Dinner: Saba` stored its CATEGORY inside free-form
+title text. That duplicated the icon on every card, made `activity` mean both
+"museum" and "restaurant", and - the sharpest edge - fought the venue
+autocomplete: the picker searches `#inTitle`, so every keystroke of the
+`Dinner: ` prefix fired another Photon query for a string no venue is named,
+and the traveller had to type the classification *through* the place search.
+
+**The decision that shapes everything else: storage keeps six types and gains
+a `meal` FIELD; `food` exists only in the form and in display groupings.** A
+seventh storage type looks obviously right and is a data-loss bug:
+
+- `repairTrips` coerces an unknown `type` to `'note'` - in EVERY already
+  deployed copy of app.js, including the one in a tab someone left open.
+- Sync is whole-key last-writer-wins over the entire db (see "Sync model").
+
+So one stale client seeing `type: 'food'` would rewrite the item to a note,
+losing the type AND the category, and LWW would push that back over the good
+copy. An unknown FIELD survives all of it: old `repairTrips` never looks at
+`meal`, old saves round-trip it, old sync carries it. The cost is one
+indirection (`storageTypeOf`, `MODAL_TYPE_META`) and it is worth it.
+
+- **`itemMealKind(item)` is the ONE question every surface asks.** Structured
+  field first, legacy title prefix second. The fallback is not belt-and-braces:
+  a read-only SHARED trip is rendered without ever passing through repairDb,
+  so its items reach the renderer un-migrated and the prefix is the only thing
+  that can answer.
+- **The migration is deterministic and narrow.** `normalizeMealItem` runs in
+  `repairTrips` (boot, sync merge, undo reload), in `sanitizeItem` (file
+  import + share import) and in `expandSampleItem` (the template library), so
+  the three cannot drift. It splits ONLY the four literal assistant-contract
+  prefixes, colon required - `Sunset dinner cruise` and `Dinnerware shopping`
+  are the tests that stop it becoming a fuzzy match on the word "dinner". A
+  title that is nothing but the prefix keeps the kind word as its name, or
+  `validateItem` would reject the row and the next save would destroy it.
+- **`meal` is validated as an OWN property** (`isMealKind`, not `in`), the
+  same `__proto__` discipline the quota counters needed: `meal` arrives from
+  imports and share links, which are attacker-authored strings.
+- **The assistant contract is deliberately UNCHANGED.** The prompt still
+  mandates `"Dinner: "` and the model still writes it; `proposalToItem` and
+  `applyProposalUpdate` convert at the boundary. Changing a prompt contract is
+  a different risk (re-tuning every reply shape) from changing storage, and
+  a test asserts the prompt still states the prefixes so the two cannot drift
+  into each other by accident.
+- **The category is displayed ONCE.** Icon + accent on cards (`rowLook` reads
+  `itemMealKind`), and the icon's `aria-label` carries the word, so an
+  icon-only category is still spoken. The two deliberate exceptions, both
+  because the surface has no icon to carry it: the `.ics` `SUMMARY` (a
+  calendar entry is read in another app) and the CSV `category` column
+  (appended last, the running column-order contract).
+- **`costsByType` emits a `food` row** - a display grouping, not a stored
+  type - because dinners and museums are different money. Same reason the
+  toolbar filter splits: `Activities` now means "activity WITHOUT a meal
+  kind", or picking it would hand back every dinner on the trip.
+- **The type picker is 4 columns, not 7.** Seven across a 600px modal leaves
+  78px a cell, where "Local travel" and "Food & Drink" each wrap to two lines
+  while "Note" sits alone on one. Four columns give every label its own line
+  and cost exactly two rows (4 + 3) at BOTH widths - the phone override that
+  used to drop to 3 columns was removed, because 3 columns and 7 types is
+  three rows with an orphan, i.e. the tallest picker on the smallest screen.
+  Measured: desktop cells 130x58, phone 79x62, no clipping or overflow at 390.
+
+Probe traps this round minted:
+- **The toolbar filter selects listen for `input`, not `change`.** A probe
+  dispatching `change` on `#filterType` changes nothing and the board renders
+  exactly as before - which reads as "the filter is broken" rather than "the
+  probe is". Two of the first three probe failures this round were that.
+- The venue dropdown's option class is `.cb-opt` (with `role="option"` on the
+  same element); there is no `.cb-list` wrapper to query through.
+
+## Day-card presentation contract (2026-08-21 polish round)
+
+A pure presentation round (no trip logic touched): the day/stop cards were
+carrying five button-shaped elements per stop and five equal header icons per
+day. The rule the round settled on, keep it when adding anything to a card:
+**actions look like actions, information looks like information.** A stop is
+title (strongest), one quiet fact line, optional two-line description; the
+only bordered chips on a row are genuine actions (Directions; edit/delete).
+
+- **The fact line is text, not pills.** `.dc-cost` (bold text), `.dc-dist`
+  (dim text), the combined Maps+rating link and the hours line sit on one
+  wrapping flex line. The ONLY generated separator is the middot between
+  price and distance (inside `.dc-dist::before`, so an absent price takes the
+  dot with it). Dots in front of the Maps link and the hours were tried and
+  reverted: both elements carry their own internal middots, and a generated
+  dot LED THE LINE whenever the facts wrapped - which element wraps is not
+  knowable from CSS, so the only wrap-proof dot is one glued inside an
+  element that never starts the line.
+- **The Google attribution constraint shapes the restyle, not the other way
+  round.** The rating may only appear inside the combined element with the
+  verbatim "Google Maps" wordmark linking to the place (see the Places legal
+  lines above). So the element was requieted (no border, no fill, hover
+  underline), never split into a bare "⭐ 4.6" chip; the wordmark keeps its
+  never-wrap/never-truncate rules. Clicking the rating IS the Maps link,
+  which is also why a separate big "Google Maps" button could go.
+- **Facts sit under the title at EVERY width now.** The old container query
+  (>520px card: facts beside the title) was removed rather than retuned: with
+  hours on the line it squeezed the title into wrapping, ellipsized the
+  review count and clipped the Directions chip at exactly the widths with the
+  most room. One anatomy per row everywhere is also what the phone always did.
+- **Edit/delete hide until row hover/focus-within - but ONLY under
+  `(hover: hover) and (pointer: fine)`;** touch keeps them visible at 0.55.
+  Two headless traps: this chromium's `--headless=new` reports hover:none
+  (so every harness screenshot shows the TOUCH state, buttons visible), and
+  CDP `Emulation.setEmulatedMedia` does NOT support the hover/pointer
+  features - verified live, `matchMedia` stays false after the call. To see
+  what a desktop sees, inject the media block's rules verbatim minus the
+  wrapper (the shots harness does this); to trust the real thing, check in a
+  headed browser. e2e clicks on the hidden buttons still work: opacity:0
+  keeps layout and hit-testing, and clickAt's mouseMoved hovers first anyway.
+- **The day header is two visible actions (🤖 ask, + add) plus a `⋯` menu**
+  (copy day as text / copy to another date / delete day's items, same
+  data-acts, same disabled reasons; shared mode renders neither the edit
+  actions nor the menu, exactly as before). Menu state is DOM-held only - a
+  re-render simply comes back closed. Two structural traps its CSS handles:
+  `.day-card` is `overflow: hidden` AND a stacking context (container-type
+  sets layout containment), so an open menu would be clipped by its own card
+  and painted over by the next card - `.day-card.has-open-menu` lifts both
+  for exactly as long as the menu is open. Escape is integrated at the TOP of
+  the one global keydown chain (menus are mutually exclusive with every layer
+  below it, since opening any of them closes the menu). The outside-click
+  closer skips clicks inside `.dc-menu-wrap`, which is what lets "Copy day as
+  text" keep its menu open for the ✅ flash on the item's own `.dm-ico` (the
+  flash targets that span now - the old code swapped the BUTTON's
+  textContent, which would wipe a labelled menu item).
+- **e2e consequence:** anything driving duplicate-day/clear-day/share-day
+  must click `[data-act="day-menu"]` first - a hidden menu item is a
+  zero-rect and `clickSel` refuses it (core.mjs E does this).
+- The icon tile is 24px (was 28) and the rail geometry derives from it: rail
+  height 38px centres the dot on the tile (7px card padding + 12), connector
+  top 28 / lead-in 14. Change the tile size and these three move with it.
+- Days-view descriptions clamp at TWO lines (`.dc-details` overrides the
+  shared `.det-body` clamp of 3); the timeline keeps 3.
+
 ## Assistant: modes, and where a suggestion is measured from
 
 Two failures reported together on 2026-08-14, with one shape between them:
@@ -970,7 +1105,12 @@ airports-table probe (the same injection style `dayMorningCity` and
   templates: 382 of 529 items (72%) are activities, and 13 of 13 open with a
   flight. Hence flight on an empty plan, activity thereafter, and a test over
   the library pins both halves so the rule fails loudly if that corpus ever
-  changes shape.
+  changes shape. **Re-measured on 2026-08-21**, when Food & Drink split off
+  what had been counted inside that 72%: excluding the boilerplate note, the
+  516 sample items are 41.3% activity (213), 32.8% food & drink (169) and
+  25.9% everything else. Activity is still the plurality, so the default is
+  unchanged - but it is now a 8-point lead rather than a landslide, and a
+  future library that leans further into meals should move it.
 - **`applyTypeDefaults` is deliberately NOT inside `setModalType`.**
   `openItemModal` calls setModalType BEFORE it writes the date fields, so a
   default applied there is overwritten by the very open that asked for it. The

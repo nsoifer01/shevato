@@ -62,7 +62,7 @@
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
   <link rel="stylesheet" href="/assets/css/back-to-top.css">
-  <link rel="stylesheet" href="css/styles.css?v=61">
+  <link rel="stylesheet" href="css/styles.css?v=63">
 
   <!-- Google Analytics. Loaded async + defer so it never blocks first paint;
        all tracking goes through the shared helper in analytics.js, which
@@ -200,6 +200,7 @@
       <option value="transport">Transport</option>
       <option value="local">Local travel</option>
       <option value="activity">Activities</option>
+      <option value="food">Food &amp; drink</option>
       <option value="note">Notes</option>
     </select>
     <select id="filterStatus" aria-label="Filter by status">
@@ -262,7 +263,25 @@
             <button type="button" data-type="transport"><span class="seg-ico" aria-hidden="true">🚆</span><span>Transport</span></button>
             <button type="button" data-type="local"><span class="seg-ico" aria-hidden="true">🚕</span><span>Local travel</span></button>
             <button type="button" data-type="activity"><span class="seg-ico" aria-hidden="true">🎟️</span><span>Activity</span></button>
+            <button type="button" data-type="food"><span class="seg-ico" aria-hidden="true">🍽️</span><span>Food &amp; Drink</span></button>
             <button type="button" data-type="note"><span class="seg-ico" aria-hidden="true">📝</span><span>Note</span></button>
+          </div>
+        </div>
+        <!-- Shown for Food & Drink alone (setModalType): the category the
+             title used to have to carry as a "Dinner: " prefix. -->
+        <div class="field" id="fMeal">
+          <label for="inMeal">Category</label>
+          <div class="sel-wrap">
+            <select id="inMeal">
+              <option value="breakfast">Breakfast</option>
+              <option value="brunch">Brunch</option>
+              <option value="lunch">Lunch</option>
+              <option value="dinner" selected>Dinner</option>
+              <option value="drinks">Drinks</option>
+              <option value="cafe">Cafe</option>
+              <option value="snack">Snack</option>
+              <option value="other">Other</option>
+            </select>
           </div>
         </div>
         <div class="field" id="fFlightRoute">
@@ -908,8 +927,8 @@
     }
   </script>
 
-  <script src="js/trip-logic.js?v=42"></script>
-  <script src="js/app.js?v=67"></script>
+  <script src="js/trip-logic.js?v=43"></script>
+  <script src="js/app.js?v=69"></script>
   <script src="/assets/js/back-to-top.js" defer></script>
 </body>
 </html>

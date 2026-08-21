@@ -458,8 +458,9 @@
   .tp-maps-link .tpm-rating { display: inline-flex; align-items: center; gap: 5px; flex: 0 1 auto; min-width: 0; overflow: hidden; }
   .tp-maps-link .tpm-count { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
   .tpm-star { font-size: 12px; }
-  /* the day-card pill is the compact one: a tighter rating segment and a
-     smaller star, so the whole control stays a step quieter than the title */
+  /* the day-card variant is the compact one (see the .dc-facts rules in the
+     days section: it reads as metadata text, not a pill): a tighter rating
+     segment and a smaller star keep it a step quieter than the title */
   .dc-facts .tp-maps-link { overflow: hidden; }
   .dc-facts .tp-maps-link .tpm-rating { gap: 4px; }
   .dc-facts .tpm-star { font-size: 10.5px; }
@@ -965,9 +966,15 @@
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent);
   }
   .seg > button:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
-  /* the grid variant: six equal cells, icon over label, so six options fit one
-     block at every width instead of wrapping into ragged pill rows */
-  .seg-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  /* The grid variant: equal cells, icon over label, so the whole type list is
+     ONE block at every width instead of ragged pill rows. FOUR columns, not
+     seven: with Food & Drink the list is seven long, and seven across a 600px
+     modal leaves 78px a cell - narrow enough that "Local travel" and
+     "Food & Drink" each break to two lines while "Note" sits alone on one, so
+     the row reads as debris. Four columns give every label its own line at a
+     comfortable width and cost exactly two rows (4 + 3), the same two rows the
+     phone gets, so the picker's height never changes with the viewport. */
+  .seg-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .trip-planner-app .seg-grid > button {
     flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 4px; min-height: 58px; padding: 7px 4px; font-size: 11.5px; line-height: 1.2;
@@ -1635,10 +1642,10 @@
     background: var(--bg-card); border: 1px solid var(--border-soft); border-radius: var(--radius);
     display: flex; flex-direction: column; overflow: hidden;
     transition: border-color .15s, box-shadow .15s;
-    /* same reasoning as dcitem on the rows: the auto-fill grid hands the SAME
-       viewport 400px cards or 700px ones, and whether a forecast header can
-       collapse to a single line is a question about THIS card's width, not
-       the window's (see the daycard container query in the desktop block) */
+    /* the auto-fill grid hands the SAME viewport 400px cards or 700px ones,
+       and whether a forecast header can collapse to a single line is a
+       question about THIS card's width, not the window's (see the daycard
+       container query in the desktop block) */
     container-type: inline-size; container-name: daycard;
   }
   .day-card:hover { border-color: var(--border); box-shadow: var(--shadow-sm); }
@@ -1833,6 +1840,38 @@
     color: var(--text-faint) !important; background: none; border-color: transparent;
   }
 
+  /* ---------- day-card overflow menu ----------
+     The header keeps its two frequent actions (ask the assistant, add an
+     item) visible and folds the three occasional ones (copy as text, copy to
+     another date, delete the day's items) behind one quiet "..." toggle, so
+     the header stops reading as a toolbar of five equal icons. The recipe is
+     .tp-menu-panel's exactly - same surface, radius, shadow and item shape -
+     so the two menus in the app feel like one control. */
+  .dc-menu-wrap { position: relative; display: inline-flex; }
+  .dc-menu {
+    position: absolute; right: 0; top: calc(100% + 5px); z-index: 30; min-width: 200px;
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: var(--shadow); padding: 5px; display: flex; flex-direction: column; gap: 1px;
+  }
+  .dc-menu[hidden] { display: none; }
+  .trip-planner-app .dc-menu .dm-item {
+    display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+    background: none; border: 0; padding: 8px 11px; border-radius: 8px;
+    font-size: 12.5px; font-weight: 600; white-space: nowrap; color: var(--text);
+  }
+  .trip-planner-app .dc-menu .dm-item:hover:not(:disabled),
+  .trip-planner-app .dc-menu .dm-item:focus-visible { background: var(--accent-soft); color: var(--text); }
+  .trip-planner-app .dc-menu .dm-item.danger { color: var(--red) !important; }
+  .trip-planner-app .dc-menu .dm-item.danger:hover:not(:disabled) { background: var(--red-soft); }
+  .trip-planner-app .dc-menu .dm-item.danger:hover:active { background-color: var(--red-soft); }
+  .trip-planner-app .dc-menu .dm-item:hover:active { background-color: var(--accent-soft); }
+  .dc-menu .dm-ico { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 16px; font-size: 12px; }
+  /* the card clips its own corners (overflow: hidden) and is a stacking
+     context (container-type), so the one holding an open menu lifts both
+     restrictions for as long as the menu is up: the popover may overhang the
+     card's edge without being clipped by it or painted over by the next card */
+  .day-card.has-open-menu { overflow: visible; z-index: 40; }
+
   .dc-body { display: flex; flex-direction: column; gap: var(--dc-gap); padding: 8px 10px 9px; }
 
   /* ---------- a day row ----------
@@ -1859,12 +1898,12 @@
   .dc-event.st-decide    { --dc-dot: var(--purple); }
   .dc-event.st-cancelled { --dc-dot: var(--text-faint); }
   /* The dot, the clock reading and the type tile are ONE line across the rail
-     and the card: 42px of rail centres the dot 21px below the card's top edge,
-     which is exactly the centre of the 28px type tile (7px of card padding +
-     14). The tile is the one element pinned to the top of the card however the
+     and the card: 38px of rail centres the dot 19px below the card's top edge,
+     which is exactly the centre of the 24px type tile (7px of card padding +
+     12). The tile is the one element pinned to the top of the card however the
      row grows, so the alignment holds for a bare title, a title with a
      location, a tagged check-in and a wrapped three-line name alike. */
-  .dc-rail { display: flex; align-items: center; align-self: start; height: 42px; gap: 6px; padding-left: 4px; }
+  .dc-rail { display: flex; align-items: center; align-self: start; height: 38px; gap: 6px; padding-left: 4px; }
   .dc-dot {
     flex: none; width: 10px; height: 10px; border-radius: 50%;
     background: var(--dc-dot); box-shadow: 0 0 0 3px color-mix(in srgb, var(--dc-dot) 20%, transparent);
@@ -1882,8 +1921,8 @@
      --border it competed with the dots it exists to join. It starts below this
      dot and runs the row gap plus the next rail's 16px lead-in. */
   .dc-event:not(:last-child)::after {
-    content: ""; position: absolute; left: 8.5px; top: 30px;
-    bottom: calc(-1 * (var(--dc-gap) + 16px));
+    content: ""; position: absolute; left: 8.5px; top: 28px;
+    bottom: calc(-1 * (var(--dc-gap) + 14px));
     /* half the old weight: 1px instead of 2, and --border rather than a lighter
        token, because --border-soft against --bg-card is a 0.002 luminance step
        - measured, not guessed - and a thread nobody can see is not subtle, it
@@ -1898,13 +1937,11 @@
     font-size: 12px; font-weight: 700; color: var(--text-dim);
     font-variant-numeric: tabular-nums; white-space: nowrap;
   }
-  /* container, not viewport: the days grid is auto-fill minmax(400px, 1fr), so
-     the SAME viewport shows 400px cards on one screen and 700px cards on
-     another. The row asks its own width whether the facts fit beside the title,
-     which is what stops two cards on one page laying out differently. */
+  /* No container query here any more: the row keeps ONE anatomy at every
+     width (facts always under the title, see .dc-main), so nothing asks the
+     card's width and the old dcitem container went with it. */
   .dc-item {
     min-width: 0; border-radius: 13px; padding: 7px 9px 8px;
-    container-type: inline-size; container-name: dcitem;
     background: var(--bg-raised); transition: background .13s, box-shadow .13s;
   }
   /* subtle: a hairline edge and a shade of lift, no drop shadow and no glow.
@@ -1913,25 +1950,35 @@
     background: color-mix(in srgb, var(--text) 4%, var(--bg-raised));
     box-shadow: inset 0 0 0 1px var(--border-soft);
   }
-  /* ONE anatomy for every row, whatever it carries: type tile, then the title
-     and its location, then the facts (price + Maps), then edit and delete hard
-     right. Facts and buttons are separate slots rather than one wrapping
-     cluster, which is what used to leave the price sitting at a different
-     height on every card.
-     Flex, not grid: when the row runs out of width the FACTS give way (down to
-     the price plus the bare "Google Maps" wordmark, the review count
-     ellipsizing as it goes) and the title keeps its measure. A grid sizes the
-     facts column at max-content first and overflows the title straight through
-     it, which is exactly the overlap this replaced. */
-  .dc-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  /* ONE anatomy for every row, whatever it carries, at EVERY width: type
+     tile, then the title and its location, with edit and delete hard right,
+     and the fact line (price, distance, Maps, hours, Directions) on its own
+     row underneath, aligned with the title. The facts used to sit BESIDE the
+     title on wide cards, which read as five controls fighting one line: the
+     title wrapped, the review count ellipsized and the Directions chip
+     clipped at exactly the widths with the most room. A stop reads top-down -
+     what, then the facts about it, then the note - and every card on every
+     page now agrees on that order (the empty first cell keeps the fact line
+     on the title's left edge rather than the tile's). */
+  .dc-main {
+    display: grid; align-items: center; gap: 3px 8px; min-width: 0;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "ico label btns" ". facts facts";
+  }
+  .dc-event .dc-ico { grid-area: ico; }
+  .dc-event .dc-label { grid-area: label; min-width: 0; }
+  .dc-facts { grid-area: facts; justify-content: flex-start; flex-wrap: wrap; }
+  .dc-btns { grid-area: btns; align-self: start; }
   /* a tinted tile per type: the icon is the type, the rail dot is the status.
      Pinned to the top of the row (never centred), because it is what the rail
-     dot is aligned against - see .dc-rail. */
+     dot is aligned against - see .dc-rail. A step smaller than the 28px it
+     used to be, so it supports the title instead of competing with it (the
+     rail height and connector offsets above are derived from this size). */
   .dc-event .dc-ico {
     align-self: flex-start;
     display: inline-flex; align-items: center; justify-content: center; flex: none;
-    width: 28px; height: 28px; border-radius: 9px;
-    font-size: 13px; line-height: 1;
+    width: 24px; height: 24px; border-radius: 8px;
+    font-size: 12px; line-height: 1;
     background: var(--row-soft, var(--gray-soft));
   }
   /* a single long place name (Llanfairpwllgwyngyll...) must break rather than
@@ -1940,9 +1987,28 @@
   .dc-event .dc-label { flex: 1 1 auto; min-width: 8em; overflow-wrap: anywhere; }
   /* shrink-first, and only down to its own min-content (the price plus the
      wordmark): auto min-width is doing real work here, so do not zero it */
-  .dc-facts { flex: 0 1 auto; display: flex; align-items: center; gap: 5px; }
+  .dc-facts { flex: 0 1 auto; display: flex; align-items: center; gap: 3px 9px; }
   .dc-facts:empty { display: none; }
-  .dc-btns { flex: none; display: flex; align-items: center; gap: 8px; }
+  /* ONE metadata line, not a row of pills: cost, distance, the Maps link and
+     the hours are all facts about the stop, so they read as quiet text, and
+     only Directions (a genuine action) keeps a button shape. The only
+     GENERATED separator is the dot between the price and the distance - two
+     bare figures that would otherwise run together. The Maps element and the
+     hours line carry their own internal middots ("Google Maps · ⭐ 4.6",
+     "Hours · 11:00 AM"), so a generated dot in front of them doubled up, and
+     worse, led a line when the facts wrapped - a dot has no place at a line
+     start, and which element wraps is not knowable from here. The dot rides
+     INSIDE the distance chip, so a row with no price (the chip is then the
+     first child) shows none. */
+  .dc-facts > .dc-dist:not(:first-child)::before {
+    content: "\B7"; margin-right: 7px; color: var(--text-faint); font-weight: 600;
+  }
+  .dc-btns { flex: none; display: flex; align-items: center; gap: 6px; }
+  /* management actions are secondary to the content they manage: a step
+     smaller than the header's buttons, with the ::after overlay still
+     carrying the hit target out to ~38px (coordinate-verified pattern) */
+  .dc-btns .row-btn { padding: 6px; min-width: 26px; min-height: 26px; }
+  .dc-btns .row-btn::after { inset: -6px; }
   /* shared (read-only) mode renders neither button: the slot goes with them
      rather than holding a column of air open on every row */
   .dc-btns:empty { display: none; }
@@ -1972,46 +2038,58 @@
   }
   .dc-loc::before { content: "\1F4CD"; margin-right: 4px; font-size: 10px; opacity: 0.75; }
   .dc-details {
-    margin-top: 4px; font-size: 11.5px; line-height: 1.5; overflow-wrap: anywhere;
+    margin-top: 3px; font-size: 11.5px; line-height: 1.45; overflow-wrap: anywhere;
     color: color-mix(in srgb, var(--text-dim) 70%, var(--text-faint));
   }
-  /* same 24px box as the Maps pill beside it: the two are one row of facts, and
-     a 1px height difference between them reads as a misalignment */
+  /* a day card is a scanning surface, so a long note folds to TWO lines here
+     (the timeline keeps its three): the text is all there for a screen reader
+     and Ctrl+F, and "Show more" opens it in place */
+  .dc-details .det-body.is-clamped .det-text { -webkit-line-clamp: 2; }
+  .dc-details .det-more { font-size: 11.5px; padding: 2px 0 0; }
+  /* the strongest fact on the line, but still a fact: plain bold text, no pill */
   .dc-cost {
-    display: inline-flex; align-items: center; min-height: 24px;
-    font-size: 11px; font-weight: 700; color: var(--text); white-space: nowrap;
-    background: var(--gray-soft); border-radius: 999px; padding: 3px 8px;
+    display: inline-flex; align-items: center;
+    font-size: 11.5px; font-weight: 700; color: var(--text); white-space: nowrap;
   }
   .dc-cost small { font-weight: 500; color: var(--text-dim); }
   .dc-cost.is-note { font-weight: 600; color: var(--text-dim); }
-  /* How far this stop is from the one before it. Same 24px box as the price and
-     the Maps pill so the row of facts stays one line of controls, but DASHED and
-     unfilled on purpose: it is an estimate (a straight line, not a walking
-     route), and it must not read as solid as the price next to it. */
+  /* How far this stop is from the one before it: an estimate (a straight line,
+     not a walking route - the tilde and the tooltip both say so), so it reads
+     one step dimmer than the price and never as a control. */
   .dc-dist {
-    display: inline-flex; align-items: center; min-height: 24px;
+    display: inline-flex; align-items: center;
     font-size: 11px; font-weight: 600; white-space: nowrap;
-    color: var(--text-dim); background: transparent;
-    border: 1px dashed var(--border); border-radius: 999px; padding: 2px 8px;
+    color: var(--text-dim);
   }
-  /* Maps is an action, so it rides beside the price as a bordered button, not
-     as a blue word under the description. Deliberately quieter than it was: a
-     shorter pill, tighter sides and a border at 22% of the accent, because a
-     row can carry this on every card and it must not out-shout the title.
-     min-height, not padding alone, so the rated and unrated pills are the same
-     control at the same size - only the suffix differs. */
+  /* The combined Google Maps + rating element is required attribution wearing
+     a link: the wordmark, the star and the count stay one clickable unit (it
+     opens the resolved place), but it reads as metadata on the fact line
+     rather than as a bordered button - underline on hover and the shared
+     focus ring are what say "link". The wordmark itself is verbatim and never
+     wraps, shrinks or truncates (the nowrap rules above). */
   .dc-facts .tp-maps-link {
     display: inline-flex; align-items: center; gap: 4px; flex: 0 1 auto; min-width: 0;
-    min-height: 24px; padding: 2px 8px; border-radius: 8px;
+    padding: 0; border-radius: 4px;
     text-decoration: none; white-space: nowrap;
-    font-size: 11px; font-weight: 700; line-height: 1.2;
+    font-size: 11px; font-weight: 600; line-height: 1.5;
+  }
+  .dc-facts .tp-maps-link:hover { text-decoration: underline; }
+  /* Directions is the one genuine ACTION on the fact line, so it alone keeps
+     the bordered-chip treatment the whole row used to wear. The overlay
+     carries its hit target out past the 24px box; the phone widens both. */
+  .dc-facts .tp-dir-link {
+    position: relative; min-height: 24px; padding: 2px 9px; border-radius: 999px;
+    font-weight: 700;
     background: color-mix(in srgb, var(--accent) 9%, transparent);
     border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
   }
-  .dc-facts .tp-maps-link:hover {
+  .dc-facts .tp-dir-link::after { content: ""; position: absolute; inset: -5px; }
+  .dc-facts .tp-dir-link:hover {
     border-color: color-mix(in srgb, var(--accent) 45%, transparent);
     background: var(--accent-soft); text-decoration: none;
   }
+  /* the hours slot sits on the same centred fact line as everything else */
+  .dc-facts .tp-hours { align-self: center; }
   /* Cancelled: still readable, visibly out of the plan. The card is dimmed as a
      whole rather than each part separately, the title keeps its rule but at a
      contrast you can actually read through, and the two things that are no
@@ -2037,35 +2115,26 @@
   .dc-event.is-cancelled .dc-facts { opacity: 0.62; }
   .dc-event.is-cancelled .dc-details { margin-top: 3px; }
   .dc-clip { margin-left: 5px; }
-  /* Narrow card: the price and the Maps pill drop to their own line under the
-     title, and edit + delete hold the top-right corner where they always are.
-     520px is not a guess - it is the width at which the fixed furniture (tile,
-     two buttons, a price, and a rated Maps pill whose wordmark may never be
-     truncated) stops leaving a full-width title anything to work with. The
-     days grid is auto-fill minmax(400px, 1fr), so a two-up laptop lands here
-     and every card on the page wraps the same way, which is the point: one
-     layout per page, never a mix decided card by card.
-     The empty first cell keeps that second line aligned with the title rather
-     than with the tile. */
-  @container dcitem (max-width: 520px) {
-    .dc-main {
-      display: grid; align-items: center; gap: 4px 8px;
-      grid-template-columns: auto minmax(0, 1fr) auto;
-      grid-template-areas: "ico label btns" ". facts facts";
-    }
-    .dc-event .dc-ico { grid-area: ico; }
-    .dc-event .dc-label { grid-area: label; min-width: 0; }
-    .dc-facts { grid-area: facts; justify-content: flex-start; flex-wrap: wrap; row-gap: 4px; }
-    .dc-btns { grid-area: btns; align-self: start; }
-  }
   /* Per-row edit and delete. They sit in a FIXED slot at the end of every row,
-     aligned with the cost badge, instead of floating next to whatever the row
+     aligned with the fact line, instead of floating next to whatever the row
      happens to end with; they read muted until the row is hovered or one takes
-     focus. They are never hover-GATED: the day card is the surface people use
-     on a phone, where there is no hover at all. */
+     focus. On a TOUCH layout they are never hover-gated (there is no hover),
+     so they stay visible at rest there; a pointer device gets the quieter
+     treatment - invisible until the row is hovered or holds focus - because
+     two glyphs repeated on every row is exactly the clutter the hover has
+     always been able to absorb. Keyboard reach is unchanged: focus-within
+     reveals the whole cluster the moment tabbing enters the row. */
   .dc-edit, .dc-del, .dc-grip { flex: none; opacity: 0.55; transition: opacity .12s; }
   .dc-event:hover .dc-edit, .dc-event:hover .dc-del, .dc-event:hover .dc-grip,
+  .dc-event:focus-within .dc-edit, .dc-event:focus-within .dc-del, .dc-event:focus-within .dc-grip,
   .dc-edit:focus, .dc-del:focus, .dc-grip:focus { opacity: 1; }
+  @media (hover: hover) and (pointer: fine) {
+    .dc-edit, .dc-del, .dc-grip { opacity: 0; }
+    .dc-event:hover .dc-edit, .dc-event:hover .dc-del, .dc-event:hover .dc-grip,
+    .dc-event:focus-within .dc-edit, .dc-event:focus-within .dc-del, .dc-event:focus-within .dc-grip {
+      opacity: 1;
+    }
+  }
   /* The reorder handle, on the rows that tie with another row on the same day
      and only those (see reorderableIds). touch-action:none is what makes the
      same gesture drag the row on a phone instead of scrolling the day list out
@@ -2858,13 +2927,18 @@
     .dc-acts .row-btn { min-width: 44px; min-height: 44px; }
     /* the facts get the full width of the card - the title indent is worth less
        here than the 36px it costs, which is the difference between a review
-       count that reads and one that ellipsizes - and when the price and a rated
-       pill will not share the line, the pill takes its own at full width. */
+       count that reads and one that ellipsizes. The facts are TEXT now, so
+       they wrap as a line of metadata instead of stacking full-width slabs;
+       only the Directions chip keeps a real button box, with its overlay
+       carrying the touch target out to ~44px. */
     .dc-main { grid-template-areas: "ico label btns" "facts facts facts"; }
-    .dc-facts { gap: 6px; }
-    .dc-facts .tp-maps-link { flex: 1 1 auto; min-height: 44px; padding: 0 12px; font-size: 11.5px; }
-    .dc-cost { padding: 5px 9px; }
-    .dc-dist { padding: 5px 9px; }
+    .dc-facts { gap: 3px 9px; }
+    .dc-facts .tp-maps-link { font-size: 11.5px; }
+    .dc-facts .tp-dir-link { min-height: 30px; padding: 2px 12px; }
+    .dc-facts .tp-dir-link::after { inset: -7px; }
+    /* the days-view "Show more" stays a comfortable target without the 44px
+       slab the timeline toggle needs (it sits alone on its own line there) */
+    .dc-details .det-more { min-height: 34px; }
     /* the header keeps full 44px slabs (it has the room), so its overlays would
        only collide with each other */
     .dc-acts .row-btn::after { content: none; }
@@ -3005,8 +3079,15 @@
     .field input, .field select, .field textarea { font-size: 16px; }
     .field textarea { min-height: 92px; }
     .trip-planner-app .cost-cur-sel { min-width: 100px; }
-    /* six type cells never fit one phone row */
-    .seg-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    /* The phone keeps the SAME four columns the modal uses everywhere else.
+       Three would put the seven types on three rows with a single orphan on
+       the last one - taller than the picker has any right to be on the screen
+       with the least room, for a layout the traveller then has to re-learn
+       between their laptop and their phone. Four columns at 390px leave ~85px
+       a cell, which holds "Food &" / "Drink" on two 11px lines inside the 62px
+       touch target below; the label steps down a size so it never clips. */
+    .trip-planner-app .seg-grid > button { font-size: 11px; padding: 6px 3px; }
+    .seg-grid { gap: 2px; }
     /* two airport fields side by side leave ~120px each, which truncates the
        placeholder and any picked label ("Tokyo Haneda Internation..."), so
        they stack and the arrow turns to point down the column */
@@ -3903,9 +3984,9 @@
    external route. A fact line, not a toolbar, so it reads dim like the
    assist-route footer it is a sibling of. */
 .dc-route {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px 12px;
-  flex-wrap: wrap; padding: 8px 14px 10px; border-top: 1px dashed var(--border-soft);
-  font-size: 12.5px; color: var(--text-dim);
+  display: flex; align-items: center; justify-content: space-between; gap: 6px 12px;
+  flex-wrap: wrap; padding: 7px 12px 9px; border-top: 1px dashed var(--border-soft);
+  font-size: 12px; color: var(--text-dim);
 }
 .dc-route-tot { white-space: nowrap; }
 .dc-route-part { color: var(--amber); }

@@ -1852,7 +1852,11 @@ const TripLogic = (() => {
       lines.push(`DTSTART;VALUE=DATE:${compact(it.startDate)}`);
       lines.push(`DTEND;VALUE=DATE:${compact(addDays(it.startDate, 1))}`);
     }
-    lines.push(`SUMMARY:${icsEscapeText(it.title)}`);
+    // A calendar entry has no icon to say what kind of stop this is, so the
+    // meal label goes back into the words there ("Dinner: Saba") - the one
+    // surface where the textual category genuinely carries the meaning.
+    const mk = itemMealKind(it);
+    lines.push(`SUMMARY:${icsEscapeText(mk && isMealKind(it.meal) ? `${mealLabel(mk)}: ${it.title}` : it.title)}`);
     if (it.location) lines.push(`LOCATION:${icsEscapeText(it.location)}`);
     const descParts = [];
     if (it.details) descParts.push(it.details);
@@ -1950,10 +1954,12 @@ const TripLogic = (() => {
   // reason again: never in the middle. paymentMethod prints the picker's own
   // wording ("Prepaid / already paid") rather than the stored token, because a
   // CSV is read by a person; bookBy stays ISO like every other date column.
+  // `category` is APPENDED (the column-order contract: older spreadsheets keep
+  // their columns): the food & drink kind for a meal row, empty otherwise.
   function csvColumns(base) {
     return ['startDate', 'startTime', 'endDate', 'endTime', 'nights', 'type', 'title', 'location',
       'details', 'status', 'cost', 'costCurrency', `costIn${base}`, 'estimatedCost',
-      'estimatedCostCurrency', 'costNote', 'confirmation', 'travelers', 'bookBy', 'paymentMethod'];
+      'estimatedCostCurrency', 'costNote', 'confirmation', 'travelers', 'bookBy', 'paymentMethod', 'category'];
   }
   const csvCell = v => `"${String(v).replace(/"/g, '""')}"`;
   function buildCsv(trip, base, ratesObj) {
@@ -1971,6 +1977,7 @@ const TripLogic = (() => {
         it.costNote || '', it.confirmation || '',
         Array.isArray(it.travelers) ? it.travelers.join('; ') : '',
         it.bookBy || '', PAYMENT_LABEL[it.payment] || '',
+        mealLabel(itemMealKind(it)),
       ].map(csvCell).join(','));
     }
     return lines.join('\n');
@@ -2285,15 +2292,20 @@ const TripLogic = (() => {
   // the truth is "there is no transport here". A type whose amount could not be
   // converted still gets its row, carrying the offending items in `unconverted`
   // so the render can flag it amber, because dropping the row would hide money.
-  const TYPE_SORT = ['flight', 'transport', 'local', 'activity', 'stay', 'note'];
+  // 'food' is a DISPLAY grouping (activity + meal, see itemMealKind), not a
+  // storage type: costsByType emits it so the breakdown separates dinners
+  // from museums, exactly the split the form's type picker now offers.
+  const TYPE_SORT = ['flight', 'transport', 'local', 'activity', 'food', 'stay', 'note'];
   function costsByType(trip, ratesObj) {
     const base = (trip && trip.currency) || 'USD';
     const rows = new Map();
     for (const it of ((trip && trip.items) || [])) {
       if (it.status !== 'booked') continue;
       if (it.cost == null || it.cost === '' || isNaN(it.cost)) continue;
-      let row = rows.get(it.type);
-      if (!row) { row = { type: it.type, total: 0, unconverted: [] }; rows.set(it.type, row); }
+      // dinners and museums are different money: food & drink gets its own row
+      const key = itemMealKind(it) ? 'food' : it.type;
+      let row = rows.get(key);
+      if (!row) { row = { type: key, total: 0, unconverted: [] }; rows.set(key, row); }
       const conv = convertAmount(Number(it.cost), it.costCurrency || base, base, ratesObj);
       if (conv === null) row.unconverted.push(it);
       else row.total += conv;
@@ -3551,7 +3563,9 @@ const TripLogic = (() => {
       // silently reshuffled the day would be worse than no copy. It is only
       // present on a day somebody actually reordered, so a link from a trip
       // nobody has dragged is byte-for-byte what it was.
-      for (const k of ['type', 'title', 'location', 'startDate', 'endDate', 'startTime', 'endTime', 'status', 'cost', 'costCurrency', 'estCost', 'estCostCurrency', 'costNote', 'confirmation', 'bookBy', 'payment', 'details', 'mapsQuery', 'order']) {
+      // `meal` rides along like `type` does: it is what tells the far side a
+      // "Saba" at 19:30 is a dinner, and the import sanitizer re-validates it
+      for (const k of ['type', 'meal', 'title', 'location', 'startDate', 'endDate', 'startTime', 'endTime', 'status', 'cost', 'costCurrency', 'estCost', 'estCostCurrency', 'costNote', 'confirmation', 'bookBy', 'payment', 'details', 'mapsQuery', 'order']) {
         if (keep(it[k])) out[k] = it[k];
       }
       // who owes this cost travels with the item; the far side clamps it to the
@@ -4110,8 +4124,11 @@ const TripLogic = (() => {
   ];
   function recommendWindowMin(item) {
     if (!item || item.type !== 'activity') return null;
-    const kind = mealKind(item.title);
+    // structured field first (an item), title prefix second (an assistant
+    // action still carries the contract's prefixed title)
+    const kind = itemMealKind(item);
     if (kind === 'drinks') return RECOMMEND_HOURS_WINDOWS.drinks;
+    if (kind === 'cafe' || kind === 'snack') return RECOMMEND_HOURS_WINDOWS.cafe;
     if (kind) return RECOMMEND_HOURS_WINDOWS.meal;
     const text = `${item.title == null ? '' : item.title} ${item.mapsQuery == null ? '' : item.mapsQuery}`.toLowerCase();
     for (const [re, k] of RECOMMEND_KIND_RES) {
@@ -5211,13 +5228,83 @@ const TripLogic = (() => {
     return mealTitlePrefixes().some(p => t.startsWith(p.trim().toLowerCase()));
   }
 
-  // Which meal a title announces, read off the SAME prefix list isFoodOrDrink
-  // matches on, so the icon, the accent colour and the estimate tilde can never
-  // disagree about what counts as a meal. Returns '' for anything else.
+  // Which meal a TITLE announces, read off the SAME prefix list isFoodOrDrink
+  // matches on. This is the LEGACY/CONTRACT reading: the assistant still
+  // writes "Dinner: Narisawa" on the wire (its contract is unchanged), and
+  // items saved before `meal` existed carry the prefix in storage. Returns ''
+  // for anything else. Items themselves are read through itemMealKind below,
+  // which prefers the structured field.
   function mealKind(title) {
     const t = String(title == null ? '' : title).trimStart().toLowerCase();
     const hit = mealTitlePrefixes().find(p => t.startsWith(p.trim().toLowerCase()));
     return hit ? hit.replace(/[:\s]+$/, '').toLowerCase() : '';
+  }
+
+  // ---------- food & drink: the structured category ----------
+  // `item.meal` is the storage vocabulary behind the form's "Food & Drink"
+  // type. STORAGE STAYS type:'activity' ON PURPOSE: every deployed version of
+  // repairDb coerces an unknown TYPE to 'note' (and sync is whole-db LWW), so
+  // a seventh storage type would be silently destroyed by any stale client -
+  // while an unknown FIELD rides through old repairTrips, old saves and old
+  // sync untouched. "Food & Drink" is therefore a FORM/DISPLAY type: the
+  // picker offers it, the row look, filters and cost breakdown honour it, and
+  // the db underneath says activity + meal.
+  //
+  // The first four are what the assistant contract can produce; the rest
+  // exist only through the form. Keys are checked through isMealKind (own
+  // property, never `in`): the vocabulary is data, and "__proto__" out of a
+  // hand-edited import must read as not-a-meal.
+  const MEAL_META = {
+    breakfast: { label: 'Breakfast' },
+    brunch: { label: 'Brunch' },
+    lunch: { label: 'Lunch' },
+    dinner: { label: 'Dinner' },
+    drinks: { label: 'Drinks' },
+    cafe: { label: 'Cafe' },
+    snack: { label: 'Snack' },
+    other: { label: 'Food & drink' },
+  };
+  const isMealKind = k => typeof k === 'string' && Object.prototype.hasOwnProperty.call(MEAL_META, k);
+  const mealLabel = k => (isMealKind(k) ? MEAL_META[k].label : '');
+
+  // The deterministic legacy split: a title carrying one of the FOUR contract
+  // prefixes becomes { meal, title } with the prefix removed; anything else is
+  // null and MUST be left exactly as typed ("Sunset dinner cruise",
+  // "Dinnerware shopping" - no colon, not a meal). A title that is nothing
+  // but the prefix keeps the kind word as its name rather than going blank,
+  // because a blank title fails validation and destroys information.
+  function splitMealTitle(title) {
+    const kind = mealKind(title);
+    if (!kind) return null;
+    const rest = stripTitlePrefixes(title);
+    return { meal: kind, title: rest || (kind[0].toUpperCase() + kind.slice(1)) };
+  }
+
+  // The one question every surface asks: is this ITEM food or drink, and which
+  // kind? The structured field wins; the title prefix stays as the fallback so
+  // data that has not passed through a repair (an old share link rendered
+  // read-only, a fixture) still draws the right icon. Activities only - the
+  // field is meaningless on any other type and repair deletes it there.
+  function itemMealKind(item) {
+    if (!item || item.type !== 'activity') return '';
+    if (isMealKind(item.meal)) return item.meal;
+    return mealKind(item.title);
+  }
+
+  // The repair-path normalizer, shared by repairTrips, the import sanitizer
+  // and the sample expander so the three cannot drift. Two jobs, both
+  // deterministic: drop a `meal` that is junk or sits on a non-activity, and
+  // migrate a legacy prefixed title ("Dinner: Saba") into the structured shape
+  // (meal:'dinner', title:'Saba'). The prefix list is exactly the assistant
+  // contract's, so no free-form title that merely mentions a meal is touched,
+  // and an item that already carries a valid `meal` keeps its title verbatim.
+  function normalizeMealItem(it) {
+    if (!it || typeof it !== 'object') return it;
+    if (it.meal != null && (!isMealKind(it.meal) || it.type !== 'activity')) delete it.meal;
+    if (it.type !== 'activity' || isMealKind(it.meal)) return it;
+    const hit = splitMealTitle(it.title);
+    if (hit) { it.meal = hit.meal; it.title = hit.title; }
+    return it;
   }
 
   // Free text long enough to be worth clamping to a few lines behind a
@@ -6960,7 +7047,12 @@ const TripLogic = (() => {
     if (spec.cost != null) it.costCurrency = spec.cur || SAMPLE_BASE_CURRENCY;
     if (spec.est != null) { it.estCost = spec.est; it.estCostCurrency = spec.estCur || SAMPLE_BASE_CURRENCY; }
     if (spec.maps) it.mapsQuery = spec.maps;
-    return it;
+    // The templates are still AUTHORED with the "Dinner: Narisawa" shorthand
+    // (145 items across 13 trips; the prefix reads well as authoring notation),
+    // but what they BUILD is the structured shape every other entry path now
+    // produces: meal:'dinner', title:'Narisawa'. Same normalizer as repair and
+    // import, so the shop window models exactly what the form saves.
+    return normalizeMealItem(it);
   }
 
   // Builds one template into a real item list. Every date is relative to
@@ -8439,6 +8531,12 @@ const TripLogic = (() => {
     flight: '✈️', transport: '🚆', local: '🚕',
     activity: '🎟️', stay: '🏨', note: '📝',
   };
+  // the pasted-text twin of the app's MEAL_ICONS: a copied day has no colour
+  // or class to say "this row is dinner", so the icon carries it alone
+  const MEAL_TEXT_ICONS = {
+    breakfast: '🥐', brunch: '🥞', lunch: '🥗', dinner: '🍽️',
+    drinks: '🍸', cafe: '☕', snack: '🍰', other: '🍽️',
+  };
 
   function dayShareText(card, items, fmtDate, fmtTime) {
     // Built as SECTIONS joined by blank lines, not a flat list: the text is
@@ -8449,7 +8547,8 @@ const TripLogic = (() => {
     const row = ev => {
       const it = ev.item;
       const time = ev.time ? fmtTime(ev.time) + ' ' : '';
-      const icon = TYPE_ICONS[it.type] || '';
+      const mk = itemMealKind(it);
+      const icon = (mk && MEAL_TEXT_ICONS[mk]) || TYPE_ICONS[it.type] || '';
       const where = String(it.location == null ? '' : it.location).trim();
       // The "Cancelled" badge the card puts beside the title, in words:
       // displayTitle strips the "Cancelled:" prefix, so without this the row
@@ -8607,6 +8706,7 @@ const TripLogic = (() => {
     hasEstimate, displayCostOf, parseMoney, roundMoney, budgetVerdict, refundParts,
     readBudgetRange, normalizeBudgetFrom, budgetFigure,
     mealKind, isLongDetails,
+    MEAL_META, isMealKind, mealLabel, splitMealTitle, itemMealKind, normalizeMealItem,
     matchSampleTrip, normalizeTripName, sampleTrip, sampleTripOptions, buildSampleTrip,
     SAMPLE_START_OFFSET, sampleStartOffset, SAMPLE_BASE_CURRENCY,
   };

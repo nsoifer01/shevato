@@ -23,7 +23,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 67;
+  const TP_BUILD = 69;
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   // Miles or kilometers, everywhere a distance prints. Same architecture as
@@ -52,18 +52,33 @@
     'cancelled': { label: 'Cancelled',    cls: 'st-cancelled' },
   };
 
-  // A meal is an `activity` whose title carries one of the prefixes the
-  // assistant contract mandates, so its icon comes from the same read of that
-  // list that decides the estimate tilde. Anything the list gains later still
-  // gets the neutral fallback rather than an activity ticket.
-  const MEAL_ICONS = { breakfast: '🥐', lunch: '🥗', dinner: '🍽️', drinks: '🍸' };
+  // One icon per food & drink kind (itemMealKind: the structured `meal` field
+  // first, the legacy title prefix as fallback). The icon plus the meal class
+  // is the WHOLE category treatment on a card - the title never repeats the
+  // kind in words - so the label here is what a screen reader gets instead.
+  const MEAL_ICONS = {
+    breakfast: '🥐', brunch: '🥞', lunch: '🥗', dinner: '🍽️',
+    drinks: '🍸', cafe: '☕', snack: '🍰', other: '🍽️',
+  };
+
+  // The form's type list: the six storage types plus Food & Drink, which is a
+  // FORM/DISPLAY type only (storage stays activity + meal; see itemMealKind in
+  // trip-logic for why a seventh storage type would be destroyed by stale
+  // clients). NEVER hand this to repairTrips or sanitizeItem - those validate
+  // STORAGE and must keep using TYPE_META, or 'food' would become storable.
+  const MODAL_TYPE_META = {
+    flight: TYPE_META.flight, stay: TYPE_META.stay, transport: TYPE_META.transport,
+    local: TYPE_META.local, activity: TYPE_META.activity,
+    food: { label: 'Food & Drink', icon: '🍽️', cls: 'type-food' },
+    note: TYPE_META.note,
+  };
 
   // The one place a row's visual identity is decided: which icon sits on the
   // rail, what a screen reader calls it, and which accent class paints it.
   function rowLook(it) {
-    if (it.type === 'activity' && isFoodOrDrink(it.title)) {
-      const kind = mealKind(it.title);
-      return { cls: 'tp-t-meal', icon: MEAL_ICONS[kind] || '🍽️', label: kind ? kind[0].toUpperCase() + kind.slice(1) : 'Meal' };
+    const kind = itemMealKind(it);
+    if (kind) {
+      return { cls: 'tp-t-meal', icon: MEAL_ICONS[kind] || '🍽️', label: mealLabel(kind) || 'Food & drink' };
     }
     const tm = TYPE_META[it.type] || TYPE_META.note;
     return { cls: 'tp-t-' + (TYPE_META[it.type] ? it.type : 'note'), icon: tm.icon, label: tm.label };
@@ -104,7 +119,12 @@
     bookingDeadlines, paceAdvisory,
     dayShareText, shareHostStay, weekStart, spendByWeek,
     dayCards, dayMorningCity, emptyDayNote, departureOrigin, suggestedPassport, passportAssumptionParts, defaultPlanDay, planDayGroups, overnightTransit, arrivalConflicts,
-    timelineGroups, mealKind, isFoodOrDrink, isLongDetails, mealTitlePrefixes, itemMapsQuery, displayTitle,
+    timelineGroups, isLongDetails, itemMapsQuery, displayTitle,
+    // Food & Drink is a structured field now (`meal`), so app.js asks
+    // itemMealKind rather than re-reading a title prefix; mealKind /
+    // isFoodOrDrink / mealTitlePrefixes stay exported from trip-logic for the
+    // assistant contract and the tests, and are deliberately not read here.
+    isMealKind, mealLabel, splitMealTitle, itemMealKind, normalizeMealItem,
     weatherKey, summarizeClimate, weatherLine, weatherRange, pickMonthSamples, docGuard,
     FORECAST_DAYS, forecastEligible, forecastKey, forecastFresh, freshForecasts, summarizeForecast, forecastLine, forecastChipParts,
     extractTripActions, validateTripAction, buildAssistPackage, buildAssistSystemPrompt,
@@ -348,6 +368,13 @@
         if (!TYPE_META[it.type]) it.type = 'note';
         if (!STATUS_META[it.status]) it.status = 'to-book';
         if (typeof it.title !== 'string') it.title = '';
+        // structured food & drink: junk `meal` values drop, and a legacy
+        // prefixed title ("Dinner: Saba") migrates to meal:'dinner' +
+        // title:'Saba' - deterministic (the four contract prefixes, colon
+        // required), and the kind is preserved in the field the title used
+        // to carry it in. Runs here so EVERY entry path (boot, sync merge,
+        // share boot, undo snapshots reloaded from storage) is normalized.
+        normalizeMealItem(it);
         if (typeof it.startDate !== 'string') it.startDate = '';
         if (typeof it.endDate !== 'string') it.endDate = '';
         if (typeof it.endTime !== 'string') it.endTime = '';
@@ -1342,7 +1369,15 @@
   const filtersActive = () => !!(ui.search || ui.filterType || ui.filterStatus || ui.filterTraveler);
 
   function matchesFilters(it) {
-    if (ui.filterType && it.type !== ui.filterType) return false;
+    // "Food & drink" and "Activities" are two filters over ONE storage type,
+    // split by the same itemMealKind the row icon reads: picking Activities
+    // must not hand back every dinner on the trip, and vice versa.
+    if (ui.filterType) {
+      const kind = itemMealKind(it);
+      if (ui.filterType === 'food') { if (!kind) return false; }
+      else if (ui.filterType === 'activity') { if (it.type !== 'activity' || kind) return false; }
+      else if (it.type !== ui.filterType) return false;
+    }
     if (ui.filterStatus && it.status !== ui.filterStatus) return false;
     // "Show me only Sam's day". An item assigned to nobody is Everyone's, so it
     // stays visible under every name: the same reading of an empty `travelers`
@@ -1968,7 +2003,9 @@
     const shares = typeBarShares(rows);
     const short = n => n ? ` <small>+ ${n} not converted</small>` : '';
     const html = rows.map((r, i) => {
-      const meta = TYPE_META[r.type] || TYPE_META.note;
+      // costsByType emits the display grouping, so 'food' is a real row key
+      // here: MODAL_TYPE_META is the table that has it (see rowLook).
+      const meta = MODAL_TYPE_META[r.type] || TYPE_META.note;
       const missing = r.unconverted.length;
       return `<div class="tt-row${missing ? ' incomplete' : ''}" data-type="${esc(r.type)}">`
         + `<span class="tt-name"><span class="ty-ico" aria-hidden="true">${meta.icon}</span>${esc(meta.label)}</span>`
@@ -2403,7 +2440,7 @@
             <div class="dc-title">${esc(displayTitle(it))}${clip}${loc}${issueBadge}</div>
             ${ref}
           </div>
-          <div class="dc-facts">${cost}${maps}${dir}${hrs}</div>
+          <div class="dc-facts">${cost}${maps}${hrs}${dir}</div>
           <div class="dc-btns">${grip}${edit}${del}</div>
         </div>
         ${details}
@@ -2445,11 +2482,21 @@
     // night of a stay has nothing to clear, but "Staying at <hotel>" is
     // still a day worth pasting to someone, and the card itself says it.
     const canCopy = canClear || (!sharedMode && !!shareHostStay(trip.items, card.date));
+    // Two frequent actions stay visible (assistant, add); the three occasional
+    // day operations fold behind one "..." toggle so the header reads as a
+    // heading with actions rather than a toolbar of five equal icons. Nothing
+    // is removed: the menu holds the same three buttons, same data-acts, same
+    // disabled reasons, and the shared-mode gate is unchanged (no menu at all).
     const editBtns = sharedMode ? '' : `
             <button class="row-btn" data-act="add-day" data-date="${card.date}" title="Add an item on this day" aria-label="Add an item on ${esc(fmtDate(card.date))}">+</button>
-            <button class="row-btn" data-act="share-day" data-date="${card.date}"${canCopy ? '' : ' disabled'} title="${canCopy ? 'Copy day' : 'Nothing on this day to copy'}" aria-label="Copy ${esc(fmtDate(card.date))} as text">📋</button>
-            <button class="row-btn" data-act="duplicate-day" data-date="${card.date}"${canClear ? '' : ' disabled'} title="${canClear ? 'Copy every item on this day to another date' : 'Nothing on this day to copy'}" aria-label="Copy everything on ${esc(fmtDate(card.date))} to another date">📄</button>
-            ${canClear ? `<button class="row-btn danger" data-act="clear-day" data-date="${card.date}" title="Delete every item on this day" aria-label="Delete every item on ${esc(fmtDate(card.date))}">${TRASH_SVG}</button>` : ''}`;
+            <span class="dc-menu-wrap">
+              <button class="row-btn dc-more" data-act="day-menu" data-date="${card.date}" aria-haspopup="menu" aria-expanded="false" title="More day actions" aria-label="More actions for ${esc(fmtDate(card.date))}">⋯</button>
+              <div class="dc-menu" role="menu" aria-label="Actions for ${esc(fmtDate(card.date))}" hidden>
+                <button class="dm-item" role="menuitem" data-act="share-day" data-date="${card.date}"${canCopy ? '' : ' disabled'} title="${canCopy ? 'Copy this day as message-ready text' : 'Nothing on this day to copy'}" aria-label="Copy ${esc(fmtDate(card.date))} as text"><span class="dm-ico">📋</span>Copy day as text</button>
+                <button class="dm-item" role="menuitem" data-act="duplicate-day" data-date="${card.date}"${canClear ? '' : ' disabled'} title="${canClear ? 'Copy every item on this day to another date' : 'Nothing on this day to copy'}" aria-label="Copy everything on ${esc(fmtDate(card.date))} to another date"><span class="dm-ico">📄</span>Copy to another date</button>
+                <button class="dm-item danger" role="menuitem" data-act="clear-day" data-date="${card.date}"${canClear ? '' : ' disabled'} title="${canClear ? 'Delete every item on this day' : 'Nothing on this day to delete'}" aria-label="Delete every item on ${esc(fmtDate(card.date))}"><span class="dm-ico">${TRASH_SVG}</span>Delete day's items</button>
+              </div>
+            </span>`;
     // Where the day's chain of distances starts: the stay covering it (its own
     // coordinates when it came from the hotel picker, else its city), or the
     // morning city the chip already names. Stamped like the rows, so the pass
@@ -2723,17 +2770,20 @@
     try {
       await navigator.clipboard.writeText(text);
       toast('Day copied');
-      // The toast lands at the screen edge while the eye is on the button
-      // that was just pressed, so the button itself confirms too: a brief
-      // checkmark right under the cursor. Re-queried by date because a
-      // render between click and now would detach the original node.
+      // The toast lands at the screen edge while the eye is on the menu item
+      // that was just pressed, so the item itself confirms too: its icon
+      // flashes a checkmark (the menu deliberately stays open for this one
+      // action - see the days-list click handler). Re-queried by date because
+      // a render between click and now would detach the original node.
       const btn = document.querySelector(`button[data-act="share-day"][data-date="${date}"]`);
-      if (btn) {
-        btn.textContent = '✅';
+      const ico = btn && btn.querySelector('.dm-ico');
+      if (ico) {
+        ico.textContent = '✅';
         btn.title = 'Copied';
         setTimeout(() => {
           const b = document.querySelector(`button[data-act="share-day"][data-date="${date}"]`);
-          if (b && b.textContent === '✅') { b.textContent = '📋'; b.title = 'Copy day'; }
+          const i = b && b.querySelector('.dm-ico');
+          if (i && i.textContent === '✅') { i.textContent = '📋'; b.title = 'Copy this day as message-ready text'; }
         }, 1600);
       }
     } catch {
@@ -2823,6 +2873,43 @@
     // and geocode caches, and only what is genuinely missing (and on screen) is
     // queued for a lookup.
     refreshDistances();
+  }
+
+  // ---------- day-card overflow menu ----------
+  // One menu open at a time, DOM-held state only: a re-render rebuilds
+  // #daysList and the menu simply comes back closed, so there is nothing to
+  // reconcile. The card class lifts the day card's overflow clip and stacking
+  // order while its menu is up (see .day-card.has-open-menu).
+  function closeDayMenus(focusToggle) {
+    let closed = false;
+    document.querySelectorAll('.dc-menu-wrap.open').forEach(w => {
+      w.classList.remove('open');
+      const m = w.querySelector('.dc-menu');
+      if (m) m.hidden = true;
+      const b = w.querySelector('[data-act="day-menu"]');
+      if (b) {
+        b.setAttribute('aria-expanded', 'false');
+        if (focusToggle) b.focus({ preventScroll: true });
+      }
+      const card = w.closest('.day-card');
+      if (card) card.classList.remove('has-open-menu');
+      closed = true;
+    });
+    return closed;
+  }
+
+  function toggleDayMenu(btn) {
+    const wrap = btn.closest('.dc-menu-wrap');
+    if (!wrap) return;
+    const wasOpen = wrap.classList.contains('open');
+    closeDayMenus();
+    if (wasOpen) return;
+    wrap.classList.add('open');
+    const m = wrap.querySelector('.dc-menu');
+    if (m) m.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    const card = wrap.closest('.day-card');
+    if (card) card.classList.add('has-open-menu');
   }
 
   // ---------- reordering a day's tied rows ----------
@@ -3463,8 +3550,22 @@
     });
     $('#itemModalTitle').textContent = it ? 'Edit item' : 'Add item';
     $('#itemSaveBtn').textContent = it ? 'Save changes' : 'Add item';
-    setModalType(it ? it.type : (TYPE_META[pre.type] ? pre.type : auto.type));
-    $('#inTitle').value = it ? it.title : (pre.title || '');
+    // The FORM type, which is the storage type plus the Food & Drink split:
+    // an activity carrying a meal kind opens on Food & Drink with its subtype
+    // selected, so editing an old "Dinner: Saba" shows Dinner + "Saba" and the
+    // traveller never has to delete a prefix by hand. A preset (the closed-
+    // proposal hand-off) may also name `meal` for the same reason.
+    const preMeal = !it && isMealKind(pre.meal) ? pre.meal : '';
+    const editMeal = it ? itemMealKind(it) : '';
+    setModalType(it ? (editMeal ? 'food' : it.type)
+      : (preMeal ? 'food' : (MODAL_TYPE_META[pre.type] ? pre.type : auto.type)));
+    setModalMeal(editMeal || preMeal || 'dinner');
+    // The title is the VENUE NAME alone. An item that has been through repair
+    // already carries it clean; the fallback split covers the one path repair
+    // cannot reach - a read-only shared trip, whose items are never repaired.
+    $('#inTitle').value = it
+      ? (editMeal && !isMealKind(it.meal) ? (splitMealTitle(it.title) || {}).title || it.title : it.title)
+      : (pre.title || '');
     // A rating belongs to the row a traveller picked in THIS form, never to a
     // saved item, so opening any item starts without one. The picked-venue
     // coordinates go with it for the same reason.
@@ -3715,6 +3816,22 @@
     else $('#docsList').innerHTML = '';
   }
 
+  // The STORAGE type behind the form type: 'food' is a form/display type and
+  // is stored as an activity carrying a `meal` kind (see itemMealKind). Every
+  // read that feeds storage, validation or the trip-logic derivations goes
+  // through this, so 'food' can never reach the db as a type.
+  const storageTypeOf = t => (t === 'food' ? 'activity' : t);
+
+  // Which food & drink kind the form is on. Only meaningful while modalType is
+  // 'food'; kept across a type switch so flipping to Activity and back does not
+  // silently lose the Dinner the traveller had already chosen.
+  let modalMeal = 'dinner';
+  function setModalMeal(kind) {
+    modalMeal = isMealKind(kind) ? kind : 'dinner';
+    const sel = $('#inMeal');
+    if (sel) sel.value = modalMeal;
+  }
+
   function setModalType(t) {
     modalType = t;
     document.querySelectorAll('#typePicker button').forEach(b => {
@@ -3724,6 +3841,7 @@
       b.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
     const stay = t === 'stay';
+    const food = t === 'food';
     // TRAVEL_TYPES, not a private list: `local` is a travel type everywhere
     // else (the row accent, the timed-ICS rule), so it gets the arrival row
     // too. Without it a local leg's arrival date sat in a hidden field and was
@@ -3739,26 +3857,29 @@
     $('#timeLabel').innerHTML = (travel ? 'Departure time' : 'Time') + ' <small>(optional)</small>';
     $('#arrDateLabel').innerHTML = (t === 'flight' ? 'Lands on' : 'Arrives on') + ' <small>(optional, for overnight legs)</small>';
     $('#arrTimeLabel').innerHTML = (t === 'flight' ? 'Landing time' : 'Arrival time') + ' <small>(optional)</small>';
-    $('#titleLabel').textContent = stay ? 'Hotel / stay name' : 'Title';
-    $('#inTitle').placeholder = stay ? 'e.g. Hotel Mystays Premier Akasaka' : (t === 'flight' ? 'e.g. Shreveport to Tokyo (HND)' : 'e.g. Grand Palace tour');
-    // Meals are activities with a naming convention, not a seventh type: the
-    // prefix list is the assistant's contract and the same read drives the
-    // icon, the amber accent and the estimate tilde. It was invisible, though,
-    // so a traveller could see the colour and never be able to choose it. The
-    // rule is now printed where it is used instead of the type list growing an
-    // entry that would fork the data model and the assistant contract.
+    // The Title field asks for ONE thing at every type: the name of the place
+    // (or, for a leg, the route). It never asks for a classification - that is
+    // what the type picker and the Food & Drink subtype are for - so nothing
+    // here mentions a prefix convention any more.
+    $('#titleLabel').textContent = stay ? 'Hotel / stay name' : (food ? 'Venue name' : 'Title');
+    $('#inTitle').placeholder = stay ? 'e.g. Hotel Mystays Premier Akasaka'
+      : (food ? 'e.g. Saba' : (t === 'flight' ? 'e.g. Shreveport to Tokyo (HND)' : 'e.g. Grand Palace tour'));
+    // The subtype control exists for exactly one type, and only then: every
+    // other type sees no trace of it (the form reveals what is useful for the
+    // item in hand and nothing else).
+    $('#fMeal').style.display = food ? '' : 'none';
     // The rating belongs to a hotel that was picked from the dropdown, so
     // switching the type away from Stay retires it with the picker.
     if (!stay) clearStayRating();
-    const meal = $('#mealHint');
-    meal.hidden = t !== 'activity';
-    if (t === 'activity') {
-      // Two facts about this one field, and the venue search goes first because
-      // it is the one a traveller cannot discover by typing: the dropdown only
-      // appears from the third character, so nothing announces it.
-      meal.textContent = 'Type a venue name to look up the real place. Start the title with '
-        + mealTitlePrefixes().map(p => p.trim()).join(' ')
-        + ' to mark it as a meal (its own icon and colour).';
+    const hint = $('#mealHint');
+    // Both venue-searching types get the same one fact, and it is the fact a
+    // traveller cannot discover by typing: the dropdown only appears from the
+    // third character, so nothing on screen announces it.
+    hint.hidden = !(food || t === 'activity');
+    if (!hint.hidden) {
+      hint.textContent = food
+        ? 'Type the venue name to look up the real place - just the name, like "Saba".'
+        : 'Type the venue or attraction name to look up the real place.';
     }
   }
 
@@ -3820,7 +3941,7 @@
     const loc = $('#inLocation');
     if (!appOwns('location', loc)) return;
     const auto = newItemDefaults(activeTrip(), {
-      today: todayIso(), focusDate: $('#inStart').value, type: modalType, resolveIata: iataCity,
+      today: todayIso(), focusDate: $('#inStart').value, type: storageTypeOf(modalType), resolveIata: iataCity,
     });
     // An empty answer CLEARS an app-written city rather than leaving yesterday's
     // on a day that cannot justify it; a city a human put there is never touched.
@@ -3894,7 +4015,7 @@
     const carryEnd = !travel && modalType !== 'stay' && !!ui.editingId && !prevHadArrivalRow;
     const it = {
       id: ui.editingId || uid(),
-      type: modalType,
+      type: storageTypeOf(modalType),
       title: $('#inTitle').value.trim(),
       location: $('#inLocation').value.trim(),
       startDate: $('#inStart').value,
@@ -3914,6 +4035,11 @@
       bookBy: $('#inBookBy').value,
       details: $('#inDetails').value.trim(),
     };
+    // Food & Drink stores the kind in its own field and NOTHING in the title:
+    // the title the traveller typed is the venue's name and is saved verbatim.
+    // Switching away from Food & Drink drops the field, so an item that stops
+    // being a meal stops claiming to be one.
+    if (modalType === 'food') it.meal = isMealKind(modalMeal) ? modalMeal : 'other';
     // "Not tracked" is the absence of a claim, so it stores nothing rather than
     // an empty string every item would then carry
     const payment = $('#inPayment').value;
@@ -4013,7 +4139,7 @@
         // than quietly dropped: it came from somewhere (an import, a share
         // link), and clearing it to let the save through would destroy it
         // without ever telling the traveller it existed.
-        const label = TYPE_META[modalType] ? TYPE_META[modalType].label.toLowerCase() : 'item';
+        const label = MODAL_TYPE_META[modalType] ? MODAL_TYPE_META[modalType].label.toLowerCase() : 'item';
         const why = endOutOfRange ? `it is outside ${DATE_MIN} to ${DATE_MAX}`
           : (isIsoDate(it.endDate) ? "it is before the item's own date" : 'it is not a valid date');
         formError(`This ${label} carries an end date (${it.endDate}) that only a stay or a travel type has a field for, and ${why}. Switch the type to fix it.`);
@@ -4940,6 +5066,10 @@
       details: String(raw.details || '').slice(0, 500),
       createdAt: new Date().toISOString(),
     };
+    // the food & drink kind round-trips (export, share link), validated by the
+    // same normalizer repair uses: junk drops, a legacy prefixed title migrates
+    if (isMealKind(raw.meal)) out.meal = raw.meal;
+    normalizeMealItem(out);
     if (PAYMENT_METHODS.includes(raw.payment)) out.payment = raw.payment;
     // A hand-set same-day order round-trips: an export or a share link that
     // reshuffled the day it describes would be a worse copy than none. Anything
@@ -6652,7 +6782,12 @@
     return createCombobox(input, {
       minChars: 3,          // "ho" matches half the lodging in the world
       debounce: 320,        // a shared, unpaid, fair-use endpoint: do not type at it
-      enabled: () => modalType === 'stay' || modalType === 'activity',
+      // Food & Drink searches venues exactly as Activity does, and now the
+      // query IS the venue name: the classification moved to its own control,
+      // so nothing has to strip an application prefix off the string before it
+      // reaches the provider (typing "Dinner: Saba" used to re-query on every
+      // keystroke of the prefix and rank against a string no venue is named).
+      enabled: () => modalType === 'stay' || modalType === 'activity' || modalType === 'food',
       rows: q => (modalType === 'stay'
         ? fetchHotelSuggestions(q, pickerCityBias()).then(rows => rows.map(r => ({ ...r, src: 'hotel' })))
         : fetchVenueSuggestions(q, pickerCityBias()).then(rows => rows.map(r => ({ ...r, src: 'venue' })))),
@@ -7086,7 +7221,7 @@
       const rule = '<hr style="border:none;border-top:1px solid var(--border-soft);margin:6px 0">';
       const lines = stop.items.slice(0, 5).map(it => {
         const range = isStay(it) && isIsoDate(it.endDate) ? fmtRange(it.startDate, it.endDate) : fmtDate(it.startDate);
-        return `${TYPE_META[it.type].icon} ${esc(it.title)}<br><small style="color:var(--text-dim)">${range}</small>`;
+        return `${rowLook(it).icon} ${esc(it.title)}<br><small style="color:var(--text-dim)">${range}</small>`;
       }).join(rule);
       // C8: the popup shows five items and a busy stop can hold far more, so it
       // said "these are your five things in Kyoto" when it meant "here are five
@@ -9208,6 +9343,12 @@
       createdAt: new Date().toISOString(),
     };
     if (f.mapsQuery) item.mapsQuery = f.mapsQuery;
+    // The assistant contract still says "Dinner: Narisawa" on the wire (it is
+    // a prompt instruction to a model, and a stable one), so an accepted
+    // proposal is converted at the boundary into the shape everything else
+    // stores: meal:'dinner', title:'Narisawa'. Same normalizer the repair and
+    // import paths use, so a card and a hand-added row cannot store differently.
+    normalizeMealItem(item);
     if (p.transcribed && f.confirmation) item.confirmation = f.confirmation;
     if (p.transcribed && f.cost != null) item.costCurrency = f.costCurrency || (trip.currency || 'USD');
     if (est != null) {
@@ -9232,6 +9373,13 @@
     if (f.details !== undefined) it.details = String(f.details).slice(0, 500);
     if (f.mapsQuery) it.mapsQuery = f.mapsQuery;
     it.status = p.status;
+    // an update that rewrote the title or the type re-derives the kind from
+    // what it just wrote; a `meal` left on an item that is no longer an
+    // activity is dropped by the same call
+    if (f.title !== undefined || f.type !== undefined) {
+      if (f.title !== undefined) delete it.meal;
+      normalizeMealItem(it);
+    }
   }
 
   function markProposalStale(card) {
@@ -9377,8 +9525,17 @@
         () => {
           if (p.op === 'update') { openItemModal(p.targetId); return; }
           const f = p.fields;
+          // The hand-off opens the form on the SAME thing the card described,
+          // in the form's own vocabulary: a prefixed contract title becomes
+          // the Food & Drink type with its subtype chosen and the bare venue
+          // name in the field, so the traveller changes the time and nothing
+          // else. splitMealTitle returns null for anything that is not one of
+          // the four contract prefixes, which leaves an ordinary activity
+          // exactly as it was.
+          const split = f.type === 'activity' ? splitMealTitle(f.title) : null;
           openItemModal(null, {
-            type: f.type, title: f.title || '', location: f.location || '',
+            type: f.type, title: (split ? split.title : f.title) || '', meal: split ? split.meal : '',
+            location: f.location || '',
             startDate: p.display.startDate || '', startTime: p.display.startTime || '',
             details: f.details || '',
           });
@@ -9959,6 +10116,11 @@
     if (!btn) return;
     if (btn.dataset.act === 'more') { toggleDetails(btn); return; }
     const act = btn.dataset.act, date = btn.dataset.date;
+    if (act === 'day-menu') { toggleDayMenu(btn); return; }
+    // Any other action retires an open day menu - except Copy day, which
+    // keeps its menu up so the item's own checkmark flash is seen (the
+    // document-level outside-click closes it the moment attention moves on).
+    if (act !== 'share-day') closeDayMenus();
     if (act === 'ask-day') openAssist(date);
     // read-only, like ask-day: a shared trip's visitor can look at the route
     else if (act === 'day-route') openDayRoute(date);
@@ -10147,6 +10309,9 @@
       $('#inFlightFrom').focus({ preventScroll: true });
     }
   });
+  // The subtype is a plain select and stores itself on save; this only keeps
+  // the module's copy in step so a re-render of the form cannot lose it.
+  $('#inMeal').addEventListener('change', e => setModalMeal(e.target.value));
   $('#importBookingBtn').addEventListener('click', () => $('#importBookingFile').click());
   $('#importBookingFile').addEventListener('change', e => {
     const f = e.target.files[0];
@@ -10463,13 +10628,21 @@
   document.querySelectorAll('[data-close]').forEach(b => {
     b.addEventListener('click', () => closeOverlay(b.closest('.overlay')));
   });
+  // a day-card menu closes when attention moves anywhere outside its own wrap;
+  // the toggle's own click never lands here as "outside" (closest matches it)
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.dc-menu-wrap')) closeDayMenus();
+  });
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       // one keypress dismisses one layer, topmost first: a row being dragged
-      // (nothing is stored until it is dropped, so this abandons it), then
-      // modals (z 90), then the assistant panel (80), then the header popovers
-      // (search 41, menu 40)
+      // (nothing is stored until it is dropped, so this abandons it), then a
+      // day card's overflow menu (the most transient popover, and mutually
+      // exclusive with the layers below - opening any of them closes it),
+      // then modals (z 90), then the assistant panel (80), then the header
+      // popovers (search 41, menu 40)
       if (dragCtx) { cancelRowDrag(); return; }
+      if (closeDayMenus(true)) return;
       if (topOverlay()) { closeTopOverlay(); return; }
       if (!$('#assistPanel').hidden) { closeAssist(); return; }
       if ($('#tripSearch').classList.contains('open')) { closeTripSearch(); return; }
