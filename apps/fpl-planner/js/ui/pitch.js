@@ -22,8 +22,57 @@ function rawPlayer(gameState, id) {
   return gameState.players instanceof Map ? gameState.players.get(id) : null;
 }
 
+// ACTUAL points for the gameweek being played.
+//
+// The player's own minutes decide whether he has a score; his club's fixture
+// decides how settled that score is. Deriving the number from one and the
+// caption from the other let them contradict each other on screen - a card read
+// "6 yet to play" - so both now start from the same question, in the same
+// order: has he played, and if so how final is it.
+function liveState(row) {
+  if (!row || row.blank) return 'blank';
+  if (row.points === null || row.points === undefined) return 'unknown';
+  if (row.hasPlayed) {
+    if (row.fixturePhase === 'live') return 'playing';
+    if (row.fixturePhase === 'provisional') return 'provisional';
+    return 'final';
+  }
+  // No minutes. Either his match is still to come, or it happened without him.
+  if (row.fixturePhase === 'final' || row.fixturePhase === 'provisional') return 'did-not-play';
+  return 'upcoming';
+}
+
+function livePointsText(row) {
+  const state = liveState(row);
+  // A dash means "no score yet". A zero means "played no part, and that is
+  // worth nothing", which is a different fact and a real score.
+  if (state === 'upcoming' || state === 'blank' || state === 'unknown') return '-';
+  return String(row.points);
+}
+
+function livePointsLabel(row) {
+  switch (liveState(row)) {
+    case 'playing': return 'pts · live';
+    case 'provisional': return 'pts · bonus pending';
+    case 'final': return 'pts';
+    case 'did-not-play': return 'did not play';
+    case 'blank': return 'no fixture';
+    case 'unknown': return 'no data';
+    default: return 'yet to play';
+  }
+}
+
+function livePointsClass(row) {
+  return `is-${liveState(row)}`;
+}
+
 export function playerCard({
-  playerId, gameState, projections, gw, isCaptain = false, isVice = false, move = null, benchNumber = null, isBenchGk = false, onClick = null,
+  playerId, gameState, projections, gw, isCaptain = false, isVice = false, move = null,
+  benchNumber = null, isBenchGk = false, onClick = null,
+  // Live scoring for the gameweek being PLAYED, which is a different gameweek
+  // from `gw` (what the plan is for) and a different quantity from xP. Passed
+  // as a row from engine/live.js, or null when nothing is in play.
+  liveRow = null,
 }) {
   const info = describePlayer(gameState, playerId);
   const row = getProjection(projections, playerId, gw);
@@ -53,10 +102,25 @@ export function playerCard({
   }, [
     isCaptain ? el('span', { class: 'fpl-pp-arm is-c', text: 'C', title: 'Captain' }) : null,
     !isCaptain && isVice ? el('span', { class: 'fpl-pp-arm is-v', text: 'V', title: 'Vice-captain' }) : null,
-    move ? el('span', { class: `fpl-pp-move is-${move}`, text: move === 'in' ? 'IN' : 'OUT' }) : null,
+    // A transfer marker, NOT an availability one. It read "OUT" over the
+    // Current team pitch, where eleven of them made an owned squad look
+    // unavailable rather than proposed-for-sale; the words now say which it is.
+    move ? el('span', {
+      class: `fpl-pp-move is-${move}`,
+      text: move === 'in' ? 'BUY' : 'SELL',
+      title: move === 'in' ? 'The plan buys this player' : 'The plan sells this player',
+    }) : null,
     el('div', { class: 'fpl-pp-name', text: info.name }),
     el('div', { class: 'fpl-pp-meta', text: `${info.club} · ${info.positionShort} · ${formatMoney(info.priceTenths)}` }),
     el('div', { class: 'fpl-pp-fix', text: fixtureLabel(row, gameState) }),
+    // ACTUAL points first when a gameweek is being played, expected points
+    // second. Two quantities, two labels, never the same field: "6 pts" is what
+    // happened and "4.8 xP" is what is expected, and a manager must never have
+    // to guess which one he is reading.
+    liveRow ? el('div', { class: `fpl-pp-live ${livePointsClass(liveRow)}` }, [
+      el('span', { class: 'fpl-pp-live-v', text: livePointsText(liveRow) }),
+      el('span', { class: 'fpl-pp-live-l', text: livePointsLabel(liveRow) }),
+    ]) : null,
     el('div', { class: 'fpl-pp-xp' }, [row ? xp(row.xPoints) : '-', el('span', { text: 'xP' })]),
     flags.length ? el('div', { class: 'fpl-pp-flags' }, flags) : null,
   ]);
@@ -126,8 +190,15 @@ export function pitchViewModel({ mode, plan, squadState, gameState }) {
   };
 }
 
-export function renderPitch({ mode, plan, squadState, gameState, projections, gw, onPlayerClick = null }) {
+export function renderPitch({
+  mode, plan, squadState, gameState, projections, gw, onPlayerClick = null,
+  // Rows from engine/live.js scoreLiveSquad(), keyed by player id. Present only
+  // while a gameweek is being played and only on the CURRENT team view: the
+  // recommended eleven is advice about a future gameweek and has no live score.
+  liveRows = null,
+}) {
   const vm = pitchViewModel({ mode, plan, squadState, gameState });
+  const liveOf = (id) => (liveRows instanceof Map ? liveRows.get(id) || null : null);
   const positionOf = id => {
     const player = rawPlayer(gameState, id);
     return player ? player.position : 0;
@@ -141,6 +212,7 @@ export function renderPitch({ mode, plan, squadState, gameState, projections, gw
     isCaptain: id === vm.captain,
     isVice: id === vm.viceCaptain,
     move: moveOf(id),
+    liveRow: liveOf(id),
     onClick: onPlayerClick,
   })))));
 
@@ -149,10 +221,11 @@ export function renderPitch({ mode, plan, squadState, gameState, projections, gw
     el('div', { class: 'fpl-bench-title', text: 'Bench, in auto-sub order' }),
     el('div', { class: 'fpl-bench-row' }, [
       vm.bench && vm.bench.gk
-        ? playerCard({ playerId: vm.bench.gk, gameState, projections, gw, move: moveOf(vm.bench.gk), benchNumber: 0, isBenchGk: true, onClick: onPlayerClick })
+        ? playerCard({ playerId: vm.bench.gk, gameState, projections, gw, move: moveOf(vm.bench.gk), liveRow: liveOf(vm.bench.gk), benchNumber: 0, isBenchGk: true, onClick: onPlayerClick })
         : null,
       ...benchOrder.map((id, i) => playerCard({
-        playerId: id, gameState, projections, gw, move: moveOf(id), benchNumber: i + 1, onClick: onPlayerClick,
+        playerId: id, gameState, projections, gw, move: moveOf(id), liveRow: liveOf(id),
+        benchNumber: i + 1, onClick: onPlayerClick,
       })),
     ]),
   ]);

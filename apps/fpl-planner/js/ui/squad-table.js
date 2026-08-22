@@ -106,7 +106,14 @@ export function renderSquadTable({ vm, gameState, projections, gw, horizon, onPl
         el('td', { class: 'is-strong is-name' }, [
           el('span', { class: `fpl-pos-dot pos-${r.position}`, 'aria-hidden': 'true' }),
           r.name,
-          r.move ? el('span', { class: `fpl-pp-move is-inline is-${r.move}`, text: r.move === 'in' ? 'IN' : 'OUT' }) : null,
+          // Same wording as the pitch ribbon: a transfer marker, never an
+          // availability one. The injury chip beside it is the availability
+          // one, and the two used to read identically at a glance.
+          r.move ? el('span', {
+            class: `fpl-pp-move is-inline is-${r.move}`,
+            text: r.move === 'in' ? 'BUY' : 'SELL',
+            title: r.move === 'in' ? 'The plan buys this player' : 'The plan sells this player',
+          }) : null,
           r.avail ? el('span', { class: `fpl-chip ${r.avail.kind === 'out' ? 'is-inj' : 'is-doubt'}`, text: r.avail.label }) : null,
         ]),
         el('td', { text: r.positionShort }),

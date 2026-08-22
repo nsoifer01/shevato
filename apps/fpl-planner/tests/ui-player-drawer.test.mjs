@@ -23,7 +23,7 @@ test('totals still carrying last season are captioned as last season', () => {
 });
 
 test('totals belonging to the running season are the season so far', () => {
-  assert.equal(seasonTotalsLabel({ kind: 'current-season' }), 'Season so far');
+  assert.equal(seasonTotalsLabel({ kind: 'current-season' }), 'This season so far');
 });
 
 test('a payload with no evidence says the totals are not published, not zero', () => {
@@ -35,8 +35,8 @@ test('a payload with no evidence says the totals are not published, not zero', (
 test('absent evidence falls back to the in-season wording rather than crashing', () => {
   // Callers that predate the evidence field pass nothing; the drawer keeps
   // its pre-rollover behaviour for them.
-  assert.equal(seasonTotalsLabel(null), 'Season so far');
-  assert.equal(seasonTotalsLabel(undefined), 'Season so far');
+  assert.equal(seasonTotalsLabel(null), 'This season so far');
+  assert.equal(seasonTotalsLabel(undefined), 'This season so far');
 });
 
 test('every evidence kind produces a caption, and the three are distinct', () => {
@@ -50,5 +50,5 @@ test('every evidence kind produces a caption, and the three are distinct', () =>
 });
 
 test('an unknown kind degrades to the default caption instead of throwing', () => {
-  assert.equal(seasonTotalsLabel({ kind: 'something-new' }), 'Season so far');
+  assert.equal(seasonTotalsLabel({ kind: 'something-new' }), 'This season so far');
 });

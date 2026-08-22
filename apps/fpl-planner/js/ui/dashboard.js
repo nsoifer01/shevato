@@ -143,6 +143,16 @@ export function chipInventory(bundle, gameState) {
 
 function chipNote(bundle, chip, gameState) {
   if (chip.playing) return 'This gameweek is the best window for it';
+  // When the data cannot carry a chip decision the card must say that, rather
+  // than reporting an inventory as though a decision had been considered and
+  // declined. "Hold your chips" with a cheerful list of what is available reads
+  // as advice; on 2026-08-21 no chip had been evaluated at all.
+  const readiness = bundle.dataStatus && bundle.dataStatus.readiness;
+  if (readiness && !readiness.allow.chips) {
+    return readiness.allow.transfers
+      ? 'Chip advice is paused while this data settles'
+      : 'Paused: ' + (readiness.headline || 'the data behind this plan is incomplete');
+  }
   const inv = chipInventory(bundle, gameState);
   if (!inv.ownedCount) return 'No chips left this season';
   if (!inv.usableNow.length) {
@@ -354,8 +364,15 @@ export function pitchCard({
   // node rather than as data, because the card's job is to switch between
   // views, not to know how an editable one is built.
   sandbox = null,
+  // Live scoring for the gameweek being PLAYED, from engine/live.js. Shown only
+  // on the Current team view: the recommended eleven is advice about a future
+  // gameweek, so an actual score has no meaning there.
+  liveSquad = null,
 }) {
   const plan = bundle.current;
+  const liveRows = liveSquad && Array.isArray(liveSquad.rows)
+    ? new Map(liveSquad.rows.map(r => [r.id, r]))
+    : null;
   const body = el('div', {});
   let mode = initialMode;
   let display = initialDisplay === 'list' ? 'list' : 'pitch';
@@ -385,6 +402,7 @@ export function pitchCard({
         gameState,
         projections: bundle.projections,
         gw: plan.gw,
+        liveRows: mode === 'current' ? liveRows : null,
         onPlayerClick,
       }));
   };

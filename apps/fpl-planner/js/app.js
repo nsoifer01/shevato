@@ -19,6 +19,8 @@ import { isDemoRequested, loadSampleData } from './data/sample.js';
 import { loadModel } from './data/model.js';
 import { buildGameState } from './engine/normalize.js';
 import { buildSquadState, picksCarryLineup } from './engine/squad.js';
+import { saveSnapshotIfBetter, resolveBaseline, BASELINE_KEY } from './engine/baseline.js';
+import { buildLiveStats, scoreLiveSquad } from './engine/live.js';
 import { formatFreeTransfers } from './engine/transfer-state.js';
 import { el, mount, clear, stat } from './ui/dom.js';
 import { relativeTime, dateTime, formatMoney, rank, points } from './ui/format.js';
@@ -67,6 +69,11 @@ const state = {
   modelStatus: null,
   teamId: null,
   gameState: null,
+  // The last complete season totals we recorded, kept so a payload FPL has
+  // cleared mid-season cannot destroy the evidence projections rest on.
+  baseline: null,
+  // elementId -> live stats for the gameweek being played, or null.
+  live: null,
   entry: null,
   history: null,
   transfers: null,
@@ -173,9 +180,72 @@ async function loadWorld({ force = false } = {}) {
     fplApi.getBootstrap({ force }),
     fplApi.getFixtures({ force }),
   ]);
-  state.gameState = buildGameState(bootstrap.data, fixtures.data, { fetchedAt: bootstrap.fetchedAt });
+
+  // A payload is not automatically the truth. Build once to judge it, keep it
+  // as the baseline if it is a season in its own right, and otherwise rebuild
+  // with the last good one standing in for the totals FPL has cleared.
+  //
+  // Sample data never touches the baseline in either direction: a demo payload
+  // must not become the evidence a real season is projected from, and it must
+  // not be corrected by a real one either.
+  const first = buildGameState(bootstrap.data, fixtures.data, { fetchedAt: bootstrap.fetchedAt });
+  if (first.sample) {
+    state.gameState = first;
+    state.baseline = null;
+  } else {
+    const store = safeLocalStorage();
+    const kept = store ? saveSnapshotIfBetter(store, first, { capturedAt: bootstrap.fetchedAt }) : null;
+    const resolved = resolveBaseline(first, kept);
+    state.baseline = kept;
+    state.gameState = resolved.source === 'baseline' && kept
+      ? buildGameState(bootstrap.data, fixtures.data, { fetchedAt: bootstrap.fetchedAt, baseline: kept })
+      : first;
+  }
+
   state.picksGw = state.gameState.currentEvent;
   state.planGw = state.gameState.nextEvent ?? state.gameState.currentEvent ?? 1;
+
+  // Live scoring for the gameweek being played, so the pitch can show what the
+  // squad has ACTUALLY scored rather than only what it is expected to score.
+  // A failure here is never fatal: the plan does not depend on it.
+  state.live = null;
+  if (state.gameState.seasonStarted && state.picksGw) {
+    try {
+      const live = await fplApi.getEventLive(state.picksGw, { force });
+      state.live = buildLiveStats(live.data);
+    } catch {
+      state.live = null;
+    }
+  }
+}
+
+// The squad's ACTUAL score for the gameweek being played, or null when nothing
+// is in play. Computed on demand rather than stored, because it is a view of
+// two things the app already holds and must never drift from them.
+function liveSquadNow() {
+  if (!state.live || !state.picks || !state.gameState || !state.picksGw) return null;
+  try {
+    return scoreLiveSquad({
+      picks: state.picks,
+      live: state.live,
+      gameState: state.gameState,
+      gw: state.picksGw,
+    });
+  } catch {
+    return null;
+  }
+}
+
+// localStorage is unavailable in private modes and can throw on access alone.
+function safeLocalStorage() {
+  try {
+    const s = globalThis.localStorage;
+    if (!s) return null;
+    s.getItem(BASELINE_KEY);      // access can itself throw
+    return s;
+  } catch {
+    return null;
+  }
 }
 
 async function loadTeam({ force = false } = {}) {
@@ -750,6 +820,7 @@ function planView() {
   nodes.push(pitchCard({
     bundle,
     gameState: state.gameState,
+    liveSquad: liveSquadNow(),
     // The selected view is APP state, not a property of the squad. Deriving it
     // from whether picks exist (which is how this read before) pinned the card
     // to "recommended" on every re-render for anyone without an imported squad,

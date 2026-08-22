@@ -703,9 +703,15 @@ ranking, and only the part of a correction that changes ORDER changes decisions
   active to 2027. EPL injuries come one season per request with NO pagination,
   so the whole 3-season backfill costs 3 requests.
 
-## Operational state (release state verified 2026-08-16)
+## Operational state (release state verified 2026-08-21)
 
-- **Release state: SHIPPED.** The GW1 hardening, the team sandbox (PR #380,
+- **The GW1 live-season hardening is NOT yet deployed.** It sits on
+  `fix/fpl-live-gameweek-state`. Production is serving the pre-incident code,
+  which means a payload FPL clears mid-season still poisons projections there.
+  The deployed build is otherwise correct: the GW1 pre-season work, the sandbox
+  and the two pre-season encodings all shipped and were verified byte-for-byte
+  against the served files on 2026-08-21 (60 of 60 identical).
+- **Earlier release state, still true of what shipped: SHIPPED.** The GW1 hardening, the team sandbox (PR #380,
   `2bd2bd2`, deployed 2026-08-15) and the sandbox interaction rework (PR #399,
   merged as `91d5e23`) are all on production. The current production build is
   Netlify deploy `6a8200c6d0a44e0008bfd662`, published from `master` at
@@ -1114,6 +1120,134 @@ recorded here is the shape, because the next seam will look like these.
   `projectedSquadState`, whose roster-style picks are engine-internal
   (membership, selling prices and transfer state only; each future gameweek's
   eleven is re-optimized, never read from those slots).
+
+## The first live gameweek, and the five assumptions it broke (2026-08-21)
+
+The 2026/27 opening gameweek broke the planner in production while 949 unit
+tests and 148 browser assertions stayed green. Everything below is measured
+against payloads captured off the live proxy that evening and now committed,
+trimmed and sanitized, under `tests/fixtures/gw1-2026/`.
+
+- **The trigger was one field, rewritten under a running app.** At 18:04 UTC,
+  the moment GW1 went current and before a ball was kicked, FPL cleared every
+  element total. Raya went from `starts: 37, minutes: 3330` to `starts: 1,
+  minutes: 90`. Nothing in the app could notice, because a payload was whatever
+  the last fetch said it was.
+- **The chain, end to end, reproduced on the real payloads.** `seasonEvidence`
+  read "no fixture has finished, so these totals are last season's" - true every
+  previous August, false the instant the totals are wiped - and kept a 38
+  gameweek denominator. `observedStartRate = 1/38 = 0.026` became `pStart 0.026`
+  became `xMins 2.4` became `xPoints 0.08`, and the best eleven in the game fell
+  from 49.2 to 33.4. The optimizer saw eleven replaceable players and
+  recommended a Wildcard.
+- **The discriminator was `hasHistory = player.minutes > 0`** (`minutes.js`). A
+  player who had just played carried an observed rate of one-in-thirty-eight; a
+  player who had never played fell through to the price-informed prior and
+  scored 3.17. **Having played was punished, by a factor of 35.** Arsenal
+  collapsed only because they were the first club to play; every club would have
+  hit it in turn. This is the generic statement, and it is now a test.
+- **`finished` is not the end of a match.** FPL sets `finished_provisional` at
+  full time and leaves `finished` false until bonus and stat corrections land.
+  The opening match was STILL unsigned eleven hours after the whistle (captured
+  at 04:58 UTC the next morning). `normalizeFixture` was DISCARDING
+  `finished_provisional`, so `matchesPlayedByTeam` returned zero for every club
+  while twenty-two players carried ninety minutes each. Both now count a
+  provisional full time.
+- **Clubs are not level, and the pool is not comparable until they are.** Two of
+  twenty clubs had played. Any question of the form "have the matches happened"
+  had no single answer, and `clubsLevel` now says so explicitly.
+- **The probe went from PROBLEM to OK while the defect was unchanged.** It ended
+  in `30 < xP < 100`. The broken pipeline read 14.5 (failed), then drifted to
+  31.5 as minutes accumulated (passed). An absolute threshold cannot separate
+  healthy from wrong-by-a-factor because both sides of it contain both. Health
+  is now named invariants plus change detection against a recorded reading.
+- **Why five audits missed it: every test asserted a state the app was designed
+  for.** Pre-season, a finished gameweek, a rolled-over season. The state that
+  occurred - totals cleared, minutes accruing, no finished fixture - was in
+  none of them, and it exists only during the very first match of a season.
+
+### What the repair actually changed
+
+- **A payload is no longer automatically the truth.** `engine/baseline.js`
+  scores every payload, keeps the last good one, and stands it in for cleared
+  totals. Completeness is measured PER ACTIVE PLAYER (16.8 starts each before
+  the wipe, 1.0 after) rather than as a league aggregate, because an aggregate
+  silently encodes the pool size and rejected every hand-built test world - the
+  first version of this check broke thirteen engine tests and was wrong, not the
+  tests. The baseline retires once every club has played three matches, so one
+  bad August payload cannot freeze the app on last season.
+- **Restored, not merely refused.** With the kept baseline applied to the exact
+  payload that broke production, Raya goes from 0.08 xP back to 5.40 and the
+  best eleven from 33.4 to 58.2.
+- **Recommendations are a ladder, not a boolean** (`engine/readiness.js`).
+  Display, lineup, transfers, chips. `planner.js` consults it before proposing
+  anything: chips are not evaluated without a chip-grade licence and transfer
+  candidates are not built without a transfer-grade one, so a refusal degrades
+  to holding the squad. On the captured payload with no baseline the level is
+  `display` and every recommendation is blocked; with a baseline it is
+  `transfers` and chips remain blocked because the clubs are uneven and the
+  gameweek is unsettled. The Wildcard is unreachable in both.
+- **Confidence gained a fourth band that is not the bottom of the scale.**
+  "Moderate confidence" over "100% of this gameweek's projected points sits on
+  players whose minutes are unclear" was a sentence about broken inputs under a
+  band about model uncertainty. `unusable` states the former.
+- **Live points exist at all.** `event/{gw}/live` was wired into `data/api.js`
+  and called from nowhere. The squad's actual score reconciles to FPL's
+  published number (14 = 6 + 5 + 3 on the captured squad) and is checked rather
+  than trusted.
+- **Three renderings for three states.** A dash for a player whose match has not
+  kicked off, a zero for one whose match finished without him, a tinted figure
+  for one who played. The first version derived the number from the player's
+  minutes and the caption from his club's fixture, which produced a card reading
+  "6 yet to play"; both now come from one `liveState()`. Found by looking at a
+  screenshot, not by a DOM assertion, which had passed.
+- **`OUT` meant transfer, not availability.** `pitch.js` and `squad-table.js`
+  both rendered it, so a Wildcard put eleven OUT badges over the team the
+  manager owns. Now SELL and BUY. On the bench the ribbon also sat at
+  `top:-8px/left:-6px` against `.fpl-bench-num` at `top:-7px/left:-6px`, exactly
+  overlapping; it moved to the bottom-left.
+- **The drawer labelled seasons from the misclassification.** "LAST SEASON: 6
+  points, 90 minutes, 1 start" was this season's opening match. The heading now
+  reads the baseline source and whether the season has started, and
+  `normalizePlayer` keeps `seasonStarts`/`seasonMinutes`/`seasonPoints` separate
+  from the evidence totals a baseline may overlay.
+
+### A consequence worth knowing: the first weeks without a baseline
+
+Simulating the finalisation states FPL has not reached yet, on the real FT+11h
+payload, shows the repair working through all of them **for anyone who has a
+baseline** - phases progress `in-progress` to `finalising` to `complete`,
+`settled` flips only at the last, evidence stays `previous-season`, readiness
+stays `transfers`, and the plan reads 44.5 to 47.6 xP with a sensible captain.
+
+For a manager whose FIRST EVER visit is after the rollover there is no baseline
+to keep, and one gameweek of this season is genuinely not enough: the underlying
+projection reads 22 to 27 xP even once every club has played once and the pool
+is level again. So that manager is refused - `partial-season`, readiness
+`display` - until `baselineIsSuperseded` opens at three matches per club.
+
+That is the honest answer rather than a gap: the numbers really are unusable,
+and the app says so instead of showing them. But it means a brand-new user in
+the opening fortnight of a season sees no plan, and it is worth deciding
+deliberately rather than discovering it. The two ways out, if that is judged too
+harsh, are a heavier price prior for the early weeks or shipping a committed
+opening-season baseline; both are model changes and neither belongs in an
+incident fix.
+
+The refusal message follows the actual state: while the clubs are uneven it
+says so, and once a gameweek has completed it says the season is only N matches
+old. Telling someone whose gameweek has finished that "the clubs have not played
+the same number of games" is simply wrong, and it was.
+
+### The trap that is still open
+
+Withholding is not a repair of the projections underneath. With one match of
+evidence and no baseline, the minutes model still ranks a player who has just
+played below one who never has - the refusal is what makes it safe, not the
+arithmetic. `season-rollover.test.mjs` asserts the two together: either the
+payload is refused, or the asymmetry is gone. Whoever later makes this state
+usable - a heavier price prior, a longer-lived baseline - fails that test until
+the asymmetry is fixed too, which is the order the changes have to happen in.
 
 ## Browser E2E, and why it exists here now
 

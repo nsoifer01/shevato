@@ -71,6 +71,16 @@ export const BAND_LABELS = Object.freeze({
   high: 'High confidence',
   moderate: 'Moderate confidence',
   low: 'Low confidence',
+  // A fourth band, and it is NOT the bottom of the same scale.
+  //
+  // The three above measure MODEL uncertainty: how much a sound projection
+  // could still be wrong. This one says the inputs themselves failed, which is
+  // a different claim and must not be rendered as a weaker version of the same
+  // one. On 2026-08-21 the app said "Moderate confidence, 100% of this
+  // gameweek's projected points sits on players whose minutes are unclear" and
+  // recommended a Wildcard underneath it: a sentence that describes broken
+  // inputs cannot sit under a band that means "fairly sure".
+  unusable: 'Recommendations paused',
 });
 
 // The order clauses are considered in when the sentence has room for only two.
@@ -381,6 +391,25 @@ function reasonClauses(band, factors) {
  * @returns {{band, label, score, reason, factors, drivers}}
  */
 export function assessConfidence({ plan, projections, gameState, dataStatus = null, sources = null, now = Date.now() }) {
+  // Data quality is not a factor to be weighed against the others: it decides
+  // whether weighing them means anything. When readiness says the inputs cannot
+  // carry a recommendation, the band is that fact, stated plainly.
+  const readiness = dataStatus && dataStatus.readiness;
+  if (readiness && !readiness.allow.transfers) {
+    const because = readiness.headline
+      || 'the data behind this plan is incomplete';
+    return {
+      band: 'unusable',
+      label: BAND_LABELS.unusable,
+      score: Infinity,
+      because,
+      reason: `${BAND_LABELS.unusable}: ${because}`,
+      factors: [],
+      drivers: [],
+      readiness,
+    };
+  }
+
   const factors = [
     availabilityFactor({ plan, gameState }),
     minutesFactor({ plan, projections }),

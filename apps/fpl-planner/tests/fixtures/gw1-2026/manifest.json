@@ -1,0 +1,26 @@
+{
+  "source": "live FPL proxy, 2026-08-21",
+  "entryId": 1234567,
+  "states": [
+    {
+      "name": "preseason",
+      "withMinutes": 251,
+      "startedFixtures": 0
+    },
+    {
+      "name": "rollover-cleared",
+      "withMinutes": 0,
+      "startedFixtures": 0
+    },
+    {
+      "name": "match-in-play",
+      "withMinutes": 13,
+      "startedFixtures": 1
+    },
+    {
+      "name": "ft-provisional",
+      "withMinutes": 20,
+      "startedFixtures": 1
+    }
+  ]
+}

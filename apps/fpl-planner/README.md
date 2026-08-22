@@ -69,6 +69,10 @@ apps/fpl-planner/
     engine/
       rules.js           rules, scoring table and chip catalogue from bootstrap
       normalize.js       bootstrap + fixtures -> Player / Team / Fixture / Event
+      lifecycle.js       THE gameweek and fixture phase model (provisional vs final)
+      baseline.js        payload completeness, and the kept last-good season totals
+      readiness.js       what the data licenses: display / lineup / transfers / chips
+      live.js            event/{gw}/live -> actual points, reconciled to FPL's total
       transfer-state.js  THE free-transfer state machine (pre-season, rolling, chips)
       squad.js           entry data -> SquadState (prices, bank, FTs, chips)
       strength.js        team attack and defence ratings
@@ -101,8 +105,9 @@ apps/fpl-planner/
                          (the runner's own control) and baseline.mjs
   scripts/               fetch-history, fetch-availability, validate-history,
                          train-model, evaluate-model, backtest, experiment
-                         (+ its worker), evidence-probe (what the app makes of
-                         the live payload right now)
+                         (+ its worker), evidence-probe (health invariants
+                         against the live payload), derive-gw1-fixtures
+                         (sanitized lifecycle fixtures from captured payloads)
   e2e/                   browser suites (raw CDP): the interactive scenario
                          workflow and the gameweek lifecycle boundaries
   GW1-RUNBOOK.md         the live checks to run around the opening deadline
@@ -251,6 +256,35 @@ offered. A change there is a build rather than a transfer: it costs no hit and
 the bank is simply the budget less the fifteen, which is the same distinction
 `validate.js` draws with `isFreshBuild`.
 
+## The gameweek lifecycle
+
+A gameweek is not "before" or "after". `js/engine/lifecycle.js` derives a phase
+from the payload itself, because every consumer that guessed one from
+`fixture.finished` guessed differently:
+
+| Phase | What it means |
+| --- | --- |
+| `preseason` | no event current, deadline ahead |
+| `pre-deadline` | in-season, squad still editable |
+| `deadline-passed` | locked, nothing kicked off |
+| `in-progress` | at least one fixture live |
+| `provisional` | every started fixture at full time, none signed off |
+| `finalising` | fixtures final, event not `data_checked` |
+| `complete` | event `finished` AND `data_checked` |
+
+Each fixture carries its own phase too: `upcoming`, `live`, `provisional`,
+`final`. The distinction that matters is the third one. **FPL leaves `finished`
+false from the final whistle until bonus and stat corrections are applied** - the
+opening match of 2026/27 was still unsigned eleven hours later - and
+`normalizeFixture` used to discard
+`finished_provisional` entirely, so the app could not tell a match being played
+from a match that was over. Every count of matches played now counts a
+provisional full time, because a match that has been played has been played.
+
+Clubs do not move through a gameweek together, either. `clubsLevel` says whether
+every club has played the same number of matches; until it is true, players are
+not comparable across the league.
+
 ## Which season the numbers describe
 
 `bootstrap-static.elements` carries season totals and the fixture list carries
@@ -262,14 +296,87 @@ while totals already cleared to zero make every player look like he never plays.
 Neither is visible from the numbers themselves, because both stay inside every
 legal range.
 
-`seasonEvidence()` in `js/engine/minutes.js` therefore decides which season the
-totals belong to from an arithmetic fact about football rather than from a date:
-a player cannot have started more matches than his club has played. The start
-rate is measured against a full season when the totals are last season's, and
-against the matches played once they are this season's. A payload carrying no
-evidence at all - totals cleared, nothing played - is reported through
-`dataStatus.evidence` and the plan is **withheld** rather than presented, for
-the same reason a plan built on stale injury news is.
+`seasonEvidence()` in `js/engine/minutes.js` decides which season the totals
+belong to from arithmetic facts about football rather than from a date: a player
+cannot have started more matches than his club has played, and a payload where
+almost nobody carries a minute is not a season. It returns `previous-season`,
+`current-season`, `partial-season` or `none`, and only the first two are usable.
+
+### The baseline, and why a wiped payload cannot destroy it
+
+At 18:04 UTC on 2026-08-21, the moment GW1 went current, FPL cleared every
+element total. Raya went from `starts: 37, minutes: 3330` to `starts: 1,
+minutes: 90` while the app was running, and the old code had no way to notice
+because a payload was whatever the last fetch said it was.
+
+`js/engine/baseline.js` separates "the newest payload" from "the best evidence":
+
+1. every payload is scored by `assessBaseline()` before it is believed;
+2. the last one that scored well is kept in `localStorage`;
+3. a payload that fails does not replace it, and the kept baseline supplies the
+   season totals until this season has enough matches of its own.
+
+Completeness is measured **per active player**, not as a league aggregate:
+16.8 starts each over 400 players before the wipe against 1.0 each over 22
+after. A league aggregate silently encodes the pool size and fails on any pool
+smaller than a real league.
+
+The baseline is retired by `baselineIsSuperseded()` once every club has played
+three matches, so one bad August payload cannot freeze the app on last season.
+`gameState.baselineSource` says which is in force, and the UI says so too.
+
+Data species are kept apart in `normalizePlayer`: `starts`/`minutes` are the
+evidence totals a baseline may overlay, while `seasonStarts`/`seasonMinutes`/
+`seasonPoints` are this season's own and are never overlaid. Conflating them is
+what let the player drawer label one match of a new season "Last season".
+
+## What the data is good enough to recommend
+
+`evidence.usable` was a single boolean the UI checked at render time, so showing
+a rough projection and betting a Wildcard cleared exactly the same bar. On
+2026-08-21 the app recommended playing a Wildcard - eleven changes - on
+projections that had collapsed, under a caption reading "100% of this gameweek's
+projected points sits on players whose minutes are unclear".
+
+`js/engine/readiness.js` makes it a ladder, and `planner.js` consults it
+**before proposing anything**:
+
+| Level | Licenses |
+| --- | --- |
+| `display` | the squad, live points, fixtures |
+| `lineup` | ordering an eleven the manager already owns |
+| `transfers` | spending money and free transfers |
+| `chips` | spending a once-or-twice-a-season asset |
+
+Chips are not evaluated at all without a chip-grade licence, and transfer
+candidates are not built without a transfer-grade one, so a refusal degrades to
+holding the squad rather than to a blank screen. Every refusal carries a code
+and a sentence. The pool is also checked for shape - a collapsed spread, start
+rates pinned at one, a best eleven that is not a football score - and those
+checks apply only to a real-sized pool, because they are claims about a league.
+
+Confidence follows: `assessConfidence` returns a fourth band, `unusable`, which
+is **not** the bottom of the same scale. The three ordinary bands grade how sure
+a sound projection is; this one says the inputs failed, and reads
+"Recommendations paused" with the reason.
+
+## Live points during a gameweek
+
+`event/{gw}/live` was wired into the API layer and called from nowhere, so the
+app had no per-player points at all. `js/engine/live.js` now consumes it, and
+the Current team pitch shows what each player has ACTUALLY scored above what he
+is expected to score next gameweek. The two never share a field or a label.
+
+The arithmetic is FPL's: `picks[].multiplier` already encodes the armband and
+the bench, a player's score is `live.elements[].stats.total_points`, and
+automatic substitutions are applied by FPL at gameweek end rather than live. The
+team total is checked against `entry_history.points` rather than trusted, and
+`reconciles` reports the answer.
+
+Three renderings, because three states are genuinely different: a dash for a
+player whose match has not kicked off (he has no score), a zero for one whose
+match finished without him (that IS his score), and a tinted figure for one who
+played, captioned `live`, `bonus pending` or final.
 
 ## The squad you own, not the squad you fielded
 
@@ -451,6 +558,32 @@ not reachable from `?demo=1`, and because the interactive squad editor shipped
 with green unit tests while being unusable in a browser.
 
 Engine tests never touch the network. They run against committed fixtures in `tests/fixtures/`, documented in `tests/fixtures/README.md`, which deliberately include an injured player, a doubtful player, promoted-club players with no Premier League minutes, real price movement, a blank gameweek and a double gameweek.
+
+`tests/fixtures/gw1-2026/` is different: it is the real 2026/27 opening gameweek,
+captured off the live proxy on 2026-08-21 and trimmed to a base plus one delta
+per lifecycle state (pre-season, the totals cleared at the rollover, a match in
+play, full time with bonus outstanding), plus a squad and its live scores. It is
+sanitized of any real entry identity and regenerated by
+`scripts/derive-gw1-fixtures.mjs`. `tests/season-lifecycle.test.mjs` pins the
+live incident to it.
+
+### The health probe
+
+```sh
+node apps/fpl-planner/scripts/evidence-probe.mjs             # live proxy
+node apps/fpl-planner/scripts/evidence-probe.mjs --bootstrap FILE --fixtures FILE
+node apps/fpl-planner/scripts/evidence-probe.mjs --record    # save this reading
+node apps/fpl-planner/scripts/evidence-probe.mjs --json
+```
+
+It reports the lifecycle phase, the evidence classification, the baseline
+assessment and the readiness level, then judges a set of NAMED INVARIANTS and
+exits non-zero if any fails. It used to end in a bare "is the projected total
+between 30 and 100", which passed a broken pipeline at 31.5 the same day it
+failed the same pipeline at 14.5. Absolute thresholds cannot separate healthy
+from wrong-by-a-factor, so the invariants include change detection: `--record`
+stores a reading, and a later run fails if the best eleven has moved more than
+25% without the classification changing.
 
 The historical replay is NOT covered by that: it runs on a gitignored archive
 that only exists on a machine that has downloaded it. `tests/backtest.test.mjs`

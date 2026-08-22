@@ -16,7 +16,7 @@ const num = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 
-export function buildGameState(bootstrap, fixtures, { fetchedAt } = {}) {
+export function buildGameState(bootstrap, fixtures, { fetchedAt, baseline = null } = {}) {
   const rules = buildRules(bootstrap);
 
   const teams = new Map();
@@ -24,6 +24,34 @@ export function buildGameState(bootstrap, fixtures, { fetchedAt } = {}) {
 
   const players = new Map();
   for (const e of bootstrap.elements) players.set(e.id, normalizePlayer(e));
+
+  // A kept baseline stands in for season totals FPL has cleared. Only the two
+  // evidence fields are overlaid: price, status, news and this season's own
+  // cumulative totals stay exactly as the live payload reported them, because
+  // those are current facts and the baseline is not.
+  //
+  // Matched on `code`, FPL's permanent per-player id, because `id` is
+  // reassigned between seasons (see FINDINGS, cross-season player identity).
+  let baselineSource = 'current';
+  if (baseline && baseline.totals) {
+    const byCode = new Map();
+    for (const [pid, row] of Object.entries(baseline.totals)) {
+      if (row && row.c != null) byCode.set(row.c, row);
+      else byCode.set(Number(pid), row);
+    }
+    let overlaid = 0;
+    for (const p of players.values()) {
+      const row = byCode.get(p.code) ?? baseline.totals[p.id];
+      if (!row) continue;
+      p.starts = row.s;
+      p.minutes = row.m;
+      // The denominator these totals were accumulated against, so a start rate
+      // reads them over the season they belong to rather than this one.
+      p.evidenceMatches = baseline.totalEvents || null;
+      overlaid++;
+    }
+    if (overlaid > 0) baselineSource = 'baseline';
+  }
 
   const events = bootstrap.events.map(normalizeEvent);
   const current = events.find(e => e.isCurrent) || null;
@@ -33,6 +61,11 @@ export function buildGameState(bootstrap, fixtures, { fetchedAt } = {}) {
     rules,
     teams,
     players,
+    // Which season the evidence totals came from. 'current' means the payload's
+    // own; 'baseline' means a kept snapshot is standing in for cleared totals.
+    baselineSource,
+    baselineCapturedAt: baselineSource === 'baseline' ? (baseline.capturedAt || null) : null,
+    baselineSeasonLabel: baselineSource === 'baseline' ? (baseline.seasonLabel || null) : null,
     fixtures: (fixtures || []).map(normalizeFixture),
     events,
     fetchedAt: fetchedAt || new Date().toISOString(),
@@ -84,8 +117,21 @@ export function normalizePlayer(e) {
     newsAdded: e.news_added || null,
     selectedByPercent: num(e.selected_by_percent),
 
+    // THE EVIDENCE TOTALS the minutes model reads. Normally these ARE the
+    // payload's season totals, but when FPL has cleared them mid-season they
+    // are overlaid from the kept baseline (see engine/baseline.js), because a
+    // wiped total is not a measurement of anything.
     minutes: e.minutes,
     starts: e.starts,
+
+    // THIS SEASON'S CUMULATIVE TOTALS, always straight off the payload and
+    // never overlaid. Separated from the fields above because the two answer
+    // different questions and conflating them is what let a modal label one
+    // match of this season "Last season". A cleared total is a real zero here.
+    seasonMinutes: e.minutes,
+    seasonStarts: e.starts,
+    seasonPoints: e.total_points,
+
     totalPoints: e.total_points,
     bonus: e.bonus,
     bps: e.bps,
@@ -143,6 +189,12 @@ export function normalizeFixture(f) {
     teamHDifficulty: f.team_h_difficulty,
     teamADifficulty: f.team_a_difficulty,
     finished: !!f.finished,
+    // FPL sets this at full time and clears `finished` until bonus and stat
+    // corrections are applied, which on 2026-08-21 was still the case five
+    // hours after the whistle. Dropping it made the app structurally unable to
+    // tell "the match is being played" from "the match is over but not signed
+    // off", so every consumer had to pretend `finished` was the only truth.
+    finishedProvisional: !!f.finished_provisional,
     started: !!f.started,
     teamHScore: f.team_h_score ?? null,
     teamAScore: f.team_a_score ?? null,

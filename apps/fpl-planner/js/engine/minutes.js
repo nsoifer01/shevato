@@ -60,6 +60,8 @@
 // the same bet as a new signing before the season starts, and until this decay
 // existed the model priced them identically.
 
+import { assessBaseline, baselineIsSuperseded } from './baseline.js';
+
 const UNAVAILABLE_STATUSES = new Set(['i', 's', 'u', 'n']);
 const DOUBTFUL_STATUS = 'd';
 
@@ -258,13 +260,18 @@ export function evidenceMatchesFor(player, teamMatches) {
   return Number.isFinite(declared) && declared > 0 ? declared : teamMatches;
 }
 
-// Matches each club has FINISHED this season, and nothing else. Zero for every
-// club pre-season, which is the whole point: it is the count of chances a player
-// has had to appear, so it can only start once the season has.
+// Matches each club has PLAYED OUT this season. Zero for every club pre-season,
+// which is the whole point: it is the count of chances a player has had to
+// appear, so it can only start once the season has.
+//
+// It counts a provisional full-time as played. Reading only `finished` meant
+// that between the final whistle and FPL signing the match off - still unsigned
+// eleven hours later on 2026-08-21 - twenty-two players carried ninety minutes each against
+// a denominator of zero, and the payload was mistaken for last season's.
 function matchesPlayedByTeam(gameState) {
   const counts = new Map();
   for (const f of gameState.fixtures) {
-    if (!f.finished) continue;
+    if (!(f.finished || f.finishedProvisional)) continue;
     for (const t of [f.teamH, f.teamA]) counts.set(t, (counts.get(t) || 0) + 1);
   }
   return counts;
@@ -338,15 +345,81 @@ export function seasonEvidence(gameState) {
   }
 
   if (maxPlayed === 0) {
-    // Totals exist but no fixture has finished: the ordinary pre-season shape.
+    // Totals exist and nothing has been played out, which has two causes that
+    // look alike from the fixture list alone and mean opposite things.
+    //
+    // Pre-season the totals are LAST season's and most of the pool carries
+    // minutes (400 of 600 on the morning of 2026-08-21). Read against a full
+    // season they are the best evidence available and the plan is sound.
+    //
+    // Once FPL clears the totals at the rollover, almost nobody carries a
+    // minute (22 of 600 that same evening). Reading THAT against a full season
+    // makes the pool non-starters, collapses every projection, and inverts the
+    // advice: a player who has just started a match measures one start in
+    // thirty-eight while one who has never played keeps an untouched price
+    // prior. Having played must never be evidence against a player.
+    //
+    // `assessBaseline` is the shared judgement of whether a payload is a
+    // season at all, so the classifier, the snapshot layer and the health
+    // probe cannot disagree about it.
+    const assessment = assessBaseline(gameState);
+    if (!assessment.complete) {
+      return {
+        kind: 'none',
+        usable: false,
+        teamMatches: totalEvents,
+        finishedMatches: 0,
+        impossible,
+        assessment,
+        message: 'Fantasy Premier League has cleared last season\'s player totals for the new season, '
+          + 'so there is not yet enough of this season to project from.',
+      };
+    }
+    // Totals exist but nothing has been played: the ordinary pre-season shape.
     return {
       kind: 'previous-season',
       usable: true,
       teamMatches: totalEvents,
       finishedMatches: 0,
       impossible,
+      assessment,
       message: 'No fixture has been played yet, so last season\'s totals are read against a full season.',
     };
+  }
+
+  // Some clubs have played. If the totals are still too thin to be a season in
+  // their own right AND the clubs are not level, the pool is not comparable:
+  // one club's players carry observed rates while eighteen clubs carry priors.
+  // That is the same inversion measured against a smaller denominator, so it is
+  // refused for the same reason.
+  {
+    const assessment = assessBaseline(gameState);
+    // Have all the clubs played the same number of matches? Until they have,
+    // players are being measured against different denominators.
+    let minPlayed = Infinity;
+    for (const team of gameState.teams.keys()) minPlayed = Math.min(minPlayed, perTeam.get(team) || 0);
+    const levelClubs = Number.isFinite(minPlayed) && minPlayed === maxPlayed;
+    if (!assessment.complete && !baselineIsSuperseded(gameState)) {
+      return {
+        kind: 'partial-season',
+        usable: false,
+        teamMatches: maxPlayed,
+        finishedMatches: maxPlayed,
+        impossible,
+        assessment,
+        // Two different situations reach here and the sentence has to match the
+        // one in front of the reader. Early in a gameweek the clubs are uneven,
+        // which is the inversion risk; once a gameweek completes they are level
+        // and the problem is simply that one or two matches is not enough to
+        // project from. Saying "the clubs have not played the same number" to
+        // someone whose gameweek has finished is just wrong.
+        message: levelClubs
+          ? `This season is only ${maxPlayed} ${maxPlayed === 1 ? 'match' : 'matches'} old, which is not yet `
+            + 'enough of it to project from.'
+          : 'This season is only a few matches old and the clubs have not played the same number of games, '
+            + 'so the player totals are not yet comparable across the league.',
+      };
+    }
   }
 
   return {

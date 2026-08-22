@@ -54,7 +54,12 @@ const RATE_FIELDS = ['expected_goals', 'expected_assists', 'expected_goal_involv
 //   carried  : last season's totals still in the payload
 //   zeroed   : FPL has rolled the totals over, nothing played yet
 //   rolled   : current-season totals consistent with the fixtures played
-function world({ totals, finishedGws = 0, planGw = 1 }) {
+//
+// `inPlayFixtures` opens the fifth state, observed live on 2026-08-21: the
+// totals have been rolled over AND the opening match is under way, so a
+// handful of players carry this season's minutes while no fixture has
+// finished. See the test that uses it for why it is not any of the other four.
+function world({ totals, finishedGws = 0, planGw = 1, inPlayFixtures = 0 }) {
   const bootstrap = clone(base.bootstrap);
   const fixtures = clone(base.fixtures);
 
@@ -110,6 +115,31 @@ function world({ totals, finishedGws = 0, planGw = 1 }) {
     }
   }
   // 'carried' leaves the sample's full-season totals in place.
+
+  // A match under way on top of rolled-over totals: the fixture has STARTED but
+  // not finished, and only the players of the two clubs in it carry a minute.
+  // This is what FPL actually served at 19:30 UTC on 2026-08-21 - 22 players of
+  // 600, one club pair, no finished fixture anywhere.
+  if (inPlayFixtures > 0) {
+    const gw1 = fixtures.filter(f => f.event === gws[0]).slice(0, inPlayFixtures);
+    const clubs = new Set();
+    for (const f of gw1) {
+      f.started = true;
+      f.finished = false;
+      f.finished_provisional = false;
+      clubs.add(f.team_h);
+      clubs.add(f.team_a);
+    }
+    const perClub = new Map();
+    for (const el of bootstrap.elements) {
+      if (!clubs.has(el.team)) continue;
+      const seen = perClub.get(el.team) || 0;
+      if (seen >= 11) continue;          // eleven starters a side, as a match has
+      perClub.set(el.team, seen + 1);
+      el.starts = 1;
+      el.minutes = 90;
+    }
+  }
 
   // Pinned to the sample's own capture time, like every other fixture in the
   // suite: `new Date()` here made this the wall clock's business, and a test
@@ -213,6 +243,75 @@ test('a payload with no evidence at all is reported, not projected from', async 
   assert.equal(bundle.dataStatus.evidence.kind, 'none');
   assert.equal(bundle.dataStatus.evidence.usable, false);
   assert.match(bundle.dataStatus.evidence.message, /nothing to project from|no played minutes/i);
+});
+
+// THE FIFTH STATE, and the one that shipped broken (observed live 2026-08-21).
+//
+// FPL cleared every element total at 18:04 UTC, the moment GW1 went current,
+// and the opening match kicked off at 19:00. That leaves a payload the other
+// four cases never produce: totals belonging to THIS season, a handful of
+// players carrying minutes, and not one finished fixture.
+//
+// `none` did not fire, because it requires `withMinutes === 0` and 22 players
+// had minutes. `previous-season` fired instead, because `maxPlayed === 0` was
+// read as "nothing has been played, so these totals must be last season's" -
+// true every previous August, false the instant the totals are wiped. So 578
+// of 600 players were measured as non-starters over a 38 gameweek denominator,
+// every projection collapsed, and production recommended selling the one
+// player in the squad who had actually started the match (Rice, 1 start read
+// as 1/38) for one who had never played (Cherki, who still had the untouched
+// price prior). Playing was being punished.
+//
+// The payload carries no usable evidence and must say so.
+test('rolled-over totals with a match in play are not last season, and are not projected from', async () => {
+  const { gameState } = world({ totals: 'zeroed', finishedGws: 0, inPlayFixtures: 1 });
+
+  const withMinutes = [...gameState.players.values()].filter(p => p.minutes > 0).length;
+  assert.ok(withMinutes > 0, 'the fixture must actually put minutes on the payload');
+  assert.ok(withMinutes < gameState.players.size / 4,
+    'a match in play touches a fraction of the pool; a full season of totals touches most of it');
+
+  const ev = seasonEvidence(gameState);
+  assert.equal(ev.kind, 'none',
+    'cleared totals plus a live match are not last season\'s totals');
+  assert.equal(ev.usable, false);
+
+  const squadState = buildSquadState({ entry: null, history: null, transfers: null, picks: null, gameState, gw: 2 });
+  const bundle = await buildPlan({ gameState, squadState, options: { horizon: 3 } });
+  assert.equal(bundle.dataStatus.evidence.usable, false,
+    'the plan must be withheld rather than presented from nothing');
+});
+
+// The symptom, stated as a standing invariant rather than as a classification.
+//
+// Withholding is what makes the fifth state safe; it is NOT a repair of the
+// projections underneath, which still read one start against a full-season
+// denominator and rank a player who has just played BELOW one who never has.
+// So the two layers are asserted together: either this payload is refused, or
+// having played is not evidence against a player. Whoever later makes this
+// state usable again - a heavier price prior, or last season's totals kept
+// across the rollover - fails this test until the asymmetry is fixed too, which
+// is the order those changes have to happen in.
+test('either a cleared-totals payload is refused, or having played is not held against a player', async () => {
+  const { gameState } = world({ totals: 'zeroed', finishedGws: 0, inPlayFixtures: 1 });
+
+  if (!seasonEvidence(gameState).usable) return;     // refused: the invariant holds by construction
+
+  const strength = buildStrength(gameState, { asOfGw: 2 });
+  const projections = buildProjections(gameState, { asOfGw: 2, strength });
+  const started = [], unplayed = [];
+  for (const p of gameState.players.values()) {
+    const xp = projections.get(p.id);
+    if (!xp || !Number.isFinite(xp.xPoints)) continue;
+    // Like for like: midfielders in a price band that starts football matches.
+    if (p.position !== 3 || p.nowCost < 65) continue;
+    ((p.starts || 0) > 0 ? started : unplayed).push(xp.xPoints);
+  }
+  if (!started.length || !unplayed.length) return;
+  const med = (a) => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
+  assert.ok(med(started) >= med(unplayed),
+    `a midfielder who started projects ${med(started).toFixed(2)} while one who has never played projects ` +
+    `${med(unplayed).toFixed(2)}: starting a match cannot be evidence against a player`);
 });
 
 /* --------------------------------------------- the sport-arithmetic checks */
