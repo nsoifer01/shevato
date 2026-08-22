@@ -341,3 +341,50 @@ test('a gameweek still being played is kept out of the finalised season summary'
   // being hidden from a manager's own history.
   assert.equal(isFinalisedEvent(9, gs), true);
 });
+
+/* ------------------------- the glance tiles while a gameweek is in play */
+
+// GW1 of 2026/27 in play: the history row carries 14 points and a published
+// overall rank, nothing is finalised. The rank the table prints must not read
+// "-" in the tile above it, and the total must be labelled provisional.
+test('the glance tiles show the live rank and label live points provisional', async () => {
+  const { seasonSummary, glanceFacts } = await import('../js/ui/history.js');
+  const gs = { events: [{ id: 1, finished: false, dataChecked: false }, { id: 2, finished: false, dataChecked: false }] };
+  const liveRow = { event: 1, points: 14, total_points: 14, rank: 3847334, overall_rank: 3847330, event_transfers: 0, event_transfers_cost: 0, points_on_bench: 0 };
+
+  const s = seasonSummary([liveRow], gs);
+  assert.equal(s.latest, null, 'nothing is finalised');
+  assert.equal(s.live.event, 1);
+  assert.equal(s.meanPoints, null, 'a live gameweek is not averaged');
+
+  const facts = glanceFacts(s);
+  assert.equal(facts.overallRank.value, '3,847,330', 'the rank the row prints is the rank the tile prints');
+  assert.equal(facts.overallRank.note, 'Gameweek 1 so far, provisional');
+  assert.equal(facts.totalPoints.value, '14');
+  assert.equal(facts.totalPoints.note, 'Gameweek 1 so far, provisional');
+
+  // FPL has not published a rank yet (usual while the games are on): no
+  // number is invented.
+  const unranked = glanceFacts(seasonSummary([{ ...liveRow, overall_rank: null }], gs));
+  assert.equal(unranked.overallRank.value, '-');
+  assert.equal(unranked.overallRank.note, 'after the first finalised gameweek');
+  assert.equal(unranked.totalPoints.note, 'Gameweek 1 so far, provisional');
+});
+
+test('once a gameweek is finalised the glance tiles describe it and exclude the live one', async () => {
+  const { seasonSummary, glanceFacts } = await import('../js/ui/history.js');
+  const gs = { events: [{ id: 1, finished: true, dataChecked: true }, { id: 2, finished: false, dataChecked: false }] };
+  const gw1 = { event: 1, points: 62, total_points: 62, rank: 1500000, overall_rank: 1500000, event_transfers: 0, event_transfers_cost: 0, points_on_bench: 4 };
+  const gw2 = { event: 2, points: 9, total_points: 71, rank: 900000, overall_rank: 1200000, event_transfers: 1, event_transfers_cost: 0, points_on_bench: 0 };
+
+  const s = seasonSummary([gw1, gw2], gs);
+  assert.equal(s.latest.event, 1);
+  assert.equal(s.live.event, 2);
+  assert.equal(s.meanPoints, 62, 'the live 9 points stay out of the season average');
+
+  const facts = glanceFacts(s);
+  assert.equal(facts.totalPoints.value, '62', 'the live running total is not the season total');
+  assert.equal(facts.totalPoints.note, 'after Gameweek 1');
+  assert.equal(facts.overallRank.value, '1,500,000', 'the finalised rank, not the moving live one');
+  assert.equal(facts.overallRank.note, 'after Gameweek 1');
+});

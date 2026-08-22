@@ -101,6 +101,33 @@ export function isFinalisedEvent(eventId, gameState) {
   return !!(event.finished && event.dataChecked);
 }
 
+// The two glance tiles that can be answered by a gameweek still in play.
+//
+// Finalised gameweeks win: once one exists its total and rank are the season's
+// and the live one is excluded (the table row carries it). Before that, the
+// live row is the only source, and FPL publishes its running total and an
+// overall rank while the games are on. A rank that is printed in the history
+// row on the same screen must not read "-" in the tile above it; it is shown
+// and labelled provisional. A rank FPL has not published yet stays "-".
+export function glanceFacts(s) {
+  if (s.latest) {
+    const note = `after Gameweek ${s.latest.event}`;
+    return {
+      totalPoints: { value: String(s.totalPoints), note },
+      overallRank: { value: rank(s.latest.overall_rank), note },
+    };
+  }
+  const live = s.live || null;
+  const provisional = live ? `Gameweek ${live.event} so far, provisional` : null;
+  const liveRank = live && Number.isFinite(live.overall_rank) && live.overall_rank > 0 ? live.overall_rank : null;
+  return {
+    totalPoints: { value: String(s.totalPoints), note: provisional },
+    overallRank: liveRank !== null
+      ? { value: rank(liveRank), note: provisional }
+      : { value: '-', note: 'after the first finalised gameweek' },
+  };
+}
+
 function seasonOverviewCard(ordered, gameState) {
   const s = seasonSummary(ordered, gameState);
   if (!s) return null;
@@ -108,22 +135,26 @@ function seasonOverviewCard(ordered, gameState) {
   // Every tile below describes FINALISED gameweeks. The one in play is reported
   // on its own, as provisional, rather than being folded into an average or
   // allowed to blank a rank that is already known.
+  // Until the first gameweek is finalised, the only figures there are come
+  // from the live one, so the sentence must not claim the tiles exclude it.
   const liveNote = s.live
     ? el('p', { class: 'fpl-note', style: 'margin-bottom:12px' }, [
       `Gameweek ${s.live.event} is being played. `,
       el('b', { text: `${s.live.points} points so far` }),
-      ' is provisional: bonus is added and any corrections applied when Fantasy Premier League finalises the gameweek, and these totals do not include it yet.',
+      ' is provisional: bonus is added and any corrections applied when Fantasy Premier League finalises the gameweek, '
+        + (s.latest ? 'and these totals do not include it yet.' : 'so the figures below are provisional too.'),
     ])
     : null;
 
+  const facts = glanceFacts(s);
   const tiles = el('div', { class: 'fpl-tiles' }, [
-    stat('Total points', String(s.totalPoints), {
+    stat('Total points', facts.totalPoints.value, {
       className: 'fpl-tile', kClass: 'fpl-fact-k', vClass: 'fpl-tile-v',
-      note: s.latest ? `after Gameweek ${s.latest.event}` : null,
+      note: facts.totalPoints.note,
     }),
-    stat('Overall rank', s.latest ? rank(s.latest.overall_rank) : '-', {
+    stat('Overall rank', facts.overallRank.value, {
       className: 'fpl-tile', kClass: 'fpl-fact-k', vClass: 'fpl-tile-v',
-      note: s.latest ? `after Gameweek ${s.latest.event}` : 'after the first finalised gameweek',
+      note: facts.overallRank.note,
     }),
     stat('Best gameweek', s.best ? `${s.best.points} pts` : '-', {
       className: 'fpl-tile', kClass: 'fpl-fact-k', vClass: 'fpl-tile-v',
