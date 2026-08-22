@@ -88,5 +88,6 @@ apps/fpl-planner/.data/
 # FPL Planner availability data, downloaded by apps/fpl-planner/scripts/fetch-availability.mjs
 apps/fpl-planner/.data/availability/
 
-# Per-app session reports (owner-reviewed, machine-local)
+# Per-app and site-level session reports (owner-reviewed, machine-local)
 apps/*/.reports/
+.reports/
