@@ -32,6 +32,7 @@
 // Every tunable is a named constant in the PARAMS block below and is reported
 // on the Strength object so the model-status panel can show what was used.
 
+import { fixtureIsPlayed } from './lifecycle.js';
 import { ridge } from './ml.js';
 
 // --- Model parameters ------------------------------------------------------
@@ -267,7 +268,12 @@ function collectMatches(gameState, asOfGw, opts) {
     // are projecting has not been played at the deadline, so reading it would
     // be leakage.
     if (f.event >= asOfGw) continue;
-    if (!f.finished) continue;
+    // A match that has been PLAYED, whether or not FPL has signed it off. The
+    // score is settled at the final whistle; what `finished` waits for is bonus
+    // and stat corrections, which do not change who scored. Reading only
+    // `finished` meant a club's opening result was invisible to its own rating
+    // for the hours FPL took to confirm bonus - on 2026-08-21, more than five.
+    if (!fixtureIsPlayed(f)) continue;
     if (f.teamHScore === null || f.teamAScore === null) continue;
     const xg = teamXg ? teamXg.get(f.id) : null;
     out.push({
