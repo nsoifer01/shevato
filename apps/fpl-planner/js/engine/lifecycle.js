@@ -7,8 +7,9 @@
 // fact. That is wrong in both directions and it cost a live incident:
 //
 //   - `finished` stays false from the final whistle until FPL applies bonus and
-//     stat corrections. On 2026-08-21 that gap was over five hours. For all of
-//     it the app believed no match had been played, so `matchesPlayedByTeam`
+//     stat corrections. The opening match of 2026/27 was still unsigned ELEVEN
+//     HOURS after the whistle. For all of it the app believed no match had been
+//     played, so `matchesPlayedByTeam`
 //     returned zero for every club while those clubs' players carried this
 //     season's minutes.
 //   - Clubs do not move through the gameweek together. On the opening Friday

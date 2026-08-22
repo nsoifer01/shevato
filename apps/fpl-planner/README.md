@@ -274,8 +274,9 @@ from the payload itself, because every consumer that guessed one from
 
 Each fixture carries its own phase too: `upcoming`, `live`, `provisional`,
 `final`. The distinction that matters is the third one. **FPL leaves `finished`
-false from the final whistle until bonus and stat corrections are applied** - on
-2026-08-21 that gap was over five hours - and `normalizeFixture` used to discard
+false from the final whistle until bonus and stat corrections are applied** - the
+opening match of 2026/27 was still unsigned eleven hours later - and
+`normalizeFixture` used to discard
 `finished_provisional` entirely, so the app could not tell a match being played
 from a match that was over. Every count of matches played now counts a
 provisional full time, because a match that has been played has been played.

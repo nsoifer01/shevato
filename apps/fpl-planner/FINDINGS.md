@@ -1147,8 +1147,9 @@ trimmed and sanitized, under `tests/fixtures/gw1-2026/`.
   collapsed only because they were the first club to play; every club would have
   hit it in turn. This is the generic statement, and it is now a test.
 - **`finished` is not the end of a match.** FPL sets `finished_provisional` at
-  full time and leaves `finished` false until bonus and stat corrections land -
-  over five hours on the night. `normalizeFixture` was DISCARDING
+  full time and leaves `finished` false until bonus and stat corrections land.
+  The opening match was STILL unsigned eleven hours after the whistle (captured
+  at 04:58 UTC the next morning). `normalizeFixture` was DISCARDING
   `finished_provisional`, so `matchesPlayedByTeam` returned zero for every club
   while twenty-two players carried ninety minutes each. Both now count a
   provisional full time.

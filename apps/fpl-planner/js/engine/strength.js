@@ -272,7 +272,7 @@ function collectMatches(gameState, asOfGw, opts) {
     // score is settled at the final whistle; what `finished` waits for is bonus
     // and stat corrections, which do not change who scored. Reading only
     // `finished` meant a club's opening result was invisible to its own rating
-    // for the hours FPL took to confirm bonus - on 2026-08-21, more than five.
+    // for as long as FPL took to confirm bonus - on 2026-08-21, over eleven hours.
     if (!fixtureIsPlayed(f)) continue;
     if (f.teamHScore === null || f.teamAScore === null) continue;
     const xg = teamXg ? teamXg.get(f.id) : null;

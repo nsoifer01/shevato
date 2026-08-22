@@ -265,8 +265,8 @@ export function evidenceMatchesFor(player, teamMatches) {
 // appear, so it can only start once the season has.
 //
 // It counts a provisional full-time as played. Reading only `finished` meant
-// that between the final whistle and FPL signing the match off - over five
-// hours on 2026-08-21 - twenty-two players carried ninety minutes each against
+// that between the final whistle and FPL signing the match off - still unsigned
+// eleven hours later on 2026-08-21 - twenty-two players carried ninety minutes each against
 // a denominator of zero, and the payload was mistaken for last season's.
 function matchesPlayedByTeam(gameState) {
   const counts = new Map();
