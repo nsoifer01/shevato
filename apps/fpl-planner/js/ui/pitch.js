@@ -24,33 +24,46 @@ function rawPlayer(gameState, id) {
 
 // ACTUAL points for the gameweek being played.
 //
-// The three states below are genuinely different and the card must not blur
-// them: a player who has finished on two points, a player still on the pitch
-// with two so far, and a player whose match has not started. The last one has
-// no score at all, and printing "0 pts" for him is a lie that reads exactly
-// like a bad performance.
+// The player's own minutes decide whether he has a score; his club's fixture
+// decides how settled that score is. Deriving the number from one and the
+// caption from the other let them contradict each other on screen - a card read
+// "6 yet to play" - so both now start from the same question, in the same
+// order: has he played, and if so how final is it.
+function liveState(row) {
+  if (!row || row.blank) return 'blank';
+  if (row.points === null || row.points === undefined) return 'unknown';
+  if (row.hasPlayed) {
+    if (row.fixturePhase === 'live') return 'playing';
+    if (row.fixturePhase === 'provisional') return 'provisional';
+    return 'final';
+  }
+  // No minutes. Either his match is still to come, or it happened without him.
+  if (row.fixturePhase === 'final' || row.fixturePhase === 'provisional') return 'did-not-play';
+  return 'upcoming';
+}
+
 function livePointsText(row) {
-  if (!row || row.blank) return '-';
-  if (!row.hasPlayed && row.fixturePhase === 'upcoming') return '-';
-  if (row.points === null || row.points === undefined) return '-';
+  const state = liveState(row);
+  // A dash means "no score yet". A zero means "played no part, and that is
+  // worth nothing", which is a different fact and a real score.
+  if (state === 'upcoming' || state === 'blank' || state === 'unknown') return '-';
   return String(row.points);
 }
 
 function livePointsLabel(row) {
-  if (!row) return '';
-  if (row.blank) return 'no fixture';
-  switch (row.fixturePhase) {
-    case 'live': return 'pts · live';
+  switch (liveState(row)) {
+    case 'playing': return 'pts · live';
     case 'provisional': return 'pts · bonus pending';
     case 'final': return 'pts';
+    case 'did-not-play': return 'did not play';
+    case 'blank': return 'no fixture';
+    case 'unknown': return 'no data';
     default: return 'yet to play';
   }
 }
 
 function livePointsClass(row) {
-  if (!row) return '';
-  if (row.blank) return 'is-blank';
-  return `is-${row.fixturePhase || 'upcoming'}`;
+  return `is-${liveState(row)}`;
 }
 
 export function playerCard({

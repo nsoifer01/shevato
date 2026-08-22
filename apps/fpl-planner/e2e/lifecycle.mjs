@@ -422,5 +422,87 @@ export async function run({ base, cdpPort }) {
     } finally { await closePage(cdpPort, s); }
   }
 
+  /* ---- 11. a gameweek in play: live points, and advice that pauses itself --- */
+  {
+    // The 2026-08-21 incident, as a browser check. GW1 is being played, so the
+    // squad has ACTUAL points and the data cannot yet carry transfer or chip
+    // advice. Both facts have to be visible and neither may be mistaken for
+    // the other.
+    const s = await openPlanner(cdpPort, base, { state: 'gw1-live', waitFor: 'plan' });
+    try {
+      await clickText(s, 'Current team', { settle: 800 });
+      const live = await evaluate(s, `(() => {
+        const cards = [...document.querySelectorAll('.fpl-pp')];
+        const live = cards.map(c => {
+          const v = c.querySelector('.fpl-pp-live-v');
+          const l = c.querySelector('.fpl-pp-live-l');
+          const xpEl = c.querySelector('.fpl-pp-xp');
+          return {
+            name: (c.querySelector('.fpl-pp-name') || {}).textContent || '',
+            v: v ? v.textContent.trim() : null,
+            l: l ? l.textContent.trim() : null,
+            xp: xpEl ? xpEl.textContent.trim() : null,
+          };
+        });
+        return JSON.stringify({
+          cards: cards.length,
+          withLive: live.filter(r => r.v !== null).length,
+          scorers: live.filter(r => r.v && /^[0-9]+$/.test(r.v)).map(r => r.v),
+          dashes: live.filter(r => r.v === '-').length,
+          bothShown: live.filter(r => r.v !== null && r.xp && /xP/.test(r.xp)).length,
+          labels: [...new Set(live.map(r => r.l).filter(Boolean))],
+          badges: [...document.querySelectorAll('.fpl-pp-move')].map(b => b.textContent.trim()),
+        });
+      })()`).then(JSON.parse);
+
+      await rec('every player card carries a live score line', live.withLive === live.cards,
+        `${live.withLive} of ${live.cards}`, s);
+      await rec('the players who played show their points',
+        ['6', '5', '3'].every(v => live.scorers.includes(v)), live.scorers.join(','), s);
+      // Three states, three renderings, and the difference matters: a player
+      // whose match FINISHED and who did not appear genuinely scored zero, and
+      // a player whose match has not kicked off has no score at all. Printing
+      // zero for the second reads exactly like a bad performance.
+      await rec('a player whose match has not started shows a dash, not a zero',
+        live.dashes >= 10, `${live.dashes} dashes for ${live.cards} cards`, s);
+      await rec('actual points and expected points are both shown, and distinguishable',
+        live.bothShown === live.cards, `${live.bothShown} of ${live.cards}`, s);
+      await rec('the live line says which match state it describes',
+        live.labels.some(l => /yet to play|pts/.test(l)), live.labels.join(' | '), s);
+      await rec('no card is marked OUT on the team the manager owns',
+        !live.badges.includes('OUT'), live.badges.join(',') || '(none)', s);
+
+      // The header total and the pitch must tell the same story.
+      const totals = await evaluate(s, `(() => {
+        const t = document.body.innerText;
+        const m = t.match(/TOTAL POINTS\\s*\\n?\\s*(-?[0-9]+)/i);
+        const cards = [...document.querySelectorAll('.fpl-pp-live-v')]
+          .map(e => e.textContent.trim()).filter(v => /^[0-9]+$/.test(v)).map(Number);
+        return JSON.stringify({ header: m ? Number(m[1]) : null, sum: cards.reduce((a, b) => a + b, 0) });
+      })()`).then(JSON.parse);
+      await rec('the pitch adds up to something a manager can check against the header',
+        totals.sum === 14, JSON.stringify(totals), s);
+
+      // Advice, meanwhile, has to say it is paused rather than invent a chip.
+      const advice = await evaluate(s, `(() => {
+        const t = document.body.innerText;
+        return JSON.stringify({
+          paused: /Recommendations paused|advice is paused|Paused:/i.test(t),
+          bestWindow: /best window for it/i.test(t),
+          wildcard: /Play your Wildcard/i.test(t),
+          contradiction: /Moderate confidence/i.test(t) && /minutes are unclear/i.test(t),
+        });
+      })()`).then(JSON.parse);
+      await rec('chip advice is paused rather than invented', !advice.wildcard && !advice.bestWindow,
+        JSON.stringify(advice), s);
+      await rec('and the pause is stated, not left to be inferred', advice.paused, '', s);
+      await rec('confidence never reads moderate while the minutes are unclear',
+        !advice.contradiction, '', s);
+
+      const errs = errorsOf(s);
+      await rec('no console errors through a live gameweek', errs.length === 0, errs.slice(0, 2).join(' | '), s);
+    } finally { await closePage(cdpPort, s); }
+  }
+
   return R;
 }

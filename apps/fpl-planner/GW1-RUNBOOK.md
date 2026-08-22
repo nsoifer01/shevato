@@ -3,6 +3,22 @@
 Five short passes around the 2026/27 opening gameweek. **Deadline: Friday
 2026-08-21, 17:30 UTC.**
 
+**RESULT, 2026-08-21: three of the four are now answered.** See FINDINGS, "The
+first live gameweek". Facts 1, 2 and 4 were observed live and are recorded
+below; Fact 3 still needs an overnight price move. The answers cost a production
+incident, and the repair is on `fix/fpl-live-gameweek-state`.
+
+- **Fact 1: FPL clears the element totals the moment GW1 goes current**, before
+  any fixture finishes. Observed at 18:04 UTC. This is the branch that collapses
+  projections, and it is now caught by `engine/baseline.js` rather than believed.
+- **Fact 2: `picks` IS served after the deadline and DOES carry
+  `entry_history.bank` and `.value`** (0 and 1000 on the night). The planner
+  will not think a manager is broke.
+- **Fact 4: upstream 503s `picks` for about half an hour after the deadline**
+  (17:30 to 17:57 UTC), and `finished` stays false for HOURS after full time
+  while bonus is confirmed. The proxy relayed the 503 correctly; the app was
+  blind to the second, and now is not.
+
 Four things about Fantasy Premier League cannot be observed until the season
 actually turns over, and each one is handled without a code change whichever way
 it goes. This checklist is how we find out which way, and confirm the app agreed:

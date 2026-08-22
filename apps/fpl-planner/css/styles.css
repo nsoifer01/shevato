@@ -920,11 +920,15 @@ body.fpl-page {
   letter-spacing: 0.03em;
   color: var(--text-faint);
 }
-.fpl-planner-app .fpl-pp-live.is-live .fpl-pp-live-v { color: var(--amber); }
-.fpl-planner-app .fpl-pp-live.is-live .fpl-pp-live-l { color: var(--amber); }
+.fpl-planner-app .fpl-pp-live.is-playing .fpl-pp-live-v,
+.fpl-planner-app .fpl-pp-live.is-playing .fpl-pp-live-l { color: var(--amber); }
 .fpl-planner-app .fpl-pp-live.is-provisional .fpl-pp-live-v { color: var(--green); }
 .fpl-planner-app .fpl-pp-live.is-final .fpl-pp-live-v { color: var(--green); }
+/* Scored nothing because he did not play: a real zero, and it should read as
+   flatly as it deserves rather than as a green result. */
+.fpl-planner-app .fpl-pp-live.is-did-not-play .fpl-pp-live-v { color: var(--text-dim); }
 .fpl-planner-app .fpl-pp-live.is-upcoming .fpl-pp-live-v,
+.fpl-planner-app .fpl-pp-live.is-unknown .fpl-pp-live-v,
 .fpl-planner-app .fpl-pp-live.is-blank .fpl-pp-live-v { color: var(--text-faint); font-weight: 600; }
 /* With a live figure present the projection becomes the secondary number. */
 .fpl-planner-app .fpl-pp-live + .fpl-pp-xp { margin-top: 1px; font-size: 11px; font-weight: 600; color: var(--text-dim); }

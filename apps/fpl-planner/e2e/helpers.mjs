@@ -129,8 +129,13 @@ export async function payloadsFor(state, { teamId = TEAM_ID } = {}) {
       f.team_a_score = null;
     }
   };
-  const finishGw = (gw, { provisional = false } = {}) => {
-    for (const f of fixtures.filter((x) => x.event === gw)) {
+  // `limit` plays only the first N fixtures of the gameweek, which is what a
+  // real matchday looks like: on 2026-08-21 one match of ten had been played
+  // and eighteen clubs had not kicked a ball. Finishing all ten at once made
+  // every club level and hid the mixed state entirely.
+  const finishGw = (gw, { provisional = false, limit = null } = {}) => {
+    const list = fixtures.filter((x) => x.event === gw);
+    for (const f of (limit === null ? list : list.slice(0, limit))) {
       f.started = true;
       f.finished = !provisional;
       f.finished_provisional = true;
@@ -168,7 +173,8 @@ export async function payloadsFor(state, { teamId = TEAM_ID } = {}) {
     planGw = e2 ? e2.id : gw1;
     deadlineOffsetMs = -30 * 60 * 1000;   // GW1 deadline is behind us
 
-    if (state === 'gw1-live') finishGw(gw1, { provisional: true });
+    // Two of ten played, the rest not started: the shape the opening Friday had.
+    if (state === 'gw1-live') finishGw(gw1, { provisional: true, limit: 2 });
     if (state === 'gw1-finished' || state === 'gw2-window') {
       finishGw(gw1);
       e1.finished = true;
@@ -218,7 +224,44 @@ export async function payloadsFor(state, { teamId = TEAM_ID } = {}) {
     first.deadline_time_epoch = Math.floor(Date.parse(deadlineIso) / 1000);
   }
 
-  return { bootstrap, fixtures, entry, history, transfers, picks, picksGw, planGw, madeTransfer, teamId };
+  // Live scoring for the gameweek being played. Built from the same squad so
+  // the pitch and the header can be checked against each other: three players
+  // score, the rest have not kicked off.
+  let live = null;
+  if (picksGw !== null && picksGw !== undefined) {
+    // Only a player whose club actually played can carry minutes. Handing
+    // points to a player whose fixture has not kicked off produced a card
+    // reading "6 yet to play", which is the harness contradicting itself
+    // rather than the app being wrong.
+    const playedClubs = new Set();
+    for (const f of fixtures) {
+      if (f.event !== picksGw) continue;
+      if (!(f.finished || f.finished_provisional)) continue;
+      playedClubs.add(f.team_h);
+      playedClubs.add(f.team_a);
+    }
+    const clubOf = (id) => {
+      const e = bootstrap.elements.find((x) => x.id === id);
+      return e ? e.team : null;
+    };
+    const eligible = picks.picks.filter((pick) => playedClubs.has(clubOf(pick.element)));
+    const points = new Map(eligible.slice(0, 3).map((pick, i) => [pick.element, [6, 5, 3][i]]));
+    live = {
+      elements: picks.picks.map((pick) => ({
+        id: pick.element,
+        stats: points.has(pick.element)
+          ? { minutes: 90, total_points: points.get(pick.element), bonus: 0, bps: 20, starts: 1 }
+          : { minutes: 0, total_points: 0, bonus: 0, bps: 0, starts: 0 },
+      })),
+    };
+    // The header total FPL publishes must agree with what the pitch adds up to.
+    if (picks.entry_history) {
+      picks.entry_history.points = [...points.values()].reduce((a, b) => a + b, 0);
+      picks.entry_history.event_transfers_cost = 0;
+    }
+  }
+
+  return { bootstrap, fixtures, entry, history, transfers, picks, live, picksGw, planGw, madeTransfer, teamId };
 }
 
 // Turn a payload set into an interception rule for the proxy. Anything the app
@@ -234,6 +277,7 @@ export function proxyRule(p, { fail = null, stale = false, extra = null } = {}) 
   ]);
   if (p.picksGw !== null && p.picksGw !== undefined) {
     map.set(`entry/${p.teamId}/event/${p.picksGw}/picks`, p.picks);
+    if (p.live) map.set(`event/${p.picksGw}/live`, p.live);
   }
 
   return (url) => {
