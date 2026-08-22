@@ -43,6 +43,21 @@ import { evaluateChips, squadTrajectory, discountWeights, xpOf, chipLabel } from
 import { explainPlan } from './explain.js';
 import { advance, transferAccounting, transferStateOf, freeTransfersFor } from './transfer-state.js';
 import { seasonEvidence } from './minutes.js';
+import { gameweekLifecycle } from './lifecycle.js';
+import { assessReadiness, projectionVitals } from './readiness.js';
+
+// The projection rows for one gameweek, as a flat iterable for the vitals
+// summary. Kept here rather than in readiness.js so that module stays free of
+// any knowledge of how projections are stored.
+function projectionRowsFor(projections, gw) {
+  const out = [];
+  if (!projections || !projections.byPlayer) return out;
+  for (const rows of projections.byPlayer.values()) {
+    const row = rows.find(r => r.gw === gw);
+    if (row) out.push(row);
+  }
+  return out;
+}
 
 export const PLANNER_VERSION = 'planner-1';
 
@@ -524,14 +539,33 @@ export async function buildPlan({ gameState, squadState, options = {}, onProgres
   let chipEvaluation = null;
   let scoredList = [];
 
+  // WHAT THIS DATA IS GOOD ENOUGH TO SAY, decided before anything is proposed
+  // rather than reported alongside a proposal that ignored it. A chip is the
+  // most expensive thing the app can recommend, so it clears the highest bar;
+  // ordering an eleven the manager already owns clears the lowest.
+  const lifecycle = gameweekLifecycle(gameState);
+  const vitals = projectionVitals(projectionRowsFor(projections, gw));
+  const readiness = assessReadiness({
+    evidence: seasonEvidence(gameState),
+    lifecycle,
+    vitals,
+    baseline: { source: gameState.baselineSource },
+  });
+  cfg.readiness = readiness;
+
   if (isDraft) {
     const draft = buildDraftPlan({ squadState: workingSquad, projections, gameState, rules, cfg, gw });
     primary = draft.scored;
   } else {
-    chipEvaluation = evaluateChips({
-      squadState: workingSquad, projections, gameState, rules,
-      horizon: cfg.horizon, discount: cfg.discount, opts: { seed: cfg.seed },
-    });
+    // A chip is only evaluated when the data can carry a chip decision. Left
+    // unevaluated it cannot be recommended, cannot be described as "the best
+    // window for it", and cannot silently become the plan.
+    chipEvaluation = readiness.allow.chips
+      ? evaluateChips({
+        squadState: workingSquad, projections, gameState, rules,
+        horizon: cfg.horizon, discount: cfg.discount, opts: { seed: cfg.seed },
+      })
+      : null;
 
     const raw = searchTransfers({
       squadState: workingSquad, projections, gameState, rules,
@@ -547,13 +581,20 @@ export async function buildPlan({ gameState, squadState, options = {}, onProgres
     // The roll is always on the table, whatever the search returned. It is the
     // baseline every other candidate has to beat, and it is a real answer, not
     // the absence of one.
+    //
+    // When the data cannot carry a transfer recommendation the roll is the ONLY
+    // candidate. Holding is the one move that costs nothing and cannot be wrong
+    // for the reason the gate fired, so a refusal degrades to "keep your squad"
+    // rather than to a blank screen.
     const candidates = [{ transfersOut: [], transfersIn: [], squad: currentSquadIds(workingSquad) }];
-    for (const r of raw) {
-      const c = normalizeCandidate(r, { squadState: workingSquad, rules });
-      if (!c) continue;
-      if (!c.transfersIn.length) continue;
-      if (c.transfersIn.length !== c.transfersOut.length) continue;
-      candidates.push(c);
+    if (readiness.allow.transfers) {
+      for (const r of raw) {
+        const c = normalizeCandidate(r, { squadState: workingSquad, rules });
+        if (!c) continue;
+        if (!c.transfersIn.length) continue;
+        if (c.transfersIn.length !== c.transfersOut.length) continue;
+        candidates.push(c);
+      }
     }
 
     scoredList = candidates
@@ -777,6 +818,17 @@ function buildDataStatus({ gameState, squadState, cfg, projections, durationMs }
   // "why does this look wrong" is answerable only if the state is reported.
   const evidence = seasonEvidence(gameState);
 
+  // The lifecycle and the readiness verdict travel with every plan, because
+  // "why is the app not telling me to do anything" must be answerable from the
+  // bundle alone rather than by re-deriving state in the UI.
+  const lifecycle = gameweekLifecycle(gameState);
+  const readiness = cfg.readiness || assessReadiness({
+    evidence,
+    lifecycle,
+    vitals: projectionVitals(projectionRowsFor(projections, cfg.gw)),
+    baseline: { source: gameState.baselineSource },
+  });
+
   return {
     fetchedAt,
     planComputedAt: new Date().toISOString(),
@@ -784,6 +836,10 @@ function buildDataStatus({ gameState, squadState, cfg, projections, durationMs }
     staleReasonCodes,
     squadWarnings: (squadState.warnings || []).map(w => ({ code: w.code, message: w.message })),
     evidence,
+    lifecycle,
+    readiness,
+    baselineSource: gameState.baselineSource || 'current',
+    baselineCapturedAt: gameState.baselineCapturedAt || null,
     sources: [
       {
         name: 'bootstrap-static',

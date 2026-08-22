@@ -60,6 +60,8 @@
 // the same bet as a new signing before the season starts, and until this decay
 // existed the model priced them identically.
 
+import { assessBaseline, baselineIsSuperseded } from './baseline.js';
+
 const UNAVAILABLE_STATUSES = new Set(['i', 's', 'u', 'n']);
 const DOUBTFUL_STATUS = 'd';
 
@@ -258,13 +260,18 @@ export function evidenceMatchesFor(player, teamMatches) {
   return Number.isFinite(declared) && declared > 0 ? declared : teamMatches;
 }
 
-// Matches each club has FINISHED this season, and nothing else. Zero for every
-// club pre-season, which is the whole point: it is the count of chances a player
-// has had to appear, so it can only start once the season has.
+// Matches each club has PLAYED OUT this season. Zero for every club pre-season,
+// which is the whole point: it is the count of chances a player has had to
+// appear, so it can only start once the season has.
+//
+// It counts a provisional full-time as played. Reading only `finished` meant
+// that between the final whistle and FPL signing the match off - over five
+// hours on 2026-08-21 - twenty-two players carried ninety minutes each against
+// a denominator of zero, and the payload was mistaken for last season's.
 function matchesPlayedByTeam(gameState) {
   const counts = new Map();
   for (const f of gameState.fixtures) {
-    if (!f.finished) continue;
+    if (!(f.finished || f.finishedProvisional)) continue;
     for (const t of [f.teamH, f.teamA]) counts.set(t, (counts.get(t) || 0) + 1);
   }
   return counts;
@@ -338,44 +345,67 @@ export function seasonEvidence(gameState) {
   }
 
   if (maxPlayed === 0) {
-    // Totals exist and no fixture has finished, which has two causes that look
-    // alike from the fixture list alone and mean opposite things.
+    // Totals exist and nothing has been played out, which has two causes that
+    // look alike from the fixture list alone and mean opposite things.
     //
-    // Pre-season, the totals are LAST season's and nearly the whole pool
-    // carries minutes (two thirds of it, in the payload FPL served on the
-    // morning of 2026-08-21). Read against a full season, they are the best
-    // evidence available and the plan is sound.
+    // Pre-season the totals are LAST season's and most of the pool carries
+    // minutes (400 of 600 on the morning of 2026-08-21). Read against a full
+    // season they are the best evidence available and the plan is sound.
     //
-    // But once FPL clears the totals at the rollover and the opening match
-    // kicks off, a handful of players carry THIS season's minutes and everyone
-    // else is a legitimate zero (22 of 600, that same evening). Reading that
-    // against a full season makes almost every player a non-starter, collapses
-    // the projections, and inverts the advice: a player who has just started a
-    // match measures 1 start in 38 while one who has never played keeps his
-    // untouched price prior. Having played must never be evidence against a
-    // player, so this payload is reported as no evidence rather than projected
-    // from. The share is the discriminator because the two cases are nowhere
-    // near each other - two thirds of the pool against one twenty-seventh.
-    const pool = gameState.players.size;
-    if (pool > 0 && withMinutes * CLEARED_TOTALS_SHARE < pool) {
+    // Once FPL clears the totals at the rollover, almost nobody carries a
+    // minute (22 of 600 that same evening). Reading THAT against a full season
+    // makes the pool non-starters, collapses every projection, and inverts the
+    // advice: a player who has just started a match measures one start in
+    // thirty-eight while one who has never played keeps an untouched price
+    // prior. Having played must never be evidence against a player.
+    //
+    // `assessBaseline` is the shared judgement of whether a payload is a
+    // season at all, so the classifier, the snapshot layer and the health
+    // probe cannot disagree about it.
+    const assessment = assessBaseline(gameState);
+    if (!assessment.complete) {
       return {
         kind: 'none',
         usable: false,
         teamMatches: totalEvents,
         finishedMatches: 0,
         impossible,
-        message: 'Fantasy Premier League has cleared last season\'s player totals and the opening matches are still being played, so there is not yet enough of this season to project from.',
+        assessment,
+        message: 'Fantasy Premier League has cleared last season\'s player totals for the new season, '
+          + 'so there is not yet enough of this season to project from.',
       };
     }
-    // Totals exist but no fixture has finished: the ordinary pre-season shape.
+    // Totals exist but nothing has been played: the ordinary pre-season shape.
     return {
       kind: 'previous-season',
       usable: true,
       teamMatches: totalEvents,
       finishedMatches: 0,
       impossible,
+      assessment,
       message: 'No fixture has been played yet, so last season\'s totals are read against a full season.',
     };
+  }
+
+  // Some clubs have played. If the totals are still too thin to be a season in
+  // their own right AND the clubs are not level, the pool is not comparable:
+  // one club's players carry observed rates while eighteen clubs carry priors.
+  // That is the same inversion measured against a smaller denominator, so it is
+  // refused for the same reason.
+  {
+    const assessment = assessBaseline(gameState);
+    if (!assessment.complete && !baselineIsSuperseded(gameState)) {
+      return {
+        kind: 'partial-season',
+        usable: false,
+        teamMatches: maxPlayed,
+        finishedMatches: maxPlayed,
+        impossible,
+        assessment,
+        message: 'This season is only a few matches old and the clubs have not played the same number of games, '
+          + 'so the player totals are not yet comparable across the league.',
+      };
+    }
   }
 
   return {
@@ -393,14 +423,6 @@ export function seasonEvidence(gameState) {
 // season boundary. Deliberately small: at a real rollover essentially the whole
 // pool trips it at once.
 const IMPOSSIBLE_STARTS_QUORUM = 12;
-
-// Before a fixture has finished, what share of the pool must carry minutes for
-// the totals to be last season's rather than freshly cleared. Expressed as a
-// divisor: minutes-carrying players must be at least a quarter of the pool.
-// Measured either side of the 2026-08-21 rollover, the two states sit at 66.7%
-// (400 of 600, last season's totals) and 3.7% (22 of 600, cleared with one
-// match under way), so a quarter is nowhere near either edge.
-const CLEARED_TOTALS_SHARE = 4;
 
 // The denominator for a start rate, which is now whatever the evidence says it
 // is rather than a count of fixtures read in isolation.
