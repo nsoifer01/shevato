@@ -1212,6 +1212,33 @@ trimmed and sanitized, under `tests/fixtures/gw1-2026/`.
   `normalizePlayer` keeps `seasonStarts`/`seasonMinutes`/`seasonPoints` separate
   from the evidence totals a baseline may overlay.
 
+### A consequence worth knowing: the first weeks without a baseline
+
+Simulating the finalisation states FPL has not reached yet, on the real FT+11h
+payload, shows the repair working through all of them **for anyone who has a
+baseline** - phases progress `in-progress` to `finalising` to `complete`,
+`settled` flips only at the last, evidence stays `previous-season`, readiness
+stays `transfers`, and the plan reads 44.5 to 47.6 xP with a sensible captain.
+
+For a manager whose FIRST EVER visit is after the rollover there is no baseline
+to keep, and one gameweek of this season is genuinely not enough: the underlying
+projection reads 22 to 27 xP even once every club has played once and the pool
+is level again. So that manager is refused - `partial-season`, readiness
+`display` - until `baselineIsSuperseded` opens at three matches per club.
+
+That is the honest answer rather than a gap: the numbers really are unusable,
+and the app says so instead of showing them. But it means a brand-new user in
+the opening fortnight of a season sees no plan, and it is worth deciding
+deliberately rather than discovering it. The two ways out, if that is judged too
+harsh, are a heavier price prior for the early weeks or shipping a committed
+opening-season baseline; both are model changes and neither belongs in an
+incident fix.
+
+The refusal message follows the actual state: while the clubs are uneven it
+says so, and once a gameweek has completed it says the season is only N matches
+old. Telling someone whose gameweek has finished that "the clubs have not played
+the same number of games" is simply wrong, and it was.
+
 ### The trap that is still open
 
 Withholding is not a repair of the projections underneath. With one match of

@@ -394,6 +394,11 @@ export function seasonEvidence(gameState) {
   // refused for the same reason.
   {
     const assessment = assessBaseline(gameState);
+    // Have all the clubs played the same number of matches? Until they have,
+    // players are being measured against different denominators.
+    let minPlayed = Infinity;
+    for (const team of gameState.teams.keys()) minPlayed = Math.min(minPlayed, perTeam.get(team) || 0);
+    const levelClubs = Number.isFinite(minPlayed) && minPlayed === maxPlayed;
     if (!assessment.complete && !baselineIsSuperseded(gameState)) {
       return {
         kind: 'partial-season',
@@ -402,8 +407,17 @@ export function seasonEvidence(gameState) {
         finishedMatches: maxPlayed,
         impossible,
         assessment,
-        message: 'This season is only a few matches old and the clubs have not played the same number of games, '
-          + 'so the player totals are not yet comparable across the league.',
+        // Two different situations reach here and the sentence has to match the
+        // one in front of the reader. Early in a gameweek the clubs are uneven,
+        // which is the inversion risk; once a gameweek completes they are level
+        // and the problem is simply that one or two matches is not enough to
+        // project from. Saying "the clubs have not played the same number" to
+        // someone whose gameweek has finished is just wrong.
+        message: levelClubs
+          ? `This season is only ${maxPlayed} ${maxPlayed === 1 ? 'match' : 'matches'} old, which is not yet `
+            + 'enough of it to project from.'
+          : 'This season is only a few matches old and the clubs have not played the same number of games, '
+            + 'so the player totals are not yet comparable across the league.',
       };
     }
   }
