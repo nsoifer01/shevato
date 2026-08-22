@@ -1211,6 +1211,20 @@ trimmed and sanitized, under `tests/fixtures/gw1-2026/`.
   reads the baseline source and whether the season has started, and
   `normalizePlayer` keeps `seasonStarts`/`seasonMinutes`/`seasonPoints` separate
   from the evidence totals a baseline may overlay.
+- **The History glance tiles contradicted their own screen (runbook pass 3,
+  2026-08-22).** With GW1 in play and nothing finalised, "Overall rank" read
+  "-" while the live row directly below printed 3,847,330, and "Total points
+  14" sat under a sentence saying "these totals do not include it yet". Both
+  came from `seasonSummary` keeping the live row out of `latest` (correct: a
+  live gameweek must not be averaged or treated as the season's standing) and
+  the tiles reading ONLY `latest`. `glanceFacts()` now falls back to the live
+  row's published rank and running total when no gameweek is finalised, each
+  labelled "Gameweek N so far, provisional"; a rank FPL has not published stays
+  "-", and the sentence says the figures below are provisional rather than
+  excluded. Once a gameweek is finalised the tiles describe it and the live one
+  is excluded exactly as before. The e2e probe for the tile had been stripping
+  every "s" from the text (`/\s+/` inside a template literal is `/s+/`), which
+  is why its loose regex never noticed.
 
 ### A consequence worth knowing: the first weeks without a baseline
 

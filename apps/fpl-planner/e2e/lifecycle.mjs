@@ -341,13 +341,27 @@ export async function run({ base, cdpPort }) {
           liveChip: !!document.querySelector('.fpl-chip.is-live'),
           rankTile: (()=>{ const tiles=[...document.querySelectorAll('.fpl-tile')];
             const el=tiles.find(x=>/Overall rank/i.test(x.textContent));
-            return el ? el.textContent.replace(/\s+/g,' ').trim() : null; })(),
+            return el ? el.textContent.replace(/\\s+/g,' ').trim() : null; })(),
+          pointsTile: (()=>{ const tiles=[...document.querySelectorAll('.fpl-tile')];
+            const el=tiles.find(x=>/Total points/i.test(x.textContent));
+            return el ? el.textContent.replace(/\\s+/g,' ').trim() : null; })(),
+          // The overall rank the live row prints, so the tile can be held to it.
+          rowRank: (()=>{ const r=[...document.querySelectorAll('tr.is-live')]
+            .find(x=>/^GW\\s*1(?!\\d)/.test((x.children[0]||{}).textContent.trim()));
+            return r ? (r.children[3] || {}).textContent.trim() : null; })(),
         };
       })()`);
       await rec('a gameweek in play is labelled provisional', view.live, JSON.stringify(view).slice(0, 140), s);
       await rec('and the row carries a live marker', view.liveChip, '', s);
-      await rec('the rank tile explains itself rather than blanking',
-        view.rankTile && !/^Overall rank\s*-\s*$/.test(view.rankTile), view.rankTile, s);
+      // Pass 3 of the GW1 runbook (2026-08-22) found the tile reading "-" while
+      // the same rank sat in the row below it. The tile shows the known rank and
+      // says it is provisional; it never invents one.
+      await rec('the rank tile shows the rank the live row prints, marked provisional',
+        !!view.rankTile && !!view.rowRank && view.rowRank !== '-'
+          && view.rankTile.includes(view.rowRank) && /provisional/i.test(view.rankTile),
+        `${view.rankTile} | row ${view.rowRank}`, s);
+      await rec('and the live points total is labelled provisional, not a season total',
+        !!view.pointsTile && /provisional/i.test(view.pointsTile), view.pointsTile, s);
     } finally { await closePage(cdpPort, s); }
   }
 
