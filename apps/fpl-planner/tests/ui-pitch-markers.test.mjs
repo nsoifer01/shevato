@@ -199,14 +199,17 @@ test('the current view marks only what the plan sells, the recommended view only
   const current = pitch('current', DOUBLE_GW);
   const recommended = pitch('recommended', DOUBLE_GW);
 
-  assert.deepEqual(ribbon(cardFor(current, 'Semenyo')), { kind: 'out', text: 'OUT' });
+  // The words are SELL and BUY rather than OUT and IN. "OUT" over the Current
+  // team pitch read as a squad full of unavailable players, which is what an
+  // FPL manager means by out, rather than as eleven proposed transfers.
+  assert.deepEqual(ribbon(cardFor(current, 'Semenyo')), { kind: 'out', text: 'SELL' });
   assert.equal(
     queryAll(current, 'fpl-pp').filter(c => ribbon(c)).length, 1,
     'one transfer out, one ribbon',
   );
   assert.throws(() => cardFor(current, 'Thiago'), /no card for "Thiago"/, 'a player not yet owned is not on the current pitch');
 
-  assert.deepEqual(ribbon(cardFor(recommended, 'Thiago')), { kind: 'in', text: 'IN' });
+  assert.deepEqual(ribbon(cardFor(recommended, 'Thiago')), { kind: 'in', text: 'BUY' });
   assert.equal(queryAll(recommended, 'fpl-pp').filter(c => ribbon(c)).length, 1);
   assert.throws(() => cardFor(recommended, 'Semenyo'), /no card for "Semenyo"/, 'a sold player is gone, not benched');
 });

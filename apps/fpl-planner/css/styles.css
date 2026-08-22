@@ -541,6 +541,14 @@ body.fpl-page {
 .fpl-planner-app .fpl-conf.is-high { background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 30%, transparent); }
 .fpl-planner-app .fpl-conf.is-moderate { background: var(--amber-soft); border-color: color-mix(in srgb, var(--amber) 32%, transparent); }
 .fpl-planner-app .fpl-conf.is-low { background: var(--red-soft); border-color: color-mix(in srgb, var(--red) 34%, transparent); }
+/* Not the bottom of the confidence scale: a different statement. The three
+   bands above grade how sure a sound projection is; this one says the inputs
+   failed, so it reads as a deliberate pause rather than as a weak answer. */
+.fpl-planner-app .fpl-conf.is-unusable {
+  background: var(--gray-soft);
+  border-color: var(--border-strong);
+  border-left: 3px solid var(--amber);
+}
 .fpl-planner-app .fpl-conf-pill {
   font-size: 10.5px;
   font-weight: 700;
@@ -551,6 +559,7 @@ body.fpl-page {
 .fpl-planner-app .fpl-conf.is-high .fpl-conf-pill { color: var(--green); }
 .fpl-planner-app .fpl-conf.is-moderate .fpl-conf-pill { color: var(--amber); }
 .fpl-planner-app .fpl-conf.is-low .fpl-conf-pill { color: var(--red); }
+.fpl-planner-app .fpl-conf.is-unusable .fpl-conf-pill { color: var(--amber); }
 .fpl-planner-app .fpl-conf-why {
   flex: 1 1 320px;
   min-width: 0;
@@ -891,6 +900,36 @@ body.fpl-page {
 }
 .fpl-planner-app .fpl-pp-xp span { font-size: 10px; font-weight: 500; color: var(--text-faint); margin-left: 2px; }
 
+/* ACTUAL points for the gameweek being played, above the expected points for
+   the one being planned. The two must never be mistaken for each other, so the
+   live figure is larger, carries its own word, and is tinted by match state:
+   amber while the ball is rolling, green once the football is over, grey until
+   kick-off. A player who has not played shows a dash, never a zero. */
+.fpl-planner-app .fpl-pp-live {
+  margin-top: 5px;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 3px;
+  line-height: 1.15;
+}
+.fpl-planner-app .fpl-pp-live-v { font-size: 15px; font-weight: 750; color: var(--text); }
+.fpl-planner-app .fpl-pp-live-l {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--text-faint);
+}
+.fpl-planner-app .fpl-pp-live.is-live .fpl-pp-live-v { color: var(--amber); }
+.fpl-planner-app .fpl-pp-live.is-live .fpl-pp-live-l { color: var(--amber); }
+.fpl-planner-app .fpl-pp-live.is-provisional .fpl-pp-live-v { color: var(--green); }
+.fpl-planner-app .fpl-pp-live.is-final .fpl-pp-live-v { color: var(--green); }
+.fpl-planner-app .fpl-pp-live.is-upcoming .fpl-pp-live-v,
+.fpl-planner-app .fpl-pp-live.is-blank .fpl-pp-live-v { color: var(--text-faint); font-weight: 600; }
+/* With a live figure present the projection becomes the secondary number. */
+.fpl-planner-app .fpl-pp-live + .fpl-pp-xp { margin-top: 1px; font-size: 11px; font-weight: 600; color: var(--text-dim); }
+.fpl-planner-app .fpl-pp-live + .fpl-pp-xp span { font-size: 9px; }
+
 .fpl-planner-app .fpl-pp-arm {
   position: absolute;
   top: -8px;
@@ -945,6 +984,11 @@ body.fpl-page {
 }
 .fpl-planner-app .fpl-pp-move.is-in { background: var(--green-fill); border-color: #1c9a6d; color: #fff; }
 .fpl-planner-app .fpl-pp-move.is-out { background: #7a2233; border-color: #a13148; color: #fff; }
+/* On the bench the auto-sub number already owns the top-left corner (identical
+   offsets: -7px/-6px against -8px/-6px), so a bench player the plan sells had
+   the two badges stacked on top of each other. The transfer marker moves to the
+   bottom-left, which is free on every card. */
+.fpl-planner-app .fpl-bench-slot .fpl-pp-move { top: auto; bottom: -8px; }
 .fpl-planner-app .fpl-pp.is-moving-in { border-color: color-mix(in srgb, var(--green) 55%, var(--border)); }
 .fpl-planner-app .fpl-pp.is-moving-out { opacity: 0.55; }
 
@@ -1069,6 +1113,7 @@ body.fpl-page {
    header). Same tones as the hero strip. */
 .fpl-planner-app .fpl-conf-pill.is-high,
 .fpl-planner-app .fpl-conf-pill.is-moderate,
+.fpl-planner-app .fpl-conf-pill.is-unusable,
 .fpl-planner-app .fpl-conf-pill.is-low {
   padding: 3px 9px;
   border-radius: 999px;
@@ -2153,6 +2198,12 @@ body.fpl-page {
   .fpl-planner-app .fpl-chip { font-size: 8.5px; padding: 1px 3px; }
   .fpl-planner-app .fpl-pp-arm { width: 18px; height: 18px; font-size: 10px; top: -7px; right: -4px; }
   .fpl-planner-app .fpl-pp-move { font-size: 8.5px; padding: 1px 4px; left: -4px; }
+  /* The live figure stays the biggest number on the card at 390px, because it
+     is the one a manager is looking for during a match. */
+  .fpl-planner-app .fpl-pp-live-v { font-size: 13.5px; }
+  .fpl-planner-app .fpl-pp-live-l { font-size: 8px; }
+  .fpl-planner-app .fpl-pp-live { gap: 2px; margin-top: 4px; }
+  .fpl-planner-app .fpl-pp-live + .fpl-pp-xp { font-size: 10px; }
 
   .fpl-planner-app .fpl-progress { margin: 26px auto; padding: 18px; }
   .fpl-planner-app .fpl-conf { padding: 8px 10px; gap: 6px; margin-top: 12px; }

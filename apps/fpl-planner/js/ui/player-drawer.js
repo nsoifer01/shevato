@@ -64,10 +64,24 @@ function breakdownList(row) {
 }
 
 // The heading over a player's season totals.
-export function seasonTotalsLabel(evidence) {
+//
+// It has to name the season the numbers ACTUALLY belong to, and on 2026-08-21
+// it did not: the classifier had mistaken a wiped payload for last season's,
+// this heading followed it, and one match of the new season was presented as
+// "Last season: 6 points, 90 minutes, 1 start". A heading derived from a
+// misclassification repeats the misclassification with more authority.
+//
+// So it reads the two things that actually decide the answer: whether a kept
+// baseline is standing in for the totals, and whether this season has started.
+// When the app is projecting from a baseline the totals on screen are last
+// season's; when it is not, they are this season's however few they are.
+export function seasonTotalsLabel(evidence, { baselineSource = null, seasonStarted = null } = {}) {
+  if (baselineSource === 'baseline') return 'Last season';
   if (evidence && evidence.kind === 'previous-season') return 'Last season';
   if (evidence && evidence.kind === 'none') return 'Season totals (not published yet)';
-  return 'Season so far';
+  if (evidence && evidence.kind === 'partial-season') return 'This season so far';
+  if (seasonStarted === false) return 'Last season';
+  return 'This season so far';
 }
 
 function drawerContent({ playerId, gameState, projections, gw, horizon, evidence = null }) {
@@ -125,7 +139,13 @@ function drawerContent({ playerId, gameState, projections, gw, horizon, evidence
     // Which season these totals describe is decided by seasonEvidence(), not
     // assumed: before FPL clears them they are LAST season's, and calling them
     // "season so far" in August is the app stating something untrue.
-    el('div', { class: 'fpl-subhead', text: seasonTotalsLabel(evidence) }),
+    el('div', {
+      class: 'fpl-subhead',
+      text: seasonTotalsLabel(evidence, {
+        baselineSource: gameState.baselineSource,
+        seasonStarted: gameState.seasonStarted,
+      }),
+    }),
     el('div', { class: 'fpl-dw-stats' }, [
       statCell('Points', String(player.totalPoints ?? 0)),
       statCell('Minutes', (player.minutes ?? 0).toLocaleString('en-GB'), Number.isFinite(player.starts) ? `${player.starts} starts` : null),
