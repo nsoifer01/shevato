@@ -106,9 +106,12 @@ export async function run({ base, cdpPort }) {
   }
 
   let s = null;
+  let step = 'startup';
+  const mark = (label) => { step = label; };
   try {
     s = await open();
     await setViewport(s, 1280, 900);
+    mark('seed');
     await seed(s);
     t('seeded dashboard renders rival cards and prediction rows', await waitForExpr(s, "document.querySelectorAll('.rival-card').length===4 && document.querySelectorAll('#todays-card .pred-row:not(.pred-row-head)').length>=4"));
 
@@ -125,8 +128,10 @@ export async function run({ base, cdpPort }) {
     // ---- #12 axe on rendered views (1280) ----
     await evaluate(s, "(()=>{document.querySelector('details.paste-collapse').open = true; return 1})()");
     await clickSel(s, '.pred-label-toggle', { nth: 0, settle: 300 });
+    mark('axe dashboard @1280');
     await axe(s, 'dashboard @1280 (paste open, finishes expanded)');
     for (const v of ['rival/r-ari', 'leaderboard', 'matrix', 'records', 'history']) {
+      mark(`axe ${v} @1280`);
       await goto(s, `${base}${APP}#${v}`, { settle: 1200 });
       await axe(s, `${v} @1280`);
     }
@@ -228,6 +233,7 @@ export async function run({ base, cdpPort }) {
     for (const [w, h, mobile] of [[390, 844, true], [1100, 900, false]]) {
       await setViewport(s, w, h, mobile);
       for (const v of ['dashboard', 'rival/r-long', 'leaderboard', 'matrix', 'records', 'history']) {
+        mark(`overflow ${w}px ${v}`);
         await goto(s, `${base}${APP}#${v}`, { settle: 900 });
         if (v === 'dashboard') { await clickSel(s, '.pred-label-toggle', { nth: 0, settle: 200 }); }
         const ov = await evaluate(s, OVERFLOW);
@@ -242,10 +248,12 @@ export async function run({ base, cdpPort }) {
     t('390px: all 7 prediction day tabs fit without scrolling, text >= 10px', days.tabs === 7 && days.fit && days.minFont >= 10, JSON.stringify(days));
     const smallest = await evaluate(s, "(()=>{let min=99; for (const e of document.querySelectorAll('#todays-card *')) { if (!e.textContent.trim() || e.children.length) continue; min=Math.min(min, parseFloat(getComputedStyle(e).fontSize)); } return min})()");
     t('390px: no prediction-card text under 10px', smallest >= 10, String(smallest));
+    mark('axe dashboard @390');
     await axe(s, 'dashboard @390');
     await goto(s, `${base}${APP}#matrix`, { settle: 1000 });
     const mx = await evaluate(s, "(()=>{const cells=[...document.querySelectorAll('.matrix-cell')]; const over=cells.filter(c=>{const r=c.querySelector('.matrix-record'); return r && r.scrollWidth>c.clientWidth+1}).length; const heads=[...document.querySelectorAll('.matrix-row-head')].filter(h=>h.scrollWidth>h.clientWidth+1).length; const wrap=document.getElementById('matrix-wrap'); const chip=[...document.querySelectorAll('.matrix-chip')].find(c=>/Bartholomew/.test(c.textContent)); return {over, heads, wrapScrolls: wrap.scrollWidth>wrap.clientWidth, chipInside: chip.getBoundingClientRect().right <= document.querySelector('.matrix-controls').getBoundingClientRect().right + 1}})()");
     t('390px matrix: scrolls inside its wrap, no cell or row-head overflow, long chip contained', mx.over === 0 && mx.heads === 0 && mx.wrapScrolls && mx.chipInside, JSON.stringify(mx));
+    mark('axe matrix @390');
     await axe(s, 'matrix @390');
     await goto(s, `${base}${APP}#rival/r-long`, { settle: 1000 });
     const longName = await evaluate(s, "(()=>{const h=document.querySelector('#rival-header h2'); const r=h.getBoundingClientRect(); return {right: Math.round(r.right), vw: innerWidth, overflow: h.scrollWidth > h.clientWidth + 1}})()");
@@ -258,7 +266,9 @@ export async function run({ base, cdpPort }) {
     t('no first-party JS errors across the suite', cleanErrors(s).length === 0, cleanErrors(s).join(' | '));
     await rm(dir, { recursive: true, force: true }).catch(() => {});
   } catch (e) {
-    t('maptap-rivals quality suite completed', false, String(e && e.message || e));
+    // Name the last check that started, so a driver-level abort (the CDP
+    // send timeout) points at the step that hung instead of just "timeout".
+    t('maptap-rivals quality suite completed', false, `${String(e && e.message || e)} (last step: ${step})`);
   } finally {
     if (s) await closePage(cdpPort, s);
   }
