@@ -1557,6 +1557,93 @@ killed runner, so `ps -eo pid,args | grep headless=new` before blaming a suite -
 four of them, one four hours old, were what made two full-estate runs collapse
 at different points while master ran clean.
 
+## The 2026-08-22 fix round, part two
+
+Everything below shipped in the same PR as the core round above. What is worth
+keeping:
+
+**A model may not touch what the traveller has booked.** `validateTripAction`
+ran a model-supplied status through `forceProposalStatus`, which can never
+return 'booked', so an `update` that so much as mentioned status demoted a
+Booked flight - and its money - to "To book" over a change of address. An update
+now carries the TARGET's status, full stop, and `applyProposalUpdate` writes no
+status at all: the field is a fact about the world, and the model can neither
+observe nor change it. `forceProposalStatus` stays for adds, where it stops a
+model claiming a booking it invented (a document transcription keeps its
+provenance). The old unit test asserted the demotion as correct behaviour; that
+is why the bug survived a full audit round.
+
+**The assistant needs its own projection, and always did.** It was handed
+`slimTripForShare`, which renumbers ids to `i1..iN` because a share link becomes
+a new trip - while the prompt tells the model it may "update with a match (by id
+or exact title)". Every id-matched edit therefore failed with "No matching item
+found". `slimTripForAssistant` keeps the real id and drops the booking facts a
+model has no use for (confirmation, paidBy, splitAmounts, payment, bookBy).
+Resolving `iN` by POSITION was considered and rejected: validate runs again at
+ACCEPT time, so a row deleted in between would have moved the edit onto whatever
+slid into that position. A real id resolves to one row or to none.
+
+**"Not open yet" is not "closed" (HR-01).** `hoursVerdict` collapsed both into
+'closed', so a 17:30 row at a bar open 18:00-02:00 read "Closed at 5:30 PM".
+There is a fourth verdict now, `beforeOpen`, carrying `opensMin`, and
+`nextOpeningMin` is the one place that answers "does it open again later today"
+(dated hours authoritative for the dates they name). Every consumer reads that
+one verdict: the Days row, the assistant card, the badge exclusion and the
+accept refusal, which has its own heading and sentence because the way forward
+is a later hour, not another venue. Both demoted states still demote; only the
+sentence differs. Boundaries: exactly at opening is open, exactly at closing is
+closed, between two sittings names the next sitting, an overnight range is open
+past midnight and `beforeOpen` again after it closes if the venue reopens that
+day, `closed` if it does not.
+
+**A day has two beds and they are two questions.** `dayHostStay` answers "which
+bed is this NIGHT booked in" (night coverage, the staying-at line, the day's
+city). `dayAnchor` was using it for "where does this DAY START", which is the
+same hotel on every day except a handover: check out of Tokyo, train at 10:30,
+check into Kyoto, and an 8:00 Ginza breakfast was measured from the Kyoto hotel
+(~232 mi, with Directions from the wrong end of the country). `dayMorningStay`
+answers the morning; the chain hands over by itself because the intercity leg is
+a stop on it. One filter, two orders of preference, so they cannot drift.
+
+**A budget is a number in a currency.** Switching the trip currency converted
+every cost and RELABELLED the budget. `budgetCurrency` is stamped when the
+currency moves, exactly as `stampCostCurrencies` stamps items, absent means the
+trip's own so nothing migrates, and `tripBudgetIn` converts through the same
+`convertAmount` the totals use. Unreachable rates print the ceiling in its own
+currency and force the amber "partial" verdict rather than a green tick over a
+number nothing could compare.
+
+**A pre-trip task is a deadline, not a trip day.** The visa reminder was a note
+DATED thirty days before the trip, and `tripStats.start` is the minimum over all
+items, so the trip grew a month of empty day cards and counted down to the
+reminder. `bookBy` already models "do this before" and the warnings panel
+already counts it down.
+
+**Hidden-until-hover is a mouse affordance.** Timeline row actions had no
+pointer gate, so on a touch device WIDER than the 900px fold there was no way to
+reveal them at all. The Days view had always gated its own pair; both do now.
+Related: `@media print` redefines the colour tokens rather than trusting
+backgrounds the printer will not lay down (measured 18.9:1 on titles with
+background graphics off), and the assistant panel makes room above 1200px
+instead of covering Undo, the trip picker and the menu.
+
+**Failures deserve a memo too.** Successes were cached and misses were
+remembered, but a 500 or a timeout was not, so during an outage every consumer
+re-asked and every render re-fired: 11 geocode requests for 4 places in one Map
+render, 6 weather requests per Days render. Both now hold a 60-second per-key
+memo, and a valid-but-empty weather answer counts as a failure for it.
+
+**Where the docs sat two rounds behind.** privacy.html still said the assistant
+defaulted to copy-and-paste after the 2026-08-19 round deliberately moved it to
+the free tier. The page is binding, so it was the page that was wrong, and
+`tests/static/trip-planner-assistant-privacy.test.mjs` now pins the default
+literal and the omitted-field list against the prose so neither can drift alone.
+
+**Two audit findings did not reproduce.** MV-B3's "full-width bar at 0" is the
+empty track behind a zero-width fill (`typeBarShares` already returns 0 when
+every row is 0), and DM-12's single-bar spend chart is the documented
+two-calendar-week gate doing what it says.
+
 ## The 2026-08-19 exploratory QA round (TP-01..TP-23)
 
 A black-box pass: the app was used as a first-time traveller would, and the
