@@ -408,6 +408,7 @@ const els = {
   showModalOverlayHint: document.getElementById('showModalOverlayHint'),
   compareModalXMode: document.getElementById('compareModalXMode'),
   compareImportedNote: document.getElementById('compareImportedNote'),
+  srAnnouncer: document.getElementById('srAnnouncer'),
   compareImportedKeep: document.getElementById('compareImportedKeep'),
   showModalDetailRetry: document.getElementById('showModalDetailRetry'),
   modalDetailError: document.getElementById('modalDetailError'),
@@ -4853,6 +4854,22 @@ function bindFinder() {
     onFinderFilterChange();
   });
 
+  // Under 900px the shape strip is a horizontal scroller (styles.css). Chromium's
+  // own "scroll the newly focused thing into view" only PARTLY reveals a chip in
+  // that scroller: tabbing forward left 6 of the 13 chips clipped at the right
+  // edge, the worst showing 17px of a 176px chip, so a keyboard user could not
+  // read the chip they were on. It is not the scroll-snap: measured identically
+  // with snap-type none, snap-align none, mandatory and center. An explicit
+  // scrollIntoView does place it correctly, so do that on keyboard focus.
+  // :focus-visible keeps a tap/click from yanking the strip under the finger.
+  els.finderShapes.addEventListener('focusin', (e) => {
+    const btn = e.target.closest('.shape-chip');
+    if (!btn) return;
+    if (els.finderShapes.scrollWidth <= els.finderShapes.clientWidth) return;
+    try { if (!btn.matches(':focus-visible')) return; } catch (_) { /* old engine: scroll anyway */ }
+    btn.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+  });
+
   els.finderMoodChips.addEventListener('click', (e) => {
     const btn = e.target.closest('.mood-chip');
     if (!btn) return;
@@ -5505,6 +5522,10 @@ function shareShowCard(seriesId) {
 // mid-flash so the button can never get stuck showing the confirmation.
 function flashButtonLabel(buttonEl, label) {
   if (!buttonEl) return;
+  // Mirror it into the live region too: swapping a button's own text back after
+  // 1.8 s is not dependable for assistive tech, and it is the ONLY feedback the
+  // discovery buttons give when no show matches the filters.
+  if (els.srAnnouncer) els.srAnnouncer.textContent = label;
   const orig = buttonEl.dataset.origLabel || buttonEl.textContent;
   buttonEl.dataset.origLabel = orig;
   buttonEl.textContent = label;

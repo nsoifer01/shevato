@@ -5266,6 +5266,10 @@ body.advanced-drawer-open {
   gap: 0.3rem;
 }
 a.provider-tag-link {
+  /* These chips became real links in this round, so they are pointer targets
+     now and have to clear the 24 px floor; as display-only badges they did
+     not. */
+  min-height: 24px;
   cursor: pointer;
   text-decoration: none;
   color: rgba(125, 211, 252, 0.95) !important;

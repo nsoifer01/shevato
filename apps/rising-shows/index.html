@@ -110,6 +110,11 @@
 <a class="skip-link" href="#main-content">Skip to main content</a>
   <!-- Sync status banner — only visible when offline (and briefly on recovery). Managed by assets/js/sync-status.js. -->
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
+  <!-- Every transient button label the app flashes ("Copied!", "Shared!",
+       "No shows match") is mirrored here, because a label that changes back
+       after 1.8 s is not reliably announced by a screen reader, and on
+       VoiceOver usually is not announced at all. -->
+  <p id="srAnnouncer" class="visually-hidden" role="status" aria-live="polite"></p>
   <div data-include="header"></div>
 
   <main id="main-content" class="page">
