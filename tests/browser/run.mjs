@@ -31,6 +31,9 @@ const BASE = `http://127.0.0.1:${PORT}`;
 // The fpl-planner suites under apps/fpl-planner/e2e/ do the same for that app's
 // interactive scenario workflow and its gameweek lifecycle:
 //   npm run test:fpl-planner:e2e         (equivalent to --only=fpl-planner)
+// The maptap-rivals suite under apps/maptap-rivals/e2e/ pins the 2026-08-22
+// audit round (seeded a11y, keyboard, 390px containment, import safety):
+//   npm run test:maptap-rivals:e2e       (equivalent to --only=maptap-rivals)
 const SUITES = [
   'tests/browser/suites/site.mjs',
   'tests/browser/suites/apps.mjs',
@@ -50,6 +53,7 @@ const SUITES = [
   'apps/gym-tracker/e2e/units-migration.mjs',
   'apps/fpl-planner/e2e/scenario.mjs',
   'apps/fpl-planner/e2e/lifecycle.mjs',
+  'apps/maptap-rivals/e2e/quality.mjs',
 ];
 
 // --only=<substring> runs the suites whose path contains it; --headed opens a
@@ -74,7 +78,7 @@ for (const a of args) {
 const EXPECTED_CHECKS = {
   'tests/browser/suites/site.mjs': 157,
   'tests/browser/suites/apps.mjs': 101,
-  'tests/browser/suites/a11y.mjs': 33,
+  'tests/browser/suites/a11y.mjs': 35,
   'tests/browser/suites/visual.mjs': 86,
   'tests/browser/suites/perf.mjs': 41,
   'tests/browser/suites/pwa-gym.mjs': 14,

@@ -209,8 +209,9 @@
             <div class="paste-head">
               <label class="paste-date-field">
                 <span>Date</span>
-                <input type="date" id="paste-date">
+                <input type="date" id="paste-date" aria-describedby="paste-date-hint">
               </label>
+              <p class="paste-date-hint" id="paste-date-hint" role="status" hidden></p>
             </div>
 
             <div class="paste-mine">
@@ -351,7 +352,7 @@
 
       <div class="recent-games">
         <h3 class="section-title">Recent games</h3>
-        <div class="games-table-wrap">
+        <div class="games-table-wrap" tabindex="0" role="region" aria-label="Recent games table (scrolls sideways)">
           <table class="games-table" id="rival-games-table">
             <thead>
               <tr>
@@ -391,20 +392,22 @@
     <!-- LEADERBOARD VIEW -->
     <section class="view view-leaderboard" data-view-panel="leaderboard" hidden>
       <h2 class="section-title">Leaderboard: your win % against each rival</h2>
-      <div class="leaderboard-wrap">
+      <div class="leaderboard-wrap" tabindex="0" role="region" aria-label="Leaderboard table (scrolls sideways)">
         <table class="leaderboard-table" id="leaderboard-table">
           <thead>
             <tr>
               <th>#</th>
-              <th id="lb-th-rival" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">Rival</th>
-              <th id="lb-th-games" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">Games</th>
-              <th id="lb-th-wins" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">W</th>
-              <th id="lb-th-losses" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">L</th>
-              <th id="lb-th-ties" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">T</th>
-              <th id="lb-th-winpct" class="lb-th-sortable lb-th-sorted" tabindex="0" role="button" aria-sort="descending">Win %</th>
-              <th id="lb-th-rivalry" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">Rivalry <span class="lb-th-hint" title="Rivalry score blends win rate, total games played, recency of results, and average margin. Higher = you are winning the rivalry.">(?)</span></th>
-              <th id="lb-th-avgdiff" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">Avg Δ</th>
-              <th id="lb-th-streak" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">Streak</th>
+              <!-- aria-sort lives on the column header; the sort control is a real
+                   button inside it (aria-sort on a role=button was an axe critical). -->
+              <th id="lb-th-rival" class="lb-th-sortable" aria-sort="none"><button type="button" class="lb-sort-btn">Rival</button></th>
+              <th id="lb-th-games" class="lb-th-sortable" aria-sort="none"><button type="button" class="lb-sort-btn">Games</button></th>
+              <th id="lb-th-wins" class="lb-th-sortable" aria-sort="none"><button type="button" class="lb-sort-btn"><abbr title="Wins">W</abbr></button></th>
+              <th id="lb-th-losses" class="lb-th-sortable" aria-sort="none"><button type="button" class="lb-sort-btn"><abbr title="Losses">L</abbr></button></th>
+              <th id="lb-th-ties" class="lb-th-sortable" aria-sort="none"><button type="button" class="lb-sort-btn"><abbr title="Ties">T</abbr></button></th>
+              <th id="lb-th-winpct" class="lb-th-sortable" aria-sort="none"><button type="button" class="lb-sort-btn">Win %</button></th>
+              <th id="lb-th-rivalry" class="lb-th-sortable" aria-sort="none"><button type="button" class="lb-sort-btn" title="Rivalry score blends win rate, total games played, recency of results, and average margin. Higher = you are winning the rivalry.">Rivalry <span class="lb-th-hint" aria-hidden="true">(?)</span></button></th>
+              <th id="lb-th-avgdiff" class="lb-th-sortable" aria-sort="none"><button type="button" class="lb-sort-btn">Avg Δ</button></th>
+              <th id="lb-th-streak" class="lb-th-sortable" aria-sort="none"><button type="button" class="lb-sort-btn">Streak</button></th>
               <th>Form</th>
             </tr>
           </thead>
@@ -443,7 +446,7 @@
 
       <nav class="matrix-subtabs" id="matrix-subtabs" role="tablist" aria-label="Matrix metric"></nav>
 
-      <div class="matrix-wrap" id="matrix-wrap"></div>
+      <div class="matrix-wrap" id="matrix-wrap" tabindex="0" role="region" aria-label="Confusion matrix (scrolls sideways)"></div>
 
       <p class="empty-state" id="matrix-empty" hidden>
         Add at least one rival and log a game to populate the matrix.
@@ -488,10 +491,10 @@
           <!-- Days-filter chip: filled by renderHistoryDaysChip() when a
                finish-distribution position row was clicked; hidden otherwise. -->
           <span id="history-days-filter" hidden></span>
-          <select id="history-rival-filter">
+          <select id="history-rival-filter" aria-label="Filter history by rival">
             <option value="all">All rivals</option>
           </select>
-          <select id="history-result-filter">
+          <select id="history-result-filter" aria-label="Filter history by result">
             <option value="all">All results</option>
             <option value="win">Wins</option>
             <option value="loss">Losses</option>
@@ -499,7 +502,7 @@
           </select>
         </div>
       </div>
-      <div class="games-table-wrap">
+      <div class="games-table-wrap" tabindex="0" role="region" aria-label="Game history table (scrolls sideways)">
         <table class="games-table" id="history-table">
           <thead>
             <tr>
@@ -598,16 +601,19 @@
       <h2 id="rival-modal-title">Add rival</h2>
       <label class="modal-field">
         <span>Name</span>
-        <input type="text" id="rival-name" maxlength="32" placeholder="Friend's name">
+        <input type="text" id="rival-name" maxlength="32" placeholder="Friend's name" required aria-describedby="rival-name-error rival-name-hint" aria-invalid="false">
+        <span class="modal-field-error" id="rival-name-error" role="alert" hidden></span>
+        <span class="modal-field-hint" id="rival-name-hint" role="status" hidden></span>
       </label>
-      <label class="modal-field">
-        <span>Accent color</span>
+      <div class="modal-field" role="group" aria-labelledby="rival-color-label">
+        <span id="rival-color-label">Accent color</span>
         <div class="color-swatches" id="color-swatches"></div>
-      </label>
-      <label class="modal-field">
-        <span>Icon</span>
+      </div>
+      <div class="modal-field" role="group" aria-labelledby="rival-icon-label">
+        <span id="rival-icon-label">Icon</span>
         <div class="icon-swatches" id="icon-swatches"></div>
-      </label>
+        <span class="modal-field-hint">A color and icon not used by another rival are pre-selected; pick any you like.</span>
+      </div>
       <label class="modal-field">
         <span>MapTap username (optional)</span>
         <input type="text" id="rival-maptap-username" maxlength="32" placeholder="e.g. susmabit" autocomplete="off" spellcheck="false">
@@ -637,6 +643,22 @@
     </article>
   </div>
 
+  <!-- Delete rival confirmation modal (an Undo toast follows the delete) -->
+  <div class="modal" id="delete-rival-modal" role="dialog" aria-modal="true" aria-labelledby="delete-rival-title" hidden>
+    <div class="modal-backdrop" data-close="delete-rival-modal"></div>
+    <article class="modal-panel modal-panel-sm">
+      <button type="button" class="modal-close" data-close="delete-rival-modal" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+      </button>
+      <h2 id="delete-rival-title">Delete rival?</h2>
+      <p class="modal-confirm-body" id="delete-rival-body"></p>
+      <div class="modal-actions modal-actions-confirm">
+        <button type="button" class="btn btn-ghost" id="delete-rival-cancel" data-close="delete-rival-modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="delete-rival-confirm">Delete</button>
+      </div>
+    </article>
+  </div>
+
   <!-- Clear-all-games confirmation modal -->
   <div class="modal" id="clear-games-modal" role="dialog" aria-modal="true" aria-labelledby="clear-games-title" hidden>
     <div class="modal-backdrop" data-close="clear-games-modal"></div>
@@ -662,6 +684,7 @@
       </button>
       <h2 id="wa-modal-title">Import WhatsApp chat</h2>
       <p class="wa-overview" id="wa-overview"></p>
+      <p class="wa-format" id="wa-format" hidden></p>
 
       <h3 class="wa-step-title">1 · Map senders</h3>
       <p class="wa-hint">Tell me who's who. Senders left as <em>Skip</em> are ignored. Multiple senders can map to the same rival (e.g. an old name + a phone-number version).</p>
@@ -712,6 +735,7 @@
   <!-- App -->
   <script src="js/stats.js"></script>
   <script src="js/network.js"></script>
+  <script src="js/whatsapp.js"></script>
   <script src="js/app.js" defer></script>
   <script src="/assets/js/back-to-top.js" defer></script>
 </body>

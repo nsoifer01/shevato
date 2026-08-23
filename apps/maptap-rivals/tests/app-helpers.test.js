@@ -18,6 +18,7 @@ const assert = require('node:assert/strict');
 const APP_JS = fs.readFileSync(path.join(__dirname, '..', 'js', 'app.js'), 'utf8');
 const MapTapStats = require('../js/stats.js');
 const MapTapNetwork = require('../js/network.js');
+const MapTapWhatsApp = require('../js/whatsapp.js');
 
 // Objects built inside the vm context carry that realm's prototypes, which
 // assert.deepEqual (strict) rejects as "same structure but not
@@ -101,6 +102,9 @@ function loadApp(seed = {}) {
   sandbox.window = sandbox;
   sandbox.window.MapTapStats = MapTapStats;
   sandbox.window.MapTapNetwork = MapTapNetwork;
+  sandbox.window.MapTapWhatsApp = MapTapWhatsApp;
+  sandbox.MutationObserver = function () { return { observe() {}, disconnect() {} }; };
+  sandbox.requestAnimationFrame = (fn) => setTimeout(fn, 0);
   const ctx = vm.createContext(sandbox);
   vm.runInContext(APP_JS, ctx, { filename: 'app.js' });
   return ctx;
@@ -372,4 +376,104 @@ test('upsertPastedGame: a different date or rival is a new record, not an update
   helpers.upsertPastedGame(games, pastedGame({ id: 'b', date: '2026-08-02' }));
   helpers.upsertPastedGame(games, pastedGame({ id: 'c', rivalId: 'r2' }));
   assert.equal(games.length, 3);
+});
+
+
+// ---------------------------------------------------------------------------
+// 2026-08-22 quality pass: helpers added or fixed by the audit round.
+// ---------------------------------------------------------------------------
+
+test('swingLines: reads totals through the canonical helpers (array-only games used to print undefined)', () => {
+  const c = loadApp({
+    maptapRivalsRivals: [{ id: 'r1', name: 'Ari', color: '#fff', icon: 'x' }],
+    maptapRivalsGames: [
+      { id: 'a', rivalId: 'r1', date: '2026-08-10', myScores: [100, 100, 100, 100, 100], theirScores: [0, 0, 0, 0, 0], createdAt: 1 },
+      { id: 'b', rivalId: 'r1', date: '2026-08-11', myScore: 500, theirScore: 650, createdAt: 2 },
+    ],
+  });
+  const s = c._testExports.rivalSummary({ id: 'r1', name: 'Ari' });
+  assert.deepEqual(plain(c._testExports.swingLines(s)), [
+    'Best win +1000 (1000–0 on Aug 10, 2026)',
+    'Worst loss −150 (500–650 on Aug 11, 2026)',
+  ]);
+  assert.ok(!JSON.stringify(c._testExports.swingLines(s)).includes('undefined'));
+});
+
+test('swingLines: a rival you only ever beat has one line', () => {
+  const c = loadApp({
+    maptapRivalsRivals: [{ id: 'r1', name: 'Ari', color: '#fff', icon: 'x' }],
+    maptapRivalsGames: [{ id: 'a', rivalId: 'r1', date: '2026-08-10', myScores: [90, 90, 90, 90, 90], theirScores: [10, 10, 10, 10, 10], createdAt: 1 }],
+  });
+  const s = c._testExports.rivalSummary({ id: 'r1', name: 'Ari' });
+  assert.equal(c._testExports.swingLines(s).length, 1);
+});
+
+test('consistencyLabel: bands are on the 0-1000 daily-total scale', () => {
+  const f = helpers.consistencyLabel;
+  assert.equal(f(0), 'Very steady scorer');
+  assert.equal(f(59.9), 'Very steady scorer');
+  assert.equal(f(60), 'Fairly consistent scorer');
+  assert.equal(f(109.9), 'Fairly consistent scorer');
+  assert.equal(f(110), 'Streaky, high-variance scorer');
+  assert.equal(f(NaN), 'Not enough games yet');
+});
+
+test('continentSubText: singular and plural forms read correctly', () => {
+  const f = helpers.continentSubText;
+  assert.equal(f(15, 6, 1), '15 rounds across 6 continents · 1 game without geo data (re-sync to backfill)');
+  assert.equal(f(5, 1, 2), '5 rounds across 1 continent · 2 games without geo data (re-sync to backfill)');
+  assert.equal(f(1, 1, 0), '1 round across 1 continent');
+});
+
+test('pasteDateHintText: today is silent, past and future days are spelled out', () => {
+  const f = helpers.pasteDateHintText;
+  assert.equal(f('2026-08-22', '2026-08-22'), '');
+  assert.equal(f('2026-08-21', '2026-08-22'), 'Logging for Fri, Aug 21, 2026 (yesterday).');
+  assert.equal(f('2026-08-01', '2026-08-22'), 'Logging for Sat, Aug 1, 2026 (21 days ago).');
+  assert.equal(f('2026-12-31', '2026-08-22'), 'Logging for Thu, Dec 31, 2026, which is in the future.');
+  assert.equal(f('', '2026-08-22'), 'No date set: games will be saved under today.');
+  assert.equal(f('2026-02-30', '2026-08-22'), 'That date is invalid.');
+});
+
+test('leaveNetworkMessage: never claims a remote deletion that did not happen', () => {
+  const f = helpers.leaveNetworkMessage;
+  assert.match(f(false, false), /this device only/);
+  assert.match(f(false, false), /Sign in/);
+  assert.doesNotMatch(f(false, false), /are removed/);
+  assert.match(f(true, true), /failed/);
+  assert.match(f(true, false), /are removed/);
+});
+
+test('rivalNameClash: case-insensitive, trimmed, excludes the rival being edited', () => {
+  const c = loadApp({ maptapRivalsRivals: [{ id: 'r1', name: 'Ari', color: '#fff', icon: 'x' }, { id: 'r2', name: 'Bex', color: '#fff', icon: 'x' }] });
+  const f = c._testExports.rivalNameClash;
+  assert.equal(f(' ari ', null).id, 'r1');
+  assert.equal(f('Ari', 'r1'), null);
+  assert.equal(f('Cy', null), null);
+  assert.equal(f('', null), null);
+});
+
+// Drama copy (audit #10): a streak LEVEL with the record is one win short of
+// breaking it, so the line must say so instead of "match your record".
+function dramaFor(results) {
+  const games = results.map((r, i) => ({
+    id: 'g' + i, rivalId: 'r1', date: `2026-07-${String(i + 1).padStart(2, '0')}`, createdAt: i,
+    myScore: r === 'W' ? 700 : r === 'L' ? 500 : 600, theirScore: 600,
+  }));
+  const c = loadApp({ maptapRivalsRivals: [{ id: 'r1', name: 'Ari', color: '#fff', icon: 'x' }], maptapRivalsGames: games });
+  return c._testExports.streakDrama('r1');
+}
+test('streakDrama: a win streak equal to the previous best reads "level with your record: win today to break it"', () => {
+  const d = dramaFor(['W', 'W', 'L', 'W', 'W']);
+  assert.equal(d.kind, 'win');
+  assert.match(d.text, /level with your record: win today to break it/);
+  assert.doesNotMatch(d.text, /match your record/);
+});
+test('streakDrama: a win streak past the previous best reads "New record!"', () => {
+  assert.match(dramaFor(['W', 'L', 'W', 'W']).text, /New record! 2-game win streak/);
+});
+test('streakDrama: a losing streak equal to the previous worst reads "level with your worst slump"', () => {
+  const d = dramaFor(['L', 'L', 'W', 'L', 'L']);
+  assert.equal(d.kind, 'loss');
+  assert.match(d.text, /Level with your worst slump/);
 });
