@@ -25,6 +25,21 @@ The room password is never persisted anywhere. Full design in the README
   users reuse passwords - and that is fully closed. Do not "fix" the
   replay boundary casually; it is pinned by a rules test that documents
   it.
+- **Gate deletion is a lifecycle-gated operation (fixed 2026-08-23).** It
+  used to be `allow delete: if request.auth != null`, which was a full
+  password bypass, not a cleanup convenience: a stranger with the code could
+  `deleteDoc` the gate from the console and the member-create rule's
+  `!exists(gate)` branch then admitted them, and every later joiner, with any
+  password (the UI still asked for one and ignored it). The gate may now be
+  deleted only by the room HOST while the room doc exists, or by anyone once
+  the room doc is GONE (the orphan sweep). That is why the teardown order in
+  `leaveRoom` matters and must not be "tidied": the last leaver takes over
+  `hostUid` if the host is stale, deletes the ROOM DOC FIRST, and only then
+  sweeps the gate, chat and leftover player docs. Both branches are things
+  the rules can actually verify; "the last leaver" is not. Pinned by
+  `tests-rules/rules.test.mjs` "P0 exploit sequence (audit D1)" and "gate
+  lifecycle", and by the e2e's two D1-exploit checks driven from a third
+  client's own SDK.
 - **Solo/daily rooms** are `isPrivate` with no password. Pre-migration
   they were unjoinable because `'' !== data.password` always failed;
   post-migration they store `randomGateHash()` (256 random bits), which
@@ -81,25 +96,40 @@ Gotchas that cost time, so they are recorded:
 
 ## Two-client e2e gotchas (apps/arena/e2e/emulator.mjs)
 
-- **The host's entire game clock runs in a rAF loop** (early reveal,
-  question advance, finish - the timer loop in app.js), and headless
-  Chrome PAUSES requestAnimationFrame in background tabs. The host page
-  must be kept foreground (`Page.bringToFront`); the joiner is fine in
-  the background because its UI is driven by Firestore snapshot
-  callbacks and CDP input reaches background targets.
+- **The rAF loops are RENDER-only since 2026-08-23.** Game progression
+  (early reveal, advance, finish) lives in `progressRoomClock`, which is
+  driven by a 500 ms `setInterval` and by `visibilitychange` as well as by
+  the rAF ticks, and any member may perform the timed advance once the
+  question window has elapsed plus `ADVANCE_FALLBACK_SLACK_MS` (the rules
+  re-check the deadline against the SERVER clock). A hidden or closed host
+  therefore no longer freezes the room - it used to sit on a live question
+  with no `revealStartedAt` for the full 27 s observed and only moved 2.5 s
+  after the host tab was fronted. Headless Chrome still pauses rAF in
+  background tabs, so anything that is purely a RENDER (the Globe Drop Ready
+  bar, the timer ring) still needs its tab fronted before it can be clicked -
+  the e2e fronts B just to vote Ready, then hands the foreground back.
+  `Page.captureScreenshot` also HANGS (45 s) on a tab that is not the active
+  target, so bring a tab to front before every screenshot.
 - **Two players in one browser profile share origin storage** (and thus
   one Firebase auth user - firebase-config even broadcasts auth changes
   cross-tab). Serve one page from `127.0.0.1:<port>` and the other from
   `localhost:<port>`: same static server, different origins, isolated
   auth. Both hostnames satisfy the emulator seam.
-- **The shared sync-modal integration opens a full-screen modal and then
-  RELOADS the page** whenever a user signs in after initial page load -
-  exactly what the guest-auth bootstrap on create/join does. Coordinate
-  clicks land on `.sync-modal-content` instead of the app. Its own 30s
-  dedupe (`sessionStorage['lastSyncModalTime']`) suppresses it; the e2e
-  pre-seeds that key. This also means in PRODUCTION a first-time guest
-  probably gets the sync modal + reload right after creating/joining
-  (the ?room= URL re-enters the room, masking it). Worth an owner look.
+- **The shared sync-modal integration skips anonymous users (fixed
+  2026-08-23).** It opens a full-screen modal and then RELOADS the page
+  whenever a user signs in after initial page load, which is exactly what the
+  guest bootstrap on create/join does: a first-time guest clicking "Create
+  room" got the white "Sync Complete! Refreshing page..." modal about 10 ms
+  after the click and a reload about 1 s later, while `createRoom` was still
+  between `setDoc(room)` and `joinPlayer` - back to the lobby, no `?room=`,
+  and a room doc with zero player docs left in Firestore forever. Guests have
+  no `users/{uid}` namespace, so there was never anything to sync: the
+  integration now returns early for `user.isAnonymous`. A REGISTERED sign-in
+  still gets the modal and the reload, which is correct and is pinned in both
+  layers (`sync-system/tests/sync-modal-integration.test.mjs` and the e2e's
+  "D2 boundary" check) so nobody can "fix" the guest case by disabling the
+  feature outright. The e2e no longer seeds `sessionStorage.lastSyncModalTime`
+  at all; it waits the registered reload out instead.
 - **Auth-emulator URLs embed the production hostname in the PATH**
   (`http://127.0.0.1:9099/identitytoolkit.googleapis.com/...`), so a
   substring block on production hosts would kill emulator traffic too -
@@ -128,6 +158,176 @@ Gotchas that cost time, so they are recorded:
   Pinned in the rules suite; fixing it would need a rules carve-out or
   removing the write.
 - The gateHash replay boundary (see above).
+- **Non-host room-doc writes are now an enumerated allow-list, not "client
+  of truth" (changed 2026-08-23).** A non-host could set `hostUid`, delete the
+  room ("Room closed." for everyone) or write `currentQuestionIndex: -3` /
+  `status: 'bogus'` and wedge the room, bypassing the per-player mid-game
+  allowances that exist precisely to stop griefing. The rules now let a
+  MEMBER (someone who owns a player doc in the room) write only the forms the
+  app actually needs, each with `affectedKeys().hasOnly`: pause/resume, end
+  the game early, the four rematch fields, the current decider's category
+  pick, the timed advance once the server clock says the window elapsed, and
+  a `hostUid` takeover naming themselves when the current host's player doc
+  is gone or stale. Everything else on the room doc is host-only, and only
+  the host may delete it. When adding a room-doc write to app.js, add its
+  shape to the matching rules function or it will 403 in production while
+  passing locally against stale rules.
+
+## Liveness and cleanup (rebuilt 2026-08-23)
+
+- **Liveness is `RoomState.isPlayerLive`**, mirrored by `isStalePlayerData`
+  in `firestore.rules` (change both together, and the constants in
+  `js/config.js` with them). A player is live unless they announced a
+  disconnect more than `DISCONNECT_GRACE_MS` (30 s) ago, or their `lastSeen`
+  heartbeat is older than `PRESENCE_STALE_MS` (120 s). Every client stamps
+  `lastSeen` every `PRESENCE_HEARTBEAT_MS` (30 s) from
+  `startPresenceAndClock`, so a tab that dies WITHOUT `beforeunload` (crash,
+  force-quit, lost network) still goes stale - `disconnectedAt` alone never
+  covered that case.
+- **Ghosts no longer count anywhere**: early reveal, the Ready-to-skip vote,
+  `rematchPlayerCount`, the Start-button minimum and the last-leaver check all
+  run over live players only. Before this, a single ghost meant every round
+  ran the full timer, a unanimous rematch could never complete, and the room
+  was never deleted because "last player" never happened.
+- **Liveness expires on a CLOCK, not on a write.** Nothing re-renders when a
+  player simply goes stale, so the lobby kept showing a ghost as live
+  indefinitely. The 500 ms clock tick recomputes the live-uid signature and
+  re-renders when it changes; stale players render as "Disconnected" (dimmed
+  tile plus badge, "(away)" in the live boards).
+- **The host sweeps stale player docs** (`sweepStalePlayers`, once per uid
+  per room). The rules allow a host to delete a player doc ONLY when it is
+  stale by the same definition, so a host cannot kick a live player. The old
+  comments promised a "host TTL sweep" that did not exist anywhere.
+- **Teardown order is load-bearing**: room doc first, then chat, gate and
+  leftover player docs (see the gate bullet above). Chat is append-only while
+  the room lives - the rules only permit chat deletes once the room doc is
+  gone, which is what makes the sweep possible at all without handing anyone
+  a mid-game message-recall power.
+- **Still not covered: rooms abandoned with no live client left** (everyone
+  force-quits, or the last leaver's sweep write fails). Nothing on the client
+  can delete them, because the sweep needs a signed-in caller. That is the
+  one remaining orphan path and it needs a scheduled server-side job; see the
+  note in README "Cleanup".
+- **Chat moderation is local.** `chat.js` is a word-boundary wordlist; six
+  chat sends produced zero external requests. The user-facing copy now says
+  "blocked by the profanity filter" instead of naming a moderation service.
+- **H2H writes skip guests on BOTH sides now.** A player doc carries
+  `isGuest`, and a registered player skips the lifetime `triviaH2H` pair
+  write against a guest opponent - those rows could only ever orphan, since a
+  guest uid dies with browser storage.
+
+## Behaviours fixed in the 2026-08-23 remediation round
+
+Each of these was a confirmed audit defect; each is pinned by the test named
+beside it, so a regression fails a suite rather than reappearing silently.
+
+- **The Trivia picking stage can no longer stall the room.** `startGame`
+  put the room into `status: 'picking'` with a `deciderUid` and there was no
+  deadline, no host override and no auto-pick anywhere: a decider who locked
+  their phone, backgrounded the tab or just never chose left every player
+  staring at "Waiting for X to pick a category" forever, with leaving the
+  room the only escape. This is exactly the failure D3 fixed for the asking
+  phase, left open one stage earlier, and it is the likeliest real cause of
+  the `stage-picking` cascades seen while stabilising the e2e. Entering the
+  stage now stamps `pickingStartedAt`; after `PICK_DEADLINE_MS` any MEMBER
+  may pick, deterministically (`RoomState.autoPickQuestion`, seeded from room
+  code + round + index) so every client agrees without coordination, through
+  a transaction whose precondition (still picking, same index, no question
+  yet) makes the race idempotent. The decider's own pick still wins whenever
+  it lands first. The `renderPickingStage` host fallback now keys off
+  LIVENESS rather than mere presence, so a ghost decider hands the pick over
+  immediately instead of after a sweep. Pinned by the rules test
+  "picking-stage deadline" and the e2e's S7 (the decider goes offline
+  mid-picking; the other client still reaches a question, and the decider
+  reconnecting does not double-advance).
+- **The end screen is a snapshot, not a live render.** It used to rank
+  `state.roomPlayers` live, so the first leaver's doc deletion rewrote
+  podium, board and recap for everyone still looking at them (the winner
+  vanished and the runner-up "took it home"). The finishing write now stamps
+  an ordered `finalRanking` on the room doc
+  (`RoomState.finalRankingSnapshot`), the end stage renders from it, and
+  `endStagePlayers()` keeps the players present at the finish for the recap
+  tables. Pinned by the D5 unit tests and the e2e "after the winner leaves"
+  check.
+- **Profile and leaderboard cannot drift.** `writeEndOfGameStats` used to
+  `increment()` the profile but write the leaderboard row from a locally
+  mutated `state.profile` copy, and only excluded `playMode === 'solo'` from
+  wins, so a one-player daily counted as a win. One pure
+  `RoomState.endOfGameStatsDelta` now feeds both, inside a single
+  transaction, and a win requires a multiplayer game with 2+ players. Pinned
+  by the D8 unit tests and the e2e leaderboard-equals-profile check.
+- **A lost answer is disclosed.** `submitAnswer` trusted its optimistic
+  render; an answer clicked while offline showed "Locked in" and vanished.
+  The catch now clears the optimistic state and either re-arms the buttons
+  (window still open) or says the answer was not saved.
+- **Chat rate limit stamps `lastSentAt` BEFORE the await**, so a second send
+  inside the window is refused (it used to stamp after `await addDoc`, which
+  let a 200 ms double-send through). The input also discloses the 280-char
+  truncation instead of silently clipping.
+- **Double-clicking Start no longer auto-picks a category**: `startGame`
+  disables its own button immediately (and re-enables it if the write fails),
+  and `pickCategoryAndStart` ignores picks inside a 400 ms settle window
+  after the grid renders, because the grid paints under the old button's
+  coordinates.
+- **A rematch prompt closes on every client** as soon as the proposal dies
+  (declined, cancelled, timed out) instead of hanging until its own 10 s
+  auto-decline, and closing it that way records no response.
+- **Daily runs use the solo end-screen treatment** (a "Final score" hero, no
+  podium, no "You won!"), because a daily is a single-player run.
+- **Mobile/a11y**: the finished room header wraps at 360 (it overflowed by
+  9 px and clipped "Back to lobby"), header controls and the room-code
+  buttons meet 44 px, both leaderboard tables are focusable scroll regions
+  with a swipe hint, the recap table is a labelled scroll region,
+  `aria-label` is gone from the role-less backdrops and check spans,
+  "Playing as a guest." meets contrast, Escape restores focus to the
+  triggering control, and both password inputs are `type="password"` with a
+  Show/Hide toggle. Seeded axe scans inside the e2e (lobby, asking, end at
+  1280 and 360, three modals) assert zero serious/critical violations.
+
+## Probe notes (2026-08-22, extended 2026-08-23)
+
+- Emulator probes from a page need `window.firebaseAuth.signInAsGuest()`
+  first; an unauthenticated SDK call returns `permission-denied` or a
+  null-uid TypeError that looks exactly like a rules deny.
+- Arena makes zero RTDB requests; RTDB rules are irrelevant to it.
+- **`evaluate()` wraps its argument in `JSON.stringify((...))`**, so a probe
+  that passes a STATEMENT (`window.__x = 1; 1`) is a syntax error and returns
+  null - silently, looking exactly like the app failing to do something. Pass
+  an expression (`(window.__x = 1, 1)`) and assert the marker took before
+  relying on it. This faked a "the page reloaded" failure for a whole run.
+- **A blocking JS dialog freezes the renderer**, and the next
+  `Input.dispatchMouseEvent` then fails with a 45 s `timeout:` error
+  somewhere unrelated. The e2e handles `Page.javascriptDialogOpening`,
+  dismisses it and records the text, so an `alert()` shows up as evidence
+  instead of a mystery hang.
+- **A registered sign-up mid-suite reloads the page** (correctly - see the
+  sync-modal bullet). Wait the reload out and re-establish any in-page marker
+  before driving the UI, or the scenario runs against a wiped page.
+- **A coordinate click is only real once the target is the element AT that
+  point.** Three separate "the app ignored my click" hunts all ended here:
+  an answer button below the fold at 360x740, and a room-header control
+  under the site's own fixed header on a long end screen. `clickText` and
+  `clickSel` happily report success in both cases and the app never sees the
+  click, which then reads as a stalled room several checks later. The suite's
+  `safeClick` / `clickAnswerText` scroll the target into view, then wait
+  until `elementFromPoint` at its centre resolves to it, and only then click.
+- **Confirm writes against the DOCUMENT, not the UI.** An optimistic render
+  says "Locked in" before the write lands, so a suite that trusts the click
+  measures nothing. Every answer in the multi-client scenarios is confirmed
+  by polling the player doc for `currentAnsweredFor`, with a window sized to
+  the asking phase rather than to a guess about machine speed.
+- **Anchor timing claims to the ROOM's own server clock.** Asserting "the
+  Ready vote advanced the round early" from harness wall-clock measured CDP
+  latency and failed on a loaded machine; comparing against
+  `questionStartedAt + asking + reveal` from the room doc is what the product
+  actually promises.
+- **Each scenario runs inside its own guard and starts from the lobby**
+  (`resetToLobby`, which leaves cleanly or reloads the page). A CDP
+  `Input.dispatchMouseEvent` / `Runtime.evaluate` timeout under machine
+  contention used to abort every remaining check; now it fails one scenario.
+  `ARENA_E2E_VERBOSE=1` streams each check as it resolves, which is the only
+  way to see WHERE a stalled run stalled (the runner prints its tally at the
+  end).
 
 ## Decisions this round
 

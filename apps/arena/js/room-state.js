@@ -390,6 +390,112 @@
         };
     }
 
+    /**
+     * Deterministic category-free question pick for the picking-stage
+     * deadline. Every client seeds the same PRNG from the room code, round
+     * and question index, so the auto-pick needs no coordination: whoever
+     * writes first writes the SAME question the others would have.
+     * @returns {object|null} a question from the unplayed pool
+     */
+    function autoPickQuestion(pool, playedIds, { code, round, index } = {}) {
+        const key = `${code || ''}:${round || 1}:${index || 0}`;
+        let h = 0x811c9dc5; // FNV-1a
+        for (let i = 0; i < key.length; i++) {
+            h ^= key.charCodeAt(i);
+            h = Math.imul(h, 0x01000193) >>> 0;
+        }
+        // mulberry32, same generator family as the daily challenge seed.
+        const rand = () => {
+            h = (h + 0x6D2B79F5) >>> 0;
+            let t = h;
+            t = Math.imul(t ^ (t >>> 15), t | 1);
+            t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+        return pickQuestionFromPool(pool, playedIds, '__any__', rand);
+    }
+
+    /**
+     * Liveness of a player doc. A player is live unless they announced a
+     * disconnect (beforeunload writes `disconnectedAt`, epoch ms) more than
+     * DISCONNECT_GRACE_MS ago, or their lastSeen heartbeat (Firestore
+     * Timestamp or epoch ms) is older than PRESENCE_STALE_MS. A doc with no
+     * timestamps at all is treated as live (pending serverTimestamp on a
+     * just-created doc). Mirrors isStalePlayerData in firestore.rules.
+     * @param {object} p - player doc data
+     * @param {number} nowMs
+     * @returns {boolean}
+     */
+    function isPlayerLive(p, nowMs) {
+        if (!p) return false;
+        const now = typeof nowMs === 'number' ? nowMs : Date.now();
+        if (typeof p.disconnectedAt === 'number'
+            && now - p.disconnectedAt > Config.DISCONNECT_GRACE_MS) return false;
+        const seen = p.lastSeen;
+        const seenMs = seen && typeof seen.toMillis === 'function'
+            ? seen.toMillis()
+            : (typeof seen === 'number' ? seen : null);
+        if (seenMs != null && now - seenMs > Config.PRESENCE_STALE_MS) return false;
+        return true;
+    }
+
+    /** Players from `players` that isPlayerLive at `nowMs`. */
+    function livePlayers(players, nowMs) {
+        return (Array.isArray(players) ? players : []).filter((p) => isPlayerLive(p, nowMs));
+    }
+
+    /**
+     * Compact, ordered final-ranking snapshot for the room doc when a game
+     * finishes ({ uid, displayName, score, streak }, best first). `scoreOf`
+     * lets Globe Drop rank by its recomputed-from-distance total. Ties keep
+     * the higher streak first, then name, so every client derives the same
+     * order. Written once on status=finished so the end screen no longer
+     * rewrites itself when a player leaves (audit D5).
+     */
+    function finalRankingSnapshot(players, scoreOf) {
+        const score = typeof scoreOf === 'function' ? scoreOf : (p) => (p && p.score) || 0;
+        return (Array.isArray(players) ? players : [])
+            .filter((p) => p && typeof p.uid === 'string')
+            .map((p) => ({
+                uid: p.uid,
+                displayName: String(p.displayName == null ? '' : p.displayName),
+                score: Math.max(0, Math.round(Number(score(p)) || 0)),
+                streak: Math.max(0, Math.round(Number(p.streak) || 0))
+            }))
+            .sort((a, b) => (b.score - a.score) || (b.streak - a.streak) || a.displayName.localeCompare(b.displayName));
+    }
+
+    /**
+     * End-of-game profile delta for one player. Pure so the leaderboard and
+     * users/{uid} writes derive from ONE computation (audit D8: the two
+     * surfaces disagreed). A win needs an opponent: solo runs and daily runs
+     * (always one player) never count as wins, whatever the ranking says.
+     * @returns {{ scoreDelta, gamesDelta, winsDelta, bullseyes, bestRound }}
+     */
+    function endOfGameStatsDelta({ playMode, didWin, playerCount, score, answers }) {
+        const mode = playMode || 'multi';
+        const opponents = mode === 'multi' && (Number(playerCount) || 0) >= 2;
+        let bullseyes = 0;
+        let bestRound = 0;
+        for (const r of (Array.isArray(answers) ? answers : [])) {
+            if (!r) continue;
+            const base = (typeof r.basePoints === 'number')
+                ? Math.max(0, Math.round(r.basePoints))
+                : (typeof r.points === 'number' && typeof r.multiplier === 'number' && r.multiplier > 0
+                    ? Math.round(r.points / r.multiplier) : 0);
+            if (base >= 98) bullseyes++;
+            const pts = Number(r.points) || 0;
+            if (pts > bestRound) bestRound = pts;
+        }
+        return {
+            scoreDelta: Math.max(0, Math.round(Number(score) || 0)),
+            gamesDelta: 1,
+            winsDelta: (opponents && didWin) ? 1 : 0,
+            bullseyes,
+            bestRound
+        };
+    }
+
     return {
         generateRoomCode,
         normalizeRoomCode,
@@ -403,6 +509,11 @@
         aggregateGlobeDropStats,
         pickDecider,
         availableCategoriesFromPool,
-        pickQuestionFromPool
+        pickQuestionFromPool,
+        autoPickQuestion,
+        isPlayerLive,
+        livePlayers,
+        finalRankingSnapshot,
+        endOfGameStatsDelta
     };
 }));

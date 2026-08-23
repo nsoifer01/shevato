@@ -259,7 +259,10 @@
               </label>
               <label class="lobby-field" id="create-password-field" hidden>
                 <span>Room password</span>
-                <input type="text" id="create-password" maxlength="32" placeholder="Set a password" autocomplete="off">
+                <span class="pw-wrap">
+                  <input type="password" id="create-password" maxlength="32" placeholder="Set a password" autocomplete="new-password">
+                  <button type="button" class="pw-toggle" data-pw-toggle="create-password" aria-pressed="false" aria-label="Show password">Show</button>
+                </span>
                 <p class="field-warning" id="create-password-warning" role="alert" hidden>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
                   <span>Please set a password for your private room.</span>
@@ -301,7 +304,10 @@
               </label>
               <label class="lobby-field" id="join-password-field" hidden>
                 <span>Password</span>
-                <input type="text" id="join-password" maxlength="32" placeholder="Password" autocomplete="off">
+                <span class="pw-wrap">
+                  <input type="password" id="join-password" maxlength="32" placeholder="Password" autocomplete="off">
+                  <button type="button" class="pw-toggle" data-pw-toggle="join-password" aria-pressed="false" aria-label="Show password">Show</button>
+                </span>
               </label>
               <p class="join-error" id="join-error" hidden></p>
               <button type="button" class="btn btn-primary lobby-cta" id="join-room-btn">Join room</button>
@@ -807,7 +813,7 @@
                  per-player score cells | winner. Cards version was
                  noisier than this; the table reads as a single grid
                  at a glance for 8-10 round matches. -->
-            <div class="end-recap-table-wrap">
+            <div class="end-recap-table-wrap" tabindex="0" role="region" aria-label="Round-by-round recap">
               <table class="end-recap-table" id="end-recap-table">
                 <thead id="end-recap-thead"></thead>
                 <tbody id="end-recap-tbody"></tbody>
@@ -871,7 +877,7 @@
         </div>
       </header>
 
-      <div class="leaderboard-wrap">
+      <div class="leaderboard-wrap" tabindex="0" role="region" aria-label="Leaderboard table">
         <table class="leaderboard-table" id="leaderboard-table">
           <thead>
             <tr>
@@ -890,6 +896,7 @@
           <tbody id="leaderboard-body"></tbody>
         </table>
       </div>
+      <p class="leaderboard-scroll-hint" aria-hidden="true">Swipe sideways for more columns</p>
       <p class="empty-state" id="leaderboard-empty">
         No games played yet. Be the first to land on the board.
       </p>
@@ -911,7 +918,7 @@
         </h2>
         <p class="leaderboard-sub">Same locations for everyone, one daily run.</p>
       </header>
-      <div class="leaderboard-wrap">
+      <div class="leaderboard-wrap" tabindex="0" role="region" aria-label="Leaderboard table">
         <table class="leaderboard-table" id="leaderboard-daily-table">
           <thead>
             <tr>
@@ -926,6 +933,7 @@
           <tbody id="leaderboard-daily-body"></tbody>
         </table>
       </div>
+      <p class="leaderboard-scroll-hint" aria-hidden="true">Swipe sideways for more columns</p>
       <p class="empty-state" id="leaderboard-daily-empty">
         No one has finished today's challenge yet. Be first.
       </p>
@@ -1032,7 +1040,7 @@
        title/body/labels in and returns a Promise<boolean>. Replaces
        window.confirm() so confirmations match the dark theme. -->
   <div class="modal" id="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title" hidden>
-    <div class="modal-backdrop" data-confirm-close aria-label="Close dialog"></div>
+    <div class="modal-backdrop" data-confirm-close aria-hidden="true"></div>
     <article class="modal-panel modal-panel-sm">
       <button type="button" class="modal-close" data-confirm-close aria-label="Close">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
@@ -1050,7 +1058,7 @@
        game that publishes their name to a surface other players read
        (room player list, chat, leaderboards). -->
   <div class="modal" id="name-prompt-modal" role="dialog" aria-modal="true" aria-labelledby="name-prompt-title" hidden>
-    <div class="modal-backdrop" data-name-prompt-close aria-label="Close dialog"></div>
+    <div class="modal-backdrop" data-name-prompt-close aria-hidden="true"></div>
     <article class="modal-panel modal-panel-sm">
       <button type="button" class="modal-close" data-name-prompt-close aria-label="Close">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>

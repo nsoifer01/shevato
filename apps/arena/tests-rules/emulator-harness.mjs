@@ -210,6 +210,7 @@ export const OWNER = 'owner'; // admin bypass token (rules skipped)
 
 function toValue(v) {
     if (v === null) return { nullValue: null };
+    if (v instanceof Date) return { timestampValue: v.toISOString() };
     if (typeof v === 'string') return { stringValue: v };
     if (typeof v === 'boolean') return { booleanValue: v };
     if (typeof v === 'number') {

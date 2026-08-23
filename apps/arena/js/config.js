@@ -35,6 +35,21 @@
         STREAK_MULTIPLIER_STEP: 0.1,   // +10% per consecutive correct
         STREAK_MULTIPLIER_CAP: 5,      // capped at 5 in a row (=> 1.5x)
 
+        // Presence / liveness (mirrored in firestore.rules isStalePlayerData
+        // and memberTimedAdvance - change both together).
+        DISCONNECT_GRACE_MS: 30000,    // beforeunload -> rejoin-with-score window
+        PRESENCE_HEARTBEAT_MS: 30000,  // each client refreshes its lastSeen this often
+        PRESENCE_STALE_MS: 120000,     // no heartbeat for this long = disconnected
+        // How long the decider gets to choose a category before ANY member
+        // may auto-pick one for the room (mirrored in firestore.rules
+        // memberTimedPick). Without this the picking stage had no deadline
+        // at all and a decider who locked their phone stalled the room
+        // forever, the same failure D3 fixed one stage later.
+        PICK_DEADLINE_MS: 20000,
+        // Non-host clients wait this much past the question deadline before
+        // advancing the room themselves (the host normally wins the race).
+        ADVANCE_FALLBACK_SLACK_MS: 1500,
+
         // Cosmetic limits.
         MAX_DISPLAY_NAME: 20,
         MAX_PLAYERS_PER_ROOM: 16,
