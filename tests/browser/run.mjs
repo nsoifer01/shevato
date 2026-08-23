@@ -76,7 +76,7 @@ const EXPECTED_CHECKS = {
   'tests/browser/suites/apps.mjs': 101,
   'tests/browser/suites/a11y.mjs': 33,
   'tests/browser/suites/visual.mjs': 86,
-  'tests/browser/suites/perf.mjs': 41,
+  'tests/browser/suites/perf.mjs': 51,
   'tests/browser/suites/pwa-gym.mjs': 14,
 };
 

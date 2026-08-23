@@ -11,6 +11,13 @@ on:
   pull_request:
   # Also on push to master: branch protection makes direct pushes rare, but a
   # merge that lands without a fresh PR run should still get browser coverage.
+  #
+  # Known gap, not fixable here: the daily Rising Shows refresh merges its bot
+  # PR with GITHUB_TOKEN, and GitHub does not start workflow runs from
+  # GITHUB_TOKEN-driven events, so neither the bot PR runs (they sit at
+  # action_required) nor this push trigger ever fire for those merges. See the
+  # note on the "Open and merge PR" step in refresh-rising-shows.yml for what
+  # the owner would have to set up to change that.
   push:
     branches: [master]
   workflow_dispatch:
@@ -50,8 +57,19 @@ jobs:
           exit 1
 
       # The rising-shows dataset is gitignored and lives on a GitHub release, so
-      # it is absent here. The suite skips its six data-dependent checks and
-      # reports them; every other app is fully exercised. Downloading 111 MB on
-      # every pull request is not worth those six assertions.
+      # it is absent here. The suite skips its data-dependent checks and reports
+      # them; every other app is fully exercised. Downloading 111 MB on every
+      # pull request is not worth those assertions.
+      #
+      # What is NOT skipped, and is the reason that trade is still sound: the
+      # perf suite's rising-shows boot-network contract builds a ~6 KB fixture
+      # dataset at test time by running the real scripts/split-data.js, serves
+      # it through CDP interception, and asserts which dataset URLs the app
+      # fetches (index only at boot, never data.json, never the extras
+      # monolith, one detail file per show open, nothing on reopen). That runs
+      # here on every pull request and needs no download. The three
+      # rising-shows byte / request / DOM budget rows, which cannot mean
+      # anything without the real dataset, are reported as skipped rather than
+      # passing vacuously on ~1.6 MB of code.
       - name: Run browser regression suite
         run: npm run test:browser
