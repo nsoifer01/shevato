@@ -16,25 +16,45 @@ const SITEMAP_FILE = path.join(ROOT, 'sitemap-exercises.xml');
 
 const RELATED_LIMIT = 12;
 
-function main() {
+/**
+ * The taxonomy directories the build emits under /exercises/muscle/.
+ *
+ * Leaf pages link their Category to `/exercises/muscle/<category>/` and
+ * their breadcrumb to `/exercises/muscle/<muscleGroup>/`, so BOTH vocabularies
+ * need a directory. Categories that never equal a muscleGroup (`back`,
+ * `chest`, `cardio`) used to get none, and 155 leaf pages carried a 404 link
+ * on production (2026-08-22 audit, D6). A category page lists every exercise
+ * of that category; a muscle page lists every exercise of that primary
+ * muscle; when one key serves both, the muscle grouping wins (it did before).
+ */
+function collectMuscleTaxonomy(exercises) {
+  const byMuscle = groupBy(exercises, (e) => e.muscleGroup || e.category);
+  const byCategory = groupBy(exercises, (e) => e.category);
+  for (const [cat, items] of byCategory.entries()) {
+    if (cat && !byMuscle.has(cat)) byMuscle.set(cat, items);
+  }
+  return byMuscle;
+}
+
+function main({ outDir = OUT_DIR, sitemapFile = SITEMAP_FILE, log = console.log } = {}) {
   const exercises = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
   if (!Array.isArray(exercises)) throw new Error('exercises-db.json is not an array');
   const slugs = assignSlugs(exercises);
   const builtAt = new Date().toISOString();
-  console.log(`[build-exercise-pages] ${exercises.length} exercises`);
+  log(`[build-exercise-pages] ${exercises.length} exercises`);
 
-  fs.rmSync(OUT_DIR, { recursive: true, force: true });
-  fs.mkdirSync(OUT_DIR, { recursive: true });
+  fs.rmSync(outDir, { recursive: true, force: true });
+  fs.mkdirSync(outDir, { recursive: true });
 
   // Build a muscleGroup → exercises map once, for related-links and
   // taxonomy pages.
-  const byMuscle = groupBy(exercises, (e) => e.muscleGroup || e.category);
+  const byMuscle = collectMuscleTaxonomy(exercises);
   const byEquipment = groupBy(exercises, (e) => e.equipment);
 
   let pageCount = 0;
   for (const ex of exercises) {
     const slug = slugs.get(ex.id);
-    const dir = path.join(OUT_DIR, slug);
+    const dir = path.join(outDir, slug);
     fs.mkdirSync(dir, { recursive: true });
     const peers = (byMuscle.get(ex.muscleGroup || ex.category) || [])
       .filter((p) => p.id !== ex.id)
@@ -46,10 +66,10 @@ function main() {
   }
 
   // Browse index
-  fs.writeFileSync(path.join(OUT_DIR, 'index.html'), renderExerciseIndex(exercises, slugs, builtAt));
+  fs.writeFileSync(path.join(outDir, 'index.html'), renderExerciseIndex(exercises, slugs, builtAt));
 
   // Muscle-group landing pages
-  const muscleDir = path.join(OUT_DIR, 'muscle');
+  const muscleDir = path.join(outDir, 'muscle');
   fs.mkdirSync(muscleDir, { recursive: true });
   for (const [m, items] of byMuscle.entries()) {
     const subdir = path.join(muscleDir, m);
@@ -61,7 +81,7 @@ function main() {
   }
 
   // Equipment landing pages
-  const eqDir = path.join(OUT_DIR, 'equipment');
+  const eqDir = path.join(outDir, 'equipment');
   fs.mkdirSync(eqDir, { recursive: true });
   for (const [e, items] of byEquipment.entries()) {
     const subdir = path.join(eqDir, e);
@@ -74,7 +94,7 @@ function main() {
 
   // Sitemap
   fs.writeFileSync(
-    SITEMAP_FILE,
+    sitemapFile,
     renderExercisesSitemap({
       exercises,
       slugs,
@@ -85,7 +105,7 @@ function main() {
   );
 
   const taxoCount = byMuscle.size + byEquipment.size;
-  console.log(`[build-exercise-pages] wrote ${pageCount} exercise pages + ${taxoCount} taxonomy pages + index + sitemap`);
+  log(`[build-exercise-pages] wrote ${pageCount} exercise pages + ${taxoCount} taxonomy pages + index + sitemap`);
 }
 
 function labelize(s) {
@@ -101,4 +121,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { main };
+module.exports = { main, collectMuscleTaxonomy };

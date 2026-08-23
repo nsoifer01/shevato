@@ -104,8 +104,12 @@ export class TimerService {
         const startTime = Date.now() - (initialElapsed * 1000);
         let elapsed = initialElapsed;
 
+        // A backwards clock change (NTP correction, manual edit) makes
+        // Date.now() - startTime shrink or go negative; the display used to
+        // read "-1:-52". Elapsed time never runs backwards: it holds at the
+        // last value seen until the wall clock catches up again.
         const interval = setInterval(() => {
-            elapsed = Math.floor((Date.now() - startTime) / 1000);
+            elapsed = this._clampedElapsed();
             if (onTick) {
                 onTick(elapsed);
             }
@@ -131,7 +135,7 @@ export class TimerService {
             // Recompute from the wall clock: the object's `elapsed` field was
             // only a creation-time snapshot, so returning it handed callers
             // the INITIAL elapsed value, not the elapsed time at stop.
-            const finalElapsed = Math.floor((Date.now() - this.workoutTimer.startTime) / 1000);
+            const finalElapsed = this._clampedElapsed();
             this.workoutTimer = null;
             return finalElapsed;
         }
@@ -140,9 +144,18 @@ export class TimerService {
 
     getWorkoutElapsed() {
         if (this.workoutTimer) {
-            return Math.floor((Date.now() - this.workoutTimer.startTime) / 1000);
+            return this._clampedElapsed();
         }
         return 0;
+    }
+
+    /** Wall-clock elapsed, never below the last value already reported. */
+    _clampedElapsed() {
+        const t = this.workoutTimer;
+        if (!t) return 0;
+        const raw = Math.floor((Date.now() - t.startTime) / 1000);
+        t.elapsed = Math.max(t.elapsed || 0, Number.isFinite(raw) ? raw : 0);
+        return t.elapsed;
     }
 
     isWorkoutTimerRunning() {
@@ -151,6 +164,7 @@ export class TimerService {
 
     // Format time helpers
     static formatTime(seconds) {
+        seconds = Math.max(0, Math.floor(Number(seconds) || 0));
         const hours = Math.floor(seconds / 3600);
         const minutes = Math.floor((seconds % 3600) / 60);
         const secs = seconds % 60;
@@ -162,6 +176,7 @@ export class TimerService {
     }
 
     static formatTimeShort(seconds) {
+        seconds = Math.max(0, Math.floor(Number(seconds) || 0));
         const minutes = Math.floor(seconds / 60);
         const secs = seconds % 60;
         return `${minutes}:${String(secs).padStart(2, '0')}`;

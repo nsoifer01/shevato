@@ -18,7 +18,7 @@
  * Old caches are pruned automatically on activate.
  */
 
-const CACHE_VERSION = '1.14.0';
+const CACHE_VERSION = '1.15.0';
 const PRECACHE = `gym-precache-${CACHE_VERSION}`;
 const RUNTIME = `gym-runtime-${CACHE_VERSION}`;
 
@@ -26,6 +26,7 @@ const PRECACHE_URLS = [
   './',
   './index.html',
   './manifest.webmanifest',
+  './offline/index.html',
   './css/gym-tracker.css',
   './css/refresh.css',
   './data/exercises-db.js',
@@ -66,6 +67,7 @@ const PRECACHE_URLS = [
   './js/utils/exercise-search.js',
   './js/utils/exercise-taxonomy.js',
   './js/utils/import-merge.js',
+  './js/utils/import-sanitize.js',
   './js/utils/session-metrics.js',
   './js/utils/units.js',
   './js/utils/week.js',
@@ -82,12 +84,32 @@ const PRECACHE_URLS = [
   './js/views/workout-view.js',
 ];
 
+// Every request the worker makes on its own behalf bypasses the HTTP cache.
+// netlify.toml gives js/, css/ and data/ a max-age while HTML and sw.js are
+// max-age=0, so with the default cache mode a deploy used to refresh the
+// runtime cache with NEW index.html and OLD modules for up to five minutes
+// (and a CACHE_VERSION bump inside that window precached the stale modules
+// under the new name). `no-cache` revalidates with the origin every time,
+// so what lands in OUR caches is always what the server has now.
+const FRESH = { cache: 'no-cache' };
+// `new Request(navigationRequest, init)` throws a TypeError (a request whose
+// mode is 'navigate' cannot be constructed with a non-empty init), which used
+// to reject the whole fetch handler for every navigation. Rebuild those from
+// the URL instead; same-origin GET is all this worker ever handles.
+function freshRequest(req) {
+  try {
+    return new Request(req, FRESH);
+  } catch (_) {
+    return new Request(req.url, { cache: 'no-cache', credentials: 'same-origin' });
+  }
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(PRECACHE);
     // addAll fails atomically — if any URL is missing the install fails.
     // That's the right behavior here: we want the precache to be coherent.
-    await cache.addAll(PRECACHE_URLS);
+    await cache.addAll(PRECACHE_URLS.map((u) => new Request(u, FRESH)));
     await self.skipWaiting();
   })());
 });
@@ -124,14 +146,28 @@ self.addEventListener('fetch', (event) => {
   // precache was dead weight and a cold offline start failed. Only the
   // gym precache is searched, never other apps' caches on this shared
   // origin.
+  //
+  // Navigations match with ignoreSearch so a launch URL carrying a query
+  // string (`/?utm_source=x`) still finds the cached shell offline, and a
+  // navigation that is in no cache at all (a generated /exercises/ page
+  // never visited) gets the precached offline page instead of the browser's
+  // error screen.
+  const isNavigation = req.mode === 'navigate';
+  const matchOpts = isNavigation ? { ignoreSearch: true } : undefined;
   event.respondWith((async () => {
     const cache = await caches.open(RUNTIME);
-    const cached = (await cache.match(req))
-      || (await (await caches.open(PRECACHE)).match(req));
-    const networkPromise = fetch(req).then((res) => {
-      if (res && res.ok) cache.put(req, res.clone()).catch(() => {});
+    const precache = await caches.open(PRECACHE);
+    const cached = (await cache.match(req, matchOpts))
+      || (await precache.match(req, matchOpts));
+    const networkPromise = fetch(freshRequest(req)).then((res) => {
+      if (res && res.ok) return cache.put(req, res.clone()).catch(() => {}).then(() => res);
       return res;
-    }).catch(() => cached);
+    }).catch(async () => cached || (isNavigation ? precache.match('./offline/index.html') : undefined));
+    // Keep the worker alive until the background refresh has landed. Without
+    // this the refresh is cancelled whenever the worker goes idle after
+    // respondWith settles, which is why a module could stay stale for loads
+    // on end even with a fresh cache mode (2026-08-22 audit D5).
+    try { event.waitUntil(networkPromise); } catch (_) { /* event already settled */ }
     return cached || networkPromise;
   })());
 });

@@ -46,6 +46,10 @@ export class WorkoutSession {
         this.paused = data.paused || false;
         this.pausedAt = data.pausedAt || null;
         this.elapsedBeforePause = data.elapsedBeforePause || 0; // Seconds elapsed before pause
+        // The rest countdown running when the session was last persisted
+        // ({ endsAt, exerciseIndex, restType }) so Resume restores it; null
+        // when no rest is running. Live-session state only: finish clears it.
+        this.restState = data.restState && typeof data.restState === 'object' ? data.restState : null;
 
         // Metadata
         this.timestamp = data.timestamp || new Date().toISOString();
@@ -152,6 +156,7 @@ export class WorkoutSession {
             paused: this.paused,
             pausedAt: this.pausedAt,
             elapsedBeforePause: this.elapsedBeforePause,
+            restState: this.restState,
             timestamp: this.timestamp
         };
     }

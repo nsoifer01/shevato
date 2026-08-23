@@ -21,7 +21,7 @@ import { allSetsReachMax, previousSessionFeelForExercise, nextFeel, shouldShowFe
 import { recordPrSupersede, uniquePrChainCount, recomputePrSlots } from '../utils/pr-session.js';
 import { mergeSessionWithProgram } from '../utils/session-merge.js';
 import { weekStrip } from '../utils/program-schedule.js';
-import { readableActiveWorkout } from '../utils/active-workout.js';
+import { readableActiveWorkout, lockedByOtherTab, LOCK_HEARTBEAT_MS } from '../utils/active-workout.js';
 import {
     normalizeWarmupSettings,
     shouldShowWarmup,
@@ -40,6 +40,56 @@ const PLATE_LOADED_EQUIPMENT = new globalThis.Set(['barbell', 'trap-bar', 'machi
 
 // Item 6: warm-up ramp configuration, written by Settings.
 const WARMUP_SETTINGS_KEY = 'gymTrackerWarmupSettings';
+
+/**
+ * Validate a weight x reps entry from the live set row (commit and edit).
+ *
+ * The inputs' `min` attributes are decorative: the commit is a button
+ * click, not a form submit, so nothing consulted them and `!reps` let a
+ * negative rep count through (stored `reps: -3`, negative volume in the
+ * session detail, 2026-08-22 audit D1). `parseInt` also read `1e3` as 1 and
+ * `8.7` as 8 without feedback (D12). Rules: reps is an integer >= 1, weight
+ * is a finite number >= 0 (0 is legitimate for bodyweight work). Returns
+ * `{ ok, weight, reps }` or `{ ok: false, field, message }` so the caller can
+ * mark the offending input inline.
+ */
+/** Why a heavier set can show no badge: the rule is set volume, and it is explained where the badge is. */
+const PR_RULE_HELP = 'PR means this set beat your best single-set volume (weight x reps) for this exercise, or your best hold for timed work. A heavier weight for fewer reps is not a PR under this rule.';
+
+/**
+ * Post-workout metrics from the finish form: optional, but when given they
+ * must be whole numbers inside the ranges the inputs declare (30-250 bpm,
+ * 0-5000 kcal). Returns null when fine, else { field, message }.
+ */
+function validatePostWorkoutMetrics({ avgHR, maxHR, calories }) {
+    const check = (raw, field, label, min, max, unit) => {
+        const text = String(raw ?? '').trim();
+        if (text === '') return null;
+        const n = Number(text);
+        if (!/^\d+$/.test(text) || !Number.isInteger(n) || n < min || n > max) {
+            return { field, message: `${label} must be a whole number between ${min} and ${max} ${unit}.` };
+        }
+        return null;
+    };
+    return check(avgHR, 'avg-heart-rate', 'Average heart rate', 30, 250, 'bpm')
+        || check(maxHR, 'max-heart-rate', 'Max heart rate', 30, 250, 'bpm')
+        || check(calories, 'calories-burned', 'Calories burned', 0, 5000, 'kcal');
+}
+
+function parseSetEntry(weightRaw, repsRaw) {
+    const weightText = String(weightRaw ?? '').trim();
+    const repsText = String(repsRaw ?? '').trim();
+    const weight = weightText === '' ? NaN : Number(weightText);
+    const reps = repsText === '' ? NaN : Number(repsText);
+    if (!Number.isFinite(weight) || weight < 0) {
+        return { ok: false, field: 'weight', message: weightText === '' ? 'Enter a weight' : 'Weight must be 0 or more' };
+    }
+    // Digits only: "1e3" and "8.7" are typos on a rep counter, never 1000 or 8.
+    if (!/^\d+$/.test(repsText) || !Number.isInteger(reps) || reps < 1) {
+        return { ok: false, field: 'reps', message: repsText === '' ? 'Enter reps' : 'Reps must be a whole number of 1 or more' };
+    }
+    return { ok: true, weight, reps };
+}
 
 class WorkoutView {
     constructor() {
@@ -161,6 +211,12 @@ class WorkoutView {
             // input, and committing ANY other set re-rendered the exercise and
             // rebuilt this row from the previous-session prefill - so editing
             // set 2 to 65x8 and then ticking set 1 silently restored 60x12.
+            const invalidRow = t.closest('.set-row--invalid');
+            if (invalidRow) {
+                const host = invalidRow.closest('.exercise-entry');
+                const eIdxOfRow = Number(host?.id?.replace('exercise-', ''));
+                if (Number.isInteger(eIdxOfRow)) this.clearSetRowError(eIdxOfRow, Number(invalidRow.dataset.slot));
+            }
             if (t.classList.contains('set-weight') || t.classList.contains('set-reps')
                 || t.classList.contains('duration-min') || t.classList.contains('duration-sec')) {
                 const plannedRow = t.closest('.set-row-planned');
@@ -749,6 +805,9 @@ case 'toggle-warmup':
     persistActiveWorkout() {
         const session = this.currentWorkoutSession;
         if (!session || session.completed) return;
+        // A tab that lost ownership (another tab resumed after this one went
+        // quiet) must not write its stale copy over the owner's (D2).
+        if (this._otherTabOwnsWorkout()) return;
         try {
             if (!session.paused) {
                 const elapsed = timerService.getWorkoutElapsed();
@@ -757,10 +816,58 @@ case 'toggle-warmup':
                 }
             }
             storageService.saveActiveWorkout(session.toJSON());
+            // The rest countdown is active state too: Resume restores it.
+            if (!session.paused) storageService.claimActiveWorkoutLock();
         } catch (error) {
             console.error('Could not save the in-progress workout:', error);
         }
     }
+
+    /**
+     * Tab ownership of the live workout (D2). `claimWorkoutLock` marks this
+     * tab as the driver and keeps the lock fresh on a heartbeat; a second tab
+     * sees a fresh lock it does not hold and is told the workout is running
+     * elsewhere instead of being offered Resume. Pause and finish release it.
+     */
+    _otherTabOwnsWorkout() {
+        return lockedByOtherTab(storageService.getActiveWorkoutLock(), storageService.tabId);
+    }
+
+    claimWorkoutLock() {
+        storageService.claimActiveWorkoutLock();
+        if (this._lockHeartbeat) clearInterval(this._lockHeartbeat);
+        this._lockHeartbeat = setInterval(() => {
+            if (!this.hasActiveWorkout() || this.currentWorkoutSession.paused) return this.releaseWorkoutLock();
+            if (this._otherTabOwnsWorkout()) {
+                // Ownership moved while this tab was asleep: stop driving.
+                this.releaseWorkoutLock(false);
+                this.handleWorkoutTakenOver();
+                return;
+            }
+            storageService.claimActiveWorkoutLock();
+        }, LOCK_HEARTBEAT_MS);
+    }
+
+    releaseWorkoutLock(clearKey = true) {
+        if (this._lockHeartbeat) { clearInterval(this._lockHeartbeat); this._lockHeartbeat = null; }
+        if (clearKey) storageService.releaseActiveWorkoutLock();
+    }
+
+    /** Another tab took over the workout this tab was showing. */
+    handleWorkoutTakenOver() {
+        if (this._takenOver) return;
+        this._takenOver = true;
+        timerService.stopWorkoutTimer();
+        this.skipRest();
+        this.disarmBackGuard();
+        this.currentWorkoutSession = null;
+        this.resetFinishWorkoutForm();
+        showToast('This workout is now being logged in another tab. This tab stopped to avoid overwriting it.', 'info', 8000);
+        if (this.app.currentView === 'workout') this.render();
+        this.app.updateGlobalFab();
+        this._takenOver = false;
+    }
+
 
     /**
      * Coalesce the writes behind a high-frequency text field (exercise
@@ -798,6 +905,9 @@ case 'toggle-warmup':
 
         // Save to storage
         storageService.saveActiveWorkout(this.currentWorkoutSession.toJSON());
+        // A paused workout is meant to be picked up anywhere, so release
+        // this tab's claim on it.
+        this.releaseWorkoutLock();
 
         // Stop the timer
         timerService.stopWorkoutTimer();
@@ -861,6 +971,7 @@ case 'toggle-warmup':
         this.disarmBackGuard();
         this.flushPendingPersist();
         storageService.clearActiveWorkout();
+        this.releaseWorkoutLock();
         this.resetFinishWorkoutForm();
         document.getElementById('active-workout').classList.remove('active');
         document.getElementById('workout-selection').classList.add('active');
@@ -897,10 +1008,20 @@ case 'toggle-warmup':
             showToast('No unfinished workout to resume', 'error');
             return;
         }
+        if (this._otherTabOwnsWorkout()) {
+            showToast('This workout is being logged in another tab. Finish or pause it there first.', 'error', 6000);
+            return;
+        }
 
         // Restore the workout session
         this.currentWorkoutSession = WorkoutSession.fromJSON(pausedWorkout);
         this.currentWorkoutSession.resumeWorkout();
+        this.claimWorkoutLock();
+        // The rest countdown that was running when the tab died (stored by
+        // startRest, cleared by skipRest/onRestComplete), so the lifter gets
+        // the remaining seconds back instead of losing the timer.
+        const restState = pausedWorkout.restState && typeof pausedWorkout.restState === 'object'
+            ? pausedWorkout.restState : null;
 
         // Item 4: re-sync the session plan with an edited program when the user
         // returned from the in-workout program editor.
@@ -942,6 +1063,13 @@ case 'toggle-warmup':
         // Resuming clears the paused flag; write that through so a second
         // interruption is still recognised as an interrupted (not paused) run.
         this.persistActiveWorkout();
+        if (restState && Number.isFinite(restState.endsAt)) {
+            const remaining = Math.ceil((restState.endsAt - Date.now()) / 1000);
+            if (remaining > 0) {
+                this.startRest(remaining, Number.isInteger(restState.exerciseIndex) ? restState.exerciseIndex : -1,
+                    restState.restType === 'set' ? 'set' : 'exercise');
+            }
+        }
     }
 
     /**
@@ -1005,6 +1133,7 @@ case 'toggle-warmup':
         if (confirmed) {
             if (this._persistTimer) { clearTimeout(this._persistTimer); this._persistTimer = null; }
             storageService.clearActiveWorkout();
+            this.releaseWorkoutLock();
             this.resetFinishWorkoutForm();
             this.render();
             showToast('Unfinished workout discarded', 'info');
@@ -1173,6 +1302,10 @@ case 'toggle-warmup':
     startWorkout(programId) {
         const program = this.app.getProgramById(programId);
         if (!program) return;
+        if (this._otherTabOwnsWorkout()) {
+            showToast('A workout is being logged in another tab. Finish or pause it there first.', 'error', 6000);
+            return;
+        }
 
         if (!program.exercises || program.exercises.length === 0) {
             showToast('This program has no exercises', 'error');
@@ -1233,6 +1366,7 @@ case 'toggle-warmup':
 
         // The session is recoverable from the moment it exists, not from the
         // first set (GT-01).
+        this.claimWorkoutLock();
         this.persistActiveWorkout();
 
         // Switch to active workout screen
@@ -2371,7 +2505,7 @@ case 'toggle-warmup':
 
         const pr = this.sessionPrSlots?.[`${exerciseIndex}:${slot}`];
         const prBadge = pr
-            ? `<span class="pr-badge" aria-label="${escapeHtml(this.prDeltaAriaLabel(pr, unit))}"><i class="fas fa-trophy" aria-hidden="true"></i> PR ${escapeHtml(this.formatPrDelta(pr, unit))}</span>`
+            ? `<span class="pr-badge" tabindex="0" title="${escapeHtml(PR_RULE_HELP)}" aria-label="${escapeHtml(this.prDeltaAriaLabel(pr, unit))}. ${escapeHtml(PR_RULE_HELP)}"><i class="fas fa-trophy" aria-hidden="true"></i> PR ${escapeHtml(this.formatPrDelta(pr, unit))}</span>`
             : '';
         return `
             <li class="set-row set-row-complete${pr ? ' set-row--pr' : ''}" data-slot="${slot}">
@@ -2842,15 +2976,15 @@ case 'toggle-warmup':
         } else {
             const weightInput = document.getElementById(`weight-${exerciseIndex}-${slot}`);
             const repsInput = document.getElementById(`reps-${exerciseIndex}-${slot}`);
-            const entered = parseFloat(weightInput?.value);
-            const reps = parseInt(repsInput?.value, 10);
-            if (isNaN(entered) || entered < 0 || !reps) {
-                showToast('Please enter weight and reps', 'error');
+            const parsed = parseSetEntry(weightInput?.value, repsInput?.value);
+            if (!parsed.ok) {
+                this.showSetRowError(exerciseIndex, slot, parsed, { weightInput, repsInput });
                 return;
             }
+            this.clearSetRowError(exerciseIndex, slot);
             // The input is in the session unit; storage is canonical kg.
-            const weight = this.toStoredWeight(entered);
-            set = new Set({ weight, reps, completed: true, slot });
+            const weight = this.toStoredWeight(parsed.weight);
+            set = new Set({ weight, reps: parsed.reps, completed: true, slot });
         }
 
         // Append to the dense array — visual position is driven by `set.slot`,
@@ -3189,6 +3323,47 @@ case 'toggle-warmup':
         return isNowComplete;
     }
 
+    /**
+     * Inline validation state on a set row (commit and edit share it): the
+     * row gets `set-row--invalid`, the offending input `aria-invalid` and a
+     * live-region message under the inputs. A toast was the previous
+     * feedback and it said nothing about WHICH field was wrong.
+     */
+    showSetRowError(exerciseIndex, slot, parsed, { weightInput, repsInput } = {}) {
+        const row = document.querySelector(`#exercise-${exerciseIndex} .set-row[data-slot="${slot}"]`);
+        const bad = parsed.field === 'weight' ? weightInput : repsInput;
+        const good = parsed.field === 'weight' ? repsInput : weightInput;
+        if (bad) bad.setAttribute('aria-invalid', 'true');
+        if (good) good.removeAttribute('aria-invalid');
+        if (row) {
+            row.classList.add('set-row--invalid');
+            let msg = row.querySelector('.set-row-error');
+            if (!msg) {
+                msg = document.createElement('div');
+                msg.className = 'set-row-error';
+                msg.setAttribute('role', 'alert');
+                msg.id = `set-row-error-${exerciseIndex}-${slot}`;
+                row.appendChild(msg);
+            }
+            msg.textContent = parsed.message;
+            if (bad) bad.setAttribute('aria-describedby', msg.id);
+        }
+        if (bad && typeof bad.focus === 'function') bad.focus();
+        if (this.app.settings?.vibrationAlerts !== false) vibrate(15);
+    }
+
+    clearSetRowError(exerciseIndex, slot) {
+        const row = document.querySelector(`#exercise-${exerciseIndex} .set-row[data-slot="${slot}"]`);
+        if (!row) return;
+        row.classList.remove('set-row--invalid');
+        row.querySelectorAll('[aria-invalid]').forEach((el) => {
+            el.removeAttribute('aria-invalid');
+            el.removeAttribute('aria-describedby');
+        });
+        const msg = row.querySelector('.set-row-error');
+        if (msg) msg.remove();
+    }
+
     saveSetEdit(exerciseIndex, slot) {
         if (!this.currentWorkoutSession) return;
 
@@ -3211,15 +3386,15 @@ case 'toggle-warmup':
         } else {
             const weightInput = document.getElementById(`edit-weight-${exerciseIndex}-${slot}`);
             const repsInput = document.getElementById(`edit-reps-${exerciseIndex}-${slot}`);
-            const entered = parseFloat(weightInput.value);
-            const reps = parseInt(repsInput.value, 10);
-            if (isNaN(entered) || entered < 0 || !reps) {
-                showToast('Please enter valid weight and reps', 'error');
+            const parsed = parseSetEntry(weightInput?.value, repsInput?.value);
+            if (!parsed.ok) {
+                this.showSetRowError(exerciseIndex, slot, parsed, { weightInput, repsInput });
                 return;
             }
+            this.clearSetRowError(exerciseIndex, slot);
             // Input is in the session unit; storage is canonical kg.
-            set.weight = this.toStoredWeight(entered);
-            set.reps = reps;
+            set.weight = this.toStoredWeight(parsed.weight);
+            set.reps = parsed.reps;
         }
 
         // Item R3-7: derived PR state must equal a fresh recomputation after
@@ -3363,6 +3538,41 @@ case 'toggle-warmup':
             (remaining) => this.onRestTick(remaining),
             () => this.onRestComplete(),
         );
+        this.recordRestState({ endsAt: Date.now() + duration * 1000, exerciseIndex, restType });
+        this.keepAddSetClearOfDial(exerciseIndex);
+    }
+
+    /**
+     * Remember the running countdown on the session (survives a reload and
+     * comes back through resumeWorkout). Null clears it.
+     */
+    recordRestState(state) {
+        if (!this.currentWorkoutSession) return;
+        this.currentWorkoutSession.restState = state;
+        this.persistActiveWorkout();
+    }
+
+    /**
+     * On a phone the fixed rest dial sits over the bottom of the viewport,
+     * which at the natural scroll position after committing set 1 is exactly
+     * where the current exercise's "Add set" row lands (2026-08-22 audit
+     * D11). The dial's artwork must not move (see FINDINGS), so scroll the
+     * row above it instead.
+     */
+    keepAddSetClearOfDial(exerciseIndex) {
+        if (exerciseIndex < 0) return;
+        const bar = document.getElementById('rest-timer-bar');
+        const footer = document.querySelector(`#exercise-${exerciseIndex} .set-row-footer`);
+        if (!bar || !footer || typeof bar.getBoundingClientRect !== 'function') return;
+        requestAnimationFrame(() => {
+            const dial = bar.getBoundingClientRect();
+            const row = footer.getBoundingClientRect();
+            if (dial.height === 0 || row.bottom <= dial.top) return;
+            // Only when the row is otherwise on screen: a far-away row is a
+            // scroll the lifter chose.
+            if (row.top >= window.innerHeight) return;
+            window.scrollBy({ top: row.bottom - dial.top + 8, behavior: 'smooth' });
+        });
     }
 
     /** Add N seconds to the in-flight rest timer without restarting it. */
@@ -3373,6 +3583,8 @@ case 'toggle-warmup':
         // stays sensible.
         this.restTimerDuration += seconds;
         timerService.extendRestTimer(this.activeRestTimerId, seconds);
+        const rs = this.currentWorkoutSession?.restState;
+        if (rs && Number.isFinite(rs.endsAt)) this.recordRestState({ ...rs, endsAt: rs.endsAt + seconds * 1000 });
     }
 
     skipRest() {
@@ -3382,6 +3594,7 @@ case 'toggle-warmup':
         this._activeRestType = null;
         this.clearRestChip();
         this.hideRestBar();
+        if (this.currentWorkoutSession?.restState) this.recordRestState(null);
     }
 
     showRestBar(total, restType = 'exercise') {
@@ -3497,6 +3710,7 @@ case 'toggle-warmup':
     onRestComplete() {
         this.activeRestTimerId = null;
         this._activeRestType = null;
+        if (this.currentWorkoutSession?.restState) this.recordRestState(null);
 
         // Both rest types use the floating dial: flip to the done state, then
         // auto-hide. Also revert the in-card chip to its idle static state.
@@ -3649,14 +3863,51 @@ case 'toggle-warmup':
             return;
         }
 
-        // End the workout
-        this.currentWorkoutSession.endWorkout();
-
         // Get post-workout metrics
         const avgHR = document.getElementById('avg-heart-rate').value;
         const maxHR = document.getElementById('max-heart-rate').value;
         const calories = document.getElementById('calories-burned').value;
         const notes = document.getElementById('workout-notes').value;
+
+        // The form is novalidate so the feedback is inline copy like every
+        // other form here, not the browser bubble.
+        const metricsProblem = validatePostWorkoutMetrics({ avgHR, maxHR, calories });
+        const metricsMsg = document.getElementById('finish-metrics-message');
+        ['avg-heart-rate', 'max-heart-rate', 'calories-burned'].forEach((id) => document.getElementById(id)?.removeAttribute('aria-invalid'));
+        if (metricsProblem) {
+            if (metricsMsg) {
+                metricsMsg.hidden = false;
+                const text = document.getElementById('finish-metrics-message-text');
+                if (text) text.textContent = metricsProblem.message;
+            }
+            const bad = document.getElementById(metricsProblem.field);
+            if (bad) { bad.setAttribute('aria-invalid', 'true'); bad.focus(); }
+            return;
+        }
+        if (metricsMsg) metricsMsg.hidden = true;
+
+        // Stale-tab guard (D2): if this session's id is already in storage
+        // another tab finished it; a second save would overwrite that copy
+        // with this tab's older one. Read before write, by id.
+        const alreadySaved = storageService.getWorkoutSessions()
+            .some((s) => s && s.completed && sameId(s.id, this.currentWorkoutSession.id));
+        if (alreadySaved || this._otherTabOwnsWorkout()) {
+            showToast(alreadySaved
+                ? 'This workout was already finished in another tab, so this copy was not saved again.'
+                : 'This workout is being logged in another tab. Finish it there.', 'error', 8000);
+            if (alreadySaved) this.handleWorkoutTakenOver();
+            const modalEl = document.getElementById('finish-workout-modal');
+            if (modalEl) modalEl.classList.remove('active');
+            if (alreadySaved) {
+                document.getElementById('active-workout').classList.remove('active');
+                document.getElementById('workout-selection').classList.add('active');
+            }
+            return;
+        }
+
+        // End the workout
+        this.currentWorkoutSession.endWorkout();
+        this.currentWorkoutSession.restState = null;
 
         if (avgHR) this.currentWorkoutSession.avgHeartRate = parseInt(avgHR);
         if (maxHR) this.currentWorkoutSession.maxHeartRate = parseInt(maxHR);
@@ -3691,6 +3942,7 @@ case 'toggle-warmup':
 
         // Clear any paused workout from storage since we're finishing
         storageService.clearActiveWorkout();
+        this.releaseWorkoutLock();
 
         // Update achievements
         this.app.updateAchievements();

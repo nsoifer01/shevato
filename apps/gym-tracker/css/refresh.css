@@ -1323,7 +1323,9 @@ body.gym-tracker #history-list .workout-card-header h3 {
 }
 
 body.gym-tracker #history-list .workout-card-header .date {
-    color: var(--gt-muted-2);
+    /* --gt-muted-2 (#6f7785) on the card gives 3.92:1 at 10.56px, which axe
+       flags serious (2026-08-22 audit D10). --gt-muted is ~7:1. */
+    color: var(--gt-muted);
     font-size: 0.72rem;
     font-weight: 600;
     text-transform: uppercase;

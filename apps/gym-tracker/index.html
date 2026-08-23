@@ -417,10 +417,14 @@
                                 <button class="modal-close finish-modal-close" aria-label="Close">&times;</button>
                             </div>
                             <div class="modal-body">
-                                <form id="finish-workout-form">
+                                <form id="finish-workout-form" novalidate>
                                     <div class="finish-inline-message" id="finish-inline-message" role="alert" hidden>
                                         <i class="fas fa-circle-info" aria-hidden="true"></i>
                                         <span>Log at least one set before finishing your workout.</span>
+                                    </div>
+                                    <div class="finish-inline-message finish-inline-message--error" id="finish-metrics-message" role="alert" hidden>
+                                        <i class="fas fa-circle-exclamation" aria-hidden="true"></i>
+                                        <span id="finish-metrics-message-text"></span>
                                     </div>
                                     <div class="workout-summary">
                                         <div class="summary-stat">
@@ -567,18 +571,18 @@
                     </div>
                     <div class="exercise-filters">
                         <!-- Options are filled from js/utils/exercise-taxonomy.js, the one definition of these lists (GT-26). -->
-                        <select id="exercise-db-category">
+                        <select id="exercise-db-category" aria-label="Filter by category">
                             <option value="">All Categories</option>
                         </select>
-                        <select id="exercise-db-equipment">
+                        <select id="exercise-db-equipment" aria-label="Filter by equipment">
                             <option value="">All Equipment</option>
                         </select>
-                        <select id="exercise-db-history-filter">
+                        <select id="exercise-db-history-filter" aria-label="Filter by history">
                             <option value="all">All Exercises</option>
                             <option value="with-history">With History</option>
                             <option value="without-history">Without History</option>
                         </select>
-                        <select id="exercise-db-sort">
+                        <select id="exercise-db-sort" aria-label="Sort exercises">
                             <option value="name-asc">Sort: A-Z</option>
                             <option value="name-desc">Sort: Z-A</option>
                             <option value="most-logged">Sort: Most Logged</option>
@@ -773,7 +777,10 @@
                         <h2>Workout heatmap</h2>
                         <span class="section-caption" id="insights-heatmap-caption"></span>
                     </div>
-                    <div class="insights-heatmap" id="insights-heatmap"></div>
+                    <p class="insights-heatmap-hint" id="insights-heatmap-hint" hidden>
+                        <i class="fas fa-arrow-left" aria-hidden="true"></i> Scroll left for earlier months
+                    </p>
+                    <div class="insights-heatmap" id="insights-heatmap" tabindex="0" role="region" aria-label="Workout heatmap, scrolls sideways"></div>
                 </section>
             </div>
 
@@ -1441,6 +1448,10 @@
                             <i class="fas fa-circle-exclamation" aria-hidden="true"></i>
                             <span>Enter a name for this program.</span>
                         </p>
+                        <p id="program-name-hint" class="form-hint" hidden>
+                            <i class="fas fa-circle-info" aria-hidden="true"></i>
+                            <span>You already have a program with this name. Both will be kept; a distinct name is easier to pick in the workout list.</span>
+                        </p>
                     </div>
                     <div class="form-group">
                         <label for="program-description">Description (Optional)</label>
@@ -1529,10 +1540,10 @@
                     </div>
                     <div class="exercise-filters">
                         <!-- Options are filled from js/utils/exercise-taxonomy.js, the one definition of these lists (GT-26). -->
-                        <select id="exercise-category-filter">
+                        <select id="exercise-category-filter" aria-label="Filter by category">
                             <option value="">All Categories</option>
                         </select>
-                        <select id="exercise-equipment-filter">
+                        <select id="exercise-equipment-filter" aria-label="Filter by equipment">
                             <option value="">All Equipment</option>
                         </select>
                     </div>
@@ -1722,13 +1733,65 @@
          exercise database are cached on first load and the user can
          continue logging sets even after the network drops. -->
     <script>
+        // Update handling (2026-08-22 audit D5). sw.js calls skipWaiting() +
+        // clients.claim(), so a new worker takes over open pages silently; the
+        // page that was loaded under the OLD worker keeps running old modules
+        // against whatever the new worker now serves. When the controller
+        // changes: reload right away if no workout is live, otherwise show an
+        // "Update available" toast and let the lifter pick the moment. A
+        // reload is never forced mid-workout (the active session is persisted
+        // on every mutation, so the reload itself loses nothing either way).
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function () {
                 navigator.serviceWorker.register('sw.js', { scope: '/apps/gym-tracker/' })
+                    .then(function (reg) {
+                        reg.addEventListener('updatefound', function () {
+                            var worker = reg.installing;
+                            if (!worker) return;
+                            worker.addEventListener('statechange', function () {
+                                if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    window.__gymUpdateInstalled = true;
+                                }
+                            });
+                        });
+                    })
                     .catch(function () { /* registration is best-effort */ });
             });
+            var reloading = false;
+            navigator.serviceWorker.addEventListener('controllerchange', function () {
+                if (reloading) return;
+                // The first controller on a fresh install is not an update.
+                if (!window.__gymHadController) return;
+                var workoutLive = !!document.querySelector('#active-workout.active');
+                if (!workoutLive) { reloading = true; location.reload(); return; }
+                showGymUpdateToast();
+            });
+            window.__gymHadController = !!navigator.serviceWorker.controller;
+            navigator.serviceWorker.ready.then(function () { window.__gymHadController = true; });
+        }
+        function showGymUpdateToast() {
+            if (document.getElementById('gym-update-toast')) return;
+            var toast = document.createElement('div');
+            toast.id = 'gym-update-toast';
+            toast.className = 'toast toast-info gym-update-toast show';
+            toast.setAttribute('role', 'status');
+            var msg = document.createElement('span');
+            msg.className = 'toast-message';
+            msg.textContent = 'Update available. Reload when you are done with this workout.';
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'toast-action';
+            btn.textContent = 'Reload now';
+            btn.addEventListener('click', function () { location.reload(); });
+            toast.appendChild(msg);
+            toast.appendChild(btn);
+            document.body.appendChild(toast);
         }
     </script>
+
+    <!-- Cross-tab coherence: a plain script so it is live before the ES
+         modules run (app.js subscribes in setupSyncListeners). -->
+    <script src="../../sync-system/tab-sync.js"></script>
 
     <!-- App Initialization -->
     <script type="module" src="js/app.js"></script>

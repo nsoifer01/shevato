@@ -69,7 +69,8 @@ A comprehensive, mobile-first workout tracking application built with vanilla Ja
 gym-tracker/
 ├── index.html                  # Main app entry point
 ├── manifest.webmanifest        # PWA manifest
-├── sw.js                       # Service worker (offline support)
+├── sw.js                       # Service worker (offline support + update freshness)
+├── offline/index.html          # Offline fallback page for uncached navigations
 ├── package.json                # npm test script + metadata
 ├── sitemap-exercises.xml       # Generated sitemap for the exercise directory pages
 ├── css/
@@ -82,7 +83,8 @@ gym-tracker/
 │   │                           #   Set, Achievement, Measurement, Settings
 │   ├── services/               # Storage, Timer, Analytics, Achievement
 │   ├── utils/                  # plate-calculator, program-schedule, pr-session, rest-cues,
-│   │                           #   session-merge, paginator, event-bus, dark-select, helpers,
+│   │                           #   session-merge, import-sanitize, paginator, event-bus,
+│   │                           #   dark-select, helpers, active-workout (recovery + tab lock),
 │   │                           #   analytics (bridge to the site-wide GA4 helper — distinct
 │   │                           #   from services/Analytics, which computes workout stats), ...
 │   └── views/                  # home, programs, workout, history, exercises, calendar,
@@ -92,6 +94,7 @@ gym-tracker/
 │   └── exercises-db.json       # Same data as JSON (for the page generator)
 ├── exercises/                  # Generated static exercise-directory pages (gitignored)
 ├── scripts/                    # Static-page + sitemap generators (build-exercise-pages.cjs, ...)
+├── e2e/                        # Browser regression suites driven over CDP
 └── tests/                      # node:test unit suites
 ```
 
@@ -256,7 +259,21 @@ Designed for gym environments with low lighting:
 - `gymTrackerActiveWorkout` holds the in-progress workout and is rewritten on
   every meaningful change, synchronously (see `persistActiveWorkout` in
   `js/views/workout-view.js`). Only the per-keystroke notes field is
-  debounced, and every lifecycle exit flushes it
+  debounced, and every lifecycle exit flushes it. It also carries `restState`
+  ({ endsAt, exerciseIndex, restType }), so resuming after a reload restores
+  the running rest countdown instead of dropping it
+- `gymTrackerActiveWorkoutLock` ({ tabId, at }) records which tab is driving
+  the live workout, refreshed on a 5 s heartbeat and released on pause,
+  finish and discard. A second tab with a fresh foreign lock is told the
+  workout is running elsewhere instead of being offered Resume, and a stale
+  tab's Finish checks storage by session id before writing, so it can no
+  longer overwrite a session another tab already saved. The lock is
+  local-only coordination state and is never synced
+- Other tabs' writes are picked up live: `sync-system/tab-sync.js` watches the
+  program, session, settings, achievement, custom-exercise and measurement
+  keys and re-reads them into memory (never writes from the handler), so a
+  program added or deleted in one tab is not resurrected by the next write
+  from another
 - `gymTrackerDataVersion` records which stored-data migrations have run
 - Every session and measurement carries `unitsCanonical: true`, the per-record
   proof that its numbers are canonical kg/cm. No migration or repair pass ever
@@ -281,12 +298,21 @@ Designed for gym environments with low lighting:
 - User authentication
 - Cross-device synchronization
 - Automatic conflict resolution
-- Sync status UI: a banner at the top of the app while offline (and briefly on the offline → synced transition), plus a sync dot on the "More" nav item
+- Sync status UI: on phones a banner pinned directly below the site header while offline (and briefly on the offline → synced transition), dismissible with its close button and stacked under the header so the logo, Menu and Sign In stay clickable; on desktop a state pill in the side-nav footer instead; plus a sync dot on the "More" nav item
 
 ### Export/Import
 - JSON format
 - Complete data backup
 - Transfer between devices
+- Every import and restore passes through one field-level sanitiser
+  (`js/utils/import-sanitize.js`) before anything is persisted: settings whose
+  value is outside its vocabulary are dropped (`weightUnit: "stone"`,
+  `timeFormat: 13`), dates are normalised to `YYYY-MM-DD` (or the record is
+  skipped), set weight/reps/duration are clamped to finite, non-negative,
+  physically possible numbers, and records with a missing or unusable id
+  (including `__proto__`) get a fresh one. Whatever it repaired is disclosed
+  in a toast rather than applied silently; a legitimate older export passes
+  through untouched
 - Import has two explicit modes. **Merge** (the default) unions the file into
   your data by record id (`sameId`, so a string id from an export matches the
   numeric one it came from), keeps everything the file does not mention, and
@@ -442,6 +468,15 @@ Five loading patterns are in use; pick the first that fits:
 5. **`node:vm` harnesses** for classic scripts like `sw.js`
    (`sw-offline-behavior`, plus the cross-app activate pins in
    `apps/trip-planner/tests/sw-activate.test.mjs`).
+
+Browser regressions that no node layer can reach live in
+`e2e/audit-2026-08.mjs` (registered in `tests/browser/run.mjs`, run with
+`npm run test:browser`): live set-row validation, measurement ranges and the
+double-submit guard, tablet geometry at 768/820, seeded axe scans of
+Exercises / History / the finish modal / Measurements at 1280 and 390, the
+rest dial versus the current exercise's "Add set" at 390, two-tab coherence
+and the active-workout lock, and a service-worker deploy simulation that
+serves the real `netlify.toml` cache headers through a local proxy.
 
 Timer tests use `node:test` mock timers; timezone-sensitive helpers are tested
 in child processes with `TZ=America/New_York` (`date-timezone.test.mjs`).

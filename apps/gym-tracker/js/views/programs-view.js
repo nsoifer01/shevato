@@ -72,6 +72,7 @@ class ProgramsView {
         if (nameInput) {
             nameInput.addEventListener('input', () => {
                 if (nameInput.value.trim()) this.showNameError(false);
+                this.showDuplicateNameHint(nameInput.value);
             });
         }
 
@@ -390,6 +391,7 @@ class ProgramsView {
             });
             title.textContent = 'Create Program';
             document.getElementById('program-name').value = '';
+            this.showDuplicateNameHint('');
             document.getElementById('program-description').value = '';
             this.renderProgramExercises();
         }
@@ -1216,6 +1218,7 @@ class ProgramsView {
 
         this.showNameError(nameMissing);
         this.showExercisesError(noExercises);
+        this.showDuplicateNameHint(name);
 
         if (nameMissing || noExercises) {
             const firstInvalid = nameMissing
@@ -1290,6 +1293,22 @@ class ProgramsView {
      * Drives both the label message and the red-border state on the input
      * (aria-invalid for screen readers, .is-invalid for styling).
      */
+    /**
+     * Duplicate names are allowed (two "Push Day" programs can be deliberate)
+     * but the workout picker then shows identical cards, so say so once
+     * rather than silently accepting it. Case-insensitive, ignoring this
+     * program itself.
+     */
+    showDuplicateNameHint(name) {
+        const hint = document.getElementById('program-name-hint');
+        if (!hint) return;
+        const needle = String(name || '').trim().toLowerCase();
+        const clash = !!needle && this.app.programs.some((p) =>
+            !sameId(p.id, this.currentProgram?.id) && String(p.name || '').trim().toLowerCase() === needle);
+        hint.hidden = !clash;
+        return clash;
+    }
+
     showNameError(show) {
         const input = document.getElementById('program-name');
         const err = document.getElementById('program-name-error');

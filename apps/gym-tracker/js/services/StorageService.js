@@ -4,6 +4,7 @@
  */
 import { sameId } from '../utils/id-utils.js';
 import { IMPORT_MODES, mergeImportedData } from '../utils/import-merge.js';
+import { sanitizeImportData } from '../utils/import-sanitize.js';
 
 export class StorageService {
     constructor() {
@@ -34,8 +35,44 @@ export class StorageService {
             // Pre-repair copy of the measurements, written immediately before
             // the answer above is applied. Local-only rollback; deliberately
             // NOT synced (it is a snapshot of one device's decision point).
-            MEASUREMENTS_BACKUP: 'gymTrackerMeasurementsBackup'
+            MEASUREMENTS_BACKUP: 'gymTrackerMeasurementsBackup',
+            // Which tab is driving the active workout (utils/active-workout.js
+            // lockedByOtherTab). Local-only coordination state, never synced.
+            ACTIVE_WORKOUT_LOCK: 'gymTrackerActiveWorkoutLock'
         };
+        // One id per tab, kept in sessionStorage so a reload keeps it and a
+        // duplicated tab gets its own.
+        this.tabId = StorageService.readTabId();
+    }
+
+    static readTabId() {
+        try {
+            let id = sessionStorage.getItem('gymTrackerTabId');
+            if (!id) {
+                id = `tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+                sessionStorage.setItem('gymTrackerTabId', id);
+            }
+            return id;
+        } catch {
+            return `tab-${Math.random().toString(36).slice(2, 10)}`;
+        }
+    }
+
+    getActiveWorkoutLock() {
+        const raw = this.get(this.keys.ACTIVE_WORKOUT_LOCK, null);
+        return raw && typeof raw === 'object' ? raw : null;
+    }
+
+    /** Claim (or refresh) the lock for THIS tab. */
+    claimActiveWorkoutLock() {
+        return this.set(this.keys.ACTIVE_WORKOUT_LOCK, { tabId: this.tabId, at: Date.now() });
+    }
+
+    /** Release only if this tab holds it; another tab's claim is left alone. */
+    releaseActiveWorkoutLock() {
+        const lock = this.getActiveWorkoutLock();
+        if (lock && lock.tabId && lock.tabId !== this.tabId) return false;
+        return this.remove(this.keys.ACTIVE_WORKOUT_LOCK);
     }
 
     // Onboarding
@@ -421,12 +458,17 @@ export class StorageService {
      * restore-a-backup path and is the ONLY way an import can remove data
      * the file does not contain (GT-02).
      *
-     * Returns { ok, mode, before, after } so the caller can report what
-     * actually changed instead of guessing.
+     * Returns { ok, mode, before, after, repairs } so the caller can report
+     * what actually changed instead of guessing. `repairs` lists the field
+     * level fixes the sanitiser applied (utils/import-sanitize.js); every
+     * entry path (file import, backup restore) goes through it here, and
+     * nothing is persisted before it has run.
      */
     importAllData(data, { mode = IMPORT_MODES.MERGE } = {}) {
         try {
-            const payload = this.migrateImport(data);
+            const sanitized = sanitizeImportData(this.migrateImport(data));
+            const payload = sanitized.data;
+            const repairs = sanitized.repairs;
             const before = this.snapshotStores();
 
             if (mode === IMPORT_MODES.REPLACE) {
@@ -444,15 +486,15 @@ export class StorageService {
                     activeProgram: payload.activeProgram || null,
                 };
                 this.writeStores(after);
-                return { ok: true, mode, before, after };
+                return { ok: true, mode, before, after, repairs };
             }
 
             const after = mergeImportedData(before, payload);
             this.writeStores(after);
-            return { ok: true, mode: IMPORT_MODES.MERGE, before, after };
+            return { ok: true, mode: IMPORT_MODES.MERGE, before, after, repairs };
         } catch (error) {
             console.error('Error importing data:', error);
-            return { ok: false, mode, before: null, after: null };
+            return { ok: false, mode, before: null, after: null, repairs: [] };
         }
     }
 
@@ -461,6 +503,17 @@ export class StorageService {
             this.remove(key);
         });
         return true;
+    }
+
+    /**
+     * Keys another tab can change under us and that the app holds in
+     * memory. The lock and the active workout are deliberately absent: the
+     * workout view owns those through the lock protocol, not a re-read.
+     */
+    get tabSyncKeys() {
+        const k = this.keys;
+        return [k.PROGRAMS, k.PROGRAM_ORDER, k.PROGRAM_SORT, k.WORKOUT_SESSIONS, k.SETTINGS,
+            k.ACHIEVEMENTS, k.ACTIVE_PROGRAM, k.CUSTOM_EXERCISES, k.MEASUREMENTS, k.MEASUREMENT_GOALS];
     }
 
     // Backup/Restore

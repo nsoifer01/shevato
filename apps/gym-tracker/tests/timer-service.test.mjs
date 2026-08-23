@@ -201,3 +201,30 @@ test('formatTimeShort never rolls into hours (dial/chip format)', () => {
     assert.equal(TimerService.formatTimeShort(90), '1:30');
     assert.equal(TimerService.formatTimeShort(3661), '61:01', 'minutes keep counting past 60');
 });
+
+// 2026-08-22 audit D7: a backwards clock change (NTP correction, manual
+// edit) used to make the header read "-1:-52" and persist a negative
+// elapsedBeforePause. Elapsed time must hold at the last value seen until
+// the wall clock catches up, and the formatter must never emit a negative.
+test('workout timer never runs backwards after a backwards clock change', (t) => {
+    t.mock.timers.enable(APIS);
+    const svc = new TimerService();
+    const ticks = [];
+    svc.startWorkoutTimer((elapsed) => ticks.push(elapsed), 0);
+    tickBy(t, 5_000, 1000);
+    assert.equal(ticks.at(-1), 5, 'five seconds elapsed before the clock change');
+
+    // The clock jumps back 90 s.
+    t.mock.timers.setTime(1_000_000 + 5_000 - 90_000);
+    t.mock.timers.tick(1000);
+    assert.equal(ticks.at(-1), 5, 'elapsed holds at the last known value, never negative');
+    assert.equal(svc.getWorkoutElapsed(), 5, 'getWorkoutElapsed reports the clamped value');
+    assert.ok(svc.stopWorkoutTimer() >= 5, 'stop returns the clamped value too');
+});
+
+test('formatTime clamps negative and non-finite input to 0:00', () => {
+    assert.equal(TimerService.formatTime(-112), '0:00');
+    assert.equal(TimerService.formatTime(NaN), '0:00');
+    assert.equal(TimerService.formatTimeShort(-5), '0:00');
+    assert.equal(TimerService.formatTime(3661), '1:01:01', 'positive values are untouched');
+});

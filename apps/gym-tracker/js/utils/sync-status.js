@@ -8,11 +8,14 @@
  *      shows the full state label. Out of the way on desktop because
  *      there's plenty of sidebar real estate.
  *
- *   2. Mobile top banner (`#sync-banner`) — pinned to the top of the
- *      viewport, only shown when state is `offline`, plus a brief
- *      green "Synced" confirmation on the offline→synced transition.
- *      Silent in every other state, so it never competes with the
- *      workout screen. Hidden on desktop via CSS.
+ *   2. Mobile banner (`#sync-banner`): pinned directly BELOW the fixed
+ *      site header (see placeBanner: its `top` follows #header's bottom
+ *      edge, and it stacks under the header), only shown when state is
+ *      `offline`, plus a brief green "Synced" confirmation on the
+ *      offline→synced transition. Dismissible with its close button, and
+ *      silent in every other state, so it never competes with the workout
+ *      screen. Hidden on desktop via CSS. Same contract as the shared
+ *      banner in assets/js/sync-status.js, which the other apps use.
  *
  * The poll-based read is kept (2 s + online/offline events) and
  * `render()` dedupes by last (state, label) so background ticks do
@@ -87,6 +90,41 @@ export function reconnectMessage(state) {
 }
 
 /**
+ * Keep the banner under the fixed site header so the header controls stay
+ * clickable while it is up; on a page without #header it sits at the top.
+ */
+function placeBanner() {
+    if (!bannerEl || bannerEl.hidden) return;
+    const header = document.getElementById('header');
+    const bottom = header ? Math.max(0, Math.round(header.getBoundingClientRect().bottom)) : 0;
+    bannerEl.style.top = `${bottom}px`;
+}
+
+/** Render the banner with its label and a dismiss button, then place it. */
+function showBanner(state, text) {
+    bannerEl.hidden = false;
+    bannerEl.dataset.state = state;
+    bannerEl.dataset.fading = 'false';
+    bannerEl.textContent = '';
+    const label = document.createElement('span');
+    label.textContent = text;
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'sync-banner__close';
+    close.setAttribute('aria-label', 'Dismiss');
+    close.textContent = '\u00d7';
+    close.addEventListener('click', () => {
+        clearTimeout(recoveryTimer);
+        recoveryTimer = null;
+        bannerEl.hidden = true;
+        bannerEl.dataset.fading = 'false';
+    });
+    bannerEl.appendChild(label);
+    bannerEl.appendChild(close);
+    placeBanner();
+}
+
+/**
  * Decide what the mobile banner should show.
  *
  *   - state === 'offline' → persistent banner.
@@ -99,23 +137,17 @@ function updateBanner(prev, next) {
     if (next.state === 'offline') {
         clearTimeout(recoveryTimer);
         recoveryTimer = null;
-        bannerEl.hidden = false;
-        bannerEl.dataset.state = 'offline';
-        bannerEl.dataset.fading = 'false';
-        bannerEl.textContent = 'You’re offline. Changes are saved on this device';
+        showBanner('offline', 'You’re offline. Changes are saved on this device');
         return;
     }
 
     const justRecovered = prev?.state === 'offline';
     if (justRecovered) {
         clearTimeout(recoveryTimer);
-        bannerEl.hidden = false;
-        bannerEl.dataset.state = next.state === 'synced' ? 'synced' : 'online';
-        bannerEl.dataset.fading = 'false';
         // GT-36: only claim a sync when one actually happened. A signed-out,
         // local-only user reconnecting was told "Back online. Synced" - there
         // was no account and nothing had been synced anywhere.
-        bannerEl.textContent = reconnectMessage(next.state);
+        showBanner(next.state === 'synced' ? 'synced' : 'online', reconnectMessage(next.state));
         recoveryTimer = setTimeout(() => {
             if (!bannerEl) return;
             bannerEl.dataset.fading = 'true';
@@ -201,4 +233,10 @@ export function mountSyncStatusPill() {
 
     window.addEventListener('online', render);
     window.addEventListener('offline', render);
+    // The header's height changes with the viewport, so the banner's offset
+    // has to follow it.
+    window.addEventListener('resize', placeBanner);
+    // The site header arrives as an injected partial, so its height is not
+    // known when this module mounts.
+    document.addEventListener('shevato:include-loaded', placeBanner);
 }

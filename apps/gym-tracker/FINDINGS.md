@@ -104,6 +104,22 @@ serious violation, so do not swap the fill back for looks.
   removal is explicit and confirmed. There is no cascade path from catalog or
   plan changes into workout history.
 
+**Generated pages carry TWO vocabularies, and both need directories.**
+A leaf page links its breadcrumb to `/exercises/muscle/<muscleGroup>/` and its
+Category fact to `/exercises/muscle/<category>/`. The generator used to emit
+muscle directories from `muscleGroup || category` alone, so categories that
+never equal a muscleGroup (`back`, `chest`, `cardio`) had no page and 155 leaf
+pages carried a 404 link on production. `collectMuscleTaxonomy()` now adds a
+directory for every category the muscle map does not already cover (the muscle
+grouping still wins when a key serves both), and those pages are in the
+sitemap like any other taxonomy page. Pinned by `build-exercise-pages.test.cjs`
+("every internal exercises/ link on every built page resolves to an emitted
+page"), which builds the REAL catalog into a temp dir and walks every
+`/apps/gym-tracker/exercises/` href of all 514 pages against the emitted
+directory set - it fails on any dangling link, not just the three known ones.
+`main()` takes `{ outDir, sitemapFile, log }` so the test never writes into
+the repo.
+
 ## Testing DOM-bound view logic: source extraction, never mirrors
 
 The view classes import the DOM and the app singleton, so they cannot be
@@ -226,6 +242,15 @@ lone exercise in superset chrome during a workout (fixed 2026-08-12,
 - Custom-exercise form muscle options are Title Case values; setting
   lowercase values silently fails validation.
 
+- Toasts are appended to `document.body`, not a `#toast-container`; a probe
+  that reads the container sees '' for every toast.
+- `pkill -f '<pattern>'` from a Claude Bash call matches the calling shell's
+  own command line and kills it (exit 144); use a bracketed pattern such as
+  `remote-debugging-por[t]=9304`.
+- Clicking a control that opens a `beforeunload` prompt (resume, then
+  navigate) looks like a `Runtime.evaluate` timeout unless
+  `Page.javascriptDialogOpening` is auto-accepted.
+
 ## Two console "errors" that are Chrome policy, not app defects
 
 A headless smoke of the live workout logs these at error level:
@@ -332,6 +357,51 @@ ordering problem, not just a code problem.**
   trip-planner's shell).
 - `css/exercise-page.css` is intentionally NOT precached: it styles only the
   generated `/exercises/` pages, which are not part of the offline app shell.
+- **Freshness after a deploy needs THREE things, and two of them are not in
+  `sw.js`** (2026-08-22 audit D5, fixed; `CACHE_VERSION` 1.15.0):
+  1. `cache: 'no-cache'` on every request the worker makes for itself - the
+     stale-while-revalidate refresh and `cache.addAll(PRECACHE_URLS)`. With the
+     default mode those reads came out of the browser's HTTP cache, so a
+     version bump could precache stale modules under the new name.
+  2. `event.waitUntil(networkPromise)` around the background refresh. Without
+     it the revalidation is cancelled whenever the worker is terminated after
+     `respondWith` settles, and the cached copy simply never updates.
+  3. **`max-age=0` on `js/*`, `css/*` and `data/*` in `netlify.toml`.** This is
+     the non-obvious one: Chrome answers a still-fresh subresource from its
+     memory cache WITHOUT firing the worker's fetch event, so any positive
+     max-age hides the request from the worker entirely - its cache is never
+     revalidated and the page keeps running the old module against new HTML
+     for the whole window. Measured against a local proxy serving the real
+     headers: with `max-age=300` the load after a deploy was new HTML + old JS
+     three loads running; with `max-age=0` the load after the deploy is
+     coherent. The worker is the performance layer (CacheStorage answers
+     instantly); the HTTP layer only has to be correct.
+  There is now a visible update path too: `index.html` watches `updatefound` /
+  `controllerchange` and reloads on a controller change when no workout is
+  live, or shows an "Update available / Reload now" toast when one is (a
+  reload mid-workout loses nothing, but it is still the lifter's call).
+  Regressions: `tests/sw-offline-behavior.test.mjs` (cache mode of both fetch
+  paths, the waitUntil hold) and `e2e/audit-2026-08.mjs` block K, which serves
+  the app through a proxy that reads its Cache-Control straight out of
+  `netlify.toml`, so re-introducing a positive max-age fails the suite.
+- **A navigation request cannot be re-constructed with an init.**
+  `new Request(navigationRequest, { cache: 'no-cache' })` throws a TypeError
+  ("mode is 'navigate' and a non-empty RequestInit"), which rejected the whole
+  fetch handler for every navigation the moment the no-cache clone was added -
+  every page load silently fell back to the network and offline navigation
+  died. The worker catches that and rebuilds the request from its URL.
+- Offline navigations match with `ignoreSearch`, so a launch URL carrying a
+  query string (`/?utm_source=x`) finds the cached shell, and a navigation
+  that is in no cache at all (a generated `/exercises/` page never visited)
+  gets the precached `offline/index.html` instead of the browser error page.
+  The fallback page lives in a subdirectory because
+  `sync-system/tests/app-naming-consistency.test.mjs` forbids a second
+  top-level `*.html` beside an app's `index.html`.
+- **Emulating offline on the page target alone proves nothing.** The worker
+  does its own fetches on its own target, so `Network.emulateNetworkConditions`
+  has to be sent to every `service_worker` target as well or the "offline"
+  assertions pass by quietly reaching the network (cost an hour here; the same
+  note exists in `tests/browser/suites/pwa-gym.mjs`).
 - Testing approach: `sw.js` is a classic script, so behavior tests load it
   into a `node:vm` sandbox with a Map-backed fake Cache Storage and a
   controllable `fetch` (`tests/sw-offline-behavior.test.mjs`); list/structure
@@ -587,6 +657,45 @@ dismissed, and reload + Resume.
 An emptied field is recorded as `''` on purpose. Clearing a row is an edit too
 and must not silently repopulate from last time.
 
+### An input's `min` attribute validates nothing here
+
+The commit is a button click, not a form submit, so the `min="1"` on the reps
+field was decorative: `commitPlannedSet` and `saveSetEdit` guarded with
+`!reps`, which `-3` passes. A negative rep count stored happily and produced
+`VOLUME -240kg` in the session detail, "0kg" on the history card and weekly
+tile, and a negative row in the CSV. `parseInt` also read `1e3` as 1 and `8.7`
+as 8 without a word.
+
+Both paths now share `parseSetEntry(weight, reps)`: reps is digits only and
+>= 1 (a `1e3` on a rep counter is a typo, never 1000), weight is finite and
+>= 0 (0 is legitimate bodyweight work). A rejection marks the row
+(`.set-row--invalid`, `aria-invalid`, a `role="alert"` message under the
+inputs, focus on the offending field) instead of firing a toast that did not
+say which field was wrong; typing in the row clears it. Pinned by
+`tests/set-entry-validation.test.mjs`, which runs the REAL extracted methods
+against a DOM stub, so a future `!reps` fails immediately.
+
+The same family, fixed in the same round:
+- The measurement form is `novalidate` and never checked its own `min`/`max`,
+  so `-5 kg`, `150 %` body fat, `1e7 kg` and dates in 2030 were stored and
+  drove every trend tile ("-132 % vs 30d"), and two taps on Save before the
+  modal closed stored two records. `validateMeasurementEntry` now enforces
+  canonical ranges and a real, non-future calendar date (`2026-02-29` is
+  rejected by round-tripping the parts; `new Date('2026-02-29')` silently
+  becomes March 1), the date input carries `max=today`, and `saveFromForm`
+  holds an in-flight guard for 500 ms after a successful save, like the
+  program form. `tests/measurement-entry-validation.test.mjs`.
+- The finish modal's heart-rate and calorie fields were guarded by native
+  validation only (a browser bubble on an otherwise inline-validated form).
+  `validatePostWorkoutMetrics` checks them and the modal shows the same inline
+  copy as everything else.
+- The workout timer rendered `-1:-52` after a backwards clock change
+  (`Date.now() - startTime` with no clamp, `formatTime` with no negative
+  case). `TimerService` keeps a monotonic `_clampedElapsed()` - elapsed time
+  never runs backwards, it holds until the wall clock catches up - and both
+  formatters clamp at 0. `tests/timer-service.test.mjs` drives it with
+  `mock.timers.setTime` going backwards.
+
 ### The feel smiley lasts exactly one workout
 
 `latestFeelForExercise` scanned the WHOLE history and returned the most recent
@@ -660,6 +769,37 @@ so a crash between "save session" and "clear active" cannot resurrect a
 workout the lifter already finished. Paused and interrupted workouts are both
 recoverable and are labelled differently, because one the lifter chose and the
 other happened to them.
+
+**One workout, one owning tab.** Every writer serialises the whole in-memory
+session, so two tabs logging at once used to lose each other's sets on every
+commit, and the second Finish overwrote the first session by id - the first
+tab's work was gone from history for good.
+
+The fix is an ownership lock, not another persist call:
+`gymTrackerActiveWorkoutLock` holds `{ tabId, at }`, claimed on start and
+resume, refreshed every 5 s while the workout is live, and considered stale
+after 20 s (`lockedByOtherTab` in `js/utils/active-workout.js`). While another
+tab's lock is fresh, this tab renders "Workout in progress in another tab"
+instead of a Resume banner, hides the FAB, and refuses both `startWorkout` and
+`resumeWorkout`; `persistActiveWorkout` returns early rather than writing a
+stale copy, and a tab whose lock was taken over stands down on its next
+heartbeat. Pause releases the lock on purpose (a paused workout is meant to be
+picked up anywhere), as do finish and discard.
+
+`finishWorkout` additionally reads before writing: if a completed session with
+this id is already in storage, another tab finished it and this tab says so
+and leaves the live screen rather than saving over it.
+
+The tab id lives in `sessionStorage`, so a reload keeps it and a duplicated
+tab gets its own. Everything else (programs, sessions, settings, achievements,
+custom exercises, measurements) is kept coherent by
+`sync-system/tab-sync.js`: the app re-reads those keys and re-renders on a
+foreign change, so a program added in one tab appears in the other and a
+program deleted there is not resurrected by the next write here. The handler
+only ever reads - writing from inside it is what cost Trip Planner its undo.
+Pinned by `tests/active-workout-lock.test.mjs` (lock semantics, storage
+accessors, `restState` round trip) and `e2e/audit-2026-08.mjs` block G (two
+real tabs).
 
 ## What counts as a workout (GT-14, GT-23)
 
@@ -784,8 +924,16 @@ controls of the next exercise unusable for the whole rest period. Two changes,
 both needed: nothing in the dial except its two buttons takes pointer events,
 and the exercise list reserves bottom padding while the dial is visible
 (`body.gt-rest-bar-visible #workout-exercises-list`), so in the ordinary
-scroll position it overlaps nothing at all. The disc is also translucent, so
-tapping "through" it is comprehensible rather than uncanny.
+scroll position it overlaps nothing of the NEXT exercise. The disc is also
+translucent, so tapping "through" it is comprehensible rather than uncanny.
+Correction from the 2026-08-22 audit (D11, fixed): the reserved 172 px sits
+below the list, not between exercise 1 and the dial, so at 390x844 after
+committing set 1 the centre of `#exercise-0 .btn-add-set--extra` hit-tested to
+`#rest-skip-btn` - the CURRENT exercise's own "Add set" was blocked for the
+whole rest period. Padding cannot fix that (the dial is fixed to the
+viewport), and the artwork must not move, so `keepAddSetClearOfDial()` scrolls
+the set-row footer above the dial when the dial would cover it, and only when
+that row is on screen. `e2e/audit-2026-08.mjs` asserts the hit test at 390.
 
 ## The sitewide button height, which min-height cannot beat
 
@@ -909,6 +1057,109 @@ populate from it, so a fifth hand-written copy cannot creep back in.
   slot came from. An in-workout swap changes `exerciseId` (so sets, history
   and PRs follow the substitute) and leaves `plannedExerciseId` alone (so the
   rep target, per-slot ranges and rest values survive) - GT-13.
+
+## Running the app's own E2E suite (e2e/audit-2026-08.mjs)
+
+- `GYM_E2E_TRACE=1` prints each check as it lands. A CDP command timeout
+  ("timeout: Runtime.evaluate" / "Input.dispatchMouseEvent") surfaces as a
+  THROWN error with no failing assertion, so without the trace there is no way
+  to tell WHERE the run died.
+- Three things were needed to stop those timeouts, all of them load, not
+  product: inject axe ONCE per page (re-parsing the ~500 KB vendor bundle
+  before each of a dozen scans was the biggest offender), take a fresh page for
+  each viewport leg instead of flipping device metrics on a page that has
+  already driven a live workout, and wait for `.completion-burst` to clear
+  after finishing a workout (it animates over the page for ~4 s and swallows
+  input). The finish-modal scan is scoped to the dialog for the same reason.
+- Honest status: the last six consecutive runs were clean (84/84); before those
+  changes roughly one run in four ended in a CDP timeout at a different heavy
+  step each time, never in an assertion failure. If it reappears, run with the
+  trace flag before assuming the product broke.
+- Teardown between blocks goes through the app: a live workout arms a
+  `beforeunload` listener, and `window.onbeforeunload = null` does NOT remove a
+  listener, so the dialog opens mid-navigation and whatever CDP command is in
+  flight can hang. `discardWorkout()` stops the timers, clears the blob and its
+  lock, and disarms the guard.
+- Offline in the deploy block is simulated by making the ORIGIN unreachable
+  (the suite's own proxy destroys the socket), not only by CDP emulation:
+  emulation has to be re-applied to every `service_worker` target, and a worker
+  Chrome restarted mid-run comes back online behind the test's back.
+
+## Gym Tracker forks two pieces of shared UI, so shared fixes skip it
+
+`js/utils/sync-status.js` and the `.sync-banner` / `.sync-status-pill` rules in
+`css/gym-tracker.css` are gym-local COPIES of `assets/js/sync-status.js` and
+`assets/css/sync-status.css` (gym adds a side-nav pill, a bottom-nav dot, and
+hides the banner on desktop, and its index.html never links the shared
+stylesheet). A fix to the shared pair therefore does nothing here.
+
+That is exactly what happened on 2026-08-23: the shared banner was moved below
+the fixed site header (`top` follows `#header`'s bottom edge, z-index 10000
+under the header's 10001, plus a close button) so it stopped covering the
+logo, Menu and Sign In. Gym kept `top: 0; z-index: 1100`, and since the header
+is 10001 the offline banner was drawn ENTIRELY BEHIND the header on phones:
+not "slightly covered" but invisible, so an offline user got no notice at all
+(screenshot pair in `.screenshots/audit/gym-banner/`). Gym now mirrors the
+shared contract: `placeBanner()` on show, on resize and on
+`shevato:include-loaded` (the header is an injected partial, so its height is
+unknown at mount), z-index 10000, and the same dismiss button. Desktop still
+shows the side-nav pill instead of a banner, which is deliberate.
+
+Two things to keep in mind when either copy changes: the geometry assertion is
+what catches the "hidden under the header" failure (the hit-tests pass in that
+state, because the header is above the banner either way), and the hit-tests
+are what catch the opposite failure (a banner raised above the header, which
+is the bug the shared move was fixing). `e2e/audit-2026-08.mjs` block M pins
+both at 390, plus the desktop-pill behaviour at 1280.
+
+## What the 2026-08-22 remediation round changed (and what it taught)
+
+- **Tablet widths 768 to 820 px are their own layout.** The 250 px side nav
+  switches on at 768 while the content column is still narrow, and the only
+  narrowing breakpoint for `.view-header` and the Settings data row was
+  639 px, so `#create-custom-exercise-btn` and `#clear-data-btn` pushed
+  `scrollWidth` to 855 / 897. `.view-header` now wraps at that width and
+  `.setting-actions` is `repeat(auto-fit, minmax(190px, 1fr))` instead of a
+  fixed three columns. `e2e/audit-2026-08.mjs` asserts `scrollWidth <=
+  innerWidth` and each button's right edge at 768 AND 820.
+- **Import validation is now per field, not per store.** See "Import: merge
+  and replace are different operations" and the README; the sanitiser is
+  `js/utils/import-sanitize.js`, applied inside `importAllData` so the file
+  import and the backup restore cannot diverge, and its repairs are disclosed
+  in a toast. The replace-import confirm no longer over-promises: replace only
+  touches the kinds of data the file carries, and the copy now says exactly
+  that.
+- **`getCurrentStreak` normalises dates.** It used to put raw `s.date` strings
+  in a Set and look up `YYYY-MM-DD` keys, so an imported or synced session
+  carrying a full ISO timestamp never counted (the app itself always writes
+  `YYYY-MM-DD`, which is why nobody saw it). It now goes through
+  `toLocalDate` / `toLocalDateKey` like every other date surface, and an
+  unparseable date is skipped rather than thrown on.
+- **The custom-exercise modal resets on open.** It kept the previous name in
+  the field; the program and measurement modals already reset.
+- **a11y, fixed and pinned.** Accessible names on the four Exercise Database
+  selects and the two program-picker filters; history cards are no longer
+  clickable containers wrapping a delete button (the card title is the button
+  now, which is also what `nested-interactive` wanted); `aria-current` on the
+  nav; `#insights-heatmap` is a focusable scroll region with a "scroll left
+  for earlier months" hint that disappears once you scroll; visible focus
+  rings pinned for `.btn` and the set-row number inputs.
+  Two colour lessons worth keeping:
+  `main.css` sets `button { color: #555 !important }`, which `all: unset` does
+  NOT beat - the history card title needed `color: inherit !important`; and
+  `refresh.css` loads AFTER `gym-tracker.css` and pins
+  `body.gym-tracker .btn-primary { color: #fff !important }` at (0,2,1), so
+  the dark-on-green finish button had to out-specify it with the modal id.
+  Fixing a colour in the wrong file looks right in source and changes nothing
+  on screen.
+- **`rem` here is not 16 px.** `main.css` sets the root font-size in points
+  (11pt = 14.67 px at these widths), so `0.58rem` on `.rest-timer-caption`
+  computed to 8.5 px and `0.72rem` still only reaches 10.56 px. Any "is this
+  text big enough" judgement has to be made in computed pixels, not in rem.
+- **Programmatic `.focus()` does not arm `:focus-visible`.** A probe that
+  focuses a button and reads `outline` will report "no focus ring" on
+  perfectly good CSS. Use `el.focus({ focusVisible: true })` (Chromium honours
+  it) or real key events.
 
 ## 2026-08-19 verification round (what was actually run)
 

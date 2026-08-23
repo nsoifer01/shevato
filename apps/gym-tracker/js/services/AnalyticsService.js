@@ -774,7 +774,13 @@ export class AnalyticsService {
      */
     static getCurrentStreak(sessions) {
         if (!sessions.length) return 0;
-        const dates = new Set(sessions.map(s => s.date));
+        // Normalise through toLocalDate/toLocalDateKey: the app writes
+        // YYYY-MM-DD, but an imported or synced session can carry a full
+        // ISO timestamp, which a raw-string Set never matched (streak 0).
+        const dates = new Set(sessions
+            .map(s => this.toLocalDate(s.date))
+            .filter(d => d instanceof Date && !isNaN(d.getTime()))
+            .map(d => this.toLocalDateKey(d)));
         let streak = 0;
         // Walk backwards from today in LOCAL time. Using toISOString() here
         // would give UTC dates, which misattribute late-evening sessions

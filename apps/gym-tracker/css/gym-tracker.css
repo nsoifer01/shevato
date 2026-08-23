@@ -473,7 +473,14 @@ body.gym-tracker #footer {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
+        /* 768-1023: the 250px side nav is on but the content column is
+           narrow; let the action button drop under the title instead of
+           pushing the page wide (2026-08-22 audit D4). */
+        flex-wrap: wrap;
+        gap: var(--spacing-sm) var(--spacing-md);
+        min-width: 0;
     }
+    .view-header > * { min-width: 0; }
 
     .view-header h1 {
         font-size: 2.5rem;
@@ -883,6 +890,22 @@ body.gym-tracker #footer {
 }
 
 /* Scope: history-list workout cards get a tighter, more intentional header */
+/* The card title is a real button now (it was a clickable div wrapping a
+   delete button: axe nested-interactive, D10). main.css sets
+   `button { color: #555 !important }`, which `all: unset` does not beat, so
+   the inherited colour is pinned here or the title fails contrast. */
+#history-list .workout-card-open {
+    all: unset;
+    cursor: pointer;
+    font: inherit;
+    color: inherit !important;
+    display: block;
+}
+#history-list .workout-card-open:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+    border-radius: 3px;
+}
 #history-list .workout-card-header h3 {
     font-size: 1.1rem;
     font-weight: 700;
@@ -1051,7 +1074,7 @@ body.gym-tracker #footer {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--text-muted);
+    color: var(--text-secondary); /* axe color-contrast at this size (D10) */
 }
 
 .programs-sort-select {
@@ -1817,8 +1840,10 @@ body.gym-tracker #active-workout .superset-block {
 }
 
 .rest-timer-caption {
-    color: var(--text-muted);
-    font-size: 0.58rem;
+    color: var(--text-secondary);
+    /* Root font-size here is 11pt (14.67px), not 16px, so rem values are
+       ~8% smaller than they look: 0.58rem computed to 8.5px (D10). */
+    font-size: 0.85rem;
     font-weight: 500;
 }
 
@@ -2707,6 +2732,22 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle i {
 .set-row-planned {
     background: var(--bg-tertiary);
     border-color: var(--border-color);
+}
+
+/* Inline validation on a set row (commit and edit): red left accent, the
+   offending input outlined, and a message on its own line under the inputs. */
+.set-row--invalid {
+    border-left-color: var(--accent-error);
+}
+.set-row input[aria-invalid="true"] {
+    border-color: var(--accent-error) !important;
+    box-shadow: 0 0 0 1px var(--accent-error);
+}
+.set-row-error {
+    flex-basis: 100%;
+    font-size: 0.8rem;
+    color: #ff8a8a;
+    padding-left: 0.25rem;
 }
 
 /* Active cue: a single left accent border (no glow, no fill, no outline). */
@@ -6035,8 +6076,15 @@ button.calendar-day {
 
 @media (min-width: 640px) {
     .setting-actions {
-        grid-template-columns: repeat(3, 1fr);
+        /* auto-fit, not a fixed three: at 768-1023 the content column is
+           ~470px and three nowrap buttons overflowed the viewport (D4). */
+        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
     }
+}
+.setting-actions .btn {
+    white-space: normal;
+    min-width: 0;
+    text-align: center;
 }
 
 /* ----- Save Settings — inline right-aligned action ----- */
@@ -6906,6 +6954,15 @@ button.calendar-day {
     gap: var(--spacing-md);
 }
 
+/* Another tab drives the workout: informational, no Resume/Discard (D2). */
+.paused-workout-banner--elsewhere {
+    border-color: var(--accent-primary);
+}
+.paused-workout-banner--elsewhere .paused-workout-icon { color: var(--accent-primary); }
+
+/* Update-available toast: stays until acted on (index.html, D5). */
+.gym-update-toast { opacity: 1; transform: none; pointer-events: auto; }
+
 @media (min-width: 768px) {
     .paused-workout-banner {
         flex-direction: row;
@@ -7487,6 +7544,16 @@ button.calendar-day {
     outline-offset: 2px;
     border-radius: 3px;
 }
+/* The generic rule above loses to more specific per-component rules that
+   set outline: none, so the two the keyboard audit hit are pinned here
+   with !important (D10): every .btn, and the live set-row number fields. */
+.gym-tracker .btn:focus-visible,
+.gym-tracker .set-row input:focus-visible,
+.gym-tracker .set-edit-input:focus-visible {
+    outline: 2px solid var(--accent-primary) !important;
+    outline-offset: 2px !important;
+    box-shadow: 0 0 0 4px rgba(124, 92, 255, 0.25) !important;
+}
 
 /* Keep the input border-colour cue and ADD a visible focus ring
  * (previously outline was forced to 'none'). */
@@ -7594,6 +7661,19 @@ button.calendar-day {
 }
 
 .form-error[hidden] { display: none; }
+
+.form-hint {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+    margin: 0.4rem 0 0 0;
+    padding: 0;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    line-height: 1.3;
+}
+.form-hint i { font-size: 0.8rem; flex: 0 0 auto; margin-top: 0.15rem; color: var(--accent-primary); }
+.form-hint[hidden] { display: none; }
 
 /* Invalid input — subtle red border + faint glow, not harsh. */
 .form-group input.is-invalid,
@@ -7705,19 +7785,29 @@ button.calendar-day {
     justify-content: flex-start;
 }
 
-/* Mobile sync banner — pinned to the top of the viewport, full width,
-   only visible when sync state is offline (or briefly on the
-   offline→synced transition). Hidden in all other states so it never
-   competes with workout content. The desktop side-nav pill above is
-   the equivalent surface for desktop users. */
+/* Mobile sync banner: full width, only visible when sync state is
+   offline (or briefly on the offline→synced transition). Hidden in all
+   other states so it never competes with workout content. The desktop
+   side-nav pill above is the equivalent surface for desktop users.
+
+   Placement matches the SHARED banner (assets/css/sync-status.css): it
+   sits BELOW the fixed site header, whose bottom edge js/utils/sync-status.js
+   writes into `top`, and it stacks under the header (10000 < #header's
+   10001) so the logo, Menu and Sign In stay clickable for the whole
+   offline period. At z-index 1100 / top: 0 it used to sit underneath the
+   header instead, hiding the banner and covering nothing useful. No
+   safe-area padding any more: the header already owns the notch. */
 .sync-banner {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
-    z-index: 1100; /* Above bottom-nav (1000), below modals (~2000). */
-    padding: 8px 14px calc(8px + env(safe-area-inset-top, 0px));
-    padding-top: calc(8px + env(safe-area-inset-top, 0px));
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 8px 14px;
     text-align: center;
     font-size: 13px;
     font-weight: 600;
@@ -7726,6 +7816,26 @@ button.calendar-day {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
     transition: background 200ms ease, opacity 200ms ease, transform 200ms ease;
     transform: translateY(0);
+}
+.sync-banner__close {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    margin: -4px -6px -4px 0;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.18);
+    color: #fff !important; /* main.css paints button text #555 !important; pin ours */
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+}
+.sync-banner__close:hover,
+.sync-banner__close:focus-visible {
+    background: rgba(255, 255, 255, 0.32);
+    outline: 2px solid #fff;
+    outline-offset: 1px;
 }
 .sync-banner[hidden] { display: none; }
 .sync-banner[data-state="offline"] { background: rgba(100, 116, 139, 0.95); }
@@ -7934,6 +8044,16 @@ button.calendar-day {
     overflow-x: auto;
     padding: 4px 2px 6px;
 }
+.insights-heatmap:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+}
+.insights-heatmap-hint {
+    margin: 0 0 0.35rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+.insights-heatmap-hint[hidden] { display: none; }
 .hm-month-row {
     display: grid;
     column-gap: 2px;
@@ -8217,6 +8337,15 @@ button.calendar-day {
     font-size: 1.05rem;
     flex-shrink: 0;
 }
+.finish-inline-message--error {
+    background: rgba(248, 113, 113, 0.12);
+    border-color: rgba(248, 113, 113, 0.45);
+}
+.finish-inline-message--error i { color: var(--accent-error); }
+#finish-workout-form input[aria-invalid="true"] {
+    border-color: var(--accent-error) !important;
+    box-shadow: 0 0 0 1px var(--accent-error);
+}
 
 .workout-summary {
     display: grid;
@@ -8413,6 +8542,16 @@ button.calendar-day {
     align-items: center;
     justify-content: center;
     gap: 0.45rem;
+}
+/* refresh.css pins `body.gym-tracker .btn-primary { color: #fff !important }`
+   at (0,2,1) and loads after this file, so the dark-on-green text below has
+   to out-specify it with the modal id: white on #34d399 is 1.9:1 and axe
+   flagged it serious (D10). */
+body.gym-tracker #finish-workout-modal .finish-workout-submit,
+body.gym-tracker #finish-workout-modal .finish-workout-submit:hover,
+body.gym-tracker #finish-workout-modal .finish-workout-submit:focus-visible {
+    background: var(--accent-success) !important;
+    color: #07140d !important;
 }
 .finish-workout-submit i { color: inherit !important; }
 .finish-workout-submit:hover { filter: brightness(1.06); }

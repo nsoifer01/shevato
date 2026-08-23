@@ -232,23 +232,32 @@
     Strict-Transport-Security = "max-age=31536000; includeSubDomains"
     Content-Security-Policy-Report-Only = "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdnjs.cloudflare.com https://www.googletagmanager.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' data: https://cdnjs.cloudflare.com https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebasedatabase.app https://*.firebaseapp.com https://*.google-analytics.com https://*.analytics.google.com https://us-central1-jjexperiment-12af6.cloudfunctions.net https://maptap.gg https://nominatim.openstreetmap.org https://photon.komoot.io https://archive-api.open-meteo.com https://api.open-meteo.com https://geocoding-api.open-meteo.com https://api.frankfurter.dev https://api.openai.com https://raw.githubusercontent.com https://the-trivia-api.com https://query.wikidata.org https://en.wikipedia.org wss://*.firebaseio.com; frame-src 'self' https://shevato-site.firebaseapp.com https://apis.google.com; object-src 'none'; base-uri 'self'; form-action 'self'"
 
-# Long-cache static asset families. The exercise DB is content-addressed
-# only by name today; if we add hashed bundles later, bump these and
-# the Service Worker should refresh on its own.
+# Gym Tracker is a service-worker PWA: its worker precaches the shell and
+# serves everything stale-while-revalidate out of CacheStorage, so the SW is
+# the performance layer and the HTTP layer only has to be correct.
+#
+# These files must NOT carry a positive max-age. Chrome serves a fresh-enough
+# subresource straight from its memory cache WITHOUT firing the worker's
+# fetch event, so a max-age window hides the request from the worker: its
+# cached copy is never revalidated and the page keeps running the old module
+# against new HTML for the whole window (2026-08-22 audit D5, reproduced in
+# apps/gym-tracker/e2e/audit-2026-08.mjs against a proxy that serves exactly
+# these headers). With max-age=0 the worker sees every request, revalidates
+# with `cache: 'no-cache'`, and the load after a deploy is coherent.
 [[headers]]
   for = "/apps/gym-tracker/js/*"
   [headers.values]
-    Cache-Control = "public, max-age=300, must-revalidate"
+    Cache-Control = "public, max-age=0, must-revalidate"
 
 [[headers]]
   for = "/apps/gym-tracker/css/*"
   [headers.values]
-    Cache-Control = "public, max-age=300, must-revalidate"
+    Cache-Control = "public, max-age=0, must-revalidate"
 
 [[headers]]
   for = "/apps/gym-tracker/data/*"
   [headers.values]
-    Cache-Control = "public, max-age=3600, must-revalidate"
+    Cache-Control = "public, max-age=0, must-revalidate"
 
 # Existing override for the firebase-config function — kept tighter than
 # the global headers because we don't want it framed at all.

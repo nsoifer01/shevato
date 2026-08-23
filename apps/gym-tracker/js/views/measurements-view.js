@@ -72,6 +72,46 @@ const METRIC_INPUT_IDS = {
     thighRight: 'm-thighright',
 };
 
+/**
+ * Range and date validation for a measurement entry, in CANONICAL units
+ * (kg / cm / %). The form is `novalidate` (its inputs hide behind the dark
+ * calendar and unit-aware labels), so nothing ever enforced the `min` /
+ * `max` the inputs declare: -5 kg, 150 % body fat, 10,000,000 kg and dates
+ * in 2030 were stored and drove every trend tile (2026-08-22 audit D3).
+ * Returns null when fine, else `{ key, message }` naming the first bad field
+ * (`key` is a METRICS key or 'date').
+ */
+const MEASUREMENT_LIMITS = {
+    weight: { max: 700, label: 'Body weight', unit: 'kg' },
+    bodyFat: { max: 100, label: 'Body fat', unit: '%' },
+    length: { max: 500, label: null, unit: 'cm' },
+};
+
+function validateMeasurementEntry(data, todayKey) {
+    const m = typeof data.date === 'string' && /^(\d{4})-(\d{2})-(\d{2})$/.exec(data.date);
+    // Round-trip the parts: `new Date('2026-02-29')` silently becomes March 1.
+    const parsed = m && new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    if (!parsed || parsed.getMonth() !== Number(m[2]) - 1 || parsed.getDate() !== Number(m[3])) {
+        return { key: 'date', message: 'Enter a valid date' };
+    }
+    if (todayKey && data.date > todayKey) {
+        return { key: 'date', message: 'Measurements cannot be dated in the future' };
+    }
+    for (const metric of METRICS) {
+        const v = data[metric.key];
+        if (v === '' || v === null || v === undefined) continue;
+        const limit = metric.kind === 'length' ? MEASUREMENT_LIMITS.length
+            : (metric.key === 'bodyFat' ? MEASUREMENT_LIMITS.bodyFat : MEASUREMENT_LIMITS.weight);
+        if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) {
+            return { key: metric.key, message: `${metric.label} must be a number of 0 or more` };
+        }
+        if (v > limit.max) {
+            return { key: metric.key, message: `${metric.label} cannot be more than ${limit.max} ${limit.unit}` };
+        }
+    }
+    return null;
+}
+
 class MeasurementsView {
     constructor() {
         this.app = app;
@@ -395,6 +435,11 @@ class MeasurementsView {
         };
         const dateValue = m?.date || getTodayDateString();
         setVal('#m-date', dateValue);
+        // A measurement is a record of something that happened: never a
+        // future date (the native picker honours max; saveFromForm enforces it).
+        const dateEl = document.getElementById('m-date');
+        if (dateEl) dateEl.max = getTodayDateString();
+        this.clearEntryError();
         // Push the value through the wrapped DarkCalendar so its trigger
         // label shows the same date as the underlying input.
         if (this.dateCalendar) this.dateCalendar.selectDate(parseLocalDate(dateValue));
@@ -482,7 +527,46 @@ class MeasurementsView {
         this.render();
     }
 
+    /** Mark one entry input invalid with a message; the toast repeats it. */
+    showEntryError(key, message) {
+        const id = key === 'date' ? 'm-date' : METRIC_INPUT_IDS[key];
+        const el = document.getElementById(id);
+        if (el) {
+            el.setAttribute('aria-invalid', 'true');
+            el.classList.add('is-invalid');
+            if (typeof el.focus === 'function') el.focus();
+        }
+        showToast(message, 'error');
+    }
+
+    clearEntryError() {
+        const form = document.getElementById('measurement-form');
+        if (!form || typeof form.querySelectorAll !== 'function') return;
+        form.querySelectorAll('[aria-invalid]').forEach((el) => {
+            el.removeAttribute('aria-invalid');
+            el.classList.remove('is-invalid');
+        });
+    }
+
     saveFromForm() {
+        // Two taps on Save before the modal closed produced two records
+        // (2026-08-22 audit D16); the program and custom-exercise forms carry
+        // the same in-flight guard.
+        if (this._saving) return;
+        this._saving = true;
+        let saved = false;
+        try {
+            saved = this._saveFromFormNow() === true;
+        } finally {
+            // A successful save keeps the guard up briefly so a second tap
+            // that lands after the modal closed cannot re-submit the same
+            // values (the program form uses the same 500 ms window).
+            if (saved) setTimeout(() => { this._saving = false; }, 500);
+            else this._saving = false;
+        }
+    }
+
+    _saveFromFormNow() {
         const get = (id) => document.getElementById(id)?.value ?? '';
         // Entered in the display unit; stored canonically (kg / cm), so the
         // record keeps its meaning when the preference changes later.
@@ -497,6 +581,12 @@ class MeasurementsView {
         const hasAnyValue = METRICS.some(({ key }) => data[key] !== '' && data[key] != null);
         if (!hasAnyValue) {
             showToast('Enter at least one measurement', 'error');
+            return;
+        }
+        this.clearEntryError();
+        const problem = validateMeasurementEntry(data, getTodayDateString());
+        if (problem) {
+            this.showEntryError(problem.key, problem.message);
             return;
         }
 
@@ -523,6 +613,7 @@ class MeasurementsView {
         document.getElementById('measurement-modal').classList.remove('active');
         this.editingId = null;
         this.render();
+        return true;
     }
 
     async confirmDelete(id) {

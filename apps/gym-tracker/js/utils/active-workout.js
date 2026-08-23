@@ -40,6 +40,29 @@ export function hasRecoverableWorkout(raw) {
     return readableActiveWorkout(raw) !== null;
 }
 
+/**
+ * Tab ownership of the live workout (2026-08-22 audit D2).
+ *
+ * Every writer serialises the whole in-memory session, so two tabs logging
+ * into the same `gymTrackerActiveWorkout` lost each other's sets on every
+ * commit, and the second Finish saved a session with the SAME id over the
+ * first. The owning tab now writes `gymTrackerActiveWorkoutLock`
+ * ({ tabId, at }) when it starts or resumes and refreshes it on a heartbeat;
+ * another tab treats the workout as "in progress elsewhere" while the lock
+ * is fresh, and may resume only once the owner is gone (tab closed, crashed
+ * or paused: pause releases the lock on purpose).
+ */
+export const LOCK_STALE_MS = 20000;
+export const LOCK_HEARTBEAT_MS = 5000;
+
+/** True when `lock` belongs to a DIFFERENT tab and is still fresh. */
+export function lockedByOtherTab(lock, tabId, now = Date.now()) {
+    if (!lock || typeof lock !== 'object') return false;
+    if (!lock.tabId || lock.tabId === tabId) return false;
+    const at = Number(lock.at);
+    return Number.isFinite(at) && now - at < LOCK_STALE_MS;
+}
+
 /** True when the user explicitly pressed Pause (vs an interruption). */
 export function wasExplicitlyPaused(raw) {
     return !!(raw && raw.paused === true);
