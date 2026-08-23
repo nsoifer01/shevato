@@ -408,8 +408,13 @@ function findMatches(seriesById, episodesBySeries, opts = {}) {
     // doesn't pull the year forward; if no episode carries a year, we
     // fall back to null and the UI uses the show's start year (`year`).
     let seasonYear = null;
+    // ...and the LATEST, which is what "is this still airing" actually turns
+    // on. Build-internal: tagInProgress reads it and findMatches deletes it
+    // before the record ships, since nothing downstream needs it.
+    let lastRatedYear = null;
     for (const e of eps) {
       if (e.year && (!seasonYear || e.year < seasonYear)) seasonYear = e.year;
+      if (e.year && (!lastRatedYear || e.year > lastRatedYear)) lastRatedYear = e.year;
     }
 
     // Per-season average runtime, in minutes. Only counts episodes that
@@ -455,6 +460,7 @@ function findMatches(seriesById, episodesBySeries, opts = {}) {
       confidence: {},
     };
     if (avgRuntime !== null) season_obj.avgRuntime = avgRuntime;
+    if (lastRatedYear !== null) season_obj._lastRatedYear = lastRatedYear;
     matches.push(season_obj);
   }
 
@@ -467,6 +473,8 @@ function findMatches(seriesById, episodesBySeries, opts = {}) {
 
   tagSavedBestForLast(matches);
   tagShapeDrift(matches);
+  // Build-internal only (see _lastRatedYear above): never ships in data.json.
+  for (const m of matches) delete m._lastRatedYear;
   return matches;
 }
 
@@ -476,19 +484,22 @@ function findMatches(seriesById, episodesBySeries, opts = {}) {
 // build clock (opts.buildYear) because the whole point is "is this airing NOW":
 //
 //   1. LISTED TAIL. title.episode.tsv lists an episode numbered after our last
-//      rated one, and the season aired in the current or previous year. The
+//      rated one, and the season still had an episode rated THIS year. The
 //      tail on its own is far too common to use (5,960 seasons, back to 1932,
 //      have an unrated episode at the end simply because nobody rated it); the
 //      recency guard is what makes it mean "not aired yet". Measured on the
-//      2026-08-22 catalogue: 707 seasons.
-//   2. SHORT CURRENT-YEAR SEASON. The season aired this year and has under 60%
-//      of the episodes the season before it had. This catches shows where IMDb
-//      lists only what has aired (most currently-airing anime: Jujutsu Kaisen
-//      S3 shows 12 of 24 with no tail to see). Comparing against the PREVIOUS
-//      season rather than the show's median season length matters: revivals and
-//      format changes (Criminal Minds S19, King of the Hill S15) are short
-//      against their old seasons but exactly as long as their new ones.
-//      Measured: 40 further seasons.
+//      2026-08-22 catalogue: 374 seasons.
+//   2. SHORT CURRENT-YEAR SEASON. The season has an episode rated this year,
+//      IMDb lists no more episodes than we have ratings for, and it has under
+//      60% of the episodes the season before it had. This catches shows where
+//      IMDb lists only what has aired (most currently-airing anime: Jujutsu
+//      Kaisen S3 shows 12 of 24 with no tail to see). Comparing against the
+//      PREVIOUS season rather than the show's median season length matters:
+//      revivals and format changes (Criminal Minds S19, King of the Hill S15)
+//      are short against their old seasons but exactly as long as their new
+//      ones. The listed-count guard matters because a rated count on its own
+//      reads a sparsely-rated long season as a short one (MasterChef Australia
+//      S18: 17 rated of 60 listed). Measured: 35 further seasons.
 //
 // Only the highest-numbered season of a series can qualify - an earlier season
 // with a later one after it is finished by definition, whatever its gaps.
@@ -518,7 +529,20 @@ function tagInProgress(matches, opts = {}) {
     const year = last.seasonYear;
     if (!Number.isFinite(year)) continue;
 
-    if (year >= buildYear - 1 && listedMaxEp) {
+    // Recency is measured from the season's LATEST rated episode, not from
+    // seasonYear (its earliest). Anchoring on the earliest was the rule's one
+    // real defect: a 2025 season that finished in 2025 satisfies
+    // `seasonYear >= buildYear - 1` for the whole of 2026, so any such season
+    // with an unrated tail (which is most of them, since nobody rates the
+    // finale of an obscure show) was called "still airing" all year. Measured
+    // on the 2026-08-22 catalogue that was 223 demonstrably finished seasons,
+    // 92 of which lost a label they had earned. The latest rated year says
+    // what the earliest cannot: a season still running now has rated episodes
+    // from THIS year, and a split-cours run that began in late 2025 and is
+    // still going has them too, so it stays flagged.
+    const airingYear = Number.isFinite(last._lastRatedYear) ? last._lastRatedYear : year;
+
+    if (airingYear >= buildYear && listedMaxEp) {
       const bySeason = listedMaxEp.get(last.seriesId);
       const maxEp = bySeason && bySeason.get(last.season);
       const lastRated = last.episodes[last.episodes.length - 1];
@@ -528,9 +552,16 @@ function tagInProgress(matches, opts = {}) {
       }
     }
 
-    if (year >= buildYear && arr.length >= 2) {
+    if (airingYear >= buildYear && arr.length >= 2) {
       const prev = arr[arr.length - 2];
-      if (last.episodes.length < IN_PROGRESS_SHORT_RATIO * prev.episodes.length) {
+      // Rated count alone reads a sparsely-rated season as a short one. When
+      // IMDb lists more episodes than we have ratings for, the season is not
+      // short, it is under-rated, and rule 1 above is the one that decides it.
+      const bySeason = listedMaxEp && listedMaxEp.get(last.seriesId);
+      const maxEp = bySeason && bySeason.get(last.season);
+      const fullyRated = !Number.isFinite(maxEp) || maxEp === last.episodes.length;
+      if (fullyRated
+        && last.episodes.length < IN_PROGRESS_SHORT_RATIO * prev.episodes.length) {
         last.inProgress = true;
       }
     }

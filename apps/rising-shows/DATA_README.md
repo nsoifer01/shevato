@@ -140,13 +140,14 @@ Notes on individual fields:
   produce the same value. It exists because `builtAt` changes on every run,
   which made the refresh workflow's three "unchanged" byte comparisons dead
   code: a ~40 MB release upload and a merged bot PR happened daily even on days
-  with zero data change. It is carried into `data-index.json` for free (38 bytes
+  with zero data change. It is carried into `data-index.json` for free (33 bytes
   in a 34 MB file) so either artifact can be compared.
 - `inProgress` marks a season the build can see is still airing: it is the
-  series' highest-numbered season AND either IMDb lists an episode numbered
-  after the last one we have a rating for (with the season airing this year or
-  last), or it is a current-year season with under 60% of the previous season's
-  rated episodes. 747 of 66,380 seasons carry it on the 2026-08-22 build. Such a
+  series' highest-numbered season, it still had an episode RATED this year, and
+  either IMDb lists an episode numbered after the last one we have a rating for,
+  or IMDb lists no more episodes than we have ratings for and the season has
+  under 60% of the previous season's rated episodes. 409 of 66,380 seasons carry
+  it on the 2026-08-22 build. Such a
   season never receives the finale-dependent shapes (big-finale, bad-finale,
   u-shaped, saved-best-for-last) and its show is not labelled from it. Absent
   means finished. See the app's FINDINGS.md for how the rule was derived.

@@ -68,14 +68,32 @@ bad-finale tags sat on partial 2025-26 seasons; 360 multi-season shows
 had a whole-run shape that hinged on one.
 
 A season is now flagged `inProgress` when it is the series' highest
-numbered season AND either (a) `title.episode.tsv` lists an episode
-numbered after our last rated one and `seasonYear >= buildYear - 1`
-(707 seasons), or (b) it is a current-year season with fewer than 60% of
-the PREVIOUS season's rated episodes (40 more). An in-progress season
+numbered season, it still had an episode RATED this year, and either (a)
+`title.episode.tsv` lists an episode numbered after our last rated one
+(374 seasons), or (b) IMDb lists no more episodes than we have ratings
+for and it has under 60% of the PREVIOUS season's rated episodes (35
+more). 409 seasons in total, every one of them a 2026 season. An in-progress season
 never receives big-finale, bad-finale or u-shaped, its series is skipped
 by both series-level tags, and `deriveShowShapes` takes an optional
 4th options arg so the whole-show trajectory is not labelled off it
 either (the 3-arg call still means "finished").
+
+The recency test is anchored on the season's LATEST rated episode, not on
+`seasonYear`, which is its earliest. Anchoring on the earliest was this
+rule's one real defect, found in the pre-merge closeout: a 2025 season
+that finished in 2025 satisfies `seasonYear >= buildYear - 1` for the
+whole of 2026, so any such season with an unrated tail (most of them,
+since nobody rates the finale of an obscure show) was called "still
+airing" all year. That was 223 demonstrably finished seasons of the 747
+then flagged, 102 of which lost a label they had earned. Switching to the
+latest rated year drops all 223 and keeps 51 of the 51 flagged seasons
+whose own episodes clear 50 votes. The residual cost is one well-rated
+season (Cooper & Fry S1, 4 rated of 8 listed, last rated episode 2025)
+that is probably still airing and is no longer flagged: a season whose
+newer episodes have no ratings yet is invisible to this rule. Rule (b)
+gained its listed-count guard in the same pass, because a rated count on
+its own reads a sparsely-rated long season as a short one (MasterChef
+Australia S18: 17 rated of 60 listed).
 
 Signals that were tried and rejected:
 
@@ -90,11 +108,12 @@ Signals that were tried and rejected:
   Academia S8, One Punch Man S3), which would strip labels from seasons
   that really did end.
 
-Residual false negative, by design: a season IMDb lists only up to the
-episode that has aired, when that is already >= 60% as long as the
-previous season, stays unflagged. Hand-check of 120 seasons found 0
-false positives among 45 flagged ones carrying a finale tag and 0 false
-negatives among 30 recent last seasons.
+Residual false negatives, by design and measured: a season IMDb lists
+only up to the episode that has aired, when that is already >= 60% as
+long as the previous season, stays unflagged; and so does a season whose
+2026 episodes have not been rated yet (its latest rated year is still
+2025). The second is the price of the precision fix above and costs one
+well-rated season on this build.
 
 Two related detector fixes shipped with it. `isBigFinale` rounded its
 margin to 1 dp, which is right for 1-dp episode ratings but made the
@@ -104,10 +123,22 @@ now rounds at 4 dp. `isRising` accepted a perfectly flat curve while
 `isDeclining` never did; it now needs one real increase, which is what
 the chip's "kept climbing" copy claims (299 flat seasons, 58 shows).
 
-Catalogue effect, measured with two full builds from identical TSVs:
-big-finale -114 seasons, bad-finale -67, u-shaped -60, rising -299,
-shape-drift -88, saved-best-for-last -61, every other shape unchanged;
-197 shows changed dominant shape, 286 changed their shape set at all.
+Catalogue effect, measured by running master's classifier and this one
+over the identical episode data (so the two differ only by these rules):
+
+| shape | seasons before | after | show-level before | after |
+|---|---|---|---|---|
+| big-finale | 12,167 | 12,097 | 652 | 551 |
+| bad-finale | 4,690 | 4,652 | 423 | 411 |
+| u-shaped | 3,104 | 3,071 | 387 | 374 |
+| rising | 2,905 | 2,606 | 3,238 | 3,180 |
+| shape-drift | 1,654 | 1,599 | 1,654 | 1,599 |
+| saved-best-for-last | 1,555 | 1,514 | 1,554 | 1,513 |
+| consistent, declining, front-loaded, mid-peak, rebound, rollercoaster, slow-burn | unchanged | unchanged | unchanged | unchanged |
+
+161 shows change dominant shape and 229 change their shape set at all.
+The show-level big-finale drop is mostly not the in-progress rule: 79 of
+the 101 are the 2 dp margin fix below.
 
 ## One definition of "avg episode" (2026-08-22)
 
@@ -188,6 +219,62 @@ and running `computeShowRelated` over the real `data-index.json`.
   the mood rail and moving the Kometa CTA below the grid: 720 px and
   644 px. Re-measure with the probe in the session scratchpad if this
   area is touched again.
+
+## Two legitimate series counts (2026-08-23)
+
+34,692 and 34,615 both describe the same build and neither is stale. 34,692 is
+the number of distinct series in `data.json` / `data-index.json`, and the number
+of static pages generated. 34,615 is what the Finder lists, because
+`buildShowAgg` (finder-lib.js) drops a series with no numeric `seriesRating`.
+Verified on the 2026-08-22 build: exactly 77 series, and the cause is the same
+for all 77 (no season record carries a `seriesRating`; none of them is missing
+votes or episodes instead). They are not lost anywhere else: 20 of 20 sampled
+have their static page on disk, the A-Z letter pages link them, their pages
+carry `noindex, follow` like every other non-curated page and correctly OMIT
+the `aggregateRating` from the TVSeries JSON-LD rather than emitting a null.
+
+Keeping them out of the grid is deliberate: the gap (`avgEpisode - showRating`)
+is the Finder's headline metric and the show-rating filter, the gap-direction
+segments and the hidden-gems rule all read `showRating`. A row with a blank in
+that column cannot be sorted or filtered on the thing the app exists for.
+
+## Shared compare links are read-only against storage (2026-08-23)
+
+`applyPendingCompareIds` deliberately did not call `Compare.save()`, on the
+reasoning that a link someone else sent should not overwrite the visitor's own
+comparison. That held only until their FIRST edit: `add` / `remove` / `clear`
+each call `save()`, which wrote whatever was in memory, i.e. the imported set.
+Removing one show from a friend's link (the most natural first move) silently
+replaced a set the visitor may have spent real time building, with no warning
+and no undo. Confirmed in the browser before the fix.
+
+Now `Compare.imported` is set when a link arrives AND the visitor already has a
+different stored set. While it is on, `save()` is a no-op, so every edit is
+in-memory only, the overlay carries a note saying so and naming how many shows
+their own comparison still holds, and "Keep this comparison"
+(`Compare.keepImported()`) is the single explicit action that adopts it. A
+visitor with no stored set is not put in that mode, so a first-time follower of
+a link keeps their edits as usual. Pinned by three tests in
+`tests/app-features.test.js`.
+
+## Escape steps back, it does not dump the stack (2026-08-23)
+
+Only one modal is on screen at a time: drilling from a show into a season
+CLOSES the show modal and opens the season one, with `modalViewHistory`
+remembering the step. Escape used to read as "close the topmost thing", which
+dropped a reader who had drilled in two levels all the way back to the grid,
+while the back arrow sitting in the same corner offered to return to the show.
+Escape now performs exactly the back arrow's step and only closes when the
+history is empty, so a deep link to a season still closes straight out. The x
+button and a backdrop click still leave outright, which is what makes the two
+affordances distinct rather than redundant.
+
+`goBackModalView` passes the original opener through as `opts.restoreFocus`.
+Without it, stepping back re-opens a modal at a moment when `document.
+activeElement` is `<body>` (the previous modal is mid-close), so the eventual
+close dropped keyboard focus on the body instead of the card the reader started
+from. That bug predates the Escape change for the back arrow; the Escape change
+just made it the common path.
 
 ## Gotchas
 

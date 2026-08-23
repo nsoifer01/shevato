@@ -31,14 +31,14 @@ libraries:
 |---|---|---:|
 | Rising Shows | `kometa/rising.yml` | 1,110 |
 | Slow Burn Seasons | `kometa/slow-burn.yml` | 1,137 |
-| Big Finale Seasons | `kometa/big-finale.yml` | 1,695 |
+| Big Finale Seasons | `kometa/big-finale.yml` | 1,702 |
 | Rebound Seasons | `kometa/rebound.yml` | 3,958 |
 | Mid-Peak Seasons | `kometa/mid-peak.yml` | 1,435 |
-| U-Shaped Seasons | `kometa/u-shaped.yml` | 1,157 |
-| Saved Best For Last | `kometa/saved-best-for-last.yml` | 1,423 |
+| U-Shaped Seasons | `kometa/u-shaped.yml` | 1,161 |
+| Saved Best For Last | `kometa/saved-best-for-last.yml` | 1,445 |
 | Front-Loaded Seasons | `kometa/front-loaded.yml` | 1,045 |
 | Declining Seasons | `kometa/declining.yml` | 819 |
-| Bad Finale Seasons | `kometa/bad-finale.yml` | 1,916 |
+| Bad Finale Seasons | `kometa/bad-finale.yml` | 1,927 |
 
 ## kometa/ - Show Finder presets
 
@@ -65,14 +65,14 @@ then point Kometa at the MDBList URL with `mdblist_list:`.
 |---|---|---:|
 | Rising Shows | `ids/rising.txt` | 1,202 |
 | Slow Burn Seasons | `ids/slow-burn.txt` | 1,266 |
-| Big Finale Seasons | `ids/big-finale.txt` | 1,797 |
+| Big Finale Seasons | `ids/big-finale.txt` | 1,806 |
 | Rebound Seasons | `ids/rebound.txt` | 4,225 |
 | Mid-Peak Seasons | `ids/mid-peak.txt` | 1,551 |
-| U-Shaped Seasons | `ids/u-shaped.txt` | 1,242 |
-| Saved Best For Last | `ids/saved-best-for-last.txt` | 1,489 |
+| U-Shaped Seasons | `ids/u-shaped.txt` | 1,248 |
+| Saved Best For Last | `ids/saved-best-for-last.txt` | 1,514 |
 | Front-Loaded Seasons | `ids/front-loaded.txt` | 1,162 |
 | Declining Seasons | `ids/declining.txt` | 890 |
-| Bad Finale Seasons | `ids/bad-finale.txt` | 2,049 |
+| Bad Finale Seasons | `ids/bad-finale.txt` | 2,060 |
 
 ## Browser UI
 

@@ -409,14 +409,22 @@ test('findMatches skips series missing from the metadata map', () => {
 // finale, and a finale that has not aired cannot support them.
 
 // Season fixture in the shape findMatches emits: episode numbers matter here.
-const seasonRec = (seriesId, season, seasonYear, ratings, startEp = 1) => ({
-  seriesId,
-  season,
-  seasonYear,
-  avgRating: Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 100) / 100,
-  shapes: [],
-  episodes: ratings.map((r, i) => ({ episode: startEp + i, rating: r, votes: 1000 })),
-});
+// `lastRatedYear` mirrors the build-internal `_lastRatedYear` findMatches
+// attaches: the air year of the season's LATEST rated episode, which is what
+// the recency test actually reads. Omitted, it falls back to seasonYear, which
+// is what every caller outside a real build does.
+const seasonRec = (seriesId, season, seasonYear, ratings, startEp = 1, lastRatedYear) => {
+  const rec = {
+    seriesId,
+    season,
+    seasonYear,
+    avgRating: Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 100) / 100,
+    shapes: [],
+    episodes: ratings.map((r, i) => ({ episode: startEp + i, rating: r, votes: 1000 })),
+  };
+  if (lastRatedYear !== undefined) rec._lastRatedYear = lastRatedYear;
+  return rec;
+};
 
 const listedMap = (entries) => new Map(
   entries.map(([id, seasons]) => [id, new Map(Object.entries(seasons).map(([s, n]) => [Number(s), n]))]),
@@ -497,6 +505,49 @@ test('tagInProgress compares against the previous season, so a shortened format 
   ];
   tagInProgress(matches, { buildYear: 2026, listedMaxEp: listedMap([['ttC', { 17: 10, 18: 10, 19: 10 }]]) });
   assert.equal('inProgress' in matches[2], false);
+});
+
+test('tagInProgress does not call last year\'s finished season "airing"', () => {
+  // The defect this rule shipped with: seasonYear is the season's EARLIEST air
+  // year, so a season that ran and ended in 2025 satisfied a
+  // `seasonYear >= buildYear - 1` test for the whole of 2026. Paired with an
+  // unrated tail (most obscure shows never get their finale rated) that called
+  // 223 demonstrably finished seasons "still airing". The season's LATEST rated
+  // year is what settles it.
+  const matches = [seasonRec('ttFin', 6, 2025, [7.4, 7.5, 7.3, 8.6], 1, 2025)];
+  tagInProgress(matches, { buildYear: 2026, listedMaxEp: listedMap([['ttFin', { 6: 12 }]]) });
+  assert.equal('inProgress' in matches[0], false);
+  assert.ok(detectShapes(matches[0].episodes).includes('big-finale'), 'and it keeps the label it earned');
+});
+
+test('tagInProgress still flags a run that began last year and is airing now', () => {
+  // A split-cours or autumn-to-spring season: it STARTED in 2025, so seasonYear
+  // is 2025, but episodes are still being rated in 2026.
+  const matches = [seasonRec('ttSplit', 2, 2025, [8.1, 8.2, 8.0, 8.3], 1, 2026)];
+  tagInProgress(matches, { buildYear: 2026, listedMaxEp: listedMap([['ttSplit', { 2: 12 }]]) });
+  assert.equal(matches[0].inProgress, true);
+});
+
+test('tagInProgress does not read a sparsely rated long season as a short one', () => {
+  // MasterChef Australia S18: 17 rated of 60 listed. The rated count alone
+  // looks like a season a third the length of the one before; the listed count
+  // says it is simply under-rated, and rule 1 is the one entitled to decide.
+  const matches = [
+    seasonRec('ttM', 17, 2025, Array(40).fill(7.5), 1, 2025),
+    seasonRec('ttM', 18, 2026, Array(17).fill(7.6), 1, 2026),
+  ];
+  tagInProgress(matches, { buildYear: 2026, listedMaxEp: listedMap([['ttM', { 17: 40, 18: 60 }]]) });
+  // Rule 1 flags it (60 listed > 17 rated), which is correct; the point of the
+  // test is that rule 2 is not what decided it.
+  assert.equal(matches[1].inProgress, true);
+  const sparseNoTail = [
+    seasonRec('ttN', 1, 2025, Array(40).fill(7.5), 1, 2025),
+    seasonRec('ttN', 2, 2026, Array(17).fill(7.6), 1, 2026),
+  ];
+  // Same shape of data, but IMDb lists exactly what we have ratings for at the
+  // END of the season: 17 of 17 is genuinely short, so rule 2 fires.
+  tagInProgress(sparseNoTail, { buildYear: 2026, listedMaxEp: listedMap([['ttN', { 1: 40, 2: 17 }]]) });
+  assert.equal(sparseNoTail[1].inProgress, true);
 });
 
 test('tagInProgress makes no claim without a build year', () => {
