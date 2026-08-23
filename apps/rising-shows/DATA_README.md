@@ -1,4 +1,4 @@
-# Rising Shows — data refresh
+# Rising Shows: data refresh
 
 The Rising Shows app is powered by `apps/rising-shows/data.json`, a build
 artifact regenerated from IMDb's daily TSV dumps (and optionally enriched
@@ -25,8 +25,8 @@ The workflow `.github/workflows/refresh-rising-shows.yml` runs daily at
 2. Runs `node apps/rising-shows/scripts/build-data.js` to regenerate
    `data.json`.
 3. If the `TMDB_TOKEN` secret is set, runs both TMDB enrichment scripts
-   in sequence — `enrich-tmdb.js` (posters / overviews / language) then
-   `enrich-providers.js` (US watch providers) — and rebuilds so the new
+   in sequence, `enrich-tmdb.js` (posters / overviews / language) then
+   `enrich-providers.js` (US watch providers), and rebuilds so the new
    fields are merged in. The TMDB cache is persisted between runs via
    `actions/cache` so each refresh only fetches metadata for newly-
    discovered series.
@@ -40,7 +40,7 @@ The workflow `.github/workflows/refresh-rising-shows.yml` runs daily at
    deploy, whose build downloads the fresh assets.
 
 If TMDB is unavailable (token missing or rate-limited), the workflow
-still produces a valid `data.json` — the UI falls back to a gradient
+still produces a valid `data.json`: the UI falls back to a gradient
 poster placeholder.
 
 ## Required GitHub secrets
@@ -70,7 +70,7 @@ cd ../../..
 # 2. Build data.json from the dumps.
 npm run build:rising-shows
 
-# 3. (Optional) Enrich with TMDB metadata. Both scripts are incremental —
+# 3. (Optional) Enrich with TMDB metadata. Both scripts are incremental:
 #    they only fetch series missing the data each one provides.
 TMDB_TOKEN='eyJh...' npm run enrich:rising-shows             # posters / overviews / language
 TMDB_TOKEN='eyJh...' npm run enrich:rising-shows:providers   # US watch providers
@@ -99,6 +99,7 @@ gh run watch
 ```jsonc
 {
   "builtAt": "2026-05-11T18:24:00.000Z",
+  "contentHash": "08eeaec95bea8e6d",                      // see below
   "minEpisodes": 3,                                       // build-time threshold
   "minVotes": 5,                                          // build-time threshold
   "count": 64877,                                         // total matching seasons
@@ -120,6 +121,7 @@ gh run watch
       "firstRating": 7.4, "lastRating": 9.1, "avgRating": 8.2,
       "minVotes": 1234,
       "shapes": ["rising", "slow-burn"],
+      "inProgress": true,                                 // only when true; see below
       "seriesRating": 8.6, "seriesVotes": 124500,
       // present when TMDB enrich-tmdb.js ran:
       "poster": "/abc.jpg", "overview": "...", "tmdbId": 12345,
@@ -133,8 +135,24 @@ gh run watch
 
 Notes on individual fields:
 
+- `contentHash` is a sha256 (first 16 hex chars) over everything in the file
+  EXCEPT `builtAt` and the hash itself, so two builds from identical IMDb input
+  produce the same value. It exists because `builtAt` changes on every run,
+  which made the refresh workflow's three "unchanged" byte comparisons dead
+  code: a ~40 MB release upload and a merged bot PR happened daily even on days
+  with zero data change. It is carried into `data-index.json` for free (38 bytes
+  in a 34 MB file) so either artifact can be compared.
+- `inProgress` marks a season the build can see is still airing: it is the
+  series' highest-numbered season AND either IMDb lists an episode numbered
+  after the last one we have a rating for (with the season airing this year or
+  last), or it is a current-year season with under 60% of the previous season's
+  rated episodes. 747 of 66,380 seasons carry it on the 2026-08-22 build. Such a
+  season never receives the finale-dependent shapes (big-finale, bad-finale,
+  u-shaped, saved-best-for-last) and its show is not labelled from it. Absent
+  means finished. See the app's FINDINGS.md for how the rule was derived.
+
 - `year` is the show's start year; `seasonYear` is the air year of the earliest-aired episode in this specific season. The UI prefers `seasonYear` everywhere a single season is rendered and falls back to `year` if absent.
-- `episodes[]` carries only the fields the grid needs to filter, sort, and draw curves. Episode titles, IMDb deep-link IDs, and runtimes live in `data/show-modal-extras.json` (see below). Per-episode `year` is intentionally dropped from the projection — the UI doesn't read it.
+- `episodes[]` carries only the fields the grid needs to filter, sort, and draw curves. Episode titles, IMDb deep-link IDs, and runtimes live in `data/show-modal-extras.json` (see below). Per-episode `year` is intentionally dropped from the projection because the UI doesn't read it.
 - `seriesRating` / `seriesVotes` are the show-level IMDb score (not the average of episode ratings).
 - `language` is a TMDB-supplied ISO 639-1 code (e.g. `en`, `ja`, `ko`). Missing for series TMDB couldn't match.
 - `providers` is a deduped, brand-normalized list of US streaming providers (Netflix Standard with Ads → "Netflix", Peacock Premium Plus → "Peacock", etc.). Missing for series with no US streaming availability or before `enrich-providers.js` has run.
@@ -192,6 +210,21 @@ overviews, episode titles, runtimes, or IMDb episode deep-links.
 either reaches 100 MiB, so the refresh workflow dies at the build step
 with an actionable message instead of at `git push`. If that fires,
 move more per-match fields into the side-file (or shard it).
+
+## Per-season overviews: which source wins
+
+Per-season overviews have two sources. `enrich-tmdb.js` refreshes them inside
+`data/tmdb-cache.json` on every daily run. `data/season-overviews.json` is a
+tracked one-off snapshot from `fetch-season-overviews.js`, which is in no
+workflow and was last regenerated 2026-07-04. `build-data.js` applies the cache
+first and then uses the side-file only for seasons the cache left without text,
+and never applies its `''`/`null` entries. Until 2026-08-22 the precedence was
+inverted (the side-file was assumed "generally fresher"), so the July snapshot
+overrode fresher daily text for 12,149 seasons and contributed empty sentinels
+for 49,677. The number of seasons that end up with an overview can only stay the
+same or grow; what changed is which text they show. The build logs
+`Filled N per-season overview gaps from season-overviews.json (M already covered
+by the TMDB cache)`.
 
 ## `changelog.json`
 
