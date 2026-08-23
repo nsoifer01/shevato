@@ -457,3 +457,120 @@ test('buildShowAgg: a split row with no rated episodes is dropped, as before', (
   );
   assert.equal(buildShowAgg([empty], null).length, 0);
 });
+
+// ---------------------------------------------------------------------------
+// Whole-show trajectory when the newest season has not finished airing (D1).
+//
+// deriveShowShapes feeds per-season AVERAGES to the same detectors match.js
+// runs per episode. If the newest season is four episodes deep, its average is
+// not the show's last word, so the three finale-dependent shapes must not be
+// derived from it. The season stays in seasonAvgs (the card sparkline and the
+// season list still draw it); only the finale claim is withheld.
+// ---------------------------------------------------------------------------
+
+const { deriveShowShapes } = require('../scripts/finder-lib.js');
+const { detectShapes: realDetectShapes } = require('../scripts/match.js');
+
+test('deriveShowShapes keeps its 3-argument call signature working', () => {
+  // render-show-page.js calls it with three arguments; an omitted options
+  // object must mean "the show has finished", the pre-2026 behaviour.
+  const shapes = deriveShowShapes([7.0, 7.1, 7.2, 8.5], new Set(), realDetectShapes);
+  assert.ok(shapes.includes('big-finale'));
+});
+
+test('deriveShowShapes withholds the finale shapes when the newest season is airing', () => {
+  const avgs = [7.0, 7.1, 7.2, 8.5];
+  const airing = deriveShowShapes(avgs, new Set(), realDetectShapes, { inProgress: true });
+  assert.equal(airing.includes('big-finale'), false);
+  assert.ok(airing.includes('rising'), 'the honest cross-season shapes still apply');
+
+  const badFinale = [8.6, 8.7, 8.5, 7.4];
+  assert.ok(deriveShowShapes(badFinale, new Set(), realDetectShapes).includes('bad-finale'));
+  assert.equal(
+    deriveShowShapes(badFinale, new Set(), realDetectShapes, { inProgress: true }).includes('bad-finale'),
+    false,
+  );
+});
+
+test('buildShowAgg reads inProgress off the highest-numbered season, whatever order rows arrive in', () => {
+  const seasonRow = (season, avg, extra = {}) => ({
+    seriesId: 'ttAir', title: 'Airer', year: 2020, language: 'en', season,
+    genres: ['Drama'], seriesRating: 7, seriesVotes: 50000, avgRating: avg, shapes: [],
+    episodes: [{ episode: 1, rating: avg, votes: 100 }, { episode: 2, rating: avg, votes: 100 }],
+    ...extra,
+  });
+  // Season 4 last in the array would be the easy case; data.json is sorted by
+  // vote count, so it arrives anywhere.
+  const rows = [
+    seasonRow(4, 8.5, { inProgress: true }),
+    seasonRow(1, 7.0),
+    seasonRow(3, 7.2),
+    seasonRow(2, 7.1),
+  ];
+  const [row] = buildShowAgg(rows, realDetectShapes);
+  assert.equal(row.shapes.includes('big-finale'), false);
+  // The partial season is still in the data the card draws.
+  assert.deepEqual(row.seasonAvgs.map((s) => s.avg), [7.0, 7.1, 7.2, 8.5]);
+
+  // A flag on an EARLIER season says nothing about the show's trajectory.
+  const staleFlag = [seasonRow(1, 7.0, { inProgress: true }), seasonRow(2, 7.1), seasonRow(3, 7.2), seasonRow(4, 8.5)];
+  assert.ok(buildShowAgg(staleFlag, realDetectShapes)[0].shapes.includes('big-finale'));
+});
+
+// --- defensive folds --------------------------------------------------------
+
+test('buildShowAgg ignores a non-numeric ratingSum instead of poisoning the series fold', () => {
+  // `ratingSum || 0` accepted a string, and one string turns every downstream
+  // += into concatenation: the show's avgEpisode and gap become garbage for
+  // the whole series, not just that season.
+  const rows = [
+    { seriesId: 'ttNum', title: 'Numbers', year: 2015, season: 1, seriesRating: 7, seriesVotes: 900,
+      genres: [], shapes: [], avgRating: 8, ratedCount: 2, ratingSum: 16 },
+    { seriesId: 'ttNum', title: 'Numbers', year: 2015, season: 2, seriesRating: 7, seriesVotes: 900,
+      genres: [], shapes: [], avgRating: 8, ratedCount: '2', ratingSum: '16' },
+  ];
+  const [row] = buildShowAgg(rows, null);
+  assert.equal(row.episodes, 2);
+  assert.equal(row.avgEpisode, 8);
+  assert.equal(Number.isFinite(row.gap), true);
+});
+
+test('finderComparator falls back to votes when the sort key is not numeric on the rows', () => {
+  // `sort` comes straight out of the URL hash, so any string can reach this.
+  const rows = [
+    { title: 'A', votes: 10, year: 2000 },
+    { title: 'B', votes: 30, year: 2001 },
+    { title: 'C', votes: 20, year: 2002 },
+  ];
+  // Without the guard the comparator returns NaN for every pair and the order
+  // is whatever the engine happens to do. With it, every pair falls through to
+  // the votes tie-break, whose direction follows sortDir exactly as it does
+  // for any other tie.
+  assert.deepEqual(
+    rows.slice().sort(finderComparator('nonsense', 'asc')).map((r) => r.title),
+    ['B', 'C', 'A'],
+  );
+  assert.deepEqual(
+    rows.slice().sort(finderComparator('nonsense', 'desc')).map((r) => r.title),
+    ['A', 'C', 'B'],
+  );
+});
+
+test('passesFinderFilters folds diacritics when the caller precomputes the folded strings', () => {
+  const base = { ...FINDER_DEFAULTS, genres: new Set(), genresExclude: new Set(), languages: new Set(), shapes: new Set() };
+  const row = {
+    seriesId: 'tt0000040', title: 'Pokémon', titleFold: 'pokemon',
+    episodes: 100, seasonsCount: 5, votes: 1000, showRating: 8, avgEpisode: 8, gap: 0,
+    year: 1997, genres: [], language: 'ja',
+  };
+  // Browser path: app.js hands over the folded query and the folded title.
+  assert.equal(passesFinderFilters(row, { ...base, search: 'pokemon', searchFold: 'pokemon' }), true);
+  // Node path (export pipeline, these tests): no folded fields, plain compare,
+  // exactly as before - an ASCII query does not reach an accented title.
+  const plain = { ...row };
+  delete plain.titleFold;
+  assert.equal(passesFinderFilters(plain, { ...base, search: 'pokemon' }), false);
+  assert.equal(passesFinderFilters(plain, { ...base, search: 'pokémon' }), true);
+  // The IMDb id stays an unfolded, plain-lowercase match either way.
+  assert.equal(passesFinderFilters(row, { ...base, search: 'TT0000040', searchFold: 'tt0000040' }), true);
+});

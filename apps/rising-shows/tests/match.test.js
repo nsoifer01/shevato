@@ -16,6 +16,10 @@ const {
   isUShaped,
   detectShapes,
   findMatches,
+  tagInProgress,
+  tagSavedBestForLast,
+  tagShapeDrift,
+  shapeConfidence,
   isNonDecreasing,
 } = require('../scripts/match.js');
 
@@ -39,9 +43,18 @@ test('isRising rejects any single dip', () => {
   assert.equal(isRising(season(8.0, 7.9, 8.5)), false);
 });
 
-test('isRising treats empty and single-episode arrays as matching', () => {
-  assert.equal(isRising([]), true);
-  assert.equal(isRising(season(5.0)), true);
+// The chip promises a show that kept climbing and isDeclining has always
+// required a real drop (first > last). A flat curve is neither, so it must not
+// count as rising: 299 all-equal seasons (Anne Boleyn 5.6 5.6 5.6) and 55
+// two-season shows with identical averages used to qualify on ties alone.
+test('isRising rejects a perfectly flat season, mirroring isDeclining', () => {
+  assert.equal(isRising(season(5.6, 5.6, 5.6)), false);
+  assert.equal(isDeclining(season(5.6, 5.6, 5.6)), false);
+});
+
+test('isRising rejects sequences with no room to climb', () => {
+  assert.equal(isRising([]), false);
+  assert.equal(isRising(season(5.0)), false);
 });
 
 test('isNonDecreasing alias still exported', () => {
@@ -92,6 +105,16 @@ test('isBigFinale rejects when the finale ties the next-best episode', () => {
 
 test('isBigFinale rejects when the finale is not the peak', () => {
   assert.equal(isBigFinale(season(7.5, 9.4, 7.5, 9.0)), false);
+});
+
+// deriveShowShapes runs these same detectors over 2-dp SEASON AVERAGES, where
+// rounding the margin to 1 dp turned every 0.05 lead into a pass and made the
+// show-level threshold half of what the chip promises. Reacher's season
+// averages are the real case: 8.30 tops 8.23 by 0.07, not by a full step.
+test('isBigFinale holds the 0.1 margin on 2-dp season averages, not 0.05', () => {
+  assert.equal(isBigFinale(season(8.23, 7.93, 8.00, 8.30)), false);
+  // A full step above the next-best average still passes, float dust and all.
+  assert.equal(isBigFinale(season(8.15, 8.30, 8.36, 8.46)), true);
 });
 
 // --- isRebound ---
@@ -377,4 +400,167 @@ test('findMatches skips series missing from the metadata map', () => {
     ])],
   ]);
   assert.equal(findMatches(series, episodes).length, 0);
+});
+
+// --- in-progress seasons (D1) ---
+//
+// IMDb's TSVs carry no "season finished" flag, so tagInProgress reads it off
+// the episode list plus the build clock. Three shapes claim something about the
+// finale, and a finale that has not aired cannot support them.
+
+// Season fixture in the shape findMatches emits: episode numbers matter here.
+const seasonRec = (seriesId, season, seasonYear, ratings, startEp = 1) => ({
+  seriesId,
+  season,
+  seasonYear,
+  avgRating: Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 100) / 100,
+  shapes: [],
+  episodes: ratings.map((r, i) => ({ episode: startEp + i, rating: r, votes: 1000 })),
+});
+
+const listedMap = (entries) => new Map(
+  entries.map(([id, seasons]) => [id, new Map(Object.entries(seasons).map(([s, n]) => [Number(s), n]))]),
+);
+
+test('detectShapes withholds the three finale shapes while a season is airing', () => {
+  const bigFinale = season(7.5, 7.6, 7.5, 9.5);
+  assert.ok(detectShapes(bigFinale).includes('big-finale'));
+  assert.equal(detectShapes(bigFinale, { inProgress: true }).includes('big-finale'), false);
+
+  const badFinale = season(8.5, 8.6, 8.4, 7.2);
+  assert.ok(detectShapes(badFinale).includes('bad-finale'));
+  assert.equal(detectShapes(badFinale, { inProgress: true }).includes('bad-finale'), false);
+
+  const uShaped = season(9.0, 7.9, 7.8, 9.1);
+  assert.ok(detectShapes(uShaped).includes('u-shaped'));
+  assert.equal(detectShapes(uShaped, { inProgress: true }).includes('u-shaped'), false);
+
+  // Everything that describes what has aired so far keeps working mid-season
+  // (this curve ends on a tie, so it carries no finale-dependent shape).
+  const climbing = season(7.0, 7.2, 7.4, 8.0, 8.2, 8.2);
+  assert.deepEqual(detectShapes(climbing, { inProgress: true }), detectShapes(climbing));
+});
+
+test('shapeConfidence never scores a shape the in-progress season was denied', () => {
+  const bigFinale = season(7.5, 7.6, 7.5, 9.5);
+  assert.ok(shapeConfidence(bigFinale)['big-finale'] > 0);
+  assert.equal('big-finale' in shapeConfidence(bigFinale, { inProgress: true }), false);
+});
+
+test('a genuinely finished short season still earns its finale shape', () => {
+  // A complete 6-episode 2011 British drama: IMDb lists exactly 6 episodes and
+  // the season is old, so nothing about it says "still airing".
+  const matches = [seasonRec('ttOld', 1, 2011, [7.4, 7.5, 7.3, 7.6, 7.5, 8.2])];
+  tagInProgress(matches, { buildYear: 2026, listedMaxEp: listedMap([['ttOld', { 1: 6 }]]) });
+  assert.equal('inProgress' in matches[0], false);
+  assert.ok(detectShapes(matches[0].episodes).includes('big-finale'));
+});
+
+test('tagInProgress flags a current-year season with episodes listed after the last rated one', () => {
+  const matches = [
+    seasonRec('ttA', 3, 2025, [8.1, 7.9, 8.2, 7.8, 7.9, 8.1, 7.6, 8.4]),
+    seasonRec('ttA', 4, 2026, [8.3, 8.4, 8.3, 8.2]),
+  ];
+  tagInProgress(matches, { buildYear: 2026, listedMaxEp: listedMap([['ttA', { 3: 8, 4: 8 }]]) });
+  assert.equal(matches[0].inProgress, undefined, 'a season with a later season after it is finished');
+  assert.equal(matches[1].inProgress, true);
+});
+
+test('tagInProgress ignores an unrated tail on an old season', () => {
+  // 6,665 seasons before 2021 end on an unrated episode simply because nobody
+  // rated it. Without the recency guard the rule would strip labels from all
+  // of them, back to 1932.
+  const matches = [seasonRec('ttOld', 6, 1962, [8.0, 8.1, 8.2, 8.3])];
+  tagInProgress(matches, { buildYear: 2026, listedMaxEp: listedMap([['ttOld', { 6: 40 }]]) });
+  assert.equal('inProgress' in matches[0], false);
+});
+
+test('tagInProgress flags a current-year season far shorter than the one before it', () => {
+  // Jujutsu Kaisen S3: IMDb lists only the 12 episodes that have aired, so
+  // there is no tail to see; the drop from 23 episodes is the only signal.
+  const matches = [
+    seasonRec('ttJ', 2, 2023, Array(23).fill(9.0)),
+    seasonRec('ttJ', 3, 2026, [9.2, 8.8, 7.7, 9.7, 8.3, 8.2, 8.1, 9.0, 9.6, 8.9, 9.0, 9.8]),
+  ];
+  tagInProgress(matches, { buildYear: 2026, listedMaxEp: listedMap([['ttJ', { 2: 23, 3: 12 }]]) });
+  assert.equal(matches[1].inProgress, true);
+});
+
+test('tagInProgress compares against the previous season, so a shortened format is not "airing"', () => {
+  // Criminal Minds ran 22-24 episodes for 15 seasons and 10 since the revival.
+  // Against the show's median it looks half-finished; against the season
+  // before it, it is exactly the same length.
+  const matches = [
+    seasonRec('ttC', 17, 2024, Array(10).fill(7.5)),
+    seasonRec('ttC', 18, 2025, Array(10).fill(7.6)),
+    seasonRec('ttC', 19, 2026, Array(10).fill(7.7)),
+  ];
+  tagInProgress(matches, { buildYear: 2026, listedMaxEp: listedMap([['ttC', { 17: 10, 18: 10, 19: 10 }]]) });
+  assert.equal('inProgress' in matches[2], false);
+});
+
+test('tagInProgress makes no claim without a build year', () => {
+  const matches = [seasonRec('ttA', 1, 2026, [8.0, 8.1, 8.2, 8.3])];
+  tagInProgress(matches, { listedMaxEp: listedMap([['ttA', { 1: 10 }]]) });
+  assert.equal('inProgress' in matches[0], false);
+});
+
+test('tagSavedBestForLast skips a series whose highest-numbered season is airing', () => {
+  const build = () => [
+    seasonRec('ttS', 1, 2022, [8.2, 8.3, 8.1, 8.2]),
+    seasonRec('ttS', 2, 2023, [7.9, 8.0, 7.8, 8.1]),
+    seasonRec('ttS', 3, 2026, [9.0, 8.9, 9.1, 9.0]),
+  ];
+  const finished = build();
+  tagSavedBestForLast(finished);
+  assert.ok(finished[2].shapes.includes('saved-best-for-last'), 'control: it does fire when S3 has ended');
+
+  const airing = build();
+  airing[2].inProgress = true;
+  tagSavedBestForLast(airing);
+  assert.equal(airing[2].shapes.includes('saved-best-for-last'), false);
+});
+
+test('tagShapeDrift skips a series whose highest-numbered season is airing', () => {
+  const build = () => [
+    seasonRec('ttD', 1, 2021, [8.5, 8.6, 8.4, 8.5]),
+    seasonRec('ttD', 2, 2022, [8.4, 8.5, 8.6, 8.5]),
+    seasonRec('ttD', 3, 2026, [7.7, 8.2, 7.9]),
+  ];
+  const finished = build();
+  tagShapeDrift(finished);
+  assert.ok(finished[2].shapes.includes('shape-drift'), 'control: a 0.5+ drop does drift');
+
+  const airing = build();
+  airing[2].inProgress = true;
+  tagShapeDrift(airing);
+  assert.equal(airing[2].shapes.includes('shape-drift'), false);
+  assert.equal(airing[2].driftNote, undefined);
+});
+
+test('findMatches stamps inProgress and withholds the finale shapes end to end', () => {
+  const year = 2026;
+  const series = new Map([
+    ['tt700', { title: 'Airing', year: 2020, type: 'tvSeries', genres: ['Drama'] }],
+  ]);
+  const withYear = (episode, rating) => ({ ...ep(episode, rating), year });
+  const episodes = new Map([
+    ['tt700', new Map([
+      [1, [withYear(1, 7.5), withYear(2, 7.6), withYear(3, 7.5), withYear(4, 9.5)]],
+    ])],
+  ]);
+  const listedMaxEp = listedMap([['tt700', { 1: 10 }]]);
+
+  const airing = findMatches(series, episodes, { buildYear: year, listedMaxEp });
+  assert.equal(airing[0].inProgress, true);
+  assert.equal(airing[0].shapes.includes('big-finale'), false);
+  assert.equal('big-finale' in airing[0].confidence, false);
+
+  // Same season, but IMDb lists no episode past the fourth: it has ended.
+  const done = findMatches(series, episodes, {
+    buildYear: year,
+    listedMaxEp: listedMap([['tt700', { 1: 4 }]]),
+  });
+  assert.equal('inProgress' in done[0], false);
+  assert.ok(done[0].shapes.includes('big-finale'));
 });

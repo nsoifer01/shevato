@@ -35,10 +35,16 @@ const DEFAULTS = {
 };
 
 function isRising(episodes) {
+  let climbed = false;
   for (let i = 1; i < episodes.length; i++) {
     if (episodes[i].rating < episodes[i - 1].rating) return false;
+    if (episodes[i].rating > episodes[i - 1].rating) climbed = true;
   }
-  return true;
+  // Ties between adjacent episodes are fine, but a perfectly flat curve is not
+  // "rising": the chip promises a show that kept climbing, and isDeclining has
+  // always required a real drop (first > last), so this keeps the pair
+  // symmetric. 299 all-equal seasons used to qualify on the tie alone.
+  return climbed;
 }
 
 function isConsistent(episodes, opts = DEFAULTS.consistent) {
@@ -73,6 +79,17 @@ function isSlowBurn(episodes, opts = DEFAULTS.slowBurn) {
   return avg(h.second) - avg(h.first) >= opts.delta;
 }
 
+// Episode ratings are 0.1 steps and season averages (which deriveShowShapes
+// feeds through these same detectors) are 0.01 steps, so a real margin is
+// always a clean multiple of 0.01 carrying floating-point dust
+// (9.0 - 8.9 = 0.0999...). Round at 4 dp: enough to clear the dust, not enough
+// to promote a 0.05 season-average lead into the 0.1 the chip promises. The
+// old 1-dp rounding made the effective show-level threshold 0.05 and let 79 of
+// 652 big-finale shows in on a sub-0.1 lead.
+function finaleMargin(finale, secondMax) {
+  return Math.round((finale - secondMax) * 1e4) / 1e4;
+}
+
 function isBigFinale(episodes, opts = DEFAULTS.bigFinale) {
   if (episodes.length < 4) return false;
   const finale = episodes[episodes.length - 1].rating;
@@ -80,9 +97,7 @@ function isBigFinale(episodes, opts = DEFAULTS.bigFinale) {
   for (let i = 0; i < episodes.length - 1; i++) {
     if (episodes[i].rating > secondMax) secondMax = episodes[i].rating;
   }
-  // IMDb ratings are 0.1 increments, so the difference is always a multiple
-  // of 0.1 — round to avoid floating-point drift (e.g. 9.0 - 8.9 = 0.0999...).
-  return Math.round((finale - secondMax) * 10) / 10 >= opts.minMargin;
+  return finaleMargin(finale, secondMax) >= opts.minMargin;
 }
 
 function isRebound(episodes, opts = DEFAULTS.rebound) {
@@ -197,28 +212,42 @@ function isUShaped(episodes, opts = DEFAULTS.uShaped) {
   return dipFound;
 }
 
-function detectShapes(episodes) {
+// Shapes whose whole claim is about the LAST point of the curve. On a season
+// that is still airing (or a show whose newest season is), the last point we
+// have is not the finale, so none of these three may be emitted: "big finale"
+// on episode 4 of 10 and "bad finale" on a mid-season episode are simply
+// wrong. Everything else (rising, consistent, slow burn, front-loaded,
+// declining, rebound, rollercoaster, mid-peak) still describes what has aired
+// so far and keeps working mid-season.
+//
+// opts.inProgress - the curve's last point is not the season's (or the show's)
+// real end.
+function detectShapes(episodes, opts = {}) {
+  const finished = !opts.inProgress;
   const tags = [];
   if (isRising(episodes)) tags.push('rising');
   if (isConsistent(episodes)) tags.push('consistent');
   if (isSlowBurn(episodes)) tags.push('slow-burn');
-  if (isBigFinale(episodes)) tags.push('big-finale');
+  if (finished && isBigFinale(episodes)) tags.push('big-finale');
   if (isRebound(episodes)) tags.push('rebound');
   if (isFrontLoaded(episodes)) tags.push('front-loaded');
   if (isDeclining(episodes)) tags.push('declining');
-  if (isBadFinale(episodes)) tags.push('bad-finale');
+  if (finished && isBadFinale(episodes)) tags.push('bad-finale');
   if (isRollercoaster(episodes)) tags.push('rollercoaster');
   if (isMidPeak(episodes)) tags.push('mid-peak');
-  if (isUShaped(episodes)) tags.push('u-shaped');
+  if (finished && isUShaped(episodes)) tags.push('u-shaped');
   return tags;
 }
 
 // Compute per-shape confidence in [0,1] — how far each matched shape exceeds
 // its classifier threshold. Capped at 1.0; 0 means the shape was not matched.
 // cap values are chosen so ~95th-percentile margin maps to ~1.0.
-function shapeConfidence(episodes) {
+function shapeConfidence(episodes, opts = {}) {
   const conf = {};
   const h = halves(episodes);
+  // Same suppression as detectShapes, so a season never carries a confidence
+  // for a shape it was not tagged with.
+  const finished = !opts.inProgress;
 
   if (isRising(episodes)) {
     // Margin = total positive climb across all steps / max possible climb.
@@ -244,14 +273,14 @@ function shapeConfidence(episodes) {
     conf['slow-burn'] = Math.min(1, (delta - opts.delta) / 1.5 + 0.1);
   }
 
-  if (isBigFinale(episodes)) {
+  if (finished && isBigFinale(episodes)) {
     const opts = DEFAULTS.bigFinale;
     const finale = episodes[episodes.length - 1].rating;
     let secondMax = -Infinity;
     for (let i = 0; i < episodes.length - 1; i++) {
       if (episodes[i].rating > secondMax) secondMax = episodes[i].rating;
     }
-    const margin = Math.round((finale - secondMax) * 10) / 10;
+    const margin = finaleMargin(finale, secondMax);
     conf['big-finale'] = Math.min(1, (margin - opts.minMargin) / 2.0 + 0.1);
   }
 
@@ -279,7 +308,7 @@ function shapeConfidence(episodes) {
     conf.declining = Math.min(1, drop / 2.0);
   }
 
-  if (isBadFinale(episodes)) {
+  if (finished && isBadFinale(episodes)) {
     const opts = DEFAULTS.badFinale;
     const avgRating = avg(episodes);
     const finale = episodes[episodes.length - 1].rating;
@@ -315,7 +344,7 @@ function shapeConfidence(episodes) {
     conf['mid-peak'] = Math.min(1, margin / 1.5 + 0.1);
   }
 
-  if (isUShaped(episodes)) {
+  if (finished && isUShaped(episodes)) {
     const opts = DEFAULTS.uShaped;
     const opener = episodes[0].rating;
     const finale = episodes[episodes.length - 1].rating;
@@ -364,14 +393,12 @@ function findMatches(seriesById, episodesBySeries, opts = {}) {
       }
       if (minSeasonVotes < minVotes) continue;
 
-      const shapes = detectShapes(eps);
-      const confidence = shapeConfidence(eps);
-      seasons.push({ seriesId, season, eps, shapes, confidence, minSeasonVotes });
+      seasons.push({ seriesId, season, eps, minSeasonVotes });
     }
   }
 
   const matches = [];
-  for (const { seriesId, season, eps, shapes, confidence, minSeasonVotes } of seasons) {
+  for (const { seriesId, season, eps, minSeasonVotes } of seasons) {
     const meta = seriesById.get(seriesId);
     const ratings = eps.map((e) => e.rating);
     const seasonAvg = ratings.reduce((s, r) => s + r, 0) / ratings.length;
@@ -422,16 +449,92 @@ function findMatches(seriesById, episodesBySeries, opts = {}) {
       lastRating: ratings[ratings.length - 1],
       avgRating: Math.round(seasonAvg * 100) / 100,
       minVotes: minSeasonVotes,
-      shapes,
-      confidence,
+      // Filled in below, after tagInProgress: three of the shapes describe the
+      // finale, so a season has to be known finished before it is classified.
+      shapes: [],
+      confidence: {},
     };
     if (avgRuntime !== null) season_obj.avgRuntime = avgRuntime;
     matches.push(season_obj);
   }
 
+  tagInProgress(matches, opts);
+  for (const m of matches) {
+    const shapeOpts = m.inProgress ? { inProgress: true } : undefined;
+    m.shapes = detectShapes(m.episodes, shapeOpts);
+    m.confidence = shapeConfidence(m.episodes, shapeOpts);
+  }
+
   tagSavedBestForLast(matches);
   tagShapeDrift(matches);
   return matches;
+}
+
+// A season is IN PROGRESS when this build can see that the last episode we
+// have a rating for is not the season's last episode. IMDb's TSVs carry no
+// "season finished" flag, so we read it off two signals, both anchored to the
+// build clock (opts.buildYear) because the whole point is "is this airing NOW":
+//
+//   1. LISTED TAIL. title.episode.tsv lists an episode numbered after our last
+//      rated one, and the season aired in the current or previous year. The
+//      tail on its own is far too common to use (5,960 seasons, back to 1932,
+//      have an unrated episode at the end simply because nobody rated it); the
+//      recency guard is what makes it mean "not aired yet". Measured on the
+//      2026-08-22 catalogue: 707 seasons.
+//   2. SHORT CURRENT-YEAR SEASON. The season aired this year and has under 60%
+//      of the episodes the season before it had. This catches shows where IMDb
+//      lists only what has aired (most currently-airing anime: Jujutsu Kaisen
+//      S3 shows 12 of 24 with no tail to see). Comparing against the PREVIOUS
+//      season rather than the show's median season length matters: revivals and
+//      format changes (Criminal Minds S19, King of the Hill S15) are short
+//      against their old seasons but exactly as long as their new ones.
+//      Measured: 40 further seasons.
+//
+// Only the highest-numbered season of a series can qualify - an earlier season
+// with a later one after it is finished by definition, whatever its gaps.
+// Deliberately NOT used: finale votes far below the season median. It flags 85
+// further seasons but misfires on finished ones whose finale is simply newer
+// than the rest (My Hero Academia S8, One Punch Man S3, both complete 12-of-12
+// 2025 seasons), so it would strip labels from seasons that really did end.
+const IN_PROGRESS_SHORT_RATIO = 0.6;
+
+function tagInProgress(matches, opts = {}) {
+  const buildYear = Number.isFinite(opts.buildYear) ? opts.buildYear : null;
+  // No clock, no claim: callers that do not say when the build ran (the unit
+  // tests, ad-hoc consumers) get the pre-2026 behaviour, everything finished.
+  if (buildYear === null) return;
+  const listedMaxEp = opts.listedMaxEp || null;
+
+  const bySeries = new Map();
+  for (const m of matches) {
+    let arr = bySeries.get(m.seriesId);
+    if (!arr) { arr = []; bySeries.set(m.seriesId, arr); }
+    arr.push(m);
+  }
+
+  for (const arr of bySeries.values()) {
+    arr.sort((a, b) => a.season - b.season);
+    const last = arr[arr.length - 1];
+    const year = last.seasonYear;
+    if (!Number.isFinite(year)) continue;
+
+    if (year >= buildYear - 1 && listedMaxEp) {
+      const bySeason = listedMaxEp.get(last.seriesId);
+      const maxEp = bySeason && bySeason.get(last.season);
+      const lastRated = last.episodes[last.episodes.length - 1];
+      if (Number.isFinite(maxEp) && lastRated && maxEp > lastRated.episode) {
+        last.inProgress = true;
+        continue;
+      }
+    }
+
+    if (year >= buildYear && arr.length >= 2) {
+      const prev = arr[arr.length - 2];
+      if (last.episodes.length < IN_PROGRESS_SHORT_RATIO * prev.episodes.length) {
+        last.inProgress = true;
+      }
+    }
+  }
 }
 
 // Post-pass shape: a series whose highest-numbered season is also the
@@ -455,6 +558,10 @@ function tagSavedBestForLast(matches) {
       if (m.season > last.season) last = m;
       if (m.avgRating > topAvg) topAvg = m.avgRating;
     }
+    // A season still airing cannot be the one a show "saved for last": its
+    // average is a handful of episodes deep and the season is not last.
+    // 61 of the 250 recent tags rested on such a season.
+    if (last.inProgress) continue;
     if (last.avgRating < topAvg) continue;
     const tiedAtTop = arr.filter((m) => m.avgRating === topAvg);
     if (tiedAtTop.length > 1) continue;
@@ -484,6 +591,12 @@ function tagShapeDrift(matches) {
     arr.sort((a, b) => a.season - b.season);
 
     const last = arr[arr.length - 1];
+    // Drift is a claim about the show's LATEST season, so a season that is
+    // still airing cannot support it: three episodes of a 10-episode season
+    // neither establish a new shape nor a real rating drop, and suppressing
+    // the finale-dependent shapes above makes "lost every dominant shape"
+    // fire even more readily.
+    if (last.inProgress) continue;
     const prior = arr.slice(0, arr.length - 1);
 
     // Dominant shape across prior seasons = shape appearing in the most seasons.
@@ -551,6 +664,7 @@ if (typeof module !== 'undefined' && module.exports) {
     isUShaped,
     detectShapes,
     findMatches,
+    tagInProgress,
     tagSavedBestForLast,
     tagShapeDrift,
     shapeConfidence,

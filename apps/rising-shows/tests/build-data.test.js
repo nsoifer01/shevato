@@ -22,6 +22,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const zlib = require('node:zlib');
+const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const { test, after } = require('node:test');
 const assert = require('node:assert/strict');
@@ -140,7 +141,10 @@ const EPISODES = [
   ['tt600001', 'tt600', '1', '1'],
 ];
 
-function runBuild({ env = {}, tmdbCache = null, seasonOverviews = null } = {}) {
+// `extraRows` appends to the shared TSV fixtures for one build only, so a test
+// can add a series (an airing season, say) without shifting the counts and
+// orderings the fixture-wide assertions above pin.
+function runBuild({ env = {}, tmdbCache = null, seasonOverviews = null, extraRows = null } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rs-build-test-'));
   tmpDirs.push(dir);
   const appDir = path.join(dir, 'app');
@@ -152,9 +156,10 @@ function runBuild({ env = {}, tmdbCache = null, seasonOverviews = null } = {}) {
     path.join(dataDir, name),
     zlib.gzipSync(rows.map((r) => r.join('\t')).join('\n') + '\n'),
   );
-  writeTsv('title.ratings.tsv.gz', RATINGS);
-  writeTsv('title.basics.tsv.gz', BASICS);
-  writeTsv('title.episode.tsv.gz', EPISODES);
+  const extra = extraRows || {};
+  writeTsv('title.ratings.tsv.gz', [...RATINGS, ...(extra.ratings || [])]);
+  writeTsv('title.basics.tsv.gz', [...BASICS, ...(extra.basics || [])]);
+  writeTsv('title.episode.tsv.gz', [...EPISODES, ...(extra.episodes || [])]);
   if (tmdbCache) fs.writeFileSync(path.join(dataDir, 'tmdb-cache.json'), JSON.stringify(tmdbCache));
   if (seasonOverviews) fs.writeFileSync(path.join(dataDir, 'season-overviews.json'), JSON.stringify(seasonOverviews));
 
@@ -187,7 +192,7 @@ const seasonOf = (data, seriesId, season) => data.matches
 test('build-data: data.json carries the documented header plus one record per surviving season', () => {
   assert.deepEqual(
     Object.keys(BUILD.data).sort(),
-    ['builtAt', 'count', 'genres', 'languages', 'matches', 'minEpisodes', 'minVotes', 'providers', 'shapeCounts'],
+    ['builtAt', 'contentHash', 'count', 'genres', 'languages', 'matches', 'minEpisodes', 'minVotes', 'providers', 'shapeCounts'],
   );
   assert.ok(!Number.isNaN(Date.parse(BUILD.data.builtAt)), `builtAt should be ISO, got ${BUILD.data.builtAt}`);
   // README documents 3 and 5 as the defaults; they are also stamped into the
@@ -384,7 +389,8 @@ const TMDB_CACHE = {
     original_language: 'de',
     tvdbId: 777,
     seasonTvdbIds: { 1: 9001 },
-    seasonOverviews: { 1: 'cache season one', 2: 'cache season two' },
+    // Deliberately no season 2: that is the gap the side-file may fill.
+    seasonOverviews: { 1: 'cache season one' },
     cast: [{ name: 'Ada' }, { name: 'Bo' }],
     providers: [
       { name: 'Netflix Standard with Ads' },
@@ -398,7 +404,7 @@ const TMDB_CACHE = {
 
 const ENRICHED = runBuild({
   tmdbCache: TMDB_CACHE,
-  seasonOverviews: { tt100: { 1: 'side-file season one' } },
+  seasonOverviews: { tt100: { 1: 'side-file season one', 2: 'side-file season two' } },
 });
 
 test('build-data: TMDB metadata lands on every season of the enriched series only', () => {
@@ -431,13 +437,104 @@ test('build-data: streaming plans collapse to the parent brand and dedupe, order
   assert.deepEqual(ENRICHED.data.languages, [{ code: 'de', count: 1 }]);
 });
 
-test('build-data: cast and per-season overviews move to the side-file, side-file overviews win', () => {
+test('build-data: cast and per-season overviews move to the side-file, the daily cache wins', () => {
   const s1 = seasonOf(ENRICHED.data, 'tt100', 1);
   assert.equal('cast' in s1, false);
   assert.equal('seasonOverview' in s1, false);
   assert.deepEqual(ENRICHED.extras.tt100.cast, [{ name: 'Ada' }, { name: 'Bo' }]);
-  // season-overviews.json is the fresher source, so it beats the copy baked
-  // into tmdb-cache.json for season 1; season 2 falls back to the cache.
-  assert.equal(ENRICHED.extras.tt100.seasons['1'].ov, 'side-file season one');
-  assert.equal(ENRICHED.extras.tt100.seasons['2'].ov, 'cache season two');
+  // tmdb-cache.json is rewritten by enrich-tmdb.js on every refresh run;
+  // data/season-overviews.json is a tracked one-off snapshot from an orphaned
+  // script. So the cache wins wherever it has text (season 1) and the
+  // side-file only fills what the cache left empty (season 2 here).
+  assert.equal(ENRICHED.extras.tt100.seasons['1'].ov, 'cache season one');
+  assert.equal(ENRICHED.extras.tt100.seasons['2'].ov, 'side-file season two');
+});
+
+test('build-data: an empty side-file entry never blanks out a cached overview', () => {
+  // The real file carries ''/null for ~50k seasons. Those must not win, and
+  // must not count as "filled" either.
+  const built = runBuild({
+    tmdbCache: TMDB_CACHE,
+    seasonOverviews: { tt100: { 1: '', 2: null } },
+  });
+  assert.equal(built.extras.tt100.seasons['1'].ov, 'cache season one');
+  assert.equal(built.extras.tt100.seasons['2'].ov, null);
+  assert.match(built.stdout, /Filled 0 per-season overview gaps/);
+});
+
+// --- in-progress seasons (D1) -----------------------------------------------
+//
+// A season whose last rated episode is not its last episode must not be
+// classified as if it had ended. The signal is in the inputs already: IMDb
+// lists the whole season in title.episode.tsv while title.ratings.tsv only
+// covers what has aired. The fixture below is built against the CURRENT year
+// on purpose - the rule is anchored to the build clock, so a hard-coded year
+// would stop testing anything the year after it was written.
+
+const CURRENT_YEAR = new Date().getUTCFullYear();
+
+const AIRING = runBuild({
+  extraRows: {
+    ratings: [
+      ['tt700', '8.0', '40000'],
+      // Season 1, complete: 4 rated of 4 listed, ending on a big finale.
+      ['tt700101', '7.5', '900'], ['tt700102', '7.6', '900'],
+      ['tt700103', '7.5', '900'], ['tt700104', '9.5', '900'],
+      // Season 2, airing: 4 rated of 8 listed, also ending on a peak so far.
+      ['tt700201', '7.5', '800'], ['tt700202', '7.6', '800'],
+      ['tt700203', '7.5', '800'], ['tt700204', '9.5', '800'],
+    ],
+    basics: [
+      ['tt700', 'tvSeries', 'Airing Now', 'Airing Now', '0', String(CURRENT_YEAR - 1), '\\N', '\\N', 'Drama'],
+      ...[1, 2, 3, 4].map((n) => [`tt70010${n}`, 'tvEpisode', `A1E${n}`, `A1E${n}`, '0', String(CURRENT_YEAR - 1), '\\N', '\\N', '\\N']),
+      ...[1, 2, 3, 4, 5, 6, 7, 8].map((n) => [`tt70020${n}`, 'tvEpisode', `A2E${n}`, `A2E${n}`, '0', String(CURRENT_YEAR), '\\N', '\\N', '\\N']),
+    ],
+    episodes: [
+      ...[1, 2, 3, 4].map((n) => [`tt70010${n}`, 'tt700', '1', String(n)]),
+      // Episodes 5-8 are listed by IMDb and carry no rating: not aired yet.
+      ...[1, 2, 3, 4, 5, 6, 7, 8].map((n) => [`tt70020${n}`, 'tt700', '2', String(n)]),
+    ],
+  },
+});
+
+test('build-data: an airing season is stamped inProgress and denied the finale shapes', () => {
+  const s1 = seasonOf(AIRING.data, 'tt700', 1);
+  const s2 = seasonOf(AIRING.data, 'tt700', 2);
+  // Identical curves: only the unaired tail on season 2 separates them.
+  assert.deepEqual(s1.episodes.map((e) => e.rating), s2.episodes.map((e) => e.rating));
+  assert.equal('inProgress' in s1, false, 'a finished season carries no flag at all');
+  assert.ok(s1.shapes.includes('big-finale'));
+  assert.equal(s2.inProgress, true);
+  assert.equal(s2.shapes.includes('big-finale'), false);
+  assert.equal('big-finale' in s2.confidence, false);
+});
+
+test('build-data: the flag is omitted, not false, on the 65k seasons that have ended', () => {
+  const flagged = AIRING.data.matches.filter((m) => 'inProgress' in m);
+  assert.deepEqual(flagged.map((m) => `${m.seriesId}:${m.season}`), ['tt700:2']);
+});
+
+// --- content hash (D30) -----------------------------------------------------
+
+test('build-data: contentHash covers everything except builtAt and itself', () => {
+  const { builtAt, contentHash, ...content } = BUILD.data;
+  assert.match(contentHash, /^[0-9a-f]{16}$/);
+  const recomputed = crypto.createHash('sha256')
+    .update(JSON.stringify(content)).digest('hex').slice(0, 16);
+  assert.equal(recomputed, contentHash, 'hash must be reproducible from the file minus builtAt');
+  assert.ok(!Number.isNaN(Date.parse(builtAt)));
+});
+
+test('build-data: two builds of the same TSVs hash identically, a changed rating does not', () => {
+  // This is what makes the refresh workflow's "unchanged" gates real: builtAt
+  // moves every run, so comparing whole files always reported a change and a
+  // 40 MB release upload plus a merged PR happened daily at delta 0.
+  const again = runBuild();
+  assert.equal(again.data.contentHash, BUILD.data.contentHash);
+
+  const bumped = runBuild({
+    extraRows: { ratings: [], basics: [], episodes: [] },
+    env: { MIN_VOTES: '6' },
+  });
+  assert.notEqual(bumped.data.contentHash, BUILD.data.contentHash);
 });
