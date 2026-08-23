@@ -147,11 +147,40 @@ export function picksCarryLineup(squadState) {
     && (squadState.picks || []).length > 0;
 }
 
+// A degenerate season history: null, not an object, or no gameweek rows once
+// the season has a gameweek on the board. `api.js` treats a 200 `null` body as
+// a successful fetch, so this is the only place the gap can be seen. Read as
+// "no chips used, one free transfer" it recommended a Wildcard to a manager
+// who had already played his (2026-08-22 audit).
+export function historyIsMissing(history, gameState) {
+  if (!history || typeof history !== 'object') return true;
+  if (!gameState || !gameState.seasonStarted) return false;
+  return !Array.isArray(history.current) || history.current.length === 0;
+}
+
+export class UnknownPlayerError extends Error {
+  constructor(ids) {
+    super(`unknown_player: the squad names player id(s) ${ids.join(', ')} that the player list does not carry`);
+    this.name = 'UnknownPlayerError';
+    this.code = 'unknown_player';
+    this.ids = ids;
+  }
+}
+
 export function buildSquadState({ entry, history, transfers, picks, gameState, gw, source }) {
   const rules = gameState.rules;
   const targetGw = gw ?? gameState.nextEvent ?? gameState.currentEvent;
   const list = pickList(picks);
   const warnings = [];
+
+  const historyMissing = historyIsMissing(history, gameState) && !!list;
+  if (historyMissing) {
+    warnings.push({
+      code: 'history_missing',
+      message: 'Fantasy Premier League returned no season history for this team, so the chips you have already '
+        + 'played and your banked free transfers are unknown. No chip is recommended until it loads.',
+    });
+  }
 
   const base = {
     entryId: entry ? entry.id : null,
@@ -161,7 +190,10 @@ export function buildSquadState({ entry, history, transfers, picks, gameState, g
     overallRank: (entry && entry.summary_overall_rank) ?? null,
     totalPoints: (entry && entry.summary_overall_points) ?? 0,
     chipsUsed: ((history && history.chips) || []).map(c => ({ name: c.name, event: c.event })),
-    chipsAvailable: chipsRemaining({ history, rules, gw: targetGw }),
+    // Without a history nothing is known to be unused, and a chip that may
+    // already have been played must never be offered.
+    chipsAvailable: historyMissing ? [] : chipsRemaining({ history, rules, gw: targetGw }),
+    historyMissing,
     asOf: gameState.fetchedAt,
     warnings,
   };
@@ -206,6 +238,24 @@ export function buildSquadState({ entry, history, transfers, picks, gameState, g
       message: 'Fantasy Premier League returned your squad without its bank and squad value, so money figures may be wrong until it does. Transfers are still checked against your reconstructed selling prices.',
     });
   }
+
+  // An empty squad in-season is not a pre-season draft: FPL served the picks
+  // endpoint without the fifteen (observed shape: `picks: []` with an
+  // entry_history block). Say so rather than offering to build an opening 15.
+  if (list.length === 0 && gameState.seasonStarted) {
+    warnings.push({
+      code: 'empty_picks',
+      message: 'Fantasy Premier League returned an empty squad for this gameweek, so the plan below is a fresh '
+        + 'build from the full budget rather than advice about the team you own. Try again in a few minutes.',
+    });
+  }
+
+  // A pick the player list does not know cannot be priced, positioned or
+  // projected. It happens when fresh picks meet an older cached bootstrap (a
+  // player registered since the copy was taken). Refuse by name rather than
+  // letting a downstream `.position` read throw.
+  const unknown = effective.map(p => p.element).filter(id => !gameState.players.has(id));
+  if (unknown.length) throw new UnknownPlayerError(unknown);
 
   const built = effective.map(p => {
     const player = gameState.players.get(p.element);

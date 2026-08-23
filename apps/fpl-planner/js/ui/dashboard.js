@@ -73,9 +73,11 @@ export function heroCard({ bundle, gameState, event, now, isDraft = false, sourc
       // the counting one. Writing both rendered "Deadline passed Deadline
       // passed" from the moment the deadline went by.
       el('div', { class: `fpl-deadline ${cd.urgent ? 'is-urgent' : ''} ${cd.passed ? 'is-passed' : ''}`.trim() }, [
-        cd.passed ? '' : 'Deadline in ',
-        el('strong', { text: cd.text }),
-        event ? ` (${dateTime(event.deadline)})` : '',
+        el('span', { class: 'fpl-deadline-when' }, [
+          cd.passed ? '' : 'Deadline in ',
+          el('strong', { text: cd.text }),
+        ]),
+        event ? el('span', { class: 'fpl-deadline-date', text: `(${dateTime(event.deadline)})` }) : null,
       ]),
     ]),
 
@@ -832,6 +834,50 @@ export function statusCard({ bundle, sources = [], runnerMode = 'worker', modelS
   ], { open });
   if (onToggle) node.addEventListener('toggle', () => onToggle(node.open));
   return node;
+}
+
+/* ----------------------------------------------------------------- notices */
+
+// Sources the proxy is serving from its last copy (`x-fpl-stale: true`) while
+// FPL is down. Under six hours the plan still shows, and this is the only
+// thing that says it is built on a copy. Null when nothing is stale.
+export function staleSourcesBanner(assessment) {
+  if (!assessment || !assessment.stale || !assessment.stale.length) return null;
+  return banner({
+    tone: 'warn',
+    mark: '!',
+    title: 'Fantasy Premier League is not answering',
+    text: 'These sources are served from the last copy we have rather than live. Prices, team news and your squad may have moved since.',
+    list: assessment.stale.map(name => `${name}: only an older copy is available`),
+  });
+}
+
+// Squad warnings, titled by what they are. A price mismatch and a missing
+// history are different problems, and a banner headed "One number does not
+// match" over "your season history could not be read" explained neither.
+const SQUAD_WARNING_TITLES = {
+  history_missing: 'Your season history could not be read',
+  empty_picks: 'Your squad could not be read',
+  missing_entry_history: 'Your bank and squad value could not be read',
+};
+export function squadWarningsBanner(warnings) {
+  const special = warnings.find(w => SQUAD_WARNING_TITLES[w.code]);
+  if (special) {
+    return banner({
+      tone: 'warn',
+      mark: '!',
+      title: SQUAD_WARNING_TITLES[special.code],
+      text: special.message,
+      list: warnings.filter(w => w !== special).map(w => w.message),
+    });
+  }
+  return banner({
+    tone: 'warn',
+    mark: '!',
+    title: 'One number does not match Fantasy Premier League',
+    text: 'The squad and prices are read from two Fantasy Premier League endpoints that are not always in step, most often because a price changed overnight. Transfers and affordability are calculated from your reconstructed selling prices.',
+    list: warnings.map(w => w.message),
+  });
 }
 
 /* ---------------------------------------------------------------- withheld */

@@ -404,7 +404,9 @@ body.fpl-page {
   align-items: center;
   gap: 12px 20px;
   position: sticky;
-  top: 0;
+  /* Below the site's fixed header (#header, 3.25rem): at top: 0 the bar
+     slid under it and the manager/stat row was clipped once scrolled. */
+  top: 3.25rem;
   z-index: 40;
   margin: 0 -20px 20px;
   padding: 14px 20px 12px;
@@ -500,8 +502,10 @@ body.fpl-page {
 }
 .fpl-planner-app .fpl-deadline {
   display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: baseline;
-  gap: 5px;
+  gap: 2px 5px;
   font-size: 13px;
   color: var(--text-dim);
   padding: 4px 11px;
@@ -510,6 +514,10 @@ body.fpl-page {
   background: var(--bg-sunk);
 }
 .fpl-planner-app .fpl-deadline strong { color: var(--text); font-weight: 650; }
+/* The countdown is one phrase and the date is another: each wraps as a unit,
+   so the pill is at most two lines on a 360px phone, never "Deadline / in /
+   2d 23h / (date)". */
+.fpl-planner-app .fpl-deadline-when, .fpl-planner-app .fpl-deadline-date { white-space: nowrap; }
 .fpl-planner-app .fpl-deadline.is-urgent { border-color: color-mix(in srgb, var(--amber) 40%, transparent); background: var(--amber-soft); }
 .fpl-planner-app .fpl-deadline.is-urgent strong { color: var(--amber); }
 
@@ -652,6 +660,12 @@ body.fpl-page {
 .fpl-planner-app .fpl-card-sub { color: var(--text-faint); font-size: 12.5px; }
 
 .fpl-planner-app .fpl-note { color: var(--text-dim); font-size: 13.5px; line-height: 1.6; }
+/* Emphasis inside a dim note was inheriting the dim colour and failing AA. */
+.fpl-planner-app .fpl-note > b, .fpl-planner-app .fpl-note > strong { color: var(--text); }
+/* The transfer picker's heading sits inside a <button>, and the site's
+   main.css pins `button { color: #555 !important }`. Inherited by the <b>,
+   that read 2.11:1. Pinned here because the shared rule cannot be changed. */
+.fpl-planner-app .fpl-picker-head, .fpl-planner-app .fpl-picker-head b { color: var(--text); }
 .fpl-planner-app .fpl-empty { color: var(--text-faint); font-size: 13.5px; }
 
 /* transfer pair */
@@ -995,6 +1009,12 @@ body.fpl-page {
 .fpl-planner-app .fpl-bench-slot .fpl-pp-move { top: auto; bottom: -8px; }
 .fpl-planner-app .fpl-pp.is-moving-in { border-color: color-mix(in srgb, var(--green) 55%, var(--border)); }
 .fpl-planner-app .fpl-pp.is-moving-out { opacity: 0.55; }
+/* A dimmed card must still read: its meta lines rise to the base text tone so
+   the 0.55 card opacity leaves them above 4.5:1 on the pitch. */
+.fpl-planner-app .fpl-pp.is-moving-out .fpl-pp-meta,
+.fpl-planner-app .fpl-pp.is-moving-out .fpl-pp-fix,
+.fpl-planner-app .fpl-pp.is-moving-out .fpl-pp-xp,
+.fpl-planner-app .fpl-pp.is-moving-out .fpl-pp-xp > span { color: var(--text); }
 
 .fpl-planner-app .fpl-pitch-legend {
   display: flex;
@@ -1764,6 +1784,43 @@ body.fpl-page {
 .fpl-planner-app .fpl-col:last-child .fpl-tip { left: auto; right: 0; transform: translateX(0) translateY(2px); }
 .fpl-planner-app .fpl-col:last-child:hover .fpl-tip,
 .fpl-planner-app .fpl-col:last-child:focus-visible .fpl-tip { transform: translateX(0) translateY(0); }
+/* A tooltip is decorative and pointer-events:none, but it is opacity-hidden
+   rather than display:none, so it still contributes to layout: a centred tip on
+   one of the right-hand columns of the History chart pushed the DOCUMENT 1px
+   wide at 390. On a phone the outer columns anchor to their own edge instead of
+   centring, which keeps every tip inside the chart and the tip fully readable. */
+@media (max-width: 430px) {
+  .fpl-planner-app .fpl-chart-cols .fpl-col:nth-last-child(-n+3) .fpl-tip {
+    left: auto; right: 0; transform: translateX(0) translateY(2px);
+  }
+  .fpl-planner-app .fpl-chart-cols .fpl-col:nth-last-child(-n+3):hover .fpl-tip,
+  .fpl-planner-app .fpl-chart-cols .fpl-col:nth-last-child(-n+3):focus-visible .fpl-tip {
+    transform: translateX(0) translateY(0);
+  }
+  .fpl-planner-app .fpl-chart-cols .fpl-col:nth-child(-n+3) .fpl-tip {
+    left: 0; right: auto; transform: translateX(0) translateY(2px);
+  }
+  .fpl-planner-app .fpl-chart-cols .fpl-col:nth-child(-n+3):hover .fpl-tip,
+  .fpl-planner-app .fpl-chart-cols .fpl-col:nth-child(-n+3):focus-visible .fpl-tip {
+    transform: translateX(0) translateY(0);
+  }
+  /* The trend chart's dots are placed by percentage, so the right-hand ones
+     carry the same problem. */
+  .fpl-planner-app .fpl-chart-line .fpl-dot-hit:nth-last-child(-n+4) .fpl-tip {
+    left: auto; right: 0; transform: translateX(0) translateY(2px);
+  }
+  .fpl-planner-app .fpl-chart-line .fpl-dot-hit:nth-last-child(-n+4):hover .fpl-tip,
+  .fpl-planner-app .fpl-chart-line .fpl-dot-hit:nth-last-child(-n+4):focus-visible .fpl-tip {
+    transform: translateX(0) translateY(0);
+  }
+  .fpl-planner-app .fpl-chart-line .fpl-dot-hit:nth-child(-n+5) .fpl-tip {
+    left: 0; right: auto; transform: translateX(0) translateY(2px);
+  }
+  .fpl-planner-app .fpl-chart-line .fpl-dot-hit:nth-child(-n+5):hover .fpl-tip,
+  .fpl-planner-app .fpl-chart-line .fpl-dot-hit:nth-child(-n+5):focus-visible .fpl-tip {
+    transform: translateX(0) translateY(0);
+  }
+}
 
 /* column chart */
 .fpl-planner-app .fpl-chart-cols {
@@ -1785,18 +1842,25 @@ body.fpl-page {
 }
 .fpl-planner-app .fpl-col:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .fpl-planner-app .fpl-col-cap {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, -3px);
   font-size: 11px;
   font-weight: 650;
   color: var(--text-dim);
   white-space: nowrap;
+  pointer-events: none;
 }
 .fpl-planner-app .fpl-col-track {
+  position: relative;
   flex: 1 1 auto;
   width: 100%;
   max-width: 26px;
   display: flex;
   align-items: flex-end;
   min-height: 84px;
+  /* Room for the cap above a full-height fill. */
+  margin-top: 16px;
 }
 .fpl-planner-app .fpl-col-fill {
   width: 100%;
@@ -2183,6 +2247,27 @@ body.fpl-page {
   .fpl-planner-app .fpl-pitch { padding: 12px 7px; gap: 9px; }
   .fpl-planner-app .fpl-row { gap: 5px; }
   .fpl-planner-app .fpl-bench-row { gap: 5px; }
+  /* Five across on a phone leaves each card about 60px of text, which cut
+     "B.Fernandes" to "B.Fern...", "Gibbs-White" to "Gibbs-..." and the bench's
+     "Verbruggen" to "Verbru...". In the crowded rows the name wraps to a
+     second line instead of truncating, breaking at a hyphen or a dot where it
+     can; the fixed two-line box keeps every card in a row the same height. */
+  .fpl-planner-app .fpl-row:has(> :nth-child(5)) .fpl-pp { padding-left: 2px; padding-right: 2px; }
+  .fpl-planner-app .fpl-row:has(> :nth-child(5)) .fpl-pp-name,
+  .fpl-planner-app .fpl-bench-row .fpl-pp-name {
+    font-size: 9.5px;   /* measured: the longest single-word names fit at this size */
+    letter-spacing: -0.04em;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: break-word;
+    line-height: 1.15;
+    min-height: 2.3em;
+  }
+  /* The bench card is wider but its longest name ("Verbruggen") is a single
+     word one pixel over at 9.5px, and a one-pixel wrap is worse than a
+     half-point smaller face. */
+  .fpl-planner-app .fpl-bench-row .fpl-pp-name { font-size: 9px; }
   .fpl-planner-app .fpl-bench-slot { max-width: none; }
   .fpl-planner-app .fpl-pp { padding: 6px 4px 7px; max-width: none; }
   .fpl-planner-app .fpl-pp-name { font-size: 11.5px; }
@@ -2432,6 +2517,10 @@ body.fpl-page {
   background: var(--green-soft);
 }
 .fpl-planner-app .fpl-pp-edit.is-target-blocked { opacity: 0.55; }
+.fpl-planner-app .fpl-pp-edit.is-target-blocked .fpl-pp-meta,
+.fpl-planner-app .fpl-pp-edit.is-target-blocked .fpl-pp-fix,
+.fpl-planner-app .fpl-pp-edit.is-target-blocked .fpl-pp-xp,
+.fpl-planner-app .fpl-pp-edit.is-target-blocked .fpl-pp-xp > span { color: var(--text); }
 /* A player an edit just brought in: one short glow, so "what changed" is
    visible on the pitch itself, not only in the transfer list. */
 .fpl-planner-app .fpl-pp-edit.is-just-in {

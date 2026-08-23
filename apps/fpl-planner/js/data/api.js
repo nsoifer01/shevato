@@ -262,12 +262,12 @@ export function createFplApi({
     return true;
   }
 
-  function clearStoredCache() {
+  function clearStoredCache(prefix = '') {
     if (!store) return;
     const keys = [];
     for (let i = 0; i < store.length; i++) {
       const k = store.key(i);
-      if (k && k.startsWith(CACHE_PREFIX)) keys.push(k);
+      if (k && k.startsWith(CACHE_PREFIX + prefix)) keys.push(k);
     }
     for (const k of keys) store.removeItem(k);
   }
@@ -449,10 +449,12 @@ export function createFplApi({
     },
     isSampleMode: () => !!sampleBundle,
 
-    clearCache() {
-      memory.clear();
-      status.clear();
-      clearStoredCache();
+    // `prefix` scopes the clear to one family of paths ('entry/' drops every
+    // cached copy of the manager's own data and leaves the public bulk data).
+    clearCache({ prefix = '' } = {}) {
+      for (const path of [...memory.keys()]) if (path.startsWith(prefix)) memory.delete(path);
+      for (const path of [...status.keys()]) if (path.startsWith(prefix)) status.delete(path);
+      clearStoredCache(prefix);
     },
   };
 }

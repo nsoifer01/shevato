@@ -72,6 +72,38 @@ test('column heights scale against the maximum from a shared zero baseline', () 
   assert.equal(holeFill.getAttribute('style'), 'height:0%');
 });
 
+test('a caption never shortens its own column: caps sit inside the track, fills stay monotone in value', () => {
+  // The History chart: fourteen gameweeks, the season best captioned and
+  // active. With the caption as a flex sibling the captioned track lost the
+  // caption's height and the best week drew as the fourth-tallest bar.
+  const points = [52, 80, 61, 77, 49, 74, 66, 58, 63, 71, 55, 60, 69, 64]
+    .map((value, i) => ({ label: `GW${i + 1}`, value, active: value === 80 }));
+  const chart = columnChart({ points, labelCaps: 'auto' });
+  const cols = queryAll(chart, 'fpl-col');
+  assert.equal(cols.length, points.length);
+  for (const col of cols) {
+    // Nothing but the tooltip, the track and the x label is a direct child of
+    // the column, so every track starts at the same height.
+    const kids = [...col.childNodes].map((n) => n.className || n.nodeName);
+    assert.deepEqual(kids.filter((c) => /fpl-col-cap/.test(c)), [], 'the cap is not a flex sibling of the track');
+    const cap = query(col, 'fpl-col-cap');
+    const fill = query(col, 'fpl-col-fill');
+    if (cap) {
+      assert.ok([...walk(query(col, 'fpl-col-track'))].includes(cap), 'the cap lives inside the track');
+      const h = fill.getAttribute('style').match(/height:([\d.]+)%/)[1];
+      assert.equal(cap.getAttribute('style'), `bottom:${h}%`, 'and sits exactly on top of the fill');
+    }
+  }
+  // Fill heights order exactly as the values do.
+  const heights = queryAll(chart, 'fpl-col-fill').map((n) => parseFloat(n.getAttribute('style').match(/height:([\d.]+)%/)[1]));
+  for (let i = 0; i < points.length; i++) {
+    for (let j = 0; j < points.length; j++) {
+      if (points[i].value > points[j].value) assert.ok(heights[i] > heights[j], `GW${i + 1} (${points[i].value}) taller than GW${j + 1} (${points[j].value})`);
+    }
+  }
+  assert.equal(Math.max(...heights), 100, 'the best week fills the track');
+});
+
 test('a dense chart quiets the caps but every value is still text via its tooltip', () => {
   const many = Array.from({ length: 14 }, (_, i) => ({ label: `GW ${i + 1}`, value: 40 + i }));
   const chart = columnChart({ points: many, formatValue: (v) => `${v} pts` });

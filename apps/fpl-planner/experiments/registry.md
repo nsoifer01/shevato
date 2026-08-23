@@ -1681,3 +1681,70 @@ xG/xA rate quality, and early-window squad construction where a wrong opening
 15 echoes for weeks). Any future reopening must first find the 2023-24
 channel; running more weights is known to be useless, because no flat weight
 can satisfy three seasons whose optima genuinely differ.
+
+## 22. The season baseline carries its rate numerators, not only its denominators
+
+- **Date:** 2026-08-22
+- **Decision: ACCEPT.** Shipped. Not a points experiment: a defect repair whose
+  before and after are measured on the live payload rather than on the replay,
+  because the state it fixes exists only in the opening fortnight of a season
+  and the replay never enters it.
+
+### The defect
+
+`snapshotFrom` kept `{starts, minutes}` per player. Those are the DIVISORS of
+every rate the projection computes. FPL clears the DIVIDENDS in the same wipe
+(`expected_goals`, `expected_assists`, `expected_goals_conceded`, `bps`,
+`saves`, goals, assists, clean sheets, the defensive-contribution parts), so a
+restored baseline had `underlyingRates` dividing one match of attacking output
+by a full season of minutes, while the clean-sheet term kept a strength model
+fed the same way.
+
+Measured on the production payload of 2026-08-22 20:30 UTC (GW1 current, six of
+ten fixtures at provisional full time), 320-player pool, pre-season snapshot
+applied:
+
+| | best GKP | best DEF | best MID | best FWD | formation | captain | move |
+| --- | ---: | ---: | ---: | ---: | --- | --- | --- |
+| before | 5.2 | 5.1 | 2.7 | 1.9 | 5-4-1 | Virgil (DEF) | Gabriel -> Virgil |
+| after | 3.6 | 4.6 | 6.5 | 5.1 | 3-5-2 | B.Fernandes (MID) | roll |
+
+Readiness read `transfers` and confidence HIGH in the before column: the best
+eleven was 46-49, a legitimate football score, and the pool kept a spread, so
+every shape check passed. That is the durable lesson - an aggregate total
+cannot detect a pool whose POSITIONS have inverted.
+
+### The change
+
+1. Snapshot version 2 carries every numerator whose denominator it restores
+   (`RATE_FIELDS`, rounded to two decimals; the 2026 pool costs about 90 KB).
+2. `normalizePlayer` blends: evidence totals become `baseline + this season`
+   and the denominators become `baseline season + this club's matches played`,
+   so both fade at one pace until `baselineIsSuperseded` retires the snapshot.
+3. Every per-90 division reads its denominator through `rateMinutesOf`
+   (`projections.underlyingRates`, `positionRatePriors`, `bonusModel`,
+   `strength.aggregateSquadXg`), which for a version 1 snapshot is THIS
+   season's minutes alone: a cleared numerator is never divided by a restored
+   denominator, and the shrinkage layer resolves those rates to position priors.
+4. `readiness` gains two structural refusals: `projection_inverted` (best FWD
+   AND best MID below best DEF on a real-sized pool, ceiling `display`) and
+   `baseline_rates_missing` (a minutes-only snapshot in force, ceiling
+   `lineup`).
+
+### What it does NOT claim
+
+No replay was re-run and no season-points number moves: the archive seeds its
+own totals and never passes through a wiped payload, so the instrument is blind
+to this state by construction. The blend rule (`baseline + current` over
+`baseline matches + current matches`) is the same arithmetic the replay already
+uses for its prior-season seed, at weight 1.0, which entries 18 and 20-21 show
+is not the weight the replay prefers; if a production prior-evidence weight is
+ever built, this blend is the place it lands, and it must be measured on the
+instrument then. Until then the baseline is evidence-of-last-resort that
+retires after three matches per club, not a tuned prior.
+
+### Re-test if
+
+The snapshot ever grows a third version, or FPL changes which fields it clears
+at a rollover. The fixture `tests/fixtures/gw1-2026/live-2026-08-22.json` is the
+sanitized production payload this entry was measured on.

@@ -10,6 +10,8 @@
 // seasonStarted; nothing throws.
 
 import { buildRules } from './rules.js';
+import { fixtureIsPlayed } from './lifecycle.js';
+import { RATE_FIELDS, snapshotCarriesRates } from './baseline.js';
 
 const num = (v) => {
   const n = typeof v === 'number' ? v : parseFloat(v);
@@ -25,32 +27,66 @@ export function buildGameState(bootstrap, fixtures, { fetchedAt, baseline = null
   const players = new Map();
   for (const e of bootstrap.elements) players.set(e.id, normalizePlayer(e));
 
-  // A kept baseline stands in for season totals FPL has cleared. Only the two
-  // evidence fields are overlaid: price, status, news and this season's own
-  // cumulative totals stay exactly as the live payload reported them, because
-  // those are current facts and the baseline is not.
+  const normalizedFixtures = (fixtures || []).map(normalizeFixture);
+
+  // A kept baseline stands in for season totals FPL has cleared. Price, status,
+  // news and this season's own cumulative totals stay exactly as the live
+  // payload reported them, because those are current facts and the baseline is
+  // not.
+  //
+  // THE BLEND. The evidence totals become baseline + this season, over a
+  // denominator of baseline matches + this season's matches (`evidenceMatches`
+  // for start rates, `minutes` for every per-90 rate). Numerators and
+  // denominators therefore grow together and the baseline fades out of every
+  // rate at the same pace, until `baselineIsSuperseded` retires it outright.
+  //
+  // A version 1 snapshot carries minutes only. Its minutes still serve the
+  // minutes model, but every rate is then read over THIS season's minutes
+  // alone (`rateMinutes`), so a cleared numerator is never divided by a
+  // restored denominator; with one match of evidence the shrinkage layer
+  // resolves those rates to the position priors, and readiness says so.
   //
   // Matched on `code`, FPL's permanent per-player id, because `id` is
   // reassigned between seasons (see FINDINGS, cross-season player identity).
   let baselineSource = 'current';
+  let baselineRates = null;
   if (baseline && baseline.totals) {
+    const carriesRates = snapshotCarriesRates(baseline);
     const byCode = new Map();
     for (const [pid, row] of Object.entries(baseline.totals)) {
       if (row && row.c != null) byCode.set(row.c, row);
       else byCode.set(Number(pid), row);
     }
+    const playedByClub = new Map();
+    for (const f of normalizedFixtures) {
+      if (!fixtureIsPlayed(f)) continue;
+      for (const t of [f.teamH, f.teamA]) playedByClub.set(t, (playedByClub.get(t) || 0) + 1);
+    }
+    const baselineMatches = baseline.totalEvents || null;
     let overlaid = 0;
     for (const p of players.values()) {
       const row = byCode.get(p.code) ?? baseline.totals[p.id];
       if (!row) continue;
-      p.starts = row.s;
-      p.minutes = row.m;
-      // The denominator these totals were accumulated against, so a start rate
-      // reads them over the season they belong to rather than this one.
-      p.evidenceMatches = baseline.totalEvents || null;
+      p.starts = (row.s || 0) + (p.seasonStarts || 0);
+      p.minutes = (row.m || 0) + (p.seasonMinutes || 0);
+      // The denominator these totals were accumulated against: the baseline's
+      // season plus whatever this club has played of the new one.
+      p.evidenceMatches = baselineMatches
+        ? baselineMatches + (playedByClub.get(p.teamId) || 0)
+        : null;
+      if (carriesRates) {
+        for (const [key, field] of Object.entries(RATE_FIELDS)) {
+          p[field] = (row[key] || 0) + (p[field] || 0);
+        }
+      } else {
+        p.rateMinutes = p.seasonMinutes || 0;
+      }
       overlaid++;
     }
-    if (overlaid > 0) baselineSource = 'baseline';
+    if (overlaid > 0) {
+      baselineSource = 'baseline';
+      baselineRates = carriesRates ? 'carried' : 'missing';
+    }
   }
 
   const events = bootstrap.events.map(normalizeEvent);
@@ -64,9 +100,13 @@ export function buildGameState(bootstrap, fixtures, { fetchedAt, baseline = null
     // Which season the evidence totals came from. 'current' means the payload's
     // own; 'baseline' means a kept snapshot is standing in for cleared totals.
     baselineSource,
+    // 'carried' when the baseline restored the rate numerators with the
+    // minutes; 'missing' when a minutes-only snapshot is in force and rates
+    // are read over this season's minutes alone; null without a baseline.
+    baselineRates,
     baselineCapturedAt: baselineSource === 'baseline' ? (baseline.capturedAt || null) : null,
     baselineSeasonLabel: baselineSource === 'baseline' ? (baseline.seasonLabel || null) : null,
-    fixtures: (fixtures || []).map(normalizeFixture),
+    fixtures: normalizedFixtures,
     events,
     fetchedAt: fetchedAt || new Date().toISOString(),
     currentEvent: current ? current.id : null,
@@ -80,6 +120,14 @@ export function buildGameState(bootstrap, fixtures, { fetchedAt, baseline = null
     // payload was loaded.
     sample: !!(bootstrap && bootstrap.sample),
   };
+}
+
+// The minutes a player's rate numerators cover. Normally his evidence minutes;
+// when a minutes-only baseline is standing in (`rateMinutes`, set above) only
+// this season's minutes cover the cleared numerators. Every per-90 division in
+// the engine reads its denominator through here.
+export function rateMinutesOf(player) {
+  return Number.isFinite(player.rateMinutes) ? player.rateMinutes : (player.minutes || 0);
 }
 
 export function normalizeTeam(t) {

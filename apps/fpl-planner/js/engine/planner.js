@@ -49,12 +49,16 @@ import { assessReadiness, projectionVitals } from './readiness.js';
 // The projection rows for one gameweek, as a flat iterable for the vitals
 // summary. Kept here rather than in readiness.js so that module stays free of
 // any knowledge of how projections are stored.
-function projectionRowsFor(projections, gw) {
+// The rows readiness judges, each tagged with the player's position so the
+// pool's shape can be checked per position as well as in aggregate.
+function projectionRowsFor(projections, gw, gameState) {
   const out = [];
   if (!projections || !projections.byPlayer) return out;
-  for (const rows of projections.byPlayer.values()) {
+  for (const [id, rows] of projections.byPlayer) {
     const row = rows.find(r => r.gw === gw);
-    if (row) out.push(row);
+    if (!row) continue;
+    const player = gameState && gameState.players.get(id);
+    out.push(player ? { ...row, position: player.position } : row);
   }
   return out;
 }
@@ -544,12 +548,13 @@ export async function buildPlan({ gameState, squadState, options = {}, onProgres
   // most expensive thing the app can recommend, so it clears the highest bar;
   // ordering an eleven the manager already owns clears the lowest.
   const lifecycle = gameweekLifecycle(gameState);
-  const vitals = projectionVitals(projectionRowsFor(projections, gw));
+  const vitals = projectionVitals(projectionRowsFor(projections, gw, gameState));
   const readiness = assessReadiness({
     evidence: seasonEvidence(gameState),
     lifecycle,
     vitals,
-    baseline: { source: gameState.baselineSource },
+    baseline: { source: gameState.baselineSource, rates: gameState.baselineRates },
+    squad: { historyMissing: !!workingSquad.historyMissing },
   });
   cfg.readiness = readiness;
 
@@ -825,8 +830,9 @@ function buildDataStatus({ gameState, squadState, cfg, projections, durationMs }
   const readiness = cfg.readiness || assessReadiness({
     evidence,
     lifecycle,
-    vitals: projectionVitals(projectionRowsFor(projections, cfg.gw)),
-    baseline: { source: gameState.baselineSource },
+    vitals: projectionVitals(projectionRowsFor(projections, cfg.gw, gameState)),
+    baseline: { source: gameState.baselineSource, rates: gameState.baselineRates },
+    squad: { historyMissing: !!squadState.historyMissing },
   });
 
   return {
@@ -839,6 +845,7 @@ function buildDataStatus({ gameState, squadState, cfg, projections, durationMs }
     lifecycle,
     readiness,
     baselineSource: gameState.baselineSource || 'current',
+    baselineRates: gameState.baselineRates || null,
     baselineCapturedAt: gameState.baselineCapturedAt || null,
     sources: [
       {

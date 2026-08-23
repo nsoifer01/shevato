@@ -36,6 +36,7 @@
 
 import { fixtureContext, baselineTeamGoals, baselineOpponentGoals } from './fixtures.js';
 import { projectMinutes, p60FromMeanMinutes } from './minutes.js';
+import { rateMinutesOf } from './normalize.js';
 import {
   poissonVector,
   poissonTail,
@@ -269,7 +270,7 @@ export function underlyingRates(player, { gw, halfLife = RECENCY_HALF_LIFE_GWS }
     }
   }
 
-  const minutes = player.minutes || 0;
+  const minutes = rateMinutesOf(player);
   if (minutes <= 0) {
     return {
       source: 'none',
@@ -352,13 +353,14 @@ export function positionRatePriors(gameState) {
       });
     }
     const row = byPosition.get(p.position);
-    row.nineties += p.minutes / 90;
+    const rateMinutes = rateMinutesOf(p);
+    row.nineties += rateMinutes / 90;
     // The same covered-minutes rule the per-player rates follow: a numerator
     // may only be divided by the minutes its evidence covers, and this map IS
     // the shrinkage target, so a diluted target would drag every shrunk rate
     // down with it. Absent fields (every live payload) fall back to minutes.
-    row.xNineties += (Number.isFinite(p.xMinutes) ? p.xMinutes : p.minutes) / 90;
-    row.dcNineties += (Number.isFinite(p.dcMinutes) ? p.dcMinutes : p.minutes) / 90;
+    row.xNineties += (Number.isFinite(p.xMinutes) ? p.xMinutes : rateMinutes) / 90;
+    row.dcNineties += (Number.isFinite(p.dcMinutes) ? p.dcMinutes : rateMinutes) / 90;
     row.totals.xG += p.xG || 0;
     row.totals.xA += p.xA || 0;
     row.totals.bps += p.bps || 0;
@@ -467,8 +469,9 @@ export function bonusModel(gameState) {
   const bps = [];
   const bonus = [];
   for (const p of gameState.players.values()) {
-    if (p.minutes < BONUS_MODEL_MIN_MINUTES) continue;
-    const nineties = p.minutes / 90;
+    const rateMinutes = rateMinutesOf(p);
+    if (rateMinutes < BONUS_MODEL_MIN_MINUTES) continue;
+    const nineties = rateMinutes / 90;
     bps.push(p.bps / nineties);
     bonus.push(p.bonus / nineties);
   }

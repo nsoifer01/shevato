@@ -19,6 +19,7 @@ import { isDemoRequested, loadSampleData } from './data/sample.js';
 import { loadModel } from './data/model.js';
 import { buildGameState } from './engine/normalize.js';
 import { buildSquadState, picksCarryLineup } from './engine/squad.js';
+import { gameweekLifecycle, GW_PHASE } from './engine/lifecycle.js';
 import { saveSnapshotIfBetter, resolveBaseline, BASELINE_KEY } from './engine/baseline.js';
 import { buildLiveStats, scoreLiveSquad } from './engine/live.js';
 import { formatFreeTransfers } from './engine/transfer-state.js';
@@ -28,6 +29,7 @@ import { assessData, inputFingerprint, outdatedReason } from './ui/plan-model.js
 import { planInputs, diffPlanVersions, actionKey } from './ui/plan-diff.js';
 import * as store from './ui/store.js';
 import { banner, btn, progressView, sampleBanner, sampleTag, freshness, planChangeCard } from './ui/parts.js';
+import { staleSourcesBanner, squadWarningsBanner } from './ui/dashboard.js';
 import {
   heroCard, transfersCard, draftCard, chipCard, pitchCard, whyCard, whyNotCard,
   futureCard, alternativesCard, statusCard, withheldView,
@@ -366,6 +368,12 @@ async function computePlan(squadState, { reason }) {
 
   renderApp();
   startTicker();
+  // A plan computed on the wrong side of its own deadline must not sit on
+  // screen as actionable for up to thirty seconds waiting for the ticker.
+  // Deferred by a turn because the caller still holds the busy flag that
+  // reactToDeadline refuses to run under, which is why calling it inline did
+  // nothing at all.
+  if (deadlineHasPassed()) setTimeout(() => { if (deadlineHasPassed()) reactToDeadline(); }, 0);
 }
 
 // One stored version: the recommendation, plus the prices, statuses and
@@ -552,6 +560,8 @@ function friendlyFailure(message) {
   if (/\b403\b|forbidden/i.test(m)) return 'This copy of the app is not allowed to read Fantasy Premier League data.';
   if (/\b404\b|not_found/i.test(m)) return 'Fantasy Premier League has no data at that address yet.';
   if (/network|failed to fetch|abort/i.test(m)) return 'The request did not complete. Check your connection and try again.';
+  if (/unknown_player/i.test(m)) return 'Your squad names a player the player list does not carry yet. This happens when the player list is an older copy; try again in a few minutes.';
+  if (/refusing to return an invalid plan/i.test(m)) return 'The plan failed its own legality check, so it was not shown.';
   return 'It could not be loaded.';
 }
 
@@ -770,7 +780,14 @@ function planView() {
   if (!bundle && state.loadError) return [topNotices(), loadFailureView(state.loadError)];
   if (!bundle) return el('p', { class: 'fpl-empty', text: 'No plan yet.' });
 
-  const assessment = assessData({ sources: fplApi.getDataStatus().sources });
+  // The fetch layer knows whether each source loaded; the planner knows whether
+  // what loaded was usable (an empty fixture list is a 200). Both are judged.
+  const assessment = assessData({
+    sources: [
+      ...fplApi.getDataStatus().sources,
+      ...bundle.dataStatus.sources.filter(src => src.name === 'fixtures'),
+    ],
+  });
   if (assessment.withholdPlan) {
     return [topNotices(), withheldView({ assessment, onRetry: () => connectAndPlan({ reason: 'manual' }) })];
   }
@@ -1110,20 +1127,17 @@ function topNotices() {
       // get their own banner below.
       text: 'The plan is built from the most recent copy we have, which is not fresh.',
     }));
+  } else if (state.bundle && !state.sample) {
+    // The proxy serving its last copy because FPL is down (`x-fpl-stale`) is
+    // visible hours before the copy is old enough to withhold the plan.
+    const staleNotice = staleSourcesBanner(assessData({ sources: fplApi.getDataStatus().sources }));
+    if (staleNotice) nodes.push(staleNotice);
   }
 
   // Squad warnings are their own thing and say so, rather than being reported
   // as the data being old.
   const squadWarnings = (state.bundle && state.bundle.dataStatus.squadWarnings) || [];
-  if (squadWarnings.length) {
-    nodes.push(banner({
-      tone: 'warn',
-      mark: '!',
-      title: 'One number does not match Fantasy Premier League',
-      text: 'The squad and prices are read from two Fantasy Premier League endpoints that are not always in step, most often because a price changed overnight. Transfers and affordability are calculated from your reconstructed selling prices.',
-      list: squadWarnings.map(w => w.message),
-    }));
-  }
+  if (squadWarnings.length) nodes.push(squadWarningsBanner(squadWarnings));
   return nodes;
 }
 
@@ -1234,7 +1248,33 @@ function startTicker() {
     if (state.slots.fresh && state.slots.fresh.isConnected) {
       mount(state.slots.fresh, freshnessRow());
     }
+    refreshLive();
   }, 30000);
+}
+
+// Live scores during a gameweek in play. The live endpoint was fetched at boot
+// and again only on "Check for changes", so a manager watching a match saw
+// frozen points under a "Last synced just now" that kept ticking. The data
+// layer's own TTL (CLIENT_TTL.live, 60 s) bounds the requests; the ticker only
+// asks. A redraw happens only when a score actually moved, so an open
+// disclosure is not closed for nothing.
+let liveRefreshing = false;
+async function refreshLive() {
+  if (liveRefreshing || state.busy || state.sample || !state.gameState || !state.picksGw || !state.picks) return;
+  if (gameweekLifecycle(state.gameState).phase !== GW_PHASE.IN_PROGRESS) return;
+  liveRefreshing = true;
+  try {
+    const live = await fplApi.getEventLive(state.picksGw);
+    const next = buildLiveStats(live.data);
+    const before = liveSquadNow();
+    state.live = next;
+    const after = liveSquadNow();
+    if (JSON.stringify(before) !== JSON.stringify(after) && state.view === 'plan' && !document.hidden) renderApp();
+  } catch {
+    // A failed live refresh keeps the last scores; the plan does not depend on it.
+  } finally {
+    liveRefreshing = false;
+  }
 }
 
 /* --------------------------------------------------------------- deadlines */

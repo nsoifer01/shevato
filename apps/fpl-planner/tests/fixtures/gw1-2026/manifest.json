@@ -21,6 +21,12 @@
       "name": "ft-provisional",
       "withMinutes": 20,
       "startedFixtures": 1
+    },
+    {
+      "name": "live-2026-08-22",
+      "withMinutes": 124,
+      "startedFixtures": 6,
+      "source": "live FPL proxy, 2026-08-22 20:30 UTC: GW1 current, 6 of 10 fixtures at provisional full time, totals cleared at the rollover"
     }
   ]
 }

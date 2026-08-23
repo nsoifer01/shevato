@@ -62,18 +62,30 @@ export const MIN_TOP_MEDIAN_GAP = 1.0;
 // The real payload carries 600 players and the sample dataset 320.
 export const MIN_POOL_FOR_SHAPE_CHECKS = 200;
 
+// FPL position ids. The inversion check below is a statement about the sport:
+// the best forward and the best midfielder in a league out-project the best
+// defender, because goals outscore clean sheets. When both fall below him the
+// attacking rates have collapsed, whatever the best-eleven total reads.
+const DEF = 2;
+const MID = 3;
+const FWD = 4;
+
 /**
  * Summarise a projection pool: the sanity facts, not the projections.
- * `rows` is an iterable of `{ xPoints, pStart }`.
+ * `rows` is an iterable of `{ xPoints, pStart, position? }`.
  */
 export function projectionVitals(rows) {
   const xps = [];
+  const bestByPosition = {};
   let pinnedHigh = 0;
   let pinnedLow = 0;
   let counted = 0;
   for (const r of rows) {
     if (!r || !Number.isFinite(r.xPoints)) continue;
     xps.push(r.xPoints);
+    if (r.position !== undefined && !(bestByPosition[r.position] >= r.xPoints)) {
+      bestByPosition[r.position] = r.xPoints;
+    }
     if (Number.isFinite(r.pStart)) {
       counted++;
       if (r.pStart >= 0.999) pinnedHigh++;
@@ -90,6 +102,12 @@ export function projectionVitals(rows) {
     max: xps[0],
     median,
     best11,
+    bestByPosition,
+    // Null when the rows carried no positions; otherwise whether the best
+    // forward AND the best midfielder both sit below the best defender.
+    attackInverted: [DEF, MID, FWD].every((k) => Number.isFinite(bestByPosition[k]))
+      ? bestByPosition[FWD] < bestByPosition[DEF] && bestByPosition[MID] < bestByPosition[DEF]
+      : null,
     topMedianGap: xps[0] - median,
     pinnedHighShare: counted ? pinnedHigh / counted : 0,
     pinnedLowShare: counted ? pinnedLow / counted : 0,
@@ -103,9 +121,10 @@ export function projectionVitals(rows) {
  * @param {object} input.evidence   from seasonEvidence()
  * @param {object} input.lifecycle  from gameweekLifecycle()
  * @param {object} [input.vitals]   from projectionVitals(), when projections exist
- * @param {object} [input.baseline] from assessBaseline()
+ * @param {object} [input.baseline] `{ source, rates }` from the GameState
+ * @param {object} [input.squad]    `{ historyMissing }` from buildSquadState()
  */
-export function assessReadiness({ evidence, lifecycle, vitals = null, baseline = null } = {}) {
+export function assessReadiness({ evidence, lifecycle, vitals = null, baseline = null, squad = null } = {}) {
   const blocked = [];
   const block = (code, message, ceiling) => blocked.push({ code, message, ceiling });
 
@@ -136,6 +155,15 @@ export function assessReadiness({ evidence, lifecycle, vitals = null, baseline =
         'Most players are being read as certain starters, which happens when a season total is measured against '
         + 'too few matches.',
         LEVEL.LINEUP);
+    }
+    // The 2026-08-22 shape: a football-sized best eleven made of defenders,
+    // because the attacking numerators were cleared while their minutes were
+    // restored. The best eleven and the spread both looked healthy.
+    if (vitals.attackInverted === true) {
+      block('projection_inverted',
+        'The best forwards and midfielders in the game are projecting below the best defenders, which happens '
+        + 'when scoring rates have been cleared while minutes have not. The projection inputs are not trustworthy.',
+        LEVEL.DISPLAY);
     }
   }
 
@@ -169,6 +197,27 @@ export function assessReadiness({ evidence, lifecycle, vitals = null, baseline =
       'Fantasy Premier League has cleared last season\'s totals, so projections are running on the last complete '
       + 'set we recorded.',
       LEVEL.TRANSFERS);
+    // A minutes-only snapshot (the version 1 shape) restores every rate's
+    // denominator without its numerator. The engine reads those rates over
+    // this season's minutes alone and shrinks them to position averages, so
+    // players within a position are barely separated: enough to order an
+    // eleven the manager owns, not to buy and sell on.
+    if (baseline.rates === 'missing') {
+      block('baseline_rates_missing',
+        'The player totals we recorded before Fantasy Premier League cleared them cover minutes only, so scoring '
+        + 'rates are position averages until this season has enough matches of its own.',
+        LEVEL.LINEUP);
+    }
+  }
+
+  // --- the manager's own records -------------------------------------------
+  // Without the season history the chips already played and the banked free
+  // transfers are unknown, so nothing that spends either may be proposed.
+  if (squad && squad.historyMissing) {
+    block('history_missing',
+      'Your season history could not be read from Fantasy Premier League, so the chips you have used and your '
+      + 'free transfers are unknown.',
+      LEVEL.LINEUP);
   }
 
   let level = LEVEL.CHIPS;

@@ -226,6 +226,18 @@ test('a plan is withheld when availability is too old to trust', () => {
   assert.match(assessment.reason, /injuries and suspensions may be out of date/);
 });
 
+test('an empty fixture list withholds the plan rather than captaining "No fixture, 0.0 xP"', () => {
+  const assessment = assessData({
+    sources: [
+      { name: 'Players, prices and news', path: 'bootstrap-static', ok: true, stale: false, ageSeconds: 30 },
+      { name: 'fixtures', ok: false, fetchedAt: null, ageSeconds: null, error: null },
+    ],
+  });
+  assert.equal(assessment.fixturesMissing, true);
+  assert.equal(assessment.withholdPlan, true);
+  assert.match(assessment.reason, /fixture list could not be loaded/);
+});
+
 test('a slightly stale bootstrap is reported but does not withhold the plan', () => {
   const assessment = assessData({
     sources: [

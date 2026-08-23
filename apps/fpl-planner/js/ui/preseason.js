@@ -52,11 +52,34 @@ export function squadLegality(ids, gameState, { budgetTenths } = {}) {
   const complete = ids.length === rules.squadSize
     && Object.values(rules.positions).every(p => (counts[p.id] || 0) === p.squadSelect);
 
+  // Can the remaining slots be filled at all? The cheapest legal completion is
+  // the cheapest unpicked players of each position still short. "Legal so far,
+  // 5 more players to pick" with £4.9m left was literally true and useless.
+  const remaining = budget - spend;
+  let cheapestFill = 0;
+  if (!complete && ids.length < rules.squadSize) {
+    const chosen = new Set(ids);
+    for (const pos of Object.values(rules.positions)) {
+      const short = pos.squadSelect - (counts[pos.id] || 0);
+      if (short <= 0) continue;
+      const costs = [];
+      for (const player of gameState.players.values()) {
+        if (player.position === pos.id && !chosen.has(player.id)) costs.push(player.nowCost);
+      }
+      costs.sort((a, b) => a - b);
+      cheapestFill += costs.slice(0, short).reduce((a, b) => a + b, 0);
+    }
+    if (cheapestFill > remaining) {
+      issues.push(`${formatMoney(remaining)} left for ${rules.squadSize - ids.length} more ${plural(rules.squadSize - ids.length, 'player')}; the cheapest legal fill costs ${formatMoney(cheapestFill)}.`);
+    }
+  }
+
   return {
     counts,
     clubs,
     spend,
-    remaining: budget - spend,
+    remaining,
+    cheapestFill,
     issues,
     complete,
     ok: complete && issues.length === 0,
@@ -236,7 +259,9 @@ export function manualSquadView({ gameState, initialIds = [], onPlan, onCancel }
   const counters = el('div', { class: 'fpl-counters' });
   const legality = el('div', { class: 'fpl-legality' });
   const picked = el('div', { class: 'fpl-picked' });
-  const results = el('div', { class: 'fpl-search-results' });
+  // A scroll region has to be reachable from the keyboard (axe
+  // scrollable-region-focusable).
+  const results = el('div', { class: 'fpl-search-results', tabindex: '0', role: 'region', 'aria-label': 'Search results' });
 
   const query = el('input', { type: 'text', placeholder: 'Search by name', 'aria-label': 'Search players', autocomplete: 'off' });
   const posFilter = el('select', { 'aria-label': 'Filter by position' }, [

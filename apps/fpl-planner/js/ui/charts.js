@@ -50,6 +50,12 @@ function tooltip(lines) {
 // Values are magnitudes, so columns grow from a shared zero baseline. Caps are
 // labelled when there is room for all of them; on dense charts only the peak
 // and the newest column carry a label and the tooltip holds the rest.
+//
+// The cap lives INSIDE the track, positioned just above the fill. As a flex
+// sibling it took its height out of that column's track only, so on a dense
+// chart the few captioned columns drew SHORTER than uncaptioned ones of lower
+// value (the season-best 80 rendered as the fourth-tallest bar). Every track
+// is now the same height and the fill heights are the only geometry.
 export function columnChart({
   points,
   formatValue = (v) => String(v),
@@ -72,8 +78,10 @@ export function columnChart({
       'aria-label': `${p.label}: ${formatValue(p.value)}${p.note ? `. ${p.note}` : ''}`,
     }, [
       tooltip([`${p.label} · ${formatValue(p.value)}`, p.note]),
-      showCap ? el('span', { class: 'fpl-col-cap', text: formatValue(p.value) }) : null,
-      el('div', { class: 'fpl-col-track' }, el('div', { class: 'fpl-col-fill', style: `height:${h}%` })),
+      el('div', { class: 'fpl-col-track' }, [
+        el('div', { class: 'fpl-col-fill', style: `height:${h}%` }),
+        showCap ? el('span', { class: 'fpl-col-cap', style: `bottom:${h}%`, text: formatValue(p.value) }) : null,
+      ]),
       el('span', { class: `fpl-col-x ${dense && !(i === 0 || i === lastIdx || p.value === peak || p.active) ? 'is-quiet' : ''}`.trim(), text: p.label }),
     ]);
   });
