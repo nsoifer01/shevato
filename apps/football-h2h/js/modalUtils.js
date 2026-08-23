@@ -6,6 +6,16 @@
 // modal closes.
 let openModalCount = 0;
 
+// Every value, label, option and placeholder that reaches a modal is
+// escaped HERE, in the renderer, never at the input. Stored HTML in a note,
+// team or player name used to execute when the edit or delete modal
+// opened, and a `"` in a note truncated the field on every Edit (the value
+// attribute closed early). Import and cloud sync deliver strings this page
+// never typed, so the renderer is the only boundary that holds.
+function esc(value) {
+    return window.escapeHtml(value == null ? '' : value);
+}
+
 function lockBodyScroll() {
     openModalCount += 1;
     document.body.classList.add('modal-open');
@@ -95,12 +105,12 @@ function createModal({ icon, title, content, buttons = [] }) {
     const buttonHtml = buttons.map(btn => {
         const classes = ['modal-btn-primary', 'modal-btn-secondary', 'modal-btn-danger'];
         const buttonClass = classes[btn.type] || 'modal-btn-primary';
-        return `<button id="${btn.id}" class="${buttonClass}">${btn.text}</button>`;
+        return `<button id="${esc(btn.id)}" class="${buttonClass}">${esc(btn.text)}</button>`;
     }).join('');
 
     dialog.innerHTML = `
-        <div class="modal-icon">${icon}</div>
-        <h3 class="modal-title">${title}</h3>
+        <div class="modal-icon">${esc(icon)}</div>
+        <h3 class="modal-title">${esc(title)}</h3>
         <div class="modal-content">${content}</div>
         <div class="modal-buttons">${buttonHtml}</div>
     `;
@@ -250,35 +260,39 @@ function createWarningModal({ icon = '⚠️', title, message, onConfirm, onCanc
 /**
  * Creates a form modal
  */
-function createFormModal({ icon, title, fields, onSave, onCancel }) {
-    // Helper function to render a field
+// Render the field markup for a form modal. Pure string builder exposed on
+// window so the renderer-escaping tests can run it under node without a
+// DOM: every interpolated value goes through esc(), attribute values
+// included.
+function renderFormFieldsHtml(fields) {
     function renderField(field) {
-        const fieldId = `form-${field.id}`;
+        const fieldId = `form-${esc(field.id)}`;
+        const value = field.value === undefined || field.value === null ? '' : field.value;
+        const placeholder = esc(field.placeholder || '');
         let inputHtml;
 
         switch (field.type) {
             case 'date':
-                inputHtml = `<input type="date" id="${fieldId}" value="${field.value || ''}" class="form-input">`;
+                inputHtml = `<input type="date" id="${fieldId}" value="${esc(value)}" class="form-input">`;
                 break;
             case 'time':
-                const stepAttr = field.step ? `step="${field.step}"` : 'step="1"';
-                inputHtml = `<input type="time" id="${fieldId}" value="${field.value || ''}" ${stepAttr} class="form-input" placeholder="${field.placeholder || ''}">`;
+                const stepAttr = field.step ? `step="${esc(field.step)}"` : 'step="1"';
+                inputHtml = `<input type="time" id="${fieldId}" value="${esc(value)}" ${stepAttr} class="form-input" placeholder="${placeholder}">`;
                 break;
             case 'number':
-                const numberChangeHandler = field.onChange ? `onchange="${field.onChange}"` : '';
-                const numberValue = field.value !== undefined && field.value !== null ? field.value : '';
-                inputHtml = `<input type="number" id="${fieldId}" value="${numberValue}" min="${field.min || ''}" max="${field.max || ''}" class="form-input" placeholder="${field.placeholder || ''}" ${numberChangeHandler}>`;
+                const numberChangeHandler = field.onChange ? `onchange="${esc(field.onChange)}"` : '';
+                inputHtml = `<input type="number" id="${fieldId}" value="${esc(value)}" min="${esc(field.min || '')}" max="${esc(field.max || '')}" class="form-input" placeholder="${placeholder}" ${numberChangeHandler}>`;
                 break;
             case 'select':
                 const optionsHtml = field.options.map(option =>
-                    `<option value="${option.value}" ${option.value === field.value ? 'selected' : ''}>${option.text}</option>`
+                    `<option value="${esc(option.value)}" ${option.value === field.value ? 'selected' : ''}>${esc(option.text)}</option>`
                 ).join('');
-                const changeHandler = field.onChange ? `onchange="${field.onChange}"` : '';
+                const changeHandler = field.onChange ? `onchange="${esc(field.onChange)}"` : '';
                 inputHtml = `<select id="${fieldId}" class="form-input" ${changeHandler}>${optionsHtml}</select>`;
                 break;
             default:
-                const maxLengthAttr = field.maxlength ? `maxlength="${field.maxlength}"` : '';
-                inputHtml = `<input type="text" id="${fieldId}" value="${field.value || ''}" class="form-input" placeholder="${field.placeholder || ''}" ${maxLengthAttr}>`;
+                const maxLengthAttr = field.maxlength ? `maxlength="${esc(field.maxlength)}"` : '';
+                inputHtml = `<input type="text" id="${fieldId}" value="${esc(value)}" class="form-input" placeholder="${placeholder}" ${maxLengthAttr}>`;
         }
 
         const hideStyle = field.hidden ? 'style="display: none;"' : '';
@@ -286,7 +300,7 @@ function createFormModal({ icon, title, fields, onSave, onCancel }) {
         const labelText = field.label.endsWith(':') ? field.label.slice(0, -1) : field.label;
         return `
             <div class="form-group" ${hideStyle}>
-                <label class="form-label" for="${fieldId}">${labelText}</label>
+                <label class="form-label" for="${fieldId}">${esc(labelText)}</label>
                 ${inputHtml}
             </div>
         `;
@@ -317,7 +331,7 @@ function createFormModal({ icon, title, fields, onSave, onCancel }) {
         fieldsHtml += `
             <div class="form-divider"></div>
             <div class="player-section">
-                <div class="player-section-title">⚽ ${player1Name}</div>
+                <div class="player-section-title">⚽ ${esc(player1Name)}</div>
                 ${player1Fields.map(renderField).join('')}
             </div>
         `;
@@ -328,11 +342,19 @@ function createFormModal({ icon, title, fields, onSave, onCancel }) {
         const player2Name = player2Fields[0].label.split("'")[0] || 'Player 2';
         fieldsHtml += `
             <div class="player-section">
-                <div class="player-section-title">⚽ ${player2Name}</div>
+                <div class="player-section-title">⚽ ${esc(player2Name)}</div>
                 ${player2Fields.map(renderField).join('')}
             </div>
         `;
     }
+    return fieldsHtml;
+}
+
+/**
+ * Creates a form modal
+ */
+function createFormModal({ icon, title, fields, onSave, onCancel }) {
+    const fieldsHtml = renderFormFieldsHtml(fields);
 
     const buttons = [
         {
@@ -381,7 +403,10 @@ function createFormModal({ icon, title, fields, onSave, onCancel }) {
                 const player1Goals = player1Input.value;
                 const player2Goals = player2Input.value;
                 
-                if (player1Goals !== '' && player2Goals !== '' && player1Goals === player2Goals) {
+                const draw = window.FootballMatchLogic
+                    ? window.FootballMatchLogic.isDraw(player1Goals, player2Goals)
+                    : (player1Goals !== '' && player2Goals !== '' && player1Goals === player2Goals);
+                if (draw) {
                     penaltyGroup.style.display = 'block';
                 } else {
                     penaltyGroup.style.display = 'none';
@@ -439,10 +464,15 @@ function showToast(message, type = 'success', duration = 3000) {
         info: 'ℹ️'
     };
     
-    toast.innerHTML = `
-        <span class="toast-icon">${icons[type] || icons.success}</span>
-        <span class="toast-message">${message}</span>
-    `;
+    // Text, never markup: toast messages carry player names.
+    const iconEl = document.createElement('span');
+    iconEl.className = 'toast-icon';
+    iconEl.textContent = icons[type] || icons.success;
+    const messageEl = document.createElement('span');
+    messageEl.className = 'toast-message';
+    messageEl.textContent = message;
+    toast.appendChild(iconEl);
+    toast.appendChild(messageEl);
     
     // Add to body
     document.body.appendChild(toast);
@@ -494,6 +524,7 @@ window.createSuccessModal = createSuccessModal;
 window.createErrorModal = createErrorModal;
 window.createWarningModal = createWarningModal;
 window.createFormModal = createFormModal;
+window.renderFormFieldsHtml = renderFormFieldsHtml;
 window.showToast = showToast;
 window.showFormError = showFormError;
 window.hideFormError = hideFormError;

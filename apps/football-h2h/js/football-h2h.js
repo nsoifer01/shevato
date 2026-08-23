@@ -28,6 +28,12 @@ let currentSortDirection = 'desc'; // 'asc' or 'desc'
 // LocalStorage key
 const STORAGE_KEY = 'footballH2HGames';
 const PLAYERS_KEY = 'footballH2HPlayers';
+const ICONS_KEY = 'footballH2HPlayerIcons';
+
+// Set when the stored games blob could not be parsed. While true the app
+// renders a visible notice and refuses to write the games key, so the
+// unreadable data is never silently replaced by a fresh list.
+let gamesLoadError = false;
 
 // Player names (global variables)
 let player1Name = 'Player 1';
@@ -134,6 +140,27 @@ document.addEventListener('DOMContentLoaded', function() {
         __footballRemoteRefreshTimer = setTimeout(initializeAppData, 750);
     });
 
+    // Cross-tab coherence: another tab on this origin wrote one of our keys.
+    // Re-read storage and re-render; never write from here (tab-sync blocks
+    // it). Two tabs used to each hold their own array, so the later Save
+    // silently dropped the other tab's games. The undo stack is discarded
+    // too: it would replay into data this tab never saw.
+    if (window.ShevatoTabSync) {
+        window.ShevatoTabSync.watch([STORAGE_KEY, PLAYERS_KEY, ICONS_KEY], () => {
+            if (typeof resetActionHistory === 'function') resetActionHistory();
+            initializeAppData();
+        });
+    }
+
+    // Sortable headers are keyboard-operable: Enter / Space sorts like a click.
+    document.querySelectorAll('.games-table th.sortable-header[data-sort]').forEach((th) => {
+        th.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
+            sortGames(th.getAttribute('data-sort'));
+        });
+    });
+
     // Initialize sidebar after everything else is loaded
     setTimeout(() => {
         if (window.initializeSidebar) {
@@ -152,15 +179,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Load player names from localStorage
 function loadPlayers() {
-    const savedPlayers = localStorage.getItem(PLAYERS_KEY);
-    if (savedPlayers) {
-        const players = JSON.parse(savedPlayers);
-        player1Name = players.player1 || 'Player 1';
-        player2Name = players.player2 || 'Player 2';
-    } else {
-        player1Name = 'Player 1';
-        player2Name = 'Player 2';
+    let players = null;
+    try {
+        players = JSON.parse(localStorage.getItem(PLAYERS_KEY));
+    } catch (e) {
+        console.warn('Football H2H: stored player names unreadable, using defaults', e);
     }
+    if (!players || typeof players !== 'object') players = {};
+    const logic = window.FootballMatchLogic;
+    player1Name = logic.cleanPlayerName(players.player1, 'Player 1');
+    player2Name = logic.cleanPlayerName(players.player2, 'Player 2');
     
     // Update any existing input fields
     const player1Input = document.getElementById('player1Name');
@@ -183,8 +211,8 @@ function handlePlayerNameChange() {
     const player1Input = document.getElementById('player1Name');
     const player2Input = document.getElementById('player2Name');
 
-    if (player1Input) player1Name = player1Input.value || 'Player 1';
-    if (player2Input) player2Name = player2Input.value || 'Player 2';
+    if (player1Input) player1Name = window.FootballMatchLogic.cleanPlayerName(player1Input.value, 'Player 1');
+    if (player2Input) player2Name = window.FootballMatchLogic.cleanPlayerName(player2Input.value, 'Player 2');
 
     applyPlayerNameChanges(player1Name, player2Name);
     savePlayers();
@@ -203,18 +231,21 @@ function updatePlayerNames() {
     const player1Input = document.getElementById('player1Name');
     const player2Input = document.getElementById('player2Name');
 
-    if (player1Input) player1Name = player1Input.value || 'Player 1';
-    if (player2Input) player2Name = player2Input.value || 'Player 2';
+    if (player1Input) player1Name = window.FootballMatchLogic.cleanPlayerName(player1Input.value, 'Player 1');
+    if (player2Input) player2Name = window.FootballMatchLogic.cleanPlayerName(player2Input.value, 'Player 2');
 
     applyPlayerNameChanges(player1Name, player2Name);
 }
 
 // Function to update player name from sidebar (called from sidebar.js)
 function updatePlayerName(playerNumber, newName) {
+    // Trimmed and capped: a whitespace-only name used to be stored as-is
+    // and blank out every label; an unbroken 120-char name broke the icon
+    // grid and clipped the stat cards.
     if (playerNumber === 1) {
-        player1Name = newName || 'Player 1';
+        player1Name = window.FootballMatchLogic.cleanPlayerName(newName, 'Player 1');
     } else if (playerNumber === 2) {
-        player2Name = newName || 'Player 2';
+        player2Name = window.FootballMatchLogic.cleanPlayerName(newName, 'Player 2');
     }
 
     applyPlayerNameChanges(player1Name, player2Name);
@@ -322,15 +353,35 @@ function migratePenaltyWinners(gamesArray) {
 // Load games from localStorage
 function loadGames() {
     const savedGames = localStorage.getItem(STORAGE_KEY);
+    gamesLoadError = false;
     if (savedGames) {
-        games = JSON.parse(savedGames);
+        let parsed;
+        try {
+            parsed = JSON.parse(savedGames);
+        } catch (e) {
+            parsed = null;
+        }
+        if (!Array.isArray(parsed)) {
+            // Unreadable blob: keep it on disk, show the notice, block writes.
+            console.warn('Football H2H: stored games could not be read; leaving the stored data untouched');
+            gamesLoadError = true;
+            games = [];
+            window.games = games;
+            return;
+        }
+        games = parsed.filter((g) => g && typeof g === 'object' && !Array.isArray(g));
         window.games = games; // Update global reference
 
-        // Migrate old games without dateTime, and legacy string
-        // penaltyWinner values. Single write-back if either fired.
+        // Migrate old games without dateTime, legacy string penaltyWinner
+        // values, and rows without an id / gameNumber (older imports, or
+        // rows stripped by sync). Single write-back if any fired. Inside a
+        // cross-tab refresh the write is skipped: the other tab already
+        // holds the same data and will heal it on its own next write.
         const datesMigrated = migrateGameDates(games);
         const penaltiesMigrated = migratePenaltyWinners(games);
-        if (datesMigrated || penaltiesMigrated) {
+        const idsHealed = window.FootballMatchLogic.assignIds(games) > 0;
+        const inTabSyncHandler = !!(window.ShevatoTabSync && window.ShevatoTabSync.inHandler);
+        if ((datesMigrated || penaltiesMigrated || idsHealed) && !inTabSyncHandler) {
             saveGames();
         }
     } else {
@@ -340,10 +391,21 @@ function loadGames() {
     }
 }
 
-// Save games to localStorage
-function saveGames() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(games));
+// Save games to localStorage. Refused while the stored blob is unreadable
+// (see gamesLoadError) so a broken list is never overwritten; Clear All
+// Data passes force=true because replacing it is exactly what the user
+// confirmed.
+function saveGames(force = false) {
     window.games = games; // Update global reference
+    if (gamesLoadError && !force) {
+        if (typeof showToast === 'function') {
+            showToast('Stored games could not be read. Clear all data before saving new games.', 'error', 5000);
+        }
+        return false;
+    }
+    gamesLoadError = false;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(games));
+    return true;
 }
 
 // Update the entire UI
@@ -393,13 +455,6 @@ function sortGames(column) {
     renderGamesTable();
 }
 
-// Get sorted games
-function getSortedGames() {
-    // Delegate to the pure helper so the unit tests in match-logic.test.js
-    // cover the same comparator the UI uses.
-    return window.FootballMatchLogic.sortGames(games, currentSortColumn, currentSortDirection);
-}
-
 // Update sort indicators
 function updateSortIndicators() {
     // Clear all indicators
@@ -412,51 +467,21 @@ function updateSortIndicators() {
     if (currentIndicator) {
         currentIndicator.textContent = currentSortDirection === 'asc' ? ' ▲' : ' ▼';
     }
+
+    // aria-sort mirrors the indicator for assistive tech.
+    document.querySelectorAll('.games-table th.sortable-header[data-sort]').forEach((th) => {
+        const active = th.getAttribute('data-sort') === currentSortColumn;
+        th.setAttribute('aria-sort', active ? (currentSortDirection === 'asc' ? 'ascending' : 'descending') : 'none');
+    });
 }
 
 // Render the games table
 function renderGamesTable() {
     // Use filtered games if available, otherwise use all games
     const gamesToRender = window.getFilteredGames ? window.getFilteredGames() : games;
-    
-    // Apply sorting to the games before rendering
-    const sortedGames = [...gamesToRender].sort((a, b) => {
-        let valueA, valueB;
-        
-        switch(currentSortColumn) {
-            case 'game':
-                valueA = a.id;
-                valueB = b.id;
-                break;
-                
-            case 'date':
-                valueA = a.dateTime ? new Date(a.dateTime) : new Date(0);
-                valueB = b.dateTime ? new Date(b.dateTime) : new Date(0);
-                break;
-                
-            case 'player1':
-                valueA = a.player1Goals;
-                valueB = b.player1Goals;
-                break;
-                
-            case 'player2':
-                valueA = a.player2Goals;
-                valueB = b.player2Goals;
-                break;
-                
-            default:
-                valueA = a.dateTime ? new Date(a.dateTime) : new Date(0);
-                valueB = b.dateTime ? new Date(b.dateTime) : new Date(0);
-        }
-        
-        if (currentSortDirection === 'asc') {
-            return valueA < valueB ? -1 : valueA > valueB ? 1 : 0;
-        } else {
-            return valueA > valueB ? -1 : valueA < valueB ? 1 : 0;
-        }
-    });
-    
-    renderGamesTableWithData(sortedGames);
+    // One comparator for every table render (match-logic.js), so "Game #"
+    // sorts by the displayed gameNumber everywhere.
+    renderGamesTableWithData(window.FootballMatchLogic.sortGames(gamesToRender, currentSortColumn, currentSortDirection));
     updateSortIndicators();
 }
 
@@ -466,84 +491,8 @@ function updateStatistics() {
     updateStatisticsWithData(gamesToAnalyze);
 }
 
-// Legacy renderGamesTable function (keeping for compatibility)
-function renderGamesTableLegacy() {
-    const tbody = document.getElementById('gamesTableBody');
-    const noGames = document.getElementById('noGames');
-    
-    if (games.length === 0) {
-        tbody.innerHTML = '';
-        noGames.style.display = 'block';
-        updateSortIndicators();
-        return;
-    }
-    
-    noGames.style.display = 'none';
-    
-    // Update sort indicators
-    updateSortIndicators();
-    
-    // Get sorted games based on current sort settings
-    const sortedGames = getSortedGames();
-    
-    tbody.innerHTML = sortedGames.map((game, index) => {
-        // Find the original position of this game for game number
-        const gameNumber = games.findIndex(m => m.id === game.id) + 1;
-        const isDraw = game.player1Goals === game.player2Goals;
-        
-        // Determine winner for circle styling
-        let player1Class = '';
-        let player2Class = '';
-        
-        if (isDraw) {
-            // If it's a draw, check penalty winner
-            if (game.penaltyWinner === 'player1') {
-                player1Class = 'goal-winner';
-                player2Class = 'goal-loser';
-            } else if (game.penaltyWinner === 'player2') {
-                player1Class = 'goal-loser';
-                player2Class = 'goal-winner';
-            } else {
-                // True draw (no penalty winner)
-                player1Class = 'goal-draw';
-                player2Class = 'goal-draw';
-            }
-        } else if (game.player1Goals > game.player2Goals) {
-            // Player 1 wins
-            player1Class = 'goal-winner';
-            player2Class = 'goal-loser';
-        } else {
-            // Player 2 wins
-            player1Class = 'goal-loser';
-            player2Class = 'goal-winner';
-        }
-        
-        // Format date and time
-        const dateTimeDisplay = game.dateTime ? formatDateTime(game.dateTime) : '-';
-        
-        return `
-            <tr>
-                <td>${gameNumber}</td>
-                <td>${dateTimeDisplay}</td>
-                <td><span class="goal-circle ${player1Class}">${game.player1Goals}</span></td>
-                <td><span class="goal-circle ${player2Class}">${game.player2Goals}</span></td>
-                <td>${escapeHtml(game.player1Team || game.team || 'Ultimate Team')}</td>
-                <td>${escapeHtml(game.player2Team || game.team || 'Ultimate Team')}</td>
-                <td>
-                    <div class="action-buttons">
-                        <button class="btn-icon edit" onclick="editGame(${game.id})" title="Edit">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button class="btn-icon delete" onclick="deleteGame(${game.id})" title="Delete">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </div>
-                </td>
-            </tr>
-        `;
-    }).join('');
-}
-
+// renderGamesTableLegacy (dead since 2026-08-15, the app's only Font
+// Awesome usage) was removed 2026-08-23.
 
 // The old add/edit "gameModal" path (showAddGameModal / closeGameModal /
 // checkForDraw / saveGame and its team helpers) was removed 2026-08-15: its
@@ -553,6 +502,9 @@ function renderGamesTableLegacy() {
 
 // Edit game
 function editGame(id) {
+    // Every row carries an id (assignIds at load / import); a missing one
+    // must never match a row, or the first such row would be edited.
+    if (id === undefined || id === null) return;
     const game = games.find(m => m.id === id);
     if (!game) return;
     
@@ -723,19 +675,20 @@ function editGame(id) {
                 return false; // Prevent modal from closing
             }
 
-            // Goals must be non-negative integers: min="0" on the number
-            // inputs is only a browser hint, so re-check before storing
-            // (same rule as submitSidebarGame in sidebar.js).
-            const player1Goals = Number(formData.player1Goals);
-            const player2Goals = Number(formData.player2Goals);
+            // Goals must be whole numbers 0..99 written as digits: min / max
+            // on the number inputs are only browser hints, so re-check
+            // before storing (same shared rule as submitSidebarGame).
+            const logic = window.FootballMatchLogic;
+            const player1Goals = logic.parseGoals(formData.player1Goals);
+            const player2Goals = logic.parseGoals(formData.player2Goals);
 
-            if (!Number.isInteger(player1Goals) || player1Goals < 0) {
-                showFormError(`Goals for ${currentPlayer1Name} must be a whole number of 0 or more`);
+            if (player1Goals === null) {
+                showFormError(`Goals for ${currentPlayer1Name} must be a whole number from 0 to ${logic.MAX_GOALS}`);
                 return false; // Prevent modal from closing
             }
 
-            if (!Number.isInteger(player2Goals) || player2Goals < 0) {
-                showFormError(`Goals for ${currentPlayer2Name} must be a whole number of 0 or more`);
+            if (player2Goals === null) {
+                showFormError(`Goals for ${currentPlayer2Name} must be a whole number from 0 to ${logic.MAX_GOALS}`);
                 return false; // Prevent modal from closing
             }
 
@@ -766,7 +719,7 @@ function editGame(id) {
             if (formData.player1TeamType === 'Ultimate Team') {
                 player1Team = 'Ultimate Team';
             } else if (formData.player1TeamType === 'Other') {
-                player1Team = formData.player1Team || 'Other';
+                player1Team = logic.cleanTeamName(formData.player1Team, 'Other');
             } else {
                 player1Team = formData.player1Team || formData.player1TeamType;
             }
@@ -774,7 +727,7 @@ function editGame(id) {
             if (formData.player2TeamType === 'Ultimate Team') {
                 player2Team = 'Ultimate Team';
             } else if (formData.player2TeamType === 'Other') {
-                player2Team = formData.player2Team || 'Other';
+                player2Team = logic.cleanTeamName(formData.player2Team, 'Other');
             } else {
                 player2Team = formData.player2Team || formData.player2TeamType;
             }
@@ -824,7 +777,7 @@ function editGame(id) {
                 }
             }
             
-            const noteValue = (formData.note || '').trim() || undefined;
+            const noteValue = logic.cleanNote(formData.note);
             const updatedGame = {
                 ...game,
                 player1Goals: player1Goals,
@@ -836,8 +789,8 @@ function editGame(id) {
                 ...(noteValue ? { note: noteValue } : { note: undefined })
             };
             
-            // Update the game in the array
-            const gameIndex = games.findIndex(m => m.id === id);
+            // Update the game in the array (by identity: exactly this row)
+            const gameIndex = games.indexOf(game);
             if (gameIndex !== -1) {
                 games[gameIndex] = updatedGame;
                 
@@ -888,13 +841,16 @@ function editGame(id) {
 
 // Delete game
 function deleteGame(id) {
+    if (id === undefined || id === null) return;
     const game = games.find(m => m.id === id);
     if (!game) return;
     
     createConfirmationModal({
         icon: '❌',
         title: 'Delete Game',
-        message: `Are you sure you want to delete this game? <br><strong>${player1Name} ${game.player1Goals} - ${game.player2Goals} ${player2Name}</strong>`,
+        // `message` is HTML by contract (callers add <br>/<strong>), so the
+        // stored names are escaped here.
+        message: `Are you sure you want to delete this game? <br><strong>${escapeHtml(player1Name)} ${game.player1Goals} - ${game.player2Goals} ${escapeHtml(player2Name)}</strong>`,
         isDestructive: true,
         onConfirm: () => {
             // Add to undo history before deleting
@@ -905,7 +861,8 @@ function deleteGame(id) {
                 });
             }
             
-            games = games.filter(m => m.id !== id);
+            // Remove exactly this row, never "every row with this id".
+            games = games.filter(m => m !== game);
             saveGames();
             updateUI();
             
@@ -926,7 +883,9 @@ function confirmClearData() {
         isDestructive: true,
         onConfirm: () => {
             games = [];
-            saveGames();
+            // The undo stack would replay deleted games into the cleared list.
+            if (typeof resetActionHistory === 'function') resetActionHistory();
+            saveGames(true);
             updateUI();
             
             createSuccessModal({
@@ -1020,11 +979,29 @@ function importData() {
             const incomingPlayer2 = parsed.players.player2;
             const gameCount = parsed.games.length;
 
+            // A file with no usable games would replace the whole list with
+            // nothing (and reset the player names). Refuse it outright.
+            if (gameCount === 0) {
+                createErrorModal({
+                    icon: '❌',
+                    title: 'Nothing to Import',
+                    message: parsed.rejected > 0
+                        ? `The file contains ${parsed.rejected} ${parsed.rejected === 1 ? 'row' : 'rows'} and none has valid scores. Nothing was imported.`
+                        : 'The file contains no games. Nothing was imported.'
+                });
+                return;
+            }
+
             const currentCount = games.length;
             const plural = (n) => n === 1 ? 'game' : 'games';
             let message = `The selected file contains ${gameCount} ${plural(gameCount)}.`;
             if (parsed.rejected > 0) {
-                message += `<br>${parsed.rejected} invalid ${parsed.rejected === 1 ? 'row' : 'rows'} (missing or bad scores) will be skipped.`;
+                const dup = parsed.repairs.duplicates;
+                const why = dup > 0 ? 'missing or bad scores, or a repeated id' : 'missing or bad scores';
+                message += `<br>${parsed.rejected} invalid ${parsed.rejected === 1 ? 'row' : 'rows'} (${why}) will be skipped.`;
+            }
+            if (parsed.repairs.dates > 0) {
+                message += `<br>${parsed.repairs.dates} ${parsed.repairs.dates === 1 ? 'row has' : 'rows have'} an unreadable date and will be dated by position.`;
             }
             if (currentCount > 0) {
                 message += `<br>Importing will replace your current ${currentCount} ${plural(currentCount)}.`;
@@ -1049,7 +1026,9 @@ function importData() {
 
                     games = parsed.games;
                     migrateGameDates(games);
-                    saveGames();
+                    // The old undo stack belongs to the replaced list.
+                    if (typeof resetActionHistory === 'function') resetActionHistory();
+                    saveGames(true);
                     updateUI();
 
                     createSuccessModal({
@@ -1071,16 +1050,23 @@ function importData() {
 
 // Load player icons from localStorage
 function loadPlayerIcons() {
-    const savedIcons = localStorage.getItem('footballH2HPlayerIcons');
-    if (savedIcons) {
-        playerIcons = JSON.parse(savedIcons);
+    let saved = null;
+    try {
+        saved = JSON.parse(localStorage.getItem(ICONS_KEY));
+    } catch (e) {
+        console.warn('Football H2H: stored player icons unreadable, using defaults', e);
     }
+    const pick = (v) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 8) : '⚽');
+    playerIcons = (saved && typeof saved === 'object' && !Array.isArray(saved))
+        ? { player1: pick(saved.player1), player2: pick(saved.player2) }
+        : { player1: '⚽', player2: '⚽' };
+    window.playerIcons = playerIcons;
     updatePlayerIconDisplays();
 }
 
 // Save player icons to localStorage
 function savePlayerIcons() {
-    localStorage.setItem('footballH2HPlayerIcons', JSON.stringify(playerIcons));
+    localStorage.setItem(ICONS_KEY, JSON.stringify(playerIcons));
 }
 
 // Update player icon displays
@@ -1266,7 +1252,7 @@ function checkEditModalForDraw() {
     
     if (penaltyField) {
         const penaltyGroup = penaltyField.closest('.form-group');
-        if (player1Goals !== '' && player2Goals !== '' && player1Goals === player2Goals) {
+        if (window.FootballMatchLogic.isDraw(player1Goals, player2Goals)) {
             penaltyGroup.style.display = 'block';
         } else {
             penaltyGroup.style.display = 'none';
@@ -1303,11 +1289,19 @@ function updateEditModalTeamOptions(playerNumber, currentTeam = null) {
         if (teamSelectGroup) {
             teamSelectGroup.style.display = 'block';
         }
-        // Convert to text input for Other teams
-        const currentValue = teamSelect.value || '';
-        teamSelect.outerHTML = `<input type="text" id="${teamSelect.id}" value="${currentValue}" class="form-input" placeholder="Enter team name" maxlength="15">`;
-        // Re-get reference after replacing element
-        const newTeamSelect = document.getElementById(teamSelect.id);
+        // Convert to text input for Other teams. Built as a DOM node, not
+        // markup, so a stored team name containing `"` or `<` cannot
+        // truncate the value or inject elements.
+        if (teamSelect.type !== 'text') {
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.id = teamSelect.id;
+            input.className = 'form-input';
+            input.placeholder = 'Enter team name';
+            input.maxLength = window.FootballMatchLogic.MAX_TEAM_LENGTH;
+            input.value = currentTeam || '';
+            teamSelect.replaceWith(input);
+        }
     } else if (TEAMS_DATA[selectedType]) {
         // Show the team select for league selections
         if (teamSelectGroup) {
@@ -1354,43 +1348,7 @@ function updateEditModalTeamOptionsHandler(playerNumber) {
 
 // Function to update UI with filtered data (similar to Mario Kart's updateDisplay)
 function updateUIWithFilteredData(filteredGames) {
-    // Apply sorting to the filtered games before rendering
-    const sortedGames = [...filteredGames].sort((a, b) => {
-        let valueA, valueB;
-        
-        switch(currentSortColumn) {
-            case 'game':
-                valueA = a.id;
-                valueB = b.id;
-                break;
-                
-            case 'date':
-                valueA = a.dateTime ? new Date(a.dateTime) : new Date(0);
-                valueB = b.dateTime ? new Date(b.dateTime) : new Date(0);
-                break;
-                
-            case 'player1':
-                valueA = a.player1Goals;
-                valueB = b.player1Goals;
-                break;
-                
-            case 'player2':
-                valueA = a.player2Goals;
-                valueB = b.player2Goals;
-                break;
-                
-            default:
-                valueA = a.dateTime ? new Date(a.dateTime) : new Date(0);
-                valueB = b.dateTime ? new Date(b.dateTime) : new Date(0);
-        }
-        
-        if (currentSortDirection === 'asc') {
-            return valueA < valueB ? -1 : valueA > valueB ? 1 : 0;
-        } else {
-            return valueA > valueB ? -1 : valueA < valueB ? 1 : 0;
-        }
-    });
-    
+    const sortedGames = window.FootballMatchLogic.sortGames(filteredGames, currentSortColumn, currentSortDirection);
     // Update the table with sorted filtered games
     renderGamesTableWithData(sortedGames);
     
@@ -1410,7 +1368,19 @@ function renderGamesTableWithData(gamesData) {
     
     if (gamesData.length === 0) {
         tbody.innerHTML = '';
-        if (noGamesDiv) noGamesDiv.style.display = 'block';
+        if (noGamesDiv) {
+            noGamesDiv.style.display = 'block';
+            // Three empty states, three messages: unreadable storage, a
+            // filter that hides every game, and a genuinely empty list.
+            const p = noGamesDiv.querySelector('p') || noGamesDiv;
+            if (gamesLoadError) {
+                p.textContent = 'Your saved games could not be read. The stored data has been left untouched: export it from your browser storage or use Clear All Data to start again.';
+            } else if (games.length > 0) {
+                p.textContent = `No games match the current date filter (0 of ${games.length} ${games.length === 1 ? 'game' : 'games'}). Choose "All Time" in the sidebar to see every game.`;
+            } else {
+                p.textContent = 'No games recorded yet. Click "Add Game" from sidebar to start tracking!';
+            }
+        }
         // Remove pagination if no data
         const existingPagination = document.querySelector('.pagination-container');
         if (existingPagination) {
@@ -1464,12 +1434,12 @@ function renderGamesTableWithData(gamesData) {
                 // Player 1 wins on penalties - green circle, player 2 gets red
                 player1ScoreClass = 'penalty-winner';
                 player2ScoreClass = 'penalty-loser';
-                player1PenaltyText = ' (penalties)'; // Winner gets the text
+                player1PenaltyText = '<small class="pen-label">(penalties)</small>'; // Winner gets the text
             } else if (game.penaltyWinner === 2) {
                 // Player 2 wins on penalties - green circle, player 1 gets red
                 player1ScoreClass = 'penalty-loser';
                 player2ScoreClass = 'penalty-winner';
-                player2PenaltyText = ' (penalties)'; // Winner gets the text
+                player2PenaltyText = '<small class="pen-label">(penalties)</small>'; // Winner gets the text
             } else {
                 // Regular draw (no penalties) - no penalty text
                 player1ScoreClass = 'penalty-draw';
@@ -1496,7 +1466,7 @@ function renderGamesTableWithData(gamesData) {
         // Not persisted; purely what is rendered.
         const displayGameNumber = game.gameNumber != null
             ? game.gameNumber
-            : games.findIndex(m => m.id === game.id) + 1;
+            : games.indexOf(game) + 1;
         row.innerHTML = `
             <td class="game-number">${displayGameNumber}</td>
             <td class="game-date">${formattedDate}<br><small>${formattedTime}</small>${noteHtml}</td>
@@ -1509,8 +1479,8 @@ function renderGamesTableWithData(gamesData) {
             <td class="team-name">${escapeHtml(game.player1Team)}</td>
             <td class="team-name">${escapeHtml(game.player2Team)}</td>
             <td class="actions">
-                <button class="edit-btn" onclick="editGame(${game.id})" title="Edit game">✏️</button>
-                <button class="delete-btn" onclick="deleteGame(${game.id})" title="Delete game">🗑️</button>
+                <button class="edit-btn" onclick="editGame(${Number(game.id)})" title="Edit game" aria-label="Edit game ${displayGameNumber}">✏️</button>
+                <button class="delete-btn" onclick="deleteGame(${Number(game.id)})" title="Delete game" aria-label="Delete game ${displayGameNumber}">🗑️</button>
             </td>
         `;
         
@@ -2100,7 +2070,10 @@ function buildSessionSummaryText(gamesData) {
     let totalGoals = 0;
     let p1Wins = 0, p2Wins = 0, draws = 0;
 
-    for (const g of gamesData) {
+    // Chronological, like the history table and every stat; storage order
+    // is arbitrary after imports and undo restores.
+    const ordered = window.FootballMatchLogic.sortGames(gamesData, 'date', 'asc');
+    for (const g of ordered) {
         totalGoals += g.player1Goals + g.player2Goals;
         const scoreStr = `${g.player1Goals}–${g.player2Goals}`;
         let suffix = '';
@@ -2219,12 +2192,8 @@ function initializeApp() {
     // Load players first
     loadPlayers();
     
-    // Load games
-    const savedGames = localStorage.getItem(STORAGE_KEY);
-    if (savedGames) {
-        games = JSON.parse(savedGames);
-        window.games = games;
-    }
+    // Load games (parse guarded + legacy heal live in loadGames)
+    loadGames();
     
     // Load player icons
     loadPlayerIcons();

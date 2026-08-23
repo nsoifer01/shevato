@@ -471,7 +471,9 @@ body.football-h2h-tracker .sidebar-section-title {
     font-weight: 700 !important;
     letter-spacing: 0.14em !important;
     text-transform: uppercase !important;
-    color: var(--fh-muted-2) !important;
+    /* --fh-muted, not --fh-muted-2: #6f7785 on the #1a202c panel was 4.04:1
+       at 11px (axe color-contrast, serious). --fh-muted clears 4.5:1. */
+    color: var(--fh-muted) !important;
     margin-bottom: 0.6rem !important;
     font-family: inherit !important;
 }
@@ -1316,7 +1318,7 @@ body.football-h2h-tracker .player-settings-section .section-title {
     font-weight: 700 !important;
     letter-spacing: 0.14em !important;
     text-transform: uppercase !important;
-    color: var(--fh-muted-2) !important;
+    color: var(--fh-muted) !important; /* contrast, see .sidebar-section-title */
     margin: 0 0 0.75rem !important;
     border-bottom: none !important;
     padding-bottom: 0 !important;
@@ -1343,9 +1345,13 @@ body.football-h2h-tracker .sidebar-game-form .sidebar-game-teams > .sidebar-play
    that 400px overflows the viewport and the toast crowds the app title.
    Override with !important (beats inline non-important) to sit below the site
    header, fit the viewport, and wrap readably. */
-@media (max-width: 480px) {
+@media (max-width: 768px) {
+    /* Bottom of the viewport on phones and small tablets: at the top it sat
+       over the app title and, with the sidebar open, over the sidebar's
+       clear / close buttons for its whole lifetime. */
     body.football-h2h-tracker .toast {
-        top: 64px !important;
+        top: auto !important;
+        bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important;
         left: 50% !important;
         right: auto !important;
         transform: translateX(-50%) !important;
@@ -1354,5 +1360,98 @@ body.football-h2h-tracker .sidebar-game-form .sidebar-game-teams > .sidebar-play
         white-space: normal !important;
         text-align: center;
         padding: 12px 18px !important;
+        z-index: 10010 !important;
+    }
+}
+
+/* ---------- FIX: modals above the sidebar (2026-08-23 audit D8) ----------
+   The sidebar is z-index 1001; #iconSelectorModal and the dynamic
+   .modal-overlay dialogs were 1000, so on phones the icon picker opened
+   three-quarters UNDER the 280px sidebar and only the rightmost icon column
+   could be tapped. Every modal now stacks above the sidebar. */
+body.football-h2h-tracker #iconSelectorModal,
+body.football-h2h-tracker .modal-overlay {
+    z-index: 1005 !important;
+}
+
+/* ---------- FIX: long names (2026-08-23 audit D23) ----------
+   Names are capped at 30 characters on every write path, but an unbroken
+   30-char word still needs to wrap inside a 200px stat card and the icon
+   picker title. */
+body.football-h2h-tracker .stat-label,
+body.football-h2h-tracker #iconModalTitle,
+body.football-h2h-tracker .player-label,
+body.football-h2h-tracker .form-strip-name {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+/* ---------- Score cells ----------
+   "(penalties)" used to be a bare text node after the score; as a block it
+   stays under the number instead of widening the column on phones. */
+body.football-h2h-tracker .games-table .pen-label {
+    display: block;
+    font-size: 0.68rem;
+    color: var(--fh-muted);
+    margin-top: 2px;
+    white-space: nowrap;
+}
+
+/* ---------- FIX: history table fits a phone (2026-08-23 audit D13) ----------
+   At <=480px the table kept its 680px minimum inside a ~308px container, so
+   the natural view showed the date column only and the scores (the point of
+   the app) were off-screen with no scroll affordance. Below 480px the team
+   columns are already hidden (<=900px rule in football-h2h.css); dropping
+   the game number column and the date's nowrap lets date + both scores +
+   actions fit the viewport with no horizontal scrolling. */
+@media (max-width: 480px) {
+    body.football-h2h-tracker .games-table {
+        min-width: 0 !important;
+        width: 100% !important;
+        table-layout: fixed;
+    }
+    body.football-h2h-tracker .games-table thead th:first-child,
+    body.football-h2h-tracker .games-table tbody td:first-child {
+        display: none !important;
+    }
+    body.football-h2h-tracker .games-table thead th,
+    body.football-h2h-tracker .games-table tbody td {
+        padding: 0.55rem 0.3rem !important;
+        max-width: none !important;
+    }
+    body.football-h2h-tracker .games-table thead th {
+        white-space: normal !important;
+        font-size: 0.62rem !important;
+        letter-spacing: 0.03em !important;
+        overflow-wrap: anywhere;
+    }
+    body.football-h2h-tracker .games-table thead th:nth-child(2),
+    body.football-h2h-tracker .games-table tbody td:nth-child(2) {
+        width: 33%;
+        min-width: 0 !important;
+        white-space: normal !important;
+        font-size: 0.78rem !important;
+        text-align: left !important;
+        overflow-wrap: anywhere;
+    }
+    body.football-h2h-tracker .games-table tbody td:nth-child(2) small {
+        display: block;
+    }
+    body.football-h2h-tracker .games-table thead th:nth-child(3),
+    body.football-h2h-tracker .games-table thead th:nth-child(4),
+    body.football-h2h-tracker .games-table tbody td:nth-child(3),
+    body.football-h2h-tracker .games-table tbody td:nth-child(4) {
+        width: 21%;
+    }
+    body.football-h2h-tracker .games-table thead th:last-child,
+    body.football-h2h-tracker .games-table tbody td:last-child {
+        width: 25%;
+    }
+    body.football-h2h-tracker .games-table td.actions {
+        white-space: nowrap;
+    }
+    body.football-h2h-tracker .games-table .game-note {
+        white-space: normal;
+        overflow-wrap: anywhere;
     }
 }

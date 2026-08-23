@@ -21,6 +21,7 @@ function makeHistoryCtx(initialGames = []) {
     const toasts = [];
     const ctx = makeContext({ console: quietConsole });
     loadInto(ctx, 'playerStats.js');
+    loadInto(ctx, 'match-logic.js');
     loadInto(ctx, 'sidebar.js');
     loadInto(ctx, 'football-h2h.js');
     ctx.window.showToast = (msg) => toasts.push(msg);
@@ -220,4 +221,66 @@ test('undo/redo: truncation only drops the undone tail, not the whole stack', ()
     assert.equal(h.ids(), '', 'the first add is still on the stack');
     h.ctx.undoLastAction();
     assert.ok(h.toasts.includes('Nothing to undo'));
+});
+
+// --- destructive actions reset the stack -------------------------------------
+// Clear All Data and import replace the whole list; a surviving stack would
+// replay a deleted game into the new data ("Undo: delete game" stayed live
+// after a clear and resurrected the game).
+
+function clearCtx(initialGames) {
+    const h = makeHistoryCtx(initialGames);
+    const modals = [];
+    h.ctx.createConfirmationModal = (opts) => { modals.push(opts); };
+    h.ctx.createSuccessModal = () => {};
+    h.ctx.createErrorModal = () => {};
+    const undoBtn = { disabled: false, title: '' };
+    h.ctx.__elements['sidebar-undo-btn'] = undoBtn;
+    h.ctx.__elements['sidebar-redo-btn'] = { disabled: false, title: '' };
+    return { ...h, modals, undoBtn };
+}
+
+test('clear all data: empties the undo stack, and undo afterwards changes nothing', () => {
+    const h = clearCtx([game(1, 2, 1), game(2, 0, 0)]);
+    runIn(h.ctx, 'games = games.filter(g => g.id !== 2); window.games = games;');
+    h.ctx.saveGames();
+    h.ctx.addToHistory({ type: 'delete_game', data: game(2, 0, 0) });
+    assert.equal(h.undoBtn.disabled, false);
+
+    h.ctx.confirmClearData();
+    h.modals[0].onConfirm();
+    assert.deepEqual(h.stored(), []);
+    assert.equal(h.undoBtn.disabled, true, 'Undo is disabled after a clear');
+    assert.equal(h.undoBtn.title, 'Nothing to undo');
+
+    h.ctx.undoLastAction();
+    assert.deepEqual(h.stored(), [], 'the deleted game must not come back into the cleared list');
+    assert.ok(h.toasts.includes('Nothing to undo'));
+
+    // clear -> undo -> write -> reload: the new write is what persists.
+    h.push(game(3, 1, 0));
+    h.ctx.saveGames();
+    h.ctx.loadGames();
+    assert.equal(h.ids(), '3');
+});
+
+test('import: empties the undo stack so a foreign delete cannot replay into the imported list', () => {
+    const h = clearCtx([game(1, 2, 1)]);
+    h.ctx.addToHistory({ type: 'add_game', data: game(1, 2, 1) });
+    assert.equal(h.undoBtn.title, 'Undo: add game');
+
+    // Drive the import apply step the way importMigration.test.js does.
+    const input = { click: () => {}, onchange: null, type: '', accept: '' };
+    h.ctx.document.createElement = () => input;
+    h.ctx.FileReader = function FakeFileReader() {
+        this.readAsText = (file) => this.onload({ target: { result: file.content } });
+    };
+    h.ctx.importData();
+    input.onchange({ target: { files: [{ content: JSON.stringify({ games: [{ id: 9, player1Goals: 3, player2Goals: 0, dateTime: '2026-05-09T12:00:00Z' }] }) }] } });
+    const confirm = h.modals.find((m) => m.title === 'Import Data?');
+    confirm.onConfirm();
+    assert.equal(h.ids(), '9');
+    assert.equal(h.undoBtn.disabled, true, 'Undo is disabled after an import');
+    h.ctx.undoLastAction();
+    assert.equal(h.ids(), '9');
 });

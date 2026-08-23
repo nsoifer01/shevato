@@ -134,7 +134,7 @@
     <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
     
     <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar" role="complementary" aria-label="Filters and actions sidebar">
+    <aside class="sidebar" id="sidebar" role="complementary" aria-label="Filters and actions sidebar" inert>
         <div class="sidebar-header">
             <h2 class="sidebar-title">Control Panel</h2>
             <div class="sidebar-header-buttons">
@@ -375,18 +375,18 @@
                     </div>
 
                     <!-- Team Matchup Lookup -->
-                    <h3 class="h2h-section-title" style="margin-top: 1.5rem;">Team Matchup</h3>
+                    <h3 class="h2h-section-title" style="margin-top: 1.5rem;">Team Matchup (all time, ignores the date filter)</h3>
                     <div class="matchup-lookup">
                         <div class="matchup-selects">
                             <div class="matchup-select-group">
-                                <label class="matchup-label" id="matchupP1Label">Player 1's Team</label>
+                                <label class="matchup-label" id="matchupP1Label" for="matchupTeam1">Player 1's Team</label>
                                 <select id="matchupTeam1" class="matchup-select" onchange="updateMatchupResult()">
                                     <option value="">Any</option>
                                 </select>
                             </div>
                             <span class="matchup-vs">vs</span>
                             <div class="matchup-select-group">
-                                <label class="matchup-label" id="matchupP2Label">Player 2's Team</label>
+                                <label class="matchup-label" id="matchupP2Label" for="matchupTeam2">Player 2's Team</label>
                                 <select id="matchupTeam2" class="matchup-select" onchange="updateMatchupResult()">
                                     <option value="">Any</option>
                                 </select>
@@ -434,16 +434,16 @@
                     <table class="games-table" id="gamesTable">
                         <thead>
                             <tr>
-                                <th class="sortable-header" onclick="sortGames('game')">
+                                <th class="sortable-header" data-sort="game" tabindex="0" aria-sort="none" onclick="sortGames('game')">
                                     Game # <span class="sort-indicator" id="sort-game"></span>
                                 </th>
-                                <th class="sortable-header" onclick="sortGames('date')">
+                                <th class="sortable-header" data-sort="date" tabindex="0" aria-sort="descending" onclick="sortGames('date')">
                                     Date & Time <span class="sort-indicator" id="sort-date"></span>
                                 </th>
-                                <th class="sortable-header" id="player1Header" onclick="sortGames('player1')">
+                                <th class="sortable-header" id="player1Header" data-sort="player1" tabindex="0" aria-sort="none" onclick="sortGames('player1')">
                                     Player 1 <span class="sort-indicator" id="sort-player1"></span>
                                 </th>
-                                <th class="sortable-header" id="player2Header" onclick="sortGames('player2')">
+                                <th class="sortable-header" id="player2Header" data-sort="player2" tabindex="0" aria-sort="none" onclick="sortGames('player2')">
                                     Player 2 <span class="sort-indicator" id="sort-player2"></span>
                                 </th>
                                 <th id="player1TeamHeader">Player 1's Team</th>
@@ -470,6 +470,7 @@
     <script src="../../assets/js/passive-events-fix.js"></script>
     <script src="../../assets/js/sync-status.js"></script>
     <script src="../../assets/js/escape-html.js"></script>
+    <script src="../../sync-system/tab-sync.js"></script>
     <script src="../../assets/js/jquery.min.js"></script>
     <script src="../../assets/js/global-icons.js"></script>
     <script src="../../assets/js/browser.min.js"></script>

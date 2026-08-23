@@ -81,7 +81,7 @@ test('edit game: negative goals are rejected and nothing changes', () => {
     const h = editCtx();
     const result = h.save({ player1Goals: '-2' });
     assert.equal(result, false, 'the modal must stay open');
-    assert.deepEqual(h.errors, ['Goals for Player 1 must be a whole number of 0 or more']);
+    assert.deepEqual(h.errors, ['Goals for Player 1 must be a whole number from 0 to 99']);
     assert.equal(h.game().player1Goals, 2, 'the stored game is untouched');
 });
 
@@ -89,11 +89,13 @@ test('edit game: a negative second goal count names the second player', () => {
     const h = editCtx();
     const result = h.save({ player2Goals: '-1' });
     assert.equal(result, false);
-    assert.deepEqual(h.errors, ['Goals for Player 2 must be a whole number of 0 or more']);
+    assert.deepEqual(h.errors, ['Goals for Player 2 must be a whole number from 0 to 99']);
 });
 
-test('edit game: non-integer goal values are rejected', () => {
-    for (const bad of ['1.5', 'abc']) {
+test('edit game: non-integer, scientific-notation and over-99 goal values are rejected', () => {
+    // `1e2` and `2.0` pass Number.isInteger; the shared parseGoals rule
+    // requires plain digits 0..99 (the max="99" hint used to be decorative).
+    for (const bad of ['1.5', 'abc', '1e2', '2.0', '100', '999999999999999999999']) {
         const h = editCtx();
         assert.equal(h.save({ player1Goals: bad }), false, `"${bad}" must be rejected`);
         assert.equal(h.errors.length, 1);

@@ -56,6 +56,12 @@ const GlobalPaginationManager = (function() {
     function getPaginatedItems(instanceId, items) {
         const instance = getInstance(instanceId);
         instance.totalItems = items.length;
+        // Clamp the page to the new item count: after a filter or deletes
+        // from a late page the old page index pointed past the end and the
+        // table rendered zero rows ("Showing 201-6 of 6").
+        const totalPages = Math.max(1, getTotalPages(instanceId));
+        if (instance.currentPage > totalPages) instance.currentPage = totalPages;
+        if (instance.currentPage < 1) instance.currentPage = 1;
         const startIndex = (instance.currentPage - 1) * instance.rowsPerPage;
         const endIndex = startIndex + instance.rowsPerPage;
         instance.paginatedItems = items.slice(startIndex, endIndex);

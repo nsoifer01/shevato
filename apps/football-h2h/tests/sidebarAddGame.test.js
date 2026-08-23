@@ -120,7 +120,7 @@ test('add game: a blank second goal field names the second player', () => {
 test('add game: negative goals are rejected (min="0" is only a browser hint)', () => {
     const h = addGameCtx({ player1Goals: '-3', player2Goals: '1' });
     h.submit();
-    assert.equal(h.error, 'Goals for Alex must be a whole number of 0 or more');
+    assert.equal(h.error, 'Goals for Alex must be a whole number from 0 to 99');
     assert.equal(h.games.length, 0);
     assert.equal(h.saveCount, 0);
 });
@@ -128,12 +128,14 @@ test('add game: negative goals are rejected (min="0" is only a browser hint)', (
 test('add game: a negative second goal count names the second player', () => {
     const h = addGameCtx({ player1Goals: '1', player2Goals: '-1' });
     h.submit();
-    assert.equal(h.error, 'Goals for Sam must be a whole number of 0 or more');
+    assert.equal(h.error, 'Goals for Sam must be a whole number from 0 to 99');
     assert.equal(h.games.length, 0);
 });
 
-test('add game: non-integer goal values are rejected, nothing is saved', () => {
-    for (const bad of ['2.5', 'abc', '1e999']) {
+test('add game: non-integer, scientific-notation and over-99 goal values are rejected, nothing is saved', () => {
+    // `1e2` saved as 100 and a 21-digit value rendered `1e+21` before the
+    // shared parseGoals rule (plain digits, 0..99) replaced Number.isInteger.
+    for (const bad of ['2.5', 'abc', '1e999', '1e2', '2.0', '100', '999999999999999999999']) {
         const h = addGameCtx({ player1Goals: bad, player2Goals: '1' });
         h.submit();
         assert.notEqual(h.error, null, `"${bad}" must be rejected`);
@@ -201,14 +203,26 @@ test('add game: a whitespace-only "Other" team name is rejected too', () => {
     assert.equal(h.games.length, 0);
 });
 
-test('add game: a filled "Other" team name is stored verbatim', () => {
+test('add game: a filled "Other" team name is stored trimmed (padding made duplicate matchup entries)', () => {
     const h = addGameCtx({
         player1Goals: '1', player2Goals: '0',
-        player1TeamType: 'Other', player1CustomTeam: 'Sunday League XI',
+        player1TeamType: 'Other', player1CustomTeam: '  Sunday League XI  ',
     });
     h.submit();
     assert.equal(h.error, null);
     assert.equal(h.last().player1Team, 'Sunday League XI');
+});
+
+test('add game: `02` vs `2` is a draw for the visibility check AND the submit rule', () => {
+    // checkSidebarForDraw compared raw strings while submit compared
+    // numbers, so the shootout field stayed hidden while submit demanded it.
+    const h = addGameCtx({ player1Goals: '02', player2Goals: '2', penalty: '' });
+    const section = makeElement();
+    h.ctx.__elements['sidebar-penalty-section'] = section;
+    h.ctx.checkSidebarForDraw();
+    assert.equal(section.style.display, 'block', 'the penalty field must be shown for 02 vs 2');
+    h.submit();
+    assert.equal(h.error, 'Please select a penalty result for draw games');
 });
 
 test('add game: league and Ultimate Team selections are stored as the team name', () => {
