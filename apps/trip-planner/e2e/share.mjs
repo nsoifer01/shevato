@@ -53,7 +53,15 @@ export async function run({ base, cdpPort }) {
     await t('tp-share I: trip picker disabled', await evaluate(s, `document.getElementById('tripSelect').disabled`), '', s);
     await t('tp-share I: cross-trip search hidden', !(await evaluate(s, `(()=>{const b=document.getElementById('tripSearchBtn'); return !!b && b.offsetParent !== null})()`)), '', s);
     await t('tp-share I: Add item unavailable', !(await evaluate(s, `(()=>{const b=document.getElementById('addBtn'); return !!b && b.offsetParent !== null && !b.disabled})()`)), '', s);
-    await t('tp-share I: row status pickers disabled', await evaluate(s, `(()=>{const p=[...document.querySelectorAll('.status-sel')]; return p.length>0 && p.every(x=>x.disabled)})()`), '', s);
+    // A disabled <select> still looks pressable (chevron, control shape), so a
+    // shared board read as editable until a tap did nothing. There is no picker
+    // on a read-only row at all now: the status is stated (MV-B2).
+    await t('tp-share I: rows state their status instead of offering a picker', await evaluate(s, `(()=>{
+      const p = [...document.querySelectorAll('.status-sel')];
+      if (!p.length) return false;
+      return p.every(x => x.tagName === 'SPAN' && x.classList.contains('status-pill') && (x.textContent || '').trim().length > 0);
+    })()`), '', s);
+    await t('tp-share I: and no status control can be operated', await evaluate(s, `!document.querySelector('select[data-status-for]')`), '', s);
     await t('tp-share I: currency picker disabled', await evaluate(s, `(()=>{const c=document.getElementById('currencySel'); return !c || c.disabled})()`), '', s);
 
     // menu locks are applied when the menu OPENS (FINDINGS), so open it

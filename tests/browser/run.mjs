@@ -11,6 +11,7 @@
 // suites while this stays an explicit local/pre-release check.
 import { spawn } from 'node:child_process';
 import http from 'node:http';
+import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -19,7 +20,7 @@ import { tmpdir } from 'node:os';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..', '..');
 
-// 8080 and 8083 are reserved on the maintainer's machine; never default to them.
+// 8080 and 8081 are reserved on the maintainer's machine; never default to them.
 const PORT = Number(process.env.BROWSER_TEST_PORT || 8099);
 const CDP_PORT = Number(process.env.BROWSER_TEST_CDP_PORT || 9222);
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -46,6 +47,7 @@ const SUITES = [
   'apps/trip-planner/e2e/places.mjs',
   'apps/trip-planner/e2e/assistant.mjs',
   'apps/trip-planner/e2e/qa-fixes.mjs',
+  'apps/trip-planner/e2e/audit-fixes.mjs',
   'apps/trip-planner/e2e/pwa.mjs',
   'apps/gym-tracker/e2e/units-migration.mjs',
   'apps/fpl-planner/e2e/scenario.mjs',
@@ -96,6 +98,25 @@ function waitFor(check, timeoutMs, label) {
   })();
 }
 
+// Something else already listening is NOT our server, and every suite would
+// then run against whatever it serves - another checkout, an older build, a
+// different branch - while reporting a clean pass. That is not hypothetical:
+// during the 2026-08-22 audit a long-running server on the default port made a
+// full trip-planner run report 512/512 green against code that did not contain
+// the change under test, because our own python server failed to bind and
+// httpOk cheerfully answered from the stranger. The same applies to the CDP
+// port: we would drive somebody else's browser. Bind-test both and say so.
+const bindable = (port, host) => new Promise((resolve) => {
+  const probe = net.createServer();
+  probe.once('error', () => resolve(false));
+  probe.once('listening', () => probe.close(() => resolve(true)));
+  probe.listen(port, host);
+});
+// BOTH stacks: a leftover headless Chrome commonly listens on ::1 while
+// 127.0.0.1 still binds, so an IPv4-only check declares the port free and the
+// run then attaches to that browser and dies with it half an estate later.
+const portFree = async (port) => (await bindable(port, '127.0.0.1')) && (await bindable(port, '::1'));
+
 const httpOk = (url) => new Promise((resolve) => {
   const req = http.get(url, (res) => { res.resume(); resolve(res.statusCode > 0); });
   req.on('error', () => resolve(false));
@@ -105,6 +126,13 @@ const httpOk = (url) => new Promise((resolve) => {
 let server, chrome, profileDir;
 
 async function startAll() {
+  for (const [port, what, envVar] of [[PORT, 'static server', 'BROWSER_TEST_PORT'], [CDP_PORT, 'Chrome DevTools', 'BROWSER_TEST_CDP_PORT']]) {
+    if (!(await portFree(port))) {
+      throw new Error(`port ${port} is already in use, so this run would drive somebody else's ${what} `
+        + `instead of its own and could report a pass for code it never loaded. `
+        + `Stop whatever is on ${port}, or set ${envVar} to a free port.`);
+    }
+  }
   server = spawn('python3', ['-m', 'http.server', String(PORT), '--bind', '127.0.0.1'],
     { cwd: REPO, stdio: 'ignore' });
   await waitFor(() => httpOk(`${BASE}/home.html`), 20000, 'static server');

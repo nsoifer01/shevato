@@ -24,8 +24,20 @@ why, the traps, and the invariants.
   rule (index.html + sw.js in step).
 - **The trip db schema has no version migrations** - `repairDb()` normalizes
   on load instead (types, statuses, money via `parseMoney`, `order` bounds,
-  currency stamps). New fields must be tolerated absent forever; never write
+  currency stamps, and since 2026-08-22 every string/clock/enum field a
+  renderer reads without checking: see `repairItemFields`). New fields must be tolerated absent forever; never write
   a migration that rewrites items destructively.
+- **A shared view owns the screen, not the data.** Entering shared mode
+  replaces `db` with the stranger's trip and `save()` returns false, and both
+  reconcile listeners stand down so a remote change cannot overwrite what the
+  visitor is reading. It therefore holds NO copy of the visitor's own db:
+  `importSharedTrip` re-reads storage (`loadDb` + `repairDb` + history reset,
+  the same handling a remote merge gets) and pushes the imported trip onto
+  THAT. The old `realDb` snapshot was taken on entry and written back on
+  import, so anything saved meanwhile - another tab, or this device's own sync
+  applying a merge - was published over and gone, with nothing to undo from in
+  the tab that made the edit. Never reintroduce a parked copy of the db;
+  storage is the owner for exactly as long as the view is not.
 - **Share links are code**: the whole trip rides deflate+base64url in the URL
   fragment. `slimTripForShare` is an explicit field allowlist; essentials,
   packing, documents and passport data stay out BY that allowlist, so adding
@@ -1464,6 +1476,173 @@ Probe traps this round minted, both of which produced convincing false results:
   and FAILS on any serious/critical violation (its quarantine entry was
   removed); a new sub-4.5:1 token combination will fail CI-adjacent runs,
   not just look dim.
+
+## The 2026-08-22 audit round: what the fixes actually settled
+
+A full black-box audit (AUDIT-2026-08-22.md, kept beside this file) produced two
+High and eleven Medium findings. The first round of fixes covers the core
+correctness set; what is worth keeping from it:
+
+**A connection is between two LEGS, and a test said otherwise for months.**
+`connectionWarnings` walked the whole sorted item list and skipped any pair
+whose ends were not both travel, so ONE note, meal or activity between two legs
+broke the pair and the warning vanished - on exactly the trips that have things
+planned in them. The unit test that should have caught it instead pinned the
+bug, with the reasoning "an activity between the two legs means they are not
+back to back". That premise is wrong (a 30-minute change is 30 minutes whether
+or not you also planned a coffee in it) and it is the reason the defect
+survived. The walk now filters to legs first; every suppression rule that
+SHOULD fire - a timeless leg, a stopover bed, a cancelled leg, more than 24
+hours apart - is unchanged and separately pinned.
+
+**"No stays" is not "every night is covered".** `coverageGaps` measures from the
+first check-in and answered `[]` with no stay to measure from, so a trip with no
+booking at all showed no warning and no strip while the summary chip counted "0
+of 4 nights booked". It takes an optional `tripStart` for that case only (the
+two stay-prefill callers deliberately pass nothing and keep the old answer), and
+`renderStrip` lost its `!stays.length` gate - which mattered twice, because the
+warning's own "show" action rings strip cells that were never drawn.
+
+**repairTrips now covers every field a renderer trusts, and only the ones
+present.** `location: 123` threw inside `dayMorningCity` and emptied the whole
+Days view; `startTime: 5` emptied the Timeline too. The caps and the rules match
+`sanitizeItem` so the import/share path and the storage/sync path normalize
+identically, and `CLOCK_RE` is now a real clock (`99:99` matched the old
+shape-only test). Deliberate: absent keys stay absent. Adding a field to every
+legacy item would rewrite the whole db on the first boot after a deploy, and a
+repair write landing during a remote apply is the one thing the sync model asks
+us not to make more common (see the known edge above).
+
+**One owner for "which trip am I looking at".** `setActiveTrip` sets the id and
+drops the selection, because a selection is made from the rows of the board it
+was made on. Only the trip picker used to do that, so a cross-trip search jump,
+the overlap warning's link, a duplicate, a template, an import or a restore
+landing elsewhere left the bulk bar over another trip's board reading "0
+selected". Filters are deliberately NOT reset by it.
+
+**A dialog belongs to the trip it was opened for.** The packing dialog read
+`activeTrip()` on every write, so after another tab deleted that trip it either
+edited a stranger's list or threw on `undefined.push` and saved nothing in
+silence. It now records `ui.packingTripId` and re-checks it on every write, the
+same contract `ui.editingId` and `ui.tripEditId` already follow: the dialog stays
+open, the WRITE re-checks its target.
+
+**A promise an undo cannot keep.** Deleting a trip purges its attached documents
+immediately (they live in IndexedDB against the item ids), while the confirm
+said only "You can undo this until you reload the page". The item and bulk
+deletes had always named that cost; the trip delete now does too.
+
+**Two failures wearing one symptom.** "No exchange rate for JPY ... re-enter it
+in a currency the rates cover" was printed when the rate table had simply never
+arrived, sending travellers off to retype money that was fine. The line now
+branches on `ratesFailed` and points at the Retry the totals already offer.
+
+**Harness trap this round minted, and it nearly invalidated the round.** A
+server that is already listening on `BROWSER_TEST_PORT` is not ours: our python
+server fails to bind, `httpOk` answers from the stranger, and every suite runs
+against whatever THAT serves. A stale server on 8099 pointed at another checkout
+made a full trip-planner run report 512/512 green against code that did not
+contain the change under test. `run.mjs` now bind-tests the static and CDP ports
+first and refuses to start. If a suite ever looks impossibly green, check which
+tree the port is serving before believing it.
+
+The CDP half of that guard has to test BOTH stacks. A leftover headless Chrome
+listens on `::1` while `127.0.0.1` still binds, so an IPv4-only probe calls the
+port free, the runner attaches to a browser it does not own, and the estate dies
+mid-run when that process finally exits (`timeout: Runtime.evaluate`, then
+ECONNREFUSED for every suite after it). Measured while chasing exactly that:
+with a listener on `::1` alone, an IPv4 bind test answers "free" and an IPv6 one
+answers "taken". A related hazard worth knowing: snap chromium orphans survive a
+killed runner, so `ps -eo pid,args | grep headless=new` before blaming a suite -
+four of them, one four hours old, were what made two full-estate runs collapse
+at different points while master ran clean.
+
+## The 2026-08-22 fix round, part two
+
+Everything below shipped in the same PR as the core round above. What is worth
+keeping:
+
+**A model may not touch what the traveller has booked.** `validateTripAction`
+ran a model-supplied status through `forceProposalStatus`, which can never
+return 'booked', so an `update` that so much as mentioned status demoted a
+Booked flight - and its money - to "To book" over a change of address. An update
+now carries the TARGET's status, full stop, and `applyProposalUpdate` writes no
+status at all: the field is a fact about the world, and the model can neither
+observe nor change it. `forceProposalStatus` stays for adds, where it stops a
+model claiming a booking it invented (a document transcription keeps its
+provenance). The old unit test asserted the demotion as correct behaviour; that
+is why the bug survived a full audit round.
+
+**The assistant needs its own projection, and always did.** It was handed
+`slimTripForShare`, which renumbers ids to `i1..iN` because a share link becomes
+a new trip - while the prompt tells the model it may "update with a match (by id
+or exact title)". Every id-matched edit therefore failed with "No matching item
+found". `slimTripForAssistant` keeps the real id and drops the booking facts a
+model has no use for (confirmation, paidBy, splitAmounts, payment, bookBy).
+Resolving `iN` by POSITION was considered and rejected: validate runs again at
+ACCEPT time, so a row deleted in between would have moved the edit onto whatever
+slid into that position. A real id resolves to one row or to none.
+
+**"Not open yet" is not "closed" (HR-01).** `hoursVerdict` collapsed both into
+'closed', so a 17:30 row at a bar open 18:00-02:00 read "Closed at 5:30 PM".
+There is a fourth verdict now, `beforeOpen`, carrying `opensMin`, and
+`nextOpeningMin` is the one place that answers "does it open again later today"
+(dated hours authoritative for the dates they name). Every consumer reads that
+one verdict: the Days row, the assistant card, the badge exclusion and the
+accept refusal, which has its own heading and sentence because the way forward
+is a later hour, not another venue. Both demoted states still demote; only the
+sentence differs. Boundaries: exactly at opening is open, exactly at closing is
+closed, between two sittings names the next sitting, an overnight range is open
+past midnight and `beforeOpen` again after it closes if the venue reopens that
+day, `closed` if it does not.
+
+**A day has two beds and they are two questions.** `dayHostStay` answers "which
+bed is this NIGHT booked in" (night coverage, the staying-at line, the day's
+city). `dayAnchor` was using it for "where does this DAY START", which is the
+same hotel on every day except a handover: check out of Tokyo, train at 10:30,
+check into Kyoto, and an 8:00 Ginza breakfast was measured from the Kyoto hotel
+(~232 mi, with Directions from the wrong end of the country). `dayMorningStay`
+answers the morning; the chain hands over by itself because the intercity leg is
+a stop on it. One filter, two orders of preference, so they cannot drift.
+
+**A budget is a number in a currency.** Switching the trip currency converted
+every cost and RELABELLED the budget. `budgetCurrency` is stamped when the
+currency moves, exactly as `stampCostCurrencies` stamps items, absent means the
+trip's own so nothing migrates, and `tripBudgetIn` converts through the same
+`convertAmount` the totals use. Unreachable rates print the ceiling in its own
+currency and force the amber "partial" verdict rather than a green tick over a
+number nothing could compare.
+
+**A pre-trip task is a deadline, not a trip day.** The visa reminder was a note
+DATED thirty days before the trip, and `tripStats.start` is the minimum over all
+items, so the trip grew a month of empty day cards and counted down to the
+reminder. `bookBy` already models "do this before" and the warnings panel
+already counts it down.
+
+**Hidden-until-hover is a mouse affordance.** Timeline row actions had no
+pointer gate, so on a touch device WIDER than the 900px fold there was no way to
+reveal them at all. The Days view had always gated its own pair; both do now.
+Related: `@media print` redefines the colour tokens rather than trusting
+backgrounds the printer will not lay down (measured 18.9:1 on titles with
+background graphics off), and the assistant panel makes room above 1200px
+instead of covering Undo, the trip picker and the menu.
+
+**Failures deserve a memo too.** Successes were cached and misses were
+remembered, but a 500 or a timeout was not, so during an outage every consumer
+re-asked and every render re-fired: 11 geocode requests for 4 places in one Map
+render, 6 weather requests per Days render. Both now hold a 60-second per-key
+memo, and a valid-but-empty weather answer counts as a failure for it.
+
+**Where the docs sat two rounds behind.** privacy.html still said the assistant
+defaulted to copy-and-paste after the 2026-08-19 round deliberately moved it to
+the free tier. The page is binding, so it was the page that was wrong, and
+`tests/static/trip-planner-assistant-privacy.test.mjs` now pins the default
+literal and the omitted-field list against the prose so neither can drift alone.
+
+**Two audit findings did not reproduce.** MV-B3's "full-width bar at 0" is the
+empty track behind a zero-width fill (`typeBarShares` already returns 0 when
+every row is 0), and DM-12's single-bar spend chart is the documented
+two-calendar-week gate doing what it says.
 
 ## The 2026-08-19 exploratory QA round (TP-01..TP-23)
 
