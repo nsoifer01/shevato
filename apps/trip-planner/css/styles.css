@@ -2655,6 +2655,11 @@
     background: var(--bg-soft); display: flex; flex-direction: column; gap: 4px;
   }
   .assist-proposal.invalid { border-color: color-mix(in srgb, var(--amber) 50%, var(--border)); background: var(--amber-soft); }
+
+  /* "Already on your plan": a note, not an error. The card stays a normal
+     proposal (a second dinner at the same place is the traveller's call), so
+     this reads as the quiet fact it is rather than a refusal. */
+  .ap-dup { font-size: .78rem; color: var(--amber); margin-top: 2px; }
   .assist-proposal.done { border-color: var(--green); background: var(--green-soft); }
   .assist-proposal.stale { border-color: var(--border); background: var(--bg-soft); }
   .ap-op { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--text-dim); font-weight: 700; }

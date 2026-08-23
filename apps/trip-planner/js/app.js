@@ -110,7 +110,7 @@
     airportIndex, airportLabel, airportDetail, searchAirports,
     flightTitleFromAirports, parseFlightAirports,
     extractBookings, parseIcsToProposals,
-    classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote, passportExpiryStatus, slimTripForShare, hasFastRail, viewFromHash, hashForView,
+    classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote, passportExpiryStatus, slimTripForShare, slimTripForAssistant, hasFastRail, viewFromHash, hashForView,
     buildIcs, buildGpx, buildCsv, convertAmount, sumInCurrency, normalizeTravelers, travelerTotals,
     evenSplitAmounts, splitAmountsMatch, customSplitShares,
     settlements, costsByType, typeBarShares, cashNeeded,
@@ -8391,7 +8391,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tripContext: {
-            trip: slimTripForShare(trip), focusDate: assistFocusDate || null, today: todayIso(),
+            trip: slimTripForAssistant(trip), focusDate: assistFocusDate || null, today: todayIso(),
             mode: mode || 'chat', origin: assistOriginContext(),
           },
           messages: history.slice(-CHAT_CAP),
@@ -9411,6 +9411,7 @@
       <div class="ap-title">${esc(d.title || '(no title)')}</div>
       ${meta ? `<div class="ap-meta">${esc(meta)}</div>` : ''}
       ${costStr ? `<div class="ap-cost">${esc(costStr)}</div>` : ''}
+      ${p.duplicateOf ? '<div class="ap-dup">Already on your plan at this time</div>' : ''}
       ${proposalDistHtml(p, trip)}
       ${proposalPlaceHtml(p)}
       ${proposalHoursHtml(p)}
@@ -9475,7 +9476,12 @@
     }
     if (f.details !== undefined) it.details = String(f.details).slice(0, 500);
     if (f.mapsQuery) it.mapsQuery = f.mapsQuery;
-    it.status = p.status;
+    // Status is deliberately NOT written here. validateTripAction already
+    // resolves an update's status to the target's own (see AN UPDATE NEVER
+    // CHANGES STATUS there), so this line only ever wrote the value back
+    // unchanged - but it is the line that used to demote a Booked reservation,
+    // and leaving it would let any future change to that resolution reach the
+    // traveller's data through here. What they have booked is theirs.
     // an update that rewrote the title or the type re-derives the kind from
     // what it just wrote; a `meal` left on an item that is no longer an
     // activity is dropped by the same call

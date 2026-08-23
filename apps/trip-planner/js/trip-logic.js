@@ -3609,6 +3609,43 @@ const TripLogic = (() => {
     return slim;
   }
 
+  // The booking facts a model has no use for and should not be handed. They
+  // ride in a SHARE link because the person you share a trip with is the other
+  // traveller on it; a model is not one, cannot act on a confirmation code, and
+  // is refused one on the way back (see sanitizeActionFields).
+  const ASSIST_OMITTED_FIELDS = ['confirmation', 'paidBy', 'splitAmounts', 'payment', 'bookBy'];
+
+  /**
+   * The trip as the ASSISTANT sees it. Two deliberate differences from the
+   * share projection it is built on:
+   *
+   * 1. It keeps each item's REAL id. The share projection renumbers to i1..iN
+   *    because a share link becomes a new trip with fresh ids, but the model is
+   *    told it may "update with a match (by id or exact title)" and those
+   *    numbers matched nothing at validation, so every edit a compliant model
+   *    proposed by id failed with "No matching item found". Resolving them by
+   *    POSITION instead would be worse than useless: validateTripAction runs
+   *    again at ACCEPT time against current state, so a row deleted between the
+   *    reply and the press would silently move the edit onto whatever item
+   *    slid into that position. A real id resolves to one row or to none.
+   * 2. It omits the booking facts above.
+   *
+   * Idempotent, which matters because the client slims before sending and the
+   * server slims again when it builds the prompt.
+   */
+  function slimTripForAssistant(trip) {
+    const slim = slimTripForShare(trip);
+    const items = (trip && Array.isArray(trip.items)) ? trip.items : [];
+    slim.items = slim.items.map((out, i) => {
+      const real = items[i];
+      const next = { ...out };
+      if (real && real.id != null && String(real.id).trim()) next.id = String(real.id);
+      for (const k of ASSIST_OMITTED_FIELDS) delete next[k];
+      return next;
+    });
+    return slim;
+  }
+
   // ---------- assistant: parse the AI reply ----------
   // The model is asked to emit machine-readable edits as a JSON object
   // {"tripActions":[...]} either inside a ```json fence or bare amid prose.
@@ -5822,6 +5859,24 @@ const TripLogic = (() => {
     return d;
   }
 
+  /**
+   * The item this proposal would duplicate: same title (case-insensitive,
+   * trimmed), same date, same clock time. Deliberately exact rather than fuzzy
+   * - "Lunch" twice on one day at different hours is two lunches, and a near
+   * match that guessed wrong would put a wrong warning on a good suggestion.
+   * Cancelled items do not count: re-suggesting something you dropped is a
+   * fresh suggestion.
+   */
+  function duplicateOfExisting(fields, items) {
+    const title = String((fields && fields.title) || '').trim().toLowerCase();
+    if (!title || !isIsoDate(fields.startDate)) return null;
+    const time = String(fields.startTime || '');
+    return (items || []).find(it => it && it.status !== 'cancelled'
+      && String(it.title || '').trim().toLowerCase() === title
+      && it.startDate === fields.startDate
+      && String(it.startTime || '') === time) || null;
+  }
+
   function validateTripAction(action, trip) {
     if (!action || typeof action !== 'object') return { ok: false, reason: 'This is not a valid action.' };
     const op = action.op;
@@ -5848,6 +5903,14 @@ const TripLogic = (() => {
       const status = forceProposalStatus(item.status, transcribed);
       const fields = sanitizeActionFields(item, { transcribed });
       const proposal = { op: 'add', status, fields, display: displayFor(fields, status, fields.mapsQuery) };
+      // The model is given the trip and still re-suggests what is on it, most
+      // often when the traveller asks a second time. The add is not refused -
+      // two dinners at the same place on the same night is a thing a person may
+      // genuinely want, and refusing would be the app overruling them - but the
+      // card says so, because "Add to trip" on something already added is the
+      // one thing the card cannot show by itself.
+      const dup = duplicateOfExisting(fields, items);
+      if (dup) proposal.duplicateOf = dup.id;
       // Carried so the item builder can tell a transcribed fact from a model's
       // guess: a price printed on a confirmation the traveller paid belongs in
       // `cost`, not in the estimate bag.
@@ -5878,12 +5941,16 @@ const TripLogic = (() => {
         return { ok: true, proposal: { op: 'remove', targetId: target.id, status: target.status, display: displayFor(target, target.status, '', false) } };
       }
       const raw = action.set || action.item || {};
-      // forceProposalStatus exists so the model can never CLAIM something is
-      // booked, so an explicitly proposed status still goes through it. An
-      // update that says nothing about status must leave it exactly as it is:
-      // forcing it there un-booked the traveller's own confirmed reservation
-      // (and its money) over a change of address.
-      const status = raw.status != null ? forceProposalStatus(raw.status) : target.status;
+      // AN UPDATE NEVER CHANGES STATUS. Whether something is booked is a fact
+      // about what the traveller has done in the world, not a field a model can
+      // observe: it cannot confirm a reservation, and it must not un-confirm
+      // one. Running a model-supplied status through forceProposalStatus was
+      // still a write - that function can never return 'booked', so an update
+      // that so much as mentioned status demoted a Booked flight (and its
+      // money) to "To book" over a change of address. Silence was already
+      // handled; naming it is now handled the same way. forceProposalStatus
+      // stays for ADDs, where it stops a model claiming a booking it invented.
+      const status = target.status;
       const fields = sanitizeActionFields(raw);
       const merged = { ...target, ...fields };
       const display = displayFor(merged, status, fields.mapsQuery, 'cost' in fields);
@@ -6103,7 +6170,7 @@ const TripLogic = (() => {
     parts.push('You are a travel-planning assistant helping edit a trip itinerary.');
     parts.push(ASSIST_HONESTY);
     parts.push('Here is the current trip as JSON:');
-    parts.push(JSON.stringify(slimTripForShare(trip)));
+    parts.push(JSON.stringify(slimTripForAssistant(trip)));
     parts.push(ASSIST_SCHEMA);
     parts.push(ASSIST_CONTRACT);
     parts.push(ASSIST_KINDS);
@@ -6203,7 +6270,7 @@ const TripLogic = (() => {
       // data it qualifies is a caveat the model drops
       if (truncated) parts.push(ASSIST_TRUNCATED_NOTE);
       parts.push('Here is the current trip as JSON:');
-      parts.push(JSON.stringify(slimTripForShare(trip)));
+      parts.push(JSON.stringify(slimTripForAssistant(trip)));
     }
     return parts.join('\n\n');
   }
@@ -8689,7 +8756,7 @@ const TripLogic = (() => {
     flightTitleFromAirports, parseFlightAirports,
     classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote,
     passportExpiryStatus, PASSPORT_VALIDITY_DAYS,
-    slimTripForShare, hasFastRail, viewFromHash, hashForView,
+    slimTripForShare, slimTripForAssistant, hasFastRail, viewFromHash, hashForView,
     buildIcs, buildGpx, buildCsv, csvColumns, convertAmount, sumInCurrency,
     normalizeTravelers, travelerTotals,
     assignedTravelers, evenSplitAmounts, splitAmountsSum, splitAmountsMatch, customSplitShares,

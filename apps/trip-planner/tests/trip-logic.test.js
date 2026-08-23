@@ -4591,15 +4591,25 @@ test('an update that says nothing about status leaves a booked item booked', () 
   assert.equal(res.proposal.display.status, 'booked');
 });
 
-test('an update that DOES claim booked still cannot mark anything booked', () => {
-  const res = L.validateTripAction(
+// The second half of this used to assert that a model saying "cancelled" left
+// the traveller's BOOKED hotel reading "To book", which is the AS-03 defect
+// written down as an expectation: running the claim through forceProposalStatus
+// is still a write, and that function can never return 'booked'. An update now
+// carries the target's own status, whatever the model says, so both halves are
+// the same rule: what is booked is a fact about the world, and only the
+// traveller can state it.
+test('an update can neither claim a booking nor take one away', () => {
+  const claim = L.validateTripAction(
     { op: 'update', match: { id: 'h1' }, set: { status: 'booked' } },
     { items: [{ ...bookedHotel(), status: 'to-book' }] });
-  assert.equal(res.proposal.status, 'to-book');
-  const cancel = L.validateTripAction(
-    { op: 'update', match: { id: 'h1' }, set: { status: 'cancelled' } },
-    { items: [bookedHotel()] });
-  assert.equal(cancel.proposal.status, 'to-book');
+  assert.equal(claim.proposal.status, 'to-book');
+  for (const said of ['cancelled', 'to-book', 'decide']) {
+    const res = L.validateTripAction(
+      { op: 'update', match: { id: 'h1' }, set: { status: said } },
+      { items: [bookedHotel()] });
+    assert.equal(res.proposal.status, 'booked', `"${said}" un-booked a reservation`);
+    assert.equal(res.proposal.display.status, 'booked');
+  }
 });
 
 test('an update proposal never labels the traveller own price as an estimate', () => {

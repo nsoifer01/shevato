@@ -13,9 +13,12 @@
 //   DM-05  storage of the wrong shape is repaired instead of emptying a view
 //   DM-06  a trip with no stay at all reports its uncovered nights
 //   CR-04  a rate table that never arrived is not blamed on the currency
+//   AS-02  an assistant update by the id the model was given lands on that item
+//   AS-03  an assistant update never un-books what the traveller booked
+//   AS-C1  a suggestion already on the plan says so
 import {
   APP, recorder, freshIds, iso, item, trip, dbOf,
-  openApp, openTab, readDb, tpErrors, closePage, evaluate, evalAsync, waitForExpr,
+  openApp, openTab, readDb, activeTripOf, tpErrors, closePage, evaluate, evalAsync, waitForExpr,
   clickSel, setValue, switchView, menuAct, addItemViaUi, escape, ctrlKey,
   toastText, overlayOpenId, sleep, buildShareHash, gotoHard,
 } from './helpers.mjs';
@@ -434,6 +437,100 @@ export async function run({ base, cdpPort }) {
       !/Attached documents/i.test(await evaluate(s, `document.getElementById('confirmText').textContent`)),
       await evaluate(s, `document.getElementById('confirmText').textContent`), s);
     await escape(s);
+  });
+
+
+  /* ===== AS-02 / AS-03 / AS-C1: the assistant mutation chain ===============
+     Driven through the Copy & paste tier, which reaches the same
+     extract -> validate -> renderProposals -> accept -> save -> undo path a
+     live reply takes, with no network and no key. */
+  freshIds();
+  const booked = item({
+    id: 'as-flight', type: 'flight', title: 'Tokyo (HND) to Bangkok (BKK)',
+    startDate: iso(30), startTime: '09:00', status: 'booked', cost: 800,
+    costCurrency: 'USD', confirmation: 'XJ7K2Q',
+  });
+  const museum = item({ id: 'as-museum', title: 'Senso-ji', location: 'Tokyo', startDate: iso(29), startTime: '14:00', status: 'to-book' });
+  const asTrip = trip({ name: 'Assistant trip', items: [booked, museum] });
+
+  const pasteReply = async (s, text, cards) => {
+    await evaluate(s, `(()=>{const r=document.querySelector('#assistTierGroup input[value="copy"]');
+      if (r && !r.checked) r.click(); return 1})()`);
+    await waitForExpr(s, `!!document.querySelector('#assistPasteBox')`, { timeout: 6000 });
+    await setValue(s, '#assistPasteBox', text);
+    await clickSel(s, '#assistPasteParse', { settle: 400 });
+    return waitForExpr(s, `document.querySelectorAll('#assistMessages .assist-proposal').length === ${cards}`, { timeout: 8000 });
+  };
+  const itemById = async (s, id) => (await activeTripOf(s)).items.find(x => x.id === id);
+
+  await withPage('tp-audit AS-chain', { db: dbOf([asTrip]) }, async (s) => {
+    await clickSel(s, '#assistBtn', { settle: 700 });
+
+    // the package the model is handed carries real ids and no booking facts
+    const pkg = await evaluate(s, `JSON.stringify(TripLogic.slimTripForAssistant(
+      JSON.parse(localStorage.getItem('trip-planner:v1')).trips[0]))`);
+    await t('tp-audit AS-02: the model is given the real item ids',
+      pkg.includes('as-flight') && pkg.includes('as-museum'), pkg.slice(0, 120), s);
+    await t('tp-audit AS-B3: and no confirmation code',
+      !pkg.includes('XJ7K2Q'), '', s);
+
+    // AS-03: an update naming a status must not un-book the flight
+    await pasteReply(s, `Moving your flight.
+\`\`\`json
+{"tripActions":[{"op":"update","match":{"id":"as-flight"},"set":{"startTime":"11:00","status":"to-book"}}]}
+\`\`\``, 1);
+    await t('tp-audit AS-02: an update by real id renders a card rather than "no matching item"',
+      await evaluate(s, `!document.querySelector('#assistMessages .assist-proposal').classList.contains('invalid')`),
+      await evaluate(s, `document.querySelector('#assistMessages .assist-proposal').innerText.replace(/\\n/g,' | ').slice(0,140)`), s);
+    await clickSel(s, '#assistMessages [data-act="accept-proposal"]', { settle: 800 });
+    const flightAfter = await itemById(s, 'as-flight');
+    await t('tp-audit AS-03: the booking survives the update',
+      flightAfter.status === 'booked' && flightAfter.startTime === '11:00',
+      JSON.stringify({ status: flightAfter.status, time: flightAfter.startTime }), s);
+    await t('tp-audit AS-03: and so does everything the update did not name',
+      flightAfter.cost === 800 && flightAfter.confirmation === 'XJ7K2Q' && flightAfter.title === 'Tokyo (HND) to Bangkok (BKK)',
+      JSON.stringify({ cost: flightAfter.cost, conf: flightAfter.confirmation }), s);
+    await t('tp-audit AS-03: the Timeline still shows it as Booked',
+      await evaluate(s, `[...document.querySelectorAll('#board .tp-row')].some(r => r.innerText.includes('Tokyo (HND)') && r.querySelector('select.status-sel') && r.querySelector('select.status-sel').value === 'booked')`), '', s);
+    // undo puts the whole update back
+    await ctrlKey(s, 'z', 90);
+    await sleep(400);
+    const undone = await itemById(s, 'as-flight');
+    await t('tp-audit AS-03: undo restores the previous time and keeps the booking',
+      undone.startTime === '09:00' && undone.status === 'booked',
+      JSON.stringify({ status: undone.status, time: undone.startTime }), s);
+    await ctrlKey(s, 'y', 89);
+    await sleep(400);
+    await t('tp-audit AS-03: redo reapplies it, still booked',
+      (await itemById(s, 'as-flight')).startTime === '11:00' && (await itemById(s, 'as-flight')).status === 'booked', '', s);
+
+    // AS-02: a remove by real id, and a made-up id refused
+    await pasteReply(s, `Dropping the museum, and one that does not exist.
+\`\`\`json
+{"tripActions":[{"op":"remove","match":{"id":"as-museum"}},{"op":"update","match":{"id":"i2"},"set":{"startTime":"08:00"}}]}
+\`\`\``, 2);
+    const cards = await evaluate(s, `[...document.querySelectorAll('#assistMessages .assist-proposal')].map(c => c.classList.contains('invalid') ? 'invalid:' + c.innerText.replace(/\\n/g,' ') : 'valid:' + c.dataset.op).join(' || ')`);
+    await t('tp-audit AS-02: the real id removes and the invented "i2" is refused honestly',
+      /valid:remove/.test(cards) && /invalid:.*No matching item/i.test(cards), cards.slice(0, 200), s);
+    await clickSel(s, '#assistMessages .assist-proposal[data-op="remove"] [data-act="accept-proposal"]', { settle: 800 });
+    await t('tp-audit AS-02: accepting the remove deletes exactly that item',
+      !(await itemById(s, 'as-museum')) && !!(await itemById(s, 'as-flight')), '', s);
+    await ctrlKey(s, 'z', 90);
+    await sleep(400);
+    await t('tp-audit AS-02: and undo brings it back',
+      !!(await itemById(s, 'as-museum')), '', s);
+
+    // AS-C1: a suggestion that is already on the plan
+    const dupDate = (await itemById(s, 'as-museum')).startDate;
+    await pasteReply(s, `You could visit Senso-ji.
+\`\`\`json
+{"tripActions":[{"op":"add","item":{"type":"activity","title":"Senso-ji","location":"Tokyo","startDate":"${dupDate}","startTime":"14:00"}}]}
+\`\`\``, 1);
+    await t('tp-audit AS-C1: a re-suggested item is flagged on the card',
+      await evaluate(s, `!!document.querySelector('#assistMessages .ap-dup')`),
+      await evaluate(s, `document.querySelector('#assistMessages .assist-proposal').innerText.replace(/\\n/g,' | ').slice(0,140)`), s);
+    await t('tp-audit AS-C1: and can still be added, because that is the traveller\'s call',
+      await evaluate(s, `!!document.querySelector('#assistMessages [data-act="accept-proposal"]')`), '', s);
   });
 
   return R;
