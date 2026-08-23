@@ -866,3 +866,73 @@ test('format classifiers read the genre list, not the title', () => {
   assert.equal(helpers.isAnimated(undefined), false);
   assert.equal(helpers.isUnscripted(undefined), false);
 });
+
+// ---------------------------------------------------------------------------
+// Shared compare links must not destroy the visitor's own set (closeout)
+// ---------------------------------------------------------------------------
+
+test('Compare: while an imported set is showing, edits never touch storage', () => {
+  ctx.localStorage.setItem(KEY_COMPARE, JSON.stringify(['mine1', 'mine2', 'mine3']));
+  helpers.Compare.load();
+
+  // What applyPendingCompareIds does when a #compare= link brings a different
+  // set and the visitor already had one: show theirs, protect the stored one.
+  helpers.Compare.ids = ['shared1', 'shared2'];
+  helpers.Compare.imported = true;
+  helpers.Compare.personalIds = ['mine1', 'mine2', 'mine3'];
+
+  // The destructive path from the audit: remove one show from the imported set.
+  helpers.Compare.remove('shared2');
+  assert.deepEqual(
+    JSON.parse(ctx.localStorage.getItem(KEY_COMPARE)),
+    ['mine1', 'mine2', 'mine3'],
+    'editing a shared comparison must leave the stored personal set alone',
+  );
+  // Adding and clearing are the same promise.
+  helpers.Compare.add('shared3');
+  helpers.Compare.clear();
+  assert.deepEqual(
+    JSON.parse(ctx.localStorage.getItem(KEY_COMPARE)),
+    ['mine1', 'mine2', 'mine3'],
+    'clearing a shared comparison must not clear the stored personal set',
+  );
+
+  // Reloading without the link brings the personal set back.
+  helpers.Compare.imported = false;
+  helpers.Compare.ids = [];
+  helpers.Compare.load();
+  assert.deepEqual(helpers.Compare.ids, ['mine1', 'mine2', 'mine3']);
+});
+
+test('Compare: keepImported adopts the shared set, and only then edits persist', () => {
+  ctx.localStorage.setItem(KEY_COMPARE, JSON.stringify(['mine1', 'mine2']));
+  helpers.Compare.load();
+  helpers.Compare.ids = ['shared1', 'shared2'];
+  helpers.Compare.imported = true;
+  helpers.Compare.personalIds = ['mine1', 'mine2'];
+
+  helpers.Compare.keepImported();
+  assert.deepEqual(JSON.parse(ctx.localStorage.getItem(KEY_COMPARE)), ['shared1', 'shared2']);
+  assert.equal(helpers.Compare.imported, false);
+  // Length, not deepEqual: an array built inside the vm realm is never
+  // deepStrictEqual to a test-realm literal (see the note in README).
+  assert.equal(helpers.Compare.personalIds.length, 0);
+
+  helpers.Compare.remove('shared2');
+  assert.deepEqual(
+    JSON.parse(ctx.localStorage.getItem(KEY_COMPARE)),
+    ['shared1'],
+    'after an explicit keep, the store behaves normally again',
+  );
+});
+
+test('Compare: an imported set with nothing to protect saves normally', () => {
+  // No personal set means applyPendingCompareIds leaves `imported` false, so a
+  // first-time visitor who follows a link and edits it keeps their edit.
+  ctx.localStorage.removeItem(KEY_COMPARE);
+  helpers.Compare.load();
+  helpers.Compare.ids = ['shared1', 'shared2'];
+  helpers.Compare.imported = false;
+  helpers.Compare.remove('shared2');
+  assert.deepEqual(JSON.parse(ctx.localStorage.getItem(KEY_COMPARE)), ['shared1']);
+});

@@ -145,7 +145,10 @@ function languagesCompatible(anchorLang, candidateLang) {
 }
 
 // Compute related shows for the show modal.
-// d = mean(season avgRatings) - seriesRating. Requires seriesRating on both shows.
+// d = weightedAvgEpisode(seasons) - seriesRating, i.e. the canonical
+// episode-weighted average (NOT the mean of the season averages, which is what
+// this comment described before the two were unified). Requires seriesRating on
+// both shows.
 // Candidates: other series with seriesRating that share at least one genre,
 // have a compatible original language (languagesCompatible), and sit within one order of magnitude of
 // the current show's votes/episode (mean of its seasons' minVotes).
@@ -404,6 +407,8 @@ const els = {
   showModalDetailError: document.getElementById('showModalDetailError'),
   showModalOverlayHint: document.getElementById('showModalOverlayHint'),
   compareModalXMode: document.getElementById('compareModalXMode'),
+  compareImportedNote: document.getElementById('compareImportedNote'),
+  compareImportedKeep: document.getElementById('compareImportedKeep'),
   showModalDetailRetry: document.getElementById('showModalDetailRetry'),
   modalDetailError: document.getElementById('modalDetailError'),
   modalCurveHeading: document.getElementById('modalCurveHeading'),
@@ -714,6 +719,17 @@ const Watched = {
 // insertion order so the legend reads in the order the user added shows).
 const Compare = {
   ids: [],
+  // Set while the visitor is looking at a comparison that arrived in a
+  // #compare= link rather than one they built. In that mode the store is
+  // read-only: `ids` drives the overlay, but nothing is written to
+  // localStorage, so their own saved comparison survives untouched until they
+  // press "Keep this comparison". Without it, importing a link and then
+  // removing one show from it (a natural first move) silently overwrote a set
+  // they may have spent real time assembling, with no warning and no undo.
+  imported: false,
+  // What they had before the link replaced it, for the overlay's note and for
+  // restoring it if they simply close the overlay.
+  personalIds: [],
   load() {
     try {
       const raw = localStorage.getItem(KEY_COMPARE);
@@ -721,8 +737,15 @@ const Compare = {
     } catch { /* corrupt or unavailable — start empty */ }
   },
   save() {
+    if (this.imported) return;
     try { localStorage.setItem(KEY_COMPARE, JSON.stringify(this.ids)); }
     catch { /* quota or disabled — silent */ }
+  },
+  // Adopt the imported set as the visitor's own, on an explicit action only.
+  keepImported() {
+    this.imported = false;
+    this.personalIds = [];
+    this.save();
   },
   has(seriesId) { return this.ids.includes(seriesId); },
   size() { return this.ids.length; },
@@ -1323,10 +1346,14 @@ function applyPendingCompareIds() {
   const known = new Set(dataset.matches.map((m) => m.seriesId));
   const valid = ids.filter((id) => known.has(id));
   if (!valid.length) return false;
-  // Deliberately no Compare.save(): a link someone else sent shouldn't
-  // overwrite this visitor's own stored compare set. The first edit they make
-  // in the modal (remove a show, add another) persists from there as usual.
+  // A link someone else sent must not overwrite this visitor's own stored
+  // compare set, and that has to hold for their EDITS too, not just for the
+  // moment of arrival: see Compare.imported.
+  const personal = Compare.ids.slice();
+  const differs = personal.length > 0 && personal.join(',') !== valid.join(',');
   Compare.ids = valid;
+  Compare.imported = differs;
+  Compare.personalIds = differs ? personal : [];
   syncCompareFab();
   openCompareModal();
   return true;
@@ -2536,6 +2563,22 @@ function renderCompareModal() {
   // A one-show "comparison" is not a collection worth pushing to Plex.
   els.compareModalKometa.hidden = entries.length < 2;
   syncCompareXModeButton(entries);
+  syncCompareImportedNote();
+}
+
+// The "you are looking at someone else's comparison" banner. It is the only
+// thing that tells the visitor why their edits are not sticking, so it states
+// what is being protected and offers the one action that adopts the set.
+function syncCompareImportedNote() {
+  const note = els.compareImportedNote;
+  if (!note) return;
+  if (!Compare.imported) { note.hidden = true; return; }
+  const n = Compare.personalIds.length;
+  const text = note.querySelector('.compare-imported-text');
+  if (text) {
+    text.textContent = `Shared comparison. Your own saved comparison (${n} show${n === 1 ? '' : 's'}) is untouched, and comes back when you reload without this link.`;
+  }
+  note.hidden = false;
 }
 
 // The x-axis toggle only means something with two shows of different lengths.
@@ -2642,8 +2685,16 @@ function syncModalBackButtons() {
 function goBackModalView() {
   const prev = modalViewHistory.pop();
   if (!prev) return;
-  if (prev.type === 'season') openModal(prev.season, { fromHistory: true });
-  else openShowModal(prev.seriesId, { fromHistory: true });
+  // Carry the element that opened this drill-down across the step. Without it,
+  // stepping back re-opens a modal while the previous one is closing, so the
+  // active element at that moment is <body>, and eventually closing the chain
+  // dropped keyboard focus there instead of on the card the reader started
+  // from. Matters more now that Escape steps back too, so a two-press exit is
+  // the common path.
+  const opener = modalState.lastFocus || showModalState.lastFocus || null;
+  const restoreFocus = opener && opener !== document.body ? opener : null;
+  if (prev.type === 'season') openModal(prev.season, { fromHistory: true, restoreFocus });
+  else openShowModal(prev.seriesId, { fromHistory: true, restoreFocus });
   syncModalBackButtons();
 }
 
@@ -2672,7 +2723,7 @@ async function openModal(m, opts = {}) {
       closeShowModal({ suppressReopen: true });
       modalState.lastFocus = inherited;
     } else {
-      modalState.lastFocus = document.activeElement;
+      modalState.lastFocus = opts.restoreFocus || document.activeElement;
     }
   }
   // Carry the surprise mode forward so the in-modal Reroll button can
@@ -2929,7 +2980,7 @@ async function openShowModal(seriesId, opts = {}) {
   const meta = seasons[0];
   showModalState.seriesId = seriesId;
   showModalState.fromChangelog = inheritedFromChangelog || opts.fromChangelog === true;
-  if (els.showModal.hidden) showModalState.lastFocus = document.activeElement;
+  if (els.showModal.hidden) showModalState.lastFocus = opts.restoreFocus || document.activeElement;
   syncCompareButton();
 
   els.showModalTitle.textContent = meta.title;
@@ -5917,6 +5968,13 @@ function bindEvents() {
     closeCompareModal();
   });
   els.compareModalCopyLink.addEventListener('click', copyCompareLink);
+  if (els.compareImportedKeep) {
+    els.compareImportedKeep.addEventListener('click', () => {
+      Compare.keepImported();
+      syncCompareImportedNote();
+      flashButtonLabel(els.compareImportedKeep, 'Saved');
+    });
+  }
   if (els.compareModalXMode) {
     els.compareModalXMode.addEventListener('click', () => {
       compareXMode = compareXMode === 'run' ? 'season' : 'run';
@@ -5994,10 +6052,20 @@ function bindKeyboard() {
         closeChangelogModal();
       } else if (!els.compareModal.hidden) {
         closeCompareModal();
-      } else if (!els.modal.hidden) {
-        closeModal();
-      } else if (!els.showModal.hidden) {
-        closeShowModal();
+      } else if (!els.modal.hidden || !els.showModal.hidden) {
+        // Escape steps back one level, exactly like the visible back arrow in
+        // the modal header, and closes only when there is nowhere to step
+        // back to. Only one modal is on screen at a time here: drilling from a
+        // show into a season CLOSES the show modal, so the old "close the
+        // topmost thing" reading dropped the reader all the way to the grid
+        // while the back arrow beside it offered to return to the show. Two
+        // affordances in the same corner disagreeing about what "back" means
+        // is the confusing part; the arrow's model wins because it is the one
+        // that matches what the reader did to get here. The x button and a
+        // backdrop click still leave outright.
+        if (modalViewHistory.length > 0) goBackModalView();
+        else if (!els.modal.hidden) closeModal();
+        else closeShowModal();
       } else if (document.body.classList.contains('advanced-drawer-open')) {
         closeAdvancedDrawer();
       } else if (document.body.classList.contains('is-menu-visible')) {

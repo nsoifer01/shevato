@@ -192,6 +192,16 @@ function buildShowAgg(matches, detectShapes) {
   const out = [];
   for (const s of byId.values()) {
     if (s.episodes === 0) continue;
+    // A show with no IMDb SERIES rating cannot be scored on what this Finder
+    // is for: the gap (avgEpisode - showRating) is its headline metric, and
+    // the show-rating filter, the gap direction segments and the hidden-gems
+    // rule all read it. Those series are dropped from the grid rather than
+    // shown with blanks. On the 2026-08-22 catalogue that is exactly 77 of
+    // 34,692 series (0.2%), which is why the Finder says "34,615 shows": every
+    // one of them is a title IMDb itself has no series-level score for. They
+    // are NOT lost: build-show-pages.js still renders each one a static page
+    // (which omits aggregateRating rather than inventing one), the A-Z index
+    // still links them, and a #show= deep link still opens the modal.
     if (typeof s.showRating !== 'number' || typeof s.votes !== 'number') continue;
     const avgEpisode = Math.round((s.ratingSum / s.episodes) * 100) / 100;
     const gap = Math.round((avgEpisode - s.showRating) * 100) / 100;

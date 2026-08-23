@@ -471,6 +471,13 @@
         <h2 id="compareModalTitle">Compare shows</h2>
         <p class="modal-subtitle">Season-average rating trajectory. Click a show in the legend to remove it.</p>
       </header>
+      <!-- Shown only while the overlay is displaying a comparison that came in
+           from a shared #compare= link and the visitor already had one of their
+           own. Their set stays in localStorage untouched until they press Keep. -->
+      <p class="compare-imported-note" id="compareImportedNote" role="status" hidden>
+        <span class="compare-imported-text"></span>
+        <button type="button" class="btn btn-ghost compare-imported-keep" id="compareImportedKeep">Keep this comparison</button>
+      </p>
       <div class="compare-legend-row">
         <div class="overlay-legend compare-legend" id="compareModalLegend"></div>
         <div class="compare-actions">
@@ -503,7 +510,7 @@
     <h3 class="shortcut-legend-title">Keyboard shortcuts</h3>
     <ul class="shortcut-legend-list">
       <li><kbd>/</kbd> <span>Focus search</span></li>
-      <li><kbd>Esc</kbd> <span>Close any open modal</span></li>
+      <li><kbd>Esc</kbd> <span>Go back a step, or close</span></li>
       <li><kbd>?</kbd> <span>Toggle this list</span></li>
     </ul>
     <p class="shortcut-legend-note">Modal curve: focus the chart and use <kbd>←</kbd>/<kbd>→</kbd> to step episodes.</p>

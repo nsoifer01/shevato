@@ -5633,3 +5633,29 @@ button.shape-tag.is-clickable {
   list-style: none;
   padding-top: 0.2rem;
 }
+
+/* --- Shared compare link: your own set is not overwritten ----------------
+   Shown while the overlay is displaying an imported #compare= set. Warm rather
+   than alarming: nothing has gone wrong, it is just explaining why edits here
+   are not being saved and how to adopt the set if you want it. */
+.compare-imported-note {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--accent-strong);
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+.compare-imported-note[hidden] { display: none; }
+.compare-imported-text { flex: 1 1 18rem; }
+.btn.compare-imported-keep {
+  flex: 0 0 auto;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.9rem;
+}
