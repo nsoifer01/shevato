@@ -449,6 +449,50 @@ export async function run({ base, cdpPort }) {
     t('no first-party JS errors rendering the matrix from a stale selection',
       cleanErrors(s).length === 0, cleanErrors(s).join(' | '));
 
+    // ---- Path to parity reports FUTURE wins, at both widths ----
+    // The reported case: 26W/128L/1T used to read "Need 51 flipped results to
+    // reach parity", which is ceil(102/2) - how many PAST losses would have to
+    // be rewritten - and reads as "win 51 more", which is false.
+    mark('parity card');
+    const parityGames = [];
+    let pg = 0;
+    const PDAY = (i) => addDays(todayISO(), -(i + 2));
+    for (let i = 0; i < 26; i++) parityGames.push({ id: 'pw' + (++pg), rivalId: 'r-ari', date: PDAY(pg), myScores: [90, 90, 90, 90, 90], theirScores: [10, 10, 10, 10, 10], myScore: 900, theirScore: 100, note: '', createdAt: pg });
+    for (let i = 0; i < 128; i++) parityGames.push({ id: 'pl' + (++pg), rivalId: 'r-ari', date: PDAY(pg), myScores: [10, 10, 10, 10, 10], theirScores: [90, 90, 90, 90, 90], myScore: 100, theirScore: 900, note: '', createdAt: pg });
+    parityGames.push({ id: 'pt' + (++pg), rivalId: 'r-ari', date: PDAY(pg), myScores: [50, 50, 50, 50, 50], theirScores: [50, 50, 50, 50, 50], myScore: 500, theirScore: 500, note: '', createdAt: pg });
+    const parityCard = `(()=>{const c=[...document.querySelectorAll('#rival-stat-cards .stat-card')].find(c=>/Path to parity|Record balance/.test(c.querySelector('.label').textContent));
+      if (!c) return {none:true};
+      const r=c.getBoundingClientRect(), v=c.querySelector('.value'), sb=c.querySelector('.sub');
+      return { label:c.querySelector('.label').textContent.trim(), value:v.textContent.trim(), sub:sb?sb.textContent.trim():'',
+               cls:c.className, overflow: v.scrollWidth > v.clientWidth + 1 || (sb && sb.scrollWidth > sb.clientWidth + 1),
+               right: Math.round(r.right), vw: innerWidth };})()`;
+    for (const [w, h, mobile] of [[1280, 900, false], [390, 844, true]]) {
+      await setViewport(s, w, h, mobile);
+      await seed(s, '#rival/r-ari', { maptapRivalsGames: JSON.stringify(parityGames) });
+      await waitForExpr(s, "document.querySelectorAll('#rival-stat-cards .stat-card').length > 0");
+      const pc = await evaluate(s, parityCard);
+      t(`${w}px parity: 26W/128L/1T asks for the 102 FUTURE wins, never the halved 51`,
+        !pc.none && pc.value === 'Need 102 more wins to even the record' && !/flipped|51/.test(pc.value), JSON.stringify(pc));
+      t(`${w}px parity: the sub-line states the record it was computed from`,
+        !pc.none && pc.sub === 'Current record: 26W · 128L · 1T', pc.sub);
+      t(`${w}px parity: the card fits its column without clipping or widening the page`,
+        !pc.none && !pc.overflow && pc.right <= pc.vw, JSON.stringify(pc));
+    }
+    // Even and ahead render sensibly instead of a negative or a stale ask.
+    const evenGames = parityGames.filter(g => /^pt/.test(g.id) || Number(g.id.slice(2)) <= 26 || (/^pl/.test(g.id) && Number(g.id.slice(2)) <= 52));
+    await setViewport(s, 1280, 900);
+    await seed(s, '#rival/r-ari', { maptapRivalsGames: JSON.stringify(evenGames) });
+    await waitForExpr(s, "document.querySelectorAll('#rival-stat-cards .stat-card').length > 0");
+    const evenCard = await evaluate(s, parityCard);
+    t('parity: an even record says so instead of asking for wins',
+      evenCard.label === 'Record balance' && evenCard.value === 'The record is even' && !/is-bad/.test(evenCard.cls), JSON.stringify(evenCard));
+    await seed(s, '#rival/r-ari', { maptapRivalsGames: JSON.stringify(parityGames.filter(g => /^pw/.test(g.id) || (/^pl/.test(g.id) && Number(g.id.slice(2)) <= 36))) });
+    await waitForExpr(s, "document.querySelectorAll('#rival-stat-cards .stat-card').length > 0");
+    const aheadCard = await evaluate(s, parityCard);
+    t('parity: ahead reports the lead, with no negative number anywhere',
+      aheadCard.label === 'Record balance' && /^Ahead by \d+ wins?$/.test(aheadCard.value) && !/-\d/.test(aheadCard.value + aheadCard.sub), JSON.stringify(aheadCard));
+    await setViewport(s, 1280, 900);
+
     // ---- #4 local calendar days, in a RENDERED page under UTC+12 ----
     // tests/stats.test.js proves the helpers across four zones in child
     // processes; this proves the views built on them. The zone comes from

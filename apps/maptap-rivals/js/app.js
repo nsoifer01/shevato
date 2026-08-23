@@ -181,7 +181,7 @@
     parseDateISO, todayISO, addDaysISO, daysBetweenISO, dayOfWeekISO,
     localDateFromISO, formatDate, countNoun,
     // The single definition of a countable H2H game, shared with Records.
-    eligibleH2HGames, overallRecord,
+    eligibleH2HGames, overallRecord, parityOutlook,
     sanitizeBackup,
   } = window.MapTapStats;
 
@@ -3668,16 +3668,12 @@
       `σ ${s.consistencyMine.toFixed(1)} of your daily total (lower is steadier)`));
 
     // --- Key Insights ---
-    // Parity distance: how many more wins you'd need for wins ≥ losses. Only
-    // shown when behind, verbalized as flipped results to reach parity.
-    if (s.losses > s.wins) {
-      const flipsNeeded = Math.ceil((s.losses - s.wins) / 2);
-      const behindBy = s.losses - s.wins;
-      insights.push(makeStatCard('Path to parity',
-        `Need ${flipsNeeded} flipped result${flipsNeeded === 1 ? '' : 's'} to reach parity`,
-        `currently ${behindBy} game${behindBy === 1 ? '' : 's'} behind`,
-        'is-bad'));
-    }
+    // Where the record stands against parity. The number is how many more
+    // games you must WIN from here for wins to equal losses; see
+    // parityOutlook in stats.js for why the old "flipped results" figure was
+    // both half the real distance and not something a player can act on.
+    const parity = parityOutlook(s);
+    insights.push(makeStatCard(parity.title, parity.headline, parity.sub, parity.tone));
 
     // Main swing round: the round whose result most often decides games.
     if (s.carryChoke) {

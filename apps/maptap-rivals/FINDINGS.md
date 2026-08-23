@@ -497,6 +497,52 @@ Two layers of regression cover this:
   `closeAllModals()` call and a closer per dialog id. Every guard here was
   proven to fail against the pre-fix code before being kept.
 
+## "Path to parity" counts future wins, not rewritten history (fixed 2026-08-23)
+
+The rival page's parity card used to report `ceil((losses - wins) / 2)` and
+call the result "flipped results to reach parity". The arithmetic answers a
+real question - how many PAST losses would have to be rewritten as wins for
+the record to even out - but that is not a thing a player can do, and nobody
+reads it that way. At 26W/128L/1T it said **"Need 51 flipped results"** when
+the honest answer is **"win your next 102"**.
+
+The halving is the whole bug: rewriting a past loss moves the gap by TWO (one
+off the losses, one onto the wins), while a future win moves it by ONE. So the
+old figure was exactly half the distance a player actually faces.
+
+`parityOutlook(record)` in js/stats.js is now the single source for this, and
+it is total rather than only defined when behind:
+
+| Record | Card |
+|---|---|
+| 26W · 128L · 1T | Path to parity - "Need 102 more wins to even the record" |
+| 9W · 10L | Path to parity - "Need 1 more win to even the record" |
+| 64W · 64L · 3T | Record balance - "The record is even" |
+| 0W · 0L | Record balance - "No decided games yet" |
+| 12W · 5L · 2T | Record balance - "Ahead by 7 wins" |
+
+Notes that matter:
+
+- **Ties never move the distance.** A tie is neither a win nor a loss, so it
+  cannot close the gap; it is still printed in the record line so the sub-text
+  adds up to the games played. `4W/9L` needs 3 more wins whether there are 0
+  ties or 100.
+- **Never a negative or fractional ask.** `winsNeeded` is `max(0, losses -
+  wins)` over floored, non-negative counts, and the tests sweep every
+  0-20 x 0-20 record asserting `wins + winsNeeded === max(wins, losses)`.
+- **The title changes with the state.** "Path to parity" only describes the
+  behind case; even and ahead render under "Record balance". A single title
+  would have to lie in two states out of three.
+- **This is W/L parity, not a 50% win rate.** They differ once ties exist: at
+  26W/128L/1T, 102 more wins gives 128W/128L/1T (even record, 49.8% overall),
+  and 103 gives exactly 50.0%. The card is about the record, and says so.
+
+The figure appeared in exactly one place; there is no second copy to keep in
+step. `tests/stats.test.js` covers the five reported cases plus junk input,
+and `e2e/quality.mjs` pins the rendered card - text, tone class and that it
+fits its column without clipping - at 1280 and 390 for behind, even and ahead.
+Both were proven to fail against the old halved figure before being kept.
+
 ## Deliberate behaviour, not open defects
 
 Collected so a future audit does not re-file them. Each was verified, judged
@@ -590,7 +636,7 @@ Two gaps the 2026-08-23 pass closed, both in `e2e/quality.mjs`:
   else. The helpers themselves stay pinned by the four-zone child-process test
   in `tests/stats.test.js`, which is date- and host-independent.
 
-`e2e/quality.mjs` is 112 checks and is PINNED in `tests/browser/run.mjs`
+`e2e/quality.mjs` is 120 checks and is PINNED in `tests/browser/run.mjs`
 (`EXPECTED_CHECKS`), the only app-owned suite that is. Two reasons it needs the
 pin: a suite that returns early "passes" everything it did run, and since
 2026-08-23 an axe scan that exceeds the driver's 45s send timeout records its

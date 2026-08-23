@@ -501,6 +501,58 @@
     return `${num} ${num === 1 ? singular : (plural || singular + 's')}`;
   }
 
+  // Where a W-L record stands against parity, and what it would take to even
+  // it up. FORWARD-LOOKING on purpose: the number is how many more games you
+  // must WIN from here for wins to equal losses, i.e. `losses - wins`.
+  //
+  // Until 2026-08-23 the card reported `ceil((losses - wins) / 2)` and called
+  // them "flipped results": arithmetically that is how many PAST losses would
+  // have to be rewritten as wins, which is not a thing a player can do and not
+  // what anyone reads it as. At 26W/128L it said "need 51" when the honest
+  // answer is "win your next 102". Halving the deficit is the bug: each future
+  // win closes the gap by ONE, while rewriting a past loss closes it by two.
+  //
+  // Ties never enter the comparison (they are neither a win nor a loss), so
+  // they cannot move the parity distance; they are still reported in the
+  // record line so the sub-text adds up to the games played.
+  function parityOutlook(record) {
+    const num = (v) => (Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
+    const wins = num(record && record.wins);
+    const losses = num(record && record.losses);
+    const ties = num(record && record.ties);
+    const recordLine = `${wins}W · ${losses}L${ties ? ` · ${ties}T` : ''}`;
+
+    if (losses > wins) {
+      const winsNeeded = losses - wins;
+      return {
+        state: 'behind', winsNeeded, margin: winsNeeded, wins, losses, ties, recordLine,
+        title: 'Path to parity',
+        headline: `Need ${countNoun(winsNeeded, 'more win')} to even the record`,
+        sub: `Current record: ${recordLine}`,
+        tone: 'is-bad',
+      };
+    }
+    if (wins === losses) {
+      return {
+        state: 'even', winsNeeded: 0, margin: 0, wins, losses, ties, recordLine,
+        title: 'Record balance',
+        headline: wins === 0 && losses === 0 ? 'No decided games yet' : 'The record is even',
+        sub: wins === 0 && losses === 0
+          ? 'Win your first game to go ahead'
+          : `Current record: ${recordLine} · win your next to go ahead`,
+        tone: '',
+      };
+    }
+    const margin = wins - losses;
+    return {
+      state: 'ahead', winsNeeded: 0, margin, wins, losses, ties, recordLine,
+      title: 'Record balance',
+      headline: `Ahead by ${countNoun(margin, 'win')}`,
+      sub: `Current record: ${recordLine}`,
+      tone: 'is-good',
+    };
+  }
+
   // { id, start, end } for the calendar week or month holding `iso`.
   function periodBounds(iso, unit) {
     if (unit === 'month') {
@@ -1115,7 +1167,7 @@
     parseDateISO, isoWeekStart, isoWeekEnd, isoWeekId,
     monthId, monthStart, monthEnd, periodBounds, periodRecords,
     localDateISO, todayISO, addDaysISO, daysBetweenISO, dayOfWeekISO,
-    localDateFromISO, formatDate, calendarDayOf, countNoun,
+    localDateFromISO, formatDate, calendarDayOf, countNoun, parityOutlook,
     // eligibility
     eligibleH2HGames, overallRecord,
     // backup import

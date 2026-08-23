@@ -1777,6 +1777,89 @@ test('local calendar dates hold under positive UTC offsets (child processes per 
   assert.equal(results['America/Chicago'].legacy, '2026-08-22');
 });
 
+test('parityOutlook: the number is FUTURE wins needed, not halved historical flips', () => {
+  // The reported regression: 26W/128L/1T showed "51 flipped results", which is
+  // ceil(102/2) - how many PAST losses would have to be rewritten. A player
+  // reads it as "win 51 more", which is false. Each future win closes the gap
+  // by one, so the honest answer is the full 102.
+  const behind = S.parityOutlook({ wins: 26, losses: 128, ties: 1 });
+  assert.equal(behind.state, 'behind');
+  assert.equal(behind.winsNeeded, 102);
+  assert.equal(behind.headline, 'Need 102 more wins to even the record');
+  assert.equal(behind.sub, 'Current record: 26W · 128L · 1T');
+  assert.equal(behind.title, 'Path to parity');
+  assert.equal(behind.tone, 'is-bad');
+  // Never the old halved figure, under any deficit bigger than one.
+  for (const [w, l] of [[26, 128], [0, 7], [3, 10], [50, 60]]) {
+    const o = S.parityOutlook({ wins: w, losses: l });
+    const halved = Math.ceil((l - w) / 2);
+    assert.equal(o.winsNeeded, l - w, `${w}W/${l}L`);
+    assert.notEqual(o.winsNeeded, halved, `${w}W/${l}L must not report the halved ${halved}`);
+  }
+});
+
+test('parityOutlook: a one-game deficit asks for one more win, in the singular', () => {
+  const o = S.parityOutlook({ wins: 9, losses: 10 });
+  assert.equal(o.winsNeeded, 1);
+  assert.equal(o.headline, 'Need 1 more win to even the record');
+  assert.equal(o.sub, 'Current record: 9W · 10L');
+});
+
+test('parityOutlook: an even record says so instead of asking for wins', () => {
+  const o = S.parityOutlook({ wins: 64, losses: 64, ties: 3 });
+  assert.equal(o.state, 'even');
+  assert.equal(o.winsNeeded, 0);
+  assert.equal(o.title, 'Record balance');
+  assert.equal(o.headline, 'The record is even');
+  assert.equal(o.sub, 'Current record: 64W · 64L · 3T · win your next to go ahead');
+  assert.equal(o.tone, '');
+  // A brand-new player is even at 0-0, but "the record is even" would be odd.
+  const fresh = S.parityOutlook({ wins: 0, losses: 0, ties: 0 });
+  assert.equal(fresh.state, 'even');
+  assert.equal(fresh.headline, 'No decided games yet');
+  assert.equal(fresh.sub, 'Win your first game to go ahead');
+});
+
+test('parityOutlook: ahead reports the lead, never a negative wins-needed', () => {
+  const o = S.parityOutlook({ wins: 12, losses: 5, ties: 2 });
+  assert.equal(o.state, 'ahead');
+  assert.equal(o.winsNeeded, 0);
+  assert.equal(o.margin, 7);
+  assert.equal(o.headline, 'Ahead by 7 wins');
+  assert.equal(o.sub, 'Current record: 12W · 5L · 2T');
+  assert.equal(o.tone, 'is-good');
+  assert.equal(S.parityOutlook({ wins: 5, losses: 4 }).headline, 'Ahead by 1 win');
+  // No record can ever ask for a negative or fractional number of wins.
+  for (let w = 0; w <= 20; w++) {
+    for (let l = 0; l <= 20; l++) {
+      const p = S.parityOutlook({ wins: w, losses: l, ties: 2 });
+      assert.ok(Number.isInteger(p.winsNeeded) && p.winsNeeded >= 0, `${w}W/${l}L`);
+      assert.equal(p.winsNeeded, Math.max(0, l - w));
+      // Winning exactly that many more games really does even the record.
+      assert.equal(w + p.winsNeeded, Math.max(w, l));
+    }
+  }
+});
+
+test('parityOutlook: ties never move the parity distance, and junk records do not crash it', () => {
+  const base = S.parityOutlook({ wins: 4, losses: 9, ties: 0 });
+  for (const ties of [1, 5, 100]) {
+    const withTies = S.parityOutlook({ wins: 4, losses: 9, ties });
+    assert.equal(withTies.winsNeeded, base.winsNeeded, `ties ${ties} must not change the distance`);
+    assert.match(withTies.sub, new RegExp(`· ${ties}T`));
+  }
+  // A record with no ties omits the T segment rather than printing "0T".
+  assert.equal(base.sub, 'Current record: 4W · 9L');
+  for (const junk of [null, undefined, {}, { wins: NaN, losses: 'x', ties: -3 }, { wins: -5, losses: -2 }]) {
+    const o = S.parityOutlook(junk);
+    assert.equal(o.state, 'even');
+    assert.equal(o.winsNeeded, 0);
+    assert.equal(o.headline, 'No decided games yet');
+  }
+  // Fractional counts are floored, never rendered as decimals.
+  assert.equal(S.parityOutlook({ wins: 1.9, losses: 4.7 }).headline, 'Need 3 more wins to even the record');
+});
+
 test('countNoun: singular / plural / custom plural', () => {
   assert.equal(S.countNoun(1, 'game'), '1 game');
   assert.equal(S.countNoun(0, 'game'), '0 games');
