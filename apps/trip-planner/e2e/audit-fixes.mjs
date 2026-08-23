@@ -18,6 +18,7 @@
 //   AS-C1  a suggestion already on the plan says so
 //   DM-02  a visa reminder is a deadline, not thirty extra days of trip
 //   DM-03  switching currency converts the budget instead of relabelling it
+//   HR-01  a venue that has not opened yet says so, instead of "Closed at"
 import {
   APP, recorder, freshIds, iso, item, trip, dbOf,
   openApp, openTab, readDb, activeTripOf, tpErrors, closePage, evaluate, evalAsync, waitForExpr,
@@ -655,6 +656,79 @@ export async function run({ base, cdpPort }) {
       return c ? c.className + '||' + c.innerText.replace(/\\n/g,' ') : ''})()`);
     await t('tp-audit DM-03b: an unreachable ceiling prints in its own currency and is not green',
       /XXX|100,000/.test(chip) && !/ok-chip/.test(chip), chip, s);
+  });
+
+
+  /* ===== HR-01: shut BEFORE opening is not shut AFTER closing ==============
+     Reported against the Days view: an activity at 17:30 at a bar open
+     18:00-02:00 read "Closed at 5:30 PM · Hours: 6:00 PM-2:00 AM". It had not
+     closed; it had not opened, and the traveller needs the hour, not another
+     venue. The verdict is a state (beforeOpen) and every surface reads it. */
+  freshIds();
+  const barDate = iso(12);
+  const hoursTrip = trip({
+    name: 'Nightlife', items: [
+      item({ id: 'hr-early', title: 'Above The Grid', location: 'Bangkok', mapsQuery: 'Above The Grid Bangkok', startDate: barDate, startTime: '17:30', status: 'to-book' }),
+      item({ id: 'hr-inside', title: 'Sky Bar', location: 'Bangkok', mapsQuery: 'Sky Bar Bangkok', startDate: barDate, startTime: '20:00', status: 'to-book' }),
+      item({ id: 'hr-late', title: 'Dawn Cafe', location: 'Bangkok', mapsQuery: 'Dawn Cafe Bangkok', startDate: barDate, startTime: '23:30', status: 'to-book' }),
+    ],
+  });
+  // Above The Grid and Sky Bar open 18:00-02:00 every day; Dawn Cafe 09:00-17:00.
+  // These are the SERVER-normalized shapes the client stores (minutes past
+  // midnight, close.day rolled over for an overnight range), not Google's raw
+  // hour/minute periods: tp-places normalizes before it answers.
+  const dayN = (openMin, closeMin, overnight) => [0, 1, 2, 3, 4, 5, 6].map(d => ({
+    open: { day: d, min: openMin }, close: { day: overnight ? (d + 1) % 7 : d, min: closeMin },
+  }));
+  const NIGHT = { always: false, periods: dayN(18 * 60, 2 * 60, true), special: [] };
+  const DAY = { always: false, periods: dayN(9 * 60, 17 * 60, false), special: [] };
+  const hoursNet = (url, request) => {
+    if (!url.includes('tp-places')) return /photon|nominatim|open-meteo|githubusercontent|tile\.openstreetmap|openai|googleapis|gstatic|firebase|frankfurter/i.test(url) ? 'fail' : null;
+    let body = {};
+    try { body = JSON.parse(request.postData || '{}'); } catch { /* empty */ }
+    const results = (body.queries || []).map(q => ({
+      query: q, status: 'ok', name: q, rating: 4.5, userRatingCount: 900,
+      mapsUri: 'https://maps.google.com/?cid=1', confidence: 1, lat: 13.7, lon: 100.5,
+      hours: /Dawn Cafe/i.test(q) ? DAY : NIGHT,
+    }));
+    return { status: 200, body: { results, attribution: { text: 'Google Maps', url: 'https://www.google.com/maps' } } };
+  };
+  await withPage('tp-audit HR-01', { db: dbOf([hoursTrip]), net: hoursNet }, async (s) => {
+    await switchView(s, 'days');
+    await waitForExpr(s, `[...document.querySelectorAll('.dc-hours')].filter(e => e.dataset.painted === '1').length >= 3`, { timeout: 12000 });
+    // the title cell carries the place chip inline, so rows are matched by
+    // substring rather than by an exact key
+    const rows = () => evaluate(s, `[...document.querySelectorAll('.dc-event')].map(r => {
+      const h = r.querySelector('.dc-hours');
+      const ttl = r.querySelector('.dc-title');
+      return { title: (ttl ? ttl.textContent : r.textContent).replace(/\\s+/g, ' ').trim(),
+        text: h ? h.textContent.trim() : '', verdict: h ? (h.dataset.verdict || '') : '',
+        closed: !!(h && h.classList.contains('is-closed')) };
+    })`);
+    const pick = (list, name) => (list || []).find(r => r.title.includes(name)) || {};
+    const r12 = await rows();
+    const early = pick(r12, 'Above The Grid');
+    await t('tp-audit HR-01: a 17:30 row at an 18:00 bar says it opens at 6:00 PM',
+      /Opens at 6:00 PM/.test(early.text) && !/Closed at/.test(early.text) && early.verdict === 'beforeOpen',
+      JSON.stringify(early), s);
+    await t('tp-audit HR-01: and it still carries the hours it was judged against',
+      /6:00 PM/.test(early.text) && /2:00 AM/.test(early.text), early.text, s);
+    await t('tp-audit HR-01: a row inside the overnight range is an ordinary open row',
+      pick(r12, 'Sky Bar').verdict === 'open' && !/Opens at|Closed at/.test(pick(r12, 'Sky Bar').text || ''),
+      JSON.stringify(pick(r12, 'Sky Bar')), s);
+    await t('tp-audit HR-01: a row after a venue closes still reads Closed',
+      /Closed at 11:30 PM/.test(pick(r12, 'Dawn Cafe').text || '') && pick(r12, 'Dawn Cafe').verdict === 'closed',
+      JSON.stringify(pick(r12, 'Dawn Cafe')), s);
+
+    // the same states in 24-hour time
+    await menuAct(s, 'timefmt', 600);
+    await waitForExpr(s, `[...document.querySelectorAll('.dc-hours')].some(e => /Opens at 18:00/.test(e.textContent))`, { timeout: 8000 });
+    const r24 = await rows();
+    await t('tp-audit HR-01: the 12/24-hour preference reaches the new wording',
+      /Opens at 18:00/.test(pick(r24, 'Above The Grid').text || '')
+      && /Closed at 23:30/.test(pick(r24, 'Dawn Cafe').text || ''),
+      JSON.stringify({ early: pick(r24, 'Above The Grid'), late: pick(r24, 'Dawn Cafe') }), s);
+    await t('tp-audit HR-01: no page errors', tpErrors(s).length === 0, tpErrors(s).slice(0, 2).join(' | '), s);
   });
 
   return R;

@@ -6345,7 +6345,7 @@
     const closed = opts.map(o => {
       const h = o.querySelector('.ap-hours');
       const verdict = h ? h.dataset.verdict : '';
-      return verdict === 'closed' || verdict === 'closingSoon';
+      return verdict === 'closed' || verdict === 'beforeOpen' || verdict === 'closingSoon';
     });
     const badges = candidateBadges({ kms, ratings, closed });
     opts.forEach((o, i) => {
@@ -9145,10 +9145,19 @@
     const when = `${fmtDow(date)}, ${fmtDate(date)}`;
     let text = `Hours · ${line === 'Closed' ? 'Closed that day' : line}`;
     let title = `Opening hours on Google Maps for ${when}: ${line}.`;
-    if (v && v.status === 'closed') {
+    if (v && v.status === 'beforeOpen') {
+      // Shut, but not because it closed: the doors open LATER that day. Saying
+      // "Closed at 5:30 PM" of a bar that opens at 6 is simply false, and it
+      // sends the traveller looking for a different venue when all they need
+      // is a later hour. Same demotion as closed (it is unavailable at the
+      // time proposed), different sentence.
+      el.classList.add('is-closed');
+      text = `Opens at ${fmtTime(minToHHMM(v.opensMin))} · Hours: ${line}`;
+      title += ` The scheduled time, ${fmtTime(time)}, is before it opens that day.`;
+    } else if (v && v.status === 'closed') {
       el.classList.add('is-closed');
       text = day.intervals.length ? `Closed at ${fmtTime(time)} · Hours: ${line}` : 'Closed that day';
-      title += ` The scheduled time, ${fmtTime(time)}, falls outside them (a start at closing time counts as closed).`;
+      title += ` The scheduled time, ${fmtTime(time)}, falls after it closes (a start at closing time counts as closed).`;
     } else if (v && v.status === 'closingSoon') {
       // Technically open, too little of the visit left to recommend: visibly
       // distinct from closed (amber), and it says how much remains and why
@@ -9174,7 +9183,9 @@
     // unchanged and hands off to the item form instead, raced paints included.
     // The two states demote in different colours, so "shut" and "too tight"
     // never read as the same claim.
-    const demote = !v ? '' : (v.status === 'closed' ? 'is-closed' : (v.status === 'closingSoon' ? 'is-closing' : ''));
+    // beforeOpen demotes exactly as closed does: unavailable at the proposed
+    // time is unavailable, whichever side of the opening hour it falls on.
+    const demote = !v ? '' : ((v.status === 'closed' || v.status === 'beforeOpen') ? 'is-closed' : (v.status === 'closingSoon' ? 'is-closing' : ''));
     if (demote) {
       const opt = el.closest('.as-opt');
       if (opt) opt.classList.add(demote);
@@ -9653,10 +9664,10 @@
     // the two are told apart in `kind` so the dialog can say which.
     const win = recommendWindowMin({ ...probe, mapsQuery: query }) || 0;
     const v = hoursVerdict(hours, date, time, win);
-    if (v.status !== 'closed' && v.status !== 'closingSoon') return null;
+    if (v.status !== 'closed' && v.status !== 'beforeOpen' && v.status !== 'closingSoon') return null;
     const day = hoursIntervalsForDate(hours, date);
     return {
-      kind: v.status, date, time, closesMin: v.closesMin, windowMin: win,
+      kind: v.status, date, time, closesMin: v.closesMin, opensMin: v.opensMin, windowMin: win,
       allDay: !day.always && !day.intervals.length, line: hoursLineText(day, fmtTime),
     };
   }
@@ -9691,6 +9702,14 @@
         sentence = `Google Maps lists "${title}" as closing at ${fmtTime(minToHHMM(refused.closesMin))} `
           + `on ${fmtDate(refused.date)} - only ${left} minutes after the proposed ${fmtTime(refused.time)} start, `
           + `under the ${refused.windowMin} minutes this kind of stop needs. The assistant cannot recommend it at this time.`;
+      } else if (refused.kind === 'beforeOpen') {
+        // The refusal is the same; the REASON is not, and telling a traveller
+        // their 5:30 booking is "closed" when the place opens at 6 sends them
+        // hunting for another venue instead of moving the hour.
+        heading = 'Not open yet';
+        sentence = `Google Maps lists "${title}" as opening at ${fmtTime(minToHHMM(refused.opensMin))} `
+          + `on ${fmtDate(refused.date)}, after the proposed ${fmtTime(refused.time)} start `
+          + `(verified hours that day: ${refused.line}), so the assistant cannot add it at this time.`;
       } else {
         heading = 'Closed at that time';
         const what = refused.allDay

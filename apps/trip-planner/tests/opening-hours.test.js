@@ -37,10 +37,17 @@ test('one minute before closing is still open (22:59 vs a 23:00 close)', () => {
   assert.equal(v.closesMin, 23 * 60);
 });
 
-test('after closing is closed, before opening is closed, at opening is open', () => {
+// Shut is two different facts, and they used to be one answer: a 10:00 booking
+// at a venue open 16:00-23:00 came back 'closed' and the row read "Closed at
+// 10:00 AM", which is false - it had not opened. 'beforeOpen' carries the hour
+// it does open, so every surface can say so.
+test('after closing is closed, before opening is beforeOpen, at opening is open', () => {
   assert.equal(L.hoursVerdict(EVERY_DAY_16_23, SAT, '23:30').status, 'closed');
-  assert.equal(L.hoursVerdict(EVERY_DAY_16_23, SAT, '10:00').status, 'closed');
+  const early = L.hoursVerdict(EVERY_DAY_16_23, SAT, '10:00');
+  assert.equal(early.status, 'beforeOpen');
+  assert.equal(early.opensMin, 16 * 60);
   assert.equal(L.hoursVerdict(EVERY_DAY_16_23, SAT, '16:00').status, 'open');
+  assert.equal(L.hoursVerdict(EVERY_DAY_16_23, SAT, '15:59').status, 'beforeOpen');
 });
 
 test('closed all day: a venue with no periods on that weekday', () => {
@@ -52,9 +59,15 @@ test('closed all day: a venue with no periods on that weekday', () => {
   assert.equal(day.intervals.length, 0);
 });
 
-test('split hours 11:00-14:00 + 17:00-23:00: 15:00 closed, 20:00 open, 12:00 open', () => {
+test('split hours 11:00-14:00 + 17:00-23:00: 15:00 is between sittings, 20:00 open, 12:00 open', () => {
   const hours = { always: false, periods: [P(6, '11:00', 6, '14:00'), P(6, '17:00', 6, '23:00')], special: [] };
-  assert.equal(L.hoursVerdict(hours, SAT, '15:00').status, 'closed');
+  // between the two sittings the NEXT one is what matters, so this is
+  // beforeOpen with the 17:00 reopening, not "closed"
+  const between = L.hoursVerdict(hours, SAT, '15:00');
+  assert.equal(between.status, 'beforeOpen');
+  assert.equal(between.opensMin, 17 * 60);
+  // ...while after the last close there is nothing left that day
+  assert.equal(L.hoursVerdict(hours, SAT, '23:30').status, 'closed');
   assert.equal(L.hoursVerdict(hours, SAT, '20:00').status, 'open');
   assert.equal(L.hoursVerdict(hours, SAT, '12:00').status, 'open');
   // the covering interval's close is the one reported, not the day's last
@@ -128,7 +141,9 @@ test('a dated overnight period covers the small hours of the NEXT date', () => {
   };
   assert.equal(L.hoursVerdict(hours, SUN, '01:00').status, 'open');
   assert.equal(L.hoursVerdict(hours, SAT, '23:30').status, 'open');
-  assert.equal(L.hoursVerdict(hours, SAT, '12:00').status, 'closed', 'dated periods exist for that date and none covers noon');
+  const noon = L.hoursVerdict(hours, SAT, '12:00');
+  assert.equal(noon.status, 'beforeOpen', 'dated periods exist for that date and the 18:00 one is still ahead');
+  assert.equal(noon.opensMin, 18 * 60, 'a dated opening is what the next opening reads, not the weekly pattern');
 });
 
 test('hoursIntervalsForDate lists the intervals that START that day', () => {
@@ -308,7 +323,7 @@ test('split hours: the buffer measures to the end of the CURRENT interval, not t
   const lunchTail = L.hoursVerdict(hours, SAT, '13:31', 30);
   assert.equal(lunchTail.status, 'closingSoon');
   assert.equal(lunchTail.closesMin, 14 * 60, 'the 14:00 interval end decides, never the 23:00 close later that day');
-  assert.equal(L.hoursVerdict(hours, SAT, '15:00', 30).status, 'closed');
+  assert.equal(L.hoursVerdict(hours, SAT, '15:00', 30).status, 'beforeOpen', 'between sittings the doors open again at 17:00');
   assert.equal(L.hoursVerdict(hours, SAT, '22:30', 30).status, 'open');
   assert.equal(L.hoursVerdict(hours, SAT, '22:31', 30).status, 'closingSoon');
 });

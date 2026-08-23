@@ -4141,11 +4141,45 @@ const TripLogic = (() => {
     return best;
   }
 
+  /**
+   * The earliest opening on THIS calendar date that is still ahead of `t`, or
+   * null if the venue does not open again that day.
+   *
+   * This is what separates "has not opened yet" from "already closed", which
+   * the verdict used to collapse into one answer: a 17:30 booking at a bar
+   * open 18:00-02:00 read "Closed at 5:30 PM", which is false - it had not
+   * opened. Dated hours are authoritative for the dates they name (the same
+   * precedence hoursVerdict applies), so a special that opens later that day
+   * is the next opening and the weekly pattern is not consulted.
+   *
+   * Note what is NOT counted: a period that spilled over from yesterday closed
+   * before `t`, and a period opening tomorrow is not this date. Both leave the
+   * venue closed for the rest of today, which is exactly what 'closed' says.
+   */
+  function nextOpeningMin(hours, dateIso, t) {
+    const special = Array.isArray(hours.special) ? hours.special : [];
+    const dated = special.filter(p => p && p.open && p.open.date === dateIso);
+    const opens = dated.length
+      ? dated.map(p => p.open.min)
+      : (Array.isArray(hours.periods) ? hours.periods : [])
+        .filter(p => p && p.open && p.open.day === hoursDow(dateIso))
+        .map(p => p.open.min);
+    let best = null;
+    for (const m of opens) {
+      if (typeof m !== 'number' || m <= t) continue;
+      if (best == null || m < best) best = m;
+    }
+    return best;
+  }
+
   // The deterministic verdict the whole feature hangs on: is this venue open at
   // (dateIso, timeHHMM)? Answers 'open' (with closesMin, null for no known
   // close), 'closingSoon' (technically open, but with less than `windowMin`
   // minutes left before the covering interval closes - a recommendation-
-  // quality state, NOT another definition of closed), 'closed', or 'unknown' -
+  // quality state, NOT another definition of closed), 'beforeOpen' (with
+  // opensMin: shut at that time because the doors have not opened YET, which
+  // is a different fact from having closed and is worded as one everywhere),
+  // 'closed', or 'unknown' -
   // and unknown is a first-class answer, never collapsed into open OR into
   // closingSoon. Dated hours beat weekly hours for the dates they cover; a
   // date that HAS dated periods but none covering the time is closed by those
@@ -4173,14 +4207,22 @@ const TripLogic = (() => {
     const special = Array.isArray(hours.special) ? hours.special : [];
     const hit = specialCovering(special, dateIso, t);
     if (hit) return openAt(hit.closesMin);
-    if (special.some(p => p.open.date === dateIso)) return { status: 'closed', closesMin: null };
+    if (special.some(p => p.open.date === dateIso)) return shutVerdict(hours, dateIso, t);
     const periods = Array.isArray(hours.periods) ? hours.periods : [];
     if (!periods.length) return { status: 'unknown', closesMin: null };
     // A period spilling over from the previous day (or earlier) is what keeps
     // 01:00 inside "18:00-02:00" open; weeklyCovering's dd/dl walk covers it.
     const w = weeklyCovering(periods, hoursDow(dateIso), t);
     if (w) return openAt(w.closesMin);
-    return { status: 'closed', closesMin: null };
+    return shutVerdict(hours, dateIso, t);
+  }
+
+  // Shut at this time: which KIND of shut is the only question left.
+  function shutVerdict(hours, dateIso, t) {
+    const opensMin = nextOpeningMin(hours, dateIso, t);
+    return opensMin == null
+      ? { status: 'closed', closesMin: null }
+      : { status: 'beforeOpen', closesMin: null, opensMin };
   }
 
   // ---------- the minimum recommendation window, per venue category ----------
@@ -8862,7 +8904,7 @@ const TripLogic = (() => {
     parseMarkdown, parseMarkdownInline,
     normalizePlaceQuery, placeCacheKey, planPlacesLookup, placesCacheUpdates,
     createPlacesQueue, placesRetryDelay,
-    sanitizeHours, normalizeGoogleHours, hoursVerdict, hoursIntervalsForDate, hoursLineText,
+    sanitizeHours, normalizeGoogleHours, hoursVerdict, nextOpeningMin, hoursIntervalsForDate, hoursLineText,
     HOURS_CLOSING_SOON_MIN, RECOMMEND_HOURS_WINDOWS, recommendWindowMin,
     PLACES_BATCH_MAX, PLACES_CONCURRENCY, PLACES_DEFER_MS, PLACES_MAX_ATTEMPTS,
     VENUE_TTL_MS, VENUE_CACHE_MAX, venueFresh, normalizeVenueCache, rememberVenue,
