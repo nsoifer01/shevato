@@ -2111,6 +2111,11 @@ button.shape-tag.is-clickable:focus-visible {
   color: var(--good);
   font-size: 0.7rem;
 }
+/* Popularity rather than quality, so it gets its own hue: not the yellow of
+   "best", not the red of "worst", not the green of "watched". */
+.show-season .ss-most-rated {
+  color: var(--warn);
+}
 
 @media (max-width: 560px) {
   /* Tighter S# column + row gap on phones; the 2-row grid layout itself is
@@ -3238,7 +3243,8 @@ a.cast-card-inner:focus-visible {
 }
 .modal-episodes .ep-number,
 .modal-episodes .ep-name,
-.modal-episodes .ep-meta {
+.modal-episodes .ep-meta,
+.modal-episodes .ep-flags {
   position: relative;
   z-index: 2;
   pointer-events: none;
@@ -3301,6 +3307,28 @@ a.cast-card-inner:focus-visible {
   font-size: 0.74rem;
   white-space: nowrap;
 }
+/* Best / worst / most-rated episode markers. They sit in their own column
+   between the title and the ratings rather than after them: each <li> is an
+   independent grid, so a flag added at the end of a row would push that row's
+   rating and vote count out of line with every other row. The column only
+   exists when a season actually has flags (the class is toggled per season),
+   so a flagless list keeps its three-column layout with no dead gutter. */
+.modal-episodes.has-flags li {
+  grid-template-columns: 3rem 1fr auto auto;
+}
+.modal-episodes .ep-flags {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.12rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.modal-episodes .ep-flag-best { color: var(--accent); }
+.modal-episodes .ep-flag-worst { color: var(--danger); }
+.modal-episodes .ep-flag-most-rated { color: var(--warn); }
 
 .modal-actions {
   display: flex;
@@ -3582,6 +3610,9 @@ body.advanced-drawer-open {
     gap: 0.6rem;
     padding: 0.55rem 0.7rem;
     font-size: 0.88rem;
+  }
+  .modal-episodes.has-flags li {
+    grid-template-columns: 2.6rem 1fr auto auto;
   }
 
   /* Action buttons stack to be each full-width tappable bars. */
@@ -3899,6 +3930,20 @@ body.advanced-drawer-open {
     grid-template-columns: 2.4rem 1fr auto;
     padding: 0.5rem 0.6rem;
     font-size: 0.85rem;
+  }
+  /* Narrowest phones: the flag column stays but is allowed to wrap onto a
+     second line, which costs nothing (the ratings stack beside it is already
+     three lines tall) and hands the width back to the episode title, which is
+     the part that ellipsises. */
+  .modal-episodes.has-flags li {
+    grid-template-columns: 2.4rem 1fr auto auto;
+  }
+  .modal-episodes .ep-flags {
+    font-size: 0.62rem;
+    align-items: flex-end;
+    text-align: right;
+    white-space: normal;
+    max-width: 3.3rem;
   }
 
   /* Pager: drop ellipsis tokens and lean on prev/next for navigation. */

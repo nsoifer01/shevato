@@ -337,6 +337,57 @@ render-show-page's `computeOverallAvgRating`) now go through integer tenths -
 accumulation order. Verified: 0 shows differ at 2 dp, and all 32,325 pages that
 print the number agree with the app.
 
+## Highlight badges: one rule, two levels (2026-08-23)
+
+The show modal marks a show's best and worst season; the season modal now marks
+a season's best, worst and most-rated episode, and both levels also mark the
+most-rated season. All of it runs through one helper, `pickHighlights(items)`
+in `js/app.js`, because the questions are identical and two copies would drift
+the way the provider list did.
+
+What the helper refuses to answer matters more than what it computes:
+
+- **Fewer than two rated items: no best, no worst.** A single-season show and a
+  single-episode season have no contest. This was already the rule for the
+  season badges and now covers episodes too.
+- **All ratings equal: no best and no worst.** Otherwise the same entry gets
+  badged both. Real case: Another Self season 2, where all eight episodes sit
+  at 9.6 - it correctly shows only a most-rated badge.
+- **Votes missing, all equal, or zero: no most-rated badge.**
+- **Ties keep the earlier entry.** Both callers pass ascending season/episode
+  order, so the first of two equal peaks wins deterministically instead of
+  depending on which one a sort left last.
+
+Most rated is popularity, not quality, so it is an independent badge rather
+than part of the best-or-worst either-or: Breaking Bad season 5 is both, and
+Ozymandias (506k ratings) is the most-rated episode of a season whose best is
+Felina. It is coloured `--warn` for that reason - not the yellow of best, the
+red of worst, or the green of watched.
+
+**There is no per-season vote total in the payload.** `minVotes` on an index
+record is the LOWEST episode vote count in that season, a build-time floor used
+for filtering, not a sum. The most-rated season is therefore folded from the
+per-episode data the modal has already loaded (`seasonVoteTotal`), which means
+it is the one badge that a failed detail fetch removes. Best and worst survive,
+because they come from the index-backed averages in `buildBestSeasonMap`. This
+is deliberate: no pipeline change, and the degraded modal stays honest.
+
+**Every `.modal-episodes li` is its own grid, not a row of a shared one.** A
+flag column appended at the END of a flagged row therefore pushed that row's
+rating and vote count left while unflagged rows kept theirs at the edge, and
+the numbers went visibly ragged down the list. Two things fix it together: the
+flag column sits BEFORE the ratings, and the cell is emitted on every row of a
+flagged season (empty cells collapse to zero width). The `has-flags` class on
+the `<ul>` is what turns the fourth column on, so a season with nothing to flag
+keeps the old three-column layout with no dead gutter - and it has to be
+toggled off again, since the list element is reused across seasons. Verified at
+1280 and 390: rating right edges identical on flagged and unflagged rows
+(955.1 px and 345.5 px respectively).
+
+On phones the flag labels wrap to two lines inside a 3.3rem cap rather than
+squeezing the title further; the ratings stack beside them is already three
+lines tall, so the rows do not grow.
+
 ## Gotchas
 
 - **A missing numeric guard NaN-poisons whole-series folds.** Defect 15:
@@ -356,6 +407,13 @@ print the number agree with the app.
   because `build-data.js` writes both in one pass; split-data merges by
   `String(m.season)` lookup and silently skips extras for series/seasons
   not in `data.json` (e.g. shows that fell below the vote floor).
+- **A `\d` inside a browser-suite template literal is just `d`.** The checks
+  in `tests/browser/suites/*.mjs` build their expressions as template
+  literals, so a regex written `/[^\d]/` reaches the page as `/[^d]/` and
+  quietly matches the wrong thing - `parseInt` then returns NaN and the check
+  fails for a reason that has nothing to do with the app. Source must carry
+  `\\d` (as the existing `([\\d,]+)\\s+shows?` check does). Cost one
+  debug cycle on the badge checks, 2026-08-23.
 - **The vm test harness (`tests/app-features.test.js`) reaches only what
   `window._rsTestExports` lists** at the bottom of `js/app.js`. Watched
   and Compare were unreachable until exported there (2026-08-15); their
