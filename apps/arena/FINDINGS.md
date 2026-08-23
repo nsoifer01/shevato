@@ -321,6 +321,23 @@ beside it, so a regression fails a suite rather than reappearing silently.
   latency and failed on a loaded machine; comparing against
   `questionStartedAt + asking + reveal` from the room doc is what the product
   actually promises.
+- **Back-to-back runs need the emulator ports to be RELEASED, not just the
+  processes killed.** The firestore/database emulators hold 8085/9000/4400
+  for several seconds after the runner exits, and the runner correctly
+  refuses to share a port (it SKIPs with "something already listens on
+  ..."). A loop that starts the next run immediately gets a skipped run, or
+  worse kills the previous run mid-scenario. Wait for `ss -ltn` to show every
+  port free before starting again.
+- **`beforeunload` write announcements are best-effort by browser design.**
+  The ghost scenario used to assert that navigating a tab away leaves
+  `disconnectedAt` on the player doc; a browser is free to cancel an
+  unload-time async write, and roughly one run in four it did. That is not a
+  product failure - it is the reason liveness ALSO carries a `lastSeen`
+  heartbeat. The check now polls for the announcement and, if the browser
+  dropped it, records an explicit SKIP naming the reason, then ages the doc
+  through the owner bypass so the assertions that matter (liveness, the
+  Disconnected marker, the host sweep, early reveal, rematch counting) still
+  run deterministically. That also removed a 31 s real-time sleep.
 - **Each scenario runs inside its own guard and starts from the lobby**
   (`resetToLobby`, which leaves cleanly or reloads the page). A CDP
   `Input.dispatchMouseEvent` / `Runtime.evaluate` timeout under machine

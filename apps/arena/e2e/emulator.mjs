@@ -380,7 +380,7 @@ export async function run({ base, cdpPort, base2 = null }) {
   // snapshot (and the host re-renders again when it sweeps a ghost), so a
   // click that lands mid-rebuild is never delivered - a real player clicks
   // again, and so does this. Success is what the player DOC says.
-  const ensureAnswered = async (entries, code, qid, attempts = 3) => {
+  const ensureAnswered = async (entries, code, qid, attempts = 5) => {
     const answeredFor = async (uid) => {
       const d = fieldsOf(await ownerGetDocRaw(`triviaRooms/${code}/players/${uid}`, PAGE_PROJECT));
       return d.currentAnsweredFor === qid;
@@ -395,13 +395,18 @@ export async function run({ base, cdpPort, base2 = null }) {
       if (seen.every(Boolean)) return { ok: true, seen };
       const st = await roomState(code);
       if (st.qid !== qid || st.status !== 'playing') break; // window closed
-      const missing = entries.filter((_, i) => !seen[i]);
-      await Promise.all(missing.map((e) => (e.kind === 'wrong' ? answerWrong(e.s) : answerCorrectly(e.s))));
-      for (let i = 0; i < 32; i++) { // up to 8s for the writes to land
+      // Activate the tab before driving it: a background target can drop or
+      // throttle synthetic input, and fronting it costs nothing.
+      for (const e of entries.filter((_, i) => !seen[i])) {
+        await front(e.s);
+        await (e.kind === 'wrong' ? answerWrong(e.s) : answerCorrectly(e.s));
+      }
+      // Re-read quickly rather than camping: a local emulator write appears
+      // in well under a second, and the asking window can be as short as
+      // 10 s, so a long poll would spend the whole window on one attempt.
+      for (let i = 0; i < 6; i++) {
         const now = await readAll();
         if (now.every(Boolean)) return { ok: true, seen: now };
-        const room = await roomState(code);
-        if (room.qid !== qid || room.status !== 'playing') break;
         await sleep(250);
       }
     }

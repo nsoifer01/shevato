@@ -331,8 +331,15 @@ if (!setup.ok) {
             { status: 'playing', currentQuestionIndex: 1, questionStartedAt: ago(60000), revealStartedAt: null, paused: true }, HOST), 200);
         assert.equal(await updateDoc('triviaRooms/PUBAA', Object.assign({}, advance, { currentQuestionIndex: 2 }), GUEST), 403, 'paused: denied');
         // Early reveal shortens the deadline: revealStartedAt + 2.5 s.
+        //
+        // revealStartedAt is stamped NOW, not 1 s ago, on purpose. The window
+        // is only 2.5 s, so a 1 s head start left just 1.5 s for the next REST
+        // round trip; on a loaded machine that elapsed and the rule then
+        // ALLOWED the advance, which is correct behaviour but reads as a
+        // failure (seen 2026-08-23). Starting at zero gives the full window
+        // and asserts the same rule.
         assert.equal(await updateDoc('triviaRooms/PUBAA',
-            { paused: false, questionStartedAt: ago(1000), revealStartedAt: ago(1000) }, HOST), 200);
+            { paused: false, questionStartedAt: new Date(), revealStartedAt: new Date() }, HOST), 200);
         assert.equal(await updateDoc('triviaRooms/PUBAA', Object.assign({}, advance, { currentQuestionIndex: 2 }), GUEST), 403, 'reveal still running: denied');
         assert.equal(await updateDoc('triviaRooms/PUBAA', { revealStartedAt: ago(3000) }, HOST), 200);
         assert.equal(await updateDoc('triviaRooms/PUBAA',
