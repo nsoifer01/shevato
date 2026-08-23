@@ -19,6 +19,7 @@
 //   DM-02  a visa reminder is a deadline, not thirty extra days of trip
 //   DM-03  switching currency converts the budget instead of relabelling it
 //   HR-01  a venue that has not opened yet says so, instead of "Closed at"
+//   MV-01  a handover day measures from the hotel it wakes up in
 import {
   APP, recorder, freshIds, iso, item, trip, dbOf,
   openApp, openTab, readDb, activeTripOf, tpErrors, closePage, evaluate, evalAsync, waitForExpr,
@@ -729,6 +730,80 @@ export async function run({ base, cdpPort }) {
       && /Closed at 23:30/.test(pick(r24, 'Dawn Cafe').text || ''),
       JSON.stringify({ early: pick(r24, 'Above The Grid'), late: pick(r24, 'Dawn Cafe') }), s);
     await t('tp-audit HR-01: no page errors', tpErrors(s).length === 0, tpErrors(s).slice(0, 2).join(' | '), s);
+  });
+
+
+  /* ===== MV-01: the morning bed, not the night's ==========================
+     Check out of Tokyo, take the 10:30 train, check into Kyoto. The 8:00
+     breakfast in Ginza was measured from the Kyoto hotel: "~232 mi" on the
+     first chip and Directions from the wrong end of the country. */
+  freshIds();
+  const hDate = iso(25);
+  const handoverTrip = trip({
+    name: 'Japan handover', items: [
+      item({ id: 'mv-tokyo', type: 'stay', title: 'Hotel Ryumeikan Tokyo', location: 'Tokyo', startDate: iso(20), endDate: hDate, status: 'booked' }),
+      item({ id: 'mv-break', title: 'Kimuraya Ginza', location: 'Tokyo', mapsQuery: 'Kimuraya Ginza Tokyo', startDate: hDate, startTime: '08:00', status: 'booked' }),
+      item({ id: 'mv-train', type: 'transport', title: 'Tokyo to Kyoto', location: 'Kyoto', startDate: hDate, startTime: '10:30', status: 'booked' }),
+      item({ id: 'mv-kyoto', type: 'stay', title: 'Hotel Kanra Kyoto', location: 'Kyoto', startDate: hDate, endDate: iso(30), status: 'booked' }),
+      item({ id: 'mv-market', title: 'Nishiki Market', location: 'Kyoto', mapsQuery: 'Nishiki Market Kyoto', startDate: hDate, startTime: '15:00', status: 'booked' }),
+    ],
+  });
+  // Coordinates warmed the way the app stores them, so no lookup is needed.
+  const mvStores = await (async () => {
+    const key = (q) => q; // filled in-page below, where TripLogic is available
+    void key;
+    return null;
+  })();
+  void mvStores;
+  await withPage('tp-audit MV-01', { db: dbOf([handoverTrip]) }, async (s) => {
+    // seed both caches through the app's own key function, then re-boot: the
+    // caches are read into closure state exactly once, at load
+    await evaluate(s, `(() => {
+      const now = Date.now();
+      const venue = {};
+      const put = (q, lat, lon) => { venue[TripLogic.placeCacheKey(q)] = { lat, lon, at: now }; };
+      put('Kimuraya Ginza Tokyo', 35.672, 139.765);
+      put('Nishiki Market Kyoto', 35.005, 135.765);
+      put('Hotel Ryumeikan Tokyo Tokyo', 35.686, 139.774);
+      put('Hotel Kanra Kyoto Kyoto', 34.996, 135.759);
+      localStorage.setItem('trip-planner:venuegeo:v1', JSON.stringify(venue));
+      localStorage.setItem('trip-planner:geo:v3', JSON.stringify({
+        tokyo: { lat: 35.6762, lon: 139.6503, country: 'Japan', conf: 'confident' },
+        kyoto: { lat: 35.0116, lon: 135.7681, country: 'Japan', conf: 'confident' },
+      }));
+      return 1; })()`);
+    await gotoHard(s, base + APP + '#days');
+    await waitForExpr(s, `document.querySelectorAll('#daysList .dc-dist').length > 0`, { timeout: 12000 });
+    const chips = await evaluate(s, `[...document.querySelectorAll('.dc-event')].map(r => ({
+      title: ((r.querySelector('.dc-title') || {}).textContent || '').replace(/\\s+/g, ' ').trim(),
+      dist: ((r.querySelector('.dc-dist') || {}).textContent || '').trim(),
+      dir: (() => { const a = r.querySelector('[data-dir-type]'); return a ? (a.getAttribute('href') || '') : ''; })(),
+    }))`);
+    const breakfast = chips.find(c => c.title.includes('Kimuraya')) || {};
+    const market = chips.find(c => c.title.includes('Nishiki')) || {};
+    const miles = str => { const m = /~([\d.]+)\s*mi\b/.exec(str || ''); return m ? Number(m[1]) : null; };
+    // Tokyo-internal either way: the reported bug measured this row at ~232 mi
+    // because it started in Kyoto. (The hotel's own coordinate is not seeded
+    // here, so the anchor falls back to the Tokyo centroid, which is exactly
+    // what a trip whose hotel was typed rather than picked does.)
+    await t('tp-audit MV-01: the morning stop is measured inside Tokyo, not from the next city',
+      miles(breakfast.dist) !== null && miles(breakfast.dist) < 25,
+      JSON.stringify(breakfast), s);
+    await t('tp-audit MV-01: and its Directions start at that hotel, not the next city',
+      /Ryumeikan|Tokyo/.test(decodeURIComponent(breakfast.dir || '')) && !/Kanra/.test(decodeURIComponent(breakfast.dir || '')),
+      decodeURIComponent(breakfast.dir || '').slice(0, 160), s);
+    await t('tp-audit MV-01: after the train, Kyoto stops measure from Kyoto',
+      miles(market.dist) !== null && miles(market.dist) < 20, JSON.stringify(market), s);
+    // the day's own label is a different question from where its chain starts,
+    // and it still answers "where is this day": the city it ends in
+    const handoverChip = await evaluate(s, `(() => {
+      const row = [...document.querySelectorAll('.dc-event')].find(r => /Kimuraya/.test(r.textContent));
+      const card = row && row.closest('.day-card');
+      const chip = card && card.querySelector('.dc-chip-city');
+      return chip ? chip.textContent.trim() : '(no card)'; })()`);
+    await t('tp-audit MV-01: the day still belongs to the city it ends in',
+      handoverChip === 'Kyoto', handoverChip, s);
+    await t('tp-audit MV-01: no page errors', tpErrors(s).length === 0, tpErrors(s).slice(0, 2).join(' | '), s);
   });
 
   return R;

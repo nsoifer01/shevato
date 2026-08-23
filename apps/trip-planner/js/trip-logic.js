@@ -2723,11 +2723,30 @@ const TripLogic = (() => {
   // checking out of still answers "where am I today". Computed for EVERY day,
   // not only quiet ones, so a busy day never loses its hotel.
   function dayHostStay(items, date) {
+    return stayFor(items, date, 'night');
+  }
+
+  /**
+   * The bed you WAKE UP in on this date, which is a different question from
+   * which bed the NIGHT is booked in, and on a handover day they are two
+   * hotels in two cities: you check out of Tokyo in the morning and into Kyoto
+   * in the evening. dayHostStay answers the night (night coverage, the
+   * "staying at" line, the day's city); this answers the morning, and the day's
+   * route chain starts from it - measuring an 8:00 Tokyo breakfast from the
+   * Kyoto hotel produced a ~232 mi first chip and Directions from the wrong
+   * end of the country.
+   */
+  function dayMorningStay(items, date) {
+    return stayFor(items, date, 'morning');
+  }
+
+  // One filter, two orders of preference.
+  function stayFor(items, date, which) {
     const stays = (items || []).filter(it => isStay(it) && it.status !== 'cancelled'
       && (it.location || '').trim() && isIsoDate(it.startDate) && isIsoDate(it.endDate));
-    return stays.find(s => s.startDate <= date && date < s.endDate)
-      || stays.find(s => s.endDate === date)
-      || null;
+    const covering = stays.find(s => s.startDate <= date && date < s.endDate);
+    const ending = stays.find(s => s.endDate === date);
+    return (which === 'morning' ? (ending || covering) : (covering || ending)) || null;
   }
 
   // What a day tile with nothing on it says. "No plans yet" is only TRUE when
@@ -4718,7 +4737,12 @@ const TripLogic = (() => {
     // caller resolves `iata`); a code-less arrival falls back to its city.
     const arr = dayArrival(items, date);
     if (arr) return { source: 'arrival', item: arr.item, label: arr.label, city: arr.city, iata: arr.iata };
-    const host = dayHostStay(items, date);
+    // The MORNING bed, not the night's: on a day that checks out of one city
+    // and into another, the chain starts where the traveller wakes up and hands
+    // over at the leg between them (the leg is a stop on the chain, so
+    // everything after it measures from where it lands). Reading the night's
+    // stay here is what measured a Tokyo breakfast from a Kyoto hotel.
+    const host = dayMorningStay(items, date);
     if (host) {
       return { source: 'stay', item: host, label: displayTitle(host), city: String(host.location || '').trim() };
     }
@@ -8890,7 +8914,7 @@ const TripLogic = (() => {
     transportGaps, connectionWarnings, sameTimeCollisions, TIGHT_CONNECTION_MIN, tripPhase, isPastRow,
     bookingDeadlines, BOOKING_LEAD_DAYS,
     paceAdvisory, PACE_MIN_STAYS, PACE_FAST_AVG_NIGHTS,
-    dayCards, dayHostStay, dayItemsInOrder, emptyDayNote, stripPlaceCode, parseTravelOrigin, dayMorningCity,
+    dayCards, dayHostStay, dayMorningStay, dayItemsInOrder, emptyDayNote, stripPlaceCode, parseTravelOrigin, dayMorningCity,
     departureOrigin, suggestedPassport, passportAssumptionParts,
     coveringStay, timelineGroups,
     defaultPlanDay, planDayGroups, weatherKey, summarizeClimate, weatherLine, weatherRange, pickMonthSamples, docGuard,

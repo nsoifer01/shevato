@@ -4,8 +4,8 @@
 //
 // This file holds the findings whose fix lives in PURE logic, so they are
 // pinned here rather than through a browser: connection warnings that a
-// non-leg item used to hide (DM-01) and night coverage on a trip with no stay
-// at all (DM-06). The rest of the round's fixes are DOM or state facts and are
+// non-leg item used to hide (DM-01), night coverage on a trip with no stay at
+// all (DM-06), and the morning bed a day's route chain starts from (MV-01). The rest of the round's fixes are DOM or state facts and are
 // covered by e2e/audit-fixes.mjs instead.
 //
 // Each block names the finding it defends and what the old behaviour actually
@@ -169,4 +169,72 @@ test('DM-06: the gap a stayless trip reports still prefills an Add stay', () => 
   assert.equal(pre.nights, 2);
   // and it is a range validateItem accepts, or the form could not be saved
   assert.deepEqual(L.validateItem({ type: 'stay', title: 'Hotel', startDate: pre.startDate, endDate: pre.endDate }), {});
+});
+
+// ---------------------------------------------------------------------------
+// MV-01: a day's route chain starts at the bed you WOKE UP in
+// ---------------------------------------------------------------------------
+// On a handover day (check out of Tokyo, train at 10:30, check into Kyoto)
+// dayAnchor read the stay covering the NIGHT, so the 8:00 Tokyo breakfast was
+// measured from the Kyoto hotel: a ~232 mi first chip and Directions from the
+// wrong end of the country. dayHostStay still answers the night; dayMorningStay
+// answers the morning, and only the chain's start moved.
+
+const handover = () => [
+  { id: 's1', type: 'stay', title: 'Hotel Ryumeikan Tokyo', location: 'Tokyo', startDate: '2026-11-20', endDate: '2026-11-25', status: 'booked' },
+  { id: 'b', type: 'activity', title: 'Kimuraya Ginza', location: 'Tokyo', startDate: '2026-11-25', startTime: '08:00', status: 'booked' },
+  { id: 't', type: 'transport', title: 'Tokyo to Kyoto', location: 'Kyoto', startDate: '2026-11-25', startTime: '10:30', status: 'booked' },
+  { id: 's2', type: 'stay', title: 'Hotel Kanra Kyoto', location: 'Kyoto', startDate: '2026-11-25', endDate: '2026-12-01', status: 'booked' },
+  { id: 'k', type: 'activity', title: 'Nishiki Market', location: 'Kyoto', startDate: '2026-11-25', startTime: '15:00', status: 'booked' },
+];
+const resolved = () => true;
+
+test('MV-01: the handover day anchors at the hotel being checked OUT of', () => {
+  const a = L.dayAnchor(handover(), '2026-11-25', resolved);
+  assert.equal(a.source, 'stay');
+  assert.equal(a.label, 'Hotel Ryumeikan Tokyo');
+  assert.equal(a.city, 'Tokyo');
+});
+
+test('MV-01: the night stay, night coverage and the day city are untouched', () => {
+  const items = handover();
+  assert.equal(L.dayHostStay(items, '2026-11-25').title, 'Hotel Kanra Kyoto');
+  assert.equal(L.dayMorningStay(items, '2026-11-25').title, 'Hotel Ryumeikan Tokyo');
+  // the day's own city still answers "where is this day", which is where it ends
+  assert.equal(L.dayMorningCity(items, '2026-11-25', resolved).city, 'Kyoto');
+  // and the nights either side are covered exactly as before
+  assert.deepEqual(L.coverageGaps(items.filter(i => i.type === 'stay'), '2026-12-01', []), []);
+});
+
+test('MV-01: ordinary days are unchanged in both directions', () => {
+  const items = handover();
+  // an interior night of the first stay
+  assert.equal(L.dayAnchor(items, '2026-11-22', resolved).label, 'Hotel Ryumeikan Tokyo');
+  // the last day, where a stay ends and nothing starts
+  assert.equal(L.dayAnchor(items, '2026-12-01', resolved).label, 'Hotel Kanra Kyoto');
+  // a day with no stay at all falls through to the city, as before
+  assert.equal(L.dayAnchor([{ id: 'x', type: 'activity', title: 'Museum', location: 'Rome', startDate: '2027-01-05', status: 'booked' }], '2027-01-05', resolved).city, 'Rome');
+});
+
+test('MV-01: the chain hands over at the leg between the two cities', () => {
+  const P = (id, label, lat, lon) => ({ id, label, lat, lon });
+  const legs = L.dayDistanceChain(
+    P('s1', 'Hotel Ryumeikan Tokyo', 35.686, 139.774),
+    [P('b', 'Kimuraya Ginza', 35.672, 139.765), P('t', 'Tokyo to Kyoto', 34.985, 135.758), P('k', 'Nishiki Market', 35.005, 135.765)],
+  );
+  assert.equal(legs.length, 3);
+  assert.equal(legs[0].from, 'Hotel Ryumeikan Tokyo');
+  assert.ok(legs[0].km < 5, `the breakfast is a walk away, not ${Math.round(legs[0].km)} km`);
+  assert.ok(legs[1].km > 300, 'the journey itself is the long leg');
+  assert.equal(legs[2].from, 'Tokyo to Kyoto');
+  assert.ok(legs[2].km < 5, 'once the train has landed, Kyoto stops measure from Kyoto');
+});
+
+test('MV-01: an arrival day still anchors where it lands', () => {
+  const items = [
+    { id: 'f', type: 'flight', title: 'Rome (FCO) to Tokyo (HND)', startDate: '2026-11-19', startTime: '10:00', endDate: '2026-11-20', endTime: '08:00', status: 'booked' },
+    { id: 's1', type: 'stay', title: 'Hotel Ryumeikan Tokyo', location: 'Tokyo', startDate: '2026-11-20', endDate: '2026-11-25', status: 'booked' },
+  ];
+  const a = L.dayAnchor(items, '2026-11-20', resolved);
+  assert.equal(a.source, 'arrival');
 });
