@@ -263,13 +263,15 @@ export async function run({ base, cdpPort }) {
   await setViewport(s, 1280, 900);
 
   // --- apex shell (index.html) -----------------------------------------------
-  // Fetched as text: the shell meta-refreshes to /home.html instantly, so a
+  // Fetched as text: the shell meta-refreshes to /home instantly, so a
   // navigation would assert against the wrong document. Structure only.
+  // The target is the extensionless /home (never /home.html): /home.html
+  // 301s to /home on production, so the .html form was a two-hop redirect.
   const apex = await evalAsync(s, `fetch('/index.html').then(r=>r.ok?r.text():'')`);
   t('apex shell: serves with content', typeof apex === 'string' && apex.length > 100,
     `len=${typeof apex === 'string' ? apex.length : typeof apex}`);
-  t('apex shell: meta-refresh fallback to /home.html',
-    /http-equiv="refresh"[^>]*url=\/home\.html/i.test(apex));
+  t('apex shell: meta-refresh fallback to /home',
+    /http-equiv="refresh"[^>]*url=\/home["'\s]/i.test(apex));
   t('apex shell: apex-redirect.js wiring present', /assets\/js\/apex-redirect\.js/.test(apex));
   t('apex shell: canonical points at /home',
     /rel="canonical" href="https:\/\/shevato\.com\/home"/.test(apex));

@@ -1,5 +1,5 @@
 {
-  "comment": "THE canonical machine-readable app list. One entry per directory under apps/, A-Z by slug. Consumed by the static-page footer generators (apps/rising-shows/scripts/render-footer.js and apps/gym-tracker/scripts/render-footer.cjs) so a new app cannot be added to the site without every generated page's footer following, and pinned against apps.html, the homepage grid, the header and the sitemap by sync-system/tests/app-naming-consistency.test.mjs. The blurb is the one-line footer form; longer copy lives on each surface.",
+  "comment": "THE canonical machine-readable app list. One entry per directory under apps/, A-Z by slug. Consumed by the static-page footer generators (apps/rising-shows/scripts/render-footer.js and apps/gym-tracker/scripts/render-footer.cjs) so a new app cannot be added to the site without every generated page's footer following, and pinned against apps.html, the home.html side-projects strip, the header and the sitemap by sync-system/tests/app-naming-consistency.test.mjs. The blurb is the one-line footer form; longer copy lives on each surface.",
   "apps": [
     { "slug": "arena", "name": "Arena", "blurb": "multiplayer party games with friends in private rooms" },
     { "slug": "football-h2h", "name": "Football H2H", "blurb": "head-to-head match tracker" },

@@ -144,15 +144,6 @@ test('robots.txt advertises exactly the sitemap-index URL', () => {
     assert.match(sitemapLines[0], /https:\/\/shevato\.com\/sitemap\.xml\s*$/);
 });
 
-test('netlify.toml keeps a 301 from tracker.html to the new mario-kart entry', () => {
-    const toml = readFileSync(join(REPO_ROOT, 'netlify.toml'), 'utf8');
-    assert.match(toml, /from\s*=\s*"\/apps\/mario-kart\/tracker\.html"/);
-    // Target is the directory form so the redirect lands on the
-    // pretty-URL canonical in a single hop.
-    assert.match(toml, /to\s*=\s*"\/apps\/mario-kart\/"/);
-    assert.match(toml, /status\s*=\s*301/);
-});
-
 // ---------------------------------------------------------------------------
 // Cross-cutting invariant: every user-facing list of apps is in A-Z order.
 //

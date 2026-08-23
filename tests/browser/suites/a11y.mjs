@@ -501,5 +501,141 @@ export async function run({ base, cdpPort }) {
     } finally { await closePage(cdpPort, s); }
   } catch (e) { t('kbd gym-tracker: block ran', false, String(e && e.message).slice(0, 140)); }
 
+  // B7: mobile menu as a modal overlay at 390x844 (assets/js/main.js
+  // initializeMenu: focus moves to the first link on open, Tab/Shift+Tab
+  // wrap inside #menu, Escape hands focus back to the toggle; main.css locks
+  // body scroll while is-menu-visible is set). The Tab wrap is driven with
+  // real keys; only the starting element of each wrap is placed with
+  // focus(), because the trap is a keydown handler and a synthetic focus
+  // change alone proves nothing.
+  try {
+    const s = await newPage(cdpPort);
+    try {
+      await setViewport(s, 390, 844, true);
+      await goto(s, `${base}/home.html`, { settle: 2400 });
+      await clickSel(s, 'a[href="#menu"]', { settle: 900 });
+      const opened = await evaluate(s, `(()=>({
+        vis: document.body.classList.contains('is-menu-visible'),
+        focusInside: document.getElementById('menu').contains(document.activeElement),
+        active: (document.activeElement||{}).textContent || (document.activeElement||{}).tagName,
+        overflow: getComputedStyle(document.body).overflow,
+      }))()`);
+      t('kbd mobile menu: focus moves inside #menu on open', opened.vis && opened.focusInside,
+        JSON.stringify(opened));
+      t('kbd mobile menu: body scroll is locked while the menu is open', opened.overflow === 'hidden',
+        `body overflow=${opened.overflow}`);
+
+      const focusLast = `(()=>{ const f=[...document.querySelectorAll('#menu a[href], #menu button:not([disabled])')];
+        f[f.length-1].focus(); return f.length })()`;
+      const focusFirst = `(()=>{ const f=[...document.querySelectorAll('#menu a[href], #menu button:not([disabled])')];
+        f[0].focus(); return f.length })()`;
+      const whichItem = `(()=>{ const f=[...document.querySelectorAll('#menu a[href], #menu button:not([disabled])')];
+        return { idx: f.indexOf(document.activeElement), n: f.length } })()`;
+      const n = await evaluate(s, focusLast);
+      await TAB(s);
+      const afterTab = await evaluate(s, whichItem);
+      t('kbd mobile menu: Tab from the last focusable wraps to the first', n > 1 && afterTab.idx === 0,
+        `focusables=${n}, landed on index ${afterTab.idx}`);
+      await evaluate(s, focusFirst);
+      await TAB(s, true);
+      const afterShiftTab = await evaluate(s, whichItem);
+      t('kbd mobile menu: Shift+Tab from the first focusable wraps to the last',
+        afterShiftTab.idx === afterShiftTab.n - 1 && afterShiftTab.n === n,
+        `focusables=${afterShiftTab.n}, landed on index ${afterShiftTab.idx}`);
+
+      await ESC(s);
+      await sleep(700);
+      const closed = await evaluate(s, `(()=>({
+        vis: document.body.classList.contains('is-menu-visible'),
+        focusOnToggle: document.activeElement === document.querySelector('[data-js="menu-toggle"]'),
+        active: (document.activeElement||{}).textContent || (document.activeElement||{}).tagName,
+        overflow: getComputedStyle(document.body).overflow,
+      }))()`);
+      t('kbd mobile menu: Escape returns focus to the toggle', !closed.vis && closed.focusOnToggle,
+        JSON.stringify(closed));
+      t('kbd mobile menu: body scroll unlocks after close', !closed.vis && closed.overflow !== 'hidden',
+        `body overflow=${closed.overflow}`);
+    } finally { await closePage(cdpPort, s); }
+  } catch (e) { t('kbd mobile menu focus: block ran', false, String(e && e.message).slice(0, 140)); }
+
+  // B8: the header Sign In button is a real touch target at both viewports
+  // (main.css pins #header .auth__button to min-height 44px, the WCAG 2.5.8
+  // AAA / Material minimum; 24x24 is the AA floor). Same precondition as
+  // B4: the button only renders once Firebase auth reports signed-out.
+  for (const [w, h, mobile] of [[1280, 900, false], [390, 844, true]]) {
+    const name = `touch target: header Sign In button is at least 44px tall and 24px wide at ${w}`;
+    try {
+      const s = await newPage(cdpPort);
+      try {
+        await setViewport(s, w, h, mobile);
+        await goto(s, `${base}/home.html`, { settle: 2400 });
+        const btnUp = await waitForExpr(s, `(()=>{const b=document.getElementById('auth-signin-btn');
+          return !!b && b.getBoundingClientRect().height>0})()`, { timeout: 12000 });
+        if (!btnUp) {
+          skip(name, 'precondition missing: #auth-signin-btn never rendered (Firebase auth did not initialize in this environment)');
+        } else {
+          const box = await evaluate(s, `(()=>{ const r=document.getElementById('auth-signin-btn').getBoundingClientRect();
+            return { w: Math.round(r.width), h: Math.round(r.height) } })()`);
+          t(name, box.h >= 44 && box.w >= 24, `${box.w}x${box.h}`);
+        }
+      } finally { await closePage(cdpPort, s); }
+    } catch (e) { t(name, false, String(e && e.message).slice(0, 140)); }
+  }
+
+  // B9: landmarks and skip link on every site page and app root. Exactly one
+  // main landmark (a <main> or [role=main]) carrying id="main-content", the
+  // FIRST Tab from the top of the document lands on a.skip-link whose href
+  // is #main-content (real key, so the skip link is proven first in focus
+  // order, not just first in source), and the shared header carries one nav
+  // labelled "Main navigation" and one labelled "Menu toggle". moadon-alef
+  // is a standalone landing without the shared header, so only the
+  // landmark/skip-link half applies to it. gym-tracker opens its onboarding
+  // dialog on first visit and a modal dialog legitimately owns focus, so it
+  // is visited with the dialog already dismissed (same seed as the state
+  // scan above).
+  const LANDMARK_PAGES = [
+    ...SITE_PAGES.map((p) => ({ label: `site ${p}`, url: `${base}/${p}.html`, header: p !== 'moadon-alef', settle: 2400 })),
+    ...APP_ROOTS.map((a) => ({ label: `app ${a}`, url: `${base}/apps/${a}/`, header: true, settle: a === 'rising-shows' ? 4000 : 2500 })),
+  ];
+  for (const pg of LANDMARK_PAGES) {
+    let s = null;
+    try {
+      s = await newPage(cdpPort);
+      await setViewport(s, 1280, 900);
+      if (pg.label === 'app arena') await interceptNetwork(s, (url) => (FIREBASE_HOSTS.test(url) ? 'fail' : null));
+      if (pg.label === 'app gym-tracker') {
+        await goto(s, pg.url, { settle: 1000 });
+        await evaluate(s, `(()=>{ localStorage.setItem('gymTrackerOnboardingSeen','true'); return 1 })()`);
+      }
+      await goto(s, pg.url, { settle: pg.settle });
+      if (pg.label === 'app gym-tracker') await evaluate(s, `(()=>{ localStorage.removeItem('gymTrackerOnboardingSeen'); return 1 })()`);
+      if (pg.header) await waitForExpr(s, `!!document.querySelector('#header nav')`, { timeout: 8000 });
+      await evaluate(s, `(()=>{ if(document.activeElement) document.activeElement.blur(); return 1 })()`);
+      await TAB(s);
+      const st = await evaluate(s, `(()=>{
+        const mains=[...document.querySelectorAll('main, [role="main"]')];
+        const a=document.activeElement;
+        const navs=[...document.querySelectorAll('#header nav')].map(n=>n.getAttribute('aria-label'));
+        return {
+          mains: mains.length, mainId: mains.length===1 ? mains[0].id : mains.map(m=>m.id).join('|'),
+          firstFocus: a ? (a.tagName.toLowerCase()+(a.className?'.'+String(a.className).split(' ')[0]:'')+' '+(a.getAttribute('href')||'')) : 'none',
+          skipLinkFirst: !!a && a.matches('a.skip-link') && a.getAttribute('href')==='#main-content',
+          navMain: navs.filter(l=>l==='Main navigation').length,
+          navToggle: navs.filter(l=>l==='Menu toggle').length,
+          navs,
+        } })()`);
+      t(`landmarks ${pg.label}: one main#main-content and the skip link is the first Tab stop`,
+        st.mains === 1 && st.mainId === 'main-content' && st.skipLinkFirst,
+        `mains=${st.mains} id=${st.mainId} firstFocus=${st.firstFocus}`);
+      if (pg.header) {
+        t(`landmarks ${pg.label}: header has one "Main navigation" nav and one "Menu toggle" nav`,
+          st.navMain === 1 && st.navToggle === 1, `header nav labels: ${JSON.stringify(st.navs)}`);
+      }
+    } catch (e) {
+      t(`landmarks ${pg.label}: one main#main-content and the skip link is the first Tab stop`, false, String(e && e.message).slice(0, 140));
+      if (pg.header) t(`landmarks ${pg.label}: header has one "Main navigation" nav and one "Menu toggle" nav`, false, 'page block threw');
+    } finally { if (s) await closePage(cdpPort, s); }
+  }
+
   return R;
 }
