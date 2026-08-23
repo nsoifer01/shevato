@@ -1,8 +1,8 @@
 {
   "name": "Shevato",
   "short_name": "Shevato",
-  "description": "Software engineering firm specializing in Spring Boot microservices, REST APIs, and full stack web applications.",
-  "start_url": "/home.html",
+  "description": "Software engineering services (Spring Boot microservices, REST APIs, full stack web apps) plus a set of free browser apps.",
+  "start_url": "/home",
   "scope": "/",
   "display": "browser",
   "background_color": "#ffffff",

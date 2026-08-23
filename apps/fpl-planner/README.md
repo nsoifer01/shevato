@@ -530,8 +530,8 @@ netlify dev
 
 # Plain static server: the proxy does not exist, and a direct call to FPL is
 # blocked by CORS. Use the sample dataset.
-python3 -m http.server 8081
-# open http://localhost:8081/apps/fpl-planner/?demo=1
+python3 -m http.server 8082
+# open http://localhost:8082/apps/fpl-planner/?demo=1
 ```
 
 **The two-port trap:** `netlify dev` listens twice, on the Netlify proxy (8888)

@@ -42,8 +42,7 @@ jobs:
                    assets/js/language-switcher.js \
                    assets/js/main.js \
                    assets/js/pagination.js \
-                   assets/js/passive-events-fix.js \
-                   assets/js/redirect-countdown.js; do
+                   assets/js/passive-events-fix.js; do
             node --check "$f"
           done
 

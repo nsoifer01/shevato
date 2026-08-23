@@ -59,6 +59,8 @@
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#0e1116">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway:300,400,500,600&display=swap">
+  <link rel="stylesheet" href="../../assets/css/firebase-auth.css">
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
   <link rel="stylesheet" href="/assets/css/back-to-top.css">
@@ -73,10 +75,11 @@
   <script defer src="/assets/js/analytics.js"></script>
 </head>
 <body class="tp-page">
+<a class="skip-link" href="#main-content">Skip to main content</a>
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
   <div data-include="header"></div>
 
-<div class="trip-planner-app">
+<main id="main-content" class="trip-planner-app">
 <div class="tp-wrap">
 
   <header class="tp-head">
@@ -884,7 +887,7 @@
     </div>
   </div>
 </aside>
-</div><!-- /.trip-planner-app -->
+</main><!-- /.trip-planner-app -->
 
   <!-- Data-source attribution. Licence conditions, not courtesies: OpenStreetMap
        data is ODbL (it drives place lookup for the route modal, the visa

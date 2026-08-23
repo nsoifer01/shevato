@@ -20,6 +20,8 @@
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-GEQGY35JJN"></script>
   <script defer src="/assets/js/analytics.js"></script>
 
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway:300,400,500,600&display=swap">
+  <link rel="stylesheet" href="assets/css/firebase-auth.css">
   <link rel="stylesheet" href="assets/css/main.css" />
   <link rel="stylesheet" href="assets/css/brand-colors.css" />
   <link rel="stylesheet" href="assets/css/site.css" />
@@ -90,7 +92,7 @@
 
       <article class="about-shell">
 
-        <p><strong>Last reviewed:</strong> 21 August 2026. <!-- TODO(owner): update this date whenever the behaviour described below changes. --></p>
+        <p><strong>Last reviewed:</strong> 22 August 2026. <!-- TODO(owner): update this date whenever the behaviour described below changes. --></p>
 
         <h2>The short version</h2>
 
@@ -185,12 +187,6 @@
           </li>
           <li>
             <div>
-              <h3>Chat text is sent to an outside moderation service</h3>
-              <p>Before a chat message is posted, its full text is sent to PurgoMalum, a free third-party profanity-checking API, which answers whether it contains profanity. If that service is unreachable the message is posted anyway.</p>
-            </div>
-          </li>
-          <li>
-            <div>
               <h3>Head-to-head records and rooms are shared too</h3>
               <p>Multiplayer results create per-pair win/loss records carrying both players' display names, readable by any signed-in visitor. Game rooms themselves are readable by any signed-in visitor who has the room code.</p>
             </div>
@@ -274,10 +270,6 @@
           <div class="skill-row">
             <h3>The Trivia API, Wikidata and Wikipedia</h3>
             <p>Arena fetches quiz questions from The Trivia API, place data from Wikidata, and short location summaries from Wikipedia. These carry no account information, but each sees your IP address and what was requested.</p>
-          </div>
-          <div class="skill-row">
-            <h3>PurgoMalum</h3>
-            <p>Receives the text of Arena chat messages for profanity checking, as described above.</p>
           </div>
           <div class="skill-row">
             <h3>Fantasy Premier League</h3>
