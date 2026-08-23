@@ -9,6 +9,10 @@ const { renderMoreFooter } = require('./render-footer.js');
 // per-season averages. Neither module requires this one, so no cycle.
 const { deriveShowShapes } = require('./finder-lib.js');
 const { detectShapes } = require('./match.js');
+// Streaming-provider vocabulary is shared with the browser app for the same
+// reason shapes are: a page must never name a service the app spells
+// differently for the same show.
+const { normalizeProvider, MAINSTREAM_PROVIDERS } = require('./providers-lib.js');
 
 const SITE = 'https://shevato.com';
 const TMDB_POSTER = 'https://image.tmdb.org/t/p/w500';
@@ -45,23 +49,62 @@ const GAP_HUB_SLUG = 'outshines-reputation';
 const GAP_HUB_LABEL = 'Outshines its reputation';
 
 // One-line plain-English definition per shape, kept verbatim in sync with
-// SHAPE_DESCS in js/app.js so the static shape hubs describe a shape the
-// same way the in-app chips do.
+// FINDER_SHAPE_DESCS in js/app.js. FINDER_SHAPE_DESCS (not app.js's
+// SHAPE_DESCS) is the right source: the only consumer is the shape hubs, whose
+// membership is the show's WHOLE-RUN dominant shape, so every data point behind
+// the label is one season's average. app.js's SHAPE_DESCS describes the same
+// shapes at the EPISODE level for the season chips; using that wording here
+// promised "the last episode is the peak" on a page listing shows whose final
+// SEASON is the peak.
 const SHAPE_DESCS = {
-  rising: 'Each episode at least as good as the last',
-  consistent: 'Excellent throughout, no weak link',
-  'slow-burn': 'Second half lifts off',
-  'big-finale': 'The last episode is the peak',
+  rising: 'Each season at least as good as the last',
+  consistent: 'Great across every season, no weak one',
+  'slow-burn': 'Later seasons lift off',
+  'big-finale': 'The final season is the peak',
   rebound: 'Dips, then comes back stronger',
-  'front-loaded': 'Strong start, weaker back half',
-  declining: 'Each episode no better than the last',
-  'bad-finale': 'Finale is the worst episode',
-  rollercoaster: 'Big swings episode to episode',
-  'mid-peak': 'Climaxes mid-season, falls after',
-  'u-shaped': 'Strong opener and finale, sag in the middle',
-  'saved-best-for-last': 'Final season is the show\'s highest-rated',
-  'shape-drift': 'Rating pattern or quality changed significantly late in the run',
+  'front-loaded': 'Strong early seasons, weaker later',
+  declining: 'Each season no better than the last',
+  'bad-finale': 'The final season is the worst',
+  rollercoaster: 'Big swings from season to season',
+  'mid-peak': 'Peaks mid-run, falls after',
+  'u-shaped': 'Strong first and last seasons, a sag between',
+  'saved-best-for-last': 'The final season is the show\'s highest-rated',
+  'shape-drift': 'Its last season breaks the pattern the earlier ones set',
 };
+
+// TMDB hands back a ~237-string provider vocabulary per US region: plan
+// variants ("Netflix Standard with Ads"), reseller channels ("BritBox Amazon
+// Channel", "Britbox Apple TV Channel " with a trailing space), bundlers
+// (Spectrum, Philo, fuboTV), free ad-supported tiers and PBS member stations
+// (Thirteen, KQED, WETA+). data.json stores whatever survives
+// normalizeProvider, so the pages used to print Sherlock as 15 services with
+// three different spellings of BritBox while the app showed "Hulu".
+//
+// Same rule as the app (MAINSTREAM_PROVIDERS): normalize, keep the major
+// subscription brands, drop the rest. Filtering to a shared allowlist is the
+// only rule that cannot drift - any "normalized superset" needs a hand-kept
+// deny-list of the long tail, which is exactly the drift this fixes.
+// Order follows the data so a show's own listing order is preserved.
+//
+// MAINSTREAM_PROVIDERS is a Set in the app; accept an array too so the shared
+// module can be exported either way without breaking the pages.
+const MAINSTREAM_PROVIDER_SET = MAINSTREAM_PROVIDERS instanceof Set
+  ? MAINSTREAM_PROVIDERS
+  : new Set(MAINSTREAM_PROVIDERS || []);
+
+function normalizeProviders(providers) {
+  if (!Array.isArray(providers)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const raw of providers) {
+    if (typeof raw !== 'string') continue;
+    const name = normalizeProvider(raw.trim());
+    if (!MAINSTREAM_PROVIDER_SET.has(name) || seen.has(name)) continue;
+    seen.add(name);
+    out.push(name);
+  }
+  return out;
+}
 
 // The show's whole-run trajectory shape, from the SAME derivation the browser
 // Finder uses (finder-lib's deriveShowShapes, also called by buildShowAgg), so
@@ -93,7 +136,14 @@ function computeDominantShape(show) {
   for (const s of seasons) {
     for (const t of (s.shapes || [])) categoricalTags.add(t);
   }
-  const shapes = deriveShowShapes(seasonAvgs, categoricalTags, detectShapes);
+  // The newest season decides whether the show's trajectory may carry a
+  // finale-dependent shape: while it is airing, its average is not the show's
+  // last word. Found by season number rather than array position so the caller
+  // does not have to have sorted.
+  const newest = seasons.reduce((best, s) => (best && best.season > s.season ? best : s), null);
+  const shapes = deriveShowShapes(seasonAvgs, categoricalTags, detectShapes, {
+    inProgress: !!(newest && newest.inProgress),
+  });
   const shape = shapes[0];
   if (!shape) return { dominantShape: null, dominantShapeSlug: null };
   return { dominantShape: shape, dominantShapeSlug: shapeToSlug(shape) };
@@ -159,12 +209,18 @@ function renderShowPage({ seriesId, title, year, type, genres, seriesRating, ser
 
   const dominantShapeLabel = dominantShape ? (SHAPE_LABELS[dominantShape] || dominantShape) : null;
   const overallAvgRating = computeOverallAvgRating(seasons);
+  const mainstreamProviders = normalizeProviders(providers);
 
   // Feature 10: richer OG/Twitter meta
   // When a real poster is exposed, use a richer alt; otherwise describe the
-  // neutral fallback card (no poster wording, since none is shown).
+  // neutral fallback card (no poster wording, since none is shown). Three
+  // quarters of the catalogue has no dominant shape, so the shape clause is
+  // only added when there is one: the old fallback read "(TV show shape, ...)",
+  // naming a shape called "TV show" on every shapeless page.
   const ogImageAlt = exposePoster
-    ? escapeHtml(`${title} poster (${dominantShapeLabel || 'TV show'} shape, avg episode ${overallAvgRating})`)
+    ? escapeHtml(dominantShapeLabel
+      ? `${title} poster (${dominantShapeLabel} shape, avg episode ${overallAvgRating})`
+      : `${title} poster (avg episode ${overallAvgRating})`)
     : escapeHtml(`${title} on Rising Shows`);
   const ogPosterDimensions = exposePoster
     ? `\n  <meta property="og:image:width" content="500">\n  <meta property="og:image:height" content="750">`
@@ -263,7 +319,7 @@ ${seasonSchemas}
         <dl class="show-stats">
           ${seriesRating ? `<div><dt>IMDb rating</dt><dd><strong>${seriesRating.toFixed(1)}</strong>${seriesVotes ? ` <span class="muted">(${seriesVotes.toLocaleString()} votes)</span>` : ''}</dd></div>` : ''}
           <div><dt>Seasons</dt><dd>${numberOfSeasons}</dd></div>
-          ${providers && providers.length ? `<div><dt>Streaming (US)</dt><dd>${providers.map(escapeHtml).join(' · ')}</dd></div>` : ''}
+          ${mainstreamProviders.length ? `<div><dt>Streaming (US)</dt><dd>${mainstreamProviders.map(escapeHtml).join(' · ')}</dd></div>` : ''}
           ${language ? `<div><dt>Language</dt><dd>${escapeHtml(language.toUpperCase())}</dd></div>` : ''}
           ${type ? `<div><dt>Type</dt><dd>${escapeHtml(formatType(type))}</dd></div>` : ''}
         </dl>
@@ -372,13 +428,15 @@ function renderSeasonSection(season, seriesId) {
           ${shapesHtml}
         </header>
         ${curveSvg}
+        <div class="episode-table-wrap">
         <table class="episode-table">
           <caption>Season ${season.season} episodes - IMDb ratings</caption>
           <thead><tr><th scope="col">#</th><th scope="col">Title</th><th scope="col">Rating</th><th scope="col">Votes</th></tr></thead>
           <tbody>
-            ${season.episodes.map((ep) => `<tr><td>${ep.episode}</td><td>${escapeHtml(ep.name || '—')}</td><td><strong>${ep.rating.toFixed(1)}</strong></td><td>${ep.votes.toLocaleString()}</td></tr>`).join('\n            ')}
+            ${season.episodes.map((ep) => `<tr><td>${ep.episode}</td><td>${escapeHtml(ep.name || 'Untitled')}</td><td><strong>${ep.rating.toFixed(1)}</strong></td><td>${ep.votes.toLocaleString()}</td></tr>`).join('\n            ')}
           </tbody>
         </table>
+        </div>
       </article>`;
 }
 
@@ -618,5 +676,6 @@ module.exports = {
   GAP_HUB_LABEL,
   computeDominantShape,
   computeOverallAvgRating,
+  normalizeProviders,
   jsonLd,
 };

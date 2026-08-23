@@ -1,5 +1,5 @@
 /* Standalone styling for the static per-show pages and the /shows/
-   browse index. Intentionally light — no Google Fonts, no jQuery, no
+   browse index. Intentionally light: no Google Fonts, no jQuery, no
    dependency on the marketing-site shell. Optimized for fast First
    Contentful Paint since these are SEO landing destinations. */
 
@@ -103,7 +103,7 @@ main { max-width: 1080px; margin: 0 auto; padding: 24px; }
   border-radius: 10px;
 }
 
-/* Sensitive (adult) poster — CSS-only blur + click-to-reveal. These static
+/* Sensitive (adult) poster: CSS-only blur + click-to-reveal. These static
    pages carry no app JS, so the reveal is a hidden checkbox toggled by the
    overlay label. The overlay is light: a small corner badge flags the content
    and a centred "Tap to reveal" pill is the action, so the blurred artwork
@@ -192,7 +192,7 @@ main { max-width: 1080px; margin: 0 auto; padding: 24px; }
   border-color: var(--gold);
 }
 
-/* Compact variant — related-shows thumbnails: corner badge only. */
+/* Compact variant, related-shows thumbnails: corner badge only. */
 .poster-sensitive-sm { border-radius: 8px; box-shadow: none; }
 .poster-sensitive-sm > img { filter: blur(12px); transform: scale(1.12); }
 .poster-sensitive-sm .poster-reveal-cta { display: none; }
@@ -275,9 +275,28 @@ a.shape-badge:hover {
 .season-curve .curve-area { fill: var(--curve-area); stroke: none; }
 .season-curve .curve-dots circle { fill: var(--curve-line); }
 
+/* Episode tables carry real episode titles, and 98 pages contain a title word
+   of 28+ unbreakable characters (Trailer Park Boys'
+   "Super-Duper-Industrial-Bubbles-Honey-Oil-Inator" at 47; Ladykracher's
+   85-character slash-run). `table-layout: auto` sizes the table to its
+   min-content width, so one such word used to widen the whole PAGE: The
+   Simpsons laid out at 454px inside a 390px viewport and Ladykracher at 790px
+   inside 320px, pushing the rating and vote columns off-screen. 21 of 24
+   sampled long-word pages did it.
+
+   Two independent guards, because every column has to stay readable:
+   `overflow-wrap: anywhere` on the title cell, which is the one that reduces a
+   table's intrinsic min-content width (`break-word` explicitly does not), and
+   a scroll wrapper so a browser without it scrolls the table rather than the
+   document. With the wrap in place the wrapper never actually scrolls. */
+.episode-table-wrap { overflow-x: auto; }
+
 .episode-table {
   width: 100%; border-collapse: collapse; font-size: 14px;
   margin-top: 6px;
+}
+.episode-table td:nth-child(2), .episode-table th:nth-child(2) {
+  overflow-wrap: anywhere; word-break: break-word;
 }
 .episode-table caption { text-align: left; color: var(--muted); padding: 6px 0; font-size: 13px; }
 .episode-table th, .episode-table td {

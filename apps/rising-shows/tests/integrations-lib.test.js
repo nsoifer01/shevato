@@ -12,6 +12,7 @@ const {
   yamlString,
   bestConfidenceForShape,
   compareCollectionName,
+  shapeConfidence,
 } = require('../scripts/integrations-lib.js');
 
 // Tiny fixture covering: high/low confidence, missing ID variants, dedupe of
@@ -303,4 +304,83 @@ test('compareCollectionName clips a very long title instead of running on', () =
   assert.ok(name.length < long.length + 10, `expected a clipped name, got ${name}`);
   assert.ok(name.endsWith(' vs Beta'));
   assert.ok(name.startsWith('The Extremely Long Televisi…'));
+});
+
+// --- Header count vs emitted IDs (D26) ---
+//
+// The header, the exports/README table and the file itself all read the same
+// number, so a reader can trust it. They used to disagree: rebound's header
+// claimed 4,225 series while the file listed 3,985 IDs, because candidates with
+// no usable ID were dropped after the count was taken and 458 TMDB ids are
+// shared by more than one IMDb series.
+
+function idsIn(contents) {
+  return contents
+    .split('\n')
+    .filter((l) => /^ {6}- \d+$/.test(l))
+    .map((l) => l.trim().slice(2));
+}
+
+test('the Series count header equals the number of IDs the file lists', () => {
+  const collections = buildKometaCollections(FIXTURE, { confidenceFloor: 0.35, minSeries: 1 });
+  assert.ok(collections.length > 0);
+  for (const c of collections) {
+    const ids = idsIn(c.contents);
+    const header = c.contents.match(/Series count: (\d+)\./);
+    assert.ok(header, `${c.filename} has no Series count header`);
+    assert.equal(Number(header[1]), ids.length, `${c.filename} header vs listed IDs`);
+    assert.equal(c.seriesCount, ids.length, `${c.filename} seriesCount vs listed IDs`);
+  }
+});
+
+test('the count excludes qualifying series that carry no usable ID', () => {
+  // Eta (tt0000007) is a 0.9-confidence rising series with neither ID, and it
+  // is the only other rising entry, so rising must count 1, not 2.
+  const withIdless = FIXTURE.concat([{
+    seriesId: 'tt0000008', title: 'Theta', season: 1, tmdbId: 1008, tvdbId: 2008,
+    shapes: ['rising'], confidence: { rising: 0.9 }, avgRating: 8.0,
+  }]);
+  const rising = buildKometaCollections(withIdless, { confidenceFloor: 0.35, minSeries: 1 })
+    .find((c) => c.shape === 'rising');
+  assert.ok(rising);
+  assert.equal(rising.qualifyingCount, 2, 'both series qualify on confidence');
+  assert.equal(rising.seriesCount, 1, 'only one of them can be emitted');
+  assert.deepEqual(idsIn(rising.contents), ['1008']);
+});
+
+test('a TMDB id shared by two IMDb series is listed once', () => {
+  // tmdb 1920 belongs to both Twin Peaks entries in the live dataset; 458 ids
+  // are shared this way, which put 27 duplicate tmdb_show lines in rebound.yml.
+  const shared = [
+    { seriesId: 'tt1000001', title: 'Twin Peaks', season: 1, tmdbId: 1920, tvdbId: null,
+      shapes: ['rising'], confidence: { rising: 0.9 }, avgRating: 9.0 },
+    { seriesId: 'tt1000002', title: 'Twin Peaks (2017)', season: 1, tmdbId: 1920, tvdbId: null,
+      shapes: ['rising'], confidence: { rising: 0.8 }, avgRating: 8.5 },
+    { seriesId: 'tt1000003', title: 'Other', season: 1, tmdbId: 1921, tvdbId: null,
+      shapes: ['rising'], confidence: { rising: 0.7 }, avgRating: 8.0 },
+  ];
+  const rising = buildKometaCollections(shared, { confidenceFloor: 0.35, minSeries: 1 })
+    .find((c) => c.shape === 'rising');
+  assert.deepEqual(idsIn(rising.contents), ['1920', '1921']);
+  assert.equal(rising.seriesCount, 2);
+  assert.equal(rising.qualifyingCount, 3);
+});
+
+// --- shapeConfidence is the shared definition (D26) ---
+//
+// scripts/watch-next.js used to read m.confidence[shape] directly, which is 0
+// for the two categorical tags because their detector is a yes/no with no
+// margin to record. Both sat permanently under the default 0.35 floor, so
+// `--shape saved-best-for-last` and `--shape shape-drift` could never return a
+// row no matter what was in the Plex library.
+test('shapeConfidence scores categorical tags 1.0, not 0', () => {
+  const tagged = { shapes: ['saved-best-for-last', 'shape-drift'], confidence: {} };
+  assert.equal(shapeConfidence(tagged, 'saved-best-for-last'), 1.0);
+  assert.equal(shapeConfidence(tagged, 'shape-drift'), 1.0);
+  // A season with no confidence object at all still scores the tag.
+  assert.equal(shapeConfidence({ shapes: ['shape-drift'] }, 'shape-drift'), 1.0);
+  // ...and the tag still has to be present.
+  assert.equal(shapeConfidence({ shapes: ['rising'], confidence: {} }, 'shape-drift'), 0);
+  // Graded shapes keep their measured value.
+  assert.equal(shapeConfidence({ shapes: ['rising'], confidence: { rising: 0.42 } }, 'rising'), 0.42);
 });
