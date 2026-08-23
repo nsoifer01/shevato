@@ -420,8 +420,14 @@
       if (!Array.isArray(t.visaExtras)) t.visaExtras = [];
       t.visaExtras = t.visaExtras.filter(c => typeof c === 'string' && /^[A-Z]{2}$/.test(c));
       t.items = t.items.filter(it => it && typeof it === 'object');
+      // Every action - edit, delete, duplicate, the assistant's own update -
+      // finds its target by id and acts on the FIRST match, so two rows sharing
+      // one id means deleting the second removes the first. Reachable only
+      // through corrupted storage, and one line to make impossible.
+      const seenIds = new Set();
       for (const it of t.items) {
-        if (!it.id) it.id = uid();
+        if (!it.id || seenIds.has(it.id)) it.id = uid();
+        seenIds.add(it.id);
         if (!TYPE_META[it.type]) it.type = 'note';
         if (!STATUS_META[it.status]) it.status = 'to-book';
         repairItemFields(it);
@@ -5263,16 +5269,24 @@
     if (!cost.ok) notes.push(`"${label}": the cost ${cost.reason}, so no price was imported.`);
     const est = parseMoney(raw.estCost);
     if (!est.ok) notes.push(`"${label}": the estimated cost ${est.reason}, so it was dropped.`);
+    // A real date is not the same as a date this app can hold: the item form
+    // has always refused anything outside DATE_MIN..DATE_MAX, and an import or
+    // a share link went straight past that check. One "9999-12-31" made the
+    // summary read "2912160 days / 2912159 nights" - the row itself was marked
+    // as the error it is, but every date-derived figure on the page was
+    // nonsense. Out-of-range dates are cleared and reported like any other drop.
     for (const [field, val] of [['start date', raw.startDate], ['end date', raw.endDate]]) {
-      if (val != null && val !== '' && !isIsoDate(val)) notes.push(`"${label}": the ${field} "${String(val).slice(0, 20)}" is not a real date, so it was cleared.`);
+      if (val == null || val === '') continue;
+      if (!isIsoDate(val)) notes.push(`"${label}": the ${field} "${String(val).slice(0, 20)}" is not a real date, so it was cleared.`);
+      else if (!isDateInRange(val)) notes.push(`"${label}": the ${field} ${val} is outside ${DATE_MIN} to ${DATE_MAX}, so it was cleared.`);
     }
     const out = {
       id: uid(),
       type: TYPE_META[raw.type] ? raw.type : 'note',
       title: String(raw.title || '').slice(0, 120),
       location: String(raw.location || '').slice(0, 80),
-      startDate: isIsoDate(raw.startDate) ? raw.startDate : '',
-      endDate: isIsoDate(raw.endDate) ? raw.endDate : '',
+      startDate: isDateInRange(raw.startDate) ? raw.startDate : '',
+      endDate: isDateInRange(raw.endDate) ? raw.endDate : '',
       startTime: CLOCK_RE.test(raw.startTime || '') ? raw.startTime : '',
       endTime: CLOCK_RE.test(raw.endTime || '') ? raw.endTime : '',
       status: STATUS_META[raw.status] ? raw.status : 'to-book',
@@ -5283,7 +5297,7 @@
       confirmation: String(raw.confirmation || '').slice(0, 40),
       // a booking deadline that is not a real date is dropped rather than
       // imported as a warning nobody can act on
-      bookBy: isIsoDate(raw.bookBy) ? raw.bookBy : '',
+      bookBy: isDateInRange(raw.bookBy) ? raw.bookBy : '',
       details: String(raw.details || '').slice(0, 500),
       createdAt: new Date().toISOString(),
     };

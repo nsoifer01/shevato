@@ -30,6 +30,8 @@
 //   PP-01  a failed place lookup is not re-asked by every consumer
 //   PP-02  a failed weather lookup is not re-asked on every render
 //   PP-04  a cancelled row costs no billed venue lookup
+//   AS-06  an imported date outside the app's own range is cleared, not kept
+//   DM-10  two items can never share an id
 import {
   APP, recorder, freshIds, iso, item, trip, dbOf,
   openApp, openTab, readDb, activeTripOf, tpErrors, closePage, evaluate, evalAsync, waitForExpr, standardTrip, pressKey,
@@ -1027,6 +1029,46 @@ export async function run({ base, cdpPort }) {
       if (s) try { await closePage(cdpPort, s); } catch { /* gone */ }
     }
   }
+
+
+  /* ===== AS-06 / DM-10: what an import and a repaired db may contain ====== */
+  freshIds();
+  await withPage('tp-audit AS-06', { db: dbOf([trip({ name: 'Host', items: [item({ title: 'Real', startDate: iso(4) })] })]) }, async (s) => {
+    // a share link carrying a date the form itself would refuse
+    const hash = await buildShareHash(s, trip({
+      name: 'Absurd', items: [
+        item({ title: 'Far future', startDate: '9999-12-31' }),
+        item({ title: 'Sane', startDate: iso(6), bookBy: '9999-01-01' }),
+      ],
+    }));
+    await gotoHard(s, base + APP + hash);
+    await waitForExpr(s, `document.body.classList.contains('tp-shared')`, { timeout: 8000 });
+    const shown = await evaluate(s, `document.getElementById('summary').innerText.replace(/\\n/g,' | ')`);
+    await t('tp-audit AS-06: an out-of-range date cannot make the summary absurd',
+      !/\d{5,} days|\d{5,} nights/.test(shown), shown.slice(0, 160), s);
+    await t('tp-audit AS-06: the item survives with the date cleared, and the drop is reported',
+      await evaluate(s, `document.getElementById('board').innerText.includes('Far future')`)
+      && /lost some values|outside/i.test(await toastText(s)),
+      await toastText(s), s);
+    await t('tp-audit AS-06: a Book-by outside the range goes the same way',
+      await evaluate(s, `(() => {
+        const rows = [...document.querySelectorAll('#board .tp-row')];
+        return !rows.some(r => /9999/.test(r.textContent)); })()`), '', s);
+  });
+
+  // DM-10: two items sharing an id means acting on one acts on the other
+  freshIds();
+  const twinned = trip({ name: 'Twins', items: [
+    item({ id: 'same-id', title: 'First twin', startDate: iso(4) }),
+    item({ id: 'same-id', title: 'Second twin', startDate: iso(5) }),
+  ] });
+  await withPage('tp-audit DM-10', { db: dbOf([twinned]) }, async (s) => {
+    const ids = await evaluate(s, `JSON.parse(localStorage.getItem('trip-planner:v1')).trips[0].items.map(i => i.id)`);
+    await t('tp-audit DM-10: repair gives the duplicate its own id',
+      ids.length === 2 && ids[0] !== ids[1], JSON.stringify(ids), s);
+    await t('tp-audit DM-10: and both rows are still there to act on',
+      await evaluate(s, `['First twin', 'Second twin'].every(x => document.getElementById('board').innerText.includes(x))`), '', s);
+  });
 
   return R;
 }
