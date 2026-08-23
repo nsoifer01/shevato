@@ -2521,9 +2521,11 @@ test('the ICS export has nowhere honest to put a guess, so it carries none', () 
     { id: 'x1', type: 'activity', title: 'Dinner: Narisawa', startDate: '2027-01-01',
       status: 'to-book', estCost: 45, estCostCurrency: 'USD' },
   ] };
-  const ics = L.buildIcs(trip);
+  const ics = L.buildIcs(trip).replace(/\r\n /g, ''); // unfold before reading values
   assert.ok(ics.includes('SUMMARY:Dinner: Narisawa'));
-  assert.ok(!ics.includes('45'));
+  // the DTSTAMP carries the export time, so look for the guess in the fields
+  // that could hold it rather than anywhere in the file
+  assert.ok(!/DESCRIPTION:[^\r]*45/.test(ics));
   assert.ok(!/estCost/i.test(ics));
 });
 
@@ -6164,8 +6166,13 @@ test('a comma and a quote earlier in the row cannot shift the two new columns', 
   assert.equal(rows[1][head.indexOf('paymentMethod')], 'Cash');
 });
 
+// RFC 5545 folds a content line at 75 octets and a continuation begins with one
+// space, so anything reading a VALUE unfolds first - which is what every
+// calendar client does before it shows you the text.
+function icsUnfold(ics) { return ics.replace(/\r\n /g, ''); }
+
 function icsDesc(item) {
-  return L.buildIcs({ name: 'T', items: [item] }).split('\r\n').find(l => l.startsWith('DESCRIPTION:'));
+  return icsUnfold(L.buildIcs({ name: 'T', items: [item] })).split('\r\n').find(l => l.startsWith('DESCRIPTION:'));
 }
 
 test('the calendar entry carries the deadline and the payment, as readable text', () => {

@@ -110,7 +110,7 @@
     airportIndex, airportLabel, airportDetail, searchAirports,
     flightTitleFromAirports, parseFlightAirports,
     extractBookings, parseIcsToProposals,
-    classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote, passportExpiryStatus, slimTripForShare, slimTripForAssistant, hasFastRail, viewFromHash, hashForView,
+    classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote, passportExpiryStatus, slimTripForShare, slimTripForAssistant, tripBudgetIn, budgetCurrencyOf, hasFastRail, viewFromHash, hashForView,
     buildIcs, buildGpx, buildCsv, convertAmount, sumInCurrency, normalizeTravelers, travelerTotals,
     evenSplitAmounts, splitAmountsMatch, customSplitShares,
     settlements, costsByType, typeBarShares, cashNeeded,
@@ -407,6 +407,8 @@
       const budgetFrom = normalizeBudgetFrom(t.budgetFrom, t.budget).value;
       if (budgetFrom != null) t.budgetFrom = budgetFrom;
       else delete t.budgetFrom;
+      // the code the budget was typed in; junk drops back to "the trip's own"
+      if (t.budgetCurrency != null && !(t.budget != null && /^[A-Z]{3}$/.test(t.budgetCurrency))) delete t.budgetCurrency;
       if (!Array.isArray(t.items)) t.items = [];
       // The three trip-level stores their dialogs write into directly. A
       // `packing` that is not an array made the add form throw on push (and
@@ -613,6 +615,44 @@
   // currency"). Before the trip's display currency changes, pin those
   // amounts to the currency they were entered in, so $200 stays $200 and
   // converts, rather than silently becoming 200 of the new currency.
+  // The budget pays the same price as a cost when the trip currency moves: the
+  // NUMBER keeps its meaning and gains the code it was typed in. Absent means
+  // "the trip's own", so a trip that never switched stores nothing new.
+  // The symbol beside the budget boxes, and the currency those numbers are in.
+  function syncTripBudgetPrefix() {
+    const el = $('#tripBudgetPrefix');
+    if (el) el.textContent = currencySymbol(ui.tripBudgetCurrency || 'USD');
+  }
+
+  // Moving the dialog's currency picker converts what is in the boxes, so the
+  // number on screen always means the currency beside it. Without rates the
+  // figures stay put and only the prefix moves, which is visible rather than
+  // silent - the traveller can see the boxes now say EUR and retype if the
+  // number was dollars.
+  function retypeTripBudget(nextCurrency) {
+    const from = ui.tripBudgetCurrency || nextCurrency;
+    if (from === nextCurrency) { syncTripBudgetPrefix(); return; }
+    const rates = activeRates(activeTrip());
+    const boxes = ['#inTripBudgetFrom', '#inTripBudgetTo'];
+    const converted = boxes.map(sel => {
+      const raw = $(sel).value.trim();
+      if (!raw) return '';
+      const n = Number(raw);
+      if (!Number.isFinite(n)) return raw;
+      const c = convertAmount(n, from, nextCurrency, rates);
+      return c == null ? null : String(Math.round(c * 100) / 100);
+    });
+    if (converted.some(v => v === null)) { syncTripBudgetPrefix(); return; } // no rate: leave the numbers alone
+    boxes.forEach((sel, i) => { $(sel).value = converted[i]; });
+    ui.tripBudgetCurrency = nextCurrency;
+    syncTripBudgetPrefix();
+  }
+
+  function stampBudgetCurrency(trip, currentCurrency) {
+    if (trip.budget == null || trip.budget === '') return;
+    if (!trip.budgetCurrency) trip.budgetCurrency = currentCurrency;
+  }
+
   function stampCostCurrencies(trip, currentCurrency) {
     for (const it of trip.items) {
       if (it.cost != null && it.cost !== '' && !it.costCurrency) it.costCurrency = currentCurrency;
@@ -1284,17 +1324,25 @@
       chips.push(chip('Full plan', moneyHtml(trip, money.planned.total, undefined, 'total') + short(money.planned.unconverted.length)));
     }
     if (trip.budget != null) {
-      const verdict = budgetVerdict(money.confirmed.total, trip.budget, missing);
-      // A budget can be a range, and its TOP is trip.budget, so the verdict and
-      // the bar are unchanged: only the figure the chip prints gains a lower
-      // end, and only on a trip that set one.
-      const figure = budgetFigure(trip.budgetFrom, trip.budget, n => fmtMoney(trip, n));
+      // The budget is converted into the display currency first (see
+      // tripBudgetIn): it is a number in whatever currency it was typed in,
+      // exactly like a cost, and comparing an unconverted ceiling against a
+      // converted total is how "6,000 dollars" silently became "6,000 euros".
+      const bud = tripBudgetIn(trip, activeRates(trip));
+      // A ceiling no rate could reach cannot be compared at all, so the chip
+      // prints it in its OWN currency and takes the same amber "partial" state
+      // an unconvertible cost gives every other total. It never reads green
+      // over a number it could not check.
+      const verdict = bud.unconverted ? 'partial' : budgetVerdict(money.confirmed.total, bud.top, missing);
+      const figure = bud.unconverted
+        ? budgetFigure(trip.budgetFrom, trip.budget, n => fmtMoneyIn(bud.currency, n))
+        : budgetFigure(bud.low, bud.top, n => fmtMoney(trip, n));
       // 'refund' means refunds outweigh spend so far. It is not a warning, and
       // "of $3,000" is meaningless against it, so the chip says what happened.
       const body = verdict === 'refund'
         ? `${moneyHtml(trip, money.confirmed.total, undefined, 'total')} <small>budget ${esc(figure)}</small>`
         : `${esc(fmtMoney(trip, money.confirmed.total))} <small>of ${esc(figure)}</small>`;
-      chips.push(chip('Budget', body + short(missing), (verdict === 'ok' || verdict === 'refund') ? 'ok-chip' : 'warn-chip', spentShare(money.confirmed.total, trip.budget)));
+      chips.push(chip('Budget', body + short(missing), (verdict === 'ok' || verdict === 'refund') ? 'ok-chip' : 'warn-chip', spentShare(money.confirmed.total, bud.top)));
     }
     // Whole-trip and deliberately filter-blind: tripStats already excludes
     // cancelled items, so this is the count of things actually on the plan,
@@ -4482,8 +4530,19 @@
     const tripCur = existing ? (t.currency || 'USD') : 'USD';
     $('#inTripCurrency').innerHTML = currencyOptionsFor(tripCur, [tripCur]);
     $('#inTripCurrency').value = tripCur;
-    $('#inTripBudgetTo').value = existing && t.budget != null ? t.budget : '';
-    $('#inTripBudgetFrom').value = existing && t.budgetFrom != null ? t.budgetFrom : '';
+    // The boxes are in the currency the picker shows, so a budget typed in
+    // another one (the totals-footer switch stamps budgetCurrency) is converted
+    // for display. Without rates it stays as stored and the prefix says which
+    // currency that is, so the number is never silently re-read as another.
+    const budShown = existing ? tripBudgetIn(t, activeRates(t)) : null;
+    const budBox = v => (v == null ? '' : Math.round(v * 100) / 100);
+    $('#inTripBudgetTo').value = existing && t.budget != null
+      ? budBox(budShown.unconverted ? t.budget : budShown.top) : '';
+    $('#inTripBudgetFrom').value = existing && t.budgetFrom != null
+      ? budBox(budShown.unconverted ? t.budgetFrom : budShown.low) : '';
+    // which currency those two numbers are in right now
+    ui.tripBudgetCurrency = existing && budShown.unconverted ? budShown.currency : (existing ? (t.currency || 'USD') : 'USD');
+    syncTripBudgetPrefix();
     $('#inTripTravelers').value = existing && Array.isArray(t.travelers) ? t.travelers.join(', ') : '';
     syncTravelerWarning();
     syncTripStartField();
@@ -4574,6 +4633,12 @@
       t.name = name; t.currency = currency; t.budget = budget;
       if (budgetFrom != null) t.budgetFrom = budgetFrom;
       else delete t.budgetFrom;
+      // What the traveller just typed is in the currency the prefix beside the
+      // boxes was showing, so that is the code it is stored with - and when
+      // that is the trip's own (the ordinary case) nothing is stored at all.
+      const typedIn = ui.tripBudgetCurrency || currency;
+      if (budget != null && typedIn !== currency) t.budgetCurrency = typedIn;
+      else delete t.budgetCurrency;
       if (travelers.length) t.travelers = travelers;
       else delete t.travelers;
       // Editing the roster must not leave items pointing at a payer who is no
@@ -5054,6 +5119,10 @@
     // takes it down with it
     const budgetFrom = normalizeBudgetFrom(t.budgetFrom, budget.value);
     if (budgetFrom.reason) notes.push(`The lower end of the trip budget ${budgetFrom.reason}, so it was left unset.`);
+    // the code the incoming budget was typed in: without it the receiving side
+    // reads the number as its own currency, which is the relabelling this field
+    // exists to stop. Junk is dropped, and dropping it means "the trip's own".
+    const budgetCurrency = (budget.value != null && typeof t.budgetCurrency === 'string' && /^[A-Z]{3}$/.test(t.budgetCurrency)) ? t.budgetCurrency : null;
     // clamp to 6 trimmed unique names FIRST: the item sanitizer needs the final
     // list to reject an item assigned to someone the trip does not name
     const travelers = normalizeTravelers(t.travelers);
@@ -5070,6 +5139,9 @@
     // on an item that ties with nobody is dropped
     normalizeOrders(nt.items);
     if (budgetFrom.value != null) nt.budgetFrom = budgetFrom.value;
+    // absent means "this trip's own currency", so it is stored only when the
+    // incoming budget was typed in a different one
+    if (budgetCurrency && budgetCurrency !== nt.currency) nt.budgetCurrency = budgetCurrency;
     if (travelers.length) nt.travelers = travelers;
     // the emergency/insurance/medical block is trip-level, so a JSON export and
     // a full backup both carry it and re-importing one has to hand it back. A
@@ -10329,13 +10401,22 @@
     const title = `Apply for ${country} visa`;
     if (trip.items.some(it => it.title === title)) { toast('Reminder already added'); return; }
     const start = tripStats(trip).start;
+    // The reminder used to be DATED thirty days before the trip, which made it
+    // the trip's new first day: the span, the countdown, the nights, the night
+    // strip and the Days grid all stretched by a month, and day one was
+    // labelled with the visa's country. A thing you must do BEFORE a trip is
+    // exactly what the Book-by deadline already models - the warnings panel
+    // counts it down inside its seven-day window and offers "Mark booked" - so
+    // the note sits on the trip's own first day and carries the deadline.
+    const deadline = isIsoDate(start) ? addDays(start, -30) : '';
     trip.items.push({
       id: uid(), type: 'note', title, status: 'to-book', location: country,
-      startDate: isIsoDate(start) ? addDays(start, -30) : '',
+      startDate: isIsoDate(start) ? start : '',
+      bookBy: deadline,
       endDate: '', startTime: '', endTime: '', cost: null, costNote: '', details: '',
       createdAt: new Date().toISOString(),
     });
-    save(`Reminder added: ${title}`);
+    save(deadline ? `Reminder added: apply by ${fmtDate(deadline)}` : `Reminder added: ${title}`);
     render();
     renderVisaRows();
   }
@@ -10504,6 +10585,10 @@
   $('#costEstHint').addEventListener('click', e => {
     if (e.target.closest('#adoptEstBtn')) adoptEstimate();
   });
+  // the dialog's own currency picker: keep the budget boxes meaning what the
+  // prefix beside them says (see retypeTripBudget)
+  $('#inTripCurrency').addEventListener('change', e => retypeTripBudget(e.target.value));
+
   $('#shiftMinus').addEventListener('click', () => { $('#shiftDays').value = (parseInt($('#shiftDays').value, 10) || 0) - 1; });
   $('#shiftPlus').addEventListener('click', () => { $('#shiftDays').value = (parseInt($('#shiftDays').value, 10) || 0) + 1; });
 
@@ -10746,6 +10831,7 @@
     if (e.target.id === 'currencySel') {
       const trip = activeTrip();
       stampCostCurrencies(trip, trip.currency || 'USD');
+      stampBudgetCurrency(trip, trip.currency || 'USD');
       trip.currency = e.target.value;
       save(`Costs now shown in ${trip.currency} (${currencySymbol(trip.currency)}); amounts keep their entered currency and convert`);
       render();

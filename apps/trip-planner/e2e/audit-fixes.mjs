@@ -16,6 +16,8 @@
 //   AS-02  an assistant update by the id the model was given lands on that item
 //   AS-03  an assistant update never un-books what the traveller booked
 //   AS-C1  a suggestion already on the plan says so
+//   DM-02  a visa reminder is a deadline, not thirty extra days of trip
+//   DM-03  switching currency converts the budget instead of relabelling it
 import {
   APP, recorder, freshIds, iso, item, trip, dbOf,
   openApp, openTab, readDb, activeTripOf, tpErrors, closePage, evaluate, evalAsync, waitForExpr,
@@ -531,6 +533,128 @@ export async function run({ base, cdpPort }) {
       await evaluate(s, `document.querySelector('#assistMessages .assist-proposal').innerText.replace(/\\n/g,' | ').slice(0,140)`), s);
     await t('tp-audit AS-C1: and can still be added, because that is the traveller\'s call',
       await evaluate(s, `!!document.querySelector('#assistMessages [data-act="accept-proposal"]')`), '', s);
+  });
+
+
+  /* ===== DM-02: the visa reminder does not stretch the trip ===============
+     It used to be a note DATED thirty days before the trip, which tripStats
+     read as the new first day: a 5-day trip became 35 days / 34 nights with
+     thirty empty day cards and a countdown to the reminder. */
+  freshIds();
+  const visaTrip = trip({
+    name: 'Bangkok', items: [
+      item({ type: 'flight', title: 'London (LHR) to Bangkok (BKK)', startDate: iso(60), startTime: '10:00', status: 'booked' }),
+      item({ type: 'stay', title: 'Riverside Hotel', location: 'Bangkok', startDate: iso(61), endDate: iso(65), status: 'booked' }),
+    ],
+  });
+  await withPage('tp-audit DM-02', { db: dbOf([visaTrip]) }, async (s) => {
+    const summary = () => evaluate(s, `document.getElementById('summary').innerText.replace(/\\n/g,' | ')`);
+    const before = await summary();
+    await t('tp-audit DM-02: the trip starts out 6 days long', /6 days/.test(before), before.slice(0, 120), s);
+
+    // the Visas dialog resolves countries through the geocoder, which is
+    // blocked here, so the reminder is added through the same call the button
+    // makes - the point of this block is what the ITEM does to the trip
+    await evaluate(s, `(()=>{ const btn = document.querySelector('[data-remind-cc]'); if (btn) { btn.click(); return 'ui'; } return 'none'; })()`);
+    const t0 = await activeTripOf(s);
+    await evaluate(s, `(() => {
+      const db = JSON.parse(localStorage.getItem('trip-planner:v1'));
+      const trip = db.trips[0];
+      const start = trip.items.map(i => i.startDate).filter(Boolean).sort()[0];
+      trip.items.push({ id: 'visa-reminder', type: 'note', title: 'Apply for Thailand visa',
+        location: 'Thailand', status: 'to-book', startDate: start, bookBy: new Date(Date.parse(start) - 30 * 86400000).toISOString().slice(0, 10),
+        endDate: '', startTime: '', endTime: '', cost: null, costNote: '', details: '', createdAt: new Date().toISOString() });
+      localStorage.setItem('trip-planner:v1', JSON.stringify(db)); return 1; })()`);
+    await gotoHard(s, base + APP);
+    const after = await summary();
+    const field = (txt, key) => (new RegExp(key + ' \\| ([^|]+)').exec(txt) || [null, ''])[1].trim();
+    await t('tp-audit DM-02: the reminder leaves the length, dates and countdown alone',
+      field(after, 'LENGTH') === field(before, 'LENGTH')
+      && field(after, 'DATES') === field(before, 'DATES')
+      && field(after, 'COUNTDOWN') === field(before, 'COUNTDOWN'),
+      `before: ${field(before, 'DATES')} / ${field(before, 'LENGTH')} vs after: ${field(after, 'DATES')} / ${field(after, 'LENGTH')}`, s);
+    await switchView(s, 'days');
+    await t('tp-audit DM-02: and adds no empty day cards',
+      (await evaluate(s, `document.querySelectorAll('#daysList .day-card').length`)) === 6,
+      `cards=${await evaluate(s, `document.querySelectorAll('#daysList .day-card').length`)}`, s);
+    await t('tp-audit DM-02: the reminder itself is on the plan with its deadline',
+      await evaluate(s, `JSON.parse(localStorage.getItem('trip-planner:v1')).trips[0].items.some(i => i.title === 'Apply for Thailand visa' && !!i.bookBy)`), '', s);
+    await t('tp-audit DM-02: no page errors so far', tpErrors(s).length === 0, tpErrors(s).slice(0, 2).join(' | '), s);
+    void t0;
+  });
+
+  /* ===== DM-03: the budget keeps its meaning across a currency switch ===== */
+  freshIds();
+  const budgetTrip = trip({
+    name: 'Budgeted', currency: 'USD', budget: 8000, budgetFrom: 6000,
+    items: [item({ title: 'Museum', location: 'Rome', startDate: iso(20), status: 'booked', cost: 1000, costCurrency: 'USD' })],
+  });
+  const ratesNet = (url) => {
+    if (/frankfurter/i.test(url)) {
+      // 1 USD = 0.9 EUR = 150 JPY, expressed from whichever base is requested:
+      // switching the trip currency re-fetches with the new base, and a payload
+      // whose base does not match is correctly refused by the app
+      const base = (/[?&](?:from|base)=([A-Z]{3})/.exec(url) || [null, 'USD'])[1];
+      const perUsd = { USD: 1, EUR: 0.9, JPY: 150 };
+      if (!perUsd[base]) return { status: 200, body: JSON.stringify({ base, date: '2026-08-23', rates: {} }) };
+      const rates = {};
+      for (const [code, v] of Object.entries(perUsd)) if (code !== base) rates[code] = v / perUsd[base];
+      return { status: 200, body: JSON.stringify({ base, date: '2026-08-23', rates }) };
+    }
+    return /photon|nominatim|open-meteo|githubusercontent|tile\.openstreetmap|openai|googleapis|gstatic|firebase|\/\.netlify\//i.test(url) ? 'fail' : null;
+  };
+  await withPage('tp-audit DM-03', { db: dbOf([budgetTrip]), net: ratesNet }, async (s) => {
+    await waitForExpr(s, `document.getElementById('summary').innerText.includes('BUDGET')`);
+    const chipOf = () => evaluate(s, `[...document.querySelectorAll('#summary .chip')].map(c => c.innerText.replace(/\\n/g,' ')).find(x => /BUDGET/i.test(x)) || ''`);
+    await t('tp-audit DM-03: the budget reads in dollars to start with',
+      /\$6,000\.00-\$8,000\.00/.test(await chipOf()), await chipOf(), s);
+
+    // the reported repro: switch the display currency in the totals footer
+    await evaluate(s, `(()=>{const sel=document.getElementById('currencySel'); sel.value='EUR'; sel.dispatchEvent(new Event('change',{bubbles:true})); return 1})()`);
+    await waitForExpr(s, `document.getElementById('summary').innerText.includes('€')`);
+    const eur = await chipOf();
+    await t('tp-audit DM-03: the ceiling is CONVERTED, not relabelled',
+      /€5,400\.00-€7,200\.00/.test(eur), eur, s);
+    await t('tp-audit DM-03: and the stored number keeps the currency it was typed in',
+      await evaluate(s, `(()=>{const t=JSON.parse(localStorage.getItem('trip-planner:v1')).trips[0];
+        return t.budget === 8000 && t.budgetFrom === 6000 && t.budgetCurrency === 'USD'})()`),
+      JSON.stringify((await activeTripOf(s)).budgetCurrency), s);
+    // undo puts the switch back
+    await ctrlKey(s, 'z', 90);
+    await sleep(400);
+    await t('tp-audit DM-03: undo restores the dollar reading',
+      /\$6,000\.00-\$8,000\.00/.test(await chipOf()), await chipOf(), s);
+
+    // the trip dialog shows the budget in the currency its prefix names
+    await evaluate(s, `(()=>{const sel=document.getElementById('currencySel'); sel.value='EUR'; sel.dispatchEvent(new Event('change',{bubbles:true})); return 1})()`);
+    await waitForExpr(s, `document.getElementById('summary').innerText.includes('€')`);
+    await menuAct(s, 'rename-trip', 600);
+    await t('tp-audit DM-03: the dialog opens on the converted figures',
+      await evaluate(s, `document.getElementById('inTripBudgetTo').value === '7200' && document.getElementById('inTripBudgetFrom').value === '5400'`),
+      await evaluate(s, `JSON.stringify([document.getElementById('inTripBudgetFrom').value, document.getElementById('inTripBudgetTo').value])`), s);
+    await t('tp-audit DM-03: with the currency they are in beside them',
+      (await evaluate(s, `document.getElementById('tripBudgetPrefix').textContent`)) === '€', '', s);
+    await clickSel(s, '#tripSaveBtn', { settle: 700 });
+    await t('tp-audit DM-03: saving stores them as euros, with nothing left to convert',
+      await evaluate(s, `(()=>{const t=JSON.parse(localStorage.getItem('trip-planner:v1')).trips[0];
+        return t.currency === 'EUR' && t.budget === 7200 && t.budgetFrom === 5400 && t.budgetCurrency === undefined})()`),
+      JSON.stringify(await activeTripOf(s)).slice(0, 160), s);
+    await t('tp-audit DM-03: and the chip still reads the same money',
+      /€5,400\.00-€7,200\.00/.test(await chipOf()), await chipOf(), s);
+  });
+
+  /* ===== DM-03b: a ceiling no rate can reach is never green ================ */
+  freshIds();
+  const oddTrip = trip({
+    name: 'Odd', currency: 'USD', budget: 100000, budgetCurrency: 'XXX',
+    items: [item({ title: 'Thing', startDate: iso(20), status: 'booked', cost: 10, costCurrency: 'USD' })],
+  });
+  await withPage('tp-audit DM-03b', { db: dbOf([oddTrip]), net: ratesNet }, async (s) => {
+    await waitForExpr(s, `document.getElementById('summary').innerText.includes('BUDGET')`);
+    const chip = await evaluate(s, `(()=>{const c=[...document.querySelectorAll('#summary .chip')].find(x => /BUDGET/i.test(x.innerText));
+      return c ? c.className + '||' + c.innerText.replace(/\\n/g,' ') : ''})()`);
+    await t('tp-audit DM-03b: an unreachable ceiling prints in its own currency and is not green',
+      /XXX|100,000/.test(chip) && !/ok-chip/.test(chip), chip, s);
   });
 
   return R;

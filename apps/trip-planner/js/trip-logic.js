@@ -1839,11 +1839,18 @@ const TripLogic = (() => {
       .replace(/\r?\n/g, '\\n');
   }
 
-  function icsEvent(it) {
+  function icsEvent(it, stamp) {
     if (!isIsoDate(it.startDate)) return null;
     const compact = d => d.replace(/-/g, '');
     const lines = ['BEGIN:VEVENT', `UID:${it.id}@trip-planner.shevato.com`];
-    const timed = (it.type === 'flight' || it.type === 'transport' || it.type === 'local') && /^\d{2}:\d{2}$/.test(it.startTime || '');
+    if (stamp) lines.push(`DTSTAMP:${stamp}`);
+    // ANY item with a clock time is a timed event. Restricting this to the
+    // three travel types put a 7:30 PM dinner into the calendar as an all-day
+    // banner: the one surface a traveller reads at dinner time said nothing
+    // about when. A stay is still an all-day range below (its nights are the
+    // point), and an item with no time is still all-day, which is the honest
+    // rendering of "some time that day".
+    const timed = !isStay(it) && /^\d{2}:\d{2}$/.test(it.startTime || '');
     if (isStay(it)) {
       // all-day, exclusive end (matches the app's night semantics)
       const end = isIsoDate(it.endDate) && diffDays(it.startDate, it.endDate) > 0 ? it.endDate : addDays(it.startDate, 1);
@@ -1891,18 +1898,44 @@ const TripLogic = (() => {
 
   // Builds a VCALENDAR string with CRLF line endings (RFC 5545 requires them
   // inside the file content; this is the generated STRING, not a source file).
-  function buildIcs(trip) {
+  /**
+   * RFC 5545 content lines are folded at 75 OCTETS, and a continuation begins
+   * with one space. Google and Apple tolerate long lines, strict validators and
+   * some Outlook builds do not, and a details field of 500 characters produces
+   * lines far past the limit. Counting is by UTF-8 length rather than by
+   * character, and a surrogate pair is never split down the middle.
+   */
+  function icsFold(line) {
+    const bytes = str => new TextEncoder().encode(str).length;
+    if (bytes(line) <= 75) return line;
+    const out = [];
+    let cur = '', limit = 75; // continuations carry a leading space, so 74 of content
+    for (const ch of line) { // iterating by code POINT keeps pairs together
+      if (bytes(cur + ch) > limit) { out.push(cur); cur = ' ' + ch; limit = 75; }
+      else cur += ch;
+    }
+    if (cur) out.push(cur);
+    return out.join('\r\n');
+  }
+
+  /**
+   * `stamp` is injectable so a test can pin the output; production passes
+   * nothing and gets the current time, which is what DTSTAMP means (when this
+   * calendar object was created). RFC 5545 lists it as REQUIRED in a VEVENT.
+   */
+  function buildIcs(trip, stamp) {
+    const now = (stamp instanceof Date ? stamp : new Date()).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
     const out = [
       'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Shevato//Trip Planner//EN',
       `X-WR-CALNAME:${icsEscapeText(trip.name || 'Trip')}`,
     ];
     for (const it of sortedItems(trip)) {
       if (!it || it.status === 'cancelled') continue;
-      const ev = icsEvent(it);
+      const ev = icsEvent(it, now);
       if (ev) out.push(...ev);
     }
     out.push('END:VCALENDAR');
-    return out.join('\r\n') + '\r\n';
+    return out.map(icsFold).join('\r\n') + '\r\n';
   }
 
   // ---------- GPX export ----------
@@ -3556,6 +3589,11 @@ const TripLogic = (() => {
     const keep = v => !(v == null || v === '');
     const slim = { name: trip.name, currency: trip.currency, items: [] };
     if (trip.budget != null) slim.budget = trip.budget;
+    // the budget travels with the code it was typed in, or the far side reads
+    // the number as its own currency - the relabelling budgetCurrency exists to
+    // stop. Present only when it differs, so a trip that never switched
+    // currency produces byte for byte the payload it always did.
+    if (trip.budget != null && trip.budgetCurrency && trip.budgetCurrency !== trip.currency) slim.budgetCurrency = trip.budgetCurrency;
     // the floor rides along only when there is a ceiling for it to sit under,
     // which is the same rule the import sanitizer applies on the far side. A
     // trip with a plain ceiling produces byte for byte the payload it always did
@@ -5235,6 +5273,50 @@ const TripLogic = (() => {
   // app's own range separator (see tempSpan); both ends are non-negative by
   // then, so it cannot be read as a sign. `fmt` is the caller's currency
   // formatter, so this owns the wording and never a currency table.
+  /**
+   * The currency a trip's budget is expressed in. Absent MEANS the trip's own,
+   * which is what every trip that never switched currency stores, so there is
+   * no migration and nothing to rewrite.
+   */
+  function budgetCurrencyOf(trip) {
+    const base = (trip && trip.currency) || 'USD';
+    const c = trip && trip.budgetCurrency;
+    return (typeof c === 'string' && /^[A-Z]{3}$/.test(c)) ? c : base;
+  }
+
+  /**
+   * The budget in the currency the totals are printed in.
+   *
+   * A budget is a number the traveller typed while the trip was in some
+   * currency, so it carries that currency exactly as an item's cost does.
+   * Switching the trip currency used to RELABEL it: 6,000 dollars became 6,000
+   * euros, the ceiling moved by hundreds, and the verdict then compared
+   * converted spend against an unconverted limit with nothing on screen saying
+   * so. Converting here, through the same convertAmount every total uses, is
+   * the same answer the app already gives for costs.
+   *
+   * A rate that cannot be found is REPORTED (`unconverted`), never assumed: the
+   * chip then prints the budget in its own currency and cannot read green over
+   * a number it could not compare.
+   */
+  function tripBudgetIn(trip, ratesObj) {
+    const base = (trip && trip.currency) || 'USD';
+    const from = budgetCurrencyOf(trip);
+    const conv = v => {
+      if (v == null || v === '') return null;
+      const n = Number(v);
+      if (!Number.isFinite(n)) return null;
+      return from === base ? n : convertAmount(n, from, base, ratesObj);
+    };
+    const has = !!(trip && trip.budget != null && trip.budget !== '');
+    const top = conv(trip && trip.budget);
+    return {
+      top, low: conv(trip && trip.budgetFrom),
+      currency: from, foreign: from !== base,
+      unconverted: has && top === null,
+    };
+  }
+
   function budgetFigure(from, to, fmt) {
     if (to == null || to === '') return '';
     const top = fmt(to);
@@ -8793,7 +8875,7 @@ const TripLogic = (() => {
     dayTravelTotals, dayRouteMode, directionsRouteUrl, routeUrlChunks, candidateBadges,
     mapsSearchUrl, assistMapsLink, itemMapsQuery, displayTitle, showsCostBadge, isFoodOrDrink, isEstimatedCost, costDisplayParts, mealTitlePrefixes,
     hasEstimate, displayCostOf, parseMoney, roundMoney, budgetVerdict, refundParts,
-    readBudgetRange, normalizeBudgetFrom, budgetFigure,
+    readBudgetRange, normalizeBudgetFrom, budgetFigure, budgetCurrencyOf, tripBudgetIn,
     mealKind, isLongDetails,
     MEAL_META, isMealKind, mealLabel, splitMealTitle, itemMealKind, normalizeMealItem,
     matchSampleTrip, normalizeTripName, sampleTrip, sampleTripOptions, buildSampleTrip,
