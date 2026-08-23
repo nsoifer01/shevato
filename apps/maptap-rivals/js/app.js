@@ -794,6 +794,7 @@
   // Drive view state from location.hash. Used at init and on hashchange
   // (browser back/forward or user-edited URL).
   function applyUrlHash() {
+    closeAllModals();
     const raw = (location.hash || '').replace(/^#/, '').trim();
     if (!raw) { setView('dashboard'); return; }
     const slash = raw.indexOf('/');
@@ -862,6 +863,30 @@
 
   function topModalId() {
     return modalStack.length ? modalStack[modalStack.length - 1].id : null;
+  }
+
+  // Close every open dialog, innermost first. Called when the route changes:
+  // a hash navigation (browser Back/Forward, an edited URL, a restored tab)
+  // re-renders the page UNDER any open dialog, which would leave e.g. the
+  // rival editor showing Bex's name and colour on top of Ari's page - and
+  // Save would then write to Bex, the rival the user is no longer looking at.
+  // Found 2026-08-23: before dialogs were raised above the site header this
+  // was invisible, because a stale dialog did not block the page beneath it.
+  function closeAllModals() {
+    for (const id of modalStack.map(m => m.id).reverse()) modalCloser(id)();
+  }
+
+  // Each dialog's own closer does more than hide it (clears editing state,
+  // resets the WhatsApp draft, drops the pending delete), so route away
+  // through those rather than through bare closeModal. A function, not a
+  // lookup object, so it never depends on declaration order.
+  function modalCloser(id) {
+    if (id === 'rival-modal') return closeRivalModal;
+    if (id === 'delete-rival-modal') return closeDeleteRivalModal;
+    if (id === 'delete-game-modal') return closeDeleteGameModal;
+    if (id === 'clear-games-modal') return closeClearGamesModal;
+    if (id === 'wa-modal') return closeWhatsAppModal;
+    return () => closeModal(id);
   }
 
   // Tab / Shift+Tab stay inside the open dialog.

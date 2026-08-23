@@ -459,6 +459,26 @@ at the bottom of the viewport. There is now one declaration (10020, on the base
 rule) and the later block carries only the `pointer-events: auto` that
 actionable toasts need; do not re-declare the z-index there.
 
+### A route change closes open dialogs (fixed 2026-08-23)
+
+Raising the dialog layer exposed a second, older defect. `applyUrlHash` is the
+single route entry point (init and the `hashchange` listener both call it), and
+it re-rendered the view UNDER whatever dialog was open. Reach it with browser
+Back/Forward, a hand-edited URL, or a restored tab: the rival editor would sit
+over a different rival's page still holding the FIRST rival's name, colour and
+icon, and Save would write to the rival the user was no longer looking at.
+
+Invisible before the stacking fix, because a dialog at z-index 100 did not
+block the page beneath it - you could simply click past it. It also silently
+broke the audit's own network probe, whose delete sequence had been passing
+only because a stale dialog let clicks through to the page.
+
+`applyUrlHash` now calls `closeAllModals()` first, which routes each open
+dialog out through its OWN closer (`modalCloser(id)`), not bare `closeModal`,
+so editing state, the WhatsApp draft and any pending delete are cleared too.
+Add a dialog and `tests/stacking.test.js` fails until `modalCloser` has a
+branch for it.
+
 Two layers of regression cover this:
 
 - `e2e/quality.mjs` pins the behaviour by hit-testing, not by screenshot: for
@@ -472,9 +492,10 @@ Two layers of regression cover this:
 - `tests/stacking.test.js` is the cheap half, so a regression also fails in
   `npm test` on every PR rather than only in the slower browser job. It parses
   the SHIPPED stylesheets (app, `main.css`, `sync-status.css`) instead of a
-  hardcoded table, so raising `#header` in the shared chrome fails here too,
-  and it asserts `.share-toast` declares its z-index exactly once. Both halves
-  were proven to fail against the pre-fix values before being kept.
+  hardcoded table, so raising `#header` in the shared chrome fails here too;
+  it asserts `.share-toast` declares its z-index exactly once; and it pins the
+  `closeAllModals()` call and a closer per dialog id. Every guard here was
+  proven to fail against the pre-fix code before being kept.
 
 ## Deliberate behaviour, not open defects
 
@@ -546,7 +567,22 @@ reachability, modal focus, delete/Undo, paste-date reset, refused imports,
 WhatsApp formats, overflow at 390/1100, and since 2026-08-23 the dialog
 stacking block); the `.features/` plans hold the rest.
 
-`e2e/quality.mjs` is 71 checks and is PINNED in `tests/browser/run.mjs`
+Two gaps the 2026-08-23 pass closed, both in `e2e/quality.mjs`:
+
+- **Every breakpoint, not just the ends.** The overflow sweep runs six views at
+  390, 480, 768, 1024, 1159, 1160 and 1280, so the 1159/1160 pair that brackets
+  the continent band's grid switch is checked from both sides.
+- **A positive-UTC RENDERED page.** A second page runs under CDP's
+  `Emulation.setTimezoneOverride` at `Pacific/Auckland` (UTC+12) and asserts
+  the day tabs start at Today, the summary counts today's game, and the
+  heatmap ends on the browser's own local day. Use the CDP override, NOT the
+  `TZ` env var: snap-confined Chromium ignores `TZ`, so the audit's Berlin
+  probe silently ran in the host zone and only its own precondition check
+  noticed. The probe asserts the zone took effect before trusting anything
+  else. The helpers themselves stay pinned by the four-zone child-process test
+  in `tests/stats.test.js`, which is date- and host-independent.
+
+`e2e/quality.mjs` is 109 checks and is PINNED in `tests/browser/run.mjs`
 (`EXPECTED_CHECKS`), the only app-owned suite that is. Two reasons it needs the
 pin: a suite that returns early "passes" everything it did run, and since
 2026-08-23 an axe scan that exceeds the driver's 45s send timeout records its
@@ -555,10 +591,24 @@ one slow scan from dropping the other 50-odd checks (it turned a run into
 19-of-71 on a loaded machine), but it also means a shrunken run would look
 green without the pin. Change the number in the same commit as the checks.
 
-That timeout is environmental, not an app or suite defect: it appears when
-several Chromium instances from other checkouts are running on the same box.
-Do not raise the shared 45s timeout in `tests/browser/cdp.mjs` to chase it -
-that value bounds every suite in the repo and a real hang should still fail.
+Two separate causes were behind the aborts this suite kept hitting, and only
+one of them was environmental:
+
+- **Contention.** Several Chromium instances from other checkouts on the same
+  box slow every CDP round trip. Do not raise the shared 45s timeout in
+  `tests/browser/cdp.mjs` to chase it: that value bounds every suite in the
+  repo and a real hang should still fail. Two runs of `tests/browser/run.mjs`
+  at once also share CDP 9222 and poison each other; wait one out.
+- **`goto()` on a fragment-only URL, which was the real one.** `Page.navigate`
+  to a URL differing only in the hash is a SAME-DOCUMENT navigation, so
+  `Page.loadEventFired` never arrives and `goto` waits out its full 20s guard.
+  At ~16 view changes that is over five minutes of dead wait, and a session
+  kept alive that long starts timing out its own `Runtime.evaluate` calls -
+  which is why the aborts moved around and looked random. The suite now uses a
+  local `hashTo()` that assigns `location.hash` in-page. Faster, and it drives
+  the REAL `hashchange` route rather than a synthetic navigation, so it also
+  exercises the dialog-closing fix above. Reserve `goto()` for genuine
+  cross-document loads (the seed page, the first app load).
 
 Where a defect lives in app.js but is *visible through* a pure function's call
 contract, the test file states the contract in a comment and stubs the app.js

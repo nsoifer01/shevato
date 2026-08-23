@@ -70,6 +70,25 @@ test('.share-toast declares its z-index exactly once', () => {
     'set .share-toast z-index on its base rule only');
 });
 
+test('a route change closes open dialogs', () => {
+  // The rendered behaviour is pinned in e2e/quality.mjs; this is the static
+  // half, so removing the call fails `npm test` too. applyUrlHash is the ONLY
+  // route entry point (init and the hashchange listener both go through it),
+  // so closing there covers browser Back/Forward and hand-edited URLs alike.
+  const app = fs.readFileSync(path.join(REPO, 'apps', 'maptap-rivals', 'js', 'app.js'), 'utf8');
+  const body = app.slice(app.indexOf('function applyUrlHash()'));
+  assert.ok(/^function applyUrlHash\(\) \{\s*closeAllModals\(\);/m.test(body.replace(/^\s+/gm, '')),
+    'applyUrlHash must close open dialogs before swapping the view under them');
+  assert.match(app, /window\.addEventListener\('hashchange', applyUrlHash\)/);
+  // Every dialog id in the markup needs a closer, or one would route away
+  // through bare closeModal and leave its editing state behind.
+  const html = fs.readFileSync(path.join(REPO, 'apps', 'maptap-rivals', 'index.html'), 'utf8');
+  const closerBlock = app.slice(app.indexOf('function modalCloser('), app.indexOf('function modalCloser(') + 700);
+  for (const m of html.matchAll(/<div class="modal" id="([^"]+)"/g)) {
+    assert.ok(closerBlock.includes(`'${m[1]}'`), `modalCloser has no branch for ${m[1]}`);
+  }
+});
+
 test('all five dialogs share the .modal class, so one rule covers them all', () => {
   const html = fs.readFileSync(path.join(REPO, 'apps', 'maptap-rivals', 'index.html'), 'utf8');
   const ids = [...html.matchAll(/<div class="modal" id="([^"]+)"/g)].map(m => m[1]).sort();

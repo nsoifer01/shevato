@@ -86,6 +86,20 @@ export async function run({ base, cdpPort }) {
   const txt = (s, sel) => evaluate(s, `((document.querySelector(${JSON.stringify(sel)})||{}).textContent||'').replace(/\\s+/g,' ').trim()`);
   const OVERFLOW = `(()=>{const de=document.documentElement; return {scrollW:de.scrollWidth, clientW:de.clientWidth}})()`;
 
+  // Same-document navigation, the way a user's click or Back button does it.
+  // NOT goto(): Page.navigate to a URL that differs only in the fragment is a
+  // same-document navigation, so Page.loadEventFired never arrives and the
+  // driver waits out its full 20s guard EVERY time. With ~50 view changes in
+  // this suite that is ~17 minutes of dead wait, and a session that long
+  // starts timing out its own Runtime.evaluate calls. Setting location.hash
+  // in-page also exercises the real hashchange route, which is the path the
+  // dialog-closing fix hangs off.
+  async function hashTo(page, hash, settle = 900) {
+    page.errors.length = 0;
+    await evaluate(page, `(()=>{ location.hash = ${JSON.stringify(hash)}; return 1 })()`);
+    await sleep(settle);
+  }
+
   async function open() {
     const s = await newPage(cdpPort);
     await interceptNetwork(s, (url) => {
@@ -149,10 +163,10 @@ export async function run({ base, cdpPort }) {
     await axe(s, 'dashboard @1280 (paste open, finishes expanded)');
     for (const v of ['rival/r-ari', 'leaderboard', 'matrix', 'records', 'history']) {
       mark(`axe ${v} @1280`);
-      await goto(s, `${base}${APP}#${v}`, { settle: 1200 });
+      await hashTo(s, `#${v}`, 1200);
       await axe(s, `${v} @1280`);
     }
-    await goto(s, `${base}${APP}#dashboard`, { settle: 1000 });
+    await hashTo(s, '#dashboard', 1000);
     await clickSel(s, '#add-rival-btn', { settle: 300 });
     await axe(s, 'rival modal');
     await pressKey(s, 'Escape', 'Escape', 27); await sleep(200);
@@ -162,7 +176,7 @@ export async function run({ base, cdpPort }) {
     await evaluate(s, "document.querySelector('.rival-card-link').focus()");
     await pressKey(s, 'Enter', 'Enter', 13); await sleep(600);
     t('Enter on a rival card link opens that rival page', (await evaluate(s, 'location.hash')) === '#rival/r-ari' && (await txt(s, '#rival-header h2')) === 'Ari', await evaluate(s, 'location.hash'));
-    await goto(s, `${base}${APP}#leaderboard`, { settle: 1000 });
+    await hashTo(s, '#leaderboard', 1000);
     t('leaderboard rows carry a link and headers are real buttons with aria-sort on the th', (await evaluate(s, "document.querySelectorAll('.lb-rival-link').length")) >= 3 && (await evaluate(s, "document.querySelectorAll('th[aria-sort] > .lb-sort-btn').length")) === 9);
     await evaluate(s, "document.querySelector('#lb-th-games .lb-sort-btn').focus()");
     await pressKey(s, 'Enter', 'Enter', 13, 0, '\r'); await sleep(300);
@@ -171,7 +185,7 @@ export async function run({ base, cdpPort }) {
     t('settings-strip controls and tabs show a visible focus outline', Object.values(focusStyles).every(v => /solid|auto/.test(v) && !/0px/.test(v)), JSON.stringify(focusStyles));
 
     // ---- modal focus trap + return ----
-    await goto(s, `${base}${APP}#dashboard`, { settle: 1000 });
+    await hashTo(s, '#dashboard', 1000);
     await clickSel(s, '#add-rival-btn', { settle: 300 });
     t('rival modal opens with focus on the name field', (await evaluate(s, 'document.activeElement.id')) === 'rival-name');
     await evaluate(s, "document.getElementById('rival-save-btn').focus()");
@@ -238,7 +252,7 @@ export async function run({ base, cdpPort }) {
     await writeFile(wa12, '8/10/26, 9:05 PM - Nikita: MapTap\nAug 10\n95 89 91 9 64\nFinal score: 585\n8/10/26, 9:07 PM - Ari: MapTap Aug 10\n70 80 60 50 40');
     const waIos = path.join(dir, 'wa-ios.txt');
     await writeFile(waIos, '[10/08/2026, 21:05:12] Nikita: MapTap\nAug 10\n95 89 91 9 64\n[10/08/2026, 21:07:00] Ari: MapTap Aug 10\n70 80 60 50 40');
-    await goto(s, `${base}${APP}#dashboard`, { settle: 1000 });
+    await hashTo(s, '#dashboard', 1000);
     await setFile('#wa-import-file', wa12);
     t('WhatsApp: 12-hour Android export opens the importer with the detected format', !(await evaluate(s, "document.getElementById('wa-modal').hidden")) && /2 messages/.test(await txt(s, '#wa-overview')) && /12-hour clock/.test(await txt(s, '#wa-format')), await txt(s, '#wa-overview') + ' ' + await txt(s, '#wa-format'));
     await pressKey(s, 'Escape', 'Escape', 27); await sleep(200);
@@ -292,7 +306,7 @@ export async function run({ base, cdpPort }) {
     }
 
     await setViewport(s, 1280, 900);
-    await goto(s, `${base}${APP}#dashboard`, { settle: 1200 });
+    await hashTo(s, '#dashboard', 1200);
     t('shared site header is present in this harness (the stacking checks are not vacuous)',
       (await evaluate(s, "!!document.getElementById('header') && !!document.querySelector('#header a.logo')")));
 
@@ -331,7 +345,7 @@ export async function run({ base, cdpPort }) {
     await pressKey(s, 'Escape', 'Escape', 27); await sleep(250);
 
     mark('stacking delete-game-modal');
-    await goto(s, `${base}${APP}#history`, { settle: 1000 });
+    await hashTo(s, '#history', 1000);
     await clickSel(s, '#history-table button[aria-label="Delete game"]', { nth: 0, settle: 350 });
     await stackCheck('delete-game confirmation', 'delete-game-modal');
     await pressKey(s, 'Escape', 'Escape', 27); await sleep(250);
@@ -350,9 +364,24 @@ export async function run({ base, cdpPort }) {
     t('stacking: toast > dialog > header, and the toast stays below the shared offline banner (10100)',
       layers.toast > layers.modal && layers.modal > layers.header && layers.toast < 10100, JSON.stringify(layers));
 
+    // A route change must close open dialogs: the view under them is swapped,
+    // so an editor left open would show one rival's data over another's page
+    // and Save would write to the rival the user is no longer looking at.
+    mark('stacking route change closes dialogs');
+    await hashTo(s, '#rival/r-bex', 1000);
+    await clickSel(s, '.rival-header-actions .btn-ghost', { nth: 1, settle: 350 });
+    t('editing a rival from its own page opens the dialog with that rival loaded',
+      !(await evaluate(s, "document.getElementById('rival-modal').hidden")) && (await evaluate(s, "document.getElementById('rival-name').value")) === 'Bex',
+      await evaluate(s, "document.getElementById('rival-name').value"));
+    await hashTo(s, '#rival/r-ari', 900);
+    t('navigating to another rival closes the open editor instead of leaving it over the new page',
+      await evaluate(s, "document.getElementById('rival-modal').hidden"));
+    t('after that navigation the page beneath is reachable again (no orphaned backdrop)',
+      await evaluate(s, "(()=>{const b=document.getElementById('add-rival-btn')||document.querySelector('.rival-header-actions .btn-ghost'); const r=b.getBoundingClientRect(); const hit=document.elementFromPoint(r.left+r.width/2, r.top+r.height/2); return !!hit && !hit.closest('.modal')})()"));
+
     mark('stacking @390');
     await setViewport(s, 390, 844, true);
-    await goto(s, `${base}${APP}#dashboard`, { settle: 1200 });
+    await hashTo(s, '#dashboard', 1200);
     await clickSel(s, '#add-rival-btn', { settle: 350 });
     await stackCheck('add-rival dialog @390', 'rival-modal');
     t('390px: an open dialog still traps Tab inside the panel',
@@ -363,18 +392,22 @@ export async function run({ base, cdpPort }) {
       await evaluate(s, 'document.activeElement.id'));
 
     // ---- #14 responsive containment ----
-    for (const [w, h, mobile] of [[390, 844, true], [1100, 900, false]]) {
+    // Every breakpoint the layout actually switches at, not just the two ends:
+    // 480 (type floor), 768 (touch-target rules), 1024, and 1159/1160 - the
+    // pair that bracket the continent band's three-tier grid, where the
+    // 2026-08-22 audit found long names pushing the page sideways.
+    for (const [w, h, mobile] of [[390, 844, true], [480, 900, true], [768, 1024, true], [1024, 900, false], [1159, 900, false], [1160, 900, false], [1280, 900, false]]) {
       await setViewport(s, w, h, mobile);
       for (const v of ['dashboard', 'rival/r-long', 'leaderboard', 'matrix', 'records', 'history']) {
         mark(`overflow ${w}px ${v}`);
-        await goto(s, `${base}${APP}#${v}`, { settle: 900 });
+        await hashTo(s, `#${v}`, 900);
         if (v === 'dashboard') { await clickSel(s, '.pred-label-toggle', { nth: 0, settle: 200 }); }
         const ov = await evaluate(s, OVERFLOW);
         t(`${w}px ${v}: no page-level horizontal scroll`, ov.scrollW <= ov.clientW + 1, JSON.stringify(ov));
       }
     }
     await setViewport(s, 390, 844, true);
-    await goto(s, `${base}${APP}#dashboard`, { settle: 1200 });
+    await hashTo(s, '#dashboard', 1200);
     const tabs = await evaluate(s, "(()=>{const n=document.querySelector('.view-tabs'); return {scroll:n.dataset.scroll, mask: getComputedStyle(n).maskImage !== 'none' || getComputedStyle(n).webkitMaskImage !== 'none', scrollable: n.scrollWidth > n.clientWidth}})()");
     t('390px: the tab strip is scrollable and fades its overflowing edge', tabs.scrollable && tabs.scroll === 'start' && tabs.mask, JSON.stringify(tabs));
     const days = await evaluate(s, "(()=>{const n=document.querySelector('.pred-day-tabs'); const r=n.getBoundingClientRect(); return {tabs:n.children.length, fit: n.scrollWidth <= n.clientWidth + 1, minFont: Math.min(...[...n.querySelectorAll('.pred-day-tab-name')].map(e=>parseFloat(getComputedStyle(e).fontSize)))}})()");
@@ -383,18 +416,56 @@ export async function run({ base, cdpPort }) {
     t('390px: no prediction-card text under 10px', smallest >= 10, String(smallest));
     mark('axe dashboard @390');
     await axe(s, 'dashboard @390');
-    await goto(s, `${base}${APP}#matrix`, { settle: 1000 });
+    await hashTo(s, '#matrix', 1000);
     const mx = await evaluate(s, "(()=>{const cells=[...document.querySelectorAll('.matrix-cell')]; const over=cells.filter(c=>{const r=c.querySelector('.matrix-record'); return r && r.scrollWidth>c.clientWidth+1}).length; const heads=[...document.querySelectorAll('.matrix-row-head')].filter(h=>h.scrollWidth>h.clientWidth+1).length; const wrap=document.getElementById('matrix-wrap'); const chip=[...document.querySelectorAll('.matrix-chip')].find(c=>/Bartholomew/.test(c.textContent)); return {over, heads, wrapScrolls: wrap.scrollWidth>wrap.clientWidth, chipInside: chip.getBoundingClientRect().right <= document.querySelector('.matrix-controls').getBoundingClientRect().right + 1}})()");
     t('390px matrix: scrolls inside its wrap, no cell or row-head overflow, long chip contained', mx.over === 0 && mx.heads === 0 && mx.wrapScrolls && mx.chipInside, JSON.stringify(mx));
     mark('axe matrix @390');
     await axe(s, 'matrix @390');
-    await goto(s, `${base}${APP}#rival/r-long`, { settle: 1000 });
+    await hashTo(s, '#rival/r-long', 1000);
     const longName = await evaluate(s, "(()=>{const h=document.querySelector('#rival-header h2'); const r=h.getBoundingClientRect(); return {right: Math.round(r.right), vw: innerWidth, overflow: h.scrollWidth > h.clientWidth + 1}})()");
     t('390px: a 57-character rival name wraps inside the header', longName.right <= longName.vw && !longName.overflow, JSON.stringify(longName));
     await setViewport(s, 1280, 900);
-    await goto(s, `${base}${APP}#dashboard`, { settle: 1000 });
+    await hashTo(s, '#dashboard', 1000);
     const longCard = await evaluate(s, "(()=>{const c=[...document.querySelectorAll('.dash-summary-card')].find(c=>/Bartholomew/.test(c.textContent)); if(!c) return {none:true}; const v=c.querySelector('.value'); return {overflow: v.scrollWidth > v.clientWidth + 1, cardRight: Math.round(c.getBoundingClientRect().right), stripRight: Math.round(document.getElementById('dash-summary').getBoundingClientRect().right)}})()");
     t('1280px: a long name in a summary card wraps instead of overflowing', longCard.none || (!longCard.overflow && longCard.cardRight <= longCard.stripRight + 1), JSON.stringify(longCard));
+
+    // ---- #4 local calendar days, in a RENDERED page under UTC+12 ----
+    // tests/stats.test.js proves the helpers across four zones in child
+    // processes; this proves the views built on them. The zone comes from
+    // CDP's Emulation.setTimezoneOverride, not the TZ env var: snap-confined
+    // Chromium ignores TZ, which is why the audit's Berlin probe silently ran
+    // in the host zone and only its own precondition check noticed.
+    mark('UTC+12 rendered day');
+    const tzPage = await open();
+    try {
+      await setViewport(tzPage, 1280, 900);
+      await tzPage.send('Emulation.setTimezoneOverride', { timezoneId: 'Pacific/Auckland' });
+      await goto(tzPage, `${base}/apps/maptap-rivals/css/styles.css`, { settle: 150 });
+      const zone = await evaluate(tzPage, "Intl.DateTimeFormat().resolvedOptions().timeZone");
+      // The browser's OWN local day, which is what every view must agree with.
+      const bToday = await evaluate(tzPage, "(()=>{const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')})()");
+      const legacy = await evaluate(tzPage, "new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()).toISOString().slice(0,10)");
+      t('UTC+12: the browser really is in Pacific/Auckland and the legacy UTC expression drifts off today',
+        zone === 'Pacific/Auckland' && legacy !== bToday, `${zone}: legacy ${legacy} vs local ${bToday}`);
+      const f = fixture();
+      f.games.push({ id: 'tz-today', rivalId: 'r-ari', date: bToday, myScores: [70, 70, 70, 70, 70], theirScores: [60, 60, 60, 60, 60], myScore: 700, theirScore: 600, note: '', createdAt: 9e12 });
+      const kv = { ...SEED_KV(f) };
+      await evaluate(tzPage, `(()=>{ for (const k of Object.keys(localStorage)) localStorage.removeItem(k); const kv=${JSON.stringify(kv)}; for (const [k,v] of Object.entries(kv)) localStorage.setItem(k, v); return 1 })()`);
+      await goto(tzPage, `${base}${APP}#dashboard`, { settle: 1800 });
+      await waitForExpr(tzPage, "document.querySelectorAll('.rival-card').length===4");
+      const dayTabs = await evaluate(tzPage, "[...document.querySelectorAll('.pred-day-tab')].map(e=>(e.textContent||'').replace(/\\s+/g,' ').trim())");
+      t('UTC+12: the prediction day tabs start at Today, not yesterday', /Today/.test(String(dayTabs[0] || '')), JSON.stringify(dayTabs.slice(0, 3)));
+      const tzSummary = await evaluate(tzPage, "((document.querySelector('#dash-summary')||{}).textContent||'').replace(/\\s+/g,'')");
+      t('UTC+12: the summary counts the game logged today', /Today1gamelogged/.test(tzSummary), tzSummary.slice(0, 200));
+      // The heatmap lives on a rival page; cells carry their ISO day in `title`.
+      await hashTo(tzPage, '#rival/r-ari', 1500);
+      const heat = await evaluate(tzPage, "(()=>{const cells=[...document.querySelectorAll('#heatmap-grid .heatmap-cell:not(.heatmap-empty)')]; const last=cells[cells.length-1]; return {last: last && last.title.slice(0,10), cells: cells.length}})()");
+      t('UTC+12: the calendar heatmap ends on the browser local today, not yesterday',
+        heat.last === bToday, `${heat.last} vs ${bToday} (${heat.cells} cells)`);
+      t('UTC+12: no first-party JS errors under an overridden timezone', cleanErrors(tzPage).length === 0, cleanErrors(tzPage).join(' | '));
+    } finally {
+      await closePage(cdpPort, tzPage);
+    }
 
     t('no first-party JS errors across the suite', cleanErrors(s).length === 0, cleanErrors(s).join(' | '));
     await rm(dir, { recursive: true, force: true }).catch(() => {});

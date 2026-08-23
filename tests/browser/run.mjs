@@ -84,11 +84,12 @@ const EXPECTED_CHECKS = {
   'tests/browser/suites/visual.mjs': 86,
   'tests/browser/suites/perf.mjs': 41,
   'tests/browser/suites/pwa-gym.mjs': 14,
-  // 56 from the 2026-08-22 audit pass, plus the 15 modal/header stacking
-  // checks added 2026-08-23. Pinned because this suite's axe scans now
-  // contain their own failures instead of aborting the run, so a shrunken
-  // run would otherwise look green.
-  'apps/maptap-rivals/e2e/quality.mjs': 71,
+  // 56 from the 2026-08-22 audit pass, plus, added 2026-08-23: 15 modal/header
+  // stacking checks, 3 route-change checks, 30 overflow checks (6 views x 7
+  // widths) and 5 UTC+12 rendered-day checks. Pinned because this suite's axe
+  // scans now contain their own failures instead of aborting the run, so a
+  // shrunken run would otherwise look green.
+  'apps/maptap-rivals/e2e/quality.mjs': 109,
 };
 
 const selected = only ? SUITES.filter((p) => p.includes(only)) : SUITES;
