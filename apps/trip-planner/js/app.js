@@ -2346,8 +2346,14 @@
     const cost = costCell(trip, it, n);
     const issueCls = issueLevel === 'error' ? 'has-err' : (issueLevel === 'warn' ? 'has-warn' : '');
     const issueBadge = issueBadgeHtml(issueEntry);
-    const statusSel = `
-      <select class="status-sel ${sm.cls}" data-status-for="${it.id}" aria-label="Status" ${sharedMode ? 'disabled' : ''}>
+    // A disabled <select> keeps its chevron and its pressable look, so a
+    // shared board read as editable until a tap did nothing. There is nothing
+    // to pick in a read-only view, so the status is what it always was on
+    // paper: a label.
+    const statusSel = sharedMode
+      ? `<span class="status-sel status-pill ${sm.cls}" aria-label="Status: ${esc(sm.label)}">${esc(sm.label)}</span>`
+      : `
+      <select class="status-sel ${sm.cls}" data-status-for="${it.id}" aria-label="Status">
         ${Object.entries(STATUS_META).map(([k, v]) => `<option value="${k}" ${k === it.status ? 'selected' : ''}>${v.label}</option>`).join('')}
       </select>`;
     // Travel is the trip's connective tissue, not a destination: a dashed rail
@@ -3042,6 +3048,33 @@
     btn.setAttribute('aria-expanded', 'true');
     const card = wrap.closest('.day-card');
     if (card) card.classList.add('has-open-menu');
+    // a menu opened from the keyboard puts focus on its first row, which is
+    // what makes the arrow keys below reachable at all
+    if (btn.matches(':focus-visible')) {
+      const first = m && m.querySelector('.dm-item:not([disabled])');
+      if (first) first.focus({ preventScroll: true });
+    }
+  }
+
+  // The menu says role="menu" and its rows say role="menuitem", and that is a
+  // promise about the keyboard: arrows move between items, Home and End jump to
+  // the ends. Tab and Escape always worked, so this was operable but not what
+  // its own ARIA claimed. Disabled rows are skipped, exactly as a mouse skips
+  // them, and the wrap-around matches every other menu on the web.
+  function dayMenuKeys(e) {
+    const menu = e.target.closest('.dc-menu');
+    if (!menu || menu.hidden) return;
+    const keys = ['ArrowDown', 'ArrowUp', 'Home', 'End'];
+    if (!keys.includes(e.key)) return;
+    const items = [...menu.querySelectorAll('.dm-item:not([disabled])')];
+    if (!items.length) return;
+    e.preventDefault();
+    const at = items.indexOf(e.target.closest('.dm-item'));
+    const next = e.key === 'Home' ? 0
+      : e.key === 'End' ? items.length - 1
+        : e.key === 'ArrowDown' ? (at + 1 + items.length) % items.length
+          : (at - 1 + items.length) % items.length;
+    items[next].focus();
   }
 
   // ---------- reordering a day's tied rows ----------
@@ -7826,11 +7859,15 @@
     renderPlanner();
     setSetupCollapsed(setupCollapsed);
     $('#assistCloseBtn').focus();
+    // the page makes room for the panel above 1200px rather than being covered
+    // by it (see the .tp-assist-open rule)
+    document.body.classList.add('tp-assist-open');
   }
 
   function closeAssist() {
     setAssistMinimized(false);
     $('#assistPanel').hidden = true;
+    document.body.classList.remove('tp-assist-open');
     returnAssistFocus();
   }
 
@@ -7854,6 +7891,8 @@
   function setAssistMinimized(on) {
     const panel = $('#assistPanel');
     panel.classList.toggle('is-min', on);
+    // a minimized panel is a pill in the corner, so the page takes its space back
+    document.body.classList.toggle('tp-assist-min', !!on);
     const btn = $('#assistMinBtn');
     btn.title = on ? 'Restore' : 'Minimize';
     btn.setAttribute('aria-label', on ? 'Restore assistant' : 'Minimize assistant');
@@ -10328,6 +10367,8 @@
   // the grip's replacement afterwards (preventScroll, or the page jumps back to
   // the row we just moved away from), exactly as the night strip does.
   $('#daysList').addEventListener('keydown', e => {
+    // the day header's ⋯ menu owns the arrows while it is open (see dayMenuKeys)
+    if (e.target.closest('.dc-menu')) { dayMenuKeys(e); return; }
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
     const grip = e.target.closest('.dc-grip');
     if (!grip || sharedMode) return;
@@ -10449,8 +10490,29 @@
     // trackView drops repeats, so the several code paths that re-assert the
     // current view (share exit, select-mode exit, hashchange) report once.
     track('trackView', v);
-    if (selMode && v !== 'timeline') { exitSelectMode(); render(); return; }
+    if (selMode && v !== 'timeline') { exitSelectMode(); render(); revealView(); return; }
     applyView();
+    revealView();
+  }
+
+  // On a phone the header, the summary chips, the night strip and the toolbar
+  // come to about 400px before the view even starts, so tapping Days or Map put
+  // the thing you asked for just below the fold: the tap appeared to do nothing.
+  // Only on narrow screens, only when the view really is off-screen, and only
+  // as far as the tabs themselves - the traveller keeps the controls in sight
+  // and gains the content under them.
+  function revealView() {
+    if (window.innerWidth > 700) return;
+    const tabs = document.querySelector('.view-tabs');
+    const box = { timeline: '#board', days: '#daysBox', map: '#mapBox' }[ui.view];
+    const view = box ? document.querySelector(box) : null;
+    if (!tabs || !view) return;
+    requestAnimationFrame(() => {
+      const top = view.getBoundingClientRect().top;
+      if (top <= window.innerHeight - 80) return; // already on screen
+      const y = tabs.getBoundingClientRect().top + window.scrollY - 8;
+      window.scrollTo({ top: Math.max(0, y), behavior: 'auto' });
+    });
   }
   $('#viewTimeline').addEventListener('click', () => setView('timeline'));
   $('#viewDays').addEventListener('click', () => setView('days'));

@@ -20,9 +20,16 @@
 //   DM-03  switching currency converts the budget instead of relabelling it
 //   HR-01  a venue that has not opened yet says so, instead of "Closed at"
 //   MV-01  a handover day measures from the hotel it wakes up in
+//   MV-02  row actions are reachable on a touch device of any width
+//   MV-03  printing works when the browser does not print backgrounds
+//   AS-04  the assistant panel makes room instead of covering the toolbar
+//   MV-C1  a tapped view is on screen on a phone
+//   MV-B1  the day menu's arrow keys do what its ARIA promises
+//   MV-B2  a read-only board does not wear editable controls
+//   DM-08  an unbreakable title does not scroll the page
 import {
   APP, recorder, freshIds, iso, item, trip, dbOf,
-  openApp, openTab, readDb, activeTripOf, tpErrors, closePage, evaluate, evalAsync, waitForExpr,
+  openApp, openTab, readDb, activeTripOf, tpErrors, closePage, evaluate, evalAsync, waitForExpr, standardTrip, pressKey,
   clickSel, setValue, switchView, menuAct, addItemViaUi, escape, ctrlKey,
   toastText, overlayOpenId, sleep, buildShareHash, gotoHard,
 } from './helpers.mjs';
@@ -805,6 +812,126 @@ export async function run({ base, cdpPort }) {
       handoverChip === 'Kyoto', handoverChip, s);
     await t('tp-audit MV-01: no page errors', tpErrors(s).length === 0, tpErrors(s).slice(0, 2).join(' | '), s);
   });
+
+
+  /* ===== the responsive / touch / print batch ============================= */
+  freshIds();
+  const uiTrip = standardTrip();
+  // MV-02: a touch device WIDER than the 900px fold has no hover to reveal
+  // the row actions with, and they were opacity 0 with no way to get at them.
+  await withPage('tp-audit MV-02', { db: dbOf([uiTrip]), viewport: [1024, 768] }, async (s) => {
+    await evaluate(s, `document.querySelectorAll('.tl-toggle[aria-expanded="false"]').forEach(b => b.click())`);
+    await sleep(300);
+    const state = await evaluate(s, `(() => {
+      const el = document.querySelector('#board .c-actions');
+      return { hover: matchMedia('(hover: hover) and (pointer: fine)').matches,
+        opacity: el ? Number(getComputedStyle(el).opacity) : null,
+        buttons: el ? el.querySelectorAll('button').length : 0 };
+    })()`);
+    await t('tp-audit MV-02: a touch board shows its row actions',
+      state.hover === false && state.opacity > 0 && state.buttons >= 3, JSON.stringify(state), s);
+    await t('tp-audit MV-02: and they are really clickable there',
+      await clickSel(s, '#board .c-actions [data-act="edit"]', { settle: 500 })
+        && (await overlayOpenId(s)) === 'itemOverlay', String(await overlayOpenId(s)), s);
+    await escape(s);
+  });
+
+  // DM-08: a 120-character unbroken title used to push the PAGE sideways
+  freshIds();
+  const longTrip = trip({ name: 'Long', items: [item({ title: 'A'.repeat(120), location: 'B'.repeat(80), startDate: iso(5) })] });
+  await withPage('tp-audit DM-08', { db: dbOf([longTrip]), viewport: [1280, 900] }, async (s) => {
+    await t('tp-audit DM-08: an unbreakable title does not scroll the page',
+      (await evaluate(s, `document.documentElement.scrollWidth <= document.documentElement.clientWidth`)) === true,
+      await evaluate(s, `document.documentElement.scrollWidth + ' vs ' + document.documentElement.clientWidth`), s);
+  });
+
+  // MV-03: printing with background graphics off (the browser default)
+  await withPage('tp-audit MV-03', { db: dbOf([standardTrip()]), viewport: [1100, 900] }, async (s) => {
+    await switchView(s, 'days');
+    await s.send('Emulation.setEmulatedMedia', { media: 'print' });
+    await sleep(300);
+    const read = await evaluate(s, `(() => {
+      const lum = rgb => { const m = /(\\d+),\\s*(\\d+),\\s*(\\d+)/.exec(rgb); if (!m) return null;
+        const c = [+m[1], +m[2], +m[3]].map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+      const ratio = sel => { const e = document.querySelector(sel); if (!e) return null;
+        const l = lum(getComputedStyle(e).color); return l == null ? null : (1.05) / (l + 0.05); };
+      const header = document.querySelector('#header') || document.querySelector('.tp-page > header');
+      return { title: ratio('.dc-title'), when: ratio('.dc-when'), cost: ratio('.dc-cost'),
+        bg: getComputedStyle(document.body).backgroundColor,
+        header: header ? getComputedStyle(header).display : 'absent' };
+    })()`);
+    await t('tp-audit MV-03: printed text is readable on white without background graphics',
+      read.title > 4.5 && read.when > 4.5 && read.cost > 4.5, JSON.stringify(read), s);
+    await t('tp-audit MV-03: and the site chrome is not part of the itinerary',
+      read.header === 'none' || read.header === 'absent', String(read.header), s);
+    await s.send('Emulation.setEmulatedMedia', { media: '' });
+  });
+
+  // AS-04: the panel used to sit on top of Undo, the trip picker and the menu
+  await withPage('tp-audit AS-04', { db: dbOf([standardTrip()]), viewport: [1280, 900] }, async (s) => {
+    await clickSel(s, '#assistBtn', { settle: 700 });
+    const covered = await evaluate(s, `(() => {
+      const panel = document.getElementById('assistPanel');
+      const check = id => { const b = document.getElementById(id); if (!b) return 'missing';
+        const r = b.getBoundingClientRect();
+        if (r.width === 0) return 'hidden';
+        const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return !top ? 'offscreen' : (panel.contains(top) ? 'COVERED' : 'reachable'); };
+      return { undo: check('undoBtn'), picker: check('tripSelect'), menu: check('tripMenuBtn') };
+    })()`);
+    await t('tp-audit AS-04: the toolbar and trip controls stay reachable with the panel open',
+      covered.undo === 'reachable' && covered.picker === 'reachable' && covered.menu === 'reachable',
+      JSON.stringify(covered), s);
+  });
+
+  // MV-C1: on a phone the chosen view was below the fold
+  await withPage('tp-audit MV-C1', { db: dbOf([standardTrip()]), viewport: [390, 844] }, async (s) => {
+    await switchView(s, 'days');
+    await sleep(400);
+    const top = await evaluate(s, `(() => { const c = document.querySelector('#daysList .day-card');
+      return c ? Math.round(c.getBoundingClientRect().top) : null; })()`);
+    await t('tp-audit MV-C1: tapping Days puts the first card on screen',
+      top !== null && top < 844 - 80, `card top ${top} of 844`, s);
+  });
+
+  // MV-B1: the day menu says role="menu", so the arrows must work
+  await withPage('tp-audit MV-B1', { db: dbOf([standardTrip()]), viewport: [1280, 900] }, async (s) => {
+    await switchView(s, 'days');
+    await clickSel(s, '#daysList [data-act="day-menu"]', { settle: 400 });
+    await evaluate(s, `document.querySelector('.dc-menu:not([hidden]) .dm-item:not([disabled])').focus()`);
+    const first = await evaluate(s, `(document.activeElement.textContent || '').trim()`);
+    await pressKey(s, 'ArrowDown', 'ArrowDown', 40);
+    const second = await evaluate(s, `(document.activeElement.textContent || '').trim()`);
+    await pressKey(s, 'End', 'End', 35);
+    const last = await evaluate(s, `(document.activeElement.textContent || '').trim()`);
+    await t('tp-audit MV-B1: arrows and End move between the menu rows',
+      !!first && second !== first && last !== second,
+      JSON.stringify({ first, second, last }), s);
+    await escape(s);
+  });
+
+  // MV-B2: a shared board is read-only, and should look it
+  freshIds();
+  const ownTrip = trip({ name: 'Mine', items: [item({ title: 'Mine', startDate: iso(3) })] });
+  const sharedSrc = trip({ name: 'Friend', items: [item({ title: 'Friend item', startDate: iso(3), status: 'booked' })] });
+  {
+    let a = null, b = null;
+    try {
+      a = await openApp(cdpPort, base, { db: dbOf([ownTrip]) });
+      const hash = await buildShareHash(a, sharedSrc);
+      b = await openTab(cdpPort, base, { hash });
+      const el = await evaluate(b, `(() => { const e = document.querySelector('.status-sel');
+        return e ? { tag: e.tagName, cls: e.className, text: (e.textContent || '').trim() } : null; })()`);
+      await t('tp-audit MV-B2: a shared row states its status instead of offering a picker',
+        !!el && el.tag === 'SPAN' && /status-pill/.test(el.cls) && /Booked/i.test(el.text),
+        JSON.stringify(el), b);
+    } catch (e) {
+      await t('tp-audit MV-B2: block ran', false, String(e && e.message).slice(0, 160), b || a);
+    } finally {
+      for (const p of [a, b]) if (p) try { await closePage(cdpPort, p); } catch { /* gone */ }
+    }
+  }
 
   return R;
 }
