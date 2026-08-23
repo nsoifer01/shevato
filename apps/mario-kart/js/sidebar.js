@@ -120,9 +120,6 @@ function openSidebar(animate = true) {
     // Hide toggle button
     toggle.style.opacity = '0';
     toggle.style.pointerEvents = 'none';
-    
-    // Save state
-    localStorage.setItem('sidebarOpen', 'true');
 }
 
 function closeSidebar() {
@@ -146,9 +143,6 @@ function closeSidebar() {
     // Show toggle button
     toggle.style.opacity = '1';
     toggle.style.pointerEvents = 'auto';
-    
-    // Save state
-    localStorage.setItem('sidebarOpen', 'false');
     
     // Return focus to toggle button
     toggle.focus();

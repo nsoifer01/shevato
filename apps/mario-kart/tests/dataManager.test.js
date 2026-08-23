@@ -86,6 +86,11 @@ function makeDataContext({
     };
   }
 
+  // Mounting the dialog is DOM work (presentModal in modalUtils.js, covered
+  // by the browser e2e); here the buttons are plain stub elements and the
+  // test drives #save-edit's onclick directly.
+  ctx.presentModal = () => ({ close() {} });
+  loadInto(ctx, 'utils.js');
   loadInto(ctx, 'dataManager.js');
   loadInto(ctx, 'undoRedo.js');
   if (seedRaces.length) {

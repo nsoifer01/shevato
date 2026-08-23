@@ -22,13 +22,13 @@ function createTrendCharts(raceData = null) {
     // Add summary stats
     const totalRaces = raceData.length;
     const dateRange = raceData.length > 0 
-        ? `${raceData[0].date} - ${raceData[raceData.length - 1].date}` 
+        ? escapeHtml(`${raceData[0].date} - ${raceData[raceData.length - 1].date}`)
         : 'No data';
     
     statsDisplay.innerHTML = `
         <section id="trends">
             <h2>📈 Performance Trends</h2>
-            <p style="text-align: center; color: #718096; margin-top: -0.5rem; margin-bottom: 1rem; font-size: 0.875rem;">
+            <p class="trends-summary">
                 ${totalRaces} races • ${dateRange}
             </p>
             <div id="trends-chart-container">

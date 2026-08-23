@@ -46,8 +46,10 @@
         const container = document.getElementById('sidebar-player-settings');
         if (!container) return;
 
-        const countKey = window.getStorageKey ? window.getStorageKey('PlayerCount') : 'marioKartPlayerCount';
-        const playerCount = localStorage.getItem(countKey) || '3';
+        // The in-memory count is the truth (loadSavedData resolves the
+        // version key, its fallback and the race log); reading storage here
+        // showed "3" selected while the form was four wide.
+        const playerCount = (typeof window.getPlayerCount === 'function' ? window.getPlayerCount() : 3).toString();
         const playerNames = window.PlayerNameManager ? window.PlayerNameManager.getAll() : 
             { player1: 'Player 1', player2: 'Player 2', player3: 'Player 3', player4: 'Player 4' };
         
@@ -110,6 +112,7 @@
                             <input type="text"
                                    class="sidebar-player-name-input"
                                    value="${safeName}"
+                                   maxlength="40"
                                    placeholder="Enter name..."
                                    ${!isActive ? 'disabled' : ''}
                                    data-player="${playerKey}"

@@ -23,6 +23,15 @@ function saveAction(actionType, data) {
     updateUndoRedoButtons();
 }
 
+// Drop the whole stack. Called whenever the race log is replaced wholesale
+// by something the stack never saw (import, restore, a foreign tab's write):
+// every stored index would otherwise replay into different data.
+function resetActionHistory() {
+    actionHistory = [];
+    historyPosition = -1;
+    updateUndoRedoButtons();
+}
+
 function updateUndoRedoButtons() {
     // Update widget buttons
     const undoBtn = document.getElementById('undo-btn');
@@ -60,7 +69,9 @@ function undoLastAction() {
             races[action.data.index] = action.data.originalRace;
             break;
         case 'CLEAR_DATA':
-            races = action.data.races;
+            // Restore from the snapshot the clear took (deep-copied by
+            // saveAction), so later undo entries index into the same rows.
+            races = JSON.parse(JSON.stringify(action.data.races));
             break;
     }
 
@@ -69,6 +80,7 @@ function undoLastAction() {
     updateDisplay();
     updateAchievements();
     updateUndoRedoButtons();
+    if (typeof updateClearButtonState === 'function') updateClearButtonState();
     showMessage('Action undone');
 }
 
@@ -98,5 +110,6 @@ function redoLastAction() {
     updateDisplay();
     updateAchievements();
     updateUndoRedoButtons();
+    if (typeof updateClearButtonState === 'function') updateClearButtonState();
     showMessage('Action redone');
 }

@@ -15,19 +15,21 @@ Mario Kart Race Tracker is a feature-rich web application that allows you to:
 ## 🚀 Features
 
 ### Core Functionality
-- **Game Version Switcher**: Toggle the whole app between Mario Kart 8 Deluxe (1-12) and Mario Kart World (1-24) from the buttons under the page title. Each game keeps a fully independent dataset (its own races, stats, achievements, recent searches, and favorites) under separate localStorage namespaces (`marioKart*` vs `marioKartWorld*`)
+- **Game Version Switcher**: Toggle the whole app between Mario Kart 8 Deluxe (1-12) and Mario Kart World (1-24) from the buttons under the page title. Each game keeps a fully independent dataset (its own races, stats, achievements, player names, icons, player count, recent searches, and favorites) under separate localStorage namespaces (`marioKart*` vs `marioKartWorld*`); the first time MK World is opened it shows the MK8D player settings until you change them there
 - **Race Recording**: Quick and easy race result entry with multiple input methods
 - **Course Selection**: Tag each race with the course/map you played on, via a searchable picker (an inline dropdown on mobile, a command-palette overlay on desktop) with favorites, recent searches, and game-version / new-course filters. Course data is data-driven and easy to update (see "Updating Course Data" below)
-- **Player Management**: Customizable player names and emoji/icons
-- **Date Filtering**: View stats for specific time periods
-- **Undo/Redo**: Full history support for all actions
+- **Player Management**: Customizable player names (up to 40 characters) and emoji/icons, per game version
+- **Date Filtering**: View stats for specific time periods; "Last 7 Days" and "Last 30 Days" are local calendar windows (today plus the previous 6 or 29 days)
+- **Undo/Redo**: Covers adding, editing, deleting and Clear All (a clear is undone from a snapshot). Import, Restore and a game-version switch start a fresh history
 - **Data Persistence**: Automatic saving to browser localStorage, with account sync across devices when signed in
-- **Export/Import**: JSON file support for data backup and transfer
-- **Restore**: One-click recovery from the rolling auto-backup snapshot (taken every 10 minutes)
+- **Export/Import**: JSON file support for data backup and transfer. Every import and restore runs through one validator: unambiguous repairs (legacy player keys, `24:MM` stamps, empty entries, unreadable times/course tags) are applied and listed in the toast; a bad date or a non-integer, out-of-range or duplicate position rejects the file with a message naming the race
+- **Restore**: One-click recovery from the rolling auto-backup snapshot (taken every 10 minutes, and refreshed right before a Clear All)
 - **Edit Races**: Every race in the history (table row or mobile card) has an edit button that opens the race in a modal to correct positions, date, and time
 - **Safe Deletes**: Deleting a race asks for confirmation first; undo/redo still covers every action
-- **Clear All Data**: The 🗑️ button in the sidebar header wipes races, stats, backups, and history behind a "Delete Everything" confirmation modal (disabled when there is nothing to clear)
-- **Sortable History**: Sort the race-history table by date or by any player's finishing position
+- **Clear All Data**: The 🗑️ button in the sidebar header wipes the races and stats for the current game behind a "Delete Everything" confirmation modal (disabled when there is nothing to clear). Player names and icons stay; Undo brings the races straight back, and Restore brings them back later from the auto-backup taken just before the clear
+- **Sortable History**: Newest race first by default; sort by date or by any player's finishing position (first click ascending, the arrow and `aria-sort` say which)
+- **Multi-tab safe**: Two tabs on the same browser re-read each other's writes (`sync-system/tab-sync.js`), so races added or deleted in one tab show up in the other instead of being overwritten
+- **Stored XSS hardened**: Every renderer escapes player names, symbols, timestamps, dates and course names; imported strings are validated and capped
 - **Sync Status**: An offline banner appears at the top of the page when the connection drops, and the sidebar footer shows a live sync-status pill
 
 ### Statistics & Analytics
@@ -42,7 +44,8 @@ Mario Kart Race Tracker is a feature-rich web application that allows you to:
 - **Theme**: Single cohesive dark theme
 - **Responsive Design**: Works on desktop, tablet, and mobile devices
 - **Modern UI**: Card-based layouts with smooth animations
-- **Multiple Views**: 8 tabs - six statistics/analysis views plus Help and Guide
+- **Multiple Views**: 8 tabs - six statistics/analysis views plus Help and Guide. With no races yet, Help and every empty panel show an "Add your first race" button that opens the sidebar form
+- **Accessible dialogs**: Edit, delete, clear and restore modals use `role="dialog"`, trap Tab, open on a sensible control and return focus to the button that opened them; the tab strip handles Left/Right/Home/End
 
 ## 📱 Browser Compatibility
 
@@ -57,7 +60,8 @@ The tracker works best on modern browsers:
 ### Mobile Support
 - Fully responsive: desktop table views switch to card layouts on smaller screens
 - Charts (Trends, Activity) render at all screen sizes
-- Touch targets meet the 40px guideline throughout
+- Touch targets: sidebar close/trash and pagination buttons are 40px; the course clear buttons inside the 40px-tall course field are 28-32px
+- H2H renders as stacked per-player cards on phones (no sideways scrolling); the sidebar toggle slides away while scrolling down so it never covers content
 
 ### Player System
 - Players are tracked by their slot position (Player 1, 2, 3, 4)
@@ -78,7 +82,7 @@ The tracker works best on modern browsers:
 - **Browser**: Chrome or Firefox on desktop for best experience
 
 ### Race timestamps
-Each race stores a `date` (YYYY-MM-DD) plus an optional `timestamp`
+Each race stores a `date` (YYYY-MM-DD, validated as a real calendar day on import/restore) plus an optional `timestamp`
 ("HH:MM:SS TZ", hand-formatted on the 00-23 clock; an older formatter wrote
 midnight as "24:MM:SS", which some engines refuse to parse). Everything that
 orders races chronologically (streaks, trends, achievements, the sortable
@@ -93,10 +97,10 @@ so old data heals forward.
 
 ### Player count vs the race log
 The player-count selector sets how wide the race-entry form is: how many
-people are playing now. It is stored under its own key
-(`marioKartPlayerCount`), separate from the race log (`marioKartRaces`), and
-cross-device sync carries the two independently, so they can disagree
-without anyone touching the app.
+people are playing now. It is stored under its own key per game version
+(`marioKartPlayerCount` / `marioKartWorldPlayerCount`), separate from the
+race log (`marioKartRaces`), and cross-device sync carries the two
+independently, so they can disagree without anyone touching the app.
 
 Because of that, the history table, the per-player cards and every statistic
 read from a roster that unions the two: the entry width plus whoever
@@ -140,12 +144,16 @@ mario-kart/
 ├── tests/                # node:test suites (run via `npm test` from the repo root)
 │   ├── harness.js       # Shared vm harness (not a test file)
 │   ├── core.test.js     # Roster, date filters, undo/redo, stats, import, backup
+│   ├── audit-2026-08.test.js # Regressions from the 2026-08 audit (clear+undo, XSS, validator, per-version names, sort, integers)
 │   ├── dataManager.test.js # addRace / editRace / migrateRaceData
 │   ├── statistics.test.js  # calculateStats edge cases + chronological ordering
 │   ├── dateFilter.test.js  # Rolling week/month window semantics
 │   ├── charts.test.js      # Chart aggregation helpers
 │   ├── utils.test.js       # Shared position guard + race-datetime parser
 │   └── courses.test.js  # Course dataset integrity + search ranking
+├── e2e/
+│   └── audit-2026-08.mjs # Browser regressions (run by tests/browser/run.mjs): XSS through the DOM, modal focus, two tabs, phone geometry, seeded axe scans
+├── FINDINGS.md           # Engineering knowledge: root causes, decisions, regression risks
 └── README.md            # This file
 ```
 
@@ -156,15 +164,17 @@ Run from the repo root:
 ```bash
 npm test                 # every app
 npm run test:mario-kart  # this app only
+npm run test:browser     # browser estate, including apps/mario-kart/e2e/audit-2026-08.mjs
 ```
 
 ### What is covered
 
+- **audit-2026-08.test.js** - the 2026-08 audit regressions through the real functions: clear -> undo -> add -> reload, player-count decrease, escaping in every renderer (H2H tables, history table/cards, headers, stat cards, edit/delete modals), the shared import/restore validator with a real legacy export, widened-roster cells, per-version names/count, default order and sort direction, whole-number positions.
 - **core.test.js** - roster union (`rosterForCount`, `highestPlayerWithRaces`), date-filter plumbing, undo/redo including the `MAX_HISTORY` bound, H2H statistics, import validation, and version-scoped backup/restore keys.
 - **dataManager.test.js** - `addRace` (min-player rule, position range, duplicate positions, course tagging, timestamp build, localStorage write, undo entry), `editRace` (revalidation, timestamp preserve/rebuild/clear, undo and redo, untouched fields), `migrateRaceData` (legacy `slav`/`mike`/`nikita` keys).
 - **statistics.test.js** - `calculateStats` when a player key is absent rather than null (roster widening) and chronological ordering across every timestamp shape, including legacy "24:MM:SS" stamps.
 - **utils.test.js** - the shared helpers in `js/utils.js`: `isFinitePosition` (the guard every stat/chart/achievement uses to decide whether a player raced) and `raceDateTimeValue` / `compareRacesChronologically` (the tolerant race-datetime parser behind every chronological sort).
-- **dateFilter.test.js** - the week/month filters as rolling 7 x 24h and 30 x 24h windows measured from "now", pinned with a frozen clock.
+- **dateFilter.test.js** - the week/month filters as local calendar windows (today plus 6 / 29 days), pinned with a frozen clock under `TZ=America/Chicago` so the old UTC-midnight bug cannot hide.
 - **charts.test.js** - the pure aggregation helpers in `charts.js`: weekly activity buckets, comeback analysis, best/worst racing day, pattern analysis.
 - **courses.test.js** - course dataset integrity and search ranking.
 
@@ -183,7 +193,9 @@ exports that setup:
 Two recurring traps: assigning `ctx.currentDateFilter` is inert (drive the app's
 own setters instead), and values built inside the vm come from the vm's
 intrinsics, so compare joined strings or copied values rather than
-`assert.deepEqual` against a host array.
+`assert.deepEqual` against a host array. `MK_JS_DIR=<dir>` points the harness
+at another copy of `js/` (used to prove a new regression fails against the
+pre-fix sources: `git show HEAD:apps/mario-kart/js/x.js > <dir>/x.js`).
 
 Known product defects are covered by a regression test that asserts the
 **correct** behaviour and carries `{ todo: 'KNOWN DEFECT: ...' }`, so the run
@@ -241,7 +253,7 @@ const CourseDataConfig = {
 
 1. **Access the Tracker**: Navigate to `https://www.shevato.com/apps/mario-kart/`
 2. **Set Up Players**: Open the sidebar and use "Manage Players" to configure player names and icons
-3. **Record a Race**: Enter finishing positions and click "Add Race"
+3. **Record a Race**: Click "Add your first race" (or sidebar -> 🏁 Add Race), enter finishing positions and click "🏆 Save"
 4. **View Statistics**: Explore different tabs to see various analyses
 5. **Backup Your Data**: Use the Export button regularly to save your data
 

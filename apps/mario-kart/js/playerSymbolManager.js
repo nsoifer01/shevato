@@ -1,16 +1,16 @@
 // Player Symbol Manager - Centralized management of player symbols
 (function() {
-    const STORAGE_KEY = 'marioKartPlayerSymbols';
+    // Per game version, like names; the base key is the read-only fallback.
+    const BASE_KEY = 'marioKartPlayerSymbols';
+    const storageKey = () => (window.getStorageKey ? window.getStorageKey('PlayerSymbols') : BASE_KEY);
     let playerSymbols = {};
     let listeners = new Set();
     
     // Load symbols from localStorage on initialization
     function loadSymbols() {
         try {
-            const saved = localStorage.getItem(STORAGE_KEY);
-            if (saved) {
-                playerSymbols = JSON.parse(saved);
-            }
+            const saved = localStorage.getItem(storageKey()) || localStorage.getItem(BASE_KEY);
+            playerSymbols = saved ? (JSON.parse(saved) || {}) : {};
         } catch (e) {
             console.error('Error loading player symbols:', e);
             playerSymbols = {};
@@ -20,7 +20,7 @@
     // Save symbols to localStorage
     function saveSymbols() {
         try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(playerSymbols));
+            localStorage.setItem(storageKey(), JSON.stringify(playerSymbols));
         } catch (e) {
             console.error('Error saving player symbols:', e);
         }
@@ -82,8 +82,17 @@
     // Initialize on load
     loadSymbols();
     
+    // Re-read storage (game version switch, foreign tab write) and notify.
+    function reload() {
+        loadSymbols();
+        ['player1', 'player2', 'player3', 'player4'].forEach(playerKey => {
+            notifyListeners(playerKey);
+        });
+    }
+
     // Export API
     window.PlayerSymbolManager = {
+        reload,
         getSymbol,
         setSymbol,
         getAllSymbols,

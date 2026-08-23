@@ -464,7 +464,14 @@ function makeBackupContext(version) {
   });
   ctx.window.PlayerNameManager = stubNameManager;
   ctx.window.getStorageKey = versionAwareKey;
+  ctx.escapeHtml = (v) => String(v);
+  ctx.presentModal = () => ({ close() {} });
+  loadInto(ctx, 'utils.js');
+  loadInto(ctx, 'dataManager.js'); // sanitizeRaceData, shared with import
+  loadInto(ctx, 'undoRedo.js');
   loadInto(ctx, 'backup.js');
+  // dataManager.js re-declares `races` at top level, shadowing the seed.
+  vm.runInContext('races = [{ date: "2026-01-01", player1: 1, player2: 2, player3: null, player4: null }]', ctx);
   return ctx;
 }
 
@@ -507,7 +514,7 @@ test('restoreFromBackup (confirm path): MK World restores to marioKartWorldRaces
   // We need getElementById to return a stub element so the modal flow works.
   const buttons = {};
   ctx.document.getElementById = (id) => {
-    if (!buttons[id]) buttons[id] = { onclick: null };
+    if (!buttons[id]) buttons[id] = { onclick: null, classList: { contains: () => true, add() {}, remove() {} } };
     return buttons[id];
   };
   ctx.document.body.appendChild = () => {};

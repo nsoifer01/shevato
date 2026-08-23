@@ -63,10 +63,19 @@ function addRace() {
     const raceData = {};
     const allPlayers = ['player1', 'player2', 'player3', 'player4'];
 
+    let nonInteger = false;
     allPlayers.forEach(player => {
         const input = document.getElementById(player);
-        const value = input ? input.value : '';
-        raceData[player] = value ? parseInt(value) : null;
+        const value = input ? String(input.value).trim() : '';
+        if (!value) {
+            raceData[player] = null;
+        } else if (/^\d+$/.test(value)) {
+            raceData[player] = parseInt(value, 10);
+        } else {
+            // "1.5" and "1e1" used to be silently truncated by parseInt.
+            nonInteger = true;
+            raceData[player] = null;
+        }
     });
 
     // Generate local time timestamp with timezone. Formatted by hand on the
@@ -86,6 +95,11 @@ function addRace() {
 
     if (!date) {
         showMessage('Please select a date', true);
+        return;
+    }
+
+    if (nonInteger) {
+        showMessage('Positions must be whole numbers', true);
         return;
     }
 
@@ -172,42 +186,43 @@ function editRace(index) {
     const race = races[index];
     if (!race) return;
 
-    // Create the edit modal (class-driven, matches the clear-data modal)
-    const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
-
-    const dialog = document.createElement('div');
-    dialog.className = 'modal-dialog edit-race-dialog';
+    const esc = (v) => (typeof escapeHtml === 'function' ? escapeHtml(v) : String(v == null ? '' : v));
 
     const playerInputs = players.map(player => {
-        const currentValue = race[player] || '';
+        const currentValue = isFinitePosition(race[player]) ? race[player] : '';
+        const name = window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player);
         return `
             <div class="edit-race-field">
                 <label class="edit-race-label" for="edit-${player}">
-                    ${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}'s Position:
+                    ${esc(name)}'s Position:
                 </label>
-                <input type="number" id="edit-${player}" class="edit-race-input" min="${MIN_POSITIONS}" max="${MAX_POSITIONS}" value="${currentValue}" placeholder="${MIN_POSITIONS}-${MAX_POSITIONS} or leave empty">
+                <input type="number" id="edit-${player}" class="edit-race-input" inputmode="numeric" step="1" min="${MIN_POSITIONS}" max="${MAX_POSITIONS}" value="${currentValue}" placeholder="${MIN_POSITIONS}-${MAX_POSITIONS} or leave empty">
             </div>
         `;
     }).join('');
 
-    dialog.innerHTML = `
+    const timeValue = typeof race.timestamp === 'string' && race.timestamp.includes(':') ? race.timestamp.split(' ')[0] : '';
+
+    const { close } = presentModal({
+        dialogClass: 'edit-race-dialog',
+        initialFocus: '#edit-date',
+        html: `
         <div class="modal-icon">✏️</div>
         <h3 class="modal-title">Edit Race</h3>
-        <p class="modal-text edit-race-meta">${formatDateForDisplay(race.date)}${race.timestamp ? ', ' + race.timestamp : ''}</p>
+        <p class="modal-text edit-race-meta">${esc(formatDateForDisplay(race.date))}${race.timestamp ? ', ' + esc(race.timestamp) : ''}</p>
 
         <div class="edit-race-datetime">
             <div class="edit-race-field">
                 <label class="edit-race-label" for="edit-date">
                     Race Date:
                 </label>
-                <input type="date" id="edit-date" class="edit-race-input" value="${race.date}">
+                <input type="date" id="edit-date" class="edit-race-input" value="${esc(race.date)}">
             </div>
             <div class="edit-race-field">
                 <label class="edit-race-label" for="edit-time">
                     Race Time:
                 </label>
-                <input type="time" id="edit-time" class="edit-race-input" value="${race.timestamp ? (race.timestamp.includes(':') ? race.timestamp.split(' ')[0] : '') : ''}" step="1" placeholder="Optional">
+                <input type="time" id="edit-time" class="edit-race-input" value="${esc(timeValue)}" step="1" placeholder="Optional">
             </div>
         </div>
 
@@ -217,15 +232,10 @@ function editRace(index) {
             <button id="save-edit" class="modal-btn-primary">Save Changes</button>
             <button id="cancel-edit" class="modal-btn-secondary ">Cancel</button>
         </div>
-    `;
+    `,
+    });
 
-    modal.appendChild(dialog);
-    document.body.appendChild(modal);
-
-    // Add event listeners
-    document.getElementById('cancel-edit').onclick = () => {
-        document.body.removeChild(modal);
-    };
+    document.getElementById('cancel-edit').onclick = close;
 
     document.getElementById('save-edit').onclick = () => {
         const newDate = document.getElementById('edit-date').value;
@@ -246,30 +256,30 @@ function editRace(index) {
         
         // Collect new position data
         const newPositions = {};
-        let hasValidData = false;
         let validPositions = [];
-        let validationError = false;
+        let validationError = null;
 
         players.forEach(player => {
             const input = document.getElementById(`edit-${player}`);
             const value = input.value.trim();
             if (value === '') {
                 newPositions[player] = null;
+            } else if (!/^\d+$/.test(value)) {
+                validationError = 'Positions must be whole numbers';
             } else {
-                const position = parseInt(value);
+                const position = parseInt(value, 10);
                 if (position < MIN_POSITIONS || position > MAX_POSITIONS) {
-                    validationError = true;
+                    validationError = `Positions must be between ${MIN_POSITIONS} and ${MAX_POSITIONS}`;
                     return;
                 }
                 newPositions[player] = position;
-                hasValidData = true;
                 validPositions.push(position);
             }
         });
 
         // Check if validation failed
         if (validationError) {
-            showMessage(`Positions must be between ${MIN_POSITIONS} and ${MAX_POSITIONS}`, true);
+            showMessage(validationError, true);
             return;
         }
 
@@ -344,41 +354,21 @@ function editRace(index) {
         updateAchievements(freshFilteredRaces);
         updateClearButtonState();
         showMessage('Race updated successfully!');
-        document.body.removeChild(modal);
+        close();
     };
-
-    // Close on background click
-    modal.onclick = (e) => {
-        if (e.target === modal) {
-            document.body.removeChild(modal);
-        }
-    };
-
-    // Close on Escape key
-    const escapeHandler = (e) => {
-        if (e.key === 'Escape') {
-            document.body.removeChild(modal);
-            document.removeEventListener('keydown', escapeHandler);
-        }
-    };
-    document.addEventListener('keydown', escapeHandler);
 }
 
 function deleteRace(index) {
     const race = races[index];
     if (!race) return;
 
-    // Confirmation modal (matches the clear-data modal family)
-    const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
-
-    const dialog = document.createElement('div');
-    dialog.className = `modal-dialog `;
-
+    const esc = (v) => (typeof escapeHtml === 'function' ? escapeHtml(v) : String(v == null ? '' : v));
     const raceNumber = index + 1;
-    const raceMeta = `Race #${raceNumber}, ${formatDateForDisplay(race.date)}`;
+    const raceMeta = `Race #${raceNumber}, ${esc(formatDateForDisplay(race.date))}`;
 
-    dialog.innerHTML = `
+    const { close } = presentModal({
+        initialFocus: '#cancel-delete-race',
+        html: `
         <div class="modal-icon">🗑️</div>
         <h3 class="modal-title ">Delete this race?</h3>
         <p class="modal-text ">${raceMeta}</p>
@@ -386,26 +376,14 @@ function deleteRace(index) {
             <button id="confirm-delete-race" class="modal-btn-danger">Delete Race</button>
             <button id="cancel-delete-race" class="modal-btn-secondary ">Cancel</button>
         </div>
-    `;
+    `,
+    });
 
-    modal.appendChild(dialog);
-    document.body.appendChild(modal);
-
-    const closeModal = () => {
-        if (modal.parentNode) modal.parentNode.removeChild(modal);
-        document.removeEventListener('keydown', escapeHandler);
-    };
-    const escapeHandler = (e) => { if (e.key === 'Escape') closeModal(); };
-    document.addEventListener('keydown', escapeHandler);
-
-    document.getElementById('cancel-delete-race').onclick = closeModal;
-
+    document.getElementById('cancel-delete-race').onclick = close;
     document.getElementById('confirm-delete-race').onclick = () => {
-        closeModal();
+        close();
         performDeleteRace(index);
     };
-
-    modal.onclick = (e) => { if (e.target === modal) closeModal(); };
 }
 
 function performDeleteRace(index) {
@@ -425,39 +403,153 @@ function performDeleteRace(index) {
     showMessage('Race removed successfully!');
 }
 
+// --- Race data validation -----------------------------------------------
+// ONE sanitizer for every path that replaces the race log wholesale (import,
+// restore from backup) plus the cheap healing the load path already did.
+// Structure is repaired where the fix is unambiguous (legacy slav/mike/nikita
+// keys, "24:MM:SS" midnight stamps, empty entries, unreadable times and
+// course tags) and every repair is listed; anything that would change a
+// result (bad date, non-integer / out-of-range / duplicate positions) is an
+// error that rejects the whole payload with a plain-language message. Nothing
+// is persisted until the sanitizer says ok.
+
+const RACE_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+// "HH:MM[:SS][ zone]"; hour 24 is accepted here and healed to 00 below.
+const RACE_TIMESTAMP_RE = /^(\d{1,2}):(\d{2})(?::(\d{2}))?(?: [A-Za-z0-9+\-:/_.]{1,40})?$/;
+const MAX_COURSE_LENGTH = 80;
+const MAX_PLAYER_NAME_LENGTH = 40;
+
+function isValidRaceDate(value) {
+    if (typeof value !== 'string') return false;
+    const m = value.match(RACE_DATE_RE);
+    if (!m) return false;
+    const y = parseInt(m[1], 10), mo = parseInt(m[2], 10), d = parseInt(m[3], 10);
+    if (mo < 1 || mo > 12 || d < 1) return false;
+    const probe = new Date(y, mo - 1, d);
+    return probe.getFullYear() === y && probe.getMonth() === mo - 1 && probe.getDate() === d;
+}
+
+// Repairs one race in place-of (returns a copy when anything changed).
+// Shared by migrateRaceData (load path) and sanitizeRaceData.
+function healRace(race, repairs, label) {
+    let healed = race;
+    const touch = () => { if (healed === race) healed = { ...race }; };
+
+    if (race.hasOwnProperty('slav') || race.hasOwnProperty('mike') || race.hasOwnProperty('nikita')) {
+        touch();
+        healed.player1 = race.slav || null;
+        healed.player2 = race.mike || null;
+        healed.player3 = race.nikita || null;
+        healed.player4 = race.player4 || null;
+        delete healed.slav;
+        delete healed.mike;
+        delete healed.nikita;
+        repairs.push(`${label}: migrated legacy player keys`);
+    }
+
+    if (healed.timestamp === null || healed.timestamp === '') {
+        touch();
+        delete healed.timestamp;
+    } else if (healed.timestamp !== undefined) {
+        if (typeof healed.timestamp !== 'string' || !RACE_TIMESTAMP_RE.test(healed.timestamp)) {
+            touch();
+            delete healed.timestamp;
+            repairs.push(`${label}: dropped an unreadable time`);
+        } else if (/^24:/.test(healed.timestamp)) {
+            // Legacy midnight stamp from the old h24 formatter.
+            touch();
+            healed.timestamp = healed.timestamp.replace(/^24:/, '00:');
+            repairs.push(`${label}: healed a 24:MM midnight time`);
+        }
+    }
+
+    for (const key of ['course', 'courseId']) {
+        if (healed[key] === undefined) continue;
+        if (typeof healed[key] !== 'string' || !healed[key].trim()) {
+            touch();
+            delete healed[key];
+            repairs.push(`${label}: dropped an unreadable course tag`);
+        } else if (healed[key].length > MAX_COURSE_LENGTH) {
+            touch();
+            healed[key] = healed[key].slice(0, MAX_COURSE_LENGTH);
+            repairs.push(`${label}: shortened the course name`);
+        }
+    }
+
+    return healed;
+}
+
+function sanitizeRaceData(input, options = {}) {
+    const maxPositions = options.maxPositions || window.MAX_POSITIONS
+        || (typeof MAX_POSITIONS !== 'undefined' ? MAX_POSITIONS : 12);
+    if (!Array.isArray(input)) {
+        return { ok: false, error: 'no race list found', races: [], repairs: [] };
+    }
+    const repairs = [];
+    const out = [];
+    for (let i = 0; i < input.length; i++) {
+        const label = `race #${i + 1}`;
+        const raw = input[i];
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+            repairs.push(`${label}: dropped an empty entry`);
+            continue;
+        }
+        const race = { ...healRace(raw, repairs, label) };
+
+        if (!isValidRaceDate(race.date)) {
+            const shown = typeof race.date === 'string' ? race.date.slice(0, 20) : 'missing';
+            return { ok: false, error: `${label} has an invalid date (${shown}); dates must be YYYY-MM-DD`, races: [], repairs };
+        }
+
+        const seen = new Set();
+        for (const player of ['player1', 'player2', 'player3', 'player4']) {
+            let value = race[player];
+            if (value === undefined || value === null) continue;
+            if (typeof value === 'string' && /^\d+$/.test(value.trim())) {
+                // Whole-number text ("2") is unambiguous: keep it as a number.
+                value = parseInt(value.trim(), 10);
+                repairs.push(`${label}: converted a text position to a number`);
+            }
+            if (!Number.isInteger(value) || value < 1 || value > maxPositions) {
+                return { ok: false, error: `${label} has an invalid ${player.replace('player', 'player ')} position (${String(value).slice(0, 20)}); positions must be whole numbers from 1 to ${maxPositions}`, races: [], repairs };
+            }
+            if (seen.has(value)) {
+                return { ok: false, error: `${label}: players cannot have the same position (${value})`, races: [], repairs };
+            }
+            seen.add(value);
+            race[player] = value;
+        }
+        out.push(race);
+    }
+    return { ok: true, error: null, races: out, repairs };
+}
+
+// Player names from a file: only non-empty strings count, trimmed and capped;
+// anything else (numbers, objects) falls back to the default for that slot so
+// renderers never see a non-string. Unknown keys are ignored.
+function sanitizePlayerNames(input) {
+    const out = {};
+    if (!input || typeof input !== 'object') return out;
+    for (const key of ['player1', 'player2', 'player3', 'player4']) {
+        const value = input[key];
+        if (typeof value !== 'string') continue;
+        const clean = value.trim().slice(0, MAX_PLAYER_NAME_LENGTH);
+        if (clean) out[key] = clean;
+    }
+    return out;
+}
+
 function migrateRaceData(races) {
-    let migrationNeeded = false;
+    const repairs = [];
+    const migratedRaces = [];
+    for (const race of races) {
+        // Sparse/null rows (left behind by the pre-2026-08 clear+undo bug)
+        // would crash every stat on load, so the load path drops them.
+        if (!race || typeof race !== 'object') { repairs.push('dropped an empty entry'); continue; }
+        migratedRaces.push(healRace(race, repairs, 'race'));
+    }
 
-    const migratedRaces = races.map(race => {
-        let migratedRace = race;
-
-        // Check if this race has old format (slav, mike, nikita). Rename the
-        // legacy keys onto slots but keep every other field the race carries
-        // (course, courseId, anything future) instead of rebuilding the row.
-        if (race.hasOwnProperty('slav') || race.hasOwnProperty('mike') || race.hasOwnProperty('nikita')) {
-            migrationNeeded = true;
-            migratedRace = { ...race };
-            migratedRace.player1 = race.slav || null;
-            migratedRace.player2 = race.mike || null;
-            migratedRace.player3 = race.nikita || null;
-            migratedRace.player4 = race.player4 || null;
-            delete migratedRace.slav;
-            delete migratedRace.mike;
-            delete migratedRace.nikita;
-        }
-
-        // Heal legacy midnight stamps ("24:MM:SS", from the old h24
-        // formatter) to "00:MM:SS" so stored data parses everywhere.
-        if (typeof migratedRace.timestamp === 'string' && /^24:/.test(migratedRace.timestamp)) {
-            migrationNeeded = true;
-            if (migratedRace === race) migratedRace = { ...race };
-            migratedRace.timestamp = migratedRace.timestamp.replace(/^24:/, '00:');
-        }
-
-        return migratedRace;
-    });
-
-    if (migrationNeeded) {
+    if (repairs.length > 0) {
         console.log('Migrating race data from old format to new format');
         const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
         localStorage.setItem(storageKey, JSON.stringify(migratedRaces));
@@ -501,9 +593,13 @@ function loadSavedData() {
     // Load player count from localStorage
     try {
         const storageKey = window.getStorageKey ? window.getStorageKey('PlayerCount') : 'marioKartPlayerCount';
-        const savedPlayerCount = localStorage.getItem(storageKey);
-        if (savedPlayerCount) {
-            playerCount = parseInt(savedPlayerCount);
+        // Start from the module default on every load so a version switch
+        // never carries the other game's count across.
+        playerCount = 3;
+        const savedPlayerCount = localStorage.getItem(storageKey) || localStorage.getItem('marioKartPlayerCount');
+        const parsedCount = parseInt(savedPlayerCount, 10);
+        if (parsedCount >= 1 && parsedCount <= 4) {
+            playerCount = parsedCount;
         } else if (typeof highestPlayerWithRaces === 'function') {
             // No stored count. A stored one is a choice we must respect even
             // when it looks small (someone really can drop from four players
@@ -567,45 +663,31 @@ function importData(event) {
     const reader = new FileReader();
     reader.onload = function(e) {
         try {
-            const importedData = JSON.parse(e.target.result);
-
-            // Validate the data structure
-            if (!importedData.races || !Array.isArray(importedData.races)) {
-                throw new Error('Invalid file format');
+            let importedData;
+            try {
+                importedData = JSON.parse(e.target.result);
+            } catch (parseError) {
+                showMessage('Import failed: that file is not valid JSON', true);
+                return;
             }
 
-            // Migration for old format data before validation
-            const migratedRaces = migrateRaceData(importedData.races);
-
-            // Validate each race entry after migration
-            for (const race of migratedRaces) {
-                if (!race.date || typeof race.date !== 'string') {
-                    throw new Error('Invalid race data: missing or invalid date');
-                }
-                // timestamp is optional for backward compatibility
-                if (race.timestamp && typeof race.timestamp !== 'string') {
-                    throw new Error('Invalid race data: invalid timestamp');
-                }
-                // Validate player positions
-                ['player1', 'player2', 'player3', 'player4'].forEach(player => {
-                    if (race[player] !== null && race[player] !== undefined &&
-                        (typeof race[player] !== 'number' || race[player] < 1 || race[player] > window.MAX_POSITIONS)) {
-                        throw new Error(`Invalid race data: invalid ${player} position`);
-                    }
-                });
-                // Validate no duplicate positions within this race
-                const racePositions = ['player1', 'player2', 'player3', 'player4']
-                    .map(p => race[p])
-                    .filter(pos => pos !== null && pos !== undefined);
-                const uniqueRacePositions = [...new Set(racePositions)];
-                if (racePositions.length !== uniqueRacePositions.length) {
-                    throw new Error('Players cannot have the same position in a race');
-                }
+            if (!importedData || typeof importedData !== 'object' || !Array.isArray(importedData.races)) {
+                showMessage('Import failed: this file has no race list (expected a Mario Kart export)', true);
+                return;
             }
 
-            races = migratedRaces;
+            const result = sanitizeRaceData(importedData.races);
+            if (!result.ok) {
+                showMessage(`Import failed: ${result.error}`, true);
+                return;
+            }
+
+            races = result.races;
             const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
             localStorage.setItem(storageKey, JSON.stringify(races));
+
+            // The stack indexed the old log; none of it applies now.
+            if (typeof resetActionHistory === 'function') resetActionHistory();
             
             // Detect active players from race data
             const activePlayerCount = detectActivePlayersFromRaces(races);
@@ -614,17 +696,18 @@ function importData(event) {
             }
             
             // Import player names if present (backward compatible)
-            if (importedData.playerNames && typeof importedData.playerNames === 'object') {
+            const importedNames = sanitizePlayerNames(importedData.playerNames);
+            if (Object.keys(importedNames).length > 0) {
                 // Use centralized PlayerNameManager
                 if (window.PlayerNameManager) {
-                    window.PlayerNameManager.setAll(importedData.playerNames);
+                    window.PlayerNameManager.setAll(importedNames);
                 } else {
                     // Fallback
                     playerNames = {
-                        player1: importedData.playerNames.player1 || 'Player 1',
-                        player2: importedData.playerNames.player2 || 'Player 2',
-                        player3: importedData.playerNames.player3 || 'Player 3',
-                        player4: importedData.playerNames.player4 || 'Player 4'
+                        player1: importedNames.player1 || 'Player 1',
+                        player2: importedNames.player2 || 'Player 2',
+                        player3: importedNames.player3 || 'Player 3',
+                        player4: importedNames.player4 || 'Player 4'
                     };
                     
                     // Save to localStorage
@@ -658,10 +741,15 @@ function importData(event) {
                 }
             }
             
-            // Import player symbols if present (version 1.3+)
+            // Import player symbols if present (version 1.3+): short strings only.
             if (importedData.playerSymbols && typeof importedData.playerSymbols === 'object') {
+                const symbols = {};
+                for (const key of ['player1', 'player2', 'player3', 'player4']) {
+                    const v = importedData.playerSymbols[key];
+                    if (typeof v === 'string' && v && v.length <= 8) symbols[key] = v;
+                }
                 if (window.PlayerSymbolManager) {
-                    window.PlayerSymbolManager.setAllSymbols(importedData.playerSymbols);
+                    window.PlayerSymbolManager.setAllSymbols(symbols);
                 }
             }
             
@@ -686,16 +774,32 @@ function importData(event) {
                 }, 100); // Small delay to ensure DOM is ready
             }
             
-            showMessage(`Successfully imported ${races.length} races!`);
+            if (result.repairs.length > 0) {
+                showMessage(`Imported ${races.length} races (repaired: ${summarizeRepairs(result.repairs)})`);
+            } else {
+                showMessage(`Successfully imported ${races.length} races!`);
+            }
 
         } catch (error) {
-            showMessage(`Import failed: ${error.message}`, true);
+            console.error('Import error:', error);
+            showMessage('Import failed: the file could not be read', true);
         }
     };
     reader.readAsText(file);
 
     // Reset the file input
     event.target.value = '';
+}
+
+// "race #3: healed a 24:MM midnight time, race #4: ..." is too long for a
+// toast; collapse to counts per repair kind.
+function summarizeRepairs(repairs) {
+    const counts = new Map();
+    for (const r of repairs) {
+        const kind = r.replace(/^race #\d+: /, '');
+        counts.set(kind, (counts.get(kind) || 0) + 1);
+    }
+    return Array.from(counts, ([kind, n]) => (n > 1 ? `${kind} x${n}` : kind)).join(', ');
 }
 
 function confirmClearData() {
@@ -705,84 +809,49 @@ function confirmClearData() {
         return;
     }
     
-    // Create a beautiful confirmation modal
-    const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
-
-    const dialog = document.createElement('div');
-    dialog.className = `modal-dialog `;
-
-    dialog.innerHTML = `
+    const { close } = presentModal({
+        initialFocus: '#cancel-clear',
+        html: `
         <div class="modal-icon">⚠️</div>
         <h3 class="modal-title ">Clear All Data?</h3>
         <p class="modal-text ">
-            This will permanently delete all race data, statistics, automated backups, and history. This action cannot be undone.
+            This deletes every race and statistic for this game. Player names and icons stay. You can bring the races back with Undo straight away, or later with Restore (the auto-backup is refreshed first).
         </p>
         <div class="modal-buttons">
             <button id="confirm-clear" class="modal-btn-danger">Delete Everything</button>
             <button id="cancel-clear" class="modal-btn-secondary ">Cancel</button>
         </div>
-    `;
+    `,
+    });
 
-    modal.appendChild(dialog);
-    document.body.appendChild(modal);
-
-    // Add event listeners
-    document.getElementById('cancel-clear').onclick = () => {
-        document.body.removeChild(modal);
-    };
-
+    document.getElementById('cancel-clear').onclick = close;
     document.getElementById('confirm-clear').onclick = () => {
-        document.body.removeChild(modal);
+        close();
         clearData();
     };
-
-    // Close on background click
-    modal.onclick = (e) => {
-        if (e.target === modal) {
-            document.body.removeChild(modal);
-        }
-    };
-
-    // Close on Escape key
-    const escapeHandler = (e) => {
-        if (e.key === 'Escape') {
-            document.body.removeChild(modal);
-            document.removeEventListener('keydown', escapeHandler);
-        }
-    };
-    document.addEventListener('keydown', escapeHandler);
 }
 
 function clearData() {
     // Direct clear without confirmation dialog (called from confirmClearData)
-    races = [];
+    // Lifecycle: the clear is itself an undoable action. saveAction deep-copies
+    // the snapshot, undo restores it, and because the snapshot has the same
+    // rows at the same indices, every older EDIT/DELETE entry still replays
+    // against the data it was recorded on. The pre-2026-08 clear left the
+    // stack untouched and the next undo wrote sparse null rows to storage.
+    const snapshot = races;
 
-    // Clear only race-related data from localStorage, preserving player names and symbols
+    // Refresh the auto-backup first so a mistaken clear is recoverable via
+    // Restore even after the page reloads and the undo stack is gone.
+    if (snapshot.length > 0 && typeof autoBackupToLocalStorage === 'function') {
+        autoBackupToLocalStorage();
+    }
+
+    races = [];
+    saveAction('CLEAR_DATA', { races: snapshot });
+
     try {
-        // Save player names and symbols before clearing
-        const namesKey = window.getStorageKey ? window.getStorageKey('PlayerNames') : 'marioKartPlayerNames';
-        const symbolsKey = window.getStorageKey ? window.getStorageKey('PlayerSymbols') : 'marioKartPlayerSymbols';
-        const countKey = window.getStorageKey ? window.getStorageKey('PlayerCount') : 'marioKartPlayerCount';
-        const playerNames = localStorage.getItem(namesKey);
-        const playerSymbols = localStorage.getItem(symbolsKey);
-        const playerCount = localStorage.getItem(countKey);
-        
-        // Clear race data
         const racesKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
-        const backupKey = window.getStorageKey ? window.getStorageKey('AutoBackup') : 'marioKartAutoBackup';
-        const historyKey = window.getStorageKey ? window.getStorageKey('ActionHistory') : 'marioKartActionHistory';
-        localStorage.removeItem(racesKey);
-        localStorage.removeItem(backupKey);
-        localStorage.removeItem(historyKey);
-        
-        // Set empty races array
         localStorage.setItem(racesKey, '[]');
-        
-        // Restore player-related data
-        if (playerNames) localStorage.setItem(namesKey, playerNames);
-        if (playerSymbols) localStorage.setItem(symbolsKey, playerSymbols);
-        if (playerCount) localStorage.setItem(countKey, playerCount);
     } catch (e) {
         console.error('Error clearing localStorage:', e);
     }
@@ -794,7 +863,7 @@ function clearData() {
     updateDisplay();
     updateAchievements();
 
-    showMessage('All data has been cleared successfully!');
+    showMessage('All races cleared. Undo brings them back.');
     
     // Update clear button state after clearing
     updateClearButtonState();

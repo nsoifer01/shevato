@@ -126,6 +126,17 @@ function applyCustomDateFilter() {
     showMessage(`Filter set to: ${startDate} to ${endDate}`);
 }
 
+// "Last 7 Days" / "Last 30 Days" are calendar windows on the LOCAL clock:
+// today plus the previous 6 (29) days, compared as YYYY-MM-DD strings. The
+// old `new Date(race.date) >= now - 7*24h` parsed the date as UTC midnight,
+// so in any zone west of UTC the oldest day fell out of the window every
+// evening.
+function localDateDaysAgo(days) {
+    const d = new Date();
+    d.setDate(d.getDate() - days);
+    return d.toLocaleDateString('en-CA');
+}
+
 function getFilteredRaces() {
     let filtered = races;
     // Get today's date in user's local timezone
@@ -137,16 +148,10 @@ function getFilteredRaces() {
             // console.log(`Today filter: found ${filtered.length} races`);
             break;
         case 'week':
-            const weekAgo = new Date();
-            weekAgo.setDate(weekAgo.getDate() - 7);
-            filtered = races.filter(race => new Date(race.date) >= weekAgo);
-            // console.log(`Week filter: found ${filtered.length} races`);
+            filtered = races.filter(race => race.date >= localDateDaysAgo(6));
             break;
         case 'month':
-            const monthAgo = new Date();
-            monthAgo.setDate(monthAgo.getDate() - 30);
-            filtered = races.filter(race => new Date(race.date) >= monthAgo);
-            // console.log(`Month filter: found ${filtered.length} races`);
+            filtered = races.filter(race => race.date >= localDateDaysAgo(29));
             break;
         case 'custom':
             if (customStartDate && customEndDate) {

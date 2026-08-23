@@ -12,16 +12,12 @@ function updatePlayerLabels() {
                 (playerNames && playerNames[playerId] ? playerNames[playerId] : playerId);
             label.textContent = playerName;
 
-            // Only add tooltip if not in achievements view
-            if (!label.closest('#achievements-container')) {
-                label.setAttribute('data-tooltip', `${playerName} - Click to customize icon`);
-                label.setAttribute('tabindex', '0');
-                label.setAttribute('role', 'button');
-            } else {
-                // Remove tooltip attributes if in achievements view
-                label.removeAttribute('data-tooltip');
-                label.removeAttribute('title');
-            }
+            // The label is a plain <label>: it has no click handler, so it
+            // must not advertise itself as a button or sit in the tab order.
+            label.removeAttribute('data-tooltip');
+            label.removeAttribute('title');
+            label.removeAttribute('tabindex');
+            label.removeAttribute('role');
         }
     });
 }

@@ -270,15 +270,24 @@ function calculateLongestStreaks(raceData, stats) {
     });
 }
 
+// Every stored string (names, symbols, dates) goes through escapeHtml before
+// it is interpolated; the H2H tables are innerHTML renderers.
+function h2hEsc(value) {
+    return typeof escapeHtml === 'function' ? escapeHtml(value) : String(value == null ? '' : value);
+}
+function h2hName(player) {
+    return h2hEsc(window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player));
+}
+
 function generateH2HTable(stats) {
     // Generate header row
-    const headerCells = players.map(player => `<th class="h2h-header-cell">vs ${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}</th>`).join('');
+    const headerCells = players.map(player => `<th class="h2h-header-cell">vs ${h2hName(player)}</th>`).join('');
 
     // Generate data rows
     const dataRows = players.map(rowPlayer => {
         const cells = players.map(colPlayer => {
             if (rowPlayer === colPlayer) {
-                return '<td class="h2h-cell h2h-self h2h-fixed-width"><span class="h2h-self-text">N/A</span></td>';
+                return `<td class="h2h-cell h2h-self h2h-fixed-width" data-vs="vs ${h2hName(colPlayer)}"><span class="h2h-self-text">N/A</span></td>`;
             } else {
                 const wins = stats.h2h[rowPlayer][colPlayer] || 0;
                 const losses = stats.h2h[colPlayer][rowPlayer] || 0;
@@ -287,7 +296,7 @@ function generateH2HTable(stats) {
                 // Show dash if no head-to-head games between these players
                 if (totalGames === 0) {
                     return `
-                        <td class="h2h-cell h2h-no-data h2h-fixed-width">
+                        <td class="h2h-cell h2h-no-data h2h-fixed-width" data-vs="vs ${h2hName(colPlayer)}">
                             <div class="h2h-content">
                                 <div class="h2h-score">-</div>
                             </div>
@@ -315,9 +324,9 @@ function generateH2HTable(stats) {
                     if (isActiveStreak) {
                         streakSuffix = ' <span class="h2h-streak-meta">(active)</span>';
                     } else if (streakDate) {
-                        const formattedDate = (typeof formatDateForDisplay === 'function')
+                        const formattedDate = h2hEsc((typeof formatDateForDisplay === 'function')
                             ? formatDateForDisplay(streakDate)
-                            : streakDate;
+                            : streakDate);
                         streakSuffix = ` <span class="h2h-streak-meta">(ended ${formattedDate})</span>`;
                     }
 
@@ -337,7 +346,7 @@ function generateH2HTable(stats) {
                 if (biggestWin && biggestWin.gap > 0) {
                     let formattedDate = '';
                     if (biggestWin.date) {
-                        formattedDate = biggestWin.date; // Use the original YYYY-MM-DD format
+                        formattedDate = h2hEsc(biggestWin.date); // Use the original YYYY-MM-DD format
                     }
                     
                     biggestWinDisplay = `
@@ -348,7 +357,7 @@ function generateH2HTable(stats) {
                 }
                 
                 return `
-                    <td class="h2h-cell ${cssClass} h2h-fixed-width">
+                    <td class="h2h-cell ${cssClass} h2h-fixed-width" data-vs="vs ${h2hName(colPlayer)}">
                         <div class="h2h-content">
                             <div class="h2h-score">${wins}<span class="h2h-separator">-</span>${losses}</div>
                             ${streakDisplay}
@@ -359,9 +368,10 @@ function generateH2HTable(stats) {
             }
         }).join('');
 
-        const playerName = window.PlayerNameManager ? window.PlayerNameManager.get(rowPlayer) : getPlayerName(rowPlayer);
+        const rawName = String(window.PlayerNameManager ? window.PlayerNameManager.get(rowPlayer) : getPlayerName(rowPlayer));
         const symbol = window.PlayerSymbolManager ? window.PlayerSymbolManager.getSymbol(rowPlayer) : null;
-        const displaySymbol = symbol || playerName.charAt(0).toUpperCase() || 'P';
+        const displaySymbol = h2hEsc(symbol || rawName.charAt(0).toUpperCase() || 'P');
+        const playerName = h2hEsc(rawName);
         
         return `
             <tr>
@@ -395,13 +405,13 @@ function generateH2HTable(stats) {
 
 function generateDailyH2HTable(stats) {
     // Generate header row
-    const headerCells = players.map(player => `<th class="h2h-header-cell">vs ${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}</th>`).join('');
+    const headerCells = players.map(player => `<th class="h2h-header-cell">vs ${h2hName(player)}</th>`).join('');
 
     // Generate data rows
     const dataRows = players.map(rowPlayer => {
         const cells = players.map(colPlayer => {
             if (rowPlayer === colPlayer) {
-                return '<td class="h2h-cell h2h-self h2h-fixed-width"><span class="h2h-self-text">N/A</span></td>';
+                return `<td class="h2h-cell h2h-self h2h-fixed-width" data-vs="vs ${h2hName(colPlayer)}"><span class="h2h-self-text">N/A</span></td>`;
             } else {
                 const daysWon = stats.h2hDaysWon[rowPlayer][colPlayer] || 0;
                 const daysLost = stats.h2hDaysWon[colPlayer][rowPlayer] || 0;
@@ -412,7 +422,7 @@ function generateDailyH2HTable(stats) {
                 // Show dash if players have never played together
                 if (totalH2HGames === 0) {
                     return `
-                        <td class="h2h-cell h2h-no-data h2h-fixed-width">
+                        <td class="h2h-cell h2h-no-data h2h-fixed-width" data-vs="vs ${h2hName(colPlayer)}">
                             <div class="h2h-content">
                                 <div class="h2h-score">-</div>
                             </div>
@@ -429,13 +439,13 @@ function generateDailyH2HTable(stats) {
                 if (biggestDailyWin && biggestDailyWin.margin > 0) {
                     biggestDailyWinDisplay = `
                         <div class="h2h-biggest-win">
-                            Biggest daily win: ${biggestDailyWin.dayWins}-${biggestDailyWin.dayLosses} (${biggestDailyWin.date})
+                            Biggest daily win: ${biggestDailyWin.dayWins}-${biggestDailyWin.dayLosses} (${h2hEsc(biggestDailyWin.date)})
                         </div>
                     `;
                 }
                 
                 return `
-                    <td class="h2h-cell ${cssClass} h2h-fixed-width">
+                    <td class="h2h-cell ${cssClass} h2h-fixed-width" data-vs="vs ${h2hName(colPlayer)}">
                         <div class="h2h-content">
                             <div class="h2h-score">${daysWon}<span class="h2h-separator">-</span>${daysLost}</div>
                             ${biggestDailyWinDisplay}
@@ -445,9 +455,10 @@ function generateDailyH2HTable(stats) {
             }
         }).join('');
 
-        const playerName = window.PlayerNameManager ? window.PlayerNameManager.get(rowPlayer) : getPlayerName(rowPlayer);
+        const rawName = String(window.PlayerNameManager ? window.PlayerNameManager.get(rowPlayer) : getPlayerName(rowPlayer));
         const symbol = window.PlayerSymbolManager ? window.PlayerSymbolManager.getSymbol(rowPlayer) : null;
-        const displaySymbol = symbol || playerName.charAt(0).toUpperCase() || 'P';
+        const displaySymbol = h2hEsc(symbol || rawName.charAt(0).toUpperCase() || 'P');
+        const playerName = h2hEsc(rawName);
         
         return `
             <tr>
