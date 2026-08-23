@@ -474,7 +474,13 @@ export async function run({ base, cdpPort }) {
     if (baseRows === 0) {
       const reason = 'no show data - run `npm run fetch:rising-shows-data`';
       for (const check of ['results render', 'search narrows results', 'shape tab filters',
-        'min-seasons filter applies', 'sort changes result order', 'clicking a show opens its detail']) {
+        'min-seasons filter applies', 'sort changes result order', 'clicking a show opens its detail',
+        // The shape rail only exists once the chips have been rendered from the
+        // data, so these two are data-gated like the rest. They must still be
+        // REPORTED here, or the suite's check-count pin sees two checks vanish
+        // on a dataset-less runner and fails the whole suite.
+        'every shape chip is fully visible when tabbed to at 390px',
+        'the shape rail never makes the page scroll sideways']) {
         skip(`${A}: ${check}`, reason);
       }
       t(`${A}: no JS errors`, cleanErrors(s).length === 0, cleanErrors(s).slice(0, 2).join(' | '));
