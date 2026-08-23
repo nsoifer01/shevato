@@ -420,6 +420,30 @@ rival network". A sync attempt without an own username opens the profile card
 for editing and focuses the username input (`focusProfileUsername`); the old
 message pointed at a Settings field that no longer exists.
 
+## Open: the shared site header sits above every app modal (found 2026-08-23)
+
+`.modal` is `position: fixed; inset: 0; z-index: 100` (css/styles.css, from the
+app's first commit); the shared chrome in `assets/css/main.css` gives `#header`
+`z-index: 10001`. So while any dialog is open the header strip is neither
+dimmed by the backdrop nor covered by it: `document.elementFromPoint(5, 5)`
+returns the site `logo`, and a click there NAVIGATES AWAY from the app, taking
+the open dialog with it. Below the header the backdrop behaves correctly
+(clicking it closes the dialog), and the keyboard focus trap added in the
+2026-08-22 pass is unaffected: Tab and Shift+Tab still cycle inside the panel.
+
+No data is lost when it happens (the click is a plain navigation), which is why
+it went unnoticed: the 2026-08-22 audit saw a "backdrop click closes" probe
+fail and mis-attributed it to the probe. It is NOT a regression from that pass;
+the rule predates it and no change in that round touched modal stacking.
+
+Fixing it is a one-line raise of `.modal`'s z-index above the shared header
+(and a check that the toast, `z-index: 2000`, still sits sensibly relative to
+both). Deliberately left out of the 2026-08-22 quality-pass PR: it is a
+pre-existing, non-regressive, site-chrome interaction, and that PR was already
+verified end to end. Worth doing as the next small piece of work, together with
+a hit-test assertion (`elementFromPoint` at the top-left corner with a dialog
+open) in `e2e/quality.mjs`.
+
 ## Audit recommendations deliberately not taken (2026-08-22)
 
 - Rival-vs-rival predictions: the matrix already compares rivals on shared
