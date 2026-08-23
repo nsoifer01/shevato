@@ -25,6 +25,77 @@ function computeStdDev(episodes) {
   return Math.sqrt(ratings.reduce((s, r) => s + (r - m) * (r - m), 0) / n);
 }
 
+// --- canonical show-level aggregates ---
+//
+// There is exactly ONE definition of a show's "average episode" rating in
+// this app: the episode-weighted mean over every rated episode of the show,
+// i.e. sum(episode ratings) / count(rated episodes), rounded to 2 dp. It is
+// what finder-lib.js's buildShowAgg computes for the grid, what the static
+// show pages print, and what the gap (avgEpisode - IMDb rating) is measured
+// from.
+//
+// The show modal used to compute its own number instead - an UNWEIGHTED mean
+// of the per-season averages - which let one 3-episode season count as much
+// as a 24-episode one. The two answers disagreed at 1 dp for 2,784 of the
+// 10,592 multi-season shows and flipped the "Above IMDb" verdict for 162 of
+// them (Master of None read 7.97 on its card and 7.6 in its modal). Every
+// surface now folds through the helpers below.
+//
+// Both record shapes are supported, the same way buildShowAgg supports them:
+// split records (the browser's data-index.json) carry precomputed
+// ratedCount / ratingSum, full records (an unsplit data.json, and the vm
+// tests) carry an `episodes` array. The precomputed pair is preferred
+// because it is build-time truth that survives a failed detail fetch.
+function seasonRatedFold(m) {
+  if (typeof m.ratedCount === 'number' && typeof m.ratingSum === 'number') {
+    return { count: m.ratedCount, sum: m.ratingSum };
+  }
+  let count = 0;
+  let sum = 0;
+  if (Array.isArray(m.episodes)) {
+    for (const e of m.episodes) {
+      // Unrated episodes are skipped, never folded in as 0/NaN: one unrated
+      // episode NaN-poisoning a whole-series fold is a bug this codebase has
+      // already shipped once (see FINDINGS.md).
+      if (typeof e.rating === 'number' && Number.isFinite(e.rating)) {
+        sum += e.rating;
+        count++;
+      }
+    }
+  }
+  if (count === 0 && typeof m.avgRating === 'number' && Number.isFinite(m.avgRating)) {
+    // Neither shape available: a hand-built record (the vm tests) or a season
+    // whose episodes were never shipped. Nothing here knows how many episodes
+    // it had, so it counts once - which degrades exactly to the old
+    // unweighted mean, and only for records production never produces.
+    return { count: 1, sum: m.avgRating };
+  }
+  return { count, sum };
+}
+
+// Episode-weighted average across a show's seasons, rounded like buildShowAgg.
+// Returns null when the show has no rated episodes at all, so callers render
+// "unknown" rather than NaN.
+function weightedAvgEpisode(seasons) {
+  let count = 0;
+  let sum = 0;
+  for (const m of seasons) {
+    const f = seasonRatedFold(m);
+    count += f.count;
+    sum += f.sum;
+  }
+  if (count === 0) return null;
+  // Integer tenths: see the note in finder-lib's buildShowAgg. Keeps this
+  // helper bit-identical to the row value and to the static page.
+  return Math.round((Math.round(sum * 10) * 10) / count) / 100;
+}
+
+function weightedRatedEpisodes(seasons) {
+  let count = 0;
+  for (const m of seasons) count += seasonRatedFold(m).count;
+  return count;
+}
+
 // --- related-show selection helpers (exported via window for tests) ---
 
 // Language-group matching for related suggestions. English stays strict
@@ -76,7 +147,10 @@ function languagesCompatible(anchorLang, candidateLang) {
 }
 
 // Compute related shows for the show modal.
-// d = mean(season avgRatings) - seriesRating. Requires seriesRating on both shows.
+// d = weightedAvgEpisode(seasons) - seriesRating, i.e. the canonical
+// episode-weighted average (NOT the mean of the season averages, which is what
+// this comment described before the two were unified). Requires seriesRating on
+// both shows.
 // Candidates: other series with seriesRating that share at least one genre,
 // have a compatible original language (languagesCompatible), and sit within one order of magnitude of
 // the current show's votes/episode (mean of its seasons' minVotes).
@@ -88,6 +162,22 @@ function languagesCompatible(anchorLang, candidateLang) {
 // ranking degrades to the gap-first order this used to have.
 // Returns up to 10; caller hides section only when there are none. Each result
 // carries `_sharedShape`: the first shape it has in common, or null.
+// Format classes. Two shows can share a genre word and still be nothing alike
+// to a human: the audit found Survivor recommending Thomas & Friends, King the
+// Land (a Korean romance) recommending four anime, and Would I Lie to You?
+// recommending CoComelon Lane, all because one genre string overlapped. These
+// two axes are the divides people actually feel, so they gate the candidate
+// set rather than merely ranking it.
+const UNSCRIPTED_GENRES = ['Reality-TV', 'Game-Show', 'Talk-Show', 'News'];
+const isAnimated = (genres) => (genres || []).includes('Animation');
+const isUnscripted = (genres) => (genres || []).some((g) => UNSCRIPTED_GENRES.includes(g));
+
+// Audience-size band. votes/episode within 10x was the only popularity guard,
+// and it let an 11,000-vote panel show recommend a 101-vote web series. A show
+// with a wildly different audience size is not "more like this" in any sense a
+// viewer means.
+const RELATED_VOTES_BAND = 20;
+
 function computeShowRelated(seriesId, matches, shapesBySeries) {
   const shapesFor = (sid) => (shapesBySeries && shapesBySeries.get(sid)) || [];
   const currentShapes = shapesFor(seriesId);
@@ -102,11 +192,16 @@ function computeShowRelated(seriesId, matches, shapesBySeries) {
   if (typeof currentMeta.seriesRating !== 'number') return [];
   const meanVotes = (seasons) =>
     seasons.reduce((s, m) => s + (m.minVotes || 0), 0) / seasons.length;
-  const currentAvg = currentSeasons.reduce((s, m) => s + m.avgRating, 0) / currentSeasons.length;
+  // Episode-weighted, like every other surface (see weightedAvgEpisode).
+  const currentAvg = weightedAvgEpisode(currentSeasons);
+  if (currentAvg === null) return [];
   const currentDev = currentAvg - currentMeta.seriesRating;
   const currentGenres = currentMeta.genres || [];
   const currentLang = currentMeta.language || '';
   const voteAnchor = meanVotes(currentSeasons);
+  const currentAnimated = isAnimated(currentGenres);
+  const currentUnscripted = isUnscripted(currentGenres);
+  const currentSeriesVotes = typeof currentMeta.seriesVotes === 'number' ? currentMeta.seriesVotes : 0;
 
   const results = [];
   for (const [sid, seasons] of bySeriesId) {
@@ -114,14 +209,22 @@ function computeShowRelated(seriesId, matches, shapesBySeries) {
     const meta = seasons[0];
     if (typeof meta.seriesRating !== 'number') continue;
     if (!languagesCompatible(currentLang, meta.language)) continue;
+    const xGenres = meta.genres || [];
+    // Format gates: animation with animation, unscripted with unscripted.
+    if (isAnimated(xGenres) !== currentAnimated) continue;
+    if (isUnscripted(xGenres) !== currentUnscripted) continue;
     if (voteAnchor > 0) {
       const xv = meanVotes(seasons);
       if (xv < voteAnchor / 10 || xv > voteAnchor * 10) continue;
     }
-    const xGenres = meta.genres || [];
+    if (currentSeriesVotes > 0) {
+      const sv = typeof meta.seriesVotes === 'number' ? meta.seriesVotes : 0;
+      if (sv < currentSeriesVotes / RELATED_VOTES_BAND || sv > currentSeriesVotes * RELATED_VOTES_BAND) continue;
+    }
     const sharedGenreCount = currentGenres.filter((g) => xGenres.includes(g)).length;
     if (sharedGenreCount === 0) continue;
-    const avg = seasons.reduce((s, m) => s + m.avgRating, 0) / seasons.length;
+    const avg = weightedAvgEpisode(seasons);
+    if (avg === null) continue;
     const dev = avg - meta.seriesRating;
     const devDiff = Math.abs(currentDev - dev);
     const voteProxy = typeof meta.seriesVotes === 'number' ? meta.seriesVotes : (meta.minVotes || 0);
@@ -129,12 +232,20 @@ function computeShowRelated(seriesId, matches, shapesBySeries) {
     const sharedShapes = currentShapes.filter((sh) => candShapes.includes(sh));
     results.push({ meta, avg, devDiff, sharedGenreCount, voteProxy, sharedShapes });
   }
+  // Genre overlap leads, THEN a shared trajectory shape, then the gap, then
+  // popularity. Shape used to lead outright, which is how a panel show ended up
+  // recommending a children's cartoon: they both happened to carry
+  // "saved best for last" and nothing else was allowed to matter. Shape is
+  // still the strongest signal among shows that are genuinely alike, and the
+  // row still names the shared shape.
   results.sort((a, b) => {
+    const ag = Math.min(a.sharedGenreCount, 3);
+    const bg = Math.min(b.sharedGenreCount, 3);
+    if (ag !== bg) return bg - ag;
     if (a.sharedShapes.length !== b.sharedShapes.length) {
       return b.sharedShapes.length - a.sharedShapes.length;
     }
     if (a.devDiff !== b.devDiff) return a.devDiff - b.devDiff;
-    if (b.sharedGenreCount !== a.sharedGenreCount) return b.sharedGenreCount - a.sharedGenreCount;
     return b.voteProxy - a.voteProxy;
   });
   return results.slice(0, 10)
@@ -170,7 +281,12 @@ const SHAPE_DESCS = {
   'mid-peak': 'Climaxes mid-season, falls after',
   'u-shaped': 'Strong opener and finale, sag in the middle',
   'saved-best-for-last': 'Final season is the show\'s highest-rated',
-  'shape-drift': 'Show\'s rating pattern or quality changed significantly late in its run',
+  // Honest about what tagShapeDrift actually tests: the LAST season breaks the
+  // pattern the earlier ones set (a different dominant shape, or the end of a
+  // multi-season slide). It said "quality changed significantly", which reads
+  // as a verdict on the show and fires on plenty of shows whose final season
+  // is their best (Breaking Bad, Succession).
+  'shape-drift': 'Its last season breaks the pattern the earlier ones set',
 };
 
 // Mirrors scripts/slugify.js — keep both in sync so the SPA's permalink
@@ -201,27 +317,22 @@ const PAGE_SIZE = 24;
 const STALE_DAYS = 30;
 const MAX_SUGGESTIONS = 10;
 
-// Only show these streaming services as filter chips and as provider tags
-// on cards/rows. TMDB returns ~200 distinct providers including aggregator
-// listings ("BritBox Amazon Channel"), bundlers (Spectrum / Philo / fuboTV),
-// niche specialty channels (AMC+, Acorn TV), and free ad-supported services
-// (Tubi, Pluto, The Roku Channel). Keeping the list to the major
-// subscription services makes the metadata read at a glance and the filter
-// chip row stay short.
-const MAINSTREAM_PROVIDERS = new Set([
-  'Netflix',
-  'Hulu',
-  'Amazon Prime Video',
-  'HBO Max',
-  'Max',
-  'Disney+',
-  'Peacock',
-  'Paramount+',
-  'Apple TV+',
-  'Crunchyroll',
-]);
-function isMainstreamProvider(name) {
-  return MAINSTREAM_PROVIDERS.has(name);
+// Streaming-provider vocabulary and normalization: ONE definition, in
+// scripts/providers-lib.js, which index.html loads before this file and which
+// build-data.js and the static page renderer require directly. The app used to
+// carry its own copy of the mainstream list, which meant two independently
+// editable definitions of the same thing on the exact surface this round set
+// out to make consistent.
+//
+// No local fallback on purpose: a fallback would be that second definition
+// again. If the script fails to load, provider chips and the modal's Watch on
+// row simply do not render, and nothing else is affected.
+const ProvidersLib = (typeof window !== 'undefined' && window.RisingShowsProviders) || null;
+
+// The display list for any surface that names services: normalized, mainstream
+// only, de-duplicated, in the show's own order.
+function displayProviders(list) {
+  return ProvidersLib ? ProvidersLib.normalizeProviders(list) : [];
 }
 
 // --- DOM refs ---
@@ -289,7 +400,15 @@ const els = {
   shortcutLegendBtn: document.getElementById('shortcutLegendBtn'),
   shortcutLegend: document.getElementById('shortcutLegend'),
   modalCurveAnnotation: document.getElementById('modalCurveAnnotation'),
-  showModalWatchOn: document.getElementById('showModalWatchOn'),
+  showModalWatch: document.getElementById('showModalWatch'),
+  showModalDetailError: document.getElementById('showModalDetailError'),
+  showModalOverlayHint: document.getElementById('showModalOverlayHint'),
+  compareModalXMode: document.getElementById('compareModalXMode'),
+  compareImportedNote: document.getElementById('compareImportedNote'),
+  srAnnouncer: document.getElementById('srAnnouncer'),
+  compareImportedKeep: document.getElementById('compareImportedKeep'),
+  modalDetailError: document.getElementById('modalDetailError'),
+  modalCurveHeading: document.getElementById('modalCurveHeading'),
   finderSearch: document.getElementById('finderSearch'),
   finderSuggestions: document.getElementById('finderSearchSuggestions'),
   finderViewToggle: document.getElementById('finderViewToggle'),
@@ -334,8 +453,14 @@ let showAgg = null;
 // lookup because computeShowRelated works over raw season matches, which only
 // carry per-season shapes.
 let showShapesBySeries = new Map();
+// seriesId -> the canonical aggregated row for that show (see indexShowAgg).
+let showAggBySeries = new Map();
+// seriesId -> the first mainstream streaming service the show is on, if any.
+let providerBySeries = new Map();
 const finderState = {
   search: '',
+  // Diacritic-folded copy of `search`, refreshed in finderRowsBeforeShape.
+  searchFold: '',
   minEpisodes: 0,
   minSeasons: 0,
   minVotes: 0,
@@ -403,6 +528,26 @@ function populatePosterFallback(el, title) {
   el.appendChild(label);
 }
 
+// TMDB poster URLs can fail: a path pruned upstream 404s, and an offline or
+// blocked request never resolves. The fallback title tile only ever rendered
+// when the record had NO poster path, so a failed image left a blank dark
+// block where the art should be (an empty 389 px slab on a card). Every
+// poster now falls back to the same tile its surface uses when the image
+// errors.
+function posterImage(src, alt, onFail, opts = {}) {
+  const img = document.createElement('img');
+  img.src = src;
+  img.alt = alt;
+  if (opts.lazy) img.loading = 'lazy';
+  if (opts.width) img.width = opts.width;
+  if (opts.height) img.height = opts.height;
+  img.addEventListener('error', () => {
+    img.remove();
+    try { onFail(); } catch (e) { /* a missing image must never break a render */ }
+  }, { once: true });
+  return img;
+}
+
 // --- sensitive (adult) posters ---
 // The dataset carries no explicit adult flag, but IMDb tags adult titles with
 // the "Adult" genre. Posters for those titles are blurred behind a tap-to-
@@ -459,6 +604,53 @@ function posterInitial(title) {
   return ch.toUpperCase() || '?';
 }
 
+// --- search folding (diacritics) ---
+//
+// "Pokemon" has to find "Pokemon" spelled with an accented e, "Shogun" the one
+// with a macron, "Elite" the Spanish "Elite" with an acute. Before this, the
+// search box compared raw lowercased strings, so each of those pairs found
+// only its own spelling: typing the ASCII form returned zero results for shows
+// most people cannot type the real title of.
+//
+// NFKD splits a precomposed letter into base + combining mark, which the
+// second replace drops. NFKD does not decompose a handful of letters that are
+// their own base character, so those are mapped explicitly.
+const SEARCH_FOLD_MAP = {
+  'ø': 'o', 'ł': 'l', 'đ': 'd', 'ð': 'd', 'þ': 'th', 'ß': 'ss',
+  'æ': 'ae', 'œ': 'oe', 'ı': 'i', 'ŋ': 'n', 'ħ': 'h',
+};
+
+function foldSearchChar(ch) {
+  const base = ch.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  return SEARCH_FOLD_MAP[base] !== undefined ? SEARCH_FOLD_MAP[base] : base;
+}
+
+function foldSearch(s) {
+  let out = '';
+  for (const ch of String(s)) out += foldSearchChar(ch);
+  return out;
+}
+
+// Same fold, plus the offset map needed to highlight a match in the ORIGINAL
+// string: folding can change length (one accented code point becomes one
+// letter, "ss" replaces one "ss"-ligature character), so a folded match index
+// is not a source index. map[i] is the source offset that folded position i
+// starts at, and map has one extra trailing entry for the end of the string.
+function foldSearchWithMap(s) {
+  const str = String(s);
+  let folded = '';
+  const map = [];
+  let src = 0;
+  for (const ch of str) {
+    const f = foldSearchChar(ch);
+    for (let k = 0; k < f.length; k++) map.push(src);
+    folded += f;
+    src += ch.length;
+  }
+  map.push(str.length);
+  return { folded, map };
+}
+
 // --- search normalization ---
 // "The X-Files" → "x files", "Married... with Children" → "married with children",
 // "The Office" → "office", "A Quiet Place" → "quiet place".
@@ -468,7 +660,7 @@ function posterInitial(title) {
 // behind unrelated titles that happen to start with the bare noun.
 // Same form is applied to both query and indexed title before comparing.
 function normalizeSearch(s) {
-  return s.toLowerCase()
+  return foldSearch(s)
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
     .replace(/^(the|a|an) /, '');
@@ -523,6 +715,17 @@ const Watched = {
 // insertion order so the legend reads in the order the user added shows).
 const Compare = {
   ids: [],
+  // Set while the visitor is looking at a comparison that arrived in a
+  // #compare= link rather than one they built. In that mode the store is
+  // read-only: `ids` drives the overlay, but nothing is written to
+  // localStorage, so their own saved comparison survives untouched until they
+  // press "Keep this comparison". Without it, importing a link and then
+  // removing one show from it (a natural first move) silently overwrote a set
+  // they may have spent real time assembling, with no warning and no undo.
+  imported: false,
+  // What they had before the link replaced it, for the overlay's note and for
+  // restoring it if they simply close the overlay.
+  personalIds: [],
   load() {
     try {
       const raw = localStorage.getItem(KEY_COMPARE);
@@ -530,8 +733,15 @@ const Compare = {
     } catch { /* corrupt or unavailable — start empty */ }
   },
   save() {
+    if (this.imported) return;
     try { localStorage.setItem(KEY_COMPARE, JSON.stringify(this.ids)); }
     catch { /* quota or disabled — silent */ }
+  },
+  // Adopt the imported set as the visitor's own, on an explicit action only.
+  keepImported() {
+    this.imported = false;
+    this.personalIds = [];
+    this.save();
   },
   has(seriesId) { return this.ids.includes(seriesId); },
   size() { return this.ids.length; },
@@ -752,6 +962,13 @@ async function load() {
     const dataRes = await fetch('data-index.json');
     if (!dataRes.ok) throw new Error(`HTTP ${dataRes.status}`);
     dataset = await readJsonWithProgress(dataRes, setLoadingStatus);
+    // Validate the shape INSIDE the try. A 404, a network error and a
+    // truncated body all landed on the error panel already, but a
+    // well-formed JSON document with the wrong shape (a half-written index,
+    // a proxy serving something else) sailed past and threw further down in
+    // the render path, outside any catch, leaving the skeleton cards up
+    // forever with no message. validateDataset also drops individual
+    // malformed season records and errors when nothing usable is left.
     const bad = validateDataset(dataset);
     if (bad) throw new Error(bad);
   } catch (err) {
@@ -772,6 +989,12 @@ async function load() {
   for (const m of dataset.matches) {
     m.titleSearch = normalizeSearch(m.title);
   }
+  // Dataset freshness is a property of the DATASET, so it renders as soon as
+  // the dataset lands. It used to be painted only from loadChangelog()'s
+  // success path, so a 404 or a malformed changelog.json (a fresh checkout, a
+  // failed refresh) silently erased "Last updated" from the footer as well as
+  // the What's new chip. loadChangelog re-renders to add the chip.
+  renderFooterMeta();
   loadChangelog();
   Watched.load();
   Compare.load();
@@ -795,7 +1018,7 @@ async function load() {
   bindShapeTagTouchTooltips();
   bindShortcutLegend();
   showAgg = buildShowAggFromDataset();
-  showShapesBySeries = new Map(showAgg.map((s) => [s.seriesId, s.shapes]));
+  indexShowAgg();
   renderFinderShapes();
   renderFinderMoods();
   renderFinderGenres();
@@ -810,19 +1033,7 @@ async function load() {
   applyFinderViewClasses();
   renderFinder();
   bindScrollMemory();
-  const compareOpened = applyPendingCompareIds();
-  if (pendingModalKey) {
-    const [sid, snStr] = pendingModalKey.split(':');
-    const sn = parseInt(snStr, 10);
-    const m = dataset.matches.find((x) => x.seriesId === sid && x.season === sn);
-    if (m) openModal(m);
-    pendingModalKey = null;
-  } else if (pendingShowKey) {
-    if (dataset.matches.some((x) => x.seriesId === pendingShowKey)) {
-      openShowModal(pendingShowKey);
-    }
-    pendingShowKey = null;
-  } else if (!compareOpened) {
+  if (!consumePendingDeepLinks()) {
     // Restore the saved scroll position now that the grid (which defines the
     // page height) is in the DOM. A modal deep-link opens at the top instead,
     // so this only runs for the plain grid view. rAF lets layout settle so
@@ -934,12 +1145,18 @@ function applyExtrasToEpisodes(m, sRec) {
  * first thing that actually needs them, so this is called there.
  *
  * Memoised by seriesId, including the in-flight promise, so re-opening a show
- * or double-clicking never refetches. Resolves to null and leaves the app
- * working if the file is missing: modals then show what the index already has.
+ * or double-clicking never refetches.
+ *
+ * Resolves TRUE when the per-episode data is available (freshly fetched, or
+ * already inline in an unsplit dataset) and FALSE when the fetch failed. The
+ * callers render a degraded-but-honest modal on false: every index-level
+ * number (season count, rated episodes, averages, shapes) is still correct,
+ * only the per-episode curves are missing, so they say so and offer a retry
+ * instead of drawing empty charts and "0 episodes".
  */
 const detailCache = new Map();
 function ensureDetail(seriesId) {
-  if (!seriesId) return Promise.resolve(null);
+  if (!seriesId) return Promise.resolve(false);
   if (detailCache.has(seriesId)) return detailCache.get(seriesId);
   // An unsplit dataset already carries episodes; nothing to fetch. The
   // non-empty check matters: after a FAILED fetch the render paths coerce
@@ -950,7 +1167,7 @@ function ensureDetail(seriesId) {
   const anyLoaded = dataset.matches.some((m) => m.seriesId === seriesId
     && Array.isArray(m.episodes) && m.episodes.length > 0);
   if (anyLoaded) {
-    const done = Promise.resolve(null);
+    const done = Promise.resolve(true);
     detailCache.set(seriesId, done);
     return done;
   }
@@ -964,7 +1181,7 @@ function ensureDetail(seriesId) {
       // per open, which is bounded and beats permanently degraded detail.
       if (!detail || !detail.seasons) {
         detailCache.delete(seriesId);
-        return null;
+        return false;
       }
       for (const m of dataset.matches) {
         if (m.seriesId !== seriesId) continue;
@@ -986,15 +1203,52 @@ function ensureDetail(seriesId) {
         const exSeason = ex && ex.seasons && ex.seasons[String(m.season)];
         applyExtrasToEpisodes(m, exSeason);
       }
-      return detail;
+      return true;
     })
     .catch(() => {
       // Same eviction on a network-level failure (offline, aborted).
       detailCache.delete(seriesId);
-      return null;
+      return false;
     });
   detailCache.set(seriesId, p);
   return p;
+}
+
+// Renders (or clears) the "episode data could not be loaded" notice shown in
+// a modal when ensureDetail resolved false. `retry` re-runs the fetch - the
+// failed promise was evicted from detailCache, so calling ensureDetail again
+// really does hit the network - and re-renders the modal in place on success.
+// fromHistory:true because a silent in-place refresh is not a navigation and
+// must not push a back-stack entry.
+function showDetailError(box, message, retryFn) {
+  if (!box) return;
+  const text = box.querySelector('.detail-error-text');
+  if (text) text.textContent = message;
+  // Marker class for "a failure notice is up right now": clearDetailError
+  // takes it off again, so a selector for it answers exactly the question the
+  // audit's D7 browser check asks (is the notice showing, and did Retry clear
+  // it?), which a permanently present, merely hidden element cannot.
+  box.classList.add('modal-detail-error');
+  const btn = box.querySelector('.detail-retry');
+  if (btn) {
+    btn.classList.add('modal-detail-retry');
+    btn.disabled = false;
+    btn.onclick = () => {
+      btn.disabled = true;
+      btn.textContent = 'Retrying...';
+      Promise.resolve(retryFn()).finally(() => {
+        btn.textContent = 'Retry';
+        btn.disabled = false;
+      });
+    };
+  }
+  box.hidden = false;
+}
+
+function clearDetailError(box) {
+  if (!box) return;
+  box.classList.remove('modal-detail-error');
+  box.hidden = true;
 }
 
 function buildAboveImdbMap() {
@@ -1022,6 +1276,10 @@ function buildAboveImdbMap() {
       grouped.set(m.seriesId, entry);
     }
     for (const e of m.episodes) {
+      // Rated-only, like every sibling fold: one unrated episode used to
+      // NaN-poison a whole-series sum here (`NaN > x` is false, so the show
+      // silently lost its badge). See FINDINGS.md.
+      if (typeof e.rating !== 'number' || !Number.isFinite(e.rating)) continue;
       entry.sumRating += e.rating;
       entry.totalEps++;
     }
@@ -1030,6 +1288,88 @@ function buildAboveImdbMap() {
     if (info.totalEps === 0) continue;
     aboveImdbBySeries.set(seriesId, (info.sumRating / info.totalEps) > info.seriesRating);
   }
+}
+
+// --- best / worst / most-rated highlights ---
+//
+// The same three questions get asked at two levels: which of a show's SEASONS
+// is the high point, the low point and the one most people rated, and which of
+// a season's EPISODES. One implementation, because the rules are identical and
+// two copies would drift the way the provider list did.
+//
+// Each item is { key, rating, votes }; the caller maps its own records into
+// that shape. Returns the winning keys, or null where there is no honest
+// answer:
+//
+//   - fewer than two rated items: nothing to compare, so no best or worst. A
+//     one-episode season and a one-season show both fall out here, which is
+//     the rule the season badges already followed.
+//   - every rating identical: "best" and "worst" would name the same item and
+//     mean nothing, so both are dropped (again, the existing season rule).
+//   - votes missing, all equal, or zero: no most-rated badge. A season of
+//     episodes nobody rated has no most-rated episode.
+//
+// Ties keep the FIRST item in the order given, which for both callers is
+// ascending season or episode number: with two equally-rated episodes the
+// earlier one is called the best, deterministically rather than by whichever
+// the sort happened to leave last.
+function pickHighlights(items) {
+  const rated = [];
+  const voted = [];
+  for (const it of (items || [])) {
+    if (typeof it.rating === 'number' && Number.isFinite(it.rating)) rated.push(it);
+    if (typeof it.votes === 'number' && Number.isFinite(it.votes) && it.votes > 0) voted.push(it);
+  }
+  const out = { best: null, worst: null, mostRated: null };
+
+  if (rated.length >= 2) {
+    let best = rated[0];
+    let worst = rated[0];
+    for (const it of rated) {
+      if (it.rating > best.rating) best = it;
+      if (it.rating < worst.rating) worst = it;
+    }
+    if (best.rating !== worst.rating) {
+      out.best = best.key;
+      out.worst = worst.key;
+    }
+  }
+
+  if (voted.length >= 2) {
+    let top = voted[0];
+    let allEqual = true;
+    for (const it of voted) {
+      if (it.votes !== top.votes) allEqual = false;
+      if (it.votes > top.votes) top = it;
+    }
+    // "Most rated" among a set where everything drew the same number of
+    // ratings is not a distinction worth a badge.
+    if (!allEqual) out.mostRated = top.key;
+  }
+
+  return out;
+}
+
+function makeEpFlag(kind, label, title) {
+  const span = document.createElement('span');
+  span.className = `ep-flag ep-flag-${kind}`;
+  span.textContent = label;
+  span.title = title;
+  return span;
+}
+
+// A season's rating count is the sum across its episodes. There is no such
+// field in the payload (the index carries `minVotes`, the LOWEST count in the
+// season, which is a build-time floor rather than a total), so it is folded
+// here from the per-episode data the modal has already loaded. A show whose
+// detail fetch failed simply gets no most-rated badge, like its sparklines.
+function seasonVoteTotal(m) {
+  let total = 0;
+  if (!Array.isArray(m.episodes)) return 0;
+  for (const e of m.episodes) {
+    if (typeof e.votes === 'number' && Number.isFinite(e.votes)) total += e.votes;
+  }
+  return total;
 }
 
 function buildBestSeasonMap() {
@@ -1123,6 +1463,30 @@ function applyStateFromURL() {
   if (p.has('compare')) pendingCompareIds = parseCompareParam(p.get('compare'));
 }
 
+// Opens whatever the current hash asked for, once the dataset exists. Called
+// from load() (a deep link on first paint) AND from the hashchange handler (a
+// permalink pasted into an already-loaded tab, or Back/Forward between two
+// modal hashes). Returns true when it opened something, so the caller knows
+// not to restore the saved scroll offset over the top of it.
+function consumePendingDeepLinks() {
+  const compareOpened = applyPendingCompareIds();
+  if (pendingModalKey) {
+    const [sid, snStr] = pendingModalKey.split(':');
+    const sn = parseInt(snStr, 10);
+    const m = dataset.matches.find((x) => x.seriesId === sid && x.season === sn);
+    pendingModalKey = null;
+    if (m) { openModal(m); return true; }
+    return compareOpened;
+  }
+  if (pendingShowKey) {
+    const id = pendingShowKey;
+    pendingShowKey = null;
+    if (dataset.matches.some((x) => x.seriesId === id)) { openShowModal(id); return true; }
+    return compareOpened;
+  }
+  return compareOpened;
+}
+
 // Parse a `compare=` hash param into an ordered, de-duplicated list of series
 // ids, capped at COMPARE_LIMIT so a hand-edited link can't grow the set past
 // what Compare.add allows. Existence is not checked here: applyPendingCompareIds
@@ -1156,10 +1520,14 @@ function applyPendingCompareIds() {
   const known = new Set(dataset.matches.map((m) => m.seriesId));
   const valid = ids.filter((id) => known.has(id));
   if (!valid.length) return false;
-  // Deliberately no Compare.save(): a link someone else sent shouldn't
-  // overwrite this visitor's own stored compare set. The first edit they make
-  // in the modal (remove a show, add another) persists from there as usual.
+  // A link someone else sent must not overwrite this visitor's own stored
+  // compare set, and that has to hold for their EDITS too, not just for the
+  // moment of arrival: see Compare.imported.
+  const personal = Compare.ids.slice();
+  const differs = personal.length > 0 && personal.join(',') !== valid.join(',');
   Compare.ids = valid;
+  Compare.imported = differs;
+  Compare.personalIds = differs ? personal : [];
   syncCompareFab();
   openCompareModal();
   return true;
@@ -1215,6 +1583,18 @@ function renderFooterMeta() {
   text.className = 'footer-meta-text';
   text.textContent = `Last updated: ${formatBuiltAt(dataset.builtAt)}`;
   els.footerMeta.appendChild(text);
+
+  // A dataset older than STALE_DAYS means the daily refresh has been failing
+  // for a month. That used to be a console.warn only, which no visitor sees,
+  // so a month-old catalogue looked exactly like a fresh one.
+  if (isStale()) {
+    const stale = document.createElement('span');
+    stale.className = 'footer-meta-stale';
+    stale.textContent = 'data may be out of date';
+    stale.title = `The dataset is older than ${STALE_DAYS} days; the daily refresh may have stopped.`;
+    els.footerMeta.appendChild(document.createTextNode(' '));
+    els.footerMeta.appendChild(stale);
+  }
 
   const latest = changelog?.updates?.[0];
   if (!latest) return;
@@ -1374,6 +1754,50 @@ function makeShapeTag(shape, confidence = null) {
   return btn;
 }
 
+// Compact "this is the shape of this show" badge for result tiles.
+//
+// The app is named for the shape of a show's ratings, yet until now the only
+// place a shape appeared while browsing was the filter row: a card carried a
+// sparkline and a gap number but never said "Rising" or "Big finale". This
+// puts the show's dominant shape, the same one the shape chips filter on and
+// the shape hubs are built from, on every card and list row.
+//
+// Static (a span, not a button) on purpose: the card itself is the click
+// target, and a button inside a role=button tile is both a nested-interactive
+// accessibility violation and a tap that steals the card's own.
+function makeShowShapeBadge(shape) {
+  const label = SHAPE_LABELS[shape] || shape;
+  const icon = FINDER_SHAPE_ICONS[shape] || '';
+  const el = document.createElement('span');
+  el.className = 'shape-tag shape-tag-show';
+  el.dataset.shape = shape;
+  if (icon) {
+    const ic = document.createElement('span');
+    ic.className = 'shape-tag-icon';
+    ic.setAttribute('aria-hidden', 'true');
+    ic.textContent = icon;
+    el.appendChild(ic);
+  }
+  el.appendChild(document.createTextNode(label));
+  el.title = FINDER_SHAPE_DESCS[shape] || SHAPE_DESCS[shape] || label;
+  return el;
+}
+
+// The dominant shape is the first entry of the show's whole-run shape list -
+// the same rule computeDominantShape uses for the static pages and the hubs,
+// so a card, its page and its hub can never disagree.
+function dominantShapeOf(row) {
+  return (row.shapes && row.shapes.length) ? row.shapes[0] : null;
+}
+
+// One streaming chip on a tile: enough to answer "can I watch this tonight"
+// while scanning, without turning the card into a badge wall. The modal lists
+// every service. Read from providerBySeries, filled once at load: the
+// aggregated finder rows carry no providers (they live on the season records).
+function firstMainstreamProvider(row) {
+  return providerBySeries.get(row.seriesId) || null;
+}
+
 // Same end state as clicking the matching toolbar shape chip, plus closing the
 // modal chain so the freshly filtered grid is what the user sees.
 function applyFinderShapeFromTag(shape) {
@@ -1407,8 +1831,20 @@ function formatAvgRuntime(min) {
 // always returns minutes ("72 min", "112 min") so the runtime cell doesn't
 // wrap awkwardly compared to its neighbors. The longer formatAvgRuntime is
 // still used in modals and free-text contexts.
+// Average votes per rated episode. Returns null rather than NaN when the
+// per-episode data is not loaded (a failed detail fetch used to print
+// "NaN votes per episode (avg)" in the season modal) or when an episode
+// carries no vote count.
 function avgVotesPerEpisode(m) {
-  return Math.round(m.episodes.reduce((s, e) => s + e.votes, 0) / m.episodes.length);
+  let sum = 0;
+  let n = 0;
+  if (Array.isArray(m.episodes)) {
+    for (const e of m.episodes) {
+      if (typeof e.votes === 'number' && Number.isFinite(e.votes)) { sum += e.votes; n++; }
+    }
+  }
+  if (n === 0) return null;
+  return Math.round(sum / n);
 }
 
 // Renders the top-billed cast strip inside the show modal. `cast` is
@@ -1495,10 +1931,9 @@ const MOOD_CHIP_LIMIT = 6;
 // pattern tags without forcing a second row.
 function fillProviderTags(container, providers) {
   if (!providers || !providers.length) return;
-  // Same whitelist as the filter chips — only major streaming services get
-  // a chip on the card/row. Channels like AMC+, Philo, The Roku Channel,
-  // Spectrum, and the *-Amazon-Channel aggregator entries are dropped.
-  const filtered = providers.filter(isMainstreamProvider);
+  // Normalized, mainstream-only and de-duplicated by the shared vocabulary, so
+  // this row can never name a service differently from the static page.
+  const filtered = displayProviders(providers);
   for (const p of filtered) {
     const tag = document.createElement('span');
     tag.className = 'provider-tag';
@@ -2040,9 +2475,14 @@ function syncCompareButton() {
   if (!els.showModalCompare || !showModalState.seriesId) return;
   const inSet = Compare.has(showModalState.seriesId);
   const atLimit = !inSet && Compare.size() >= COMPARE_LIMIT;
+  // Plain ASCII '+': the fullwidth plus (U+FF0B) this used to carry renders as
+  // a tofu box on Linux and Android system fonts.
   els.showModalCompare.textContent = inSet ? '✓ In compare' : '+ Add to compare';
   els.showModalCompare.classList.toggle('is-in-compare', inSet);
   els.showModalCompare.disabled = atLimit;
+  // On touch there is no hover title, so the limit has to be visible in the
+  // label itself: a disabled button with no explanation reads as broken.
+  if (atLimit) els.showModalCompare.textContent = `Compare full (${COMPARE_LIMIT} max)`;
   els.showModalCompare.title = atLimit
     ? `Compare set is full (${COMPARE_LIMIT} max) - remove one first`
     : inSet ? 'Remove this show from the compare set' : 'Add this show to the compare set';
@@ -2070,6 +2510,12 @@ function niceStep(rawStep) {
 // gridlines, axis lines, area fills, the trend lines — while crisp dots and
 // all text live in an HTML overlay positioned by percent, so nothing is
 // stretched and labels stay at their CSS size on every viewport.
+// x-axis mode for the compare chart. 'season' plots absolute season numbers
+// (S1..Sn shared by every show); 'run' plots each show across its own run, so
+// a 2-season show and a 37-season show both span the full width and their
+// shapes can be compared. Session state, deliberately not persisted.
+let compareXMode = 'season';
+
 function drawCompareChart(svg, seriesEntries, W, H) {
   while (svg.firstChild) svg.removeChild(svg.firstChild);
   const host = svg.parentElement;
@@ -2103,7 +2549,10 @@ function drawCompareChart(svg, seriesEntries, W, H) {
   const span = Math.max(0.1, hi - lo);
 
   const xMin = 1, xMax = Math.max(2, maxSeason);
+  const normalized = compareXMode === 'run' && seriesEntries.length > 1;
   const xPx = (season) => x0 + (xMax === xMin ? plotW / 2 : (season - xMin) / (xMax - xMin) * plotW);
+  // In normalized mode a point's x is its position within ITS OWN run.
+  const xPxRun = (i, n) => x0 + (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW);
   const yPx = (r) => y0 + (1 - (r - lo) / span) * plotH;
 
   const overlay = document.createElement('div');
@@ -2139,15 +2588,25 @@ function drawCompareChart(svg, seriesEntries, W, H) {
   }
 
   // --- X gridlines + season labels ----------------------------------------
-  const seasonSpan = xMax - xMin + 1;
-  const xStep = Math.max(1, Math.ceil(seasonSpan / 12));
-  const seasonTicks = [];
-  for (let s = xMin; s <= xMax; s += xStep) seasonTicks.push(s);
-  if (seasonTicks[seasonTicks.length - 1] !== xMax) seasonTicks.push(xMax);
-  for (const s of seasonTicks) {
-    const x = xPx(s);
-    mkLine(x, y0, x, y1, 'compare-grid compare-grid-v');
-    mkLabel('compare-axis-label compare-axis-x', xPct(x), yPct(y1 + 9), `S${s}`);
+  if (normalized) {
+    // Quarter marks: the axis is now "how far through this show's run", so
+    // absolute season numbers would be a lie.
+    for (const [frac, label] of [[0, 'Start'], [0.25, '25%'], [0.5, 'Halfway'], [0.75, '75%'], [1, 'End']]) {
+      const x = x0 + frac * plotW;
+      mkLine(x, y0, x, y1, 'compare-grid compare-grid-v');
+      mkLabel('compare-axis-label compare-axis-x', xPct(x), yPct(y1 + 9), label);
+    }
+  } else {
+    const seasonSpan = xMax - xMin + 1;
+    const xStep = Math.max(1, Math.ceil(seasonSpan / 12));
+    const seasonTicks = [];
+    for (let s = xMin; s <= xMax; s += xStep) seasonTicks.push(s);
+    if (seasonTicks[seasonTicks.length - 1] !== xMax) seasonTicks.push(xMax);
+    for (const s of seasonTicks) {
+      const x = xPx(s);
+      mkLine(x, y0, x, y1, 'compare-grid compare-grid-v');
+      mkLabel('compare-axis-label compare-axis-x', xPct(x), yPct(y1 + 9), `S${s}`);
+    }
   }
 
   // --- axis lines ----------------------------------------------------------
@@ -2158,7 +2617,10 @@ function drawCompareChart(svg, seriesEntries, W, H) {
   const single = seriesEntries.length === 1;
   seriesEntries.forEach(({ title, seasons }, idx) => {
     const color = seasonColor(idx, seriesEntries.length);
-    const pts = seasons.map((s) => [xPx(s.season), yPx(s.avgRating), s]);
+    const pts = seasons.map((s, i) => [
+      normalized ? xPxRun(i, seasons.length) : xPx(s.season),
+      yPx(s.avgRating), s,
+    ]);
 
     // Soft area fill under a lone series so the trajectory (and its final-
     // season cliff) reads as a deliberate shape rather than a stray line.
@@ -2292,6 +2754,38 @@ function renderCompareModal() {
   renderCompareLegend(entries);
   // A one-show "comparison" is not a collection worth pushing to Plex.
   els.compareModalKometa.hidden = entries.length < 2;
+  syncCompareXModeButton(entries);
+  syncCompareImportedNote();
+}
+
+// The "you are looking at someone else's comparison" banner. It is the only
+// thing that tells the visitor why their edits are not sticking, so it states
+// what is being protected and offers the one action that adopts the set.
+function syncCompareImportedNote() {
+  const note = els.compareImportedNote;
+  if (!note) return;
+  if (!Compare.imported) { note.hidden = true; return; }
+  const n = Compare.personalIds.length;
+  const text = note.querySelector('.compare-imported-text');
+  if (text) {
+    text.textContent = `Shared comparison. Your own saved comparison (${n} show${n === 1 ? '' : 's'}) is untouched, and comes back when you reload without this link.`;
+  }
+  note.hidden = false;
+}
+
+// The x-axis toggle only means something with two shows of different lengths.
+function syncCompareXModeButton(entries) {
+  const btn = els.compareModalXMode;
+  if (!btn) return;
+  const lengths = new Set(entries.map((e) => e.seasons.length));
+  const useful = entries.length > 1 && lengths.size > 1;
+  btn.hidden = !useful;
+  const on = compareXMode === 'run';
+  btn.setAttribute('aria-pressed', String(on));
+  btn.textContent = on ? 'Align by season' : 'Fit to each run';
+  btn.title = on
+    ? 'Plot absolute season numbers again'
+    : 'Draw every show across the full width so their shapes line up';
 }
 
 let compareModalState = { lastFocus: null };
@@ -2383,8 +2877,16 @@ function syncModalBackButtons() {
 function goBackModalView() {
   const prev = modalViewHistory.pop();
   if (!prev) return;
-  if (prev.type === 'season') openModal(prev.season, { fromHistory: true });
-  else openShowModal(prev.seriesId, { fromHistory: true });
+  // Carry the element that opened this drill-down across the step. Without it,
+  // stepping back re-opens a modal while the previous one is closing, so the
+  // active element at that moment is <body>, and eventually closing the chain
+  // dropped keyboard focus there instead of on the card the reader started
+  // from. Matters more now that Escape steps back too, so a two-press exit is
+  // the common path.
+  const opener = modalState.lastFocus || showModalState.lastFocus || null;
+  const restoreFocus = opener && opener !== document.body ? opener : null;
+  if (prev.type === 'season') openModal(prev.season, { fromHistory: true, restoreFocus });
+  else openShowModal(prev.seriesId, { fromHistory: true, restoreFocus });
   syncModalBackButtons();
 }
 
@@ -2396,7 +2898,7 @@ async function openModal(m, opts = {}) {
   // Legacy-extras retry point, same as openShowModal; a no-op on a current
   // deploy (extras arrive inside the detail file) and when already loaded.
   loadExtrasOnce();
-  await ensureDetail(m.seriesId);
+  const detailOk = await ensureDetail(m.seriesId);
   if (!Array.isArray(m.episodes)) m.episodes = [];
   pushModalHistory(opts, `season:${m.seriesId}:${m.season}`);
   const wasOpen = !els.modal.hidden;
@@ -2413,7 +2915,7 @@ async function openModal(m, opts = {}) {
       closeShowModal({ suppressReopen: true });
       modalState.lastFocus = inherited;
     } else {
-      modalState.lastFocus = document.activeElement;
+      modalState.lastFocus = opts.restoreFocus || document.activeElement;
     }
   }
   // Carry the surprise mode forward so the in-modal Reroll button can
@@ -2427,9 +2929,11 @@ async function openModal(m, opts = {}) {
   els.modalTitle.textContent = m.title;
   const seasonYearStr = (m.seasonYear || m.year);
   const yearStr = seasonYearStr ? ` · ${seasonYearStr}` : '';
-  els.modalSubtitle.textContent = `Season ${m.season} · ${seasonEpisodeCount(m)} episodes${yearStr} · ${m.genres.join(', ') || 'No genre listed'}`;
-  renderDetailError(els.modal.querySelector('.modal-panel'), detailMissing([m]),
-    () => openModal(m, { fromHistory: true }));
+  // Rated-episode count from the index record (seasonRatedFold), falling back
+  // to the index's episodeCount: a failed detail fetch used to read
+  // "0 episodes", and so did a season whose episodes are all still unrated.
+  const subtitleEps = seasonRatedFold(m).count || seasonEpisodeCount(m);
+  els.modalSubtitle.textContent = `Season ${m.season} · ${subtitleEps} episodes${yearStr} · ${m.genres.join(', ') || 'No genre listed'}`;
 
   // Shape pills + streaming chips in the modal-shapes row, matching the
   // chip row rendered on every result tile. Same suppression rule as
@@ -2454,10 +2958,20 @@ async function openModal(m, opts = {}) {
   const seasonModalBadge = aboveImdbBadge(m);
   if (seasonModalBadge) els.modalStats.appendChild(seasonModalBadge);
   const runtimeStr = formatAvgRuntime(m.avgRuntime);
+  const votesPerEp = avgVotesPerEpisode(m);
   els.modalStats.appendChild(document.createTextNode(
-    ` · ${avgVotesPerEpisode(m).toLocaleString()} votes per episode (avg)` +
+    (votesPerEp !== null ? ` · ${votesPerEp.toLocaleString()} votes per episode (avg)` : '') +
     (runtimeStr ? ` · ~${runtimeStr} per episode` : ''),
   ));
+  if (detailOk) {
+    clearDetailError(els.modalDetailError);
+  } else {
+    showDetailError(
+      els.modalDetailError,
+      'Episode ratings for this season could not be loaded.',
+      () => openModal(m, { fromHistory: true }),
+    );
+  }
 
   // Prefer the per-season overview when TMDB has one — it usually frames
   // *this* season's arc rather than restating the pilot premise. Falls
@@ -2480,26 +2994,47 @@ async function openModal(m, opts = {}) {
 
   els.modalPoster.replaceChildren();
   els.modalPoster.classList.remove('poster-sensitive', 'revealed');
-  if (m.poster) {
-    const img = document.createElement('img');
-    img.src = `https://image.tmdb.org/t/p/w342${m.poster}`;
-    img.alt = '';
-    els.modalPoster.appendChild(img);
-  } else {
+  const modalPosterFallback = () => {
     const fallback = document.createElement('div');
     fallback.className = 'poster-fallback';
     populatePosterFallback(fallback, m.title);
     els.modalPoster.appendChild(fallback);
+  };
+  if (m.poster) {
+    els.modalPoster.appendChild(
+      posterImage(`https://image.tmdb.org/t/p/w342${m.poster}`, '', modalPosterFallback),
+    );
+  } else {
+    modalPosterFallback();
   }
   markSensitivePoster(els.modalPoster, m);
 
-  drawCurve(els.modalCurve, m.episodes, 600, 180, { showAxis: true });
-  drawCurveAnnotations(els.modalCurve, m.episodes, m.shapes);
-  bindModalCurveHover(els.modalCurve, m.episodes);
-  renderShapeAnnotationText(m);
+  const hasEpisodes = Array.isArray(m.episodes) && m.episodes.length > 0;
+  if (els.modalCurveHeading) els.modalCurveHeading.hidden = !hasEpisodes;
+  els.modalCurve.hidden = !hasEpisodes;
+  if (hasEpisodes) {
+    drawCurve(els.modalCurve, m.episodes, 600, 180, { showAxis: true });
+    drawCurveAnnotations(els.modalCurve, m.episodes, m.shapes);
+    bindModalCurveHover(els.modalCurve, m.episodes);
+    renderShapeAnnotationText(m);
+  } else {
+    els.modalCurveAnnotation.hidden = true;
+  }
+
+  // Best, worst and most-rated EPISODE of this season, by the same rules the
+  // show modal applies one level up to seasons. Keyed by array position rather
+  // than episode number so a season that somehow carries a duplicate episode
+  // number cannot badge two rows.
+  const epHighlights = pickHighlights(
+    hasEpisodes ? m.episodes.map((e, i) => ({ key: i, rating: e.rating, votes: e.votes })) : [],
+  );
+  const anyEpFlags = epHighlights.best !== null || epHighlights.mostRated !== null;
+  // The flag column only exists when something in this season earns a flag;
+  // otherwise every row would carry an empty gutter.
+  els.modalEpisodes.classList.toggle('has-flags', anyEpFlags);
 
   const epFrag = document.createDocumentFragment();
-  for (const e of m.episodes) {
+  for (const [epIndex, e] of m.episodes.entries()) {
     const li = document.createElement('li');
     // IMDb tags pre-season specials, unaired pilots, and Christmas episodes
     // as ep 0 of a given season. Flag them so the curve isn't read as a
@@ -2541,7 +3076,32 @@ async function openModal(m, opts = {}) {
       meta.append(rt);
     }
 
-    li.append(num, name, meta);
+    if (anyEpFlags) {
+      // Every row gets the cell, flagged or not: each <li> is its own grid, so
+      // an absent cell would let the ratings slide sideways on exactly the
+      // rows that carry a flag. Empty cells collapse to zero width and keep
+      // the numbers in one column down the whole list.
+      const flags = document.createElement('span');
+      flags.className = 'ep-flags';
+      // Best and worst are mutually exclusive by construction; most-rated is
+      // independent and often lands on the same episode as best, which is
+      // exactly the row worth noticing.
+      if (epHighlights.best === epIndex) {
+        flags.appendChild(makeEpFlag('best', '★ best', 'Highest-rated episode of this season'));
+      } else if (epHighlights.worst === epIndex) {
+        flags.appendChild(makeEpFlag('worst', '▼ worst', 'Lowest-rated episode of this season'));
+      }
+      if (epHighlights.mostRated === epIndex) {
+        flags.appendChild(makeEpFlag(
+          'most-rated',
+          '◆ most rated',
+          `Most-rated episode of this season (${e.votes.toLocaleString()} ratings)`,
+        ));
+      }
+      li.append(num, name, flags, meta);
+    } else {
+      li.append(num, name, meta);
+    }
 
     // When we have an IMDb episode ID, overlay a stretched link so the
     // entire row deep-links to the episode's IMDb page. Older data.json
@@ -2636,7 +3196,7 @@ async function openShowModal(seriesId, opts = {}) {
   loadExtrasOnce();
   // Awaited before any rendering so every season row has its episodes. One
   // fetch covers the whole series, and it is memoised, so reopening is free.
-  await ensureDetail(seriesId);
+  const detailOk = await ensureDetail(seriesId);
   for (const m of seasons) if (!Array.isArray(m.episodes)) m.episodes = [];
 
   // Reported after the early return, so a failed lookup is not counted as a
@@ -2654,7 +3214,7 @@ async function openShowModal(seriesId, opts = {}) {
   const meta = seasons[0];
   showModalState.seriesId = seriesId;
   showModalState.fromChangelog = inheritedFromChangelog || opts.fromChangelog === true;
-  if (els.showModal.hidden) showModalState.lastFocus = document.activeElement;
+  if (els.showModal.hidden) showModalState.lastFocus = opts.restoreFocus || document.activeElement;
   syncCompareButton();
 
   els.showModalTitle.textContent = meta.title;
@@ -2673,8 +3233,11 @@ async function openShowModal(seriesId, opts = {}) {
   if (meta.genres && meta.genres.length) subtitleParts.push(meta.genres.join(', '));
   els.showModalSubtitle.textContent = subtitleParts.join(' · ');
 
-  const totalEps = seasons.reduce((s, m) => s + seasonEpisodeCount(m), 0);
-  const overallAvg = seasons.reduce((s, m) => s + m.avgRating, 0) / seasons.length;
+  // Canonical episode-weighted aggregates (see weightedAvgEpisode). Folded
+  // from the records' ratedCount/ratingSum, so they stay correct even when a
+  // per-episode detail fetch failed and m.episodes is still empty.
+  const totalEps = weightedRatedEpisodes(seasons);
+  const overallAvg = weightedAvgEpisode(seasons);
   // Show-level average runtime — averaged across every episode that has a
   // runtime in any season. Skipped entirely when none do.
   let showRuntimeSum = 0;
@@ -2696,36 +3259,45 @@ async function openShowModal(seriesId, opts = {}) {
     const votesStr = meta.seriesVotes ? ` (${meta.seriesVotes.toLocaleString()} votes)` : '';
     statsParts.push(`IMDb ${meta.seriesRating.toFixed(1)}${votesStr}`);
   }
-  statsParts.push(`avg episode ${overallAvg.toFixed(1)}`);
+  // 2 dp, the same precision the card and the list row print, so the same
+  // show never reads 7.97 in one place and 8.0 in another.
+  if (overallAvg !== null) statsParts.push(`avg episode ${overallAvg.toFixed(2)}`);
   const showRuntimeStr = formatAvgRuntime(showAvgRuntime);
   if (showRuntimeStr) statsParts.push(`~${showRuntimeStr}/ep`);
   if (watchedCount > 0) statsParts.push(`${watchedCount} watched`);
   els.showModalStats.replaceChildren();
   els.showModalStats.appendChild(document.createTextNode(statsParts.join(' · ')));
-  if (typeof meta.seriesRating === 'number' && overallAvg > meta.seriesRating
+  // The verdict comes from the same precomputed list the grid reads
+  // (buildAboveImdbMap), so the pill here and the badge out there cannot
+  // disagree; the local comparison is only the unsplit-dataset fallback.
+  // Either way it is not asserted below ABOVE_IMDB_MIN_VOTES series votes:
+  // a handful of fans rating every episode 10.0 earns it trivially.
+  const aboveImdb = aboveImdbBySeries.has(seriesId)
+    ? aboveImdbBySeries.get(seriesId) === true
+    : (typeof meta.seriesRating === 'number' && overallAvg !== null && overallAvg > meta.seriesRating);
+  if (aboveImdb && typeof meta.seriesRating === 'number' && overallAvg !== null
       && meta.seriesVotes >= RisingShowsFinder.ABOVE_IMDB_MIN_VOTES) {
     const aboveBadge = document.createElement('span');
     aboveBadge.className = 'above-imdb above-imdb-pill';
     aboveBadge.textContent = '↑ Above IMDb';
     aboveBadge.title =
-      `Average episode rating (${overallAvg.toFixed(1)}) is higher than the show's IMDb rating (${meta.seriesRating.toFixed(1)})`;
+      `Average episode rating (${overallAvg.toFixed(2)}) is higher than the show's IMDb rating (${meta.seriesRating.toFixed(1)})`;
     els.showModalStats.appendChild(document.createTextNode(' '));
     els.showModalStats.appendChild(aboveBadge);
   }
 
   // Shape labels (Rising / Rebound / Big finale / etc.) live on the
-  // per-season view only — they describe a single season's trajectory,
-  // not a property of the whole show. Clear the show-modal shape slot
-  // so it never renders an "intersection of every season's shapes"
-  // pattern that doesn't really mean anything to a viewer.
+  // Show-level shape pills. This slot used to be deliberately empty, on the
+  // reasoning that an "intersection of every season's shapes" means nothing.
+  // That reasoning predates the whole-run trajectory classifier: what goes
+  // here now is exactly the shape set the Finder's chips filter on and the
+  // shape hubs are built from (showShapesBySeries), so the app's central
+  // concept is finally visible on the show itself instead of only in the
+  // filter row. Per-SEASON shapes still live on the season rows below.
   els.showModalShapes.replaceChildren();
+  fillShapeTags(els.showModalShapes, showShapesBySeries.get(seriesId) || []);
 
-  // Providers — use the same .provider-tag styling the cards and rows
-  // render so streaming chips look identical across every surface. The
-  // mainstream-provider filter happens inside fillProviderTags.
-  els.showModalProviders.replaceChildren();
-  fillProviderTags(els.showModalProviders, meta.providers || []);
-  syncShowModalWatchOnLink(meta);
+  renderShowModalWatchRow(meta);
 
   els.showModalOverview.textContent = meta.overview || '';
 
@@ -2735,39 +3307,82 @@ async function openShowModal(seriesId, opts = {}) {
 
   els.showModalPoster.replaceChildren();
   els.showModalPoster.classList.remove('poster-sensitive', 'revealed');
-  if (meta.poster) {
-    const img = document.createElement('img');
-    img.src = `https://image.tmdb.org/t/p/w342${meta.poster}`;
-    img.alt = '';
-    els.showModalPoster.appendChild(img);
-  } else {
+  const showPosterFallback = () => {
     const fb = document.createElement('div');
     fb.className = 'poster-fallback';
     populatePosterFallback(fb, meta.title);
     els.showModalPoster.appendChild(fb);
+  };
+  if (meta.poster) {
+    els.showModalPoster.appendChild(
+      posterImage(`https://image.tmdb.org/t/p/w342${meta.poster}`, '', showPosterFallback),
+    );
+  } else {
+    showPosterFallback();
   }
   markSensitivePoster(els.showModalPoster, meta);
 
+  // Best and worst come from the boot-time maps, which are folded from the
+  // index and therefore survive a failed detail fetch. Most-rated cannot: it
+  // needs per-episode vote counts, so it is folded here from whatever the
+  // detail load produced, and quietly stays absent when that load failed.
   const bestSeason = bestSeasonBySeries.get(seriesId);
   const worstSeason = worstSeasonBySeries.get(seriesId);
+  const mostRatedSeason = pickHighlights(
+    seasons.map((s) => ({ key: s.season, rating: s.avgRating, votes: seasonVoteTotal(s) })),
+  ).mostRated;
   const seasonsFrag = document.createDocumentFragment();
   for (const s of seasons) {
-    seasonsFrag.appendChild(buildShowSeasonRow(s, bestSeason, worstSeason));
+    seasonsFrag.appendChild(buildShowSeasonRow(s, bestSeason, worstSeason, mostRatedSeason));
   }
   els.showModalSeasons.replaceChildren(seasonsFrag);
-  renderDetailError(els.showModal.querySelector('.modal-panel'), detailMissing(seasons),
-    () => openShowModal(seriesId, { fromHistory: true }));
+  if (detailOk) {
+    clearDetailError(els.showModalDetailError);
+  } else {
+    showDetailError(
+      els.showModalDetailError,
+      'Episode-by-episode data could not be loaded, so the season curves below are empty. The season averages and totals are complete.',
+      () => openShowModal(seriesId, { fromHistory: true }),
+    );
+  }
 
-  // Overlay chart: only useful when there's >1 season to compare.
-  if (seasons.length > 1) {
+  // Overlay chart: only useful when there's >1 season to compare, and only
+  // meaningful when the per-episode data actually arrived (without it every
+  // line would be empty, which reads as "this show has no ratings").
+  if (seasons.length > 1 && detailOk) {
     els.showModalOverlay.hidden = false;
     const colors = drawSeasonOverlay(els.showModalOverlayCurve, seasons, 600, 200);
+
+    // Long-running shows drew every season at once: 37 lines for The Simpsons,
+    // 77 for Formula 1, which is decoration rather than a chart. Past
+    // OVERLAY_DEFAULT_MAX seasons the overlay opens on a readable shortlist -
+    // first, best, worst and latest - and a "Show all seasons" toggle brings
+    // the rest back. Every line is still one click away, and short shows (the
+    // overwhelming majority) are untouched.
+    const OVERLAY_DEFAULT_MAX = 6;
+    const curated = seasons.length > OVERLAY_DEFAULT_MAX;
+    const defaultVisible = curated
+      ? new Set([
+        seasons[0].season,
+        seasons[seasons.length - 1].season,
+        bestSeason,
+        worstSeason,
+      ].filter((v) => v != null))
+      : null;
+
+    const setSeasonVisible = (item, season, visible) => {
+      item.setAttribute('aria-pressed', String(visible));
+      item.classList.toggle('overlay-legend-toggle--off', !visible);
+      const path = els.showModalOverlayCurve.querySelector(`[data-season="${season}"]`);
+      if (path) path.classList.toggle('overlay-season-hidden', !visible);
+    };
+
     const legendFrag = document.createDocumentFragment();
+    const items = [];
     for (const { season, color } of colors) {
       const item = document.createElement('button');
       item.type = 'button';
       item.className = 'overlay-legend-item overlay-legend-toggle';
-      item.setAttribute('aria-pressed', 'true');
       item.title = `Toggle Season ${season} line`;
       // Expose the line color to CSS so the chip's filled active state and
       // swatch glow can derive from the same hue as the chart line.
@@ -2779,18 +3394,44 @@ async function openShowModal(seriesId, opts = {}) {
       label.textContent = `S${season}`;
       item.append(swatch, label);
       item.addEventListener('click', () => {
-        const visible = item.getAttribute('aria-pressed') === 'true';
-        const nowVisible = !visible;
-        item.setAttribute('aria-pressed', String(nowVisible));
-        item.classList.toggle('overlay-legend-toggle--off', !nowVisible);
-        const path = els.showModalOverlayCurve.querySelector(`[data-season="${season}"]`);
-        if (path) path.classList.toggle('overlay-season-hidden', !nowVisible);
+        setSeasonVisible(item, season, item.getAttribute('aria-pressed') !== 'true');
       });
       legendFrag.appendChild(item);
+      items.push({ item, season });
     }
     els.showModalOverlayLegend.replaceChildren(legendFrag);
+    for (const { item, season } of items) {
+      setSeasonVisible(item, season, !defaultVisible || defaultVisible.has(season));
+    }
+    if (curated) {
+      const toggleAll = document.createElement('button');
+      toggleAll.type = 'button';
+      toggleAll.className = 'overlay-legend-all';
+      let showingAll = false;
+      const syncAllLabel = () => {
+        toggleAll.textContent = showingAll
+          ? 'Show key seasons'
+          : `Show all ${seasons.length} seasons`;
+      };
+      syncAllLabel();
+      toggleAll.addEventListener('click', () => {
+        showingAll = !showingAll;
+        for (const { item, season } of items) {
+          setSeasonVisible(item, season, showingAll || defaultVisible.has(season));
+        }
+        syncAllLabel();
+      });
+      els.showModalOverlayLegend.appendChild(toggleAll);
+    }
+    if (els.showModalOverlayHint) {
+      els.showModalOverlayHint.textContent = curated
+        ? 'Each line is one season, drawn across its episodes from first to last. Showing the first, best, worst and latest season.'
+        : 'Each line is one season, drawn across its episodes from first to last.';
+    }
   } else {
     els.showModalOverlay.hidden = true;
+    // Leave no stale legend behind for the next show that does draw one.
+    els.showModalOverlayLegend.replaceChildren();
   }
   // The chart image IS the overlay chart, so it follows the overlay's gating:
   // a single-season show has no curve worth sharing.
@@ -2823,16 +3464,18 @@ async function openShowModal(seriesId, opts = {}) {
   });
 }
 
-function buildShowSeasonRow(m, bestSeason, worstSeason) {
+function buildShowSeasonRow(m, bestSeason, worstSeason, mostRatedSeason) {
   const li = document.createElement('li');
   li.className = 'show-season';
   if (Watched.has(m)) li.classList.add('is-watched');
-  // The <li> stays a plain list item (axe `list`: an <ol> child with
-  // role=button is not a list item) and the keyboard entry point is a real
-  // button on the season number, so the shape pills inside the row are not
-  // nested inside another interactive element (axe `nested-interactive`).
-  // The whole row still opens on click for mouse and touch.
 
+  // The row used to be a <li role="button" tabindex="0"> that CONTAINED the
+  // season's shape pills, which are buttons: a control inside a control (axe
+  // nested-interactive, 30 serious violations), and it also stripped the list
+  // its own list semantics (axe `list`: an <ol> child with role=button is not
+  // a list item). The season number is now the real control, the <li> keeps a
+  // plain click handler for the convenience of clicking anywhere on the row,
+  // and the pills sit beside the button rather than inside it.
   const num = document.createElement('button');
   num.type = 'button';
   num.className = 'ss-num';
@@ -2847,7 +3490,10 @@ function buildShowSeasonRow(m, bestSeason, worstSeason) {
   const yearStr = ssYear ? ` · ${ssYear}` : '';
   const ssRuntimeStr = formatAvgRuntime(m.avgRuntime);
   const ssRuntimeBit = ssRuntimeStr ? ` · ~${ssRuntimeStr}/ep` : '';
-  eps.textContent = `${seasonEpisodeCount(m)} eps${yearStr}${ssRuntimeBit}`;
+  // Rated-episode count from the index record, not from the loaded episode
+  // array: a failed detail fetch used to make every row read "0 eps", and so
+  // did a season whose episodes are all still unrated (seasonEpisodeCount).
+  eps.textContent = `${seasonRatedFold(m).count || seasonEpisodeCount(m)} eps${yearStr}${ssRuntimeBit}`;
   meta.appendChild(eps);
   // Per-season shape labels inside the show modal's season list — these
   // belong to an individual season, not the show as a whole, so they stay
@@ -2878,7 +3524,13 @@ function buildShowSeasonRow(m, bestSeason, worstSeason) {
     sparkSvg.appendChild(path);
   }
   sparkWrap.appendChild(sparkSvg);
-  drawCurve(sparkSvg, m.episodes, 200, 36, 0);
+  // Nothing to draw without the per-episode data; an empty framed box reads
+  // as "this season has no ratings", which is not what happened.
+  if (Array.isArray(m.episodes) && m.episodes.length > 0) {
+    drawCurve(sparkSvg, m.episodes, 200, 36, 0);
+  } else {
+    sparkWrap.hidden = true;
+  }
 
   const stats = document.createElement('div');
   stats.className = 'ss-stats';
@@ -2901,6 +3553,16 @@ function buildShowSeasonRow(m, bestSeason, worstSeason) {
     worst.textContent = '▼ worst';
     stats.appendChild(worst);
   }
+  // Popularity, not quality, so it is its own badge rather than part of the
+  // best/worst either-or: the season most people rated is often the best one,
+  // and both badges showing on the same row is the interesting case.
+  if (mostRatedSeason === m.season) {
+    const pop = document.createElement('span');
+    pop.className = 'ss-watched-tag ss-most-rated';
+    pop.textContent = '◆ most rated';
+    pop.title = `Most-rated season of this show (${seasonVoteTotal(m).toLocaleString()} ratings across ${m.episodes.length} episodes)`;
+    stats.appendChild(pop);
+  }
   if (Watched.has(m)) {
     const w = document.createElement('span');
     w.className = 'ss-watched-tag';
@@ -2909,7 +3571,12 @@ function buildShowSeasonRow(m, bestSeason, worstSeason) {
   }
 
   li.append(num, meta, sparkWrap, stats);
-  li.addEventListener('click', () => openModal(m));
+  li.addEventListener('click', (e) => {
+    // The shape pills inside the row do their own thing (and stopPropagation),
+    // so this only ever fires for the row itself.
+    if (e.target.closest('button') && e.target.closest('button') !== num) return;
+    openModal(m);
+  });
   return li;
 }
 
@@ -2920,44 +3587,6 @@ function buildShowSeasonRow(m, bestSeason, worstSeason) {
 function seasonEpisodeCount(m) {
   if (Array.isArray(m.episodes) && m.episodes.length > 0) return m.episodes.length;
   return Number.isFinite(m.episodeCount) ? m.episodeCount : 0;
-}
-
-// One line in a modal when the per-show detail file could not be fetched,
-// with a Retry that refetches (ensureDetail evicts failed fetches from its
-// cache, so a retry is a real request) and re-renders the modal. Without it
-// the season rows read "0 eps" and the season modal drew an empty list with
-// no explanation.
-function renderDetailError(panel, failed, retry) {
-  let line = panel.querySelector('.modal-detail-error');
-  if (!failed) {
-    if (line) line.remove();
-    return;
-  }
-  if (!line) {
-    line = document.createElement('p');
-    line.className = 'modal-detail-error';
-    line.setAttribute('role', 'status');
-    const text = document.createElement('span');
-    text.textContent = 'Episode details could not be loaded. ';
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn btn-ghost modal-detail-retry';
-    btn.textContent = 'Retry';
-    line.append(text, btn);
-    const header = panel.querySelector('.modal-header');
-    if (header && header.nextSibling) panel.insertBefore(line, header.nextSibling);
-    else panel.appendChild(line);
-  }
-  const btn = line.querySelector('.modal-detail-retry');
-  btn.onclick = retry;
-}
-
-// True when this series' detail fetch failed: on a current deploy every
-// season the index lists has at least one rated episode once its detail file
-// is in, so "no season has episodes" after ensureDetail means the fetch did
-// not land. An unsplit dataset never reaches here with empty arrays.
-function detailMissing(seasons) {
-  return seasons.every((m) => !Array.isArray(m.episodes) || m.episodes.length === 0);
 }
 
 // TASK D: Render "More shows like this" in the show modal.
@@ -3009,14 +3638,15 @@ function buildShowRelatedRow(r, extraClass) {
 
   const posterEl = document.createElement('div');
   posterEl.className = 'related-poster';
+  const relatedPosterFallback = () => {
+    posterEl.classList.add('related-poster-fallback');
+    posterEl.style.setProperty('--poster-hue', String(hashHue(r.title)));
+  };
   if (r.poster) {
-    const img = document.createElement('img');
-    img.src = `https://image.tmdb.org/t/p/w92${r.poster}`;
-    img.alt = '';
-    img.loading = 'lazy';
-    img.width = 40;
-    img.height = 60;
-    posterEl.appendChild(img);
+    posterEl.appendChild(posterImage(
+      `https://image.tmdb.org/t/p/w92${r.poster}`, '', relatedPosterFallback,
+      { lazy: true, width: 40, height: 60 },
+    ));
   } else {
     posterEl.classList.add('related-poster-fallback');
     posterEl.style.setProperty('--poster-hue', String(hashHue(r.title)));
@@ -3136,6 +3766,32 @@ function formatCompactVotes(n) {
 // harmless, but it is the same collision that made integrations-lib.js throw
 // "Identifier 'CATEGORICAL_SHAPES' has already been declared" and skip its
 // whole file. Distinct names keep the global free of look-alikes.
+// Side indexes over the aggregated rows. Precomputed once per load:
+// - showShapesBySeries feeds the show modal's shape pills and the related-show
+//   shared-shape tier, both of which work from raw season matches.
+// - showAggBySeries lets any surface reach the canonical row (avgEpisode, gap,
+//   rated-episode count) by id without re-aggregating.
+// - titleFold is the accent-folded title the search box and the suggestion
+//   ranker match against; folding 34k titles per keystroke would be waste.
+function indexShowAgg() {
+  showShapesBySeries = new Map();
+  showAggBySeries = new Map();
+  for (const s of showAgg) {
+    s.titleFold = foldSearch(s.title);
+    showShapesBySeries.set(s.seriesId, s.shapes);
+    showAggBySeries.set(s.seriesId, s);
+  }
+  // First mainstream streaming service per show, for the single provider chip
+  // on cards and rows. Providers ride on season records, so this is one pass
+  // over the matches rather than a per-render scan.
+  providerBySeries = new Map();
+  for (const m of dataset.matches) {
+    if (providerBySeries.has(m.seriesId)) continue;
+    const first = displayProviders(m.providers)[0];
+    if (first) providerBySeries.set(m.seriesId, first);
+  }
+}
+
 function buildShowAggFromDataset() {
   return RisingShowsFinder.buildShowAgg(
     dataset.matches,
@@ -3224,7 +3880,7 @@ const FINDER_SHAPE_DESCS = {
   'mid-peak': 'Peaks mid-run, falls after',
   'u-shaped': 'Strong first and last seasons, a sag between',
   'saved-best-for-last': 'The final season is the show\'s highest-rated',
-  'shape-drift': 'The rating pattern changed significantly late in the run',
+  'shape-drift': 'Its last season breaks the pattern the earlier ones set',
 };
 
 function finderShapeCounts(rows) {
@@ -3322,20 +3978,27 @@ function toggleFinderShape(shape) {
 // Each preset is an absolute filter set: applying it replaces the current
 // filters. A couple lean on the new show-level shapes (rising / rebound).
 const FINDER_MOODS = [
+  // The vote floor is what makes this "prestige" rather than "obscure": without
+  // it the preset returned 2,073 shows, most of them titles with a handful of
+  // ratings that happen to average 8.5. 1,000 series votes keeps 559.
   { id: 'modern-prestige', icon: '★', label: 'Modern prestige',
-    desc: 'Recent shows critics and audiences both love',
-    filters: { minYear: 2020, minAvgEpisode: 8.5, sort: 'avgEpisode' } },
+    desc: 'Recent, highly rated, and actually watched',
+    filters: { minYear: 2020, minAvgEpisode: 8.5, minVotes: 1000, sort: 'avgEpisode' } },
   { id: 'crowd-favorites', icon: '◉', label: 'Crowd favorites',
     desc: 'Hugely popular and still highly rated',
     filters: { minVotes: 100000, minAvgEpisode: 8, sort: 'votes' } },
+  // Three seasons minimum, for the reason the Min seasons filter exists at all:
+  // a two-season "rising" show is one season beating another, which is close to
+  // a coin flip, and 79% of rising shows are two-season shows. With the floor
+  // the chip means what it says. 1,922 shows -> 442.
   { id: 'kept-climbing', icon: '↗', label: 'Kept climbing',
-    desc: 'Each season topped the one before',
-    filters: { shapes: ['rising'], minAvgEpisode: 7.5, sort: 'seasonsCount' } },
+    desc: 'Three or more seasons, each at least as good as the last',
+    filters: { shapes: ['rising'], minAvgEpisode: 7.5, minSeasons: 3, sort: 'seasonsCount' } },
   { id: 'comeback-stories', icon: '∪', label: 'Comeback stories',
     desc: 'Dipped, then bounced back stronger',
     filters: { shapes: ['rebound'], sort: 'seasonsCount' } },
   { id: 'marathon-worthy', icon: '❯❯❯', label: 'Marathon-worthy',
-    desc: 'Long shows that stay good throughout',
+    desc: '60+ episodes averaging 7.5 or better',
     filters: { minEpisodes: 60, minAvgEpisode: 7.5, sort: 'episodes' } },
   { id: 'outshines-reputation', icon: '⇈', label: 'Outshines its reputation',
     desc: 'Episodes rate higher than the show overall',
@@ -3541,6 +4204,10 @@ const FINDER_COLUMNS = [
 // Predicate + comparator live in finder-lib.js, shared with the Node export
 // pipeline (one source of truth - Kometa preset exports cannot drift).
 function finderRowsBeforeShape() {
+  // Fold the query once per render (not once per row): passesFinderFilters
+  // matches f.searchFold against each row's precomputed s.titleFold so an
+  // ASCII query finds an accented title. See foldSearch.
+  finderState.searchFold = foldSearch((finderState.search || '').trim());
   return showAgg.filter((s) => RisingShowsFinder.passesFinderFilters(s, finderState));
 }
 
@@ -3603,28 +4270,48 @@ function buildFinderTable(page) {
   const table = document.createElement('table');
   table.className = 'finder-table';
 
+  // Named for screen readers; visually redundant with the result count.
+  const caption = document.createElement('caption');
+  caption.className = 'visually-hidden';
+  caption.textContent = 'Shows matching the current filters. Column headers sort the table.';
+  table.appendChild(caption);
+
   const thead = document.createElement('thead');
   const headRow = document.createElement('tr');
   for (const col of FINDER_COLUMNS) {
+    // A <th> carrying role=button loses its column-header semantics, which is
+    // what made aria-sort invalid on it (axe: aria-required-attr / role
+    // conflict, 9 critical violations). The accessible pattern is a real
+    // button INSIDE the header cell: the th keeps scope + aria-sort, the
+    // button is the control.
     const th = document.createElement('th');
+    th.scope = 'col';
     th.dataset.sort = col.key;
     if (col.key === 'title') th.className = 'finder-col-show';
-    th.tabIndex = 0;
-    th.setAttribute('role', 'button');
     const active = finderState.sort === col.key;
     th.setAttribute('aria-sort', active ? (finderState.sortDir === 'asc' ? 'ascending' : 'descending') : 'none');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'finder-th-btn';
+    btn.dataset.sort = col.key;
+    const nextDir = active
+      ? (finderState.sortDir === 'asc' ? 'descending' : 'ascending')
+      : (col.key === 'title' ? 'ascending' : 'descending');
+    btn.setAttribute('aria-label', `${col.label}, sort ${nextDir}`);
     const labelEl = document.createElement('span');
     labelEl.className = 'finder-th-label';
     labelEl.textContent = col.label;
-    th.appendChild(labelEl);
+    btn.appendChild(labelEl);
     const arrow = document.createElement('span');
     arrow.className = 'finder-th-arrow';
     arrow.setAttribute('aria-hidden', 'true');
     arrow.textContent = active ? (finderState.sortDir === 'asc' ? ' ▲' : ' ▼') : '';
-    th.appendChild(arrow);
+    btn.appendChild(arrow);
+    th.appendChild(btn);
     headRow.appendChild(th);
   }
   const trendTh = document.createElement('th');
+  trendTh.scope = 'col';
   trendTh.className = 'finder-col-trend';
   const trendLabel = document.createElement('span');
   trendLabel.className = 'finder-th-label';
@@ -3657,12 +4344,17 @@ function buildFinderTable(page) {
 
     const posterEl = document.createElement('div');
     posterEl.className = 'row-poster finder-row-poster';
+    const rowPosterFallback = () => {
+      const fb = document.createElement('div');
+      fb.className = 'poster-fallback';
+      posterEl.appendChild(fb);
+      populatePosterFallback(fb, s.title);
+    };
     if (s.poster) {
-      const img = document.createElement('img');
-      img.src = `https://image.tmdb.org/t/p/w185${s.poster}`;
-      img.alt = `${s.title} poster`;
-      img.loading = 'lazy';
-      posterEl.appendChild(img);
+      posterEl.appendChild(posterImage(
+        `https://image.tmdb.org/t/p/w185${s.poster}`, `${s.title} poster`,
+        rowPosterFallback, { lazy: true },
+      ));
     } else {
       const fb = document.createElement('div');
       fb.className = 'poster-fallback';
@@ -3684,6 +4376,22 @@ function buildFinderTable(page) {
       genreEl.textContent = s.genres.join(', ');
       showText.appendChild(genreEl);
     }
+    // Same dominant-shape badge the grid cards carry, so switching views does
+    // not lose the one label that explains why a show is in these results.
+    const rowShape = dominantShapeOf(s);
+    if (rowShape) {
+      const badgeWrap = document.createElement('span');
+      badgeWrap.className = 'finder-row-badges';
+      badgeWrap.appendChild(makeShowShapeBadge(rowShape));
+      const rowProv = firstMainstreamProvider(s);
+      if (rowProv) {
+        const tag = document.createElement('span');
+        tag.className = 'provider-tag provider-tag-card';
+        tag.textContent = rowProv;
+        badgeWrap.appendChild(tag);
+      }
+      showText.appendChild(badgeWrap);
+    }
     showInner.appendChild(showText);
     showCell.appendChild(showInner);
     tr.appendChild(showCell);
@@ -3694,9 +4402,13 @@ function buildFinderTable(page) {
       { label: 'Gap', text: gapStr, cls: gapClass },
       { label: 'Episodes', text: s.episodes.toLocaleString() },
       { label: 'Seasons', text: s.seasonsCount.toLocaleString() },
-      { label: 'Year', text: s.year != null ? String(s.year) : '—' },
+      // "n/a", not an em dash: the repo bans them in every surface including UI
+      // copy, and the grid card already says "runtime n/a" for the same state,
+      // so the two views now read the same.
+      { label: 'Year', text: s.year != null ? String(s.year) : 'n/a' },
       { label: 'Votes', text: formatCompactVotes(s.votes) },
-      { label: 'Runtime', text: `${s.runtimeHrs.toFixed(1)}h` },
+      // A show with no runtime data at all is unknown, not zero hours.
+      { label: 'Runtime', text: s.runtimeHrs > 0 ? `${s.runtimeHrs.toFixed(1)}h` : 'n/a' },
     ];
     for (const c of cells) {
       const td = document.createElement('td');
@@ -3729,7 +4441,20 @@ function buildFinderTable(page) {
     tbody.appendChild(tr);
   }
   table.appendChild(tbody);
-  return table;
+
+  // Horizontal scroll container. The table needs about 1,120 px; between 641
+  // and roughly 1,130 px of viewport it was simply clipped by the page's
+  // overflow-x: hidden, so Year, Votes, Runtime and the whole Trend column
+  // were unreachable on a tablet with no way to scroll to them. Wrapping it
+  // keeps every column, and the wrapper is focusable so a keyboard can scroll
+  // it (WCAG 2.1.1).
+  const scroller = document.createElement('div');
+  scroller.className = 'finder-table-scroll';
+  scroller.tabIndex = 0;
+  scroller.setAttribute('role', 'region');
+  scroller.setAttribute('aria-label', 'Results table');
+  scroller.appendChild(table);
+  return scroller;
 }
 
 // Show-level trajectory. Multi-season shows draw one point per season's
@@ -3778,6 +4503,21 @@ function buildFinderCard(s) {
     `${s.year || 'year unknown'} · ${s.seasonsCount} season${s.seasonsCount === 1 ? '' : 's'}`;
   node.querySelector('.finder-card-genres').textContent = s.genres.slice(0, 3).join(' · ');
 
+  // The show's dominant shape, plus one streaming service when we know it.
+  // Cards used to carry neither, which left the app's whole premise invisible
+  // while browsing (see makeShowShapeBadge).
+  const badges = node.querySelector('.finder-card-badges');
+  badges.replaceChildren();
+  const domShape = dominantShapeOf(s);
+  if (domShape) badges.appendChild(makeShowShapeBadge(domShape));
+  const prov = firstMainstreamProvider(s);
+  if (prov) {
+    const tag = document.createElement('span');
+    tag.className = 'provider-tag provider-tag-card';
+    tag.textContent = prov;
+    badges.appendChild(tag);
+  }
+
   const gapStr = `${s.gap > 0 ? '+' : ''}${s.gap.toFixed(2)}`;
   const gapEl = node.querySelector('.stat-gap');
   gapEl.textContent = `Gap ${gapStr}`;
@@ -3787,19 +4527,22 @@ function buildFinderCard(s) {
   node.querySelector('.stat-show').textContent = `Show ${s.showRating.toFixed(1)}`;
   node.querySelector('.stat-avg').textContent = `Avg ep ${s.avgEpisode.toFixed(2)}`;
   node.querySelector('.stat-votes').textContent = `${formatCompactVotes(s.votes)} votes`;
-  node.querySelector('.stat-runtime').textContent = `${s.runtimeHrs.toFixed(1)}h`;
+  node.querySelector('.stat-runtime').textContent =
+    s.runtimeHrs > 0 ? `${s.runtimeHrs.toFixed(1)}h` : 'runtime n/a';
 
   drawFinderSpark(node.querySelector('.finder-spark'), s.seasonAvgs, s.episodeSeries);
 
   const posterEl = node.querySelector('.card-poster');
-  if (s.poster) {
-    const img = document.createElement('img');
-    img.src = `https://image.tmdb.org/t/p/w342${s.poster}`;
-    img.alt = `${s.title} poster`;
-    img.loading = 'lazy';
-    posterEl.appendChild(img);
-  } else {
+  const cardPosterFallback = () => {
     populatePosterFallback(posterEl.querySelector('.poster-fallback'), s.title);
+  };
+  if (s.poster) {
+    posterEl.appendChild(posterImage(
+      `https://image.tmdb.org/t/p/w342${s.poster}`, `${s.title} poster`,
+      cardPosterFallback, { lazy: true },
+    ));
+  } else {
+    cardPosterFallback();
   }
   markSensitivePoster(posterEl, s);
 
@@ -4085,10 +4828,21 @@ function applyFinderSort(key, dir) {
 
 // Header click-sort drives ordering in the list/table view.
 function handleFinderHeaderActivate(key) {
+  // Sorting rebuilds the whole table, which destroys the header the user just
+  // activated and dropped focus onto <body> - a keyboard user had to Tab back
+  // in from the top of the page to sort a second time. Re-focus the same
+  // column's button on the freshly built header.
+  const restoreFocus = document.activeElement
+    && document.activeElement.closest
+    && document.activeElement.closest('th[data-sort]') !== null;
   if (finderState.sort === key) {
     applyFinderSort(key, finderState.sortDir === 'desc' ? 'asc' : 'desc');
   } else {
     applyFinderSort(key, key === 'title' ? 'asc' : 'desc');
+  }
+  if (restoreFocus) {
+    const next = els.finderResults.querySelector(`.finder-th-btn[data-sort="${cssEscape(key)}"]`);
+    if (next) next.focus();
   }
 }
 
@@ -4281,6 +5035,39 @@ function finderYearChip(label, displayValue, prop, el) {
   };
 }
 
+// How far to scroll a snap-aligned horizontal rail to reveal one child in full.
+//
+// The obvious answer, "the minimum scroll that brings it inside", does not work
+// here and that is not a detail: the rail is a scroll-snap container whose
+// children are `scroll-snap-align: start`, so a position between two snap
+// points is REJECTED. Measured directly: with the widest chip cropped by 30 px,
+// `scrollLeft += 41` read back unchanged, because the nearest snap point to the
+// requested position was the one it started from.
+//
+// So align the chip's own start edge to the scrollport's, which IS its snap
+// point and therefore sticks. That also matches how a chip rail is expected to
+// behave: the focused chip parks at the leading edge. The scrollport of a
+// scroll container is its padding box, so the target is the strip's border-box
+// left plus its left border, not its padding.
+//
+// Returns 0 when the chip is already fully visible, so an already-good position
+// is never disturbed.
+function chipScrollDelta(stripRect, chipRect, borderLeft) {
+  const portLeft = stripRect.left + borderLeft;
+  const portRight = stripRect.right;
+  if (chipRect.left >= portLeft && chipRect.right <= portRight) return 0;
+  return chipRect.left - portLeft;
+}
+
+function scrollChipIntoStrip(strip, btn) {
+  const cs = typeof getComputedStyle === 'function' ? getComputedStyle(strip) : null;
+  const borderLeft = cs ? (parseFloat(cs.borderLeftWidth) || 0) : 0;
+  const delta = chipScrollDelta(
+    strip.getBoundingClientRect(), btn.getBoundingClientRect(), borderLeft,
+  );
+  if (delta !== 0) strip.scrollLeft += delta;
+}
+
 function bindFinder() {
   els.finderSearch.addEventListener('input', () => {
     finderState.search = els.finderSearch.value;
@@ -4351,16 +5138,20 @@ function bindFinder() {
     onFinderFilterChange();
   });
 
+  // Both discovery buttons used to do NOTHING at all when the filters matched
+  // no shows: no modal, no message, nothing to distinguish "no candidates"
+  // from "this button is broken". They now say so, in the button itself
+  // (reusing the same flash the copy buttons use).
   els.finderSurprise.addEventListener('click', () => {
     const rows = filterAndSortFinder();
-    if (rows.length === 0) return;
+    if (rows.length === 0) { flashButtonLabel(els.finderSurprise, 'No shows match'); return; }
     const pick = rows[Math.floor(Math.random() * rows.length)];
     openShowModal(pick.seriesId);
   });
 
   els.finderPopularPick.addEventListener('click', () => {
     const rows = filterAndSortFinder();
-    if (rows.length === 0) return;
+    if (rows.length === 0) { flashButtonLabel(els.finderPopularPick, 'No shows match'); return; }
     const top = rows.slice().sort((a, b) => b.votes - a.votes).slice(0, 50);
     const pick = top[Math.floor(Math.random() * top.length)];
     openShowModal(pick.seriesId);
@@ -4389,6 +5180,35 @@ function bindFinder() {
     if (!btn) return;
     toggleFinderShape(btn.dataset.shape);
     onFinderFilterChange();
+  });
+
+  // Under 900px the shape strip is a horizontal scroller (styles.css), and a
+  // keyboard user must be able to READ the chip they have tabbed onto.
+  //
+  // Neither the browser's own focus scrolling nor scrollIntoView({inline:
+  // 'nearest'}) gets there: both leave the widest chip cropped at the right
+  // edge (measured: "Saved best for last", 195 of 225 px visible at 390 px
+  // wide, with 218 px of scroll still unused), because the strip is a
+  // scroll-snap container and the snap pulls the position back to a chip
+  // boundary. So compute the scroll explicitly and set it. The snap still
+  // governs swiping, which is what it is for.
+  //
+  // Edges are measured to the strip's PADDING box, not its border box, so the
+  // chip clears the padding and its focus ring is fully visible.
+  // :focus-visible keeps a tap or a click from yanking the strip under the
+  // reader's finger, and the scrollWidth check makes it a no-op on desktop,
+  // where the strip wraps instead of scrolling.
+  els.finderShapes.addEventListener('focusin', (e) => {
+    const btn = e.target.closest('.shape-chip');
+    if (!btn) return;
+    const strip = els.finderShapes;
+    if (strip.scrollWidth <= strip.clientWidth) return;
+    try { if (!btn.matches(':focus-visible')) return; } catch (_) { /* old engine: scroll anyway */ }
+    // After a frame, not now: the browser performs its OWN focus scroll as part
+    // of focusing, and it runs after this handler, so adjusting here is simply
+    // overwritten (measured: the strip snapped straight back to the position
+    // that left the chip cropped).
+    requestAnimationFrame(() => scrollChipIntoStrip(strip, btn));
   });
 
   els.finderMoodChips.addEventListener('click', (e) => {
@@ -4433,10 +5253,11 @@ function bindFinder() {
     const row = e.target.closest('.finder-row');
     if (row) { openShowModal(row.dataset.seriesId); return; }
   });
+  // The header control is a real <button>, so Enter/Space activate it natively
+  // and only the row needs a key handler.
   els.finderResults.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
-    const th = e.target.closest('th[data-sort]');
-    if (th) { e.preventDefault(); handleFinderHeaderActivate(th.dataset.sort); return; }
+    if (e.target.closest('th[data-sort]')) return;
     const row = e.target.closest('.finder-row');
     if (row) { e.preventDefault(); openShowModal(row.dataset.seriesId); }
   });
@@ -4505,7 +5326,8 @@ async function loadChangelog() {
       if (dataset && els.footerMeta) renderFooterMeta();
     }
   } catch {
-    // Network or parse error — non-fatal; UI just doesn't get the chip.
+    // Network or parse error: non-fatal. The footer keeps the dataset's own
+    // "Last updated" line (rendered before this ran); only the chip is lost.
   }
 }
 
@@ -4593,9 +5415,49 @@ function renderChangelogShapes(entry) {
   }
 }
 
+// A daily refresh adds and drops mostly long-tail seasons: the 2026-08-22
+// entry listed 21 additions of which 19 had under 1,000 ratings (four of them
+// under 50), and every one of its ten "notable rating swings" was a title with
+// 16 to 363 votes moving on a handful of new ratings. Listing those first
+// buried the one thing a reader cares about. These lists now lead with what is
+// actually notable, count the rest, and never surface adult titles.
+const CHANGELOG_NOTABLE_VOTES = 1000;
+const CHANGELOG_MAX_ITEMS = 12;
+
+function changelogVotesFor(seriesId) {
+  const row = showAggBySeries.get(seriesId);
+  return row && typeof row.votes === 'number' ? row.votes : 0;
+}
+
+function partitionChangelogItems(items) {
+  const scored = items.map((i) => ({
+    item: i,
+    votes: changelogVotesFor(i.seriesId),
+    adult: adultSeriesIds.has(i.seriesId),
+  }));
+  const ranked = scored
+    .filter((x) => !x.adult)
+    .sort((a, b) => b.votes - a.votes);
+  let visible = ranked.filter((x) => x.votes >= CHANGELOG_NOTABLE_VOTES);
+  // Never render an empty section just because a quiet day had no popular
+  // titles: fall back to the three best-known of the day.
+  if (visible.length === 0) visible = ranked.slice(0, 3);
+  visible = visible.slice(0, CHANGELOG_MAX_ITEMS);
+  return { visible: visible.map((x) => x.item), hidden: items.length - visible.length };
+}
+
+function appendChangelogMore(listEl, hidden) {
+  if (hidden <= 0) return;
+  const li = document.createElement('li');
+  li.className = 'changelog-more';
+  li.textContent = `and ${hidden.toLocaleString()} more with few ratings`;
+  listEl.appendChild(li);
+}
+
 function renderChangelogAdded(entry) {
-  const items = entry.added || [];
-  if (!items.length) { els.changelogAddedSection.hidden = true; return; }
+  const all = entry.added || [];
+  if (!all.length) { els.changelogAddedSection.hidden = true; return; }
+  const { visible: items, hidden } = partitionChangelogItems(all);
   els.changelogAddedSection.hidden = false;
   els.changelogAddedList.replaceChildren();
   for (const item of items) {
@@ -4609,11 +5471,13 @@ function renderChangelogAdded(entry) {
     li.appendChild(btn);
     els.changelogAddedList.appendChild(li);
   }
+  appendChangelogMore(els.changelogAddedList, hidden);
 }
 
 function renderChangelogRemoved(entry) {
-  const items = entry.removed || [];
-  if (!items.length) { els.changelogRemovedSection.hidden = true; return; }
+  const all = entry.removed || [];
+  if (!all.length) { els.changelogRemovedSection.hidden = true; return; }
+  const { visible: items, hidden } = partitionChangelogItems(all);
   els.changelogRemovedSection.hidden = false;
   els.changelogRemovedList.replaceChildren();
   for (const item of items) {
@@ -4622,11 +5486,13 @@ function renderChangelogRemoved(entry) {
     li.textContent = `${item.title} · S${item.season}${year}`;
     els.changelogRemovedList.appendChild(li);
   }
+  appendChangelogMore(els.changelogRemovedList, hidden);
 }
 
 function renderChangelogSwings(entry) {
-  const items = entry.ratingSwings || [];
-  if (!items.length) { els.changelogSwingsSection.hidden = true; return; }
+  const all = entry.ratingSwings || [];
+  if (!all.length) { els.changelogSwingsSection.hidden = true; return; }
+  const { visible: items, hidden } = partitionChangelogItems(all);
   els.changelogSwingsSection.hidden = false;
   els.changelogSwingsList.replaceChildren();
   for (const s of items) {
@@ -4649,6 +5515,7 @@ function renderChangelogSwings(entry) {
     li.appendChild(btn);
     els.changelogSwingsList.appendChild(li);
   }
+  appendChangelogMore(els.changelogSwingsList, hidden);
 }
 
 function renderChangelogFreshness(entry) {
@@ -4729,17 +5596,24 @@ function jumpToSeason(item) {
 
 // --- search suggestions (autocomplete) ---
 
+// Highlights the matched fragment. Both sides are compared folded (so typing
+// "pokemon" still marks the right letters inside an accented title) and the
+// offset map turns the folded hit back into a source range.
 function highlightFragment(text, q) {
   if (!q) return [document.createTextNode(text)];
-  const lower = text.toLowerCase();
-  const idx = lower.indexOf(q);
-  if (idx === -1) return [document.createTextNode(text)];
+  const qf = foldSearch(q);
+  if (!qf) return [document.createTextNode(text)];
+  const { folded, map } = foldSearchWithMap(text);
+  const fIdx = folded.indexOf(qf);
+  if (fIdx === -1) return [document.createTextNode(text)];
+  const start = map[fIdx];
+  const end = map[Math.min(fIdx + qf.length, map.length - 1)];
   const out = [];
-  if (idx > 0) out.push(document.createTextNode(text.slice(0, idx)));
+  if (start > 0) out.push(document.createTextNode(text.slice(0, start)));
   const mark = document.createElement('mark');
-  mark.textContent = text.slice(idx, idx + q.length);
+  mark.textContent = text.slice(start, end);
   out.push(mark);
-  if (idx + q.length < text.length) out.push(document.createTextNode(text.slice(idx + q.length)));
+  if (end < text.length) out.push(document.createTextNode(text.slice(end)));
   return out;
 }
 
@@ -4748,13 +5622,15 @@ function highlightFragment(text, q) {
 // but it ranks rows from showAgg (one per series) and matches title or IMDb
 // series id only — no episode-name or fuzzy fallback.
 function computeFinderSuggestions(rawQuery) {
-  const q = rawQuery.trim().toLowerCase();
+  // Folded on both sides so an ASCII query finds an accented title (see
+  // foldSearch). s.titleFold is precomputed once per row in indexShowAgg.
+  const q = foldSearch(rawQuery.trim());
   if (!q || !showAgg) return [];
   const titleStarts = [];
   const titleContains = [];
   const idMatches = [];
   for (const s of showAgg) {
-    const titleL = s.title.toLowerCase();
+    const titleL = s.titleFold || foldSearch(s.title);
     const idL = s.seriesId.toLowerCase();
     if (titleL.startsWith(q)) titleStarts.push(s);
     else if (titleL.includes(q)) titleContains.push(s);
@@ -4776,14 +5652,14 @@ function computeFinderSuggestions(rawQuery) {
   const FUZZY_DICE_THRESHOLD = 0.6;
   const FUZZY_MAX_RESULTS = 3;
   const matchedIds = new Set(strictAll.map((s) => s.seriesId));
-  const hasExactTitle = showAgg.some((s) => s.title.toLowerCase() === q);
+  const hasExactTitle = showAgg.some((s) => (s.titleFold || foldSearch(s.title)) === q);
   const suppressFuzzy = hasExactTitle && q.includes(' ');
   if (q.length >= FUZZY_MIN_QUERY_LEN && !suppressFuzzy) {
     const qBigrams = searchBigrams(q);
     const scored = [];
     for (const s of showAgg) {
       if (matchedIds.has(s.seriesId)) continue;
-      const titleL = s.title.toLowerCase();
+      const titleL = s.titleFold || foldSearch(s.title);
       if (titleL === q) continue;
       const score = searchDice(qBigrams, searchBigrams(titleL));
       if (score >= FUZZY_DICE_THRESHOLD) scored.push({ s, score });
@@ -4830,12 +5706,15 @@ function renderFinderSuggestionItems() {
 
     const poster = document.createElement('div');
     poster.className = 'ss-poster';
+    const suggestionPosterFallback = () => {
+      poster.classList.add('ss-poster-fallback');
+      poster.style.setProperty('--poster-hue', String(hashHue(s.title || 'unknown')));
+    };
     if (s.poster) {
-      const img = document.createElement('img');
-      img.src = `https://image.tmdb.org/t/p/w92${s.poster}`;
-      img.alt = '';
-      img.loading = 'lazy';
-      poster.appendChild(img);
+      poster.appendChild(posterImage(
+        `https://image.tmdb.org/t/p/w92${s.poster}`, '', suggestionPosterFallback,
+        { lazy: true },
+      ));
     } else {
       poster.classList.add('ss-poster-fallback');
       poster.style.setProperty('--poster-hue', String(hashHue(s.title || 'unknown')));
@@ -4976,6 +5855,10 @@ function shareShowCard(seriesId) {
 // mid-flash so the button can never get stuck showing the confirmation.
 function flashButtonLabel(buttonEl, label) {
   if (!buttonEl) return;
+  // Mirror it into the live region too: swapping a button's own text back after
+  // 1.8 s is not dependable for assistive tech, and it is the ONLY feedback the
+  // discovery buttons give when no show matches the filters.
+  if (els.srAnnouncer) els.srAnnouncer.textContent = label;
   const orig = buttonEl.dataset.origLabel || buttonEl.textContent;
   buttonEl.dataset.origLabel = orig;
   buttonEl.textContent = label;
@@ -5031,9 +5914,13 @@ function buildShowShareText(seasons) {
     : years[0] === years[years.length - 1] ? `${years[0]}`
     : `${years[0]}–${years[years.length - 1]}`;
   lines.push(`${meta.title}` + (yearStr ? ` (${yearStr})` : ''));
-  const totalEps = seasons.reduce((s, m) => s + seasonEpisodeCount(m), 0);
-  const overallAvg = seasons.reduce((s, m) => s + m.avgRating, 0) / seasons.length;
-  const head = `${seasons.length} season${seasons.length === 1 ? '' : 's'} · ${totalEps} episodes · avg episode ${overallAvg.toFixed(1)}`;
+  // Canonical episode-weighted aggregates (see weightedAvgEpisode). Folded
+  // from the records' ratedCount/ratingSum, so they stay correct even when a
+  // per-episode detail fetch failed and m.episodes is still empty.
+  const totalEps = weightedRatedEpisodes(seasons);
+  const overallAvg = weightedAvgEpisode(seasons);
+  const avgStr = overallAvg === null ? 'n/a' : overallAvg.toFixed(2);
+  const head = `${seasons.length} season${seasons.length === 1 ? '' : 's'} · ${totalEps} episodes · avg episode ${avgStr}`;
   lines.push(typeof meta.seriesRating === 'number'
     ? `${head} · IMDb ${meta.seriesRating.toFixed(1)}`
     : head);
@@ -5324,12 +6211,15 @@ function shareShowChartImage(seriesId) {
     : years[0] === years[years.length - 1] ? `${years[0]}`
     : `${years[0]}-${years[years.length - 1]}`;
   const shapes = showShapesBySeries.get(seriesId) || [];
-  const totalEps = seasons.reduce((s, m) => s + seasonEpisodeCount(m), 0);
-  const overallAvg = seasons.reduce((s, m) => s + m.avgRating, 0) / seasons.length;
+  // Canonical episode-weighted aggregates (see weightedAvgEpisode). Folded
+  // from the records' ratedCount/ratingSum, so they stay correct even when a
+  // per-episode detail fetch failed and m.episodes is still empty.
+  const totalEps = weightedRatedEpisodes(seasons);
+  const overallAvg = weightedAvgEpisode(seasons);
   const stats = [
     `${seasons.length} seasons`,
     `${totalEps} episodes`,
-    `avg episode ${overallAvg.toFixed(1)}`,
+    `avg episode ${overallAvg === null ? 'n/a' : overallAvg.toFixed(2)}`,
   ];
   if (typeof meta.seriesRating === 'number') stats.push(`IMDb ${meta.seriesRating.toFixed(1)}`);
 
@@ -5432,6 +6322,20 @@ function bindEvents() {
     closeCompareModal();
   });
   els.compareModalCopyLink.addEventListener('click', copyCompareLink);
+  if (els.compareImportedKeep) {
+    els.compareImportedKeep.addEventListener('click', () => {
+      Compare.keepImported();
+      syncCompareImportedNote();
+      flashButtonLabel(els.compareImportedKeep, 'Saved');
+    });
+  }
+  if (els.compareModalXMode) {
+    els.compareModalXMode.addEventListener('click', () => {
+      compareXMode = compareXMode === 'run' ? 'season' : 'run';
+      renderCompareModal();
+      els.compareModalXMode.focus();
+    });
+  }
   els.compareModalShareChart.addEventListener('click', shareCompareChartImage);
   els.compareModalKometa.addEventListener('click', exportCompareToKometa);
   els.modalViewShow.addEventListener('click', () => {
@@ -5471,6 +6375,12 @@ function bindEvents() {
     syncFinderSortControls();
     applyFinderViewClasses();
     renderFinder();
+    // A `#show=` / `#season=` / `#compare=` hash arriving at an ALREADY-LOADED
+    // page used to be swallowed: applyStateFromURL parks the id in
+    // pendingShowKey, which only load() consumed, so pasting a permalink into
+    // the tab it came from re-applied the filters and left the modal shut while
+    // the URL claimed it was open.
+    consumePendingDeepLinks();
   });
 }
 
@@ -5496,13 +6406,20 @@ function bindKeyboard() {
         closeChangelogModal();
       } else if (!els.compareModal.hidden) {
         closeCompareModal();
-      } else if (!els.modal.hidden) {
-        // One level at a time: a season opened from a show modal goes back
-        // to that show (same as the Back control); the last level closes.
+      } else if (!els.modal.hidden || !els.showModal.hidden) {
+        // Escape steps back one level, exactly like the visible back arrow in
+        // the modal header, and closes only when there is nowhere to step
+        // back to. Only one modal is on screen at a time here: drilling from a
+        // show into a season CLOSES the show modal, so the old "close the
+        // topmost thing" reading dropped the reader all the way to the grid
+        // while the back arrow beside it offered to return to the show. Two
+        // affordances in the same corner disagreeing about what "back" means
+        // is the confusing part; the arrow's model wins because it is the one
+        // that matches what the reader did to get here. The x button and a
+        // backdrop click still leave outright.
         if (modalViewHistory.length > 0) goBackModalView();
-        else closeModal();
-      } else if (!els.showModal.hidden) {
-        closeShowModal();
+        else if (!els.modal.hidden) closeModal();
+        else closeShowModal();
       } else if (document.body.classList.contains('advanced-drawer-open')) {
         closeAdvancedDrawer();
       } else if (document.body.classList.contains('is-menu-visible')) {
@@ -5711,39 +6628,44 @@ const PROVIDER_URLS = {
   'Crunchyroll':        (q) => `https://www.crunchyroll.com/search?q=${q}`,
 };
 
-// "Watch on …" deep-links on the show modal: one per mainstream provider the
-// show is on, each pointing at that provider's own search page for the title.
-// The provider list is the same one fillProviderTags renders as badges, so a
-// badge never appears without a matching link. #showModalWatchOn is the first
-// link; the rest are built beside it and torn down on the next open.
-function syncShowModalWatchOnLink(meta) {
-  const btn = els.showModalWatchOn;
-  if (!btn) return;
-  for (const extra of btn.parentNode.querySelectorAll('.watch-on-extra')) extra.remove();
-  const providers = (meta.providers || [])
-    .filter((p) => isMainstreamProvider(p) && PROVIDER_URLS[p]);
+// The show modal's streaming row: the provider chips ARE the links, one
+// search per mainstream service the show streams on. Until 2026-08 this
+// rendered a separate "Watch on X" button per provider BESIDE a row of
+// display-only badges saying the same names, which cost up to five extra
+// full-width buttons above the fold on mobile and still only disclosed
+// "this is a search, not a guaranteed stream" in a hover title that touch
+// users never see. Now the badge row carries the links and the row's own
+// note says what the links do.
+function renderShowModalWatchRow(meta) {
+  const row = els.showModalWatch;
+  const box = els.showModalProviders;
+  if (!box) return;
+  box.replaceChildren();
+  const providers = displayProviders(meta.providers);
   if (providers.length === 0) {
-    btn.hidden = true;
+    if (row) row.hidden = true;
     return;
   }
-  btn.hidden = false;
-  fillWatchOnLink(btn, providers[0], meta.title);
-  let prev = btn;
-  for (const provider of providers.slice(1)) {
-    const link = document.createElement('a');
-    link.className = 'btn btn-ghost watch-on-extra';
-    link.target = '_blank';
-    link.rel = 'noopener';
-    fillWatchOnLink(link, provider, meta.title);
-    prev.insertAdjacentElement('afterend', link);
-    prev = link;
+  if (row) row.hidden = false;
+  for (const p of providers) {
+    const url = PROVIDER_URLS[p];
+    if (url) {
+      const link = document.createElement('a');
+      link.className = 'provider-tag provider-tag-link';
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.href = url(encodeURIComponent(meta.title));
+      link.textContent = p;
+      link.setAttribute('aria-label', `Search for ${meta.title} on ${p}`);
+      link.title = `Search for "${meta.title}" on ${p}`;
+      box.appendChild(link);
+    } else {
+      const tag = document.createElement('span');
+      tag.className = 'provider-tag';
+      tag.textContent = p;
+      box.appendChild(tag);
+    }
   }
-}
-
-function fillWatchOnLink(el, provider, title) {
-  el.textContent = `Watch on ${provider} →`;
-  el.title = `Search for "${title}" on ${provider}`;
-  el.href = PROVIDER_URLS[provider](encodeURIComponent(title));
 }
 
 // Shortcut legend popover: ?-button + ? key both toggle. Click-outside +
@@ -5830,6 +6752,24 @@ if (typeof window !== 'undefined') {
     parseCompareParam,
     Watched,
     Compare,
+    // 2026-08 quality batch. Anything with a rule worth pinning has to be
+    // listed here: the vm harness can only reach what this object exposes.
+    seasonRatedFold,
+    weightedAvgEpisode,
+    weightedRatedEpisodes,
+    foldSearch,
+    normalizeSearch,
+    avgVotesPerEpisode,
+    dominantShapeOf,
+    isAnimated,
+    isUnscripted,
+    // Best / worst / most-rated highlights, shared by the season list and the
+    // episode list.
+    pickHighlights,
+    seasonVoteTotal,
+    chipScrollDelta,
+    // Site-wide audit round: boot-time dataset validation, the episode-count
+    // fallback the season rows use, and the shape-pill confidence step.
     validateDataset,
     seasonEpisodeCount,
     shapeConfidence,

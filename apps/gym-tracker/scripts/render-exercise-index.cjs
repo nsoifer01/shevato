@@ -37,8 +37,8 @@ function renderExerciseIndex(exercises, slugs, builtAt) {
       "@context": "https://schema.org",
       "@type": "BreadcrumbList",
       "itemListElement": [
-        { "@type": "ListItem", "position": 1, "name": "Home", "item": "${SITE}/home.html" },
-        { "@type": "ListItem", "position": 2, "name": "Apps", "item": "${SITE}/apps.html" },
+        { "@type": "ListItem", "position": 1, "name": "Home", "item": "${SITE}/home" },
+        { "@type": "ListItem", "position": 2, "name": "Apps", "item": "${SITE}/apps" },
         { "@type": "ListItem", "position": 3, "name": "Gym Tracker", "item": "${SITE}/apps/gym-tracker/" },
         { "@type": "ListItem", "position": 4, "name": "Exercises", "item": "${canonical}" }
       ]
@@ -140,8 +140,8 @@ function renderTaxonomyPage({ kind, key, label, exercises, slugs, builtAt }) {
       "@context": "https://schema.org",
       "@type": "BreadcrumbList",
       "itemListElement": [
-        { "@type": "ListItem", "position": 1, "name": "Home", "item": "${SITE}/home.html" },
-        { "@type": "ListItem", "position": 2, "name": "Apps", "item": "${SITE}/apps.html" },
+        { "@type": "ListItem", "position": 1, "name": "Home", "item": "${SITE}/home" },
+        { "@type": "ListItem", "position": 2, "name": "Apps", "item": "${SITE}/apps" },
         { "@type": "ListItem", "position": 3, "name": "Gym Tracker", "item": "${SITE}/apps/gym-tracker/" },
         { "@type": "ListItem", "position": 4, "name": "Exercises", "item": "${SITE}/apps/gym-tracker/exercises/" },
         { "@type": "ListItem", "position": 5, "name": "${escapeHtml(label)}", "item": "${canonical}" }

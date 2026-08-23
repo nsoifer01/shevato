@@ -14,18 +14,23 @@ const { SITE } = require('./render-show-page.js');
 // ARE the crawl path to the ~32,500 shows the sitemap omits: /shows/ alone only
 // links to the letter roots, so without these the later pages of each letter
 // would sit two hops from anything a crawler is told about.
+//
+// No <lastmod>: the only date the builder has is the build time, and the
+// build runs daily, so every URL used to claim it changed today (2,098 URLs,
+// every day). Google discounts lastmod on sites where it is consistently
+// wrong, which also cost the genuinely updated pages their signal. There is
+// no per-show "content changed" date in the dataset; omitting the element
+// is the honest option until one exists. (`builtAt` is kept in the signature
+// so callers do not change.)
 function renderShowsSitemap(series, builtAt, hubSlugs = [], browsePaths = []) {
-  const lastmod = builtAt ? new Date(builtAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
   const urls = [
     `  <url>
     <loc>${SITE}/apps/rising-shows/shows/</loc>
-    <lastmod>${lastmod}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>`,
     ...browsePaths.map((p) => `  <url>
     <loc>${SITE}${p}</loc>
-    <lastmod>${lastmod}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>`),
@@ -33,7 +38,6 @@ function renderShowsSitemap(series, builtAt, hubSlugs = [], browsePaths = []) {
     // shows: they're the landing pages the show pages link back into.
     ...hubSlugs.map((slug) => `  <url>
     <loc>${SITE}/apps/rising-shows/shows/shape/${slug}/</loc>
-    <lastmod>${lastmod}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>`),
@@ -41,7 +45,6 @@ function renderShowsSitemap(series, builtAt, hubSlugs = [], browsePaths = []) {
       const slug = showPath(s.title, s.seriesId);
       return `  <url>
     <loc>${SITE}/apps/rising-shows/shows/${slug}/</loc>
-    <lastmod>${lastmod}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>`;

@@ -101,6 +101,8 @@
     <!-- Import shared CSS modules -->
     <link rel="stylesheet" href="../mario-kart/css/utilities.css">
     <link rel="stylesheet" href="../mario-kart/css/base.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway:300,400,500,600&display=swap">
+    <link rel="stylesheet" href="../../assets/css/firebase-auth.css">
     <link rel="stylesheet" href="../../assets/css/main.css" />
 
     <!-- Gym Tracker specific CSS -->
@@ -118,6 +120,7 @@
   <script defer src="/assets/js/analytics.js"></script>
 </head>
 <body class="gym-tracker">
+<a class="skip-link" href="#main-content">Skip to main content</a>
     <div data-include="header"></div>
 
     <!-- Live sync banner — only shown when offline, and briefly on the
@@ -198,7 +201,7 @@
         </nav>
 
         <!-- Main Content Area -->
-        <main class="main-content">
+        <main id="main-content" class="main-content">
             <!-- HOME / DASHBOARD VIEW -->
             <div id="home-view" class="view active">
                 <div class="view-header">

@@ -20,7 +20,7 @@ Three runner-level guarantees:
 - **Check-count pinning.** `EXPECTED_CHECKS` in run.mjs pins the number of
   checks a suite must emit, so a silently lost check (early return, dropped
   loop) becomes an explicit failure instead of a shrunken green run. All six
-  harness-owned suites are pinned (site 157, apps 101, a11y 33, visual 86,
+  harness-owned suites are pinned (site 157, apps 101, a11y 72, visual 86,
   perf 41, pwa-gym 14); the app-owned trip-planner/fpl-planner suites are
   not, by their owners' choice. Adding or removing a check on purpose means
   updating the pinned number in the same change.
@@ -50,7 +50,7 @@ Three runner-level guarantees:
 
 ## Why it is not part of `npm test`
 
-`npm test` runs in CI on every push to master and every PR, in about two
+`npm test` runs in CI on every push to master and every PR, in about three
 minutes with no browser binary. This suite needs Chromium and takes ~15
 minutes. Keeping them separate means the fast gate stays fast and
 dependency-free, while this runs on PRs, master pushes, and locally before a
@@ -97,7 +97,7 @@ npm run fetch:rising-shows-data
 | `CHROME_BIN` | `chromium` | Browser binary |
 
 Ports 8080 and 8081 are reserved on the maintainer's machine and must never
-become defaults here.
+become defaults here (local servers go on 8082+, see `CLAUDE.md`).
 
 ## Layout
 
@@ -114,7 +114,9 @@ tests/browser/
                      #   assertions, plus a mobile sweep with one interaction
                      #   per app
   suites/a11y.mjs    # axe WCAG2A/AA scans (pinned quarantine baseline,
-                     #   currently empty) + real-keyboard focus checks
+                     #   currently empty) + real-keyboard focus checks,
+                     #   mobile-menu focus trap, Sign In touch target, and
+                     #   per-page main landmark / skip link / header nav labels
   suites/visual.mjs  # deterministic geometry/theme/collision pins at three
                      #   viewports (pixel baselines deliberately rejected)
   suites/perf.mjs    # first-party byte / request / DOM budgets per page
@@ -123,6 +125,8 @@ tests/browser/
 
 apps/trip-planner/e2e/   # the trip-planner E2E regression suites (registered
                          #   in run.mjs; see that app's README + FINDINGS)
+apps/gym-tracker/e2e/    # gym-tracker units-migration suite (registered in
+                         #   run.mjs)
 apps/fpl-planner/e2e/    # fpl-planner scenario + gameweek-lifecycle suites
                          #   (registered in run.mjs)
 apps/arena/e2e/          # two-client multiplayer suite vs local Firebase

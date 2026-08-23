@@ -16,7 +16,22 @@ Disallow: /sync-system/
 Disallow: /firestore.rules
 Disallow: /database.rules.json
 Disallow: /firebase-config.js
-Disallow: /TESTING_STEPS.txt
+# Repo-internal material the deploy still serves (Netlify publishes the whole
+# tracked tree). Disallow only affects crawling; the files stay fetchable.
+Disallow: /tests/
+Disallow: /scripts/
+Disallow: /assets/seo/
+Disallow: /assets/og/
+Disallow: /.github/
+Disallow: /*.md$
+Disallow: /package.json
+Disallow: /package-lock.json
+Disallow: /firebase.json
+Disallow: /.firebaserc
+Disallow: /apps/*/tests/
+Disallow: /apps/*/e2e/
+Disallow: /apps/*/scripts/
+Disallow: /apps/*/experiments/
 Disallow: /*.log$
 Disallow: /*.bak$
 Disallow: /*.swp$
@@ -38,5 +53,5 @@ Allow: /
 User-agent: WhatsApp
 Allow: /
 
-# Sitemap index — references the page, show, and exercise sub-sitemaps.
+# Sitemap index - references the page, show, and exercise sub-sitemaps.
 Sitemap: https://shevato.com/sitemap.xml

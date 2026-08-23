@@ -1694,3 +1694,327 @@ test('accumulateFinishPositions: a rival id of "__proto__" does not corrupt the 
     assert.deepEqual(out.r1.counts, { 2: 1 });
     assert.deepEqual(out.r1.dates, { 2: ['2026-08-01'] });
   });
+
+// ===========================================================================
+// 2026-08-22 quality pass: local calendar dates, eligibility, import validation
+// ===========================================================================
+const { execFileSync } = require('node:child_process');
+const path = require('node:path');
+const S = require('../js/stats.js');
+
+test('localDateISO / todayISO: read the LOCAL calendar components', () => {
+  assert.equal(S.localDateISO(new Date(2026, 7, 22, 0, 5)), '2026-08-22');
+  assert.equal(S.localDateISO(new Date(2026, 7, 22, 23, 59)), '2026-08-22');
+  assert.equal(S.localDateISO(new Date('nope')), null);
+  assert.equal(S.todayISO(new Date(2026, 0, 1, 0, 0, 1)), '2026-01-01');
+});
+
+test('addDaysISO: crosses month, year and leap-day boundaries, timezone-free', () => {
+  assert.equal(S.addDaysISO('2026-08-31', 1), '2026-09-01');
+  assert.equal(S.addDaysISO('2026-12-31', 1), '2027-01-01');
+  assert.equal(S.addDaysISO('2027-01-01', -1), '2026-12-31');
+  assert.equal(S.addDaysISO('2024-02-28', 1), '2024-02-29');
+  assert.equal(S.addDaysISO('2024-02-29', 1), '2024-03-01');
+  assert.equal(S.addDaysISO('2026-02-28', 1), '2026-03-01');
+  assert.equal(S.addDaysISO('2026-08-22', 0), '2026-08-22');
+  assert.equal(S.addDaysISO('2026-08-22', -555), '2025-02-13');
+  assert.equal(S.addDaysISO('2026-02-30', 1), null);
+  assert.equal(S.addDaysISO('2026-08-22', NaN), null);
+});
+
+test('daysBetweenISO / dayOfWeekISO: timezone-free calendar arithmetic', () => {
+  assert.equal(S.daysBetweenISO('2026-08-20', '2026-08-22'), 2);
+  assert.equal(S.daysBetweenISO('2026-08-22', '2026-08-20'), -2);
+  assert.equal(S.daysBetweenISO('2025-12-31', '2026-01-01'), 1);
+  assert.equal(S.daysBetweenISO('x', '2026-01-01'), null);
+  assert.equal(S.dayOfWeekISO('2026-08-22'), 6); // Saturday
+  assert.equal(S.dayOfWeekISO('2026-08-16'), 0); // Sunday
+  assert.equal(S.dayOfWeekISO('2026-08-17'), 1); // Monday
+  assert.equal(S.dayOfWeekISO('junk'), null);
+});
+
+test('formatDate: a day string, a datetime, a Date, an epoch number and junk', () => {
+  assert.equal(S.formatDate('2026-08-22', 'short'), 'Aug 22');
+  assert.equal(S.formatDate('2026-08-22', 'medium'), 'Aug 22, 2026');
+  assert.equal(S.formatDate('2026-08-22', 'long'), 'Sat, Aug 22, 2026');
+  assert.equal(S.formatDate('2026-08-01', 'month'), 'August 2026');
+  assert.equal(S.formatDate('2026-08-22'), 'Aug 22, 2026');
+  // The real persisted shapes that used to render '' (profile verifiedAt,
+  // MapTap joinDate): a datetime is shown as the local day it falls on.
+  const local = new Date(2026, 7, 22, 12, 0, 0);
+  assert.equal(S.formatDate(local.toISOString(), 'medium'), 'Aug 22, 2026');
+  assert.equal(S.formatDate('2025-03-02T10:00:00.000Z', 'short').length > 0, true);
+  assert.equal(S.formatDate(local, 'medium'), 'Aug 22, 2026');
+  assert.equal(S.formatDate(local.getTime(), 'medium'), 'Aug 22, 2026');
+  for (const bad of ['', null, undefined, 'junk', '2026-08', '2026-02-30', NaN, {}, new Date('x')]) {
+    assert.equal(S.formatDate(bad, 'medium'), '', `junk ${String(bad)}`);
+  }
+});
+
+test('calendarDayOf: the local day an instant falls on', () => {
+  const local = new Date(2026, 7, 22, 23, 30, 0);
+  assert.equal(S.calendarDayOf(local.toISOString()), '2026-08-22');
+  assert.equal(S.calendarDayOf('2026-08-22'), '2026-08-22');
+  assert.equal(S.calendarDayOf('junk'), null);
+});
+
+// The contract that matters: run the helpers in child processes pinned to
+// four zones (a US one, UTC, a UTC+2 one and a UTC+12 one) and require the
+// same local day everywhere. The pre-fix code path (toISOString on a local
+// midnight) is run alongside to prove the zones would have disagreed.
+test('local calendar dates hold under positive UTC offsets (child processes per TZ)', () => {
+  const script = `
+    const S = require(${JSON.stringify(path.join(__dirname, '..', 'js', 'stats.js'))});
+    const midnight = new Date(2026, 7, 22, 0, 0, 0);      // local midnight Aug 22
+    const lateNight = new Date(2026, 7, 22, 23, 45, 0);   // local 23:45 Aug 22
+    const nye = new Date(2026, 11, 31, 0, 30, 0);         // local Dec 31 00:30
+    const leap = new Date(2024, 1, 29, 0, 10, 0);         // local Feb 29 00:10
+    process.stdout.write(JSON.stringify({
+      tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      offset: midnight.getTimezoneOffset(),
+      today: S.todayISO(midnight),
+      late: S.todayISO(lateNight),
+      nye: S.todayISO(nye),
+      leap: S.todayISO(leap),
+      legacy: midnight.toISOString().slice(0, 10),
+      plus1: S.addDaysISO(S.todayISO(midnight), 1),
+      fmtInstant: S.formatDate(midnight.toISOString(), 'short'),
+      fmtDay: S.formatDate('2026-08-22', 'short'),
+    }));`;
+  const results = {};
+  for (const tz of ['America/Chicago', 'UTC', 'Europe/Berlin', 'Pacific/Auckland']) {
+    const out = execFileSync(process.execPath, ['-e', script], { env: { ...process.env, TZ: tz }, encoding: 'utf8' });
+    results[tz] = JSON.parse(out);
+  }
+  for (const [tz, r] of Object.entries(results)) {
+    assert.equal(r.today, '2026-08-22', `${tz}: todayISO at local midnight`);
+    assert.equal(r.late, '2026-08-22', `${tz}: todayISO at local 23:45`);
+    assert.equal(r.nye, '2026-12-31', `${tz}: year boundary`);
+    assert.equal(r.leap, '2024-02-29', `${tz}: leap day`);
+    assert.equal(r.plus1, '2026-08-23', `${tz}: addDaysISO`);
+    assert.equal(r.fmtInstant, 'Aug 22', `${tz}: datetime formats as its local day`);
+    assert.equal(r.fmtDay, 'Aug 22', `${tz}: day string formats as itself`);
+  }
+  // Proof the zones differ in the way the old code depended on.
+  assert.equal(results['Europe/Berlin'].legacy, '2026-08-21');
+  assert.equal(results['Pacific/Auckland'].legacy, '2026-08-21');
+  assert.equal(results['America/Chicago'].legacy, '2026-08-22');
+});
+
+test('parityOutlook: the number is FUTURE wins needed, not halved historical flips', () => {
+  // The reported regression: 26W/128L/1T showed "51 flipped results", which is
+  // ceil(102/2) - how many PAST losses would have to be rewritten. A player
+  // reads it as "win 51 more", which is false. Each future win closes the gap
+  // by one, so the honest answer is the full 102.
+  const behind = S.parityOutlook({ wins: 26, losses: 128, ties: 1 });
+  assert.equal(behind.state, 'behind');
+  assert.equal(behind.winsNeeded, 102);
+  assert.equal(behind.headline, 'Need 102 more wins to even the record');
+  assert.equal(behind.sub, 'Current record: 26W · 128L · 1T');
+  assert.equal(behind.title, 'Path to parity');
+  assert.equal(behind.tone, 'is-bad');
+  // Never the old halved figure, under any deficit bigger than one.
+  for (const [w, l] of [[26, 128], [0, 7], [3, 10], [50, 60]]) {
+    const o = S.parityOutlook({ wins: w, losses: l });
+    const halved = Math.ceil((l - w) / 2);
+    assert.equal(o.winsNeeded, l - w, `${w}W/${l}L`);
+    assert.notEqual(o.winsNeeded, halved, `${w}W/${l}L must not report the halved ${halved}`);
+  }
+});
+
+test('parityOutlook: a one-game deficit asks for one more win, in the singular', () => {
+  const o = S.parityOutlook({ wins: 9, losses: 10 });
+  assert.equal(o.winsNeeded, 1);
+  assert.equal(o.headline, 'Need 1 more win to even the record');
+  assert.equal(o.sub, 'Current record: 9W · 10L');
+});
+
+test('parityOutlook: an even record says so instead of asking for wins', () => {
+  const o = S.parityOutlook({ wins: 64, losses: 64, ties: 3 });
+  assert.equal(o.state, 'even');
+  assert.equal(o.winsNeeded, 0);
+  assert.equal(o.title, 'Record balance');
+  assert.equal(o.headline, 'The record is even');
+  assert.equal(o.sub, 'Current record: 64W · 64L · 3T · win your next to go ahead');
+  assert.equal(o.tone, '');
+  // A brand-new player is even at 0-0, but "the record is even" would be odd.
+  const fresh = S.parityOutlook({ wins: 0, losses: 0, ties: 0 });
+  assert.equal(fresh.state, 'even');
+  assert.equal(fresh.headline, 'No decided games yet');
+  assert.equal(fresh.sub, 'Win your first game to go ahead');
+});
+
+test('parityOutlook: ahead reports the lead, never a negative wins-needed', () => {
+  const o = S.parityOutlook({ wins: 12, losses: 5, ties: 2 });
+  assert.equal(o.state, 'ahead');
+  assert.equal(o.winsNeeded, 0);
+  assert.equal(o.margin, 7);
+  assert.equal(o.headline, 'Ahead by 7 wins');
+  assert.equal(o.sub, 'Current record: 12W · 5L · 2T');
+  assert.equal(o.tone, 'is-good');
+  assert.equal(S.parityOutlook({ wins: 5, losses: 4 }).headline, 'Ahead by 1 win');
+  // No record can ever ask for a negative or fractional number of wins.
+  for (let w = 0; w <= 20; w++) {
+    for (let l = 0; l <= 20; l++) {
+      const p = S.parityOutlook({ wins: w, losses: l, ties: 2 });
+      assert.ok(Number.isInteger(p.winsNeeded) && p.winsNeeded >= 0, `${w}W/${l}L`);
+      assert.equal(p.winsNeeded, Math.max(0, l - w));
+      // Winning exactly that many more games really does even the record.
+      assert.equal(w + p.winsNeeded, Math.max(w, l));
+    }
+  }
+});
+
+test('parityOutlook: ties never move the parity distance, and junk records do not crash it', () => {
+  const base = S.parityOutlook({ wins: 4, losses: 9, ties: 0 });
+  for (const ties of [1, 5, 100]) {
+    const withTies = S.parityOutlook({ wins: 4, losses: 9, ties });
+    assert.equal(withTies.winsNeeded, base.winsNeeded, `ties ${ties} must not change the distance`);
+    assert.match(withTies.sub, new RegExp(`· ${ties}T`));
+  }
+  // A record with no ties omits the T segment rather than printing "0T".
+  assert.equal(base.sub, 'Current record: 4W · 9L');
+  for (const junk of [null, undefined, {}, { wins: NaN, losses: 'x', ties: -3 }, { wins: -5, losses: -2 }]) {
+    const o = S.parityOutlook(junk);
+    assert.equal(o.state, 'even');
+    assert.equal(o.winsNeeded, 0);
+    assert.equal(o.headline, 'No decided games yet');
+  }
+  // Fractional counts are floored, never rendered as decimals.
+  assert.equal(S.parityOutlook({ wins: 1.9, losses: 4.7 }).headline, 'Need 3 more wins to even the record');
+});
+
+test('countNoun: singular / plural / custom plural', () => {
+  assert.equal(S.countNoun(1, 'game'), '1 game');
+  assert.equal(S.countNoun(0, 'game'), '0 games');
+  assert.equal(S.countNoun(3, 'day'), '3 days');
+  assert.equal(S.countNoun(2, 'rival', 'rivals'), '2 rivals');
+  assert.equal(S.countNoun(NaN, 'game'), '0 games');
+});
+
+test('parseMapTapScore: exposes dateParts and refuses Feb 29 in a common year instead of rolling to Mar 1', () => {
+  const p = S.parseMapTapScore('Aug 10\n95 89 91 9 64');
+  assert.deepEqual(p.dateParts, { monthIdx: 7, day: 10 });
+  const year = new Date().getFullYear();
+  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  const feb = S.parseMapTapScore('February 29\n1 2 3 4 5');
+  assert.deepEqual(feb.dateParts, { monthIdx: 1, day: 29 });
+  assert.equal(feb.date, leap ? `${year}-02-29` : null);
+  assert.equal(S.parseMapTapScore('1 2 3 4 5').dateParts, null);
+});
+
+// ---- eligibility ----
+const ELIG = [
+  { id: 'a', rivalId: 'r1', date: '2026-08-10', myScores: [80, 80, 80, 80, 80], theirScores: [70, 70, 70, 70, 70] },
+  { id: 'b', rivalId: 'r2', date: '2026-08-10', myScores: [80, 80, 80, 80, 80], theirScores: [90, 90, 90, 90, 90] },
+  { id: 'c', rivalId: 'r1', date: '2026-08-11', myScore: 500, theirScore: 650 },
+  { id: 'd', rivalId: 'r2', date: '2026-08-12', theirScores: [40, 40, 40, 40, 40] },           // rival-only
+  { id: 'e', rivalId: 'gone', date: '2026-08-13', myScores: [10, 10, 10, 10, 10], theirScores: [90, 90, 90, 90, 90] }, // orphan
+  { id: 'f', rivalId: 'r1', date: 'not-a-date', myScore: 900, theirScore: 100 },
+  null, 42, { id: 'g', date: '2026-08-14', myScore: 1, theirScore: 2 },
+];
+
+test('eligibleH2HGames: both sides played, live rival, valid date, real object', () => {
+  assert.deepEqual(S.eligibleH2HGames(ELIG, ['r1', 'r2']).map(g => g.id), ['a', 'b', 'c']);
+  assert.deepEqual(S.eligibleH2HGames(ELIG, new Set(['r1'])).map(g => g.id), ['a', 'c']);
+});
+
+test('eligibleH2HGames: without a rival list only the structural rules apply (orphans stay)', () => {
+  assert.deepEqual(S.eligibleH2HGames(ELIG).map(g => g.id), ['a', 'b', 'c', 'e']);
+});
+
+test('overallRecord: W-L-T, win % over all games, per-game and per-day averages', () => {
+  const r = S.overallRecord(ELIG, ['r1', 'r2']);
+  assert.deepEqual({ games: r.games, wins: r.wins, losses: r.losses, ties: r.ties, days: r.days },
+    { games: 3, wins: 1, losses: 2, ties: 0, days: 2 });
+  assert.ok(Math.abs(r.winPct - 33.333) < 0.01);
+  assert.ok(Math.abs(r.myAvg - (800 + 800 + 500) / 3) < 1e-9);
+  assert.equal(r.myAvgByDay, (800 + 500) / 2);
+});
+
+test('overallRecord: an orphaned game cannot move the record (the audit #1 contradiction)', () => {
+  const withOrphan = S.overallRecord(ELIG, ['r1', 'r2']);
+  const without = S.overallRecord(ELIG.filter(g => !g || g.rivalId !== 'gone'), ['r1', 'r2']);
+  assert.deepEqual(withOrphan, without);
+  assert.deepEqual(S.overallRecord([], ['r1']), { games: 0, wins: 0, losses: 0, ties: 0, winPct: 0, myAvg: 0, days: 0, myAvgByDay: 0 });
+});
+
+test('overallRecord agrees with periodRecords on the same eligible set', () => {
+  const known = ['r1', 'r2'];
+  const weeks = S.periodRecords(ELIG, 'week', known);
+  const sum = weeks.reduce((a, w) => ({ games: a.games + w.games, wins: a.wins + w.wins, losses: a.losses + w.losses, ties: a.ties + w.ties }), { games: 0, wins: 0, losses: 0, ties: 0 });
+  const r = S.overallRecord(ELIG, known);
+  assert.deepEqual(sum, { games: r.games, wins: r.wins, losses: r.losses, ties: r.ties });
+});
+
+// ---- backup import ----
+test('sanitizeBackup: rejects anything that is not a rivals+games object without touching state', () => {
+  for (const bad of [null, 'x', 42, [], {}, { rivals: [] }, { games: [] }, { rivals: 'x', games: [] }]) {
+    const r = S.sanitizeBackup(bad);
+    assert.equal(r.ok, false, JSON.stringify(bad));
+    assert.match(r.error, /backup/);
+  }
+});
+
+test('sanitizeBackup: the audit\'s malformed fixture imports only the safe rows and counts the rest', () => {
+  const r = S.sanitizeBackup({
+    rivals: [{ id: 'm1', name: 'Mal', color: '#fff', icon: '🙂' }, { id: 'm2' }, null, 'junk', { name: 'NoId', color: 'red' }],
+    games: [
+      { id: 'q1', rivalId: 'm1', date: 20260818, myScores: [1, 2, 3, 4, 5], theirScores: [1, 2, 3, 4, 5] },
+      { id: 'q2', rivalId: 'm1', myScores: [1, 2, 3, 4, 5], theirScores: [1, 2, 3, 4, 5] },
+      { id: 'q3', rivalId: 'm1', date: '2026-08-19', myScores: 'abc', theirScores: [1, 2, 3, 4, 5], myScore: 'x', theirScore: null },
+      null, 42,
+      { id: 'q4', rivalId: 'm1', date: '2026-02-30', myScores: [1, 2, 3, 4, 5], theirScores: [1, 2, 3, 4, 5], myScore: 40, theirScore: 40 },
+      { id: 'q5', rivalId: 'm1', date: '2026-08-20', myScores: [90, 90, 90, 90, 90], theirScores: [10, 10, 10, 10, 10], cities: [{ lat: '1', lng: null }, {}, null, { lat: 2, lng: 3, name: 'X' }, { lat: 'abc', lng: 'x' }], note: 42, extra: 'dropped' },
+    ],
+  }, { makeId: () => 'gen' });
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.rivals, [{ id: 'm1', name: 'Mal', color: '#fff', icon: '🙂', maptapUsername: '', createdAt: 0 }, { id: 'm2', name: 'Rival', color: '#6366f1', icon: '🎯', maptapUsername: '', createdAt: 0 }]);
+  assert.deepEqual(r.dropped, { rivals: 3, games: 5 });
+  // q3: rival-only (their array clean, my side unusable) survives as rival-only
+  assert.deepEqual(r.games.map(g => g.id), ['q3', 'q5']);
+  assert.equal(r.games[0].myScores, undefined);
+  assert.equal(r.games[0].myScore, undefined);
+  assert.equal(r.games[0].theirScore, 36); // 1+2+3*2+4*3+5*3
+  const q5 = r.games[1];
+  assert.equal(q5.note, '');
+  assert.equal('extra' in q5, false);
+  assert.deepEqual(q5.cities, [{ lat: 1, lng: null }, { lat: null, lng: null }, { lat: null, lng: null }, { lat: 2, lng: 3, name: 'X' }, { lat: null, lng: null }]);
+  assert.equal(q5.myScore, 900);
+});
+
+test('sanitizeBackup: a clean export round-trips unchanged (scalars recomputed from arrays)', () => {
+  const rivals = [{ id: 'r-ari', name: 'Ari', color: '#f59e0b', icon: '🦊', maptapUsername: 'ari_mt', createdAt: 5 }];
+  const games = [{ id: 'g1', rivalId: 'r-ari', date: '2026-08-10', myScores: [80, 80, 80, 80, 80], theirScores: [70, 75, 65, 55, 45], myScore: 800, theirScore: 575, note: 'synced from MapTap', createdAt: 9, cities: [{ lat: 1, lng: 2, name: 'A' }, { lat: 1, lng: 2 }, { lat: 1, lng: 2 }, { lat: 1, lng: 2 }, { lat: 1, lng: 2 }] }];
+  const r = S.sanitizeBackup({ rivals, games, me: ' Nikita ', myIcon: '🧭' });
+  assert.deepEqual(r.rivals, rivals);
+  assert.deepEqual(r.games, games);
+  assert.equal(r.me, 'Nikita');
+  assert.equal(r.myIcon, '🧭');
+  assert.deepEqual(r.dropped, { rivals: 0, games: 0 });
+});
+
+test('sanitizeBackup: legacy totals-only games and rival-only days are kept; duplicate rival ids collapse', () => {
+  const r = S.sanitizeBackup({
+    rivals: [{ id: 'a', name: 'A' }, { id: 'a', name: 'A again' }],
+    games: [
+      { id: '1', rivalId: 'a', date: '2026-01-01', myScore: 500, theirScore: 480 },
+      { id: '2', rivalId: 'a', date: '2026-01-02', theirScores: [50, 50, 50, 50, 50] },
+      { id: '3', rivalId: 'a', date: '2026-01-03', myScore: 2000, theirScore: 480 }, // my scalar out of range -> dropped side -> rival-only
+      { rivalId: 'a', date: '2026-01-04', myScore: 1, theirScore: 2 },              // no id -> generated
+    ],
+  }, { makeId: () => 'gen' });
+  assert.equal(r.rivals.length, 1);
+  assert.equal(r.dropped.rivals, 1);
+  assert.deepEqual(r.games.map(g => [g.id, g.myScore, g.theirScore]), [['1', 500, 480], ['2', undefined, 500], ['3', undefined, 480], ['gen', 1, 2]]);
+});
+
+test('sanitizeBackup: "__proto__" ids are data and never pollute Object.prototype; me/myIcon must be strings', () => {
+  const r = S.sanitizeBackup(JSON.parse('{"rivals":[{"id":"__proto__","name":"P"}],"games":[{"id":"x","rivalId":"__proto__","date":"__proto__","myScore":1,"theirScore":2},{"id":"y","rivalId":"__proto__","date":"2026-08-01","myScore":1,"theirScore":2}],"me":{"polluted":true},"__proto__":{"polluted":1}}'));
+  assert.equal(r.ok, true);
+  assert.equal(r.rivals[0].id, '__proto__');
+  assert.deepEqual(r.games.map(g => g.id), ['y']);
+  assert.equal(r.me, null);
+  assert.equal(({}).polluted, undefined);
+  assert.equal(Object.prototype.hasOwnProperty.call(r.rivals[0], 'id'), true);
+});

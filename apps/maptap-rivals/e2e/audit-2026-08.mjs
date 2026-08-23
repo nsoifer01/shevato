@@ -183,11 +183,19 @@ export async function run({ base, cdpPort }) {
       const rivalsAfter = JSON.parse(await ls(s, 'maptapRivalsRivals'));
       const msg = s.dialogLog.join(' || ');
       await rec('D1: a junk backup is validated before anything is persisted (confirm names the skipped count)',
-        /will be skipped/.test(msg) && /1 rivals and 1 games/.test(msg), msg, s);
+        /will be skipped/.test(msg) && /2 rivals and 1 games/.test(msg), msg, s);
       await rec('D1: the import result is honest: "Imported ... skipped N invalid entries (reasons)"',
-        /Imported 1 rival, 1 game\. Skipped 5 invalid entr/.test(msg) && !/Could not parse/.test(msg), msg, s);
+        // Counts follow the surviving sanitiser in js/stats.js, which the
+        // 2026-08-23 merge kept over this round's draft: it rebuilds each row
+        // from a known field list, drops a rival with no id (an invented id
+        // only creates orphans) and keeps a nameless one as "Rival" rather
+        // than discarding data the user can still rename. The junk fixture
+        // therefore yields 2 rivals, 1 game and 4 skipped entries.
+        /Imported 2 rivals, 1 game\. Skipped 4 invalid entr/.test(msg) && !/Could not parse/.test(msg), msg, s);
       await rec('D1: storage holds only the readable entries (no null / number rivals)',
-        rivalsAfter.length === 1 && rivalsAfter[0].name === 'Dup' && JSON.parse(after).length === 1, JSON.stringify(rivalsAfter), s);
+        rivalsAfter.length === 2 && rivalsAfter.some(r => r.name === 'Dup')
+          && rivalsAfter.every(r => r && typeof r === 'object' && typeof r.id === 'string')
+          && JSON.parse(after).length === 1, JSON.stringify(rivalsAfter), s);
       await rec('D1: the dashboard still renders after the import', await waitForExpr(s, READY, { timeout: 4000 }), '', s);
       const errs = cleanErrors(s);
       await rec('D1: no console errors after importing junk', errs.length === 0, errs.join(' | '), s);

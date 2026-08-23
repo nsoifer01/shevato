@@ -21,7 +21,7 @@
  * MINOR when the strategy changes, MAJOR for a back-compat break.
  */
 
-const CACHE_VERSION = '2.5.1';
+const CACHE_VERSION = '2.5.3';
 const PRECACHE = `trip-precache-${CACHE_VERSION}`;
 const RUNTIME = `trip-runtime-${CACHE_VERSION}`;
 
@@ -29,9 +29,9 @@ const PRECACHE_URLS = [
   './',
   './index.html',
   './manifest.webmanifest',
-  './css/styles.css?v=64',
-  './js/trip-logic.js?v=44',
-  './js/app.js?v=70',
+  './css/styles.css?v=65',
+  './js/trip-logic.js?v=46',
+  './js/app.js?v=72',
   // The bundled airport table (see scripts/build-airports.mjs). ~260 KB, and
   // precached on purpose: an airport picker that stops working without signal
   // is useless in the one place you most need it.
@@ -103,7 +103,10 @@ self.addEventListener('activate', (event) => {
     await self.clients.claim();
     if (!replacedPrevious) return;
     const windows = await self.clients.matchAll({ type: 'window' });
-    for (const c of windows) c.postMessage({ type: 'tp-update-available' });
+    // The version rides along so a tab can offer one toast per VERSION rather
+    // than one per tab for its lifetime: a tab left open across two deploys
+    // used to hear about the first and silently run two versions behind.
+    for (const c of windows) c.postMessage({ type: 'tp-update-available', version: CACHE_VERSION });
   })());
 });
 

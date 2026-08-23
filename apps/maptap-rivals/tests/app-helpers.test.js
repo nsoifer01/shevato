@@ -18,6 +18,7 @@ const assert = require('node:assert/strict');
 const APP_JS = fs.readFileSync(path.join(__dirname, '..', 'js', 'app.js'), 'utf8');
 const MapTapStats = require('../js/stats.js');
 const MapTapNetwork = require('../js/network.js');
+const MapTapWhatsApp = require('../js/whatsapp.js');
 
 // Objects built inside the vm context carry that realm's prototypes, which
 // assert.deepEqual (strict) rejects as "same structure but not
@@ -101,6 +102,9 @@ function loadApp(seed = {}) {
   sandbox.window = sandbox;
   sandbox.window.MapTapStats = MapTapStats;
   sandbox.window.MapTapNetwork = MapTapNetwork;
+  sandbox.window.MapTapWhatsApp = MapTapWhatsApp;
+  sandbox.MutationObserver = function () { return { observe() {}, disconnect() {} }; };
+  sandbox.requestAnimationFrame = (fn) => setTimeout(fn, 0);
   const ctx = vm.createContext(sandbox);
   vm.runInContext(APP_JS, ctx, { filename: 'app.js' });
   return ctx;
@@ -386,8 +390,18 @@ const goodRival = (o = {}) => ({ id: 'r1', name: 'Bob', color: '#e74c3c', icon: 
 const goodGame = (o = {}) => ({ id: 'g1', rivalId: 'r1', date: '2026-08-01', note: '', myScores: [1, 2, 3, 4, 5], theirScores: [5, 4, 3, 2, 1], myScore: 36, theirScore: 24, createdAt: 1, ...o });
 
 // D1: the junk file from the audit used to be persisted verbatim and then
-// crash every view (and every later page load). The sanitiser keeps the two
-// readable entries, rejects the rest with reasons, and assigns the missing id.
+// crash every view (and every later page load). The sanitiser keeps what it
+// can make safe, drops the rest with a reason, and discloses every repair.
+//
+// The surviving sanitiser is the one in js/stats.js (see tests/stats.test.js),
+// which rebuilds every row from a known field list instead of spreading the
+// file's own keys through. Two rules differ from the audit round's own draft
+// and this fixture pins the stricter of each pair:
+//   - a rival with no id is DROPPED, not given a generated one: the id is what
+//     that rival's games point at, so an invented one only makes orphans.
+//   - a rival with no name is KEPT as "Rival" (a missing label costs nothing),
+//     and a game whose scores are junk on one side survives as a rival-only
+//     day instead of taking the whole day down with it.
 test('sanitizeBackup (D1): junk entries are rejected with reasons, readable ones survive, nothing throws', () => {
   const parsed = {
     rivals: [null, 1, { id: 'q' }, { id: 'q2', name: 'Dup' }, { id: 'q2', name: 'Dup again' }, { name: 'NoId' }],
@@ -399,19 +413,23 @@ test('sanitizeBackup (D1): junk entries are rejected with reasons, readable ones
     me: { evil: 1 },
   };
   const r = H('sanitizeBackup')(parsed);
-  assert.deepEqual(r.data.rivals.map(x => x.name), ['Dup', 'NoId']);
-  assert.ok(r.data.rivals[1].id, 'a missing rival id is assigned');
-  assert.equal(r.data.games.length, 1);
-  assert.equal(r.data.games[0].date, '2026-08-01');
+  assert.deepEqual(r.data.rivals.map(x => x.id), ['q', 'q2']);
+  assert.deepEqual(r.data.rivals.map(x => x.name), ['Rival', 'Dup']);
+  assert.deepEqual(r.data.games.map(g => g.date), ['2026-08-01', '2026-08-02', '2026-08-03']);
   assert.ok(r.data.games[0].id, 'a missing game id is assigned');
   assert.equal(r.data.games[0].myScore, 36, 'the total is derived from the rounds');
-  assert.equal(r.rejected.length, 10, r.rejected.join(' | '));
+  assert.equal(r.data.games[1].myScores, undefined, 'the unreadable side is dropped; the day survives as rival-only');
+  assert.equal(r.data.games[1].theirScore, 36);
+  assert.equal(r.data.games[2].myScore, 36, 'a junk myScore is recomputed from the rounds it contradicts');
+  assert.equal(r.rejected.length, 8, r.rejected.join(' | '));
   assert.ok(r.rejected.some(x => /not-a-date/.test(x)));
   assert.ok(r.rejected.some(x => /2026-02-30/.test(x)), 'Feb 30 is not a date');
   assert.ok(r.rejected.some(x => /duplicate id/.test(x)));
-  assert.ok(r.rejected.some(x => /round scores/.test(x)));
-  assert.ok(r.rejected.some(x => /myScore is not a number/.test(x)));
+  assert.ok(r.rejected.some(x => /missing id/.test(x)), 'a rival id is never invented');
+  assert.ok(r.repaired.some(x => /round scores/.test(x)));
+  assert.ok(r.repaired.some(x => /myScore is not a number/.test(x)));
   assert.ok(r.repaired.some(x => /assigned an id/.test(x)));
+  assert.equal(r.dropped.rivals + r.dropped.games, r.rejected.length, 'every drop is counted and explained');
 });
 
 test('sanitizeBackup (D1): a __proto__ rival id / date / top-level key cannot pollute anything', () => {
@@ -516,7 +534,15 @@ for (const tz of ['America/Chicago', 'Asia/Jerusalem', 'Pacific/Kiritimati']) {
   });
 }
 
-// D7: every header shape WhatsApp writes. The six fixtures are the audit's.
+// D7: every header shape WhatsApp writes. The fixtures are the audit's, run
+// against the parser that survived the merge: js/whatsapp.js, reached through
+// the bindings app.js itself uses. tests/whatsapp.test.js owns that module's
+// own edge cases; this block pins that the app still reads each real-world
+// export shape end to end, ambiguity included.
+const waShareParts = (body) => {
+  const p = MapTapStats.parseMapTapScore(body);
+  return p && p.dateParts;
+};
 const WA_BODY = 'MapTap #400\nAug 20\n95 89 91 9 64\nFinal score: 585\nmaptap.gg';
 function waFile(header1, header2) {
   return `${header1} Bob: ${WA_BODY}\n${header2} Nik: ${WA_BODY.replace('95 89', '90 80')}\n`;
@@ -530,48 +556,58 @@ const WA_FORMATS = [
 ];
 for (const [label, h1, h2, dayFirst] of WA_FORMATS) {
   test(`parseWhatsAppText (D7): ${label} header parses to 2026-08-20 21:05 for Bob`, () => {
-    const msgs = plain(helpers.parseWhatsAppText(waFile(h1, h2)));
-    assert.equal(msgs.length, 2, 'two messages');
+    const { messages } = helpers.parseWhatsAppText(waFile(h1, h2));
+    assert.equal(messages.length, 2, 'two messages');
+    const detected = helpers.detectDateOrder(messages, waShareParts);
+    assert.equal(detected.order, dayFirst ? 'DMY' : 'MDY');
+    assert.equal(detected.certain, true, 'this file settles its own day/month order');
+    const msgs = helpers.applyDateOrder(messages, detected.order);
     assert.deepEqual([msgs[0].year, msgs[0].monthIdx, msgs[0].day, msgs[0].hour, msgs[0].minute, msgs[0].sender],
       [2026, 7, 20, 21, 5, 'Bob']);
+    assert.equal(msgs[0].dateISO, '2026-08-20');
     assert.equal(msgs[1].sender, 'Nik');
     assert.match(msgs[0].body, /Final score: 585/);
-    assert.equal(helpers.parseWhatsAppText(waFile(h1, h2)).dayFirst, dayFirst);
   });
 }
 
 test('parseWhatsAppText (D7): 12h edge hours (12:xx AM is 0, 12:xx PM is 12)', () => {
-  const msgs = plain(helpers.parseWhatsAppText('8/20/26, 12:05 AM - Bob: hi\n8/20/26, 12:05 PM - Bob: hi\n'));
-  assert.deepEqual(msgs.map(m => m.hour), [0, 12]);
+  const { messages } = helpers.parseWhatsAppText('8/20/26, 12:05 AM - Bob: hi\n8/20/26, 12:05 PM - Bob: hi\n');
+  assert.deepEqual(messages.map(m => m.hour), [0, 12]);
 });
 
-test('parseWhatsAppText (D7): an ambiguous file (no number above 12) defaults to US order and says so; dayFirst=true flips it', () => {
+test('parseWhatsAppText (D7): an ambiguous file is reported uncertain (US order offered first); the user can flip it, and one number above 12 settles it outright', () => {
   const file = '3/8/26, 21:05 - Bob: MapTap #400\n95 89 91 9 64\nFinal score: 585\n';
-  const us = helpers.parseWhatsAppText(file);
-  assert.equal(us.ambiguousOrder, true);
-  assert.equal(us.dayFirst, false);
-  assert.deepEqual([plain(us)[0].monthIdx, plain(us)[0].day], [2, 8], 'March 8 by default');
-  const dm = helpers.parseWhatsAppText(file, true);
-  assert.deepEqual([plain(dm)[0].monthIdx, plain(dm)[0].day], [7, 3], '3 August when told day-first');
-  assert.equal(dm.ambiguousOrder, false);
+  const { messages } = helpers.parseWhatsAppText(file);
+  const us = helpers.detectDateOrder(messages, waShareParts);
+  assert.equal(us.certain, false, 'nothing in the file settles day vs month, so the modal must ask');
+  assert.equal(us.order, 'MDY', 'US order is what it offers first');
+  const asUS = helpers.applyDateOrder(messages, 'MDY');
+  assert.deepEqual([asUS[0].monthIdx, asUS[0].day], [2, 8], 'March 8 by default');
+  const asDM = helpers.applyDateOrder(messages, 'DMY');
+  assert.deepEqual([asDM[0].monthIdx, asDM[0].day], [7, 3], '3 August when told day-first');
   // One day above 12 anywhere in the file settles it for every message.
   const settled = helpers.parseWhatsAppText(file + '25/8/26, 21:05 - Bob: later\n');
-  assert.equal(settled.ambiguousOrder, false);
-  assert.deepEqual([plain(settled)[0].monthIdx, plain(settled)[0].day], [7, 3]);
+  const order = helpers.detectDateOrder(settled.messages, waShareParts);
+  assert.equal(order.certain, true);
+  assert.equal(order.order, 'DMY');
+  const resolved = helpers.applyDateOrder(settled.messages, order.order);
+  assert.deepEqual([resolved[0].monthIdx, resolved[0].day], [7, 3]);
 });
 
 test('parseWhatsAppText (D7): empty or non-chat text yields no messages, never throws', () => {
-  assert.equal(helpers.parseWhatsAppText('').length, 0);
-  assert.equal(helpers.parseWhatsAppText('hello\nworld').length, 0);
+  assert.equal(helpers.parseWhatsAppText('').messages.length, 0);
+  assert.equal(helpers.parseWhatsAppText('hello\nworld').messages.length, 0);
+  assert.equal(helpers.parseWhatsAppText('hello\nworld').skippedLeadingLines, 2);
 });
 
 test('dayBucketDate (D7): the body date wins; a DD/MM header no longer dates the game a year out', () => {
-  const [msg] = plain(helpers.parseWhatsAppText(waFile('20/08/2026, 21:05 -', '20/08/2026, 21:07 -')));
-  const parsed = { date: '2026-08-20' };
-  assert.equal(helpers.dayBucketDate(msg, parsed), '2026-08-20');
+  const { messages } = helpers.parseWhatsAppText(waFile('20/08/2026, 21:05 -', '20/08/2026, 21:07 -'));
+  const [msg] = helpers.applyDateOrder(messages, 'DMY');
+  assert.equal(helpers.dayBucketDate(msg, MapTapStats.parseMapTapScore(msg.body)), '2026-08-20');
   // "Dec 30" share delivered on Jan 2 belongs to the previous year.
-  const jan = plain(helpers.parseWhatsAppText('1/2/27, 09:00 - Bob: x\n'))[0];
-  assert.equal(helpers.dayBucketDate(jan, { date: '2027-12-30' }), '2026-12-30');
+  const janFile = helpers.parseWhatsAppText('1/2/27, 09:00 - Bob: MapTap #532\nDec 30\n10 20 30 40 50\nFinal score: 300\n');
+  const [jan] = helpers.applyDateOrder(janFile.messages, 'MDY');
+  assert.equal(helpers.dayBucketDate(jan, MapTapStats.parseMapTapScore(jan.body)), '2026-12-30');
   // No body date: the header's own day.
   assert.equal(helpers.dayBucketDate(msg, {}), '2026-08-20');
 });
@@ -585,4 +621,103 @@ test('rivalNameHint (D13): duplicate (case-insensitive) and me-equal names get a
   assert.match(hint('nik', null), /your own name/);
   assert.equal(hint('Carol', null), '');
   assert.equal(hint('   ', null), '');
+});
+
+// ---------------------------------------------------------------------------
+// 2026-08-22 quality pass: helpers added or fixed by the audit round.
+// ---------------------------------------------------------------------------
+
+test('swingLines: reads totals through the canonical helpers (array-only games used to print undefined)', () => {
+  const c = loadApp({
+    maptapRivalsRivals: [{ id: 'r1', name: 'Ari', color: '#fff', icon: 'x' }],
+    maptapRivalsGames: [
+      { id: 'a', rivalId: 'r1', date: '2026-08-10', myScores: [100, 100, 100, 100, 100], theirScores: [0, 0, 0, 0, 0], createdAt: 1 },
+      { id: 'b', rivalId: 'r1', date: '2026-08-11', myScore: 500, theirScore: 650, createdAt: 2 },
+    ],
+  });
+  const s = c._testExports.rivalSummary({ id: 'r1', name: 'Ari' });
+  assert.deepEqual(plain(c._testExports.swingLines(s)), [
+    'Best win +1000 (1000–0 on Aug 10, 2026)',
+    'Worst loss −150 (500–650 on Aug 11, 2026)',
+  ]);
+  assert.ok(!JSON.stringify(c._testExports.swingLines(s)).includes('undefined'));
+});
+
+test('swingLines: a rival you only ever beat has one line', () => {
+  const c = loadApp({
+    maptapRivalsRivals: [{ id: 'r1', name: 'Ari', color: '#fff', icon: 'x' }],
+    maptapRivalsGames: [{ id: 'a', rivalId: 'r1', date: '2026-08-10', myScores: [90, 90, 90, 90, 90], theirScores: [10, 10, 10, 10, 10], createdAt: 1 }],
+  });
+  const s = c._testExports.rivalSummary({ id: 'r1', name: 'Ari' });
+  assert.equal(c._testExports.swingLines(s).length, 1);
+});
+
+test('consistencyLabel: bands are on the 0-1000 daily-total scale', () => {
+  const f = helpers.consistencyLabel;
+  assert.equal(f(0), 'Very steady scorer');
+  assert.equal(f(59.9), 'Very steady scorer');
+  assert.equal(f(60), 'Fairly consistent scorer');
+  assert.equal(f(109.9), 'Fairly consistent scorer');
+  assert.equal(f(110), 'Streaky, high-variance scorer');
+  assert.equal(f(NaN), 'Not enough games yet');
+});
+
+test('continentSubText: singular and plural forms read correctly', () => {
+  const f = helpers.continentSubText;
+  assert.equal(f(15, 6, 1), '15 rounds across 6 continents · 1 game without geo data (re-sync to backfill)');
+  assert.equal(f(5, 1, 2), '5 rounds across 1 continent · 2 games without geo data (re-sync to backfill)');
+  assert.equal(f(1, 1, 0), '1 round across 1 continent');
+});
+
+test('pasteDateHintText: today is silent, past and future days are spelled out', () => {
+  const f = helpers.pasteDateHintText;
+  assert.equal(f('2026-08-22', '2026-08-22'), '');
+  assert.equal(f('2026-08-21', '2026-08-22'), 'Logging for Fri, Aug 21, 2026 (yesterday).');
+  assert.equal(f('2026-08-01', '2026-08-22'), 'Logging for Sat, Aug 1, 2026 (21 days ago).');
+  assert.equal(f('2026-12-31', '2026-08-22'), 'Logging for Thu, Dec 31, 2026, which is in the future.');
+  assert.equal(f('', '2026-08-22'), 'No date set: games will be saved under today.');
+  assert.equal(f('2026-02-30', '2026-08-22'), 'That date is invalid.');
+});
+
+test('leaveNetworkMessage: never claims a remote deletion that did not happen', () => {
+  const f = helpers.leaveNetworkMessage;
+  assert.match(f(false, false), /this device only/);
+  assert.match(f(false, false), /Sign in/);
+  assert.doesNotMatch(f(false, false), /are removed/);
+  assert.match(f(true, true), /failed/);
+  assert.match(f(true, false), /are removed/);
+});
+
+test('rivalNameClash: case-insensitive, trimmed, excludes the rival being edited', () => {
+  const c = loadApp({ maptapRivalsRivals: [{ id: 'r1', name: 'Ari', color: '#fff', icon: 'x' }, { id: 'r2', name: 'Bex', color: '#fff', icon: 'x' }] });
+  const f = c._testExports.rivalNameClash;
+  assert.equal(f(' ari ', null).id, 'r1');
+  assert.equal(f('Ari', 'r1'), null);
+  assert.equal(f('Cy', null), null);
+  assert.equal(f('', null), null);
+});
+
+// Drama copy (audit #10): a streak LEVEL with the record is one win short of
+// breaking it, so the line must say so instead of "match your record".
+function dramaFor(results) {
+  const games = results.map((r, i) => ({
+    id: 'g' + i, rivalId: 'r1', date: `2026-07-${String(i + 1).padStart(2, '0')}`, createdAt: i,
+    myScore: r === 'W' ? 700 : r === 'L' ? 500 : 600, theirScore: 600,
+  }));
+  const c = loadApp({ maptapRivalsRivals: [{ id: 'r1', name: 'Ari', color: '#fff', icon: 'x' }], maptapRivalsGames: games });
+  return c._testExports.streakDrama('r1');
+}
+test('streakDrama: a win streak equal to the previous best reads "level with your record: win today to break it"', () => {
+  const d = dramaFor(['W', 'W', 'L', 'W', 'W']);
+  assert.equal(d.kind, 'win');
+  assert.match(d.text, /level with your record: win today to break it/);
+  assert.doesNotMatch(d.text, /match your record/);
+});
+test('streakDrama: a win streak past the previous best reads "New record!"', () => {
+  assert.match(dramaFor(['W', 'L', 'W', 'W']).text, /New record! 2-game win streak/);
+});
+test('streakDrama: a losing streak equal to the previous worst reads "level with your worst slump"', () => {
+  const d = dramaFor(['L', 'L', 'W', 'L', 'L']);
+  assert.equal(d.kind, 'loss');
+  assert.match(d.text, /Level with your worst slump/);
 });

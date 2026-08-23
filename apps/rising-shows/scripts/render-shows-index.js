@@ -26,6 +26,16 @@ const PER_PAGE = 500;
 // named "letter".
 const LETTER_BASE = '/apps/rising-shows/shows/letter';
 
+// Shared head of every breadcrumb trail on these pages. Extensionless /home
+// and /apps, matching the show pages and the shape hubs: prod rewrites the
+// .html forms, so the structured data must not be the one surface still
+// naming URLs the canonical pages never use.
+const BREADCRUMB_TRUNK = [
+  { name: 'Home', item: `${SITE}/home` },
+  { name: 'Apps', item: `${SITE}/apps` },
+  { name: 'Rising Shows', item: `${SITE}/apps/rising-shows/` },
+];
+
 function letterSlug(letter) {
   return letter === '#' ? 'other' : letter.toLowerCase();
 }
@@ -74,7 +84,7 @@ function letterPages(groups) {
   return out;
 }
 
-function shell({ title, description, canonical, breadcrumbs, head = '', body }) {
+function shell({ title, description, canonical, breadcrumbs, ogImageAlt, head = '', body }) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -88,12 +98,27 @@ function shell({ title, description, canonical, breadcrumbs, head = '', body }) 
   <meta name="color-scheme" content="dark">
   <link rel="canonical" href="${canonical}">
 ${head}
+  <!-- Open Graph. og-card.png, not the site logo these pages used to point at:
+       that was an SVG, and social scrapers (Facebook, X, Slack, WhatsApp) do
+       not render SVG, so the preview came out blank. Same card and same
+       twitter block the show pages and the shape hubs use. -->
   <meta property="og:title" content="${escapeHtml(title)}">
   <meta property="og:description" content="${escapeHtml(description)}">
   <meta property="og:type" content="website">
   <meta property="og:url" content="${canonical}">
-  <meta property="og:image" content="${SITE}/images/full-logo.svg">
+  <meta property="og:image" content="${SITE}/images/og-card.png">
+  <meta property="og:image:alt" content="${escapeHtml(ogImageAlt || title)}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
   <meta property="og:site_name" content="Shevato">
+  <meta property="og:locale" content="en_US">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${escapeHtml(title)}">
+  <meta name="twitter:description" content="${escapeHtml(description)}">
+  <meta name="twitter:image" content="${SITE}/images/og-card.png">
+  <meta name="twitter:site" content="@shevato">
 
   <script type="application/ld+json">
     {
@@ -186,15 +211,13 @@ function renderShowsIndex(series, builtAt) {
     <p class="index-footer">Refreshed ${builtAt ? new Date(builtAt).toISOString().slice(0, 10) : 'weekly'}. Source: <a href="https://datasets.imdbws.com/" rel="noopener" target="_blank">IMDb datasets</a>.</p>`;
 
   return shell({
-    title: 'All Shows | Rising Shows — Browse Every TV Series by Episode Ratings',
+    title: 'All Shows - Browse Every TV Series by Episode Ratings | Rising Shows',
     description,
     canonical,
-    breadcrumbs: [
-      { name: 'Home', item: `${SITE}/home.html` },
-      { name: 'Apps', item: `${SITE}/apps.html` },
-      { name: 'Rising Shows', item: `${SITE}/apps/rising-shows/` },
+    ogImageAlt: 'Every TV series in Rising Shows, browsable A-Z',
+    breadcrumbs: BREADCRUMB_TRUNK.concat([
       { name: 'All shows', item: canonical },
-    ],
+    ]),
     body,
   });
 }
@@ -255,13 +278,11 @@ function renderShowsLetterPage({ letter, items, pageNum, totalPages, letterTotal
     description,
     canonical,
     head,
-    breadcrumbs: [
-      { name: 'Home', item: `${SITE}/home.html` },
-      { name: 'Apps', item: `${SITE}/apps.html` },
-      { name: 'Rising Shows', item: `${SITE}/apps/rising-shows/` },
+    ogImageAlt: `TV shows starting with ${label}, on Rising Shows`,
+    breadcrumbs: BREADCRUMB_TRUNK.concat([
       { name: 'All shows', item: `${SITE}/apps/rising-shows/shows/` },
       { name: `${letter}${pageSuffix}`, item: canonical },
-    ],
+    ]),
     body,
   });
 }
@@ -270,8 +291,49 @@ function sortTitle(s) {
   return String(s || '').replace(/^(the|a|an)\s+/i, '').toLowerCase();
 }
 
+// Bucket letter for the A-Z directory. Latin diacritics are folded FOR
+// BUCKETING ONLY - the row still prints the real title - so "Çilgin Dersane at
+// the University" files under C (where a reader looking for it goes, and where
+// its own slug already puts it) instead of sharing the "#" bucket with
+// "¡Mucha Lucha!" and the 574 digit-initial titles.
+//
+// A handful of Latin letters are their own base character rather than a letter
+// plus a combining mark, so NFKD leaves them exactly as they are: AE and OE
+// ligatures, the Scandinavian slashed O, Polish crossed L, eth, thorn, sharp s.
+// They need naming explicitly or they fall into "#", which is where "Aeon Flux"
+// and "Ornen" (spelled with those letters) sat while the app's own search box
+// folded them happily. Only the letter they SORT under is needed here.
+const LATIN_BASE_LETTER = {
+  'Æ': 'A', 'Ø': 'O', 'Ł': 'L', 'Đ': 'D', 'Ð': 'D', 'Þ': 'T', 'ß': 'S',
+  'Œ': 'O', 'Ħ': 'H', 'Ŋ': 'N', 'İ': 'I',
+};
+
+// NFKD decomposes a precomposed letter into base + combining mark, so stripping
+// the marks leaves the base letter: Ç->C, Ö->O, Å->A, Ñ->N. Characters with no
+// Latin base survive the fold unchanged and stay in "#": digits and symbols
+// (conventional), and genuinely non-Latin scripts (Japanese, Cyrillic, Arabic,
+// Hebrew, Chinese). Transliterating those would be a guess about a romanisation
+// the reader may not share, and IMDb primaryTitle is already romanised for the
+// catalogue, so the case is rare by construction. "#" is the honest bucket for
+// "does not sort under an English letter".
+//
+// Deliberately NOT shared with scripts/slugify.js, which folds for URLs: every
+// generated page's address depends on it and permalink stability outranks
+// tidiness. Nor with js/app.js's foldSearch, which has to preserve character
+// offsets so a match can be highlighted in the original title; this one only
+// needs a single letter.
 function firstLetter(s) {
-  const c = (s || '#').charAt(0).toUpperCase();
+  const first = (s || '#').charAt(0);
+  const mapped = LATIN_BASE_LETTER[first] || LATIN_BASE_LETTER[first.toUpperCase()];
+  if (mapped) return mapped;
+  const c = (s || '#')
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .charAt(0)
+    // One character, always: uppercasing a sharp s yields TWO ("SS"), which
+    // would otherwise name a bucket "SS" that no page or link expects.
+    .toUpperCase()
+    .charAt(0);
   return /[A-Z]/.test(c) ? c : '#';
 }
 

@@ -2,29 +2,34 @@
 
 ## Overview
 
-Shevato is a static, multi-page web platform built with vanilla HTML5, CSS3, and JavaScript. The marketing site (home, work, apps, about, contact) coexists with a small set of free browser apps. The repo has no build step at the root; CSS is plain, JS is loaded with `<script defer>`, and partials are stitched together client-side via jQuery.
+Shevato is a static, multi-page web platform built with vanilla HTML5, CSS3, and JavaScript. The marketing site (home, work, apps, about, contact) coexists with a small set of free browser apps. The repo has no asset build step (CSS is plain, JS is loaded with `<script defer>`, and partials are stitched together client-side via jQuery); `npm run build:site` generates the data-driven Rising Shows and Gym Tracker pages and stamps the sitemaps at deploy.
 
 ## Directory Structure
 
 ```
 shevato/
 ├── assets/
-│   ├── css/                          # Stylesheets (main.css, brand-colors.css, theming, etc.)
+│   ├── apps-manifest.json            # THE canonical app list (slug, name, blurb); every other surface is pinned to it
+│   ├── css/                          # Stylesheets (main.css, brand-colors.css, firebase-auth.css, site.css, moadon-alef-theme.css, etc.)
 │   ├── fonts/                        # FontAwesome web fonts
 │   ├── js/                           # Site-wide JavaScript modules
-│   │   ├── main.js                   # Auth UI + partials loader (jQuery)
+│   │   ├── main.js                   # Auth UI + partials loader + mobile menu (jQuery)
 │   │   ├── jquery.min.js             # jQuery (vendored)
 │   │   ├── analytics.js              # GA4 config + the shared tracking API (window.shevatoAnalytics)
 │   │   ├── analytics-404.js          # Reports the failed path on 404.html
+│   │   ├── apex-redirect.js          # index.html apex shell -> /home
+│   │   ├── back-to-top.js, sync-status.js  # Shared chrome widgets (back-to-top button, sync banner)
+│   │   ├── escape-html.js            # Shared HTML escaper (football-h2h, mario-kart)
 │   │   ├── language-switcher.js      # Tri-lingual switcher for the separately-branded landing
 │   │   ├── passive-events-fix.js     # Passive listeners polyfill
 │   │   ├── breakpoints.min.js, browser.min.js, util.js  # Responsive helpers
 │   │   └── pagination.js, global-icons.js
 │   ├── js/tests/                     # Unit tests for the analytics helper (npm run test:analytics)
+│   ├── og/                           # Social-card template, manifest and builder (see assets/og/README.md)
 │   └── seo/                          # Reference JSON-LD fragments + metadata checklist
 │
 ├── apps/                             # Browser apps (each is self-contained)
-│   ├── arena/                        # Real-time multiplayer hub (Firestore Realtime DB)
+│   ├── arena/                        # Real-time multiplayer hub (Firestore)
 │   ├── football-h2h/                 # Head-to-head football league manager
 │   ├── fpl-planner/                  # Fantasy Premier League transfer, captain and chip planner
 │   ├── gym-tracker/                  # Gym workout tracker (PWA, manifest + service worker)
@@ -38,12 +43,14 @@ shevato/
 │   ├── footer.html
 │   └── footer-moadon-alef.html       # Tri-lingual footer for the separately-branded landing
 │
-├── images/                           # Logos, backgrounds, OG cards, and app artwork
-├── netlify/, .netlify/               # Netlify functions and build artifacts
-├── scripts/                          # Site-level build helpers (sitemap index lastmod stamping)
-├── sync-system/                      # localStorage ↔ Firestore sync used by the apps
+├── images/                           # Logos, bg.webp background, OG cards (images/og/), and app artwork
+├── netlify/functions/                # Netlify functions (*.mjs), their lib/ helpers, tests/ and own package.json
+├── scripts/                          # Site-level build helpers (sitemap lastmod stamping from git)
+├── sync-system/                      # localStorage <-> Firestore sync used by the apps (+ cross-cutting invariant tests)
+├── tests/                            # Site-level test estate: static/, browser/, coverage/, cross-browser/
+├── .github/workflows/                # CI: tests, browser tests, cross-browser smoke, arena rules, rising-shows refresh
 │
-├── index.html                        # Apex shell — redirects to /home (noindex)
+├── index.html                        # Apex shell, redirects to /home (noindex)
 ├── home.html                         # Main landing page
 ├── work.html                         # Selected work + services overview
 ├── apps.html                         # Apps hub
@@ -51,13 +58,15 @@ shevato/
 ├── contact.html                      # Contact details
 ├── moadon-alef.html                  # Separately-branded multilingual landing (Hebrew/Russian/English)
 ├── 404.html                          # Friendly not-found page (noindex, follow)
-├── sitemap.xml, sitemap-pages.xml    # Indexable URL lists
+├── privacy.html                      # Binding per-app privacy promises (check before adding storage/tracking)
+├── sitemap.xml, sitemap-pages.xml    # Sitemap index + the hand-listed pages (lastmod stamped at deploy, never hand-edited)
 ├── robots.txt                        # Crawler policy
 ├── site.webmanifest                  # PWA manifest for the marketing site
 ├── netlify.toml                      # Netlify build, headers, and CSP-Report-Only config
 ├── firebase-config.js                # Firebase v10 modular SDK bootstrap
 ├── firestore.rules, database.rules.json
 ├── CLAUDE.md                         # Repo-wide rules for Claude Code sessions (read first)
+├── TESTING-AUDIT.md                  # Testing-system audit: rationale, coverage matrices, counts as of its date
 └── package.json                      # Test + build scripts (build:site runs on every deploy)
 ```
 
@@ -79,7 +88,7 @@ in `apps/fpl-planner/experiments/registry.md` with explicit verdicts.
 
 | App | Path | Category | Notes |
 |-----|------|----------|-------|
-| Arena | `apps/arena/` | Real-time multiplayer | Private rooms for friends — Globe Drop, Trivia, more. Requires Firestore + Realtime Database |
+| Arena | `apps/arena/` | Real-time multiplayer | Private rooms for friends (Globe Drop, Trivia, more). Requires Firestore |
 | Football H2H League | `apps/football-h2h/` | Sports stats | Match log, penalty shootouts, player comparison table |
 | FPL Planner | `apps/fpl-planner/` | Sports stats | Fantasy Premier League planner: imports a squad by FPL Team ID, projects players, and recommends transfers, hits, XI, bench order, captain and chips across a rolling horizon. Reads the public FPL API through a Netlify function proxy. Not affiliated with the Premier League |
 | Gym Tracker | `apps/gym-tracker/` | Health | Installable PWA, offline support, programs + measurements |
@@ -142,7 +151,18 @@ fails, fix the ordering rather than the test.
 15. `privacy.html` - it makes narrow, checkable per-app promises, so it needs an
     entry in the sync list, whatever the app keeps locally, any new third party
     it contacts, any new analytics event, and a bumped `Last reviewed:` date.
-16. Local (gitignored) surfaces: `.claude/agents/<slug>-pm.md`, the app
+16. `tests/coverage/floors.json` + `tests/coverage/run.mjs` - a coverage area
+    and a line floor for the app's unit estate.
+17. Browser suites - per-app blocks in `tests/browser/suites/{apps,a11y,
+    visual,perf}.mjs` (plus a perf budget), bumping `EXPECTED_CHECKS` in
+    `tests/browser/run.mjs` for every harness-owned suite that gained checks.
+18. `tests/cross-browser/smoke.test.mjs` - the page list the Firefox/WebKit
+    smoke boots.
+19. `firestore.rules` - only if the app stores per-user documents (mirror an
+    existing app's rules block; run `npm run test:arena:rules` style checks
+    where applicable).
+20. `TESTING-AUDIT.md` - a row in the "Coverage by application" table.
+21. Local (gitignored) surfaces: `.claude/agents/<slug>-pm.md`, the app
     enumerations inside the developer/PM agent briefs, and the app list at the
     top of `.features/PROMPTS.md`.
 
@@ -153,8 +173,9 @@ skipped context. Then run `/doc-coverage` from clean master after shipping.
 ## Key Features
 
 - Responsive design with breakpoint-driven layout.
-- Consistent themed background (`bg.jpg`) across the marketing pages.
-- Dynamic header/footer injection via the partials system.
+- Consistent themed background (`images/bg.webp`, 1024 px wide, about 54 KB, referenced only from `main.css`) across the marketing pages.
+- Dynamic header/footer injection via the partials system. The mobile menu traps focus and locks body scroll while open; every page, app shells included, has a skip link to a `<main id="main-content">` landmark.
+- Every page links `main.css`, the Raleway stylesheet and `assets/css/firebase-auth.css` directly (no `@import` chain; pinned by `tests/static/stylesheet-chain.test.mjs`).
 - Optional Firebase email/password auth for cross-device sync (apps work fine signed-out via localStorage).
 - Account deletion built into the shared auth UI: reauthenticate, then delete every synced app namespace (sourced from `APP_SYNC_CONFIG`, so new apps are covered automatically), the account profile document, the MapTap network identity, local data, and finally the credential. Partial failures are reported honestly; shared Arena rows the rules do not let an owner delete are named in `privacy.html`.
 - Multi-language support (English, Russian, Hebrew) on the separately-branded landing via per-element `lang` attributes and a small switcher.
@@ -166,17 +187,20 @@ skipped context. Then run `/doc-coverage` from clean master after shipping.
 This is a static site. Any local HTTP server works:
 
 ```bash
-python3 -m http.server 8080
+python3 -m http.server 8082
 # or
-npx http-server -p 8080 .
+npx http-server -p 8082 .
 # or
-npx serve -l 8080 .
+npx serve -l 8082 .
 ```
 
-Then open `http://127.0.0.1:8080/`.
+Then open `http://127.0.0.1:8082/`. Ports 8080 and 8081 are reserved on the
+maintainer's machine (see `CLAUDE.md`); serve on 8082 or higher.
 
 For CSS edits, edit the stylesheets in `assets/css/` directly. There is no
-build step: the files served to browsers are the files in the repo.
+asset build step: the files served to browsers are the files in the repo
+(only the generated Rising Shows / Gym Tracker pages and the sitemap lastmod
+values come from `npm run build:site` at deploy).
 
 `assets/css/main.css` used to be compiled from a SASS source tree, which was
 removed on 2026-08-08. It had stopped being the source of truth long before
@@ -205,10 +229,10 @@ DOM behavior is covered because a copy of its logic passes in Node.
 
 | Layer | Runner | Where | What belongs here |
 |---|---|---|---|
-| Static checks | `node --test` | `tests/static/` | Internal-link integrity, duplicate ids, manifest + JSON-LD validity, first-party JS syntax |
+| Static checks | `node --test` | `tests/static/` | Internal-link integrity, duplicate ids, manifest + JSON-LD validity, first-party JS syntax, module-import resolution, CSP connect-src inventory, canonical URL forms, netlify redirect inventory, sitemap resolution, analytics presence, stylesheet chain, image dimensions |
 | Unit / integration | `node --test` | `apps/<app>/tests/`, `sync-system/tests/`, `netlify/functions/tests/`, `assets/js/tests/` | Calculations, parsers, business rules, storage/persistence logic, DOM-free view logic, function handlers with injected seams |
-| Browser E2E | custom CDP harness | `tests/browser/`, `apps/{trip-planner,fpl-planner}/e2e/` | Real user workflows in headless Chromium, with console-error and first-party-network-failure gating |
-| Accessibility | CDP + vendored axe-core | `tests/browser/suites/a11y.mjs` | axe WCAG 2.0/2.1 A+AA scans of every page/app plus keyboard/focus behavior checks |
+| Browser E2E | custom CDP harness | `tests/browser/`, `apps/{trip-planner,fpl-planner,gym-tracker}/e2e/` | Real user workflows in headless Chromium, with console-error and first-party-network-failure gating |
+| Accessibility | CDP + vendored axe-core | `tests/browser/suites/a11y.mjs` | axe WCAG 2.0/2.1 A+AA scans of every page/app plus keyboard/focus behavior checks (mobile-menu focus trap, skip link + main landmark on every shell) |
 | Visual | CDP (deterministic geometry) | `tests/browser/suites/visual.mjs` | Overflow, layout relations, dark-theme integrity, `main.css` collision pins at 3 viewports. Pixel baselines were deliberately rejected: font rendering differs per machine and would flake |
 | Performance | CDP (budgets) | `tests/browser/suites/perf.mjs` | First-party byte / request / DOM-size budgets per page, set from measured baselines with headroom |
 | PWA / offline | CDP | `tests/browser/suites/pwa-gym.mjs`, `apps/trip-planner/e2e/pwa.mjs` | Service-worker registration, cache contents, offline reload |
@@ -220,7 +244,7 @@ DOM behavior is covered because a copy of its logic passes in Node.
 
 ```bash
 npm test                   # fast gate: all unit/integration + static checks, no browser
-                           #   (~2 minutes; CI on every push to master and every PR)
+                           #   (about three minutes; CI on every push to master and every PR)
 npm run test:browser       # full browser estate: site, apps, a11y, visual, perf, PWA, app E2E (CI on PRs + master)
 npm run test:all           # "is this change safe to merge": npm test + test:browser
 npm run test:coverage      # coverage report to .coverage/summary.md + per-area floors
@@ -237,7 +261,7 @@ npm run test:trip-planner:e2e | test:fpl-planner:e2e   # one app's browser E2E s
                            #   (append :headed to the trip-planner one to watch it)
 ```
 
-For day-to-day development: `npm test` (about two minutes). Before merging:
+For day-to-day development: `npm test` (about three minutes). Before merging:
 `npm run test:all`. The cross-browser smoke runs weekly on CI and on demand.
 
 ### Known-defect quarantine
@@ -320,13 +344,16 @@ Fixing the product bug is a separate change from the test that documents it.
   check counts for all six harness-owned suites (site, apps, a11y, visual,
   perf, pwa-gym; see EXPECTED_CHECKS in run.mjs), so a crashed block cannot
   silently shrink the denominator.
-- CI: `tests` workflow (unit + static + syntax, every push/PR), `browser
-  tests` (PRs + master), `cross-browser smoke` (weekly + manual dispatch).
+- CI (`.github/workflows/`): `tests` (unit + static + syntax, every push to
+  master and every PR), `browser tests` (PRs + master pushes + manual
+  dispatch), `cross-browser smoke` (weekly + manual dispatch), `arena
+  firestore rules` (weekly, against the emulator), and `Refresh Rising Shows
+  data` (daily; publishes the dataset release and merges the derived files).
 
 ## Analytics
 
 Every page loads GA4 through one file, `assets/js/analytics.js`, which configures
-the property and installs `window.shevatoAnalytics`. **Call that API — never
+the property and installs `window.shevatoAnalytics`. **Call that API, never
 `gtag()` directly.** It centralises the privacy rules, the dedupe, and the
 guarantee that a tracking failure cannot throw into app code.
 
@@ -340,7 +367,7 @@ Events, all carrying `app_name` and `app_section` automatically:
 | Event | Fired when | Key parameters |
 |---|---|---|
 | `page_view` | once per document load | `page_path` (no query, no hash, no `.html`) |
-| `app_open` | an app's own entry page loads | — |
+| `app_open` | an app's own entry page loads | (none) |
 | `app_view` | in-app section/tab change | `view_name` |
 | `search` | a search runs | `search_scope`, `query_length`, `results_count`, `has_results` |
 | `search_result_select` | a result is picked | `content_type`, `content_id`, `result_position` |
@@ -349,7 +376,7 @@ Events, all carrying `app_name` and `app_section` automatically:
 | `load_more` | pagination advances | `page_number`, `items_shown` |
 | `app_action` | a meaningful action completes | `action_name` + per-action counts |
 | `outbound_click` | a link to another origin | `link_domain` |
-| `site_nav_click` | an internal link or mailto/tel | `nav_location`, `link_destination` |
+| `site_nav_click` | an internal link or mailto/tel | `nav_location`, `link_destination`, `link_kind` (`internal`/`mailto`/`tel`) |
 | `app_error` | uncaught error or rejection | `error_scope`, `error_message` (capped at 5/page) |
 | `page_not_found` | 404.html renders | `not_found_path`, `referrer_domain` |
 
@@ -359,7 +386,7 @@ Two rules when adding tracking:
    count, not its text; report a catalogue id (a show slug), not a title someone
    entered. `scrub()` drops parameters whose names look like free text or
    identity and values that look like emails or generated ids, but it is a
-   backstop — do not rely on it.
+   backstop, do not rely on it.
 2. **One event per gesture.** `trackView`/`trackFilter` drop repeats; call
    `primeFilter` at boot to register default filter state so the first control a
    user touches reports once instead of the whole panel reporting its defaults.
@@ -369,7 +396,11 @@ In-app navigation deliberately reports `app_view`, never a synthetic
 
 ## Deployment
 
-The site is deployed to Netlify. `netlify.toml` defines security headers (HSTS, X-Frame-Options, Permissions-Policy, CSP-Report-Only) and long-cache directives for the gym-tracker assets. Any other static host works identically — just keep the directory layout intact.
+The site is deployed to Netlify. `netlify.toml` defines security headers (HSTS, X-Frame-Options, Permissions-Policy, CSP-Report-Only), short revalidating cache headers for the gym-tracker assets (300 s for js/css, 3600 s for data, all `must-revalidate`), a `Content-Type` rule for `*.webmanifest`, and the redirect inventory (canonical extensionless URLs, renamed apps, directory-index duplicates including the generated `shows/` and `exercises/` hub indexes). Any other static host works identically, just keep the directory layout intact.
+
+Sitemaps: `sitemap.xml` is an index of three sub-sitemaps; hand-listed pages live in `sitemap-pages.xml`, whose `lastmod` values `scripts/stamp-sitemap-index.mjs` refreshes from git history at deploy (skipped in shallow clones). The generated show and exercise sitemaps carry no `lastmod` (the only date available is the build time, which is not a content date), so their index entries carry none either. Never hand-edit a `lastmod`.
+
+Firebase: the Auth "authorized domains" list in the Firebase console must keep the canonical apex `shevato.com` alongside the Netlify and `www` hosts (added 2026-08-22); a missing entry fails OAuth and email-link flows silently on the canonical URL.
 
 `netlify.toml` is the ONLY place the site's CSP is defined (no `_headers` file, no `<meta http-equiv>`, no per-app copy). Because it ships as Report-Only, an origin missing from `connect-src` does not break anything, it just logs a console violation, so `tests/static/csp-connect-src.test.mjs` parses that header and fails when first-party client JS fetches an origin the policy does not allow (and when the policy lists one nothing uses). Adding a `fetch()` to a new origin means adding it to `connect-src` and to that test's inventory in the same change.
 
@@ -379,11 +410,11 @@ Latest two versions of Chrome, Edge, Firefox, and Safari (desktop and mobile).
 
 ## Technologies
 
-- HTML5 and CSS3, hand-written with no build step.
+- HTML5 and CSS3, hand-written with no asset build step.
 - Vanilla JavaScript with jQuery for the partials/auth UI.
 - FontAwesome (4.x and 6.x).
 - Chart.js (Mario Kart tracker, MapTap Rivals).
-- Firebase Auth + Firestore + Realtime Database (optional sync; Arena requires Realtime DB).
+- Firebase Auth + Firestore (optional sync; Arena requires Firestore for room state). Realtime Database is only a sync-engine option in `sync-system/storage-sync-robust.js`; no app depends on it.
 - Netlify Functions: `tp-assist` and `tp-places` (Trip Planner AI assistant and venue ratings) and `fpl` (the cached, allowlisted read proxy in front of the public Fantasy Premier League API, which sends no CORS headers and is otherwise unreachable from a browser).
 
 ## Contact

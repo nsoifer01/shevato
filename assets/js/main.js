@@ -1175,46 +1175,13 @@
         side: 'right'
       });
     
-    // Accessibility: aria state, focus management and scroll lock. The
-    // panel plugin only toggles `is-menu-visible` on <body>; everything a
-    // dialog-like panel needs beyond that lives here and keys off that class.
-    //   - open: lock page scroll (position preserved), move focus to the
-    //     first link, cycle Tab / Shift+Tab inside the panel;
-    //   - close (Escape, X, backdrop, link): unlock, restore the scroll
-    //     position, return focus to the Menu toggle.
-    const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
-    let lockedScrollY = null;
-    let wasOpen = false;
-
-    const lockScroll = () => {
-      lockedScrollY = window.scrollY || window.pageYOffset || 0;
-      $body.css({ overflow: 'hidden', position: 'fixed', top: -lockedScrollY + 'px', left: 0, right: 0 });
-    };
-    const unlockScroll = () => {
-      if (lockedScrollY === null) return;
-      $body.css({ overflow: '', position: '', top: '', left: '', right: '' });
-      window.scrollTo(0, lockedScrollY);
-      lockedScrollY = null;
-    };
-    const menuFocusables = () => $menu.find(FOCUSABLE).filter(function() {
-      return this.offsetParent !== null || this.getClientRects().length > 0;
-    }).toArray();
-
-    const onMenuKeydown = (event) => {
-      if (event.key !== 'Tab' || !$body.hasClass('is-menu-visible')) return;
-      const items = menuFocusables();
-      if (!items.length) return;
-      const first = items[0], last = items[items.length - 1];
-      const active = document.activeElement;
-      const outside = !$menu[0].contains(active);
-      if (event.shiftKey && (active === first || outside)) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && (active === last || outside)) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
+    // The open panel behaves as a modal overlay: main.css locks body scroll
+    // while `is-menu-visible` is set, and the handlers below keep keyboard
+    // focus inside it (WCAG 2.4.3 focus order) and hand it back to the
+    // toggle on close. Before this, Tab walked the page hidden behind the
+    // overlay and the document scrolled underneath it.
+    const focusables = () => $menu.find('a[href], button:not([disabled])').toArray();
+    let menuOpen = false;
 
     const handleMenuVisibility = () => {
       const isVisible = $body.hasClass('is-menu-visible');
@@ -1223,34 +1190,44 @@
       $menuToggle.attr('aria-expanded', isVisible);
       $menu.attr('aria-hidden', !isVisible);
 
-      if (isVisible && !wasOpen) {
-        lockScroll();
-        $(document).on('keydown.menufocus', onMenuKeydown);
-        // #menu transitions `visibility` over 0.5s, and focus() on a
-        // still-hidden element is silently ignored, so the first link is
-        // focused with a short retry instead of once on the class flip.
-        let tries = 0;
-        const focusFirst = () => {
+      if (isVisible === menuOpen) return; // class changed for another reason
+      menuOpen = isVisible;
+
+      if (isVisible) {
+        // #menu transitions `visibility` (main.css), so at this instant its
+        // links are still visibility:hidden and refuse focus. Wait one frame
+        // for the transition to start, then move focus in.
+        window.setTimeout(() => {
           if (!$body.hasClass('is-menu-visible')) return;
-          const items = menuFocusables();
-          if (items.length) {
-            items[0].focus();
-            if (document.activeElement === items[0]) return;
-          }
-          if (++tries < 12) setTimeout(focusFirst, 60);
-        };
-        focusFirst();
-      } else if (!isVisible && wasOpen) {
-        $(document).off('keydown.menufocus');
-        const focusedElement = $menu.find(':focus');
-        if (focusedElement.length) focusedElement.blur();
-        unlockScroll();
-        // Focus goes back to the toggle whatever closed the panel (Escape,
-        // X, backdrop tap); it used to stay wherever Tab had wandered.
-        $menuToggle.focus();
+          const first = focusables()[0];
+          if (first && !$menu[0].contains(document.activeElement)) first.focus();
+        }, 60);
+      } else {
+        // Return focus to the control that opens the menu so keyboard users
+        // do not land on <body> after Escape, the close control or a tap
+        // outside the panel.
+        if ($menu[0].contains(document.activeElement) || document.activeElement === document.body) {
+          $menuToggle.trigger('focus');
+        }
       }
       wasOpen = isVisible;
     };
+
+    // Trap Tab / Shift+Tab inside the open panel, wrapping at both ends.
+    $menu.on('keydown', (event) => {
+      if (event.key !== 'Tab' || !$body.hasClass('is-menu-visible')) return;
+      const items = focusables();
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    });
     
     // Watch for visibility changes
     const observer = new MutationObserver((mutations) => {

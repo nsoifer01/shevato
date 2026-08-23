@@ -1,6 +1,6 @@
 'use strict';
 
-// Server-side mirror of drawCurve() in js/app.js — emits a complete SVG
+// Server-side mirror of drawCurve() in js/app.js: emits a complete SVG
 // string with the line path, filled area, and per-episode dots so the
 // curve renders without any client JS. Keep this in sync with the browser
 // version's math so static pages and the SPA agree visually.

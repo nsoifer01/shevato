@@ -1,7 +1,10 @@
 [build]
-  # Regenerate Rising Shows per-show SEO pages (and their sitemap)
-  # from the committed data.json on every deploy. The output lives at
-  # apps/rising-shows/shows/ and is intentionally gitignored.
+  # build:site on every deploy: fetch the Rising Shows data release,
+  # regenerate the Rising Shows show pages and the Gym Tracker exercise
+  # pages (and their sitemaps), split the data, then stamp sitemap
+  # lastmod values from git (scripts/stamp-sitemap-index.mjs). The
+  # generated output (apps/rising-shows/shows/, apps/gym-tracker/
+  # exercises/) is intentionally gitignored.
   command = "npm run build:site"
   functions = "netlify/functions"
 
@@ -10,8 +13,8 @@
 
 # Local dev only (netlify dev); no effect on deploys. Pins the dev server
 # to one address instead of a random port per run, serving the repo root
-# like production does. 8888 on purpose: 8080 stays free for the plain
-# static server workflow.
+# like production does. 8888 on purpose: 8080 and 8081 are reserved on the
+# owner's machine (never a dev server), and plain static servers go on 8082+.
 [dev]
   port = 8888
   publish = "."
@@ -121,6 +124,20 @@
 [[redirects]]
   from = "/apps/:app/index.html"
   to = "/apps/:app/"
+  status = 301
+  force = true
+
+# The two generated hub indexes sit between the rules above (one level too
+# shallow, one too deep), so they were reachable as 200 duplicates.
+[[redirects]]
+  from = "/apps/rising-shows/shows/index.html"
+  to = "/apps/rising-shows/shows/"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/apps/gym-tracker/exercises/index.html"
+  to = "/apps/gym-tracker/exercises/"
   status = 301
   force = true
 
@@ -259,11 +276,9 @@
   [headers.values]
     Cache-Control = "public, max-age=0, must-revalidate"
 
-# Existing override for the firebase-config function — kept tighter than
-# the global headers because we don't want it framed at all.
+# Netlify serves .webmanifest as application/octet-stream by default;
+# browsers tolerate it but the registered type is the one below.
 [[headers]]
-  for = "/.netlify/functions/firebase-config"
+  for = "/*.webmanifest"
   [headers.values]
-    X-Frame-Options = "DENY"
-    X-Content-Type-Options = "nosniff"
-    Referrer-Policy = "strict-origin-when-cross-origin"
+    Content-Type = "application/manifest+json"

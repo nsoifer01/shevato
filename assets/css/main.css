@@ -1,5 +1,3 @@
-@import url("https://fonts.googleapis.com/css?family=Raleway:200,300,400,500,600&display=swap");
-@import url(firebase-auth.css);
 /* Basic */
 body {
   -ms-overflow-style: scrollbar; }
@@ -2351,12 +2349,35 @@ ul.icons {
     #footer {
       padding: 0.5rem 0 0.25rem 0 ; } }
 
+/* Skip link: first focusable element on every page (site pages and app
+   shells alike), revealed only on keyboard focus. Lives here rather than in
+   brand-colors.css because app pages load main.css only. Hidden by its own
+   full height rather than a magic top offset so no sliver ever peeks out. */
+.skip-link {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translateY(-100%);
+  z-index: 10002;
+  padding: 8px 16px;
+  /* Pinned like the header/footer locks below: app stylesheets carry global
+     `a { color }` rules (Arena purple, MapTap indigo) that otherwise repaint
+     this shared control and fail AA contrast on the blue. */
+  background: #0044cc !important;
+  color: #ffffff !important;
+  text-decoration: none !important;
+  font-weight: 600; }
+.skip-link:focus {
+  transform: translateY(0);
+  outline: 2px solid #ffffff;
+  outline-offset: -2px; }
+
 /* Header */
 body {
   padding-top: 3.25rem; }
   body:before {
     content: ' ';
-    background-image: url(../../images/bg.jpg);
+    background-image: url(../../images/bg.webp);
     background-size: cover;
     background-repeat: no-repeat;
     background-attachment: fixed;
@@ -2368,6 +2389,11 @@ body {
     height: 100%;
     z-index: -1;
     opacity: 0.05; }
+  /* The texture is already inside a fixed-position pseudo-element, so fixed
+     attachment buys nothing on phones and is a known scroll-jank source. */
+  @media screen and (max-width: 736px) {
+    body:before {
+      background-attachment: scroll; } }
 
 #header {
   -webkit-align-items: center;
@@ -2395,7 +2421,7 @@ body {
     padding-left: 1.25rem; 
     display: inline-block; }
   #header > a > img {
-    height: 30px;
+    height: 26px;
     width: 40px;
     vertical-align: middle; }
   #header > nav > a {
@@ -2819,6 +2845,11 @@ body {
   @media screen and (max-width: 736px) {
     #menu {
       padding: 2.5rem 1.75rem; } }
+
+/* The open menu is a modal overlay: the document must not scroll behind it
+   (main.js traps keyboard focus inside #menu for the same reason). */
+body.is-menu-visible {
+  overflow: hidden; }
 
 body.is-menu-visible #menu {
   -moz-transform: translateX(0);

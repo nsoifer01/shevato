@@ -11,6 +11,7 @@
 // suites while this stays an explicit local/pre-release check.
 import { spawn } from 'node:child_process';
 import http from 'node:http';
+import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -19,7 +20,7 @@ import { tmpdir } from 'node:os';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..', '..');
 
-// 8080 and 8083 are reserved on the maintainer's machine; never default to them.
+// 8080 and 8081 are reserved on the maintainer's machine; never default to them.
 const PORT = Number(process.env.BROWSER_TEST_PORT || 8099);
 const CDP_PORT = Number(process.env.BROWSER_TEST_CDP_PORT || 9222);
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -31,6 +32,9 @@ const BASE = `http://127.0.0.1:${PORT}`;
 // The fpl-planner suites under apps/fpl-planner/e2e/ do the same for that app's
 // interactive scenario workflow and its gameweek lifecycle:
 //   npm run test:fpl-planner:e2e         (equivalent to --only=fpl-planner)
+// The maptap-rivals suite under apps/maptap-rivals/e2e/ pins the 2026-08-22
+// audit round (seeded a11y, keyboard, 390px containment, import safety):
+//   npm run test:maptap-rivals:e2e       (equivalent to --only=maptap-rivals)
 const SUITES = [
   'tests/browser/suites/site.mjs',
   'tests/browser/suites/apps.mjs',
@@ -46,6 +50,7 @@ const SUITES = [
   'apps/trip-planner/e2e/places.mjs',
   'apps/trip-planner/e2e/assistant.mjs',
   'apps/trip-planner/e2e/qa-fixes.mjs',
+  'apps/trip-planner/e2e/audit-fixes.mjs',
   'apps/trip-planner/e2e/pwa.mjs',
   'apps/gym-tracker/e2e/units-migration.mjs',
   'apps/fpl-planner/e2e/scenario.mjs',
@@ -67,6 +72,7 @@ const SUITES = [
   'apps/mario-kart/e2e/audit-2026-08.mjs',
   'apps/rising-shows/e2e/audit-2026-08.mjs',
   'apps/trip-planner/e2e/audit-2026-08.mjs',
+  'apps/maptap-rivals/e2e/quality.mjs',
 ];
 
 // --only=<substring> runs the suites whose path contains it; --headed opens a
@@ -83,26 +89,29 @@ for (const a of args) {
 // return, a refactor that drops a loop, a throw swallowed inside the suite)
 // still "passes" everything it did run; comparing against a pinned total turns
 // that silent shrinkage into an explicit failure. All six harness-owned
-// suites are pinned; the app-owned trip-planner and fpl-planner suites are
-// not, by their owners' choice. Adding or removing a check on purpose means
-// updating the pinned number in the same change.
+// suites are pinned, plus the app-owned maptap-rivals suite by its owner's
+// choice; trip-planner and fpl-planner are not, by theirs. Adding or removing
+// a check on purpose means updating the pinned number in the same change.
 // apps.mjs note: the count is invariant whether or not the rising-shows
 // dataset is fetched (the skip path emits the same number of entries).
 const EXPECTED_CHECKS = {
-  // site/a11y/visual grew in the 2026-08-22 site remediation round:
-  // site +13 (moadon footer language after reload and its header-poll guard,
-  // five auth-modal error / busy / reset checks, menu scroll lock + restore,
-  // four sync-banner ones),
-  // a11y +5 (auth-modal-open axe scan, menu focus entry + focus restore +
-  // reduced motion, Sign In focus ring), visual +10 (820x1180 app overflow,
-  // hub lazy-preview height and width, shared-header overhang on the seven
-  // chrome-bearing root pages).
-  'tests/browser/suites/site.mjs': 170,
-  'tests/browser/suites/apps.mjs': 101,
-  'tests/browser/suites/a11y.mjs': 38,
-  'tests/browser/suites/visual.mjs': 103,
-  'tests/browser/suites/perf.mjs': 41,
+  'tests/browser/suites/site.mjs': 157,
+  // 103 from master, plus the two Rising Shows highlight-badge checks added
+  // in this branch.
+  'tests/browser/suites/apps.mjs': 105,
+  // 72 from master's B7/B8 keyboard + touch-target blocks, plus the two
+  // seeded MapTap Rivals state scans added in this branch.
+  'tests/browser/suites/a11y.mjs': 74,
+  'tests/browser/suites/visual.mjs': 86,
+  'tests/browser/suites/perf.mjs': 51,
   'tests/browser/suites/pwa-gym.mjs': 14,
+  // 56 from the 2026-08-22 audit pass, plus, added 2026-08-23: 15 modal/header
+  // stacking checks, 3 route-change checks, 30 overflow checks (6 views x 7
+  // widths), 5 UTC+12 rendered-day checks, 3 stale-matrix-selection checks and
+  // 8 parity-card checks.
+  // Pinned because this suite's axe scans now contain their own failures
+  // instead of aborting the run, so a shrunken run would otherwise look green.
+  'apps/maptap-rivals/e2e/quality.mjs': 120,
 };
 
 const selected = only ? SUITES.filter((p) => p.includes(only)) : SUITES;
@@ -121,6 +130,25 @@ function waitFor(check, timeoutMs, label) {
   })();
 }
 
+// Something else already listening is NOT our server, and every suite would
+// then run against whatever it serves - another checkout, an older build, a
+// different branch - while reporting a clean pass. That is not hypothetical:
+// during the 2026-08-22 audit a long-running server on the default port made a
+// full trip-planner run report 512/512 green against code that did not contain
+// the change under test, because our own python server failed to bind and
+// httpOk cheerfully answered from the stranger. The same applies to the CDP
+// port: we would drive somebody else's browser. Bind-test both and say so.
+const bindable = (port, host) => new Promise((resolve) => {
+  const probe = net.createServer();
+  probe.once('error', () => resolve(false));
+  probe.once('listening', () => probe.close(() => resolve(true)));
+  probe.listen(port, host);
+});
+// BOTH stacks: a leftover headless Chrome commonly listens on ::1 while
+// 127.0.0.1 still binds, so an IPv4-only check declares the port free and the
+// run then attaches to that browser and dies with it half an estate later.
+const portFree = async (port) => (await bindable(port, '127.0.0.1')) && (await bindable(port, '::1'));
+
 const httpOk = (url) => new Promise((resolve) => {
   const req = http.get(url, (res) => { res.resume(); resolve(res.statusCode > 0); });
   req.on('error', () => resolve(false));
@@ -130,6 +158,13 @@ const httpOk = (url) => new Promise((resolve) => {
 let server, chrome, profileDir;
 
 async function startAll() {
+  for (const [port, what, envVar] of [[PORT, 'static server', 'BROWSER_TEST_PORT'], [CDP_PORT, 'Chrome DevTools', 'BROWSER_TEST_CDP_PORT']]) {
+    if (!(await portFree(port))) {
+      throw new Error(`port ${port} is already in use, so this run would drive somebody else's ${what} `
+        + `instead of its own and could report a pass for code it never loaded. `
+        + `Stop whatever is on ${port}, or set ${envVar} to a free port.`);
+    }
+  }
   server = spawn('python3', ['-m', 'http.server', String(PORT), '--bind', '127.0.0.1'],
     { cwd: REPO, stdio: 'ignore' });
   await waitFor(() => httpOk(`${BASE}/home.html`), 20000, 'static server');

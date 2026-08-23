@@ -3,7 +3,7 @@
 
 // Generate static per-show HTML pages, an A-Z browse index, and a
 // sitemap from apps/rising-shows/data.json. Runs at Netlify build
-// time, so the generated files don't live in git — they're a pure
+// time, so the generated files don't live in git; they're a pure
 // derivation of the committed data.json.
 
 const fs = require('fs');
@@ -42,7 +42,7 @@ function main() {
   }
   const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
   if (!Array.isArray(data.matches)) {
-    throw new Error('data.json has no `matches` array — bad input.');
+    throw new Error('data.json has no `matches` array: bad input.');
   }
   const series = groupBySeries(data.matches);
   console.log(`[build-show-pages] ${series.length} unique series · ${data.matches.length} seasons · builtAt=${data.builtAt}`);
@@ -51,7 +51,7 @@ function main() {
   // (build-data.js strips them out of data.json's matches), keyed by
   // seriesId. Load it so each show page can render the same top-billed
   // cast strip the in-app modal shows, plus episode names in the
-  // per-season tables. Missing file is non-fatal — pages just render
+  // per-season tables. Missing file is non-fatal: pages just render
   // without cast and with blank episode-title cells.
   const extras = fs.existsSync(EXTRAS_FILE) ? JSON.parse(fs.readFileSync(EXTRAS_FILE, 'utf8')) : {};
   let castCount = 0;
@@ -200,6 +200,9 @@ function groupBySeries(matches) {
       avgRating: m.avgRating,
       avgRuntime: m.avgRuntime,
       shapes: m.shapes,
+      // Present (and true) only while the season is still airing; the page's
+      // dominant-shape derivation must not read a finale off it.
+      inProgress: m.inProgress,
     });
     // Series-level fields may be present on any season's record; fill
     // any holes from later seasons so we don't lose data if season 1

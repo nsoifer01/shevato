@@ -91,11 +91,13 @@ test('getWeekStats: the same Sunday session is in or out depending on the settin
     // Sunday and Wednesday of the CURRENT week under each rule.
     const today = new Date();
     const sundayFirst = startOfWeek(today, 0);
-    // On a Sunday the Sunday-first week starts TODAY, so the Sunday session
-    // is in the current week under BOTH rules and the contrast below does
-    // not exist. The old guard compared the two week starts, which are never
-    // equal, so this test failed every Sunday (seen 2026-08-23).
-    if (today.getDay() === 0) return;
+    const mondayFirst = startOfWeek(today, 1);
+    // Nothing to prove unless the Sunday-first week starts BEFORE the
+    // Monday-first one: on a Monday both start today, and on a Sunday the
+    // Sunday-first week starts today, inside the current Monday-first week,
+    // so that session is legitimately in both. Keeps the test green every
+    // day of the week instead of failing on Sundays.
+    if (sundayFirst.getTime() >= mondayFirst.getTime()) return;
 
     const sundayKey = AnalyticsService.toLocalDateKey(sundayFirst);
     const sessions = sessionsOn(sundayKey);
@@ -189,7 +191,8 @@ test('the session-count weekly tiers are unchanged', () => {
 test('weekly achievement progress honours the first-day setting', () => {
     const today = new Date();
     const sundayFirst = startOfWeek(today, 0);
-    if (today.getDay() === 0) return; // same Sunday edge as getWeekStats above
+    const mondayFirst = startOfWeek(today, 1);
+    if (sundayFirst.getTime() >= mondayFirst.getTime()) return; // see getWeekStats test above
 
     const sessions = [{ id: 1, date: AnalyticsService.toLocalDateKey(sundayFirst) }];
     const threeAWeek = AchievementService.getDefaultAchievements()

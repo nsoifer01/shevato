@@ -41,11 +41,15 @@ Update semantics worth knowing:
   hand-pasted correction must shed that marker or the next sync would
   silently clobber it back.
 - Duplicates already sitting in a log (written before the fix, or imported
-  from a backup) are NOT pruned; the upsert updates the first match and
-  leaves the rest. Every aggregate is correctly id-agnostic and still counts
-  such a pair as two days; `tests/stats.test.js` ("repeat paste") pins that
-  stats-layer behavior, and `myAvgByContinent` plus the predictions
-  distribution remain immune by their own date-dedupe.
+  from a backup) are NOT pruned, on purpose: the app never silently deletes
+  rows the user can see and delete themselves. The upsert updates the first
+  match and leaves the rest. Measured behaviour of such a pair (two records,
+  same rival, same date): `overallRecord` reports `games: 2, wins: 2, days: 1`
+  - the W-L-T tally counts both records, the DAY-based figures dedupe by date
+  (`myAvgByDay`, the heatmap, `myAvgByContinent`, the predictions
+  distribution). That split is deliberate, not a rounding accident: a day is a
+  calendar fact, a game row is a stored record. `tests/stats.test.js`
+  ("repeat paste") pins the stats-layer behaviour.
 
 The upsert is unit-tested through the `window._testExports` seam
 (`tests/app-helpers.test.js`) and at browser level (the repeat-paste check in
@@ -223,6 +227,373 @@ card at 0.72rem (axe serious fail). The a11y browser suite scans this app's
 root and fails on any serious violation, so keep hint-sized text off
 `--muted-2`.
 
+## One definition of a countable game (dashboard strip vs banner, fixed 2026-08-22)
+
+Every figure that describes MY overall record reads the game log through
+`eligibleH2HGames(games, knownRivalIds)` (js/stats.js): a real object with a
+string `rivalId` and a valid `YYYY-MM-DD` date, both sides played, and the
+rival still on the list. `overallRecord` builds the W-L-T, win %, per-game
+and per-day averages on top of it; `periodRecords` applies the same rule for
+the Records view. Callers: `renderDashSummary` (the strip), `renderRecordBanner`
+(via `periodRecords`), the profile card's "Tracked H2H games" / "Your H2H
+avg", and `actualScoresForDay` for the predictions card.
+
+Why it had to be one function: the 2026-08-22 audit seeded a game whose rival
+had been deleted (reachable because the rival list and the game log sync under
+separate keys) and the strip read `5W · 4L · 1T over 10 games` while the banner
+right above it read `5W · 3L · 1T`. The strip filtered on `bothPlayed` alone;
+the profile card counted `state.games.length` ("11 games where both players
+played" with a rival-only day in the log) and averaged `getMyTotal` over
+rival-only rows as zeros (618 instead of 744). Three views, three private
+definitions of "a game". Do not add a fourth: new aggregates take the eligible
+list.
+
+The History view still lists orphaned rows on purpose (with their delete
+button), so a stranded game is visible and removable rather than invisible.
+
+## Dates are local calendar days (UTC+ drift fixed 2026-08-22)
+
+A day in this app is the user's LOCAL calendar day: the day MapTap showed
+them, the day on a game row, the day a heatmap cell stands for. The helpers in
+js/stats.js ("local calendar dates") are the only place date arithmetic and
+formatting happen:
+
+- `todayISO()` / `localDateISO(Date)` read local components.
+- `addDaysISO`, `daysBetweenISO`, `dayOfWeekISO` work on the parsed parts
+  through `Date.UTC`, so they are timezone-free.
+- `formatDate(value, style)` accepts a `YYYY-MM-DD` day OR a full ISO datetime
+  (the profile card's `verifiedAt` is `toISOString()` output, MapTap's
+  `joinDate` is a datetime too), a Date or an epoch, and returns `''` for
+  anything it cannot read. A datetime formats as the local day it falls on.
+
+The trap that motivated this: `Date#toISOString` is always UTC, so a local
+midnight east of Greenwich is the previous day. app.js used that in
+`addDaysISO`, the calendar heatmap's day walk and the 7-day prediction window,
+which for a Berlin user put "Fri 21" before "Today 22" in the day tabs and
+ended the heatmap on yesterday (today's game never appeared). Separately, the
+old `shortDate` appended `T00:00:00` to whatever it got, so the profile card's
+"Last verified" and "joined" rendered empty. `tests/stats.test.js` runs the
+helpers in child processes pinned to America/Chicago, UTC, Europe/Berlin and
+Pacific/Auckland and requires the same local day from all four (and proves the
+legacy expression disagreed).
+
+Rule for new code: never build a Date from a bare `iso + 'T00:00:00'` and then
+call `toISOString()`; never `Date.parse` a day string to do arithmetic. Use the
+helpers. The only `toISOString()` calls left in app.js produce timestamps
+(`verifiedAt`, `exportedAt`), which is what they are for.
+
+## Backup import is validated before it replaces anything (fixed 2026-08-22)
+
+`importData` parses the file, then hands the object to `sanitizeBackup`
+(js/stats.js) and only replaces state after the user confirms the cleaned
+counts. The contract (documented above the function): every rival and game is
+rebuilt as a fresh plain object with only the known fields; a row that cannot
+be made safe (no string id, no valid date, no side played, not an object) is
+dropped and counted; score arrays must be five finite 0-100 numbers or they are
+dropped as a field; scalar totals must be finite 0-1000; `cities` survive only
+as five `{lat, lng, name}` entries with `coordNum`-coerced coordinates; a file
+that is not `{rivals: [], games: []}` is refused outright with "Nothing was
+changed". String ids are accepted verbatim (`__proto__` included: every
+consumer keys by Map or null-prototype object).
+
+Before this, a backup containing `null` rows or a game without a date was
+persisted as-is and five of the six views threw on every render until a good
+file was imported; "Clear games" would not have fixed the rival list.
+
+## WhatsApp exports: formats and day/month inference (rewritten 2026-08-22)
+
+Parsing lives in js/whatsapp.js (pure, unit-tested). The header regexes read
+Android (`8/10/26, 21:05 - Name:`) and iPhone (`[8/10/26, 21:05:12] Name:`)
+shapes with optional seconds, optional AM/PM (including `a.m.`), `/`, `.` or
+`-` separators, 2- or 4-digit years, year-first dates, and the U+200E/U+200F/
+U+202F/U+00A0 characters iOS puts around the time. The old importer matched
+exactly one shape (24-hour Android, month-first), so a US phone with a 12-hour
+clock or any iPhone produced "No WhatsApp messages found".
+
+Day/month order is never assumed. `detectDateOrder` weighs evidence across
+the file: a first field above 12 (day-first), a second field above 12
+(month-first), a 4-digit first field (year-first), and the month named inside
+a MapTap share body ("Aug 10" settles whether 8 is the month). With no evidence
+the result is flagged uncertain and the modal shows a month/day vs day/month
+select with a warning instead of guessing; contradictory files go with the
+majority but stay flagged. The old heuristic compared the body month to a
+header "month" that was really a day, which dated DD/MM exports a year off.
+
+`dayBucketDate` decides the calendar day: the body's own date wins over the
+header (a 1am share is yesterday's puzzle), the year comes from the header
+and steps across New Year in either direction, and a body day the year does
+not have (Feb 29 in a common year) yields null. Such shares are counted as
+"undated" and reported in the modal, never rolled over to Mar 1. The same
+rule protects the paste panel: `parseMapTapScore` exposes `dateParts` and
+refuses to stamp a non-existent day.
+
+## Accessibility: the empty-state scan lie (fixed 2026-08-22)
+
+The shared a11y suite scanned this app at its root with fresh storage. That
+state has no leaderboard rows, no prediction chips and no matrix cells, so two
+critical and several serious violations shipped unnoticed: `aria-sort` on
+`th[role=button]` (not allowed on a button), a `.pred-day-tabs` `tablist`
+whose children were plain buttons, `aria-label` on a `span.row-note-pill`
+(prohibited on a generic element), unlabeled `#history-rival-filter` /
+`#history-result-filter`, scrollable wraps that keyboard users could not
+focus, and `--muted-2` (#6b7280) at 3.63:1 under every small label it carried.
+
+What changed, and the rule each one leaves behind:
+
+- Sortable headers: `aria-sort` stays on the `<th>` (valid on a column
+  header); the control is a real `<button class="lb-sort-btn">` inside it that
+  fills the cell. Never put `role=button` + `aria-sort` on the same element.
+- The prediction day strip is `role=group` with `aria-pressed` buttons. ARIA
+  tabs need tab panels; toggle buttons that select a day are not tabs.
+- Icon-only pills use `role=img` + `aria-label`; `aria-label` on a bare span
+  is ignored by assistive tech and flagged by axe.
+- Every horizontal scroller (`.matrix-wrap`, `.games-table-wrap`,
+  `.leaderboard-wrap`) has `tabindex=0`, `role=region` and a label.
+- `--muted-2` is now #8e96a8 (5.7:1 on `--surface`, 4.5:1 on `--surface-3`),
+  the records toggle's active colour is #a5b4fc (6.6:1 on its soft accent),
+  and the leaderboard header text uses `--muted`. Keep hint-sized text on
+  those tokens; do not reintroduce a darker step.
+- Modals share one `openModal` / `closeModal` pair: focus moves in, Tab and
+  Shift+Tab cycle inside the panel, Escape closes the top-most dialog, and
+  focus returns to the element that opened it. The delete-rival confirmation
+  is a styled modal like delete-game and clear-games; `window.confirm` is
+  gone from the rival path.
+- Rival pages are reachable by keyboard: the card name is a real link
+  (`#rival/<id>`), as is the leaderboard name cell; the card and the row stay
+  clickable for pointer users.
+- Every control shows a focus ring via a scoped `:focus-visible` rule
+  (main.css zeroes outlines on some controls, hence `!important`).
+- The suite now also scans two SEEDED MapTap Rivals states and waits for
+  rendered rival cards and prediction rows before injecting axe; the app's own
+  `e2e/quality.mjs` scans every rendered view. A green scan of an empty page
+  is not coverage.
+
+The share toast is `pointer-events: none` by design (it floats over tables).
+The Undo toast is the same element with a button, so `.has-action` restores
+`pointer-events: auto` and the toast carries `z-index: 2000`; without both the
+button rendered but a coordinate click landed on the footer link beneath it.
+Hit-test interactive overlays with `elementFromPoint`, never `element.click()`.
+
+## Responsive containment (390-1160, fixed 2026-08-22)
+
+- Horizontal scrollers announce themselves. app.js stamps
+  `data-scroll="none|start|middle|end"` on `.view-tabs`, `.pred-day-tabs`,
+  `.matrix-wrap`, `.games-table-wrap` and `.leaderboard-wrap` (scroll, resize
+  and a MutationObserver on `main`), the tab strips fade the edge with more
+  content through a mask, and the bordered wraps paint scroll shadows with the
+  `background-attachment: local/scroll` technique. At 390px three of the six
+  view tabs used to sit off-screen behind a hidden scrollbar with nothing
+  hinting they existed.
+- At 480px and below the seven prediction day tabs share the row (`flex: 1`)
+  instead of scrolling, and nothing in the predictions card or the card chrome
+  drops under ~0.72rem (10.5px at the 11pt phone root). Density comes from
+  padding, not from text size.
+- The matrix keeps its natural width on phones (`table-layout: auto; width:
+  max-content; min-width: 100%`) and scrolls inside its wrap; squeezing the
+  fixed-layout table to 390px made cells overlap. The rival chips ellipsize
+  their text.
+- Long rival names (the audit used 57 characters) wrap inside every card
+  (`overflow-wrap: anywhere` on summary values, card names, the rival header,
+  drama lines, record rows) and single-line labels (`.continent-scores .col
+  .k`, `.lc-avg-them`) ellipsize with the full name in `title`. A long name in
+  the "Toughest rival" summary card used to widen the page by up to 53px at
+  1024-1160px.
+- Touch targets: finish-position rows, name toggles, day links and score
+  links get ~2rem hit areas under `(hover: none)` or 768px and below, through
+  padding/negative-margin pairs that leave desktop layout unchanged.
+
+The continent band's three-tier grid (section above) is untouched.
+
+## Narrative copy must be mathematically true (2026-08-22)
+
+`streakDrama`: a current win streak EQUAL to the previous best is one win
+short of a record, so the line reads "level with your record: win today to
+break it" (it said "match your record"); the losing-streak mirror reads "level
+with your worst slump". `consistencyLabel` bands σ of the DAILY total at
+60/110: the old 10/20 cut-offs were round-score numbers, so every real history
+read "Streaky". The trend chart's y-axis floors at 0 (a short history started
+it at -50). "Biggest swings" reads totals through `getMyTotal` /
+`getTheirTotal`; a game that carries only round arrays rendered
+`undefined–undefined`. Copy that counts things goes through `countNoun` ("1
+game without geo data"), which avoids verb agreement altogether ("1 game have").
+
+"Leave network" while signed out clears the local cache only; its status line
+now says exactly that and tells the user to sign in and leave again to remove
+the published profile (`leaveNetworkMessage`). It used to claim "You left the
+rival network". A sync attempt without an own username opens the profile card
+for editing and focuses the username input (`focusProfileUsername`); the old
+message pointed at a Settings field that no longer exists.
+
+## Dialogs live above the shared site chrome (fixed 2026-08-23)
+
+The site's stacking ladder, and where this app sits on it:
+
+| z-index | what | where |
+|---|---|---|
+| 9000 | back-to-top button | `assets/css/back-to-top.css` |
+| 10001 | fixed `#header` | `assets/css/main.css` |
+| 10002-10004 | skip link, slide-out `#menu`, sign-in / sign-out / delete-account dialogs | `main.css`, `firebase-auth.css` |
+| **10010** | **every `.modal` in this app** | `css/styles.css` |
+| **10020** | **`.share-toast`** | `css/styles.css` |
+| 10100 | offline banner | `assets/css/sync-status.css` |
+
+App styles must not restyle shared chrome, so the app layer rises rather than
+the header dropping; 10010 is the number fpl-planner's player drawer already
+uses for the same reason, which keeps one ladder across the site. The five
+dialogs (`rival-modal`, `delete-rival-modal`, `delete-game-modal`,
+`clear-games-modal`, `wa-modal`) all hang off `.modal`, and both `.modal` and
+`#header` are children of `<body>` with no stacking context in between, so the
+comparison is direct.
+
+Until 2026-08-23 `.modal` was `z-index: 100` (from the app's first commit,
+`0bf855c`). The header strip therefore stayed lit above the backdrop and
+`document.elementFromPoint(5, 5)` returned the site `logo`: a click at the top
+of the screen NAVIGATED AWAY from the app with the dialog still open. No data
+was lost, which is why it survived so long; the 2026-08-22 audit saw a
+"backdrop click closes" probe fail up there and mis-attributed it to the probe.
+
+The `.share-toast` correction shipped with it: the base rule said 9999 and a
+later rule added in the 2026-08-22 pass re-declared it as 2000, silently
+LOWERING the toast under the header. It went unnoticed because the toast sits
+at the bottom of the viewport. There is now one declaration (10020, on the base
+rule) and the later block carries only the `pointer-events: auto` that
+actionable toasts need; do not re-declare the z-index there.
+
+### A route change closes open dialogs (fixed 2026-08-23)
+
+Raising the dialog layer exposed a second, older defect. `applyUrlHash` is the
+single route entry point (init and the `hashchange` listener both call it), and
+it re-rendered the view UNDER whatever dialog was open. Reach it with browser
+Back/Forward, a hand-edited URL, or a restored tab: the rival editor would sit
+over a different rival's page still holding the FIRST rival's name, colour and
+icon, and Save would write to the rival the user was no longer looking at.
+
+Invisible before the stacking fix, because a dialog at z-index 100 did not
+block the page beneath it - you could simply click past it. It also silently
+broke the audit's own network probe, whose delete sequence had been passing
+only because a stale dialog let clicks through to the page.
+
+`applyUrlHash` now calls `closeAllModals()` first, which routes each open
+dialog out through its OWN closer (`modalCloser(id)`), not bare `closeModal`,
+so editing state, the WhatsApp draft and any pending delete are cleared too.
+Add a dialog and `tests/stacking.test.js` fails until `modalCloser` has a
+branch for it.
+
+Two layers of regression cover this:
+
+- `e2e/quality.mjs` pins the behaviour by hit-testing, not by screenshot: for
+  each of the five dialog types it asserts `modalZ > headerZ`, that
+  `elementFromPoint` at the header strip AND at the logo's own centre lands
+  inside the modal, that no `#header` descendant is reachable, and that the
+  panel wins over its own backdrop, at 1280 and at 390. A real coordinate
+  click over the logo must leave `location` unchanged. Computed z-index alone
+  would not catch an ancestor stacking context swallowing the raise, which is
+  the failure mode worth guarding.
+- `tests/stacking.test.js` is the cheap half, so a regression also fails in
+  `npm test` on every PR rather than only in the slower browser job. It parses
+  the SHIPPED stylesheets (app, `main.css`, `sync-status.css`) instead of a
+  hardcoded table, so raising `#header` in the shared chrome fails here too;
+  it asserts `.share-toast` declares its z-index exactly once; and it pins the
+  `closeAllModals()` call and a closer per dialog id. Every guard here was
+  proven to fail against the pre-fix code before being kept.
+
+## "Path to parity" counts future wins, not rewritten history (fixed 2026-08-23)
+
+The rival page's parity card used to report `ceil((losses - wins) / 2)` and
+call the result "flipped results to reach parity". The arithmetic answers a
+real question - how many PAST losses would have to be rewritten as wins for
+the record to even out - but that is not a thing a player can do, and nobody
+reads it that way. At 26W/128L/1T it said **"Need 51 flipped results"** when
+the honest answer is **"win your next 102"**.
+
+The halving is the whole bug: rewriting a past loss moves the gap by TWO (one
+off the losses, one onto the wins), while a future win moves it by ONE. So the
+old figure was exactly half the distance a player actually faces.
+
+`parityOutlook(record)` in js/stats.js is now the single source for this, and
+it is total rather than only defined when behind:
+
+| Record | Card |
+|---|---|
+| 26W · 128L · 1T | Path to parity - "Need 102 more wins to even the record" |
+| 9W · 10L | Path to parity - "Need 1 more win to even the record" |
+| 64W · 64L · 3T | Record balance - "The record is even" |
+| 0W · 0L | Record balance - "No decided games yet" |
+| 12W · 5L · 2T | Record balance - "Ahead by 7 wins" |
+
+Notes that matter:
+
+- **Ties never move the distance.** A tie is neither a win nor a loss, so it
+  cannot close the gap; it is still printed in the record line so the sub-text
+  adds up to the games played. `4W/9L` needs 3 more wins whether there are 0
+  ties or 100.
+- **Never a negative or fractional ask.** `winsNeeded` is `max(0, losses -
+  wins)` over floored, non-negative counts, and the tests sweep every
+  0-20 x 0-20 record asserting `wins + winsNeeded === max(wins, losses)`.
+- **The title changes with the state.** "Path to parity" only describes the
+  behind case; even and ahead render under "Record balance". A single title
+  would have to lie in two states out of three.
+- **This is W/L parity, not a 50% win rate.** They differ once ties exist: at
+  26W/128L/1T, 102 more wins gives 128W/128L/1T (even record, 49.8% overall),
+  and 103 gives exactly 50.0%. The card is about the record, and says so.
+
+The figure appeared in exactly one place; there is no second copy to keep in
+step. `tests/stats.test.js` covers the five reported cases plus junk input,
+and `e2e/quality.mjs` pins the rendered card - text, tone class and that it
+fits its column without clipping - at 1280 and 390 for behind, even and ahead.
+Both were proven to fail against the old halved figure before being kept.
+
+## Deliberate behaviour, not open defects
+
+Collected so a future audit does not re-file them. Each was verified, judged
+and kept as-is:
+
+- **Duplicate `(rival, date)` rows are never auto-pruned.** See the paste
+  section above for the measured split (two games, one day). The app does not
+  silently delete rows a user can see and delete themselves; the same rule is
+  why History still lists orphaned games.
+- **A stale rival id in the saved matrix selection is left alone.**
+  `confirmDeleteRival` prunes the deleted id from `state.matrixSelection`, but
+  only on the device that did the delete: the rival list and the selection sync
+  under separate keys, so another device can boot with a selection naming a
+  rival that is gone. `matrixRivals()` filters the selection THROUGH
+  `state.rivals` rather than trusting it, so the stale id is inert. Pruning it
+  on load would let one device's delete quietly rewrite another's saved view.
+  Pinned in `e2e/quality.mjs`.
+- **Orphaned games (rival deleted elsewhere) stay in History.** They are
+  excluded from every aggregate by `eligibleH2HGames` and shown in History
+  with their delete button, so a stranded row is visible and removable rather
+  than invisible. Auto-pruning would let one device's delete destroy another
+  device's data under per-key last-writer-wins sync.
+- **Rival deletion has Undo, not a recycle bin.** `confirmDeleteRival` keeps an
+  in-memory `state.lastDeletedRival` snapshot (rival, its games, its index in
+  the list); the toast offers Undo for 8s and `undoDeleteRival` splices the
+  rival back at its original index, re-appends the games and re-links the
+  network pair. The snapshot is memory-only, so it does not survive a reload.
+  A persistent trash would be a second storage key to sync, reconcile and
+  garbage-collect for an action that already asks for confirmation and shows
+  the rival's name and game count before it happens.
+- **The shared auth modal stays light-themed.** `assets/css/firebase-auth.css`
+  pins `color-scheme: light` for a Chrome-autofill reason; theme it
+  accent-only, scoped, and never darken it.
+
+## Audit recommendations deliberately not taken (2026-08-22)
+
+- Rival-vs-rival predictions: the matrix already compares rivals on shared
+  days and the predictions card ranks everyone on the day's puzzle; a third
+  surface would add density, not information.
+- Notifications or any "your rival just posted" push: no backend for it, and
+  the drama line already says "Ari already posted today, your move".
+- Forbidding near-duplicate rival names: two real friends can share a name;
+  the modal warns ("You already have a rival named Ari") and the icon/colour
+  tell them apart.
+- Blocking future or far-past paste dates: both are legitimate (logging a
+  missed week, fixing a wrong year); the hint makes the date unmissable
+  instead.
+- Export carrying the MapTap username/profile: the backup is the game data;
+  re-verifying on a new device is one click and keeps the profile snapshot
+  honest.
+
 ## What the unit tests reach, and what they still cannot
 
 `tests/stats.test.js` and `tests/network.test.js` `require()` the two dual-
@@ -234,16 +605,64 @@ but since 2026-08-15 it ends with a `window._testExports` block (rising-shows
 `tests/app-helpers.test.js` loads app.js with `node:vm` into a sandbox
 (document stuck at `readyState: 'loading'` so `init()` never runs, a
 never-settling `fetch`, Map-backed localStorage seeded per context so
-`rivalSummary` sees a known game log; `document.baseURI` must exist because
-`FIREBASE_CONFIG_URL` is computed at parse time). vm-realm objects fail
+`rivalSummary` and `streakDrama` see a known game log; `document.baseURI`
+must exist because `FIREBASE_CONFIG_URL` is computed at parse time, and
+`window.MapTapWhatsApp` must be provided like the other two modules). vm-realm objects fail
 `assert.deepEqual` from `node:assert/strict` on prototype identity, so the
 harness JSON-projects them (`plain()`) before comparing.
 
-Still outside unit-test reach, covered only by browser probes and the
-`.features/` human plan: the paste panel DOM flow around `saveDay`,
-`locationStats` / `carryChoke`, the predictions card assembly, the WhatsApp
-importer (including `dayBucketDate`'s year compensation), export/import, the
-MapTap sync merge, the network Firestore calls, and every render path.
+Still outside unit-test reach: the paste panel DOM flow around `saveDay`,
+`locationStats` / `carryChoke`, the predictions card assembly, the MapTap sync
+merge, the network Firestore calls, and every render path. Since 2026-08-22
+the WhatsApp parser (`js/whatsapp.js`), the backup validator and the date
+helpers are pure and unit-tested, and `e2e/quality.mjs` covers the rendered
+paths the audit found broken (seeded axe at 1280 and 390, keyboard
+reachability, modal focus, delete/Undo, paste-date reset, refused imports,
+WhatsApp formats, overflow at 390/1100, and since 2026-08-23 the dialog
+stacking block); the `.features/` plans hold the rest.
+
+Two gaps the 2026-08-23 pass closed, both in `e2e/quality.mjs`:
+
+- **Every breakpoint, not just the ends.** The overflow sweep runs six views at
+  390, 480, 768, 1024, 1159, 1160 and 1280, so the 1159/1160 pair that brackets
+  the continent band's grid switch is checked from both sides.
+- **A positive-UTC RENDERED page.** A second page runs under CDP's
+  `Emulation.setTimezoneOverride` at `Pacific/Auckland` (UTC+12) and asserts
+  the day tabs start at Today, the summary counts today's game, and the
+  heatmap ends on the browser's own local day. Use the CDP override, NOT the
+  `TZ` env var: snap-confined Chromium ignores `TZ`, so the audit's Berlin
+  probe silently ran in the host zone and only its own precondition check
+  noticed. The probe asserts the zone took effect before trusting anything
+  else. The helpers themselves stay pinned by the four-zone child-process test
+  in `tests/stats.test.js`, which is date- and host-independent.
+
+`e2e/quality.mjs` is 120 checks and is PINNED in `tests/browser/run.mjs`
+(`EXPECTED_CHECKS`), the only app-owned suite that is. Two reasons it needs the
+pin: a suite that returns early "passes" everything it did run, and since
+2026-08-23 an axe scan that exceeds the driver's 45s send timeout records its
+own FAIL instead of unwinding to the outer catch. Containing the throw keeps
+one slow scan from dropping the other 50-odd checks (it turned a run into
+19-of-71 on a loaded machine), but it also means a shrunken run would look
+green without the pin. Change the number in the same commit as the checks.
+
+Two separate causes were behind the aborts this suite kept hitting, and only
+one of them was environmental:
+
+- **Contention.** Several Chromium instances from other checkouts on the same
+  box slow every CDP round trip. Do not raise the shared 45s timeout in
+  `tests/browser/cdp.mjs` to chase it: that value bounds every suite in the
+  repo and a real hang should still fail. Two runs of `tests/browser/run.mjs`
+  at once also share CDP 9222 and poison each other; wait one out.
+- **`goto()` on a fragment-only URL, which was the real one.** `Page.navigate`
+  to a URL differing only in the hash is a SAME-DOCUMENT navigation, so
+  `Page.loadEventFired` never arrives and `goto` waits out its full 20s guard.
+  At ~16 view changes that is over five minutes of dead wait, and a session
+  kept alive that long starts timing out its own `Runtime.evaluate` calls -
+  which is why the aborts moved around and looked random. The suite now uses a
+  local `hashTo()` that assigns `location.hash` in-page. Faster, and it drives
+  the REAL `hashchange` route rather than a synthetic navigation, so it also
+  exercises the dialog-closing fix above. Reserve `goto()` for genuine
+  cross-document loads (the seed page, the first app load).
 
 **One sanitiser guards every entry path (fixed 2026-08-22).** `importData`
 used to check only `Array.isArray(parsed.rivals)` / `Array.isArray(parsed.games)`,
@@ -292,10 +711,11 @@ Where a defect lives in app.js but is *visible through* a pure function's call
 contract, the test file states the contract in a comment and stubs the app.js
 side faithfully rather than conveniently (see the classifier stub above).
 Tests asserting the correct behavior of a still-shipped defect carry
-`{ todo: 'KNOWN DEFECT: <summary>' }`; as of 2026-08-15 the maptap suites
-carry ZERO todos - all three (null-coordinate Africa bucket, two
-`'__proto__'` player-key cases) are fixed and their tests flipped to plain
-regressions.
+`{ todo: 'KNOWN DEFECT: <summary>' }`; as of 2026-08-23 the maptap suites
+carry ZERO todos and ZERO skips. The three that once existed (null-coordinate
+Africa bucket, two `'__proto__'` player-key cases) were fixed on 2026-08-15
+and their tests flipped to plain regressions, and nothing has been added
+since: there is no shipped defect this suite is asserting around.
 
 The `'__proto__'` fix pattern: every accumulator keyed by an id that can come
 verbatim from untrusted data (rival ids via backup import, dates via a remote
@@ -319,6 +739,12 @@ seed page under the gitignored `.screenshots/` that writes
 `localStorage` and then `location.replace()`s to
 `/apps/maptap-rivals/index.html#dashboard` (same origin, so the seed sticks),
 and point chromium at the seed page.
+
+Second trap (cost an hour on 2026-08-22): a long-lived headless profile
+serves a CACHED `index.html` / `app.js` across navigations, so a probe can run
+against markup from before your edit (elements "missing", handlers absent).
+Send `Network.setCacheDisabled` on every CDP session, or use a fresh
+`--user-data-dir` per run.
 
 Probe trap: the paste panel's inputs (`#paste-mine-input`, `#paste-date`) are
 static markup, so polling for them says nothing about whether `init()` has run

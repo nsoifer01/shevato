@@ -241,6 +241,76 @@ export async function run({ base, cdpPort }) {
     } finally { if (s) await closePage(cdpPort, s); }
   }
 
+  // State scans 3 + 4: maptap-rivals with a SEEDED game log (rivals, synced
+  // games with geo data, a rival-only day, a long name) at 1280 with the
+  // predictions card rendered and the paste panel open, then the matrix at
+  // 390. The empty first-run root scan above never reaches the leaderboard
+  // headers, the prediction chips or the matrix cells, which is where the
+  // 2026-08-22 audit found two critical and several serious violations. Each
+  // scan waits for RENDERED content (rival cards + prediction rows) before
+  // injecting axe, never for static markup.
+  {
+    const daily = 'const cities = [' + [[-12.05, -77.04], [30.04, 31.24], [28.61, 77.21], [21.31, -157.86], [64.15, -21.94]]
+      .map(([lat, lng]) => `{ name: "c", lat: ${lat}, lng: ${lng} }`).join(',') + '];';
+    const geo = JSON.stringify([{ lat: 48.8566, lng: 2.3522 }, { lat: 52.52, lng: 13.405 }, { lat: 35.6762, lng: 139.6503 }, { lat: 40.7128, lng: -74.006 }, { lat: -33.9249, lng: 18.4241 }]);
+    const seedExpr = `(()=>{ for (const k of Object.keys(localStorage)) localStorage.removeItem(k);
+      const d = (n) => { const t = new Date(); t.setDate(t.getDate() - n); return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); };
+      const geo = ${geo};
+      const games = [];
+      for (let i = 12; i >= 1; i--) games.push({ id: 'a' + i, rivalId: 'r-ari', date: d(i), myScores: [70, 65, 80, 75, 60], theirScores: i % 2 ? [60,60,60,60,60] : [90,90,90,90,90], myScore: 700, theirScore: i % 2 ? 600 : 900, cities: geo, note: 'synced from MapTap', createdAt: i });
+      games.push({ id: 'b1', rivalId: 'r-bex', date: d(2), theirScores: [40,40,40,40,40], theirScore: 400, cities: geo, note: 'synced from MapTap', createdAt: 1 });
+      games.push({ id: 'c1', rivalId: 'r-long', date: d(3), myScores: [70, 65, 80, 75, 60], theirScores: [70,70,70,70,70], myScore: 700, theirScore: 700, note: '', createdAt: 1 });
+      localStorage.setItem('maptapRivalsMe', JSON.stringify('Nikita'));
+      localStorage.setItem('maptapRivalsMyMapTap', JSON.stringify('nikita_mt'));
+      localStorage.setItem('maptapRivalsMyProfile', JSON.stringify({ nickname: 'Nikita', totalGames: 10, avgScore: 700, bestScore: 900, worstScore: 400, verifiedAt: new Date().toISOString() }));
+      localStorage.setItem('maptapRivalsRivals', JSON.stringify([
+        { id: 'r-ari', name: 'Ari', color: '#f59e0b', icon: '🦊', maptapUsername: 'ari_mt', createdAt: 1 },
+        { id: 'r-bex', name: 'Bex', color: '#3b82f6', icon: '🐧', maptapUsername: 'bexplays', createdAt: 1 },
+        { id: 'r-long', name: 'Bartholomew Montgomery-Fitzgerald III of Westchestershire', color: '#a855f7', icon: '🐲', maptapUsername: '', createdAt: 1 },
+      ]));
+      localStorage.setItem('maptapRivalsGames', JSON.stringify(games)); return 1 })()`;
+    const RENDERED = "document.querySelectorAll('.rival-card').length===3 && document.querySelectorAll('#todays-card .pred-row:not(.pred-row-head)').length>=3";
+    const MAPTAP_HOSTS = /maptap\.gg|cloudfunctions\.net/i;
+    for (const [label, width, mobile, hash, prep] of [
+      ['state maptap-rivals seeded dashboard @1280', 1280, false, '#dashboard', async (s) => {
+        await clickSel(s, '.paste-collapse-summary', { settle: 200 });
+        await clickSel(s, '.pred-label-toggle', { settle: 300 });
+      }],
+      ['state maptap-rivals seeded matrix @390', 390, true, '#matrix', async (s) => {
+        await waitForExpr(s, "document.querySelectorAll('.matrix-cell').length>0");
+      }],
+    ]) {
+      let s = null;
+      try {
+        s = await newPage(cdpPort);
+        await setViewport(s, width, 900, mobile);
+        await interceptNetwork(s, (url) => {
+          if (FIREBASE_HOSTS.test(url)) return 'fail';
+          if (/this_day_in_history/.test(url)) return { status: 200, contentType: 'application/javascript', body: daily };
+          if (MAPTAP_HOSTS.test(url)) return 'fail';
+          return null;
+        });
+        await goto(s, `${base}/apps/maptap-rivals/`, { settle: 800 });
+        await evaluate(s, seedExpr);
+        await goto(s, `${base}/apps/maptap-rivals/index.html#dashboard`, { settle: 1500 });
+        const rendered = await waitForExpr(s, RENDERED);
+        if (!rendered) throw new Error('seeded dashboard never rendered rival cards + prediction rows');
+        if (hash !== '#dashboard') await goto(s, `${base}/apps/maptap-rivals/index.html${hash}`, { settle: 1200 });
+        await prep(s);
+        const ok = await injectAxe(s, axeSource);
+        const violations = ok ? await axeScan(s) : null;
+        scans.push({
+          label, siteChrome: false,
+          violations: Array.isArray(violations) ? violations : null,
+          err: Array.isArray(violations) ? '' : JSON.stringify(violations),
+        });
+        await evaluate(s, CLEAR_STORAGE);
+      } catch (e) {
+        scans.push({ label, siteChrome: false, violations: null, err: String(e && e.message).slice(0, 120) });
+      } finally { if (s) await closePage(cdpPort, s); }
+    }
+  }
+
   // Shared-chrome dedupe: a serious rule+selector pair present on most of the
   // chrome-bearing site pages lives in the injected header/footer, not the
   // page. It is listed in full once (first affected page) and referenced
@@ -585,6 +655,142 @@ export async function run({ base, cdpPort }) {
       await evaluate(s, CLEAR_STORAGE);
     } finally { await closePage(cdpPort, s); }
   } catch (e) { t('kbd gym-tracker: block ran', false, String(e && e.message).slice(0, 140)); }
+
+  // B7: mobile menu as a modal overlay at 390x844 (assets/js/main.js
+  // initializeMenu: focus moves to the first link on open, Tab/Shift+Tab
+  // wrap inside #menu, Escape hands focus back to the toggle; main.css locks
+  // body scroll while is-menu-visible is set). The Tab wrap is driven with
+  // real keys; only the starting element of each wrap is placed with
+  // focus(), because the trap is a keydown handler and a synthetic focus
+  // change alone proves nothing.
+  try {
+    const s = await newPage(cdpPort);
+    try {
+      await setViewport(s, 390, 844, true);
+      await goto(s, `${base}/home.html`, { settle: 2400 });
+      await clickSel(s, 'a[href="#menu"]', { settle: 900 });
+      const opened = await evaluate(s, `(()=>({
+        vis: document.body.classList.contains('is-menu-visible'),
+        focusInside: document.getElementById('menu').contains(document.activeElement),
+        active: (document.activeElement||{}).textContent || (document.activeElement||{}).tagName,
+        overflow: getComputedStyle(document.body).overflow,
+      }))()`);
+      t('kbd mobile menu: focus moves inside #menu on open', opened.vis && opened.focusInside,
+        JSON.stringify(opened));
+      t('kbd mobile menu: body scroll is locked while the menu is open', opened.overflow === 'hidden',
+        `body overflow=${opened.overflow}`);
+
+      const focusLast = `(()=>{ const f=[...document.querySelectorAll('#menu a[href], #menu button:not([disabled])')];
+        f[f.length-1].focus(); return f.length })()`;
+      const focusFirst = `(()=>{ const f=[...document.querySelectorAll('#menu a[href], #menu button:not([disabled])')];
+        f[0].focus(); return f.length })()`;
+      const whichItem = `(()=>{ const f=[...document.querySelectorAll('#menu a[href], #menu button:not([disabled])')];
+        return { idx: f.indexOf(document.activeElement), n: f.length } })()`;
+      const n = await evaluate(s, focusLast);
+      await TAB(s);
+      const afterTab = await evaluate(s, whichItem);
+      t('kbd mobile menu: Tab from the last focusable wraps to the first', n > 1 && afterTab.idx === 0,
+        `focusables=${n}, landed on index ${afterTab.idx}`);
+      await evaluate(s, focusFirst);
+      await TAB(s, true);
+      const afterShiftTab = await evaluate(s, whichItem);
+      t('kbd mobile menu: Shift+Tab from the first focusable wraps to the last',
+        afterShiftTab.idx === afterShiftTab.n - 1 && afterShiftTab.n === n,
+        `focusables=${afterShiftTab.n}, landed on index ${afterShiftTab.idx}`);
+
+      await ESC(s);
+      await sleep(700);
+      const closed = await evaluate(s, `(()=>({
+        vis: document.body.classList.contains('is-menu-visible'),
+        focusOnToggle: document.activeElement === document.querySelector('[data-js="menu-toggle"]'),
+        active: (document.activeElement||{}).textContent || (document.activeElement||{}).tagName,
+        overflow: getComputedStyle(document.body).overflow,
+      }))()`);
+      t('kbd mobile menu: Escape returns focus to the toggle', !closed.vis && closed.focusOnToggle,
+        JSON.stringify(closed));
+      t('kbd mobile menu: body scroll unlocks after close', !closed.vis && closed.overflow !== 'hidden',
+        `body overflow=${closed.overflow}`);
+    } finally { await closePage(cdpPort, s); }
+  } catch (e) { t('kbd mobile menu focus: block ran', false, String(e && e.message).slice(0, 140)); }
+
+  // B8: the header Sign In button is a real touch target at both viewports
+  // (main.css pins #header .auth__button to min-height 44px, the WCAG 2.5.8
+  // AAA / Material minimum; 24x24 is the AA floor). Same precondition as
+  // B4: the button only renders once Firebase auth reports signed-out.
+  for (const [w, h, mobile] of [[1280, 900, false], [390, 844, true]]) {
+    const name = `touch target: header Sign In button is at least 44px tall and 24px wide at ${w}`;
+    try {
+      const s = await newPage(cdpPort);
+      try {
+        await setViewport(s, w, h, mobile);
+        await goto(s, `${base}/home.html`, { settle: 2400 });
+        const btnUp = await waitForExpr(s, `(()=>{const b=document.getElementById('auth-signin-btn');
+          return !!b && b.getBoundingClientRect().height>0})()`, { timeout: 12000 });
+        if (!btnUp) {
+          skip(name, 'precondition missing: #auth-signin-btn never rendered (Firebase auth did not initialize in this environment)');
+        } else {
+          const box = await evaluate(s, `(()=>{ const r=document.getElementById('auth-signin-btn').getBoundingClientRect();
+            return { w: Math.round(r.width), h: Math.round(r.height) } })()`);
+          t(name, box.h >= 44 && box.w >= 24, `${box.w}x${box.h}`);
+        }
+      } finally { await closePage(cdpPort, s); }
+    } catch (e) { t(name, false, String(e && e.message).slice(0, 140)); }
+  }
+
+  // B9: landmarks and skip link on every site page and app root. Exactly one
+  // main landmark (a <main> or [role=main]) carrying id="main-content", the
+  // FIRST Tab from the top of the document lands on a.skip-link whose href
+  // is #main-content (real key, so the skip link is proven first in focus
+  // order, not just first in source), and the shared header carries one nav
+  // labelled "Main navigation" and one labelled "Menu toggle". moadon-alef
+  // is a standalone landing without the shared header, so only the
+  // landmark/skip-link half applies to it. gym-tracker opens its onboarding
+  // dialog on first visit and a modal dialog legitimately owns focus, so it
+  // is visited with the dialog already dismissed (same seed as the state
+  // scan above).
+  const LANDMARK_PAGES = [
+    ...SITE_PAGES.map((p) => ({ label: `site ${p}`, url: `${base}/${p}.html`, header: p !== 'moadon-alef', settle: 2400 })),
+    ...APP_ROOTS.map((a) => ({ label: `app ${a}`, url: `${base}/apps/${a}/`, header: true, settle: a === 'rising-shows' ? 4000 : 2500 })),
+  ];
+  for (const pg of LANDMARK_PAGES) {
+    let s = null;
+    try {
+      s = await newPage(cdpPort);
+      await setViewport(s, 1280, 900);
+      if (pg.label === 'app arena') await interceptNetwork(s, (url) => (FIREBASE_HOSTS.test(url) ? 'fail' : null));
+      if (pg.label === 'app gym-tracker') {
+        await goto(s, pg.url, { settle: 1000 });
+        await evaluate(s, `(()=>{ localStorage.setItem('gymTrackerOnboardingSeen','true'); return 1 })()`);
+      }
+      await goto(s, pg.url, { settle: pg.settle });
+      if (pg.label === 'app gym-tracker') await evaluate(s, `(()=>{ localStorage.removeItem('gymTrackerOnboardingSeen'); return 1 })()`);
+      if (pg.header) await waitForExpr(s, `!!document.querySelector('#header nav')`, { timeout: 8000 });
+      await evaluate(s, `(()=>{ if(document.activeElement) document.activeElement.blur(); return 1 })()`);
+      await TAB(s);
+      const st = await evaluate(s, `(()=>{
+        const mains=[...document.querySelectorAll('main, [role="main"]')];
+        const a=document.activeElement;
+        const navs=[...document.querySelectorAll('#header nav')].map(n=>n.getAttribute('aria-label'));
+        return {
+          mains: mains.length, mainId: mains.length===1 ? mains[0].id : mains.map(m=>m.id).join('|'),
+          firstFocus: a ? (a.tagName.toLowerCase()+(a.className?'.'+String(a.className).split(' ')[0]:'')+' '+(a.getAttribute('href')||'')) : 'none',
+          skipLinkFirst: !!a && a.matches('a.skip-link') && a.getAttribute('href')==='#main-content',
+          navMain: navs.filter(l=>l==='Main navigation').length,
+          navToggle: navs.filter(l=>l==='Menu toggle').length,
+          navs,
+        } })()`);
+      t(`landmarks ${pg.label}: one main#main-content and the skip link is the first Tab stop`,
+        st.mains === 1 && st.mainId === 'main-content' && st.skipLinkFirst,
+        `mains=${st.mains} id=${st.mainId} firstFocus=${st.firstFocus}`);
+      if (pg.header) {
+        t(`landmarks ${pg.label}: header has one "Main navigation" nav and one "Menu toggle" nav`,
+          st.navMain === 1 && st.navToggle === 1, `header nav labels: ${JSON.stringify(st.navs)}`);
+      }
+    } catch (e) {
+      t(`landmarks ${pg.label}: one main#main-content and the skip link is the first Tab stop`, false, String(e && e.message).slice(0, 140));
+      if (pg.header) t(`landmarks ${pg.label}: header has one "Main navigation" nav and one "Menu toggle" nav`, false, 'page block threw');
+    } finally { if (s) await closePage(cdpPort, s); }
+  }
 
   return R;
 }

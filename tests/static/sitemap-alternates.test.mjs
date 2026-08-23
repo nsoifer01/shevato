@@ -17,8 +17,17 @@ const ALTS = [...XML.matchAll(/<xhtml:link\b([^>]*)\/?>/g)].map((m) => {
 });
 
 test('sitemap-pages.xml declares hreflang alternates (moadon-alef is trilingual)', () => {
-  assert.ok(ALTS.length >= 4, `found ${ALTS.length} xhtml:link alternates`);
-  assert.ok(ALTS.some((a) => a.hreflang === 'x-default'), 'an x-default alternate is required');
+  // The alternates were REMOVED on master (2026-08-23): a set whose four
+  // entries all point at the same URL tells Google nothing, which is what
+  // the audit found. So their presence is optional; the rule this file
+  // exists to guard is that IF any are declared they must be canonical,
+  // which the assertions below enforce and which holds vacuously at zero.
+  assert.ok(ALTS.length === 0 || ALTS.length >= 4,
+    `expected no alternates or a full set, found ${ALTS.length}`);
+  if (ALTS.length) {
+    assert.ok(ALTS.some((a) => a.hreflang === 'x-default'),
+      'a declared alternate set must carry x-default');
+  }
 });
 
 test('no sitemap alternate targets a .html URL', () => {

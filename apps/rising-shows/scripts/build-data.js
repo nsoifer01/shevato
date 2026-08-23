@@ -28,8 +28,12 @@ const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
 const zlib = require('zlib');
+const crypto = require('crypto');
 
 const { findMatches } = require('./match.js');
+// Provider brand normalization is shared with the static show pages (and the
+// browser app's mainstream list) so no surface can spell a service differently.
+const { normalizeProvider } = require('./providers-lib.js');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const OUT_FILE = path.join(__dirname, '..', 'data.json');
@@ -134,6 +138,12 @@ async function loadSeries(ratings) {
 async function loadEpisodes(series, ratings, episodeTitles, episodeYears, episodeRuntimes) {
   // Map<seriesId, Map<seasonNumber, Array<{episode, tconst, rating, votes, name}>>>
   const result = new Map();
+  // Map<seriesId, Map<seasonNumber, highest episode number IMDb LISTS>> - built
+  // from the same pass, counting rated and unrated episodes alike. It is the
+  // only evidence in the free TSVs that a season has episodes after the last
+  // one we can score, which is how match.js's tagInProgress spots a season
+  // that is still airing. Roughly 376k entries for the full dump.
+  const listedMaxEp = new Map();
   const rl = openTsv('title.episode.tsv.gz');
   let header = true;
   for await (const line of rl) {
@@ -145,11 +155,20 @@ async function loadEpisodes(series, ratings, episodeTitles, episodeYears, episod
     const seasonRaw = cols[2];
     const episodeRaw = cols[3];
     if (seasonRaw === '\\N' || episodeRaw === '\\N') continue;
-    const r = ratings.get(tconst);
-    if (!r) continue;
     const season = parseInt(seasonRaw, 10);
     const episode = parseInt(episodeRaw, 10);
     if (!Number.isFinite(season) || !Number.isFinite(episode)) continue;
+
+    let listedSeasons = listedMaxEp.get(parentTconst);
+    if (!listedSeasons) {
+      listedSeasons = new Map();
+      listedMaxEp.set(parentTconst, listedSeasons);
+    }
+    const listedSoFar = listedSeasons.get(season);
+    if (listedSoFar === undefined || episode > listedSoFar) listedSeasons.set(season, episode);
+
+    const r = ratings.get(tconst);
+    if (!r) continue;
     let bySeason = result.get(parentTconst);
     if (!bySeason) {
       bySeason = new Map();
@@ -171,28 +190,7 @@ async function loadEpisodes(series, ratings, episodeTitles, episodeYears, episod
     if (runtime) ep.runtime = runtime;
     arr.push(ep);
   }
-  return result;
-}
-
-// TMDB returns each plan as a separate provider ("Netflix" / "Netflix
-// Standard with Ads", "Peacock Premium" / "Peacock Premium Plus", channel
-// variants like "HBO Max Amazon Channel"). Users care about the brand, so
-// collapse to the parent. Anything we don't recognize passes through.
-function normalizeProvider(name) {
-  if (/^Netflix/i.test(name)) return 'Netflix';
-  if (/^Amazon Prime Video/i.test(name)) return 'Amazon Prime Video';
-  if (/^HBO Max/i.test(name)) return 'HBO Max';
-  if (/^Max\b/i.test(name)) return 'HBO Max';
-  if (/^Peacock/i.test(name)) return 'Peacock';
-  if (/^Hulu/i.test(name)) return 'Hulu';
-  if (/^Disney( Plus|\+)/i.test(name)) return 'Disney+';
-  if (/^Apple TV/i.test(name)) return 'Apple TV+';
-  if (/^Paramount( Plus|\+)/i.test(name)) return 'Paramount+';
-  if (/^Crunchyroll/i.test(name)) return 'Crunchyroll';
-  if (/^Starz/i.test(name)) return 'Starz';
-  if (/^Showtime/i.test(name)) return 'Showtime';
-  if (/^AMC\+/i.test(name) || /^AMC Plus/i.test(name)) return 'AMC+';
-  return name;
+  return { bySeries: result, listedMaxEp };
 }
 
 function loadTmdbCache() {
@@ -232,13 +230,20 @@ function loadSeasonOverviews() {
   );
 
   process.stdout.write('Loading episodes... ');
-  const episodes = await loadEpisodes(series, ratings, episodeTitles, episodeYears, episodeRuntimes);
+  const { bySeries: episodes, listedMaxEp } = await loadEpisodes(
+    series, ratings, episodeTitles, episodeYears, episodeRuntimes,
+  );
   console.log(`${episodes.size.toLocaleString()} series have rated episodes`);
 
   process.stdout.write('Detecting shape matches... ');
+  const builtAt = new Date().toISOString();
   const matches = findMatches(series, episodes, {
     minEpisodes: MIN_EPISODES,
     minVotes: MIN_VOTES,
+    // Both feed tagInProgress, which decides whether a season's last rated
+    // episode is really its finale before anything is classified.
+    listedMaxEp,
+    buildYear: new Date(builtAt).getUTCFullYear(),
   });
   const shapedCount = matches.reduce((n, m) => n + (m.shapes.length > 0 ? 1 : 0), 0);
   console.log(`${matches.length.toLocaleString()} seasons (${shapedCount.toLocaleString()} with at least one shape)`);
@@ -305,23 +310,31 @@ function loadSeasonOverviews() {
     console.log('(No TMDB cache present — run `npm run enrich:rising-shows` to add posters/overviews.)');
   }
 
-  // Per-season overviews from the parallel side-file. Runs as its own
-  // pass so it works whether or not the main TMDB cache exists, and so
-  // the side-file takes precedence over `seasonOverviews` baked into
-  // tmdb-cache.json (the side-file is generally fresher when both exist).
+  // Per-season overviews from the parallel side-file. Runs as its own pass so
+  // it works whether or not the main TMDB cache exists.
+  //
+  // GAP FILLER ONLY. data/season-overviews.json is a one-off snapshot written
+  // by the orphaned fetch-season-overviews.js (in no workflow since 2026-07-04)
+  // while enrich-tmdb.js refreshes seasonOverviews inside tmdb-cache.json every
+  // day. The side-file used to be applied last, on the theory that it was the
+  // fresher of the two, so a July snapshot overwrote today's text for ~12k
+  // seasons and its ''/null entries counted for nothing. Now the cache wins and
+  // the side-file only supplies seasons the cache has no text for - and never
+  // an empty string.
   const sideOverviews = loadSeasonOverviews();
   if (sideOverviews) {
-    let withSeasonOverview = 0;
+    let filled = 0;
+    let skipped = 0;
     for (const m of matches) {
       const ovMap = sideOverviews[m.seriesId];
       if (!ovMap) continue;
       const so = ovMap[String(m.season)];
-      if (typeof so === 'string' && so.length > 0) {
-        m.seasonOverview = so;
-        withSeasonOverview++;
-      }
+      if (typeof so !== 'string' || so.length === 0) continue;
+      if (typeof m.seasonOverview === 'string' && m.seasonOverview.length > 0) { skipped++; continue; }
+      m.seasonOverview = so;
+      filled++;
     }
-    console.log(`Attached per-season overview to ${withSeasonOverview.toLocaleString()} matches (from season-overviews.json)`);
+    console.log(`Filled ${filled.toLocaleString()} per-season overview gaps from season-overviews.json (${skipped.toLocaleString()} already covered by the TMDB cache)`);
   }
 
   // Sort by minimum vote count desc — most-watched matches first.
@@ -414,8 +427,13 @@ function loadSeasonOverviews() {
     if (!e.cast && Object.keys(e.seasons).length === 0) delete modalExtras[sid];
   }
 
-  fs.writeFileSync(OUT_FILE, JSON.stringify({
-    builtAt: new Date().toISOString(),
+  // Everything in data.json EXCEPT builtAt and the hash itself. Two builds of
+  // the same IMDb dump produce the same bytes here (Map iteration follows
+  // insertion order, Array#sort is stable), so `contentHash` is identical when
+  // nothing changed and differs as soon as any rating, vote, shape or piece of
+  // enrichment does. The refresh workflow's "unchanged" gates compare it
+  // instead of diffing whole files, which builtAt made impossible.
+  const content = {
     minEpisodes: MIN_EPISODES,
     minVotes: MIN_VOTES,
     count: matches.length,
@@ -424,7 +442,14 @@ function loadSeasonOverviews() {
     languages,
     providers,
     matches,
-  }));
+  };
+  const contentJson = JSON.stringify(content);
+  const contentHash = crypto.createHash('sha256').update(contentJson).digest('hex').slice(0, 16);
+  // Written by hand rather than through a second JSON.stringify of an 80 MB
+  // object: the header keys go first, then the already-serialized body minus
+  // its opening brace.
+  fs.writeFileSync(OUT_FILE, `{"builtAt":${JSON.stringify(builtAt)},"contentHash":"${contentHash}",${contentJson.slice(1)}`);
+  console.log(`contentHash ${contentHash} (over everything but builtAt)`);
   const EXTRAS_FILE = path.join(DATA_DIR, 'show-modal-extras.json');
   fs.writeFileSync(EXTRAS_FILE, JSON.stringify(modalExtras));
   const seconds = ((Date.now() - t0) / 1000).toFixed(1);

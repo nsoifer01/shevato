@@ -20,8 +20,8 @@
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-GEQGY35JJN"></script>
   <script defer src="/assets/js/analytics.js"></script>
 
-  <link rel="preload" href="https://fonts.googleapis.com/css?family=Raleway:200,300,400,500,600&display=swap" as="style">
-  <link rel="preload" href="assets/css/firebase-auth.css" as="style">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway:300,400,500,600&display=swap">
+  <link rel="stylesheet" href="assets/css/firebase-auth.css">
   <link rel="stylesheet" href="assets/css/main.css" />
   <link rel="stylesheet" href="assets/css/brand-colors.css" />
   <link rel="stylesheet" href="assets/css/site.css" />
@@ -207,12 +207,12 @@
 
         <h2>The Trip Planner assistant</h2>
 
-        <p>The assistant has three modes and you choose which one to use. The default, on a fresh browser, is the copy-and-paste mode, which sends nothing anywhere.</p>
+        <p>The assistant has three modes and you choose which one to use. The mode selected for you on a fresh browser is the free shared assistant, which is the third one below: it sends the trip through a function we host to Google Gemini. Nothing is sent when the panel opens, or while you fill in the request. It is sent when you press Send, and the panel names the mode above that button so you can change it first. Copy and paste, which sends nothing anywhere, is always one click away.</p>
 
         <ol class="process-steps">
           <li>
             <div>
-              <h3>Copy and paste (the default)</h3>
+              <h3>Copy and paste</h3>
               <p>The app builds a block of text and puts it on your clipboard. You take it to whichever AI tool you prefer. No network request is made by us, and whatever happens next is between you and that tool.</p>
             </div>
           </li>
@@ -224,13 +224,13 @@
           </li>
           <li>
             <div>
-              <h3>The site's own key</h3>
+              <h3>The site's own key (the mode selected by default)</h3>
               <p>Requests go to a function we host, which forwards them to Google Gemini using our API key. In this mode the trip contents pass through our server on the way to Google.</p>
             </div>
           </li>
         </ol>
 
-        <p>In the second and third modes, what is sent is a trimmed copy of the current trip: its name, currency, budget, and for each item the type, title, location, dates, times, status, costs and cost notes, the map query, and the free-text <strong>details</strong> field. If you keep confirmation numbers, seat assignments or personal notes in an item's details, they are part of what is sent. Attached documents and your passport setting are not.</p>
+        <p>In the second and third modes, what is sent is a trimmed copy of the current trip: its name, currency, budget, and for each item the type, title, location, dates, times, status, costs and cost notes, the map query, and the free-text <strong>details</strong> field. If you keep confirmation numbers, seat assignments or personal notes in an item's <strong>details</strong>, they are part of what is sent. What is deliberately held back: the confirmation-number field itself, who paid, how a cost is split, the payment tag and the booking deadline, along with attached documents, your packing list, your trip essentials and your passport setting. The copy-and-paste package holds back the same fields.</p>
 
         <h2>Other services that receive data</h2>
 

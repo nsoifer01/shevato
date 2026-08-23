@@ -60,10 +60,12 @@
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#0e1116">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway:300,400,500,600&display=swap">
+  <link rel="stylesheet" href="../../assets/css/firebase-auth.css">
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
   <link rel="stylesheet" href="/assets/css/back-to-top.css">
-  <link rel="stylesheet" href="css/styles.css?v=64">
+  <link rel="stylesheet" href="css/styles.css?v=65">
 
   <!-- Google Analytics. Loaded async + defer so it never blocks first paint;
        all tracking goes through the shared helper in analytics.js, which
@@ -74,10 +76,11 @@
   <script defer src="/assets/js/analytics.js"></script>
 </head>
 <body class="tp-page">
+<a class="skip-link" href="#main-content">Skip to main content</a>
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
   <div data-include="header"></div>
 
-<div class="trip-planner-app">
+<main id="main-content" class="trip-planner-app">
 <div class="tp-wrap">
 
   <header class="tp-head">
@@ -554,6 +557,11 @@
                  alone is the plain ceiling this app has always had, and the
                  "from" box only adds a lower end to it -->
             <div class="input-group budget-range">
+              <!-- which currency the two numbers are in. It is the trip's own
+                   almost always; it differs only while a budget typed before a
+                   currency switch has not been retyped, and then saying so is
+                   the difference between a ceiling and a relabelled number. -->
+              <span class="cost-prefix" id="tripBudgetPrefix" aria-hidden="true">$</span>
               <input type="number" id="inTripBudgetFrom" min="0" step="0.01" inputmode="decimal" placeholder="e.g. 3000" aria-label="Budget from (optional)">
               <span class="ig-sep" aria-hidden="true">to</span>
               <input type="number" id="inTripBudgetTo" min="0" step="0.01" inputmode="decimal" placeholder="e.g. 5000" aria-label="Budget to (optional)">
@@ -905,7 +913,7 @@
     </div>
   </div>
 </aside>
-</div><!-- /.trip-planner-app -->
+</main><!-- /.trip-planner-app -->
 
   <!-- Data-source attribution. Licence conditions, not courtesies: OpenStreetMap
        data is ODbL (it drives place lookup for the route modal, the visa
@@ -948,8 +956,8 @@
     }
   </script>
 
-  <script src="js/trip-logic.js?v=44"></script>
-  <script src="js/app.js?v=70"></script>
+  <script src="js/trip-logic.js?v=46"></script>
+  <script src="js/app.js?v=72"></script>
   <script src="/assets/js/back-to-top.js" defer></script>
 </body>
 </html>

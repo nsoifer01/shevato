@@ -194,16 +194,20 @@ test('non-legacy apps keep element styling off the body class entirely (root-wra
 test('trip-planner keeps its scope class on the root wrapper, not <body>', () => {
   const html = read(join(APPS_DIR, 'trip-planner', 'index.html'));
   assert.match(html, /<body class="tp-page">/);
-  assert.match(html, /<div class="trip-planner-app">/);
+  assert.match(html, /<main id="main-content" class="trip-planner-app">/);
   const css = stripCssComments(read(join(APPS_DIR, 'trip-planner', 'css', 'styles.css')));
   assert.ok(!/body\.trip-planner-app/.test(css), 'styles.css must not scope to body.trip-planner-app');
 });
 
-test('main.css keeps the shared-chrome locks and the single modal stylesheet', () => {
+test('main.css keeps the shared-chrome locks and does not chain stylesheets via @import', () => {
   const css = read(join(repo, 'assets', 'css', 'main.css'));
   assert.ok(css.includes('#header,'), 'header/footer typography lock missing');
   assert.ok(css.includes('.signout-modal, .signout-modal *'), 'sign-out modal typography lock missing');
-  assert.ok(css.includes('@import url(firebase-auth.css)'), 'firebase-auth.css must stay imported from main.css');
+  // firebase-auth.css and the Raleway stylesheet used to be @imported from
+  // here, which serialised them behind main.css on every page. They are now
+  // <link>ed directly by every page that links main.css; that pairing is
+  // pinned by tests/static/stylesheet-chain.test.mjs.
+  assert.ok(!/@import/.test(stripCssComments(css)), 'main.css must not @import (load shared stylesheets via <link>)');
 });
 
 test('shared overlays are immune to page color-scheme and browser autofill', () => {

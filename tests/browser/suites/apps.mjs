@@ -32,6 +32,7 @@
 import {
   newPage, closePage, goto, evaluate, clickText, clickSel, setViewport,
   setValue, sleep, textPresent, cleanErrors, waitForExpr, interceptNetwork,
+  pressKey,
 } from '../cdp.mjs';
 
 // Hosts that reach the production Firebase project. Failed via interception
@@ -473,7 +474,18 @@ export async function run({ base, cdpPort }) {
     if (baseRows === 0) {
       const reason = 'no show data - run `npm run fetch:rising-shows-data`';
       for (const check of ['results render', 'search narrows results', 'shape tab filters',
-        'min-seasons filter applies', 'sort changes result order', 'clicking a show opens its detail']) {
+        'min-seasons filter applies', 'sort changes result order', 'clicking a show opens its detail',
+        // The shape rail only exists once the chips have been rendered from the
+        // data, so these two are data-gated like the rest. They must still be
+        // REPORTED here, or the suite's check-count pin sees two checks vanish
+        // on a dataset-less runner and fails the whole suite.
+        'every shape chip is fully visible when tabbed to at 390px',
+        'the shape rail never makes the page scroll sideways',
+        // Same reason: the badges are computed from the loaded dataset, so
+        // they cannot be asserted on a dataset-less runner, and both checks
+        // still have to be reported for the count pin to hold.
+        'season badges name the highest and lowest-average seasons',
+        'episode badges name the top-rated and most-rated episodes']) {
         skip(`${A}: ${check}`, reason);
       }
       t(`${A}: no JS errors`, cleanErrors(s).length === 0, cleanErrors(s).slice(0, 2).join(' | '));
@@ -515,6 +527,96 @@ export async function run({ base, cdpPort }) {
       const m=[...document.querySelectorAll('#showModal,#detailModal,.modal')].filter(vis)[0];
       return !!m && m.innerText.length > 40})()`);
     t(`${A}: clicking a show opens its detail`, clicked && modalShown);
+
+    // Best / worst / most-rated badges. These are computed from the data, not
+    // authored, so the check is not "a badge exists" but "each badge lands on
+    // the extreme it claims": the season marked best carries the highest
+    // average on screen, the episode marked most rated carries the most votes
+    // in its season. A single show is enough - the rule is shared code.
+    await evaluate(s, `document.querySelectorAll('.modal-close').forEach(b=>b.click())`);
+    await setValue(s, '#finderMinSeasons', '3');
+    await waitForExpr(s, `[...document.querySelectorAll(${JSON.stringify(ROWS_SEL)})]
+      .filter(e=>e.getBoundingClientRect().height>0).length > 0`);
+    await clickSel(s, ROWS_SEL, { settle: 900 });
+    await waitForExpr(s, `document.querySelectorAll('#showModal .show-season').length > 1`, { timeout: 15000 });
+    const seasonBadges = JSON.parse(await evaluate(s, `(()=>{
+      const rows=[...document.querySelectorAll('#showModal .show-season')];
+      const avg=r=>parseFloat((r.querySelector('.ss-avg').textContent.match(/[\\d.]+/)||[0])[0]);
+      const avgs=rows.map(avg);
+      const txt=r=>r.querySelector('.ss-stats').textContent;
+      const best=rows.filter(r=>/best/.test(txt(r)));
+      const worst=rows.filter(r=>/worst/.test(txt(r)));
+      const pop=rows.filter(r=>r.querySelector('.ss-most-rated'));
+      const spread=new Set(avgs).size>1;
+      return JSON.stringify({
+        n:rows.length, best:best.length, worst:worst.length, pop:pop.length,
+        bestOk: spread ? (best.length===1 && avg(best[0])===Math.max(...avgs)) : best.length===0,
+        worstOk: spread ? (worst.length===1 && avg(worst[0])===Math.min(...avgs)) : worst.length===0,
+        popOk: pop.length<=1,
+      })})()`));
+    t(`${A}: season badges name the highest and lowest-average seasons`,
+      seasonBadges.bestOk && seasonBadges.worstOk && seasonBadges.popOk,
+      JSON.stringify(seasonBadges));
+
+    await clickSel(s, '#showModal .show-season .ss-num', { nth: 0, settle: 1000 });
+    await waitForExpr(s, `!!document.querySelector('.modal-episodes li')`, { timeout: 15000 });
+    const epBadges = JSON.parse(await evaluate(s, `(()=>{
+      const lis=[...document.querySelectorAll('.modal-episodes li')];
+      const rate=li=>parseFloat(li.querySelector('.ep-rating').textContent);
+      const votes=li=>parseInt(li.querySelector('.ep-votes').textContent.replace(/[^\\d]/g,''),10);
+      const hit=sel=>lis.filter(li=>li.querySelector(sel));
+      const b=hit('.ep-flag-best'), w=hit('.ep-flag-worst'), p=hit('.ep-flag-most-rated');
+      const rs=lis.map(rate), vs=lis.map(votes);
+      const spread=new Set(rs).size>1;
+      return JSON.stringify({
+        n:lis.length, spread,
+        bestOk: spread ? (b.length===1 && rate(b[0])===Math.max(...rs)) : b.length===0,
+        worstOk: spread ? (w.length===1 && rate(w[0])===Math.min(...rs)) : w.length===0,
+        popOk: p.length<=1 && (p.length===0 || votes(p[0])===Math.max(...vs)),
+        // The flag column is only laid out when something is flagged, so the
+        // class and the flags have to agree or the rows lose their alignment.
+        classOk: document.querySelector('.modal-episodes').classList.contains('has-flags')
+                 === (b.length+w.length+p.length>0),
+      })})()`));
+    t(`${A}: episode badges name the top-rated and most-rated episodes`,
+      epBadges.bestOk && epBadges.worstOk && epBadges.popOk && epBadges.classOk,
+      JSON.stringify(epBadges));
+
+    await evaluate(s, `document.querySelectorAll('.modal-close').forEach(b=>b.click())`);
+    await setValue(s, '#finderMinSeasons', '');
+    await waitForExpr(s, totalIsExpr(`m[1] === ${JSON.stringify(baseTotal)}`));
+
+    // Narrow phone: the 13-shape strip becomes a horizontal scroll-snap rail,
+    // and a keyboard user has to be able to READ the chip they tab onto. The
+    // widest chip used to end up cropped by 30 px, because a snap container
+    // rejects any scroll position between two snap points. Tab from the first
+    // chip through the rest and assert each lands fully inside the rail.
+    await evaluate(s, `document.querySelectorAll('.modal-close').forEach(b=>b.click())`);
+    await sleep(400);
+    await setViewport(s, 390, 844, true);
+    await waitForExpr(s, `document.querySelectorAll('#finderShapes .shape-chip').length > 1`);
+    await evaluate(s, `document.querySelector('#finderShapes .shape-chip').focus()`);
+    const chipCount = await evaluate(s, `document.querySelectorAll('#finderShapes .shape-chip').length`);
+    let cropped = 0;
+    let landedOnChips = 0;
+    for (let i = 0; i < chipCount; i++) {
+      await pressKey(s, 'Tab', 'Tab', 9);
+      await sleep(200);
+      const state = await evaluate(s, `(()=>{const a=document.activeElement;
+        if(!a||!a.classList||!a.classList.contains('shape-chip'))return null;
+        const st=document.getElementById('finderShapes');
+        const ar=a.getBoundingClientRect(),sr=st.getBoundingClientRect();
+        return JSON.stringify({w:Math.round(ar.width),
+          vis:Math.round(Math.min(ar.right,sr.right)-Math.max(ar.left,sr.left))})})()`);
+      if (!state) continue;
+      landedOnChips++;
+      const { w, vis } = JSON.parse(state);
+      if (vis < w - 1) cropped++;
+    }
+    t(`${A}: every shape chip is fully visible when tabbed to at 390px`,
+      landedOnChips > 1 && cropped === 0, `${cropped} of ${landedOnChips} chips cropped`);
+    t(`${A}: the shape rail never makes the page scroll sideways`,
+      await evaluate(s, `document.documentElement.scrollWidth <= window.innerWidth`));
 
     t(`${A}: no JS errors`, cleanErrors(s).length === 0, cleanErrors(s).slice(0, 2).join(' | '));
     await closePage(cdpPort, s);

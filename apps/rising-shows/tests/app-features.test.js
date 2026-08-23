@@ -742,3 +742,405 @@ test('shapeConfidence: reads the per-shape value, null when absent', () => {
   assert.equal(helpers.shapeConfidence(undefined, 'rising'), null);
   assert.equal(helpers.shapeConfidence({ rising: 'high' }, 'rising'), null);
 });
+
+// ---------------------------------------------------------------------------
+// 2026-08 quality batch
+// ---------------------------------------------------------------------------
+
+// D3: the show modal computed an UNWEIGHTED mean of the per-season averages
+// while the cards, the list rows and the static pages used the episode-weighted
+// mean. The two disagreed at 1 dp for 2,784 multi-season shows and flipped the
+// Above-IMDb verdict for 162 of them. One definition now, everywhere.
+test('weightedAvgEpisode: weights each season by its rated-episode count', () => {
+  // 2 episodes at 9.0 and 10 episodes at 7.0. Unweighted would say 8.00.
+  const seasons = [
+    { season: 1, ratedCount: 2, ratingSum: 18, avgRating: 9 },
+    { season: 2, ratedCount: 10, ratingSum: 70, avgRating: 7 },
+  ];
+  assert.equal(helpers.weightedAvgEpisode(seasons), 7.33);
+  assert.equal(helpers.weightedRatedEpisodes(seasons), 12);
+});
+
+test('weightedAvgEpisode: full records and split records agree', () => {
+  const full = [
+    { season: 1, episodes: [{ rating: 8 }, { rating: 9 }] },
+    { season: 2, episodes: [{ rating: 7 }, { rating: 7 }, { rating: 7 }] },
+  ];
+  const split = [
+    { season: 1, ratedCount: 2, ratingSum: 17 },
+    { season: 2, ratedCount: 3, ratingSum: 21 },
+  ];
+  assert.equal(helpers.weightedAvgEpisode(full), helpers.weightedAvgEpisode(split));
+  assert.equal(helpers.weightedAvgEpisode(full), 7.6);
+});
+
+test('weightedAvgEpisode: unrated episodes are skipped, never folded in as NaN', () => {
+  // The bug class FINDINGS.md records: one unrated episode used to NaN-poison
+  // a whole-series fold, and every comparison against NaN is false.
+  const seasons = [{ season: 1, episodes: [{ rating: 8 }, { rating: null }, { rating: 9 }] }];
+  assert.equal(helpers.weightedAvgEpisode(seasons), 8.5);
+  assert.equal(helpers.weightedRatedEpisodes(seasons), 2);
+});
+
+test('weightedAvgEpisode: a show with no rated episodes returns null, not NaN', () => {
+  assert.equal(helpers.weightedAvgEpisode([{ season: 1, episodes: [] }]), null);
+  assert.equal(helpers.seasonRatedFold({ season: 1, episodes: [] }).count, 0);
+});
+
+test('seasonRatedFold: a record carrying only avgRating counts once', () => {
+  // Neither production shape (no episodes, no ratedCount). Degrades to the old
+  // unweighted behaviour rather than dropping the season.
+  const fold = helpers.seasonRatedFold({ avgRating: 8.2 });
+  assert.equal(fold.count, 1);
+  assert.equal(fold.sum, 8.2);
+});
+
+// D4: a failed detail fetch used to print "NaN votes per episode (avg)".
+test('avgVotesPerEpisode: returns null when the per-episode data is missing', () => {
+  assert.equal(helpers.avgVotesPerEpisode({ episodes: [] }), null);
+  assert.equal(helpers.avgVotesPerEpisode({}), null);
+  assert.equal(helpers.avgVotesPerEpisode({ episodes: [{ votes: 10 }, { votes: 20 }] }), 15);
+  // A missing vote count on one episode must not average in as zero.
+  assert.equal(helpers.avgVotesPerEpisode({ episodes: [{ votes: 10 }, { rating: 8 }] }), 10);
+});
+
+// D5: search was raw-lowercase on both sides, so the ASCII spelling of an
+// accented title returned nothing at all.
+test('foldSearch: folds diacritics and the letters NFKD does not decompose', () => {
+  assert.equal(helpers.foldSearch('Pokémon'), 'pokemon');
+  assert.equal(helpers.foldSearch('Shōgun'), 'shogun');
+  assert.equal(helpers.foldSearch('Élite'), 'elite');
+  assert.equal(helpers.foldSearch('Æon Flux'), 'aeon flux');
+  assert.equal(helpers.foldSearch('Straße'), 'strasse');
+  assert.equal(helpers.foldSearch('Ørnen'), 'ornen');
+  // Plain ASCII is untouched, and folding is idempotent.
+  assert.equal(helpers.foldSearch('Breaking Bad'), 'breaking bad');
+  assert.equal(helpers.foldSearch(helpers.foldSearch('Pokémon')), 'pokemon');
+});
+
+test('normalizeSearch: still strips punctuation and a leading article, now folded', () => {
+  assert.equal(helpers.normalizeSearch('The X-Files'), 'x files');
+  assert.equal(helpers.normalizeSearch('Pokémon: Indigo League'), 'pokemon indigo league');
+});
+
+// U6: one shared genre string used to be enough, which is how a British panel
+// show recommended a children's cartoon and a Korean romance recommended anime.
+const mkRelated = (seriesId, opts) => ({
+  seriesId,
+  season: 1,
+  avgRating: opts.avg ?? 8,
+  ratedCount: 10,
+  ratingSum: (opts.avg ?? 8) * 10,
+  seriesRating: opts.seriesRating ?? 8,
+  seriesVotes: opts.votes ?? 10000,
+  minVotes: opts.minVotes ?? 1000,
+  genres: opts.genres,
+  language: opts.language ?? 'en',
+  shapes: [],
+  episodes: [],
+});
+
+test('computeShowRelated: animation and live action are not interchangeable', () => {
+  const matches = [
+    mkRelated('anchor', { genres: ['Comedy', 'Game-Show'] }),
+    mkRelated('cartoon', { genres: ['Animation', 'Comedy', 'Family'] }),
+    mkRelated('panel', { genres: ['Comedy', 'Game-Show'] }),
+  ];
+  const out = helpers.computeShowRelated('anchor', matches, new Map());
+  const ids = out.map((r) => r.seriesId);
+  assert.ok(ids.includes('panel'), 'another panel show still qualifies');
+  assert.ok(!ids.includes('cartoon'), 'an animated show must not be suggested for a live-action anchor');
+});
+
+test('computeShowRelated: unscripted and scripted are not interchangeable', () => {
+  const matches = [
+    mkRelated('anchor', { genres: ['Adventure', 'Reality-TV'] }),
+    mkRelated('drama', { genres: ['Adventure', 'Drama'] }),
+    mkRelated('reality', { genres: ['Adventure', 'Reality-TV'] }),
+  ];
+  const ids = helpers.computeShowRelated('anchor', matches, new Map()).map((r) => r.seriesId);
+  assert.equal(ids.join(','), 'reality');
+});
+
+test('computeShowRelated: audience size has to be in the same ballpark', () => {
+  const matches = [
+    mkRelated('anchor', { genres: ['Comedy'], votes: 11000 }),
+    mkRelated('tiny', { genres: ['Comedy'], votes: 101 }),
+    mkRelated('peer', { genres: ['Comedy'], votes: 3000 }),
+  ];
+  const ids = helpers.computeShowRelated('anchor', matches, new Map()).map((r) => r.seriesId);
+  assert.ok(ids.includes('peer'));
+  assert.ok(!ids.includes('tiny'), 'a 101-vote show is not "more like" an 11,000-vote one');
+});
+
+test('computeShowRelated: genre overlap outranks a shared shape', () => {
+  const matches = [
+    mkRelated('anchor', { genres: ['Crime', 'Drama', 'Thriller'], avg: 8.5, seriesRating: 8.5 }),
+    // Same shape, one shared genre, and a perfect gap match.
+    mkRelated('shapeTwin', { genres: ['Drama'], avg: 8.5, seriesRating: 8.5 }),
+    // No shared shape, but three shared genres.
+    mkRelated('genreTwin', { genres: ['Crime', 'Drama', 'Thriller'], avg: 8.2, seriesRating: 8.0 }),
+  ];
+  const shapes = new Map([['anchor', ['big-finale']], ['shapeTwin', ['big-finale']], ['genreTwin', []]]);
+  const ids = helpers.computeShowRelated('anchor', matches, shapes).map((r) => r.seriesId);
+  assert.equal(ids.join(','), 'genreTwin,shapeTwin');
+});
+
+test('computeShowRelated: a shared shape still breaks a genre tie', () => {
+  const matches = [
+    mkRelated('anchor', { genres: ['Crime', 'Drama'], avg: 8.5, seriesRating: 8.5 }),
+    mkRelated('withShape', { genres: ['Crime', 'Drama'], avg: 8.0, seriesRating: 8.0 }),
+    mkRelated('withoutShape', { genres: ['Crime', 'Drama'], avg: 8.5, seriesRating: 8.5 }),
+  ];
+  const shapes = new Map([['anchor', ['rising']], ['withShape', ['rising']], ['withoutShape', []]]);
+  const out = helpers.computeShowRelated('anchor', matches, shapes);
+  assert.equal(out[0].seriesId, 'withShape');
+  assert.equal(out[0]._sharedShape, 'rising');
+});
+
+// U2: the dominant shape shown on cards and rows must be the same first entry
+// the hubs and the static pages file a show under.
+test('dominantShapeOf: first shape, or null when a show has none', () => {
+  assert.equal(helpers.dominantShapeOf({ shapes: ['rebound', 'rising'] }), 'rebound');
+  assert.equal(helpers.dominantShapeOf({ shapes: [] }), null);
+  assert.equal(helpers.dominantShapeOf({}), null);
+});
+
+test('format classifiers read the genre list, not the title', () => {
+  assert.equal(helpers.isAnimated(['Animation', 'Comedy']), true);
+  assert.equal(helpers.isAnimated(['Comedy']), false);
+  assert.equal(helpers.isUnscripted(['Game-Show']), true);
+  assert.equal(helpers.isUnscripted(['Reality-TV']), true);
+  assert.equal(helpers.isUnscripted(['Talk-Show']), true);
+  assert.equal(helpers.isUnscripted(['Drama']), false);
+  assert.equal(helpers.isAnimated(undefined), false);
+  assert.equal(helpers.isUnscripted(undefined), false);
+});
+
+// ---------------------------------------------------------------------------
+// Shared compare links must not destroy the visitor's own set (closeout)
+// ---------------------------------------------------------------------------
+
+test('Compare: while an imported set is showing, edits never touch storage', () => {
+  ctx.localStorage.setItem(KEY_COMPARE, JSON.stringify(['mine1', 'mine2', 'mine3']));
+  helpers.Compare.load();
+
+  // What applyPendingCompareIds does when a #compare= link brings a different
+  // set and the visitor already had one: show theirs, protect the stored one.
+  helpers.Compare.ids = ['shared1', 'shared2'];
+  helpers.Compare.imported = true;
+  helpers.Compare.personalIds = ['mine1', 'mine2', 'mine3'];
+
+  // The destructive path from the audit: remove one show from the imported set.
+  helpers.Compare.remove('shared2');
+  assert.deepEqual(
+    JSON.parse(ctx.localStorage.getItem(KEY_COMPARE)),
+    ['mine1', 'mine2', 'mine3'],
+    'editing a shared comparison must leave the stored personal set alone',
+  );
+  // Adding and clearing are the same promise.
+  helpers.Compare.add('shared3');
+  helpers.Compare.clear();
+  assert.deepEqual(
+    JSON.parse(ctx.localStorage.getItem(KEY_COMPARE)),
+    ['mine1', 'mine2', 'mine3'],
+    'clearing a shared comparison must not clear the stored personal set',
+  );
+
+  // Reloading without the link brings the personal set back.
+  helpers.Compare.imported = false;
+  helpers.Compare.ids = [];
+  helpers.Compare.load();
+  assert.deepEqual(helpers.Compare.ids, ['mine1', 'mine2', 'mine3']);
+});
+
+test('Compare: keepImported adopts the shared set, and only then edits persist', () => {
+  ctx.localStorage.setItem(KEY_COMPARE, JSON.stringify(['mine1', 'mine2']));
+  helpers.Compare.load();
+  helpers.Compare.ids = ['shared1', 'shared2'];
+  helpers.Compare.imported = true;
+  helpers.Compare.personalIds = ['mine1', 'mine2'];
+
+  helpers.Compare.keepImported();
+  assert.deepEqual(JSON.parse(ctx.localStorage.getItem(KEY_COMPARE)), ['shared1', 'shared2']);
+  assert.equal(helpers.Compare.imported, false);
+  // Length, not deepEqual: an array built inside the vm realm is never
+  // deepStrictEqual to a test-realm literal (see the note in README).
+  assert.equal(helpers.Compare.personalIds.length, 0);
+
+  helpers.Compare.remove('shared2');
+  assert.deepEqual(
+    JSON.parse(ctx.localStorage.getItem(KEY_COMPARE)),
+    ['shared1'],
+    'after an explicit keep, the store behaves normally again',
+  );
+});
+
+test('Compare: an imported set with nothing to protect saves normally', () => {
+  // No personal set means applyPendingCompareIds leaves `imported` false, so a
+  // first-time visitor who follows a link and edits it keeps their edit.
+  ctx.localStorage.removeItem(KEY_COMPARE);
+  helpers.Compare.load();
+  helpers.Compare.ids = ['shared1', 'shared2'];
+  helpers.Compare.imported = false;
+  helpers.Compare.remove('shared2');
+  assert.deepEqual(JSON.parse(ctx.localStorage.getItem(KEY_COMPARE)), ['shared1']);
+});
+
+// ---------------------------------------------------------------------------
+// Shape rail: keyboard focus must reveal the whole chip (closeout)
+// ---------------------------------------------------------------------------
+
+// The rail is a scroll-snap container, so a position between two snap points is
+// rejected outright: scrolling by "just enough" read back unchanged and left the
+// widest chip cropped by 30 px at 390 px wide. Aligning the chip's own start
+// edge to the scrollport IS its snap point, so it sticks.
+const rect = (left, right) => ({ left, right, width: right - left });
+
+test('chipScrollDelta: a chip cropped on the right scrolls to its own snap point', () => {
+  // Strip spans 0..353. Chip sits at 158..383, so 30 px hang off the end.
+  const delta = helpers.chipScrollDelta(rect(0, 353), rect(158, 383), 0);
+  assert.equal(delta, 158, 'aligns the chip start to the scrollport start');
+});
+
+test('chipScrollDelta: a chip cropped on the left scrolls back to it', () => {
+  const delta = helpers.chipScrollDelta(rect(0, 353), rect(-40, 120), 0);
+  assert.equal(delta, -40);
+});
+
+test('chipScrollDelta: a fully visible chip is left alone', () => {
+  assert.equal(helpers.chipScrollDelta(rect(0, 353), rect(20, 200), 0), 0);
+  // Flush against either edge still counts as visible.
+  assert.equal(helpers.chipScrollDelta(rect(0, 353), rect(0, 353), 0), 0);
+});
+
+test('chipScrollDelta: the scrollport starts inside the border, not the padding', () => {
+  // A scroll container's scrollport is its padding box: content scrolls under
+  // the padding, so padding must NOT be added to the target or the chip parks
+  // one padding-width short of its snap point and the snap rejects it.
+  assert.equal(helpers.chipScrollDelta(rect(0, 353), rect(158, 383), 2), 156);
+});
+
+// ---------------------------------------------------------------------------
+// Best / worst / most-rated highlights
+//
+// One helper answers the question at both levels (which season of a show,
+// which episode of a season), so these tests pin the rules once. The rules
+// exist to keep the badges honest: a badge that appears on everything, or on
+// a set with nothing to compare, tells the reader nothing.
+// ---------------------------------------------------------------------------
+
+const H = (items) => helpers.pickHighlights(items);
+
+test('pickHighlights: names the highest, the lowest and the most rated', () => {
+  const out = H([
+    { key: 1, rating: 7.5, votes: 100 },
+    { key: 2, rating: 9.1, votes: 400 },
+    { key: 3, rating: 8.0, votes: 250 },
+  ]);
+  assert.equal(out.best, 2);
+  assert.equal(out.worst, 1);
+  assert.equal(out.mostRated, 2);
+});
+
+test('pickHighlights: most rated is independent of best and worst', () => {
+  // The season everyone rated is often not the season that scored highest.
+  const out = H([
+    { key: 1, rating: 9.4, votes: 50 },
+    { key: 2, rating: 6.2, votes: 9000 },
+  ]);
+  assert.equal(out.best, 1);
+  assert.equal(out.worst, 2);
+  assert.equal(out.mostRated, 2, 'the worst-rated entry can still be the most rated');
+});
+
+test('pickHighlights: one item is no contest', () => {
+  const out = H([{ key: 1, rating: 9.9, votes: 1000 }]);
+  assert.equal(out.best, null);
+  assert.equal(out.worst, null);
+  assert.equal(out.mostRated, null);
+});
+
+test('pickHighlights: nothing at all is no contest', () => {
+  for (const empty of [[], null, undefined]) {
+    const out = H(empty);
+    assert.deepEqual([out.best, out.worst, out.mostRated], [null, null, null]);
+  }
+});
+
+test('pickHighlights: identical ratings produce no best and no worst', () => {
+  // Otherwise the same entry would be badged both "best" and "worst".
+  const out = H([
+    { key: 1, rating: 8.0, votes: 10 },
+    { key: 2, rating: 8.0, votes: 20 },
+  ]);
+  assert.equal(out.best, null);
+  assert.equal(out.worst, null);
+  assert.equal(out.mostRated, 2, 'ratings tying says nothing about vote counts');
+});
+
+test('pickHighlights: identical vote counts produce no most-rated', () => {
+  const out = H([
+    { key: 1, rating: 7.0, votes: 500 },
+    { key: 2, rating: 8.0, votes: 500 },
+  ]);
+  assert.equal(out.best, 2);
+  assert.equal(out.mostRated, null);
+});
+
+test('pickHighlights: ties keep the earlier entry', () => {
+  // Callers pass seasons and episodes in ascending order, so the first of two
+  // equal peaks is the one badged, deterministically.
+  const out = H([
+    { key: 1, rating: 9.0, votes: 300 },
+    { key: 2, rating: 9.0, votes: 300 },
+    { key: 3, rating: 5.0, votes: 10 },
+  ]);
+  assert.equal(out.best, 1);
+  assert.equal(out.mostRated, 1);
+});
+
+test('pickHighlights: unrated and unvoted entries drop out of their contest', () => {
+  const out = H([
+    { key: 1, rating: 8.5, votes: 0 },
+    { key: 2, rating: null, votes: 900 },
+    { key: 3, rating: 6.0, votes: undefined },
+  ]);
+  // Only keys 1 and 3 carry ratings; only key 2 carries votes, and one voted
+  // entry is not a contest.
+  assert.equal(out.best, 1);
+  assert.equal(out.worst, 3);
+  assert.equal(out.mostRated, null);
+});
+
+test('pickHighlights: NaN ratings and votes are ignored, not ranked', () => {
+  const out = H([
+    { key: 1, rating: NaN, votes: NaN },
+    { key: 2, rating: 7.0, votes: 10 },
+    { key: 3, rating: 8.0, votes: 20 },
+  ]);
+  assert.equal(out.best, 3);
+  assert.equal(out.worst, 2);
+  assert.equal(out.mostRated, 3);
+});
+
+test('seasonVoteTotal: sums the episodes, and is 0 without them', () => {
+  assert.equal(helpers.seasonVoteTotal({ episodes: [{ votes: 10 }, { votes: 5 }] }), 15);
+  // A failed detail fetch leaves no episodes; the season simply cannot win the
+  // most-rated badge rather than counting as zero-and-therefore-lowest.
+  assert.equal(helpers.seasonVoteTotal({}), 0);
+  assert.equal(helpers.seasonVoteTotal({ episodes: [] }), 0);
+  assert.equal(helpers.seasonVoteTotal({ episodes: [{ votes: 10 }, {}] }), 10);
+});
+
+test('season most-rated: a show whose detail failed gets no badge anywhere', () => {
+  // Every season folds to 0 votes, so there is no most-rated season at all.
+  const seasons = [{ season: 1, avgRating: 8.1 }, { season: 2, avgRating: 7.4 }];
+  const out = H(seasons.map((s) => ({
+    key: s.season, rating: s.avgRating, votes: helpers.seasonVoteTotal(s),
+  })));
+  assert.equal(out.mostRated, null);
+  // Best and worst still come from the index-backed averages, which survive.
+  assert.equal(out.best, 1);
+  assert.equal(out.worst, 2);
+});

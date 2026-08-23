@@ -302,10 +302,21 @@ const TripLogic = (() => {
   }
 
   // ---------- night coverage ----------
-  function coverageGaps(stays, tripEnd, travel = []) {
-    if (!stays.length) return [];
-    const first = stays.reduce((m, s) => s.startDate < m ? s.startDate : m, stays[0].startDate);
-    let last = stays.reduce((m, s) => s.endDate > m ? s.endDate : m, stays[0].endDate);
+  // `tripStart` is optional and only used when there is no stay to measure
+  // from. Without it this answered [] for a trip with NO stay at all, which
+  // reads as "every night is covered" on the one trip where nothing is: the
+  // strip stayed hidden and the panel said None while the summary chip counted
+  // "0 of 4 nights booked". Callers that ask a different question (the stay
+  // prefills, which have their own no-stay branches) pass nothing and keep the
+  // old answer.
+  function coverageGaps(stays, tripEnd, travel = [], tripStart = '') {
+    if (!stays.length && !isIsoDate(tripStart)) return [];
+    const first = stays.length
+      ? stays.reduce((m, s) => s.startDate < m ? s.startDate : m, stays[0].startDate)
+      : tripStart;
+    let last = stays.length
+      ? stays.reduce((m, s) => s.endDate > m ? s.endDate : m, stays[0].endDate)
+      : tripStart;
     const horizon = addDays(first, MAX_TRIP_DAYS);
     // A trip end past the render horizon is a mistyped date, not a real end:
     // the far-future-date error already names that item. Stretching coverage to
@@ -1904,11 +1915,18 @@ const TripLogic = (() => {
       .replace(/\r?\n/g, '\\n');
   }
 
-  function icsEvent(it) {
+  function icsEvent(it, stamp) {
     if (!isIsoDate(it.startDate)) return null;
     const compact = d => d.replace(/-/g, '');
     const lines = ['BEGIN:VEVENT', `UID:${it.id}@trip-planner.shevato.com`];
-    const timed = (it.type === 'flight' || it.type === 'transport' || it.type === 'local') && /^\d{2}:\d{2}$/.test(it.startTime || '');
+    if (stamp) lines.push(`DTSTAMP:${stamp}`);
+    // ANY item with a clock time is a timed event. Restricting this to the
+    // three travel types put a 7:30 PM dinner into the calendar as an all-day
+    // banner: the one surface a traveller reads at dinner time said nothing
+    // about when. A stay is still an all-day range below (its nights are the
+    // point), and an item with no time is still all-day, which is the honest
+    // rendering of "some time that day".
+    const timed = !isStay(it) && /^\d{2}:\d{2}$/.test(it.startTime || '');
     if (isStay(it)) {
       // all-day, exclusive end (matches the app's night semantics)
       const end = isIsoDate(it.endDate) && diffDays(it.startDate, it.endDate) > 0 ? it.endDate : addDays(it.startDate, 1);
@@ -1956,18 +1974,44 @@ const TripLogic = (() => {
 
   // Builds a VCALENDAR string with CRLF line endings (RFC 5545 requires them
   // inside the file content; this is the generated STRING, not a source file).
-  function buildIcs(trip) {
+  /**
+   * RFC 5545 content lines are folded at 75 OCTETS, and a continuation begins
+   * with one space. Google and Apple tolerate long lines, strict validators and
+   * some Outlook builds do not, and a details field of 500 characters produces
+   * lines far past the limit. Counting is by UTF-8 length rather than by
+   * character, and a surrogate pair is never split down the middle.
+   */
+  function icsFold(line) {
+    const bytes = str => new TextEncoder().encode(str).length;
+    if (bytes(line) <= 75) return line;
+    const out = [];
+    let cur = '', limit = 75; // continuations carry a leading space, so 74 of content
+    for (const ch of line) { // iterating by code POINT keeps pairs together
+      if (bytes(cur + ch) > limit) { out.push(cur); cur = ' ' + ch; limit = 75; }
+      else cur += ch;
+    }
+    if (cur) out.push(cur);
+    return out.join('\r\n');
+  }
+
+  /**
+   * `stamp` is injectable so a test can pin the output; production passes
+   * nothing and gets the current time, which is what DTSTAMP means (when this
+   * calendar object was created). RFC 5545 lists it as REQUIRED in a VEVENT.
+   */
+  function buildIcs(trip, stamp) {
+    const now = (stamp instanceof Date ? stamp : new Date()).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
     const out = [
       'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Shevato//Trip Planner//EN',
       `X-WR-CALNAME:${icsEscapeText(trip.name || 'Trip')}`,
     ];
     for (const it of sortedItems(trip)) {
       if (!it || it.status === 'cancelled') continue;
-      const ev = icsEvent(it);
+      const ev = icsEvent(it, now);
       if (ev) out.push(...ev);
     }
     out.push('END:VCALENDAR');
-    return out.join('\r\n') + '\r\n';
+    return out.map(icsFold).join('\r\n') + '\r\n';
   }
 
   // ---------- GPX export ----------
@@ -2575,10 +2619,21 @@ const TripLogic = (() => {
   function connectionWarnings(items) {
     const live = [...(items || [])].filter(it => it && it.status !== 'cancelled').sort(bySortKey);
     const stays = live.filter(it => isStay(it) && isIsoDate(it.startDate));
+    // A connection is between two LEGS, and "the next leg" is not "the next
+    // row". Walking the whole sorted list and skipping a pair whose ends are
+    // not both travel meant anything logged in between broke it: a note on the
+    // departure day, a coffee at the airport, the dinner booked for that
+    // evening. The warning therefore went silent on exactly the trips that have
+    // things planned - 16:30 landing, 17:00 bus, one note between them and
+    // nothing was said. Filtering to the legs first is what makes the
+    // comparison mean what it claims; everything below it (the timeless-leg
+    // skip, the 24-hour window, the stopover rule) is unchanged, and a leg with
+    // no clock time still breaks the chain because neither pair it forms can be
+    // read.
+    const legs = live.filter(it => TRAVEL_TYPE[it.type]);
     const out = [];
-    for (let i = 1; i < live.length; i++) {
-      const from = live[i - 1], to = live[i];
-      if (!TRAVEL_TYPE[from.type] || !TRAVEL_TYPE[to.type]) continue;
+    for (let i = 1; i < legs.length; i++) {
+      const from = legs[i - 1], to = legs[i];
       const arr = legArrival(from), dep = legDeparture(to);
       if (!arr || !dep) continue;
       const gap = dep.min - arr.min;
@@ -2744,11 +2799,30 @@ const TripLogic = (() => {
   // checking out of still answers "where am I today". Computed for EVERY day,
   // not only quiet ones, so a busy day never loses its hotel.
   function dayHostStay(items, date) {
+    return stayFor(items, date, 'night');
+  }
+
+  /**
+   * The bed you WAKE UP in on this date, which is a different question from
+   * which bed the NIGHT is booked in, and on a handover day they are two
+   * hotels in two cities: you check out of Tokyo in the morning and into Kyoto
+   * in the evening. dayHostStay answers the night (night coverage, the
+   * "staying at" line, the day's city); this answers the morning, and the day's
+   * route chain starts from it - measuring an 8:00 Tokyo breakfast from the
+   * Kyoto hotel produced a ~232 mi first chip and Directions from the wrong
+   * end of the country.
+   */
+  function dayMorningStay(items, date) {
+    return stayFor(items, date, 'morning');
+  }
+
+  // One filter, two orders of preference.
+  function stayFor(items, date, which) {
     const stays = (items || []).filter(it => isStay(it) && it.status !== 'cancelled'
       && (it.location || '').trim() && isIsoDate(it.startDate) && isIsoDate(it.endDate));
-    return stays.find(s => s.startDate <= date && date < s.endDate)
-      || stays.find(s => s.endDate === date)
-      || null;
+    const covering = stays.find(s => s.startDate <= date && date < s.endDate);
+    const ending = stays.find(s => s.endDate === date);
+    return (which === 'morning' ? (ending || covering) : (covering || ending)) || null;
   }
 
   // What a day tile with nothing on it says. "No plans yet" is only TRUE when
@@ -3611,6 +3685,11 @@ const TripLogic = (() => {
     const keep = v => !(v == null || v === '');
     const slim = { name: trip.name, currency: trip.currency, items: [] };
     if (trip.budget != null) slim.budget = trip.budget;
+    // the budget travels with the code it was typed in, or the far side reads
+    // the number as its own currency - the relabelling budgetCurrency exists to
+    // stop. Present only when it differs, so a trip that never switched
+    // currency produces byte for byte the payload it always did.
+    if (trip.budget != null && trip.budgetCurrency && trip.budgetCurrency !== trip.currency) slim.budgetCurrency = trip.budgetCurrency;
     // the floor rides along only when there is a ceiling for it to sit under,
     // which is the same rule the import sanitizer applies on the far side. A
     // trip with a plain ceiling produces byte for byte the payload it always did
@@ -3660,6 +3739,43 @@ const TripLogic = (() => {
       // which is the half of the settle-up block worth sharing
       if (keep(it.paidBy)) out.paidBy = it.paidBy;
       return out;
+    });
+    return slim;
+  }
+
+  // The booking facts a model has no use for and should not be handed. They
+  // ride in a SHARE link because the person you share a trip with is the other
+  // traveller on it; a model is not one, cannot act on a confirmation code, and
+  // is refused one on the way back (see sanitizeActionFields).
+  const ASSIST_OMITTED_FIELDS = ['confirmation', 'paidBy', 'splitAmounts', 'payment', 'bookBy'];
+
+  /**
+   * The trip as the ASSISTANT sees it. Two deliberate differences from the
+   * share projection it is built on:
+   *
+   * 1. It keeps each item's REAL id. The share projection renumbers to i1..iN
+   *    because a share link becomes a new trip with fresh ids, but the model is
+   *    told it may "update with a match (by id or exact title)" and those
+   *    numbers matched nothing at validation, so every edit a compliant model
+   *    proposed by id failed with "No matching item found". Resolving them by
+   *    POSITION instead would be worse than useless: validateTripAction runs
+   *    again at ACCEPT time against current state, so a row deleted between the
+   *    reply and the press would silently move the edit onto whatever item
+   *    slid into that position. A real id resolves to one row or to none.
+   * 2. It omits the booking facts above.
+   *
+   * Idempotent, which matters because the client slims before sending and the
+   * server slims again when it builds the prompt.
+   */
+  function slimTripForAssistant(trip) {
+    const slim = slimTripForShare(trip);
+    const items = (trip && Array.isArray(trip.items)) ? trip.items : [];
+    slim.items = slim.items.map((out, i) => {
+      const real = items[i];
+      const next = { ...out };
+      if (real && real.id != null && String(real.id).trim()) next.id = String(real.id);
+      for (const k of ASSIST_OMITTED_FIELDS) delete next[k];
+      return next;
     });
     return slim;
   }
@@ -4121,11 +4237,45 @@ const TripLogic = (() => {
     return best;
   }
 
+  /**
+   * The earliest opening on THIS calendar date that is still ahead of `t`, or
+   * null if the venue does not open again that day.
+   *
+   * This is what separates "has not opened yet" from "already closed", which
+   * the verdict used to collapse into one answer: a 17:30 booking at a bar
+   * open 18:00-02:00 read "Closed at 5:30 PM", which is false - it had not
+   * opened. Dated hours are authoritative for the dates they name (the same
+   * precedence hoursVerdict applies), so a special that opens later that day
+   * is the next opening and the weekly pattern is not consulted.
+   *
+   * Note what is NOT counted: a period that spilled over from yesterday closed
+   * before `t`, and a period opening tomorrow is not this date. Both leave the
+   * venue closed for the rest of today, which is exactly what 'closed' says.
+   */
+  function nextOpeningMin(hours, dateIso, t) {
+    const special = Array.isArray(hours.special) ? hours.special : [];
+    const dated = special.filter(p => p && p.open && p.open.date === dateIso);
+    const opens = dated.length
+      ? dated.map(p => p.open.min)
+      : (Array.isArray(hours.periods) ? hours.periods : [])
+        .filter(p => p && p.open && p.open.day === hoursDow(dateIso))
+        .map(p => p.open.min);
+    let best = null;
+    for (const m of opens) {
+      if (typeof m !== 'number' || m <= t) continue;
+      if (best == null || m < best) best = m;
+    }
+    return best;
+  }
+
   // The deterministic verdict the whole feature hangs on: is this venue open at
   // (dateIso, timeHHMM)? Answers 'open' (with closesMin, null for no known
   // close), 'closingSoon' (technically open, but with less than `windowMin`
   // minutes left before the covering interval closes - a recommendation-
-  // quality state, NOT another definition of closed), 'closed', or 'unknown' -
+  // quality state, NOT another definition of closed), 'beforeOpen' (with
+  // opensMin: shut at that time because the doors have not opened YET, which
+  // is a different fact from having closed and is worded as one everywhere),
+  // 'closed', or 'unknown' -
   // and unknown is a first-class answer, never collapsed into open OR into
   // closingSoon. Dated hours beat weekly hours for the dates they cover; a
   // date that HAS dated periods but none covering the time is closed by those
@@ -4153,14 +4303,22 @@ const TripLogic = (() => {
     const special = Array.isArray(hours.special) ? hours.special : [];
     const hit = specialCovering(special, dateIso, t);
     if (hit) return openAt(hit.closesMin);
-    if (special.some(p => p.open.date === dateIso)) return { status: 'closed', closesMin: null };
+    if (special.some(p => p.open.date === dateIso)) return shutVerdict(hours, dateIso, t);
     const periods = Array.isArray(hours.periods) ? hours.periods : [];
     if (!periods.length) return { status: 'unknown', closesMin: null };
     // A period spilling over from the previous day (or earlier) is what keeps
     // 01:00 inside "18:00-02:00" open; weeklyCovering's dd/dl walk covers it.
     const w = weeklyCovering(periods, hoursDow(dateIso), t);
     if (w) return openAt(w.closesMin);
-    return { status: 'closed', closesMin: null };
+    return shutVerdict(hours, dateIso, t);
+  }
+
+  // Shut at this time: which KIND of shut is the only question left.
+  function shutVerdict(hours, dateIso, t) {
+    const opensMin = nextOpeningMin(hours, dateIso, t);
+    return opensMin == null
+      ? { status: 'closed', closesMin: null }
+      : { status: 'beforeOpen', closesMin: null, opensMin };
   }
 
   // ---------- the minimum recommendation window, per venue category ----------
@@ -4656,7 +4814,12 @@ const TripLogic = (() => {
     // caller resolves `iata`); a code-less arrival falls back to its city.
     const arr = dayArrival(items, date);
     if (arr) return { source: 'arrival', item: arr.item, label: arr.label, city: arr.city, iata: arr.iata };
-    const host = dayHostStay(items, date);
+    // The MORNING bed, not the night's: on a day that checks out of one city
+    // and into another, the chain starts where the traveller wakes up and hands
+    // over at the leg between them (the leg is a stop on the chain, so
+    // everything after it measures from where it lands). Reading the night's
+    // stay here is what measured a Tokyo breakfast from a Kyoto hotel.
+    const host = dayMorningStay(items, date);
     if (host) {
       return { source: 'stay', item: host, label: displayTitle(host), city: String(host.location || '').trim() };
     }
@@ -5253,6 +5416,50 @@ const TripLogic = (() => {
   // app's own range separator (see tempSpan); both ends are non-negative by
   // then, so it cannot be read as a sign. `fmt` is the caller's currency
   // formatter, so this owns the wording and never a currency table.
+  /**
+   * The currency a trip's budget is expressed in. Absent MEANS the trip's own,
+   * which is what every trip that never switched currency stores, so there is
+   * no migration and nothing to rewrite.
+   */
+  function budgetCurrencyOf(trip) {
+    const base = (trip && trip.currency) || 'USD';
+    const c = trip && trip.budgetCurrency;
+    return (typeof c === 'string' && /^[A-Z]{3}$/.test(c)) ? c : base;
+  }
+
+  /**
+   * The budget in the currency the totals are printed in.
+   *
+   * A budget is a number the traveller typed while the trip was in some
+   * currency, so it carries that currency exactly as an item's cost does.
+   * Switching the trip currency used to RELABEL it: 6,000 dollars became 6,000
+   * euros, the ceiling moved by hundreds, and the verdict then compared
+   * converted spend against an unconverted limit with nothing on screen saying
+   * so. Converting here, through the same convertAmount every total uses, is
+   * the same answer the app already gives for costs.
+   *
+   * A rate that cannot be found is REPORTED (`unconverted`), never assumed: the
+   * chip then prints the budget in its own currency and cannot read green over
+   * a number it could not compare.
+   */
+  function tripBudgetIn(trip, ratesObj) {
+    const base = (trip && trip.currency) || 'USD';
+    const from = budgetCurrencyOf(trip);
+    const conv = v => {
+      if (v == null || v === '') return null;
+      const n = Number(v);
+      if (!Number.isFinite(n)) return null;
+      return from === base ? n : convertAmount(n, from, base, ratesObj);
+    };
+    const has = !!(trip && trip.budget != null && trip.budget !== '');
+    const top = conv(trip && trip.budget);
+    return {
+      top, low: conv(trip && trip.budgetFrom),
+      currency: from, foreign: from !== base,
+      unconverted: has && top === null,
+    };
+  }
+
   function budgetFigure(from, to, fmt) {
     if (to == null || to === '') return '';
     const top = fmt(to);
@@ -5877,6 +6084,24 @@ const TripLogic = (() => {
     return d;
   }
 
+  /**
+   * The item this proposal would duplicate: same title (case-insensitive,
+   * trimmed), same date, same clock time. Deliberately exact rather than fuzzy
+   * - "Lunch" twice on one day at different hours is two lunches, and a near
+   * match that guessed wrong would put a wrong warning on a good suggestion.
+   * Cancelled items do not count: re-suggesting something you dropped is a
+   * fresh suggestion.
+   */
+  function duplicateOfExisting(fields, items) {
+    const title = String((fields && fields.title) || '').trim().toLowerCase();
+    if (!title || !isIsoDate(fields.startDate)) return null;
+    const time = String(fields.startTime || '');
+    return (items || []).find(it => it && it.status !== 'cancelled'
+      && String(it.title || '').trim().toLowerCase() === title
+      && it.startDate === fields.startDate
+      && String(it.startTime || '') === time) || null;
+  }
+
   function validateTripAction(action, trip) {
     if (!action || typeof action !== 'object') return { ok: false, reason: 'This is not a valid action.' };
     const op = action.op;
@@ -5903,6 +6128,14 @@ const TripLogic = (() => {
       const status = forceProposalStatus(item.status, transcribed);
       const fields = sanitizeActionFields(item, { transcribed });
       const proposal = { op: 'add', status, fields, display: displayFor(fields, status, fields.mapsQuery) };
+      // The model is given the trip and still re-suggests what is on it, most
+      // often when the traveller asks a second time. The add is not refused -
+      // two dinners at the same place on the same night is a thing a person may
+      // genuinely want, and refusing would be the app overruling them - but the
+      // card says so, because "Add to trip" on something already added is the
+      // one thing the card cannot show by itself.
+      const dup = duplicateOfExisting(fields, items);
+      if (dup) proposal.duplicateOf = dup.id;
       // Carried so the item builder can tell a transcribed fact from a model's
       // guess: a price printed on a confirmation the traveller paid belongs in
       // `cost`, not in the estimate bag.
@@ -5933,12 +6166,16 @@ const TripLogic = (() => {
         return { ok: true, proposal: { op: 'remove', targetId: target.id, status: target.status, display: displayFor(target, target.status, '', false) } };
       }
       const raw = action.set || action.item || {};
-      // forceProposalStatus exists so the model can never CLAIM something is
-      // booked, so an explicitly proposed status still goes through it. An
-      // update that says nothing about status must leave it exactly as it is:
-      // forcing it there un-booked the traveller's own confirmed reservation
-      // (and its money) over a change of address.
-      const status = raw.status != null ? forceProposalStatus(raw.status) : target.status;
+      // AN UPDATE NEVER CHANGES STATUS. Whether something is booked is a fact
+      // about what the traveller has done in the world, not a field a model can
+      // observe: it cannot confirm a reservation, and it must not un-confirm
+      // one. Running a model-supplied status through forceProposalStatus was
+      // still a write - that function can never return 'booked', so an update
+      // that so much as mentioned status demoted a Booked flight (and its
+      // money) to "To book" over a change of address. Silence was already
+      // handled; naming it is now handled the same way. forceProposalStatus
+      // stays for ADDs, where it stops a model claiming a booking it invented.
+      const status = target.status;
       const fields = sanitizeActionFields(raw);
       const merged = { ...target, ...fields };
       const display = displayFor(merged, status, fields.mapsQuery, 'cost' in fields);
@@ -6158,7 +6395,7 @@ const TripLogic = (() => {
     parts.push('You are a travel-planning assistant helping edit a trip itinerary.');
     parts.push(ASSIST_HONESTY);
     parts.push('Here is the current trip as JSON:');
-    parts.push(JSON.stringify(slimTripForShare(trip)));
+    parts.push(JSON.stringify(slimTripForAssistant(trip)));
     parts.push(ASSIST_SCHEMA);
     parts.push(ASSIST_CONTRACT);
     parts.push(ASSIST_KINDS);
@@ -6258,7 +6495,7 @@ const TripLogic = (() => {
       // data it qualifies is a caveat the model drops
       if (truncated) parts.push(ASSIST_TRUNCATED_NOTE);
       parts.push('Here is the current trip as JSON:');
-      parts.push(JSON.stringify(slimTripForShare(trip)));
+      parts.push(JSON.stringify(slimTripForAssistant(trip)));
     }
     return parts.join('\n\n');
   }
@@ -8744,7 +8981,7 @@ const TripLogic = (() => {
     flightTitleFromAirports, parseFlightAirports,
     classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote,
     passportExpiryStatus, PASSPORT_VALIDITY_DAYS,
-    slimTripForShare, hasFastRail, viewFromHash, hashForView,
+    slimTripForShare, slimTripForAssistant, hasFastRail, viewFromHash, hashForView,
     buildIcs, buildGpx, buildCsv, csvColumns, convertAmount, sumInCurrency,
     normalizeTravelers, travelerTotals,
     assignedTravelers, evenSplitAmounts, splitAmountsSum, splitAmountsMatch, customSplitShares,
@@ -8754,7 +8991,7 @@ const TripLogic = (() => {
     transportGaps, connectionWarnings, sameTimeCollisions, TIGHT_CONNECTION_MIN, tripPhase, isPastRow,
     bookingDeadlines, BOOKING_LEAD_DAYS,
     paceAdvisory, PACE_MIN_STAYS, PACE_FAST_AVG_NIGHTS,
-    dayCards, dayHostStay, dayItemsInOrder, emptyDayNote, stripPlaceCode, parseTravelOrigin, dayMorningCity,
+    dayCards, dayHostStay, dayMorningStay, dayItemsInOrder, emptyDayNote, stripPlaceCode, parseTravelOrigin, dayMorningCity,
     departureOrigin, suggestedPassport, passportAssumptionParts,
     coveringStay, timelineGroups,
     defaultPlanDay, planDayGroups, weatherKey, summarizeClimate, weatherLine, weatherRange, pickMonthSamples, docGuard,
@@ -8768,7 +9005,7 @@ const TripLogic = (() => {
     parseMarkdown, parseMarkdownInline,
     normalizePlaceQuery, placeCacheKey, planPlacesLookup, placesCacheUpdates,
     createPlacesQueue, placesRetryDelay,
-    sanitizeHours, normalizeGoogleHours, hoursVerdict, hoursIntervalsForDate, hoursLineText,
+    sanitizeHours, normalizeGoogleHours, hoursVerdict, nextOpeningMin, hoursIntervalsForDate, hoursLineText,
     HOURS_CLOSING_SOON_MIN, RECOMMEND_HOURS_WINDOWS, recommendWindowMin,
     PLACES_BATCH_MAX, PLACES_CONCURRENCY, PLACES_DEFER_MS, PLACES_MAX_ATTEMPTS,
     VENUE_TTL_MS, VENUE_CACHE_MAX, venueFresh, normalizeVenueCache, rememberVenue,
@@ -8781,7 +9018,7 @@ const TripLogic = (() => {
     dayTravelTotals, dayRouteMode, directionsRouteUrl, routeUrlChunks, candidateBadges,
     mapsSearchUrl, assistMapsLink, itemMapsQuery, displayTitle, showsCostBadge, isFoodOrDrink, isEstimatedCost, costDisplayParts, mealTitlePrefixes,
     hasEstimate, displayCostOf, parseMoney, roundMoney, budgetVerdict, refundParts,
-    readBudgetRange, normalizeBudgetFrom, budgetFigure,
+    readBudgetRange, normalizeBudgetFrom, budgetFigure, budgetCurrencyOf, tripBudgetIn,
     mealKind, isLongDetails,
     MEAL_META, isMealKind, mealLabel, splitMealTitle, itemMealKind, normalizeMealItem,
     matchSampleTrip, normalizeTripName, sampleTrip, sampleTripOptions, buildSampleTrip,

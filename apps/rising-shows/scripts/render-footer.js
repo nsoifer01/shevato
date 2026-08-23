@@ -1,7 +1,7 @@
 'use strict';
 
 // Shared footer used by every static page in this app. Inlined into the
-// HTML at build time — no JS partial-include — so the cross-app links
+// HTML at build time (no JS partial-include) so the cross-app links
 // are visible to Googlebot and to JS-disabled visitors.
 //
 // The app list comes from assets/apps-manifest.json, THE canonical list:
