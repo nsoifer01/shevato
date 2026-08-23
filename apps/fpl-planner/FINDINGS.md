@@ -580,7 +580,7 @@ ranking, and only the part of a correction that changes ORDER changes decisions
   file. Rule: **HTML `src` and JS `import` live at different depths in the same
   app** - `index.html` uses `../../sync-system/`, anything under `js/ui/` needs
   `../../../../sync-system/`. Gym Tracker's equivalent call in
-  `js/views/settings-view.js` had it right and is the reference.
+  `apps/gym-tracker/js/views/settings-view.js` had it right and is the reference.
 - `assets/css/main.css` paints `button { color:#555 !important }`, a red
   `button:hover` AND a red `input[type=text]:focus` box-shadow. Every
   interactive element needs counter-pins verified by computed style, never by

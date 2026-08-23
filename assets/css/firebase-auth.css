@@ -84,6 +84,14 @@
   border: none !important;
   box-shadow: none !important;
   outline: none !important;
+  /* The bare text button measured 61x17 px: far below the 24 px WCAG 2.5.8
+     minimum and the 44 px comfortable touch size, for the only account entry
+     point on the site. Fill the 52 px header bar instead (visually identical:
+     the button has no background). */
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 0.75rem;
 }
 
 #header .auth-container .auth__user-name {

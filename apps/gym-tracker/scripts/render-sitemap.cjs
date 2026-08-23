@@ -15,17 +15,22 @@ const { SITE } = require('./render-exercise-page.cjs');
 // `exercises` and `slugs` are still accepted so the caller does not change and
 // so restoring per-exercise entries later is a one-line edit rather than a
 // signature change.
+//
+// No <lastmod>: the only date available here is the build time and the build
+// runs on every deploy, so the hubs used to claim a change every day while the
+// exercise database changes a few times a year. An inaccurate lastmod is worse
+// than none (Google ignores it once it proves unreliable). `builtAt` stays in
+// the signature so callers do not change.
 function renderExercisesSitemap({ exercises, slugs, muscles, equipment, builtAt }) {
-  const lastmod = (builtAt ? new Date(builtAt) : new Date()).toISOString().slice(0, 10);
   const urls = [];
 
-  urls.push(url(`${SITE}/apps/gym-tracker/exercises/`, lastmod, 'weekly', '0.7'));
+  urls.push(url(`${SITE}/apps/gym-tracker/exercises/`, 'weekly', '0.7'));
 
   for (const m of muscles) {
-    urls.push(url(`${SITE}/apps/gym-tracker/exercises/muscle/${m}/`, lastmod, 'monthly', '0.6'));
+    urls.push(url(`${SITE}/apps/gym-tracker/exercises/muscle/${m}/`, 'monthly', '0.6'));
   }
   for (const e of equipment) {
-    urls.push(url(`${SITE}/apps/gym-tracker/exercises/equipment/${e}/`, lastmod, 'monthly', '0.6'));
+    urls.push(url(`${SITE}/apps/gym-tracker/exercises/equipment/${e}/`, 'monthly', '0.6'));
   }
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -35,10 +40,9 @@ ${urls.join('\n')}
 `;
 }
 
-function url(loc, lastmod, changefreq, priority) {
+function url(loc, changefreq, priority) {
   return `  <url>
     <loc>${loc}</loc>
-    <lastmod>${lastmod}</lastmod>
     <changefreq>${changefreq}</changefreq>
     <priority>${priority}</priority>
   </url>`;
