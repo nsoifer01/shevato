@@ -276,6 +276,50 @@ close dropped keyboard focus on the body instead of the card the reader started
 from. That bug predates the Escape change for the back arrow; the Escape change
 just made it the common path.
 
+## One provider vocabulary, and the global that nearly broke it (2026-08-23)
+
+`scripts/providers-lib.js` is the single definition of the streaming vocabulary:
+`normalizeProvider` (plan and channel variants to a brand), the mainstream
+`MAINSTREAM_PROVIDERS` set, `normalizeProviders` (the display list: normalized,
+filtered, de-duplicated, in order) and `isMainstreamProvider`. Consumers are
+`build-data.js`, `render-show-page.js` and `js/app.js`, which reaches it through
+`window.RisingShowsProviders` because `index.html` loads it before `app.js`.
+Until this round the app held its own copy of the list and the renderer its own
+copy of the filter, so the surface this round set out to make consistent had
+three editable definitions. Verified over all 34,692 series: the app's display
+list and the string on the static page agree for every one, 11,188 rows each.
+
+**The app has no local fallback on purpose.** A fallback list would be the
+second definition again. If the script fails to load, provider chips and the
+modal's Watch on row do not render and nothing else changes.
+
+**These are classic scripts sharing one global scope.** `providers-lib.js` first
+shipped with a top-level `const API`, which `finder-lib.js` also declares, so
+the file died at parse time with "Identifier 'API' has already been declared"
+and `window.RisingShowsProviders` never existed: every provider chip vanished
+silently, and only the browser suite's "no JS errors" check caught it. The file
+is now wrapped in an IIFE so it leaks nothing. `integrations-lib.js` avoids the
+same trap by being `type="module"`. Any new classic script here must do one or
+the other.
+
+## Keyboard focus in a scroll-snap rail (2026-08-23)
+
+The mobile shape strip is `overflow-x: auto` with `scroll-snap-type: x` and
+`scroll-snap-align: start` on each chip. A snap container REJECTS a scroll
+position between two snap points, which is why both the browser's own focus
+scrolling and `scrollIntoView({inline: 'nearest'})` left the widest chip
+("Saved best for last", 225 px in a 353 px strip) cropped by 30 px: measured
+directly, `scrollLeft += 41` read back unchanged. Scrolling so the focused
+chip's own start edge meets the scrollport IS its snap point, so it sticks, and
+it is what a chip rail should do anyway.
+
+Two details that cost time: the adjustment has to run a frame later, because the
+browser performs its own focus scroll AFTER the focusin handler and simply
+overwrites an earlier one; and the target is the scrollport, which for a scroll
+container is the padding box, so the strip's padding must not be added to it.
+`chipScrollDelta` is a pure function for that arithmetic and is unit tested;
+the browser suite tabs the whole strip at 390 px and asserts nothing is cropped.
+
 ## Gotchas
 
 - **A missing numeric guard NaN-poisons whole-series folds.** Defect 15:

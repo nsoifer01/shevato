@@ -12,7 +12,7 @@ const { detectShapes } = require('./match.js');
 // Streaming-provider vocabulary is shared with the browser app for the same
 // reason shapes are: a page must never name a service the app spells
 // differently for the same show.
-const { normalizeProvider, MAINSTREAM_PROVIDERS } = require('./providers-lib.js');
+const providersLib = require('./providers-lib.js');
 
 const SITE = 'https://shevato.com';
 const TMDB_POSTER = 'https://image.tmdb.org/t/p/w500';
@@ -86,25 +86,10 @@ const SHAPE_DESCS = {
 // deny-list of the long tail, which is exactly the drift this fixes.
 // Order follows the data so a show's own listing order is preserved.
 //
-// MAINSTREAM_PROVIDERS is a Set in the app; accept an array too so the shared
-// module can be exported either way without breaking the pages.
-const MAINSTREAM_PROVIDER_SET = MAINSTREAM_PROVIDERS instanceof Set
-  ? MAINSTREAM_PROVIDERS
-  : new Set(MAINSTREAM_PROVIDERS || []);
-
-function normalizeProviders(providers) {
-  if (!Array.isArray(providers)) return [];
-  const seen = new Set();
-  const out = [];
-  for (const raw of providers) {
-    if (typeof raw !== 'string') continue;
-    const name = normalizeProvider(raw.trim());
-    if (!MAINSTREAM_PROVIDER_SET.has(name) || seen.has(name)) continue;
-    seen.add(name);
-    out.push(name);
-  }
-  return out;
-}
+// Delegates to providers-lib, which is also what build-data.js normalizes with
+// and what the browser app displays from. Re-exported here because the page
+// renderer's own tests and callers have always reached for this name.
+const normalizeProviders = providersLib.normalizeProviders;
 
 // The show's whole-run trajectory shape, from the SAME derivation the browser
 // Finder uses (finder-lib's deriveShowShapes, also called by buildShowAgg), so

@@ -936,3 +936,37 @@ test('Compare: an imported set with nothing to protect saves normally', () => {
   helpers.Compare.remove('shared2');
   assert.deepEqual(JSON.parse(ctx.localStorage.getItem(KEY_COMPARE)), ['shared1']);
 });
+
+// ---------------------------------------------------------------------------
+// Shape rail: keyboard focus must reveal the whole chip (closeout)
+// ---------------------------------------------------------------------------
+
+// The rail is a scroll-snap container, so a position between two snap points is
+// rejected outright: scrolling by "just enough" read back unchanged and left the
+// widest chip cropped by 30 px at 390 px wide. Aligning the chip's own start
+// edge to the scrollport IS its snap point, so it sticks.
+const rect = (left, right) => ({ left, right, width: right - left });
+
+test('chipScrollDelta: a chip cropped on the right scrolls to its own snap point', () => {
+  // Strip spans 0..353. Chip sits at 158..383, so 30 px hang off the end.
+  const delta = helpers.chipScrollDelta(rect(0, 353), rect(158, 383), 0);
+  assert.equal(delta, 158, 'aligns the chip start to the scrollport start');
+});
+
+test('chipScrollDelta: a chip cropped on the left scrolls back to it', () => {
+  const delta = helpers.chipScrollDelta(rect(0, 353), rect(-40, 120), 0);
+  assert.equal(delta, -40);
+});
+
+test('chipScrollDelta: a fully visible chip is left alone', () => {
+  assert.equal(helpers.chipScrollDelta(rect(0, 353), rect(20, 200), 0), 0);
+  // Flush against either edge still counts as visible.
+  assert.equal(helpers.chipScrollDelta(rect(0, 353), rect(0, 353), 0), 0);
+});
+
+test('chipScrollDelta: the scrollport starts inside the border, not the padding', () => {
+  // A scroll container's scrollport is its padding box: content scrolls under
+  // the padding, so padding must NOT be added to the target or the chip parks
+  // one padding-width short of its snap point and the snap rejects it.
+  assert.equal(helpers.chipScrollDelta(rect(0, 353), rect(158, 383), 2), 156);
+});

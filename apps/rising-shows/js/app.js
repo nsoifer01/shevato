@@ -315,27 +315,22 @@ const PAGE_SIZE = 24;
 const STALE_DAYS = 30;
 const MAX_SUGGESTIONS = 10;
 
-// Only show these streaming services as filter chips and as provider tags
-// on cards/rows. TMDB returns ~200 distinct providers including aggregator
-// listings ("BritBox Amazon Channel"), bundlers (Spectrum / Philo / fuboTV),
-// niche specialty channels (AMC+, Acorn TV), and free ad-supported services
-// (Tubi, Pluto, The Roku Channel). Keeping the list to the major
-// subscription services makes the metadata read at a glance and the filter
-// chip row stay short.
-const MAINSTREAM_PROVIDERS = new Set([
-  'Netflix',
-  'Hulu',
-  'Amazon Prime Video',
-  'HBO Max',
-  'Max',
-  'Disney+',
-  'Peacock',
-  'Paramount+',
-  'Apple TV+',
-  'Crunchyroll',
-]);
-function isMainstreamProvider(name) {
-  return MAINSTREAM_PROVIDERS.has(name);
+// Streaming-provider vocabulary and normalization: ONE definition, in
+// scripts/providers-lib.js, which index.html loads before this file and which
+// build-data.js and the static page renderer require directly. The app used to
+// carry its own copy of the mainstream list, which meant two independently
+// editable definitions of the same thing on the exact surface this round set
+// out to make consistent.
+//
+// No local fallback on purpose: a fallback would be that second definition
+// again. If the script fails to load, provider chips and the modal's Watch on
+// row simply do not render, and nothing else is affected.
+const ProvidersLib = (typeof window !== 'undefined' && window.RisingShowsProviders) || null;
+
+// The display list for any surface that names services: normalized, mainstream
+// only, de-duplicated, in the show's own order.
+function displayProviders(list) {
+  return ProvidersLib ? ProvidersLib.normalizeProviders(list) : [];
 }
 
 // --- DOM refs ---
@@ -410,10 +405,8 @@ const els = {
   compareImportedNote: document.getElementById('compareImportedNote'),
   srAnnouncer: document.getElementById('srAnnouncer'),
   compareImportedKeep: document.getElementById('compareImportedKeep'),
-  showModalDetailRetry: document.getElementById('showModalDetailRetry'),
   modalDetailError: document.getElementById('modalDetailError'),
   modalCurveHeading: document.getElementById('modalCurveHeading'),
-  modalDetailRetry: document.getElementById('modalDetailRetry'),
   finderSearch: document.getElementById('finderSearch'),
   finderSuggestions: document.getElementById('finderSearchSuggestions'),
   finderViewToggle: document.getElementById('finderViewToggle'),
@@ -1741,10 +1734,9 @@ const MOOD_CHIP_LIMIT = 6;
 // pattern tags without forcing a second row.
 function fillProviderTags(container, providers) {
   if (!providers || !providers.length) return;
-  // Same whitelist as the filter chips — only major streaming services get
-  // a chip on the card/row. Channels like AMC+, Philo, The Roku Channel,
-  // Spectrum, and the *-Amazon-Channel aggregator entries are dropped.
-  const filtered = providers.filter(isMainstreamProvider);
+  // Normalized, mainstream-only and de-duplicated by the shared vocabulary, so
+  // this row can never name a service differently from the static page.
+  const filtered = displayProviders(providers);
   for (const p of filtered) {
     const tag = document.createElement('span');
     tag.className = 'provider-tag';
@@ -3524,11 +3516,8 @@ function indexShowAgg() {
   providerBySeries = new Map();
   for (const m of dataset.matches) {
     if (providerBySeries.has(m.seriesId)) continue;
-    const list = m.providers;
-    if (!Array.isArray(list) || list.length === 0) continue;
-    for (const p of list) {
-      if (isMainstreamProvider(p)) { providerBySeries.set(m.seriesId, p); break; }
-    }
+    const first = displayProviders(m.providers)[0];
+    if (first) providerBySeries.set(m.seriesId, first);
   }
 }
 
@@ -4740,6 +4729,39 @@ function finderYearChip(label, displayValue, prop, el) {
   };
 }
 
+// How far to scroll a snap-aligned horizontal rail to reveal one child in full.
+//
+// The obvious answer, "the minimum scroll that brings it inside", does not work
+// here and that is not a detail: the rail is a scroll-snap container whose
+// children are `scroll-snap-align: start`, so a position between two snap
+// points is REJECTED. Measured directly: with the widest chip cropped by 30 px,
+// `scrollLeft += 41` read back unchanged, because the nearest snap point to the
+// requested position was the one it started from.
+//
+// So align the chip's own start edge to the scrollport's, which IS its snap
+// point and therefore sticks. That also matches how a chip rail is expected to
+// behave: the focused chip parks at the leading edge. The scrollport of a
+// scroll container is its padding box, so the target is the strip's border-box
+// left plus its left border, not its padding.
+//
+// Returns 0 when the chip is already fully visible, so an already-good position
+// is never disturbed.
+function chipScrollDelta(stripRect, chipRect, borderLeft) {
+  const portLeft = stripRect.left + borderLeft;
+  const portRight = stripRect.right;
+  if (chipRect.left >= portLeft && chipRect.right <= portRight) return 0;
+  return chipRect.left - portLeft;
+}
+
+function scrollChipIntoStrip(strip, btn) {
+  const cs = typeof getComputedStyle === 'function' ? getComputedStyle(strip) : null;
+  const borderLeft = cs ? (parseFloat(cs.borderLeftWidth) || 0) : 0;
+  const delta = chipScrollDelta(
+    strip.getBoundingClientRect(), btn.getBoundingClientRect(), borderLeft,
+  );
+  if (delta !== 0) strip.scrollLeft += delta;
+}
+
 function bindFinder() {
   els.finderSearch.addEventListener('input', () => {
     finderState.search = els.finderSearch.value;
@@ -4854,20 +4876,33 @@ function bindFinder() {
     onFinderFilterChange();
   });
 
-  // Under 900px the shape strip is a horizontal scroller (styles.css). Chromium's
-  // own "scroll the newly focused thing into view" only PARTLY reveals a chip in
-  // that scroller: tabbing forward left 6 of the 13 chips clipped at the right
-  // edge, the worst showing 17px of a 176px chip, so a keyboard user could not
-  // read the chip they were on. It is not the scroll-snap: measured identically
-  // with snap-type none, snap-align none, mandatory and center. An explicit
-  // scrollIntoView does place it correctly, so do that on keyboard focus.
-  // :focus-visible keeps a tap/click from yanking the strip under the finger.
+  // Under 900px the shape strip is a horizontal scroller (styles.css), and a
+  // keyboard user must be able to READ the chip they have tabbed onto.
+  //
+  // Neither the browser's own focus scrolling nor scrollIntoView({inline:
+  // 'nearest'}) gets there: both leave the widest chip cropped at the right
+  // edge (measured: "Saved best for last", 195 of 225 px visible at 390 px
+  // wide, with 218 px of scroll still unused), because the strip is a
+  // scroll-snap container and the snap pulls the position back to a chip
+  // boundary. So compute the scroll explicitly and set it. The snap still
+  // governs swiping, which is what it is for.
+  //
+  // Edges are measured to the strip's PADDING box, not its border box, so the
+  // chip clears the padding and its focus ring is fully visible.
+  // :focus-visible keeps a tap or a click from yanking the strip under the
+  // reader's finger, and the scrollWidth check makes it a no-op on desktop,
+  // where the strip wraps instead of scrolling.
   els.finderShapes.addEventListener('focusin', (e) => {
     const btn = e.target.closest('.shape-chip');
     if (!btn) return;
-    if (els.finderShapes.scrollWidth <= els.finderShapes.clientWidth) return;
+    const strip = els.finderShapes;
+    if (strip.scrollWidth <= strip.clientWidth) return;
     try { if (!btn.matches(':focus-visible')) return; } catch (_) { /* old engine: scroll anyway */ }
-    btn.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+    // After a frame, not now: the browser performs its OWN focus scroll as part
+    // of focusing, and it runs after this handler, so adjusting here is simply
+    // overwritten (measured: the strip snapped straight back to the position
+    // that left the chip cropped).
+    requestAnimationFrame(() => scrollChipIntoStrip(strip, btn));
   });
 
   els.finderMoodChips.addEventListener('click', (e) => {
@@ -6308,7 +6343,7 @@ function renderShowModalWatchRow(meta) {
   const box = els.showModalProviders;
   if (!box) return;
   box.replaceChildren();
-  const providers = (meta.providers || []).filter(isMainstreamProvider);
+  const providers = displayProviders(meta.providers);
   if (providers.length === 0) {
     if (row) row.hidden = true;
     return;
@@ -6430,6 +6465,7 @@ if (typeof window !== 'undefined') {
     dominantShapeOf,
     isAnimated,
     isUnscripted,
+    chipScrollDelta,
   };
 }
 

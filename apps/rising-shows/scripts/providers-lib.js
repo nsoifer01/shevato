@@ -8,6 +8,16 @@
 // DOM access - see the UMD-style export at the bottom, same as finder-lib.js.
 'use strict';
 
+// Wrapped so nothing leaks into the page's global scope. These are classic
+// scripts, not modules: finder-lib.js and integrations-lib.js each declare a
+// top-level `const API`, and a second top-level `const API` here is a duplicate
+// declaration that kills THIS WHOLE FILE at parse time (caught by the browser
+// suite: "Identifier 'API' has already been declared", after which
+// window.RisingShowsProviders never existed and every provider chip silently
+// vanished). Same class of collision the comment above buildShowAggFromDataset
+// in js/app.js describes.
+(function () {
+
 // TMDB returns each plan as a separate provider ("Netflix" / "Netflix
 // Standard with Ads", "Peacock Premium" / "Peacock Premium Plus", channel
 // variants like "HBO Max Amazon Channel"). Users care about the brand, so
@@ -38,8 +48,7 @@ function normalizeProvider(name) {
 //
 // 'Max' is unreachable for anything that has been through normalizeProvider
 // (it maps to 'HBO Max'). It stays in the set on purpose so a raw, unnormalized
-// name still matches, and so this set is identical to the one js/app.js
-// declares.
+// name still matches.
 const MAINSTREAM_PROVIDERS = new Set([
   'Netflix',
   'Hulu',
@@ -53,10 +62,39 @@ const MAINSTREAM_PROVIDERS = new Set([
   'Crunchyroll',
 ]);
 
-const API = { normalizeProvider, MAINSTREAM_PROVIDERS };
+// One list in, the display list out: trimmed, brand-normalized, filtered to the
+// mainstream set and de-duplicated in first-seen order. This is what a surface
+// should call - the static show pages, the app's cards, rows and modal - so
+// that "which services does this show name" has exactly one answer everywhere.
+function normalizeProviders(providers) {
+  if (!Array.isArray(providers)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const raw of providers) {
+    if (typeof raw !== 'string') continue;
+    const name = normalizeProvider(raw.trim());
+    if (!MAINSTREAM_PROVIDERS.has(name) || seen.has(name)) continue;
+    seen.add(name);
+    out.push(name);
+  }
+  return out;
+}
+
+// True when a name belongs to the mainstream vocabulary, normalizing first so a
+// raw TMDB plan name ("Netflix Standard with Ads") answers the same as the
+// brand it collapses to.
+function isMainstreamProvider(name) {
+  if (typeof name !== 'string') return false;
+  return MAINSTREAM_PROVIDERS.has(normalizeProvider(name.trim()));
+}
+
+const api = {
+  normalizeProvider, normalizeProviders, isMainstreamProvider, MAINSTREAM_PROVIDERS,
+};
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = API;
+  module.exports = api;
 } else if (typeof window !== 'undefined') {
-  window.RisingShowsProviders = API;
+  window.RisingShowsProviders = api;
 }
+}());
