@@ -70,9 +70,9 @@ for (const a of args) {
 // return, a refactor that drops a loop, a throw swallowed inside the suite)
 // still "passes" everything it did run; comparing against a pinned total turns
 // that silent shrinkage into an explicit failure. All six harness-owned
-// suites are pinned; the app-owned trip-planner and fpl-planner suites are
-// not, by their owners' choice. Adding or removing a check on purpose means
-// updating the pinned number in the same change.
+// suites are pinned, plus the app-owned maptap-rivals suite by its owner's
+// choice; trip-planner and fpl-planner are not, by theirs. Adding or removing
+// a check on purpose means updating the pinned number in the same change.
 // apps.mjs note: the count is invariant whether or not the rising-shows
 // dataset is fetched (the skip path emits the same number of entries).
 const EXPECTED_CHECKS = {
@@ -84,6 +84,11 @@ const EXPECTED_CHECKS = {
   'tests/browser/suites/visual.mjs': 86,
   'tests/browser/suites/perf.mjs': 41,
   'tests/browser/suites/pwa-gym.mjs': 14,
+  // 56 from the 2026-08-22 audit pass, plus the 15 modal/header stacking
+  // checks added 2026-08-23. Pinned because this suite's axe scans now
+  // contain their own failures instead of aborting the run, so a shrunken
+  // run would otherwise look green.
+  'apps/maptap-rivals/e2e/quality.mjs': 71,
 };
 
 const selected = only ? SUITES.filter((p) => p.includes(only)) : SUITES;

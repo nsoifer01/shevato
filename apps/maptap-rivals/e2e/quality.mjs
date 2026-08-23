@@ -17,6 +17,9 @@
 //          announces its overflow, the day tabs all fit, matrix cells do not
 //          overlap, a 57-character rival name stays inside its cards
 //   UX     delete-rival modal + Undo, inline name validation, paste date reset
+//   stack  every dialog type covers the shared #header (z-index 10001): the
+//          header strip is hit-tested, not screenshotted, so an ancestor
+//          stacking context swallowing the raise would still fail
 import { readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import {
@@ -99,10 +102,24 @@ export async function run({ base, cdpPort }) {
     await evaluate(s, `(()=>{ for (const k of Object.keys(localStorage)) localStorage.removeItem(k); const kv=${JSON.stringify(kv)}; for (const [k,v] of Object.entries(kv)) localStorage.setItem(k, v); return 1 })()`);
     await goto(s, `${base}${APP}${hash}`, { settle: 1500 });
   }
+  // Injecting ~500KB of axe and scanning a seeded, data-heavy view is the
+  // slowest thing this suite does. On a loaded machine (several Chromium
+  // instances from other checkouts) a single scan can exceed the driver's 45s
+  // send timeout. Contain that to the one check: a throw here used to unwind
+  // to the outer catch and silently drop every remaining check in the suite,
+  // turning one slow scan into a 19-of-71 run. The scan still reports FAIL,
+  // so nothing is hidden - the rest of the suite just gets to run.
   async function axe(s, label) {
-    await s.send('Runtime.evaluate', { expression: axeSource, returnByValue: false });
-    const v = await evalAsync(s, `window.axe.run(document.querySelector('main.page') || document, { runOnly: { type: 'tag', values: ['wcag2a','wcag2aa','wcag21aa'] }, resultTypes: ['violations'] }).then(r => r.violations.filter(v => v.impact === 'serious' || v.impact === 'critical').map(v => v.id + ' [' + v.impact + '] x' + v.nodes.length + ' @ ' + (v.nodes[0].target||[]).join(' ')))`);
-    t(`a11y ${label}: no serious/critical axe violations on rendered content`, Array.isArray(v) && v.length === 0, Array.isArray(v) ? v.join(' | ') : JSON.stringify(v));
+    const name = `a11y ${label}: no serious/critical axe violations on rendered content`;
+    try {
+      if (!(await evaluate(s, "typeof window.axe === 'object' && typeof window.axe.run === 'function'"))) {
+        await s.send('Runtime.evaluate', { expression: axeSource, returnByValue: false });
+      }
+      const v = await evalAsync(s, `window.axe.run(document.querySelector('main.page') || document, { runOnly: { type: 'tag', values: ['wcag2a','wcag2aa','wcag21aa'] }, resultTypes: ['violations'] }).then(r => r.violations.filter(v => v.impact === 'serious' || v.impact === 'critical').map(v => v.id + ' [' + v.impact + '] x' + v.nodes.length + ' @ ' + (v.nodes[0].target||[]).join(' ')))`);
+      t(name, Array.isArray(v) && v.length === 0, Array.isArray(v) ? v.join(' | ') : JSON.stringify(v));
+    } catch (e) {
+      t(name, false, `scan did not complete: ${String(e && e.message || e)}`);
+    }
   }
 
   let s = null;
@@ -228,6 +245,122 @@ export async function run({ base, cdpPort }) {
     await setFile('#wa-import-file', waIos);
     t('WhatsApp: iPhone bracketed export with day-first dates is read as day/month/year', !(await evaluate(s, "document.getElementById('wa-modal').hidden")) && /iPhone export/.test(await txt(s, '#wa-format')) && (await evaluate(s, "document.getElementById('wa-date-order').value")) === 'DMY', await txt(s, '#wa-format'));
     await pressKey(s, 'Escape', 'Escape', 27); await sleep(200);
+
+    // ---- modal layer vs the shared site header (fixed 2026-08-23) ----
+    // The shared chrome pins #header at z-index 10001; .modal used to sit at
+    // 100, so the header stayed lit above the backdrop and a click at the top
+    // of the screen hit the site logo and navigated away with the dialog open.
+    // Asserted by hit-testing, not by screenshot: computed z-index alone would
+    // not catch an ancestor stacking context swallowing the raise.
+    const STACK = (modalId) => `(()=>{
+      const modal = document.getElementById(${JSON.stringify(modalId)});
+      const header = document.getElementById('header');
+      if (!header) return { error: 'no shared #header on the page' };
+      if (!modal || modal.hidden) return { error: 'modal ' + ${JSON.stringify(modalId)} + ' is not open' };
+      const hr = header.getBoundingClientRect();
+      const inside = (node) => !!node && (node === modal || modal.contains(node));
+      // A point over the header strip, and the logo's own centre.
+      const hx = Math.min(Math.max(hr.left + 6, 2), innerWidth - 2);
+      const hy = Math.min(Math.max(hr.top + hr.height / 2, 2), innerHeight - 2);
+      const logo = header.querySelector('a.logo');
+      const lr = logo ? logo.getBoundingClientRect() : hr;
+      const lx = Math.min(Math.max(lr.left + lr.width / 2, 2), innerWidth - 2);
+      const ly = Math.min(Math.max(lr.top + lr.height / 2, 2), innerHeight - 2);
+      const atHeader = document.elementFromPoint(hx, hy);
+      const atLogo = document.elementFromPoint(lx, ly);
+      // Panel must win over its own backdrop.
+      const panel = modal.querySelector('.modal-panel');
+      const pr = panel.getBoundingClientRect();
+      const atPanel = document.elementFromPoint(pr.left + pr.width / 2, pr.top + 8);
+      return {
+        headerZ: parseInt(getComputedStyle(header).zIndex, 10),
+        modalZ: parseInt(getComputedStyle(modal).zIndex, 10),
+        headerCovered: inside(atHeader),
+        logoCovered: inside(atLogo),
+        logoReachable: !!(atLogo && atLogo.closest && atLogo.closest('#header')),
+        panelOverBackdrop: !!(atPanel && panel.contains(atPanel)),
+        atHeader: atHeader ? (atHeader.id || atHeader.className || atHeader.tagName) : null,
+        logoPoint: [Math.round(lx), Math.round(ly)],
+      };
+    })()`;
+    async function stackCheck(label, modalId) {
+      const r = await evaluate(s, STACK(modalId));
+      t(`stacking: ${label} covers the shared site header`,
+        !r.error && r.modalZ > r.headerZ && r.headerCovered && r.logoCovered && !r.logoReachable && r.panelOverBackdrop,
+        JSON.stringify(r));
+      return r;
+    }
+
+    await setViewport(s, 1280, 900);
+    await goto(s, `${base}${APP}#dashboard`, { settle: 1200 });
+    t('shared site header is present in this harness (the stacking checks are not vacuous)',
+      (await evaluate(s, "!!document.getElementById('header') && !!document.querySelector('#header a.logo')")));
+
+    mark('stacking rival-modal');
+    await clickSel(s, '#add-rival-btn', { settle: 350 });
+    const rivalStack = await stackCheck('add-rival dialog', 'rival-modal');
+    // A REAL coordinate click where the logo sits must not navigate away.
+    const hashBefore = await evaluate(s, 'location.hash');
+    await clickAt(s, rivalStack.logoPoint[0], rivalStack.logoPoint[1]); await sleep(500);
+    t('stacking: clicking over the logo with a dialog open does not leave the app',
+      (await evaluate(s, 'location.pathname')).endsWith('/apps/maptap-rivals/index.html') && (await evaluate(s, 'location.hash')) === hashBefore,
+      await evaluate(s, 'location.pathname + location.hash'));
+    t('stacking: that click landed on the backdrop and closed the dialog (normal backdrop behaviour)',
+      await evaluate(s, "document.getElementById('rival-modal').hidden"));
+
+    mark('stacking delete-rival-modal');
+    await clickSel(s, '.rival-card[data-rival-id="r-cy"] .rival-card-edit', { settle: 350 });
+    await clickSel(s, '#rival-delete-btn', { settle: 350 });
+    await stackCheck('delete-rival confirmation', 'delete-rival-modal');
+    t('stacking: the confirmation sits above the edit dialog it was opened from',
+      await evaluate(s, "(()=>{const a=document.getElementById('delete-rival-modal'), b=document.getElementById('rival-modal'); if (b.hidden) return true; return a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_PRECEDING})()"));
+    await pressKey(s, 'Escape', 'Escape', 27); await sleep(250);
+    t('stacking: Escape closes only the top dialog, the edit dialog stays open',
+      (await evaluate(s, "document.getElementById('delete-rival-modal').hidden")) && !(await evaluate(s, "document.getElementById('rival-modal').hidden")));
+    await pressKey(s, 'Escape', 'Escape', 27); await sleep(250);
+    t('stacking: a second Escape closes the edit dialog too', await evaluate(s, "document.getElementById('rival-modal').hidden"));
+
+    mark('stacking clear-games-modal');
+    await clickSel(s, '#clear-games-btn', { settle: 350 });
+    await stackCheck('clear-games confirmation', 'clear-games-modal');
+    await pressKey(s, 'Escape', 'Escape', 27); await sleep(250);
+
+    mark('stacking wa-modal');
+    await setFile('#wa-import-file', wa12);
+    await stackCheck('WhatsApp importer', 'wa-modal');
+    await pressKey(s, 'Escape', 'Escape', 27); await sleep(250);
+
+    mark('stacking delete-game-modal');
+    await goto(s, `${base}${APP}#history`, { settle: 1000 });
+    await clickSel(s, '#history-table button[aria-label="Delete game"]', { nth: 0, settle: 350 });
+    await stackCheck('delete-game confirmation', 'delete-game-modal');
+    await pressKey(s, 'Escape', 'Escape', 27); await sleep(250);
+
+    // The toast is the app's last word on an action: it has to clear the
+    // header and an open dialog, and stay under the shared offline banner.
+    const layers = await evaluate(s, `(()=>{
+      const probe = document.createElement('div');
+      probe.className = 'share-toast';
+      document.body.appendChild(probe);
+      const z = getComputedStyle(probe).zIndex;
+      probe.remove();
+      const modal = document.getElementById('rival-modal');
+      return { toast: parseInt(z, 10), modal: parseInt(getComputedStyle(modal).zIndex, 10), header: parseInt(getComputedStyle(document.getElementById('header')).zIndex, 10) };
+    })()`);
+    t('stacking: toast > dialog > header, and the toast stays below the shared offline banner (10100)',
+      layers.toast > layers.modal && layers.modal > layers.header && layers.toast < 10100, JSON.stringify(layers));
+
+    mark('stacking @390');
+    await setViewport(s, 390, 844, true);
+    await goto(s, `${base}${APP}#dashboard`, { settle: 1200 });
+    await clickSel(s, '#add-rival-btn', { settle: 350 });
+    await stackCheck('add-rival dialog @390', 'rival-modal');
+    t('390px: an open dialog still traps Tab inside the panel',
+      await evaluate(s, "(()=>{const m=document.getElementById('rival-modal'); return m.contains(document.activeElement)})()"));
+    await pressKey(s, 'Escape', 'Escape', 27); await sleep(250);
+    t('390px: Escape closes the dialog and focus returns to the trigger',
+      (await evaluate(s, "document.getElementById('rival-modal').hidden")) && (await evaluate(s, 'document.activeElement.id')) === 'add-rival-btn',
+      await evaluate(s, 'document.activeElement.id'));
 
     // ---- #14 responsive containment ----
     for (const [w, h, mobile] of [[390, 844, true], [1100, 900, false]]) {

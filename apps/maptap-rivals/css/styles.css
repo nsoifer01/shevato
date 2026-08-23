@@ -3413,7 +3413,10 @@ tr:focus-within .icon-btn-share {
   font-weight: 600;
   white-space: nowrap;
   pointer-events: none;
-  z-index: 9999;
+  /* Top of the app ladder (see the .modal comment): above the header and
+     above an open dialog, below the shared offline banner. A toast is the
+     app's last word on an action, so nothing of ours should cover it. */
+  z-index: 10020;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   animation: share-toast-in 0.18s ease;
 }
@@ -3978,10 +3981,21 @@ body.maptap-rivals-app select option {
    Dense, cinematic profile-customization feel: tight rhythm, low-contrast
    chrome, ringed selection states, muted destructive action. */
 
+/* Stacking: the shared chrome in assets/css/main.css puts the fixed #header
+   at z-index 10001 and the sign-in / sign-out / delete-account dialogs at
+   10002-10004; sync-status.css puts the offline banner at 10100 so it is
+   never covered. A dialog the user just opened has to clear the header, or
+   the header strip stays lit above the backdrop and a click at the top of
+   the screen hits the site logo and navigates away from the app (with the
+   dialog still open). App styles must not restyle shared chrome, so the
+   modal layer rises instead of the header dropping. 10010 is the number
+   fpl-planner's drawer already uses for exactly this, keeping one ladder
+   across the site: content < 10001 header < 10002-10004 auth < 10010 app
+   dialog < 10020 app toast < 10100 offline banner. */
 .modal {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: 10010;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5586,10 +5600,11 @@ body.maptap-rivals-app select option {
 }
 #rival-name[aria-invalid="true"] { border-color: var(--bad); }
 
-/* ---- toast with an action (rival-delete Undo). z-index: the toast used
-   to sit under the page stacking context, harmless while it was passive but
-   the Undo button was unclickable (found by coordinate hit-testing). ---- */
-.share-toast { z-index: 2000; }
+/* ---- toast with an action (rival-delete Undo). The base toast is
+   pointer-events:none so a passive "Copied" message never eats a click;
+   an actionable one has to take them back or the Undo button is dead to a
+   real click (found by coordinate hit-testing, not element.click()). The
+   z-index lives on the base rule above; do not re-declare it here. ---- */
 .share-toast.has-action {
   pointer-events: auto;
   display: flex;

@@ -41,11 +41,15 @@ Update semantics worth knowing:
   hand-pasted correction must shed that marker or the next sync would
   silently clobber it back.
 - Duplicates already sitting in a log (written before the fix, or imported
-  from a backup) are NOT pruned; the upsert updates the first match and
-  leaves the rest. Every aggregate is correctly id-agnostic and still counts
-  such a pair as two days; `tests/stats.test.js` ("repeat paste") pins that
-  stats-layer behavior, and `myAvgByContinent` plus the predictions
-  distribution remain immune by their own date-dedupe.
+  from a backup) are NOT pruned, on purpose: the app never silently deletes
+  rows the user can see and delete themselves. The upsert updates the first
+  match and leaves the rest. Measured behaviour of such a pair (two records,
+  same rival, same date): `overallRecord` reports `games: 2, wins: 2, days: 1`
+  - the W-L-T tally counts both records, the DAY-based figures dedupe by date
+  (`myAvgByDay`, the heatmap, `myAvgByContinent`, the predictions
+  distribution). That split is deliberate, not a rounding accident: a day is a
+  calendar fact, a game row is a stored record. `tests/stats.test.js`
+  ("repeat paste") pins the stats-layer behaviour.
 
 The upsert is unit-tested through the `window._testExports` seam
 (`tests/app-helpers.test.js`) and at browser level (the repeat-paste check in
@@ -420,29 +424,83 @@ rival network". A sync attempt without an own username opens the profile card
 for editing and focuses the username input (`focusProfileUsername`); the old
 message pointed at a Settings field that no longer exists.
 
-## Open: the shared site header sits above every app modal (found 2026-08-23)
+## Dialogs live above the shared site chrome (fixed 2026-08-23)
 
-`.modal` is `position: fixed; inset: 0; z-index: 100` (css/styles.css, from the
-app's first commit); the shared chrome in `assets/css/main.css` gives `#header`
-`z-index: 10001`. So while any dialog is open the header strip is neither
-dimmed by the backdrop nor covered by it: `document.elementFromPoint(5, 5)`
-returns the site `logo`, and a click there NAVIGATES AWAY from the app, taking
-the open dialog with it. Below the header the backdrop behaves correctly
-(clicking it closes the dialog), and the keyboard focus trap added in the
-2026-08-22 pass is unaffected: Tab and Shift+Tab still cycle inside the panel.
+The site's stacking ladder, and where this app sits on it:
 
-No data is lost when it happens (the click is a plain navigation), which is why
-it went unnoticed: the 2026-08-22 audit saw a "backdrop click closes" probe
-fail and mis-attributed it to the probe. It is NOT a regression from that pass;
-the rule predates it and no change in that round touched modal stacking.
+| z-index | what | where |
+|---|---|---|
+| 9000 | back-to-top button | `assets/css/back-to-top.css` |
+| 10001 | fixed `#header` | `assets/css/main.css` |
+| 10002-10004 | skip link, slide-out `#menu`, sign-in / sign-out / delete-account dialogs | `main.css`, `firebase-auth.css` |
+| **10010** | **every `.modal` in this app** | `css/styles.css` |
+| **10020** | **`.share-toast`** | `css/styles.css` |
+| 10100 | offline banner | `assets/css/sync-status.css` |
 
-Fixing it is a one-line raise of `.modal`'s z-index above the shared header
-(and a check that the toast, `z-index: 2000`, still sits sensibly relative to
-both). Deliberately left out of the 2026-08-22 quality-pass PR: it is a
-pre-existing, non-regressive, site-chrome interaction, and that PR was already
-verified end to end. Worth doing as the next small piece of work, together with
-a hit-test assertion (`elementFromPoint` at the top-left corner with a dialog
-open) in `e2e/quality.mjs`.
+App styles must not restyle shared chrome, so the app layer rises rather than
+the header dropping; 10010 is the number fpl-planner's player drawer already
+uses for the same reason, which keeps one ladder across the site. The five
+dialogs (`rival-modal`, `delete-rival-modal`, `delete-game-modal`,
+`clear-games-modal`, `wa-modal`) all hang off `.modal`, and both `.modal` and
+`#header` are children of `<body>` with no stacking context in between, so the
+comparison is direct.
+
+Until 2026-08-23 `.modal` was `z-index: 100` (from the app's first commit,
+`0bf855c`). The header strip therefore stayed lit above the backdrop and
+`document.elementFromPoint(5, 5)` returned the site `logo`: a click at the top
+of the screen NAVIGATED AWAY from the app with the dialog still open. No data
+was lost, which is why it survived so long; the 2026-08-22 audit saw a
+"backdrop click closes" probe fail up there and mis-attributed it to the probe.
+
+The `.share-toast` correction shipped with it: the base rule said 9999 and a
+later rule added in the 2026-08-22 pass re-declared it as 2000, silently
+LOWERING the toast under the header. It went unnoticed because the toast sits
+at the bottom of the viewport. There is now one declaration (10020, on the base
+rule) and the later block carries only the `pointer-events: auto` that
+actionable toasts need; do not re-declare the z-index there.
+
+Two layers of regression cover this:
+
+- `e2e/quality.mjs` pins the behaviour by hit-testing, not by screenshot: for
+  each of the five dialog types it asserts `modalZ > headerZ`, that
+  `elementFromPoint` at the header strip AND at the logo's own centre lands
+  inside the modal, that no `#header` descendant is reachable, and that the
+  panel wins over its own backdrop, at 1280 and at 390. A real coordinate
+  click over the logo must leave `location` unchanged. Computed z-index alone
+  would not catch an ancestor stacking context swallowing the raise, which is
+  the failure mode worth guarding.
+- `tests/stacking.test.js` is the cheap half, so a regression also fails in
+  `npm test` on every PR rather than only in the slower browser job. It parses
+  the SHIPPED stylesheets (app, `main.css`, `sync-status.css`) instead of a
+  hardcoded table, so raising `#header` in the shared chrome fails here too,
+  and it asserts `.share-toast` declares its z-index exactly once. Both halves
+  were proven to fail against the pre-fix values before being kept.
+
+## Deliberate behaviour, not open defects
+
+Collected so a future audit does not re-file them. Each was verified, judged
+and kept as-is:
+
+- **Duplicate `(rival, date)` rows are never auto-pruned.** See the paste
+  section above for the measured split (two games, one day). The app does not
+  silently delete rows a user can see and delete themselves; the same rule is
+  why History still lists orphaned games.
+- **Orphaned games (rival deleted elsewhere) stay in History.** They are
+  excluded from every aggregate by `eligibleH2HGames` and shown in History
+  with their delete button, so a stranded row is visible and removable rather
+  than invisible. Auto-pruning would let one device's delete destroy another
+  device's data under per-key last-writer-wins sync.
+- **Rival deletion has Undo, not a recycle bin.** `confirmDeleteRival` keeps an
+  in-memory `state.lastDeletedRival` snapshot (rival, its games, its index in
+  the list); the toast offers Undo for 8s and `undoDeleteRival` splices the
+  rival back at its original index, re-appends the games and re-links the
+  network pair. The snapshot is memory-only, so it does not survive a reload.
+  A persistent trash would be a second storage key to sync, reconcile and
+  garbage-collect for an action that already asks for confirmation and shows
+  the rival's name and game count before it happens.
+- **The shared auth modal stays light-themed.** `assets/css/firebase-auth.css`
+  pins `color-scheme: light` for a Chrome-autofill reason; theme it
+  accent-only, scoped, and never darken it.
 
 ## Audit recommendations deliberately not taken (2026-08-22)
 
@@ -485,7 +543,22 @@ the WhatsApp parser (`js/whatsapp.js`), the backup validator and the date
 helpers are pure and unit-tested, and `e2e/quality.mjs` covers the rendered
 paths the audit found broken (seeded axe at 1280 and 390, keyboard
 reachability, modal focus, delete/Undo, paste-date reset, refused imports,
-WhatsApp formats, overflow at 390/1100); the `.features/` plans hold the rest.
+WhatsApp formats, overflow at 390/1100, and since 2026-08-23 the dialog
+stacking block); the `.features/` plans hold the rest.
+
+`e2e/quality.mjs` is 71 checks and is PINNED in `tests/browser/run.mjs`
+(`EXPECTED_CHECKS`), the only app-owned suite that is. Two reasons it needs the
+pin: a suite that returns early "passes" everything it did run, and since
+2026-08-23 an axe scan that exceeds the driver's 45s send timeout records its
+own FAIL instead of unwinding to the outer catch. Containing the throw keeps
+one slow scan from dropping the other 50-odd checks (it turned a run into
+19-of-71 on a loaded machine), but it also means a shrunken run would look
+green without the pin. Change the number in the same commit as the checks.
+
+That timeout is environmental, not an app or suite defect: it appears when
+several Chromium instances from other checkouts are running on the same box.
+Do not raise the shared 45s timeout in `tests/browser/cdp.mjs` to chase it -
+that value bounds every suite in the repo and a real hang should still fail.
 
 Where a defect lives in app.js but is *visible through* a pure function's call
 contract, the test file states the contract in a comment and stubs the app.js
