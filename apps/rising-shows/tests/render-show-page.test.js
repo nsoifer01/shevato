@@ -3,7 +3,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { renderShowPage, buildDescription, buildTvSeasonSchema, renderSeasonNav } = require('../scripts/render-show-page.js');
+const {
+  renderShowPage, buildDescription, buildTvSeasonSchema, renderSeasonNav, normalizeProviders,
+} = require('../scripts/render-show-page.js');
 const { groupBySeries } = require('../scripts/build-show-pages.js');
 
 const BREAKING_BAD = {
@@ -79,7 +81,7 @@ test('renderShowPage includes episode rows in a real HTML table', () => {
   const html = renderShowPage(BREAKING_BAD);
   assert.ok(html.includes('<table class="episode-table">'));
   assert.ok(html.includes('Pilot'));
-  // Apostrophe escaped — using &#39; per our HTML escaper
+  // Apostrophe escaped, using &#39; per our HTML escaper
   assert.ok(html.includes('Cat&#39;s in the Bag'));
 });
 
@@ -464,4 +466,104 @@ test('the page title uses a plain hyphen, never an em dash', () => {
   const title = html.match(/<title>([^<]*)<\/title>/)[1];
   assert.ok(title.includes(' - '));
   assert.ok(!title.includes('—'));
+});
+
+// --- Streaming providers (D12) ---
+//
+// data.json stores whatever survives build-data's normalizeProvider, which
+// passes unrecognised names through verbatim: TMDB's US vocabulary is 237
+// strings including reseller channels, bundlers, free ad-supported tiers, PBS
+// member stations and a "Britbox Apple TV Channel " with a trailing space.
+// Printing that raw made a page name services the app never shows and spell
+// one brand three ways in the same row (Sherlock listed 15 services with
+// BritBox, "BritBox Amazon Channel" and "Britbox Apple TV Channel " side by
+// side while the app showed "Hulu").
+
+test('normalizeProviders keeps only the mainstream brands, normalized', () => {
+  const sherlock = [
+    'Hulu', 'AMC+', 'Britbox Apple TV Channel ', 'YouTube TV', 'PBS', 'Philo',
+    'BritBox', 'PBS Masterpiece Amazon Channel', 'BritBox Amazon Channel',
+    'Spectrum On Demand', 'Thirteen', 'WETA+', 'KQED', 'Hoopla',
+  ];
+  assert.deepEqual(normalizeProviders(sherlock), ['Hulu']);
+});
+
+test('normalizeProviders collapses plan and brand variants to one entry', () => {
+  assert.deepEqual(
+    normalizeProviders(['Netflix Standard with Ads', 'Netflix', 'Max', 'HBO Max', 'Disney Plus']),
+    ['Netflix', 'HBO Max', 'Disney+'],
+  );
+});
+
+test('normalizeProviders never emits a name with stray whitespace', () => {
+  for (const p of normalizeProviders(['Britbox Apple TV Channel ', ' Netflix ', 'VIX '])) {
+    assert.equal(p, p.trim(), JSON.stringify(p));
+  }
+});
+
+test('normalizeProviders tolerates a missing or junk provider list', () => {
+  assert.deepEqual(normalizeProviders(null), []);
+  assert.deepEqual(normalizeProviders(undefined), []);
+  assert.deepEqual(normalizeProviders([]), []);
+  assert.deepEqual(normalizeProviders([null, 42, {}, 'Netflix']), ['Netflix']);
+});
+
+test('renderShowPage prints only normalized mainstream providers', () => {
+  const html = renderShowPage({
+    ...BREAKING_BAD,
+    providers: ['Netflix Standard with Ads', 'Britbox Apple TV Channel ', 'Discovery +', 'Netflix'],
+  });
+  const dd = html.match(/<dt>Streaming \(US\)<\/dt><dd>([^<]*)<\/dd>/);
+  assert.ok(dd, 'streaming row missing');
+  assert.equal(dd[1], 'Netflix');
+});
+
+test('renderShowPage drops the streaming row when nothing mainstream carries the show', () => {
+  const html = renderShowPage({ ...BREAKING_BAD, providers: ['Tubi TV', 'Philo', 'The Roku Channel'] });
+  assert.ok(!html.includes('Streaming (US)'));
+});
+
+// --- og:image:alt honesty (D19) ---
+//
+// 25,832 of 34,692 series have no dominant shape, so the old
+// `${label || 'TV show'} shape` fallback made "TV show shape" the alt text on
+// three quarters of the catalogue, naming a shape that does not exist.
+
+test('renderShowPage og:image:alt names a shape only when the show has one', () => {
+  const shaped = renderShowPage({ ...BREAKING_BAD, dominantShape: 'rebound', dominantShapeSlug: 'rebound' });
+  assert.match(shaped.match(/og:image:alt" content="([^"]+)"/)[1], /\(Rebound shape, avg episode [\d.]+\)$/);
+
+  const shapeless = renderShowPage({ ...BREAKING_BAD, dominantShape: null, dominantShapeSlug: null });
+  const alt = shapeless.match(/og:image:alt" content="([^"]+)"/)[1];
+  assert.ok(!alt.includes('shape'), alt);
+  assert.match(alt, /^Breaking Bad poster \(avg episode [\d.]+\)$/);
+});
+
+// --- Episode-table overflow (D16) ---
+//
+// One unbreakable episode title (The Simpsons S8 "Simpsoncalifragilistic-
+// expiala(Annoyed Grunt)cious") set that season's table min-content width to
+// 417px and widened the whole page to 454px inside a 390px viewport. The
+// wrapper is the browser-independent half of the fix; css/show-page.css
+// carries the overflow-wrap that makes the wrapper never need to scroll.
+
+test('renderShowPage wraps every episode table in a scroll container', () => {
+  const html = renderShowPage(BREAKING_BAD);
+  const tables = (html.match(/<table class="episode-table">/g) || []).length;
+  const wraps = (html.match(/<div class="episode-table-wrap">/g) || []).length;
+  assert.equal(tables, 1);
+  assert.equal(wraps, tables);
+  assert.ok(html.includes('<div class="episode-table-wrap">\n        <table class="episode-table">'));
+});
+
+test('renderShowPage never falls back to an em dash for a missing episode title', () => {
+  const html = renderShowPage({
+    ...BREAKING_BAD,
+    seasons: [{
+      ...BREAKING_BAD.seasons[0],
+      episodes: [{ episode: 1, rating: 8.0, votes: 1000 }],
+    }],
+  });
+  assert.ok(html.includes('<td>Untitled</td>'));
+  assert.equal(html.includes('\u2014'), false);
 });

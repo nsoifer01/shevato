@@ -105,6 +105,65 @@ test('firstLetter buckets non-letters into "#"', () => {
   assert.equal(firstLetter(''), '#');
 });
 
+// Regression (U12): a title starting with a Latin letter that carries a
+// diacritic used to fail the bare /[A-Z]/ test and land in "#" next to
+// "!Mucha Lucha!" and 574 digit-initial titles - even though its own slug
+// already folds ("Cilgin Dersane at the University" -> cilgin-...). 31 series
+// were mis-filed. Folding is for BUCKETING only; the row still prints the
+// real title.
+test('firstLetter folds Latin diacritics so accented titles file under their letter', () => {
+  assert.equal(firstLetter('cilgin dersane at the university'.replace('c', '\u00e7')), 'C');
+  assert.equal(firstLetter('\u00c5re murders'), 'A');
+  assert.equal(firstLetter('\u00c9toile'), 'E');
+  assert.equal(firstLetter('\u00d6lene kadar'), 'O');
+  assert.equal(firstLetter('\u00dcber die grenze'), 'U');
+});
+
+// Closeout follow-up to the same finding: a few Latin letters are their own
+// base character rather than a letter plus a combining mark, so NFKD leaves
+// them alone and they stayed in "#" while the app's search box folded them
+// happily. Three series on the 2026-08-22 catalogue: two Danish O-slash titles
+// and one AE-ligature.
+test('firstLetter files the Latin letters NFKD cannot decompose', () => {
+  assert.equal(firstLetter('\u00c6on flux'), 'A');
+  assert.equal(firstLetter('\u00d8rnen'), 'O');
+  assert.equal(firstLetter('\u0141\u00f3d\u017a story'), 'L');
+  assert.equal(firstLetter('\u00fer\u00f3ttur'), 'T');
+  assert.equal(firstLetter('\u0130stanbul'), 'I');
+});
+
+test('firstLetter always names a bucket with exactly one letter', () => {
+  // A sharp s uppercases to TWO characters, which used to name a bucket "SS"
+  // that no page, link or sitemap entry expects.
+  assert.equal(firstLetter('\u00dfeta'), 'S');
+  for (const t of ['\u00dfeta', '\u00c6on flux', 'breaking bad', '1899', '\u65e5\u672c']) {
+    assert.equal(firstLetter(t).length, 1, `${t} buckets to a single character`);
+  }
+});
+
+// Anything with no Latin base stays in "#": transliterating a non-Latin script
+// would be a guess about a romanisation the reader may not share, and IMDb's
+// primaryTitle is already romanised across this catalogue, so it is rare.
+test('firstLetter leaves non-Latin scripts and symbols in "#"', () => {
+  assert.equal(firstLetter('\u65e5\u672c\u306e\u756a\u7d44'), '#'); // Japanese
+  assert.equal(firstLetter('\u0414\u0440\u0443\u0437\u044c\u044f'), '#'); // Cyrillic
+  assert.equal(firstLetter('\u0645\u0633\u0644\u0633\u0644'), '#'); // Arabic
+  assert.equal(firstLetter('\u00a1mucha lucha!'), '#');
+  assert.equal(firstLetter('#blackaf'), '#');
+});
+
+test('groupByLetter files an accented title under its folded letter without changing it', () => {
+  const accented = { seriesId: 'tt9000001', title: '\u00c7ilgin Dersane at the University', year: 2013 };
+  const groups = groupByLetter([...SERIES, accented]);
+  assert.ok(!groups.has('#'), 'nothing should be left in the # bucket here');
+  assert.ok(groups.get('C').some((s) => s.seriesId === 'tt9000001'));
+  // Display is untouched: the letter page prints the real title.
+  const pages = letterPages(groups);
+  const cPage = pages.find((pg) => pg.letter === 'C');
+  const html = renderShowsLetterPage({ ...cPage, groups, builtAt: null });
+  assert.ok(html.includes('\u00c7ilgin Dersane at the University'), 'accented title must render verbatim');
+});
+
 test('renderShowsIndex is a letter hub, not a list of every show', () => {
   const html = renderShowsIndex(SERIES, '2026-05-18T00:00:00.000Z');
   assert.ok(html.includes('3 shows'));
@@ -182,4 +241,53 @@ test('renderShowsIndex carries a browse strip to all 13 shape hubs plus the gap 
   assert.ok(html.includes('>Outshines its reputation<'));
   // The A-Z index is nobody's current page, so no chip is marked as such.
   assert.ok(!html.includes('shape-nav-current'));
+});
+
+// --- A-Z surface metadata (D27) ---
+//
+// The index and the 83 letter pages share one shell, and it was the only
+// surface in the app still carrying an em dash in a <title>, .html breadcrumb
+// URLs the canonical pages never use, an SVG og:image (social scrapers do not
+// render SVG, so the preview was blank), and no twitter card at all.
+
+test('the A-Z index title carries no em dash and leads with the topic', () => {
+  const html = renderShowsIndex(SERIES, '2026-05-18T00:00:00.000Z');
+  const title = html.match(/<title>([^<]*)<\/title>/)[1];
+  assert.equal(title.includes('\u2014'), false, title);
+  assert.equal(title, 'All Shows - Browse Every TV Series by Episode Ratings | Rising Shows');
+});
+
+test('A-Z breadcrumb JSON-LD uses the extensionless URLs the show pages use', () => {
+  const groups = groupByLetter(SERIES);
+  const pages = letterPages(groups);
+  const docs = [
+    renderShowsIndex(SERIES, '2026-05-18T00:00:00.000Z'),
+    renderShowsLetterPage({ ...pages[0], groups, builtAt: null }),
+  ];
+  for (const html of docs) {
+    const block = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1];
+    const crumbs = JSON.parse(block);
+    assert.equal(crumbs['@type'], 'BreadcrumbList');
+    assert.equal(crumbs.itemListElement[0].item, 'https://shevato.com/home');
+    assert.equal(crumbs.itemListElement[1].item, 'https://shevato.com/apps');
+    assert.equal(html.includes('/home.html'), false);
+    assert.equal(html.includes('/apps.html'), false);
+  }
+});
+
+test('A-Z pages share the show pages og-card and a twitter card', () => {
+  const groups = groupByLetter(SERIES);
+  const pages = letterPages(groups);
+  for (const html of [
+    renderShowsIndex(SERIES, '2026-05-18T00:00:00.000Z'),
+    renderShowsLetterPage({ ...pages[0], groups, builtAt: null }),
+  ]) {
+    assert.ok(html.includes('<meta property="og:image" content="https://shevato.com/images/og-card.png">'));
+    assert.equal(html.includes('full-logo.svg'), false);
+    assert.ok(html.includes('<meta property="og:image:width" content="1200">'));
+    assert.ok(html.includes('<meta property="og:image:height" content="630">'));
+    assert.ok(html.includes('<meta name="twitter:card" content="summary_large_image">'));
+    assert.ok(html.includes('<meta name="twitter:image" content="https://shevato.com/images/og-card.png">'));
+    assert.ok(/<meta property="og:image:alt" content="[^"]+"/.test(html));
+  }
 });

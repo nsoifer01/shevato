@@ -13,7 +13,7 @@ name: Refresh Rising Shows data
 
 on:
   schedule:
-    # Every day at 06:00 UTC — keeps the static site current with IMDb's
+    # Every day at 06:00 UTC, to keep the static site current with IMDb's
     # daily TSV publishing cadence. Incremental TMDB cache hits keep
     # runtimes well under 15 min once the cold-start bootstrap is done.
     - cron: '0 6 * * *'
@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     # Cold first pass after a TMDB schema change (cast back-fill,
     # per-season tvdbId + overview fetch, providers back-fill) re-fetches
-    # tens of thousands of entries and, in practice, needs ~3–4 hours
+    # tens of thousands of entries and, in practice, needs ~3-4 hours
     # end-to-end. Incremental subsequent runs are typically well under
     # 15 min, so this ceiling only matters on the cold pass after a
     # schema bump.
@@ -63,11 +63,18 @@ jobs:
         run: |
           mkdir -p /tmp/rs-prev
           for f in data.json show-modal-extras.json; do
-            if curl -fsSL -o "/tmp/rs-prev/$f.gz" \
+            # Retry a transient release/CDN hiccup rather than losing the
+            # baseline over it: without data.json here the changelog step has
+            # nothing to diff and that day's "What's new" is never recorded
+            # (build-changelog.js only writes a full-catalogue entry when the
+            # changelog itself is empty), and the change gate below has to
+            # fail open and upload regardless.
+            if curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors \
+                -o "/tmp/rs-prev/$f.gz" \
                 "https://github.com/${{ github.repository }}/releases/download/rising-shows-data/$f.gz"; then
               gunzip "/tmp/rs-prev/$f.gz"
             else
-              echo "::warning::previous $f.gz not found on the rising-shows-data release"
+              echo "::warning::previous $f.gz not found on the rising-shows-data release; today's changelog entry will be skipped and the change gate will assume the data changed"
             fi
           done
           ls -lh /tmp/rs-prev
@@ -99,7 +106,7 @@ jobs:
           TMDB_TOKEN: ${{ secrets.TMDB_TOKEN }}
         run: |
           if [ -z "$TMDB_TOKEN" ]; then
-            echo "::warning::TMDB_TOKEN secret not configured — skipping enrichment."
+            echo "::warning::TMDB_TOKEN secret not configured, skipping enrichment."
             exit 0
           fi
           # Step 1: posters / overviews / original language.
@@ -118,14 +125,80 @@ jobs:
           path: apps/rising-shows/data/tmdb-cache.json
           key: tmdb-cache-${{ github.run_id }}
 
+      # THE change gate. Everything downstream that costs something (the ~40 MB
+      # release upload, the bot PR that triggers the Netlify deploy) hangs off
+      # this one step.
+      #
+      # What it replaces: three separate `cmp -s` / `git diff --quiet`
+      # "unchanged" branches that were all dead code. build-data.js stamps a
+      # fresh `builtAt` on every run, so data.json never compared equal, and
+      # exports/README.md embeds builtAt too, so `git diff --quiet exports/`
+      # was never quiet. Measured locally on the real 66,380-season dataset:
+      # two consecutive builds of the SAME IMDb dumps produced different
+      # data.json bytes and identical content.
+      #
+      # What makes it real: build-data.js now also stamps `contentHash`, a
+      # sha256 (16 hex chars) over everything in data.json EXCEPT builtAt and
+      # the hash itself. On that same two-build experiment both runs hashed to
+      # 08eeaec95bea8e6d.
+      #
+      # show-modal-extras.json is compared byte for byte and is part of the
+      # decision on purpose: it carries no timestamp (so the compare is honest)
+      # and cast strips plus per-episode titles / runtimes / IMDb ids live ONLY
+      # in that file, so a TMDB pass can change it while data.json is
+      # bit-identical. Gating on data.json alone would ship a stale monolith.
+      #
+      # Fail-open everywhere: no baseline, an unreadable baseline, or a
+      # data.json without a contentHash all count as CHANGED. The worst case is
+      # exactly today's behaviour (upload + PR); a real refresh is never
+      # skipped because the gate was unsure.
+      - name: Detect content change
+        id: change
+        run: |
+          set -e
+          hash_of() {
+            [ -f "$1" ] || { printf ''; return; }
+            node --max-old-space-size=4096 -e '
+              const fs = require("fs");
+              try {
+                const d = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+                process.stdout.write(String(d.contentHash || ""));
+              } catch (e) { process.stdout.write(""); }
+            ' "$1"
+          }
+          NEW=$(hash_of apps/rising-shows/data.json)
+          PREV=$(hash_of /tmp/rs-prev/data.json)
+          BASELINE=false
+          [ -f /tmp/rs-prev/data.json ] && BASELINE=true
+
+          if [ -z "$NEW" ]; then
+            echo "::warning::data.json carries no contentHash; assuming the data changed."
+            CHANGED=true
+          elif [ -z "$PREV" ]; then
+            echo "No baseline contentHash (missing or pre-contentHash asset); assuming the data changed."
+            CHANGED=true
+          elif [ "$NEW" != "$PREV" ]; then
+            CHANGED=true
+          elif ! cmp -s apps/rising-shows/data/show-modal-extras.json /tmp/rs-prev/show-modal-extras.json; then
+            echo "data.json content is unchanged but show-modal-extras.json differs."
+            CHANGED=true
+          else
+            CHANGED=false
+          fi
+
+          echo "changed=$CHANGED" >> "$GITHUB_OUTPUT"
+          echo "baseline=$BASELINE" >> "$GITHUB_OUTPUT"
+          echo "contentHash new=${NEW:-none} prev=${PREV:-none} baseline=$BASELINE changed=$CHANGED"
+
       - name: Build changelog entry
         # Diffs the new data.json against the previous release version and
         # appends a summary to apps/rising-shows/changelog.json. Powers the
-        # "What's new" popover in the footer. Skipped when data.json is
-        # unchanged — no point recording a noop entry.
+        # "What's new" popover in the footer. Skipped when the content is
+        # unchanged: there is nothing to record.
+        if: steps.change.outputs.changed == 'true'
         run: |
-          if cmp -s apps/rising-shows/data.json /tmp/rs-prev/data.json; then
-            echo "data.json unchanged — skipping changelog."
+          if [ "${{ steps.change.outputs.baseline }}" != "true" ]; then
+            echo "::warning::no baseline data.json, so today's changelog entry cannot be built; the What's new chip will keep showing the previous entry"
             exit 0
           fi
           node apps/rising-shows/scripts/build-changelog.js --prev /tmp/rs-prev/data.json
@@ -144,18 +217,17 @@ jobs:
       # "rising-shows-data" release, not in git (the pair is ~150 MB per
       # refresh and was bloating the repo). show-modal-extras.json carries
       # cast strips, per-season overviews, and per-episode titles / runtimes
-      # / IMDb ids for the modal — it must be published alongside data.json
+      # / IMDb ids for the modal, and it must be published alongside data.json
       # or new shows ship with no cast or episode titles on the live site.
       - name: Upload data to the rising-shows-data release
+        # Gated on the content hash (see "Detect content change"). The old
+        # in-step `cmp -s` guard is gone: builtAt made it unreachable, so this
+        # step pushed ~40 MB to the release every single day.
+        if: steps.change.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
-          if cmp -s apps/rising-shows/data.json /tmp/rs-prev/data.json \
-              && cmp -s apps/rising-shows/data/show-modal-extras.json /tmp/rs-prev/show-modal-extras.json; then
-            echo "Data unchanged — skipping release upload."
-            exit 0
-          fi
           mkdir -p /tmp/rs-new
           gzip -9 -c apps/rising-shows/data.json > /tmp/rs-new/data.json.gz
           gzip -9 -c apps/rising-shows/data/show-modal-extras.json > /tmp/rs-new/show-modal-extras.json.gz
@@ -166,15 +238,45 @@ jobs:
 
       # master is protected by a "PR before Merge" ruleset, so direct pushes
       # are rejected. We push to a short-lived branch, open a PR, and merge
-      # it immediately — the ruleset requires 0 approvals and no status
+      # it immediately: the ruleset requires 0 approvals and no status
       # checks, and tests already ran above on this exact tree.
       #
-      # Only the small derived files are committed now. Whenever the data
-      # changed, changelog.json is guaranteed to change too (the new entry
-      # carries the new builtAt), so this merge still fires on every real
-      # refresh and remains the Netlify deploy trigger: the deploy's
-      # build:site step downloads the assets uploaded above.
+      # Only the small derived files are committed now. Whenever the content
+      # changed, changelog.json changes too (the new entry carries the new
+      # builtAt) and exports/README.md changes at minimum through its own
+      # builtAt line, so this merge still fires on every real refresh and
+      # remains the Netlify deploy trigger: the deploy's build:site step
+      # downloads the assets uploaded above. That holds even when the baseline
+      # download failed and the changelog step was skipped, because the exports
+      # regeneration above still moves exports/README.md.
+      #
+      # The `git diff --quiet` check below is no longer the gate (builtAt in
+      # exports/README.md meant it was never quiet); it stays as a cheap
+      # belt-and-braces guard against opening an empty PR.
+      #
+      # NOTE FOR THE OWNER, unfixable from inside this repo: this push and
+      # merge use GITHUB_TOKEN, and GitHub deliberately does not start workflow
+      # runs from GITHUB_TOKEN-driven events. So the `tests` and `browser
+      # tests` runs queued against every bot/refresh-* branch sit at
+      # action_required and never execute, and browser-tests.yml's "push to
+      # master" trigger never fires for the bot merge either (verified:
+      # 2026-08-22 merge 987e590 and 2026-08-21 merge 5c45851 have no
+      # push-event run; every push run on master belongs to a human commit).
+      # The in-job `npm test` above is the only automated guard on what the bot
+      # commits, which is acceptable while the bot only commits generated files.
+      # To change that the owner has to do one of these by hand:
+      #   1. Create a fine-grained PAT on nsoifer01/shevato with Contents:
+      #      write and Pull requests: write, save it as an Actions secret (e.g.
+      #      BOT_PAT), and swap GH_TOKEN plus the `git push` credential in this
+      #      step over to it. Events from a PAT do start workflow runs, so the
+      #      bot merge would then run `tests` and `browser tests` (about 15 min
+      #      more per day, and browser tests still skip the six data-gated
+      #      rising-shows checks because the runner has no dataset).
+      #   2. Leave it as is and rely on the in-job `npm test`.
+      # There is no repo setting that fixes this: the restriction is on the
+      # token, not on the branch or the ruleset.
       - name: Open and merge PR if derived files changed
+        if: steps.change.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -182,7 +284,7 @@ jobs:
           if git diff --quiet \
               apps/rising-shows/changelog.json \
               apps/rising-shows/exports/; then
-            echo "No changes — nothing to commit."
+            echo "No derived-file changes; nothing to commit."
             exit 0
           fi
           DATE=$(date -u +%Y-%m-%d)

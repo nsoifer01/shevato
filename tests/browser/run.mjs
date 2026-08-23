@@ -75,10 +75,10 @@ for (const a of args) {
 // dataset is fetched (the skip path emits the same number of entries).
 const EXPECTED_CHECKS = {
   'tests/browser/suites/site.mjs': 157,
-  'tests/browser/suites/apps.mjs': 101,
+  'tests/browser/suites/apps.mjs': 103,
   'tests/browser/suites/a11y.mjs': 72,
   'tests/browser/suites/visual.mjs': 86,
-  'tests/browser/suites/perf.mjs': 41,
+  'tests/browser/suites/perf.mjs': 51,
   'tests/browser/suites/pwa-gym.mjs': 14,
 };
 

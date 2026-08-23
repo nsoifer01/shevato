@@ -62,6 +62,10 @@ function runSplit(data, extras) {
 // come out clean after the 2dp fold, and both sides of the aboveImdb test.
 const DATA = {
   builtAt: '2026-05-14T08:00:00.000Z',
+  // Stamped by build-data over everything but builtAt; the refresh workflow
+  // compares it to decide whether anything actually changed, so it has to
+  // reach the index intact.
+  contentHash: '0123456789abcdef',
   minEpisodes: 3,
   minVotes: 5,
   count: 7,
@@ -363,4 +367,54 @@ test('split-data: re-running over the same tree is idempotent', () => {
   const secondCopy = { ...second };
   delete secondCopy.splitAt;
   assert.deepEqual(secondCopy, firstParsed);
+});
+
+// --- in-progress seasons (D1) -----------------------------------------------
+
+const AIRING_SPLIT = runSplit({
+  builtAt: '2026-08-22T06:47:41.488Z',
+  contentHash: 'fedcba9876543210',
+  count: 4,
+  matches: [1, 2, 3, 4].map((n) => ({
+    seriesId: 'tt0000030',
+    title: 'Still Airing',
+    year: 2020,
+    season: n,
+    genres: ['Drama'],
+    seriesRating: 7,
+    seriesVotes: 50000,
+    avgRating: [7.0, 7.1, 7.2, 8.5][n - 1],
+    shapes: [],
+    // Only the newest season is unfinished, and build-data omits the key
+    // entirely on the rest.
+    ...(n === 4 ? { inProgress: true } : {}),
+    episodes: [
+      { episode: 1, rating: [7.0, 7.1, 7.2, 8.5][n - 1], votes: 100 },
+      { episode: 2, rating: [7.0, 7.1, 7.2, 8.5][n - 1], votes: 100 },
+    ],
+  })),
+});
+
+test('split-data: contentHash reaches the index so the refresh gate can read it', () => {
+  assert.equal(SPLIT.index.contentHash, '0123456789abcdef');
+  assert.equal(AIRING_SPLIT.index.contentHash, 'fedcba9876543210');
+});
+
+test('split-data: inProgress survives the split and still suppresses the show-level finale shape', () => {
+  const seasons = AIRING_SPLIT.index.matches;
+  assert.deepEqual(seasons.filter((m) => 'inProgress' in m).map((m) => m.season), [4]);
+  assert.equal(seasons.find((m) => m.season === 4).inProgress, true);
+
+  // The whole point of carrying it: 7.0 7.1 7.2 8.5 would read "big finale"
+  // off a season that is four episodes deep.
+  const [row] = buildShowAgg(seasons, detectShapes);
+  assert.equal(row.shapes.includes('big-finale'), false);
+  assert.ok(row.shapes.includes('rising'), 'the honest mid-run shapes still apply');
+  // Same records with the flag cleared: the label comes back, so the test is
+  // measuring the flag and not some other property of the fixture.
+  const finished = seasons.map(({ inProgress, ...rest }) => rest);
+  assert.ok(buildShowAgg(finished, detectShapes)[0].shapes.includes('big-finale'));
+
+  // Detail files are episodes/overview only; the flag has no business there.
+  assert.deepEqual(Object.keys(AIRING_SPLIT.detail.tt0000030.seasons['4']), ['episodes']);
 });

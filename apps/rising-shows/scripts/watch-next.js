@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
-// "What to watch next" — given a shape (e.g. `slow-burn`), list seasons in
+// "What to watch next": given a shape (e.g. `slow-burn`), list seasons in
 // YOUR Plex TV library that match it. Pragmatic version of idea 5: a NAS-side
 // CLI rather than a browser OAuth flow. Designed to be wired into a shell
 // alias, a Homarr widget, or a cron job that posts to Discord/Notifiarr.
@@ -11,7 +11,7 @@
 // the shows, parse guids, and join against data.json.
 //
 // Configuration via env vars:
-//   PLEX_URL          required, e.g. http://10.27.184.92:32400
+//   PLEX_URL          required, e.g. http://plex.local:32400
 //   PLEX_TOKEN        required (Plex auth token)
 //   PLEX_TV_SECTION   optional. Section title or numeric id (default: first
 //                     library of type 'show').
@@ -29,6 +29,14 @@
 
 const fs = require('fs');
 const path = require('path');
+// shapeConfidence is the ONE definition of "how well does this season fit this
+// shape": it grades the measured shapes from m.confidence and returns 1.0 for
+// the categorical tags, which carry no confidence entry because their detector
+// is a deterministic yes/no. Reading m.confidence[shape] directly here scored
+// saved-best-for-last and shape-drift as 0, so both sat permanently under the
+// default 0.35 floor and `--shape saved-best-for-last` always printed "No ...
+// seasons found" no matter what was in the library.
+const { shapeConfidence } = require('./integrations-lib.js');
 
 const VALID_SHAPES = [
   'rising', 'slow-burn', 'big-finale', 'rebound', 'mid-peak', 'u-shaped',
@@ -54,7 +62,7 @@ function usage() {
   process.stdout.write(`Usage: watch-next.js --shape <shape> [--limit N] [--confidence 0.X] [--json]
 
 Environment:
-  PLEX_URL          e.g. http://10.27.184.92:32400
+  PLEX_URL          e.g. http://plex.local:32400
   PLEX_TOKEN        Plex auth token
   PLEX_TV_SECTION   library title or id (defaults to first 'show' library)
   RS_DATA_JSON      path to data.json
@@ -93,8 +101,16 @@ if (!fs.existsSync(dataPath)) {
   process.exit(1);
 }
 
-const limit = args.limit ?? parseInt(process.env.RS_LIMIT || '25', 10);
-const confidenceFloor = args.confidence ?? parseFloat(process.env.RS_CONFIDENCE || '0.35');
+// `--limit`/`--confidence` with no value parse to NaN, which `??` happily
+// keeps. A NaN limit slices zero rows off a full result set; a NaN floor makes
+// every `c < floor` comparison false, so the floor stops applying at all.
+// Neither says anything on stderr, so fall back to the default in both cases.
+// `--confidence 0` stays a legitimate "no floor".
+const limit = Number.isFinite(args.limit) ? args.limit : (parseInt(process.env.RS_LIMIT || '25', 10) || 25);
+const envFloor = parseFloat(process.env.RS_CONFIDENCE || '0.35');
+const confidenceFloor = Number.isFinite(args.confidence)
+  ? args.confidence
+  : (Number.isFinite(envFloor) ? envFloor : 0.35);
 
 async function plexGet(pathSuffix) {
   const u = new URL(plexUrl.replace(/\/$/, '') + pathSuffix);
@@ -139,8 +155,7 @@ function parseGuids(item) {
   const byTvdb = new Map();
   for (const m of dataset.matches) {
     if (!m.shapes || !m.shapes.includes(shape)) continue;
-    const c = (m.confidence && m.confidence[shape]) || 0;
-    if (c < confidenceFloor) continue;
+    if (shapeConfidence(m, shape) < confidenceFloor) continue;
     if (m.seriesId) {
       (byImdb.get(m.seriesId) || byImdb.set(m.seriesId, []).get(m.seriesId)).push(m);
     }
@@ -184,7 +199,7 @@ function parseGuids(item) {
         title: show.title || m.title,
         season: m.season,
         avgRating: m.avgRating,
-        confidence: m.confidence[shape],
+        confidence: shapeConfidence(m, shape),
         seriesYear: show.year || m.year,
         plexKey: show.key,
         ids: guids,

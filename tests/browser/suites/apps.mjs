@@ -32,6 +32,7 @@
 import {
   newPage, closePage, goto, evaluate, clickText, clickSel, setViewport,
   setValue, sleep, textPresent, cleanErrors, waitForExpr, interceptNetwork,
+  pressKey,
 } from '../cdp.mjs';
 
 // Hosts that reach the production Firebase project. Failed via interception
@@ -473,7 +474,13 @@ export async function run({ base, cdpPort }) {
     if (baseRows === 0) {
       const reason = 'no show data - run `npm run fetch:rising-shows-data`';
       for (const check of ['results render', 'search narrows results', 'shape tab filters',
-        'min-seasons filter applies', 'sort changes result order', 'clicking a show opens its detail']) {
+        'min-seasons filter applies', 'sort changes result order', 'clicking a show opens its detail',
+        // The shape rail only exists once the chips have been rendered from the
+        // data, so these two are data-gated like the rest. They must still be
+        // REPORTED here, or the suite's check-count pin sees two checks vanish
+        // on a dataset-less runner and fails the whole suite.
+        'every shape chip is fully visible when tabbed to at 390px',
+        'the shape rail never makes the page scroll sideways']) {
         skip(`${A}: ${check}`, reason);
       }
       t(`${A}: no JS errors`, cleanErrors(s).length === 0, cleanErrors(s).slice(0, 2).join(' | '));
@@ -515,6 +522,38 @@ export async function run({ base, cdpPort }) {
       const m=[...document.querySelectorAll('#showModal,#detailModal,.modal')].filter(vis)[0];
       return !!m && m.innerText.length > 40})()`);
     t(`${A}: clicking a show opens its detail`, clicked && modalShown);
+
+    // Narrow phone: the 13-shape strip becomes a horizontal scroll-snap rail,
+    // and a keyboard user has to be able to READ the chip they tab onto. The
+    // widest chip used to end up cropped by 30 px, because a snap container
+    // rejects any scroll position between two snap points. Tab from the first
+    // chip through the rest and assert each lands fully inside the rail.
+    await evaluate(s, `document.querySelectorAll('.modal-close').forEach(b=>b.click())`);
+    await sleep(400);
+    await setViewport(s, 390, 844, true);
+    await waitForExpr(s, `document.querySelectorAll('#finderShapes .shape-chip').length > 1`);
+    await evaluate(s, `document.querySelector('#finderShapes .shape-chip').focus()`);
+    const chipCount = await evaluate(s, `document.querySelectorAll('#finderShapes .shape-chip').length`);
+    let cropped = 0;
+    let landedOnChips = 0;
+    for (let i = 0; i < chipCount; i++) {
+      await pressKey(s, 'Tab', 'Tab', 9);
+      await sleep(200);
+      const state = await evaluate(s, `(()=>{const a=document.activeElement;
+        if(!a||!a.classList||!a.classList.contains('shape-chip'))return null;
+        const st=document.getElementById('finderShapes');
+        const ar=a.getBoundingClientRect(),sr=st.getBoundingClientRect();
+        return JSON.stringify({w:Math.round(ar.width),
+          vis:Math.round(Math.min(ar.right,sr.right)-Math.max(ar.left,sr.left))})})()`);
+      if (!state) continue;
+      landedOnChips++;
+      const { w, vis } = JSON.parse(state);
+      if (vis < w - 1) cropped++;
+    }
+    t(`${A}: every shape chip is fully visible when tabbed to at 390px`,
+      landedOnChips > 1 && cropped === 0, `${cropped} of ${landedOnChips} chips cropped`);
+    t(`${A}: the shape rail never makes the page scroll sideways`,
+      await evaluate(s, `document.documentElement.scrollWidth <= window.innerWidth`));
 
     t(`${A}: no JS errors`, cleanErrors(s).length === 0, cleanErrors(s).slice(0, 2).join(' | '));
     await closePage(cdpPort, s);

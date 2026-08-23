@@ -14,9 +14,16 @@ const {
   HUB_LIMIT,
   GAP_HUB_SLUG,
   GAP_MIN_VOTES,
+  GAP_MIN_EPISODE_VOTES,
 } = require('../scripts/render-shape-hub.js');
+const { SHAPE_DESCS } = require('../scripts/render-show-page.js');
+const fs = require('node:fs');
+const path = require('node:path');
 
-function makeShow(seriesId, title, seriesVotes, shapes, avgRating = 8.0, seriesRating = null) {
+// `episodeVotes` is per episode; the default puts the two-episode total above
+// GAP_MIN_EPISODE_VOTES so a fixture only fails the episode-vote floor when a
+// test deliberately lowers it.
+function makeShow(seriesId, title, seriesVotes, shapes, avgRating = 8.0, seriesRating = null, episodeVotes = 10000) {
   return {
     seriesId,
     title,
@@ -29,8 +36,8 @@ function makeShow(seriesId, title, seriesVotes, shapes, avgRating = 8.0, seriesR
         avgRating,
         shapes,
         episodes: [
-          { episode: 1, rating: avgRating, votes: 100 },
-          { episode: 2, rating: avgRating, votes: 100 },
+          { episode: 1, rating: avgRating, votes: episodeVotes },
+          { episode: 2, rating: avgRating, votes: episodeVotes },
         ],
       },
     ],
@@ -158,9 +165,35 @@ test('renderShapeHub links every member show and nothing else', () => {
 
 test('renderShapeHub describes the shape and its count', () => {
   const html = renderShapeHub('slow-burn', selectHubShows(SERIES, 'slow-burn'), '2026-05-18T00:00:00.000Z');
-  assert.ok(html.includes('second half lifts off'));
+  assert.ok(html.includes('later seasons lift off'));
   assert.ok(html.includes('These are the 2 most-voted shows'));
   assert.ok(/<meta name="description" content="The 2 best slow burn TV shows/.test(html));
+});
+
+// Regression: hub membership has been the show's WHOLE-RUN dominant shape since
+// 2026-08-08, but the lede kept describing the pre-2026-08-08 rule ("whose
+// highest-rated season carries that shape") and the blurb kept describing the
+// shape at the EPISODE level. A reader comparing the page to the app's chips
+// saw two different definitions of the same word.
+test('renderShapeHub ledes describe whole-run membership, not a single season', () => {
+  for (const slug of SHAPE_SLUGS) {
+    const html = renderShapeHub(slug, selectHubShows(SERIES, slug), '2026-05-18T00:00:00.000Z');
+    const lede = html.match(/<p class="lede">([\s\S]*?)<\/p>/)[1];
+    assert.ok(!/highest-rated season/.test(lede), `${slug}: ${lede}`);
+    assert.ok(lede.includes('run as a whole is best described by that shape'), `${slug}: ${lede}`);
+  }
+});
+
+// The hubs are the only consumer of SHAPE_DESCS, and they list shows by their
+// whole-run shape, so the blurb must be the app's whole-show wording
+// (FINDER_SHAPE_DESCS) rather than its per-episode wording (SHAPE_DESCS). Any
+// blurb talking about individual episodes is the wrong copy on this page.
+test('SHAPE_DESCS carries whole-show wording for every hub shape', () => {
+  for (const slug of SHAPE_SLUGS) {
+    const desc = SHAPE_DESCS[slug];
+    assert.ok(desc, `no description for ${slug}`);
+    assert.ok(!/\bepisode\b/i.test(desc), `${slug} blurb describes episodes: ${desc}`);
+  }
 });
 
 test('renderShapeHub JSON-LD blocks all parse', () => {
@@ -235,6 +268,35 @@ test('selectGapHubShows keeps only positive gaps above the vote floor', () => {
   assert.ok(!picked.some((s) => s.seriesId === 'tt1006'));
 });
 
+// Regression: the gap subtracts two ratings, and only one of them used to
+// carry a floor. Kaamraj led the live hub with an IMDb 3.6 from 19,239 series
+// votes against a 7.1 episode average built on 358 episode votes across 12
+// episodes - exactly the thin-sample case the floor exists to keep off the
+// page. The episode side now carries the same floor.
+test('selectGapHubShows drops shows whose episode average rests on too few votes', () => {
+  const brigaded = makeShow('tt6001', 'Review Bombed', OVER_FLOOR, ['rising'], 7.1, 3.6, 179);
+  const solid = makeShow('tt6002', 'Well Sampled', OVER_FLOOR, ['rising'], 8.6, 7.9);
+  const picked = selectGapHubShows([brigaded, solid]);
+  // The brigaded show has by far the bigger gap and still must not rank.
+  assert.equal(Math.round((7.1 - 3.6) * 10) / 10, 3.5);
+  assert.deepEqual(picked.map((s) => s.seriesId), ['tt6002']);
+});
+
+test('selectGapHubShows honours a caller-supplied episode-vote floor', () => {
+  const thin = makeShow('tt6101', 'Thin', OVER_FLOOR, ['rising'], 9.0, 6.0, 179);
+  assert.equal(selectGapHubShows([thin]).length, 0);
+  assert.equal(selectGapHubShows([thin], 100, GAP_MIN_VOTES, 300)[0].seriesId, 'tt6101');
+});
+
+test('selectGapHubShows reports the episode-vote sample it filtered on', () => {
+  const picked = selectGapHubShows(GAP_SERIES);
+  assert.ok(picked.length > 0);
+  for (const s of picked) {
+    assert.equal(s.episodeVotes, 20000);
+    assert.ok(s.episodeVotes >= GAP_MIN_EPISODE_VOTES);
+  }
+});
+
 test('selectGapHubShows honours a caller-supplied vote floor', () => {
   const picked = selectGapHubShows(GAP_SERIES, 100, 400);
   assert.equal(picked[0].seriesId, 'tt1003');
@@ -292,10 +354,13 @@ test('renderGapHub prints the gap itself in every rank-stats cell', () => {
   }
 });
 
-test('renderGapHub states the vote floor in its own lede', () => {
+test('renderGapHub states both vote floors in its own lede', () => {
   const html = renderGapHub(selectGapHubShows(GAP_SERIES), '2026-05-18T00:00:00.000Z');
   const lede = html.match(/<p class="lede">([\s\S]*?)<\/p>/)[1];
-  assert.ok(lede.includes('at least 15,000 IMDb votes'), lede);
+  // The lede claims the ranking reflects real audiences; it may only claim that
+  // for the halves of the gap that actually carry a floor, so both are named.
+  assert.ok(lede.includes('at least 15,000 votes on the show itself'), lede);
+  assert.ok(lede.includes('15,000 across its episodes'), lede);
   assert.ok(lede.includes('The 2 biggest gaps'), lede);
 });
 
@@ -363,4 +428,23 @@ test('renderShapeHub renders every shape slug with real labels', () => {
     assert.ok(!new RegExp(`<h1>Best ${slug} TV shows</h1>`).test(html), slug);
     assert.ok(/<h1>Best [A-Z]/.test(html), slug);
   }
+});
+
+// The hub blurbs are claimed to be "kept verbatim in sync" with the app's
+// whole-show chip descriptions, and nothing enforced it: the shape-drift entry
+// had already drifted apart ("Rating pattern or quality changed significantly
+// late in the run" here vs the app's wording). js/app.js is a browser classic
+// script, so this reads its source and parses the one object literal rather
+// than loading it.
+test('SHAPE_DESCS is verbatim identical to FINDER_SHAPE_DESCS in js/app.js', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'js', 'app.js'), 'utf8');
+  const block = src.match(/const FINDER_SHAPE_DESCS = \{([\s\S]*?)\n\};/);
+  assert.ok(block, 'FINDER_SHAPE_DESCS not found in js/app.js');
+  const appDescs = {};
+  for (const line of block[1].split('\n')) {
+    const m = line.match(/^\s*'?([a-z-]+)'?:\s*'((?:[^'\\]|\\.)*)',?\s*$/);
+    if (m) appDescs[m[1]] = m[2].replace(/\\'/g, "'").replace(/\\\\/g, '\\');
+  }
+  assert.ok(Object.keys(appDescs).length >= 13, `parsed only ${Object.keys(appDescs).length} entries`);
+  assert.deepEqual(SHAPE_DESCS, appDescs);
 });

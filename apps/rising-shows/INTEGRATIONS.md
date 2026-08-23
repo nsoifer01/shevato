@@ -54,7 +54,7 @@ Tunables:
 
 ## Kometa: per-shape collections
 
-`exports/kometa/<shape>.yml` — one Kometa collection per shape, sourced by
+`exports/kometa/<shape>.yml`: one Kometa collection per shape, sourced by
 TMDB ID (`tmdb_show:`) or TVDB ID (`tvdb_show:`).
 
 ### Test on your NAS
@@ -112,7 +112,7 @@ TMDB ID (`tmdb_show:`) or TVDB ID (`tvdb_show:`).
 
 - New collections appear in Plex (one per shape you wired up).
 - Each is non-empty.
-- If a collection is empty, that's expected — it means none of your owned
+- If a collection is empty, that's expected: it means none of your owned
   shows have a strongly-fitting season for that shape.
 
 ---
@@ -247,7 +247,7 @@ the overlay block parameters in
 
 ## MDBList: flat IMDb-ID lists
 
-`exports/ids/<shape>.txt` — plain text, one `tt`-ID per line. The
+`exports/ids/<shape>.txt`: plain text, one `tt`-ID per line. The
 lowest-friction way to share these collections without managing Kometa
 YAML directly.
 
@@ -332,7 +332,7 @@ seasons in **your** library match a given mood/shape.
          -d @- https://discord.com/api/webhooks/...
 ```
 
-(Build your own payload shape for whichever target you use — Discord
+(Build your own payload shape for whichever target you use: Discord
 won't take the raw `watch-next` JSON shape as-is.)
 
 ---
@@ -344,7 +344,7 @@ won't take the raw `watch-next` JSON shape as-is.)
 | Kometa collection has 0 items | Library uses IMDb-only agent, no TMDB IDs to match against | Set TMDB agent on the library, run Plex refresh, re-run Kometa |
 | `watch-next` returns 0 for every shape | Plex agent isn't writing `Guid` entries, so we can't join by IMDb/TMDB/TVDB | Verify Plex → Manage Library → Edit → Advanced → Use Plex Movie/Series agent |
 | Overlays don't appear | TV library missing `builder_level: season` support in your Kometa version | Update Kometa; the YAML uses standard `builder_level: season` directives |
-| Browser builder shows "Loading…" forever | data.json (≈90 MB) cache miss + slow network | Wait for the initial fetch; subsequent visits use the HTTP cache |
+| Browser builder shows "Loading…" forever | `data-index.json` (34 MB raw, about 4.3 MB brotli) still downloading on a slow connection | Wait for the initial fetch. Arriving from the Show Finder is faster: it fetches the same file at boot, so the builder revalidates a warm cache entry. The builder switched off the 81.6 MB `data.json` in 2026-08 |
 
 ---
 
