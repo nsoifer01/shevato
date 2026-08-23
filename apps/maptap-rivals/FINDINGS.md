@@ -622,10 +622,11 @@ Where a defect lives in app.js but is *visible through* a pure function's call
 contract, the test file states the contract in a comment and stubs the app.js
 side faithfully rather than conveniently (see the classifier stub above).
 Tests asserting the correct behavior of a still-shipped defect carry
-`{ todo: 'KNOWN DEFECT: <summary>' }`; as of 2026-08-15 the maptap suites
-carry ZERO todos - all three (null-coordinate Africa bucket, two
-`'__proto__'` player-key cases) are fixed and their tests flipped to plain
-regressions.
+`{ todo: 'KNOWN DEFECT: <summary>' }`; as of 2026-08-23 the maptap suites
+carry ZERO todos and ZERO skips. The three that once existed (null-coordinate
+Africa bucket, two `'__proto__'` player-key cases) were fixed on 2026-08-15
+and their tests flipped to plain regressions, and nothing has been added
+since: there is no shipped defect this suite is asserting around.
 
 The `'__proto__'` fix pattern: every accumulator keyed by an id that can come
 verbatim from untrusted data (rival ids via backup import, dates via a remote
