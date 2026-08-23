@@ -134,6 +134,7 @@
       return el('td', { class: 'row-note-cell' }, [
         el('span', {
           class: 'row-note-pill',
+          role: 'img',
           title: 'Synced from MapTap',
           'aria-label': 'Synced from MapTap',
           html: ICON_SYNC_BADGE,
@@ -174,7 +175,21 @@
     accumulateFinishPositions, avgPositionColor, avgPositionColors,
     coordNum, myAvgByContinent,
     compareNamesCI, compareWinPctDesc,
+    // Local calendar dates (see stats.js "local calendar dates"): every day
+    // the app shows is the user's local day, and ISO-string arithmetic is
+    // timezone-free. app.js has no date math of its own any more.
+    parseDateISO, todayISO, addDaysISO, daysBetweenISO, dayOfWeekISO,
+    localDateFromISO, formatDate, countNoun,
+    // The single definition of a countable H2H game, shared with Records.
+    eligibleH2HGames, overallRecord, parityOutlook,
+    sanitizeBackup,
   } = window.MapTapStats;
+
+  // WhatsApp export parsing (js/whatsapp.js, pure, unit-tested).
+  const {
+    parseWhatsAppText, detectDateOrder, applyDateOrder, dayBucketDate,
+    parseMapTapShareStrict: parseShareStrict,
+  } = window.MapTapWhatsApp;
 
   // Same deal for the rival-network core (js/network.js, also loaded before
   // this file): doc-id shaping, the published payload, the auto-add merge and
@@ -225,6 +240,11 @@
 
   // ---------- state ----------
   const state = {
+    // Setup cards (profile, network) collapse to one line once they are
+    // settled so a returning user reaches today's rivalry first; the
+    // chevron on each card expands it again. In-memory only.
+    profileExpanded: false,
+    networkExpanded: false,
     rivals: load(KEY.RIVALS, []),
     games: load(KEY.GAMES, []),
     me: loadString(KEY.ME, 'Me'),
@@ -299,16 +319,14 @@
   function persistMatrixSort() { saveString(KEY.MATRIX_SORT, state.matrixSort); }
 
   // ---------- date utils ----------
-  function daysBetween(aISO, bISO) {
-    const a = new Date(aISO + 'T00:00:00');
-    const b = new Date(bISO + 'T00:00:00');
-    return Math.round((b - a) / 86400000);
-  }
-  function fmtDateShort(iso) {
-    if (!iso) return '—';
-    const d = new Date(iso + 'T00:00:00');
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  }
+  // All three formatters go through formatDate (stats.js), which accepts a
+  // 'YYYY-MM-DD' day OR a full ISO datetime (the profile card's verifiedAt,
+  // MapTap's joinDate) and returns '' for anything it cannot read. The
+  // date-only forms keep their legacy em-dash placeholder for the tables.
+  function fmtDateShort(iso) { return formatDate(iso, 'short') || '—'; }
+  function fmtDateLong(iso) { return formatDate(iso, 'long') || '—'; }
+  function shortDate(value) { return formatDate(value, 'medium'); }
+
   // Shared `<MonthName><Day>` token used by both the maptap.gg history
   // deep link and the daily-puzzle data URL. English month names are
   // hardcoded since the URLs are owned by maptap.gg and must not vary
@@ -316,10 +334,9 @@
   const ENGLISH_MONTHS = ['January','February','March','April','May','June',
                           'July','August','September','October','November','December'];
   function maptapMonthDay(iso) {
-    if (!iso) return null;
-    const d = new Date(iso + 'T00:00:00');
-    if (Number.isNaN(d.getTime())) return null;
-    return `${ENGLISH_MONTHS[d.getMonth()]}${d.getDate()}`;
+    const p = parseDateISO(iso);
+    if (!p) return null;
+    return `${ENGLISH_MONTHS[p.month - 1]}${p.day}`;
   }
   function mapTapHistoryUrl(iso) {
     const tok = maptapMonthDay(iso);
@@ -359,20 +376,10 @@
     return tok ? `${MAPTAP_DAILY_URL_BASE}${tok}.js` : null;
   }
 
-  // Today's ISO date in the user's local timezone, so the prediction
-  // tracks whatever day MapTap is showing the user (MapTap's day rolls
-  // over at local midnight too — verified from observed gameHistory keys).
-  function todayISO() {
-    const d = new Date();
-    const tz = d.getTimezoneOffset() * 60000;
-    return new Date(d - tz).toISOString().slice(0, 10);
-  }
-  function addDaysISO(iso, days) {
-    const d = new Date(iso + 'T00:00:00');
-    if (Number.isNaN(d.getTime())) return null;
-    d.setDate(d.getDate() + days);
-    return d.toISOString().slice(0, 10);
-  }
+  // todayISO / addDaysISO come from stats.js: today is the user's LOCAL
+  // calendar day (MapTap's day rolls over at local midnight too, verified
+  // from observed gameHistory keys) and the window arithmetic is
+  // timezone-free, so a UTC+ user's window starts today, not yesterday.
   const PREDICT_WINDOW_DAYS = 7;
 
   // Pull only the first N_LOCS lat/lng pairs from a daily puzzle file.
@@ -483,12 +490,6 @@
     }
   }
 
-  function fmtDateLong(iso) {
-    if (!iso) return '—';
-    const d = new Date(iso + 'T00:00:00');
-    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-  }
-
   // ---------- analytics ----------
   function gamesFor(rivalId) {
     return state.games
@@ -505,9 +506,7 @@
   }
 
   function lastNDaysGames(games, n) {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - (n - 1));
-    const cutoffISO = cutoff.toISOString().slice(0, 10);
+    const cutoffISO = addDaysISO(todayISO(), -(n - 1));
     return games.filter(g => g.date >= cutoffISO);
   }
 
@@ -795,6 +794,7 @@
   // Drive view state from location.hash. Used at init and on hashchange
   // (browser back/forward or user-edited URL).
   function applyUrlHash() {
+    closeAllModals();
     const raw = (location.hash || '').replace(/^#/, '').trim();
     if (!raw) { setView('dashboard'); return; }
     const slash = raw.indexOf('/');
@@ -823,6 +823,88 @@
     setView('dashboard');
   }
 
+  // ---------- modals ----------
+  // One open/close pair for every dialog: remembers the element that had
+  // focus, moves focus inside, keeps Tab cycling within the panel, and hands
+  // focus back on close. Until 2026-08-22 only the delete/clear confirms
+  // restored focus and no dialog trapped it (Tab from the rival modal's Save
+  // landed on the page's skip link).
+  const modalStack = [];
+  const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+  function modalFocusables(modal) {
+    return $$(FOCUSABLE, modal).filter(n => !n.hidden && n.getBoundingClientRect().height > 0);
+  }
+
+  function openModal(id, initialFocusSel) {
+    const modal = document.getElementById(id);
+    if (!modal) return;
+    if (!modalStack.some(m => m.id === id)) {
+      modalStack.push({ id, lastFocus: document.activeElement });
+    }
+    modal.hidden = false;
+    setTimeout(() => {
+      const target = (initialFocusSel && modal.querySelector(initialFocusSel)) || modalFocusables(modal)[0];
+      if (target) target.focus();
+    }, 30);
+  }
+
+  function closeModal(id) {
+    const modal = document.getElementById(id);
+    if (!modal) return;
+    modal.hidden = true;
+    const idx = modalStack.findIndex(m => m.id === id);
+    const entry = idx === -1 ? null : modalStack.splice(idx, 1)[0];
+    const prev = entry && entry.lastFocus;
+    if (prev && document.body.contains(prev) && typeof prev.focus === 'function') {
+      setTimeout(() => prev.focus(), 0);
+    }
+  }
+
+  function topModalId() {
+    return modalStack.length ? modalStack[modalStack.length - 1].id : null;
+  }
+
+  // Close every open dialog, innermost first. Called when the route changes:
+  // a hash navigation (browser Back/Forward, an edited URL, a restored tab)
+  // re-renders the page UNDER any open dialog, which would leave e.g. the
+  // rival editor showing Bex's name and colour on top of Ari's page - and
+  // Save would then write to Bex, the rival the user is no longer looking at.
+  // Found 2026-08-23: before dialogs were raised above the site header this
+  // was invisible, because a stale dialog did not block the page beneath it.
+  function closeAllModals() {
+    for (const id of modalStack.map(m => m.id).reverse()) modalCloser(id)();
+  }
+
+  // Each dialog's own closer does more than hide it (clears editing state,
+  // resets the WhatsApp draft, drops the pending delete), so route away
+  // through those rather than through bare closeModal. A function, not a
+  // lookup object, so it never depends on declaration order.
+  function modalCloser(id) {
+    if (id === 'rival-modal') return closeRivalModal;
+    if (id === 'delete-rival-modal') return closeDeleteRivalModal;
+    if (id === 'delete-game-modal') return closeDeleteGameModal;
+    if (id === 'clear-games-modal') return closeClearGamesModal;
+    if (id === 'wa-modal') return closeWhatsAppModal;
+    return () => closeModal(id);
+  }
+
+  // Tab / Shift+Tab stay inside the open dialog.
+  function trapModalTab(e) {
+    if (e.key !== 'Tab') return;
+    const id = topModalId();
+    if (!id) return;
+    const modal = document.getElementById(id);
+    if (!modal || modal.hidden) return;
+    const items = modalFocusables(modal);
+    if (!items.length) { e.preventDefault(); return; }
+    const first = items[0], last = items[items.length - 1];
+    const active = document.activeElement;
+    if (!modal.contains(active)) { e.preventDefault(); first.focus(); return; }
+    if (e.shiftKey && active === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus(); }
+  }
+
   // ---------- rival modal ----------
   function openRivalModal(rivalId) {
     state.editingRivalId = rivalId || null;
@@ -840,17 +922,42 @@
     state.pickedColor = rival ? rival.color : COLORS[state.rivals.length % COLORS.length];
     state.pickedIcon = rival ? rival.icon : ICONS[state.rivals.length % ICONS.length];
     deleteBtn.hidden = !rival;
+    setRivalNameFeedback('', '');
 
     renderColorSwatches();
     renderIconSwatches();
 
-    modal.hidden = false;
-    setTimeout(() => nameInput.focus(), 30);
+    openModal('rival-modal', '#rival-name');
   }
 
   function closeRivalModal() {
-    $('#rival-modal').hidden = true;
+    closeModal('rival-modal');
     state.editingRivalId = null;
+  }
+
+  // Inline feedback under the name field: an error blocks saving, a hint
+  // (a name another rival already has) only warns.
+  function setRivalNameFeedback(error, hint) {
+    const input = $('#rival-name');
+    const errEl = $('#rival-name-error');
+    const hintEl = $('#rival-name-hint');
+    if (errEl) { errEl.textContent = error || ''; errEl.hidden = !error; }
+    if (hintEl) { hintEl.textContent = hint || ''; hintEl.hidden = !hint; }
+    if (input) input.setAttribute('aria-invalid', error ? 'true' : 'false');
+  }
+
+  // Another rival with the same name, ignoring case and surrounding spaces.
+  function rivalNameClash(name, excludeId) {
+    const key = String(name || '').trim().toLowerCase();
+    if (!key) return null;
+    return state.rivals.find(r => r.id !== excludeId && String(r.name || '').trim().toLowerCase() === key) || null;
+  }
+
+  function refreshRivalNameHint() {
+    const input = $('#rival-name');
+    if (!input) return;
+    const clash = rivalNameClash(input.value, state.editingRivalId);
+    setRivalNameFeedback('', clash ? `You already have a rival named "${clash.name}". Saving will keep both.` : '');
   }
 
   function renderColorSwatches() {
@@ -884,6 +991,7 @@
   function saveRivalFromModal() {
     const name = $('#rival-name').value.trim();
     if (!name) {
+      setRivalNameFeedback('Enter a name for this rival.', '');
       $('#rival-name').focus();
       return;
     }
@@ -922,18 +1030,40 @@
     else if (state.view === 'matrix') renderMatrix();
   }
 
+  // Styled confirmation (same pattern as delete-game / clear-games), then an
+  // Undo toast: the rival and their games are kept in memory for the life of
+  // the toast so an accidental delete is one tap from restored.
   function deleteRivalFromModal() {
     if (!state.editingRivalId) return;
     const r = state.rivals.find(x => x.id === state.editingRivalId);
     if (!r) return;
     const gameCount = state.games.filter(g => g.rivalId === r.id).length;
-    const msg = gameCount
-      ? `Delete ${r.name} and all ${gameCount} game${gameCount === 1 ? '' : 's'}? This cannot be undone.`
-      : `Delete ${r.name}?`;
-    if (!confirm(msg)) return;
+    $('#delete-rival-body').textContent = gameCount
+      ? `Delete ${r.name} and all ${countNoun(gameCount, 'game')} logged against them? You can undo this for a few seconds afterwards.`
+      : `Delete ${r.name}? You can undo this for a few seconds afterwards.`;
+    state.pendingDeleteRivalId = r.id;
+    openModal('delete-rival-modal', '#delete-rival-cancel');
+  }
+
+  function closeDeleteRivalModal() {
+    closeModal('delete-rival-modal');
+    state.pendingDeleteRivalId = null;
+  }
+
+  function confirmDeleteRival() {
+    const id = state.pendingDeleteRivalId;
+    closeDeleteRivalModal();
+    if (!id) return;
+    const r = state.rivals.find(x => x.id === id);
+    if (!r) return;
     // Grab the pair doc before the rival leaves state.rivals; tearing the
     // link down is best effort and must never block the local delete.
     const linkedPairKey = networkLinkState().linkedRivalIds.get(r.id) || null;
+    state.lastDeletedRival = {
+      rival: r,
+      games: state.games.filter(g => g.rivalId === r.id),
+      index: state.rivals.findIndex(x => x.id === r.id),
+    };
     state.rivals = state.rivals.filter(x => x.id !== r.id);
     state.games = state.games.filter(g => g.rivalId !== r.id);
     if (state.selectedRivalId === r.id) {
@@ -957,7 +1087,35 @@
     closeRivalModal();
     refreshRivalSelects();
     if (state.view === 'rival') setView('dashboard');
-    else if (state.view === 'dashboard') renderDashboard();
+    else renderCurrentView();
+    const n = state.lastDeletedRival.games.length;
+    showToast(`Deleted ${r.name}${n ? ` and ${countNoun(n, 'game')}` : ''}.`, {
+      action: { label: 'Undo', onClick: undoDeleteRival },
+      duration: 8000,
+    });
+  }
+
+  function undoDeleteRival() {
+    const snap = state.lastDeletedRival;
+    if (!snap) return;
+    state.lastDeletedRival = null;
+    if (state.rivals.some(x => x.id === snap.rival.id)) return;
+    const at = Math.min(Math.max(0, snap.index), state.rivals.length);
+    state.rivals.splice(at, 0, snap.rival);
+    state.games = state.games.concat(snap.games);
+    persistRivals();
+    persistGames();
+    refreshRivalSelects();
+    renderCurrentView();
+    netFire(publishNetworkDoc());
+    netFire(tryLinkRival(snap.rival));
+    showToast(`Restored ${snap.rival.name}.`);
+  }
+
+  // Re-render whichever view is on screen.
+  function renderCurrentView() {
+    if (state.view === 'dashboard') renderDashboard();
+    else if (state.view === 'rival') renderRival();
     else if (state.view === 'leaderboard') renderLeaderboard();
     else if (state.view === 'matrix') renderMatrix();
     else if (state.view === 'records') renderRecords();
@@ -987,9 +1145,7 @@
   }
 
   function openDeleteGameModal(g) {
-    const modal = $('#delete-game-modal');
     const body = $('#delete-game-body');
-    const cancelBtn = $('#delete-game-cancel');
 
     const myLabel = iPlayed(g) ? String(getMyTotal(g)) : '-';
     const theirLabel = theyPlayed(g) ? String(getTheirTotal(g)) : '-';
@@ -997,18 +1153,13 @@
     const rivalPart = rival ? ` vs ${rival.name}` : '';
     body.textContent = `${shortDate(g.date)}${rivalPart}: ${myLabel} to ${theirLabel}. This cannot be undone.`;
 
-    state.deleteGameLastFocus = document.activeElement;
     state.pendingDeleteGameId = g.id;
-    modal.hidden = false;
-    setTimeout(() => cancelBtn.focus(), 30);
+    openModal('delete-game-modal', '#delete-game-cancel');
   }
 
   function closeDeleteGameModal() {
-    $('#delete-game-modal').hidden = true;
+    closeModal('delete-game-modal');
     state.pendingDeleteGameId = null;
-    const prev = state.deleteGameLastFocus;
-    state.deleteGameLastFocus = null;
-    if (prev && document.body.contains(prev)) setTimeout(() => prev.focus(), 0);
   }
 
   function confirmDeleteGame() {
@@ -1064,7 +1215,7 @@
 
     let lines = [];
     lines.push(`MapTap Rivals: ${meName} vs ${rivalName}`);
-    lines.push(g.date);
+    lines.push(formatDate(g.date, 'long') || g.date);
     lines.push('');
 
     if (diff > 0) {
@@ -1099,12 +1250,27 @@
   // Floating, body-level confirmation that doesn't reflow the table the
   // share button lives in. Replaces any prior toast so rapid clicks don't
   // stack up multiple pills.
-  function showShareToast(_anchorEl, msg) {
+  function showShareToast(_anchorEl, msg) { showToast(msg); }
+
+  // Body-level toast. `action` ({ label, onClick }) adds a button (used by
+  // the rival-delete Undo); the toast then stays longer and is focusable.
+  let toastTimer = null;
+  function showToast(msg, options) {
+    const o = options || {};
     const existing = document.querySelector('.share-toast');
     if (existing) existing.remove();
-    const toast = el('div', { class: 'share-toast', role: 'status', 'aria-live': 'polite' }, msg);
+    clearTimeout(toastTimer);
+    const toast = el('div', { class: 'share-toast' + (o.action ? ' has-action' : ''), role: 'status', 'aria-live': 'polite' }, [
+      el('span', { class: 'share-toast-text' }, msg),
+      o.action ? el('button', {
+        type: 'button',
+        class: 'share-toast-action',
+        onclick: () => { toast.remove(); o.action.onClick(); },
+      }, o.action.label) : null,
+    ]);
     document.body.appendChild(toast);
-    setTimeout(() => { if (toast.parentNode) toast.remove(); }, 2000);
+    toastTimer = setTimeout(() => { if (toast.parentNode) toast.remove(); }, o.duration || (o.action ? 8000 : 2000));
+    return toast;
   }
 
   async function shareGame(g, rival, btn) {
@@ -1161,10 +1327,7 @@
   // "August 2026". A week straddling New Year carries both years so the jump
   // is obvious ("Dec 28, 2025 to Jan 3, 2026").
   function periodTitle(rec) {
-    if (rec.unit === 'month') {
-      return new Date(rec.start + 'T00:00:00')
-        .toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-    }
+    if (rec.unit === 'month') return formatDate(rec.start, 'month');
     const startYear = rec.start.slice(0, 4);
     const endYear = rec.end.slice(0, 4);
     return startYear === endYear
@@ -1467,7 +1630,8 @@
   // so the first match is fine). For a rival it's the matching game's
   // theirScores. Returns nulls when the game wasn't logged.
   function actualScoresForDay(iso) {
-    const mineGame = state.games.find(g => g.date === iso && Array.isArray(g.myScores));
+    const live = liveRivalIds();
+    const mineGame = state.games.find(g => g && g.date === iso && Array.isArray(g.myScores) && live.has(g.rivalId));
     return {
       mineScores:  mineGame ? mineGame.myScores  : null,
       mineTotal:   mineGame ? getMyTotal(mineGame) : null,
@@ -1964,7 +2128,7 @@
   // Day-tab pill. Shows weekday + day-of-month. Today is labelled "Today";
   // tomorrow gets a thinner accent so the upcoming run reads at a glance.
   function makeDayTab(entry, todayIso) {
-    const dt = new Date(entry.iso + 'T00:00:00');
+    const dt = localDateFromISO(entry.iso) || new Date();
     const isToday = entry.iso === todayIso;
     const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     const cls = ['pred-day-tab'];
@@ -2008,7 +2172,9 @@
     sub.textContent = fmtDateLong(selectedISO);
 
     // Day-tab strip (always visible — the headline UI for the 7-day view).
-    const tabs = el('div', { class: 'pred-day-tabs', role: 'tablist',
+    // A row of toggle buttons (aria-pressed), not ARIA tabs: the buttons do
+    // not control separate panels, so role=tablist was an axe critical.
+    const tabs = el('div', { class: 'pred-day-tabs', role: 'group',
                              'aria-label': 'Next 7 days' },
       state.predictWindow.map(entry => makeDayTab(entry, today)));
     body.appendChild(tabs);
@@ -2402,7 +2568,33 @@
       if (parsed.date) $('#paste-date').value = parsed.date;
     }
 
+    refreshPasteDateHint();
     refreshAllPasteResults();
+  }
+
+  // The date the day's games will be saved under, spelled out whenever it is
+  // not today: "Logging for Aug 21 (yesterday)" / "... is in the future".
+  // Historical and future dates stay allowed; they just cannot slip by
+  // unnoticed. The field resets to today after every save (it used to keep
+  // the last pasted date, so a dateless paste the next day landed on it).
+  function refreshPasteDateHint() {
+    const input = $('#paste-date');
+    const hint = $('#paste-date-hint');
+    if (!input || !hint) return;
+    const text = pasteDateHintText(input.value, todayISO());
+    hint.textContent = text;
+    hint.hidden = !text;
+    hint.classList.toggle('is-warn', /future|invalid/.test(text));
+  }
+
+  function pasteDateHintText(value, today) {
+    if (!value) return 'No date set: games will be saved under today.';
+    if (!parseDateISO(value)) return 'That date is invalid.';
+    const diff = daysBetweenISO(today, value);
+    if (diff === 0) return '';
+    if (diff > 0) return `Logging for ${formatDate(value, 'long')}, which is in the future.`;
+    if (diff === -1) return `Logging for ${formatDate(value, 'long')} (yesterday).`;
+    return `Logging for ${formatDate(value, 'long')} (${-diff} days ago).`;
   }
 
   // One record per (rival, date): every pasted day funnels through here so a
@@ -2450,6 +2642,7 @@
     let added = 0, updated = 0;
     const now = Date.now();
     const savedGames = [];
+    const savedDateLabel = formatDate(date, 'short');
     for (const { rival, theirs } of targets) {
       const myT = mine.computedTotal;
       const theirT = theirs.computedTotal;
@@ -2503,6 +2696,8 @@
       ta.value = '';
       ta.classList.remove('is-parsed', 'is-error');
     });
+    const dateInput = $('#paste-date');
+    if (dateInput) dateInput.value = todayISO();
     refreshPasteMineUI();
     refreshAllPasteResults();
 
@@ -2519,9 +2714,9 @@
       // Honest wording: a day that already had a record for that rival was
       // UPDATED in place (see upsertPastedGame), not saved as a new game.
       const parts = [];
-      if (added) parts.push(`Saved ${added} game${added === 1 ? '' : 's'}`);
-      if (updated) parts.push(`Updated ${updated} game${updated === 1 ? '' : 's'}`);
-      summary.textContent = `${parts.join(' · ')} · ${wlt.join(' · ') || 'no result'}`;
+      if (added) parts.push(`Saved ${countNoun(added, 'game')}`);
+      if (updated) parts.push(`Updated ${countNoun(updated, 'game')}`);
+      summary.textContent = `${parts.join(' · ')} for ${savedDateLabel} · ${wlt.join(' · ') || 'no result'}`;
     }
     if (pasteActions) {
       pasteActions.querySelectorAll('.paste-share-btn').forEach(b => b.remove());
@@ -2555,19 +2750,16 @@
       return;
     }
 
-    // H2H games only — rival-only days carry no W/L and would skew the
-    // "Avg score" tile down to 0 because the user wasn't there.
-    const h2hGames = state.games.filter(bothPlayed);
-    const totalGames = h2hGames.length;
-    let wins = 0, losses = 0, ties = 0;
-    h2hGames.forEach(g => {
-      const r = resultOf(g);
-      if (r === 'W') wins++;
-      else if (r === 'L') losses++;
-      else ties++;
-    });
-    const winPct = totalGames ? (wins / totalGames * 100) : 0;
-    const myAvg = average(h2hGames.map(getMyTotal));
+    // The one eligibility rule (eligibleH2HGames): both sides played AND
+    // the rival still exists. Rival-only days carry no W/L, and a game left
+    // behind by a deleted rival counts nowhere, exactly as in the Records
+    // view and the form banner above this strip; until 2026-08-22 this strip
+    // skipped the rival check and could disagree with the banner.
+    const live = liveRivalIds();
+    const overall = overallRecord(state.games, live);
+    const h2hGames = eligibleH2HGames(state.games, live);
+    const totalGames = overall.games;
+    const { wins, losses, ties, winPct, myAvg } = overall;
 
     // best rival = highest win % with at least 1 game
     let bestRival = null, worstRival = null;
@@ -2676,9 +2868,9 @@
       else run = 0;
     }
 
-    // 1. About to break personal best win streak (tie record with next win)
+    // 1. Level with the personal-best win streak: the next win BREAKS it.
     if (curW >= 2 && curW === prevLongestW) {
-      return { kind: 'win', text: `🔥 On a ${curW}-game win streak, match your record today` };
+      return { kind: 'win', text: `🔥 On a ${curW}-game win streak, level with your record: win today to break it` };
     }
     // 2. About to extend personal best win streak (already surpassed old record)
     if (curW >= 2 && curW > prevLongestW) {
@@ -2710,9 +2902,9 @@
         else lRun = 0;
       }
     }
-    // 6. About to tie the all-time longest losing streak
+    // 6. Level with the all-time longest losing streak: one more sets a new worst.
     if (curL >= 2 && curL === prevLongestL) {
-      return { kind: 'loss', text: `❄️ Matching your worst slump vs ${rivalName} (${curL} losses)` };
+      return { kind: 'loss', text: `❄️ Level with your worst slump vs ${rivalName} (${curL} losses), stop it here` };
     }
     // 7. About to set a new worst losing-streak record
     if (curL >= 2 && curL > prevLongestL) {
@@ -2883,10 +3075,8 @@
 
     // 35. Long gap since the last H2H game
     {
-      const lastTs = Date.parse(last.date);
-      const todayTs = Date.parse(today);
-      if (Number.isFinite(lastTs) && Number.isFinite(todayTs)) {
-        const days = Math.round((todayTs - lastTs) / 86400000);
+      const days = daysBetweenISO(last.date, today);
+      if (Number.isFinite(days)) {
         if (days >= 21) {
           return { kind: 'milestone', text: `🌙 ${days} days since you last played ${rivalName}, welcome back` };
         }
@@ -2951,7 +3141,14 @@
       el('div', { class: 'rival-icon', style: `background:${r.color}33` }, r.icon),
       el('div', { class: 'rival-card-ident' }, [
         el('div', { class: 'rival-card-name' }, [
-          r.name,
+          // A real link: keyboard users reach the rival page through it, and
+          // the whole card stays clickable for everyone else.
+          el('a', {
+            href: `#rival/${encodeURIComponent(r.id)}`,
+            class: 'rival-card-link',
+            'aria-label': `Open ${r.name}'s rivalry page`,
+            onclick: (e) => { e.preventDefault(); e.stopPropagation(); state.selectedRivalId = r.id; persistSelected(); setView('rival'); },
+          }, r.name),
           connected
             ? el('span', {
                 class: 'connected-chip',
@@ -3059,9 +3256,7 @@
     const lastDiff = last ? getMyTotal(last) - getTheirTotal(last) : 0;
     const first = games[0];
     const firstISO = first ? first.date : null;
-    const daysSinceFirst = firstISO
-      ? Math.round((Date.parse(todayISO()) - Date.parse(firstISO)) / 86400000)
-      : 0;
+    const daysSinceFirst = firstISO ? (daysBetweenISO(firstISO, todayISO()) || 0) : 0;
 
     // Per-game margins (mine - theirs) with dates.
     const margins = games.map(g => ({
@@ -3076,7 +3271,7 @@
 
     // Weekend vs weekday split (Sat/Sun = weekend).
     const isWeekend = (iso) => {
-      const d = new Date(iso + 'T00:00:00').getDay();
+      const d = dayOfWeekISO(iso);
       return d === 0 || d === 6;
     };
     const weekendGames = margins.filter(m => isWeekend(m.date));
@@ -3087,7 +3282,7 @@
     // Longest gap (in days) between consecutive meetings.
     let longestGap = 0, gapDate = null;
     for (let i = 1; i < games.length; i++) {
-      const g = Math.round((Date.parse(games[i].date) - Date.parse(games[i - 1].date)) / 86400000);
+      const g = daysBetweenISO(games[i - 1].date, games[i].date) || 0;
       if (g > longestGap) { longestGap = g; gapDate = games[i].date; }
     }
 
@@ -3469,24 +3664,16 @@
       `7d ${s.myAvg7 ? s.myAvg7.toFixed(0) : '—'} · 30d ${s.myAvg30 ? s.myAvg30.toFixed(0) : '—'} · all ${s.myAvgAll.toFixed(0)}`,
       trendMod));
 
-    const consTakeaway =
-      s.consistencyMine < 10 ? 'Very steady scorer'
-      : s.consistencyMine < 20 ? 'Fairly consistent scorer'
-      : 'Streaky, high-variance scorer';
-    momentum.push(makeStatCard('Consistency', consTakeaway,
-      `σ ${s.consistencyMine.toFixed(1)} (lower is steadier)`));
+    momentum.push(makeStatCard('Consistency', consistencyLabel(s.consistencyMine),
+      `σ ${s.consistencyMine.toFixed(1)} of your daily total (lower is steadier)`));
 
     // --- Key Insights ---
-    // Parity distance: how many more wins you'd need for wins ≥ losses. Only
-    // shown when behind, verbalized as flipped results to reach parity.
-    if (s.losses > s.wins) {
-      const flipsNeeded = Math.ceil((s.losses - s.wins) / 2);
-      const behindBy = s.losses - s.wins;
-      insights.push(makeStatCard('Path to parity',
-        `Need ${flipsNeeded} flipped result${flipsNeeded === 1 ? '' : 's'} to reach parity`,
-        `currently ${behindBy} game${behindBy === 1 ? '' : 's'} behind`,
-        'is-bad'));
-    }
+    // Where the record stands against parity. The number is how many more
+    // games you must WIN from here for wins to equal losses; see
+    // parityOutlook in stats.js for why the old "flipped results" figure was
+    // both half the real distance and not something a player can act on.
+    const parity = parityOutlook(s);
+    insights.push(makeStatCard(parity.title, parity.headline, parity.sub, parity.tone));
 
     // Main swing round: the round whose result most often decides games.
     if (s.carryChoke) {
@@ -3506,14 +3693,9 @@
     // Biggest swings combined into one insight card.
     if (s.biggestWinGame || s.biggestLossGame) {
       const swingSub = [];
-      if (s.biggestWinGame) {
-        swingSub.push(el('span', { class: 'sub-line' },
-          `Best win +${s.biggestWinMargin} (${s.biggestWinGame.myScore}–${s.biggestWinGame.theirScore} on ${shortDate(s.biggestWinGame.date)})`));
-      }
-      if (s.biggestLossGame) {
-        swingSub.push(el('span', { class: 'sub-line' },
-          `Worst loss −${s.biggestLossMargin} (${s.biggestLossGame.myScore}–${s.biggestLossGame.theirScore} on ${shortDate(s.biggestLossGame.date)})`));
-      }
+      // Totals via the canonical helpers: a game may carry only round arrays
+      // (no scalar myScore), which used to render "undefined–undefined".
+      swingLines(s).forEach(line => swingSub.push(el('span', { class: 'sub-line' }, line)));
       const spread = (s.biggestWinGame ? s.biggestWinMargin : 0) + (s.biggestLossGame ? s.biggestLossMargin : 0);
       insights.push(makeStatCard('Biggest swings',
         `${spread}-point spread, best to worst`,
@@ -3660,9 +3842,9 @@
     const startCandidateISO = firstGameISO > maxStartISO ? firstGameISO : maxStartISO;
 
     // Snap start back to the Sunday of that week so the grid aligns cleanly.
-    const snapDate = new Date(startCandidateISO + 'T00:00:00');
-    snapDate.setDate(snapDate.getDate() - snapDate.getDay()); // rewind to Sunday
-    const startISO = snapDate.toISOString().slice(0, 10);
+    // ISO-string arithmetic throughout (stats.js): the old Date/toISOString
+    // walk ended one day early for UTC+ users, so today's game never showed.
+    const startISO = addDaysISO(startCandidateISO, -dayOfWeekISO(startCandidateISO));
 
     // Build a map: date → net result. Null prototype: dates come verbatim
     // from storage (backup import does no validation), so a '__proto__' date
@@ -3690,20 +3872,16 @@
       return `${iso}: ${label} (${gamesOnDay.length} games: ${totals})`;
     }
 
-    // Walk from startISO to today, collecting all days into week columns.
+    // Walk from startISO to today (inclusive), collecting all days into
+    // week columns. The grid is 7 rows (Sun=0..Sat=6) × N weeks.
     const weeks = [];
     let week = [];
-    let cur = new Date(startISO + 'T00:00:00');
-    const end = new Date(today + 'T00:00:00');
-    // The grid is 7 rows (Sun=0..Sat=6) × N weeks.
-    // Pad the first week: we snapped to Sunday so no leading padding needed,
-    // but guard against edge cases by filling from 0 to cur.getDay().
-    while (cur <= end) {
-      const iso = cur.toISOString().slice(0, 10);
-      const dow = cur.getDay(); // 0=Sun
+    const span = daysBetweenISO(startISO, today);
+    for (let i = 0; i <= span; i++) {
+      const iso = addDaysISO(startISO, i);
+      const dow = dayOfWeekISO(iso); // 0=Sun
       if (dow === 0 && week.length > 0) { weeks.push(week); week = []; }
       week.push(iso);
-      cur.setDate(cur.getDate() + 1);
     }
     if (week.length > 0) weeks.push(week);
 
@@ -3713,10 +3891,10 @@
     const monthLabelItems = []; // { colIdx, label }
     let lastMonth = -1;
     for (let wi = 0; wi < weeks.length; wi++) {
-      const firstDay = new Date(weeks[wi][0] + 'T00:00:00');
-      if (firstDay.getMonth() !== lastMonth) {
-        lastMonth = firstDay.getMonth();
-        const mo = firstDay.toLocaleDateString('en-US', { month: 'short' });
+      const firstDay = parseDateISO(weeks[wi][0]);
+      if (firstDay.month !== lastMonth) {
+        lastMonth = firstDay.month;
+        const mo = formatDate(weeks[wi][0], 'short').replace(/\s.*$/, '');
         monthLabelItems.push({ colIdx: wi, label: mo });
       }
     }
@@ -3757,7 +3935,7 @@
       const days = weeks[wi]; // array of ISO strings (1–7 items)
       // First week may start after Sunday if snap didn't land on one
       // (it always should, but guard anyway).
-      const firstDow = new Date(days[0] + 'T00:00:00').getDay();
+      const firstDow = dayOfWeekISO(days[0]);
       // Insert empty filler cells for missing leading days.
       for (let pad = 0; pad < firstDow; pad++) {
         const empty = el('span', {
@@ -3768,7 +3946,7 @@
       }
       for (let di = 0; di < days.length; di++) {
         const iso = days[di];
-        const dow = new Date(iso + 'T00:00:00').getDay();
+        const dow = dayOfWeekISO(iso);
         const counts = dayMap[iso];
         const cls = counts ? 'heatmap-cell heatmap-' + netResult(counts) : 'heatmap-cell heatmap-none';
         const title = counts ? tooltipText(iso, counts) : iso;
@@ -3782,7 +3960,7 @@
     }
 
     // Total days spanned (for the sub label)
-    const totalDays = daysBetween(startISO, today) + 1;
+    const totalDays = daysBetweenISO(startISO, today) + 1;
     const gameDays = Object.keys(dayMap).length;
     subEl.textContent = `${s.total} game${s.total === 1 ? '' : 's'} on ${gameDays} day${gameDays === 1 ? '' : 's'}`;
 
@@ -3819,9 +3997,7 @@
     const gamesWithGeo = s.games.filter(g => Array.isArray(g.cities) && g.cities.length === N_LOCS).length;
     const total = s.games.length;
     const missing = total - gamesWithGeo;
-    sub.textContent =
-      `${totalRounds} rounds across ${rows.length} continent${rows.length === 1 ? '' : 's'}` +
-      (missing > 0 ? ` · ${missing} game${missing === 1 ? '' : 's'} have no geo data (re-sync to backfill)` : '');
+    sub.textContent = continentSubText(totalRounds, rows.length, missing);
 
     renderContinentInsights(rows);
 
@@ -3850,7 +4026,7 @@
             }, r.myAvg.toFixed(1)),
           ]),
           el('div', { class: 'col them' }, [
-            el('div', { class: 'k' }, `${s.rival.name} avg`),
+            el('div', { class: 'k', title: `${s.rival.name} avg` }, `${s.rival.name} avg`),
             el('div', {
               class: 'v' + (r.theirAvg > r.myAvg ? ' is-win' : r.theirAvg < r.myAvg ? ' is-lose' : ''),
             }, r.theirAvg.toFixed(1)),
@@ -3870,6 +4046,13 @@
         el('span', { class: 'continent-winpct ' + winPctClass }, `Round win rate ${winPctLabel}`),
       ]));
     }
+  }
+
+  // "15 rounds across 6 continents · 1 game without geo data (re-sync to
+  // backfill)". Written around the count so no verb has to agree with it.
+  function continentSubText(totalRounds, continents, missing) {
+    return `${countNoun(totalRounds, 'round')} across ${countNoun(continents, 'continent')}` +
+      (missing > 0 ? ` · ${countNoun(missing, 'game')} without geo data (re-sync to backfill)` : '');
   }
 
   // Story-first headlines above the continent cards. Surfaces the standout
@@ -3937,6 +4120,30 @@
     const built = groups.filter(Boolean).slice(0, 3);
     built.forEach(g => wrap.appendChild(g));
     wrap.hidden = built.length === 0;
+  }
+
+  // σ of the DAILY TOTAL (0-1000): the old 10/20 cut-offs were round-score
+  // numbers, so every real history read "Streaky". Across the owner's data
+  // a typical rivalry sits around σ 70; these bands put it in the middle.
+  function consistencyLabel(sigma) {
+    if (!Number.isFinite(sigma)) return 'Not enough games yet';
+    if (sigma < 60) return 'Very steady scorer';
+    if (sigma < 110) return 'Fairly consistent scorer';
+    return 'Streaky, high-variance scorer';
+  }
+
+  // The two "Biggest swings" lines, or fewer when a side is missing.
+  function swingLines(s) {
+    const out = [];
+    if (s.biggestWinGame) {
+      const g = s.biggestWinGame;
+      out.push(`Best win +${s.biggestWinMargin} (${getMyTotal(g)}–${getTheirTotal(g)} on ${shortDate(g.date)})`);
+    }
+    if (s.biggestLossGame) {
+      const g = s.biggestLossGame;
+      out.push(`Worst loss −${s.biggestLossMargin} (${getMyTotal(g)}–${getTheirTotal(g)} on ${shortDate(g.date)})`);
+    }
+    return out;
   }
 
   function makeStatCard(label, value, sub, mod) {
@@ -4301,7 +4508,9 @@
     const myTotals = last30.map(getMyTotal);
     const theirTotals = last30.map(getTheirTotal);
     const trendScores = myTotals.concat(theirTotals).filter(Number.isFinite);
-    const trendYMin = trendScores.length ? Math.min(...trendScores) - 50 : undefined;
+    // Floor the axis at 0: a 0-1000 score never goes negative, and a short
+    // history used to start the axis at -50.
+    const trendYMin = trendScores.length ? Math.max(0, Math.min(...trendScores) - 50) : 0;
     state.charts.trend = new Chart($('#chart-trend'), {
       type: 'line',
       data: {
@@ -4516,7 +4725,11 @@
       tr.appendChild(el('td', { style: 'font-weight:700;color:var(--muted)' }, '#' + (i + 1)));
       tr.appendChild(el('td', {}, [
         el('span', { style: `display:inline-block;width:.6rem;height:.6rem;border-radius:50%;background:${s.rival.color};margin-right:.45rem;vertical-align:middle` }),
-        s.rival.icon + ' ' + s.rival.name,
+        el('a', {
+          href: `#rival/${encodeURIComponent(s.rival.id)}`,
+          class: 'lb-rival-link',
+          onclick: (e) => { e.preventDefault(); e.stopPropagation(); state.selectedRivalId = s.rival.id; persistSelected(); setView('rival'); },
+        }, s.rival.icon + ' ' + s.rival.name),
       ]));
       tr.appendChild(el('td', {}, String(s.total)));
       tr.appendChild(el('td', { style: 'color:var(--good);font-weight:600' }, String(s.wins)));
@@ -4856,8 +5069,9 @@
             ? `border-color:${r.color};background:${r.color}22`
             : '',
           'aria-pressed': selected ? 'true' : 'false',
+          title: r.name,
           onclick: () => toggleMatrixRival(r.id),
-        }, r.icon + ' ' + r.name);
+        }, [el('span', { class: 'matrix-chip-text' }, r.icon + ' ' + r.name)]);
         wrap.appendChild(chip);
       });
   }
@@ -5361,7 +5575,7 @@
       return;
     }
     if (!state.myMapTap) {
-      alert('Set your MapTap username first.');
+      focusProfileUsername();
       return;
     }
     state.syncAllInFlight = true;
@@ -5390,6 +5604,9 @@
     const hasProfile = !!state.myProfile;
     const editing = state.profileEditMode || !hasUsername;
     card.classList.toggle('is-unverified', !hasProfile);
+    // Settled (verified, not editing) and not expanded: one line + Sync all.
+    const compact = hasProfile && !editing && !state.profileExpanded;
+    card.classList.toggle('is-compact', compact);
 
     // ---- Actions area ----
     if (editing) {
@@ -5430,8 +5647,12 @@
       actions.appendChild(el('button', {
         type: 'button', class: 'btn btn-ghost',
         title: 'Re-verify or change username',
-        onclick: () => { state.profileEditMode = true; renderProfileCard(); setTimeout(()=>{const i=$('#profile-username-input'); if(i)i.focus();},30); },
+        onclick: () => { state.profileEditMode = true; state.profileExpanded = true; renderProfileCard(); setTimeout(()=>{const i=$('#profile-username-input'); if(i)i.focus();},30); },
       }, '⋯ Change'));
+      if (hasProfile) actions.appendChild(makeCardToggle('profile', state.profileExpanded, () => {
+        state.profileExpanded = !state.profileExpanded;
+        renderProfileCard();
+      }));
     }
 
     // ---- Body ----
@@ -5495,13 +5716,18 @@
         p.joinDate ? `joined ${shortDate(p.joinDate)}` : ''));
       info.appendChild(infoCell('MapTap avg score', p.avgScore ? p.avgScore.toFixed(0) : '—',
         p.totalGames ? `best ${p.bestScore} · worst ${p.worstScore}` : ''));
-      // App-side stats for direct comparison
-      const tracked = state.games.length;
-      const myAppAvg = tracked ? state.games.map(getMyTotal).reduce((a,b)=>a+b,0) / tracked : 0;
+      // App-side stats for direct comparison. Same eligibility as the
+      // dashboard strip and Records (eligibleH2HGames): both sides played,
+      // rival still on the list. The average is per DAY (a day logged
+      // against three rivals is one day of my scoring), which is the figure
+      // MapTap's own profile average is comparable with.
+      const overall = overallRecord(state.games, liveRivalIds());
+      const tracked = overall.games;
+      const myAppAvg = overall.myAvgByDay;
       info.appendChild(infoCell('Tracked H2H games', String(tracked),
-        tracked ? 'games where both players played' : 'log a game to compare'));
+        tracked ? `${countNoun(overall.days, 'day')} where both players played` : 'log a game to compare'));
       info.appendChild(infoCell('Your H2H avg', tracked ? myAppAvg.toFixed(0) : '—',
-        tracked ? 'across tracked games only' : ''));
+        tracked ? 'across tracked days only' : ''));
       body.appendChild(info);
 
       // Explain the gap up-front so it doesn't look like a bug
@@ -5509,14 +5735,14 @@
       if (tracked > 0 && diff >= 5) {
         body.appendChild(el('div', { class: 'profile-hint' }, [
           el('strong', {}, 'Different averages by design. '),
-          `MapTap (${p.avgScore.toFixed(0)}) averages every daily game you've ever played. The app's H2H avg (${myAppAvg.toFixed(0)}) only includes the ${tracked} days a tracked rival also played; solo days aren't counted here. The gap (~${diff}) is usually because some of your best/worst days had no rival paired.`,
+          `MapTap (${p.avgScore.toFixed(0)}) averages every daily game you've ever played. The app's H2H avg (${myAppAvg.toFixed(0)}) only includes the ${countNoun(overall.days, 'day')} a tracked rival also played; solo days aren't counted here. The gap (~${diff}) is usually because some of your best/worst days had no rival paired.`,
         ]));
       }
 
       // Sub-line: when last verified
       if (p.verifiedAt) {
-        body.appendChild(el('div', { style: 'margin-top:.45rem;font-size:.72rem;color:var(--muted-2)' },
-          `Last verified ${shortDate(p.verifiedAt)}${p.mostRecentDate ? ` · most recent MapTap game ${shortDate(p.mostRecentDate)}` : ''}`));
+        body.appendChild(el('div', { class: 'profile-meta-line' },
+          `Last verified ${shortDate(p.verifiedAt) || 'unknown'}${p.mostRecentDate ? ` · most recent MapTap game ${shortDate(p.mostRecentDate)}` : ''}`));
       }
     } else if (!editing && hasUsername) {
       body.appendChild(el('div', { class: 'profile-status-line' }, [
@@ -5533,18 +5759,37 @@
     }
   }
 
+  // Put the profile card into edit mode and focus its username input,
+  // scrolling it into view. Used by every "you need a username first" path.
+  function focusProfileUsername() {
+    if (state.view !== 'dashboard') setView('dashboard');
+    state.profileEditMode = true;
+    state.profileCollapsed = false;
+    renderProfileCard();
+    const card = $('#profile-card');
+    if (card && typeof card.scrollIntoView === 'function') card.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    setTimeout(() => { const i = $('#profile-username-input'); if (i) i.focus(); }, 60);
+  }
+
+  // Chevron button that expands / collapses a settled setup card.
+  function makeCardToggle(which, expanded, onToggle) {
+    return el('button', {
+      type: 'button',
+      class: 'btn btn-ghost card-toggle' + (expanded ? ' is-open' : ''),
+      'aria-expanded': expanded ? 'true' : 'false',
+      'aria-controls': which + '-card-body',
+      title: expanded ? 'Show less' : 'Show details',
+      'aria-label': expanded ? `Collapse the ${which} card` : `Expand the ${which} card`,
+      onclick: onToggle,
+    }, [el('span', { class: 'card-toggle-chev', 'aria-hidden': 'true' }, '▾')]);
+  }
+
   function infoCell(k, v, s) {
     return el('div', { class: 'profile-info-cell' }, [
       el('div', { class: 'k' }, k),
       el('div', { class: 'v' }, v),
       s ? el('div', { class: 's' }, s) : null,
     ]);
-  }
-  function shortDate(iso) {
-    if (!iso) return '';
-    const d = new Date(iso + 'T00:00:00');
-    if (isNaN(d)) return '';
-    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
   // ---------- rival network ----------
@@ -5783,12 +6028,18 @@
       if (isRegisteredUser(user) && user.uid === c.uid) {
         const { db, fs } = await firebaseBits();
         const key = handleKey(myNetworkHandle());
+        let failed = false;
         if (key) {
-          try { await fs.deleteDoc(fs.doc(db, NET_HANDLES, key)); } catch (_) {}
+          try { await fs.deleteDoc(fs.doc(db, NET_HANDLES, key)); } catch (_) { failed = true; }
         }
-        try { await fs.deleteDoc(fs.doc(db, NET_PROFILES, c.uid)); } catch (_) {}
+        try { await fs.deleteDoc(fs.doc(db, NET_PROFILES, c.uid)); } catch (_) { failed = true; }
+        setNetworkStatus(failed ? 'warn' : 'ok', leaveNetworkMessage(true, failed));
+      } else {
+        // Signed out (or on another account): the published docs cannot be
+        // touched from here, so say exactly that instead of claiming a
+        // deletion that did not happen.
+        setNetworkStatus('warn', leaveNetworkMessage(false, false));
       }
-      setNetworkStatus('ok', 'You left the rival network. Your rivals and games are untouched.');
     } catch (err) {
       setNetworkStatus('err', networkErrorText(err));
     } finally {
@@ -5799,6 +6050,18 @@
       state.networkBusy = null;
       renderNetworkSurfaces();
     }
+  }
+
+  // What "Leave network" actually achieved. `registered` = we could reach
+  // Firestore as the joining account; `failed` = a delete was refused.
+  function leaveNetworkMessage(registered, failed) {
+    if (!registered) {
+      return 'Cleared the network data on this device only. Sign in with the account you joined on and leave again to remove your published profile and handle claim.';
+    }
+    if (failed) {
+      return 'Left the network on this device, but removing your published profile failed (permission or connection). Sign in and leave again to retry.';
+    }
+    return 'You left the rival network: your published profile and handle claim are removed. Your rivals and games are untouched.';
   }
 
   // Look the rival's handle up in the claim directory and, when it belongs to
@@ -5992,6 +6255,10 @@
     const verified = !!state.myProfile && !!handle;
     const busy = state.networkBusy;
     card.classList.toggle('is-joined', joined);
+    // Compact once joined (or while joining is impossible because the user
+    // is signed out / unverified): the hint text waits behind the chevron.
+    const compact = !state.networkExpanded && !state.networkStatus && (joined || !registered || !verified);
+    card.classList.toggle('is-compact', compact);
 
     if (joined) {
       actions.appendChild(el('button', {
@@ -6022,6 +6289,10 @@
         onclick: () => netFire(joinNetwork()),
       }, busy === 'join' ? 'Joining…' : 'Join rival network'));
     }
+    actions.appendChild(makeCardToggle('network', state.networkExpanded, () => {
+      state.networkExpanded = !state.networkExpanded;
+      renderNetworkCard();
+    }));
 
     if (joined) {
       const linked = networkLinkState().linkedRivalIds;
@@ -6327,13 +6598,13 @@
   function flattenRoundsForPrediction(rounds, asOfISO) {
     const out = [];
     if (!asOfISO || !Array.isArray(rounds)) return out;
-    const asOf = Date.parse(asOfISO + 'T00:00:00');
-    if (!Number.isFinite(asOf)) return out;
+    const asOfP = parseDateISO(asOfISO);
+    if (!asOfP) return out;
     for (const r of rounds) {
       if (!r || !Array.isArray(r.cities) || !Array.isArray(r.scores) || !r.date) continue;
-      const t = Date.parse(r.date + 'T00:00:00');
-      if (!Number.isFinite(t) || t >= asOf) continue;
-      const daysAgo = (asOf - t) / 86400000;
+      const tp = parseDateISO(r.date);
+      if (!tp || tp.ms >= asOfP.ms) continue;
+      const daysAgo = (asOfP.ms - tp.ms) / 86400000;
       const n = Math.min(r.cities.length, r.scores.length, N_LOCS);
       for (let i = 0; i < n; i++) {
         const c = r.cities[i] || {};
@@ -6443,9 +6714,11 @@
     if (!rival) return;
 
     if (!state.myMapTap) {
-      const me = $('#my-maptap-username');
-      setRivalSyncStatus(rivalId, 'err', 'set your username in Settings');
-      if (me) me.focus();
+      // The username lives in the profile card at the top of the dashboard
+      // (the old Settings-strip field is long gone): open it for editing and
+      // take the user there.
+      setRivalSyncStatus(rivalId, 'err', 'link your MapTap profile first (top of the dashboard)');
+      focusProfileUsername();
       return;
     }
     if (!rival.maptapUsername) {
@@ -6638,108 +6911,68 @@
   }
 
   // ---------- WhatsApp chat import ----------
-  // The exported chat is plain text. Each message starts with a timestamp
-  // line "M/D/YY, HH:MM - Sender: body…" and may continue across lines
-  // with no prefix. We pull out (date, sender, body), find ones whose body
-  // looks like a MapTap share (must mention "maptap" or "final score" so
-  // random 5-number messages don't false-positive), and pair shares from
-  // the same body-date between mapped senders to create games.
-  const WA_HEADER_RE = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4}),\s+(\d{1,2}):(\d{2})\s+-\s+([^:]+?):\s?(.*)$/;
-
-  function parseWhatsAppText(text) {
-    const lines = text.split(/\r?\n/);
-    const messages = [];
-    let cur = null;
-    for (const ln of lines) {
-      const m = ln.match(WA_HEADER_RE);
-      if (m) {
-        if (cur) messages.push(cur);
-        const [, mo, d, yRaw, hh, mm, sender, body] = m;
-        const yy = yRaw.length === 2
-          ? (Number(yRaw) >= 70 ? 1900 + Number(yRaw) : 2000 + Number(yRaw))
-          : Number(yRaw);
-        cur = {
-          year: yy,
-          monthIdx: Number(mo) - 1,
-          day: Number(d),
-          hour: Number(hh),
-          minute: Number(mm),
-          sender: sender.trim(),
-          body: body,
-        };
-      } else if (cur) {
-        cur.body += '\n' + ln;
-      }
-    }
-    if (cur) messages.push(cur);
-    return messages;
+  // Parsing lives in js/whatsapp.js (pure, unit-tested): header shapes for
+  // Android and iOS exports, 12/24-hour clocks, seconds, every separator,
+  // and day/month-order detection from evidence across the file. This file
+  // only maps senders to rivals, pairs same-day shares and writes games.
+  //
+  // A share's calendar day is decided by dayBucketDate: the body's own
+  // "Aug 10" line wins over the header (a 1am share still belongs to
+  // yesterday's puzzle) with the year taken from the header, stepped across
+  // New Year when needed. A body day the year does not have (Feb 29 in a
+  // common year) is NOT rolled over; that share is counted as "undated" and
+  // reported in the modal rather than silently misfiled.
+  function shareDateParts(body) {
+    const parsed = parseShareStrict(body, parseMapTapScore);
+    return parsed && parsed.dateParts ? parsed.dateParts : null;
   }
 
-  // Strict variant of parseMapTapScore that rejects bodies without a
-  // MapTap-share marker. Avoids false-matching on chat messages that just
-  // happen to contain five small numbers.
-  function parseMapTapShareStrict(body) {
-    if (!body) return null;
-    if (!/maptap|final\s*score/i.test(body)) return null;
-    return parseMapTapScore(body);
-  }
-
-  function dayBucketDate(msg, parsed) {
-    // Prefer the date in the message body (e.g. "March 5") since that's
-    // the share's actual game date, even if the user sent it at 1am the
-    // next morning. Fall back to the message's own date.
-    //
-    // parseMapTapScore stamps `parsed.date` as a "YYYY-MM-DD" string built
-    // off the *current* year. For our import we want the year that the
-    // chat actually has — adjust if the body's month is far from the
-    // message's month (i.e. the timezone parser fell off the end of the
-    // year, or the chat is from an earlier year entirely).
-    if (parsed.date && /^\d{4}-\d{2}-\d{2}$/.test(parsed.date)) {
-      const bodyMonthIdx = Number(parsed.date.slice(5, 7)) - 1;
-      const bodyDay = Number(parsed.date.slice(8, 10));
-      let year = msg.year;
-      // "December 30" delivered in early January → previous calendar year
-      if (bodyMonthIdx > msg.monthIdx + 1) year = msg.year - 1;
-      // "January 5" delivered in late December → next calendar year
-      else if (bodyMonthIdx + 1 < msg.monthIdx - 9) year = msg.year + 1;
-      return isoDateLocalFromYMD(year, bodyMonthIdx, bodyDay);
-    }
-    return isoDateLocalFromYMD(msg.year, msg.monthIdx, msg.day);
-  }
-  function isoDateLocalFromYMD(year, monthIdx, day) {
-    // Build "YYYY-MM-DD" directly from numeric parts so we never go
-    // through Date.toISOString — that throws if any component is NaN.
-    const m = String(monthIdx + 1).padStart(2, '0');
-    const d = String(day).padStart(2, '0');
-    return `${year}-${m}-${d}`;
+  function waDateOrderLabel(order) {
+    return order === 'DMY' ? 'day/month/year' : order === 'YMD' ? 'year-month-day' : 'month/day/year';
   }
 
   // Module-level state for the open import modal session.
   const waImport = {
-    messages: [],
+    rawMessages: [],        // as parsed, before the date order is applied
+    messages: [],           // with year/monthIdx/day/dateISO resolved
     senders: [],            // [{ name, count, hasShares }]
     mapping: new Map(),     // sender -> 'me' | 'skip' | 'rival:<id>' | 'new:<sender>'
     fileName: '',
+    format: null,           // { style, hour12, dateOrder, dateOrderCertain, skippedLeadingLines }
   };
+
+  function applyWADateOrder(order) {
+    waImport.messages = applyDateOrder(waImport.rawMessages, order);
+    if (waImport.format) waImport.format.dateOrder = order;
+  }
 
   function openWhatsAppImport(file) {
     const reader = new FileReader();
     reader.onload = () => {
       try {
         const text = String(reader.result || '');
-        const messages = parseWhatsAppText(text);
+        const { messages, skippedLeadingLines } = parseWhatsAppText(text);
         if (!messages.length) {
-          alert('No WhatsApp messages found in that file. Make sure it\'s a chat export (.txt).');
+          alert('No WhatsApp messages found in that file. Make sure it is a chat export (.txt) from WhatsApp on Android or iPhone: every message should start with a date and time, for example "8/10/26, 21:05 - Name:" or "[8/10/26, 9:05:12 PM] Name:".');
           return;
         }
+        const detected = detectDateOrder(messages, shareDateParts);
+        waImport.rawMessages = messages;
+        waImport.format = {
+          style: messages[0].style,
+          hour12: messages.some(m => m.hour12),
+          dateOrder: detected.order,
+          dateOrderCertain: detected.certain,
+          skippedLeadingLines,
+        };
+        applyWADateOrder(detected.order);
         // Tally senders + flag the ones with at least one MapTap-shaped body
         const counts = new Map();
         const hasShares = new Map();
-        for (const m of messages) {
+        for (const m of waImport.messages) {
           counts.set(m.sender, (counts.get(m.sender) || 0) + 1);
-          if (parseMapTapShareStrict(m.body)) hasShares.set(m.sender, true);
+          if (parseShareStrict(m.body, parseMapTapScore)) hasShares.set(m.sender, true);
         }
-        waImport.messages = messages;
         waImport.fileName = file.name;
         waImport.senders = Array.from(counts.entries())
           .map(([name, count]) => ({ name, count, hasShares: !!hasShares.get(name) }))
@@ -6754,7 +6987,7 @@
         }
 
         renderWhatsAppModal();
-        $('#wa-modal').hidden = false;
+        openModal('wa-modal', '#wa-sender-list select');
       } catch (e) {
         alert('Could not read the file: ' + e.message);
       }
@@ -6763,11 +6996,13 @@
   }
 
   function closeWhatsAppModal() {
-    $('#wa-modal').hidden = true;
+    closeModal('wa-modal');
+    waImport.rawMessages = [];
     waImport.messages = [];
     waImport.senders = [];
     waImport.mapping.clear();
     waImport.fileName = '';
+    waImport.format = null;
   }
 
   function renderWhatsAppModal() {
@@ -6775,9 +7010,10 @@
     const list = $('#wa-sender-list');
 
     let totalShares = 0;
-    for (const m of waImport.messages) if (parseMapTapShareStrict(m.body)) totalShares++;
+    for (const m of waImport.messages) if (parseShareStrict(m.body, parseMapTapScore)) totalShares++;
 
-    overview.textContent = `${waImport.fileName || 'WhatsApp export'} · ${waImport.messages.length.toLocaleString()} messages · ${waImport.senders.length} senders · ${totalShares} MapTap share${totalShares === 1 ? '' : 's'} detected`;
+    overview.textContent = `${waImport.fileName || 'WhatsApp export'} · ${waImport.messages.length.toLocaleString()} messages · ${countNoun(waImport.senders.length, 'sender')} · ${countNoun(totalShares, 'MapTap share')} detected`;
+    renderWAFormatLine();
 
     list.innerHTML = '';
     waImport.senders.forEach(s => {
@@ -6819,6 +7055,50 @@
     refreshWAPreview();
   }
 
+  // "Android export · 24-hour clock · dates read as month/day/year". When the
+  // file holds no evidence for the day/month order, a select lets the user
+  // say which it is instead of the importer guessing.
+  function renderWAFormatLine() {
+    const host = $('#wa-format');
+    if (!host) return;
+    host.innerHTML = '';
+    const f = waImport.format;
+    if (!f) { host.hidden = true; return; }
+    host.hidden = false;
+    const parts = [
+      f.style === 'ios' ? 'iPhone export' : 'Android export',
+      f.hour12 ? '12-hour clock' : '24-hour clock',
+    ];
+    host.appendChild(el('span', { class: 'wa-format-text' }, parts.join(' · ') + ' · dates read as '));
+    const sel = el('select', {
+      class: 'wa-date-order',
+      id: 'wa-date-order',
+      'aria-label': 'Day and month order of the dates in this export',
+      onchange: (e) => {
+        applyWADateOrder(e.target.value);
+        waImport.format.dateOrderCertain = true;
+        renderWhatsAppModal();
+      },
+    });
+    for (const [v, label] of [['MDY', 'month/day/year'], ['DMY', 'day/month/year'], ['YMD', 'year-month-day']]) {
+      sel.appendChild(el('option', { value: v, selected: f.dateOrder === v || undefined }, label));
+    }
+    host.appendChild(sel);
+    if (!f.dateOrderCertain) {
+      host.appendChild(el('span', { class: 'wa-format-warn', role: 'status' },
+        'Could not tell day from month in this file. Check the order above before importing.'));
+    }
+    if (f.skippedLeadingLines) {
+      host.appendChild(el('span', { class: 'wa-format-note' },
+        `${countNoun(f.skippedLeadingLines, 'line')} before the first message ignored.`));
+    }
+    const undated = waImport.messages.filter(m => m.invalidDate).length;
+    if (undated) {
+      host.appendChild(el('span', { class: 'wa-format-warn' },
+        `${countNoun(undated, 'message')} carry a date that does not exist in this order (for example 31/4); they are ignored.`));
+    }
+  }
+
   function updateWASenderRowStyle(row, mappingValue) {
     row.classList.remove('is-me', 'is-rival');
     if (mappingValue === 'me') row.classList.add('is-me');
@@ -6843,17 +7123,22 @@
   function computeWAImport() {
     const { meSenders, senderToRivalKey } = resolveWAMapping();
     if (!meSenders.size || !senderToRivalKey.size) {
-      return { perRival: new Map(), totalNew: 0, totalDup: 0 };
+      return { perRival: new Map(), totalNew: 0, totalDup: 0, undated: 0 };
     }
 
     // Collect parsed shares per (rivalKey, dateISO) and per (me, dateISO)
     const myByDate = new Map();         // dateISO -> parsed
     const theirByKeyDate = new Map();   // rivalKey -> Map(dateISO -> parsed)
+    let undated = 0;
 
     for (const m of waImport.messages) {
-      const parsed = parseMapTapShareStrict(m.body);
+      const parsed = parseShareStrict(m.body, parseMapTapScore);
       if (!parsed) continue;
       const dateISO = dayBucketDate(m, parsed);
+      if (!dateISO) {
+        if (meSenders.has(m.sender) || senderToRivalKey.has(m.sender)) undated++;
+        continue;
+      }
       if (meSenders.has(m.sender)) {
         if (!myByDate.has(dateISO)) myByDate.set(dateISO, parsed);
       } else if (senderToRivalKey.has(m.sender)) {
@@ -6897,7 +7182,7 @@
       totalNew += add.length;
       totalDup += dup.length;
     }
-    return { perRival, totalNew, totalDup };
+    return { perRival, totalNew, totalDup, undated };
   }
 
   function waLabelForKey(key) {
@@ -6912,7 +7197,7 @@
   function refreshWAPreview() {
     const wrap = $('#wa-preview');
     const btn = $('#wa-commit-btn');
-    const { perRival, totalNew, totalDup } = computeWAImport();
+    const { perRival, totalNew, totalDup, undated } = computeWAImport();
 
     if (!totalNew && !totalDup) {
       wrap.innerHTML = '<p class="wa-preview-empty">Map at least one sender as <em>Me</em> and one as a rival to see games. Strict same-day pairing only.</p>';
@@ -6922,6 +7207,10 @@
     }
 
     wrap.innerHTML = '';
+    if (undated) {
+      wrap.appendChild(el('p', { class: 'wa-preview-warn', role: 'status' },
+        `${countNoun(undated, 'share')} skipped: the date in the message (for example "Feb 29") does not exist in that year.`));
+    }
     const sortedKeys = Array.from(perRival.keys()).sort((a, b) =>
       perRival.get(b).add.length - perRival.get(a).add.length
     );
@@ -7018,7 +7307,7 @@
     persistGames();
     closeWhatsAppModal();
 
-    alert(`Imported ${pushed} game${pushed === 1 ? '' : 's'}.`);
+    showToast(`Imported ${countNoun(pushed, 'game')} from WhatsApp.`);
 
     // Refresh whichever view we're on
     refreshRivalSelects();
@@ -7043,20 +7332,14 @@
   // modal: Cancel gets initial focus, backdrop/X/Escape close without
   // clearing, focus returns to the trigger after close.
   function openClearGamesModal(n) {
-    const modal = $('#clear-games-modal');
     $('#clear-games-body').textContent =
       `Delete all ${n} game${n === 1 ? '' : 's'}? Your rivals and their ` +
       `MapTap usernames are kept, so you can re-sync fresh. This cannot be undone.`;
-    state.clearGamesLastFocus = document.activeElement;
-    modal.hidden = false;
-    setTimeout(() => $('#clear-games-cancel').focus(), 30);
+    openModal('clear-games-modal', '#clear-games-cancel');
   }
 
   function closeClearGamesModal() {
-    $('#clear-games-modal').hidden = true;
-    const prev = state.clearGamesLastFocus;
-    state.clearGamesLastFocus = null;
-    if (prev && document.body.contains(prev)) setTimeout(() => prev.focus(), 0);
+    closeModal('clear-games-modal');
   }
 
   function confirmClearGames() {
@@ -7090,20 +7373,36 @@
     URL.revokeObjectURL(url);
   }
 
+  // Every row is validated and rebuilt by sanitizeBackup (stats.js) BEFORE
+  // anything is replaced: unreadable rows are dropped and counted, and a file
+  // that is not a backup at all leaves the current data untouched. Until
+  // 2026-08-22 a null row or a dateless game was persisted as-is and threw on
+  // the next render of five of the six views.
   function importData(file) {
     const reader = new FileReader();
     reader.onload = () => {
+      let parsed;
       try {
-        const parsed = JSON.parse(reader.result);
-        if (!parsed || !Array.isArray(parsed.rivals) || !Array.isArray(parsed.games)) {
-          alert('Invalid backup file.');
+        parsed = JSON.parse(reader.result);
+      } catch (e) {
+        alert('Could not read that file: it is not valid JSON. Nothing was changed.');
+        return;
+      }
+      try {
+        const clean = sanitizeBackup(parsed, { makeId: uid, defaultColor: COLORS[0], defaultIcon: ICONS[0] });
+        if (!clean.ok) {
+          alert(`${clean.error} Nothing was changed.`);
           return;
         }
-        if (!confirm(`Replace current data with ${parsed.rivals.length} rivals and ${parsed.games.length} games?`)) return;
-        state.rivals = parsed.rivals;
-        state.games = parsed.games;
-        if (typeof parsed.me === 'string') state.me = parsed.me;
-        if (typeof parsed.myIcon === 'string') state.myIcon = parsed.myIcon;
+        const dropped = clean.dropped.rivals + clean.dropped.games;
+        const droppedNote = dropped
+          ? `\n\n${countNoun(clean.dropped.rivals, 'rival')} and ${countNoun(clean.dropped.games, 'game')} in the file could not be read and will be skipped.`
+          : '';
+        if (!confirm(`Replace current data with ${countNoun(clean.rivals.length, 'rival')} and ${countNoun(clean.games.length, 'game')}?${droppedNote}`)) return;
+        state.rivals = clean.rivals;
+        state.games = clean.games;
+        if (clean.me) state.me = clean.me;
+        if (clean.myIcon) state.myIcon = clean.myIcon;
         persistRivals();
         persistGames();
         persistMe();
@@ -7117,8 +7416,9 @@
         else if (state.view === 'matrix') renderMatrix();
         else if (state.view === 'records') renderRecords();
         else if (state.view === 'history') renderHistory();
+        if (dropped) showToast(`Imported with ${countNoun(dropped, 'unreadable row')} skipped.`);
       } catch (e) {
-        alert('Could not parse backup file.');
+        alert('Could not import that backup. Nothing was changed.');
       }
     };
     reader.readAsText(file);
@@ -7162,6 +7462,28 @@
     else if (state.view === 'history') renderHistory();
   }
 
+  // ---------- scroll-edge affordance ----------
+  // Horizontal scrollers (the view tabs, the prediction day tabs, the
+  // matrix, the wide tables) get data-scroll="none|start|middle|end" so CSS
+  // can fade the edge that has more content. Scrollbars are hidden on phones,
+  // which is what left Matrix / Records / History undiscoverable at 390px.
+  const SCROLLERS = '.view-tabs, .pred-day-tabs, .matrix-wrap, .games-table-wrap, .leaderboard-wrap';
+  function updateScrollEdges(elm) {
+    const max = elm.scrollWidth - elm.clientWidth;
+    let v = 'none';
+    if (max > 2) v = elm.scrollLeft <= 2 ? 'start' : elm.scrollLeft >= max - 2 ? 'end' : 'middle';
+    if (elm.dataset.scroll !== v) elm.dataset.scroll = v;
+  }
+  function watchScrollEdges() {
+    $$(SCROLLERS).forEach(elm => {
+      if (!elm.dataset.scrollWatched) {
+        elm.dataset.scrollWatched = '1';
+        elm.addEventListener('scroll', () => updateScrollEdges(elm), { passive: true });
+      }
+      updateScrollEdges(elm);
+    });
+  }
+
   // ---------- init ----------
   function init() {
     // wire view tabs
@@ -7173,6 +7495,9 @@
 
     // Paste-mode entry (the one entry method)
     $('#paste-date').value = todayISO();
+    $('#paste-date').addEventListener('input', refreshPasteDateHint);
+    $('#paste-date').addEventListener('change', refreshPasteDateHint);
+    refreshPasteDateHint();
     $('#paste-mine-input').addEventListener('input', refreshPasteMineUI);
     $('#paste-save-all').addEventListener('click', saveDay);
 
@@ -7200,6 +7525,13 @@
     $('#rival-name').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); saveRivalFromModal(); }
     });
+    $('#rival-name').addEventListener('input', refreshRivalNameHint);
+    // Delete-rival confirmation modal
+    $('#delete-rival-modal').querySelectorAll('[data-close="delete-rival-modal"]').forEach(node => {
+      node.addEventListener('click', closeDeleteRivalModal);
+    });
+    $('#delete-rival-confirm').addEventListener('click', confirmDeleteRival);
+    document.addEventListener('keydown', trapModalTab);
     // Delete-game confirmation modal
     $('#delete-game-modal').querySelectorAll('[data-close="delete-game-modal"]').forEach(node => {
       node.addEventListener('click', closeDeleteGameModal);
@@ -7213,10 +7545,12 @@
 
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
-      if (!$('#wa-modal').hidden) closeWhatsAppModal();
-      else if (!$('#delete-game-modal').hidden) closeDeleteGameModal();
-      else if (!$('#clear-games-modal').hidden) closeClearGamesModal();
-      else if (!$('#rival-modal').hidden) closeRivalModal();
+      const top = topModalId();
+      if (top === 'wa-modal') closeWhatsAppModal();
+      else if (top === 'delete-game-modal') closeDeleteGameModal();
+      else if (top === 'delete-rival-modal') closeDeleteRivalModal();
+      else if (top === 'clear-games-modal') closeClearGamesModal();
+      else if (top === 'rival-modal') closeRivalModal();
     });
 
     // settings strip
@@ -7339,9 +7673,7 @@
 
     // leaderboard sort headers
     function makeLbSortHandler(sortKey) {
-      return function (e) {
-        if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
-        if (e.type === 'keydown') e.preventDefault();
+      return function () {
         if (state.lbSort === sortKey) {
           // Re-clicking the active column rotates the direction.
           state.lbDir = state.lbDir === -1 ? 1 : -1;
@@ -7353,12 +7685,14 @@
         if (state.view === 'leaderboard') renderLeaderboard();
       };
     }
+    // The <th> keeps aria-sort (valid on a column header); the control is a
+    // real <button> inside it, so keyboard and screen-reader semantics come
+    // for free (aria-sort on a role=button was an axe critical).
     ['rival', 'games', 'wins', 'losses', 'ties', 'winpct', 'rivalry', 'avgdiff', 'streak']
       .forEach(key => {
-        const th = $('#lb-th-' + key);
-        if (!th) return;
-        th.addEventListener('click',   makeLbSortHandler(key));
-        th.addEventListener('keydown', makeLbSortHandler(key));
+        const btn = $('#lb-th-' + key + ' .lb-sort-btn');
+        if (!btn) return;
+        btn.addEventListener('click', makeLbSortHandler(key));
       });
 
     // Rival network. Auth may settle after this classic script runs (
@@ -7375,6 +7709,11 @@
 
     // first paint — honor the hash so deep links work on cold load.
     applyUrlHash();
+    watchScrollEdges();
+    window.addEventListener('resize', watchScrollEdges);
+    // Re-measure after any render (renders rebuild the day tabs / matrix).
+    const mo = new MutationObserver(() => { if (!watchScrollEdges.queued) { watchScrollEdges.queued = true; requestAnimationFrame(() => { watchScrollEdges.queued = false; watchScrollEdges(); }); } });
+    mo.observe(document.querySelector('main.page') || document.body, { childList: true, subtree: true });
   }
 
   if (document.readyState === 'loading') {
@@ -7401,6 +7740,13 @@
   // the sync system reads this.
   if (typeof window !== 'undefined') {
     window._testExports = {
+      swingLines,
+      consistencyLabel,
+      continentSubText,
+      pasteDateHintText,
+      leaveNetworkMessage,
+      streakDrama,
+      rivalNameClash,
       classifyContinent,
       continentBreakdown,
       computeMatrixCell,

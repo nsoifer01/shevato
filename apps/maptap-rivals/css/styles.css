@@ -27,7 +27,10 @@
   --surface-3: #2a2f3d;
   --text: #e7e9ee;
   --muted: #9aa3b2;
-  --muted-2: #6b7280;
+  /* 4.5:1 on every surface the app paints small text on (#6b7280 measured
+     3.63:1 on --surface and failed axe wherever it carried 7-10px labels:
+     predictions, leaderboard headers, matrix meta). Raised 2026-08-22. */
+  --muted-2: #8e96a8;
   --accent: #6366f1;       /* indigo */
   --accent-2: #818cf8;
   --accent-soft: rgba(99, 102, 241, 0.16);
@@ -3410,7 +3413,10 @@ tr:focus-within .icon-btn-share {
   font-weight: 600;
   white-space: nowrap;
   pointer-events: none;
-  z-index: 9999;
+  /* Top of the app ladder (see the .modal comment): above the header and
+     above an open dialog, below the shared offline banner. A toast is the
+     app's last word on an action, so nothing of ours should cover it. */
+  z-index: 10020;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   animation: share-toast-in 0.18s ease;
 }
@@ -3975,10 +3981,21 @@ body.maptap-rivals-app select option {
    Dense, cinematic profile-customization feel: tight rhythm, low-contrast
    chrome, ringed selection states, muted destructive action. */
 
+/* Stacking: the shared chrome in assets/css/main.css puts the fixed #header
+   at z-index 10001 and the sign-in / sign-out / delete-account dialogs at
+   10002-10004; sync-status.css puts the offline banner at 10100 so it is
+   never covered. A dialog the user just opened has to clear the header, or
+   the header strip stays lit above the backdrop and a click at the top of
+   the screen hits the site logo and navigates away from the app (with the
+   dialog still open). App styles must not restyle shared chrome, so the
+   modal layer rises instead of the header dropping. 10010 is the number
+   fpl-planner's drawer already uses for exactly this, keeping one ladder
+   across the site: content < 10001 header < 10002-10004 auth < 10010 app
+   dialog < 10020 app toast < 10100 offline banner. */
 .modal {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: 10010;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5513,3 +5530,314 @@ body.maptap-rivals-app select option {
     border-left: 0;
   }
 }
+
+
+/* =====================================================================
+   2026-08-22 quality pass: accessibility, responsive containment, setup-card
+   hierarchy. Grouped here so the reasoning stays in one place; each rule
+   names the audit finding it closes.
+   ===================================================================== */
+
+/* ---- focus visibility (audit #13): every control shows a ring on keyboard
+   focus, including the two settings-strip controls that had none. main.css
+   zeroes outlines on some controls, hence the !important. ---- */
+.maptap-rivals-app :is(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent-2) !important;
+  outline-offset: 2px;
+}
+.maptap-rivals-app #my-name:focus-visible,
+.maptap-rivals-app .my-icon-btn:focus-visible {
+  border-color: var(--accent-2);
+}
+
+/* ---- keyboard-reachable rival pages (audit #13): the card name and the
+   leaderboard name are real links; the card/row stay clickable. ---- */
+.rival-card-link,
+.rival-card-link:visited {
+  color: inherit;
+  text-decoration: none;
+}
+.rival-card-link:hover { text-decoration: underline; }
+.lb-rival-link,
+.lb-rival-link:visited {
+  color: inherit !important;
+  text-decoration: none;
+}
+.lb-rival-link:hover { text-decoration: underline; }
+
+/* ---- leaderboard headers (audit #12): the sort control is a <button>
+   inside the <th>; header text lifted from --muted-2 to --muted. ---- */
+.leaderboard-table th { color: var(--muted); }
+.lb-sort-btn,
+.lb-sort-btn:hover {
+  all: unset;
+  display: block;
+  width: 100%;
+  padding: 0.55rem 0.4rem;
+  margin: -0.55rem -0.4rem;
+  box-sizing: content-box;
+  font: inherit;
+  color: inherit !important;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  box-shadow: none !important;
+}
+.lb-th-sorted .lb-sort-btn { color: var(--accent-2) !important; }
+.lb-sort-btn:focus-visible { outline-offset: 1px; }
+
+/* ---- records toggle (audit #12): #818cf8 on the soft accent was 4.4:1. ---- */
+.records-toggle-btn.is-active,
+.records-toggle-btn.is-active:hover { color: #a5b4fc !important; }
+
+/* ---- inline validation in the rival modal (audit P2) ---- */
+.modal-field-error {
+  display: block;
+  margin-top: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--bad);
+}
+#rival-name[aria-invalid="true"] { border-color: var(--bad); }
+
+/* ---- toast with an action (rival-delete Undo). The base toast is
+   pointer-events:none so a passive "Copied" message never eats a click;
+   an actionable one has to take them back or the Undo button is dead to a
+   real click (found by coordinate hit-testing, not element.click()). The
+   z-index lives on the base rule above; do not re-declare it here. ---- */
+.share-toast.has-action {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  color: var(--text);
+  white-space: normal;
+  max-width: calc(100vw - 2rem);
+}
+.share-toast-action,
+.share-toast-action:hover {
+  font: inherit;
+  font-weight: 700;
+  padding: 0.25rem 0.75rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff !important;
+  box-shadow: none !important;
+  cursor: pointer;
+}
+
+/* ---- paste date hint (audit P2: stale/future dates) ---- */
+.paste-date-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.paste-date-hint.is-warn { color: #fbbf24; }
+
+/* ---- WhatsApp import: detected format + day/month order ---- */
+.wa-format {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.6rem;
+  margin: 0.4rem 0 0.8rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.wa-date-order {
+  height: 1.9rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--ctrl-radius, 8px);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8rem;
+}
+.wa-format-warn,
+.wa-preview-warn { color: #fbbf24; font-weight: 600; }
+.wa-preview-warn { margin: 0 0 0.6rem; font-size: 0.8rem; }
+.wa-format-note { color: var(--muted-2); }
+
+/* ---- settled setup cards collapse to a line (dashboard hierarchy) ---- */
+.card-toggle,
+.card-toggle:hover {
+  width: 2.1rem;
+  min-width: 2.1rem;
+  padding: 0 !important;
+  justify-content: center;
+}
+.card-toggle-chev {
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+.card-toggle.is-open .card-toggle-chev { transform: rotate(180deg); }
+.profile-card.is-compact .profile-info,
+.profile-card.is-compact .profile-hint,
+.profile-card.is-compact .profile-meta-line,
+.network-card.is-compact .network-hint { display: none; }
+.profile-card.is-compact,
+.network-card.is-compact { padding-top: 0.7rem; padding-bottom: 0.7rem; }
+.profile-card.is-compact .profile-card-body,
+.network-card.is-compact .network-card-body { margin-top: 0.4rem; }
+.profile-meta-line {
+  margin-top: 0.45rem;
+  font-size: 0.74rem;
+  color: var(--muted-2);
+}
+
+/* ---- horizontal scrollers announce themselves (audit #14). app.js sets
+   data-scroll="none|start|middle|end" on each; the tab strips fade the edge
+   with more content, the bordered wraps use scroll shadows. ---- */
+.view-tabs[data-scroll="start"],
+.pred-day-tabs[data-scroll="start"] {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 3rem), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 3rem), transparent);
+}
+.view-tabs[data-scroll="middle"],
+.pred-day-tabs[data-scroll="middle"] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 3rem, #000 calc(100% - 3rem), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 3rem, #000 calc(100% - 3rem), transparent);
+}
+.view-tabs[data-scroll="end"],
+.pred-day-tabs[data-scroll="end"] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 3rem);
+  mask-image: linear-gradient(to right, transparent, #000 3rem);
+}
+.matrix-wrap,
+.games-table-wrap,
+.leaderboard-wrap {
+  background-color: var(--surface);
+  background-image:
+    linear-gradient(to right, var(--surface) 40%, rgba(22, 25, 34, 0)),
+    linear-gradient(to left, var(--surface) 40%, rgba(22, 25, 34, 0)),
+    linear-gradient(to right, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0)),
+    linear-gradient(to left, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));
+  background-position: left center, right center, left center, right center;
+  background-repeat: no-repeat;
+  background-size: 48px 100%, 48px 100%, 16px 100%, 16px 100%;
+  background-attachment: local, local, scroll, scroll;
+}
+
+/* ---- long rival names are contained (audit #14): they wrap inside their
+   card instead of widening the page, and single-line labels ellipsize. ---- */
+.dash-summary-card { min-width: 0; }
+.dash-summary-card .value,
+.rival-card-name,
+.rival-header h2,
+.drama-callout,
+.rival-card-note-text,
+.record-rival-label,
+.discovery-name,
+.pri-name { overflow-wrap: anywhere; min-width: 0; }
+.rival-header > div { min-width: 0; }
+.continent-scores .col,
+.paste-rival-info,
+.paste-rival-info > div { min-width: 0; overflow: hidden; }
+.continent-scores .col .k,
+.lc-avg-them {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.matrix-chip-row { min-width: 0; }
+.matrix-chip {
+  max-width: 100%;
+  min-width: 0;
+}
+.matrix-chip .matrix-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- touch targets (audit P2): comfortable on phones, unchanged on
+   desktop pointers. ---- */
+@media (hover: none), (max-width: 768px) {
+  .pred-pos-row-btn { min-height: 2.1rem; }
+  .pred-label-toggle { min-height: 2rem; padding: 0.25rem 0.3rem; margin: -0.25rem -0.3rem; }
+  .maptap-day-link,
+  .score-profile-link {
+    display: inline-block;
+    padding: 0.45rem 0.2rem;
+    margin: -0.45rem -0.2rem;
+  }
+  .history-day-link { padding: 0.35rem 0.2rem; margin: -0.35rem -0.2rem; }
+  .pred-loc-btn { min-height: 2.4rem; }
+}
+
+/* ---- mobile typography floor (audit P1): nothing in the predictions card
+   or the card chrome drops under ~0.7rem (10.3px at the 11pt phone root).
+   Density is kept by tightening padding, not by shrinking text. ---- */
+@media (max-width: 480px) {
+  .prc-slot { font-size: 0.72rem; }
+  .prc-weight { font-size: 0.7rem; top: 0.2rem; right: 0.2rem; }
+  .pred-loc-slot,
+  .pred-loc-head,
+  .pred-pos-dist-head,
+  .pred-hit-label,
+  .pred-avg-label,
+  .pred-pos-count,
+  .pred-day-tab-name { font-size: 0.72rem; }
+  .pred-hit-num,
+  .pred-avg-num { font-size: 0.74rem; }
+  .pred-loc-name,
+  .pred-loc-btn,
+  .prc-delta,
+  .prc-nums { font-size: 0.74rem; }
+  .pred-row,
+  .pred-row-head .pred-cell,
+  .pred-label { font-size: 0.8rem; }
+  .record-dash-banner-label,
+  .record-dash-banner-period,
+  .todays-card-status,
+  .dash-continents-title,
+  .dash-continents-sub,
+  .dash-continent-rounds,
+  .dash-summary-card .label,
+  .lb-th-hint,
+  .heatmap-month-lbl,
+  .form-pill,
+  .lb-form-pill,
+  .paste-collapse-hint,
+  .paste-mine-label,
+  .streak-tag,
+  .record-dash-banner-cta-text,
+  .profile-meta-line,
+  .k { font-size: 0.72rem; }
+  .form-pill, .lb-form-pill { width: 18px; height: 18px; }
+
+  /* Seven day tabs share the row instead of scrolling off it. */
+  .pred-day-tabs { gap: 0.3rem; }
+  .pred-day-tab {
+    flex: 1 1 0;
+    min-width: 2.7rem;
+    padding: 0.4rem 0.15rem 0.45rem;
+  }
+  .pred-day-tab-num { font-size: 0.95rem; }
+}
+
+/* ---- matrix on phones (audit #14): the grid keeps its natural width and
+   scrolls inside its wrap (with the scroll shadows above) instead of being
+   squeezed until cells overlap. ---- */
+@media (max-width: 720px) {
+  .matrix-table {
+    table-layout: auto;
+    width: max-content;
+    min-width: 100%;
+  }
+  .matrix-cell { min-width: 5.2rem; }
+  .matrix-head-name { max-width: 5.5rem; }
+  .matrix-row-head { min-width: 7rem; }
+}
+@media (max-width: 520px) {
+  .matrix-chip { display: inline-flex; }
+}
+
+/* Scrollable regions are keyboard-focusable (axe scrollable-region-focusable);
+   the ring only shows for keyboard focus. */
+.matrix-wrap:focus-visible,
+.games-table-wrap:focus-visible,
+.leaderboard-wrap:focus-visible { outline-offset: -2px; }

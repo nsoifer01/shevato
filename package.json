@@ -11,6 +11,7 @@
     "test:all": "npm test && npm run test:browser",
     "test:trip-planner:e2e": "node --experimental-websocket tests/browser/run.mjs --only=trip-planner",
     "test:fpl-planner:e2e": "node --experimental-websocket tests/browser/run.mjs --only=fpl-planner",
+    "test:maptap-rivals:e2e": "node --experimental-websocket tests/browser/run.mjs --only=maptap-rivals",
     "test:trip-planner:e2e:headed": "node --experimental-websocket tests/browser/run.mjs --only=trip-planner --headed",
     "test:gym": "node --test apps/gym-tracker/tests/",
     "test:football": "node --test apps/football-h2h/tests/",

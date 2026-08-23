@@ -208,6 +208,76 @@ export async function run({ base, cdpPort }) {
     } finally { if (s) await closePage(cdpPort, s); }
   }
 
+  // State scans 3 + 4: maptap-rivals with a SEEDED game log (rivals, synced
+  // games with geo data, a rival-only day, a long name) at 1280 with the
+  // predictions card rendered and the paste panel open, then the matrix at
+  // 390. The empty first-run root scan above never reaches the leaderboard
+  // headers, the prediction chips or the matrix cells, which is where the
+  // 2026-08-22 audit found two critical and several serious violations. Each
+  // scan waits for RENDERED content (rival cards + prediction rows) before
+  // injecting axe, never for static markup.
+  {
+    const daily = 'const cities = [' + [[-12.05, -77.04], [30.04, 31.24], [28.61, 77.21], [21.31, -157.86], [64.15, -21.94]]
+      .map(([lat, lng]) => `{ name: "c", lat: ${lat}, lng: ${lng} }`).join(',') + '];';
+    const geo = JSON.stringify([{ lat: 48.8566, lng: 2.3522 }, { lat: 52.52, lng: 13.405 }, { lat: 35.6762, lng: 139.6503 }, { lat: 40.7128, lng: -74.006 }, { lat: -33.9249, lng: 18.4241 }]);
+    const seedExpr = `(()=>{ for (const k of Object.keys(localStorage)) localStorage.removeItem(k);
+      const d = (n) => { const t = new Date(); t.setDate(t.getDate() - n); return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); };
+      const geo = ${geo};
+      const games = [];
+      for (let i = 12; i >= 1; i--) games.push({ id: 'a' + i, rivalId: 'r-ari', date: d(i), myScores: [70, 65, 80, 75, 60], theirScores: i % 2 ? [60,60,60,60,60] : [90,90,90,90,90], myScore: 700, theirScore: i % 2 ? 600 : 900, cities: geo, note: 'synced from MapTap', createdAt: i });
+      games.push({ id: 'b1', rivalId: 'r-bex', date: d(2), theirScores: [40,40,40,40,40], theirScore: 400, cities: geo, note: 'synced from MapTap', createdAt: 1 });
+      games.push({ id: 'c1', rivalId: 'r-long', date: d(3), myScores: [70, 65, 80, 75, 60], theirScores: [70,70,70,70,70], myScore: 700, theirScore: 700, note: '', createdAt: 1 });
+      localStorage.setItem('maptapRivalsMe', JSON.stringify('Nikita'));
+      localStorage.setItem('maptapRivalsMyMapTap', JSON.stringify('nikita_mt'));
+      localStorage.setItem('maptapRivalsMyProfile', JSON.stringify({ nickname: 'Nikita', totalGames: 10, avgScore: 700, bestScore: 900, worstScore: 400, verifiedAt: new Date().toISOString() }));
+      localStorage.setItem('maptapRivalsRivals', JSON.stringify([
+        { id: 'r-ari', name: 'Ari', color: '#f59e0b', icon: '🦊', maptapUsername: 'ari_mt', createdAt: 1 },
+        { id: 'r-bex', name: 'Bex', color: '#3b82f6', icon: '🐧', maptapUsername: 'bexplays', createdAt: 1 },
+        { id: 'r-long', name: 'Bartholomew Montgomery-Fitzgerald III of Westchestershire', color: '#a855f7', icon: '🐲', maptapUsername: '', createdAt: 1 },
+      ]));
+      localStorage.setItem('maptapRivalsGames', JSON.stringify(games)); return 1 })()`;
+    const RENDERED = "document.querySelectorAll('.rival-card').length===3 && document.querySelectorAll('#todays-card .pred-row:not(.pred-row-head)').length>=3";
+    const MAPTAP_HOSTS = /maptap\.gg|cloudfunctions\.net/i;
+    for (const [label, width, mobile, hash, prep] of [
+      ['state maptap-rivals seeded dashboard @1280', 1280, false, '#dashboard', async (s) => {
+        await clickSel(s, '.paste-collapse-summary', { settle: 200 });
+        await clickSel(s, '.pred-label-toggle', { settle: 300 });
+      }],
+      ['state maptap-rivals seeded matrix @390', 390, true, '#matrix', async (s) => {
+        await waitForExpr(s, "document.querySelectorAll('.matrix-cell').length>0");
+      }],
+    ]) {
+      let s = null;
+      try {
+        s = await newPage(cdpPort);
+        await setViewport(s, width, 900, mobile);
+        await interceptNetwork(s, (url) => {
+          if (FIREBASE_HOSTS.test(url)) return 'fail';
+          if (/this_day_in_history/.test(url)) return { status: 200, contentType: 'application/javascript', body: daily };
+          if (MAPTAP_HOSTS.test(url)) return 'fail';
+          return null;
+        });
+        await goto(s, `${base}/apps/maptap-rivals/`, { settle: 800 });
+        await evaluate(s, seedExpr);
+        await goto(s, `${base}/apps/maptap-rivals/index.html#dashboard`, { settle: 1500 });
+        const rendered = await waitForExpr(s, RENDERED);
+        if (!rendered) throw new Error('seeded dashboard never rendered rival cards + prediction rows');
+        if (hash !== '#dashboard') await goto(s, `${base}/apps/maptap-rivals/index.html${hash}`, { settle: 1200 });
+        await prep(s);
+        const ok = await injectAxe(s, axeSource);
+        const violations = ok ? await axeScan(s) : null;
+        scans.push({
+          label, siteChrome: false,
+          violations: Array.isArray(violations) ? violations : null,
+          err: Array.isArray(violations) ? '' : JSON.stringify(violations),
+        });
+        await evaluate(s, CLEAR_STORAGE);
+      } catch (e) {
+        scans.push({ label, siteChrome: false, violations: null, err: String(e && e.message).slice(0, 120) });
+      } finally { if (s) await closePage(cdpPort, s); }
+    }
+  }
+
   // Shared-chrome dedupe: a serious rule+selector pair present on most of the
   // chrome-bearing site pages lives in the injected header/footer, not the
   // page. It is listed in full once (first affected page) and referenced

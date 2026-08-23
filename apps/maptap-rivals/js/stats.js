@@ -96,6 +96,7 @@
     let rounds = null;
     let finalScore = null;
     let date = null;
+    let dateParts = null;
 
     for (const rawLine of lines) {
       const line = rawLine.trim();
@@ -115,10 +116,14 @@
           const monthIdx = MONTHS.findIndex(m => monthName.toLowerCase().startsWith(m));
           const day = Number(dayStr);
           if (monthIdx >= 0 && day >= 1 && day <= 31) {
-            const year = new Date().getFullYear();
-            const d = new Date(year, monthIdx, day);
-            const tz = d.getTimezoneOffset();
-            date = new Date(d.getTime() - tz * 60000).toISOString().slice(0, 10);
+            // The share carries no year. Stamp the current one; callers that
+            // know better (the WhatsApp importer has the message's own year)
+            // rebuild the date from `dateParts` instead. A day the current
+            // year does not have (Feb 29 in a common year) yields no date
+            // rather than rolling over to Mar 1.
+            dateParts = { monthIdx, day };
+            const iso = `${new Date().getFullYear()}-${String(monthIdx + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            date = parseDateISO(iso) ? iso : null;
           }
         }
       }
@@ -135,7 +140,7 @@
     if (!rounds) return null;
     const computedTotal = weightedTotal(rounds);
     const totalMismatch = finalScore != null && Math.abs(finalScore - computedTotal) >= 1;
-    return { rounds, finalScore, computedTotal, date, totalMismatch };
+    return { rounds, finalScore, computedTotal, date, dateParts, totalMismatch };
   }
 
   // ---------- MapTap profile history → per-day rounds ----------
@@ -380,6 +385,174 @@
     return p ? isoFromMs(Date.UTC(p.year, p.month, 0)) : null;
   }
 
+  // ---------- local calendar dates ----------
+  // Every "day" the app reasons about is a LOCAL calendar day: the day MapTap
+  // showed the user, the day a game row carries, the day a heatmap cell
+  // stands for. The trap is Date#toISOString, which is always UTC: a local
+  // midnight east of Greenwich is the previous day in UTC, so
+  // `new Date('2026-08-22T00:00:00').toISOString()` reads '2026-08-21' in
+  // Berlin. Until 2026-08-22 app.js did exactly that in addDaysISO, the
+  // calendar heatmap and the 7-day prediction window, so a UTC+ user saw the
+  // window start on yesterday and never saw today's game on the heatmap.
+  //
+  // Rules, all enforced here and nowhere else:
+  //   - localDateISO(Date) reads the LOCAL components (getFullYear/Month/Date).
+  //   - ISO-string arithmetic (addDaysISO, daysBetweenISO, dayOfWeekISO) goes
+  //     through Date.UTC on the parsed parts, so it is timezone-free.
+  //   - Rendering a 'YYYY-MM-DD' string builds the Date from local parts,
+  //     never from the bare string (which parses as UTC midnight).
+
+  function localDateISO(d) {
+    const dt = d instanceof Date ? d : new Date(d);
+    if (Number.isNaN(dt.getTime())) return null;
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, '0');
+    const day = String(dt.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  // Today as the user's local calendar day.
+  function todayISO(now) {
+    return localDateISO(now instanceof Date ? now : new Date());
+  }
+
+  // `iso` shifted by `days` calendar days; null for a malformed input.
+  function addDaysISO(iso, days) {
+    const p = parseDateISO(iso);
+    if (!p || !Number.isFinite(days)) return null;
+    return isoFromMs(p.ms + Math.trunc(days) * DAY_MS);
+  }
+
+  // Whole calendar days from `aISO` to `bISO` (positive when b is later).
+  function daysBetweenISO(aISO, bISO) {
+    const a = parseDateISO(aISO), b = parseDateISO(bISO);
+    if (!a || !b) return null;
+    return Math.round((b.ms - a.ms) / DAY_MS);
+  }
+
+  // 0 = Sunday ... 6 = Saturday, timezone-free.
+  function dayOfWeekISO(iso) {
+    const p = parseDateISO(iso);
+    return p ? new Date(p.ms).getUTCDay() : null;
+  }
+
+  // Build a local-time Date for a 'YYYY-MM-DD' day (for locale formatting).
+  function localDateFromISO(iso) {
+    const p = parseDateISO(iso);
+    return p ? new Date(p.year, p.month - 1, p.day) : null;
+  }
+
+  // Human date for anything the app persists. The contract:
+  //   - 'YYYY-MM-DD'            a local calendar day, formatted as that day
+  //   - an ISO datetime string  (e.g. toISOString() output, or MapTap's
+  //                              joinDate) the instant, shown as the LOCAL
+  //                              calendar day it falls on
+  //   - a Date or epoch number  same as a datetime
+  //   - anything else / invalid -> '' (callers render nothing, never "Invalid
+  //                              Date" and never a silently wrong day)
+  // Styles: 'short' -> "Aug 20", 'medium' -> "Aug 20, 2026",
+  //         'long' -> "Thu, Aug 20, 2026", 'month' -> "August 2026".
+  // Until 2026-08-22 the app only had the date-only path and appended
+  // 'T00:00:00' to whatever it got, which turned every datetime (the profile
+  // card's verifiedAt, MapTap's joinDate) into an Invalid Date and an empty
+  // label.
+  const DATE_STYLES = {
+    short: { month: 'short', day: 'numeric' },
+    medium: { year: 'numeric', month: 'short', day: 'numeric' },
+    long: { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' },
+    month: { month: 'long', year: 'numeric' },
+  };
+
+  function toLocalDate(value) {
+    if (value == null || value === '') return null;
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+    if (typeof value === 'number') {
+      const d = new Date(value);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    if (typeof value !== 'string') return null;
+    const s = value.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return localDateFromISO(s);
+    // Anything else must parse as a full timestamp; a bare '2026-08' or a
+    // word is rejected rather than guessed at.
+    if (!/^\d{4}-\d{2}-\d{2}[T ]/.test(s)) return null;
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  function formatDate(value, style) {
+    const d = toLocalDate(value);
+    if (!d) return '';
+    const opts = DATE_STYLES[style] || DATE_STYLES.medium;
+    return d.toLocaleDateString('en-US', opts);
+  }
+
+  // Calendar day (local) an arbitrary persisted value falls on, or null.
+  function calendarDayOf(value) {
+    const d = toLocalDate(value);
+    return d ? localDateISO(d) : null;
+  }
+
+  // "1 game" / "3 games". The noun form is all that ever varies; verbs are
+  // written around the count ("1 game without geo data") so no copy needs
+  // "has/have" agreement.
+  function countNoun(n, singular, plural) {
+    const num = Number.isFinite(n) ? n : 0;
+    return `${num} ${num === 1 ? singular : (plural || singular + 's')}`;
+  }
+
+  // Where a W-L record stands against parity, and what it would take to even
+  // it up. FORWARD-LOOKING on purpose: the number is how many more games you
+  // must WIN from here for wins to equal losses, i.e. `losses - wins`.
+  //
+  // Until 2026-08-23 the card reported `ceil((losses - wins) / 2)` and called
+  // them "flipped results": arithmetically that is how many PAST losses would
+  // have to be rewritten as wins, which is not a thing a player can do and not
+  // what anyone reads it as. At 26W/128L it said "need 51" when the honest
+  // answer is "win your next 102". Halving the deficit is the bug: each future
+  // win closes the gap by ONE, while rewriting a past loss closes it by two.
+  //
+  // Ties never enter the comparison (they are neither a win nor a loss), so
+  // they cannot move the parity distance; they are still reported in the
+  // record line so the sub-text adds up to the games played.
+  function parityOutlook(record) {
+    const num = (v) => (Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
+    const wins = num(record && record.wins);
+    const losses = num(record && record.losses);
+    const ties = num(record && record.ties);
+    const recordLine = `${wins}W · ${losses}L${ties ? ` · ${ties}T` : ''}`;
+
+    if (losses > wins) {
+      const winsNeeded = losses - wins;
+      return {
+        state: 'behind', winsNeeded, margin: winsNeeded, wins, losses, ties, recordLine,
+        title: 'Path to parity',
+        headline: `Need ${countNoun(winsNeeded, 'more win')} to even the record`,
+        sub: `Current record: ${recordLine}`,
+        tone: 'is-bad',
+      };
+    }
+    if (wins === losses) {
+      return {
+        state: 'even', winsNeeded: 0, margin: 0, wins, losses, ties, recordLine,
+        title: 'Record balance',
+        headline: wins === 0 && losses === 0 ? 'No decided games yet' : 'The record is even',
+        sub: wins === 0 && losses === 0
+          ? 'Win your first game to go ahead'
+          : `Current record: ${recordLine} · win your next to go ahead`,
+        tone: '',
+      };
+    }
+    const margin = wins - losses;
+    return {
+      state: 'ahead', winsNeeded: 0, margin, wins, losses, ties, recordLine,
+      title: 'Record balance',
+      headline: `Ahead by ${countNoun(margin, 'win')}`,
+      sub: `Current record: ${recordLine}`,
+      tone: 'is-good',
+    };
+  }
+
   // { id, start, end } for the calendar week or month holding `iso`.
   function periodBounds(iso, unit) {
     if (unit === 'month') {
@@ -461,6 +634,60 @@
         return finishRecord(period);
       })
       .sort((a, b) => b.start.localeCompare(a.start));
+  }
+
+  // ---------- the one definition of a countable H2H game ----------
+  // Every figure that describes MY overall record (dashboard summary strip,
+  // the profile card's tracked-games comparison, the predictions field) reads
+  // the game log through this filter, so no two views can disagree about what
+  // a game is:
+  //   - a real object with a string rivalId and a valid 'YYYY-MM-DD' date;
+  //   - both sides played (rival-only and me-only days carry no result);
+  //   - the rival still exists (`knownRivalIds`, a Set or array), because the
+  //     rival list and the game log sync under separate keys, so a rival
+  //     deleted on one device can have their games pushed back by another.
+  // periodRecords applies the same rule for the Records view. Before
+  // 2026-08-22 the dashboard strip and the profile card each had their own
+  // looser filter and could show a different record from the banner above
+  // them.
+  function eligibleH2HGames(games, knownRivalIds) {
+    const known = knownRivalIds instanceof Set ? knownRivalIds
+      : Array.isArray(knownRivalIds) ? new Set(knownRivalIds)
+      : null;
+    const out = [];
+    for (const g of Array.isArray(games) ? games : []) {
+      if (!g || typeof g !== 'object') continue;
+      if (typeof g.rivalId !== 'string' || !parseDateISO(g.date)) continue;
+      if (!bothPlayed(g)) continue;
+      if (known && !known.has(g.rivalId)) continue;
+      out.push(g);
+    }
+    return out;
+  }
+
+  // My overall W-L-T, win % and average daily score over the eligible games,
+  // plus the average deduped by date (a day logged against three rivals is
+  // one day of MY scoring). `winPct` is over all games (ties count against
+  // it), matching how the dashboard has always read the headline.
+  function overallRecord(games, knownRivalIds) {
+    const list = eligibleH2HGames(games, knownRivalIds);
+    const rec = { games: list.length, wins: 0, losses: 0, ties: 0, winPct: 0, myAvg: 0, days: 0, myAvgByDay: 0 };
+    const byDate = new Map();
+    let sum = 0;
+    for (const g of list) {
+      const r = resultOf(g);
+      if (r === 'W') rec.wins++; else if (r === 'L') rec.losses++; else rec.ties++;
+      const t = getMyTotal(g);
+      sum += t;
+      if (!byDate.has(g.date)) byDate.set(g.date, t);
+    }
+    rec.winPct = rec.games ? (rec.wins / rec.games) * 100 : 0;
+    rec.myAvg = rec.games ? sum / rec.games : 0;
+    rec.days = byDate.size;
+    let daySum = 0;
+    byDate.forEach(v => { daySum += v; });
+    rec.myAvgByDay = rec.days ? daySum / rec.days : 0;
+    return rec;
   }
 
   // ---------- running period record vs one rival ----------
@@ -779,6 +1006,133 @@
     return { rows, totalRounds, days };
   }
 
+  // ---------- backup import validation ----------
+  // A backup file is untrusted input: hand-edited JSON, a file from another
+  // app, a truncated download. Until 2026-08-22 importData() only checked
+  // that `rivals` and `games` were arrays and then persisted whatever was in
+  // them, so a null row or a game without a date threw on the next render of
+  // five of the six views, on every load, until a good file was imported.
+  //
+  // The contract now: every row is rebuilt as a fresh plain object carrying
+  // only the fields the app knows (so pathological extra keys never reach
+  // storage); a row that cannot be made safe is DROPPED and counted, never
+  // repaired into something it did not say; and the caller only replaces
+  // state when `ok` is true. Rules:
+  //   rival: object, non-empty string id (first occurrence wins), name string
+  //          (blank -> 'Rival'), color '#rgb'/'#rrggbb' (else the caller's
+  //          default), icon <= 8 chars, maptapUsername string, createdAt
+  //          finite number.
+  //   game:  object, non-empty string rivalId, date that parseDateISO
+  //          accepts; score arrays must be 5 finite numbers in 0-100 (else the
+  //          array is dropped), scalar totals finite numbers in 0-1000 (else
+  //          dropped); at least one side must still have played; cities kept
+  //          only as 5 {lat, lng, name} entries; note string; id string (a
+  //          missing id gets one from `makeId`).
+  // String ids are accepted verbatim, '__proto__' included: every consumer
+  // keys by Map or null-prototype object (see FINDINGS).
+  const SCALAR_MAX = 1000;
+
+  function cleanScores(arr) {
+    if (!Array.isArray(arr) || arr.length !== N_LOCS) return null;
+    const out = arr.map(v => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v));
+    return validRawScores(out) ? out : null;
+  }
+
+  function cleanScalar(v) {
+    const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : v;
+    return typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= SCALAR_MAX ? n : null;
+  }
+
+  function cleanCities(arr) {
+    if (!Array.isArray(arr) || arr.length !== N_LOCS) return null;
+    return arr.map(c => {
+      const o = (c && typeof c === 'object') ? c : {};
+      const lat = coordNum(o.lat), lng = coordNum(o.lng);
+      const city = { lat: Number.isFinite(lat) ? lat : null, lng: Number.isFinite(lng) ? lng : null };
+      if (typeof o.name === 'string' && o.name) city.name = o.name.slice(0, 80);
+      return city;
+    });
+  }
+
+  function sanitizeRival(raw, defaults) {
+    const d = defaults || { color: '#6366f1', icon: '🎯' };
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    if (typeof raw.id !== 'string' || !raw.id) return null;
+    const name = typeof raw.name === 'string' ? raw.name.trim().slice(0, 32) : '';
+    const color = typeof raw.color === 'string' && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(raw.color.trim())
+      ? raw.color.trim() : d.color;
+    const icon = typeof raw.icon === 'string' && raw.icon.trim() && [...raw.icon.trim()].length <= 8
+      ? raw.icon.trim() : d.icon;
+    return {
+      id: raw.id,
+      name: name || 'Rival',
+      color,
+      icon,
+      maptapUsername: typeof raw.maptapUsername === 'string' ? raw.maptapUsername.trim().slice(0, 64) : '',
+      createdAt: Number.isFinite(raw.createdAt) ? raw.createdAt : 0,
+    };
+  }
+
+  function sanitizeGame(raw, makeId) {
+    const mk = typeof makeId === 'function' ? makeId : (() => 'imported-' + Math.random().toString(36).slice(2, 10));
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    if (typeof raw.rivalId !== 'string' || !raw.rivalId) return null;
+    if (!parseDateISO(raw.date)) return null;
+    const out = {
+      id: typeof raw.id === 'string' && raw.id ? raw.id : mk(),
+      rivalId: raw.rivalId,
+      date: raw.date,
+      note: typeof raw.note === 'string' ? raw.note.slice(0, 200) : '',
+      createdAt: Number.isFinite(raw.createdAt) ? raw.createdAt : 0,
+    };
+    const my = cleanScores(raw.myScores);
+    const their = cleanScores(raw.theirScores);
+    if (my) { out.myScores = my; out.myScore = weightedTotal(my); }
+    else { const sc = cleanScalar(raw.myScore); if (sc != null) out.myScore = sc; }
+    if (their) { out.theirScores = their; out.theirScore = weightedTotal(their); }
+    else { const sc = cleanScalar(raw.theirScore); if (sc != null) out.theirScore = sc; }
+    if (!iPlayed(out) && !theyPlayed(out)) return null;
+    const cities = cleanCities(raw.cities);
+    if (cities) out.cities = cities;
+    return out;
+  }
+
+  function sanitizeBackup(parsed, options) {
+    const opts = options || {};
+    const makeId = typeof opts.makeId === 'function' ? opts.makeId : undefined;
+    const defaults = { color: opts.defaultColor || '#6366f1', icon: opts.defaultIcon || '🎯' };
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { ok: false, error: 'Not a MapTap Rivals backup (expected an object with rivals and games).' };
+    }
+    if (!Array.isArray(parsed.rivals) || !Array.isArray(parsed.games)) {
+      return { ok: false, error: 'Not a MapTap Rivals backup (missing the rivals or games list).' };
+    }
+    const rivals = [];
+    const seen = new Set();
+    let droppedRivals = 0;
+    for (const raw of parsed.rivals) {
+      const r = sanitizeRival(raw, defaults);
+      if (!r || seen.has(r.id)) { droppedRivals++; continue; }
+      seen.add(r.id);
+      rivals.push(r);
+    }
+    const games = [];
+    let droppedGames = 0;
+    for (const raw of parsed.games) {
+      const g = sanitizeGame(raw, makeId);
+      if (!g) { droppedGames++; continue; }
+      games.push(g);
+    }
+    return {
+      ok: true,
+      rivals,
+      games,
+      me: typeof parsed.me === 'string' && parsed.me.trim() ? parsed.me.trim().slice(0, 24) : null,
+      myIcon: typeof parsed.myIcon === 'string' && parsed.myIcon.trim() ? parsed.myIcon.trim().slice(0, 8) : null,
+      dropped: { rivals: droppedRivals, games: droppedGames },
+    };
+  }
+
   // ---------- ordering ----------
   // Case-insensitive name order, used by every rival list outside the Records
   // view. Names differing only in case fall back to the raw comparison so the
@@ -809,9 +1163,15 @@
     // results / aggregates
     resultOf, resultLoc, stdDev, average, streaks, linearTrend, projectNext,
     rivalryScoreFromGames,
-    // calendar periods
+    // calendar periods + local calendar dates
     parseDateISO, isoWeekStart, isoWeekEnd, isoWeekId,
     monthId, monthStart, monthEnd, periodBounds, periodRecords,
+    localDateISO, todayISO, addDaysISO, daysBetweenISO, dayOfWeekISO,
+    localDateFromISO, formatDate, calendarDayOf, countNoun, parityOutlook,
+    // eligibility
+    eligibleH2HGames, overallRecord,
+    // backup import
+    sanitizeBackup, sanitizeRival, sanitizeGame,
     periodOutcomeVsRival, runningRivalPeriodRecords, periodTallyText,
     // predicted-position accuracy
     rankByScore, positionHitsForDay, accumulatePositionHits,

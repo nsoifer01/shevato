@@ -32,6 +32,9 @@ const BASE = `http://127.0.0.1:${PORT}`;
 // The fpl-planner suites under apps/fpl-planner/e2e/ do the same for that app's
 // interactive scenario workflow and its gameweek lifecycle:
 //   npm run test:fpl-planner:e2e         (equivalent to --only=fpl-planner)
+// The maptap-rivals suite under apps/maptap-rivals/e2e/ pins the 2026-08-22
+// audit round (seeded a11y, keyboard, 390px containment, import safety):
+//   npm run test:maptap-rivals:e2e       (equivalent to --only=maptap-rivals)
 const SUITES = [
   'tests/browser/suites/site.mjs',
   'tests/browser/suites/apps.mjs',
@@ -52,6 +55,7 @@ const SUITES = [
   'apps/gym-tracker/e2e/units-migration.mjs',
   'apps/fpl-planner/e2e/scenario.mjs',
   'apps/fpl-planner/e2e/lifecycle.mjs',
+  'apps/maptap-rivals/e2e/quality.mjs',
 ];
 
 // --only=<substring> runs the suites whose path contains it; --headed opens a
@@ -68,18 +72,27 @@ for (const a of args) {
 // return, a refactor that drops a loop, a throw swallowed inside the suite)
 // still "passes" everything it did run; comparing against a pinned total turns
 // that silent shrinkage into an explicit failure. All six harness-owned
-// suites are pinned; the app-owned trip-planner and fpl-planner suites are
-// not, by their owners' choice. Adding or removing a check on purpose means
-// updating the pinned number in the same change.
+// suites are pinned, plus the app-owned maptap-rivals suite by its owner's
+// choice; trip-planner and fpl-planner are not, by theirs. Adding or removing
+// a check on purpose means updating the pinned number in the same change.
 // apps.mjs note: the count is invariant whether or not the rising-shows
 // dataset is fetched (the skip path emits the same number of entries).
 const EXPECTED_CHECKS = {
   'tests/browser/suites/site.mjs': 157,
   'tests/browser/suites/apps.mjs': 103,
-  'tests/browser/suites/a11y.mjs': 72,
+  // 72 from master's B7/B8 keyboard + touch-target blocks, plus the two
+  // seeded MapTap Rivals state scans added in this branch.
+  'tests/browser/suites/a11y.mjs': 74,
   'tests/browser/suites/visual.mjs': 86,
   'tests/browser/suites/perf.mjs': 51,
   'tests/browser/suites/pwa-gym.mjs': 14,
+  // 56 from the 2026-08-22 audit pass, plus, added 2026-08-23: 15 modal/header
+  // stacking checks, 3 route-change checks, 30 overflow checks (6 views x 7
+  // widths), 5 UTC+12 rendered-day checks, 3 stale-matrix-selection checks and
+  // 8 parity-card checks.
+  // Pinned because this suite's axe scans now contain their own failures
+  // instead of aborting the run, so a shrunken run would otherwise look green.
+  'apps/maptap-rivals/e2e/quality.mjs': 120,
 };
 
 const selected = only ? SUITES.filter((p) => p.includes(only)) : SUITES;
