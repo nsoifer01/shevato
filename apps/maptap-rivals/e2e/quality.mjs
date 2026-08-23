@@ -429,6 +429,26 @@ export async function run({ base, cdpPort }) {
     const longCard = await evaluate(s, "(()=>{const c=[...document.querySelectorAll('.dash-summary-card')].find(c=>/Bartholomew/.test(c.textContent)); if(!c) return {none:true}; const v=c.querySelector('.value'); return {overflow: v.scrollWidth > v.clientWidth + 1, cardRight: Math.round(c.getBoundingClientRect().right), stripRight: Math.round(document.getElementById('dash-summary').getBoundingClientRect().right)}})()");
     t('1280px: a long name in a summary card wraps instead of overflowing', longCard.none || (!longCard.overflow && longCard.cardRight <= longCard.stripRight + 1), JSON.stringify(longCard));
 
+    // ---- a stale rival id in the persisted matrix selection is harmless ----
+    // Deleting a rival prunes it from state.matrixSelection, but only on the
+    // device that did the delete: the rival list and the selection sync under
+    // separate keys, so another device can boot with a selection naming a
+    // rival that is gone. matrixRivals() filters the selection THROUGH
+    // state.rivals rather than trusting it, which is the same rule that keeps
+    // orphaned games out of the aggregates. Pinned because the alternative
+    // (auto-pruning the selection on load) would let one device's delete
+    // quietly rewrite another's saved view.
+    mark('stale matrix selection');
+    await seed(s, '#matrix', { maptapRivalsMatrixSelection: JSON.stringify(['r-ari', 'r-gone-forever', 'r-bex']) });
+    await waitForExpr(s, "!!document.querySelector('.matrix-table')");
+    const mxSel = await evaluate(s, "(()=>{const heads=[...document.querySelectorAll('.matrix-row-head .matrix-head-name')].map(e=>e.textContent.trim()); return {heads, stored: localStorage.getItem('maptapRivalsMatrixSelection')}})()");
+    t('matrix ignores a selected rival that no longer exists and renders the real ones',
+      mxSel.heads.length > 0 && !mxSel.heads.some(h => /gone/i.test(h)), JSON.stringify(mxSel.heads));
+    t('the stale id is left in storage rather than silently rewritten',
+      /r-gone-forever/.test(String(mxSel.stored)), String(mxSel.stored));
+    t('no first-party JS errors rendering the matrix from a stale selection',
+      cleanErrors(s).length === 0, cleanErrors(s).join(' | '));
+
     // ---- #4 local calendar days, in a RENDERED page under UTC+12 ----
     // tests/stats.test.js proves the helpers across four zones in child
     // processes; this proves the views built on them. The zone comes from

@@ -506,6 +506,14 @@ and kept as-is:
   section above for the measured split (two games, one day). The app does not
   silently delete rows a user can see and delete themselves; the same rule is
   why History still lists orphaned games.
+- **A stale rival id in the saved matrix selection is left alone.**
+  `confirmDeleteRival` prunes the deleted id from `state.matrixSelection`, but
+  only on the device that did the delete: the rival list and the selection sync
+  under separate keys, so another device can boot with a selection naming a
+  rival that is gone. `matrixRivals()` filters the selection THROUGH
+  `state.rivals` rather than trusting it, so the stale id is inert. Pruning it
+  on load would let one device's delete quietly rewrite another's saved view.
+  Pinned in `e2e/quality.mjs`.
 - **Orphaned games (rival deleted elsewhere) stay in History.** They are
   excluded from every aggregate by `eligibleH2HGames` and shown in History
   with their delete button, so a stranded row is visible and removable rather
@@ -582,7 +590,7 @@ Two gaps the 2026-08-23 pass closed, both in `e2e/quality.mjs`:
   else. The helpers themselves stay pinned by the four-zone child-process test
   in `tests/stats.test.js`, which is date- and host-independent.
 
-`e2e/quality.mjs` is 109 checks and is PINNED in `tests/browser/run.mjs`
+`e2e/quality.mjs` is 112 checks and is PINNED in `tests/browser/run.mjs`
 (`EXPECTED_CHECKS`), the only app-owned suite that is. Two reasons it needs the
 pin: a suite that returns early "passes" everything it did run, and since
 2026-08-23 an axe scan that exceeds the driver's 45s send timeout records its
