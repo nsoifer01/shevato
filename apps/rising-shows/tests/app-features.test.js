@@ -970,3 +970,127 @@ test('chipScrollDelta: the scrollport starts inside the border, not the padding'
   // one padding-width short of its snap point and the snap rejects it.
   assert.equal(helpers.chipScrollDelta(rect(0, 353), rect(158, 383), 2), 156);
 });
+
+// ---------------------------------------------------------------------------
+// Best / worst / most-rated highlights
+//
+// One helper answers the question at both levels (which season of a show,
+// which episode of a season), so these tests pin the rules once. The rules
+// exist to keep the badges honest: a badge that appears on everything, or on
+// a set with nothing to compare, tells the reader nothing.
+// ---------------------------------------------------------------------------
+
+const H = (items) => helpers.pickHighlights(items);
+
+test('pickHighlights: names the highest, the lowest and the most rated', () => {
+  const out = H([
+    { key: 1, rating: 7.5, votes: 100 },
+    { key: 2, rating: 9.1, votes: 400 },
+    { key: 3, rating: 8.0, votes: 250 },
+  ]);
+  assert.equal(out.best, 2);
+  assert.equal(out.worst, 1);
+  assert.equal(out.mostRated, 2);
+});
+
+test('pickHighlights: most rated is independent of best and worst', () => {
+  // The season everyone rated is often not the season that scored highest.
+  const out = H([
+    { key: 1, rating: 9.4, votes: 50 },
+    { key: 2, rating: 6.2, votes: 9000 },
+  ]);
+  assert.equal(out.best, 1);
+  assert.equal(out.worst, 2);
+  assert.equal(out.mostRated, 2, 'the worst-rated entry can still be the most rated');
+});
+
+test('pickHighlights: one item is no contest', () => {
+  const out = H([{ key: 1, rating: 9.9, votes: 1000 }]);
+  assert.equal(out.best, null);
+  assert.equal(out.worst, null);
+  assert.equal(out.mostRated, null);
+});
+
+test('pickHighlights: nothing at all is no contest', () => {
+  for (const empty of [[], null, undefined]) {
+    const out = H(empty);
+    assert.deepEqual([out.best, out.worst, out.mostRated], [null, null, null]);
+  }
+});
+
+test('pickHighlights: identical ratings produce no best and no worst', () => {
+  // Otherwise the same entry would be badged both "best" and "worst".
+  const out = H([
+    { key: 1, rating: 8.0, votes: 10 },
+    { key: 2, rating: 8.0, votes: 20 },
+  ]);
+  assert.equal(out.best, null);
+  assert.equal(out.worst, null);
+  assert.equal(out.mostRated, 2, 'ratings tying says nothing about vote counts');
+});
+
+test('pickHighlights: identical vote counts produce no most-rated', () => {
+  const out = H([
+    { key: 1, rating: 7.0, votes: 500 },
+    { key: 2, rating: 8.0, votes: 500 },
+  ]);
+  assert.equal(out.best, 2);
+  assert.equal(out.mostRated, null);
+});
+
+test('pickHighlights: ties keep the earlier entry', () => {
+  // Callers pass seasons and episodes in ascending order, so the first of two
+  // equal peaks is the one badged, deterministically.
+  const out = H([
+    { key: 1, rating: 9.0, votes: 300 },
+    { key: 2, rating: 9.0, votes: 300 },
+    { key: 3, rating: 5.0, votes: 10 },
+  ]);
+  assert.equal(out.best, 1);
+  assert.equal(out.mostRated, 1);
+});
+
+test('pickHighlights: unrated and unvoted entries drop out of their contest', () => {
+  const out = H([
+    { key: 1, rating: 8.5, votes: 0 },
+    { key: 2, rating: null, votes: 900 },
+    { key: 3, rating: 6.0, votes: undefined },
+  ]);
+  // Only keys 1 and 3 carry ratings; only key 2 carries votes, and one voted
+  // entry is not a contest.
+  assert.equal(out.best, 1);
+  assert.equal(out.worst, 3);
+  assert.equal(out.mostRated, null);
+});
+
+test('pickHighlights: NaN ratings and votes are ignored, not ranked', () => {
+  const out = H([
+    { key: 1, rating: NaN, votes: NaN },
+    { key: 2, rating: 7.0, votes: 10 },
+    { key: 3, rating: 8.0, votes: 20 },
+  ]);
+  assert.equal(out.best, 3);
+  assert.equal(out.worst, 2);
+  assert.equal(out.mostRated, 3);
+});
+
+test('seasonVoteTotal: sums the episodes, and is 0 without them', () => {
+  assert.equal(helpers.seasonVoteTotal({ episodes: [{ votes: 10 }, { votes: 5 }] }), 15);
+  // A failed detail fetch leaves no episodes; the season simply cannot win the
+  // most-rated badge rather than counting as zero-and-therefore-lowest.
+  assert.equal(helpers.seasonVoteTotal({}), 0);
+  assert.equal(helpers.seasonVoteTotal({ episodes: [] }), 0);
+  assert.equal(helpers.seasonVoteTotal({ episodes: [{ votes: 10 }, {}] }), 10);
+});
+
+test('season most-rated: a show whose detail failed gets no badge anywhere', () => {
+  // Every season folds to 0 votes, so there is no most-rated season at all.
+  const seasons = [{ season: 1, avgRating: 8.1 }, { season: 2, avgRating: 7.4 }];
+  const out = H(seasons.map((s) => ({
+    key: s.season, rating: s.avgRating, votes: helpers.seasonVoteTotal(s),
+  })));
+  assert.equal(out.mostRated, null);
+  // Best and worst still come from the index-backed averages, which survive.
+  assert.equal(out.best, 1);
+  assert.equal(out.worst, 2);
+});

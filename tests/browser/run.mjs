@@ -79,7 +79,9 @@ for (const a of args) {
 // dataset is fetched (the skip path emits the same number of entries).
 const EXPECTED_CHECKS = {
   'tests/browser/suites/site.mjs': 157,
-  'tests/browser/suites/apps.mjs': 103,
+  // 103 from master, plus the two Rising Shows highlight-badge checks added
+  // in this branch.
+  'tests/browser/suites/apps.mjs': 105,
   // 72 from master's B7/B8 keyboard + touch-target blocks, plus the two
   // seeded MapTap Rivals state scans added in this branch.
   'tests/browser/suites/a11y.mjs': 74,

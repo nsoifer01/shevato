@@ -1194,6 +1194,88 @@ function buildAboveImdbMap() {
   }
 }
 
+// --- best / worst / most-rated highlights ---
+//
+// The same three questions get asked at two levels: which of a show's SEASONS
+// is the high point, the low point and the one most people rated, and which of
+// a season's EPISODES. One implementation, because the rules are identical and
+// two copies would drift the way the provider list did.
+//
+// Each item is { key, rating, votes }; the caller maps its own records into
+// that shape. Returns the winning keys, or null where there is no honest
+// answer:
+//
+//   - fewer than two rated items: nothing to compare, so no best or worst. A
+//     one-episode season and a one-season show both fall out here, which is
+//     the rule the season badges already followed.
+//   - every rating identical: "best" and "worst" would name the same item and
+//     mean nothing, so both are dropped (again, the existing season rule).
+//   - votes missing, all equal, or zero: no most-rated badge. A season of
+//     episodes nobody rated has no most-rated episode.
+//
+// Ties keep the FIRST item in the order given, which for both callers is
+// ascending season or episode number: with two equally-rated episodes the
+// earlier one is called the best, deterministically rather than by whichever
+// the sort happened to leave last.
+function pickHighlights(items) {
+  const rated = [];
+  const voted = [];
+  for (const it of (items || [])) {
+    if (typeof it.rating === 'number' && Number.isFinite(it.rating)) rated.push(it);
+    if (typeof it.votes === 'number' && Number.isFinite(it.votes) && it.votes > 0) voted.push(it);
+  }
+  const out = { best: null, worst: null, mostRated: null };
+
+  if (rated.length >= 2) {
+    let best = rated[0];
+    let worst = rated[0];
+    for (const it of rated) {
+      if (it.rating > best.rating) best = it;
+      if (it.rating < worst.rating) worst = it;
+    }
+    if (best.rating !== worst.rating) {
+      out.best = best.key;
+      out.worst = worst.key;
+    }
+  }
+
+  if (voted.length >= 2) {
+    let top = voted[0];
+    let allEqual = true;
+    for (const it of voted) {
+      if (it.votes !== top.votes) allEqual = false;
+      if (it.votes > top.votes) top = it;
+    }
+    // "Most rated" among a set where everything drew the same number of
+    // ratings is not a distinction worth a badge.
+    if (!allEqual) out.mostRated = top.key;
+  }
+
+  return out;
+}
+
+function makeEpFlag(kind, label, title) {
+  const span = document.createElement('span');
+  span.className = `ep-flag ep-flag-${kind}`;
+  span.textContent = label;
+  span.title = title;
+  return span;
+}
+
+// A season's rating count is the sum across its episodes. There is no such
+// field in the payload (the index carries `minVotes`, the LOWEST count in the
+// season, which is a build-time floor rather than a total), so it is folded
+// here from the per-episode data the modal has already loaded. A show whose
+// detail fetch failed simply gets no most-rated badge, like its sparklines.
+function seasonVoteTotal(m) {
+  let total = 0;
+  if (!Array.isArray(m.episodes)) return 0;
+  for (const e of m.episodes) {
+    if (typeof e.votes === 'number' && Number.isFinite(e.votes)) total += e.votes;
+  }
+  return total;
+}
+
 function buildBestSeasonMap() {
   // For each series with 2+ qualifying seasons, identify the highest- and
   // lowest-avg one. Single-season series get no badge — there's no "best" or
@@ -2819,8 +2901,20 @@ async function openModal(m, opts = {}) {
     els.modalCurveAnnotation.hidden = true;
   }
 
+  // Best, worst and most-rated EPISODE of this season, by the same rules the
+  // show modal applies one level up to seasons. Keyed by array position rather
+  // than episode number so a season that somehow carries a duplicate episode
+  // number cannot badge two rows.
+  const epHighlights = pickHighlights(
+    hasEpisodes ? m.episodes.map((e, i) => ({ key: i, rating: e.rating, votes: e.votes })) : [],
+  );
+  const anyEpFlags = epHighlights.best !== null || epHighlights.mostRated !== null;
+  // The flag column only exists when something in this season earns a flag;
+  // otherwise every row would carry an empty gutter.
+  els.modalEpisodes.classList.toggle('has-flags', anyEpFlags);
+
   const epFrag = document.createDocumentFragment();
-  for (const e of m.episodes) {
+  for (const [epIndex, e] of m.episodes.entries()) {
     const li = document.createElement('li');
     // IMDb tags pre-season specials, unaired pilots, and Christmas episodes
     // as ep 0 of a given season. Flag them so the curve isn't read as a
@@ -2862,7 +2956,32 @@ async function openModal(m, opts = {}) {
       meta.append(rt);
     }
 
-    li.append(num, name, meta);
+    if (anyEpFlags) {
+      // Every row gets the cell, flagged or not: each <li> is its own grid, so
+      // an absent cell would let the ratings slide sideways on exactly the
+      // rows that carry a flag. Empty cells collapse to zero width and keep
+      // the numbers in one column down the whole list.
+      const flags = document.createElement('span');
+      flags.className = 'ep-flags';
+      // Best and worst are mutually exclusive by construction; most-rated is
+      // independent and often lands on the same episode as best, which is
+      // exactly the row worth noticing.
+      if (epHighlights.best === epIndex) {
+        flags.appendChild(makeEpFlag('best', '★ best', 'Highest-rated episode of this season'));
+      } else if (epHighlights.worst === epIndex) {
+        flags.appendChild(makeEpFlag('worst', '▼ worst', 'Lowest-rated episode of this season'));
+      }
+      if (epHighlights.mostRated === epIndex) {
+        flags.appendChild(makeEpFlag(
+          'most-rated',
+          '◆ most rated',
+          `Most-rated episode of this season (${e.votes.toLocaleString()} ratings)`,
+        ));
+      }
+      li.append(num, name, flags, meta);
+    } else {
+      li.append(num, name, meta);
+    }
 
     // When we have an IMDb episode ID, overlay a stretched link so the
     // entire row deep-links to the episode's IMDb page. Older data.json
@@ -3080,11 +3199,18 @@ async function openShowModal(seriesId, opts = {}) {
   }
   markSensitivePoster(els.showModalPoster, meta);
 
+  // Best and worst come from the boot-time maps, which are folded from the
+  // index and therefore survive a failed detail fetch. Most-rated cannot: it
+  // needs per-episode vote counts, so it is folded here from whatever the
+  // detail load produced, and quietly stays absent when that load failed.
   const bestSeason = bestSeasonBySeries.get(seriesId);
   const worstSeason = worstSeasonBySeries.get(seriesId);
+  const mostRatedSeason = pickHighlights(
+    seasons.map((s) => ({ key: s.season, rating: s.avgRating, votes: seasonVoteTotal(s) })),
+  ).mostRated;
   const seasonsFrag = document.createDocumentFragment();
   for (const s of seasons) {
-    seasonsFrag.appendChild(buildShowSeasonRow(s, bestSeason, worstSeason));
+    seasonsFrag.appendChild(buildShowSeasonRow(s, bestSeason, worstSeason, mostRatedSeason));
   }
   els.showModalSeasons.replaceChildren(seasonsFrag);
 
@@ -3216,7 +3342,7 @@ async function openShowModal(seriesId, opts = {}) {
   });
 }
 
-function buildShowSeasonRow(m, bestSeason, worstSeason) {
+function buildShowSeasonRow(m, bestSeason, worstSeason, mostRatedSeason) {
   const li = document.createElement('li');
   li.className = 'show-season';
   if (Watched.has(m)) li.classList.add('is-watched');
@@ -3302,6 +3428,16 @@ function buildShowSeasonRow(m, bestSeason, worstSeason) {
     worst.style.color = 'var(--danger)';
     worst.textContent = '▼ worst';
     stats.appendChild(worst);
+  }
+  // Popularity, not quality, so it is its own badge rather than part of the
+  // best/worst either-or: the season most people rated is often the best one,
+  // and both badges showing on the same row is the interesting case.
+  if (mostRatedSeason === m.season) {
+    const pop = document.createElement('span');
+    pop.className = 'ss-watched-tag ss-most-rated';
+    pop.textContent = '◆ most rated';
+    pop.title = `Most-rated season of this show (${seasonVoteTotal(m).toLocaleString()} ratings across ${m.episodes.length} episodes)`;
+    stats.appendChild(pop);
   }
   if (Watched.has(m)) {
     const w = document.createElement('span');
@@ -6470,6 +6606,10 @@ if (typeof window !== 'undefined') {
     dominantShapeOf,
     isAnimated,
     isUnscripted,
+    // Best / worst / most-rated highlights, shared by the season list and the
+    // episode list.
+    pickHighlights,
+    seasonVoteTotal,
     chipScrollDelta,
   };
 }
