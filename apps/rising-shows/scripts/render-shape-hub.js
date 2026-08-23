@@ -50,6 +50,18 @@ const HUB_SCHEMA_LIMIT = 25;
 // against a 1.3 series rating.
 const GAP_MIN_VOTES = 15000;
 
+// The gap subtracts TWO ratings, so a floor on only one of them guards only
+// half the number. The series rating had a 15,000-vote floor; the episode
+// average had none, and it is an unweighted mean over episodes, so an episode
+// rated by 30 people counted as much as one rated by 30,000. That put Kaamraj
+// at #1 (IMDb 3.6 from 19,239 series votes against a 7.1 episode average built
+// on 358 episode votes across 12 episodes, i.e. the review-bomb signature the
+// floor existed to exclude). Applying the SAME floor to the show's total
+// episode votes is the symmetric rule: both halves of the gap must rest on at
+// least 15,000 opinions. It drops 36 of the 100 visible rows and promotes 36
+// well-sampled ones (Arrow, 715,744 episode votes; Doctor Who; 1899).
+const GAP_MIN_EPISODE_VOTES = GAP_MIN_VOTES;
+
 function hubPath(slug) {
   return `/apps/rising-shows/shows/shape/${slug}/`;
 }
@@ -64,25 +76,42 @@ function selectHubShows(series, slug, limit = HUB_LIMIT) {
     .slice(0, limit);
 }
 
+// Total IMDb votes cast on a show's individual episodes: the sample the
+// episode average is computed from.
+function totalEpisodeVotes(seasons) {
+  let total = 0;
+  for (const s of (seasons || [])) {
+    for (const ep of (s.episodes || [])) total += ep.votes || 0;
+  }
+  return total;
+}
+
 // Shows whose episodes rate higher than the series' own IMDb score, ranked by
 // that gap. Both numbers are used at the one decimal IMDb publishes, so the
-// value a row prints is exactly the value that ranked it. Shows under the vote
-// floor are dropped before ranking, and only positive gaps qualify.
-function selectGapHubShows(series, limit = HUB_LIMIT, minVotes = GAP_MIN_VOTES) {
+// value a row prints is exactly the value that ranked it. Both sides of the
+// gap carry a vote floor (see GAP_MIN_EPISODE_VOTES), and only positive gaps
+// qualify.
+function selectGapHubShows(series, limit = HUB_LIMIT, minVotes = GAP_MIN_VOTES, minEpisodeVotes = GAP_MIN_EPISODE_VOTES) {
   return series
     .filter((s) => (s.seriesVotes || 0) >= minVotes && s.seriesRating)
     .map((s) => {
       const avgEpisode = parseFloat(computeOverallAvgRating(s.seasons));
-      return { ...s, avgEpisode, gap: Math.round((avgEpisode - s.seriesRating) * 10) / 10 };
+      return {
+        ...s,
+        avgEpisode,
+        episodeVotes: totalEpisodeVotes(s.seasons),
+        gap: Math.round((avgEpisode - s.seriesRating) * 10) / 10,
+      };
     })
-    .filter((s) => s.gap > 0)
+    .filter((s) => s.gap > 0 && s.episodeVotes >= minEpisodeVotes)
     .sort((a, b) => b.gap - a.gap || (b.seriesVotes || 0) - (a.seriesVotes || 0) || a.title.localeCompare(b.title))
     .slice(0, limit);
 }
 
 // One static landing page per rating shape: a ranked list of the most-voted
-// shows whose dominant season carries that shape. These are the topic hubs the
-// per-season shape badges and the A-Z index link into.
+// shows whose WHOLE-RUN dominant shape is that shape (selectHubShows ->
+// computeDominantShape). These are the topic hubs the per-season shape badges
+// and the A-Z index link into.
 function renderShapeHub(slug, shows, builtAt) {
   const label = SHAPE_LABELS[slug] || slug;
   const desc = SHAPE_DESCS[slug] || '';
@@ -105,7 +134,12 @@ function renderShapeHub(slug, shows, builtAt) {
     schemaName: `Best ${label} TV shows`,
     ogImageAlt: `Best ${label} TV shows on Rising Shows`,
     heading: `Best ${escapeHtml(label)} TV shows`,
-    lede: `${escapeHtml(label)}: ${escapeHtml(desc.toLowerCase())}. These are the ${count} most-voted shows whose highest-rated season carries that shape, each with an episode-by-episode rating page.`,
+    // Membership has been the show's whole-run dominant shape since
+    // 2026-08-08, not the shape of its single highest-rated season. The wording
+    // covers both kinds of entry: a trajectory read across the seasons, and the
+    // categorical tags (saved best for last, shape drift) a show lands on only
+    // when it has no trajectory shape.
+    lede: `${escapeHtml(label)}: ${escapeHtml(desc.toLowerCase())}. These are the ${count} most-voted shows whose run as a whole is best described by that shape, each with an episode-by-episode rating page.`,
     ctaHref: `/apps/rising-shows/#shape=${escapeHtml(slug)}`,
     ctaLabel: `Filter ${escapeHtml(label)} shows in the explorer →`,
     footerNote: 'Ranked by IMDb vote count.',
@@ -117,9 +151,10 @@ function renderShapeHub(slug, shows, builtAt) {
 
 // The one hub ranked by a number rather than by shape: the gap between a
 // show's episode-weighted average and its own IMDb series rating.
-function renderGapHub(shows, builtAt, minVotes = GAP_MIN_VOTES) {
+function renderGapHub(shows, builtAt, minVotes = GAP_MIN_VOTES, minEpisodeVotes = GAP_MIN_EPISODE_VOTES) {
   const count = shows.length;
   const votesLabel = minVotes.toLocaleString();
+  const episodeVotesLabel = minEpisodeVotes.toLocaleString();
 
   const rows = shows.map((s, i) => rankRow(
     s,
@@ -135,10 +170,10 @@ function renderGapHub(shows, builtAt, minVotes = GAP_MIN_VOTES) {
     schemaName: 'TV shows that outshine their reputation',
     ogImageAlt: 'TV shows whose episodes outscore their IMDb rating, on Rising Shows',
     heading: 'TV shows that outshine their reputation',
-    lede: `Every episode these shows aired rates higher, on average, than the show's own IMDb score. The ${count} biggest gaps among shows with at least ${votesLabel} IMDb votes, so the ranking reflects real audiences rather than a handful of votes.`,
+    lede: `Every episode these shows aired rates higher, on average, than the show's own IMDb score. The ${count} biggest gaps among shows carrying at least ${votesLabel} votes on the show itself and ${episodeVotesLabel} across its episodes, so both halves of the gap reflect real audiences rather than a handful of votes.`,
     ctaHref: `/apps/rising-shows/#sort=gap&amp;gapDir=up&amp;minVotes=${minVotes}`,
     ctaLabel: 'Sort every show by this gap in the explorer →',
-    footerNote: `Ranked by average episode rating minus the show's IMDb rating, among shows with at least ${votesLabel} votes.`,
+    footerNote: `Ranked by average episode rating minus the show's IMDb rating, among shows with at least ${votesLabel} show votes and ${episodeVotesLabel} episode votes.`,
     rows,
     shows,
     builtAt,
@@ -330,4 +365,6 @@ module.exports = {
   GAP_HUB_SLUG,
   GAP_HUB_LABEL,
   GAP_MIN_VOTES,
+  GAP_MIN_EPISODE_VOTES,
+  totalEpisodeVotes,
 };

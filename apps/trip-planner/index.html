@@ -64,7 +64,7 @@
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
   <link rel="stylesheet" href="/assets/css/back-to-top.css">
-  <link rel="stylesheet" href="css/styles.css?v=63">
+  <link rel="stylesheet" href="css/styles.css?v=64">
 
   <!-- Google Analytics. Loaded async + defer so it never blocks first paint;
        all tracking goes through the shared helper in analytics.js, which
@@ -536,6 +536,11 @@
                  alone is the plain ceiling this app has always had, and the
                  "from" box only adds a lower end to it -->
             <div class="input-group budget-range">
+              <!-- which currency the two numbers are in. It is the trip's own
+                   almost always; it differs only while a budget typed before a
+                   currency switch has not been retyped, and then saying so is
+                   the difference between a ceiling and a relabelled number. -->
+              <span class="cost-prefix" id="tripBudgetPrefix" aria-hidden="true">$</span>
               <input type="number" id="inTripBudgetFrom" min="0" step="0.01" inputmode="decimal" placeholder="e.g. 3000" aria-label="Budget from (optional)">
               <span class="ig-sep" aria-hidden="true">to</span>
               <input type="number" id="inTripBudgetTo" min="0" step="0.01" inputmode="decimal" placeholder="e.g. 5000" aria-label="Budget to (optional)">
@@ -930,8 +935,8 @@
     }
   </script>
 
-  <script src="js/trip-logic.js?v=43"></script>
-  <script src="js/app.js?v=69"></script>
+  <script src="js/trip-logic.js?v=45"></script>
+  <script src="js/app.js?v=71"></script>
   <script src="/assets/js/back-to-top.js" defer></script>
 </body>
 </html>

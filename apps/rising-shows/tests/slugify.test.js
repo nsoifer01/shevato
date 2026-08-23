@@ -47,7 +47,7 @@ test('showPath combines slug with seriesId', () => {
 });
 
 test('showPath guarantees uniqueness via seriesId for colliding titles', () => {
-  // "The Office" exists multiple times on IMDb (US, UK, etc.) — the tconst
+  // "The Office" exists multiple times on IMDb (US, UK, etc.), so the tconst
   // suffix ensures URLs never collide even when slugs do.
   const usOffice = showPath('The Office', 'tt0386676');
   const ukOffice = showPath('The Office', 'tt0290978');

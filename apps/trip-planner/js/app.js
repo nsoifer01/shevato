@@ -23,7 +23,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 69;
+  const TP_BUILD = 71;
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   // Miles or kilometers, everywhere a distance prints. Same architecture as
@@ -110,7 +110,7 @@
     airportIndex, airportLabel, airportDetail, searchAirports,
     flightTitleFromAirports, parseFlightAirports,
     extractBookings, parseIcsToProposals,
-    classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote, passportExpiryStatus, slimTripForShare, hasFastRail, viewFromHash, hashForView,
+    classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote, passportExpiryStatus, slimTripForShare, slimTripForAssistant, tripBudgetIn, budgetCurrencyOf, hasFastRail, viewFromHash, hashForView,
     buildIcs, buildGpx, buildCsv, convertAmount, sumInCurrency, normalizeTravelers, travelerTotals,
     evenSplitAmounts, splitAmountsMatch, customSplitShares,
     settlements, costsByType, typeBarShares, cashNeeded,
@@ -143,7 +143,7 @@
 
   // ---------- state ----------
   let db = loadDb();
-  const ui = { search: '', filterType: '', filterStatus: '', filterTraveler: '', packingFilter: '', editingId: null, shiftTarget: null, tripModalMode: 'new', confirmAction: null, flashId: null, view: 'timeline' };
+  const ui = { search: '', filterType: '', filterStatus: '', filterTraveler: '', packingFilter: '', packingTripId: null, editingId: null, shiftTarget: null, tripModalMode: 'new', confirmAction: null, flashId: null, view: 'timeline' };
 
   // ---------- timeline collapse state ----------
   // Which stays and which days inside them the traveller has opened. Kept OUT
@@ -180,10 +180,15 @@
     try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapseState)); } catch { /* best effort */ }
   }
 
-  // read-only share view: the real db is parked in realDb; save() is a no-op
-  // so nothing the visitor touches ever reaches trip-planner:v1.
+  // read-only share view: `db` holds the stranger's trip and save() is a no-op,
+  // so nothing the visitor touches ever reaches trip-planner:v1. There is
+  // deliberately NO parked copy of the visitor's own db here any more. It used
+  // to be snapshotted on entry and written back on import, and because both
+  // reconcile listeners stand down in shared mode that snapshot never learned
+  // about anything saved since - so importing published a minutes-old view of
+  // the visitor's whole db over their newer edits. Storage owns that data
+  // throughout; this mode owns the screen (see importSharedTrip).
   let sharedMode = false;
-  let realDb = null;
   let sharedTrip = null;
   let didAutoScroll = false;
 
@@ -332,6 +337,49 @@
     if (r) r.disabled = !undoFuture.length;
   }
 
+  // Every field a renderer reads without asking what type it is. Storage is
+  // untrusted JSON for the same reasons an import is - a sync peer running
+  // older code, a hand edit, a future version writing a shape this one has not
+  // met - and repairTrips only ever normalized the handful of fields that had
+  // bitten it before. A number where a string belongs threw MID-RENDER and took
+  // a whole view with it: `location: 123` emptied the Days view
+  // ("(it.location || '').trim is not a function"), `startTime: 5` emptied the
+  // Timeline too (fmtTime splits it), and neither was repaired, reported, nor
+  // recoverable without editing storage by hand. The caps are sanitizeItem's,
+  // so the two entry paths - import / share link, and storage / sync merge -
+  // normalize to the same shape rather than drifting apart.
+  //
+  // Only fields that are PRESENT are touched (the title excepted, which has
+  // always been coerced): adding a key to every legacy item would rewrite the
+  // whole db on the first boot after a deploy, and a repair write landing
+  // during a remote apply is the one thing the sync model asks us not to make
+  // more common.
+  const ITEM_TEXT_CAPS = [['location', 80], ['costNote', 80], ['confirmation', 40], ['details', 500]];
+  const CLOCK_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+  function repairItemFields(it) {
+    it.title = typeof it.title === 'string' ? it.title.slice(0, 120) : String(it.title == null ? '' : it.title).slice(0, 120);
+    for (const [f, max] of ITEM_TEXT_CAPS) {
+      if (it[f] === undefined) continue;
+      if (typeof it[f] !== 'string') it[f] = String(it[f] == null ? '' : it[f]);
+      if (it[f].length > max) it[f] = it[f].slice(0, max);
+    }
+    if (typeof it.startDate !== 'string') it.startDate = '';
+    if (typeof it.endDate !== 'string') it.endDate = '';
+    if (typeof it.endTime !== 'string') it.endTime = '';
+    // a clock is HH:MM or nothing at all; anything else is not a time the app
+    // can print, sort by, or compare a connection against
+    if (it.endTime && !CLOCK_RE.test(it.endTime)) it.endTime = '';
+    if (it.startTime !== undefined && (typeof it.startTime !== 'string' || (it.startTime && !CLOCK_RE.test(it.startTime)))) it.startTime = '';
+    // a deadline that is not a real date is no deadline: the warnings panel
+    // would count down to it and fmtDate would print nonsense
+    if (it.bookBy !== undefined && !isIsoDate(it.bookBy)) it.bookBy = '';
+    if (it.payment !== undefined && !PAYMENT_METHODS.includes(it.payment)) delete it.payment;
+    if (it.paidBy !== undefined && typeof it.paidBy !== 'string') delete it.paidBy;
+    if (it.travelers !== undefined && !Array.isArray(it.travelers)) delete it.travelers;
+    // a split is keyed BY traveller name, so an array or a primitive is not one
+    if (it.splitAmounts !== undefined && (typeof it.splitAmounts !== 'object' || it.splitAmounts === null || Array.isArray(it.splitAmounts))) delete it.splitAmounts;
+  }
+
   // Repair anything structurally broken (hand-edited storage, partial imports)
   // so one bad item can never take the whole app down.
   // A repair that changed something is WRITTEN BACK. It used to live in memory
@@ -359,15 +407,30 @@
       const budgetFrom = normalizeBudgetFrom(t.budgetFrom, t.budget).value;
       if (budgetFrom != null) t.budgetFrom = budgetFrom;
       else delete t.budgetFrom;
+      // the code the budget was typed in; junk drops back to "the trip's own"
+      if (t.budgetCurrency != null && !(t.budget != null && /^[A-Z]{3}$/.test(t.budgetCurrency))) delete t.budgetCurrency;
       if (!Array.isArray(t.items)) t.items = [];
+      // The three trip-level stores their dialogs write into directly. A
+      // `packing` that is not an array made the add form throw on push (and
+      // ensurePacking read it as already seeded), and the roster and the
+      // essentials block would do the same to their own readers.
+      if (t.travelers !== undefined && !Array.isArray(t.travelers)) delete t.travelers;
+      if (t.packing !== undefined && !Array.isArray(t.packing)) delete t.packing;
+      if (t.essentials !== undefined && (typeof t.essentials !== 'object' || t.essentials === null || Array.isArray(t.essentials))) delete t.essentials;
       if (!Array.isArray(t.visaExtras)) t.visaExtras = [];
       t.visaExtras = t.visaExtras.filter(c => typeof c === 'string' && /^[A-Z]{2}$/.test(c));
       t.items = t.items.filter(it => it && typeof it === 'object');
+      // Every action - edit, delete, duplicate, the assistant's own update -
+      // finds its target by id and acts on the FIRST match, so two rows sharing
+      // one id means deleting the second removes the first. Reachable only
+      // through corrupted storage, and one line to make impossible.
+      const seenIds = new Set();
       for (const it of t.items) {
-        if (!it.id) it.id = uid();
+        if (!it.id || seenIds.has(it.id)) it.id = uid();
+        seenIds.add(it.id);
         if (!TYPE_META[it.type]) it.type = 'note';
         if (!STATUS_META[it.status]) it.status = 'to-book';
-        if (typeof it.title !== 'string') it.title = '';
+        repairItemFields(it);
         // structured food & drink: junk `meal` values drop, and a legacy
         // prefixed title ("Dinner: Saba") migrates to meal:'dinner' +
         // title:'Saba' - deterministic (the four contract prefixes, colon
@@ -375,9 +438,6 @@
         // to carry it in. Runs here so EVERY entry path (boot, sync merge,
         // share boot, undo snapshots reloaded from storage) is normalized.
         normalizeMealItem(it);
-        if (typeof it.startDate !== 'string') it.startDate = '';
-        if (typeof it.endDate !== 'string') it.endDate = '';
-        if (typeof it.endTime !== 'string') it.endTime = '';
         if (it.mapsQuery != null && typeof it.mapsQuery !== 'string') delete it.mapsQuery;
         // the manual same-day position: a small whole number or nothing at all.
         // A "3" or a 1e9 out of hand-edited storage would sort as a string and
@@ -561,6 +621,44 @@
   // currency"). Before the trip's display currency changes, pin those
   // amounts to the currency they were entered in, so $200 stays $200 and
   // converts, rather than silently becoming 200 of the new currency.
+  // The budget pays the same price as a cost when the trip currency moves: the
+  // NUMBER keeps its meaning and gains the code it was typed in. Absent means
+  // "the trip's own", so a trip that never switched stores nothing new.
+  // The symbol beside the budget boxes, and the currency those numbers are in.
+  function syncTripBudgetPrefix() {
+    const el = $('#tripBudgetPrefix');
+    if (el) el.textContent = currencySymbol(ui.tripBudgetCurrency || 'USD');
+  }
+
+  // Moving the dialog's currency picker converts what is in the boxes, so the
+  // number on screen always means the currency beside it. Without rates the
+  // figures stay put and only the prefix moves, which is visible rather than
+  // silent - the traveller can see the boxes now say EUR and retype if the
+  // number was dollars.
+  function retypeTripBudget(nextCurrency) {
+    const from = ui.tripBudgetCurrency || nextCurrency;
+    if (from === nextCurrency) { syncTripBudgetPrefix(); return; }
+    const rates = activeRates(activeTrip());
+    const boxes = ['#inTripBudgetFrom', '#inTripBudgetTo'];
+    const converted = boxes.map(sel => {
+      const raw = $(sel).value.trim();
+      if (!raw) return '';
+      const n = Number(raw);
+      if (!Number.isFinite(n)) return raw;
+      const c = convertAmount(n, from, nextCurrency, rates);
+      return c == null ? null : String(Math.round(c * 100) / 100);
+    });
+    if (converted.some(v => v === null)) { syncTripBudgetPrefix(); return; } // no rate: leave the numbers alone
+    boxes.forEach((sel, i) => { $(sel).value = converted[i]; });
+    ui.tripBudgetCurrency = nextCurrency;
+    syncTripBudgetPrefix();
+  }
+
+  function stampBudgetCurrency(trip, currentCurrency) {
+    if (trip.budget == null || trip.budget === '') return;
+    if (!trip.budgetCurrency) trip.budgetCurrency = currentCurrency;
+  }
+
   function stampCostCurrencies(trip, currentCurrency) {
     for (const it of trip.items) {
       if (it.cost != null && it.cost !== '' && !it.costCurrency) it.costCurrency = currentCurrency;
@@ -739,7 +837,13 @@
     // nights with no stay between the first check-in and the end of the trip
     // (a trailing flight home still needs lodging on the nights before it)
     const overnightTravel = overnightTransit(items);
-    const gaps = coverageGaps(stays, stats.end, overnightTravel);
+    // `stats.start` is what lets this answer at all on a trip that has no stay
+    // yet: coverageGaps measures from the first check-in, and with no stay to
+    // measure from it used to return nothing, so the panel read "None" beside a
+    // chip counting "0 of 4 nights booked" and the strip stayed hidden. The
+    // gaps it returns carry the same shape, so "show" and "Add stay" work on
+    // them exactly as they do on a hole between two bookings.
+    const gaps = coverageGaps(stays, stats.end, overnightTravel, stats.start);
     for (const g of gaps) {
       issues.push({
         level: 'warn',
@@ -853,9 +957,20 @@
       const codes = [...new Set(unconvertible.map(it => it.costCurrency || trip.currency || 'USD'))];
       const named = unconvertible.slice(0, 3).map(it => `"${it.title || '(untitled)'}"`).join(', ');
       const rest = unconvertible.length > 3 ? `, +${unconvertible.length - 3} more` : '';
+      const subject = unconvertible.length === 1 ? 'this cost is' : `these ${unconvertible.length} costs are`;
+      const them = unconvertible.length === 1 ? 'it' : 'them';
+      // Two different problems wear the same symptom, and telling them apart is
+      // the difference between useful advice and a wild goose chase. A rate
+      // table that never arrived (offline, blocked, provider down) is not the
+      // currency's fault, and "re-enter it in a currency the rates cover" sent
+      // the traveller off to retype money that is perfectly fine. The totals
+      // footer already knows the difference and offers Retry; this line now
+      // says the same thing.
       issues.push({
         level: 'warn',
-        text: `No exchange rate for ${codes.join(', ')}, so ${unconvertible.length === 1 ? 'this cost is' : `these ${unconvertible.length} costs are`} left out of every total: ${named}${rest}. Re-enter ${unconvertible.length === 1 ? 'it' : 'them'} in a currency the rates cover to include ${unconvertible.length === 1 ? 'it' : 'them'}.`,
+        text: ratesFailed
+          ? `Exchange rates could not be fetched, so ${subject} shown in ${unconvertible.length === 1 ? 'its' : 'their'} own currency and left out of every total: ${named}${rest}. Use Retry under the totals when you are back online.`
+          : `No exchange rate for ${codes.join(', ')}, so ${subject} left out of every total: ${named}${rest}. Re-enter ${them} in a currency the rates cover to include ${them}.`,
         ids: unconvertible.map(it => it.id),
       });
     }
@@ -924,10 +1039,17 @@
   // Unrated and rated read as the same control at the same height: the rating is
   // a suffix on the pill, never a differently-shaped chip, so the eye finds it
   // in the same spot on every card whether or not Google had a number for it.
-  function tripMapsRatingHtml(mapsQuery) {
+  // `lookup` is false for a row nobody is going to: the link stays (a plain
+  // Maps search is useful whatever the row's status) but it carries no place
+  // key, so the observer never registers it and no billed Place Details call is
+  // made for it. A rating answers "is this worth going to", and a cancelled
+  // plan is not a question - which is exactly why its hours line is suppressed
+  // too, and paying $0.02 to decorate it was the odd one out.
+  function tripMapsRatingHtml(mapsQuery, lookup = true) {
     const key = placeCacheKey(mapsQuery);
     if (!key) return '';
-    return `<a class="tp-maps-link" data-place-key="${esc(key)}" data-place-query="${esc(mapsQuery)}"`
+    const hooks = lookup ? ` data-place-key="${esc(key)}" data-place-query="${esc(mapsQuery)}"` : '';
+    return `<a class="tp-maps-link"${hooks}`
       + ` href="${esc(mapsSearchUrl(mapsQuery))}" target="_blank" rel="noopener">`
       + `<span class="tpm-label">Google Maps</span></a>`;
   }
@@ -974,7 +1096,9 @@
   // hotel, a restaurant and a museum can never diverge on whether they get the
   // section (see itemMapsQuery for which types derive a query), and a leg can
   // never diverge from another leg on getting directions instead of a rating.
-  const mapsHtmlFor = it => (isTravelLeg(it) ? tripDirectionsHtml(it) : tripMapsRatingHtml(itemMapsQuery(it)));
+  const mapsHtmlFor = it => (isTravelLeg(it)
+    ? tripDirectionsHtml(it)
+    : tripMapsRatingHtml(itemMapsQuery(it), it.status !== 'cancelled'));
 
   // A Days-view PLACE row's own directions action: how to get HERE from the
   // stop before it. Rendered destination-only (Maps then asks for the start,
@@ -1106,7 +1230,7 @@
     const s = tripStats(trip);
     const stays = trip.items.filter(it => isStay(it) && it.status !== 'cancelled' && isIsoDate(it.startDate) && isIsoDate(it.endDate) && diffDays(it.startDate, it.endDate) > 0);
     const travelNights = overnightTransit(trip.items);
-    if (!s.start || !s.end || s.totalTripNights < 2 || !stays.length) { box.hidden = true; return; }
+    if (!s.start || !s.end || s.totalTripNights < 2) { box.hidden = true; return; }
     box.hidden = false;
     const cells = [];
     // renderEnd, not end: one item dated 9999 would otherwise ask for three
@@ -1215,17 +1339,25 @@
       chips.push(chip('Full plan', moneyHtml(trip, money.planned.total, undefined, 'total') + short(money.planned.unconverted.length)));
     }
     if (trip.budget != null) {
-      const verdict = budgetVerdict(money.confirmed.total, trip.budget, missing);
-      // A budget can be a range, and its TOP is trip.budget, so the verdict and
-      // the bar are unchanged: only the figure the chip prints gains a lower
-      // end, and only on a trip that set one.
-      const figure = budgetFigure(trip.budgetFrom, trip.budget, n => fmtMoney(trip, n));
+      // The budget is converted into the display currency first (see
+      // tripBudgetIn): it is a number in whatever currency it was typed in,
+      // exactly like a cost, and comparing an unconverted ceiling against a
+      // converted total is how "6,000 dollars" silently became "6,000 euros".
+      const bud = tripBudgetIn(trip, activeRates(trip));
+      // A ceiling no rate could reach cannot be compared at all, so the chip
+      // prints it in its OWN currency and takes the same amber "partial" state
+      // an unconvertible cost gives every other total. It never reads green
+      // over a number it could not check.
+      const verdict = bud.unconverted ? 'partial' : budgetVerdict(money.confirmed.total, bud.top, missing);
+      const figure = bud.unconverted
+        ? budgetFigure(trip.budgetFrom, trip.budget, n => fmtMoneyIn(bud.currency, n))
+        : budgetFigure(bud.low, bud.top, n => fmtMoney(trip, n));
       // 'refund' means refunds outweigh spend so far. It is not a warning, and
       // "of $3,000" is meaningless against it, so the chip says what happened.
       const body = verdict === 'refund'
         ? `${moneyHtml(trip, money.confirmed.total, undefined, 'total')} <small>budget ${esc(figure)}</small>`
         : `${esc(fmtMoney(trip, money.confirmed.total))} <small>of ${esc(figure)}</small>`;
-      chips.push(chip('Budget', body + short(missing), (verdict === 'ok' || verdict === 'refund') ? 'ok-chip' : 'warn-chip', spentShare(money.confirmed.total, trip.budget)));
+      chips.push(chip('Budget', body + short(missing), (verdict === 'ok' || verdict === 'refund') ? 'ok-chip' : 'warn-chip', spentShare(money.confirmed.total, bud.top)));
     }
     // Whole-trip and deliberately filter-blind: tripStats already excludes
     // cancelled items, so this is the count of things actually on the plan,
@@ -1514,6 +1646,21 @@
   function exitSelectMode() {
     selMode = false;
     selIds.clear();
+  }
+
+  // "Which trip am I looking at" is one concept and two pieces of state: the
+  // id, and a selection that was made from the rows of the trip you WERE
+  // looking at, which can never mean anything on another board. Only the trip
+  // picker dropped that selection, so every other way of arriving at a
+  // different trip - a cross-trip search result, the overlapping-trip warning's
+  // link, a duplicate, a template, an import, a restore landing elsewhere, the
+  // trip after a delete - left the bulk bar sitting over the new board reading
+  // "0 selected" with checkboxes on rows nobody picked. Filters are
+  // deliberately NOT reset: they are a view the traveller set, and surviving a
+  // switch is what the overlap warning's link promises.
+  function setActiveTrip(id) {
+    if (db.activeTripId !== id) exitSelectMode();
+    db.activeTripId = id;
   }
 
   // The toolbar toggle and the bulk bar, brought in line with the rows the
@@ -2214,8 +2361,14 @@
     const cost = costCell(trip, it, n);
     const issueCls = issueLevel === 'error' ? 'has-err' : (issueLevel === 'warn' ? 'has-warn' : '');
     const issueBadge = issueBadgeHtml(issueEntry);
-    const statusSel = `
-      <select class="status-sel ${sm.cls}" data-status-for="${it.id}" aria-label="Status" ${sharedMode ? 'disabled' : ''}>
+    // A disabled <select> keeps its chevron and its pressable look, so a
+    // shared board read as editable until a tap did nothing. There is nothing
+    // to pick in a read-only view, so the status is what it always was on
+    // paper: a label.
+    const statusSel = sharedMode
+      ? `<span class="status-sel status-pill ${sm.cls}" aria-label="Status: ${esc(sm.label)}">${esc(sm.label)}</span>`
+      : `
+      <select class="status-sel ${sm.cls}" data-status-for="${it.id}" aria-label="Status">
         ${Object.entries(STATUS_META).map(([k, v]) => `<option value="${k}" ${k === it.status ? 'selected' : ''}>${v.label}</option>`).join('')}
       </select>`;
     // Travel is the trip's connective tissue, not a destination: a dashed rail
@@ -2633,7 +2786,7 @@
     // is not on screen. Going there is the only way the traveller sees it
     // happen; restoring invisibly reads as the button doing nothing.
     const elsewhere = t2.id !== db.activeTripId;
-    if (elsewhere) db.activeTripId = t2.id;
+    if (elsewhere) setActiveTrip(t2.id);
     save(elsewhere ? `Restored "${lastDeleted.item.title}" in "${t2.name}"` : '');
     render();
   }
@@ -2910,6 +3063,33 @@
     btn.setAttribute('aria-expanded', 'true');
     const card = wrap.closest('.day-card');
     if (card) card.classList.add('has-open-menu');
+    // a menu opened from the keyboard puts focus on its first row, which is
+    // what makes the arrow keys below reachable at all
+    if (btn.matches(':focus-visible')) {
+      const first = m && m.querySelector('.dm-item:not([disabled])');
+      if (first) first.focus({ preventScroll: true });
+    }
+  }
+
+  // The menu says role="menu" and its rows say role="menuitem", and that is a
+  // promise about the keyboard: arrows move between items, Home and End jump to
+  // the ends. Tab and Escape always worked, so this was operable but not what
+  // its own ARIA claimed. Disabled rows are skipped, exactly as a mouse skips
+  // them, and the wrap-around matches every other menu on the web.
+  function dayMenuKeys(e) {
+    const menu = e.target.closest('.dc-menu');
+    if (!menu || menu.hidden) return;
+    const keys = ['ArrowDown', 'ArrowUp', 'Home', 'End'];
+    if (!keys.includes(e.key)) return;
+    const items = [...menu.querySelectorAll('.dm-item:not([disabled])')];
+    if (!items.length) return;
+    e.preventDefault();
+    const at = items.indexOf(e.target.closest('.dm-item'));
+    const next = e.key === 'Home' ? 0
+      : e.key === 'End' ? items.length - 1
+        : e.key === 'ArrowDown' ? (at + 1 + items.length) % items.length
+          : (at - 1 + items.length) % items.length;
+    items[next].focus();
   }
 
   // ---------- reordering a day's tied rows ----------
@@ -3104,9 +3284,26 @@
   // range, which is the heaviest response the app asks for.
   const WEATHER_TIMEOUT = 12000;
 
+  // Successes are cached in localStorage; FAILURES were not remembered at all,
+  // so a 500 (or a valid-but-empty answer) was re-asked on every single Days
+  // render - six requests per render for three places, and a view toggle on a
+  // 40-place trip during an outage was ~80. Same short window the geocoder's
+  // failure memo uses, and it is per key, so a place that starts answering is
+  // picked up on the next render after the window.
+  const WEATHER_FAIL_MS = 60000;
+  const weatherFailAt = new Map();
+  function weatherFailedRecently(key) {
+    const at = weatherFailAt.get(key);
+    if (at == null) return false;
+    if (Date.now() - at < WEATHER_FAIL_MS) return true;
+    weatherFailAt.delete(key);
+    return false;
+  }
+
   function ensureWeather(pair) {
     const { key, place, month, date } = pair;
     if (weatherCache[key] || weatherInflight.has(key) || !navigator.onLine) return;
+    if (weatherFailedRecently(key)) return;
     const p = (async () => {
       const hit = await geocode(place);
       if (!hit.ok) return null;
@@ -3145,8 +3342,14 @@
       try { localStorage.setItem(WEATHER_KEY, JSON.stringify(weatherCache)); } catch { /* best effort */ }
       return rec;
     })()
-      .then(rec => { if (rec && ui.view === 'days') applyWeather(key, place, rec); return rec; })
-      .catch(() => { /* offline / geocode miss / bad response / timed out: leave the slot empty */ })
+      .then(rec => {
+        // a valid answer carrying nothing usable counts as a failure for the
+        // memo: without that it was re-fetched on every render for ever
+        if (!rec) weatherFailAt.set(key, Date.now());
+        if (rec && ui.view === 'days') applyWeather(key, place, rec);
+        return rec;
+      })
+      .catch(() => { weatherFailAt.set(key, Date.now()); /* offline / geocode miss / bad response / timed out: leave the slot empty */ })
       // every path lands here, aborted included, so the pair is free to be
       // tried again later in the session
       .finally(() => weatherInflight.delete(key));
@@ -4398,8 +4601,19 @@
     const tripCur = existing ? (t.currency || 'USD') : 'USD';
     $('#inTripCurrency').innerHTML = currencyOptionsFor(tripCur, [tripCur]);
     $('#inTripCurrency').value = tripCur;
-    $('#inTripBudgetTo').value = existing && t.budget != null ? t.budget : '';
-    $('#inTripBudgetFrom').value = existing && t.budgetFrom != null ? t.budgetFrom : '';
+    // The boxes are in the currency the picker shows, so a budget typed in
+    // another one (the totals-footer switch stamps budgetCurrency) is converted
+    // for display. Without rates it stays as stored and the prefix says which
+    // currency that is, so the number is never silently re-read as another.
+    const budShown = existing ? tripBudgetIn(t, activeRates(t)) : null;
+    const budBox = v => (v == null ? '' : Math.round(v * 100) / 100);
+    $('#inTripBudgetTo').value = existing && t.budget != null
+      ? budBox(budShown.unconverted ? t.budget : budShown.top) : '';
+    $('#inTripBudgetFrom').value = existing && t.budgetFrom != null
+      ? budBox(budShown.unconverted ? t.budgetFrom : budShown.low) : '';
+    // which currency those two numbers are in right now
+    ui.tripBudgetCurrency = existing && budShown.unconverted ? budShown.currency : (existing ? (t.currency || 'USD') : 'USD');
+    syncTripBudgetPrefix();
     $('#inTripTravelers').value = existing && Array.isArray(t.travelers) ? t.travelers.join(', ') : '';
     syncTravelerWarning();
     syncTripStartField();
@@ -4479,7 +4693,7 @@
       if (budgetFrom != null) t.budgetFrom = budgetFrom;
       if (travelers.length) t.travelers = travelers;
       db.trips.push(t);
-      db.activeTripId = t.id;
+      setActiveTrip(t.id);
       // A brand-new trip has nothing to show on the map or the day grid, so
       // land on Timeline (and its empty state) instead of an empty map. The
       // render below repaints the view and syncViewHash clears the fragment.
@@ -4490,6 +4704,12 @@
       t.name = name; t.currency = currency; t.budget = budget;
       if (budgetFrom != null) t.budgetFrom = budgetFrom;
       else delete t.budgetFrom;
+      // What the traveller just typed is in the currency the prefix beside the
+      // boxes was showing, so that is the code it is stored with - and when
+      // that is the trip's own (the ordinary case) nothing is stored at all.
+      const typedIn = ui.tripBudgetCurrency || currency;
+      if (budget != null && typedIn !== currency) t.budgetCurrency = typedIn;
+      else delete t.budgetCurrency;
       if (travelers.length) t.travelers = travelers;
       else delete t.travelers;
       // Editing the roster must not leave items pointing at a payer who is no
@@ -4567,7 +4787,7 @@
     copy.name = `${t.name} (copy)`;
     copy.items.forEach(it => { it.id = uid(); });
     db.trips.push(copy);
-    db.activeTripId = copy.id;
+    setActiveTrip(copy.id);
     save('Trip duplicated'); render();
   }
 
@@ -4584,7 +4804,7 @@
     copy.name = `${t.name} (template)`;
     copy.items.forEach(it => { it.id = uid(); });
     db.trips.push(copy);
-    db.activeTripId = copy.id;
+    setActiveTrip(copy.id);
     save('Template created');
     render();
     openTripModal('template');
@@ -4832,7 +5052,7 @@
   function jumpToSearchResult(tripId, itemId) {
     const trip = db.trips.find(t => t.id === tripId);
     if (!trip) return;
-    if (db.activeTripId !== tripId) { db.activeTripId = tripId; save(); }
+    if (db.activeTripId !== tripId) { setActiveTrip(tripId); save(); }
     popoverReturnFocus = null; // the jump, not the search button, is where you now are
     closeTripSearch();
     // the same jump the Issues list, the night strip and the Up next chip use
@@ -4940,7 +5160,7 @@
           if (!t || !Array.isArray(t.items)) continue;
           const nt = buildImportedTrip(t, drops);
           db.trips.push(nt);
-          db.activeTripId = nt.id;
+          setActiveTrip(nt.id);
           added++;
         }
         if (!added) throw new Error('No trips found in the file');
@@ -4970,6 +5190,10 @@
     // takes it down with it
     const budgetFrom = normalizeBudgetFrom(t.budgetFrom, budget.value);
     if (budgetFrom.reason) notes.push(`The lower end of the trip budget ${budgetFrom.reason}, so it was left unset.`);
+    // the code the incoming budget was typed in: without it the receiving side
+    // reads the number as its own currency, which is the relabelling this field
+    // exists to stop. Junk is dropped, and dropping it means "the trip's own".
+    const budgetCurrency = (budget.value != null && typeof t.budgetCurrency === 'string' && /^[A-Z]{3}$/.test(t.budgetCurrency)) ? t.budgetCurrency : null;
     // clamp to 6 trimmed unique names FIRST: the item sanitizer needs the final
     // list to reject an item assigned to someone the trip does not name
     const travelers = normalizeTravelers(t.travelers);
@@ -4986,6 +5210,9 @@
     // on an item that ties with nobody is dropped
     normalizeOrders(nt.items);
     if (budgetFrom.value != null) nt.budgetFrom = budgetFrom.value;
+    // absent means "this trip's own currency", so it is stored only when the
+    // incoming budget was typed in a different one
+    if (budgetCurrency && budgetCurrency !== nt.currency) nt.budgetCurrency = budgetCurrency;
     if (travelers.length) nt.travelers = travelers;
     // the emergency/insurance/medical block is trip-level, so a JSON export and
     // a full backup both carry it and re-importing one has to hand it back. A
@@ -5042,18 +5269,26 @@
     if (!cost.ok) notes.push(`"${label}": the cost ${cost.reason}, so no price was imported.`);
     const est = parseMoney(raw.estCost);
     if (!est.ok) notes.push(`"${label}": the estimated cost ${est.reason}, so it was dropped.`);
+    // A real date is not the same as a date this app can hold: the item form
+    // has always refused anything outside DATE_MIN..DATE_MAX, and an import or
+    // a share link went straight past that check. One "9999-12-31" made the
+    // summary read "2912160 days / 2912159 nights" - the row itself was marked
+    // as the error it is, but every date-derived figure on the page was
+    // nonsense. Out-of-range dates are cleared and reported like any other drop.
     for (const [field, val] of [['start date', raw.startDate], ['end date', raw.endDate]]) {
-      if (val != null && val !== '' && !isIsoDate(val)) notes.push(`"${label}": the ${field} "${String(val).slice(0, 20)}" is not a real date, so it was cleared.`);
+      if (val == null || val === '') continue;
+      if (!isIsoDate(val)) notes.push(`"${label}": the ${field} "${String(val).slice(0, 20)}" is not a real date, so it was cleared.`);
+      else if (!isDateInRange(val)) notes.push(`"${label}": the ${field} ${val} is outside ${DATE_MIN} to ${DATE_MAX}, so it was cleared.`);
     }
     const out = {
       id: uid(),
       type: TYPE_META[raw.type] ? raw.type : 'note',
       title: String(raw.title || '').slice(0, 120),
       location: String(raw.location || '').slice(0, 80),
-      startDate: isIsoDate(raw.startDate) ? raw.startDate : '',
-      endDate: isIsoDate(raw.endDate) ? raw.endDate : '',
-      startTime: /^\d{2}:\d{2}$/.test(raw.startTime || '') ? raw.startTime : '',
-      endTime: /^\d{2}:\d{2}$/.test(raw.endTime || '') ? raw.endTime : '',
+      startDate: isDateInRange(raw.startDate) ? raw.startDate : '',
+      endDate: isDateInRange(raw.endDate) ? raw.endDate : '',
+      startTime: CLOCK_RE.test(raw.startTime || '') ? raw.startTime : '',
+      endTime: CLOCK_RE.test(raw.endTime || '') ? raw.endTime : '',
       status: STATUS_META[raw.status] ? raw.status : 'to-book',
       cost: cost.value,
       costNote: String(raw.costNote || '').slice(0, 80),
@@ -5062,7 +5297,7 @@
       confirmation: String(raw.confirmation || '').slice(0, 40),
       // a booking deadline that is not a real date is dropped rather than
       // imported as a warning nobody can act on
-      bookBy: isIsoDate(raw.bookBy) ? raw.bookBy : '',
+      bookBy: isDateInRange(raw.bookBy) ? raw.bookBy : '',
       details: String(raw.details || '').slice(0, 500),
       createdAt: new Date().toISOString(),
     };
@@ -5164,8 +5399,14 @@
   async function streamThrough(Ctor, bytes) {
     const s = new Ctor('deflate');
     const writer = s.writable.getWriter();
-    writer.write(bytes);
-    writer.close();
+    // Both reject on a payload that is not valid deflate - a truncated or
+    // hand-edited share link - which is the SAME failure the read below throws
+    // and decodeShare already catches and turns into a toast. Unhandled they
+    // ALSO surfaced as uncaught promise rejections in the console, which reads
+    // as a crash on a path the app handles cleanly. Still not awaited: awaiting
+    // a write before anything reads the other end can park on a full queue.
+    writer.write(bytes).catch(() => {});
+    writer.close().catch(() => {});
     const ab = await new Response(s.readable).arrayBuffer();
     return new Uint8Array(ab);
   }
@@ -5399,6 +5640,20 @@
           + 'using the browser\'s own "Save as PDF" destination rather than a printer driver.</span></div>');
         return;
       }
+      // pdf.js is 1.7 MB and deliberately NOT precached, so the first PDF ever
+      // opened offline finds no reader at all. Blaming the file there is wrong
+      // twice over: the same file reads fine online, and the advice sends the
+      // traveller off to copy text by hand for a problem a connection fixes.
+      if (isPdf && !(await ensurePdfJs())) {
+        setImportState('<div class="m-empty err"><span class="me-ico" aria-hidden="true">📡</span>'
+          + '<span class="me-title">The PDF reader needs a connection the first time</span>'
+          + '<span>The part of the app that reads PDFs is downloaded on first use and kept for '
+          + 'later, and it could not be fetched just now. Reconnect and choose the file again, '
+          + 'and it will work offline from then on.</span>'
+          + '<span><strong>Or right now:</strong> open the confirmation email or booking page, '
+          + 'copy the text, and paste it into the box above - that path needs no reader.</span></div>');
+        return;
+      }
       setImportState('<div class="m-empty err"><span class="me-ico" aria-hidden="true">🚫</span>'
         + '<span class="me-title">This file could not be read</span>'
         + '<span>It stores its text in a way this reader does not handle. Open the PDF, select '
@@ -5572,7 +5827,6 @@
       render();
       return;
     }
-    realDb = db;
     sharedMode = true;
     const drops = [];
     const st = buildImportedTrip(trip, drops);
@@ -5606,12 +5860,26 @@
 
   function importSharedTrip() {
     const nt = buildImportedTrip(sharedTrip);
-    db = realDb;
-    realDb = null;
+    // WHERE "my data" COMES FROM AT THIS MOMENT is the whole of this. The db
+    // this page had in hand when the link opened is not authoritative any more:
+    // another tab of this browser, or this device's own sync applying a remote
+    // merge, may have written since, and shared mode deliberately ignored both.
+    // Adopting that stale copy and saving it published it over everything they
+    // did, with nothing to undo from in the tab that did it. So the visitor's
+    // db is re-read from storage here, normalized, and the import is one
+    // ordinary save on top of whatever is actually there.
+    db = loadDb();
     sharedMode = false;
-    if (lastSaved === null) markSaved();
+    repairDb(true); // normalize in memory; the save below writes the result
+    // Reading the db afresh is the same event as a remote merge landing: the
+    // state this page could describe is gone, so the history that described it
+    // goes with it rather than being able to push a stale db back.
+    undoPast.length = 0;
+    undoFuture.length = 0;
+    markSaved();
+    ensureTrip();
     db.trips.push(nt);
-    db.activeTripId = nt.id;
+    setActiveTrip(nt.id);
     save(`Imported "${nt.name}"`);
     history.replaceState(null, '', location.pathname + location.search);
     document.body.classList.remove('tp-shared');
@@ -5655,6 +5923,22 @@
     try { localStorage.removeItem(old); } catch { /* old cache format */ }
   }
   const geoMisses = new Set();
+  // A place the service could not ANSWER for (a 500, a refused connection, a
+  // timeout) is a different fact from one it says does not exist: the miss set
+  // above is permanent for the session, this one expires. Without it every
+  // consumer re-asked during an outage and every Map re-open asked again - 11
+  // requests for 4 places in one render, each one a 1.1s slot in a queue that
+  // is deliberately serialized. One outage now costs one request per place per
+  // window; a deliberate retry (see clearGeoMiss) clears it early.
+  const GEO_FAIL_MS = 60000;
+  const geoFailAt = new Map();
+  const geoFailedRecently = key => {
+    const at = geoFailAt.get(key);
+    if (at == null) return false;
+    if (Date.now() - at < GEO_FAIL_MS) return true;
+    geoFailAt.delete(key);
+    return false;
+  };
   const geoQueue = [];
   // key -> job for everything queued or in flight, so two concurrent callers
   // for the same place (the Map walking stops while the visa dialog resolves
@@ -5669,6 +5953,7 @@
       if (!key) return resolve({ ok: false, reason: 'empty' });
       if (geoCache[key]) return resolve({ ok: true, ...geoCache[key] });
       if (geoMisses.has(key)) return resolve({ ok: false, reason: 'notfound' });
+      if (geoFailedRecently(key)) return resolve({ ok: false, reason: 'network' });
       const pending = geoPending.get(key);
       if (pending) { pending.resolves.push(resolve); return; }
       const job = { place: place.trim(), key, resolves: [resolve] };
@@ -5725,7 +6010,7 @@
           settle({ ok: false, reason: 'notfound' });
         }
       })
-      .catch(() => settle({ ok: false, reason: 'network' }))
+      .catch(() => { geoFailAt.set(job.key, Date.now()); settle({ ok: false, reason: 'network' }); })
       .finally(() => { clearTimeout(timer); setTimeout(() => { geoBusy = false; pumpGeo(); }, 1100); });
   }
 
@@ -6170,7 +6455,7 @@
     const closed = opts.map(o => {
       const h = o.querySelector('.ap-hours');
       const verdict = h ? h.dataset.verdict : '';
-      return verdict === 'closed' || verdict === 'closingSoon';
+      return verdict === 'closed' || verdict === 'beforeOpen' || verdict === 'closingSoon';
     });
     const badges = candidateBadges({ kms, ratings, closed });
     opts.forEach((o, i) => {
@@ -7651,11 +7936,15 @@
     renderPlanner();
     setSetupCollapsed(setupCollapsed);
     $('#assistCloseBtn').focus();
+    // the page makes room for the panel above 1200px rather than being covered
+    // by it (see the .tp-assist-open rule)
+    document.body.classList.add('tp-assist-open');
   }
 
   function closeAssist() {
     setAssistMinimized(false);
     $('#assistPanel').hidden = true;
+    document.body.classList.remove('tp-assist-open');
     returnAssistFocus();
   }
 
@@ -7679,6 +7968,8 @@
   function setAssistMinimized(on) {
     const panel = $('#assistPanel');
     panel.classList.toggle('is-min', on);
+    // a minimized panel is a pill in the corner, so the page takes its space back
+    document.body.classList.toggle('tp-assist-min', !!on);
     const btn = $('#assistMinBtn');
     btn.title = on ? 'Restore' : 'Minimize';
     btn.setAttribute('aria-label', on ? 'Restore assistant' : 'Minimize assistant');
@@ -8288,7 +8579,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tripContext: {
-            trip: slimTripForShare(trip), focusDate: assistFocusDate || null, today: todayIso(),
+            trip: slimTripForAssistant(trip), focusDate: assistFocusDate || null, today: todayIso(),
             mode: mode || 'chat', origin: assistOriginContext(),
           },
           messages: history.slice(-CHAT_CAP),
@@ -8970,10 +9261,19 @@
     const when = `${fmtDow(date)}, ${fmtDate(date)}`;
     let text = `Hours · ${line === 'Closed' ? 'Closed that day' : line}`;
     let title = `Opening hours on Google Maps for ${when}: ${line}.`;
-    if (v && v.status === 'closed') {
+    if (v && v.status === 'beforeOpen') {
+      // Shut, but not because it closed: the doors open LATER that day. Saying
+      // "Closed at 5:30 PM" of a bar that opens at 6 is simply false, and it
+      // sends the traveller looking for a different venue when all they need
+      // is a later hour. Same demotion as closed (it is unavailable at the
+      // time proposed), different sentence.
+      el.classList.add('is-closed');
+      text = `Opens at ${fmtTime(minToHHMM(v.opensMin))} · Hours: ${line}`;
+      title += ` The scheduled time, ${fmtTime(time)}, is before it opens that day.`;
+    } else if (v && v.status === 'closed') {
       el.classList.add('is-closed');
       text = day.intervals.length ? `Closed at ${fmtTime(time)} · Hours: ${line}` : 'Closed that day';
-      title += ` The scheduled time, ${fmtTime(time)}, falls outside them (a start at closing time counts as closed).`;
+      title += ` The scheduled time, ${fmtTime(time)}, falls after it closes (a start at closing time counts as closed).`;
     } else if (v && v.status === 'closingSoon') {
       // Technically open, too little of the visit left to recommend: visibly
       // distinct from closed (amber), and it says how much remains and why
@@ -8999,7 +9299,9 @@
     // unchanged and hands off to the item form instead, raced paints included.
     // The two states demote in different colours, so "shut" and "too tight"
     // never read as the same claim.
-    const demote = !v ? '' : (v.status === 'closed' ? 'is-closed' : (v.status === 'closingSoon' ? 'is-closing' : ''));
+    // beforeOpen demotes exactly as closed does: unavailable at the proposed
+    // time is unavailable, whichever side of the opening hour it falls on.
+    const demote = !v ? '' : ((v.status === 'closed' || v.status === 'beforeOpen') ? 'is-closed' : (v.status === 'closingSoon' ? 'is-closing' : ''));
     if (demote) {
       const opt = el.closest('.as-opt');
       if (opt) opt.classList.add(demote);
@@ -9308,6 +9610,7 @@
       <div class="ap-title">${esc(d.title || '(no title)')}</div>
       ${meta ? `<div class="ap-meta">${esc(meta)}</div>` : ''}
       ${costStr ? `<div class="ap-cost">${esc(costStr)}</div>` : ''}
+      ${p.duplicateOf ? '<div class="ap-dup">Already on your plan at this time</div>' : ''}
       ${proposalDistHtml(p, trip)}
       ${proposalPlaceHtml(p)}
       ${proposalHoursHtml(p)}
@@ -9372,7 +9675,12 @@
     }
     if (f.details !== undefined) it.details = String(f.details).slice(0, 500);
     if (f.mapsQuery) it.mapsQuery = f.mapsQuery;
-    it.status = p.status;
+    // Status is deliberately NOT written here. validateTripAction already
+    // resolves an update's status to the target's own (see AN UPDATE NEVER
+    // CHANGES STATUS there), so this line only ever wrote the value back
+    // unchanged - but it is the line that used to demote a Booked reservation,
+    // and leaving it would let any future change to that resolution reach the
+    // traveller's data through here. What they have booked is theirs.
     // an update that rewrote the title or the type re-derives the kind from
     // what it just wrote; a `meal` left on an item that is no longer an
     // activity is dropped by the same call
@@ -9472,10 +9780,10 @@
     // the two are told apart in `kind` so the dialog can say which.
     const win = recommendWindowMin({ ...probe, mapsQuery: query }) || 0;
     const v = hoursVerdict(hours, date, time, win);
-    if (v.status !== 'closed' && v.status !== 'closingSoon') return null;
+    if (v.status !== 'closed' && v.status !== 'beforeOpen' && v.status !== 'closingSoon') return null;
     const day = hoursIntervalsForDate(hours, date);
     return {
-      kind: v.status, date, time, closesMin: v.closesMin, windowMin: win,
+      kind: v.status, date, time, closesMin: v.closesMin, opensMin: v.opensMin, windowMin: win,
       allDay: !day.always && !day.intervals.length, line: hoursLineText(day, fmtTime),
     };
   }
@@ -9510,6 +9818,14 @@
         sentence = `Google Maps lists "${title}" as closing at ${fmtTime(minToHHMM(refused.closesMin))} `
           + `on ${fmtDate(refused.date)} - only ${left} minutes after the proposed ${fmtTime(refused.time)} start, `
           + `under the ${refused.windowMin} minutes this kind of stop needs. The assistant cannot recommend it at this time.`;
+      } else if (refused.kind === 'beforeOpen') {
+        // The refusal is the same; the REASON is not, and telling a traveller
+        // their 5:30 booking is "closed" when the place opens at 6 sends them
+        // hunting for another venue instead of moving the hour.
+        heading = 'Not open yet';
+        sentence = `Google Maps lists "${title}" as opening at ${fmtTime(minToHHMM(refused.opensMin))} `
+          + `on ${fmtDate(refused.date)}, after the proposed ${fmtTime(refused.time)} start `
+          + `(verified hours that day: ${refused.line}), so the assistant cannot add it at this time.`;
       } else {
         heading = 'Closed at that time';
         const what = refused.allDay
@@ -9661,9 +9977,36 @@
   }
   const packingRows = trip => (Array.isArray(trip.packing) ? trip.packing : []).filter(r => r && typeof r.text === 'string');
 
+  // The trip this dialog was opened FOR, resolved by id every time rather than
+  // read off whatever is active now. The db can be replaced underneath an open
+  // dialog - another tab deleting that trip, this device's sync applying a
+  // remote merge - and every write here used to go through `activeTrip()`:
+  // after a delete that meant editing somebody else's list, and on a trip that
+  // had never opened this dialog `packing` did not exist at all, so adding a
+  // row threw mid-submit and saved nothing, with no toast and the dialog still
+  // sitting there. Same contract the item and trip dialogs already follow
+  // (ui.editingId / ui.tripEditId): the dialog stays open, and the WRITE
+  // re-checks that its target is still there.
+  function packingTrip() {
+    return db.trips.find(t => t.id === ui.packingTripId) || null;
+  }
+  function packingTripForWrite() {
+    const t = packingTrip();
+    if (!t) {
+      toastError('That trip is no longer here, so nothing was saved');
+      closeOverlay($('#packingOverlay'));
+      return null;
+    }
+    ensurePacking(t);
+    return t;
+  }
+
   function openPackingModal() {
     const trip = activeTrip();
     if (!trip) return;
+    // the dialog is opened for THIS trip and keeps editing it, whatever
+    // happens to db.activeTripId while it is open
+    ui.packingTripId = trip.id;
     ensurePacking(trip);
     // a filter left pointing at somebody who is no longer on the trip would open
     // the dialog on a list with rows missing and nothing saying why
@@ -9678,7 +10021,8 @@
   // row reads as Everyone, and neither the filter nor the picker is built at
   // all, so the list is the list it always was.
   const packingNames = () => {
-    const names = normalizeTravelers(activeTrip().travelers);
+    const t = packingTrip() || activeTrip();
+    const names = normalizeTravelers(t && t.travelers);
     return names.length >= 2 ? names : [];
   };
 
@@ -9687,7 +10031,7 @@
   }
 
   function renderPacking() {
-    const trip = activeTrip();
+    const trip = packingTrip();
     if (!trip) return;
     const names = packingNames();
     const all = packingRows(trip);
@@ -9788,7 +10132,9 @@
   $('#packingList').addEventListener('change', e => {
     const box = e.target.closest('input[data-pk]');
     if (!box) return;
-    const row = packingRows(activeTrip()).find(r => r.id === box.dataset.pk);
+    const trip = packingTripForWrite();
+    if (!trip) return;
+    const row = packingRows(trip).find(r => r.id === box.dataset.pk);
     if (!row) return;
     row.done = box.checked;
     // updated in place rather than re-rendered: rebuilding the list would throw
@@ -9798,7 +10144,7 @@
     // per-person tallies are rebuilt with them: focus is on this checkbox, not
     // in the select, so replacing it takes nobody's place
     const names = packingNames();
-    const all = packingRows(activeTrip());
+    const all = packingRows(trip);
     $('#packingCount').textContent = packingCountText(packingRowsFor(all, ui.packingFilter, names));
     renderPackingFilter(names, all);
     save();
@@ -9815,7 +10161,8 @@
   $('#packingList').addEventListener('click', e => {
     const btn = e.target.closest('button[data-pk-del]');
     if (!btn) return;
-    const trip = activeTrip();
+    const trip = packingTripForWrite();
+    if (!trip) return;
     const idx = trip.packing.findIndex(r => r && r.id === btn.dataset.pkDel);
     if (idx < 0) return;
     const gone = trip.packing[idx];
@@ -9830,12 +10177,14 @@
     const input = $('#packingAddInput');
     const text = input.value.trim();
     if (!text) { input.focus(); return; }
+    const trip = packingTripForWrite();
+    if (!trip) return;
     const row = { id: uid(), text, done: false };
     const who = pickedPackingWho();
     // absent rather than empty, so a row for everyone is byte for byte the row
     // this list has always stored
     if (who.length) row.who = who;
-    activeTrip().packing.push(row);
+    trip.packing.push(row);
     input.value = '';
     // the picker is NOT cleared: adding three things for the same person is the
     // normal way this gets used, and re-ticking a name each time is the cost
@@ -10095,6 +10444,8 @@
   // the grip's replacement afterwards (preventScroll, or the page jumps back to
   // the row we just moved away from), exactly as the night strip does.
   $('#daysList').addEventListener('keydown', e => {
+    // the day header's ⋯ menu owns the arrows while it is open (see dayMenuKeys)
+    if (e.target.closest('.dc-menu')) { dayMenuKeys(e); return; }
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
     const grip = e.target.closest('.dc-grip');
     if (!grip || sharedMode) return;
@@ -10187,13 +10538,22 @@
     const title = `Apply for ${country} visa`;
     if (trip.items.some(it => it.title === title)) { toast('Reminder already added'); return; }
     const start = tripStats(trip).start;
+    // The reminder used to be DATED thirty days before the trip, which made it
+    // the trip's new first day: the span, the countdown, the nights, the night
+    // strip and the Days grid all stretched by a month, and day one was
+    // labelled with the visa's country. A thing you must do BEFORE a trip is
+    // exactly what the Book-by deadline already models - the warnings panel
+    // counts it down inside its seven-day window and offers "Mark booked" - so
+    // the note sits on the trip's own first day and carries the deadline.
+    const deadline = isIsoDate(start) ? addDays(start, -30) : '';
     trip.items.push({
       id: uid(), type: 'note', title, status: 'to-book', location: country,
-      startDate: isIsoDate(start) ? addDays(start, -30) : '',
+      startDate: isIsoDate(start) ? start : '',
+      bookBy: deadline,
       endDate: '', startTime: '', endTime: '', cost: null, costNote: '', details: '',
       createdAt: new Date().toISOString(),
     });
-    save(`Reminder added: ${title}`);
+    save(deadline ? `Reminder added: apply by ${fmtDate(deadline)}` : `Reminder added: ${title}`);
     render();
     renderVisaRows();
   }
@@ -10207,8 +10567,29 @@
     // trackView drops repeats, so the several code paths that re-assert the
     // current view (share exit, select-mode exit, hashchange) report once.
     track('trackView', v);
-    if (selMode && v !== 'timeline') { exitSelectMode(); render(); return; }
+    if (selMode && v !== 'timeline') { exitSelectMode(); render(); revealView(); return; }
     applyView();
+    revealView();
+  }
+
+  // On a phone the header, the summary chips, the night strip and the toolbar
+  // come to about 400px before the view even starts, so tapping Days or Map put
+  // the thing you asked for just below the fold: the tap appeared to do nothing.
+  // Only on narrow screens, only when the view really is off-screen, and only
+  // as far as the tabs themselves - the traveller keeps the controls in sight
+  // and gains the content under them.
+  function revealView() {
+    if (window.innerWidth > 700) return;
+    const tabs = document.querySelector('.view-tabs');
+    const box = { timeline: '#board', days: '#daysBox', map: '#mapBox' }[ui.view];
+    const view = box ? document.querySelector(box) : null;
+    if (!tabs || !view) return;
+    requestAnimationFrame(() => {
+      const top = view.getBoundingClientRect().top;
+      if (top <= window.innerHeight - 80) return; // already on screen
+      const y = tabs.getBoundingClientRect().top + window.scrollY - 8;
+      window.scrollTo({ top: Math.max(0, y), behavior: 'auto' });
+    });
   }
   $('#viewTimeline').addEventListener('click', () => setView('timeline'));
   $('#viewDays').addEventListener('click', () => setView('days'));
@@ -10362,6 +10743,10 @@
   $('#costEstHint').addEventListener('click', e => {
     if (e.target.closest('#adoptEstBtn')) adoptEstimate();
   });
+  // the dialog's own currency picker: keep the budget boxes meaning what the
+  // prefix beside them says (see retypeTripBudget)
+  $('#inTripCurrency').addEventListener('change', e => retypeTripBudget(e.target.value));
+
   $('#shiftMinus').addEventListener('click', () => { $('#shiftDays').value = (parseInt($('#shiftDays').value, 10) || 0) - 1; });
   $('#shiftPlus').addEventListener('click', () => { $('#shiftDays').value = (parseInt($('#shiftDays').value, 10) || 0) + 1; });
 
@@ -10369,8 +10754,7 @@
   // exactly as a filter change does: the bulk bar could otherwise sit over
   // another trip's board reading "0 selected"
   $('#tripSelect').addEventListener('change', e => {
-    db.activeTripId = e.target.value;
-    exitSelectMode();
+    setActiveTrip(e.target.value);
     save();
     render();
   });
@@ -10455,7 +10839,13 @@
     }
     else if (act === 'delete-trip') {
       const t = activeTrip();
-      confirmDialog('Delete this trip?', `"${t.name}" and its ${t.items.length} item(s) will be removed. You can undo this until you reload the page.`, 'Delete trip', () => {
+      // Undo brings the trip back but not its attachments: those live in
+      // IndexedDB against the item ids and are purged below, exactly as the
+      // item and bulk deletes purge theirs. Both of those say so before they
+      // act; this one promised an undo it could not make whole and said nothing.
+      const docs = t.items.reduce((n, it) => n + (docCounts.get(it.id) || 0), 0);
+      const attached = docs ? ' Attached documents cannot be recovered.' : '';
+      confirmDialog('Delete this trip?', `"${t.name}" and its ${t.items.length} item(s) will be removed.${attached} You can undo this until you reload the page.`, 'Delete trip', () => {
         for (const it of t.items) deleteDocsForItem(it.id);
         // The two per-trip stores the db does not own. Both were left behind by
         // a delete and nothing else ever pruned them, so they grew forever on
@@ -10473,7 +10863,7 @@
         }
         dropCollapse(t.id);
         db.trips = db.trips.filter(x => x.id !== t.id);
-        db.activeTripId = db.trips.length ? db.trips[0].id : null;
+        setActiveTrip(db.trips.length ? db.trips[0].id : null);
         save(`Trip "${t.name}" deleted`);
         render();
       });
@@ -10549,7 +10939,7 @@
     // it, exactly as picking it from #tripSelect does - filters untouched
     const t = e.target.closest('button[data-trip]');
     if (t && db.trips.some(x => x.id === t.dataset.trip)) {
-      db.activeTripId = t.dataset.trip;
+      setActiveTrip(t.dataset.trip);
       save();
       render();
     }
@@ -10599,6 +10989,7 @@
     if (e.target.id === 'currencySel') {
       const trip = activeTrip();
       stampCostCurrencies(trip, trip.currency || 'USD');
+      stampBudgetCurrency(trip, trip.currency || 'USD');
       trip.currency = e.target.value;
       save(`Costs now shown in ${trip.currency} (${currencySymbol(trip.currency)}); amounts keep their entered currency and convert`);
       render();
@@ -10708,6 +11099,8 @@
       db = loadDb();
       repairDb();
       ensureTrip();
+      // the selection was made from rows this page no longer holds
+      exitSelectMode();
       // a remote merge invalidates local history: undoing another
       // device's change from here would push a stale state back up
       undoPast.length = 0;
@@ -10771,6 +11164,7 @@
     db = loadDb();
     repairDb();
     ensureTrip();
+    exitSelectMode();
     undoPast.length = 0;
     undoFuture.length = 0;
     markSaved();
@@ -10787,17 +11181,22 @@
   // once it activates over a previous install (see sw.js), and the offer is
   // made rather than taken: reloading under a half-typed item would lose it.
   if ('serviceWorker' in navigator) {
-    let updateOffered = false;
+    // One offer per VERSION, not one per tab for its lifetime. The latch used
+    // to be a plain boolean, so a tab left open across two deploys was told
+    // about the first and never about the second - it then sat there running
+    // code two versions old with nothing on screen to say so. The worker names
+    // the version it activated, so that is what is remembered; a worker that
+    // names none still gets one offer, exactly as before.
+    let offeredVersion = null;
     navigator.serviceWorker.addEventListener('message', (e) => {
       if (!e.data || e.data.type !== 'tp-update-available') return;
-      // One offer per update. The worker posts to every window client, and a
-      // second toast for the same version would just be noise.
-      if (updateOffered) return;
+      const version = e.data.version == null ? 'unknown' : String(e.data.version);
+      if (offeredVersion === version) return;
       // A page that loaded moments ago fetched the new assets itself on the way
       // in (network-first), so the worker activating right behind it has
       // nothing to offer; only a tab that has been sitting open does.
       if (performance.now() < 10000) return;
-      updateOffered = true;
+      offeredVersion = version;
       toast('A new version of Trip Planner is ready.', () => location.reload(), { action: 'Refresh', sticky: true });
     });
   }
@@ -10819,7 +11218,7 @@
   // writer (correctly case-insensitive) then refused to touch the fragment, so
   // the payload just sat in the URL doing nothing.
   const bootIsShare = viewFromHash(location.hash, ui.view).isShare;
-  // repairTrips() still runs so `db`/`realDb` is never handed downstream code
+  // repairTrips() still runs so `db` is never handed downstream code
   // (e.g. ensureTrip() on a failed share decode) in an unnormalized shape, but
   // the write-back is skipped on a share boot: opening someone else's link
   // must never touch this device's own real trip data, not even to fix up a

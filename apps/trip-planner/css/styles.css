@@ -507,8 +507,27 @@
   .money-refund + .per-night, .c-cost .money-refund ~ .conv { color: var(--text-dim); }
   .dc-cost.is-refund { background: var(--green-soft); }
 
-  .c-actions { grid-area: acts; display: flex; gap: 2px; justify-content: flex-end; align-items: flex-start; opacity: 0; transition: opacity .12s; }
-  .tp-row:hover .c-actions, .tp-row:focus-within .c-actions { opacity: 1; }
+  .c-actions { grid-area: acts; display: flex; gap: 2px; justify-content: flex-end; align-items: flex-start; transition: opacity .12s; }
+  /* Hidden-until-hover is a MOUSE affordance, and gating it on the pointer is
+     the difference between a tidy row and an unusable one: on a touch device
+     wider than the 900px fold (an iPad in landscape, a touch laptop) there is
+     no hover to reveal them with, so edit, delete, duplicate, shift and the
+     assistant were invisible with no way to get at them. The Days view has
+     always gated its own pair this way; the Timeline now matches it. */
+  @media (hover: hover) and (pointer: fine) {
+    .c-actions { opacity: 0; }
+    .tp-row:hover .c-actions, .tp-row:focus-within .c-actions { opacity: 1; }
+  }
+  /* touch, at any width: present but quiet, exactly like .dc-edit/.dc-del */
+  @media not all and (hover: hover) and (pointer: fine) {
+    .c-actions { opacity: 0.75; }
+    .tp-row:focus-within .c-actions { opacity: 1; }
+  }
+  /* A pasted URL or a hashtag-length name has no break opportunity, and one
+     of those pushed the whole PAGE into horizontal scroll at 1280. Breaking
+     inside the word is the only honest option for a title that cannot wrap. */
+  .c-title, .c-loc, .dc-title { overflow-wrap: anywhere; }
+
   .row-btn {
     background: none; border: 1px solid transparent; border-radius: 8px; padding: 5px 7px;
     color: var(--text-dim); line-height: 1; font-size: 14px; box-shadow: none;
@@ -2250,6 +2269,15 @@
     padding-top: 3.25rem;
   }
   .tp-assist-panel[hidden] { display: none; }
+  /* The panel is fixed to the right edge, so at desktop widths it sat ON TOP of
+     Undo/Redo, the trip picker, the trip menu and the right-hand summary chips:
+     "accept a card, then change my mind" needed the panel closed first. Above
+     the width where there is room for both, the page makes room instead. Below
+     it the panel IS the screen and covering is the right behaviour, and a
+     minimized panel is a pill in the corner that covers nothing. */
+  @media (min-width: 1200px) {
+    body.tp-assist-open:not(.tp-assist-min) .tp-wrap { padding-right: 452px; max-width: none; }
+  }
   .tp-assist-head {
     display: flex; align-items: center; gap: 9px; padding: 11px 12px 11px 16px;
     border-bottom: 1px solid var(--border-soft); flex: none;
@@ -2655,6 +2683,11 @@
     background: var(--bg-soft); display: flex; flex-direction: column; gap: 4px;
   }
   .assist-proposal.invalid { border-color: color-mix(in srgb, var(--amber) 50%, var(--border)); background: var(--amber-soft); }
+
+  /* "Already on your plan": a note, not an error. The card stays a normal
+     proposal (a second dinner at the same place is the traveller's call), so
+     this reads as the quiet fact it is rather than a refusal. */
+  .ap-dup { font-size: .78rem; color: var(--amber); margin-top: 2px; }
   .assist-proposal.done { border-color: var(--green); background: var(--green-soft); }
   .assist-proposal.stale { border-color: var(--border); background: var(--bg-soft); }
   .ap-op { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--text-dim); font-weight: 700; }
@@ -2862,6 +2895,14 @@
     .c-title { font-size: 15.5px; }
     .c-side { flex-direction: row; align-items: center; justify-content: space-between; width: 100%; padding-top: 4px; }
     .c-actions { opacity: 1; justify-content: flex-start; padding-top: 6px; }
+    /* Touch targets: a 28-34px control is a miss on a phone. The visual size is
+       unchanged; the tappable box grows to 44px through padding, which is what
+       a finger actually lands on. */
+    .row-btn { min-width: 44px; min-height: 44px; }
+    .status-sel { min-height: 44px; }
+    .dc-edit, .dc-del { min-width: 44px; min-height: 44px; }
+    .dc-dir { min-height: 40px; display: inline-flex; align-items: center; }
+    .issue-jump { min-height: 40px; padding-left: 8px; padding-right: 8px; }
     /* the nested-row override in the desktop block outranks the fold above,
        so it has to be restated here or nested rows keep five columns */
     .tl-day-items .tp-row { grid-template-columns: 30px minmax(0, 1fr); }
@@ -3114,8 +3155,30 @@
   }
   @media print {
     .toolbar, .c-actions, .dc-acts, .dc-edit, .dc-del, .tp-head .trip-bar, .issues, .empty .actions, .toasts { display: none !important; }
+    /* Browsers do not print background graphics by default, so a dark-theme
+       page printed as pale grey text on white: titles, times and costs were
+       effectively invisible on paper. The tokens are redefined for print, which
+       fixes every surface at once because everything reads them - rather than
+       relying on backgrounds the printer was never going to lay down. */
+    .trip-planner-app, body.tp-page {
+      --bg: #fff; --bg-card: #fff; --bg-raised: #fff; --bg-soft: #fff;
+      --text: #111; --text-dim: #444; --border: #bbb; --border-soft: #ddd;
+      --accent: #0b3d91; --accent-soft: #eef2fb;
+      --green: #0a6b3d; --amber: #7a4b00; --red: #a11; --purple: #4a3a8c;
+    }
     body.tp-page { background: #fff; }
-    .trip-planner-app { color: #000; }
+    .trip-planner-app { color: #111; }
+    /* The app's own sub-title earns no ink on a printed itinerary. The shared
+       site header and footer are NOT hidden here and must not be: app
+       stylesheets may not restyle shared chrome (enforced by
+       sync-system/tests/shared-ui-consistency.test.mjs), and reaching the same
+       elements through an element selector would dodge that rule rather than
+       respect it. Dropping the chrome from every app's print sheet belongs in
+       assets/css, as a site-level change. */
+    .tp-head .tp-brand-sub { display: none; }
+    /* status is carried by a coloured dot, and a dot with no fill is no
+       status at all, so those few elements ask for their ink */
+    .dc-dot, .cell, .status-pill { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .tp-row, .day-card, .totals { border-color: #bbb; }
     .day-card, .tl-node { break-inside: avoid; }
     /* paper has no expand affordance: a printed itinerary must contain every
@@ -3563,6 +3626,14 @@
   .type-totals .tt-list { gap: 12px; }
   .type-totals .tt-row { flex-wrap: wrap; row-gap: 0; }
   .type-totals .tt-name, .type-totals .tt-val { flex: 0 1 auto; }
+  /* the read-only twin of .status-sel: same colour language, no chevron and
+     no pressable affordance, because there is nothing to press */
+  .status-pill {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 4px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 700;
+    background: none; -webkit-appearance: none; appearance: none;
+  }
+
   .tt-bar {
     flex: 0 0 100%; height: 4px; margin-top: 6px;
     background: var(--bg-raised); border-radius: 999px; overflow: hidden;

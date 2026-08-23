@@ -55,17 +55,29 @@ const CATEGORICAL_SHAPES = ['saved-best-for-last', 'shape-drift'];
  * "front-loaded, bad-finale, shape-drift" in the app, and a third of some hub
  * pages listed shows the app's own filter would reject.
  *
+ * When the show's newest season is still airing, its average is a few episodes
+ * deep and is NOT the show's last word, so the finale-dependent shapes
+ * (big-finale, bad-finale, u-shaped) must not be derived from it - that is what
+ * `options.inProgress` says, and detectShapes suppresses exactly those three.
+ * The partial season stays in `seasonAvgs`, so the card sparkline and the
+ * season list still show it; only the finale claim is withheld.
+ *
  * @param {number[]} seasonAvgs per-season average ratings, ORDERED by season
  * @param {Set<string>} categoricalTags tags any season carries
  * @param {Function} detectShapes match.js's classifier, passed in so the
  *   browser can hand over its global and a missing one degrades to no shapes
+ * @param {{inProgress?: boolean}} [options] inProgress: the last entry of
+ *   seasonAvgs comes from a season that has not finished airing
  * @returns {string[]} trajectory shapes first, then categorical tags
  */
-function deriveShowShapes(seasonAvgs, categoricalTags, detectShapes) {
+function deriveShowShapes(seasonAvgs, categoricalTags, detectShapes, options) {
   // A single season has no cross-season trajectory, so such shows carry no
   // trajectory shape (they can still carry categorical tags).
   const trajectoryShapes = (seasonAvgs.length >= 2 && typeof detectShapes === 'function')
-    ? detectShapes(seasonAvgs.map((avg) => ({ rating: avg })))
+    ? detectShapes(
+      seasonAvgs.map((avg) => ({ rating: avg })),
+      (options && options.inProgress) ? { inProgress: true } : undefined,
+    )
     : [];
   return trajectoryShapes.concat(
     CATEGORICAL_SHAPES.filter((t) => categoricalTags.has(t) && !trajectoryShapes.includes(t)),
@@ -99,6 +111,11 @@ function buildShowAgg(matches, detectShapes) {
         seasonAvgs: [],
         seasonEpisodeSeries: [],
         categoricalShapes: new Set(),
+        // Highest season number seen, and whether that season is still airing
+        // (build-data stamps `inProgress` on it). Drives the finale-dependent
+        // half of deriveShowShapes below.
+        lastSeason: null,
+        lastSeasonInProgress: false,
       };
       byId.set(m.seriesId, s);
     }
@@ -107,6 +124,10 @@ function buildShowAgg(matches, detectShapes) {
     // the show so the Finder's shape chips and #shape= links can match them.
     for (const tag of CATEGORICAL_SHAPES) {
       if ((m.shapes || []).includes(tag)) s.categoricalShapes.add(tag);
+    }
+    if (typeof m.season === 'number' && (s.lastSeason === null || m.season > s.lastSeason)) {
+      s.lastSeason = m.season;
+      s.lastSeasonInProgress = m.inProgress === true;
     }
     // External IDs ride on every season record post-enrichment; keep the
     // first one seen so the Kometa export can build tmdb_show/tvdb_show lists.
@@ -138,8 +159,11 @@ function buildShowAgg(matches, detectShapes) {
         }
       }
     } else {
-      seasonRated = m.ratedCount || 0;
-      seasonRatingSum = m.ratingSum || 0;
+      // Numbers only. `|| 0` alone would let a string through and turn every
+      // downstream += into string concatenation, poisoning the whole series
+      // fold the way one unrated episode once NaN-poisoned aboveImdb.
+      seasonRated = Number.isFinite(m.ratedCount) ? m.ratedCount : 0;
+      seasonRatingSum = Number.isFinite(m.ratingSum) ? m.ratingSum : 0;
       s.ratingSum += seasonRatingSum;
       s.episodes += seasonRated;
       // epRatings is only shipped for single-season shows, which are the only
@@ -168,8 +192,25 @@ function buildShowAgg(matches, detectShapes) {
   const out = [];
   for (const s of byId.values()) {
     if (s.episodes === 0) continue;
+    // A show with no IMDb SERIES rating cannot be scored on what this Finder
+    // is for: the gap (avgEpisode - showRating) is its headline metric, and
+    // the show-rating filter, the gap direction segments and the hidden-gems
+    // rule all read it. Those series are dropped from the grid rather than
+    // shown with blanks. On the 2026-08-22 catalogue that is exactly 77 of
+    // 34,692 series (0.2%), which is why the Finder says "34,615 shows": every
+    // one of them is a title IMDb itself has no series-level score for. They
+    // are NOT lost: build-show-pages.js still renders each one a static page
+    // (which omits aggregateRating rather than inventing one), the A-Z index
+    // still links them, and a #show= deep link still opens the modal.
     if (typeof s.showRating !== 'number' || typeof s.votes !== 'number') continue;
-    const avgEpisode = Math.round((s.ratingSum / s.episodes) * 100) / 100;
+    // Integer tenths, not float multiply-then-round. IMDb ratings carry one
+    // decimal, so the sum is exactly a multiple of 0.1 and `sum * 10` is an
+    // integer; going through it makes the result independent of the order the
+    // sum was accumulated in. Without that, a show whose average lands exactly
+    // on a .005 boundary (The Boys: 327.4 over 40 episodes) rounded to 8.18
+    // from one accumulation order and 8.19 from another, so the static page and
+    // the app printed different numbers for the same show. 545 shows did.
+    const avgEpisode = Math.round((Math.round(s.ratingSum * 10) * 10) / s.episodes) / 100;
     const gap = Math.round((avgEpisode - s.showRating) * 100) / 100;
     const episodeSeries = s.seasonsCount === 1 ? s.seasonEpisodeSeries[0] : undefined;
     const seasonAvgs = s.seasonAvgs.slice().sort((a, b) => a.season - b.season);
@@ -180,6 +221,7 @@ function buildShowAgg(matches, detectShapes) {
       seasonAvgs.map((a) => a.avg),
       s.categoricalShapes,
       detectShapes,
+      { inProgress: s.lastSeasonInProgress },
     );
     out.push({
       seriesId: s.seriesId,
@@ -253,7 +295,17 @@ function parseFinderQuery(query) {
 // rows passing everything else - see finderRowsBeforeShape in app.js).
 function passesFinderFilters(s, f) {
   const q = (f.search || '').trim().toLowerCase();
-  if (q && !s.title.toLowerCase().includes(q) && !s.seriesId.toLowerCase().includes(q)) return false;
+  if (q) {
+    // Diacritic-folded compare when the caller supplies folded strings: the
+    // browser precomputes f.searchFold (once per render) and s.titleFold (once
+    // per row, in app.js indexShowAgg) so an ASCII query finds an accented
+    // title ("Pokemon" finds the accented spelling, "Shogun" the macron one).
+    // Node callers pass neither and keep the plain compare. Folding itself
+    // lives in app.js; this side only consumes the fields.
+    const needle = f.searchFold || q;
+    const hay = s.titleFold || s.title.toLowerCase();
+    if (!hay.includes(needle) && !s.seriesId.toLowerCase().includes(q)) return false;
+  }
   if (s.episodes < f.minEpisodes) return false;
   if (s.seasonsCount < f.minSeasons) return false;
   if (s.votes < f.minVotes) return false;
@@ -300,7 +352,22 @@ function finderComparator(key, dir) {
       if (a.year == null && b.year == null) return b.votes - a.votes;
       return a.year == null ? 1 : -1;
     }
+    // Runtime is 0 for the ~14.6k shows IMDb has no episode runtimes for. That
+    // is "unknown", not "zero hours", so those rows sink to the bottom in both
+    // directions rather than owning the whole first page of a Runtime-ascending
+    // sort. Same treatment as a null year above.
+    if (key === 'runtimeHrs' && (!(a.runtimeHrs > 0) || !(b.runtimeHrs > 0))) {
+      const aUnknown = !(a.runtimeHrs > 0);
+      const bUnknown = !(b.runtimeHrs > 0);
+      if (aUnknown && bUnknown) return b.votes - a.votes;
+      return aUnknown ? 1 : -1;
+    }
     let d = key === 'title' ? a.title.localeCompare(b.title) : a[key] - b[key];
+    // A sort key that is not numeric on these rows (an unknown key out of a
+    // hand-edited hash, or a nullable one) subtracts to NaN, and a comparator
+    // returning NaN leaves the order up to the engine. Fall through to the
+    // votes tie-break instead, so the grid is always deterministic.
+    if (!Number.isFinite(d)) d = 0;
     if (d === 0 && key !== 'votes') d = b.votes - a.votes;
     return d * mul;
   };

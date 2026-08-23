@@ -941,8 +941,14 @@ export async function run({ base, cdpPort }) {
       tichuca.closed === false && tichuca.closingSoon === false
         && /^Hours · /.test(tichuca.hours) && /2:00 AM/.test(tichuca.hours),
       JSON.stringify(tichuca), s);
-    await t('tp-hours: split hours mark 15:00 closed on a single card, and the card is demoted',
-      byTitle('Gap Cafe').closedCard === true && /Closed at 3:00 PM/.test(byTitle('Gap Cafe').hours),
+    // 15:00 sits BETWEEN the two sittings, so the honest reading is that the
+    // doors open again at 17:00 - it did not close at 3:00 PM (HR-01). The
+    // demotion is unchanged: unavailable at the proposed time either way.
+    await t('tp-hours: split hours demote a 15:00 start and say it opens again at 5:00 PM',
+      byTitle('Gap Cafe').closedCard === true
+        && /Opens at 5:00 PM/.test(byTitle('Gap Cafe').hours)
+        && !/Closed at/.test(byTitle('Gap Cafe').hours)
+        && byTitle('Gap Cafe').verdict === 'beforeOpen',
       JSON.stringify(byTitle('Gap Cafe')), s);
     await t('tp-hours: 22:30 drinks against a 23:00 close is closingSoon and says why (30 < the 45 drinks need)',
       byTitle('nightcap').hours === 'Closes at 11:00 PM · only 30 min remaining'
@@ -979,8 +985,9 @@ export async function run({ base, cdpPort }) {
     })`);
     await clickSel(s, '#confirmOverlay [data-close]', { settle: 300 });
     const afterCancel = await tripItems();
-    await t('tp-hours: accepting a closed proposal is refused, with the verified hours in the refusal',
-      asked && /closed at 3:00 PM/.test(confirmFace.text) && /verified hours that day/.test(confirmFace.text)
+    await t('tp-hours: accepting a not-yet-open proposal is refused, and the refusal says it opens later',
+      asked && /opening at 5:00 PM/.test(confirmFace.text) && /after the proposed 3:00 PM start/.test(confirmFace.text)
+        && !/closed at/i.test(confirmFace.text) && /verified hours that day/.test(confirmFace.text)
         && /cannot add it at this time/.test(confirmFace.text)
         && confirmFace.yes === 'Edit time & add myself' && afterCancel.length === before,
       JSON.stringify({ asked, confirmFace, before, afterCancel }), s);

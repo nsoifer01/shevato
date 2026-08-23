@@ -2521,9 +2521,11 @@ test('the ICS export has nowhere honest to put a guess, so it carries none', () 
     { id: 'x1', type: 'activity', title: 'Dinner: Narisawa', startDate: '2027-01-01',
       status: 'to-book', estCost: 45, estCostCurrency: 'USD' },
   ] };
-  const ics = L.buildIcs(trip);
+  const ics = L.buildIcs(trip).replace(/\r\n /g, ''); // unfold before reading values
   assert.ok(ics.includes('SUMMARY:Dinner: Narisawa'));
-  assert.ok(!ics.includes('45'));
+  // the DTSTAMP carries the export time, so look for the guess in the fields
+  // that could hold it rather than anywhere in the file
+  assert.ok(!/DESCRIPTION:[^\r]*45/.test(ics));
   assert.ok(!/estCost/i.test(ics));
 });
 
@@ -4591,15 +4593,25 @@ test('an update that says nothing about status leaves a booked item booked', () 
   assert.equal(res.proposal.display.status, 'booked');
 });
 
-test('an update that DOES claim booked still cannot mark anything booked', () => {
-  const res = L.validateTripAction(
+// The second half of this used to assert that a model saying "cancelled" left
+// the traveller's BOOKED hotel reading "To book", which is the AS-03 defect
+// written down as an expectation: running the claim through forceProposalStatus
+// is still a write, and that function can never return 'booked'. An update now
+// carries the target's own status, whatever the model says, so both halves are
+// the same rule: what is booked is a fact about the world, and only the
+// traveller can state it.
+test('an update can neither claim a booking nor take one away', () => {
+  const claim = L.validateTripAction(
     { op: 'update', match: { id: 'h1' }, set: { status: 'booked' } },
     { items: [{ ...bookedHotel(), status: 'to-book' }] });
-  assert.equal(res.proposal.status, 'to-book');
-  const cancel = L.validateTripAction(
-    { op: 'update', match: { id: 'h1' }, set: { status: 'cancelled' } },
-    { items: [bookedHotel()] });
-  assert.equal(cancel.proposal.status, 'to-book');
+  assert.equal(claim.proposal.status, 'to-book');
+  for (const said of ['cancelled', 'to-book', 'decide']) {
+    const res = L.validateTripAction(
+      { op: 'update', match: { id: 'h1' }, set: { status: said } },
+      { items: [bookedHotel()] });
+    assert.equal(res.proposal.status, 'booked', `"${said}" un-booked a reservation`);
+    assert.equal(res.proposal.display.status, 'booked');
+  }
 });
 
 test('an update proposal never labels the traveller own price as an estimate', () => {
@@ -4854,17 +4866,40 @@ test('connectionWarnings says nothing when either leg has no time', () => {
   ]), []);
 });
 
-test('connectionWarnings ignores a non-travel item and a cancelled leg', () => {
-  // an activity between the two legs means they are not back to back
-  assert.deepEqual(L.connectionWarnings([
-    cLeg('a', 'BOS to CDG', '2026-09-02', '05:00', '', '07:30'),
-    cAct('m', 'Coffee', '2026-09-02', '07:35'),
-    cLeg('b', 'CDG to FCO', '2026-09-02', '07:45'),
-  ]), []);
+test('connectionWarnings ignores a cancelled leg', () => {
   assert.deepEqual(L.connectionWarnings([
     cLeg('a', 'BOS to CDG', '2026-09-02', '05:00', '', '07:30'),
     cLeg('b', 'CDG to FCO', '2026-09-02', '07:45', '', '', 'flight', 'cancelled'),
   ]), []);
+});
+
+// This test used to assert the opposite ("an activity between the two legs
+// means they are not back to back"), and that premise is what kept DM-01 alive:
+// a 15-minute change at CDG is a 15-minute change whether or not you also
+// planned a coffee in it - if anything the coffee makes it worse. The walk
+// compared ADJACENT ROWS of the sorted list, so one note, meal or activity
+// between two legs silenced the warning on exactly the trips that have things
+// planned in them.
+test('connectionWarnings sees through a non-travel item between two legs', () => {
+  const bare = L.connectionWarnings([
+    cLeg('a', 'BOS to CDG', '2026-09-02', '05:00', '', '07:30'),
+    cLeg('b', 'CDG to FCO', '2026-09-02', '07:45'),
+  ]);
+  for (const between of [
+    cAct('m', 'Coffee', '2026-09-02', '07:35'),
+    { id: 'n', type: 'note', title: 'Buy a SIM', location: '', startDate: '2026-09-02', startTime: '', endDate: '', endTime: '', status: 'booked' },
+    { id: 'd', type: 'activity', meal: 'breakfast', title: 'Paul', location: '', startDate: '2026-09-02', startTime: '07:35', endDate: '', endTime: '', status: 'booked' },
+  ]) {
+    // identical to the pair on its own: the item in between changes nothing
+    assert.deepEqual(L.connectionWarnings([
+      cLeg('a', 'BOS to CDG', '2026-09-02', '05:00', '', '07:30'),
+      between,
+      cLeg('b', 'CDG to FCO', '2026-09-02', '07:45'),
+    ]), bare, `hidden by ${between.type}`);
+  }
+  assert.equal(bare.length, 1);
+  assert.equal(bare[0].kind, 'tight');
+  assert.equal(bare[0].minutes, 15);
 });
 
 // A bed booked for the night the two legs straddle makes this a stopover.
@@ -6131,8 +6166,13 @@ test('a comma and a quote earlier in the row cannot shift the two new columns', 
   assert.equal(rows[1][head.indexOf('paymentMethod')], 'Cash');
 });
 
+// RFC 5545 folds a content line at 75 octets and a continuation begins with one
+// space, so anything reading a VALUE unfolds first - which is what every
+// calendar client does before it shows you the text.
+function icsUnfold(ics) { return ics.replace(/\r\n /g, ''); }
+
 function icsDesc(item) {
-  return L.buildIcs({ name: 'T', items: [item] }).split('\r\n').find(l => l.startsWith('DESCRIPTION:'));
+  return icsUnfold(L.buildIcs({ name: 'T', items: [item] })).split('\r\n').find(l => l.startsWith('DESCRIPTION:'));
 }
 
 test('the calendar entry carries the deadline and the payment, as readable text', () => {
