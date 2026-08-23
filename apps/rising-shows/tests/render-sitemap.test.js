@@ -59,9 +59,9 @@ test('renderShowsSitemap URLs use the slug + tconst path scheme', () => {
   assert.ok(xml.includes('https://shevato.com/apps/rising-shows/shows/the-office-tt0386676/'));
 });
 
-test('renderShowsSitemap stamps lastmod from builtAt', () => {
+test('renderShowsSitemap carries no lastmod (the build date is not a content date)', () => {
   const xml = renderShowsSitemap(SERIES, '2026-05-18T12:34:56.000Z');
-  assert.ok(xml.includes('<lastmod>2026-05-18</lastmod>'));
+  assert.ok(!xml.includes('<lastmod>'));
 });
 
 test('selectSitemapSeries keeps the top-voted shows up to the limit', () => {

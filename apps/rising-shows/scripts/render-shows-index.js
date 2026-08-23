@@ -190,8 +190,8 @@ function renderShowsIndex(series, builtAt) {
     description,
     canonical,
     breadcrumbs: [
-      { name: 'Home', item: `${SITE}/home.html` },
-      { name: 'Apps', item: `${SITE}/apps.html` },
+      { name: 'Home', item: `${SITE}/home` },
+      { name: 'Apps', item: `${SITE}/apps` },
       { name: 'Rising Shows', item: `${SITE}/apps/rising-shows/` },
       { name: 'All shows', item: canonical },
     ],
@@ -256,8 +256,8 @@ function renderShowsLetterPage({ letter, items, pageNum, totalPages, letterTotal
     canonical,
     head,
     breadcrumbs: [
-      { name: 'Home', item: `${SITE}/home.html` },
-      { name: 'Apps', item: `${SITE}/apps.html` },
+      { name: 'Home', item: `${SITE}/home` },
+      { name: 'Apps', item: `${SITE}/apps` },
       { name: 'Rising Shows', item: `${SITE}/apps/rising-shows/` },
       { name: 'All shows', item: `${SITE}/apps/rising-shows/shows/` },
       { name: `${letter}${pageSuffix}`, item: canonical },

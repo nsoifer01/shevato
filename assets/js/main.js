@@ -1127,24 +1127,58 @@
         side: 'right'
       });
     
-    // Add proper accessibility handling
+    // The open panel behaves as a modal overlay: main.css locks body scroll
+    // while `is-menu-visible` is set, and the handlers below keep keyboard
+    // focus inside it (WCAG 2.4.3 focus order) and hand it back to the
+    // toggle on close. Before this, Tab walked the page hidden behind the
+    // overlay and the document scrolled underneath it.
+    const focusables = () => $menu.find('a[href], button:not([disabled])').toArray();
+    let menuOpen = false;
+
     const handleMenuVisibility = () => {
       const isVisible = $body.hasClass('is-menu-visible');
-      
+
       // Update aria attributes
       $menuToggle.attr('aria-expanded', isVisible);
       $menu.attr('aria-hidden', !isVisible);
-      
-      if (!isVisible) {
-        // When hiding menu, remove focus from any focused elements inside
-        const focusedElement = $menu.find(':focus');
-        if (focusedElement.length) {
-          focusedElement.blur();
-          // Optionally return focus to menu toggle
-          $menuToggle.focus();
+
+      if (isVisible === menuOpen) return; // class changed for another reason
+      menuOpen = isVisible;
+
+      if (isVisible) {
+        // #menu transitions `visibility` (main.css), so at this instant its
+        // links are still visibility:hidden and refuse focus. Wait one frame
+        // for the transition to start, then move focus in.
+        window.setTimeout(() => {
+          if (!$body.hasClass('is-menu-visible')) return;
+          const first = focusables()[0];
+          if (first && !$menu[0].contains(document.activeElement)) first.focus();
+        }, 60);
+      } else {
+        // Return focus to the control that opens the menu so keyboard users
+        // do not land on <body> after Escape, the close control or a tap
+        // outside the panel.
+        if ($menu[0].contains(document.activeElement) || document.activeElement === document.body) {
+          $menuToggle.trigger('focus');
         }
       }
     };
+
+    // Trap Tab / Shift+Tab inside the open panel, wrapping at both ends.
+    $menu.on('keydown', (event) => {
+      if (event.key !== 'Tab' || !$body.hasClass('is-menu-visible')) return;
+      const items = focusables();
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    });
     
     // Watch for visibility changes
     const observer = new MutationObserver((mutations) => {

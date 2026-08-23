@@ -92,6 +92,8 @@
   <link rel="icon" type="image/png" href="/images/fpl-planner-icon.png">
 
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" crossorigin="anonymous" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway:300,400,500,600&display=swap">
+  <link rel="stylesheet" href="../../assets/css/firebase-auth.css">
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
   <link rel="stylesheet" href="css/styles.css">
@@ -111,6 +113,7 @@
      footer, the sign-out modal, #sync-banner) can never be restyled by this
      app. Enforced by sync-system/tests/shared-ui-consistency.test.mjs. -->
 <body class="fpl-page">
+<a class="skip-link" href="#main-content">Skip to main content</a>
   <!-- Sync status banner, only visible when offline (and briefly on recovery).
        Managed by assets/js/sync-status.js. Shared chrome: stays OUTSIDE the
        app root wrapper. -->
@@ -118,7 +121,7 @@
   <div data-include="header"></div>
 
   <div class="fpl-planner-app">
-    <main class="fpl-main">
+    <main id="main-content" class="fpl-main">
       <!-- The app mounts here once a Team ID is connected. It stays empty in
            the served HTML so the page a crawler sees is identical for every
            visitor, whatever Team ID a browser happens to have stored. -->
