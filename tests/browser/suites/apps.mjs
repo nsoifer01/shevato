@@ -594,6 +594,13 @@ export async function run({ base, cdpPort }) {
     await evaluate(s, `document.querySelectorAll('.modal-close').forEach(b=>b.click())`);
     await sleep(400);
     await setViewport(s, 390, 844, true);
+    // The rail collapses behind a summary pill on phones (2026-08-22 audit:
+    // 13 wrapped rows pushed the first result about 1,300 px down), so open
+    // its <details> before tabbing or focus never reaches a chip at all and
+    // this check silently measures nothing.
+    await evaluate(s, `(()=>{const d=document.querySelector('#finderShapes')?.closest('details');
+      if(d && !d.open){ d.open = true; } return 1})()`);
+    await sleep(250);
     await waitForExpr(s, `document.querySelectorAll('#finderShapes .shape-chip').length > 1`);
     await evaluate(s, `document.querySelector('#finderShapes .shape-chip').focus()`);
     const chipCount = await evaluate(s, `document.querySelectorAll('#finderShapes .shape-chip').length`);

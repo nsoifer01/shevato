@@ -1182,6 +1182,7 @@
     // overlay and the document scrolled underneath it.
     const focusables = () => $menu.find('a[href], button:not([disabled])').toArray();
     let menuOpen = false;
+    let lockedScrollY = null;
 
     const handleMenuVisibility = () => {
       const isVisible = $body.hasClass('is-menu-visible');
@@ -1192,6 +1193,22 @@
 
       if (isVisible === menuOpen) return; // class changed for another reason
       menuOpen = isVisible;
+
+      // Scroll lock. `body.is-menu-visible { overflow: hidden }` in main.css
+      // is NOT enough on its own: with the panel open the document still
+      // scrolled behind it (measured 0 -> 300 while body overflow computed
+      // to hidden), which is what "mobile: open menu locks page scroll" in
+      // tests/browser/suites/site.mjs catches. Pinning the body at its
+      // current offset is what actually holds, so the offset has to be
+      // restored on close or the page jumps to the top.
+      if (isVisible) {
+        lockedScrollY = window.scrollY || window.pageYOffset || 0;
+        $body.css({ position: 'fixed', top: -lockedScrollY + 'px', left: 0, right: 0, width: '100%' });
+      } else if (lockedScrollY !== null) {
+        $body.css({ position: '', top: '', left: '', right: '', width: '' });
+        window.scrollTo(0, lockedScrollY);
+        lockedScrollY = null;
+      }
 
       if (isVisible) {
         // #menu transitions `visibility` (main.css), so at this instant its

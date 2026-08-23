@@ -39,12 +39,19 @@
   border: none;
   outline: none;
   box-shadow: none;
+  /* The bare text button measured 61x17 px: far below the 24 px WCAG 2.5.8
+     minimum and the 44 px comfortable touch size, for the only account entry
+     point on the site. Fill the header bar instead (visually identical: the
+     button has no background). Restored during the 2026-08-23 merge, where
+     resolving the focus-ring hunk in this block had dropped it. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   padding: 0 0.75rem;
   font-size: inherit;
   font-family: inherit;
   cursor: pointer;
   text-decoration: none;
-  display: inline-block;
   white-space: nowrap;
   height: auto;
   line-height: normal;
