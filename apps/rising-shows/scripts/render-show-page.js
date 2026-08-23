@@ -543,17 +543,42 @@ function buildTvSeasonSchema(season, seriesTitle, seriesCanonical) {
   return `  <script type="application/ld+json">\n${jsonLd(schema)}\n  </script>`;
 }
 
-// Compute mean avgRating across all seasons (weighted by episode count).
+// The show's average episode rating: THE canonical definition, the same one the
+// app's weightedAvgEpisode and finder-lib's buildShowAgg use, which is the mean
+// over every rated episode.
+//
+// It used to weight each season's already-2-dp-rounded `avgRating` by that
+// season's episode count instead. That is the same quantity in principle, but
+// rounding twice moved the printed figure for 475 of 34,692 shows against the
+// number the app shows for the same title, on a page whose whole job is to
+// agree with the app. Folding the raw episode ratings removes the second
+// rounding. Unrated episodes are skipped, never folded in as zero.
 function computeOverallAvgRating(seasons) {
   if (!seasons || seasons.length === 0) return '0.0';
-  let totalWeight = 0;
-  let weightedSum = 0;
+  let count = 0;
+  let sum = 0;
   for (const s of seasons) {
-    const epCount = (s.episodes || []).length || 1;
-    weightedSum += s.avgRating * epCount;
-    totalWeight += epCount;
+    for (const e of (s.episodes || [])) {
+      if (typeof e.rating !== 'number' || !Number.isFinite(e.rating)) continue;
+      sum += e.rating;
+      count++;
+    }
   }
-  return (weightedSum / totalWeight).toFixed(1);
+  // A season record with no episode array at all (a hand-built fixture) still
+  // has to produce something: fall back to the per-season averages.
+  if (count === 0) {
+    let seasonSum = 0;
+    let seasons2 = 0;
+    for (const s of seasons) {
+      if (typeof s.avgRating !== 'number') continue;
+      seasonSum += s.avgRating;
+      seasons2++;
+    }
+    return seasons2 === 0 ? '0.0' : (seasonSum / seasons2).toFixed(1);
+  }
+  // Integer tenths, matching finder-lib's buildShowAgg exactly, so the page and
+  // the app cannot round a boundary value in opposite directions.
+  return (Math.round((Math.round(sum * 10) * 10) / count) / 100).toFixed(1);
 }
 
 function buildDescription(title, year, n, rating, votes, overview) {

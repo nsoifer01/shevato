@@ -203,7 +203,14 @@ function buildShowAgg(matches, detectShapes) {
     // (which omits aggregateRating rather than inventing one), the A-Z index
     // still links them, and a #show= deep link still opens the modal.
     if (typeof s.showRating !== 'number' || typeof s.votes !== 'number') continue;
-    const avgEpisode = Math.round((s.ratingSum / s.episodes) * 100) / 100;
+    // Integer tenths, not float multiply-then-round. IMDb ratings carry one
+    // decimal, so the sum is exactly a multiple of 0.1 and `sum * 10` is an
+    // integer; going through it makes the result independent of the order the
+    // sum was accumulated in. Without that, a show whose average lands exactly
+    // on a .005 boundary (The Boys: 327.4 over 40 episodes) rounded to 8.18
+    // from one accumulation order and 8.19 from another, so the static page and
+    // the app printed different numbers for the same show. 545 shows did.
+    const avgEpisode = Math.round((Math.round(s.ratingSum * 10) * 10) / s.episodes) / 100;
     const gap = Math.round((avgEpisode - s.showRating) * 100) / 100;
     const episodeSeries = s.seasonsCount === 1 ? s.seasonEpisodeSeries[0] : undefined;
     const seasonAvgs = s.seasonAvgs.slice().sort((a, b) => a.season - b.season);

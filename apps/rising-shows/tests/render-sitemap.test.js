@@ -119,6 +119,28 @@ test('firstLetter folds Latin diacritics so accented titles file under their let
   assert.equal(firstLetter('\u00dcber die grenze'), 'U');
 });
 
+// Closeout follow-up to the same finding: a few Latin letters are their own
+// base character rather than a letter plus a combining mark, so NFKD leaves
+// them alone and they stayed in "#" while the app's search box folded them
+// happily. Three series on the 2026-08-22 catalogue: two Danish O-slash titles
+// and one AE-ligature.
+test('firstLetter files the Latin letters NFKD cannot decompose', () => {
+  assert.equal(firstLetter('\u00c6on flux'), 'A');
+  assert.equal(firstLetter('\u00d8rnen'), 'O');
+  assert.equal(firstLetter('\u0141\u00f3d\u017a story'), 'L');
+  assert.equal(firstLetter('\u00fer\u00f3ttur'), 'T');
+  assert.equal(firstLetter('\u0130stanbul'), 'I');
+});
+
+test('firstLetter always names a bucket with exactly one letter', () => {
+  // A sharp s uppercases to TWO characters, which used to name a bucket "SS"
+  // that no page, link or sitemap entry expects.
+  assert.equal(firstLetter('\u00dfeta'), 'S');
+  for (const t of ['\u00dfeta', '\u00c6on flux', 'breaking bad', '1899', '\u65e5\u672c']) {
+    assert.equal(firstLetter(t).length, 1, `${t} buckets to a single character`);
+  }
+});
+
 // Anything with no Latin base stays in "#": transliterating a non-Latin script
 // would be a guess about a romanisation the reader may not share, and IMDb's
 // primaryTitle is already romanised across this catalogue, so it is rare.

@@ -320,6 +320,23 @@ container is the padding box, so the strip's padding must not be added to it.
 `chipScrollDelta` is a pure function for that arithmetic and is unit tested;
 the browser suite tabs the whole strip at 390 px and asserts nothing is cropped.
 
+## Rounding a one-decimal average (2026-08-23)
+
+IMDb ratings carry one decimal, so a show's episode sum is exactly a multiple of
+0.1 and its mean can land exactly on a .005 boundary. A double cannot represent
+8.185, so which way `Math.round(x * 100) / 100` goes depends on the last bit,
+which depends on the order the sum was accumulated in. The app folds per-season
+`ratingSum` values from the index; the static page folds raw episode ratings
+from data.json. Same total, different order, different answer: 545 shows read
+0.01 apart between page and app, 7 of them differing in the tenth that the page
+actually prints (The Boys: 8.18 against 8.19).
+
+All three folds (finder-lib's `buildShowAgg`, app.js's `weightedAvgEpisode`,
+render-show-page's `computeOverallAvgRating`) now go through integer tenths -
+`Math.round(sum * 10)` is exact for this data - so the result cannot depend on
+accumulation order. Verified: 0 shows differ at 2 dp, and all 32,325 pages that
+print the number agree with the app.
+
 ## Gotchas
 
 - **A missing numeric guard NaN-poisons whole-series folds.** Defect 15:

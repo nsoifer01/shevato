@@ -297,6 +297,17 @@ function sortTitle(s) {
 // its own slug already puts it) instead of sharing the "#" bucket with
 // "¡Mucha Lucha!" and the 574 digit-initial titles.
 //
+// A handful of Latin letters are their own base character rather than a letter
+// plus a combining mark, so NFKD leaves them exactly as they are: AE and OE
+// ligatures, the Scandinavian slashed O, Polish crossed L, eth, thorn, sharp s.
+// They need naming explicitly or they fall into "#", which is where "Aeon Flux"
+// and "Ornen" (spelled with those letters) sat while the app's own search box
+// folded them happily. Only the letter they SORT under is needed here.
+const LATIN_BASE_LETTER = {
+  'Æ': 'A', 'Ø': 'O', 'Ł': 'L', 'Đ': 'D', 'Ð': 'D', 'Þ': 'T', 'ß': 'S',
+  'Œ': 'O', 'Ħ': 'H', 'Ŋ': 'N', 'İ': 'I',
+};
+
 // NFKD decomposes a precomposed letter into base + combining mark, so stripping
 // the marks leaves the base letter: Ç->C, Ö->O, Å->A, Ñ->N. Characters with no
 // Latin base survive the fold unchanged and stay in "#": digits and symbols
@@ -305,12 +316,24 @@ function sortTitle(s) {
 // the reader may not share, and IMDb primaryTitle is already romanised for the
 // catalogue, so the case is rare by construction. "#" is the honest bucket for
 // "does not sort under an English letter".
+//
+// Deliberately NOT shared with scripts/slugify.js, which folds for URLs: every
+// generated page's address depends on it and permalink stability outranks
+// tidiness. Nor with js/app.js's foldSearch, which has to preserve character
+// offsets so a match can be highlighted in the original title; this one only
+// needs a single letter.
 function firstLetter(s) {
+  const first = (s || '#').charAt(0);
+  const mapped = LATIN_BASE_LETTER[first] || LATIN_BASE_LETTER[first.toUpperCase()];
+  if (mapped) return mapped;
   const c = (s || '#')
     .normalize('NFKD')
     .replace(/[̀-ͯ]/g, '')
     .charAt(0)
-    .toUpperCase();
+    // One character, always: uppercasing a sharp s yields TWO ("SS"), which
+    // would otherwise name a bucket "SS" that no page or link expects.
+    .toUpperCase()
+    .charAt(0);
   return /[A-Z]/.test(c) ? c : '#';
 }
 

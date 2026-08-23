@@ -85,7 +85,9 @@ function weightedAvgEpisode(seasons) {
     sum += f.sum;
   }
   if (count === 0) return null;
-  return Math.round((sum / count) * 100) / 100;
+  // Integer tenths: see the note in finder-lib's buildShowAgg. Keeps this
+  // helper bit-identical to the row value and to the static page.
+  return Math.round((Math.round(sum * 10) * 10) / count) / 100;
 }
 
 function weightedRatedEpisodes(seasons) {
@@ -4131,10 +4133,13 @@ function buildFinderTable(page) {
       { label: 'Gap', text: gapStr, cls: gapClass },
       { label: 'Episodes', text: s.episodes.toLocaleString() },
       { label: 'Seasons', text: s.seasonsCount.toLocaleString() },
-      { label: 'Year', text: s.year != null ? String(s.year) : '—' },
+      // "n/a", not an em dash: the repo bans them in every surface including UI
+      // copy, and the grid card already says "runtime n/a" for the same state,
+      // so the two views now read the same.
+      { label: 'Year', text: s.year != null ? String(s.year) : 'n/a' },
       { label: 'Votes', text: formatCompactVotes(s.votes) },
       // A show with no runtime data at all is unknown, not zero hours.
-      { label: 'Runtime', text: s.runtimeHrs > 0 ? `${s.runtimeHrs.toFixed(1)}h` : '—' },
+      { label: 'Runtime', text: s.runtimeHrs > 0 ? `${s.runtimeHrs.toFixed(1)}h` : 'n/a' },
     ];
     for (const c of cells) {
       const td = document.createElement('td');
