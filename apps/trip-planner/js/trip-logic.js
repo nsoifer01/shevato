@@ -4707,10 +4707,19 @@ const TripLogic = (() => {
     return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a) <= 90 && Math.abs(b) <= 180;
   }
 
+  // A stamp a little AHEAD of the reader's clock is not junk, it is two
+  // processes disagreeing about the time: an NTP correction, a VM or laptop
+  // resume, or simply the tab that WROTE the entry reading a clock seconds
+  // ahead of the tab now reading it. `age >= 0` treated every one of those as
+  // corruption and dropped the WHOLE store, sending every venue on the trip
+  // back to Photon - the free, shared, unpaid service the lookup queue exists
+  // to go easy on. A stamp further ahead than a clock ever drifts is still
+  // junk (hand-edited storage) and still goes: minutes are skew, a day is not.
+  const VENUE_FUTURE_SLACK_MS = 5 * 60000;
   function venueFresh(rec, now) {
     if (!rec || typeof rec.at !== 'number' || !validCoord(rec.lat, rec.lon)) return false;
     const age = now - rec.at;
-    return age >= 0 && age < VENUE_TTL_MS;
+    return age > -VENUE_FUTURE_SLACK_MS && age < VENUE_TTL_MS;
   }
 
   // Applied when the persisted store is read: malformed and expired entries are

@@ -7017,6 +7017,23 @@ test('normalizeVenueCache drops junk, expired and over-cap entries', () => {
   assert.ok(!capped['v' + (L.VENUE_CACHE_MAX + 10)], 'the oldest entries are dropped');
 });
 
+test('normalizeVenueCache survives a backwards clock without discarding the store', () => {
+  // The page that WRITES an entry and the page that READS it back are different
+  // processes, and their clocks can disagree by seconds (NTP correction, VM or
+  // laptop resume). Rejecting anything stamped after `now` threw the WHOLE
+  // venue store away on such a boot and sent every venue on the trip back to
+  // Photon, the free shared service the lookup queue exists to protect. The
+  // rendered symptom was a Days row silently losing its distance chip: both
+  // ends fell back to the same city centroid and the leg was dropped as a
+  // 0 km lie.
+  const skewed = { seconds: { lat: 35.6, lon: 139.7, at: NOW + 4500 } };
+  assert.deepEqual(Object.keys(L.normalizeVenueCache(skewed, NOW)), ['seconds'],
+    'a few seconds of clock skew is not corruption');
+  // A stamp further ahead than a clock ever drifts is still junk and still goes,
+  // which is what the guard was there for (see the fromTheFuture case above).
+  assert.deepEqual(L.normalizeVenueCache({ junk: { lat: 1, lon: 1, at: NOW + 3600000 } }, NOW), {});
+});
+
 test('rememberVenue evicts the least recently written venue at the cap', () => {
   const cache = {};
   for (let i = 0; i < L.VENUE_CACHE_MAX; i++) L.rememberVenue(cache, 'v' + i, { lat: 1, lon: 1 }, NOW + i);

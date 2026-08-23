@@ -3592,6 +3592,29 @@
       rq.onerror = () => rej(rq.error);
     });
   }
+  // How many documents this set of items really has, read FRESH from the store.
+  // docCounts (the map the paperclips use) is swept once per RENDER, so a
+  // document attached since that sweep still reads as zero there. Good enough
+  // to decide whether to draw a paperclip; not good enough to decide what a
+  // destructive confirm promises, which is why the trip delete awaits this
+  // instead. An unreadable store answers 0: the confirm then says only what it
+  // can stand behind, exactly as every other docs path degrades.
+  async function countDocsForItems(ids) {
+    if (typeof indexedDB === 'undefined' || !ids.length) return 0;
+    try {
+      const d = await docsDb();
+      return await new Promise((res, rej) => {
+        const idx = d.transaction('docs', 'readonly').objectStore('docs').index('byItem');
+        let n = 0;
+        let pending = ids.length;
+        for (const id of ids) {
+          const rq = idx.count(id);
+          rq.onsuccess = () => { n += rq.result; if (!--pending) res(n); };
+          rq.onerror = () => rej(rq.error);
+        }
+      });
+    } catch { return 0; }
+  }
   async function deleteDocsForItem(itemId) {
     const db = await docsDb();
     return new Promise((res, rej) => {
@@ -10991,7 +11014,7 @@
     const btn = e.target.closest('button[data-ts-trip]');
     if (btn) jumpToSearchResult(btn.dataset.tsTrip, btn.dataset.tsItem);
   });
-  $('#tripMenu').querySelector('.tp-menu-panel').addEventListener('click', e => {
+  $('#tripMenu').querySelector('.tp-menu-panel').addEventListener('click', async e => {
     const b = e.target.closest('button[data-act]');
     // clicks on captions/dividers/padding are inert: keep the panel open
     if (!b) { e.stopPropagation(); return; }
@@ -11054,10 +11077,14 @@
       // lie (2026-08-22 audit, D2). The docs store is local-only, so the
       // orphans simply wait: purgeOrphanDocs() at the next boot removes
       // every document whose item is in no saved trip, which is the moment
-      // the undo window closes anyway. The sentence is only said when there
-      // IS something attached, so a trip with no documents keeps the plain
-      // wording rather than answering a question nobody asked.
-      const docs = t.items.reduce((n, it) => n + (docCounts.get(it.id) || 0), 0);
+      // the undo window closes anyway.
+      // The sentence is only said when there IS something attached, so a trip
+      // with no documents keeps the plain wording. The count is read FRESH
+      // from the store and awaited before the dialog opens, NOT taken from
+      // docCounts: that index is swept once per render, so a document attached
+      // since the last sweep reads as zero there and the promise would be
+      // withheld from exactly the trip that needs it.
+      const docs = await countDocsForItems(t.items.map(it => it.id));
       const attached = docs ? ' Attached documents come back with it, and are deleted for good when you reload.' : '';
       confirmDialog('Delete this trip?', `"${t.name}" and its ${t.items.length} item(s) will be removed. You can undo this until you reload the page.${attached}`, 'Delete trip', () => {
         // The two per-trip stores the db does not own. Both were left behind by
