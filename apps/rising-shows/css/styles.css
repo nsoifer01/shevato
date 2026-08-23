@@ -2080,6 +2080,11 @@ button.shape-tag.is-clickable:focus-visible {
   grid-area: spark;
   width: 100%;
 }
+/* The row hides its sparkline slot when the per-episode data did not load
+   (see the detail-error notice): a bare `hidden` attribute loses to the rule
+   above, which left an empty framed box reading as "this season has no
+   ratings". */
+.show-season .ss-spark-wrap[hidden] { display: none; }
 .show-season .ss-spark {
   width: 100%;
   height: 48px;
