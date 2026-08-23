@@ -816,3 +816,15 @@ body {
   white-space: nowrap;
   border: 0;
 }
+
+/* Inline prose link on the blue-accent marketing pages (about's email). The
+   only red element on the page before was this link, painted by the main.css
+   `a { color: #ce1b28 }` default. */
+body .inline-link {
+  color: var(--brand-blue);
+  text-decoration: underline;
+}
+body .inline-link:hover,
+body .inline-link:focus-visible {
+  color: var(--brand-blue-hover);
+}

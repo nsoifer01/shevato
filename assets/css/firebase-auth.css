@@ -83,7 +83,15 @@
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
-  outline: none !important;
+}
+
+/* Keyboard focus ring. The reset above used to pin outline:none !important
+   as well, which left Sign In the only header control with no visible focus
+   indicator (2026-08-22). :focus-visible keeps pointer clicks ring-free. */
+#header .auth-container .auth__button:focus-visible,
+.auth__button:focus-visible {
+  outline: 2px solid #ffffff !important;
+  outline-offset: 2px !important;
 }
 
 #header .auth-container .auth__user-name {
@@ -500,8 +508,10 @@ body .auth-tab--active,
 body.dark-theme .auth-tab--active,
 .auth-modal .auth-tab--active,
 #auth-modal .auth-tab--active {
-  color: #667eea !important;
-  border-bottom-color: #667eea !important;
+  /* #4558c8, not the brand #667eea: 6.0:1 on white (and 5.5:1 on the #f3f4f6
+     focus background) where #667eea was 3.66:1 and failed WCAG AA at 14 px. */
+  color: #4558c8 !important;
+  border-bottom-color: #4558c8 !important;
   background: #ffffff !important;
 }
 

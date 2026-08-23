@@ -204,6 +204,12 @@
      * @private
      */
     waitForHeader() {
+      // Bounded: pages without the header partial (moadon-alef) never grow
+      // an auth container, and an unbounded 100 ms poll ran for the life of
+      // the page. onHeaderLoaded() from the include callback still covers a
+      // header that lands after the cap.
+      let attempts = 0;
+      const MAX_ATTEMPTS = 100;
       const checkHeader = () => {
         const authContainer = $(SELECTORS.authContainer);
         if (authContainer.length > 0) {
@@ -212,6 +218,7 @@
           this.updateHeaderUI();
           return;
         }
+        if (++attempts >= MAX_ATTEMPTS || !document.querySelector('[data-include="header"]')) return;
         setTimeout(checkHeader, 100);
       };
       checkHeader();
@@ -834,22 +841,51 @@
      * @param {HTMLFormElement} form - Sign in form element
      */
     async handleSignIn(form) {
-      const formData = new FormData(form);
       const email = $('#signin-email').val().trim();
       const password = $('#signin-password').val();
 
       if (!this.validateSignInForm(email, password)) {
         return;
       }
+      if (this.state.busy) return;
 
       try {
+        this.setBusy(form, true);
         this.showMessage('Signing in...', 'info');
         await window.firebaseAuth.signIn(email, password);
         this.hideAuthModal();
       } catch (error) {
         console.error('Sign in error:', error);
-        this.showMessage(error.message, 'error');
+        this.showMessage(this.userMessage(error), 'error');
+      } finally {
+        this.setBusy(form, false);
       }
+    }
+
+    /**
+     * Disable the form's submit control while a request is in flight so a
+     * double click cannot fire two sign-in attempts. Mirrored on the modal
+     * state so the other handlers can refuse to start a second request.
+     * @private
+     */
+    setBusy(form, busy) {
+      this.state.busy = !!busy;
+      const $btn = $(form).find('button[type="submit"]');
+      $btn.prop('disabled', !!busy).attr('aria-busy', busy ? 'true' : null);
+    }
+
+    /**
+     * Only messages firebase-config.js already humanised (or our own copy)
+     * reach the banner. Anything that still looks like an SDK string, or has
+     * no message, falls back to generic copy.
+     * @private
+     */
+    userMessage(error) {
+      const text = error && typeof error.message === 'string' ? error.message.trim() : '';
+      if (!text || /^firebase\b|\(auth\//i.test(text)) {
+        return 'Something went wrong. Please try again in a moment.';
+      }
+      return text;
     }
 
     /**
@@ -865,14 +901,18 @@
       if (!this.validateSignUpForm(email, password)) {
         return;
       }
+      if (this.state.busy) return;
 
       try {
+        this.setBusy(form, true);
         this.showMessage('Creating account...', 'info');
         await window.firebaseAuth.signUp(email, password);
         this.hideAuthModal();
       } catch (error) {
         console.error('Sign up error:', error);
-        this.showMessage(error.message, 'error');
+        this.showMessage(this.userMessage(error), 'error');
+      } finally {
+        this.setBusy(form, false);
       }
     }
 
@@ -888,6 +928,9 @@
     async handleForgotPassword() {
       const email = $('#signin-email').val().trim();
       this.clearAuthFormErrors();
+      // A banner left by a failed sign-in must not sit next to a fresh field
+      // error or a reset confirmation.
+      this.clearMessages();
 
       if (!email) {
         this.showFieldError('#signin-email', '#signin-email-error', 'Enter your email above first, then tap Forgot password.');
@@ -904,7 +947,7 @@
         this.showMessage('If that address has an account, a reset link is on its way. Check your email.', 'success');
       } catch (error) {
         console.error('Password reset error:', error);
-        this.showMessage(error.message, 'error');
+        this.showMessage(this.userMessage(error), 'error');
       }
     }
 
@@ -1024,6 +1067,11 @@
       
       this.clearMessages();
       this.clearForms();
+      // Field errors and the selected tab used to survive close/reopen: the
+      // modal came back on Sign Up with a stale "valid email" error under an
+      // empty field. Reopen always starts on a clean Sign In tab.
+      this.clearAuthFormErrors();
+      if (this.state.currentTab !== 'signin') this.switchTab('signin');
       $('#auth-signin-btn').focus();
     }
 
@@ -1127,23 +1175,81 @@
         side: 'right'
       });
     
-    // Add proper accessibility handling
+    // Accessibility: aria state, focus management and scroll lock. The
+    // panel plugin only toggles `is-menu-visible` on <body>; everything a
+    // dialog-like panel needs beyond that lives here and keys off that class.
+    //   - open: lock page scroll (position preserved), move focus to the
+    //     first link, cycle Tab / Shift+Tab inside the panel;
+    //   - close (Escape, X, backdrop, link): unlock, restore the scroll
+    //     position, return focus to the Menu toggle.
+    const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    let lockedScrollY = null;
+    let wasOpen = false;
+
+    const lockScroll = () => {
+      lockedScrollY = window.scrollY || window.pageYOffset || 0;
+      $body.css({ overflow: 'hidden', position: 'fixed', top: -lockedScrollY + 'px', left: 0, right: 0 });
+    };
+    const unlockScroll = () => {
+      if (lockedScrollY === null) return;
+      $body.css({ overflow: '', position: '', top: '', left: '', right: '' });
+      window.scrollTo(0, lockedScrollY);
+      lockedScrollY = null;
+    };
+    const menuFocusables = () => $menu.find(FOCUSABLE).filter(function() {
+      return this.offsetParent !== null || this.getClientRects().length > 0;
+    }).toArray();
+
+    const onMenuKeydown = (event) => {
+      if (event.key !== 'Tab' || !$body.hasClass('is-menu-visible')) return;
+      const items = menuFocusables();
+      if (!items.length) return;
+      const first = items[0], last = items[items.length - 1];
+      const active = document.activeElement;
+      const outside = !$menu[0].contains(active);
+      if (event.shiftKey && (active === first || outside)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || outside)) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
     const handleMenuVisibility = () => {
       const isVisible = $body.hasClass('is-menu-visible');
-      
+
       // Update aria attributes
       $menuToggle.attr('aria-expanded', isVisible);
       $menu.attr('aria-hidden', !isVisible);
-      
-      if (!isVisible) {
-        // When hiding menu, remove focus from any focused elements inside
+
+      if (isVisible && !wasOpen) {
+        lockScroll();
+        $(document).on('keydown.menufocus', onMenuKeydown);
+        // #menu transitions `visibility` over 0.5s, and focus() on a
+        // still-hidden element is silently ignored, so the first link is
+        // focused with a short retry instead of once on the class flip.
+        let tries = 0;
+        const focusFirst = () => {
+          if (!$body.hasClass('is-menu-visible')) return;
+          const items = menuFocusables();
+          if (items.length) {
+            items[0].focus();
+            if (document.activeElement === items[0]) return;
+          }
+          if (++tries < 12) setTimeout(focusFirst, 60);
+        };
+        focusFirst();
+      } else if (!isVisible && wasOpen) {
+        $(document).off('keydown.menufocus');
         const focusedElement = $menu.find(':focus');
-        if (focusedElement.length) {
-          focusedElement.blur();
-          // Optionally return focus to menu toggle
-          $menuToggle.focus();
-        }
+        if (focusedElement.length) focusedElement.blur();
+        unlockScroll();
+        // Focus goes back to the toggle whatever closed the panel (Escape,
+        // X, backdrop tap); it used to stay wherever Tab had wandered.
+        $menuToggle.focus();
       }
+      wasOpen = isVisible;
     };
     
     // Watch for visibility changes
@@ -1365,6 +1471,11 @@
             if (el) { el.textContent = year; }
           });
         }
+
+        // Anything that must touch an injected partial (language-switcher.js
+        // localising the moadon-alef footer) listens for this; DOMContentLoaded
+        // fired long before the partial existed.
+        document.dispatchEvent(new CustomEvent('shevato:include-loaded', { detail: { file: includeFile } }));
       });
     });
 

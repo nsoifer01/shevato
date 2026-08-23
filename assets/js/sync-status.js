@@ -2,12 +2,15 @@
 // ----------------------------
 // Renders into two surfaces, auto-mounted on DOMContentLoaded:
 //
-//   1. `#sync-banner` — fixed top-of-viewport banner. Only visible
-//      when the user is offline (or briefly on the offline -> synced
-//      transition). Silent otherwise so it never competes with the
-//      app's own content.
+//   1. `#sync-banner` - fixed banner pinned just below the site header
+//      (its `top` follows #header's bottom edge, see placeBanner). Only
+//      visible when the user is offline (or briefly on the offline ->
+//      online transition), dismissible with its close button, and
+//      silent otherwise so it never competes with the app's content.
+//      The recovery copy says "synced" only for a signed-in user whose
+//      sync is active; a signed-out visitor just gets "Back online".
 //
-//   2. Any element with `[data-sync-status-slot]` — gets an inline
+//   2. Any element with `[data-sync-status-slot]`, gets an inline
 //      pill showing the full state label. Use this in a sidebar
 //      footer or header. Apps that don't want the pill just skip
 //      this attribute.
@@ -59,26 +62,52 @@
         el.title = next.label;
     }
 
+    // Keep the banner under the fixed site header so the header controls
+    // stay clickable; on pages without #header it sits at the top.
+    function placeBanner() {
+        if (!bannerEl || bannerEl.hidden) return;
+        const header = document.getElementById('header');
+        const bottom = header ? Math.max(0, Math.round(header.getBoundingClientRect().bottom)) : 0;
+        bannerEl.style.top = bottom + 'px';
+    }
+
+    function showBanner(state, text) {
+        bannerEl.hidden = false;
+        bannerEl.dataset.state = state;
+        bannerEl.dataset.fading = 'false';
+        bannerEl.textContent = '';
+        const label = document.createElement('span');
+        label.textContent = text;
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'sync-banner__close';
+        close.setAttribute('aria-label', 'Dismiss');
+        close.textContent = '\u00d7';
+        close.addEventListener('click', function () {
+            clearTimeout(recoveryTimer);
+            recoveryTimer = null;
+            bannerEl.hidden = true;
+            bannerEl.dataset.fading = 'false';
+        });
+        bannerEl.appendChild(label);
+        bannerEl.appendChild(close);
+        placeBanner();
+    }
+
     function updateBanner(prev, next) {
         if (!bannerEl) return;
 
         if (next.state === 'offline') {
             clearTimeout(recoveryTimer);
             recoveryTimer = null;
-            bannerEl.hidden = false;
-            bannerEl.dataset.state = 'offline';
-            bannerEl.dataset.fading = 'false';
-            bannerEl.textContent = 'You’re offline, changes saved on this device';
+            showBanner('offline', 'You\u2019re offline, changes saved on this device');
             return;
         }
 
         const justRecovered = prev && prev.state === 'offline';
         if (justRecovered) {
             clearTimeout(recoveryTimer);
-            bannerEl.hidden = false;
-            bannerEl.dataset.state = 'synced';
-            bannerEl.dataset.fading = 'false';
-            bannerEl.textContent = 'Back online — synced';
+            showBanner('synced', next.state === 'synced' ? 'Back online, synced' : 'Back online');
             recoveryTimer = setTimeout(function () {
                 if (!bannerEl) return;
                 bannerEl.dataset.fading = 'true';
@@ -141,6 +170,11 @@
         pollTimer = setInterval(render, POLL_MS);
         window.addEventListener('online', render);
         window.addEventListener('offline', render);
+        window.addEventListener('resize', placeBanner);
+        // The site header is an injected partial: if the banner is already up
+        // when it lands, re-place the banner under it (main.js dispatches this
+        // from every include callback).
+        document.addEventListener('shevato:include-loaded', placeBanner);
     }
 
     if (document.readyState === 'loading') {
