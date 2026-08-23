@@ -91,6 +91,8 @@
   <!-- Site chrome: main.css for #header / #footer / #menu styling, font-awesome
        for footer icons. App styles override what they need to. -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" crossorigin="anonymous" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway:300,400,500,600&display=swap">
+  <link rel="stylesheet" href="../../assets/css/firebase-auth.css">
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
   <link rel="stylesheet" href="css/styles.css">
@@ -105,11 +107,12 @@
   <script defer src="/assets/js/analytics.js"></script>
 </head>
 <body class="rising-shows-app">
+<a class="skip-link" href="#main-content">Skip to main content</a>
   <!-- Sync status banner — only visible when offline (and briefly on recovery). Managed by assets/js/sync-status.js. -->
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
   <div data-include="header"></div>
 
-  <main class="page">
+  <main id="main-content" class="page">
     <header class="hero">
       <h1>Rising Shows</h1>
       <p class="tagline">Rank TV shows by the <em>shape</em> of their rating trend</p>

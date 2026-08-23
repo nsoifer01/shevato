@@ -40,7 +40,6 @@ const CI_SITE_SCRIPTS = [
   'assets/js/main.js',
   'assets/js/pagination.js',
   'assets/js/passive-events-fix.js',
-  'assets/js/redirect-countdown.js'
 ];
 
 // First-party assets/js files CI does NOT check (audit finding).

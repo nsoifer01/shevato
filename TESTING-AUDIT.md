@@ -208,6 +208,12 @@ coverage.
 
 ## Final counts
 
+All numbers in this section are as of 2026-08-16 (the remediation closeout);
+the estate has grown since and the live figures are whatever `npm test` and
+`npm run test:browser` print (browser counts are pinned per suite in
+`tests/browser/run.mjs` EXPECTED_CHECKS). The skip class is fpl-planner
+data-gated skips (no downloaded seasons in `.data`), not a quarantine.
+
 At the end of the AUDIT phase (quarantines still active by design):
 
 - Unit/static (`npm test`): 3,942 tests, 3,917 pass, 0 fail, 1 deliberate
