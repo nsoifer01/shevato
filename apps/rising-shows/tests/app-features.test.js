@@ -692,3 +692,177 @@ test('Compare: load truncates an oversized stored list to the cap, clear empties
   assert.equal(helpers.Compare.size(), 0);
   assert.deepEqual(JSON.parse(ctx.localStorage.getItem(KEY_COMPARE)), []);
 });
+
+// ---------------------------------------------------------------------------
+// 2026-08 quality batch
+// ---------------------------------------------------------------------------
+
+// D3: the show modal computed an UNWEIGHTED mean of the per-season averages
+// while the cards, the list rows and the static pages used the episode-weighted
+// mean. The two disagreed at 1 dp for 2,784 multi-season shows and flipped the
+// Above-IMDb verdict for 162 of them. One definition now, everywhere.
+test('weightedAvgEpisode: weights each season by its rated-episode count', () => {
+  // 2 episodes at 9.0 and 10 episodes at 7.0. Unweighted would say 8.00.
+  const seasons = [
+    { season: 1, ratedCount: 2, ratingSum: 18, avgRating: 9 },
+    { season: 2, ratedCount: 10, ratingSum: 70, avgRating: 7 },
+  ];
+  assert.equal(helpers.weightedAvgEpisode(seasons), 7.33);
+  assert.equal(helpers.weightedRatedEpisodes(seasons), 12);
+});
+
+test('weightedAvgEpisode: full records and split records agree', () => {
+  const full = [
+    { season: 1, episodes: [{ rating: 8 }, { rating: 9 }] },
+    { season: 2, episodes: [{ rating: 7 }, { rating: 7 }, { rating: 7 }] },
+  ];
+  const split = [
+    { season: 1, ratedCount: 2, ratingSum: 17 },
+    { season: 2, ratedCount: 3, ratingSum: 21 },
+  ];
+  assert.equal(helpers.weightedAvgEpisode(full), helpers.weightedAvgEpisode(split));
+  assert.equal(helpers.weightedAvgEpisode(full), 7.6);
+});
+
+test('weightedAvgEpisode: unrated episodes are skipped, never folded in as NaN', () => {
+  // The bug class FINDINGS.md records: one unrated episode used to NaN-poison
+  // a whole-series fold, and every comparison against NaN is false.
+  const seasons = [{ season: 1, episodes: [{ rating: 8 }, { rating: null }, { rating: 9 }] }];
+  assert.equal(helpers.weightedAvgEpisode(seasons), 8.5);
+  assert.equal(helpers.weightedRatedEpisodes(seasons), 2);
+});
+
+test('weightedAvgEpisode: a show with no rated episodes returns null, not NaN', () => {
+  assert.equal(helpers.weightedAvgEpisode([{ season: 1, episodes: [] }]), null);
+  assert.equal(helpers.seasonRatedFold({ season: 1, episodes: [] }).count, 0);
+});
+
+test('seasonRatedFold: a record carrying only avgRating counts once', () => {
+  // Neither production shape (no episodes, no ratedCount). Degrades to the old
+  // unweighted behaviour rather than dropping the season.
+  const fold = helpers.seasonRatedFold({ avgRating: 8.2 });
+  assert.equal(fold.count, 1);
+  assert.equal(fold.sum, 8.2);
+});
+
+// D4: a failed detail fetch used to print "NaN votes per episode (avg)".
+test('avgVotesPerEpisode: returns null when the per-episode data is missing', () => {
+  assert.equal(helpers.avgVotesPerEpisode({ episodes: [] }), null);
+  assert.equal(helpers.avgVotesPerEpisode({}), null);
+  assert.equal(helpers.avgVotesPerEpisode({ episodes: [{ votes: 10 }, { votes: 20 }] }), 15);
+  // A missing vote count on one episode must not average in as zero.
+  assert.equal(helpers.avgVotesPerEpisode({ episodes: [{ votes: 10 }, { rating: 8 }] }), 10);
+});
+
+// D5: search was raw-lowercase on both sides, so the ASCII spelling of an
+// accented title returned nothing at all.
+test('foldSearch: folds diacritics and the letters NFKD does not decompose', () => {
+  assert.equal(helpers.foldSearch('Pokémon'), 'pokemon');
+  assert.equal(helpers.foldSearch('Shōgun'), 'shogun');
+  assert.equal(helpers.foldSearch('Élite'), 'elite');
+  assert.equal(helpers.foldSearch('Æon Flux'), 'aeon flux');
+  assert.equal(helpers.foldSearch('Straße'), 'strasse');
+  assert.equal(helpers.foldSearch('Ørnen'), 'ornen');
+  // Plain ASCII is untouched, and folding is idempotent.
+  assert.equal(helpers.foldSearch('Breaking Bad'), 'breaking bad');
+  assert.equal(helpers.foldSearch(helpers.foldSearch('Pokémon')), 'pokemon');
+});
+
+test('normalizeSearch: still strips punctuation and a leading article, now folded', () => {
+  assert.equal(helpers.normalizeSearch('The X-Files'), 'x files');
+  assert.equal(helpers.normalizeSearch('Pokémon: Indigo League'), 'pokemon indigo league');
+});
+
+// U6: one shared genre string used to be enough, which is how a British panel
+// show recommended a children's cartoon and a Korean romance recommended anime.
+const mkRelated = (seriesId, opts) => ({
+  seriesId,
+  season: 1,
+  avgRating: opts.avg ?? 8,
+  ratedCount: 10,
+  ratingSum: (opts.avg ?? 8) * 10,
+  seriesRating: opts.seriesRating ?? 8,
+  seriesVotes: opts.votes ?? 10000,
+  minVotes: opts.minVotes ?? 1000,
+  genres: opts.genres,
+  language: opts.language ?? 'en',
+  shapes: [],
+  episodes: [],
+});
+
+test('computeShowRelated: animation and live action are not interchangeable', () => {
+  const matches = [
+    mkRelated('anchor', { genres: ['Comedy', 'Game-Show'] }),
+    mkRelated('cartoon', { genres: ['Animation', 'Comedy', 'Family'] }),
+    mkRelated('panel', { genres: ['Comedy', 'Game-Show'] }),
+  ];
+  const out = helpers.computeShowRelated('anchor', matches, new Map());
+  const ids = out.map((r) => r.seriesId);
+  assert.ok(ids.includes('panel'), 'another panel show still qualifies');
+  assert.ok(!ids.includes('cartoon'), 'an animated show must not be suggested for a live-action anchor');
+});
+
+test('computeShowRelated: unscripted and scripted are not interchangeable', () => {
+  const matches = [
+    mkRelated('anchor', { genres: ['Adventure', 'Reality-TV'] }),
+    mkRelated('drama', { genres: ['Adventure', 'Drama'] }),
+    mkRelated('reality', { genres: ['Adventure', 'Reality-TV'] }),
+  ];
+  const ids = helpers.computeShowRelated('anchor', matches, new Map()).map((r) => r.seriesId);
+  assert.equal(ids.join(','), 'reality');
+});
+
+test('computeShowRelated: audience size has to be in the same ballpark', () => {
+  const matches = [
+    mkRelated('anchor', { genres: ['Comedy'], votes: 11000 }),
+    mkRelated('tiny', { genres: ['Comedy'], votes: 101 }),
+    mkRelated('peer', { genres: ['Comedy'], votes: 3000 }),
+  ];
+  const ids = helpers.computeShowRelated('anchor', matches, new Map()).map((r) => r.seriesId);
+  assert.ok(ids.includes('peer'));
+  assert.ok(!ids.includes('tiny'), 'a 101-vote show is not "more like" an 11,000-vote one');
+});
+
+test('computeShowRelated: genre overlap outranks a shared shape', () => {
+  const matches = [
+    mkRelated('anchor', { genres: ['Crime', 'Drama', 'Thriller'], avg: 8.5, seriesRating: 8.5 }),
+    // Same shape, one shared genre, and a perfect gap match.
+    mkRelated('shapeTwin', { genres: ['Drama'], avg: 8.5, seriesRating: 8.5 }),
+    // No shared shape, but three shared genres.
+    mkRelated('genreTwin', { genres: ['Crime', 'Drama', 'Thriller'], avg: 8.2, seriesRating: 8.0 }),
+  ];
+  const shapes = new Map([['anchor', ['big-finale']], ['shapeTwin', ['big-finale']], ['genreTwin', []]]);
+  const ids = helpers.computeShowRelated('anchor', matches, shapes).map((r) => r.seriesId);
+  assert.equal(ids.join(','), 'genreTwin,shapeTwin');
+});
+
+test('computeShowRelated: a shared shape still breaks a genre tie', () => {
+  const matches = [
+    mkRelated('anchor', { genres: ['Crime', 'Drama'], avg: 8.5, seriesRating: 8.5 }),
+    mkRelated('withShape', { genres: ['Crime', 'Drama'], avg: 8.0, seriesRating: 8.0 }),
+    mkRelated('withoutShape', { genres: ['Crime', 'Drama'], avg: 8.5, seriesRating: 8.5 }),
+  ];
+  const shapes = new Map([['anchor', ['rising']], ['withShape', ['rising']], ['withoutShape', []]]);
+  const out = helpers.computeShowRelated('anchor', matches, shapes);
+  assert.equal(out[0].seriesId, 'withShape');
+  assert.equal(out[0]._sharedShape, 'rising');
+});
+
+// U2: the dominant shape shown on cards and rows must be the same first entry
+// the hubs and the static pages file a show under.
+test('dominantShapeOf: first shape, or null when a show has none', () => {
+  assert.equal(helpers.dominantShapeOf({ shapes: ['rebound', 'rising'] }), 'rebound');
+  assert.equal(helpers.dominantShapeOf({ shapes: [] }), null);
+  assert.equal(helpers.dominantShapeOf({}), null);
+});
+
+test('format classifiers read the genre list, not the title', () => {
+  assert.equal(helpers.isAnimated(['Animation', 'Comedy']), true);
+  assert.equal(helpers.isAnimated(['Comedy']), false);
+  assert.equal(helpers.isUnscripted(['Game-Show']), true);
+  assert.equal(helpers.isUnscripted(['Reality-TV']), true);
+  assert.equal(helpers.isUnscripted(['Talk-Show']), true);
+  assert.equal(helpers.isUnscripted(['Drama']), false);
+  assert.equal(helpers.isAnimated(undefined), false);
+  assert.equal(helpers.isUnscripted(undefined), false);
+});

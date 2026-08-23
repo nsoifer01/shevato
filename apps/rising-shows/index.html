@@ -150,7 +150,7 @@
               <label>
                 <span class="visually-hidden">Search show title or IMDb ID</span>
                 <input type="search" id="finderSearch"
-                       placeholder="Search show title or IMDb ID (press / to focus)"
+                       placeholder="Search show title or IMDb ID"
                        autocomplete="off"
                        role="combobox"
                        aria-expanded="false"
@@ -158,6 +158,11 @@
                        aria-controls="finderSearchSuggestions"
                        aria-label="Search show title or IMDb ID">
               </label>
+              <!-- The "/" shortcut hint lives here rather than inside the
+                   placeholder, where it was the first thing to be clipped on a
+                   phone (and is meaningless on touch anyway). Hidden below
+                   900px by CSS. -->
+              <span class="search-kbd-hint" aria-hidden="true">/</span>
               <ul id="finderSearchSuggestions" class="search-suggestions" role="listbox" hidden></ul>
             </div>
           </div>
@@ -289,13 +294,17 @@
 
       <p class="meta finder-count" id="finderCount" aria-live="polite"></p>
 
-      <p class="meta finder-plex-note">Like this list? Any Finder filter can become a self-updating Plex collection - <a href="kometa/#finderPresets">see how →</a></p>
-
       <nav class="pager pager-top" id="finderPagerTop" aria-label="Pagination (top)" hidden></nav>
 
       <div class="finder-results results-grid" id="finderResults"></div>
 
       <nav class="pager" id="finderPager" aria-label="Pagination" hidden></nav>
+
+      <!-- Moved below the results (was between the result count and the first
+           card). The hero already links to the Kometa builder, and above the
+           grid this second CTA cost a full line of the first screen in a view
+           whose whole job is to show shows. -->
+      <p class="meta finder-plex-note">Like this list? Any Finder filter can become a self-updating Plex collection - <a href="kometa/#finderPresets">see how →</a></p>
     </section>
 
     <p class="footer-meta" id="footer-meta"></p>
@@ -359,18 +368,17 @@
           <div class="modal-shapes" id="modalShapes"></div>
           <p class="modal-stats" id="modalStats"></p>
           <div class="modal-primary-actions">
-            <button type="button" class="btn btn-ghost" id="modalShareCard">Share card</button>
+            <button type="button" class="btn" id="modalViewShow">📺 View show</button>
             <button type="button" class="btn watch-btn" id="modalWatchBtn"></button>
           </div>
         </div>
       </div>
-      <div class="modal-actions modal-actions-top">
-        <button type="button" class="btn btn-ghost" id="modalViewShow">📺 View show</button>
-        <a class="btn btn-ghost modal-imdb" id="modalImdb" target="_blank" rel="noopener">View season on IMDb →</a>
-        <a class="btn btn-ghost" id="modalTvdb" target="_blank" rel="noopener" hidden>View series on TVDB →</a>
-      </div>
       <p class="modal-overview" id="modalOverview"></p>
-      <h3 class="modal-section">Episode ratings</h3>
+      <p class="detail-error" id="modalDetailError" role="status" hidden>
+        <span class="detail-error-text"></span>
+        <button type="button" class="btn btn-ghost detail-retry" id="modalDetailRetry">Retry</button>
+      </p>
+      <h3 class="modal-section" id="modalCurveHeading">Episode ratings</h3>
       <svg class="modal-curve" id="modalCurve" viewBox="0 0 600 180" preserveAspectRatio="none" tabindex="0" aria-label="Episode ratings curve">
         <path class="curve-area" />
         <path class="curve-line" />
@@ -378,6 +386,11 @@
       </svg>
       <p class="modal-curve-annotation" id="modalCurveAnnotation" hidden></p>
       <ol class="modal-episodes" id="modalEpisodes"></ol>
+      <div class="modal-actions modal-actions-bottom">
+        <button type="button" class="btn btn-ghost" id="modalShareCard">Share card</button>
+        <a class="btn btn-ghost modal-imdb" id="modalImdb" target="_blank" rel="noopener">Season on IMDb →</a>
+        <a class="btn btn-ghost" id="modalTvdb" target="_blank" rel="noopener" hidden>Series on TVDB →</a>
+      </div>
     </article>
   </div>
 
@@ -394,21 +407,31 @@
           <p class="modal-subtitle" id="showModalSubtitle"></p>
           <p class="modal-stats" id="showModalStats"></p>
           <div class="modal-shapes" id="showModalShapes"></div>
-          <div class="provider-badges" id="showModalProviders"></div>
+          <!-- Streaming row. The provider chips ARE the links (one search per
+               service), so the old separate "Watch on X" button per provider
+               is gone: it duplicated this row and pushed the show's own
+               content below the fold on mobile. The note spells out that a
+               link runs a search rather than promising the title is playable
+               at that exact URL. -->
+          <div class="watch-row" id="showModalWatch" hidden>
+            <span class="watch-row-label">Watch on</span>
+            <div class="provider-badges" id="showModalProviders"></div>
+            <span class="watch-row-note">opens a search on each service</span>
+          </div>
           <div class="modal-primary-actions">
-            <button type="button" class="btn btn-ghost" id="showModalShareCard">Share card</button>
-            <button type="button" class="btn btn-ghost" id="showModalShareChart" hidden>Share chart image</button>
-            <button type="button" class="btn compare-btn" id="showModalCompare">＋ Add to compare</button>
+            <button type="button" class="btn compare-btn" id="showModalCompare">+ Add to compare</button>
           </div>
         </div>
       </div>
-      <div class="modal-actions modal-actions-top">
-        <a class="btn btn-ghost" id="showModalWatchOn" target="_blank" rel="noopener" hidden></a>
-        <a class="btn btn-ghost" id="showModalPermalink">Permalink →</a>
-        <a class="btn btn-ghost" id="showModalImdb" target="_blank" rel="noopener">View show on IMDb →</a>
-        <a class="btn btn-ghost" id="showModalTvdb" target="_blank" rel="noopener" hidden>View show on TVDB →</a>
-      </div>
       <p class="modal-overview" id="showModalOverview"></p>
+      <!-- Shown when the per-show detail fetch fails: the index-level numbers
+           above and the season list below stay correct, only the per-episode
+           curves are missing, so this explains exactly that and offers a
+           retry instead of silently rendering empty charts. -->
+      <p class="detail-error" id="showModalDetailError" role="status" hidden>
+        <span class="detail-error-text"></span>
+        <button type="button" class="btn btn-ghost detail-retry" id="showModalDetailRetry">Retry</button>
+      </p>
       <section class="cast-section" id="showModalCast" hidden>
         <h3 class="modal-section">Cast</h3>
         <ol class="cast-list" id="showModalCastList"></ol>
@@ -416,6 +439,7 @@
       <section class="season-overlay" id="showModalOverlay" hidden>
         <h3 class="modal-section">Seasons overlay</h3>
         <svg class="overlay-curve" id="showModalOverlayCurve" viewBox="0 0 600 200" preserveAspectRatio="none" aria-hidden="true"></svg>
+        <p class="overlay-hint" id="showModalOverlayHint"></p>
         <div class="overlay-legend" id="showModalOverlayLegend"></div>
       </section>
       <h3 class="modal-section">All seasons</h3>
@@ -425,6 +449,16 @@
         <h3 class="modal-section">More shows like this</h3>
         <div class="show-related-grid"></div>
       </section>
+      <!-- Utilities last. These used to sit in two rows above the overview,
+           which put seven buttons between the title and the first thing a
+           reader wants (what the show is, and how its ratings moved). -->
+      <div class="modal-actions modal-actions-bottom">
+        <button type="button" class="btn btn-ghost" id="showModalShareCard">Share card</button>
+        <button type="button" class="btn btn-ghost" id="showModalShareChart" hidden>Share chart image</button>
+        <a class="btn btn-ghost" id="showModalPermalink">Permalink →</a>
+        <a class="btn btn-ghost" id="showModalImdb" target="_blank" rel="noopener">IMDb →</a>
+        <a class="btn btn-ghost" id="showModalTvdb" target="_blank" rel="noopener" hidden>TVDB →</a>
+      </div>
     </article>
   </div>
 
@@ -440,6 +474,11 @@
       <div class="compare-legend-row">
         <div class="overlay-legend compare-legend" id="compareModalLegend"></div>
         <div class="compare-actions">
+          <!-- Mixed-length comparisons (a 37-season show against a 2-season
+               one) squash the short shows into the first few percent of the
+               x-axis. "Fit to each run" re-draws every show across the full
+               width so the SHAPES line up, which is what this app compares. -->
+          <button type="button" class="btn btn-ghost compare-action-btn" id="compareModalXMode" aria-pressed="false">Fit to each run</button>
           <button type="button" class="btn btn-ghost compare-action-btn" id="compareModalCopyLink">Copy compare link</button>
           <button type="button" class="btn btn-ghost compare-action-btn" id="compareModalShareChart">Share chart image</button>
           <button type="button" class="btn btn-ghost compare-action-btn" id="compareModalKometa">Export to Kometa</button>

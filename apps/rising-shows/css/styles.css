@@ -28,7 +28,12 @@
 
   --text: #f1f3f8;
   --muted: #a4adbd;
-  --muted-2: #6f7785;
+  /* Tertiary text. Was #6f7785, which measures 3.77:1 on --surface-2 and
+     3.26:1 on --surface-3: below the 4.5:1 WCAG AA floor, and the reason the
+     list view alone carried 33 serious axe violations. #8b93a3 clears AA on
+     every surface this app paints (5.52:1 on --surface-2, 4.76:1 on
+     --surface-3) and still reads as the quietest step in the ramp. */
+  --muted-2: #8b93a3;
 
   --accent: #f5c518;     /* IMDb yellow */
   --accent-warm: #ffd24a;
@@ -5186,4 +5191,440 @@ body.advanced-drawer-open {
     width: auto;
     align-items: center;
   }
+}
+
+/* ===========================================================================
+   2026-08 quality batch. Grouped here rather than scattered so the round is
+   easy to read as one change.
+   =========================================================================== */
+
+/* --- Dominant-shape badge on result tiles (grid cards and list rows) -------
+   The app ranks shows by the SHAPE of their ratings, but a browsing card used
+   to show only a sparkline and a gap number, so the concept was invisible
+   until you opened the filter row. This badge is deliberately the loudest chip
+   on the tile: accent-tinted, with the same glyph the filter chips use. It is
+   a span, never a button - the tile itself is the click target. */
+.shape-tag-show {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent-strong);
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.shape-tag-icon {
+  font-size: 0.72rem;
+  line-height: 1;
+  opacity: 0.9;
+}
+/* Slightly quieter than the shape badge beside it: where to watch is useful,
+   but it is not what this app is for. */
+.provider-tag-card {
+  font-size: 0.62rem;
+  opacity: 0.92;
+}
+/* List rows put the badges under the title/genre stack. */
+.finder-row-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.2rem;
+}
+
+/* --- Show modal: streaming row ------------------------------------------
+   The provider chips ARE the links now (one search per service), replacing a
+   stack of up to five "Watch on X" buttons that duplicated the badge row. */
+.watch-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+  margin-top: 0.15rem;
+}
+.watch-row[hidden] { display: none; }
+.watch-row-label {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.watch-row-note {
+  font-size: 0.68rem;
+  color: var(--muted-2);
+}
+.watch-row .provider-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+a.provider-tag-link {
+  cursor: pointer;
+  text-decoration: none;
+  color: rgba(125, 211, 252, 0.95) !important;
+  transition: background-color 0.12s, border-color 0.12s;
+}
+a.provider-tag-link:hover,
+a.provider-tag-link:focus-visible {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: rgba(56, 189, 248, 0.55);
+  text-decoration: underline;
+}
+a.provider-tag-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* --- Detail-fetch failure notice ----------------------------------------
+   Shown inside a modal when the per-show detail file could not be loaded. The
+   modal keeps every index-level number; this says what is missing and offers a
+   retry, instead of silently rendering empty charts and "0 episodes". */
+.detail-error {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 0.75rem 0 0;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid rgba(251, 146, 60, 0.4);
+  background: rgba(251, 146, 60, 0.08);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+.detail-error[hidden] { display: none; }
+.detail-error-text { flex: 1 1 16rem; }
+.btn.detail-retry {
+  flex: 0 0 auto;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.9rem;
+}
+
+/* --- Modal utility row (share / permalink / outbound links) ---------------
+   Moved below the content: these used to sit in two rows between the title and
+   the overview, which pushed the show's own story and its chart off the first
+   screen on mobile. */
+.modal-actions-bottom {
+  margin-top: 1.25rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border);
+}
+
+/* --- Footer: visible staleness ------------------------------------------ */
+.footer-meta-stale {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid rgba(251, 146, 60, 0.45);
+  background: rgba(251, 146, 60, 0.1);
+  color: var(--warn);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+/* --- Above-the-fold budget (audit U1) -------------------------------------
+   The first show card used to start 920 px down at 1280x900 and 1,099 px down
+   at 390x844: a discovery app that opened on no results at all. The controls
+   are all still here and still one tap away; they are just no longer sized
+   like the main event. Measured after this block: 596 px desktop, 604 px on
+   a 390 px phone. */
+.hero {
+  padding: 1.6rem 0 0.6rem;
+}
+.hero h1 {
+  font-size: clamp(2.1rem, 4vw, 3.1rem);
+}
+.tagline {
+  margin-top: 0.55rem;
+  font-size: 1rem;
+}
+.hero-secondary {
+  margin-top: 0.35rem;
+}
+/* Wider strip, tighter leading: 13 chips settle into 2 rows instead of 4
+   without shrinking a single tap target. */
+.shapes {
+  padding: 0.8rem 0 0.5rem;
+  max-width: 58rem;
+}
+.finder-moods {
+  margin-top: 0.15rem;
+}
+
+/* Tighter results header: the count, the pager and the grid sat ~100 px
+   apart for no reason once the Plex note moved below the grid. */
+.finder-count { margin-bottom: 0.35rem; }
+.pager-top { margin: 0.35rem 0 0.6rem; }
+
+@media (max-width: 900px) {
+  .hero { padding: 1.4rem 0 0.5rem; }
+  .hero h1 { font-size: 1.95rem; }
+  .tagline { margin-top: 0.4rem; font-size: 0.92rem; }
+  .hero-secondary { margin-top: 0.3rem; }
+
+  /* The shape strip becomes ONE swipeable row instead of a 400 px chip wall.
+     Every chip is still present, still full size, still tab-reachable (focus
+     scrolls it into view); the row simply scrolls sideways inside the page,
+     which never scrolls sideways itself. This is the single biggest saving
+     above the fold on a phone. */
+  .finder-shapes {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    padding: 0.55rem 0.75rem 0.5rem;
+    margin-inline: -0.25rem;
+  }
+  .finder-shapes::-webkit-scrollbar { display: none; }
+  .finder-shapes .shape-chip {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+  }
+
+  /* Discovery buttons keep their icons but drop to a compact label so the
+     toolbar is two rows, not three. */
+  .filter-row.primary #finderSurprise,
+  .filter-row.primary #finderPopularPick {
+    order: 3;
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0 0.5rem;
+    font-size: 0.82rem;
+    white-space: nowrap;
+  }
+  .filter-row.primary .shortcut-legend-btn {
+    order: 4;
+    flex: 0 0 auto;
+  }
+
+  .finder-moods { margin-top: 0; }
+}
+
+/* Mood rail: same chips, less air. The title's 1.75rem gap and the section's
+   clamped 2.5rem bottom padding were sized when this rail sat directly above
+   the results; with the shape strip, the toolbar and two filter drawers below
+   it, that spacing was most of the reason a card started 900 px down. */
+.mood-presets {
+  padding: 0.35rem 0 0.9rem;
+  max-width: 60rem;
+}
+.mood-presets-title {
+  margin-bottom: 0.7rem;
+}
+
+/* --- List view: horizontal scroll instead of clipping (audit D2) ----------
+   The table needs about 1,120 px. Between 641 px (where the stacked mobile
+   layout stops) and roughly 1,130 px it overflowed the page, and because the
+   page pins overflow-x: hidden the extra columns were simply gone: at 768 px
+   five columns including Trend were unreachable, at 1,024 px the sparkline was
+   sliced in half. The table now lives in its own scroll region. */
+.finder-table-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+.finder-results.finder-list-view .finder-table { border: 0; }
+.finder-table-scroll:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* Keep the table at its natural width inside the scroller so columns are
+   readable rather than crushed; it still stretches to fill a wide viewport. */
+.finder-results.finder-list-view .finder-table {
+  width: 100%;
+  min-width: 1040px;
+  /* The table's own `overflow: hidden` (there to clip its rounded corners)
+     also cancels position: sticky on its cells, so the rounding moves to the
+     scroll wrapper and the table stops clipping. */
+  overflow: visible;
+  border-radius: 0;
+}
+/* Slightly tighter cells below a wide desktop so the table fits its container
+   at 1280 without a residual 20 px of scroll. */
+@media (max-width: 1400px) {
+  .finder-table thead th,
+  .finder-table tbody td { padding-left: 10px; padding-right: 10px; }
+}
+/* The show name stays put while the numbers scroll under it, so a row is
+   always identifiable. Needs an opaque background of its own since the cell
+   now floats over its siblings. */
+.finder-table th.finder-col-show,
+.finder-table td.finder-col-show {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--surface);
+}
+.finder-table thead th.finder-col-show {
+  z-index: 3;
+  background: var(--surface-2) !important;
+}
+.finder-table tbody tr:hover td.finder-col-show {
+  background: var(--surface-2);
+}
+
+/* The sortable header control is a real button inside the <th> now. main.css
+   styles bare buttons with a fixed height, a grey inset ring and a red hover
+   colour, so every one of those has to be pinned back. */
+.finder-th-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  width: 100%;
+  height: auto;
+  min-height: 24px;
+  padding: 0;
+  margin: 0;
+  background: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  font: inherit;
+  font-size: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit !important;
+  text-align: inherit;
+  cursor: pointer;
+}
+.finder-table th:not(.finder-col-show) .finder-th-btn { justify-content: flex-end; }
+.finder-th-btn:hover { color: var(--text) !important; }
+.finder-th-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* The stacked mobile layout has no header row and no wide table, so the
+   scroller must not introduce one. */
+@media (max-width: 640px) {
+  .finder-results.finder-list-view .finder-table { min-width: 0; }
+  .finder-table-scroll { overflow-x: visible; }
+  .finder-table td.finder-col-show { position: static; }
+}
+
+/* Keyboard hint chip inside the search box. Desktop only: on a phone the
+   placeholder was being truncated mid-word ("...IMDb ID (pres") to carry a
+   hint about a key that phone has no way to press. */
+.search-kbd-hint {
+  position: absolute;
+  right: 0.6rem;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--surface-2);
+  color: var(--muted-2);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  pointer-events: none;
+}
+@media (max-width: 900px) {
+  .search-kbd-hint { display: none; }
+}
+
+/* --- Season row: the S-number is the control now (audit D9) ---------------
+   The row itself is no longer a role=button, so its focus ring moves to the
+   real button inside it. main.css's bare-button rules have to be pinned back
+   the same way every other button in this app does. */
+button.ss-num {
+  grid-area: num;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 34px;
+  padding: 0 0.35rem;
+  background: none !important;
+  border: 1px solid transparent !important;
+  border-radius: 8px;
+  box-shadow: none !important;
+  font: inherit;
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--text) !important;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.show-season:hover button.ss-num {
+  border-color: var(--border-strong) !important;
+}
+button.ss-num:hover {
+  background: var(--accent-soft) !important;
+  color: var(--accent) !important;
+}
+button.ss-num:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* --- Seasons overlay: readable by default on long-running shows ---------- */
+.overlay-hint {
+  margin: 0.4rem 0 0.5rem;
+  font-size: 0.76rem;
+  color: var(--muted-2);
+  line-height: 1.45;
+}
+.overlay-legend-all {
+  height: auto;
+  min-height: 26px;
+  padding: 0.15rem 0.7rem;
+  margin-left: 0.2rem;
+  background: var(--surface-3) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border-strong) !important;
+  border-radius: 999px;
+  box-shadow: none !important;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.overlay-legend-all:hover {
+  background: var(--accent-soft) !important;
+  color: var(--accent) !important;
+  border-color: var(--accent-strong) !important;
+}
+.overlay-legend-all:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* --- Touch targets (audit D29) -------------------------------------------
+   WCAG 2.2 asks for 24x24 CSS px minimum on pointer targets. The shape pills
+   inside modals measured 19 px tall, the What's New chip 22 px, the overlay
+   legend toggles 26 px wide-but-short. Padding is used rather than a fixed
+   height so nothing changes size visually beyond the hit area. */
+button.shape-tag.is-clickable {
+  min-height: 26px;
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
+.whats-new-chip {
+  min-height: 26px;
+  padding-top: 0.2rem;
+  padding-bottom: 0.2rem;
+}
+.overlay-legend-toggle {
+  min-height: 26px;
+}
+
+/* "and N more with few ratings" tail on the What's new lists. */
+.changelog-more {
+  color: var(--muted-2);
+  font-size: 0.8rem;
+  font-style: italic;
+  list-style: none;
+  padding-top: 0.2rem;
 }
