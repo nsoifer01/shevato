@@ -102,7 +102,10 @@ self.addEventListener('activate', (event) => {
     await self.clients.claim();
     if (!replacedPrevious) return;
     const windows = await self.clients.matchAll({ type: 'window' });
-    for (const c of windows) c.postMessage({ type: 'tp-update-available' });
+    // The version rides along so a tab can offer one toast per VERSION rather
+    // than one per tab for its lifetime: a tab left open across two deploys
+    // used to hear about the first and silently run two versions behind.
+    for (const c of windows) c.postMessage({ type: 'tp-update-available', version: CACHE_VERSION });
   })());
 });
 

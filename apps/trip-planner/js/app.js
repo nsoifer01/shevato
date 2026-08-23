@@ -1033,10 +1033,17 @@
   // Unrated and rated read as the same control at the same height: the rating is
   // a suffix on the pill, never a differently-shaped chip, so the eye finds it
   // in the same spot on every card whether or not Google had a number for it.
-  function tripMapsRatingHtml(mapsQuery) {
+  // `lookup` is false for a row nobody is going to: the link stays (a plain
+  // Maps search is useful whatever the row's status) but it carries no place
+  // key, so the observer never registers it and no billed Place Details call is
+  // made for it. A rating answers "is this worth going to", and a cancelled
+  // plan is not a question - which is exactly why its hours line is suppressed
+  // too, and paying $0.02 to decorate it was the odd one out.
+  function tripMapsRatingHtml(mapsQuery, lookup = true) {
     const key = placeCacheKey(mapsQuery);
     if (!key) return '';
-    return `<a class="tp-maps-link" data-place-key="${esc(key)}" data-place-query="${esc(mapsQuery)}"`
+    const hooks = lookup ? ` data-place-key="${esc(key)}" data-place-query="${esc(mapsQuery)}"` : '';
+    return `<a class="tp-maps-link"${hooks}`
       + ` href="${esc(mapsSearchUrl(mapsQuery))}" target="_blank" rel="noopener">`
       + `<span class="tpm-label">Google Maps</span></a>`;
   }
@@ -1083,7 +1090,9 @@
   // hotel, a restaurant and a museum can never diverge on whether they get the
   // section (see itemMapsQuery for which types derive a query), and a leg can
   // never diverge from another leg on getting directions instead of a rating.
-  const mapsHtmlFor = it => (isTravelLeg(it) ? tripDirectionsHtml(it) : tripMapsRatingHtml(itemMapsQuery(it)));
+  const mapsHtmlFor = it => (isTravelLeg(it)
+    ? tripDirectionsHtml(it)
+    : tripMapsRatingHtml(itemMapsQuery(it), it.status !== 'cancelled'));
 
   // A Days-view PLACE row's own directions action: how to get HERE from the
   // stop before it. Rendered destination-only (Maps then asks for the start,
@@ -3269,9 +3278,26 @@
   // range, which is the heaviest response the app asks for.
   const WEATHER_TIMEOUT = 12000;
 
+  // Successes are cached in localStorage; FAILURES were not remembered at all,
+  // so a 500 (or a valid-but-empty answer) was re-asked on every single Days
+  // render - six requests per render for three places, and a view toggle on a
+  // 40-place trip during an outage was ~80. Same short window the geocoder's
+  // failure memo uses, and it is per key, so a place that starts answering is
+  // picked up on the next render after the window.
+  const WEATHER_FAIL_MS = 60000;
+  const weatherFailAt = new Map();
+  function weatherFailedRecently(key) {
+    const at = weatherFailAt.get(key);
+    if (at == null) return false;
+    if (Date.now() - at < WEATHER_FAIL_MS) return true;
+    weatherFailAt.delete(key);
+    return false;
+  }
+
   function ensureWeather(pair) {
     const { key, place, month, date } = pair;
     if (weatherCache[key] || weatherInflight.has(key) || !navigator.onLine) return;
+    if (weatherFailedRecently(key)) return;
     const p = (async () => {
       const hit = await geocode(place);
       if (!hit.ok) return null;
@@ -3310,8 +3336,14 @@
       try { localStorage.setItem(WEATHER_KEY, JSON.stringify(weatherCache)); } catch { /* best effort */ }
       return rec;
     })()
-      .then(rec => { if (rec && ui.view === 'days') applyWeather(key, place, rec); return rec; })
-      .catch(() => { /* offline / geocode miss / bad response / timed out: leave the slot empty */ })
+      .then(rec => {
+        // a valid answer carrying nothing usable counts as a failure for the
+        // memo: without that it was re-fetched on every render for ever
+        if (!rec) weatherFailAt.set(key, Date.now());
+        if (rec && ui.view === 'days') applyWeather(key, place, rec);
+        return rec;
+      })
+      .catch(() => { weatherFailAt.set(key, Date.now()); /* offline / geocode miss / bad response / timed out: leave the slot empty */ })
       // every path lands here, aborted included, so the pair is free to be
       // tried again later in the session
       .finally(() => weatherInflight.delete(key));
@@ -5594,6 +5626,20 @@
           + 'using the browser\'s own "Save as PDF" destination rather than a printer driver.</span></div>');
         return;
       }
+      // pdf.js is 1.7 MB and deliberately NOT precached, so the first PDF ever
+      // opened offline finds no reader at all. Blaming the file there is wrong
+      // twice over: the same file reads fine online, and the advice sends the
+      // traveller off to copy text by hand for a problem a connection fixes.
+      if (isPdf && !(await ensurePdfJs())) {
+        setImportState('<div class="m-empty err"><span class="me-ico" aria-hidden="true">📡</span>'
+          + '<span class="me-title">The PDF reader needs a connection the first time</span>'
+          + '<span>The part of the app that reads PDFs is downloaded on first use and kept for '
+          + 'later, and it could not be fetched just now. Reconnect and choose the file again, '
+          + 'and it will work offline from then on.</span>'
+          + '<span><strong>Or right now:</strong> open the confirmation email or booking page, '
+          + 'copy the text, and paste it into the box above - that path needs no reader.</span></div>');
+        return;
+      }
       setImportState('<div class="m-empty err"><span class="me-ico" aria-hidden="true">🚫</span>'
         + '<span class="me-title">This file could not be read</span>'
         + '<span>It stores its text in a way this reader does not handle. Open the PDF, select '
@@ -5863,6 +5909,22 @@
     try { localStorage.removeItem(old); } catch { /* old cache format */ }
   }
   const geoMisses = new Set();
+  // A place the service could not ANSWER for (a 500, a refused connection, a
+  // timeout) is a different fact from one it says does not exist: the miss set
+  // above is permanent for the session, this one expires. Without it every
+  // consumer re-asked during an outage and every Map re-open asked again - 11
+  // requests for 4 places in one render, each one a 1.1s slot in a queue that
+  // is deliberately serialized. One outage now costs one request per place per
+  // window; a deliberate retry (see clearGeoMiss) clears it early.
+  const GEO_FAIL_MS = 60000;
+  const geoFailAt = new Map();
+  const geoFailedRecently = key => {
+    const at = geoFailAt.get(key);
+    if (at == null) return false;
+    if (Date.now() - at < GEO_FAIL_MS) return true;
+    geoFailAt.delete(key);
+    return false;
+  };
   const geoQueue = [];
   // key -> job for everything queued or in flight, so two concurrent callers
   // for the same place (the Map walking stops while the visa dialog resolves
@@ -5877,6 +5939,7 @@
       if (!key) return resolve({ ok: false, reason: 'empty' });
       if (geoCache[key]) return resolve({ ok: true, ...geoCache[key] });
       if (geoMisses.has(key)) return resolve({ ok: false, reason: 'notfound' });
+      if (geoFailedRecently(key)) return resolve({ ok: false, reason: 'network' });
       const pending = geoPending.get(key);
       if (pending) { pending.resolves.push(resolve); return; }
       const job = { place: place.trim(), key, resolves: [resolve] };
@@ -5933,7 +5996,7 @@
           settle({ ok: false, reason: 'notfound' });
         }
       })
-      .catch(() => settle({ ok: false, reason: 'network' }))
+      .catch(() => { geoFailAt.set(job.key, Date.now()); settle({ ok: false, reason: 'network' }); })
       .finally(() => { clearTimeout(timer); setTimeout(() => { geoBusy = false; pumpGeo(); }, 1100); });
   }
 
@@ -11104,17 +11167,22 @@
   // once it activates over a previous install (see sw.js), and the offer is
   // made rather than taken: reloading under a half-typed item would lose it.
   if ('serviceWorker' in navigator) {
-    let updateOffered = false;
+    // One offer per VERSION, not one per tab for its lifetime. The latch used
+    // to be a plain boolean, so a tab left open across two deploys was told
+    // about the first and never about the second - it then sat there running
+    // code two versions old with nothing on screen to say so. The worker names
+    // the version it activated, so that is what is remembered; a worker that
+    // names none still gets one offer, exactly as before.
+    let offeredVersion = null;
     navigator.serviceWorker.addEventListener('message', (e) => {
       if (!e.data || e.data.type !== 'tp-update-available') return;
-      // One offer per update. The worker posts to every window client, and a
-      // second toast for the same version would just be noise.
-      if (updateOffered) return;
+      const version = e.data.version == null ? 'unknown' : String(e.data.version);
+      if (offeredVersion === version) return;
       // A page that loaded moments ago fetched the new assets itself on the way
       // in (network-first), so the worker activating right behind it has
       // nothing to offer; only a tab that has been sitting open does.
       if (performance.now() < 10000) return;
-      updateOffered = true;
+      offeredVersion = version;
       toast('A new version of Trip Planner is ready.', () => location.reload(), { action: 'Refresh', sticky: true });
     });
   }

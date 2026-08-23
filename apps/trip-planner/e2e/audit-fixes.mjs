@@ -27,6 +27,9 @@
 //   MV-B1  the day menu's arrow keys do what its ARIA promises
 //   MV-B2  a read-only board does not wear editable controls
 //   DM-08  an unbreakable title does not scroll the page
+//   PP-01  a failed place lookup is not re-asked by every consumer
+//   PP-02  a failed weather lookup is not re-asked on every render
+//   PP-04  a cancelled row costs no billed venue lookup
 import {
   APP, recorder, freshIds, iso, item, trip, dbOf,
   openApp, openTab, readDb, activeTripOf, tpErrors, closePage, evaluate, evalAsync, waitForExpr, standardTrip, pressKey,
@@ -930,6 +933,94 @@ export async function run({ base, cdpPort }) {
       await t('tp-audit MV-B2: block ran', false, String(e && e.message).slice(0, 160), b || a);
     } finally {
       for (const p of [a, b]) if (p) try { await closePage(cdpPort, p); } catch { /* gone */ }
+    }
+  }
+
+
+  /* ===== provider hygiene: a failure that repeats is a failure per render == */
+  freshIds();
+  const placesTrip = trip({
+    name: 'Providers', items: [
+      item({ id: 'pp-live', title: 'Senso-ji', location: 'Tokyo', mapsQuery: 'Senso-ji Tokyo', startDate: iso(9), startTime: '10:00', status: 'to-book' }),
+      item({ id: 'pp-dead', title: 'Cancelled thing', location: 'Tokyo', mapsQuery: 'Cancelled thing Tokyo', startDate: iso(9), startTime: '12:00', status: 'cancelled' }),
+    ],
+  });
+  {
+    // PP-04: a cancelled row must not reach the billed endpoint
+    let s = null;
+    const asked = [];
+    const spy = (url, request) => {
+      if (url.includes('tp-places')) {
+        let b = {};
+        try { b = JSON.parse(request.postData || '{}'); } catch { /* empty */ }
+        asked.push(...(b.queries || []));
+        return { status: 200, body: { results: (b.queries || []).map(q => ({ query: q, status: 'ok', name: q, rating: 4.4, userRatingCount: 10, mapsUri: 'https://maps.google.com/?cid=1', confidence: 1, lat: 35.7, lon: 139.8 })), attribution: { text: 'Google Maps', url: 'https://www.google.com/maps' } } };
+      }
+      return /photon|nominatim|open-meteo|githubusercontent|tile\.openstreetmap|frankfurter|openai|googleapis|gstatic|firebase/i.test(url) ? 'fail' : null;
+    };
+    try {
+      s = await openApp(cdpPort, base, { db: dbOf([placesTrip]), net: spy });
+      await switchView(s, 'days');
+      await waitForExpr(s, `[...document.querySelectorAll('.tp-maps-link[data-place-key]')].length >= 1`, { timeout: 8000 });
+      await sleep(1200);
+      await t('tp-audit PP-04: the live row is looked up',
+        asked.some(q => /Senso-ji/i.test(q)), JSON.stringify(asked), s);
+      await t('tp-audit PP-04: the cancelled row costs nothing',
+        !asked.some(q => /Cancelled thing/i.test(q)), JSON.stringify(asked), s);
+      await t('tp-audit PP-04: and it still offers a plain Maps link',
+        await evaluate(s, `[...document.querySelectorAll('.tp-maps-link')].some(a => !a.dataset.placeKey && /google\\.com\\/maps/.test(a.href))`), '', s);
+    } catch (e) {
+      await t('tp-audit PP-04: block ran', false, String(e && e.message).slice(0, 160), s);
+    } finally {
+      if (s) try { await closePage(cdpPort, s); } catch { /* gone */ }
+    }
+  }
+
+  {
+    // PP-01 / PP-02: an outage costs one request per place per window, not one
+    // per consumer and one per render
+    let s = null;
+    const hits = { geo: 0, weather: 0 };
+    const failing = (url) => {
+      if (/nominatim/i.test(url)) { hits.geo++; return { status: 500, body: 'nope' }; }
+      if (/open-meteo/i.test(url)) { hits.weather++; return { status: 500, body: 'nope' }; }
+      return /photon|githubusercontent|tile\.openstreetmap|frankfurter|openai|googleapis|gstatic|firebase|\/\.netlify\//i.test(url) ? 'fail' : null;
+    };
+    freshIds();
+    const outageTrip = trip({
+      name: 'Outage', items: [
+        item({ id: 'o1', title: 'Museum', location: 'Rome', startDate: iso(8), startTime: '10:00' }),
+        item({ id: 'o2', title: 'Gallery', location: 'Florence', startDate: iso(9), startTime: '10:00' }),
+      ],
+    });
+    try {
+      s = await openApp(cdpPort, base, { db: dbOf([outageTrip]), net: failing });
+      await switchView(s, 'days');
+      await sleep(1500);
+      const firstWeather = hits.weather;
+      // five more renders of the same day grid
+      for (let i = 0; i < 5; i++) { await switchView(s, 'timeline'); await switchView(s, 'days'); }
+      await sleep(1500);
+      await t('tp-audit PP-02: a failed weather lookup is not re-asked on every render',
+        hits.weather <= firstWeather + 2, `first render ${firstWeather}, after five more ${hits.weather}`, s);
+      // the map, the route dialog and the GPX export all want the same places
+      const before = hits.geo;
+      await switchView(s, 'map');
+      await sleep(2500);
+      await switchView(s, 'days');
+      await switchView(s, 'map');
+      await sleep(2500);
+      await t('tp-audit PP-01: a failed place lookup is not re-asked by the next consumer',
+        hits.geo <= before + 4, `before the map ${before}, after two map opens ${hits.geo}`, s);
+      await t('tp-audit PP-01: and the app says so rather than hanging',
+        /could not|offline|hiccup/i.test(await evaluate(s, `document.getElementById('mapStatus').textContent`)),
+        await evaluate(s, `document.getElementById('mapStatus').textContent`), s);
+      await t('tp-audit PP-01: no page errors during the outage',
+        tpErrors(s).length === 0, tpErrors(s).slice(0, 2).join(' | '), s);
+    } catch (e) {
+      await t('tp-audit PP-01: block ran', false, String(e && e.message).slice(0, 160), s);
+    } finally {
+      if (s) try { await closePage(cdpPort, s); } catch { /* gone */ }
     }
   }
 
