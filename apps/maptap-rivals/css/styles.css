@@ -27,7 +27,9 @@
   --surface-3: #2a2f3d;
   --text: #e7e9ee;
   --muted: #9aa3b2;
-  --muted-2: #6b7280;
+  /* 4.99:1 on --surface-2, 5.59:1 on --surface (WCAG AA); the old
+     #6b7280 measured 3.63:1 and failed axe on every data-bearing view. */
+  --muted-2: #8a91a6;
   --accent: #6366f1;       /* indigo */
   --accent-2: #818cf8;
   --accent-soft: rgba(99, 102, 241, 0.16);
@@ -277,6 +279,12 @@ body.maptap-rivals-app textarea:focus {
   background: var(--accent-soft);
   border-color: var(--accent-strong);
   color: #fff !important;
+}
+/* Keyboard focus ring: the UA default (auto 1px, near-black) is invisible
+   on this background. */
+.view-tab:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
 }
 
 /* ---------- Section bits ---------- */
@@ -4518,6 +4526,13 @@ body.maptap-rivals-app select option {
     scrollbar-width: none;
   }
   .view-tabs::-webkit-scrollbar { display: none; }
+  /* Scroll affordance: fade the right edge while more tabs sit off-screen
+     (app.js toggles is-scroll-end / is-scrollable on scroll and resize). */
+  .view-tabs.is-scrollable:not(.is-scroll-end) {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 2.75rem), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 2.75rem), transparent);
+  }
+  .view-tab { flex: none; }
 
   /* Fix 4: prevent horizontal overflow on small viewports.
      overflow-x:hidden on body establishes a containing block that clips
@@ -5123,7 +5138,8 @@ body.maptap-rivals-app select option {
 .records-toggle-btn.is-active:hover {
   background: var(--accent-soft) !important;
   border-color: var(--accent-strong);
-  color: var(--accent-2) !important;
+  /* #a5b4fc: 6.6:1 on the tinted background; --accent-2 measured 4.4:1. */
+  color: #a5b4fc !important;
   font-weight: 700;
 }
 
@@ -5512,4 +5528,61 @@ body.maptap-rivals-app select option {
     padding-left: 0;
     border-left: 0;
   }
+}
+
+/* ---------- 2026-08 remediation: hints, orphans, heatmap tap tip ---------- */
+.modal-field-hint.modal-field-warn {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--warn);
+}
+.modal-field-hint.modal-field-warn[hidden] { display: none; }
+.settings-hint {
+  font-size: 0.74rem;
+  color: var(--warn);
+  align-self: center;
+}
+.settings-hint[hidden] { display: none; }
+.history-orphans {
+  margin: 0.75rem 0 1rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid rgba(250, 204, 21, 0.35);
+  border-radius: var(--radius-sm);
+  background: rgba(250, 204, 21, 0.06);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+  align-items: center;
+  justify-content: space-between;
+}
+.history-orphans-text { margin: 0; font-size: 0.85rem; color: var(--text); }
+.history-orphans-actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.history-orphans-actions select {
+  height: var(--ctrl-h);
+  padding: 0 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--ctrl-radius);
+  background: var(--surface-2);
+  color: var(--text);
+}
+.heatmap-tap-tip {
+  margin-top: 0.45rem;
+  font-size: 0.78rem;
+  color: var(--text);
+  min-height: 1.2em;
+}
+.wa-date-order label { display: flex; gap: 0.45rem; align-items: flex-start; cursor: pointer; }
+.wa-date-order input { margin-top: 0.2rem; }
+
+/* Touch targets on phones / coarse pointers (WCAG 2.5.8 minimum 24px,
+   aiming for 36-44px on the controls the audit measured at 20-32px). */
+@media (pointer: coarse), (max-width: 480px) {
+  .color-swatch { width: 30px; height: 30px; }
+  .icon-swatch { width: 38px; height: 38px; font-size: 1.15rem; }
+  .modal-close, .modal-close:hover { width: 38px; height: 38px; top: 0.45rem; right: 0.45rem; }
+  .my-icon-btn, .my-icon-btn:hover { width: 38px; height: 38px; }
+  .my-icon-swatch { width: 38px; height: 38px; }
+  .settings-btn, .settings-btn:hover { height: 40px; }
+  .pager .page-btn, .pager .page-btn:hover { min-width: 36px; height: 36px; }
+  .pagination select, .pagination-controls select { min-height: 36px; }
 }

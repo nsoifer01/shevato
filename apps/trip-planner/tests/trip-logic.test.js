@@ -4292,7 +4292,12 @@ test('tripStats caps the rendered span so one mistyped year cannot hang a view',
   assert.equal(st.start, '2027-03-01');
   assert.equal(st.end, '9999-12-31'); // honest, so the issues list can name it
   assert.equal(st.spanCapped, true);
-  assert.equal(st.renderEnd, L.addDays('2027-03-01', L.MAX_TRIP_DAYS - 1));
+  // Since the 2026-08-22 audit (D3) the rendered span is the CLUSTER of real
+  // dates, so a lone typo no longer pads the view out to MAX_TRIP_DAYS: the
+  // cap only bites when the cluster itself is longer than the cap (see
+  // tests/audit-2026-08.test.js). Before, this asserted start + 399.
+  assert.equal(st.renderStart, '2027-03-01');
+  assert.equal(st.renderEnd, '2027-03-04');
 });
 
 test('a normal trip reports no cap and renders to its real end', () => {
@@ -4307,15 +4312,28 @@ test('dayCards stops at the cap instead of building millions of tiles', () => {
     flight('f', 'Typo', '9999-12-31'),
   ] };
   const cards = L.dayCards(trip);
-  assert.equal(cards.length, L.MAX_TRIP_DAYS);
-  assert.equal(cards[0].totalDays, L.MAX_TRIP_DAYS);
-  assert.equal(cards[cards.length - 1].date, L.addDays('2027-03-01', L.MAX_TRIP_DAYS - 1));
+  // the cluster (4 tiles), never millions, and since D3 not 400 either
+  assert.equal(cards.length, 4);
+  assert.equal(cards[0].totalDays, 4);
+  assert.equal(cards[cards.length - 1].date, '2027-03-04');
+  // a trip whose real dates exceed the cap is still cut at MAX_TRIP_DAYS
+  const items = [];
+  for (let i = 0; i < 40; i++) items.push(stay('s' + i, 'Rome', L.addDays('2027-03-01', i * 15), L.addDays('2027-03-01', i * 15 + 3)));
+  const long = L.dayCards({ items });
+  assert.equal(long.length, L.MAX_TRIP_DAYS);
+  assert.equal(long[long.length - 1].date, L.addDays('2027-03-01', L.MAX_TRIP_DAYS - 1));
 });
 
 test('a booked span running to the year 9999 cannot blow up the booked-night set', () => {
   const trip = { items: [stay('h', 'Rome', '2027-03-01', '9999-12-31', 'booked')] };
   const st = L.tripStats(trip);
-  assert.equal(st.bookedNights, L.MAX_TRIP_DAYS);
+  // Nights are counted over the RENDERED window since 2026-08-22 (D3), and a
+  // MAX_TRIP_DAYS-day window holds MAX_TRIP_DAYS - 1 nights. This asserted
+  // MAX_TRIP_DAYS before, which was the old loop's iteration count rather
+  // than a reading of the window; either way the point is that a runaway end
+  // date stays bounded instead of counting three million nights.
+  assert.equal(st.bookedNights, L.MAX_TRIP_DAYS - 1);
+  assert.equal(st.totalTripNights, L.MAX_TRIP_DAYS - 1);
 });
 
 test('coverageGaps stops at the cap for an absurd trip end', () => {

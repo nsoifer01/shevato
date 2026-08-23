@@ -64,6 +64,12 @@
   font-size: 0.92rem;
   line-height: 1.5;
 }
+/* Links inside running text need more than colour to be told apart from
+   the sentence around them (axe link-in-text-block). */
+body.rising-shows-app .kometa-tile p a {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
 .badge-demo {
   display: inline-block;
   padding: 0.05rem 0.45rem;
@@ -219,7 +225,8 @@
   flex-shrink: 0;
 }
 .kometa-shape-count {
-  color: var(--muted-2);
+  /* --muted-2 is 3.26:1 on the --surface-3 tile; --muted is 6.5:1. */
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
   font-size: 0.8rem;
   flex-shrink: 0;
@@ -238,7 +245,8 @@
 .kometa-help {
   margin: 0.5rem 0 0;
   font-size: 0.82rem;
-  color: var(--muted-2);
+  /* --muted-2 was 3.77:1 on the panel surface at this size (axe, 2026-08). */
+  color: var(--muted);
   line-height: 1.45;
 }
 .kometa-floor-effect {
@@ -428,8 +436,28 @@
   color: inherit;
   display: block;
   white-space: pre;
+  /* main.css gives <code> its own overflow, which made every block a
+     second, unfocusable scroll region inside the focusable <pre> (axe
+     scrollable-region-focusable). The <pre> is the one that scrolls. */
+  overflow: visible;
 }
-.kometa-output-pre .yaml-comment { color: var(--muted-2); }
+.kometa-step pre code {
+  overflow: visible;
+}
+/* Links inside help text need more than colour (axe link-in-text-block).
+   Scoped under the body class to outrank styles.css's
+   `body.rising-shows-app a { text-decoration: none }`. */
+body.rising-shows-app .kometa-help a {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+.kometa-output-pre .yaml-comment { color: var(--muted); }
+/* Small text and <strong> on the builder: main.css paints strong #555 and
+   --muted-2 sits under 4.5:1 on the panel surfaces; both scoped to this page. */
+body.rising-shows-app .kometa-page small { color: var(--muted); }
+body.rising-shows-app .kometa-page strong { color: inherit; }
+/* In-text links in the how-to steps: underline, not colour alone. */
+body.rising-shows-app .kometa-step p a { text-decoration: underline; text-underline-offset: 0.15em; }
 .kometa-output-pre .yaml-key { color: var(--accent-warm); }
 .kometa-output-pre .yaml-string { color: var(--good); }
 .kometa-output-pre .yaml-number { color: #c1aaff; }

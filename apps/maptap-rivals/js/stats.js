@@ -20,7 +20,13 @@
   function weightedTotal(scores) {
     if (!Array.isArray(scores) || scores.length !== N_LOCS) return 0;
     let t = 0;
-    for (let i = 0; i < N_LOCS; i++) t += (scores[i] || 0) * WEIGHTS[i];
+    for (let i = 0; i < N_LOCS; i++) {
+      // A slot that is not a finite number (null, '', 'x', NaN) counts as 0,
+      // so one malformed record can never turn a total, and every average
+      // built on it, into NaN.
+      const v = Number(scores[i]);
+      t += (Number.isFinite(v) ? v : 0) * WEIGHTS[i];
+    }
     return t;
   }
 
@@ -115,10 +121,18 @@
           const monthIdx = MONTHS.findIndex(m => monthName.toLowerCase().startsWith(m));
           const day = Number(dayStr);
           if (monthIdx >= 0 && day >= 1 && day <= 31) {
-            const year = new Date().getFullYear();
-            const d = new Date(year, monthIdx, day);
-            const tz = d.getTimezoneOffset();
-            date = new Date(d.getTime() - tz * 60000).toISOString().slice(0, 10);
+            // A share carries no year. Assume the current one, unless that
+            // lands more than a day ahead of today (a "Dec 31" pasted on
+            // Jan 1), in which case it was last year. Dates that roll over
+            // ("Feb 30" -> Mar 2) are not dates and are dropped.
+            const now = new Date();
+            let year = now.getFullYear();
+            let d = new Date(year, monthIdx, day);
+            if (d.getTime() - now.getTime() > 86400000) { year -= 1; d = new Date(year, monthIdx, day); }
+            if (d.getMonth() === monthIdx && d.getDate() === day) {
+              const tz = d.getTimezoneOffset();
+              date = new Date(d.getTime() - tz * 60000).toISOString().slice(0, 10);
+            }
           }
         }
       }
@@ -228,14 +242,18 @@
   }
 
   // ---------- aggregates ----------
-  function stdDev(values) {
+  // Both aggregates ignore non-finite entries (a legacy record with a
+  // scalar `myScore` of NaN would otherwise poison every mean it touches).
+  function stdDev(rawValues) {
+    const values = rawValues.filter(Number.isFinite);
     if (values.length < 2) return 0;
     const mean = values.reduce((a, b) => a + b, 0) / values.length;
     const variance = values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length;
     return Math.sqrt(variance);
   }
 
-  function average(values) {
+  function average(rawValues) {
+    const values = rawValues.filter(Number.isFinite);
     if (!values.length) return 0;
     return values.reduce((a, b) => a + b, 0) / values.length;
   }

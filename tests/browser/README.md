@@ -35,6 +35,19 @@ Three runner-level guarantees:
 - Node 20+. The driver needs `--experimental-websocket` on Node 20; the npm
   script passes it. Node 22+ has `WebSocket` globally and ignores the flag.
 
+## Local gotchas
+
+- On the maintainer's machine `chromium` is the snap build, which cannot use
+  a profile directory under `/tmp`, so `npm run test:browser` times out
+  waiting for headless Chrome unless `TMPDIR` points inside the repo:
+  `TMPDIR=$PWD/.screenshots/tmp npm run test:browser` (`.screenshots/` is
+  gitignored).
+- Snap chromium ignores the SIGTERM from `child.kill()`, so a relaunch on the
+  same CDP port silently attaches to the OLD browser with its tabs still
+  open. Kill by port before relaunching (e.g. `pkill -f
+  'remote-debugging-port=922[2]'`; the bracket stops the pattern matching the
+  shell running it).
+
 ## Why it is not part of `npm test`
 
 `npm test` runs in CI on every push to master and every PR, in about two

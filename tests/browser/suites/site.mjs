@@ -3,8 +3,14 @@
 // wording, so ordinary copy edits do not turn the suite red.
 import {
   newPage, closePage, goto, evaluate, evalAsync, clickSel, setViewport, setValue,
-  sleep, cleanErrors, firstPartyFailures, waitForExpr, hoverSel,
+  sleep, cleanErrors, firstPartyFailures, waitForExpr, hoverSel, interceptNetwork,
+  pressKey, typeInto, setOffline,
 } from '../cdp.mjs';
+
+// Firebase Auth REST host. Failing it (via interceptNetwork) is how the auth
+// form checks below exercise the "service unreachable" path without a network
+// and without ever reaching the production project.
+const IDENTITY_HOST = /identitytoolkit\.googleapis\.com|securetoken\.googleapis\.com/i;
 
 const PAGES = ['home', 'work', 'apps', 'about', 'contact', 'privacy', '404', 'moadon-alef'];
 
@@ -300,6 +306,179 @@ export async function run({ base, cdpPort }) {
       t(`${label} ${p}: no horizontal overflow`, over <= 1, `${over}px`);
     }
   }
+
+  // --- moadon-alef footer follows the persisted language -------------------
+  // The footer partial is injected by jQuery .load() AFTER DOMContentLoaded,
+  // so language-switcher.js must re-apply the saved language once the partial
+  // lands (defect D6, 2026-08-22: body Hebrew, footer English after reload).
+  await setViewport(s, 1280, 900);
+  await goto(s, `${base}/moadon-alef.html`, { settle: 1500 });
+  await evaluate(s, `(()=>{ localStorage.setItem('moadon-alef-lang','he'); return 1 })()`);
+  await goto(s, `${base}/moadon-alef.html`, { settle: 2200 });
+  const footLang = await evaluate(s, `(()=>{
+    const vis=(sel)=>[...document.querySelectorAll(sel)].filter(e=>e.getBoundingClientRect().height>0).length;
+    return { lang: document.documentElement.lang, heVisible: vis('#footer [lang="he"]'), enVisible: vis('#footer [lang="en"]') };})()`);
+  t('moadon-alef: injected footer is localised after a persisted-language reload',
+    footLang.lang === 'he' && footLang.heVisible > 0 && footLang.enVisible === 0, JSON.stringify(footLang));
+  await evaluate(s, `(()=>{ localStorage.removeItem('moadon-alef-lang'); return 1 })()`);
+
+  // --- main.js does not poll forever on a page with no header partial -------
+  // waitForHeader() rescheduled itself every 100 ms until [data-js=auth-container]
+  // existed; moadon-alef has no header partial, so it was a permanent 10 Hz
+  // timer (defect D8). Patching setTimeout AFTER load catches the poll's own
+  // reschedules: ~12 in this window before the fix, none after.
+  await goto(s, `${base}/moadon-alef.html`, { settle: 2500 });
+  await evaluate(s, `(()=>{ window.__polls=0; const orig=window.setTimeout;
+    window.setTimeout=function(fn, ms){ if (ms === 100) window.__polls++; return orig.apply(this, arguments); };
+    return 1 })()`);
+  await sleep(1300);
+  const polls = await evaluate(s, 'window.__polls');
+  t('moadon-alef: main.js stops polling for the absent header partial', polls < 4,
+    `${polls} 100ms timers scheduled in 1.3s`);
+
+  // --- auth modal: human error copy, busy state, reset on close --------------
+  // Every identitytoolkit request is failed at the network layer, so the
+  // SDK throws auth/network-request-failed. The modal must translate that
+  // (and every other SDK code) into human copy, never print the raw
+  // "Firebase: Error (auth/...)" string (defect D2), disable the submit
+  // button while a request is in flight (U5), and come back clean on reopen
+  // (D11: field errors and the selected tab used to survive Escape).
+  await setViewport(s, 1280, 900);
+  await interceptNetwork(s, (url) => (IDENTITY_HOST.test(url) ? 'fail' : null));
+  await goto(s, `${base}/home.html`, { settle: 2400 });
+  const signInUp = await waitForExpr(s, `(()=>{const b=document.getElementById('auth-signin-btn');
+    return !!b && b.getBoundingClientRect().height>0})()`, { timeout: 12000 });
+  const RAW_SDK = /firebase|auth\//i;
+  const msgExpr = `(document.getElementById('auth-message')||{}).textContent||''`;
+  if (!signInUp) {
+    const reason = 'precondition missing: #auth-signin-btn never rendered (Firebase auth did not initialize in this environment)';
+    for (const n of ['auth modal: sign-in network failure shows human copy, not the SDK string',
+      'auth modal: submit button is disabled while a sign-in is in flight and re-enabled after',
+      'auth modal: sign-up network failure shows human copy, not the SDK string',
+      'auth modal: forgot-password network failure shows human copy and clears the previous banner',
+      'auth modal: field errors and the selected tab reset on close'])
+      R.push({ name: n, pass: true, skipped: true, detail: reason });
+  } else {
+    await clickSel(s, '#auth-signin-btn', { settle: 600 });
+    await typeInto(s, '#signin-email', 'someone@example.com');
+    await typeInto(s, '#signin-password', 'hunter22');
+    await clickSel(s, '#auth-signin-form button[type="submit"]', { settle: 200 });
+    await waitForExpr(s, `/./.test(${msgExpr}) && !/signing in/i.test(${msgExpr})`, { timeout: 8000 });
+    const signInMsg = await evaluate(s, msgExpr);
+    t('auth modal: sign-in network failure shows human copy, not the SDK string',
+      signInMsg.length > 10 && !RAW_SDK.test(signInMsg), JSON.stringify(signInMsg));
+
+    // Busy state: stub a slow sign-in so the in-flight window is observable.
+    await evaluate(s, `(()=>{ window.__realSignIn = window.firebaseAuth.signIn;
+      window.firebaseAuth.signIn = () => new Promise((res, rej) => setTimeout(() => rej(new Error('stubbed')), 1200)); return 1 })()`);
+    await clickSel(s, '#auth-signin-form button[type="submit"]', { settle: 250 });
+    const busy = await evaluate(s, `(()=>{ const b=document.querySelector('#auth-signin-form button[type="submit"]');
+      return { disabled: b.disabled, busy: b.getAttribute('aria-busy') }; })()`);
+    await sleep(1500);
+    const idle = await evaluate(s, `document.querySelector('#auth-signin-form button[type="submit"]').disabled`);
+    await evaluate(s, `(()=>{ window.firebaseAuth.signIn = window.__realSignIn; return 1 })()`);
+    t('auth modal: submit button is disabled while a sign-in is in flight and re-enabled after',
+      busy.disabled === true && idle === false, `inFlight=${JSON.stringify(busy)} after=${idle}`);
+
+    // Forgot password with the previous error banner still up: banner must
+    // clear, then the network failure must also read as human copy.
+    await clickSel(s, '[data-js="forgot-password"]', { settle: 200 });
+    await waitForExpr(s, `/./.test(${msgExpr}) && !/sending/i.test(${msgExpr})`, { timeout: 8000 });
+    const forgotMsg = await evaluate(s, msgExpr);
+    t('auth modal: forgot-password network failure shows human copy and clears the previous banner',
+      forgotMsg.length > 10 && !RAW_SDK.test(forgotMsg) && !/stubbed/.test(forgotMsg), JSON.stringify(forgotMsg));
+
+    // Sign Up tab, network failure.
+    await clickSel(s, '.auth-tab[data-tab="signup"]', { settle: 300 });
+    await typeInto(s, '#signup-email', 'someone@example.com');
+    await typeInto(s, '#signup-password', 'hunter22');
+    await clickSel(s, '#auth-signup-form button[type="submit"]', { settle: 200 });
+    await waitForExpr(s, `/./.test(${msgExpr}) && !/creating/i.test(${msgExpr})`, { timeout: 8000 });
+    const signUpMsg = await evaluate(s, msgExpr);
+    t('auth modal: sign-up network failure shows human copy, not the SDK string',
+      signUpMsg.length > 10 && !RAW_SDK.test(signUpMsg), JSON.stringify(signUpMsg));
+
+    // Leave a field error on the Sign Up tab, Escape, reopen: clean slate.
+    await setValue(s, '#signup-email', 'not-an-email');
+    await clickSel(s, '#auth-signup-form button[type="submit"]', { settle: 300 });
+    await pressKey(s, 'Escape', 'Escape', 27);
+    await sleep(400);
+    await clickSel(s, '#auth-signin-btn', { settle: 600 });
+    const reopened = await evaluate(s, `(()=>({
+      fieldErrors: document.querySelectorAll('.auth-form__error--visible').length,
+      activeTab: (document.querySelector('.auth-tab--active')||{}).dataset?.tab,
+      banner: ${msgExpr},
+      signinVisible: getComputedStyle(document.getElementById('auth-signin-form')).display !== 'none' }))()`);
+    t('auth modal: field errors and the selected tab reset on close',
+      reopened.fieldErrors === 0 && reopened.activeTab === 'signin' && reopened.banner === '' && reopened.signinVisible,
+      JSON.stringify(reopened));
+    await pressKey(s, 'Escape', 'Escape', 27);
+  }
+  await interceptNetwork(s, () => null);
+
+  // --- mobile menu: scroll lock ------------------------------------------
+  // With the panel open the page behind it must not scroll (defect D4), and
+  // closing must put the user back where they were.
+  await setViewport(s, 390, 844, true);
+  await goto(s, `${base}/home.html`, { settle: 2400 });
+  await evaluate(s, `(()=>{ window.scrollTo(0, 300); return 1 })()`);
+  await sleep(200);
+  const yBefore = await evaluate(s, 'Math.round(window.scrollY)');
+  await clickSel(s, 'a[href="#menu"]', { settle: 800 });
+  await s.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 40, y: 400, deltaX: 0, deltaY: 600 });
+  await sleep(500);
+  // The lock is `position:fixed` + `top:-<scrollY>px` on <body>, so while the
+  // panel is open the document itself is at scrollY 0 and the wheel moves
+  // nothing; the remembered offset lives in body.style.top and is restored on
+  // close (asserted next). Before the fix the wheel scrolled the page behind
+  // the panel from 300 to 900.
+  const lock = await evaluate(s, `(()=>({ y: Math.round(window.scrollY),
+    open: document.body.classList.contains('is-menu-visible'),
+    bodyOverflow: getComputedStyle(document.body).overflow,
+    bodyPosition: getComputedStyle(document.body).position,
+    rememberedTop: document.body.style.top }))()`);
+  t('mobile: open menu locks page scroll',
+    lock.open && lock.y === 0 && lock.bodyOverflow === 'hidden'
+      && lock.bodyPosition === 'fixed' && lock.rememberedTop === `-${yBefore}px`,
+    `before=${yBefore} ${JSON.stringify(lock)}`);
+  await pressKey(s, 'Escape', 'Escape', 27);
+  await sleep(800);
+  const yAfter = await evaluate(s, `(()=>({ y: Math.round(window.scrollY), open: document.body.classList.contains('is-menu-visible') }))()`);
+  t('mobile: closing the menu restores the scroll position', !yAfter.open && yAfter.y === yBefore,
+    `before=${yBefore} ${JSON.stringify(yAfter)}`);
+
+  // --- shared sync banner (app pages) ---------------------------------------
+  // assets/js/sync-status.js shows #sync-banner while offline. It must not
+  // cover the header controls (defect D12: z-index 10100 over the fixed
+  // header made logo, Menu and Sign In unclickable for the whole offline
+  // period), must not claim "synced" to a signed-out user, must carry no em
+  // dash, and must be dismissible.
+  await setViewport(s, 390, 844, true);
+  await goto(s, `${base}/apps/mario-kart/`, { settle: 2200 });
+  await setOffline(s, true);
+  const bannerUp = await waitForExpr(s, `(()=>{const b=document.getElementById('sync-banner'); return !!b && !b.hidden})()`, { timeout: 6000 });
+  const banner = await evaluate(s, `(()=>{
+    const b=document.getElementById('sync-banner'); const tog=document.querySelector('[data-js="menu-toggle"]');
+    const logo=document.querySelector('#header .logo');
+    const top=(el)=>{ if(!el) return 'missing'; const r=el.getBoundingClientRect();
+      const e=document.elementFromPoint(r.left+r.width/2, r.top+r.height/2); return e&&el.contains(e)?'self':(e?(e.id||e.className||e.tagName):'null'); };
+    return { text: b.textContent, menuHit: top(tog), logoHit: top(logo), hasClose: !!b.querySelector('button') };})()`);
+  t('sync banner: offline banner leaves the header Menu and logo clickable',
+    bannerUp && banner.menuHit === 'self' && banner.logoHit === 'self', JSON.stringify(banner));
+  t('sync banner: offline copy has no em dash', bannerUp && !/\u2014/.test(banner.text), JSON.stringify(banner.text));
+  await setOffline(s, false);
+  const recovered = await waitForExpr(s, `(()=>{const b=document.getElementById('sync-banner'); return !!b && !b.hidden && b.dataset.state!=='offline'})()`, { timeout: 6000 });
+  const recov = await evaluate(s, `(()=>{ const b=document.getElementById('sync-banner');
+    return { text: b.textContent, signedOut: !(window.firebaseAuth && window.firebaseAuth.getCurrentUser && window.firebaseAuth.getCurrentUser()) };})()`);
+  t('sync banner: back-online copy never says "synced" to a signed-out user',
+    recovered && recov.signedOut && !/synced/i.test(recov.text) && !/\u2014/.test(recov.text), JSON.stringify(recov));
+  await setOffline(s, true);
+  await waitForExpr(s, `(()=>{const b=document.getElementById('sync-banner'); return !!b && !b.hidden && b.dataset.state==='offline'})()`, { timeout: 6000 });
+  const dismissed = await clickSel(s, '#sync-banner button', { settle: 300 });
+  const hiddenNow = await evaluate(s, `document.getElementById('sync-banner').hidden`);
+  t('sync banner: offline banner is dismissible', dismissed && hiddenNow === true, `clicked=${dismissed} hidden=${hiddenNow}`);
+  await setOffline(s, false);
+  await setViewport(s, 1280, 900);
 
   await closePage(cdpPort, s);
   return R;

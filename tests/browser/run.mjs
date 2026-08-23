@@ -50,6 +50,23 @@ const SUITES = [
   'apps/gym-tracker/e2e/units-migration.mjs',
   'apps/fpl-planner/e2e/scenario.mjs',
   'apps/fpl-planner/e2e/lifecycle.mjs',
+  // --- 2026-08-22 remediation round: per-app audit suites -----------------
+  // Each app owns apps/<app>/e2e/audit-2026-08.mjs, holding the regressions
+  // for the defects that round fixed (renderer escaping with hostile strings,
+  // two-tab writes, destructive-action undo, import sanitising, seeded axe
+  // scans, tablet geometry). One line per app, alphabetical. They are NOT
+  // pinned in EXPECTED_CHECKS: like the trip-planner and fpl-planner suites,
+  // their check counts are their owners' to change. Arena's equivalent needs
+  // the Firebase emulators, so it stays in apps/arena/e2e/emulator.mjs behind
+  // `npm run test:arena:emulator`.
+  // -----------------------------------------------------------------------
+  'apps/football-h2h/e2e/audit-2026-08.mjs',
+  'apps/fpl-planner/e2e/audit-2026-08.mjs',
+  'apps/gym-tracker/e2e/audit-2026-08.mjs',
+  'apps/maptap-rivals/e2e/audit-2026-08.mjs',
+  'apps/mario-kart/e2e/audit-2026-08.mjs',
+  'apps/rising-shows/e2e/audit-2026-08.mjs',
+  'apps/trip-planner/e2e/audit-2026-08.mjs',
 ];
 
 // --only=<substring> runs the suites whose path contains it; --headed opens a
@@ -72,10 +89,18 @@ for (const a of args) {
 // apps.mjs note: the count is invariant whether or not the rising-shows
 // dataset is fetched (the skip path emits the same number of entries).
 const EXPECTED_CHECKS = {
-  'tests/browser/suites/site.mjs': 157,
+  // site/a11y/visual grew in the 2026-08-22 site remediation round:
+  // site +13 (moadon footer language after reload and its header-poll guard,
+  // five auth-modal error / busy / reset checks, menu scroll lock + restore,
+  // four sync-banner ones),
+  // a11y +5 (auth-modal-open axe scan, menu focus entry + focus restore +
+  // reduced motion, Sign In focus ring), visual +10 (820x1180 app overflow,
+  // hub lazy-preview height and width, shared-header overhang on the seven
+  // chrome-bearing root pages).
+  'tests/browser/suites/site.mjs': 170,
   'tests/browser/suites/apps.mjs': 101,
-  'tests/browser/suites/a11y.mjs': 33,
-  'tests/browser/suites/visual.mjs': 86,
+  'tests/browser/suites/a11y.mjs': 38,
+  'tests/browser/suites/visual.mjs': 103,
   'tests/browser/suites/perf.mjs': 41,
   'tests/browser/suites/pwa-gym.mjs': 14,
 };

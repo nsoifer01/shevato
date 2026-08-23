@@ -87,9 +87,10 @@ A season can match more than one shape - the card shows all of them.
 
 | Feature                  | What it does                                                                                       |
 | ------------------------ | -------------------------------------------------------------------------------------------------- |
-| Show Finder (main view)  | The app's single view: one result per show, aggregated across all of a show's seasons (total rated episodes, episode-weighted average episode rating, the gap vs the show's IMDb rating, votes, and total runtime). A row of **show-shape chips** and **mood presets** (see below), a search box with autocomplete suggestions (matching show title or IMDb ID, with typo-tolerant "Did you mean?" results, picking one opens that show), grid/list view toggle, tri-state genre chips (require / exclude in red / clear), decade buttons and a year range, a language filter, quick vote-threshold chips, gap-direction segments, and advanced numeric thresholds plus a sort dropdown. List view is a sortable table with clickable column headers; grid view shows show cards with a color-coded gap badge. Results are paginated (24 per page) with an active-filter chip bar, a "Clear filters" button, and a "Copy link" button. All filters live in the URL hash, so a shared or refreshed link reopens the same view. Click a card or row to open the show modal. |
+| Show Finder (main view)  | The app's single view: one result per show, aggregated across all of a show's seasons (total rated episodes, episode-weighted average episode rating, the gap vs the show's IMDb rating, votes, and total runtime). A row of **show-shape chips** and **mood presets** (see below), a search box with autocomplete suggestions (matching show title or IMDb ID, with typo-tolerant "Did you mean?" results, picking one opens that show), grid/list view toggle, tri-state genre chips (require / exclude in red / clear), decade buttons and a year range, a language filter, quick vote-threshold chips, gap-direction segments, and advanced numeric thresholds plus a sort dropdown. List view is a sortable table with clickable column headers; grid view shows show cards with a color-coded gap badge. Results are paginated (24 per page) with an active-filter chip bar, a "Clear filters" button, and a "Copy link" button; paging scrolls to the result-count line so the page you landed on stays readable under the fixed header. All filters live in the URL hash, so a shared or refreshed link reopens the same view (the search term is trimmed on the way in and out, so `#q=++breaking++` and a whitespace-only query never become part of a shared link). Click a card or row to open the show modal. |
+| Loading state            | The index is a ~34 MB JSON file, so the first paint is skeleton cards plus a live status in the result-count line ("Loading show index (12 of 33 MB)..."), which is the page's `aria-live="polite"` region. The search box stays usable and is marked `aria-busy`: **anything typed while the index downloads is kept**, merged into the finder state when the data lands, and written to the hash (a URL that already carries `q=` wins). A malformed index (not just a 404 or truncated JSON) reaches the same "Couldn't load show data - Retry" panel instead of leaving the skeletons up: `validateDataset` drops records missing an id/title/season and errors when nothing usable is left. |
 | Show-shape filter        | Toggle one or more shape chips to filter shows by the **shape of their per-season averages** (not per episode): a "rising" show is one whose season averages keep climbing, "rebound" dips then recovers, "declining" never improves, and so on. Classified by the same eleven detectors `scripts/match.js` runs per episode, loaded in the browser so there's one source of truth, plus two categorical season tags (Saved best for last, Shape drift) that a show carries whenever any of its seasons does. A show needs ≥ 2 seasons to have a cross-season trajectory shape, so single-season shows are excluded while a trajectory-shape filter is active (the two categorical chips still match them). AND across selected shapes. Each chip's count updates as you pick shapes: an inactive chip shows how many current results would remain if you added it, and a shape that would drop results to zero is greyed/disabled rather than hidden so the row stays stable. Selected shapes show as removable chips in the active-filter bar and serialize to the hash (`shape=`). |
-| Mood presets             | One-tap "Explore by mood" chips tuned to whole-show stats (Modern prestige, Crowd favorites, Kept climbing, Comeback stories, Marathon-worthy, Outshines its reputation), each with a count of how many shows it yields. Each applies an absolute filter combination - a couple lean on the show-level shapes (Kept climbing = rising, Comeback stories = rebound). Clicking the active preset clears it. The `.mood-collapsible` rail centers and collapses behind an "Explore by mood" toggle pill on mobile. |
+| Mood presets             | One-tap "Explore by mood" chips tuned to whole-show stats (Modern prestige, Crowd favorites, Kept climbing, Comeback stories, Marathon-worthy, Outshines its reputation), each with a count of how many shows it yields. Each applies an absolute filter combination - a couple lean on the show-level shapes (Kept climbing = rising, Comeback stories = rebound). Clicking the active preset clears it. The `.mood-collapsible` rail centers and collapses behind an "Explore by mood" toggle pill on mobile - the shape-chip rail above it uses the same `<details>` and collapses behind a "Filter by shape" pill on phones, because thirteen chips wrap to thirteen rows at 360 px and pushed the first result off the screen. |
 | Genre filter (tri-state) | Click a chip to **require** that genre; click again to **exclude** it (red strike); third click clears. AND across required genres. Every genre in the catalogue renders as a chip, alphabetically, in the quick-filters panel (the advanced drawer no longer duplicates them). |
 | Decade filter            | "80s / 90s / 00s / 10s / 20s" quick chips set the year range in one tap (synced with the advanced-drawer year inputs); "All" clears it. |
 | Language filter          | Multi-select chips for the top original languages (TMDB `original_language`).                      |
@@ -100,15 +101,16 @@ A season can match more than one shape - the card shows all of them.
 | Search matching          | The search box matches a show's title or its IMDb series ID (`tt…`) only, never episode names. Suggestions rank title-prefix hits first, then title substrings, then ID hits, and append typo-tolerant "Did you mean?" results under their own subheader. |
 | Compare shows            | "+ Add to compare" on each show, then a floating button opens an overlay chart of season-trajectories for up to 5 series (persisted in localStorage). The overlay's action row carries four controls: **Copy compare link** (a `#compare=<ids>` permalink that reopens the same comparison for anyone who follows it; unknown ids in a shared link are skipped rather than throwing, and opening someone else's link does not overwrite your own stored set until you edit it), **Share chart image**, **Export to Kometa**, and "Clear all". |
 | Export a comparison to Kometa | "Export to Kometa" in the compare overlay downloads a single collection YAML (`rising-shows-compare.yml`) for the 2-5 shows currently compared, built client-side by `scripts/integrations-lib.js` in the same field structure as the pre-built `exports/kometa/<shape>.yml` files. The collection name is generated from the compared titles. Shows with neither a TMDB nor a TVDB id are skipped rather than emitting a null entry. Hidden below 2 compared shows. |
+| Detail-fetch failure     | A modal's per-show `data/detail/<id>.json` can fail (offline, a bad deploy). The modal then shows one line, "Episode details could not be loaded. Retry", the season rows fall back to the index's own `episodeCount` instead of printing "0 eps", and Retry refetches (a failed fetch is evicted from the detail cache, so it is a real request). |
 | Season overlay           | In the show modal, all seasons drawn together on one chart with a legend; clicking a legend entry (the swatch or the S-number) hides/restores that season's line. |
 | Best / worst badges      | Inline pill on the highest- and lowest-rated season of each series (skipped when all seasons tie). |
-| Clickable shape pills    | The shape pills inside the show modal's season rows and the season detail modal are real buttons (Tab-reachable, Enter/Space activatable), not inert text. Activating one closes the modals and filters the grid to that shape. It also **clears the search box**, because you only ever reach a pill by looking up one specific show and leaving the query in place would AND it with the new shape and hand back that same show. This is a deliberate divergence from the toolbar shape chips, which do preserve the search term: a toolbar chip is a filter you are composing, a pill is a jump-to-similar action. |
+| Clickable shape pills    | The shape pills inside the show modal's season rows and the season detail modal are real buttons (Tab-reachable, Enter/Space activatable), not inert text. Pills whose season-level confidence is under 0.35 (the same floor `export-integrations.js` and the Kometa builder default to) render dimmed and dashed, with a "Low confidence (0.23): ..." tooltip, so a "Big finale" won on a 0.1-point margin does not read like a certainty. Activating one closes the modals and filters the grid to that shape. It also **clears the search box**, because you only ever reach a pill by looking up one specific show and leaving the query in place would AND it with the new shape and hand back that same show. This is a deliberate divergence from the toolbar shape chips, which do preserve the search term: a toolbar chip is a filter you are composing, a pill is a jump-to-similar action. |
 | Season overview          | The season detail modal shows that season's own TMDB plot summary (from `scripts/fetch-season-overviews.js`, merged into `data.json` at build time), falling back to the show-level overview when the season has none. |
 | Cast strip               | The show modal shows a top-billed cast strip, populated from the show's `data/detail/<seriesId>.json` (split-data merges each show's slice of `data/show-modal-extras.json` - cast, per-season overviews, per-episode IMDb IDs / runtimes / titles - into its detail file, so one small fetch on modal open carries everything); the section stays hidden for series with no cast data. |
 | Watched tracking         | Per-season watched toggle inside the show modal; persists in localStorage; the show modal shows a per-show watched count. |
 | Cross-device sync        | For signed-in users, watched state and the compare set mirror to Firestore through `sync-system/` (namespace `risingSeasonsApp`, legacy `rising-seasons:*` keys kept on purpose so pre-rebrand data carries over). A change made on another device re-loads both sets, re-renders the grid and updates the compare counter, debounced 750 ms. Signed-out users stay fully functional on localStorage alone. |
 | Sensitive posters        | Posters for titles carrying the IMDb "Adult" genre render blurred, with a light overlay: a small eye-off badge flags the content in the top-left corner and a prominent centered "Tap to reveal" pill is the action (badge-only on small thumbnails). The blur is deliberately the only obstruction, so the blurred artwork and the always-visible title still give context. Clicking reveals that one poster without opening its modal; the reveal is per-poster and per-session (re-blurs on reload). Applies to every surface: Finder cards and list rows, both the show and season detail modals, related-show rows, and search-suggestion thumbnails. Adult titles are detected by genre on any season; lightweight surfaces (suggestions) fall back to a precomputed adult-series-ID set. Fallback poster tiles (no TMDB image, just the title) are left legible since they show no art. |
-| Above-IMDb badge         | Marks seasons whose average episode rating beats the show's overall IMDb score.                    |
+| Above-IMDb badge         | Marks seasons whose average episode rating beats the show's overall IMDb score, **only for shows with at least 1,000 IMDb votes** (`ABOVE_IMDB_MIN_VOTES`). Below that a handful of fans rating every episode 10.0 produces the badge trivially, which is a claim the data cannot support. |
 | More shows like this     | The show modal lists up to 10 shows that share a genre, a compatible original language (English suggests English; other languages match within broad family groups - Romance, European, Asian, Middle Eastern), and a similar popularity (votes/episode within 10x). Ranked by **shared show-shape first**, with the gap between IMDb rating and average episode rating as the tiebreaker inside each tier, so a show that trends the same way outranks a same-genre show that merely has a closer gap. Each row names the shared shape in its meta line. Shows sharing no shape are not excluded, they fill the remaining slots up to the 10-result cap; a show carrying no shape at all falls back to the older genre/language/popularity/gap ranking. The first 4 show; an "N more" toggle expands the rest; click one to open that show. |
 | "Watch on …" button      | When a show streams on the mainstream services, the show modal renders **one deep link per provider** (Netflix, Hulu, Prime Video, Max, Disney+, Peacock, Paramount+, Apple TV+, Crunchyroll), each into that streamer's own search for the title, so the set of links always matches the set of provider badges. Hidden when no known provider matches. |
 | Permalink + outbound links | The show modal links to that show's static SEO page ("Permalink", `/apps/rising-shows/shows/<slug>-<seriesId>/`), to IMDb, and to TVDB when a TVDB ID is known. The season modal links to the season on IMDb and to the season (or the series, as a fallback) on TVDB. |
@@ -116,7 +118,7 @@ A season can match more than one shape - the card shows all of them.
 | Share card               | A "Share card" button in both the show modal and the season detail modal copies a shareable text summary (title, shapes, ratings) to the clipboard. |
 | Share chart image        | A "Share chart image" button next to "Share card" in the show modal, and in the compare overlay, composites the on-screen SVG curve plus the title, dominant shape and key stats onto an offscreen canvas and hands back a PNG (1200px wide). Uses `navigator.share({files})` where the browser supports it and falls back to a plain download otherwise, flashing "Shared!" / "Downloaded!" the way the existing copy buttons flash "Copied!". Everything is same-origin so the canvas is never tainted. The show-modal button is hidden for single-season shows, the same gate the overlay chart itself uses; the compare variant captures every legend entry in the colors `renderCompareLegend` assigned. |
 | What's new               | A "What's new" chip in the footer opens a changelog modal (built from `changelog.json`) summarizing the latest daily data refresh: totals, shape shifts, shows added/dropped, notable rating swings, and data freshness. |
-| Keyboard shortcuts       | `/` focuses the search box, `?` toggles a shortcuts popover (also opened by the `?` button in the toolbar), and `Esc` closes the topmost open thing (popover, changelog, compare overlay, season modal, show modal, advanced drawer). With a modal's ratings curve focused, `←` / `→` step through its episodes. |
+| Keyboard shortcuts       | `/` focuses the search box, `?` toggles a shortcuts popover (also opened by the `?` button in the toolbar), and `Esc` steps back one level: from a season opened out of a show modal it returns to that show (the same move as the in-modal Back control), and only the last level closes. With a modal's ratings curve focused, `←` / `→` step through its episodes. |
 | Scroll restoration       | Reloading or returning to the grid restores the previous scroll position (saved per tab in sessionStorage) once the grid has rendered; deep links to a modal or a real anchor win over the saved offset. |
 
 ## Static show pages (SEO)
@@ -276,6 +278,29 @@ Pass via env vars to `build-data.js`:
 
 The default vote floor is deliberately low - IMDb's per-episode vote counts can be tiny for older shows, foreign series, reality TV, and short-run formats, and a high floor at build time wipes them out. The browser UI exposes its own minimum-votes filter and a popularity-sorted view, so building wide and filtering narrow in the UI is the easy path.
 
+### Rating sorts and the vote floor
+
+Building wide has one consequence the UI has to answer for: with a 5-vote
+per-episode floor, "Avg episode rating" and "Show rating" descending used to
+open on 7-vote titles at 10.00 (121 seasons in the index sit at avg >= 9.9, and
+every one of them is under 80 votes).
+
+So the two rating sorts carry their own floor, defined once in
+`scripts/finder-lib.js` and used by the Finder and by the Kometa preset export
+through `filterAndSortRows`:
+
+| Constant | Value | Rule |
+| --- | --- | --- |
+| `RATING_SORT_KEYS` | `avgEpisode`, `showRating` | the sorts the floor applies to |
+| `RATING_SORT_VOTE_FLOOR` | `1000` | with the votes filter at "Any", shows under this many IMDb votes rank **after** every show at or above it, in both directions |
+| `ABOVE_IMDB_MIN_VOTES` | `1000` | the "Above IMDb" badge is not asserted below this |
+
+The floor ranks, it never filters: the result count is unchanged and the
+thinly voted shows are still there, further down. Setting any votes filter
+hands ranking back to the raw rating (`ratingSortFloorActive` returns false),
+and while the floor is doing something the active-filter bar carries a
+"Ranking: 1,000+ votes first" note explaining it.
+
 ## Viewing locally
 
 Serve the directory rather than opening `file://`. Two independent reasons now:
@@ -311,13 +336,22 @@ outside `os.tmpdir()`.
 | `tests/build-changelog.test.js` | `diffDatasets` / `appendEntry`, plus the CLI's missing-baseline guard |
 | `tests/integrations-lib.test.js` | Kometa collection + overlay YAML, MDBList id lists, and the compare-export naming |
 | `tests/render-show-page.test.js`, `render-shape-hub.test.js`, `render-curve.test.js`, `render-sitemap.test.js`, `slugify.test.js` | the static page builders, their JSON-LD, and slug/permalink stability |
-| `tests/app-features.test.js` | browser helpers reached through a `node:vm` sandbox (see below) |
+| `tests/app-features.test.js` | browser helpers reached through a `node:vm` sandbox (see below), including the index schema guard, the episode-count fallback and the shape-confidence read |
+| `tests/script-args.test.js` | that `split-data.js`, `export-integrations.js` and `build-show-pages.js` print usage and write nothing for `--help` / an unknown flag, and still run normally with no arguments |
 
 `build-data.js` and `split-data.js` hardcode their input and output paths off
 `__dirname` and take no overrides, so their tests copy the real script into a
 throwaway app tree under `os.tmpdir()` and run it there against tiny TSV / JSON
 fixtures. The bytes under test are the production bytes; only the tree around
 them is a fixture, and the app's real `data.json` is never read or written.
+
+Browser-level regressions live in `e2e/audit-2026-08.mjs`, run by
+`node tests/browser/run.mjs` (`npm run test:browser`) like the trip-planner and
+fpl-planner suites: a throttled boot that types during the load, the rating-sort
+floor, the pager focus ring, a malformed index, Esc nesting, a 404 detail file,
+hash trimming, seeded axe scans (finder, show modal, season modal, Kometa
+builder at 1280 and 390) and a built SEO page smoke. Every check needs the
+gitignored dataset; without it the suite records skips naming the fetch command.
 
 `app-features.test.js` loads `js/app.js` into a `node:vm` context with stubbed
 browser globals (DOM, `localStorage`, `sessionStorage`, `location`, `fetch`) and
@@ -326,6 +360,12 @@ Helpers that are not on that list are not reachable from Node, so anything that
 needs coverage has to be exported there first.
 
 ## Plex + Kometa + MDBList integrations
+
+All three build scripts (`split-data.js`, `export-integrations.js`,
+`build-show-pages.js`) print usage and exit for `--help`/`-h`, and refuse an
+unknown argument with exit code 2, before touching anything. They take no
+options; `export-integrations.js` is tuned by `RS_CONFIDENCE_FLOOR` /
+`RS_MIN_SERIES` environment variables.
 
 Rising Shows ships static Kometa collection YAMLs, season-poster overlay YAMLs, and flat MDBList ID lists under `exports/` - regenerated by `npm run export:rising-shows` and consumable directly from raw GitHub URLs without cloning. There is also a browser builder UI at `/apps/rising-shows/kometa/` and a `scripts/watch-next.js` CLI that queries a live Plex server.
 

@@ -125,7 +125,18 @@
            of its per-season episode averages (not per episode), so a "rising"
            show is one whose seasons kept getting better. Rendered by app.js
            from showAgg; chips with a zero count are hidden. -->
-      <nav class="shapes finder-shapes" id="finderShapes" aria-label="Show shape"></nav>
+      <!-- On phones the rail collapses behind a pill exactly like the mood
+           rail below (same .mood-collapsible structure, synced by app.js):
+           13 chips wrapping to 13 rows at 360 px pushed the first result
+           ~1,300 px down. On desktop the summary is hidden and the rail
+           reads as before. -->
+      <details class="mood-collapsible shapes-collapsible" open>
+        <summary class="mood-presets-title">
+          <span class="mood-presets-title-text">Filter by shape</span>
+          <span class="mood-toggle-chevron" aria-hidden="true"></span>
+        </summary>
+        <nav class="shapes finder-shapes" id="finderShapes" aria-label="Show shape"></nav>
+      </details>
 
       <section class="mood-presets finder-moods" aria-label="Explore by mood">
         <!-- Same .mood-collapsible structure as the Seasons mood rail, so it
@@ -398,7 +409,7 @@
           <div class="modal-primary-actions">
             <button type="button" class="btn btn-ghost" id="showModalShareCard">Share card</button>
             <button type="button" class="btn btn-ghost" id="showModalShareChart" hidden>Share chart image</button>
-            <button type="button" class="btn compare-btn" id="showModalCompare">＋ Add to compare</button>
+            <button type="button" class="btn compare-btn" id="showModalCompare">+ Add to compare</button>
           </div>
         </div>
       </div>
@@ -464,7 +475,7 @@
     <h3 class="shortcut-legend-title">Keyboard shortcuts</h3>
     <ul class="shortcut-legend-list">
       <li><kbd>/</kbd> <span>Focus search</span></li>
-      <li><kbd>Esc</kbd> <span>Close any open modal</span></li>
+      <li><kbd>Esc</kbd> <span>Close the current modal (a season opened from a show goes back to the show first)</span></li>
       <li><kbd>?</kbd> <span>Toggle this list</span></li>
     </ul>
     <p class="shortcut-legend-note">Modal curve: focus the chart and use <kbd>←</kbd>/<kbd>→</kbd> to step episodes.</p>

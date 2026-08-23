@@ -23,7 +23,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 69;
+  const TP_BUILD = 70;
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   // Miles or kilometers, everywhere a distance prints. Same architecture as
@@ -101,8 +101,8 @@
     nextUpEvent, defaultPackingItems,
     packingWho, packingRowsFor, packingProgress, packingRosterDrops, applyPackingRoster,
     tripAsTemplate,
-    validateItem, coverageGaps, tripStats, overlappingTrips, MAX_TRIP_DAYS, DATE_MIN, DATE_MAX, isDateInRange,
-    ISLANDISH, seaCrossing, distKm, flagEmoji, compass, fmtDur, modeOptions,
+    validateItem, coverageGaps, tripStats, overlappingTrips, DATE_MIN, DATE_MAX, isDateInRange,
+    isIslandPlace, seaCrossing, distKm, flagEmoji, compass, fmtDur, modeOptions,
     routeBadges, routeFlags, routeTips, routeLinks, modeLink, ROUTE_HONESTY,
     classifyGeoMatch, geoMatchNote, GEO_MATCH_RANK, GEO_MATCH_TEXT,
     foldPlace, rankPlaceResults,
@@ -143,7 +143,9 @@
 
   // ---------- state ----------
   let db = loadDb();
-  const ui = { search: '', filterType: '', filterStatus: '', filterTraveler: '', packingFilter: '', editingId: null, shiftTarget: null, tripModalMode: 'new', confirmAction: null, flashId: null, view: 'timeline' };
+  const ui = { search: '', filterType: '', filterStatus: '', filterTraveler: '', packingFilter: '', editingId: null, shiftTarget: null, tripModalMode: 'new', confirmAction: null, flashId: null, view: 'timeline', filtersOpen: false };
+  // the phone breakpoint the stylesheet folds the toolbar and stay groups at
+  const MOBILE_MQ = window.matchMedia('(max-width: 560px)');
 
   // ---------- timeline collapse state ----------
   // Which stays and which days inside them the traveller has opened. Kept OUT
@@ -286,11 +288,16 @@
   function restoreSnapshot(snapshot) {
     lastSaved = snapshot;
     const viewing = db.activeTripId;
+    const had = new Set(db.trips.map(t => t.id));
     db = JSON.parse(snapshot);
     // Undo restores DATA. It must never move you to a different trip than the
     // one on screen, which is the other half of keeping trip switches out of
-    // the history.
-    if (db.trips.some(t => t.id === viewing)) db.activeTripId = viewing;
+    // the history. The one exception is a trip this step brings BACK: undoing
+    // a trip delete used to leave the picker parked on whichever trip took its
+    // place, with the restored trip off screen (2026-08-22 audit, D2 note).
+    const restored = db.trips.find(t => !had.has(t.id));
+    if (restored) db.activeTripId = restored.id;
+    else if (db.trips.some(t => t.id === viewing)) db.activeTripId = viewing;
     lastSavedKey = historyKey();
     try { localStorage.setItem(LS_KEY, JSON.stringify(db)); setSaveFailed(false); }
     catch { setSaveFailed(true); }
@@ -378,6 +385,14 @@
         if (typeof it.startDate !== 'string') it.startDate = '';
         if (typeof it.endDate !== 'string') it.endDate = '';
         if (typeof it.endTime !== 'string') it.endTime = '';
+        // Every other free-text field the renderers call string methods on.
+        // A `startTime: 25` out of hand-edited storage took the Timeline down
+        // with "t.split is not a function", `confirmation: 99` the same, and
+        // `location: 12` threw uncaught out of dayMorningCity and left the
+        // Days view blank (2026-08-22 audit, D4). Absent stays absent.
+        for (const k of ['startTime', 'confirmation', 'location', 'details', 'costNote', 'bookBy']) {
+          if (it[k] != null && typeof it[k] !== 'string') it[k] = '';
+        }
         if (it.mapsQuery != null && typeof it.mapsQuery !== 'string') delete it.mapsQuery;
         // the manual same-day position: a small whole number or nothing at all.
         // A "3" or a 1e9 out of hand-edited storage would sort as a string and
@@ -408,14 +423,23 @@
   // filed ANOTHER step. Every press produced one more blank trip and never the
   // trip that was deleted. Kept out of the history, the top of the stack stays
   // the deleted trip and one Undo brings it back.
-  function ensureTrip() {
+  //
+  // `persist === false` keeps the floor IN MEMORY ONLY. That is the mode the
+  // cross-tab handler uses: when tab A deletes its last trip, tab B used to
+  // write a fresh "My trip" from its storage handler, that write fired
+  // `storage` back in A, and A's handler threw away the undo history that
+  // held the deleted trip (2026-08-22 audit, D1). B now renders its floor
+  // unsaved; the first thing the traveller does in B saves it like any edit,
+  // and until then A's Undo still works and B picks the restored trip up.
+  function ensureTrip(persist) {
+    const write = persist !== false;
     if (!db.trips.length) {
       const t = { id: uid(), name: 'My trip', currency: 'USD', items: [] };
       db.trips.push(t);
       db.activeTripId = t.id;
-      save(null, null, true);
+      if (write) save(null, null, true);
     }
-    if (!activeTrip()) { db.activeTripId = db.trips[0].id; save(null, null, true); }
+    if (!activeTrip()) { db.activeTripId = db.trips[0].id; if (write) save(null, null, true); }
   }
 
   // ---------- date display ----------
@@ -663,7 +687,10 @@
       .then(r => { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
       .then(data => {
         settle();
-        if (data && data.base && data.rates) {
+        // a body whose base is not the one asked for is a provider fault, not
+        // "5 items in a currency we could not convert": it fails like a 500
+        // and gets the same Retry (2026-08-22 audit)
+        if (data && data.base === base && data.rates) {
           rates = { base: data.base, at: Date.now(), rates: data.rates };
           try { localStorage.setItem(RATES_KEY, JSON.stringify(rates)); } catch { /* best effort */ }
           ratesFailed = false;
@@ -695,16 +722,18 @@
     const stats = tripStats(trip);
 
     // A single mistyped year stretches the trip over millions of days. The day
-    // and strip views cap themselves at MAX_TRIP_DAYS so the app stays usable,
-    // and this is what makes that cap visible: it names the item and the date
-    // holding it, so the traveller can open that row and fix it.
+    // and strip views render the CLUSTER of real dates instead (tripStats), and
+    // this is what makes that visible: it names the item and the date holding
+    // it, so the traveller can open that row and fix it.
+    // Outside the CLUSTER on either side: an item typed a year early is the
+    // one named, not every correct item after it (tripStats.renderStart).
     if (stats.spanCapped) {
       for (const it of items) {
-        const far = [it.startDate, it.endDate].find(d => isIsoDate(d) && d > stats.renderEnd);
+        const far = [it.startDate, it.endDate].find(d => isIsoDate(d) && (d > stats.renderEnd || d < stats.renderStart));
         if (!far) continue;
         issues.push({
           level: 'error',
-          text: `"${it.title || '(untitled)'}" is dated ${fmtDate(far)}, far outside the rest of the trip. Days and the night strip only show the first ${MAX_TRIP_DAYS} days until this is fixed.`,
+          text: `"${it.title || '(untitled)'}" is dated ${fmtDate(far)}, far outside the rest of the trip (${fmtRange(stats.renderStart, stats.renderEnd)}). Days and the night strip only show those dates until this is fixed.`,
           ids: [it.id],
         });
       }
@@ -1025,6 +1054,7 @@
       // stylesheet stand those controls down until there is something to use
       // them on; the desktop layout is unaffected.
       document.body.classList.toggle('tp-trip-empty', !(trip && trip.items && trip.items.length));
+      syncFiltersRow();
       ensureRates(trip);
       const issues = computeIssues(trip);
       currentIssues = issues;
@@ -1111,7 +1141,7 @@
     const cells = [];
     // renderEnd, not end: one item dated 9999 would otherwise ask for three
     // million cells and hang every load. computeIssues names the offender.
-    for (let d = s.start; d < s.renderEnd; d = addDays(d, 1)) {
+    for (let d = s.renderStart; d < s.renderEnd; d = addDays(d, 1)) {
       const covering = stays.filter(st => st.startDate <= d && d < st.endDate);
       // booked coverage wins the color; otherwise best planned status
       let cls = 'cv-gap', tip = `${fmtDate(d)}: no stay`, id = '';
@@ -1140,7 +1170,7 @@
     $('#strip').innerHTML = cells.join('');
     const nightWord = n => `${n} ${n === 1 ? 'night' : 'nights'}`;
     const strapline = s.spanCapped ? `first ${nightWord(cells.length)}` : nightWord(s.totalTripNights);
-    $('#stripDates').innerHTML = `<span>${fmtDate(s.start)}</span><span>${strapline}</span><span>${fmtDate(s.spanCapped ? s.renderEnd : s.end)}</span>`;
+    $('#stripDates').innerHTML = `<span>${fmtDate(s.renderStart)}</span><span>${strapline}</span><span>${fmtDate(s.spanCapped ? s.renderEnd : s.end)}</span>`;
   }
 
   // Chrome sizes a select's native popup to its longest option text with an
@@ -1183,10 +1213,15 @@
         + `<span class="v"><span class="nu-title">${esc(up.title)}</span>${dur}</span></button>`);
     }
     if (s.start && s.end) {
-      chips.push(chip('Dates', s.start === s.end ? fmtDate(s.start) : fmtRange(s.start, s.end)));
-      const days = diffDays(s.start, s.end) + 1;
-      chips.push(chip('Length', `${days} ${days === 1 ? 'day' : 'days'} <small>/ ${s.totalTripNights} ${s.totalTripNights === 1 ? 'night' : 'nights'}</small>`));
-      const phase = tripPhase(s.start, s.end, todayIso());
+      // On a capped trip the chips describe the cluster the views render, not
+      // the span one mistyped date stretches it to ("735 days / 734 nights"
+      // was the typo talking); the issues chip names the outlier.
+      const from = s.renderStart, to = s.spanCapped ? s.renderEnd : s.end;
+      const nights = s.totalTripNights;
+      chips.push(chip('Dates', from === to ? fmtDate(from) : fmtRange(from, to)));
+      const days = diffDays(from, to) + 1;
+      chips.push(chip('Length', `${days} ${days === 1 ? 'day' : 'days'} <small>/ ${nights} ${nights === 1 ? 'night' : 'nights'}</small>`));
+      const phase = tripPhase(from, to, todayIso());
       if (phase.phase === 'before') {
         const until = diffDays(todayIso(), s.start);
         if (until > 0) chips.push(chip('Countdown', `${until} day${until === 1 ? '' : 's'} to go`));
@@ -1802,7 +1837,7 @@
     // by filters and still read in full from the Issues panel.
     const gaps = filtersActive() ? [] : issues.filter(i => i.gap).map(i => i.gap);
     const st = tripStats(trip);
-    const phase = (st.start && st.end) ? tripPhase(st.start, st.end, todayIso()) : { phase: 'before' };
+    const phase = (st.start && st.end) ? tripPhase(st.renderStart, st.renderEnd, todayIso()) : { phase: 'before' };
     const today = todayIso();
     const filtering = filtersActive();
 
@@ -2137,8 +2172,13 @@
       : `${total} item${total === 1 ? '' : 's'} during this stay`;
     const bodyId = `tlkids-${it.id}`;
 
+    // On a phone an open stay shows its rows in one tap: the second layer of
+    // "Sep 3 · 1 item" toggles cost a second tap per day and hid the one row
+    // the traveller opened the stay for (2026-08-22 audit). Desktop keeps the
+    // saved per-day state.
+    const phone = MOBILE_MQ.matches;
     const dayHtml = days.map(d => {
-      const dayOpen = filtering || (holdsFlash && d.items.some(x => x.id === ctx.flashId))
+      const dayOpen = filtering || (phone && open) || (holdsFlash && d.items.some(x => x.id === ctx.flashId))
         || d.items.some(x => selIds.has(x.id))
         || isOpen(trip.id, `day:${it.id}:${d.date}`, ctx.during && d.date === today);
       const dLevel = nestedIssueLevel(d.items, issueById);
@@ -2181,6 +2221,16 @@
     const holder = btn.closest('.tl-stay, .tl-day');
     if (holder) holder.classList.toggle('is-open', open);
     setOpen(activeTrip().id, btn.dataset.toggle, open);
+    // phone: opening a stay opens the days inside it too (see stayNodeHtml)
+    if (open && MOBILE_MQ.matches && btn.classList.contains('tl-stay-toggle') && body) {
+      for (const dayBtn of body.querySelectorAll('.tl-day-toggle[aria-expanded="false"]')) {
+        dayBtn.setAttribute('aria-expanded', 'true');
+        const dayBody = document.getElementById(dayBtn.getAttribute('aria-controls'));
+        if (dayBody) dayBody.hidden = false;
+        const dayHolder = dayBtn.closest('.tl-day');
+        if (dayHolder) dayHolder.classList.add('is-open');
+      }
+    }
   }
 
   function toggleDetails(btn) {
@@ -2462,6 +2512,27 @@
     </span>`;
   }
 
+  // "What does Tuesday cost": the confirmed (booked) money starting on this
+  // day, in the trip currency, under the same honesty rule as Cost by type: an
+  // amount the rates cannot convert is counted out loud, never silently left
+  // out of a total that then looks complete. A stay counts on its check-in
+  // day, so a three-night hotel is one line, not three.
+  function daySpendHtml(card, trip) {
+    const items = [...card.events, ...card.untimed]
+      .filter(ev => ev.kind !== 'checkout' && ev.item.status === 'booked')
+      .map(ev => ev.item);
+    if (!items.length) return '';
+    const sum = sumInCurrency(items, trip.currency || 'USD', activeRates(trip));
+    const missing = sum.unconverted.length;
+    if (!missing && !sum.total) return '';
+    // A day whose only booked cost could not be converted shows the note ALONE:
+    // "$0.00 + 1 not converted" reads as "this day cost nothing", which is the
+    // one thing it does not say.
+    return `<span class="dc-spend${missing ? ' incomplete' : ''}" title="Confirmed spend starting on this day">`
+      + (sum.total ? moneyHtml(trip, sum.total, undefined, 'total') : '')
+      + (missing ? `${sum.total ? ' ' : ''}<small>+ ${missing} not converted</small>` : '') + '</span>';
+  }
+
   // Everything with a startDate on this day can be bulk-deleted; a check-OUT row
   // belongs to a stay that began earlier, so it is not "an event on this day".
   const dayClearCount = card => card.events.filter(ev => ev.kind !== 'checkout').length + card.untimed.length;
@@ -2521,6 +2592,7 @@
           <span class="dc-headings">
             <span class="dc-dow">${fmtDow(card.date)}${isToday ? ' <span class="dc-today">Today</span>' : ''}</span>
             <span class="dc-date">${fmtDate(card.date)}</span>
+            ${daySpendHtml(card, trip)}
           </span>
           ${card.city ? '<span class="dc-vr" aria-hidden="true"></span>' : ''}
           ${dayChipHtml(card)}
@@ -2806,7 +2878,7 @@
     }
     const issueById = buildIssueById(currentIssues);
     const st = tripStats(trip);
-    const phase = (st.start && st.end) ? tripPhase(st.start, st.end, todayIso()) : { phase: 'before' };
+    const phase = (st.start && st.end) ? tripPhase(st.renderStart, st.renderEnd, todayIso()) : { phase: 'before' };
     const today = todayIso();
     const filtering = filtersActive();
 
@@ -2833,7 +2905,7 @@
       : '';
     // Capping the day view is only honest if it says so; the issues list above
     // names the item whose date stretched the trip this far.
-    if (st.spanCapped) note += `<div class="days-note">Showing the first ${MAX_TRIP_DAYS} days. One item is dated far outside the trip, see the issues above.</div>`;
+    if (st.spanCapped) note += `<div class="days-note">Showing ${fmtRange(st.renderStart, st.renderEnd)} only. One item is dated far outside the trip, see the issues above.</div>`;
     if (!cards.length) {
       box.innerHTML = note + filterEmptyHtml('days');
       return;
@@ -3329,6 +3401,32 @@
       tx.oncomplete = () => res();
       tx.onerror = () => rej(tx.error);
     });
+  }
+
+  // Boot-time sweep: every document whose item is in no saved trip goes. This
+  // is what makes a trip delete's attachments survive exactly as long as the
+  // undo does (see the delete-trip confirm). Never in shared mode, where the
+  // trips on screen are a stranger's and the store is this device's own.
+  async function purgeOrphanDocs() {
+    if (sharedMode || typeof indexedDB === 'undefined') return;
+    // No trips at all is not evidence that every document is an orphan: it is
+    // also what a cleared localStorage (or a first boot before a sync merge
+    // lands) looks like, and the documents store is not synced, so a wrong
+    // sweep here is unrecoverable. Nothing to compare against means no sweep.
+    if (!db.trips.length) return;
+    try {
+      const keep = new Set();
+      for (const t of db.trips) for (const it of t.items) keep.add(it.id);
+      const d = await docsDb();
+      await new Promise((res, rej) => {
+        const tx = d.transaction('docs', 'readwrite');
+        const store = tx.objectStore('docs');
+        const rq = store.getAll();
+        rq.onsuccess = () => { for (const doc of rq.result) if (!keep.has(doc.itemId)) store.delete(doc.id); };
+        tx.oncomplete = () => res();
+        tx.onerror = () => rej(tx.error);
+      });
+    } catch { /* the store is best-effort; a failed sweep costs storage, never data */ }
   }
 
   // In-memory itemId -> doc count, refreshed by one full sweep per render, then
@@ -4215,6 +4313,20 @@
     closeAllOverlays();
     ui.flashId = it.id;
     render();
+    // closeAllOverlays handed focus back to the opener, but render() rebuilt
+    // the board under it: an Enter-save from a row's Edit button left focus on
+    // <body>. The saved row is where the traveller's attention is, so the
+    // focus goes there, and to the opener (Add item) when the row is not on
+    // screen (filtered out, or a collapsed stay).
+    focusSavedRow(it.id);
+  }
+  function focusSavedRow(id) {
+    const row = document.querySelector(`.tp-row[data-id="${CSS.escape(id)}"]`);
+    const target = row && row.offsetParent !== null
+      ? (row.querySelector('[data-act="edit"]') || row.querySelector('button, [tabindex]') || row)
+      : null;
+    if (target) { if (!target.hasAttribute('tabindex') && !target.matches('button, a, input, select, textarea')) target.tabIndex = -1; target.focus({ preventScroll: true }); return; }
+    if (document.activeElement === document.body) { const add = $('#addBtn'); if (add && add.offsetParent !== null) add.focus({ preventScroll: true }); }
   }
 
   // ---------- shifting ----------
@@ -4227,6 +4339,8 @@
     $('#shiftTitle').textContent = target ? 'Shift item dates' : 'Shift entire trip';
     $('#shiftScopeField').style.display = target ? '' : 'none';
     $('#fShiftDays').classList.remove('invalid');
+    // a message from the last refused attempt must not greet the next open
+    $('#shiftErr').textContent = '';
     $('#shiftDays').value = 1;
     openOverlay('#shiftOverlay');
     $('#shiftDays').focus();
@@ -4281,6 +4395,8 @@
     // template's new start date moves dates the same way this does.
     if (!shiftFits(targets, days)) { shiftError(rangeMsg); return; }
     const moved = applyDayShift(targets, days);
+    $('#fShiftDays').classList.remove('invalid');
+    $('#shiftErr').textContent = '';
     save(`Shifted ${moved} item${moved === 1 ? '' : 's'} by ${days > 0 ? '+' : ''}${days} day${Math.abs(days) === 1 ? '' : 's'}`);
     closeAllOverlays();
     if (ui.shiftTarget) ui.flashId = ui.shiftTarget;
@@ -4291,9 +4407,27 @@
   // Quiet completion on the trip name: the destinations that have an example
   // itinerary, offered as a datalist, with one line confirming the match. It
   // never blocks or corrects what the traveller typed.
+  // A second trip with the same name (case-insensitively) is legal but makes
+  // the picker and cross-trip search ambiguous, so the dialog says so while
+  // the name is typed and suggests a suffix. It never blocks the save.
+  function duplicateTripName(name, exceptId) {
+    const key = String(name || '').trim().toLowerCase();
+    if (!key) return null;
+    return db.trips.find(t => t.id !== exceptId && String(t.name || '').trim().toLowerCase() === key) || null;
+  }
   function syncTripNameHint() {
     const el = $('#tripNameHint');
-    const opt = sampleTripOptions().find(o => o.id === matchSampleTrip($('#inTripName').value));
+    const name = $('#inTripName').value;
+    const dup = duplicateTripName(name, ui.tripEditId);
+    if (dup) {
+      const base = name.trim();
+      let n = 2;
+      while (duplicateTripName(`${base} (${n})`, ui.tripEditId)) n++;
+      el.hidden = false;
+      el.textContent = `You already have a trip called "${dup.name}". Something like "${base} (${n})" keeps the two apart in the picker and in search.`;
+      return;
+    }
+    const opt = sampleTripOptions().find(o => o.id === matchSampleTrip(name));
     el.hidden = !opt;
     if (opt) el.textContent = `We have an example ${opt.label} itinerary you can load into this trip.`;
   }
@@ -4434,13 +4568,21 @@
     // the OTHER field's message still on screen next to a value that is fine.
     $('#fTripName').classList.remove('invalid');
     $('#fTripBudget').classList.remove('invalid');
-    if (!name) { $('#fTripName').classList.add('invalid'); return; }
+    // focus lands on the refused field, the same contract the item form keeps
+    // (see submitItemForm): a red border with focus still on Save told a
+    // keyboard or screen-reader traveller nothing
+    if (!name) { $('#fTripName').classList.add('invalid'); $('#inTripName').focus(); return; }
     const currency = $('#inTripCurrency').value;
     // #tripForm carries novalidate like #itemForm, so the inputs' native min="0"
     // never fires on a typed value and this is the whole budget gate: a
     // negative end, a floor above the ceiling, or a floor with no ceiling.
     const range = readBudgetRange($('#inTripBudgetFrom').value.trim(), $('#inTripBudgetTo').value.trim());
-    if (!range.ok) { $('#tripBudgetErr').textContent = range.error; $('#fTripBudget').classList.add('invalid'); return; }
+    if (!range.ok) {
+      $('#tripBudgetErr').textContent = range.error;
+      $('#fTripBudget').classList.add('invalid');
+      $($('#inTripBudgetFrom').value.trim() ? '#inTripBudgetFrom' : '#inTripBudgetTo').focus();
+      return;
+    }
     const budget = range.to;
     const budgetFrom = range.from;
     $('#fTripStart').classList.remove('invalid');
@@ -4558,6 +4700,7 @@
   function tripStartError(msg) {
     $('#fTripStart').classList.add('invalid');
     $('#tripStartErr').textContent = msg;
+    $('#inTripStart').focus();
   }
 
   function duplicateTrip() {
@@ -5709,6 +5852,9 @@
             cc: (row.address && row.address.country_code) ? row.address.country_code.toUpperCase() : '',
             country: (row.address && row.address.country) || '',
             conf: classifyGeoMatch(job.place, cands),
+            // what OSM says the place IS (place=island is the one the route
+            // dialog reads); older cache entries lack it and fall back to names
+            kind: cands[0].kind,
           };
           geoCache[job.key] = hit;
           // Bounded like the venue cache (which has a TTL and a 300 cap):
@@ -7011,10 +7157,19 @@
     }
 
     const km = distKm(a, b);
-    // A resort island by NAME, or two countries with no land route between
-    // them by COUNTRY CODE. Either way the ground modes come off and the
-    // ferry goes on, because there is no road to offer.
-    const island = ISLANDISH.test(from) || ISLANDISH.test(to) || seaCrossing(a.cc, b.cc);
+    // "Paris" and "Paris, France" spell differently and geocode to one point;
+    // the text check above cannot see that, the distance can.
+    if (km < 0.1) {
+      setRouteResult('Those are the same place. Pick two different spots.', true);
+      lastRouteKey = routeKeyNow();
+      syncRouteCheckBtn();
+      return;
+    }
+    // An island by NAME or by what the geocoder said it is (isIslandPlace), or
+    // two countries with no land route between them by COUNTRY CODE. Either
+    // way the ground modes come off and, within ferry range, the ferry goes
+    // on, because there is no road to offer.
+    const island = isIslandPlace(from, a.kind) || isIslandPlace(to, b.kind) || seaCrossing(a.cc, b.cc);
     const intl = !!(a.cc && b.cc && a.cc !== b.cc);
     updateRouteLinks({ fromCc: a.cc, toCc: b.cc, island, km });
     const pills = [
@@ -7196,15 +7351,26 @@
     if (token !== mapRunToken) return;
 
     const located = [], failed = [];
+    let unreachable = false;
     for (let i = 0; i < stops.length; i++) {
       setMapState('loading', (i / stops.length) * 100);
       status.textContent = `Locating places: ${i + 1} of ${stops.length} ("${stops[i].name}")...`;
       const hit = await geocode(stops[i].name);
       if (token !== mapRunToken) return;
       if (hit.ok) located.push({ ...stops[i], ...hit });
-      else failed.push(stops[i].name);
+      else { failed.push(stops[i].name); if (hit.reason === 'network') unreachable = true; }
     }
-    if (!located.length) { mapFailed('📍', 'Could not find those places', `Could not locate: ${failed.join(', ')}. Try more specific place names (add the country).`); return; }
+    if (!located.length) {
+      // the lookup never answered: blaming the traveller's place names for an
+      // outage (or for a tab that went offline mid-walk) sent them editing
+      // names that were fine
+      if (!navigator.onLine || unreachable) {
+        mapFailed('📡', 'The place lookup could not be reached', `Could not look up: ${failed.join(', ')}. You look offline or the lookup service did not answer; the names themselves may be fine. Try again once you are connected.`);
+        return;
+      }
+      mapFailed('📍', 'Could not find those places', `Could not locate: ${failed.join(', ')}. Try more specific place names (add the country).`);
+      return;
+    }
     setMapState('ready');
 
     if (mapInstance) { mapInstance.remove(); mapInstance = null; }
@@ -8317,7 +8483,9 @@
       throw assistError('The shared assistant could not answer right now. Try again, or use Copy & paste.');
     }
     let data;
-    try { data = await res.json(); } catch { throw assistError('Network error, check your connection and try again.'); }
+    // a 200 that is not JSON reached us fine; "check your connection" sent the
+    // traveller debugging the wrong thing (2026-08-22 audit)
+    try { data = await res.json(); } catch { throw assistError('The shared assistant sent back something unreadable. Try again, or use Copy & paste.'); }
     return data.reply || '';
   }
 
@@ -9968,6 +10136,50 @@
   function toastError(msg) { toast(msg, null, { error: true }); }
 
   // ---------- events ----------
+  // The phone overflow menu (see index.html .tb-more-wrap): every row proxies
+  // to the real control, so the handlers below stay the single source of
+  // truth; "Search and filters" toggles the folded filter row instead.
+  function syncFiltersRow() {
+    const open = ui.filtersOpen || filtersActive();
+    document.body.classList.toggle('tp-filters-open', open);
+    const b = $('#tbMoreMenu [data-act="toggle-filters"]');
+    if (b) b.setAttribute('aria-pressed', String(open));
+  }
+  function closeMoreMenu(refocus) {
+    const m = $('#tbMoreMenu');
+    if (!m || m.hidden) return false;
+    m.hidden = true;
+    $('#tbMoreBtn').setAttribute('aria-expanded', 'false');
+    if (refocus) $('#tbMoreBtn').focus();
+    return true;
+  }
+  $('#tbMoreBtn').addEventListener('click', e => {
+    e.stopPropagation();
+    const m = $('#tbMoreMenu');
+    if (!m.hidden) { closeMoreMenu(); return; }
+    closeTripMenu(); closeTripSearch();
+    syncFiltersRow();
+    m.hidden = false;
+    $('#tbMoreBtn').setAttribute('aria-expanded', 'true');
+    const first = m.querySelector('button');
+    if (first) first.focus();
+  });
+  $('#tbMoreMenu').addEventListener('click', e => {
+    e.stopPropagation();
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.act === 'toggle-filters') {
+      ui.filtersOpen = !document.body.classList.contains('tp-filters-open');
+      syncFiltersRow();
+      closeMoreMenu();
+      if (ui.filtersOpen) $('#searchBox').focus();
+      return;
+    }
+    const target = b.dataset.proxy && $(b.dataset.proxy);
+    closeMoreMenu();
+    if (target) target.click();
+  });
+  document.addEventListener('click', () => closeMoreMenu());
   $('#addBtn').addEventListener('click', () => openItemModal(null));
   $('#shiftTripBtn').addEventListener('click', () => openShiftModal(null));
   $('#routeBtn').addEventListener('click', openRouteFromTrip);
@@ -10455,8 +10667,13 @@
     }
     else if (act === 'delete-trip') {
       const t = activeTrip();
-      confirmDialog('Delete this trip?', `"${t.name}" and its ${t.items.length} item(s) will be removed. You can undo this until you reload the page.`, 'Delete trip', () => {
-        for (const it of t.items) deleteDocsForItem(it.id);
+      confirmDialog('Delete this trip?', `"${t.name}" and its ${t.items.length} item(s) will be removed. You can undo this until you reload the page; attached documents come back with it, and are deleted for good when you reload.`, 'Delete trip', () => {
+        // Documents are NOT deleted here. The confirm promises an undo, and
+        // an undo that brought the trip back without its attachments was a
+        // lie (2026-08-22 audit, D2). The docs store is local-only, so the
+        // orphans simply wait: purgeOrphanDocs() at the next boot removes
+        // every document whose item is in no saved trip, which is the moment
+        // the undo window closes anyway.
         // The two per-trip stores the db does not own. Both were left behind by
         // a delete and nothing else ever pruned them, so they grew forever on
         // the same storage budget that pushes save() into the quota banner.
@@ -10643,6 +10860,7 @@
       // popovers (search 41, menu 40)
       if (dragCtx) { cancelRowDrag(); return; }
       if (closeDayMenus(true)) return;
+      if (closeMoreMenu(true)) return;
       if (topOverlay()) { closeTopOverlay(); return; }
       if (!$('#assistPanel').hidden) { closeAssist(); return; }
       if ($('#tripSearch').classList.contains('open')) { closeTripSearch(); return; }
@@ -10740,25 +10958,33 @@
   // The native cross-tab signal, for the same-device case the sync layer does
   // not cover: signed OUT there is no sync at all, so two open tabs each held
   // a full in-memory db and whichever saved later silently overwrote the other
-  // tab's edits wholesale. The `storage` event fires only in tabs that did NOT
-  // write, so there is no echo to guard against; handling mirrors the remote
-  // merge above (reload from disk, reset history, re-render), because "another
-  // writer changed the store underneath us" is the same situation either way.
-  window.addEventListener('storage', e => {
+  // tab's edits wholesale. Handling mirrors the remote merge above (reload
+  // from disk, reset history, re-render), because "another writer changed the
+  // store underneath us" is the same situation either way.
+  //
+  // Routed through sync-system/tab-sync.js, whose contract is the one rule
+  // this handler has to keep: NO WRITES from inside it. repairDb runs with
+  // skipSave and ensureTrip with persist=false, so the tab that merely
+  // observes a delete never writes a floor trip back over the deleting tab's
+  // undo history (2026-08-22 audit, D1; the helper blocks and logs any write
+  // that slips through). The old raw `storage` listener is kept as the
+  // fallback only when the helper failed to load.
+  function onForeignStorageChange(key) {
     if (sharedMode) return;
-    if (e.key === TIMEFMT_KEY) {
+    if (key === TIMEFMT_KEY) {
       use24h = localStorage.getItem(TIMEFMT_KEY) === '24';
       syncTimefmtLabel();
       render();
       return;
     }
-    if (e.key === TEMPUNIT_KEY) {
+    if (key === TEMPUNIT_KEY) {
       useF = localStorage.getItem(TEMPUNIT_KEY) === 'f';
       setTempUnit(useF ? 'f' : 'c');
       syncTempunitLabel();
       render();
+      return;
     }
-    if (e.key === DISTUNIT_KEY) {
+    if (key === DISTUNIT_KEY) {
       useKm = localStorage.getItem(DISTUNIT_KEY) === 'km';
       setDistanceUnit(useKm ? 'km' : 'mi');
       syncDistunitLabel();
@@ -10766,16 +10992,25 @@
       refreshDistances();
       return;
     }
-    if (e.key !== LS_KEY) return;
-    if (e.newValue === lastSaved) return; // same bytes, nothing to reconcile
+    if (key !== LS_KEY) return;
+    if (localStorage.getItem(LS_KEY) === lastSaved) return; // same bytes, nothing to reconcile
     db = loadDb();
-    repairDb();
-    ensureTrip();
+    repairDb(true);
+    ensureTrip(false);
     undoPast.length = 0;
     undoFuture.length = 0;
     markSaved();
     render();
-  });
+  }
+  const TAB_SYNC_KEYS = [LS_KEY, TIMEFMT_KEY, TEMPUNIT_KEY, DISTUNIT_KEY];
+  if (window.ShevatoTabSync) {
+    window.ShevatoTabSync.watch(TAB_SYNC_KEYS, change => onForeignStorageChange(change.key));
+  } else {
+    window.addEventListener('storage', e => {
+      if (e.key === null) { for (const k of TAB_SYNC_KEYS) onForeignStorageChange(k); return; }
+      onForeignStorageChange(e.key);
+    });
+  }
 
   const buildTag = $('#buildTag');
   if (buildTag) buildTag.textContent = 'build ' + TP_BUILD;
@@ -10834,5 +11069,7 @@
     ensureTrip();
     if (lastSaved === null) markSaved();
     render();
+    // attachments of trips deleted in a previous session (see delete-trip)
+    purgeOrphanDocs();
   }
 })();

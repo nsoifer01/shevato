@@ -122,9 +122,34 @@ why, the traps, and the invariants.
   undo-history reset, dialogs stay open but their SAVE paths re-check the
   target still exists (`ui.editingId` for items, `ui.tripEditId` for the trip
   dialog - both added guards, keep them when adding dialogs).
-- Same-device multi-tab (esp. signed out) is covered by a native `storage`
-  listener (added 2026-08-13) that mirrors remote-merge handling. The
-  `localStorageSync` event only fires signed-in after a Firestore flush.
+- Same-device multi-tab (esp. signed out) is covered by a foreign-change
+  handler (added 2026-08-13 as a raw `storage` listener) that mirrors
+  remote-merge handling. The `localStorageSync` event only fires signed-in
+  after a Firestore flush.
+- **A foreign-change handler MUST NOT WRITE.** Since 2026-08-22 the handler
+  is registered through `ShevatoTabSync.watch` (`sync-system/tab-sync.js`,
+  loaded before app.js and precached by sw.js), whose contract is exactly
+  that, and whose guard blocks and logs any write that slips through. The
+  raw listener is kept only as the fallback when the helper did not load.
+  What it cost before: tab A deleted its last trip, tab B's handler ran
+  `ensureTrip()` and SAVED a fresh "My trip", that write fired `storage`
+  back into A, and A's handler wiped the undo history holding the deleted
+  trip. The confirm promised an undo the app could not keep whenever a second
+  tab was open. `ensureTrip(persist)` now takes a flag: the observing tab
+  calls `ensureTrip(false)` and renders its floor trip in memory only (the
+  first real edit there saves it like any other), and `repairDb(true)` skips
+  its write-back for the same reason. Pinned by `e2e/audit-2026-08.mjs`
+  block A (two pages: delete the only trip in A, storage still holds exactly
+  one empty floor trip, Undo in A restores it, B renders it back).
+- **Trip delete keeps its documents for the undo window.** The delete no
+  longer calls `deleteDocsForItem` (that made Undo hand back a trip with no
+  attachments while the confirm promised a full undo). The confirm says what
+  actually happens - undoable until you reload, documents included - and
+  `purgeOrphanDocs()` sweeps every document whose item is in no saved trip at
+  the next boot, which is the moment the undo window closes anyway. Undo also
+  now SWITCHES to a trip the step brought back (`restoreSnapshot` detects the
+  restored id), instead of leaving the picker on a bystander trip. Pinned by
+  `e2e/audit-2026-08.mjs` block B (IndexedDB-seeded).
 - A remote merge can orphan per-trip side stores. Chat threads are pruned by
   `pruneOrphanChats()` on remote merges; the collapse store prunes via
   `dropCollapse` on local delete and skips persistence entirely in shared
@@ -249,6 +274,98 @@ why, the traps, and the invariants.
   disabled; the click handler's `SHARED_MENU_ACTS` allowlist is the backstop.
 - `getComputedStyle` lies after class swaps; trust pixels (screenshots) and
   DOM facts. Serve on 8082+ (8080 owner, 8081 schwabbot).
+- Snap chromium ignores `child.kill()`; a second `launch()` on the same
+  debugging port silently attaches to the OLD browser with its app tabs still
+  open, and those same-origin tabs write back on every storage event (which
+  fakes the two-tab scenario above). Kill by port before and after every
+  run: `pkill -f 'remote-debugging-port=930[2]'` (the bracket keeps the
+  pattern from matching the shell that runs it), and CHECK the port is free
+  (`ss -ltn | grep :<port>`) before trusting a run: a launcher that finds the
+  port already bound quietly drives the stale browser instead, which shows up
+  as "the seeded trip did not survive boot".
+- **Chromium flags change results, so run the suites with the repo's own.**
+  `--hide-scrollbars` (which the ad-hoc audit launcher passes) moves the
+  backdrop-click coordinate in `tp-ui M` and made three checks fail on
+  UNMODIFIED sources. When a suite fails only under a private runner, re-run
+  it with `tests/browser/run.mjs`'s exact flags before believing it.
+- One browser, one heavy suite at a time. Chaining two or three of the big
+  suites (`views` + `ui` + `assistant`) into a single chromium reliably
+  stalls it mid-run (`timeout: Runtime.evaluate`, then `ECONNREFUSED`); the
+  repo runner restarts nothing, so a local sweep should relaunch the browser
+  between suites.
+
+## The 2026-08-22 site-wide audit round (fixed)
+
+Cross-tab undo and trip-delete documents are in "Sync model" above. The rest:
+
+- **The rendered span is the CLUSTER, never the earliest date.** `tripStats`
+  used to anchor `renderEnd` on the earliest dated item, so one activity
+  typed a year early became the trip: every CORRECT item was flagged "far
+  outside the rest of the trip", the typo was the one item never named, and
+  Days/strip rendered 400 days from it ("735 days / 734 nights"). It now
+  returns `renderStart` as well, computed by `dateCluster()` (the largest run
+  of items whose consecutive start dates are within `MAX_TRIP_DAYS` of each
+  other; ties go to the earlier run, which is the old behaviour for two lone
+  items). `start`/`end` stay honest so the issues list can still name the
+  outlier, and `computeIssues` now names anything outside the cluster on
+  EITHER side. Every per-day surface walks `renderStart..renderEnd`
+  (`dayCards`, the night strip, the summary chips, `newItemDate`), so a lone
+  typo no longer pads the view to the cap - the cap only bites when the
+  cluster itself is longer than `MAX_TRIP_DAYS`. Pinned by
+  `tests/audit-2026-08.test.js` (early outlier, far-future outlier, genuinely
+  long trip, two-item tie) and by the two updated cap tests in
+  `tests/trip-logic.test.js`.
+- **`repairTrips` normalises every field a renderer calls a string method
+  on.** Was: title, startDate, endDate, endTime, cost, currencies, order,
+  meal, mapsQuery. A non-string `startTime` took the Timeline down with
+  `t.split is not a function`, `confirmation` the same via `.trim`, and
+  `location` threw uncaught out of `dayMorningCity` and left the Days view
+  blank. `startTime`, `confirmation`, `location`, `details`, `costNote` and
+  `bookBy` are now coerced to `''` when present and non-string (absent stays
+  absent). Pinned by `e2e/audit-2026-08.mjs` block C (repairTrips lives in
+  app.js, so this is a browser check by construction).
+- **Island detection reads the geocoder, and the ferry has a ceiling.**
+  `ISLANDISH` (Thai resort names) is joined by `ISLAND_NAMES` (islands with
+  no fixed link: Santorini/Mykonos/Crete class) and by `isIslandPlace(text,
+  kind)`, which also believes Nominatim's own `place=island` (`kind` is now
+  recorded on each geocode hit; older cache entries lack it and fall back to
+  the name lists). `FERRY_MAX_KM = 600` gates the ferry card, the ferry flag
+  and the last-sailing tip, so Tokyo to Sydney (7,800 km) no longer offers a
+  boat; an island leg is also flown from 150 km rather than 250 km, since
+  there is no road to compete with. A rail card on a pair with no confirmed
+  through line carries `unverified: true` and `routeBadges` never calls it
+  Recommended (it still competes for Fastest/Cheapest on its estimate).
+  `modeOptions` returns `[]` under 0.1 km, so two geocodes on the same point
+  no longer produce "0.0 mi, heading north, Walk 0m"; `checkRoute` says "the
+  same place" instead. Pinned by `tests/audit-2026-08.test.js`.
+- **Smaller honesty fixes from the same round**, each pinned in
+  `e2e/audit-2026-08.mjs`: a duplicate trip name gets a hint with a suffix
+  suggestion (D); the trip dialog focuses the field it refused, like the item
+  form (D); axe over the open trip menu, the assistant panel and the Route
+  and Visa dialogs at 1280 and 390 is clean (E: the three preference rows
+  needed a `role=menu` wrapper, `#buildTag` moved to `--text-dim`, the meal
+  chips to `--text`/`--seg-on-fg`, `#summary` became a focusable labelled
+  region); an unreachable geocoder on the Map view says so instead of blaming
+  the traveller's place names (F); the Shift dialog clears its error on
+  reopen (I); focus lands on the saved row after an Enter-save instead of
+  `<body>` (J); a non-JSON 200 from the assistant reads "sent back something
+  unreadable" rather than "check your connection" (K); a Frankfurter body
+  whose `base` is not the currency asked for fails like a 500 with a Retry,
+  instead of being stored and reported as unconvertible items (L).
+- **Phone layout (same round).** At 390 the toolbar folded to one action row
+  (Add item, undo/redo, More) plus the view tabs: `#selectBtn`, the four trip
+  tools, the shortcuts button and the filter row live behind `#tbMoreBtn`,
+  whose rows PROXY clicks to the real (hidden) controls so there is still one
+  handler per action. The filter row also unfolds by itself whenever a filter
+  is active, so nothing can be filtered invisibly. The toolbar is sticky
+  under the 44px site header. Opening a stay on a phone opens the day groups
+  inside it (one tap to a row, not two). Each is pinned in block G, which
+  also asserts the first itinerary row is above the fold at 390.
+- **Per-day spend.** The Days card header carries the day's confirmed
+  (booked) spend in the trip currency, under Cost by type's honesty rule: an
+  amount the rates cannot convert is counted out loud ("+ 1 not converted",
+  amber) rather than silently dropped, and a day with no money shows nothing.
+  A stay counts on its check-in day. Pinned in block H.
 
 ## Assistant: send modes (UI)
 

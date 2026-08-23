@@ -3,6 +3,7 @@
 <head>
   <!-- CRITICAL: immediate sync override must run before any localStorage call -->
   <script src="../../sync-system/sync-immediate.js"></script>
+  <script src="../../sync-system/tab-sync.js"></script>
 
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -62,7 +63,7 @@
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
   <link rel="stylesheet" href="/assets/css/back-to-top.css">
-  <link rel="stylesheet" href="css/styles.css?v=63">
+  <link rel="stylesheet" href="css/styles.css?v=64">
 
   <!-- Google Analytics. Loaded async + defer so it never blocks first paint;
        all tracking goes through the shared helper in analytics.js, which
@@ -130,10 +131,14 @@
           <button data-act="import">⬆️ Import JSON</button>
           <button data-act="import-booking">📄 Read a booking PDF</button>
           <div class="sep"></div>
-          <div class="tp-menu-cap">Preferences</div>
-          <button data-act="timefmt" id="timefmtBtn">🕐 24-hour times</button>
-          <button data-act="distunit" id="distunitBtn">📏 Kilometers</button>
-          <button data-act="tempunit" id="tempunitBtn">🌡️ Fahrenheit</button>
+          <div class="tp-menu-cap" id="tripMenuPrefsCap">Preferences</div>
+          <!-- the three rows are menuitemcheckbox (see syncPrefRow), and that
+               role needs a menu ancestor or axe fails aria-required-parent -->
+          <div role="menu" aria-labelledby="tripMenuPrefsCap">
+            <button data-act="timefmt" id="timefmtBtn">🕐 24-hour times</button>
+            <button data-act="distunit" id="distunitBtn">📏 Kilometers</button>
+            <button data-act="tempunit" id="tempunitBtn">🌡️ Fahrenheit</button>
+          </div>
           <div class="sep"></div>
           <button data-act="delete-trip" class="danger">🗑 Delete trip</button>
           <div class="tp-menu-build" id="buildTag" aria-hidden="true"></div>
@@ -142,7 +147,8 @@
     </div>
   </header>
 
-  <div class="summary" id="summary"></div>
+  <!-- a horizontal scroller on a phone, so it is reachable by keyboard -->
+  <div class="summary" id="summary" role="region" aria-label="Trip summary" tabindex="0"></div>
 
   <div class="strip-box" id="stripBox" hidden>
     <div class="strip-head">
@@ -161,6 +167,21 @@
 
   <div class="toolbar">
     <button class="btn primary" id="addBtn">+ Add item</button>
+    <!-- phone only (CSS): the secondary tools fold behind one button so the
+         first itinerary row is on the first screen. Each row proxies a click
+         to the real (hidden) control, so there is one handler per action. -->
+    <span class="tb-more-wrap">
+      <button class="btn tb-more" type="button" id="tbMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="tbMoreMenu">More ▾</button>
+      <div class="tb-more-menu" id="tbMoreMenu" hidden>
+        <button type="button" data-proxy="#selectBtn">☑️ Select items</button>
+        <button type="button" data-proxy="#shiftTripBtn">⇄ Shift trip</button>
+        <button type="button" data-proxy="#routeBtn">🧭 Route</button>
+        <button type="button" data-proxy="#visaBtn">🛂 Visas</button>
+        <button type="button" data-proxy="#assistBtn">🤖 Assistant</button>
+        <button type="button" data-proxy="#shortcutsBtn">⌨️ Keyboard shortcuts</button>
+        <button type="button" data-act="toggle-filters" aria-pressed="false">🔍 Search and filters</button>
+      </div>
+    </span>
     <button class="btn" id="selectBtn" title="Pick several items and change or delete them together" aria-pressed="false">Select items</button>
     <span class="tb-sep" aria-hidden="true"></span>
     <div class="tb-group tb-tools" role="group" aria-label="Trip tools">
@@ -927,8 +948,8 @@
     }
   </script>
 
-  <script src="js/trip-logic.js?v=43"></script>
-  <script src="js/app.js?v=69"></script>
+  <script src="js/trip-logic.js?v=44"></script>
+  <script src="js/app.js?v=70"></script>
   <script src="/assets/js/back-to-top.js" defer></script>
 </body>
 </html>

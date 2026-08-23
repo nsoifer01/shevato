@@ -245,6 +245,49 @@ Still outside unit-test reach, covered only by browser probes and the
 importer (including `dayBucketDate`'s year compensation), export/import, the
 MapTap sync merge, the network Firestore calls, and every render path.
 
+**One sanitiser guards every entry path (fixed 2026-08-22).** `importData`
+used to check only `Array.isArray(parsed.rivals)` / `Array.isArray(parsed.games)`,
+assign them verbatim, persist, and only then render, so a junk backup was
+already in storage when the render threw and the `catch` labelled it "Could
+not parse backup file" - every view, and through `applyUrlHash` every
+subsequent page load, stayed broken until storage was cleared. Now a pure
+`sanitizeBackup(parsed)` (exported through `_testExports`) runs BEFORE
+anything is written, by all three readers of stored lists: `importData`, the
+module-level boot (`state.rivals` / `state.games`) and the cross-tab
+`onExternalStorage` handler. It returns `{ data, rejected[], repaired[] }`:
+
+- rejects non-objects, rivals without a name, duplicate rival ids, games
+  without a `rivalId`, dates that are not a real calendar day (`2026-02-30`
+  parses in JS and used to roll to Mar 2), round arrays that are not five
+  numbers in 0-100, and non-numeric `myScore`/`theirScore`;
+- repairs what is safe: assigns ids where missing, coerces numeric strings,
+  fills colour/icon/createdAt, derives a missing total from the rounds;
+- keeps legitimate legacy shapes untouched - a totals-only record
+  (`myScore`/`theirScore`, no arrays) and a rival-only synced day both
+  round-trip byte-for-byte, and a clean export reports zero repairs.
+
+The import dialog is honest about the outcome: the confirm names how many
+entries will be skipped and the result reads "Imported N rivals, M games.
+Skipped K invalid entries: <reasons>." A file where nothing survives is
+refused outright and current data is left alone. At boot, a corrupted
+`maptapRivalsGames` (`{"a":1}`, null entries) no longer crashes rendering:
+the surviving entries load and a toast says how many were skipped.
+
+Two NaN paths were closed at the same time, because sanitising new writes
+does not clean logs already on disk: `weightedTotal` treats a non-finite
+slot as 0, and `average`/`stdDev` filter non-finite values, so one bad
+record can no longer blank the dashboard "Avg score" or print a literal
+"NaN" in the rival view and leaderboard. Renderers that format a number
+(`rivalryScore`, avg delta, the profile card's MapTap figures) guard with
+`Number.isFinite` as a second line of defence; `renderProfileCard` no longer
+throws when a stored snapshot has no `avgScore`.
+
+Regressions: `tests/app-helpers.test.js` (sanitizeBackup junk / `__proto__` /
+legacy / round-trip / stringy-number cases, plus a boot test that seeds a
+corrupted log), `tests/stats.test.js` (the NaN contract) and
+`apps/maptap-rivals/e2e/audit-2026-08.mjs` (the real `#import-file` input
+with fixtures written under `.screenshots/`).
+
 Where a defect lives in app.js but is *visible through* a pure function's call
 contract, the test file states the contract in a comment and stubs the app.js
 side faithfully rather than conveniently (see the classifier stub above).
@@ -284,3 +327,147 @@ and attached its listeners. Poll for rendered content instead
 dispatches events into a page with no listeners and reports a phantom bug.
 `--dump-dom` prints the top document only, so an iframe probe has to copy its
 findings into the parent document to be readable.
+
+Three more probe gotchas from the 2026-08-22 audit:
+
+- File inputs: `DOM.setFileInputFiles` on `#import-file` / `#wa-import-file`
+  does not fire `change` on its own, and the snap Chromium cannot read files
+  under `/tmp` (`files.length` stays 0, no error). Write fixtures under the
+  gitignored `.screenshots/` and dispatch `new Event('change',
+  {bubbles:true})` after setting the files.
+- Hash URLs and `seedAndReload`: `Page.navigate` to a URL that differs only
+  in the fragment is a same-document navigation, so `seedAndReload(s, APP +
+  '#rival/r1', ...)` never reloads and the view keeps the pre-seed state.
+  Seed on the bare app URL, then `goto` the hash.
+- The MapTap profile endpoint is a CORS-preflighted POST
+  (`MAPTAP_PROFILE_URL`, body `{data:{nickname}}`, JSON content type):
+  `Fetch.fulfillRequest` stubs must also answer the OPTIONS preflight with
+  `Access-Control-Allow-Headers: content-type` or every stubbed verify
+  reports "Failed to fetch". The real endpoint answers localhost origins, so
+  an un-intercepted probe hits production data (read-only).
+
+Two more, learned while writing `e2e/audit-2026-08.mjs`:
+
+- **The paste panel is a collapsed `<details>`.** Chromium keeps reporting the
+  last-known geometry for content inside a closed one
+  (`content-visibility: hidden`), so `#paste-save-all`'s rect looks plausible
+  while `elementsFromPoint` at its centre returns the site footer that is
+  actually painted there. A coordinate click then does nothing and
+  `element.click()` "works", which reads as an app bug and is not one: open
+  the panel (`.paste-collapse-summary`) before typing or clicking.
+- **`scrollIntoView` is a no-op on these pages** (the site chrome sizes
+  `<html>` to the viewport), so `clickSel`, which scrolls and reads the rect
+  in one evaluate, clicks stale coordinates for anything below the fold.
+  Scroll with `window.scrollTo(0, rect.top + scrollY - innerHeight/2)`, settle,
+  then click.
+- Pages in one browser share an origin and therefore one `localStorage`:
+  clear the `maptapRivals*` keys before each seeded block or the previous
+  block's games leak into the next one's assertions.
+
+## Orphan games count nowhere (fixed 2026-08-22)
+
+A game whose `rivalId` has no rival is reachable through per-key sync: two
+devices carry the rival list and the game log as independent keys, so a
+delete on one can be half-undone by the other. Until 2026-08-22 only
+`periodRecords` (Records, via `liveRivalIds()`) and the Leaderboard ignored
+those games, while `renderDashSummary`, the record banner and `renderHistory`
+counted them - the dashboard said "across 2 rivals / over 4 games" with two
+ghosts included, and History showed rows with an empty rival cell that the
+filter could neither isolate nor exclude.
+
+One selector now decides it everywhere: `liveGames(games, rivals)` (exported
+through `_testExports`), used by the dashboard summary, the record banner's
+period records, History and both predictions-accuracy passes. Its twin
+`orphanGames()` feeds a notice at the top of History - "N games without a
+rival ... not counted anywhere until you reassign or delete them" - with a
+rival picker plus Reassign and a confirmed Delete. Nothing is auto-pruned:
+the owner decides, which is the rule the sync design already implies.
+
+Regressions: `tests/app-helpers.test.js` (`liveGames` / `orphanGames`) and
+the D2 block in `e2e/audit-2026-08.mjs` (summary counts, History rows, the
+notice, and a Reassign that persists).
+
+## Every ISO date walk goes through `localISO` (fixed 2026-08-22)
+
+`toISOString()` on a local-midnight `Date` reports the UTC date, which in any
+UTC+ zone is the previous day. `todayISO` compensated for the offset;
+`addDaysISO` and the heatmap walk did not, so in Asia/Jerusalem or
+Pacific/Kiritimati the same seed rendered a blank leading week and stopped at
+yesterday while the paste date, predictions and "Today" said today.
+
+`localISO(date)` is now the single serialiser and `todayISO`, `addDaysISO`
+and the heatmap all call it. The week walk itself moved into a pure
+`buildHeatmapWeeks(firstGameISO, today)` (exported), unit-tested under
+`TZ=America/Chicago`, `Asia/Jerusalem` and `Pacific/Kiritimati`: the first
+column is always a full Sunday-started week and the last day is always today.
+
+Two more heatmap fixes ride along:
+
+- Dates are filtered through `isValidISODate` before the walk. A record
+  whose `date` does not parse used to throw `RangeError` inside
+  `toISOString` and abort the rest of `renderRival`; the section now skips
+  those records (and hides itself when none are left).
+- On narrow viewports (wrap under 520px) the grid shows the last
+  `HEATMAP_MOBILE_WEEKS` (26) columns instead of up to 80, which keeps cells
+  above 10px, and tapping a cell writes its day summary into a live region
+  under the grid - hover tooltips do not exist on touch screens.
+
+## What else the 2026-08-22 audit round changed
+
+- **Signed-out "Join rival network" was silent** (`joinNetwork()` returned
+  early when the user was not registered). The button is no longer disabled:
+  it opens the shared sign-in modal via `window.authUI.showAuthModal()`, and
+  falls back to a status line when that global is not loaded. Unverified but
+  signed-in users get "Verify your MapTap profile (the card above) before
+  joining" instead of nothing.
+- **Accessibility with data present.** The a11y browser suite scans this app
+  with EMPTY storage, which is why it read zero while seeded views carried
+  serious and critical violations. Fixed at the source: `.pred-day-tabs` is
+  `role="group"` (its children are toggle buttons with `aria-pressed`, never
+  tabs owning panels); the nine sortable leaderboard `<th>`s dropped
+  `role="button"` and kept `aria-sort` (which is not allowed on a button);
+  both History filter selects carry an `aria-label`; `.row-note-pill` is
+  `role="img"` so its `aria-label` is legal; `#matrix-wrap` is focusable with
+  a label so a keyboard can reach its scroll. Contrast was fixed at the token
+  rather than at 38 call sites: `--muted-2` went `#6b7280` (3.63:1) to
+  `#8a91a6` (5.59:1 on `--surface`, 4.99:1 on `--surface-2`), which keeps the
+  muted/muted-2 hierarchy intact, and the active Records unit button uses
+  `#a5b4fc` (6.6:1) instead of `--accent-2` (4.4:1). The e2e suite now runs
+  seeded axe scans over all six views at 1280 and 390.
+- **Focus.** The rival modal and my-icon flyout restore focus to their
+  opener, and Tab/Shift+Tab are trapped inside whichever modal is open
+  (`trapFocusIn`, wired once in the document keydown handler). The view tabs
+  have a real `:focus-visible` ring: the UA default computed to
+  `auto 1px rgb(16,16,16)` and was invisible on this background.
+- **Name collisions** are hinted, never blocked (ids keep the data right, so
+  this is a clarity problem): `rivalNameHint()` warns in the modal when a
+  name duplicates an existing rival case-insensitively or equals my own name,
+  and the settings strip warns when my name matches a rival's.
+- **Dates in the paste panel.** `parseMapTapScore` no longer stamps the
+  current year unconditionally: a share dated more than a day ahead of today
+  belongs to last year ("Dec 31" pasted on Jan 1), and a day that does not
+  exist in its month ("Feb 30", which used to roll to Mar 2) yields no date
+  at all. A future `#paste-date` is called out in the save bar before saving.
+- **WhatsApp import** understands every export shape in the wild, not just
+  US-locale Android 24h: one `WA_HEADER_RE` covers the iOS bracket form with
+  seconds, AM/PM (including the U+202F and U+00A0 separators current Android
+  writes) and DD/MM headers. Day/month order is decided per file - any first
+  number above 12 means DD/MM, any second above 12 means MM/DD - and when a
+  file settles neither, US order is assumed, `ambiguousOrder` is set, and the
+  modal offers a checkbox that re-parses the kept raw text. `parseWhatsAppText`
+  and `dayBucketDate` are exported and unit-tested against all six audit
+  fixtures.
+- **Phones.** The matrix table gets a computed `min-width` so the wrap
+  scrolls instead of squeezing cells to 40px of overlapping text; touch
+  targets under a coarse pointer grow (swatches, modal close, my-icon,
+  settings buttons, pager); the tab strip fades its right edge while more
+  tabs sit off-screen (`is-scrollable` / `is-scroll-end`, toggled on scroll
+  and resize).
+
+Still open from that audit, deliberately: the backup export still omits the
+verified MapTap profile and the matrix preferences (a restore on another
+device lands unverified); "Sync all rivals" still uses native `alert()`
+while every other confirmation is a styled modal; predictions still show
+"avg 0%" for a single-loss rival and Reveal buttons to users with no
+verified profile; the leaderboard and History still hide their right-hand
+columns behind an unhinted horizontal scroll on phones.

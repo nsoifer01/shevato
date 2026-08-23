@@ -396,15 +396,15 @@
           <thead>
             <tr>
               <th>#</th>
-              <th id="lb-th-rival" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">Rival</th>
-              <th id="lb-th-games" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">Games</th>
-              <th id="lb-th-wins" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">W</th>
-              <th id="lb-th-losses" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">L</th>
-              <th id="lb-th-ties" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">T</th>
-              <th id="lb-th-winpct" class="lb-th-sortable lb-th-sorted" tabindex="0" role="button" aria-sort="descending">Win %</th>
-              <th id="lb-th-rivalry" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">Rivalry <span class="lb-th-hint" title="Rivalry score blends win rate, total games played, recency of results, and average margin. Higher = you are winning the rivalry.">(?)</span></th>
-              <th id="lb-th-avgdiff" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">Avg Δ</th>
-              <th id="lb-th-streak" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">Streak</th>
+              <th id="lb-th-rival" class="lb-th-sortable" tabindex="0" aria-sort="none">Rival</th>
+              <th id="lb-th-games" class="lb-th-sortable" tabindex="0" aria-sort="none">Games</th>
+              <th id="lb-th-wins" class="lb-th-sortable" tabindex="0" aria-sort="none">W</th>
+              <th id="lb-th-losses" class="lb-th-sortable" tabindex="0" aria-sort="none">L</th>
+              <th id="lb-th-ties" class="lb-th-sortable" tabindex="0" aria-sort="none">T</th>
+              <th id="lb-th-winpct" class="lb-th-sortable lb-th-sorted" tabindex="0" aria-sort="descending">Win %</th>
+              <th id="lb-th-rivalry" class="lb-th-sortable" tabindex="0" aria-sort="none">Rivalry <span class="lb-th-hint" title="Rivalry score blends win rate, total games played, recency of results, and average margin. Higher = you are winning the rivalry.">(?)</span></th>
+              <th id="lb-th-avgdiff" class="lb-th-sortable" tabindex="0" aria-sort="none">Avg Δ</th>
+              <th id="lb-th-streak" class="lb-th-sortable" tabindex="0" aria-sort="none">Streak</th>
               <th>Form</th>
             </tr>
           </thead>
@@ -443,7 +443,7 @@
 
       <nav class="matrix-subtabs" id="matrix-subtabs" role="tablist" aria-label="Matrix metric"></nav>
 
-      <div class="matrix-wrap" id="matrix-wrap"></div>
+      <div class="matrix-wrap" id="matrix-wrap" tabindex="0" aria-label="Head-to-head matrix (scrolls sideways)"></div>
 
       <p class="empty-state" id="matrix-empty" hidden>
         Add at least one rival and log a game to populate the matrix.
@@ -488,10 +488,10 @@
           <!-- Days-filter chip: filled by renderHistoryDaysChip() when a
                finish-distribution position row was clicked; hidden otherwise. -->
           <span id="history-days-filter" hidden></span>
-          <select id="history-rival-filter">
+          <select id="history-rival-filter" aria-label="Filter by rival">
             <option value="all">All rivals</option>
           </select>
-          <select id="history-result-filter">
+          <select id="history-result-filter" aria-label="Filter by result">
             <option value="all">All results</option>
             <option value="win">Wins</option>
             <option value="loss">Losses</option>

@@ -189,7 +189,8 @@
   .trip-planner-app .tp-menu-panel button:hover,
   .trip-planner-app .tp-menu-panel button:focus { background: var(--accent-soft); color: var(--text); }
   .tp-menu-panel .sep { height: 1px; background: var(--border-soft); margin: 5px 4px; }
-  .tp-menu-build { padding: 6px 10px 2px; font-size: 10.5px; color: var(--text-faint); text-align: right; user-select: none; }
+  /* --text-dim, not --text-faint: faint is 3.5:1 on the panel (axe, 2026-08-22) */
+  .tp-menu-build { padding: 6px 10px 2px; font-size: 10.5px; color: var(--text-dim); text-align: right; user-select: none; }
   .trip-planner-app .tp-menu-panel button.danger { color: var(--red); }
 
   /* interaction-state contract: dim/faint foregrounds are reserved for
@@ -241,6 +242,20 @@
     flex: 1 1 100%; justify-content: flex-end;
     border-top: 1px solid var(--border-soft); padding-top: 10px; margin-top: 2px;
   }
+  /* the phone-only overflow (see the 560px block); nothing on a desktop */
+  .tb-more-wrap { display: none; position: relative; }
+  .tb-more-menu {
+    position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; min-width: 210px;
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: var(--shadow); padding: 6px;
+  }
+  .trip-planner-app .tb-more-menu button {
+    display: block; width: 100%; text-align: left; background: none; border: 0;
+    padding: 10px 12px; border-radius: 8px; color: var(--text); min-height: 44px;
+  }
+  .trip-planner-app .tb-more-menu button:hover,
+  .trip-planner-app .tb-more-menu button:focus { background: var(--accent-soft); color: var(--text); }
+  .trip-planner-app .tb-more-menu button[aria-pressed="true"] { color: var(--accent); }
   .tb-pair { display: inline-flex; }
   .tb-pair .icon-btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
   .tb-pair .icon-btn + .icon-btn { border-left: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
@@ -1185,8 +1200,10 @@
   /* picker controls: unselected reads muted, selected reads accent, in every
      state (main.css would repaint the text gray, then red on hover, and flash
      a translucent red background on press) */
+  /* --text, not --text-dim: the meal chips sit on the darker picker background
+     where dim measured 4.39:1 (axe, 2026-08-22); the .on accent says selected */
   .trip-planner-app .pl-seg-b,
-  .trip-planner-app .pl-tag { color: var(--text-dim) !important; }
+  .trip-planner-app .pl-tag { color: var(--text) !important; }
   .trip-planner-app .pl-seg-b:hover,
   .trip-planner-app .pl-tag:hover { color: var(--text) !important; }
   /* same segmented control, same accessible selected label */
@@ -1194,10 +1211,12 @@
   .trip-planner-app .pl-seg-b.on:hover,
   .trip-planner-app .pl-seg-b.on:focus,
   .trip-planner-app .pl-seg-b.on:active { color: var(--seg-on-fg) !important; }
+  /* --seg-on-fg, not --accent: the raw accent on the accent-soft chip is
+     4.39:1 (axe, 2026-08-22); the segmented control's selected mix passes */
   .trip-planner-app .pl-tag.on,
   .trip-planner-app .pl-tag.on:hover,
   .trip-planner-app .pl-tag.on:focus,
-  .trip-planner-app .pl-tag.on:active { color: var(--accent) !important; }
+  .trip-planner-app .pl-tag.on:active { color: var(--seg-on-fg) !important; }
   .trip-planner-app .pl-seg-b.on:hover:active,
   .trip-planner-app .pl-tag.on:hover:active { background-color: var(--accent-soft); }
   .trip-planner-app .pl-seg-b:hover:active { background-color: var(--gray-soft); }
@@ -1681,6 +1700,11 @@
   }
   .dc-today { color: var(--accent); }
   .dc-date { font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; }
+  /* the day's confirmed spend, one quiet line under the date; amber when an
+     amount could not be converted, the same cue Cost by type uses */
+  .dc-spend { font-size: 11px; font-weight: 600; color: var(--text-dim); white-space: nowrap; }
+  .dc-spend.incomplete { color: var(--amber); }
+  .dc-spend small { font-size: 10px; font-weight: 500; }
   /* a hairline, not a rule: it separates the date from the place chip without
      reading as a third column of its own, so it is inset rather than stretched
      and takes the softer border token */
@@ -3062,10 +3086,24 @@
        become a 2x2 block, and the toolbar drops from four button rows to three */
     #addBtn { order: 1; flex: 1 1 auto; }
     .tb-pair { order: 2; flex: none; }
-    .tb-tools { order: 3; flex: 1 1 100%; gap: 8px; }
-    .tb-tools .btn { flex: 1 1 40%; justify-content: center; }
+    .tb-more-wrap { order: 3; display: inline-block; flex: none; }
     .toolbar .view-switch { order: 4; }
     .tb-filters { order: 5; }
+    /* ONE action row (Add item, undo/redo, More) plus the view tabs: the six
+       secondary tools and the filter row fold behind More, so the first
+       itinerary row is on the first screen instead of below a wall of
+       buttons (2026-08-22 audit). Nothing is removed: every folded control is
+       one tap away in that menu, which proxies to the real button. The filter
+       row also comes back on its own whenever a filter is active, so nothing
+       can be filtered invisibly. The toolbar sticks under the 44px fixed
+       site header so Add and the view tabs follow a long scroll. */
+    .toolbar #selectBtn, .toolbar .tb-tools, .toolbar .tb-sep { display: none; }
+    .toolbar .tb-filters { display: none; }
+    body.tp-filters-open .toolbar .tb-filters { display: flex; }
+    .toolbar { position: sticky; top: 44px; z-index: 30; }
+    /* the empty state already stands these down; More follows suit */
+    .tp-trip-empty .tb-more-wrap { display: none; }
+    .tp-trip-empty .toolbar { position: static; }
 
     /* keep the 6vh top gap: it is what clears the fixed site header so a
        modal heading is never hidden under it */

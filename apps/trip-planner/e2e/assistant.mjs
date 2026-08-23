@@ -624,7 +624,13 @@ export async function run({ base, cdpPort }) {
     //    it has to wrap inside the card rather than run off the edge.
     freshIds();
     s = await openApp(cdpPort, base, { db: dbOf([bangkokTrip()]), viewport: [390, 844], stores: distanceStores() });
-    await clickSel(s, '#assistBtn', { settle: 700 });
+    // Since 2026-08-22 the phone toolbar folds the secondary tools (Assistant
+    // included) behind "More", so the first itinerary row is above the fold;
+    // #assistBtn is still the real control and the menu row proxies to it.
+    // This block is about the CHIP at 390, so it opens the panel the way a
+    // phone user now does rather than clicking a control the layout hides.
+    await clickSel(s, '#tbMoreBtn', { settle: 300 });
+    await clickSel(s, '#tbMoreMenu [data-proxy="#assistBtn"]', { settle: 700 });
     await pasteReply(s, REPLY(day), 2);
     await waitForChips(s, 2);
     const fit = await evaluate(s, `(() => {

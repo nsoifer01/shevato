@@ -134,6 +134,7 @@
       return el('td', { class: 'row-note-cell' }, [
         el('span', {
           class: 'row-note-pill',
+          role: 'img',
           title: 'Synced from MapTap',
           'aria-label': 'Synced from MapTap',
           html: ICON_SYNC_BADGE,
@@ -224,9 +225,16 @@
   }
 
   // ---------- state ----------
+  // Boot goes through the same sanitiser as backup import, so a corrupted
+  // stored array (an object, null entries, junk scores) falls back to what
+  // survives instead of crashing every renderer; init() reports any drop.
+  const booted = sanitizeBackup({ rivals: load(KEY.RIVALS, []), games: load(KEY.GAMES, []) });
   const state = {
-    rivals: load(KEY.RIVALS, []),
-    games: load(KEY.GAMES, []),
+    rivals: booted.data.rivals,
+    games: booted.data.games,
+    loadNotice: booted.rejected.length
+      ? `Skipped ${booted.rejected.length} unreadable stored entr${booted.rejected.length === 1 ? 'y' : 'ies'} (${booted.rejected[0]}). Import a backup to restore them.`
+      : null,
     me: loadString(KEY.ME, 'Me'),
     myMapTap: loadString(KEY.MY_MAPTAP, ''),
     myIcon: loadString(KEY.MY_ICON, '🧍'),
@@ -362,16 +370,130 @@
   // Today's ISO date in the user's local timezone, so the prediction
   // tracks whatever day MapTap is showing the user (MapTap's day rolls
   // over at local midnight too — verified from observed gameHistory keys).
-  function todayISO() {
-    const d = new Date();
+  // Local calendar date of a Date as "YYYY-MM-DD". `toISOString()` on a
+  // local-midnight Date reports the UTC date, which in any UTC+ timezone is
+  // the previous day; every ISO-date walk in this file goes through here so
+  // the heatmap, addDaysISO and todayISO agree on what "today" is.
+  function localISO(d) {
     const tz = d.getTimezoneOffset() * 60000;
     return new Date(d - tz).toISOString().slice(0, 10);
+  }
+  function todayISO() {
+    return localISO(new Date());
   }
   function addDaysISO(iso, days) {
     const d = new Date(iso + 'T00:00:00');
     if (Number.isNaN(d.getTime())) return null;
     d.setDate(d.getDate() + days);
-    return d.toISOString().slice(0, 10);
+    return localISO(d);
+  }
+  // True only for a real calendar date in "YYYY-MM-DD" form: "2026-02-30"
+  // parses in JS (it rolls to March 2) but is not a date anyone logged.
+  function isValidISODate(iso) {
+    if (typeof iso !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return false;
+    const d = new Date(iso + 'T00:00:00');
+    return !Number.isNaN(d.getTime()) && localISO(d) === iso;
+  }
+
+  // ---------- stored-data sanitiser ----------
+  // One validator for every entry path (backup import, boot-time load).
+  // Returns { data: { rivals, games }, rejected: [reason], repaired: [note] }.
+  // Rejects what cannot be trusted (non-objects, missing/duplicate ids,
+  // unparseable dates, non-numeric scores) and repairs what can be (missing
+  // ids, stringy numbers, colour/icon fallbacks). Legacy totals-only games
+  // (`myScore`/`theirScore` with no round arrays) are a valid shape and
+  // survive unchanged. Nothing here touches storage.
+  function sanitizeBackup(parsed) {
+    const rejected = [];
+    const repaired = [];
+    const rivals = [];
+    const games = [];
+    const ids = new Set();
+    const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+    const finite = (v) => {
+      if (typeof v === 'number') return Number.isFinite(v) ? v : NaN;
+      if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) return Number(v);
+      return NaN;
+    };
+    const roundsOf = (arr, label, where) => {
+      if (arr === undefined || arr === null) return undefined;
+      if (!Array.isArray(arr) || arr.length !== N_LOCS) return null;
+      const out = [];
+      for (const v of arr) {
+        const n = finite(v);
+        if (!Number.isFinite(n) || n < 0 || n > MAX_RAW) return null;
+        if (n !== v) repaired.push(`${where}: ${label} round "${String(v)}" read as ${n}`);
+        out.push(n);
+      }
+      return out;
+    };
+
+    const rawRivals = isObj(parsed) && Array.isArray(parsed.rivals) ? parsed.rivals : [];
+    rawRivals.forEach((r, i) => {
+      const where = `rival #${i + 1}`;
+      if (!isObj(r)) { rejected.push(`${where}: not an object`); return; }
+      const name = typeof r.name === 'string' ? r.name.trim() : '';
+      if (!name) { rejected.push(`${where}: missing name`); return; }
+      let id = typeof r.id === 'string' && r.id.trim() ? r.id : null;
+      if (!id) { id = uid(); repaired.push(`${where} (${name}): assigned an id`); }
+      if (ids.has(id)) { rejected.push(`${where} (${name}): duplicate id "${id}"`); return; }
+      ids.add(id);
+      const out = { ...r, id, name };
+      if (typeof out.color !== 'string' || !out.color) { out.color = COLORS[rivals.length % COLORS.length]; repaired.push(`${where} (${name}): default colour`); }
+      if (typeof out.icon !== 'string' || !out.icon) { out.icon = ICONS[rivals.length % ICONS.length]; repaired.push(`${where} (${name}): default icon`); }
+      if (out.maptapUsername != null && typeof out.maptapUsername !== 'string') { delete out.maptapUsername; repaired.push(`${where} (${name}): dropped a non-text MapTap username`); }
+      if (!Number.isFinite(out.createdAt)) out.createdAt = Date.now();
+      rivals.push(out);
+    });
+
+    const rawGames = isObj(parsed) && Array.isArray(parsed.games) ? parsed.games : [];
+    const gameIds = new Set();
+    rawGames.forEach((g, i) => {
+      const where = `game #${i + 1}`;
+      if (!isObj(g)) { rejected.push(`${where}: not an object`); return; }
+      if (typeof g.rivalId !== 'string' || !g.rivalId) { rejected.push(`${where}: missing rivalId`); return; }
+      if (!isValidISODate(g.date)) { rejected.push(`${where}: invalid date "${String(g.date)}"`); return; }
+      const myScores = roundsOf(g.myScores, 'my', where);
+      const theirScores = roundsOf(g.theirScores, 'their', where);
+      if (myScores === null || theirScores === null) { rejected.push(`${where} (${g.date}): round scores are not 5 numbers in 0-100`); return; }
+      const out = { ...g, date: g.date };
+      if (myScores) out.myScores = myScores; else delete out.myScores;
+      if (theirScores) out.theirScores = theirScores; else delete out.theirScores;
+      for (const k of ['myScore', 'theirScore']) {
+        if (out[k] === undefined || out[k] === null) { delete out[k]; continue; }
+        const n = finite(out[k]);
+        if (!Number.isFinite(n)) { rejected.push(`${where} (${g.date}): ${k} is not a number`); return; }
+        if (n !== out[k]) repaired.push(`${where} (${g.date}): ${k} "${String(out[k])}" read as ${n}`);
+        out[k] = n;
+      }
+      // A game must carry at least one side's score in some form.
+      if (!iPlayed(out) && !theyPlayed(out)) { rejected.push(`${where} (${g.date}): no scores`); return; }
+      if (out.myScores && !Number.isFinite(out.myScore)) out.myScore = weightedTotal(out.myScores);
+      if (out.theirScores && !Number.isFinite(out.theirScore)) out.theirScore = weightedTotal(out.theirScores);
+      if (typeof out.note !== 'string') out.note = out.note == null ? '' : String(out.note);
+      if (Array.isArray(out.cities) && out.cities.length !== N_LOCS) { delete out.cities; repaired.push(`${where} (${g.date}): dropped malformed geo data`); }
+      if (!Number.isFinite(out.createdAt)) out.createdAt = Date.now();
+      let id = typeof out.id === 'string' && out.id ? out.id : null;
+      if (!id || gameIds.has(id)) { id = uid(); repaired.push(`${where} (${g.date}): assigned an id`); }
+      gameIds.add(id);
+      out.id = id;
+      games.push(out);
+    });
+
+    return { data: { rivals, games }, rejected, repaired };
+  }
+
+  // Games whose rival is still on the list. Every cross-rival aggregate
+  // (dashboard summary, history, predictions accuracy) reads through this, so
+  // a game left behind by a deleted rival (reachable via per-key sync) counts
+  // nowhere; Records already filtered through liveRivalIds().
+  function liveGames(games, rivals) {
+    const live = new Set(rivals.map(r => r.id));
+    return games.filter(g => live.has(g.rivalId));
+  }
+  function orphanGames(games, rivals) {
+    const live = new Set(rivals.map(r => r.id));
+    return games.filter(g => !live.has(g.rivalId));
   }
   const PREDICT_WINDOW_DAYS = 7;
 
@@ -844,13 +966,62 @@
     renderColorSwatches();
     renderIconSwatches();
 
+    refreshRivalNameHint();
+    state.rivalModalOpener = document.activeElement;
     modal.hidden = false;
     setTimeout(() => nameInput.focus(), 30);
   }
 
   function closeRivalModal() {
-    $('#rival-modal').hidden = true;
+    const modal = $('#rival-modal');
+    const wasOpen = !modal.hidden;
+    modal.hidden = true;
     state.editingRivalId = null;
+    // Hand focus back to whatever opened the modal (the card's edit button,
+    // "Add rival"), the way the delete/clear modals already do.
+    const opener = state.rivalModalOpener;
+    state.rivalModalOpener = null;
+    if (wasOpen && opener && typeof opener.focus === 'function' && document.contains(opener)) opener.focus();
+  }
+
+  // Non-blocking name hints: two rivals with the same name, or a rival named
+  // like me, keep their own ids and stay correct, but the UI then shows two
+  // identical rows, so say so before the save.
+  function rivalNameHint(name, editingId) {
+    const n = (name || '').trim().toLowerCase();
+    if (!n) return '';
+    if (n === (state.me || '').trim().toLowerCase()) return `"${name.trim()}" is also your own name; predictions and the matrix will show two rows called that.`;
+    const dup = state.rivals.find(r => r.id !== editingId && r.name.trim().toLowerCase() === n);
+    if (dup) return `You already have a rival called "${dup.name}". Both will be kept as separate rivals.`;
+    return '';
+  }
+  function refreshRivalNameHint() {
+    const input = $('#rival-name');
+    let hint = $('#rival-name-hint');
+    if (!input) return;
+    if (!hint) {
+      hint = el('span', { id: 'rival-name-hint', class: 'modal-field-hint modal-field-warn', role: 'status', 'aria-live': 'polite' });
+      input.insertAdjacentElement('afterend', hint);
+    }
+    hint.textContent = rivalNameHint(input.value, state.editingRivalId);
+    hint.hidden = !hint.textContent;
+  }
+
+  // Keep Tab inside the open dialog: the last focusable wraps to the first
+  // and vice versa. Called from the document keydown handler in init().
+  function trapFocusIn(modal, e) {
+    const focusables = Array.from(modal.querySelectorAll(
+      'button:not([disabled]):not([hidden]), [href], input:not([disabled]):not([hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )).filter(n => n.offsetParent !== null);
+    if (!focusables.length) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey) {
+      if (active === first || !modal.contains(active)) { e.preventDefault(); last.focus(); }
+    } else if (active === last || !modal.contains(active)) {
+      e.preventDefault(); first.focus();
+    }
   }
 
   function renderColorSwatches() {
@@ -1545,7 +1716,7 @@
     const today = todayISO();
     const citiesByDate = new Map();
     const dates = new Set();
-    for (const g of state.games) {
+    for (const g of liveGames(state.games, state.rivals)) {
       if (!g.date || g.date >= today) continue;
       dates.add(g.date);
       if (!citiesByDate.has(g.date) &&
@@ -1628,10 +1799,9 @@
 
   function computeFinishPositionRecords() {
     const today = todayISO();
-    const live = new Set(state.rivals.map(r => r.id));
     const byDate = new Map();
-    for (const g of state.games) {
-      if (!g.date || g.date >= today || !live.has(g.rivalId)) continue;
+    for (const g of liveGames(state.games, state.rivals)) {
+      if (!g.date || g.date >= today) continue;
       let day = byDate.get(g.date);
       if (!day) { day = new Map(); byDate.set(g.date, day); }
       // Your own scores repeat across every rival you played that day, so the
@@ -2008,7 +2178,9 @@
     sub.textContent = fmtDateLong(selectedISO);
 
     // Day-tab strip (always visible — the headline UI for the 7-day view).
-    const tabs = el('div', { class: 'pred-day-tabs', role: 'tablist',
+    // role=group, not tablist: the day buttons are toggle buttons
+    // (aria-pressed) rather than tabs owning panels.
+    const tabs = el('div', { class: 'pred-day-tabs', role: 'group',
                              'aria-label': 'Next 7 days' },
       state.predictWindow.map(entry => makeDayTab(entry, today)));
     body.appendChild(tabs);
@@ -2268,6 +2440,8 @@
     btn.disabled = false;
     btn.innerHTML = `Save day's games <span class="pill-count">${parsedRivals.length}</span>`;
     summary.classList.add('is-ready');
+    const pasteDate = $('#paste-date') ? $('#paste-date').value : '';
+    const futureNote = pasteDate && pasteDate > todayISO() ? ` · Warning: ${pasteDate} is in the future` : '';
 
     let w = 0, l = 0, t = 0;
     for (const r of parsedRivals) {
@@ -2283,7 +2457,7 @@
     if (t) wlt.push(`${t}T`);
     if (wlt.length) parts.push(wlt.join(' · '));
     if (typedNotParsed.length) parts.push(`(${typedNotParsed.length} skipped, can't parse)`);
-    summary.textContent = parts.join(' · ');
+    summary.textContent = parts.join(' · ') + futureNote;
   }
 
   function refreshPasteRivalRow(rivalId) {
@@ -2557,7 +2731,7 @@
 
     // H2H games only — rival-only days carry no W/L and would skew the
     // "Avg score" tile down to 0 because the user wasn't there.
-    const h2hGames = state.games.filter(bothPlayed);
+    const h2hGames = liveGames(state.games, state.rivals).filter(bothPlayed);
     const totalGames = h2hGames.length;
     let wins = 0, losses = 0, ties = 0;
     h2hGames.forEach(g => {
@@ -2586,7 +2760,7 @@
     wrap.appendChild(makeSummaryCard('Record', `${wins}W · ${losses}L · ${ties}T`,
       `across ${state.rivals.length} rival${state.rivals.length === 1 ? '' : 's'}`));
     wrap.appendChild(makeSummaryCard('Overall win %', `${winPct.toFixed(0)}%`, totalGames ? `over ${totalGames} games` : '—'));
-    wrap.appendChild(makeSummaryCard('Avg score', myAvg ? myAvg.toFixed(0) : '—', 'all-time'));
+    wrap.appendChild(makeSummaryCard('Avg score', Number.isFinite(myAvg) && myAvg ? myAvg.toFixed(0) : '—', 'all-time'));
     wrap.appendChild(makeSummaryCard('Today', todayGames, todayGames === 1 ? 'game logged' : 'games logged'));
     if (bestRival) wrap.appendChild(makeSummaryCard('Best matchup', bestRival.rival.name, `${(bestRival.winPct * 100).toFixed(0)}% win rate`));
     if (worstRival && worstRival !== bestRival) wrap.appendChild(makeSummaryCard('Toughest rival', worstRival.rival.name, `${(worstRival.winPct * 100).toFixed(0)}% win rate`));
@@ -3635,6 +3809,33 @@
   // When multiple games fall on the same day the net result is used:
   //   more wins than losses → W, more losses than wins → L, otherwise T.
   // Skipped entirely when the rival has fewer than 5 games (too sparse to read).
+  const HEATMAP_MOBILE_WEEKS = 26;
+
+  // Pure week walk for the calendar heatmap: from the Sunday on or before
+  // max(firstGameISO, ~18 months before today) up to today, as arrays of
+  // local ISO dates, one per week column. Every date goes through localISO
+  // so UTC+ timezones neither gain a blank leading week nor lose today.
+  function buildHeatmapWeeks(firstGameISO, today) {
+    const maxStartISO = addDaysISO(today, -(18 * 30 + 15)); // ~18 months back
+    const startCandidateISO = firstGameISO > maxStartISO ? firstGameISO : maxStartISO;
+    const snapDate = new Date(startCandidateISO + 'T00:00:00');
+    snapDate.setDate(snapDate.getDate() - snapDate.getDay()); // rewind to Sunday
+    const startISO = localISO(snapDate);
+
+    const weeks = [];
+    let week = [];
+    const cur = new Date(startISO + 'T00:00:00');
+    const end = new Date(today + 'T00:00:00');
+    while (cur <= end) {
+      const iso = localISO(cur);
+      if (cur.getDay() === 0 && week.length > 0) { weeks.push(week); week = []; }
+      week.push(iso);
+      cur.setDate(cur.getDate() + 1);
+    }
+    if (week.length > 0) weeks.push(week);
+    return { weeks, startISO };
+  }
+
   function renderCalendarHeatmap(s) {
     const section = $('#heatmap-section');
     const gridEl = $('#heatmap-grid');
@@ -3655,20 +3856,23 @@
     section.hidden = false;
 
     const today = todayISO();
-    const maxStartISO = addDaysISO(today, -(18 * 30 + 15)); // ~18 months back
-    const firstGameISO = s.games[0].date; // gamesFor already sorted asc
-    const startCandidateISO = firstGameISO > maxStartISO ? firstGameISO : maxStartISO;
-
-    // Snap start back to the Sunday of that week so the grid aligns cleanly.
-    const snapDate = new Date(startCandidateISO + 'T00:00:00');
-    snapDate.setDate(snapDate.getDate() - snapDate.getDay()); // rewind to Sunday
-    const startISO = snapDate.toISOString().slice(0, 10);
+    // Dates are validated at load and import, but a record written by an
+    // older build can still carry one that does not parse: skip those here
+    // rather than throw inside toISOString and lose the rest of renderRival.
+    const datedGames = s.games.filter(g => isValidISODate(g.date));
+    if (!datedGames.length) {
+      section.hidden = true;
+      gridEl.innerHTML = '';
+      monthEl.innerHTML = '';
+      legendEl.innerHTML = '';
+      return;
+    }
 
     // Build a map: date → net result. Null prototype: dates come verbatim
-    // from storage (backup import does no validation), so a '__proto__' date
-    // must land as a key, not as the object's prototype.
+    // from storage, so a '__proto__' date must land as a key, not as the
+    // object's prototype.
     const dayMap = Object.create(null);
-    for (const g of s.games) {
+    for (const g of datedGames) {
       const r = resultOf(g);
       if (!dayMap[g.date]) dayMap[g.date] = { W: 0, L: 0, T: 0 };
       dayMap[g.date][r]++;
@@ -3681,7 +3885,7 @@
     function tooltipText(iso, counts) {
       const r = netResult(counts);
       const label = r === 'W' ? 'Win' : r === 'L' ? 'Loss' : 'Tie';
-      const gamesOnDay = s.games.filter(g => g.date === iso);
+      const gamesOnDay = datedGames.filter(g => g.date === iso);
       if (gamesOnDay.length === 1) {
         const g = gamesOnDay[0];
         return `${iso}: ${label} ${getMyTotal(g)}–${getTheirTotal(g)}`;
@@ -3690,22 +3894,16 @@
       return `${iso}: ${label} (${gamesOnDay.length} games: ${totals})`;
     }
 
-    // Walk from startISO to today, collecting all days into week columns.
-    const weeks = [];
-    let week = [];
-    let cur = new Date(startISO + 'T00:00:00');
-    const end = new Date(today + 'T00:00:00');
-    // The grid is 7 rows (Sun=0..Sat=6) × N weeks.
-    // Pad the first week: we snapped to Sunday so no leading padding needed,
-    // but guard against edge cases by filling from 0 to cur.getDay().
-    while (cur <= end) {
-      const iso = cur.toISOString().slice(0, 10);
-      const dow = cur.getDay(); // 0=Sun
-      if (dow === 0 && week.length > 0) { weeks.push(week); week = []; }
-      week.push(iso);
-      cur.setDate(cur.getDate() + 1);
+    // Phones get the last 26 weeks so a cell stays at least ~10 px; wider
+    // screens get the full span (18 months, or from the first game).
+    const scrollWrap = gridEl.parentElement;
+    const wrapWidth = (scrollWrap && scrollWrap.clientWidth) || 0;
+    const narrow = wrapWidth > 0 && wrapWidth < 520;
+    let { weeks, startISO } = buildHeatmapWeeks(datedGames[0].date, today);
+    if (narrow && weeks.length > HEATMAP_MOBILE_WEEKS) {
+      weeks = weeks.slice(-HEATMAP_MOBILE_WEEKS);
+      startISO = weeks[0][0];
     }
-    if (week.length > 0) weeks.push(week);
 
     // Compute column widths for month label placement.
     // For each week col, record the ISO of the first day so we can detect
@@ -3776,6 +3974,16 @@
           class: cls,
           title,
           style: `grid-column:${wi + 1};grid-row:${dow + 1};`,
+          // Hover tooltips do not exist on touch screens: a tap writes the
+          // same text into the live region under the grid.
+          onclick: () => {
+            let tip = $('#heatmap-tap-tip');
+            if (!tip) {
+              tip = el('div', { id: 'heatmap-tap-tip', class: 'heatmap-tap-tip', role: 'status', 'aria-live': 'polite' });
+              gridEl.parentElement.appendChild(tip);
+            }
+            tip.textContent = title;
+          },
         });
         gridEl.appendChild(cell);
       }
@@ -4525,13 +4733,13 @@
       tr.appendChild(el('td', { style: 'font-weight:600' }, `${(s.winPct * 100).toFixed(1)}%`));
 
       const rs = s._rivalryScore;
-      const rsFormatted = (rs > 0 ? '+' : '') + rs.toFixed(1);
+      const rsFormatted = Number.isFinite(rs) ? (rs > 0 ? '+' : '') + rs.toFixed(1) : '—';
       tr.appendChild(el('td', {
         class: 'lb-rivalry-score ' + (rs > 0 ? 'delta-pos' : rs < 0 ? 'delta-neg' : 'delta-zero'),
       }, rsFormatted));
 
       tr.appendChild(el('td', { class: avgDiff > 0 ? 'delta-pos' : avgDiff < 0 ? 'delta-neg' : 'delta-zero' },
-        (avgDiff > 0 ? '+' : '') + avgDiff.toFixed(1)));
+        Number.isFinite(avgDiff) ? (avgDiff > 0 ? '+' : '') + avgDiff.toFixed(1) : '—'));
       const streakCell = el('td', {});
       streakCell.innerHTML = streakHtml;
       tr.appendChild(streakCell);
@@ -4974,6 +5182,9 @@
     };
 
     const table = el('table', { class: 'matrix-table' });
+    // Each column keeps a readable width; the wrap scrolls instead of the
+    // fixed-layout table squeezing cells until their text overlaps (phones).
+    table.style.minWidth = `${participants.length * 7.5 + 7.5}rem`;
     const thead = el('thead');
     const headRow = el('tr');
     headRow.appendChild(el('th', { class: 'matrix-corner', scope: 'col' }, ''));
@@ -5154,8 +5365,9 @@
     tbody.innerHTML = '';
     const rivalById = Object.fromEntries(state.rivals.map(r => [r.id, r]));
     renderHistoryDaysChip();
+    renderHistoryOrphans();
 
-    let games = state.games.slice().sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+    let games = liveGames(state.games, state.rivals).slice().sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
     if (state.historyFilters.rival !== 'all') {
       games = games.filter(g => g.rivalId === state.historyFilters.rival);
     }
@@ -5247,6 +5459,55 @@
         deleteCell(g),
       ]));
     });
+  }
+
+  // Games whose rival no longer exists (left behind by a per-key sync race)
+  // are excluded from every count; History is where the user can see them
+  // and either reassign them to a rival or delete them.
+  function renderHistoryOrphans() {
+    const controls = $('.history-controls');
+    if (!controls) return;
+    let box = $('#history-orphans');
+    const orphans = orphanGames(state.games, state.rivals);
+    if (!orphans.length) { if (box) box.remove(); return; }
+    if (!box) {
+      box = el('div', { id: 'history-orphans', class: 'history-orphans', role: 'region', 'aria-label': 'Games without a rival' });
+      controls.insertAdjacentElement('afterend', box);
+    }
+    box.innerHTML = '';
+    const n = orphans.length;
+    box.appendChild(el('p', { class: 'history-orphans-text' },
+      `${n} game${n === 1 ? '' : 's'} without a rival (the rival was deleted on another device). ` +
+      `${n === 1 ? 'It is' : 'They are'} not counted anywhere until you reassign or delete ${n === 1 ? 'it' : 'them'}.`));
+    const actions = el('div', { class: 'history-orphans-actions' });
+    if (state.rivals.length) {
+      const sel = el('select', { id: 'history-orphans-rival', 'aria-label': 'Rival to reassign the games to' });
+      state.rivals.slice().sort((a, b) => compareNamesCI(a.name, b.name))
+        .forEach(r => sel.appendChild(el('option', { value: r.id }, r.name)));
+      actions.appendChild(sel);
+      actions.appendChild(el('button', {
+        type: 'button', class: 'btn btn-ghost', id: 'history-orphans-reassign',
+        onclick: () => {
+          const target = sel.value;
+          if (!state.rivals.some(r => r.id === target)) return;
+          const ids = new Set(orphans.map(g => g.id));
+          state.games.forEach(g => { if (ids.has(g.id)) g.rivalId = target; });
+          persistGames();
+          renderHistory();
+        },
+      }, 'Reassign'));
+    }
+    actions.appendChild(el('button', {
+      type: 'button', class: 'btn btn-danger', id: 'history-orphans-delete',
+      onclick: () => {
+        if (!confirm(`Delete ${n} game${n === 1 ? '' : 's'} without a rival? This cannot be undone.`)) return;
+        const ids = new Set(orphans.map(g => g.id));
+        state.games = state.games.filter(g => !ids.has(g.id));
+        persistGames();
+        renderHistory();
+      },
+    }, 'Delete'));
+    box.appendChild(actions);
   }
 
   function renderHistoryPagination(total, totalPages, startIdx, endIdx) {
@@ -5491,9 +5752,9 @@
       body.appendChild(verifiedLine);
 
       const info = el('div', { class: 'profile-info' });
-      info.appendChild(infoCell('Total games on MapTap', String(p.totalGames),
+      info.appendChild(infoCell('Total games on MapTap', Number.isFinite(p.totalGames) ? String(p.totalGames) : '—',
         p.joinDate ? `joined ${shortDate(p.joinDate)}` : ''));
-      info.appendChild(infoCell('MapTap avg score', p.avgScore ? p.avgScore.toFixed(0) : '—',
+      info.appendChild(infoCell('MapTap avg score', Number.isFinite(p.avgScore) ? p.avgScore.toFixed(0) : '—',
         p.totalGames ? `best ${p.bestScore} · worst ${p.worstScore}` : ''));
       // App-side stats for direct comparison
       const tracked = state.games.length;
@@ -5509,7 +5770,7 @@
       if (tracked > 0 && diff >= 5) {
         body.appendChild(el('div', { class: 'profile-hint' }, [
           el('strong', {}, 'Different averages by design. '),
-          `MapTap (${p.avgScore.toFixed(0)}) averages every daily game you've ever played. The app's H2H avg (${myAppAvg.toFixed(0)}) only includes the ${tracked} days a tracked rival also played; solo days aren't counted here. The gap (~${diff}) is usually because some of your best/worst days had no rival paired.`,
+          `MapTap (${(p.avgScore || 0).toFixed(0)}) averages every daily game you've ever played. The app's H2H avg (${myAppAvg.toFixed(0)}) only includes the ${tracked} days a tracked rival also played; solo days aren't counted here. The gap (~${diff}) is usually because some of your best/worst days had no rival paired.`,
         ]));
       }
 
@@ -6009,17 +6270,33 @@
         onclick: () => netFire(leaveNetwork()),
       }, busy === 'leave' ? 'Leaving…' : 'Leave network'));
     } else {
-      const canJoin = registered && verified && !busy;
+      // Signed out: the button stays live and opens the shared sign-in
+      // modal (or says what is missing) instead of sitting disabled and
+      // silent. Unverified: same, with the hint as a status line.
       actions.appendChild(el('button', {
         type: 'button',
         class: 'btn btn-primary network-btn network-join-btn',
-        disabled: canJoin ? null : 'disabled',
+        disabled: busy ? 'disabled' : null,
         title: !registered
           ? 'Sign in to join the rival network'
           : !verified
             ? 'Verify your MapTap profile first'
             : 'Publish your handle so your rivals can connect with you',
-        onclick: () => netFire(joinNetwork()),
+        onclick: () => {
+          if (!registered) {
+            const ui = window.authUI;
+            if (ui && typeof ui.showAuthModal === 'function') { ui.showAuthModal(); return; }
+            setNetworkStatus('info', 'Sign in with the button at the top of the page to join the rival network.');
+            renderNetworkCard();
+            return;
+          }
+          if (!verified) {
+            setNetworkStatus('info', 'Verify your MapTap profile (the card above) before joining.');
+            renderNetworkCard();
+            return;
+          }
+          netFire(joinNetwork());
+        },
       }, busy === 'join' ? 'Joining…' : 'Join rival network'));
     }
 
@@ -6644,26 +6921,45 @@
   // looks like a MapTap share (must mention "maptap" or "final score" so
   // random 5-number messages don't false-positive), and pair shares from
   // the same body-date between mapped senders to create games.
-  const WA_HEADER_RE = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4}),\s+(\d{1,2}):(\d{2})\s+-\s+([^:]+?):\s?(.*)$/;
+  // One header shape covers every export WhatsApp writes today:
+  //   8/20/26, 21:05 - Bob: ...            Android, US locale, 24h
+  //   8/20/26, 9:05 PM - Bob: ...          Android, 12h (a U+202F or U+00A0
+  //                                        may sit before AM/PM)
+  //   [20/08/2026, 21:05:10] Bob: ...      iOS (brackets, seconds)
+  //   20/08/2026, 21:05 - Bob: ...         Android, DD/MM locale
+  // The two date numbers are captured as written; day/month order is decided
+  // per file in parseWhatsAppText (a value above 12 settles it).
+  const WA_HEADER_RE = /^\u200e?\[?(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?(?:[\s\u202f\u00a0]*([AaPp])\.?[Mm]\.?)?\]?\s*(?:-\s*)?([^:]+?):\s?(.*)$/;
 
-  function parseWhatsAppText(text) {
+  // `dayFirst`: true for DD/MM headers, false for MM/DD, or undefined to
+  // infer from the file (any first number above 12 means DD/MM, any second
+  // number above 12 means MM/DD; with neither, US order is assumed and the
+  // result's `ambiguousOrder` flag lets the UI offer the choice).
+  function parseWhatsAppText(text, dayFirst) {
     const lines = text.split(/\r?\n/);
-    const messages = [];
+    const raw = [];
     let cur = null;
     for (const ln of lines) {
       const m = ln.match(WA_HEADER_RE);
       if (m) {
-        if (cur) messages.push(cur);
-        const [, mo, d, yRaw, hh, mm, sender, body] = m;
+        if (cur) raw.push(cur);
+        const [, a, b, yRaw, hh, mm, ss, ampm, sender, body] = m;
         const yy = yRaw.length === 2
           ? (Number(yRaw) >= 70 ? 1900 + Number(yRaw) : 2000 + Number(yRaw))
           : Number(yRaw);
+        let hour = Number(hh);
+        if (ampm) {
+          const pm = ampm.toLowerCase() === 'p';
+          if (hour === 12) hour = pm ? 12 : 0;
+          else if (pm) hour += 12;
+        }
         cur = {
           year: yy,
-          monthIdx: Number(mo) - 1,
-          day: Number(d),
-          hour: Number(hh),
+          first: Number(a),
+          second: Number(b),
+          hour,
           minute: Number(mm),
+          second_: ss ? Number(ss) : 0,
           sender: sender.trim(),
           body: body,
         };
@@ -6671,7 +6967,26 @@
         cur.body += '\n' + ln;
       }
     }
-    if (cur) messages.push(cur);
+    if (cur) raw.push(cur);
+
+    let order = dayFirst;
+    let ambiguousOrder = false;
+    if (order === undefined) {
+      if (raw.some(m => m.first > 12)) order = true;
+      else if (raw.some(m => m.second > 12)) order = false;
+      else { order = false; ambiguousOrder = raw.length > 0; }
+    }
+    const messages = raw.map(m => ({
+      year: m.year,
+      monthIdx: (order ? m.second : m.first) - 1,
+      day: order ? m.first : m.second,
+      hour: m.hour,
+      minute: m.minute,
+      sender: m.sender,
+      body: m.body,
+    }));
+    messages.dayFirst = !!order;
+    messages.ambiguousOrder = ambiguousOrder;
     return messages;
   }
 
@@ -6720,6 +7035,9 @@
     senders: [],            // [{ name, count, hasShares }]
     mapping: new Map(),     // sender -> 'me' | 'skip' | 'rival:<id>' | 'new:<sender>'
     fileName: '',
+    text: '',               // raw export, kept so the day/month order can be re-applied
+    dayFirst: false,        // header date order in use
+    ambiguousOrder: false,  // no header number above 12: order was assumed, offer a toggle
   };
 
   function openWhatsAppImport(file) {
@@ -6740,6 +7058,9 @@
           if (parseMapTapShareStrict(m.body)) hasShares.set(m.sender, true);
         }
         waImport.messages = messages;
+        waImport.text = text;
+        waImport.dayFirst = messages.dayFirst;
+        waImport.ambiguousOrder = messages.ambiguousOrder;
         waImport.fileName = file.name;
         waImport.senders = Array.from(counts.entries())
           .map(([name, count]) => ({ name, count, hasShares: !!hasShares.get(name) }))
@@ -6778,6 +7099,25 @@
     for (const m of waImport.messages) if (parseMapTapShareStrict(m.body)) totalShares++;
 
     overview.textContent = `${waImport.fileName || 'WhatsApp export'} · ${waImport.messages.length.toLocaleString()} messages · ${waImport.senders.length} senders · ${totalShares} MapTap share${totalShares === 1 ? '' : 's'} detected`;
+
+    // Day/month order: settled by the file when any header number is above
+    // 12; otherwise US order is assumed and the user can flip it here.
+    let orderRow = $('#wa-date-order');
+    if (orderRow) orderRow.remove();
+    if (waImport.ambiguousOrder) {
+      const cb = el('input', { type: 'checkbox', id: 'wa-day-first' });
+      cb.checked = !!waImport.dayFirst;
+      cb.addEventListener('change', () => {
+        waImport.dayFirst = cb.checked;
+        const re = parseWhatsAppText(waImport.text, cb.checked);
+        waImport.messages = re;
+        refreshWAPreview();
+      });
+      orderRow = el('p', { id: 'wa-date-order', class: 'wa-hint wa-date-order' }, [
+        el('label', { for: 'wa-day-first' }, [cb, ' Dates in this export are day/month (e.g. 3/8 = 3 August). Unchecked reads them as month/day (US).']),
+      ]);
+      overview.insertAdjacentElement('afterend', orderRow);
+    }
 
     list.innerHTML = '';
     waImport.senders.forEach(s => {
@@ -7093,24 +7433,41 @@
   function importData(file) {
     const reader = new FileReader();
     reader.onload = () => {
+      // Parse and validate BEFORE touching state or storage; nothing below
+      // the confirm can throw on the file's contents, so a render error can
+      // no longer masquerade as "could not parse".
+      let parsed;
       try {
-        const parsed = JSON.parse(reader.result);
-        if (!parsed || !Array.isArray(parsed.rivals) || !Array.isArray(parsed.games)) {
-          alert('Invalid backup file.');
-          return;
-        }
-        if (!confirm(`Replace current data with ${parsed.rivals.length} rivals and ${parsed.games.length} games?`)) return;
-        state.rivals = parsed.rivals;
-        state.games = parsed.games;
-        if (typeof parsed.me === 'string') state.me = parsed.me;
-        if (typeof parsed.myIcon === 'string') state.myIcon = parsed.myIcon;
-        persistRivals();
-        persistGames();
-        persistMe();
-        persistMyIcon();
-        $('#my-name').value = state.me;
-        const cur = $('#my-icon-current'); if (cur) cur.textContent = state.myIcon || '🧍';
-        refreshRivalSelects();
+        parsed = JSON.parse(reader.result);
+      } catch (e) {
+        alert('Could not parse backup file: it is not valid JSON.');
+        return;
+      }
+      if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.rivals) || !Array.isArray(parsed.games)) {
+        alert('Invalid backup file: expected a "rivals" list and a "games" list.');
+        return;
+      }
+      const { data, rejected, repaired } = sanitizeBackup(parsed);
+      if (!data.rivals.length && !data.games.length && (parsed.rivals.length || parsed.games.length)) {
+        alert(`Nothing in that backup could be read (${rejected.slice(0, 3).join('; ')}${rejected.length > 3 ? '; ...' : ''}). Current data was left untouched.`);
+        return;
+      }
+      const skippedNote = rejected.length
+        ? ` ${rejected.length} invalid entr${rejected.length === 1 ? 'y' : 'ies'} will be skipped.`
+        : '';
+      if (!confirm(`Replace current data with ${data.rivals.length} rivals and ${data.games.length} games?${skippedNote}`)) return;
+      state.rivals = data.rivals;
+      state.games = data.games;
+      if (typeof parsed.me === 'string' && parsed.me.trim()) state.me = parsed.me.trim();
+      if (typeof parsed.myIcon === 'string' && parsed.myIcon) state.myIcon = parsed.myIcon;
+      persistRivals();
+      persistGames();
+      persistMe();
+      persistMyIcon();
+      $('#my-name').value = state.me;
+      const cur = $('#my-icon-current'); if (cur) cur.textContent = state.myIcon || '🧍';
+      refreshRivalSelects();
+      try {
         if (state.view === 'dashboard') renderDashboard();
         else if (state.view === 'rival') renderRival();
         else if (state.view === 'leaderboard') renderLeaderboard();
@@ -7118,8 +7475,12 @@
         else if (state.view === 'records') renderRecords();
         else if (state.view === 'history') renderHistory();
       } catch (e) {
-        alert('Could not parse backup file.');
+        console.error('maptap-rivals: render after import failed', e);
       }
+      let msg = `Imported ${data.rivals.length} rival${data.rivals.length === 1 ? '' : 's'}, ${data.games.length} game${data.games.length === 1 ? '' : 's'}.`;
+      if (rejected.length) msg += ` Skipped ${rejected.length} invalid entr${rejected.length === 1 ? 'y' : 'ies'}: ${rejected.slice(0, 3).join('; ')}${rejected.length > 3 ? '; ...' : ''}.`;
+      if (repaired.length) msg += ` Repaired ${repaired.length}: ${repaired.slice(0, 2).join('; ')}${repaired.length > 2 ? '; ...' : ''}.`;
+      alert(msg);
     };
     reader.readAsText(file);
   }
@@ -7134,8 +7495,8 @@
   // Refresh dashboard / current view when storage changes from sync (other device)
   function onExternalStorage(e) {
     if (!e.key) return;
-    if (e.key === KEY.RIVALS) state.rivals = load(KEY.RIVALS, []);
-    else if (e.key === KEY.GAMES) state.games = load(KEY.GAMES, []);
+    if (e.key === KEY.RIVALS) state.rivals = sanitizeBackup({ rivals: load(KEY.RIVALS, []) }).data.rivals;
+    else if (e.key === KEY.GAMES) state.games = sanitizeBackup({ games: load(KEY.GAMES, []) }).data.games;
     else if (e.key === KEY.ME) {
       state.me = loadString(KEY.ME, 'Me');
       const me = $('#my-name'); if (me) me.value = state.me;
@@ -7173,6 +7534,7 @@
 
     // Paste-mode entry (the one entry method)
     $('#paste-date').value = todayISO();
+    $('#paste-date').addEventListener('input', refreshPasteSaveBar);
     $('#paste-mine-input').addEventListener('input', refreshPasteMineUI);
     $('#paste-save-all').addEventListener('click', saveDay);
 
@@ -7212,22 +7574,54 @@
     $('#clear-games-confirm').addEventListener('click', confirmClearGames);
 
     document.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        const open = ['#wa-modal', '#delete-game-modal', '#clear-games-modal', '#rival-modal']
+          .map(sel => $(sel)).find(m => m && !m.hidden);
+        if (open) trapFocusIn(open, e);
+        return;
+      }
       if (e.key !== 'Escape') return;
       if (!$('#wa-modal').hidden) closeWhatsAppModal();
       else if (!$('#delete-game-modal').hidden) closeDeleteGameModal();
       else if (!$('#clear-games-modal').hidden) closeClearGamesModal();
       else if (!$('#rival-modal').hidden) closeRivalModal();
     });
+    $('#rival-name').addEventListener('input', refreshRivalNameHint);
 
     // settings strip
     const meInput = $('#my-name');
     meInput.value = state.me;
+    const meHint = el('span', { id: 'my-name-hint', class: 'settings-hint', role: 'status', 'aria-live': 'polite', hidden: true });
+    meInput.insertAdjacentElement('afterend', meHint);
+    const refreshMeHint = () => {
+      const n = (state.me || '').trim().toLowerCase();
+      const clash = state.rivals.find(r => r.name.trim().toLowerCase() === n);
+      meHint.textContent = clash ? `A rival is also called "${clash.name}"; both will show under that name.` : '';
+      meHint.hidden = !meHint.textContent;
+    };
+    refreshMeHint();
     meInput.addEventListener('input', () => {
       state.me = meInput.value.trim() || 'Me';
       persistMe();
+      refreshMeHint();
       // Debounced so a republish doesn't fire on every keystroke.
       schedulePublishNetworkDoc();
     });
+
+    // A stored array that could not be read in full (see `booted`).
+    if (state.loadNotice) setTimeout(() => showShareToast(null, state.loadNotice), 400);
+
+    // Phone tab strip: the right-edge fade (CSS) tells the user there are
+    // more tabs; drop it once the strip is scrolled to its end.
+    const tabStrip = $('.view-tabs');
+    const refreshTabFade = () => {
+      const atEnd = tabStrip.scrollLeft + tabStrip.clientWidth >= tabStrip.scrollWidth - 2;
+      tabStrip.classList.toggle('is-scroll-end', atEnd);
+      tabStrip.classList.toggle('is-scrollable', tabStrip.scrollWidth > tabStrip.clientWidth + 2);
+    };
+    tabStrip.addEventListener('scroll', refreshTabFade, { passive: true });
+    window.addEventListener('resize', refreshTabFade);
+    refreshTabFade();
 
     // User icon picker — flyout with the same ICONS palette as rivals,
     // plus 🧍 as a neutral "no animal" choice for users who don't want
@@ -7267,8 +7661,11 @@
       myIconBtn.setAttribute('aria-expanded', 'true');
     }
     function closeMyIconFlyout() {
+      const hadFocus = myIconFlyout.contains(document.activeElement);
       myIconFlyout.hidden = true;
       myIconBtn.setAttribute('aria-expanded', 'false');
+      // Escape or a swatch pick must not drop keyboard focus on <body>.
+      if (hadFocus) myIconBtn.focus();
     }
     renderMyIconCurrent();
     myIconBtn.addEventListener('click', (e) => {
@@ -7408,6 +7805,16 @@
       matrixCellViewModel,
       rivalSummary,
       upsertPastedGame,
+      sanitizeBackup,
+      liveGames,
+      orphanGames,
+      isValidISODate,
+      localISO,
+      addDaysISO,
+      buildHeatmapWeeks,
+      parseWhatsAppText,
+      dayBucketDate,
+      rivalNameHint,
     };
   }
 })();

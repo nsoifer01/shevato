@@ -38,6 +38,23 @@ const HIDDEN_GEM_MAX_VOTES_PER_EP = 500;
 // work for them (matching how the per-shape hub pages and Kometa treat them).
 const CATEGORICAL_SHAPES = ['saved-best-for-last', 'shape-drift'];
 
+// Rating sorts need their own vote floor. The dataset keeps every episode
+// with 5+ votes (`minVotes` in the index header), which is the right floor
+// for a catalogue but the wrong one for a ranking: "Avg episode rating"
+// descending opened on 7-vote titles at 10.00 and "Show rating" on a 5-vote
+// 9.6. When a rating sort is active and the user has NOT set a votes floor
+// of their own, rows under this many show votes are kept in the results but
+// ranked after every row at or above it. Nothing is hidden, the count does
+// not change, and a user who sets any minVotes takes over the floor.
+const RATING_SORT_KEYS = ['avgEpisode', 'showRating'];
+const RATING_SORT_VOTE_FLOOR = 1000;
+
+// The "Above IMDb" badge is a claim that a show's episodes out-rate the show
+// itself. Under this many show votes a handful of fans rating every episode
+// 10.0 produces it trivially (Yagmurdan Kacarken: IMDb 5.8 on 125 votes,
+// every episode 10.0 on ~50 votes), so the badge is not asserted below it.
+const ABOVE_IMDB_MIN_VOTES = 1000;
+
 /**
  * The single definition of "what shape is this show".
  *
@@ -226,7 +243,9 @@ function parseFinderQuery(query) {
   const view = ['grid', 'list'].includes(p.get('view')) ? p.get('view') : p.get('fView');
   const gapDir = get('gapDir', 'fGapDir');
   return {
-    search: p.get('q') || '',
+    // Trimmed on the way in so `#q=++breaking++` and `#q=+++` (a whitespace
+    // term that filters nothing) parse to the same state a clean link does.
+    search: (p.get('q') || '').trim(),
     view: view === 'list' ? 'list' : 'grid',
     sort: get('sort', 'fSort') || 'votes',
     sortDir: get('dir', 'fDir') === 'asc' ? 'asc' : 'desc',
@@ -247,6 +266,37 @@ function parseFinderQuery(query) {
     shapes: new Set((get('shape', 'fShape') || '').split(',').filter(Boolean)),
     page: Math.max(1, parseInt(p.get('page'), 10) || 1),
   };
+}
+
+// The inverse of parseFinderQuery: the URLSearchParams a Finder state
+// serialises to. Only non-default values are written, so a default state
+// yields an empty string and parse(serialise(state)) round-trips. The search
+// term is trimmed here as well as on parse, so the hash never carries
+// `q=++breaking++` or a whitespace-only `q=+++`. writeFinderStateToURL in
+// app.js appends the open-modal keys on top of this.
+function serializeFinderQuery(f) {
+  const p = new URLSearchParams();
+  const search = (f.search || '').trim();
+  if (search) p.set('q', search);
+  if (f.view !== 'grid') p.set('view', f.view);
+  if (f.sort !== 'votes') p.set('sort', f.sort);
+  if (f.sortDir !== 'desc') p.set('dir', f.sortDir);
+  if (f.minEpisodes > 0) p.set('minEps', f.minEpisodes);
+  if (f.minSeasons > 0) p.set('minSeasons', f.minSeasons);
+  if (f.minVotes > 0) p.set('minVotes', f.minVotes);
+  if (f.minShowRating > 0) p.set('minShow', f.minShowRating);
+  if (f.minAvgEpisode > 0) p.set('minAvg', f.minAvgEpisode);
+  if (f.gapDir !== 'any') p.set('gapDir', f.gapDir);
+  if (f.minGap > 0) p.set('minGap', f.minGap);
+  if (f.minYear != null) p.set('minYear', f.minYear);
+  if (f.maxYear != null) p.set('maxYear', f.maxYear);
+  if (f.hiddenGems) p.set('gems', 'on');
+  if (f.genres.size) p.set('genres', [...f.genres].join(','));
+  if (f.genresExclude.size) p.set('xgenres', [...f.genresExclude].join(','));
+  if (f.languages.size) p.set('langs', [...f.languages].join(','));
+  if (f.shapes.size) p.set('shape', [...f.shapes].join(','));
+  if (f.page > 1) p.set('page', f.page);
+  return p;
 }
 
 // Every Finder filter EXCEPT the shape filter (shape chips need live counts of
@@ -291,11 +341,25 @@ function passesShapeAnd(s, shapeSet) {
   return true;
 }
 
+// True when the rating-sort vote floor applies to this state: a rating sort
+// with the votes filter at "Any". The UI shows a note chip for exactly the
+// states this returns true for.
+function ratingSortFloorActive(f) {
+  return RATING_SORT_KEYS.includes(f.sort) && !(f.minVotes > 0);
+}
+
 // The Finder's sort comparator. Unknown years always sink to the bottom,
-// independent of sort direction; votes break every other tie.
-function finderComparator(key, dir) {
+// independent of sort direction; votes break every other tie. `voteFloor`
+// (see RATING_SORT_VOTE_FLOOR) banks rows under that many votes below every
+// row at or above it, in both directions, before the key is compared.
+function finderComparator(key, dir, voteFloor = 0) {
   const mul = dir === 'asc' ? 1 : -1;
   return (a, b) => {
+    if (voteFloor > 0) {
+      const aLow = a.votes < voteFloor;
+      const bLow = b.votes < voteFloor;
+      if (aLow !== bLow) return aLow ? 1 : -1;
+    }
     if (key === 'year' && (a.year == null || b.year == null)) {
       if (a.year == null && b.year == null) return b.votes - a.votes;
       return a.year == null ? 1 : -1;
@@ -306,11 +370,16 @@ function finderComparator(key, dir) {
   };
 }
 
+// The comparator the Finder uses for a given state, floor included.
+function finderStateComparator(f) {
+  return finderComparator(f.sort, f.sortDir, ratingSortFloorActive(f) ? RATING_SORT_VOTE_FLOOR : 0);
+}
+
 // One-call convenience for the export pipeline: full filter + shape + sort.
 function filterAndSortRows(rows, f) {
   return rows
     .filter((s) => passesFinderFilters(s, f) && passesShapeAnd(s, f.shapes))
-    .sort(finderComparator(f.sort, f.sortDir));
+    .sort(finderStateComparator(f));
 }
 
 const API = {
@@ -318,12 +387,18 @@ const API = {
   HIDDEN_GEM_MIN_AVG,
   HIDDEN_GEM_MAX_VOTES_PER_EP,
   CATEGORICAL_SHAPES,
+  RATING_SORT_KEYS,
+  RATING_SORT_VOTE_FLOOR,
+  ABOVE_IMDB_MIN_VOTES,
   deriveShowShapes,
   buildShowAgg,
   parseFinderQuery,
+  serializeFinderQuery,
   passesFinderFilters,
   passesShapeAnd,
+  ratingSortFloorActive,
   finderComparator,
+  finderStateComparator,
   filterAndSortRows,
 };
 

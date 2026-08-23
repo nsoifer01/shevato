@@ -130,6 +130,9 @@ test('vm harness: app.js exports every helper these tests drive', () => {
   const expected = [
     'classifyContinent', 'continentBreakdown', 'computeMatrixCell',
     'mergeMatrixCells', 'matrixCellViewModel', 'rivalSummary', 'upsertPastedGame',
+    'sanitizeBackup', 'liveGames', 'orphanGames', 'isValidISODate', 'localISO',
+    'addDaysISO', 'buildHeatmapWeeks', 'parseWhatsAppText', 'dayBucketDate',
+    'rivalNameHint',
   ];
   const missing = expected.filter((name) => helpers[name] == null);
   assert.deepEqual(missing, [], `js/app.js stopped exporting: ${missing.join(', ')}`);
@@ -372,4 +375,214 @@ test('upsertPastedGame: a different date or rival is a new record, not an update
   helpers.upsertPastedGame(games, pastedGame({ id: 'b', date: '2026-08-02' }));
   helpers.upsertPastedGame(games, pastedGame({ id: 'c', rivalId: 'r2' }));
   assert.equal(games.length, 3);
+});
+
+// ---------------------------------------------------------------------------
+// 2026-08-22 site-wide audit regressions. Each block names the defect it pins.
+// ---------------------------------------------------------------------------
+
+const H = (name) => (...a) => plain(helpers[name](...a));
+const goodRival = (o = {}) => ({ id: 'r1', name: 'Bob', color: '#e74c3c', icon: '🦊', createdAt: 1, maptapUsername: '', ...o });
+const goodGame = (o = {}) => ({ id: 'g1', rivalId: 'r1', date: '2026-08-01', note: '', myScores: [1, 2, 3, 4, 5], theirScores: [5, 4, 3, 2, 1], myScore: 36, theirScore: 24, createdAt: 1, ...o });
+
+// D1: the junk file from the audit used to be persisted verbatim and then
+// crash every view (and every later page load). The sanitiser keeps the two
+// readable entries, rejects the rest with reasons, and assigns the missing id.
+test('sanitizeBackup (D1): junk entries are rejected with reasons, readable ones survive, nothing throws', () => {
+  const parsed = {
+    rivals: [null, 1, { id: 'q' }, { id: 'q2', name: 'Dup' }, { id: 'q2', name: 'Dup again' }, { name: 'NoId' }],
+    games: [null, {}, { rivalId: 'q2', date: '2026-08-01', myScores: [1, 2, 3, 4, 5], theirScores: [1, 2, 3, 4, 5] },
+      { rivalId: 'q2', date: 'not-a-date', myScores: [1, 2, 3, 4, 5], theirScores: [1, 2, 3, 4, 5] },
+      { rivalId: 'q2', date: '2026-02-30', myScores: [1, 2, 3, 4, 5], theirScores: [1, 2, 3, 4, 5] },
+      { rivalId: 'q2', date: '2026-08-02', myScores: [null, 'x', 50, 50, 50], theirScores: [1, 2, 3, 4, 5] },
+      { rivalId: 'q2', date: '2026-08-03', myScores: [1, 2, 3, 4, 5], theirScores: [1, 2, 3, 4, 5], myScore: 'abc' }],
+    me: { evil: 1 },
+  };
+  const r = H('sanitizeBackup')(parsed);
+  assert.deepEqual(r.data.rivals.map(x => x.name), ['Dup', 'NoId']);
+  assert.ok(r.data.rivals[1].id, 'a missing rival id is assigned');
+  assert.equal(r.data.games.length, 1);
+  assert.equal(r.data.games[0].date, '2026-08-01');
+  assert.ok(r.data.games[0].id, 'a missing game id is assigned');
+  assert.equal(r.data.games[0].myScore, 36, 'the total is derived from the rounds');
+  assert.equal(r.rejected.length, 10, r.rejected.join(' | '));
+  assert.ok(r.rejected.some(x => /not-a-date/.test(x)));
+  assert.ok(r.rejected.some(x => /2026-02-30/.test(x)), 'Feb 30 is not a date');
+  assert.ok(r.rejected.some(x => /duplicate id/.test(x)));
+  assert.ok(r.rejected.some(x => /round scores/.test(x)));
+  assert.ok(r.rejected.some(x => /myScore is not a number/.test(x)));
+  assert.ok(r.repaired.some(x => /assigned an id/.test(x)));
+});
+
+test('sanitizeBackup (D1): a __proto__ rival id / date / top-level key cannot pollute anything', () => {
+  const parsed = JSON.parse('{"__proto__":{"polluted":1},"rivals":[{"id":"__proto__","name":"P"}],"games":[{"rivalId":"__proto__","date":"2026-08-01","myScores":[1,2,3,4,5],"theirScores":[1,2,3,4,5]}]}');
+  const r = H('sanitizeBackup')(parsed);
+  assert.equal(r.data.rivals[0].id, '__proto__');
+  assert.equal(r.data.games[0].rivalId, '__proto__');
+  assert.equal(({}).polluted, undefined);
+  assert.equal(r.rejected.length, 0);
+});
+
+test('sanitizeBackup (D1): a legacy totals-only game and a rival-only synced day survive unchanged', () => {
+  const legacy = { id: 'legacy1', rivalId: 'r1', date: '2026-02-14', note: '', myScore: 700, theirScore: 650, createdAt: 1 };
+  const rivalOnly = { id: 'dnp', rivalId: 'r1', date: '2026-08-20', note: 'synced from MapTap', theirScores: [90, 90, 90, 90, 90], theirScore: 900, createdAt: 1 };
+  const r = H('sanitizeBackup')({ rivals: [goodRival()], games: [legacy, rivalOnly] });
+  assert.deepEqual(r.data.games, [legacy, rivalOnly]);
+  assert.deepEqual(r.rejected, []);
+  assert.deepEqual(r.repaired, []);
+});
+
+test('sanitizeBackup (D1): a real export round-trips byte-for-byte (nothing "repaired" on clean data)', () => {
+  const exportFile = { version: 1, exportedAt: '2026-08-23T00:41:00.418Z', me: 'Nik', myIcon: '🐸',
+    rivals: [goodRival(), goodRival({ id: 'r2', name: 'Carol', icon: '🐻' })],
+    games: [goodGame(), goodGame({ id: 'g2', rivalId: 'r2', date: '2026-08-02', cities: [{ lat: 1, lng: 2 }, { lat: 1, lng: 2 }, { lat: 1, lng: 2 }, { lat: 1, lng: 2 }, { lat: 1, lng: 2 }] })] };
+  const r = H('sanitizeBackup')(exportFile);
+  assert.deepEqual(r.data.rivals, exportFile.rivals);
+  assert.deepEqual(r.data.games, exportFile.games);
+  assert.deepEqual(r.rejected, []);
+  assert.deepEqual(r.repaired, []);
+});
+
+test('sanitizeBackup (D1): stringy numbers are repaired with a disclosure, not rejected', () => {
+  const r = H('sanitizeBackup')({ rivals: [goodRival()], games: [goodGame({ myScores: ['1', '2', '3', '4', '5'], myScore: '36' })] });
+  assert.deepEqual(r.data.games[0].myScores, [1, 2, 3, 4, 5]);
+  assert.equal(r.data.games[0].myScore, 36);
+  assert.ok(r.repaired.length >= 1);
+  assert.deepEqual(r.rejected, []);
+});
+
+// D16: a corrupted stored array (an object, null entries) used to crash
+// rendering; boot now runs the same sanitiser, so state holds what survives.
+test('boot (D16): corrupted maptapRivalsGames / maptapRivalsRivals fall back to what survives', () => {
+  const c = loadApp({
+    maptapRivalsRivals: [goodRival(), null, 'str', 5],
+    maptapRivalsGames: '{"a":1}',
+  });
+  const s = plain(c._testExports.rivalSummary(goodRival()));
+  assert.equal(s.total, 0, 'the object-shaped game log reads as empty, not as a crash');
+  const c2 = loadApp({ maptapRivalsGames: [null, 'x', goodGame()], maptapRivalsRivals: [goodRival()] });
+  assert.equal(plain(c2._testExports.rivalSummary(goodRival())).total, 1);
+});
+
+// D2: one selector decides which games count anywhere outside a rival's own view.
+test('liveGames / orphanGames (D2): a game whose rival is gone counts nowhere', () => {
+  const rivals = [goodRival(), goodRival({ id: 'r2', name: 'Carol' })];
+  const games = [goodGame(), goodGame({ id: 'g2', rivalId: 'r2' }), goodGame({ id: 'g3', rivalId: 'ghost' }), goodGame({ id: 'g4', rivalId: 'ghost' })];
+  assert.deepEqual(H('liveGames')(games, rivals).map(g => g.id), ['g1', 'g2']);
+  assert.deepEqual(H('orphanGames')(games, rivals).map(g => g.id), ['g3', 'g4']);
+  assert.deepEqual(H('liveGames')(games, []), []);
+});
+
+// D6 / D15: the heatmap walk. Dates are validated before the walk, and every
+// ISO string in it comes from the local calendar, so UTC+ zones neither gain
+// a blank leading week nor stop at yesterday.
+test('isValidISODate (D6): only real calendar dates pass', () => {
+  const v = helpers.isValidISODate;
+  assert.equal(v('2026-08-22'), true);
+  assert.equal(v('2024-02-29'), true);
+  assert.equal(v('2026-02-30'), false);
+  assert.equal(v('not-a-date'), false);
+  assert.equal(v('__proto__'), false);
+  assert.equal(v('2026-8-2'), false);
+  assert.equal(v(20260822), false);
+  assert.equal(v(null), false);
+});
+
+for (const tz of ['America/Chicago', 'Asia/Jerusalem', 'Pacific/Kiritimati']) {
+  test(`buildHeatmapWeeks / addDaysISO (D15) under TZ=${tz}: starts on a Sunday, ends on today, no UTC drift`, () => {
+    const prev = process.env.TZ;
+    process.env.TZ = tz;
+    try {
+      // Re-evaluate app.js under this zone: the vm context shares the host
+      // Date, and Node re-reads TZ on change.
+      const c = loadApp();
+      const h = c._testExports;
+      assert.equal(h.addDaysISO('2026-08-22', 1), '2026-08-23');
+      assert.equal(h.addDaysISO('2026-08-22', -1), '2026-08-21');
+      assert.equal(h.addDaysISO('2026-01-01', -1), '2025-12-31');
+      assert.equal(h.localISO(new Date('2026-08-22T00:00:00')), '2026-08-22');
+      const { weeks, startISO } = plain(h.buildHeatmapWeeks('2026-07-15', '2026-08-23'));
+      assert.equal(startISO, '2026-07-12', 'snapped back to the Sunday before the first game');
+      assert.equal(weeks[0][0], '2026-07-12');
+      assert.equal(weeks[0].length, 7, 'the first column is a full week (no blank leading week)');
+      const last = weeks[weeks.length - 1];
+      assert.equal(last[last.length - 1], '2026-08-23', 'the walk reaches today');
+      assert.equal(weeks.length, 7);
+      assert.equal(weeks.flat().length, 43);
+      assert.equal(new Set(weeks.flat()).size, 43, 'no duplicated or skipped day');
+    } finally {
+      if (prev === undefined) delete process.env.TZ; else process.env.TZ = prev;
+    }
+  });
+}
+
+// D7: every header shape WhatsApp writes. The six fixtures are the audit's.
+const WA_BODY = 'MapTap #400\nAug 20\n95 89 91 9 64\nFinal score: 585\nmaptap.gg';
+function waFile(header1, header2) {
+  return `${header1} Bob: ${WA_BODY}\n${header2} Nik: ${WA_BODY.replace('95 89', '90 80')}\n`;
+}
+const WA_FORMATS = [
+  ['Android US 24h',            '8/20/26, 21:05 -',            '8/20/26, 21:07 -',            false],
+  ['Android 12h',               '8/20/26, 9:05 PM -',          '8/20/26, 9:07 PM -',          false],
+  ['Android 12h U+202F',        '8/20/26, 9:05 PM -',     '8/20/26, 9:07 PM -',     false],
+  ['iOS bracketed with seconds','[20/08/2026, 21:05:10]',      '[20/08/2026, 21:07:00]',      true],
+  ['Android DD/MM 24h',         '20/08/2026, 21:05 -',         '20/08/2026, 21:07 -',         true],
+];
+for (const [label, h1, h2, dayFirst] of WA_FORMATS) {
+  test(`parseWhatsAppText (D7): ${label} header parses to 2026-08-20 21:05 for Bob`, () => {
+    const msgs = plain(helpers.parseWhatsAppText(waFile(h1, h2)));
+    assert.equal(msgs.length, 2, 'two messages');
+    assert.deepEqual([msgs[0].year, msgs[0].monthIdx, msgs[0].day, msgs[0].hour, msgs[0].minute, msgs[0].sender],
+      [2026, 7, 20, 21, 5, 'Bob']);
+    assert.equal(msgs[1].sender, 'Nik');
+    assert.match(msgs[0].body, /Final score: 585/);
+    assert.equal(helpers.parseWhatsAppText(waFile(h1, h2)).dayFirst, dayFirst);
+  });
+}
+
+test('parseWhatsAppText (D7): 12h edge hours (12:xx AM is 0, 12:xx PM is 12)', () => {
+  const msgs = plain(helpers.parseWhatsAppText('8/20/26, 12:05 AM - Bob: hi\n8/20/26, 12:05 PM - Bob: hi\n'));
+  assert.deepEqual(msgs.map(m => m.hour), [0, 12]);
+});
+
+test('parseWhatsAppText (D7): an ambiguous file (no number above 12) defaults to US order and says so; dayFirst=true flips it', () => {
+  const file = '3/8/26, 21:05 - Bob: MapTap #400\n95 89 91 9 64\nFinal score: 585\n';
+  const us = helpers.parseWhatsAppText(file);
+  assert.equal(us.ambiguousOrder, true);
+  assert.equal(us.dayFirst, false);
+  assert.deepEqual([plain(us)[0].monthIdx, plain(us)[0].day], [2, 8], 'March 8 by default');
+  const dm = helpers.parseWhatsAppText(file, true);
+  assert.deepEqual([plain(dm)[0].monthIdx, plain(dm)[0].day], [7, 3], '3 August when told day-first');
+  assert.equal(dm.ambiguousOrder, false);
+  // One day above 12 anywhere in the file settles it for every message.
+  const settled = helpers.parseWhatsAppText(file + '25/8/26, 21:05 - Bob: later\n');
+  assert.equal(settled.ambiguousOrder, false);
+  assert.deepEqual([plain(settled)[0].monthIdx, plain(settled)[0].day], [7, 3]);
+});
+
+test('parseWhatsAppText (D7): empty or non-chat text yields no messages, never throws', () => {
+  assert.equal(helpers.parseWhatsAppText('').length, 0);
+  assert.equal(helpers.parseWhatsAppText('hello\nworld').length, 0);
+});
+
+test('dayBucketDate (D7): the body date wins; a DD/MM header no longer dates the game a year out', () => {
+  const [msg] = plain(helpers.parseWhatsAppText(waFile('20/08/2026, 21:05 -', '20/08/2026, 21:07 -')));
+  const parsed = { date: '2026-08-20' };
+  assert.equal(helpers.dayBucketDate(msg, parsed), '2026-08-20');
+  // "Dec 30" share delivered on Jan 2 belongs to the previous year.
+  const jan = plain(helpers.parseWhatsAppText('1/2/27, 09:00 - Bob: x\n'))[0];
+  assert.equal(helpers.dayBucketDate(jan, { date: '2027-12-30' }), '2026-12-30');
+  // No body date: the header's own day.
+  assert.equal(helpers.dayBucketDate(msg, {}), '2026-08-20');
+});
+
+// D13: hints, not blocks. Ids keep the data right; the copy warns about the UI.
+test('rivalNameHint (D13): duplicate (case-insensitive) and me-equal names get a hint, others none', () => {
+  const c = loadApp({ maptapRivalsRivals: [goodRival({ id: 'r1', name: 'Alice' })], maptapRivalsMe: '"Nik"' });
+  const hint = c._testExports.rivalNameHint;
+  assert.match(hint('alice', null), /already have a rival called "Alice"/);
+  assert.equal(hint('Alice', 'r1'), '', 'editing Alice herself is not a duplicate');
+  assert.match(hint('nik', null), /your own name/);
+  assert.equal(hint('Carol', null), '');
+  assert.equal(hint('   ', null), '');
 });

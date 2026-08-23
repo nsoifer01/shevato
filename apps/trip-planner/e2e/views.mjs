@@ -497,6 +497,14 @@ export async function run({ base, cdpPort }) {
   // Tiles and Nominatim are both refused by the default net rule, so the map
   // cannot locate anything: #mapStatus must say so truthfully (naming the
   // cities) instead of leaving a blank slab or throwing.
+  //
+  // The expected WORDING changed on 2026-08-22 (site-wide audit, D10). A
+  // refused connection is a connectivity failure, not a bad place name, and
+  // "Try more specific place names (add the country)" sent the traveller
+  // editing names that were fine. This block deliberately refuses the
+  // geocoder, so it is the unreachable branch it must assert; the
+  // could-not-find wording is still what an ANSWERED lookup with no match
+  // produces, and it must not appear here.
   freshIds();
   const uTrip = trip({
     name: 'Map trip',
@@ -509,9 +517,11 @@ export async function run({ base, cdpPort }) {
     await switchView(s, 'map');
     // the geocode queue is serialized at ~1.1s per stop, so allow for both
     const failed = await waitForExpr(s,
-      `(()=>{const m=document.getElementById('mapStatus'); return !!m && /Could not find those places/i.test(m.innerText)})()`,
+      `(()=>{const m=document.getElementById('mapStatus'); return !!m && /place lookup could not be reached/i.test(m.innerText)})()`,
       { timeout: 15000 });
-    await t('tp-views U: blocked geocoding reads as a truthful map message', failed, '', s);
+    const said = await evaluate(s, `document.getElementById('mapStatus').innerText`);
+    await t('tp-views U: blocked geocoding reads as a truthful map message',
+      failed && !/Try more specific place names/i.test(said), said.slice(0, 160), s);
     await t('tp-views U: the message names the places it could not locate',
       await evaluate(s, `/Lisbon/.test(document.getElementById('mapStatus').innerText) && /Porto/.test(document.getElementById('mapStatus').innerText)`), '', s);
     await t('tp-views U: the blank map slab is hidden, not empty-looking',
