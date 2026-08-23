@@ -3168,8 +3168,14 @@
     }
     body.tp-page { background: #fff; }
     .trip-planner-app { color: #111; }
-    /* the shared site chrome is not part of the itinerary */
-    .tp-page > header, .tp-page > footer, #header, #footer, .tp-head .tp-brand-sub { display: none !important; }
+    /* The app's own sub-title earns no ink on a printed itinerary. The shared
+       site header and footer are NOT hidden here and must not be: app
+       stylesheets may not restyle shared chrome (enforced by
+       sync-system/tests/shared-ui-consistency.test.mjs), and reaching the same
+       elements through an element selector would dodge that rule rather than
+       respect it. Dropping the chrome from every app's print sheet belongs in
+       assets/css, as a site-level change. */
+    .tp-head .tp-brand-sub { display: none; }
     /* status is carried by a coloured dot, and a dot with no fill is no
        status at all, so those few elements ask for their ink */
     .dc-dot, .cell, .status-pill { -webkit-print-color-adjust: exact; print-color-adjust: exact; }

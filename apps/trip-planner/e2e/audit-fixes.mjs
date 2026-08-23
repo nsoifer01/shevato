@@ -866,8 +866,12 @@ export async function run({ base, cdpPort }) {
     })()`);
     await t('tp-audit MV-03: printed text is readable on white without background graphics',
       read.title > 4.5 && read.when > 4.5 && read.cost > 4.5, JSON.stringify(read), s);
-    await t('tp-audit MV-03: and the site chrome is not part of the itinerary',
-      read.header === 'none' || read.header === 'absent', String(read.header), s);
+    // the shared header stays: an app stylesheet may not restyle shared chrome
+    // (sync-system/tests/shared-ui-consistency.test.mjs), so dropping it from
+    // the print sheet is a site-level change, deliberately not made here
+    await t('tp-audit MV-03: the day cards themselves carry the print styling',
+      (await evaluate(s, `getComputedStyle(document.querySelector('.day-card')).backgroundColor`)) === 'rgb(255, 255, 255)',
+      await evaluate(s, `getComputedStyle(document.querySelector('.day-card')).backgroundColor`), s);
     await s.send('Emulation.setEmulatedMedia', { media: '' });
   });
 
