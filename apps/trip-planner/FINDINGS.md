@@ -24,8 +24,20 @@ why, the traps, and the invariants.
   rule (index.html + sw.js in step).
 - **The trip db schema has no version migrations** - `repairDb()` normalizes
   on load instead (types, statuses, money via `parseMoney`, `order` bounds,
-  currency stamps). New fields must be tolerated absent forever; never write
+  currency stamps, and since 2026-08-22 every string/clock/enum field a
+  renderer reads without checking: see `repairItemFields`). New fields must be tolerated absent forever; never write
   a migration that rewrites items destructively.
+- **A shared view owns the screen, not the data.** Entering shared mode
+  replaces `db` with the stranger's trip and `save()` returns false, and both
+  reconcile listeners stand down so a remote change cannot overwrite what the
+  visitor is reading. It therefore holds NO copy of the visitor's own db:
+  `importSharedTrip` re-reads storage (`loadDb` + `repairDb` + history reset,
+  the same handling a remote merge gets) and pushes the imported trip onto
+  THAT. The old `realDb` snapshot was taken on entry and written back on
+  import, so anything saved meanwhile - another tab, or this device's own sync
+  applying a merge - was published over and gone, with nothing to undo from in
+  the tab that made the edit. Never reintroduce a parked copy of the db;
+  storage is the owner for exactly as long as the view is not.
 - **Share links are code**: the whole trip rides deflate+base64url in the URL
   fragment. `slimTripForShare` is an explicit field allowlist; essentials,
   packing, documents and passport data stay out BY that allowlist, so adding
@@ -1464,6 +1476,86 @@ Probe traps this round minted, both of which produced convincing false results:
   and FAILS on any serious/critical violation (its quarantine entry was
   removed); a new sub-4.5:1 token combination will fail CI-adjacent runs,
   not just look dim.
+
+## The 2026-08-22 audit round: what the fixes actually settled
+
+A full black-box audit (AUDIT-2026-08-22.md, kept beside this file) produced two
+High and eleven Medium findings. The first round of fixes covers the core
+correctness set; what is worth keeping from it:
+
+**A connection is between two LEGS, and a test said otherwise for months.**
+`connectionWarnings` walked the whole sorted item list and skipped any pair
+whose ends were not both travel, so ONE note, meal or activity between two legs
+broke the pair and the warning vanished - on exactly the trips that have things
+planned in them. The unit test that should have caught it instead pinned the
+bug, with the reasoning "an activity between the two legs means they are not
+back to back". That premise is wrong (a 30-minute change is 30 minutes whether
+or not you also planned a coffee in it) and it is the reason the defect
+survived. The walk now filters to legs first; every suppression rule that
+SHOULD fire - a timeless leg, a stopover bed, a cancelled leg, more than 24
+hours apart - is unchanged and separately pinned.
+
+**"No stays" is not "every night is covered".** `coverageGaps` measures from the
+first check-in and answered `[]` with no stay to measure from, so a trip with no
+booking at all showed no warning and no strip while the summary chip counted "0
+of 4 nights booked". It takes an optional `tripStart` for that case only (the
+two stay-prefill callers deliberately pass nothing and keep the old answer), and
+`renderStrip` lost its `!stays.length` gate - which mattered twice, because the
+warning's own "show" action rings strip cells that were never drawn.
+
+**repairTrips now covers every field a renderer trusts, and only the ones
+present.** `location: 123` threw inside `dayMorningCity` and emptied the whole
+Days view; `startTime: 5` emptied the Timeline too. The caps and the rules match
+`sanitizeItem` so the import/share path and the storage/sync path normalize
+identically, and `CLOCK_RE` is now a real clock (`99:99` matched the old
+shape-only test). Deliberate: absent keys stay absent. Adding a field to every
+legacy item would rewrite the whole db on the first boot after a deploy, and a
+repair write landing during a remote apply is the one thing the sync model asks
+us not to make more common (see the known edge above).
+
+**One owner for "which trip am I looking at".** `setActiveTrip` sets the id and
+drops the selection, because a selection is made from the rows of the board it
+was made on. Only the trip picker used to do that, so a cross-trip search jump,
+the overlap warning's link, a duplicate, a template, an import or a restore
+landing elsewhere left the bulk bar over another trip's board reading "0
+selected". Filters are deliberately NOT reset by it.
+
+**A dialog belongs to the trip it was opened for.** The packing dialog read
+`activeTrip()` on every write, so after another tab deleted that trip it either
+edited a stranger's list or threw on `undefined.push` and saved nothing in
+silence. It now records `ui.packingTripId` and re-checks it on every write, the
+same contract `ui.editingId` and `ui.tripEditId` already follow: the dialog stays
+open, the WRITE re-checks its target.
+
+**A promise an undo cannot keep.** Deleting a trip purges its attached documents
+immediately (they live in IndexedDB against the item ids), while the confirm
+said only "You can undo this until you reload the page". The item and bulk
+deletes had always named that cost; the trip delete now does too.
+
+**Two failures wearing one symptom.** "No exchange rate for JPY ... re-enter it
+in a currency the rates cover" was printed when the rate table had simply never
+arrived, sending travellers off to retype money that was fine. The line now
+branches on `ratesFailed` and points at the Retry the totals already offer.
+
+**Harness trap this round minted, and it nearly invalidated the round.** A
+server that is already listening on `BROWSER_TEST_PORT` is not ours: our python
+server fails to bind, `httpOk` answers from the stranger, and every suite runs
+against whatever THAT serves. A stale server on 8099 pointed at another checkout
+made a full trip-planner run report 512/512 green against code that did not
+contain the change under test. `run.mjs` now bind-tests the static and CDP ports
+first and refuses to start. If a suite ever looks impossibly green, check which
+tree the port is serving before believing it.
+
+The CDP half of that guard has to test BOTH stacks. A leftover headless Chrome
+listens on `::1` while `127.0.0.1` still binds, so an IPv4-only probe calls the
+port free, the runner attaches to a browser it does not own, and the estate dies
+mid-run when that process finally exits (`timeout: Runtime.evaluate`, then
+ECONNREFUSED for every suite after it). Measured while chasing exactly that:
+with a listener on `::1` alone, an IPv4 bind test answers "free" and an IPv6 one
+answers "taken". A related hazard worth knowing: snap chromium orphans survive a
+killed runner, so `ps -eo pid,args | grep headless=new` before blaming a suite -
+four of them, one four hours old, were what made two full-estate runs collapse
+at different points while master ran clean.
 
 ## The 2026-08-19 exploratory QA round (TP-01..TP-23)
 

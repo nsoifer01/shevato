@@ -4854,17 +4854,40 @@ test('connectionWarnings says nothing when either leg has no time', () => {
   ]), []);
 });
 
-test('connectionWarnings ignores a non-travel item and a cancelled leg', () => {
-  // an activity between the two legs means they are not back to back
-  assert.deepEqual(L.connectionWarnings([
-    cLeg('a', 'BOS to CDG', '2026-09-02', '05:00', '', '07:30'),
-    cAct('m', 'Coffee', '2026-09-02', '07:35'),
-    cLeg('b', 'CDG to FCO', '2026-09-02', '07:45'),
-  ]), []);
+test('connectionWarnings ignores a cancelled leg', () => {
   assert.deepEqual(L.connectionWarnings([
     cLeg('a', 'BOS to CDG', '2026-09-02', '05:00', '', '07:30'),
     cLeg('b', 'CDG to FCO', '2026-09-02', '07:45', '', '', 'flight', 'cancelled'),
   ]), []);
+});
+
+// This test used to assert the opposite ("an activity between the two legs
+// means they are not back to back"), and that premise is what kept DM-01 alive:
+// a 15-minute change at CDG is a 15-minute change whether or not you also
+// planned a coffee in it - if anything the coffee makes it worse. The walk
+// compared ADJACENT ROWS of the sorted list, so one note, meal or activity
+// between two legs silenced the warning on exactly the trips that have things
+// planned in them.
+test('connectionWarnings sees through a non-travel item between two legs', () => {
+  const bare = L.connectionWarnings([
+    cLeg('a', 'BOS to CDG', '2026-09-02', '05:00', '', '07:30'),
+    cLeg('b', 'CDG to FCO', '2026-09-02', '07:45'),
+  ]);
+  for (const between of [
+    cAct('m', 'Coffee', '2026-09-02', '07:35'),
+    { id: 'n', type: 'note', title: 'Buy a SIM', location: '', startDate: '2026-09-02', startTime: '', endDate: '', endTime: '', status: 'booked' },
+    { id: 'd', type: 'activity', meal: 'breakfast', title: 'Paul', location: '', startDate: '2026-09-02', startTime: '07:35', endDate: '', endTime: '', status: 'booked' },
+  ]) {
+    // identical to the pair on its own: the item in between changes nothing
+    assert.deepEqual(L.connectionWarnings([
+      cLeg('a', 'BOS to CDG', '2026-09-02', '05:00', '', '07:30'),
+      between,
+      cLeg('b', 'CDG to FCO', '2026-09-02', '07:45'),
+    ]), bare, `hidden by ${between.type}`);
+  }
+  assert.equal(bare.length, 1);
+  assert.equal(bare[0].kind, 'tight');
+  assert.equal(bare[0].minutes, 15);
 });
 
 // A bed booked for the night the two legs straddle makes this a stopover.

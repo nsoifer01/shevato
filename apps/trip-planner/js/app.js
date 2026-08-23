@@ -23,7 +23,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 69;
+  const TP_BUILD = 70;
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   // Miles or kilometers, everywhere a distance prints. Same architecture as
@@ -143,7 +143,7 @@
 
   // ---------- state ----------
   let db = loadDb();
-  const ui = { search: '', filterType: '', filterStatus: '', filterTraveler: '', packingFilter: '', editingId: null, shiftTarget: null, tripModalMode: 'new', confirmAction: null, flashId: null, view: 'timeline' };
+  const ui = { search: '', filterType: '', filterStatus: '', filterTraveler: '', packingFilter: '', packingTripId: null, editingId: null, shiftTarget: null, tripModalMode: 'new', confirmAction: null, flashId: null, view: 'timeline' };
 
   // ---------- timeline collapse state ----------
   // Which stays and which days inside them the traveller has opened. Kept OUT
@@ -180,10 +180,15 @@
     try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapseState)); } catch { /* best effort */ }
   }
 
-  // read-only share view: the real db is parked in realDb; save() is a no-op
-  // so nothing the visitor touches ever reaches trip-planner:v1.
+  // read-only share view: `db` holds the stranger's trip and save() is a no-op,
+  // so nothing the visitor touches ever reaches trip-planner:v1. There is
+  // deliberately NO parked copy of the visitor's own db here any more. It used
+  // to be snapshotted on entry and written back on import, and because both
+  // reconcile listeners stand down in shared mode that snapshot never learned
+  // about anything saved since - so importing published a minutes-old view of
+  // the visitor's whole db over their newer edits. Storage owns that data
+  // throughout; this mode owns the screen (see importSharedTrip).
   let sharedMode = false;
-  let realDb = null;
   let sharedTrip = null;
   let didAutoScroll = false;
 
@@ -332,6 +337,49 @@
     if (r) r.disabled = !undoFuture.length;
   }
 
+  // Every field a renderer reads without asking what type it is. Storage is
+  // untrusted JSON for the same reasons an import is - a sync peer running
+  // older code, a hand edit, a future version writing a shape this one has not
+  // met - and repairTrips only ever normalized the handful of fields that had
+  // bitten it before. A number where a string belongs threw MID-RENDER and took
+  // a whole view with it: `location: 123` emptied the Days view
+  // ("(it.location || '').trim is not a function"), `startTime: 5` emptied the
+  // Timeline too (fmtTime splits it), and neither was repaired, reported, nor
+  // recoverable without editing storage by hand. The caps are sanitizeItem's,
+  // so the two entry paths - import / share link, and storage / sync merge -
+  // normalize to the same shape rather than drifting apart.
+  //
+  // Only fields that are PRESENT are touched (the title excepted, which has
+  // always been coerced): adding a key to every legacy item would rewrite the
+  // whole db on the first boot after a deploy, and a repair write landing
+  // during a remote apply is the one thing the sync model asks us not to make
+  // more common.
+  const ITEM_TEXT_CAPS = [['location', 80], ['costNote', 80], ['confirmation', 40], ['details', 500]];
+  const CLOCK_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+  function repairItemFields(it) {
+    it.title = typeof it.title === 'string' ? it.title.slice(0, 120) : String(it.title == null ? '' : it.title).slice(0, 120);
+    for (const [f, max] of ITEM_TEXT_CAPS) {
+      if (it[f] === undefined) continue;
+      if (typeof it[f] !== 'string') it[f] = String(it[f] == null ? '' : it[f]);
+      if (it[f].length > max) it[f] = it[f].slice(0, max);
+    }
+    if (typeof it.startDate !== 'string') it.startDate = '';
+    if (typeof it.endDate !== 'string') it.endDate = '';
+    if (typeof it.endTime !== 'string') it.endTime = '';
+    // a clock is HH:MM or nothing at all; anything else is not a time the app
+    // can print, sort by, or compare a connection against
+    if (it.endTime && !CLOCK_RE.test(it.endTime)) it.endTime = '';
+    if (it.startTime !== undefined && (typeof it.startTime !== 'string' || (it.startTime && !CLOCK_RE.test(it.startTime)))) it.startTime = '';
+    // a deadline that is not a real date is no deadline: the warnings panel
+    // would count down to it and fmtDate would print nonsense
+    if (it.bookBy !== undefined && !isIsoDate(it.bookBy)) it.bookBy = '';
+    if (it.payment !== undefined && !PAYMENT_METHODS.includes(it.payment)) delete it.payment;
+    if (it.paidBy !== undefined && typeof it.paidBy !== 'string') delete it.paidBy;
+    if (it.travelers !== undefined && !Array.isArray(it.travelers)) delete it.travelers;
+    // a split is keyed BY traveller name, so an array or a primitive is not one
+    if (it.splitAmounts !== undefined && (typeof it.splitAmounts !== 'object' || it.splitAmounts === null || Array.isArray(it.splitAmounts))) delete it.splitAmounts;
+  }
+
   // Repair anything structurally broken (hand-edited storage, partial imports)
   // so one bad item can never take the whole app down.
   // A repair that changed something is WRITTEN BACK. It used to live in memory
@@ -360,6 +408,13 @@
       if (budgetFrom != null) t.budgetFrom = budgetFrom;
       else delete t.budgetFrom;
       if (!Array.isArray(t.items)) t.items = [];
+      // The three trip-level stores their dialogs write into directly. A
+      // `packing` that is not an array made the add form throw on push (and
+      // ensurePacking read it as already seeded), and the roster and the
+      // essentials block would do the same to their own readers.
+      if (t.travelers !== undefined && !Array.isArray(t.travelers)) delete t.travelers;
+      if (t.packing !== undefined && !Array.isArray(t.packing)) delete t.packing;
+      if (t.essentials !== undefined && (typeof t.essentials !== 'object' || t.essentials === null || Array.isArray(t.essentials))) delete t.essentials;
       if (!Array.isArray(t.visaExtras)) t.visaExtras = [];
       t.visaExtras = t.visaExtras.filter(c => typeof c === 'string' && /^[A-Z]{2}$/.test(c));
       t.items = t.items.filter(it => it && typeof it === 'object');
@@ -367,7 +422,7 @@
         if (!it.id) it.id = uid();
         if (!TYPE_META[it.type]) it.type = 'note';
         if (!STATUS_META[it.status]) it.status = 'to-book';
-        if (typeof it.title !== 'string') it.title = '';
+        repairItemFields(it);
         // structured food & drink: junk `meal` values drop, and a legacy
         // prefixed title ("Dinner: Saba") migrates to meal:'dinner' +
         // title:'Saba' - deterministic (the four contract prefixes, colon
@@ -375,9 +430,6 @@
         // to carry it in. Runs here so EVERY entry path (boot, sync merge,
         // share boot, undo snapshots reloaded from storage) is normalized.
         normalizeMealItem(it);
-        if (typeof it.startDate !== 'string') it.startDate = '';
-        if (typeof it.endDate !== 'string') it.endDate = '';
-        if (typeof it.endTime !== 'string') it.endTime = '';
         if (it.mapsQuery != null && typeof it.mapsQuery !== 'string') delete it.mapsQuery;
         // the manual same-day position: a small whole number or nothing at all.
         // A "3" or a 1e9 out of hand-edited storage would sort as a string and
@@ -739,7 +791,13 @@
     // nights with no stay between the first check-in and the end of the trip
     // (a trailing flight home still needs lodging on the nights before it)
     const overnightTravel = overnightTransit(items);
-    const gaps = coverageGaps(stays, stats.end, overnightTravel);
+    // `stats.start` is what lets this answer at all on a trip that has no stay
+    // yet: coverageGaps measures from the first check-in, and with no stay to
+    // measure from it used to return nothing, so the panel read "None" beside a
+    // chip counting "0 of 4 nights booked" and the strip stayed hidden. The
+    // gaps it returns carry the same shape, so "show" and "Add stay" work on
+    // them exactly as they do on a hole between two bookings.
+    const gaps = coverageGaps(stays, stats.end, overnightTravel, stats.start);
     for (const g of gaps) {
       issues.push({
         level: 'warn',
@@ -853,9 +911,20 @@
       const codes = [...new Set(unconvertible.map(it => it.costCurrency || trip.currency || 'USD'))];
       const named = unconvertible.slice(0, 3).map(it => `"${it.title || '(untitled)'}"`).join(', ');
       const rest = unconvertible.length > 3 ? `, +${unconvertible.length - 3} more` : '';
+      const subject = unconvertible.length === 1 ? 'this cost is' : `these ${unconvertible.length} costs are`;
+      const them = unconvertible.length === 1 ? 'it' : 'them';
+      // Two different problems wear the same symptom, and telling them apart is
+      // the difference between useful advice and a wild goose chase. A rate
+      // table that never arrived (offline, blocked, provider down) is not the
+      // currency's fault, and "re-enter it in a currency the rates cover" sent
+      // the traveller off to retype money that is perfectly fine. The totals
+      // footer already knows the difference and offers Retry; this line now
+      // says the same thing.
       issues.push({
         level: 'warn',
-        text: `No exchange rate for ${codes.join(', ')}, so ${unconvertible.length === 1 ? 'this cost is' : `these ${unconvertible.length} costs are`} left out of every total: ${named}${rest}. Re-enter ${unconvertible.length === 1 ? 'it' : 'them'} in a currency the rates cover to include ${unconvertible.length === 1 ? 'it' : 'them'}.`,
+        text: ratesFailed
+          ? `Exchange rates could not be fetched, so ${subject} shown in ${unconvertible.length === 1 ? 'its' : 'their'} own currency and left out of every total: ${named}${rest}. Use Retry under the totals when you are back online.`
+          : `No exchange rate for ${codes.join(', ')}, so ${subject} left out of every total: ${named}${rest}. Re-enter ${them} in a currency the rates cover to include ${them}.`,
         ids: unconvertible.map(it => it.id),
       });
     }
@@ -1106,7 +1175,7 @@
     const s = tripStats(trip);
     const stays = trip.items.filter(it => isStay(it) && it.status !== 'cancelled' && isIsoDate(it.startDate) && isIsoDate(it.endDate) && diffDays(it.startDate, it.endDate) > 0);
     const travelNights = overnightTransit(trip.items);
-    if (!s.start || !s.end || s.totalTripNights < 2 || !stays.length) { box.hidden = true; return; }
+    if (!s.start || !s.end || s.totalTripNights < 2) { box.hidden = true; return; }
     box.hidden = false;
     const cells = [];
     // renderEnd, not end: one item dated 9999 would otherwise ask for three
@@ -1514,6 +1583,21 @@
   function exitSelectMode() {
     selMode = false;
     selIds.clear();
+  }
+
+  // "Which trip am I looking at" is one concept and two pieces of state: the
+  // id, and a selection that was made from the rows of the trip you WERE
+  // looking at, which can never mean anything on another board. Only the trip
+  // picker dropped that selection, so every other way of arriving at a
+  // different trip - a cross-trip search result, the overlapping-trip warning's
+  // link, a duplicate, a template, an import, a restore landing elsewhere, the
+  // trip after a delete - left the bulk bar sitting over the new board reading
+  // "0 selected" with checkboxes on rows nobody picked. Filters are
+  // deliberately NOT reset: they are a view the traveller set, and surviving a
+  // switch is what the overlap warning's link promises.
+  function setActiveTrip(id) {
+    if (db.activeTripId !== id) exitSelectMode();
+    db.activeTripId = id;
   }
 
   // The toolbar toggle and the bulk bar, brought in line with the rows the
@@ -2633,7 +2717,7 @@
     // is not on screen. Going there is the only way the traveller sees it
     // happen; restoring invisibly reads as the button doing nothing.
     const elsewhere = t2.id !== db.activeTripId;
-    if (elsewhere) db.activeTripId = t2.id;
+    if (elsewhere) setActiveTrip(t2.id);
     save(elsewhere ? `Restored "${lastDeleted.item.title}" in "${t2.name}"` : '');
     render();
   }
@@ -4479,7 +4563,7 @@
       if (budgetFrom != null) t.budgetFrom = budgetFrom;
       if (travelers.length) t.travelers = travelers;
       db.trips.push(t);
-      db.activeTripId = t.id;
+      setActiveTrip(t.id);
       // A brand-new trip has nothing to show on the map or the day grid, so
       // land on Timeline (and its empty state) instead of an empty map. The
       // render below repaints the view and syncViewHash clears the fragment.
@@ -4567,7 +4651,7 @@
     copy.name = `${t.name} (copy)`;
     copy.items.forEach(it => { it.id = uid(); });
     db.trips.push(copy);
-    db.activeTripId = copy.id;
+    setActiveTrip(copy.id);
     save('Trip duplicated'); render();
   }
 
@@ -4584,7 +4668,7 @@
     copy.name = `${t.name} (template)`;
     copy.items.forEach(it => { it.id = uid(); });
     db.trips.push(copy);
-    db.activeTripId = copy.id;
+    setActiveTrip(copy.id);
     save('Template created');
     render();
     openTripModal('template');
@@ -4832,7 +4916,7 @@
   function jumpToSearchResult(tripId, itemId) {
     const trip = db.trips.find(t => t.id === tripId);
     if (!trip) return;
-    if (db.activeTripId !== tripId) { db.activeTripId = tripId; save(); }
+    if (db.activeTripId !== tripId) { setActiveTrip(tripId); save(); }
     popoverReturnFocus = null; // the jump, not the search button, is where you now are
     closeTripSearch();
     // the same jump the Issues list, the night strip and the Up next chip use
@@ -4940,7 +5024,7 @@
           if (!t || !Array.isArray(t.items)) continue;
           const nt = buildImportedTrip(t, drops);
           db.trips.push(nt);
-          db.activeTripId = nt.id;
+          setActiveTrip(nt.id);
           added++;
         }
         if (!added) throw new Error('No trips found in the file');
@@ -5052,8 +5136,8 @@
       location: String(raw.location || '').slice(0, 80),
       startDate: isIsoDate(raw.startDate) ? raw.startDate : '',
       endDate: isIsoDate(raw.endDate) ? raw.endDate : '',
-      startTime: /^\d{2}:\d{2}$/.test(raw.startTime || '') ? raw.startTime : '',
-      endTime: /^\d{2}:\d{2}$/.test(raw.endTime || '') ? raw.endTime : '',
+      startTime: CLOCK_RE.test(raw.startTime || '') ? raw.startTime : '',
+      endTime: CLOCK_RE.test(raw.endTime || '') ? raw.endTime : '',
       status: STATUS_META[raw.status] ? raw.status : 'to-book',
       cost: cost.value,
       costNote: String(raw.costNote || '').slice(0, 80),
@@ -5164,8 +5248,14 @@
   async function streamThrough(Ctor, bytes) {
     const s = new Ctor('deflate');
     const writer = s.writable.getWriter();
-    writer.write(bytes);
-    writer.close();
+    // Both reject on a payload that is not valid deflate - a truncated or
+    // hand-edited share link - which is the SAME failure the read below throws
+    // and decodeShare already catches and turns into a toast. Unhandled they
+    // ALSO surfaced as uncaught promise rejections in the console, which reads
+    // as a crash on a path the app handles cleanly. Still not awaited: awaiting
+    // a write before anything reads the other end can park on a full queue.
+    writer.write(bytes).catch(() => {});
+    writer.close().catch(() => {});
     const ab = await new Response(s.readable).arrayBuffer();
     return new Uint8Array(ab);
   }
@@ -5572,7 +5662,6 @@
       render();
       return;
     }
-    realDb = db;
     sharedMode = true;
     const drops = [];
     const st = buildImportedTrip(trip, drops);
@@ -5606,12 +5695,26 @@
 
   function importSharedTrip() {
     const nt = buildImportedTrip(sharedTrip);
-    db = realDb;
-    realDb = null;
+    // WHERE "my data" COMES FROM AT THIS MOMENT is the whole of this. The db
+    // this page had in hand when the link opened is not authoritative any more:
+    // another tab of this browser, or this device's own sync applying a remote
+    // merge, may have written since, and shared mode deliberately ignored both.
+    // Adopting that stale copy and saving it published it over everything they
+    // did, with nothing to undo from in the tab that did it. So the visitor's
+    // db is re-read from storage here, normalized, and the import is one
+    // ordinary save on top of whatever is actually there.
+    db = loadDb();
     sharedMode = false;
-    if (lastSaved === null) markSaved();
+    repairDb(true); // normalize in memory; the save below writes the result
+    // Reading the db afresh is the same event as a remote merge landing: the
+    // state this page could describe is gone, so the history that described it
+    // goes with it rather than being able to push a stale db back.
+    undoPast.length = 0;
+    undoFuture.length = 0;
+    markSaved();
+    ensureTrip();
     db.trips.push(nt);
-    db.activeTripId = nt.id;
+    setActiveTrip(nt.id);
     save(`Imported "${nt.name}"`);
     history.replaceState(null, '', location.pathname + location.search);
     document.body.classList.remove('tp-shared');
@@ -9661,9 +9764,36 @@
   }
   const packingRows = trip => (Array.isArray(trip.packing) ? trip.packing : []).filter(r => r && typeof r.text === 'string');
 
+  // The trip this dialog was opened FOR, resolved by id every time rather than
+  // read off whatever is active now. The db can be replaced underneath an open
+  // dialog - another tab deleting that trip, this device's sync applying a
+  // remote merge - and every write here used to go through `activeTrip()`:
+  // after a delete that meant editing somebody else's list, and on a trip that
+  // had never opened this dialog `packing` did not exist at all, so adding a
+  // row threw mid-submit and saved nothing, with no toast and the dialog still
+  // sitting there. Same contract the item and trip dialogs already follow
+  // (ui.editingId / ui.tripEditId): the dialog stays open, and the WRITE
+  // re-checks that its target is still there.
+  function packingTrip() {
+    return db.trips.find(t => t.id === ui.packingTripId) || null;
+  }
+  function packingTripForWrite() {
+    const t = packingTrip();
+    if (!t) {
+      toastError('That trip is no longer here, so nothing was saved');
+      closeOverlay($('#packingOverlay'));
+      return null;
+    }
+    ensurePacking(t);
+    return t;
+  }
+
   function openPackingModal() {
     const trip = activeTrip();
     if (!trip) return;
+    // the dialog is opened for THIS trip and keeps editing it, whatever
+    // happens to db.activeTripId while it is open
+    ui.packingTripId = trip.id;
     ensurePacking(trip);
     // a filter left pointing at somebody who is no longer on the trip would open
     // the dialog on a list with rows missing and nothing saying why
@@ -9678,7 +9808,8 @@
   // row reads as Everyone, and neither the filter nor the picker is built at
   // all, so the list is the list it always was.
   const packingNames = () => {
-    const names = normalizeTravelers(activeTrip().travelers);
+    const t = packingTrip() || activeTrip();
+    const names = normalizeTravelers(t && t.travelers);
     return names.length >= 2 ? names : [];
   };
 
@@ -9687,7 +9818,7 @@
   }
 
   function renderPacking() {
-    const trip = activeTrip();
+    const trip = packingTrip();
     if (!trip) return;
     const names = packingNames();
     const all = packingRows(trip);
@@ -9788,7 +9919,9 @@
   $('#packingList').addEventListener('change', e => {
     const box = e.target.closest('input[data-pk]');
     if (!box) return;
-    const row = packingRows(activeTrip()).find(r => r.id === box.dataset.pk);
+    const trip = packingTripForWrite();
+    if (!trip) return;
+    const row = packingRows(trip).find(r => r.id === box.dataset.pk);
     if (!row) return;
     row.done = box.checked;
     // updated in place rather than re-rendered: rebuilding the list would throw
@@ -9798,7 +9931,7 @@
     // per-person tallies are rebuilt with them: focus is on this checkbox, not
     // in the select, so replacing it takes nobody's place
     const names = packingNames();
-    const all = packingRows(activeTrip());
+    const all = packingRows(trip);
     $('#packingCount').textContent = packingCountText(packingRowsFor(all, ui.packingFilter, names));
     renderPackingFilter(names, all);
     save();
@@ -9815,7 +9948,8 @@
   $('#packingList').addEventListener('click', e => {
     const btn = e.target.closest('button[data-pk-del]');
     if (!btn) return;
-    const trip = activeTrip();
+    const trip = packingTripForWrite();
+    if (!trip) return;
     const idx = trip.packing.findIndex(r => r && r.id === btn.dataset.pkDel);
     if (idx < 0) return;
     const gone = trip.packing[idx];
@@ -9830,12 +9964,14 @@
     const input = $('#packingAddInput');
     const text = input.value.trim();
     if (!text) { input.focus(); return; }
+    const trip = packingTripForWrite();
+    if (!trip) return;
     const row = { id: uid(), text, done: false };
     const who = pickedPackingWho();
     // absent rather than empty, so a row for everyone is byte for byte the row
     // this list has always stored
     if (who.length) row.who = who;
-    activeTrip().packing.push(row);
+    trip.packing.push(row);
     input.value = '';
     // the picker is NOT cleared: adding three things for the same person is the
     // normal way this gets used, and re-ticking a name each time is the cost
@@ -10369,8 +10505,7 @@
   // exactly as a filter change does: the bulk bar could otherwise sit over
   // another trip's board reading "0 selected"
   $('#tripSelect').addEventListener('change', e => {
-    db.activeTripId = e.target.value;
-    exitSelectMode();
+    setActiveTrip(e.target.value);
     save();
     render();
   });
@@ -10455,7 +10590,13 @@
     }
     else if (act === 'delete-trip') {
       const t = activeTrip();
-      confirmDialog('Delete this trip?', `"${t.name}" and its ${t.items.length} item(s) will be removed. You can undo this until you reload the page.`, 'Delete trip', () => {
+      // Undo brings the trip back but not its attachments: those live in
+      // IndexedDB against the item ids and are purged below, exactly as the
+      // item and bulk deletes purge theirs. Both of those say so before they
+      // act; this one promised an undo it could not make whole and said nothing.
+      const docs = t.items.reduce((n, it) => n + (docCounts.get(it.id) || 0), 0);
+      const attached = docs ? ' Attached documents cannot be recovered.' : '';
+      confirmDialog('Delete this trip?', `"${t.name}" and its ${t.items.length} item(s) will be removed.${attached} You can undo this until you reload the page.`, 'Delete trip', () => {
         for (const it of t.items) deleteDocsForItem(it.id);
         // The two per-trip stores the db does not own. Both were left behind by
         // a delete and nothing else ever pruned them, so they grew forever on
@@ -10473,7 +10614,7 @@
         }
         dropCollapse(t.id);
         db.trips = db.trips.filter(x => x.id !== t.id);
-        db.activeTripId = db.trips.length ? db.trips[0].id : null;
+        setActiveTrip(db.trips.length ? db.trips[0].id : null);
         save(`Trip "${t.name}" deleted`);
         render();
       });
@@ -10549,7 +10690,7 @@
     // it, exactly as picking it from #tripSelect does - filters untouched
     const t = e.target.closest('button[data-trip]');
     if (t && db.trips.some(x => x.id === t.dataset.trip)) {
-      db.activeTripId = t.dataset.trip;
+      setActiveTrip(t.dataset.trip);
       save();
       render();
     }
@@ -10708,6 +10849,8 @@
       db = loadDb();
       repairDb();
       ensureTrip();
+      // the selection was made from rows this page no longer holds
+      exitSelectMode();
       // a remote merge invalidates local history: undoing another
       // device's change from here would push a stale state back up
       undoPast.length = 0;
@@ -10771,6 +10914,7 @@
     db = loadDb();
     repairDb();
     ensureTrip();
+    exitSelectMode();
     undoPast.length = 0;
     undoFuture.length = 0;
     markSaved();
@@ -10819,7 +10963,7 @@
   // writer (correctly case-insensitive) then refused to touch the fragment, so
   // the payload just sat in the URL doing nothing.
   const bootIsShare = viewFromHash(location.hash, ui.view).isShare;
-  // repairTrips() still runs so `db`/`realDb` is never handed downstream code
+  // repairTrips() still runs so `db` is never handed downstream code
   // (e.g. ensureTrip() on a failed share decode) in an unnormalized shape, but
   // the write-back is skipped on a share boot: opening someone else's link
   // must never touch this device's own real trip data, not even to fix up a

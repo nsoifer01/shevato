@@ -302,10 +302,21 @@ const TripLogic = (() => {
   }
 
   // ---------- night coverage ----------
-  function coverageGaps(stays, tripEnd, travel = []) {
-    if (!stays.length) return [];
-    const first = stays.reduce((m, s) => s.startDate < m ? s.startDate : m, stays[0].startDate);
-    let last = stays.reduce((m, s) => s.endDate > m ? s.endDate : m, stays[0].endDate);
+  // `tripStart` is optional and only used when there is no stay to measure
+  // from. Without it this answered [] for a trip with NO stay at all, which
+  // reads as "every night is covered" on the one trip where nothing is: the
+  // strip stayed hidden and the panel said None while the summary chip counted
+  // "0 of 4 nights booked". Callers that ask a different question (the stay
+  // prefills, which have their own no-stay branches) pass nothing and keep the
+  // old answer.
+  function coverageGaps(stays, tripEnd, travel = [], tripStart = '') {
+    if (!stays.length && !isIsoDate(tripStart)) return [];
+    const first = stays.length
+      ? stays.reduce((m, s) => s.startDate < m ? s.startDate : m, stays[0].startDate)
+      : tripStart;
+    let last = stays.length
+      ? stays.reduce((m, s) => s.endDate > m ? s.endDate : m, stays[0].endDate)
+      : tripStart;
     const horizon = addDays(first, MAX_TRIP_DAYS);
     // A trip end past the render horizon is a mistyped date, not a real end:
     // the far-future-date error already names that item. Stretching coverage to
@@ -2499,10 +2510,21 @@ const TripLogic = (() => {
   function connectionWarnings(items) {
     const live = [...(items || [])].filter(it => it && it.status !== 'cancelled').sort(bySortKey);
     const stays = live.filter(it => isStay(it) && isIsoDate(it.startDate));
+    // A connection is between two LEGS, and "the next leg" is not "the next
+    // row". Walking the whole sorted list and skipping a pair whose ends are
+    // not both travel meant anything logged in between broke it: a note on the
+    // departure day, a coffee at the airport, the dinner booked for that
+    // evening. The warning therefore went silent on exactly the trips that have
+    // things planned - 16:30 landing, 17:00 bus, one note between them and
+    // nothing was said. Filtering to the legs first is what makes the
+    // comparison mean what it claims; everything below it (the timeless-leg
+    // skip, the 24-hour window, the stopover rule) is unchanged, and a leg with
+    // no clock time still breaks the chain because neither pair it forms can be
+    // read.
+    const legs = live.filter(it => TRAVEL_TYPE[it.type]);
     const out = [];
-    for (let i = 1; i < live.length; i++) {
-      const from = live[i - 1], to = live[i];
-      if (!TRAVEL_TYPE[from.type] || !TRAVEL_TYPE[to.type]) continue;
+    for (let i = 1; i < legs.length; i++) {
+      const from = legs[i - 1], to = legs[i];
       const arr = legArrival(from), dep = legDeparture(to);
       if (!arr || !dep) continue;
       const gap = dep.min - arr.min;
