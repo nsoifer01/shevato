@@ -23,22 +23,39 @@ on:
   workflow_dispatch:
 
 jobs:
-  browser:
+  browser-shard:
     runs-on: ubuntu-latest
-    # The estate is 18 suites (six harness-owned: site, apps, a11y, visual,
-    # perf, pwa-gym; plus the trip-planner, gym-tracker and fpl-planner E2E
-    # suites; check counts pinned in tests/browser/run.mjs EXPECTED_CHECKS)
-    # and takes ~15 min on a
-    # typical runner; a slow runner was observed crossing the old 30-minute
-    # cap on 2026-08-16 with no test at fault. 45 keeps hung-browser runs
-    # from burning a full hour while leaving real headroom for slow silicon.
-    # The estate grew from 1,376 to 1,915 checks on 2026-08-23, when seven
-    # per-app audit suites that had never actually executed were wired in
-    # (two returned the wrong shape and aborted the runner's loop). At 45
-    # minutes the job was being CANCELLED mid-run, which reads as a failure
-    # and hides whatever had already passed. It measures about 45 minutes on
-    # this runner, so the cap needs real headroom, not a hair above it.
-    timeout-minutes: 75
+
+    # The estate is 27 suites and ~1,900 checks, walked one suite at a time in
+    # one browser. On a single runner that measured 44-45 minutes (and was
+    # being CANCELLED at the old 45-minute cap, which reads as a failure and
+    # hides everything that had already passed). Nothing in it is slow by
+    # accident: roughly nine minutes is fixed `settle`/`sleep` waiting, and axe
+    # is 553 KB of JavaScript evaluated into the page and then run as a full
+    # WCAG ruleset over data-heavy rendered views, about twenty times.
+    #
+    # So the suites are split across parallel runners instead. Each shard gets
+    # its own machine, its own static server and its own Chrome, which is what
+    # makes this safe: two runs on ONE machine would share CDP port 9222 and
+    # silently drive each other's browser (the runner bind-tests both ports and
+    # refuses to start for exactly that reason).
+    #
+    # `strategy.job-total` is the matrix size itself, so the shard count is
+    # never written down twice and cannot drift from the list below. Adding a
+    # fifth entry is the whole change; run.mjs re-partitions on its own and
+    # prints the suites each shard owns.
+    strategy:
+      # One shard failing must not cancel its siblings. The estate exists to
+      # tell you everything that is broken, not the first thing.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+
+    # Per SHARD, not per estate. Seven suites measure around 12 minutes; the
+    # cap leaves room for slow silicon and for the fact that a round-robin
+    # split balances suite COUNT, not suite cost, so one shard can draw a
+    # heavier hand than the others.
+    timeout-minutes: 35
 
     steps:
       - uses: actions/checkout@v6
@@ -79,5 +96,30 @@ jobs:
       # rising-shows byte / request / DOM budget rows, which cannot mean
       # anything without the real dataset, are reported as skipped rather than
       # passing vacuously on ~1.6 MB of code.
+      #
+      # The run prints the suites this shard owns before it starts, so the
+      # shard logs side by side are the audit that the estate was fully run.
       - name: Run browser regression suite
-        run: npm run test:browser
+        run: npm run test:browser -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+
+  # One verdict for the whole estate, so "did the browser suite pass?" has a
+  # single answer even though four jobs produce it, and so a required status
+  # check has one stable name to point at if the owner ever adds one.
+  #
+  # `if: always()` is what makes it mean anything: without it, a cancelled or
+  # skipped shard would leave this job skipped too, which reads as "nothing to
+  # see here" rather than "the estate did not run". For a matrix job,
+  # `needs.<job>.result` is success only when every shard succeeded.
+  browser:
+    needs: browser-shard
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify every shard passed
+        run: |
+          result='${{ needs.browser-shard.result }}'
+          echo "browser-shard result: $result"
+          if [ "$result" != 'success' ]; then
+            echo "::error::the browser estate did not pass (shards: $result)"
+            exit 1
+          fi

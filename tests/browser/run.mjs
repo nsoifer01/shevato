@@ -75,15 +75,18 @@ const SUITES = [
   'apps/maptap-rivals/e2e/quality.mjs',
 ];
 
-// --only=<substring> runs the suites whose path contains it; --headed opens a
-// visible browser window for local debugging. Anything else is rejected so a
-// typo cannot silently run the wrong subset.
+// --only=<substring> runs the suites whose path contains it; --shard=<i>/<n>
+// runs one nth of them; --headed opens a visible browser window for local
+// debugging. Anything else is rejected so a typo cannot silently run the wrong
+// subset.
+const USAGE = 'usage: run.mjs [--only=<path-substring>] [--shard=<i>/<n>] [--headed]';
 const args = process.argv.slice(2);
-let only = null, headed = false;
+let only = null, headed = false, shard = null;
 for (const a of args) {
   if (a.startsWith('--only=')) only = a.slice('--only='.length);
+  else if (a.startsWith('--shard=')) shard = a.slice('--shard='.length);
   else if (a === '--headed') headed = true;
-  else { console.error(`unknown argument: ${a}\nusage: run.mjs [--only=<path-substring>] [--headed]`); process.exit(2); }
+  else { console.error(`unknown argument: ${a}\n${USAGE}`); process.exit(2); }
 }
 // Pinned check counts per suite. A suite that silently loses checks (an early
 // return, a refactor that drops a loop, a throw swallowed inside the suite)
@@ -122,6 +125,51 @@ const EXPECTED_CHECKS = {
 
 const selected = only ? SUITES.filter((p) => p.includes(only)) : SUITES;
 if (!selected.length) { console.error(`--only=${only} matches no suite. Suites:\n  ${SUITES.join('\n  ')}`); process.exit(2); }
+
+// Sharding. The estate is walked one suite at a time in one browser, so the
+// only way to make it finish faster is to put the suites on more machines.
+// --shard=2/4 says "this is runner 2 of 4"; the CI matrix starts one job per
+// shard and each runs its own static server and its own Chrome, which is also
+// why sharding is safe here and two runs on ONE machine are not (they would
+// share CDP 9222 and silently drive each other's browser).
+//
+// Round-robin (index % n), NOT contiguous blocks: the list groups related
+// suites together (ten trip-planner ones in a row, seven per-app audit ones)
+// and related suites cost about the same, so blocks would hand one runner most
+// of the slow work while another finished early. Striding interleaves them.
+//
+// The partition is total by construction: every suite has exactly one index,
+// so shards 1..n together run the list once and only once. That is the
+// property that matters, because a suite belonging to no shard would report
+// nothing and read as green. The workflow derives <n> from the matrix size
+// itself (`strategy.job-total`) rather than repeating the number, so the index
+// and the total cannot drift apart in a half-finished edit.
+let toRun = selected;
+let shardLabel = '';
+if (shard !== null) {
+  const m = /^([1-9][0-9]*)\/([1-9][0-9]*)$/.exec(shard);
+  if (!m) {
+    console.error(`--shard=${shard} is not <i>/<n> with positive whole numbers (1-based).\n${USAGE}`);
+    process.exit(2);
+  }
+  const index = Number(m[1]);
+  const total = Number(m[2]);
+  if (index > total) {
+    console.error(`--shard=${shard}: there is no shard ${index} of ${total}.`);
+    process.exit(2);
+  }
+  toRun = selected.filter((_, i) => i % total === index - 1);
+  shardLabel = ` (shard ${index}/${total})`;
+  if (!toRun.length) {
+    // A shard with nothing to run exits 0 and reads as a pass. Say so instead.
+    console.error(`--shard=${shard} selects no suite: ${selected.length} suites cannot fill ${total} shards.`);
+    process.exit(2);
+  }
+  // Printed so a CI log says exactly what this runner was responsible for;
+  // the four logs side by side are the audit that the estate was fully run.
+  console.log(`shard ${index}/${total}: ${toRun.length} of ${selected.length} suites`);
+  for (const p of toRun) console.log(`  ${p}`);
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -212,7 +260,7 @@ async function stopAll() {
 const results = [];
 try {
   await startAll();
-  for (const name of selected) {
+  for (const name of toRun) {
     const suiteName = path.basename(name, '.mjs');
     process.stdout.write(`\n--- ${suiteName} ---\n`);
     // Each suite runs inside its own try/catch: one suite throwing (import
@@ -265,7 +313,7 @@ const failed = results.filter((r) => !r.pass);
 const skipped = results.filter((r) => r.pass && r.skipped);
 const ran = results.length - skipped.length;
 console.log(`\n${'='.repeat(52)}`);
-console.log(`BROWSER REGRESSION: ${ran - failed.length}/${ran} passed`
+console.log(`BROWSER REGRESSION${shardLabel}: ${ran - failed.length}/${ran} passed`
   + (skipped.length ? `, ${skipped.length} skipped` : ''));
 if (skipped.length) {
   console.log('\nSkipped (precondition missing, not a failure):');
