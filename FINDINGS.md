@@ -3,7 +3,8 @@
 Site-level knowledge that belongs to no single app: the marketing pages
 (`*.html` at the root and `moadon-alef/`), the injected `partials/`, shared
 `assets/` (CSS, JS, the auth modal, the sync banner), `sync-system/`,
-`firestore.rules`, `privacy.html` and `netlify.toml`. Per-app knowledge
+`firestore.rules`, `privacy.html`, `netlify.toml` and the repo tooling
+(`.gitignore`, `package.json`, the workflows). Per-app knowledge
 lives in `apps/<app>/FINDINGS.md`; this file follows the same living-document
 rule (rewrite, merge, delete; never an append-only diary).
 
@@ -264,3 +265,39 @@ worth knowing here is what the write guard actually protects.
 - trip-planner and football-h2h handle synchronously, which is why the
   trip-planner P1 fix (an observing tab must not persist its floor trip) holds
   on the guard as well as on `ensureTrip(persist)`.
+
+## `npm run` exiting 216 with no output means a bad root `node_modules`
+
+Commit 0ce12b9 (2026-08-23) tracked a SYMLINK named `node_modules` at the repo
+root whose target was its own absolute path. Two things conspired.
+
+`.gitignore` said `/node_modules/`, and **a trailing slash matches a directory
+only**, so a symlink of that name is not ignored and `git add -A` stages it.
+The rule is now `/node_modules`, slashless, and so are the two
+`netlify/*/node_modules` rules. Removing a trailing slash never loses
+coverage: the slashless form matches the directory too.
+
+The failure then looked completely different depending on where the checkout
+lived, which is why it survived a full day of green CI:
+
+- **Fresh checkout** (CI runners, Netlify deploys): the absolute target does
+  not exist there, so the link is merely DANGLING. npm ignores it and every
+  script runs. `npm ci` unlinks it and installs normally. Nothing to see.
+- **The machine the path names**: the target IS the repo, so the link is a
+  LOOP. npm prepends `<cwd>/node_modules/.bin` to `PATH` before spawning a
+  script, resolving that raises `ELOOP`, and npm exits `-40` (216 to the
+  shell) after printing the script banner and **nothing else**. `npm test`,
+  `npm run build:site`, every script: banner, silence, exit 216.
+
+So the signature to recognise is an npm script that prints its two banner
+lines and dies with 216 and no diagnostic. `ls -ld node_modules` tells you
+immediately; `~/.npm/_logs/*-debug-0.log` carries the real `spawn ELOOP`
+stack that the terminal never showed. The underlying command is fine: running
+the script body directly (`node --test ...`) succeeds, which is the tell that
+the fault is in npm's spawn, not in the code under test.
+
+Pinned by `tests/static/tracked-symlinks.test.mjs`: nothing named
+`node_modules` may be tracked, no tracked symlink may be absolute or escape
+the repo, and the `.gitignore` rule is checked behaviourally against a real
+symlink in a throwaway repo (in this working tree `node_modules` is a
+directory, where the broken pattern and the fixed one are indistinguishable).
