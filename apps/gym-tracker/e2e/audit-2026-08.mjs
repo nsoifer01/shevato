@@ -552,7 +552,10 @@ export async function run({ base, cdpPort }) {
     try { await closePage(cdpPort, s); } catch {}
   }
 
-  const passed = R.filter((r) => r.pass).length;
-  const failed = R.length - passed;
-  return { passed, failed, skipped: 0, failures: R.filter((r) => !r.pass).map((r) => `${r.name}${r.detail ? ` :: ${r.detail}` : ''}`) };
+  // The runner consumes an ARRAY of { name, pass, detail } checks and
+  // spreads it into its own results (tests/browser/run.mjs). Returning a
+  // summary object instead threw "Spread syntax requires ...iterable" and
+  // aborted the whole run BEFORE any of the 2026-08 audit suites executed,
+  // so they were green standalone and never ran in the estate.
+  return R;
 }

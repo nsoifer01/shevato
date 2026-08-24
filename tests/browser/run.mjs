@@ -223,6 +223,19 @@ try {
     } catch (e) {
       r = [{ name: `${suiteName}: suite completed`, pass: false, detail: String(e && e.message || e).slice(0, 200) }];
     }
+    // A suite must return an ARRAY of checks. Returning a summary object
+    // instead used to throw "Spread syntax requires ...iterable" out of the
+    // loop below, which aborted the ENTIRE run at that suite: on 2026-08-23
+    // that silently skipped all seven per-app audit suites, which were green
+    // standalone and had simply never executed here. Fail that suite loudly
+    // and keep going, the same way a suite that throws is contained.
+    if (!Array.isArray(r)) {
+      r = [{
+        name: `${suiteName}: suite returned an array of checks`,
+        pass: false,
+        detail: `run() resolved with ${r === null ? 'null' : typeof r}; suites must return [{ name, pass, detail }]`,
+      }];
+    }
     if (EXPECTED_CHECKS[name] != null && r.length !== EXPECTED_CHECKS[name]) {
       r.push({
         name: `${suiteName}: expected ${EXPECTED_CHECKS[name]} checks, got ${r.length}`,
