@@ -95,14 +95,18 @@ for (const a of args) {
 // apps.mjs note: the count is invariant whether or not the rising-shows
 // dataset is fetched (the skip path emits the same number of entries).
 const EXPECTED_CHECKS = {
-  'tests/browser/suites/site.mjs': 157,
+  // Re-measured after the 2026-08-23 merge, which brought together two
+  // independent rounds of checks: site 157 -> 170, a11y 74 -> 79 and
+  // visual 86 -> 103. Both sides' additions are kept, so the totals are
+  // the union, not a replacement.
+  'tests/browser/suites/site.mjs': 170,
   // 103 from master, plus the two Rising Shows highlight-badge checks added
   // in this branch.
   'tests/browser/suites/apps.mjs': 105,
   // 72 from master's B7/B8 keyboard + touch-target blocks, plus the two
   // seeded MapTap Rivals state scans added in this branch.
-  'tests/browser/suites/a11y.mjs': 74,
-  'tests/browser/suites/visual.mjs': 86,
+  'tests/browser/suites/a11y.mjs': 79,
+  'tests/browser/suites/visual.mjs': 103,
   'tests/browser/suites/perf.mjs': 51,
   'tests/browser/suites/pwa-gym.mjs': 14,
   // 56 from the 2026-08-22 audit pass, plus, added 2026-08-23: 15 modal/header
