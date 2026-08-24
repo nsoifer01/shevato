@@ -20,6 +20,106 @@ Consequences for anything that aggregates *my* side:
   identical scores), so the skew is invisible without a unit test: the round
   counts, and any weighting derived from them, are what break.
 
+## A sync walks BOTH histories, so one-sided days go both ways (2026-08-24)
+
+`mergeMapTapSync` (js/stats.js) is the whole merge, pure and unit-tested; the
+DOM half in `syncMapTapForRival` only fetches, calls it, and paints. It walks
+the **union** of the two players' MapTap histories.
+
+Before 2026-08-24 it walked the rival's dates only (`for (const date of
+Object.keys(theirsByDate))`, with `if (!theirs) continue`). Days the rival
+played and the user didn't were recorded; days the **user** played and the
+rival didn't produced no row at all. Nothing downstream was wrong - the log
+simply never learned that the user had played. What the owner saw:
+
+- Today's predictions read `PRE-GAME` with my Actual column blank, i.e. "you
+  haven't played yet", on a day I had played and no rival had.
+- The day was missing from History and from every rival's games table.
+- `myProfileRounds()` derives my per-round history from the game log, so a
+  solo day also fed nothing to the predictor.
+
+The three rules the merge holds to, in both directions:
+
+1. A day only one side played stores only that side. Never write a 0 for the
+   absent player - `iPlayed`/`theyPlayed` key off the field being *present*,
+   and a zero would read as a 900-0 blowout in every record.
+2. A one-sided row upgrades **in place** when the other side's history catches
+   up. The row keeps its id, so a rival playing at 8pm turns this morning's
+   me-only row into a head-to-head rather than adding a second row for the day.
+3. A side already stored is never cleared by a pull that lacks it. MapTap
+   gains days, it never loses them, so an absent side means "no news", not
+   "didn't play". Rows the user typed (any note but `synced from MapTap`) keep
+   their scores entirely; they still get `cities` backfilled, which is additive.
+
+**Cost, and why it is accepted.** A me-only day is written once per rival, so
+N rivals means N near-identical rows for that day (my score, no rival score).
+That is the same shape the log already had - a day three rivals played and I
+did not was already three rows - and every cross-rival aggregate already
+dedupes by `date` for exactly this reason (see the section above). It does
+mean the log grows faster for someone who plays far more often than their
+rivals do; `maptapRivalsGames` syncs as a single Firestore document, so that
+is the number to watch if sync ever starts failing.
+
+**Trap found while doing it.** Both sides are indexed by date, and dates come
+verbatim from a remote payload. `theirsByDate['__proto__']` on an object with
+no such own key returns `Object.prototype` - a *truthy* "day" with no `scores`
+on it, which crashed the walk on `.slice()`. The merge converts both payloads
+to `Map`s up front. The pre-2026-08-24 loop had the same latent crash on the
+`mine` side; nothing had ever fed it that date.
+
+## "Sync all rivals" reports the run; the per-rival pills cannot (2026-08-24)
+
+Each rival card gets its own status pill (`setRivalSyncStatus`) that clears
+itself after 5 seconds. Over a five-rival run that is useless as a report: the
+first pills have faded before the last rival finishes, and "nothing was stale"
+looks identical to "nothing happened".
+
+So `syncMapTapForRival` now RESOLVES to its outcome - `{ ok, added, updated,
+backfilled }`, `{ ok: false, error }`, or `{ skipped: true }` when that rival
+was already mid-sync from its own button and nothing was attempted - and
+`syncAllRivals` totals them through `syncAllSummary` (pure, exported via
+`window._testExports`). Two states render on the profile card, which is where
+the button is:
+
+- while running: `Syncing 2/5…` on the button, `Synced 2 of 5 rivals · now
+  Bex…` under it. The counter is repainted BETWEEN rivals, so it always reads
+  "how many are finished", never "how many have been started".
+- after: `✓ Synced all · 5 rivals synced · 12 new games · 2 already up to
+  date`, warn-tinted if some rival failed, err-tinted if all did. Two rules
+  keep it from over-claiming: the counts describe what SYNCED, not what was
+  attempted (a run where every rival failed opens with "2 rivals failed", not
+  "2 rivals synced"), and a run with any failure in it spells the up-to-date
+  count out instead of saying "all already up to date", which would read as a
+  clean bill of health.
+
+It deliberately does NOT self-clear: it is the only place the run's totals
+exist, and the state is in-memory, so a reload drops it. The line is a
+`.profile-status-line`, which is one of the few children the compact
+(collapsed) card keeps visible - `.profile-info`, `.profile-hint` and
+`.profile-meta-line` are the ones `.is-compact` hides.
+
+Still native `alert()`: the "no rivals have a MapTap username yet" path. It is
+close to unreachable, since the button is disabled at zero targets.
+
+Known limitation, unchanged by this round: `renderProfileCard` rebuilds its
+whole action row, and a sync-all run renders it twice per rival, so a keyboard
+user who presses Enter on the button loses focus to `<body>` on the first
+render and never hears the progress line. Restoring focus is not enough on its
+own - the button carries `disabled` while the run is in flight, and a disabled
+button cannot hold focus - so the fix is `aria-disabled` plus a no-op handler,
+which is a bigger change than this round asked for.
+
+**Harness trap.** The app POSTs `application/json` to `getPublicProfile`, so
+the browser preflights it. A CDP `Fetch.fulfillRequest` stub that answers only
+the POST, with `Access-Control-Allow-Origin` but no
+`Access-Control-Allow-Headers: Content-Type`, fails CORS on the OPTIONS and
+every rival reports a failure that is purely the harness's. Answer the
+OPTIONS with 204 and both headers. Second trap: locally fulfilled responses
+land in about a millisecond, so the progress states flash past unobservably -
+`e2e/quality.mjs` wraps `window.fetch` in a delay and records the label
+sequence with a `MutationObserver` rather than trying to sample at the right
+moment.
+
 ## Pasting the same day twice updates it (duplicate defect fixed 2026-08-15)
 
 `saveDay()` (js/app.js) now funnels every pasted day through
@@ -611,13 +711,19 @@ must exist because `FIREBASE_CONFIG_URL` is computed at parse time, and
 `assert.deepEqual` from `node:assert/strict` on prototype identity, so the
 harness JSON-projects them (`plain()`) before comparing.
 
+Since 2026-08-24 `_testExports` also carries `syncAllSummary`, and the MapTap
+sync merge itself moved into `js/stats.js` as `mergeMapTapSync` (pure, `makeId`
+and `now` injected the way `sanitizeBackup` takes `makeId`), so both halves of
+the sync round are covered in `npm test` rather than only in a browser.
+
 Still outside unit-test reach: the paste panel DOM flow around `saveDay`,
-`locationStats` / `carryChoke`, the predictions card assembly, the MapTap sync
-merge, the network Firestore calls, and every render path. Since 2026-08-22
-the WhatsApp parser (`js/whatsapp.js`), the backup validator and the date
-helpers are pure and unit-tested, and `e2e/quality.mjs` covers the rendered
-paths the audit found broken (seeded axe at 1280 and 390, keyboard
-reachability, modal focus, delete/Undo, paste-date reset, refused imports,
+`locationStats` / `carryChoke`, the predictions card assembly, the fetch half
+of the sync (`syncMapTapForRival`), the network Firestore calls, and every
+render path. Since 2026-08-22 the WhatsApp parser (`js/whatsapp.js`), the
+backup validator and the date helpers are pure and unit-tested, and
+`e2e/quality.mjs` covers the rendered paths the audit found broken (seeded
+axe at 1280 and 390, keyboard reachability, modal focus, delete/Undo,
+paste-date reset, refused imports,
 WhatsApp formats, overflow at 390/1100, and since 2026-08-23 the dialog
 stacking block); the `.features/` plans hold the rest.
 
@@ -636,7 +742,7 @@ Two gaps the 2026-08-23 pass closed, both in `e2e/quality.mjs`:
   else. The helpers themselves stay pinned by the four-zone child-process test
   in `tests/stats.test.js`, which is date- and host-independent.
 
-`e2e/quality.mjs` is 120 checks and is PINNED in `tests/browser/run.mjs`
+`e2e/quality.mjs` is 126 checks and is PINNED in `tests/browser/run.mjs`
 (`EXPECTED_CHECKS`), the only app-owned suite that is. Two reasons it needs the
 pin: a suite that returns early "passes" everything it did run, and since
 2026-08-23 an axe scan that exceeds the driver's 45s send timeout records its

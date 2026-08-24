@@ -115,7 +115,9 @@ const EXPECTED_CHECKS = {
   // 8 parity-card checks.
   // Pinned because this suite's axe scans now contain their own failures
   // instead of aborting the run, so a shrunken run would otherwise look green.
-  'apps/maptap-rivals/e2e/quality.mjs': 120,
+  // Plus 6 "Sync all rivals" checks (progress counter, run totals, me-only
+  // days, the predictions actual, the already-up-to-date rerun, JS errors).
+  'apps/maptap-rivals/e2e/quality.mjs': 126,
 };
 
 const selected = only ? SUITES.filter((p) => p.includes(only)) : SUITES;

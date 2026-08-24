@@ -11,6 +11,7 @@ const {
   N_LOCS, WEIGHTS, MAX_RAW, MONTHS,
   weightedTotal, predTotalFromScores, hasLocs, iPlayed, theyPlayed, bothPlayed, arrEq,
   getMyTotal, getTheirTotal, parseMapTapScore, mapTapHistoryToRounds,
+  SYNC_NOTE, mergeMapTapSync,
   resultOf, resultLoc, stdDev, average, streaks, linearTrend, projectNext,
   rivalryScoreFromGames,
   parseDateISO, isoWeekStart, isoWeekEnd, isoWeekId,
@@ -317,6 +318,157 @@ test('mapTapHistoryToRounds: a present-but-malformed roundData is dropped, NOT r
   const outOfRange = { roundData: roundDataDay.roundData.map((r, i) => i === 0 ? { ...r, score: 101 } : r), rounds: iosRoundsDay.rounds };
   assert.deepEqual(mapTapHistoryToRounds({ d: wrongLen }), {});
   assert.deepEqual(mapTapHistoryToRounds({ d: outOfRange }), {});
+});
+
+// --- mergeMapTapSync -------------------------------------------------------
+
+// One day's rounds in the shape mapTapHistoryToRounds emits, plus a caller
+// with every argument defaulted so each test only names what it is about.
+const city = (n) => ({ lat: n, lng: n, name: `C${n}` });
+const day = (scores) => ({ scores, cities: [city(1), city(2), city(3), city(4), city(5)] });
+const merge = (over) => mergeMapTapSync({
+  rivalId: 'r1', mineByDate: {}, theirsByDate: {}, existingGames: [],
+  makeId: (() => { let n = 0; return () => `id${++n}`; })(), now: 1000,
+  ...over,
+});
+
+test('mergeMapTapSync: a day only I played becomes a me-only row', () => {
+  const out = merge({ mineByDate: { '2026-08-20': day([90, 90, 90, 90, 90]) } });
+  assert.equal(out.added, 1);
+  const g = out.newGames[0];
+  assert.deepEqual(g.myScores, [90, 90, 90, 90, 90]);
+  assert.equal(g.myScore, weightedTotal([90, 90, 90, 90, 90]));
+  // No rival side at all, not a zero, which would read as a 900-0 blowout.
+  assert.equal('theirScores' in g, false);
+  assert.equal('theirScore' in g, false);
+  assert.equal(iPlayed(g), true);
+  assert.equal(theyPlayed(g), false);
+  assert.equal(resultOf(g), null);
+  // The puzzle geometry comes off my own history, so the continent
+  // breakdown and the predictor see the day.
+  assert.equal(g.cities.length, N_LOCS);
+  assert.equal(g.note, SYNC_NOTE);
+});
+
+test('mergeMapTapSync: a day only they played still becomes a rival-only row', () => {
+  const out = merge({ theirsByDate: { '2026-08-20': day([80, 80, 80, 80, 80]) } });
+  assert.equal(out.added, 1);
+  const g = out.newGames[0];
+  assert.equal('myScores' in g, false);
+  assert.deepEqual(g.theirScores, [80, 80, 80, 80, 80]);
+  assert.equal(theyPlayed(g), true);
+  assert.equal(iPlayed(g), false);
+});
+
+test('mergeMapTapSync: a shared day becomes one full head-to-head row', () => {
+  const out = merge({
+    mineByDate:   { '2026-08-20': day([90, 90, 90, 90, 90]) },
+    theirsByDate: { '2026-08-20': day([80, 80, 80, 80, 80]) },
+  });
+  assert.equal(out.added, 1);
+  assert.equal(bothPlayed(out.newGames[0]), true);
+  assert.equal(resultOf(out.newGames[0]), 'W');
+});
+
+test('mergeMapTapSync: the walk covers the union of both histories, in date order', () => {
+  const out = merge({
+    mineByDate:   { '2026-08-20': day([90, 90, 90, 90, 90]), '2026-08-22': day([70, 70, 70, 70, 70]) },
+    theirsByDate: { '2026-08-21': day([80, 80, 80, 80, 80]), '2026-08-22': day([60, 60, 60, 60, 60]) },
+  });
+  assert.equal(out.added, 3);
+  assert.deepEqual(out.newGames.map(g => g.date), ['2026-08-20', '2026-08-21', '2026-08-22']);
+  // createdAt is spread so two rows written in the same millisecond keep
+  // the walk's order.
+  assert.deepEqual(out.newGames.map(g => g.createdAt), [1000, 1001, 1002]);
+});
+
+test('mergeMapTapSync: a me-only row upgrades in place once the rival plays that day', () => {
+  const meOnly = {
+    id: 'g1', rivalId: 'r1', date: '2026-08-20', note: SYNC_NOTE,
+    myScores: [90, 90, 90, 90, 90], myScore: 900, cities: day([]).cities, createdAt: 1,
+  };
+  const out = merge({
+    existingGames: [meOnly],
+    mineByDate:   { '2026-08-20': day([90, 90, 90, 90, 90]) },
+    theirsByDate: { '2026-08-20': day([80, 80, 80, 80, 80]) },
+  });
+  assert.equal(out.added, 0);
+  assert.equal(out.updated, 1);
+  assert.deepEqual(meOnly.theirScores, [80, 80, 80, 80, 80]);
+  assert.equal(meOnly.theirScore, weightedTotal([80, 80, 80, 80, 80]));
+  assert.equal(resultOf(meOnly), 'W');
+});
+
+test('mergeMapTapSync: a rival-only row still upgrades once I play that day', () => {
+  const rivalOnlyRow = {
+    id: 'g1', rivalId: 'r1', date: '2026-08-20', note: SYNC_NOTE,
+    theirScores: [80, 80, 80, 80, 80], theirScore: 800, cities: day([]).cities, createdAt: 1,
+  };
+  const out = merge({
+    existingGames: [rivalOnlyRow],
+    mineByDate:   { '2026-08-20': day([90, 90, 90, 90, 90]) },
+    theirsByDate: { '2026-08-20': day([80, 80, 80, 80, 80]) },
+  });
+  assert.equal(out.updated, 1);
+  assert.deepEqual(rivalOnlyRow.myScores, [90, 90, 90, 90, 90]);
+  assert.equal(bothPlayed(rivalOnlyRow), true);
+});
+
+test('mergeMapTapSync: a stored side is never cleared by a pull that lacks it', () => {
+  // MapTap gains days, it never loses them: a history that no longer reports
+  // my side (a re-pointed profile, a partial payload) must not downgrade a
+  // full head-to-head row back to rival-only, or vice versa.
+  const full = {
+    id: 'g1', rivalId: 'r1', date: '2026-08-20', note: SYNC_NOTE,
+    myScores: [90, 90, 90, 90, 90], myScore: 900,
+    theirScores: [80, 80, 80, 80, 80], theirScore: 800,
+    cities: day([]).cities, createdAt: 1,
+  };
+  const out = merge({ existingGames: [full], theirsByDate: { '2026-08-20': day([80, 80, 80, 80, 80]) } });
+  assert.equal(out.updated, 0);
+  assert.deepEqual(full.myScores, [90, 90, 90, 90, 90]);
+
+  const out2 = merge({ existingGames: [full], mineByDate: { '2026-08-20': day([90, 90, 90, 90, 90]) } });
+  assert.equal(out2.updated, 0);
+  assert.deepEqual(full.theirScores, [80, 80, 80, 80, 80]);
+});
+
+test('mergeMapTapSync: rows the user typed keep their scores but still get cities backfilled', () => {
+  const manual = {
+    id: 'g1', rivalId: 'r1', date: '2026-08-20', note: 'typed it myself',
+    myScores: [10, 10, 10, 10, 10], myScore: 100, createdAt: 1,
+  };
+  const out = merge({ existingGames: [manual], mineByDate: { '2026-08-20': day([90, 90, 90, 90, 90]) } });
+  assert.equal(out.backfilled, 1);
+  assert.equal(out.updated, 0);
+  assert.deepEqual(manual.myScores, [10, 10, 10, 10, 10]);
+  assert.equal(manual.cities.length, N_LOCS);
+});
+
+test('mergeMapTapSync: only this rival\'s rows are considered', () => {
+  const otherRival = {
+    id: 'g1', rivalId: 'r2', date: '2026-08-20', note: SYNC_NOTE,
+    myScores: [90, 90, 90, 90, 90], myScore: 900, cities: day([]).cities, createdAt: 1,
+  };
+  const out = merge({ existingGames: [otherRival], mineByDate: { '2026-08-20': day([90, 90, 90, 90, 90]) } });
+  // r2's row is not r1's day: r1 gets its own me-only row.
+  assert.equal(out.added, 1);
+  assert.equal(out.newGames[0].rivalId, 'r1');
+});
+
+test('mergeMapTapSync: a "__proto__" day is data, and merging pollutes nothing', () => {
+  const mine = JSON.parse('{"__proto__":{"scores":[90,90,90,90,90],"cities":[]}}');
+  const out = merge({ mineByDate: mine });
+  assert.equal(out.added, 1);
+  assert.equal(out.newGames[0].date, '__proto__');
+  // No usable geometry on that entry, so no stub cities array is stored.
+  assert.equal('cities' in out.newGames[0], false);
+  assert.equal(({}).scores, undefined);
+});
+
+test('mergeMapTapSync: nothing to pull reports three zeroes and no rows', () => {
+  const out = merge({});
+  assert.deepEqual(out, { newGames: [], added: 0, updated: 0, backfilled: 0 });
 });
 
 // --- results ---------------------------------------------------------------
