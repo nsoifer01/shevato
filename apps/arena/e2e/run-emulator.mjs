@@ -28,6 +28,10 @@ const REPO = path.resolve(HERE, '..', '..', '..');
 
 // 8080/8081/8083 are reserved on the maintainer's machine; defaults stay clear.
 const PORT = Number(process.env.ARENA_E2E_PORT || 8137);
+// A second static server gives the suite a THIRD isolated origin
+// (127.0.0.1:PORT, localhost:PORT, 127.0.0.1:PORT2 = three Firebase users)
+// for the stranger-with-the-code and three-player scenarios.
+const PORT2 = Number(process.env.ARENA_E2E_PORT2 || (PORT - 1));
 const CDP_PORT = Number(process.env.ARENA_E2E_CDP_PORT || 9337);
 const BASE = `http://127.0.0.1:${PORT}`;
 
@@ -46,10 +50,10 @@ async function waitFor(check, timeoutMs, label) {
   }
 }
 
-let server, chrome, profileDir, emu;
+let server, server2, chrome, profileDir, emu;
 
 async function stopAll() {
-  for (const p of [chrome, server]) { try { p && p.kill(); } catch { /* gone */ } }
+  for (const p of [chrome, server, server2]) { try { p && p.kill(); } catch { /* gone */ } }
   await sleep(500);
   if (profileDir) { try { await rm(profileDir, { recursive: true, force: true }); } catch { /* busy */ } }
   if (emu && emu.ok) await emu.stop();
@@ -74,6 +78,9 @@ try {
   server = spawn('python3', ['-m', 'http.server', String(PORT), '--bind', '127.0.0.1'],
     { cwd: REPO, stdio: 'ignore' });
   await waitFor(() => httpOk(`${BASE}/home.html`), 20000, 'static server');
+  server2 = spawn('python3', ['-m', 'http.server', String(PORT2), '--bind', '127.0.0.1'],
+    { cwd: REPO, stdio: 'ignore' });
+  await waitFor(() => httpOk(`http://127.0.0.1:${PORT2}/home.html`), 20000, 'second static server');
 
   profileDir = await mkdtemp(path.join(tmpdir(), 'arena-emulator-e2e-'));
   const bin = process.env.CHROME_BIN || 'chromium';
@@ -88,7 +95,7 @@ try {
   await waitFor(() => httpOk(`http://127.0.0.1:${CDP_PORT}/json/version`), 30000, 'headless Chrome');
 
   const { run } = await import('./emulator.mjs');
-  const results = await run({ base: BASE, cdpPort: CDP_PORT });
+  const results = await run({ base: BASE, cdpPort: CDP_PORT, base2: `http://127.0.0.1:${PORT2}` });
 
   const failed = results.filter((r) => !r.pass);
   const skipped = results.filter((r) => r.pass && r.skipped);

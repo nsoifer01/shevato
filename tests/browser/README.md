@@ -35,6 +35,40 @@ Three runner-level guarantees:
 - Node 20+. The driver needs `--experimental-websocket` on Node 20; the npm
   script passes it. Node 22+ has `WebSocket` globally and ignores the flag.
 
+## Local gotchas
+
+- On the maintainer's machine `chromium` is the snap build, which cannot use
+  a profile directory under `/tmp`, so `npm run test:browser` times out
+  waiting for headless Chrome unless `TMPDIR` points inside the repo:
+  `TMPDIR=$PWD/.screenshots/tmp npm run test:browser` (`.screenshots/` is
+  gitignored).
+- Snap chromium ignores the SIGTERM from `child.kill()`, so a relaunch on the
+  same CDP port silently attaches to the OLD browser with its tabs still
+  open. Kill by port before relaunching (e.g. `pkill -f
+  'remote-debugging-port=922[2]'`; the bracket stops the pattern matching the
+  shell running it).
+- Run this estate with nothing else heavy on the machine. Chromium and the
+  Firebase emulators both die under load, and a dead browser reports as a wall
+  of `ECONNREFUSED` or `timeout: Runtime.evaluate` failures that look like
+  product bugs. On 2026-08-23 a concurrent coverage run (load average 21) took
+  down a whole estate run, and two concurrent `test:arena:emulator` runs killed
+  each other's emulators during their own cleanup. Never run two copies of the
+  arena emulator suite at once, and check `ss -ltn` for 8085 / 9000 / 9099
+  before starting one.
+
+## What a suite must return
+
+`run({ base, cdpPort })` must resolve with an ARRAY of
+`{ name, pass, detail, skipped }` checks. The runner spreads it into its own
+results, so returning a summary object instead throws
+`Spread syntax requires ...iterable` OUT of the suite loop and abandons the
+whole run at that point. That is not hypothetical: two of the seven per-app
+audit suites added on 2026-08-22 returned a summary object, so every one of
+them was skipped in `npm run test:browser` while passing when their owners ran
+them standalone, and the estate looked green with 539 checks missing. The
+runner now fails such a suite loudly and continues, but the contract is the
+array.
+
 ## Why it is not part of `npm test`
 
 `npm test` runs in CI on every push to master and every PR, in about three

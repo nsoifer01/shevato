@@ -95,8 +95,36 @@ export function assessBaseline(gameState) {
 }
 
 /**
+ * Snapshot shape version. Version 1 (shipped 2026-08-21) kept only `{s, m, c}`
+ * per player: the DENOMINATORS of every rate. FPL clears the numerators
+ * (expected_goals, expected_assists, bps, saves, ...) in the same wipe, so a
+ * version 1 snapshot applied to a wiped payload read one match of attacking
+ * output over a season of minutes: on the 2026-08-22 production payload the
+ * best forward in the pool projected 1.9, the top defenders 5, and the plan
+ * was 5-4-1 captained by a defender. Version 2 carries every numerator whose
+ * denominator it restores, so restored rates are internally consistent.
+ */
+export const SNAPSHOT_VERSION = 2;
+
+// Per-player numerators the snapshot carries, keyed by the short name stored
+// and the GameState field it comes from. Every field here is divided by
+// `minutes` (or `starts`) somewhere in the engine; a snapshot that restores the
+// divisor must restore the dividend with it.
+export const RATE_FIELDS = Object.freeze({
+  xg: 'xG', xa: 'xA', xgc: 'xGC', bps: 'bps', bo: 'bonus', sv: 'saves',
+  gs: 'goalsScored', as: 'assists', cs: 'cleanSheets', gc: 'goalsConceded',
+  yc: 'yellowCards', rc: 'redCards', ps: 'penaltiesSaved', og: 'ownGoals',
+  pm: 'penaltiesMissed', cbit: 'cbit', rec: 'recoveries', tck: 'tackles', dc: 'defCon',
+});
+
+/** Does this snapshot carry the rate numerators, or only the minutes? */
+export function snapshotCarriesRates(snapshot) {
+  return !!snapshot && Number(snapshot.version) >= 2;
+}
+
+/**
  * The durable form of a good payload: per-player totals plus the aggregate that
- * proves it was worth keeping. Only the fields the minutes model reads, so the
+ * proves it was worth keeping. Only the fields the engine divides, so the
  * snapshot stays small enough for localStorage and carries nothing personal.
  */
 export function snapshotFrom(gameState, { capturedAt = new Date().toISOString(), seasonLabel = null } = {}) {
@@ -105,10 +133,15 @@ export function snapshotFrom(gameState, { capturedAt = new Date().toISOString(),
   const totals = {};
   for (const p of gameState.players.values()) {
     if (!p.starts && !p.minutes) continue;   // nothing to remember
-    totals[p.id] = { s: p.starts || 0, m: p.minutes || 0, c: p.code ?? null };
+    const row = { s: p.starts || 0, m: p.minutes || 0, c: p.code ?? null };
+    for (const [key, field] of Object.entries(RATE_FIELDS)) {
+      const v = p[field];
+      if (Number.isFinite(v) && v !== 0) row[key] = Math.round(v * 100) / 100;
+    }
+    totals[p.id] = row;
   }
   return {
-    version: 1,
+    version: SNAPSHOT_VERSION,
     capturedAt,
     seasonLabel: seasonLabel || gameState.seasonLabel || null,
     totalEvents: gameState.rules.totalEvents || 38,
@@ -176,9 +209,14 @@ export function resolveBaseline(gameState, snapshot, { now = Date.now() } = {}) 
       source: 'baseline',
       totals: snapshot.totals,
       snapshot,
+      rates: snapshotCarriesRates(snapshot) ? 'carried' : 'missing',
       assessment,
-      message: 'Fantasy Premier League has cleared last season\'s player totals for the new season. '
-        + 'Projections are using the last complete set we recorded until this season has enough matches of its own.',
+      message: snapshotCarriesRates(snapshot)
+        ? 'Fantasy Premier League has cleared last season\'s player totals for the new season. '
+          + 'Projections are using the last complete set we recorded until this season has enough matches of its own.'
+        : 'Fantasy Premier League has cleared last season\'s player totals for the new season. The set we recorded '
+          + 'earlier covers minutes only, so scoring rates fall back to position averages until this season has '
+          + 'enough matches of its own.',
     };
   }
 
@@ -197,7 +235,11 @@ export function loadSnapshot(storage) {
     const raw = storage && storage.getItem(BASELINE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (!parsed || parsed.version !== 1 || !parsed.totals) return null;
+    // Version 1 (minutes only) is still read: it is worth keeping for the
+    // minutes model, and normalize.js marks its rates as missing so they are
+    // never divided one-match-over-a-season again. It is replaced by the next
+    // complete payload (saveSnapshotIfBetter), which is the upgrade path.
+    if (!parsed || !(parsed.version === 1 || parsed.version === SNAPSHOT_VERSION) || !parsed.totals) return null;
     return parsed;
   } catch {
     return null;
@@ -215,8 +257,9 @@ export function saveSnapshotIfBetter(storage, gameState, { capturedAt, seasonLab
   const candidate = snapshotFrom(gameState, { capturedAt, seasonLabel });
   if (!candidate) return existing;
   // A newer complete payload of the same or a later season replaces the old
-  // one; anything else leaves the kept baseline alone.
-  if (existing && existing.seasonLabel && candidate.seasonLabel
+  // one; anything else leaves the kept baseline alone. A minutes-only snapshot
+  // is always worth replacing by one that carries its numerators.
+  if (existing && snapshotCarriesRates(existing) && existing.seasonLabel && candidate.seasonLabel
       && existing.seasonLabel > candidate.seasonLabel) {
     return existing;
   }

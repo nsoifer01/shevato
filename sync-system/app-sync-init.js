@@ -53,10 +53,9 @@ const APP_SYNC_CONFIG = {
       'marioKartWorldAutoBackup', // Backup data (mkworld)
       
       // Shared keys
-      'selectedGameVersion',      // Game version (mk8d/mkworld)
-      'sidebarOpen',              // UI state (shared)
-      'marioKartActionHistory'    // Undo/redo history
-      // Note: Including all keys to ensure complete sync
+      'selectedGameVersion'       // Game version (mk8d/mkworld)
+      // Not synced: sidebar open/closed is device-local UI state, and the
+      // undo/redo stack lives in memory only (never written to storage).
     ]
   },
   

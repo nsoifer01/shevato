@@ -275,10 +275,10 @@ class HistoryView {
             const hasAdditionalMetrics = session.avgHeartRate || session.maxHeartRate || session.caloriesBurned;
 
             return `
-                <div class="workout-card clickable" data-action="show-session" data-session-id="${session.id}" role="button" tabindex="0">
+                <div class="workout-card clickable" data-action="show-session" data-session-id="${session.id}">
                     <div class="workout-card-header">
                         <div class="workout-header-info">
-                            <h3>${escapeHtml(session.workoutDayName)}</h3>
+                            <h3><button type="button" class="workout-card-open" data-action="show-session" data-session-id="${session.id}">${escapeHtml(session.workoutDayName)}</button></h3>
                             <span class="date">${formatSessionDateTime(session)}</span>
                         </div>
                         <button class="btn-icon delete-workout-btn" data-action="delete-session" data-session-id="${session.id}" title="Delete workout" aria-label="Delete workout">

@@ -1,8 +1,16 @@
 // Centralized Player Name Management System
 // This module provides a single source of truth for player names across the app
 
-// Storage key for localStorage
-const PLAYER_NAMES_KEY = 'marioKartPlayerNames';
+// Storage key for localStorage. Names are per game version (marioKart...
+// vs marioKartWorld..., same as races), resolved at every access because the
+// version can switch at runtime. The base key doubles as a read-only fallback
+// so a roster named before names went per-version still shows up the first
+// time MK World is opened; the first rename there writes the World key.
+const BASE_PLAYER_NAMES_KEY = 'marioKartPlayerNames';
+function playerNamesKey() {
+    return window.getStorageKey ? window.getStorageKey('PlayerNames') : BASE_PLAYER_NAMES_KEY;
+}
+const MAX_PLAYER_NAME_CHARS = 40;
 
 // Default player names
 const DEFAULT_PLAYER_NAMES = {
@@ -11,6 +19,21 @@ const DEFAULT_PLAYER_NAMES = {
     player3: 'Player 3',
     player4: 'Player 4'
 };
+
+// Only non-empty strings are names; anything else (a number in an imported
+// file, a missing key) falls back to the slot default so every renderer can
+// rely on a string.
+function cleanNames(raw) {
+    const out = { ...DEFAULT_PLAYER_NAMES };
+    if (!raw || typeof raw !== 'object') return out;
+    for (const key of Object.keys(DEFAULT_PLAYER_NAMES)) {
+        const value = raw[key];
+        if (typeof value !== 'string') continue;
+        const clean = value.trim().slice(0, MAX_PLAYER_NAME_CHARS);
+        if (clean) out[key] = clean;
+    }
+    return out;
+}
 
 // Current player names (runtime cache)
 let currentPlayerNames = null;
@@ -21,14 +44,9 @@ const nameChangeListeners = new Set();
 // Initialize player names from localStorage or defaults
 function initializePlayerNames() {
     try {
-        const saved = localStorage.getItem(PLAYER_NAMES_KEY);
+        const saved = localStorage.getItem(playerNamesKey()) || localStorage.getItem(BASE_PLAYER_NAMES_KEY);
         if (saved) {
-            currentPlayerNames = JSON.parse(saved);
-            // Ensure all keys exist
-            currentPlayerNames = {
-                ...DEFAULT_PLAYER_NAMES,
-                ...currentPlayerNames
-            };
+            currentPlayerNames = cleanNames(JSON.parse(saved));
         } else {
             currentPlayerNames = { ...DEFAULT_PLAYER_NAMES };
         }
@@ -66,8 +84,8 @@ function setPlayerName(playerKey, name) {
     }
     
     // Validate and clean the name
-    const cleanName = (name || '').trim();
-    if (!cleanName) return;
+    const cleanName = String(name || '').trim().slice(0, MAX_PLAYER_NAME_CHARS);
+    if (!cleanName || !DEFAULT_PLAYER_NAMES[playerKey]) return;
     
     // Update the name
     currentPlayerNames[playerKey] = cleanName;
@@ -84,10 +102,7 @@ function setAllPlayerNames(names) {
     if (!names || typeof names !== 'object') return;
     
     // Merge with defaults to ensure all keys exist
-    currentPlayerNames = {
-        ...DEFAULT_PLAYER_NAMES,
-        ...names
-    };
+    currentPlayerNames = cleanNames(names);
     
     // Save to localStorage
     savePlayerNames();
@@ -99,7 +114,7 @@ function setAllPlayerNames(names) {
 // Save current names to localStorage
 function savePlayerNames() {
     try {
-        localStorage.setItem(PLAYER_NAMES_KEY, JSON.stringify(currentPlayerNames));
+        localStorage.setItem(playerNamesKey(), JSON.stringify(currentPlayerNames));
     } catch (e) {
         console.error('Error saving player names:', e);
     }

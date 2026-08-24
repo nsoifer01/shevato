@@ -171,7 +171,15 @@ export async function payloadsFor(state, { teamId = TEAM_ID } = {}) {
     if (e2) e2.is_next = true;
     picksGw = gw1;
     planGw = e2 ? e2.id : gw1;
-    deadlineOffsetMs = -30 * 60 * 1000;   // GW1 deadline is behind us
+    // GW1's deadline is behind us and GW2's, the one the plan is FOR, is
+    // ahead: a transfer window in the real shape. Until 2026-08-22 the -30 min
+    // offset was applied to the PLAN gameweek, so every GW1 screen read
+    // "Deadline passed" for GW2 and the suite could not see a plan presented
+    // as actionable on the wrong side of its deadline.
+    deadlineOffsetMs = state === 'gw2-window' ? 3 * 24 * 3600 * 1000 : 5 * 24 * 3600 * 1000;
+    const gw1Deadline = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    e1.deadline_time = gw1Deadline;
+    e1.deadline_time_epoch = Math.floor(Date.parse(gw1Deadline) / 1000);
 
     // Two of ten played, the rest not started: the shape the opening Friday had.
     if (state === 'gw1-live') finishGw(gw1, { provisional: true, limit: 2 });

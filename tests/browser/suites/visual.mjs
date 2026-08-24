@@ -230,6 +230,18 @@ export async function run({ base, cdpPort }) {
       }
     } catch (e) { t('visual tablet app roots: block ran', false, String(e && e.message).slice(0, 140)); }
 
+    /* ---------------------- tablet 820x1180: app roots ------------------ */
+    // iPad Air class width, between the 768 and 1024 breakpoints most app CSS
+    // keys on; overflow only, same as 768.
+    try {
+      await setViewport(s, 820, 1180);
+      for (const a of APPS) {
+        await goto(s, `${base}/apps/${a}/`, { settle: settleFor(a) });
+        const over = await evaluate(s, OVERFLOW_EXPR);
+        t(`visual tablet-820 app ${a}: no horizontal overflow`, over <= 1, `${over}px`);
+      }
+    } catch (e) { t('visual tablet-820 app roots: block ran', false, String(e && e.message).slice(0, 140)); }
+
     /* ---------------- mobile 390x844 (touch): root pages ---------------- */
     try {
       await setViewport(s, 390, 844, true);
@@ -237,6 +249,22 @@ export async function run({ base, cdpPort }) {
         await goto(s, `${base}/${p}.html`, { settle: 2200 });
         const over = await evaluate(s, OVERFLOW_EXPR);
         t(`visual mobile ${p}: no horizontal overflow`, over <= 1, `${over}px`);
+        if (CHROME_ROOT_PAGES.includes(p)) {
+          // The shared header is `position: fixed; width: 100%`, so a single
+          // stray padding or margin on it (or on its inline nav) widens the
+          // document on every page AND every app at once. Measured against
+          // window.innerWidth, not clientWidth, so a header that overhangs
+          // the viewport is caught even when the document itself does not
+          // scroll. Reported 2026-08-22 as a 391 px header at 390; the whole
+          // estate measures exactly 390 here, and this keeps it that way.
+          const hdr = await evaluate(s, `(()=>{ const H=document.getElementById('header');
+            const r=H&&H.getBoundingClientRect();
+            return { hw: r?r.width:null, hr: r?r.right:null,
+              sw: document.documentElement.scrollWidth, iw: window.innerWidth }; })()`);
+          t(`visual mobile ${p}: shared header does not overhang the viewport`,
+            hdr.hw !== null && hdr.hw <= hdr.iw && hdr.hr <= hdr.iw + 0.5 && hdr.sw <= hdr.iw,
+            JSON.stringify(hdr));
+        }
         if (p === 'home') {
           const cta = await evaluate(s, `(()=>{
             const row=document.querySelector('.hero .cta-row'); if(!row) return null;
@@ -258,6 +286,19 @@ export async function run({ base, cdpPort }) {
           for (let i = 1; i < grid.length; i++) if (grid[i].t < grid[i - 1].b - 5) stacked = false;
           t('visual mobile apps hub: cards stack in a single column',
             stacked, `${grid.length} cards, tops ${grid.map((g) => g.t).join(',')}`);
+          // Lazy previews must reserve their space BEFORE they load (defect
+          // D1, 2026-08-22: unloaded images measured 3x2 px inside the flex
+          // card and every card below the fold grew 125-190 px on scroll) and
+          // fill the card on phones (U3: 203 px wide in a 310 px card).
+          const previews = await evaluate(s, `(()=>[...document.querySelectorAll('.highlights .app-preview')]
+            .map(i=>{const r=i.getBoundingClientRect(); const c=i.closest('.content').getBoundingClientRect();
+              return { h:Math.round(r.height), w:Math.round(r.width), cw:Math.round(c.width), loaded:i.complete&&i.naturalWidth>0 };}))()`);
+          const reserved = previews.length >= 8 && previews.every((p) => p.h > 100);
+          const fullWidth = previews.every((p) => p.w >= p.cw * 0.8);
+          t('visual mobile apps hub: lazy previews reserve their height before scroll',
+            reserved, previews.map((p) => `${p.w}x${p.h}${p.loaded ? '' : ' (unloaded)'}`).join(', '));
+          t('visual mobile apps hub: previews span the card width',
+            fullWidth, previews.map((p) => `${p.w}/${p.cw}`).join(', '));
         }
       }
     } catch (e) { t('visual mobile root pages: block ran', false, String(e && e.message).slice(0, 140)); }

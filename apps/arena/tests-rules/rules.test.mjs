@@ -99,7 +99,7 @@ if (!setup.ok) {
         assert.equal(await getDoc('triviaRooms/PUBAA', GUEST), 200);
     });
 
-    test('room create: signed-in only, and NEVER with a cleartext password field (defect 22)', async () => {
+    test('room create: signed-in only, own uid as hostUid, and NEVER with a cleartext password field (defect 22)', async () => {
         assert.equal(await createDoc('triviaRooms/NEWAA',
             { code: 'NEWAA', hostUid: 'alice', isPrivate: false }, null), 403,
             'unauthenticated create denied');
@@ -107,17 +107,38 @@ if (!setup.ok) {
             { code: 'NEWAA', hostUid: 'alice', isPrivate: true, password: LEGACY_FIXTURE_PW }, ALICE), 403,
             'a new room carrying a password field must be rejected');
         assert.equal(await createDoc('triviaRooms/NEWAA',
+            { code: 'NEWAA', hostUid: 'bob', isPrivate: false }, ALICE), 403,
+            'a room cannot be created on behalf of another uid');
+        assert.equal(await createDoc('triviaRooms/NEWAA',
             { code: 'NEWAA', hostUid: 'alice', isPrivate: true }, ALICE), 200,
             'the same create without the field is allowed');
     });
 
-    test('room update stays loose (host advances questions), including legacy rooms still carrying password', async () => {
-        assert.equal(await updateDoc('triviaRooms/PUBAA', { status: 'playing' }, BOB), 200);
+    test('room update: host may write anything (legacy password rooms included); strangers and non-members are denied (audit D10)', async () => {
+        // This test used to be "room update stays loose" and pinned that ANY
+        // signed-in user could rewrite the room doc. That looseness let a
+        // non-host rewrite hostUid, set status to garbage or a negative
+        // question index and wedge the room for everyone (2026-08-22 audit
+        // D10), so it is now a deny and the member carve-outs are tested
+        // one by one below.
+        assert.equal(await updateDoc('triviaRooms/PUBAA', { status: 'playing' }, HOST), 200);
+        assert.equal(await updateDoc('triviaRooms/PUBAA', { status: 'lobby' }, HOST), 200);
         // Legacy room: the post-state still contains the old cleartext
-        // field; the no-password condition applies to CREATE only, so
-        // pre-migration rooms keep working until they expire.
+        // field; the no-password condition applies to CREATE only.
         assert.equal(await updateDoc('triviaRooms/WPASS', { status: 'playing' }, HOST), 200);
+        assert.equal(await updateDoc('triviaRooms/PUBAA', { status: 'playing' }, BOB), 403,
+            'a signed-in non-member cannot flip the status');
+        assert.equal(await updateDoc('triviaRooms/PUBAA', { hostUid: 'bob' }, BOB), 403,
+            'a non-member cannot steal hostUid');
         assert.equal(await updateDoc('triviaRooms/PUBAA', { status: 'lobby' }, null), 403);
+    });
+
+    test('room delete: host only (a non-host can no longer close the room for everyone)', async () => {
+        assert.equal(await createDoc('triviaRooms/DELME',
+            { code: 'DELME', hostUid: 'host1', status: 'lobby', isPrivate: false }, OWNER), 200);
+        assert.equal(await deleteDoc('triviaRooms/DELME', BOB), 403);
+        assert.equal(await deleteDoc('triviaRooms/DELME', GUEST), 403);
+        assert.equal(await deleteDoc('triviaRooms/DELME', HOST), 200);
     });
 
     /* ---------------- private/gate ---------------- */
@@ -146,9 +167,48 @@ if (!setup.ok) {
             'gate is immutable, even to its creator');
     });
 
-    test('gate cleanup: any signed-in user can delete the gate (last-leaver room sweep)', async () => {
-        assert.equal(await deleteDoc('triviaRooms/NEWAA/private/gate', null), 403);
-        assert.equal(await deleteDoc('triviaRooms/NEWAA/private/gate', BOB), 200);
+    test('P0 exploit sequence (audit D1): a stranger cannot delete the gate and then join without the password', async () => {
+        // This test REPLACES "gate cleanup: any signed-in user can delete
+        // the gate (last-leaver room sweep)", which pinned a vulnerability:
+        // with `allow delete: if request.auth != null` a stranger who only
+        // knew the code could deleteDoc the gate and the member-create
+        // rule's `!exists(gate)` branch then admitted them - and every later
+        // joiner - with no password at all. The exact exploit sequence from
+        // the audit is replayed here and must be denied at every step.
+        // Room GATED is hosted by host1 with gate hash 'good-hash-value'.
+        assert.equal(await deleteDoc('triviaRooms/GATED/private/gate', null), 403,
+            'unauthenticated delete denied');
+        assert.equal(await deleteDoc('triviaRooms/GATED/private/gate', GUEST), 403,
+            'step 1: a signed-in guest with the code cannot delete the gate');
+        assert.equal(await deleteDoc('triviaRooms/GATED/private/gate', BOB), 403,
+            'step 1 (registered stranger): still denied');
+        assert.equal(await createDoc('triviaRooms/GATED/players/guest1',
+            { uid: 'guest1', displayName: 'Gatecrasher', score: 0 }, GUEST), 403,
+            'step 2: joining without a gateHash stays denied because the gate still exists');
+        assert.equal(await createDoc('triviaRooms/GATED/players/guest1',
+            { uid: 'guest1', gateHash: 'wrong-hash', score: 0 }, GUEST), 403,
+            'step 2b: a guessed hash is denied');
+        assert.equal(await createDoc('triviaRooms/GATED/players/guest1',
+            { uid: 'guest1', gateHash: 'good-hash-value', score: 0 }, GUEST), 200,
+            'the correct password proof still admits');
+        assert.equal(await deleteDoc('triviaRooms/GATED/players/guest1', GUEST), 200);
+    });
+
+    test('gate lifecycle: the host may delete it while the room exists; anyone may sweep it once the room doc is gone', async () => {
+        // Lifecycle point: the last leaver is (or has taken over as) the
+        // host, deletes the room doc first, then sweeps the gate. Both
+        // orders are verifiable: host-while-room-exists, or room-gone.
+        assert.equal(await createDoc('triviaRooms/SWEEP',
+            { code: 'SWEEP', hostUid: 'host1', status: 'lobby', isPrivate: true }, OWNER), 200);
+        assert.equal(await createDoc('triviaRooms/SWEEP/private/gate', { hash: 'x' }, OWNER), 200);
+        assert.equal(await deleteDoc('triviaRooms/SWEEP/private/gate', BOB), 403,
+            'non-host cannot delete while the room lives');
+        assert.equal(await deleteDoc('triviaRooms/SWEEP/private/gate', HOST), 200,
+            'host may delete it (room still exists)');
+        assert.equal(await createDoc('triviaRooms/SWEEP/private/gate', { hash: 'y' }, OWNER), 200);
+        assert.equal(await deleteDoc('triviaRooms/SWEEP', HOST), 200, 'host deletes the room doc first');
+        assert.equal(await deleteDoc('triviaRooms/SWEEP/private/gate', BOB), 200,
+            'orphan sweep: once the room doc is gone any signed-in user may delete the gate');
     });
 
     /* ---------------- player docs (join gate + ownership) ---------------- */
@@ -181,7 +241,7 @@ if (!setup.ok) {
             { uid: 'alice', score: 0 }, ALICE), 200);
     });
 
-    test('player-doc ownership: only you update or delete your doc (score integrity)', async () => {
+    test('player-doc ownership: only you update your doc (score integrity); owner delete allowed', async () => {
         assert.equal(await updateDoc('triviaRooms/PUBAA/players/alice', { score: 150 }, ALICE), 200);
         assert.equal(await updateDoc('triviaRooms/PUBAA/players/alice', { score: 0 }, BOB), 403,
             'the host cannot rewrite someone else\'s score');
@@ -189,10 +249,159 @@ if (!setup.ok) {
         // the NEXT host's doc is denied by this same ownership rule (the
         // app swallows it; hostUid on the room doc is the source of truth).
         assert.equal(await updateDoc('triviaRooms/PUBAA/players/alice', { isHost: true }, BOB), 403);
-        assert.equal(await deleteDoc('triviaRooms/PUBAA/players/alice', BOB), 403);
+        assert.equal(await deleteDoc('triviaRooms/PUBAA/players/alice', BOB), 403,
+            'a live member cannot be kicked by a stranger');
+        assert.equal(await deleteDoc('triviaRooms/PUBAA/players/alice', HOST), 403,
+            'nor by the host while the doc is live');
         assert.equal(await deleteDoc('triviaRooms/PUBAA/players/alice', ALICE), 200);
         assert.equal(await getDoc('triviaRooms/PUBAA/players/guest1', ALICE), 200,
             'any signed-in user can read player docs (scoreboard)');
+    });
+
+    test('member room-doc touches (audit D10): pause/resume, end early, rematch fields - members only, exactly those keys', async () => {
+        // guest1 is a member of PUBAA (joined above); bob is not.
+        assert.equal(await updateDoc('triviaRooms/PUBAA', { status: 'playing' }, HOST), 200);
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            { paused: true, pausedAt: new Date(), pausedByUid: 'guest1', pausedByName: 'Guest' }, GUEST), 200,
+            'member pause');
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            { paused: false, pausedAt: null, pausedByUid: null, pausedByName: null, questionStartedAt: new Date() }, GUEST), 200,
+            'member resume re-anchors questionStartedAt');
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            { paused: false, questionStartedAt: new Date() }, GUEST), 403,
+            'questionStartedAt may only move together with a resume (room is not paused now)');
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            { paused: true, pausedAt: new Date(), pausedByUid: 'bob', pausedByName: 'Bob' }, BOB), 403,
+            'non-member pause denied');
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            { rematchProposedBy: 'guest1', rematchAcceptedBy: ['guest1'], rematchDeclinedBy: [], rematchProposedAt: new Date() }, GUEST), 200,
+            'member rematch proposal');
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            { rematchProposedBy: null, rematchAcceptedBy: [], rematchDeclinedBy: [] }, GUEST), 200,
+            'member rematch clear');
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            { rematchProposedBy: 'guest1', hostUid: 'guest1' }, GUEST), 403,
+            'smuggling hostUid into a rematch write is denied');
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            { currentQuestionIndex: -3 }, GUEST), 403,
+            'a member cannot rewrite question pointers outside the timed advance');
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            { status: 'bogus' }, GUEST), 403,
+            'a member cannot set an arbitrary status');
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            { status: 'finished', finishedAt: new Date(), paused: false, pausedAt: null,
+              finalRanking: [{ uid: 'guest1', displayName: 'Guest', score: 0, streak: 0 }] }, GUEST), 200,
+            'member end-game-early (with the final ranking snapshot)');
+        assert.equal(await updateDoc('triviaRooms/PUBAA', { status: 'lobby' }, HOST), 200);
+    });
+
+    test('decider category pick: only the current decider, only while picking, only the pick keys', async () => {
+        assert.equal(await updateDoc('triviaRooms/PUBAA', { status: 'picking', deciderUid: 'guest1' }, HOST), 200);
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            { status: 'playing', currentQuestionId: 'q1', selectedCategory: 'geo', questionStartedAt: new Date(), revealStartedAt: null }, ALICE), 403,
+            'alice is neither decider nor member');
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            { status: 'playing', currentQuestionId: 'q1', selectedCategory: 'geo', questionStartedAt: new Date(), revealStartedAt: null, currentQuestionIndex: 7 }, GUEST), 403,
+            'the decider cannot also move the question index');
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            { status: 'playing', currentQuestionId: 'q1', selectedCategory: 'geo', questionStartedAt: new Date(), revealStartedAt: null }, GUEST), 200,
+            'the decider starts the question');
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            { status: 'playing', currentQuestionId: 'q2', selectedCategory: 'geo', questionStartedAt: new Date(), revealStartedAt: null }, GUEST), 403,
+            'not allowed again once the room is playing');
+    });
+
+    test('host-independent clock (audit D3): a member may advance the room only after asking + reveal elapsed on the server clock', async () => {
+        const ago = (ms) => new Date(Date.now() - ms);
+        const advance = { status: 'picking', currentQuestionIndex: 1, currentQuestionId: null, selectedCategory: null,
+            questionStartedAt: null, revealStartedAt: null, playerOrder: ['host1', 'guest1'], deciderUid: 'host1',
+            playedQuestionIds: ['q1'] };
+        // Fresh question (10 s timer, 2.5 s reveal): too early.
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            { status: 'playing', questionTimeMs: 10000, currentQuestionIndex: 0, questionStartedAt: ago(3000), revealStartedAt: null, paused: false }, HOST), 200);
+        assert.equal(await updateDoc('triviaRooms/PUBAA', advance, GUEST), 403, 'too early: denied');
+        // Elapsed on the server clock: allowed for a member, still denied for a stranger.
+        assert.equal(await updateDoc('triviaRooms/PUBAA', { questionStartedAt: ago(13000) }, HOST), 200);
+        assert.equal(await updateDoc('triviaRooms/PUBAA', advance, BOB), 403, 'non-member denied even when elapsed');
+        assert.equal(await updateDoc('triviaRooms/PUBAA', Object.assign({}, advance, { hostUid: 'guest1' }), GUEST), 403,
+            'the advance cannot carry a hostUid change');
+        assert.equal(await updateDoc('triviaRooms/PUBAA', advance, GUEST), 200, 'member advances the stalled room');
+        // Paused rooms never time out.
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            { status: 'playing', currentQuestionIndex: 1, questionStartedAt: ago(60000), revealStartedAt: null, paused: true }, HOST), 200);
+        assert.equal(await updateDoc('triviaRooms/PUBAA', Object.assign({}, advance, { currentQuestionIndex: 2 }), GUEST), 403, 'paused: denied');
+        // Early reveal shortens the deadline: revealStartedAt + 2.5 s.
+        //
+        // revealStartedAt is stamped NOW, not 1 s ago, on purpose. The window
+        // is only 2.5 s, so a 1 s head start left just 1.5 s for the next REST
+        // round trip; on a loaded machine that elapsed and the rule then
+        // ALLOWED the advance, which is correct behaviour but reads as a
+        // failure (seen 2026-08-23). Starting at zero gives the full window
+        // and asserts the same rule.
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            { paused: false, questionStartedAt: new Date(), revealStartedAt: new Date() }, HOST), 200);
+        assert.equal(await updateDoc('triviaRooms/PUBAA', Object.assign({}, advance, { currentQuestionIndex: 2 }), GUEST), 403, 'reveal still running: denied');
+        assert.equal(await updateDoc('triviaRooms/PUBAA', { revealStartedAt: ago(3000) }, HOST), 200);
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            { status: 'finished', finishedAt: new Date(), playedQuestionIds: ['q1', 'q2'],
+              finalRanking: [{ uid: 'guest1', displayName: 'Guest', score: 10, streak: 1 }] }, GUEST), 200,
+            'member finishes the game once the last reveal elapsed');
+        assert.equal(await updateDoc('triviaRooms/PUBAA', { status: 'lobby' }, HOST), 200);
+    });
+
+    test('picking-stage deadline: a member may auto-pick only after it elapses, and only the pick keys', async () => {
+        // Product defect found while stabilising the e2e (2026-08-23): the
+        // picking stage had no deadline at all, so a decider who locked
+        // their phone stalled the room for everyone - the same failure the
+        // playing stage had before the host-independent clock. guest1 is a
+        // member of PUBAA; host1 is the host; bob is not a member.
+        const ago = (ms) => new Date(Date.now() - ms);
+        const pick = { status: 'playing', currentQuestionId: 'q9', selectedCategory: 'geo',
+            questionStartedAt: new Date(), revealStartedAt: null };
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            { status: 'picking', deciderUid: 'someone-else', pickingStartedAt: ago(3000) }, HOST), 200);
+        assert.equal(await updateDoc('triviaRooms/PUBAA', pick, GUEST), 403,
+            'before the deadline only the decider (or the host) may pick');
+        assert.equal(await updateDoc('triviaRooms/PUBAA', { pickingStartedAt: ago(25000) }, HOST), 200);
+        assert.equal(await updateDoc('triviaRooms/PUBAA', pick, BOB), 403,
+            'a non-member never picks, however long it has been');
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            Object.assign({}, pick, { deciderUid: 'guest1' }), GUEST), 403,
+            'the auto-pick cannot smuggle other keys in');
+        assert.equal(await updateDoc('triviaRooms/PUBAA', pick, GUEST), 200,
+            'past the deadline any member may pick for the room');
+        assert.equal(await updateDoc('triviaRooms/PUBAA', { status: 'lobby' }, HOST), 200);
+    });
+
+    test('liveness (audit D4): host sweeps only STALE player docs; a member takes over hostUid only from a gone host', async () => {
+        const ago = (ms) => Date.now() - ms;
+        assert.equal(await createDoc('triviaRooms/PUBAA/players/ghost',
+            { uid: 'ghost', score: 0, disconnectedAt: ago(5000), lastSeen: new Date() }, OWNER), 200);
+        assert.equal(await deleteDoc('triviaRooms/PUBAA/players/ghost', HOST), 403,
+            'within the 30 s grace the doc is still live: host cannot sweep it');
+        assert.equal(await updateDoc('triviaRooms/PUBAA/players/ghost', { disconnectedAt: ago(40000) }, OWNER), 200);
+        assert.equal(await deleteDoc('triviaRooms/PUBAA/players/ghost', GUEST), 403,
+            'a non-host member cannot sweep it either');
+        assert.equal(await deleteDoc('triviaRooms/PUBAA/players/ghost', HOST), 200,
+            'past the grace the host sweeps the ghost');
+        assert.equal(await createDoc('triviaRooms/PUBAA/players/crashed',
+            { uid: 'crashed', score: 0, lastSeen: new Date(ago(200000)) }, OWNER), 200);
+        assert.equal(await deleteDoc('triviaRooms/PUBAA/players/crashed', HOST), 200,
+            'a doc whose lastSeen heartbeat is older than the presence window is stale too');
+        // Host takeover: host1 has no player doc in PUBAA (never joined in this
+        // suite), so the host is "gone" and member guest1 may claim hostUid.
+        assert.equal(await updateDoc('triviaRooms/PUBAA', { hostUid: 'bob' }, GUEST), 403,
+            'a takeover must name the caller');
+        assert.equal(await updateDoc('triviaRooms/PUBAA', { hostUid: 'alice' }, ALICE), 403,
+            'non-member cannot take over');
+        assert.equal(await updateDoc('triviaRooms/PUBAA', { hostUid: 'guest1' }, GUEST), 200,
+            'member takes over from a gone host');
+        assert.equal(await createDoc('triviaRooms/PUBAA/players/bob', { uid: 'bob', score: 0, lastSeen: new Date() }, BOB), 200);
+        assert.equal(await createDoc('triviaRooms/PUBAA/players/guest1b', { uid: 'guest1', score: 0 }, OWNER), 200);
+        assert.equal(await updateDoc('triviaRooms/PUBAA', { hostUid: 'bob' }, BOB), 403,
+            'the new host is live (has a fresh player doc), so bob cannot take over');
+        assert.equal(await updateDoc('triviaRooms/PUBAA', { hostUid: 'host1' }, GUEST), 200, 'host hands back');
+        assert.equal(await deleteDoc('triviaRooms/PUBAA/players/bob', BOB), 200);
     });
 
     test('gateHash replay boundary is real and documented: a member\'s hash is readable and reusable', async () => {
@@ -209,7 +418,7 @@ if (!setup.ok) {
 
     /* ---------------- chat ---------------- */
 
-    test('chat create: own uid, 1..280 chars; append-only afterwards', async () => {
+    test('chat create: own uid, 1..280 chars; append-only while the room lives', async () => {
         assert.equal(await createDoc('triviaRooms/PUBAA/chat/m1',
             { uid: 'alice', text: 'hello' }, ALICE), 200);
         assert.equal(await createDoc('triviaRooms/PUBAA/chat/m2',
@@ -230,7 +439,21 @@ if (!setup.ok) {
         assert.equal(await updateDoc('triviaRooms/PUBAA/chat/m1', { text: 'edited' }, ALICE), 403,
             'no edits, even by the author');
         assert.equal(await deleteDoc('triviaRooms/PUBAA/chat/m1', ALICE), 403,
-            'no recalls, even by the author');
+            'no recalls by the author while the room lives');
+        assert.equal(await deleteDoc('triviaRooms/PUBAA/chat/m1', HOST), 403,
+            'not even the host can delete chat while the room lives');
+    });
+
+    test('teardown sweep (audit D6): once the room doc is deleted, chat and leftover player docs are sweepable by any signed-in user', async () => {
+        assert.equal(await createDoc('triviaRooms/TORN',
+            { code: 'TORN', hostUid: 'host1', status: 'finished', isPrivate: false }, OWNER), 200);
+        assert.equal(await createDoc('triviaRooms/TORN/chat/c1', { uid: 'alice', text: 'bye' }, OWNER), 200);
+        assert.equal(await createDoc('triviaRooms/TORN/players/alice', { uid: 'alice', score: 1 }, OWNER), 200);
+        assert.equal(await deleteDoc('triviaRooms/TORN/chat/c1', HOST), 403, 'room still exists: chat stays');
+        assert.equal(await deleteDoc('triviaRooms/TORN/players/alice', HOST), 403, 'room still exists, alice is live');
+        assert.equal(await deleteDoc('triviaRooms/TORN', HOST), 200);
+        assert.equal(await deleteDoc('triviaRooms/TORN/chat/c1', HOST), 200, 'orphan chat sweep');
+        assert.equal(await deleteDoc('triviaRooms/TORN/players/alice', GUEST), 200, 'orphan player-doc sweep');
     });
 
     /* ---------------- leaderboard + admin registry ---------------- */

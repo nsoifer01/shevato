@@ -35,6 +35,13 @@ const SEED = Object.freeze({
   [KEYS.settings]: JSON.stringify({ horizon: 5, risk: 'aggressive', lastView: 'settings' }),
   [KEYS.planHistory]: JSON.stringify({ 6: [{ version: 1, reason: 'first-calculation', fingerprint: 'fp-1', plan: { gw: 6 } }] }),
   [KEYS.squadSnapshot]: JSON.stringify({ entryId: 4231987, entryName: 'Test FC', picks: [] }),
+  // The data layer's cache. The entry keys hold the manager's squad, bank and
+  // history under a key that contains the team id, and both buttons must take
+  // them (2026-08-22 audit: they survived). The bulk public copy is kept.
+  'fpl-planner:cache:entry/4231987': JSON.stringify({ data: { name: 'Test FC' }, fetchedAt: '2026-09-24T10:00:00Z' }),
+  'fpl-planner:cache:entry/4231987/history': JSON.stringify({ data: { current: [] }, fetchedAt: '2026-09-24T10:00:00Z' }),
+  'fpl-planner:cache:entry/4231987/event/5/picks': JSON.stringify({ data: { picks: [] }, fetchedAt: '2026-09-24T10:00:00Z' }),
+  'fpl-planner:cache:bootstrap-static': JSON.stringify({ data: { elements: [] }, fetchedAt: '2026-09-24T10:00:00Z' }),
   // Two keys belonging to other apps. "No other app is touched" is part of the
   // same published promise, so a delete-all that took the whole origin with it
   // has to fail here.
@@ -89,20 +96,23 @@ function mount({ signedIn = false } = {}) {
 }
 
 const surviving = (storage) => Object.keys(storage.snapshot()).sort();
+const ENTRY_CACHE = Object.keys(SEED).filter((k) => k.startsWith('fpl-planner:cache:entry/'));
+const PUBLIC_CACHE = 'fpl-planner:cache:bootstrap-static';
+const KEPT_BY_DISCONNECT = [KEYS.planHistory, KEYS.settings, PUBLIC_CACHE, 'gymTrackerPrograms', 'tripPlannerTrips'].sort();
+const KEPT_BY_DELETE_ALL = [PUBLIC_CACHE, 'gymTrackerPrograms', 'tripPlannerTrips'].sort();
 
 test('disconnect removes the team link and the squad snapshot, and nothing else', async () => {
   const app = mount({ signedIn: false });
   try {
     await click(buttonWith(app.view, 'Disconnect FPL team'));
 
-    assert.deepEqual(surviving(app.storage), [
-      KEYS.planHistory, KEYS.settings, 'gymTrackerPrograms', 'tripPlannerTrips',
-    ].sort());
+    assert.deepEqual(surviving(app.storage), KEPT_BY_DISCONNECT);
     assert.equal(app.storage.getItem(KEYS.settings), SEED[KEYS.settings], 'settings must survive byte-identical');
     assert.equal(app.storage.getItem(KEYS.planHistory), SEED[KEYS.planHistory], 'saved plans must survive byte-identical');
     // removeItem, not clear(): that is what writes the sync tombstone, so the
-    // cloud copy of these two keys goes with the local one.
-    assert.deepEqual(app.storage.removed, [KEYS.teamId, KEYS.squadSnapshot]);
+    // cloud copy of these two keys goes with the local one. The entry cache
+    // keys follow, in storage order.
+    assert.deepEqual(app.storage.removed, [KEYS.teamId, KEYS.squadSnapshot, ...ENTRY_CACHE]);
   } finally {
     app.dispose();
   }
@@ -114,7 +124,7 @@ test('disconnect never deletes the whole cloud document, signed in or out', asyn
     try {
       await click(buttonWith(app.view, 'Disconnect FPL team'));
       assert.deepEqual(app.cloudCalls(), [], 'disconnect must not erase the fplPlannerApp document');
-      assert.deepEqual(app.storage.removed, [KEYS.teamId, KEYS.squadSnapshot]);
+      assert.deepEqual(app.storage.removed, [KEYS.teamId, KEYS.squadSnapshot, ...ENTRY_CACHE]);
     } finally {
       app.dispose();
     }
@@ -175,8 +185,8 @@ test('signed in, delete-all removes all four keys locally and erases the fplPlan
     await click(buttonWith(app.view, 'Delete FPL Planner data'));
     await click(buttonWith(app.view, 'Yes, delete everything'));
 
-    assert.deepEqual(surviving(app.storage), ['gymTrackerPrograms', 'tripPlannerTrips']);
-    assert.deepEqual(app.storage.removed, [KEYS.teamId, KEYS.settings, KEYS.planHistory, KEYS.squadSnapshot]);
+    assert.deepEqual(surviving(app.storage), KEPT_BY_DELETE_ALL);
+    assert.deepEqual(app.storage.removed, [KEYS.teamId, KEYS.settings, KEYS.planHistory, KEYS.squadSnapshot, ...ENTRY_CACHE]);
     assert.deepEqual(app.cloudCalls(), [SYNC_NAMESPACE], 'exactly one erase, for this app\'s namespace only');
     assert.equal(
       textOf(app.status('Delete FPL Planner data')),
@@ -195,7 +205,7 @@ test('signed out, delete-all clears the device and makes no cloud call', async (
     await click(buttonWith(app.view, 'Delete FPL Planner data'));
     await click(buttonWith(app.view, 'Yes, delete everything'));
 
-    assert.deepEqual(surviving(app.storage), ['gymTrackerPrograms', 'tripPlannerTrips']);
+    assert.deepEqual(surviving(app.storage), KEPT_BY_DELETE_ALL);
     assert.deepEqual(app.cloudCalls(), [], 'no session, no cloud copy, no call');
     assert.equal(
       textOf(app.status('Delete FPL Planner data')),
@@ -213,7 +223,7 @@ test('a failed cloud erase still clears the device and admits the cloud copy is 
     await click(buttonWith(app.view, 'Delete FPL Planner data'));
     await click(buttonWith(app.view, 'Yes, delete everything'));
 
-    assert.deepEqual(surviving(app.storage), ['gymTrackerPrograms', 'tripPlannerTrips']);
+    assert.deepEqual(surviving(app.storage), KEPT_BY_DELETE_ALL);
     assert.deepEqual(app.cloudCalls(), [SYNC_NAMESPACE]);
     assert.equal(
       textOf(app.status('Delete FPL Planner data')),

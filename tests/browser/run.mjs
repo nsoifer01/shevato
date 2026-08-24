@@ -55,6 +55,23 @@ const SUITES = [
   'apps/gym-tracker/e2e/units-migration.mjs',
   'apps/fpl-planner/e2e/scenario.mjs',
   'apps/fpl-planner/e2e/lifecycle.mjs',
+  // --- 2026-08-22 remediation round: per-app audit suites -----------------
+  // Each app owns apps/<app>/e2e/audit-2026-08.mjs, holding the regressions
+  // for the defects that round fixed (renderer escaping with hostile strings,
+  // two-tab writes, destructive-action undo, import sanitising, seeded axe
+  // scans, tablet geometry). One line per app, alphabetical. They are NOT
+  // pinned in EXPECTED_CHECKS: like the trip-planner and fpl-planner suites,
+  // their check counts are their owners' to change. Arena's equivalent needs
+  // the Firebase emulators, so it stays in apps/arena/e2e/emulator.mjs behind
+  // `npm run test:arena:emulator`.
+  // -----------------------------------------------------------------------
+  'apps/football-h2h/e2e/audit-2026-08.mjs',
+  'apps/fpl-planner/e2e/audit-2026-08.mjs',
+  'apps/gym-tracker/e2e/audit-2026-08.mjs',
+  'apps/maptap-rivals/e2e/audit-2026-08.mjs',
+  'apps/mario-kart/e2e/audit-2026-08.mjs',
+  'apps/rising-shows/e2e/audit-2026-08.mjs',
+  'apps/trip-planner/e2e/audit-2026-08.mjs',
   'apps/maptap-rivals/e2e/quality.mjs',
 ];
 
@@ -78,14 +95,18 @@ for (const a of args) {
 // apps.mjs note: the count is invariant whether or not the rising-shows
 // dataset is fetched (the skip path emits the same number of entries).
 const EXPECTED_CHECKS = {
-  'tests/browser/suites/site.mjs': 157,
+  // Re-measured after the 2026-08-23 merge, which brought together two
+  // independent rounds of checks: site 157 -> 170, a11y 74 -> 79 and
+  // visual 86 -> 103. Both sides' additions are kept, so the totals are
+  // the union, not a replacement.
+  'tests/browser/suites/site.mjs': 170,
   // 103 from master, plus the two Rising Shows highlight-badge checks added
   // in this branch.
   'tests/browser/suites/apps.mjs': 105,
   // 72 from master's B7/B8 keyboard + touch-target blocks, plus the two
   // seeded MapTap Rivals state scans added in this branch.
-  'tests/browser/suites/a11y.mjs': 74,
-  'tests/browser/suites/visual.mjs': 86,
+  'tests/browser/suites/a11y.mjs': 79,
+  'tests/browser/suites/visual.mjs': 103,
   'tests/browser/suites/perf.mjs': 51,
   'tests/browser/suites/pwa-gym.mjs': 14,
   // 56 from the 2026-08-22 audit pass, plus, added 2026-08-23: 15 modal/header
@@ -201,6 +222,19 @@ try {
       r = await mod.run({ base: BASE, cdpPort: CDP_PORT });
     } catch (e) {
       r = [{ name: `${suiteName}: suite completed`, pass: false, detail: String(e && e.message || e).slice(0, 200) }];
+    }
+    // A suite must return an ARRAY of checks. Returning a summary object
+    // instead used to throw "Spread syntax requires ...iterable" out of the
+    // loop below, which aborted the ENTIRE run at that suite: on 2026-08-23
+    // that silently skipped all seven per-app audit suites, which were green
+    // standalone and had simply never executed here. Fail that suite loudly
+    // and keep going, the same way a suite that throws is contained.
+    if (!Array.isArray(r)) {
+      r = [{
+        name: `${suiteName}: suite returned an array of checks`,
+        pass: false,
+        detail: `run() resolved with ${r === null ? 'null' : typeof r}; suites must return [{ name, pass, detail }]`,
+      }];
     }
     if (EXPECTED_CHECKS[name] != null && r.length !== EXPECTED_CHECKS[name]) {
       r.push({

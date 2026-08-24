@@ -197,17 +197,41 @@ test('parseMapTapScore: a total keyword swallows its whole line, so a one-line p
     [95, 89, 91, 9, 64]);
 });
 
-test('parseMapTapScore: the date is stamped with the CURRENT year, whatever month it names', () => {
-  // A New Year trap worth knowing about: the parser has no year to work from,
-  // so a December share pasted in January dates to the current (wrong) year.
-  // app.js writes this straight into #paste-date (js/app.js:2402) and saveDay
-  // saves whatever that field holds; the WhatsApp importer compensates for the
-  // same thing on its own (dayBucketDate, js/app.js:6632), the paste path does
-  // not. The date field stays editable, which is what keeps this a trap and
-  // not a defect.
-  const year = new Date().getFullYear();
-  assert.equal(parseMapTapScore('Dec 31\n10 20 30 40 50').date, `${year}-12-31`);
-  assert.equal(parseMapTapScore('Jan 1\n10 20 30 40 50').date, `${year}-01-01`);
+test('parseMapTapScore: a share dated ahead of today belongs to LAST year (Dec 31 pasted in January)', () => {
+  // Shares carry no year. Until 2026-08-22 this test pinned the old rule
+  // (always the current year), which dated a "Dec 31" share pasted on Jan 1
+  // a full year into the future (audit defect D14). The rule now: current
+  // year unless that lands more than a day ahead of today, then last year.
+  // Expectations are computed from the clock so the test holds on any day.
+  const now = new Date();
+  const year = now.getFullYear();
+  const expectYear = (monthIdx, day) =>
+    (new Date(year, monthIdx, day).getTime() - now.getTime() > 86400000) ? year - 1 : year;
+  assert.equal(parseMapTapScore('Dec 31\n10 20 30 40 50').date, `${expectYear(11, 31)}-12-31`);
+  assert.equal(parseMapTapScore('Jan 1\n10 20 30 40 50').date, `${expectYear(0, 1)}-01-01`);
+  // Today itself is never pushed back a year.
+  const m = now.toLocaleString('en-US', { month: 'short' });
+  assert.equal(parseMapTapScore(`${m} ${now.getDate()}\n10 20 30 40 50`).date.slice(0, 4), String(year));
+});
+
+test('parseMapTapScore: a day that does not exist in its month is not a date ("Feb 30" used to roll to Mar 2)', () => {
+  const r = parseMapTapScore('Feb 30\n10 20 30 40 50');
+  assert.ok(r, 'the rounds still parse');
+  assert.equal(r.date, null);
+  assert.equal(parseMapTapScore('Apr 31\n10 20 30 40 50').date, null);
+  assert.match(parseMapTapScore('Feb 28\n10 20 30 40 50').date, /-02-28$/);
+});
+
+test('weightedTotal / average / stdDev: a non-numeric slot counts as 0 and non-finite values are ignored (no NaN)', () => {
+  // One imported record with myScores [null, "x", 50, 50, 50] used to turn
+  // the dashboard "Avg score", every rival average and the leaderboard
+  // rivalry column into a literal "NaN" (audit defect D4).
+  assert.equal(weightedTotal([null, 'x', 50, 50, 50]), 50 * 2 + 50 * 3 + 50 * 3);
+  assert.equal(getMyTotal({ myScores: [null, 'x', 50, 50, 50] }), 400);
+  assert.equal(average([500, NaN, 700]), 600);
+  assert.equal(average([NaN]), 0);
+  assert.equal(stdDev([500, NaN, 500]), 0);
+  assert.ok(Number.isFinite(stdDev([500, Infinity, 700, 900])));
 });
 
 // --- mapTapHistoryToRounds -------------------------------------------------

@@ -6,7 +6,7 @@ import { app } from '../app.js';
 import { storageService } from '../services/StorageService.js';
 import { formatDate, showConfirmModal, showToast, formatSessionDateTime, parseLocalDate, escapeHtml, pluralize } from '../utils/helpers.js';
 import { orderPrograms } from '../utils/program-order.js';
-import { renderPausedBannerHTML, wirePausedBannerActions } from './paused-banner.js';
+import { renderPausedBannerHTML, wirePausedBannerActions, workoutOwnedElsewhere } from './paused-banner.js';
 import { readableActiveWorkout, wasExplicitlyPaused } from '../utils/active-workout.js';
 import { normalizeWeightUnit, volumeIn } from '../utils/units.js';
 import { isLoggedSession, performedExerciseCount } from '../utils/session-metrics.js';
@@ -351,6 +351,10 @@ class HomeView {
     async startWorkoutWithProgram(programId) {
         const pausedWorkout = readableActiveWorkout(storageService.getActiveWorkout());
 
+        if (pausedWorkout && workoutOwnedElsewhere()) {
+            showToast('A workout is being logged in another tab. Finish or pause it there first.', 'error', 6000);
+            return;
+        }
         // Any recoverable workout blocks a fresh start, paused or interrupted.
         if (pausedWorkout) {
             const label = wasExplicitlyPaused(pausedWorkout) ? 'paused' : 'unfinished';

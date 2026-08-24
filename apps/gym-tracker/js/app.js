@@ -30,7 +30,7 @@ import {
 import { IMPORT_MODES, summarizeMerge } from './utils/import-merge.js';
 import { normalizeFirstDayOfWeek } from './utils/week.js';
 import { isLoggedSession } from './utils/session-metrics.js';
-import { hasRecoverableWorkout } from './utils/active-workout.js';
+import { hasRecoverableWorkout, lockedByOtherTab } from './utils/active-workout.js';
 
 class GymTrackerApp {
     constructor() {
@@ -821,10 +821,12 @@ class GymTrackerApp {
         setTimeout(() => {
             document.querySelectorAll('.nav-item, .nav-link').forEach(item => {
                 item.classList.remove('active');
+                item.removeAttribute('aria-current');
             });
             const navItems = document.querySelectorAll(`.nav-item[data-view="${viewName}"], .nav-link[data-view="${viewName}"]`);
             navItems.forEach(item => {
                 item.classList.add('active');
+                item.setAttribute('aria-current', 'page');
             });
         }, 0);
     }
@@ -900,8 +902,11 @@ class GymTrackerApp {
         const hasPrograms = this.programs.length > 0;
         const resumable = hasRecoverableWorkout(storageService.getActiveWorkout());
         const onWorkoutView = this.currentView === 'workout';
+        // Another tab is driving the workout: no FAB at all, the banner
+        // explains where it is.
+        const elsewhere = resumable && lockedByOtherTab(storageService.getActiveWorkoutLock(), storageService.tabId);
 
-        if (!hasPrograms || onWorkoutView) {
+        if (!hasPrograms || onWorkoutView || elsewhere) {
             fab.hidden = true;
             return;
         }
@@ -988,6 +993,23 @@ class GymTrackerApp {
             }, { once: true });
         }
 
+        // Cross-tab channel (sync-system/tab-sync.js, 2026-08-22 audit D2).
+        // Another tab on this profile wrote one of our stores: re-read it
+        // into memory and re-render, so this tab never writes a stale array
+        // back over it (a program created in tab B used to vanish the moment
+        // tab A saved its settings). The handler only schedules: the refresh
+        // runs outside the storage handler, where writes are allowed again.
+        if (window.ShevatoTabSync) {
+            let tabRefreshTimer = null;
+            window.ShevatoTabSync.watch(storageService.tabSyncKeys, () => {
+                clearTimeout(tabRefreshTimer);
+                tabRefreshTimer = setTimeout(() => {
+                    debugLog('🔄 Another tab changed storage, refreshing data');
+                    this.refreshFromStorage();
+                }, 150);
+            });
+        }
+
         // Live remote-update channel. The 750 ms debounce coalesces the
         // ~9-key burst that the storage layer emits when another device
         // pushes changes, and gives the user time to finish a hover/click
@@ -1063,6 +1085,11 @@ class GymTrackerApp {
             'success',
             4000,
         );
+        // Disclose what the sanitiser repaired: a silent fix-up is how a
+        // "stone" unit or a 1e308-rep set would otherwise look like user data.
+        if (Array.isArray(result.repairs) && result.repairs.length) {
+            showToast(`Import repaired ${result.repairs.length} issue${result.repairs.length === 1 ? '' : 's'}: ${result.repairs.join('; ')}`, 'info', 9000);
+        }
         return true;
     }
 

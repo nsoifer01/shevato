@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  sanitizeSettings,
   KEYS, SYNC_NAMESPACE, DEFAULT_SETTINGS, HORIZON_CHOICES, MAX_TEAM_ID, MAX_VERSIONS_PER_GW, MAX_GWS_KEPT,
   validateTeamId, compactPlan, recordPlanVersion, latestVersion, allKeys, disconnectTeamKeys,
   getSquadSnapshot, setSquadSnapshot, snapshotApplies,
@@ -20,6 +21,17 @@ test('disconnecting clears the team link only, so plans and settings survive', (
   assert.deepEqual(removed, ['fplPlannerTeamId', 'fplPlannerSquadSnapshot']);
   assert.ok(!removed.includes(KEYS.planHistory));
   assert.ok(!removed.includes(KEYS.settings));
+});
+
+test('settings with the wrong types fall back field by field instead of breaking the load', () => {
+  // `{"horizon":"x","risk":42,"lastView":"<b>"}` reached the planner from a
+  // stale or foreign write and produced the generic load-failure screen.
+  assert.deepEqual(sanitizeSettings({ horizon: 'x', risk: 42, lastView: '<b>' }), DEFAULT_SETTINGS);
+  assert.deepEqual(sanitizeSettings({ horizon: 8, risk: 'aggressive', lastView: 'history' }),
+    { horizon: 8, risk: 'aggressive', lastView: 'history' });
+  assert.deepEqual(sanitizeSettings({ horizon: '8' }), { ...DEFAULT_SETTINGS, horizon: 8 }, 'a numeric string is a number');
+  assert.deepEqual(sanitizeSettings({ horizon: 4 }), DEFAULT_SETTINGS, 'an unlisted horizon is not a choice');
+  for (const junk of [null, [], 'x', 7]) assert.deepEqual(sanitizeSettings(junk), DEFAULT_SETTINGS);
 });
 
 test('team ids are validated before any network call', () => {

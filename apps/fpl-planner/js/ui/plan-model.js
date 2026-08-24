@@ -212,18 +212,25 @@ export function assessData(dataStatus, { now = Date.now() } = {}) {
   const core = sources.find(s => /bootstrap/.test(s.path || ''));
   const coreAge = core && Number.isFinite(core.ageSeconds) ? core.ageSeconds : null;
   const availabilityUnknown = !!core && (core.stale || !core.ok) && coreAge !== null && coreAge > AVAILABILITY_MAX_AGE_SECONDS;
+  // No fixture list means no opponent, no difficulty and no kickoff for anyone:
+  // every projection is a blank and the captain reads "No fixture, 0.0 xP".
+  // That is not a plan, so it is not presented as one.
+  const fixturesMissing = sources.some(s => s.name === 'fixtures' && !s.ok);
 
   return {
     ok: failed.length === 0 && stale.length === 0,
     failed: failed.map(s => s.name),
     stale: stale.map(s => s.name),
     availabilityUnknown,
+    fixturesMissing,
     // The single question the dashboard asks: may this plan be presented as a
     // recommendation at all?
-    withholdPlan: availabilityUnknown,
+    withholdPlan: availabilityUnknown || fixturesMissing,
     reason: availabilityUnknown
       ? 'Player availability could not be refreshed, so injuries and suspensions may be out of date.'
-      : null,
+      : fixturesMissing
+        ? 'The fixture list could not be loaded, so nobody has an opponent to be projected against.'
+        : null,
     now,
   };
 }

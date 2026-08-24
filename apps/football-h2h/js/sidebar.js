@@ -22,6 +22,10 @@ function openSidebar() {
     const overlay = document.getElementById('sidebar-overlay');
     const toggleBtn = document.getElementById('sidebar-toggle');
 
+    // The closed panel is `inert` (off-screen via translateX only, so its
+    // controls would otherwise stay in the Tab order at negative x).
+    sidebar.inert = false;
+    sidebar.removeAttribute('inert');
     sidebar.classList.add('open');
     overlay.classList.add('active');
     document.body.classList.add('sidebar-open');
@@ -46,6 +50,9 @@ function closeSidebar() {
     if (sidebar.contains(document.activeElement)) {
         toggleBtn.focus();
     }
+    // Out of the Tab order and the accessibility tree until reopened.
+    sidebar.inert = true;
+    sidebar.setAttribute('inert', '');
 }
 
 // Keep Tab inside the open sidebar (it overlays the page content). Modals
@@ -351,6 +358,15 @@ function addToHistory(action) {
     updateUndoRedoButtons();
 }
 
+// Drop the whole stack. Called after Clear All Data, an import, and a
+// cross-tab refresh: the recorded actions belong to a list that no longer
+// exists, and replaying them would push foreign games into the new one.
+function resetActionHistory() {
+    actionHistory = [];
+    currentHistoryIndex = -1;
+    updateUndoRedoButtons();
+}
+
 // Undo last action
 function undoLastAction() {
     if (currentHistoryIndex >= 0) {
@@ -557,6 +573,11 @@ function toggleSidebarGameForm() {
         form.classList.add('open');
         button.classList.add('active');
         sidebarGameFormOpen = true;
+
+        // Keyboard users land on the first goals field instead of tabbing
+        // three times to reach it.
+        const firstGoals = document.getElementById('sidebar-player1-goals');
+        if (firstGoals && typeof firstGoals.focus === 'function') firstGoals.focus();
     }
 }
 
@@ -624,12 +645,14 @@ function generateSidebarPlayerSettings() {
                     <label for="sidebar-player1-name">Player 1</label>
                     <input type="text" id="sidebar-player1-name" class="sidebar-player-input"
                            placeholder="Enter player 1 name" value="${escapeHtml(currentPlayer1Name)}"
+                           maxlength="${window.FootballMatchLogic.MAX_NAME_LENGTH}"
                            onchange="updatePlayerName(1, this.value)">
                 </div>
                 <div class="player-input-group">
                     <label for="sidebar-player2-name">Player 2</label>
                     <input type="text" id="sidebar-player2-name" class="sidebar-player-input"
                            placeholder="Enter player 2 name" value="${escapeHtml(currentPlayer2Name)}"
+                           maxlength="${window.FootballMatchLogic.MAX_NAME_LENGTH}"
                            onchange="updatePlayerName(2, this.value)">
                 </div>
             </div>
@@ -681,12 +704,12 @@ function generateSidebarGameInputs() {
             <div class="sidebar-player-input">
                 <label for="sidebar-player1-goals">${escapeHtml(currentPlayer1Name)} Goals:</label>
                 <input type="number" id="sidebar-player1-goals" class="sidebar-goals-input"
-                       min="0" max="99" placeholder="" onchange="checkSidebarForDraw()">
+                       min="0" max="99" placeholder="" inputmode="numeric" oninput="checkSidebarForDraw()">
             </div>
             <div class="sidebar-player-input">
                 <label for="sidebar-player2-goals">${escapeHtml(currentPlayer2Name)} Goals:</label>
                 <input type="number" id="sidebar-player2-goals" class="sidebar-goals-input"
-                       min="0" max="99" placeholder="" onchange="checkSidebarForDraw()">
+                       min="0" max="99" placeholder="" inputmode="numeric" oninput="checkSidebarForDraw()">
             </div>
             <div class="sidebar-penalty-section" id="sidebar-penalty-section" style="display: none;">
                 <label for="sidebar-penalty-winner">Penalty Result:</label>
@@ -755,6 +778,16 @@ function generateSidebarGameInputs() {
         </div>
     `;
     
+    // Enter inside any field saves, like every other form on the site
+    // (there is no <form> element to submit).
+    if (typeof container.addEventListener === 'function') {
+        container.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' || e.target.tagName === 'SELECT') return;
+            e.preventDefault();
+            submitSidebarGame();
+        });
+    }
+
     // Initialize the team dropdowns after generating the HTML
     setTimeout(() => {
         updateSidebarTeamOptions(1);
@@ -821,13 +854,16 @@ function submitSidebarGame() {
     const player1TeamType = document.getElementById('sidebar-player1-team-type')?.value;
     const player2TeamType = document.getElementById('sidebar-player2-team-type')?.value;
     
+    const logic = window.FootballMatchLogic;
     let player1Team = 'Unknown';
     let player2Team = 'Unknown';
     
+    // "Other" names are stored trimmed and capped: `  Spurs  ` used to be a
+    // separate team from `Spurs` in the matchup dropdown.
     if (player1TeamType === 'Ultimate Team') {
         player1Team = 'Ultimate Team';
     } else if (player1TeamType === 'Other') {
-        player1Team = document.getElementById('sidebar-player1-custom-team')?.value || 'Other';
+        player1Team = logic.cleanTeamName(document.getElementById('sidebar-player1-custom-team')?.value, 'Other');
     } else {
         player1Team = document.getElementById('sidebar-player1-team')?.value || player1TeamType;
     }
@@ -835,7 +871,7 @@ function submitSidebarGame() {
     if (player2TeamType === 'Ultimate Team') {
         player2Team = 'Ultimate Team';
     } else if (player2TeamType === 'Other') {
-        player2Team = document.getElementById('sidebar-player2-custom-team')?.value || 'Other';
+        player2Team = logic.cleanTeamName(document.getElementById('sidebar-player2-custom-team')?.value, 'Other');
     } else {
         player2Team = document.getElementById('sidebar-player2-team')?.value || player2TeamType;
     }
@@ -855,19 +891,20 @@ function submitSidebarGame() {
         return;
     }
 
-    // Goals must be non-negative integers. The number inputs carry min="0",
-    // but that is only a browser hint (there is no form submit to enforce
-    // it), so re-check here before anything is stored.
-    const player1GoalsNum = Number(player1Goals);
-    const player2GoalsNum = Number(player2Goals);
+    // Goals must be whole numbers 0..99 written as digits. The number
+    // inputs carry min/max, but those are only browser hints (there is no
+    // form submit to enforce them), so re-check with the shared rule
+    // before anything is stored: `1e2` and 21-digit values used to save.
+    const player1GoalsNum = logic.parseGoals(player1Goals);
+    const player2GoalsNum = logic.parseGoals(player2Goals);
 
-    if (!Number.isInteger(player1GoalsNum) || player1GoalsNum < 0) {
-        showSidebarGameError(`Goals for ${currentPlayer1Name} must be a whole number of 0 or more`);
+    if (player1GoalsNum === null) {
+        showSidebarGameError(`Goals for ${currentPlayer1Name} must be a whole number from 0 to ${logic.MAX_GOALS}`);
         return;
     }
 
-    if (!Number.isInteger(player2GoalsNum) || player2GoalsNum < 0) {
-        showSidebarGameError(`Goals for ${currentPlayer2Name} must be a whole number of 0 or more`);
+    if (player2GoalsNum === null) {
+        showSidebarGameError(`Goals for ${currentPlayer2Name} must be a whole number from 0 to ${logic.MAX_GOALS}`);
         return;
     }
 
@@ -926,7 +963,7 @@ function submitSidebarGame() {
         );
     }
     
-    const noteValue = (document.getElementById('sidebar-game-note')?.value || '').trim() || undefined;
+    const noteValue = logic.cleanNote(document.getElementById('sidebar-game-note')?.value);
 
     // Create game object
     const newGame = {
@@ -960,6 +997,10 @@ function submitSidebarGame() {
         // Show success and close form
         if (window.showToast) window.showToast('Game added successfully!', 'success');
         closeSidebarGameForm();
+        // The form is torn down, so put focus back on the button that
+        // opened it instead of dropping it to <body>.
+        const addBtn = document.getElementById('sidebar-add-game-btn');
+        if (addBtn && typeof addBtn.focus === 'function') addBtn.focus();
     } else {
         console.error('Games array not found or not accessible');
         showSidebarGameError('Unable to save game. Please try again.');
@@ -972,7 +1013,9 @@ function checkSidebarForDraw() {
     const player2Goals = document.getElementById('sidebar-player2-goals')?.value;
     const penaltySection = document.getElementById('sidebar-penalty-section');
     
-    if (penaltySection && player1Goals !== '' && player2Goals !== '' && player1Goals === player2Goals) {
+    // Numeric comparison (shared with submit): `02` vs `2` is a draw and
+    // must show the field the submit rule is about to demand.
+    if (penaltySection && window.FootballMatchLogic.isDraw(player1Goals, player2Goals)) {
         penaltySection.style.display = 'block';
     } else if (penaltySection) {
         penaltySection.style.display = 'none';
@@ -996,6 +1039,7 @@ window.setSidebarDateToday = setSidebarDateToday;
 window.undoLastAction = undoLastAction;
 window.redoLastAction = redoLastAction;
 window.addToHistory = addToHistory;
+window.resetActionHistory = resetActionHistory;
 window.updateUndoRedoButtons = updateUndoRedoButtons;
 window.displayFilteredGames = displayFilteredGames;
 window.clearDateFilter = clearDateFilter;

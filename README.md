@@ -78,8 +78,10 @@ data flow, how to run and test it) and `apps/<app>/FINDINGS.md` is its
 accumulated engineering knowledge (discoveries, root causes, regression risks,
 open questions), maintained as a living document. `CLAUDE.md` requires every
 session working on an app to read both first and keep both current as part of
-finishing the work. Seven of the eight apps carry both today (mario-kart has
-a README only). FPL modelling and planner experiments are recorded
+finishing the work. All eight apps carry both today. Site-level knowledge
+(marketing pages, partials, shared assets, `sync-system/`, Netlify config,
+`firestore.rules`, `privacy.html` drift) lives in the root `FINDINGS.md`.
+FPL modelling and planner experiments are recorded
 in `apps/fpl-planner/experiments/registry.md` with explicit verdicts.
 
 ## Apps

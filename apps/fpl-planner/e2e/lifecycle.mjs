@@ -327,6 +327,21 @@ export async function run({ base, cdpPort }) {
     } finally { await closePage(cdpPort, s); }
   }
 
+  /* ----- 7b. a GW1 screen plans GW2 against a FUTURE deadline, actionably --- */
+  {
+    // The harness used to pin the plan gameweek's deadline 30 minutes in the
+    // past for every GW1 state, so these screens always said "Deadline passed"
+    // and an actionability assertion here would have measured the harness.
+    const s = await openPlanner(cdpPort, base, { state: 'gw1-live', waitFor: 'plan' });
+    try {
+      const hero = await heroRead(s);
+      await rec('a GW1-in-play screen plans the next gameweek against its future deadline',
+        /Deadline in/.test(hero.deadline || '') && !/Deadline passed/i.test(hero.deadline || ''), hero.deadline, s);
+      await rec('and presents that plan as actionable', !hero.outdated
+        && !/no longer be acted on|Plan outdated/i.test(hero.banners.join(' ')), hero.banners.join(' | ').slice(0, 160), s);
+    } finally { await closePage(cdpPort, s); }
+  }
+
   /* ------------ 8. a gameweek in play is shown as live, not finalised ------- */
   {
     // GW1 is current with its fixtures played but NOT data-checked, which is

@@ -5513,3 +5513,89 @@ select option { background: var(--surface); color: var(--text); }
     padding-right: 64px;
   }
 }
+
+
+/* ---- 2026-08-23 remediation round (site-wide audit D4/D14/D15) ---- */
+/* Disconnected players (past the disconnect grace / presence window) stay
+   visible but read as away, in the lobby grid and both live boards. */
+.brain-arena-app .player-tile.is-disconnected { opacity: 0.55; }
+.brain-arena-app .player-tile.is-disconnected .player-avatar { filter: grayscale(1); }
+.brain-arena-app .player-mini-tag-away {
+  background: rgba(148, 163, 184, 0.16);
+  color: var(--muted-2, var(--muted));
+  border-color: rgba(148, 163, 184, 0.35);
+}
+.brain-arena-app .mini-board-row.is-disconnected { opacity: 0.55; }
+.brain-arena-app .mini-board-row.is-disconnected .mini-board-name::after {
+  content: " (away)";
+  font-size: 0.78em;
+  color: var(--muted);
+}
+
+/* Password fields: real password inputs plus a show/hide toggle. The
+   button's colours are pinned against main.css's global `button` rules. */
+.brain-arena-app .pw-wrap {
+  position: relative;
+  display: block;
+}
+.brain-arena-app .pw-wrap input { width: 100%; padding-right: 4.2rem; }
+.brain-arena-app .pw-toggle,
+.brain-arena-app .pw-toggle:hover {
+  position: absolute;
+  right: 0.35rem;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 30px;
+  min-width: 44px;
+  padding: 0 0.6rem;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 8px;
+  background: var(--surface-2) !important;
+  color: var(--cyan-2) !important;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: none !important;
+}
+.brain-arena-app .pw-toggle:focus-visible { outline: 2px solid var(--cyan-2); outline-offset: 2px; }
+
+/* "Playing as a guest." failed contrast on the muted panel colour. */
+.brain-arena-app .profile-signed-out strong { color: var(--text); }
+
+/* Leaderboard: the table is wider than a phone; show that it scrolls. */
+.brain-arena-app .leaderboard-wrap { position: relative; }
+@media (max-width: 640px) {
+  .brain-arena-app .leaderboard-wrap::after {
+    content: "";
+    position: absolute;
+    top: 0; right: 0; bottom: 0;
+    width: 2.5rem;
+    pointer-events: none;
+    background: linear-gradient(90deg, transparent, rgba(8, 11, 22, 0.9));
+    border-radius: 0 var(--radius) var(--radius) 0;
+  }
+  .brain-arena-app .leaderboard-scroll-hint { display: block; }
+}
+.brain-arena-app .leaderboard-scroll-hint {
+  display: none;
+  margin: 0.4rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-align: right;
+}
+
+/* Phones: the room header's finished-state row must wrap instead of
+   overflowing the viewport (360: "Back to lobby" was clipped), and every
+   header control meets the 44px tap floor. */
+@media (max-width: 540px) {
+  .brain-arena-app .room-head-right.is-finished { flex-wrap: wrap; justify-content: flex-end; }
+  .brain-arena-app .room-head-right .btn,
+  .brain-arena-app .room-head-right.is-finished > .room-end-actions > .btn,
+  .brain-arena-app .room-head-right.is-finished > #room-chat-toggle,
+  .brain-arena-app .room-head-right.is-finished > #leave-room-btn { min-height: 44px; }
+  .brain-arena-app .room-code-copy { width: 40px; height: 40px; }
+  .brain-arena-app .room-code-pill { gap: 0.3rem; padding-right: 0.3rem; }
+}

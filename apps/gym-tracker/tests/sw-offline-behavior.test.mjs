@@ -20,39 +20,73 @@ import assert from 'node:assert/strict';
 const SW_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'sw.js');
 const ORIGIN = 'https://shevato.com';
 
+/**
+ * Minimal Request: enough of the real one for the worker to construct
+ * `new Request(req, { cache })` and for the fakes to read url/mode/cache.
+ */
+class FakeRequest {
+    constructor(input, init = {}) {
+        const base = typeof input === 'string' ? { url: input } : input;
+        // Real behaviour, and the reason the worker needs a fallback: a
+        // request whose mode is 'navigate' cannot be re-constructed with a
+        // non-empty init. Getting this wrong rejected the whole fetch handler
+        // for every navigation, so the fake has to be just as strict.
+        if (typeof input !== 'string' && base.mode === 'navigate' && Object.keys(init).length) {
+            throw new TypeError("Cannot construct a Request with a Request whose mode is 'navigate' and a non-empty RequestInit");
+        }
+        this.url = new URL(base.url, `${ORIGIN}/apps/gym-tracker/`).href;
+        this.method = base.method || 'GET';
+        this.mode = base.mode || 'cors';
+        this.cache = init.cache || base.cache || 'default';
+    }
+}
+
+const stripSearch = (href) => href.split('?')[0];
+
 function makeFakeCaches() {
     const stores = new Map(); // cacheName -> Map(url -> response)
+    const addAllRequests = [];
     const storeFor = (name) => {
         if (!stores.has(name)) stores.set(name, new Map());
         return stores.get(name);
     };
+    const keyOf = (req) => (typeof req === 'string' ? new URL(req, `${ORIGIN}/apps/gym-tracker/`).href : req.url);
     const caches = {
         keys: async () => [...stores.keys()],
         delete: async (n) => stores.delete(n),
         open: async (name) => {
             const store = storeFor(name);
             return {
-                addAll: async (urls) => {
+                addAll: async (reqs) => {
                     // Real addAll fetches each URL; here every fetch "succeeds"
                     // with a synthetic response so install can complete.
-                    urls.forEach((u) => store.set(new URL(u, `${ORIGIN}/apps/gym-tracker/`).href, {
-                        ok: true, body: `precached:${u}`, clone() { return this; },
-                    }));
+                    reqs.forEach((r) => {
+                        addAllRequests.push(r);
+                        const u = typeof r === 'string' ? r : r.url;
+                        store.set(keyOf(r), { ok: true, body: `precached:${u}`, clone() { return this; } });
+                    });
                 },
-                match: async (req) => store.get(typeof req === 'string' ? req : req.url),
-                put: async (req, res) => { store.set(typeof req === 'string' ? req : req.url, res); },
+                match: async (req, opts = {}) => {
+                    const key = keyOf(req);
+                    if (store.has(key)) return store.get(key);
+                    if (opts.ignoreSearch) {
+                        for (const [k, v] of store) if (stripSearch(k) === stripSearch(key)) return v;
+                    }
+                    return undefined;
+                },
+                put: async (req, res) => { store.set(keyOf(req), res); },
             };
         },
         match: async () => undefined,
     };
-    return { caches, stores, storeFor };
+    return { caches, stores, storeFor, addAllRequests };
 }
 
 /** Load sw.js into a vm sandbox. `online` is a mutable switch for fetch. */
 function loadWorker() {
-    const { caches, stores, storeFor } = makeFakeCaches();
+    const { caches, stores, storeFor, addAllRequests } = makeFakeCaches();
     const listeners = {};
-    const state = { online: true };
+    const state = { online: true, fetches: [] };
     const sandbox = {
         self: {
             addEventListener: (type, fn) => { listeners[type] = fn; },
@@ -62,7 +96,9 @@ function loadWorker() {
         },
         caches,
         URL,
+        Request: FakeRequest,
         fetch: async (req) => {
+            state.fetches.push(req);
             if (!state.online) throw new TypeError('Failed to fetch (offline)');
             return { ok: true, body: `network:${typeof req === 'string' ? req : req.url}`, clone() { return this; } };
         },
@@ -70,7 +106,7 @@ function loadWorker() {
     };
     vm.createContext(sandbox);
     vm.runInContext(fs.readFileSync(SW_PATH, 'utf8'), sandbox, { filename: SW_PATH });
-    return { listeners, stores, storeFor, state };
+    return { listeners, stores, storeFor, state, addAllRequests };
 }
 
 async function install(worker) {
@@ -80,14 +116,18 @@ async function install(worker) {
 }
 
 /** Drive the fetch handler for one GET and return what respondWith resolved. */
-async function driveFetch(worker, url, { method = 'GET' } = {}) {
+async function driveFetch(worker, url, { method = 'GET', mode = 'cors' } = {}) {
     let responded = false;
     let promise = null;
+    const extended = [];
     worker.listeners.fetch({
-        request: { method, url },
+        request: { method, url, mode },
         respondWith: (p) => { responded = true; promise = p; },
+        waitUntil: (p) => extended.push(p),
     });
-    return { responded, response: responded ? await promise : undefined };
+    const response = responded ? await promise : undefined;
+    await Promise.all(extended.map((p) => p.catch(() => {})));
+    return { responded, response, extended };
 }
 
 const swSrc = fs.readFileSync(SW_PATH, 'utf8');
@@ -180,3 +220,87 @@ test(
         assert.ok(response, 'correct behavior: the precached copy must be served offline');
     }
 );
+
+// ---------------------------------------------------------------------------
+// Freshness after a deploy (2026-08-22 audit D5). netlify.toml gives js/,
+// css/ and data/ a max-age while HTML and sw.js are max-age=0, so with the
+// default request cache mode the background refresh and the precache fill
+// both came from the browser's HTTP cache: new index.html ran against old
+// modules for up to five minutes after every deploy, and a CACHE_VERSION
+// bump inside that window precached the stale modules under the new name.
+// ---------------------------------------------------------------------------
+
+test('the background refresh fetch bypasses the HTTP cache (cache: no-cache)', async () => {
+    const worker = loadWorker();
+    await install(worker);
+    const url = `${ORIGIN}/apps/gym-tracker/js/app.js`;
+    await driveFetch(worker, url);
+    const req = worker.state.fetches.at(-1);
+    assert.equal(req.url, url);
+    assert.equal(req.cache, 'no-cache', 'the worker revalidates with the origin, never the HTTP cache');
+});
+
+test('the install-time precache fill bypasses the HTTP cache too', async () => {
+    const worker = loadWorker();
+    await install(worker);
+    assert.equal(worker.addAllRequests.length, PRECACHE_URLS.length);
+    assert.ok(worker.addAllRequests.every((r) => r.cache === 'no-cache'),
+        'a CACHE_VERSION bump must precache what the server has NOW, not what the HTTP cache holds');
+});
+
+// 2026-08-22 audit D14: offline, `/?utm_source=x` fell to the browser error
+// page (exact-URL match) and a generated /exercises/ page had no fallback.
+test('offline navigation with a query string is served from the cached shell (ignoreSearch)', async () => {
+    const worker = loadWorker();
+    await install(worker);
+    worker.state.online = false;
+    const { response } = await driveFetch(worker, `${ORIGIN}/apps/gym-tracker/?utm_source=x`, { mode: 'navigate' });
+    assert.ok(response, 'a response is served');
+    assert.equal(response.body, `precached:${ORIGIN}/apps/gym-tracker/`, 'the precached shell answers the query-string variant');
+});
+
+test('offline navigation to a never-cached page gets the precached offline page, not undefined', async () => {
+    const worker = loadWorker();
+    await install(worker);
+    worker.state.online = false;
+    const { response } = await driveFetch(worker, `${ORIGIN}/apps/gym-tracker/exercises/barbell-bench-press/`, { mode: 'navigate' });
+    assert.ok(response, 'a response is served');
+    assert.match(String(response.body), /^precached:.*\/offline\/index\.html$/);
+});
+
+test('offline non-navigation miss still resolves to the cached value or nothing (no offline page for assets)', async () => {
+    const worker = loadWorker();
+    await install(worker);
+    worker.state.online = false;
+    const { response } = await driveFetch(worker, `${ORIGIN}/apps/gym-tracker/css/exercise-page.css`);
+    assert.equal(response, undefined);
+});
+
+test('a navigation request is refreshed with no-cache too (the clone fallback)', async () => {
+    // `new Request(navReq, init)` throws, so the worker rebuilds the request
+    // from its URL. Before that fallback existed the throw rejected the whole
+    // handler and every navigation fell through to a browser error page.
+    const worker = loadWorker();
+    await install(worker);
+    const url = `${ORIGIN}/apps/gym-tracker/`;
+    const { responded, response } = await driveFetch(worker, url, { mode: 'navigate' });
+    assert.equal(responded, true);
+    assert.ok(response, 'the navigation is answered, not rejected');
+    const req = worker.state.fetches.at(-1);
+    assert.equal(req.cache, 'no-cache', 'the rebuilt request still bypasses the HTTP cache');
+    assert.equal(req.url, url);
+});
+
+test('the background refresh is held open with waitUntil so an idle worker cannot cancel it', async () => {
+    // Without waitUntil the revalidation is cancelled whenever the worker is
+    // terminated after respondWith settles, which is how a module stayed
+    // stale for load after load even with a fresh cache mode (D5).
+    const worker = loadWorker();
+    await install(worker);
+    const url = `${ORIGIN}/apps/gym-tracker/js/app.js`;
+    const { extended, response } = await driveFetch(worker, url);
+    assert.ok(response, 'the precached copy is served immediately');
+    assert.equal(extended.length, 1, 'exactly one extend-lifetime promise: the refresh');
+    assert.equal(worker.storeFor(RUNTIME_NAME).get(url).body, `network:${url}`,
+        'and the refresh has landed in the runtime cache by the time it settles');
+});

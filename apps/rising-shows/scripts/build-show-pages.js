@@ -271,7 +271,26 @@ function computeRelatedShows(show, dominantShape, shapeIndex, limit) {
   return result;
 }
 
+// `--help` (and any unknown argument) prints usage and exits BEFORE main()
+// deletes and regenerates shows/. It used to start the full 34k-page build on
+// `--help` (2026-08-22 audit, D6).
+const USAGE = `Usage: node build-show-pages.js
+
+Deletes and regenerates ../shows/ (one page per show, A-Z index, shape hubs)
+and ../sitemap-shows.xml from ../data.json. Takes no options.
+Run via \`npm run build:rising-shows:pages\`.
+`;
+
 if (require.main === module) {
+  const args = process.argv.slice(2);
+  if (args.includes('--help') || args.includes('-h')) {
+    process.stdout.write(USAGE);
+    process.exit(0);
+  }
+  if (args.length) {
+    process.stderr.write(`Unknown argument: ${args[0]}\n${USAGE}`);
+    process.exit(2);
+  }
   try {
     main();
   } catch (e) {

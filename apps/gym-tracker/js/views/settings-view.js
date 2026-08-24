@@ -786,9 +786,9 @@ class SettingsView {
                     const confirmed = await showConfirmModal({
                         title: 'Replace all data?',
                         message: describeImport(data)
-                            + '<br><br>This will <strong>REPLACE</strong> your programs, workouts, achievements, '
-                            + 'measurements and custom exercises with what is in this file. '
-                            + 'Anything not in the file is <strong>deleted</strong>.',
+                            + '<br><br>Each kind of data the file contains <strong>REPLACES</strong> '
+                            + 'your copy of it: records of that kind missing from the file are <strong>deleted</strong>. '
+                            + 'Kinds of data the file does not contain are left untouched.',
                         warning: 'A rollback backup of your current data downloads first, so you can import it back if this was a mistake.',
                         confirmText: 'Replace everything',
                         cancelText: 'Cancel',

@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 
 import { installDom, query, queryAll, textOf, walk, click, typeInto, buttonWith } from './helpers/mini-dom.mjs';
 import { buildGameState } from '../js/engine/normalize.js';
-import { manualSquadView } from '../js/ui/preseason.js';
+import { manualSquadView, squadLegality } from '../js/ui/preseason.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (name) => JSON.parse(readFileSync(join(here, 'fixtures', name), 'utf8'));
@@ -174,4 +174,28 @@ test('an illegal squad says what is wrong instead of silently refusing', async (
   assert.equal(issues.length, 1);
   assert.match(issues[0], /6 DEF selected, the maximum is 5\./);
   assert.equal(buttonWith(over, 'Plan with this squad').disabled, true);
+});
+
+test('a legal-so-far squad that can no longer be completed inside the budget says so, with the cheapest fill', () => {
+  // The ten priciest players: legal on counts and clubs, and what is left
+  // cannot buy five more of anything. "Legal so far. 5 more players to pick"
+  // was literally true and useless.
+  const byPos = { 1: 0, 2: 0, 3: 0, 4: 0 };
+  const limits = { 1: 2, 2: 5, 3: 5, 4: 3 };
+  const clubs = new Map();
+  const ids = [];
+  for (const p of [...gameState.players.values()].sort((a, b) => b.nowCost - a.nowCost)) {
+    if (ids.length === 10 || byPos[p.position] >= limits[p.position] || (clubs.get(p.teamId) || 0) >= 3) continue;
+    ids.push(p.id); byPos[p.position]++; clubs.set(p.teamId, (clubs.get(p.teamId) || 0) + 1);
+  }
+  const legality = squadLegality(ids, gameState);
+  assert.equal(legality.complete, false);
+  assert.ok(legality.cheapestFill > legality.remaining, `cheapest fill ${legality.cheapestFill} exceeds ${legality.remaining}`);
+  assert.ok(legality.issues.some((i) => /cheapest legal fill costs/.test(i)), legality.issues.join(' | '));
+  // And the same through the rendered view.
+  const view = manualSquadView({ gameState, initialIds: ids, onPlan: () => {}, onCancel: () => {} });
+  assert.match(textOf(view), /cheapest legal fill costs/);
+  // A squad that CAN still be completed is not nagged.
+  const cheap = [...gameState.players.values()].sort((a, b) => a.nowCost - b.nowCost).slice(0, 3).map((p) => p.id);
+  assert.ok(!squadLegality(cheap, gameState).issues.some((i) => /cheapest legal fill/.test(i)));
 });

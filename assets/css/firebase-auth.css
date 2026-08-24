@@ -39,12 +39,19 @@
   border: none;
   outline: none;
   box-shadow: none;
+  /* The bare text button measured 61x17 px: far below the 24 px WCAG 2.5.8
+     minimum and the 44 px comfortable touch size, for the only account entry
+     point on the site. Fill the header bar instead (visually identical: the
+     button has no background). Restored during the 2026-08-23 merge, where
+     resolving the focus-ring hunk in this block had dropped it. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   padding: 0 0.75rem;
   font-size: inherit;
   font-family: inherit;
   cursor: pointer;
   text-decoration: none;
-  display: inline-block;
   white-space: nowrap;
   height: auto;
   line-height: normal;
@@ -83,15 +90,15 @@
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
-  outline: none !important;
-  /* The bare text button measured 61x17 px: far below the 24 px WCAG 2.5.8
-     minimum and the 44 px comfortable touch size, for the only account entry
-     point on the site. Fill the 52 px header bar instead (visually identical:
-     the button has no background). */
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 0 0.75rem;
+}
+
+/* Keyboard focus ring. The reset above used to pin outline:none !important
+   as well, which left Sign In the only header control with no visible focus
+   indicator (2026-08-22). :focus-visible keeps pointer clicks ring-free. */
+#header .auth-container .auth__button:focus-visible,
+.auth__button:focus-visible {
+  outline: 2px solid #ffffff !important;
+  outline-offset: 2px !important;
 }
 
 #header .auth-container .auth__user-name {
@@ -508,8 +515,10 @@ body .auth-tab--active,
 body.dark-theme .auth-tab--active,
 .auth-modal .auth-tab--active,
 #auth-modal .auth-tab--active {
-  color: #667eea !important;
-  border-bottom-color: #667eea !important;
+  /* #4558c8, not the brand #667eea: 6.0:1 on white (and 5.5:1 on the #f3f4f6
+     focus background) where #667eea was 3.66:1 and failed WCAG AA at 14 px. */
+  color: #4558c8 !important;
+  border-bottom-color: #4558c8 !important;
   background: #ffffff !important;
 }
 

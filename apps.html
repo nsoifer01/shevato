@@ -33,8 +33,8 @@
   <link rel="canonical" href="https://shevato.com/apps" />
 
   <!-- Open Graph -->
-  <meta property="og:title" content="Free Apps | Games, Fitness and TV Trackers from Shevato" />
-  <meta property="og:description" content="Free web apps for Mario Kart racing, gym workouts, head-to-head football, TV episode-rating analytics, and MapTap.gg daily rivalry tracking." />
+  <meta property="og:title" content="Free Web Apps from Shevato | Games, Fitness, Football, TV and Travel" />
+  <meta property="og:description" content="Eight free web apps: Arena party games, Football H2H, FPL Planner, Gym Tracker, MapTap Rivals, Mario Kart Tracker, Rising Shows and Trip Planner. No ads, no signup required." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://shevato.com/apps" />
   <meta property="og:image" content="https://shevato.com/images/og/apps.png" />
@@ -47,8 +47,8 @@
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Free Apps | Games, Fitness and TV Trackers from Shevato" />
-  <meta name="twitter:description" content="Free web apps for racing, gym, football, TV episode-rating analytics, MapTap.gg head-to-head tracking, and Arena multiplayer party games." />
+  <meta name="twitter:title" content="Free Web Apps from Shevato | Games, Fitness, Football, TV and Travel" />
+  <meta name="twitter:description" content="Eight free web apps: Arena party games, Football H2H, FPL Planner, Gym Tracker, MapTap Rivals, Mario Kart Tracker, Rising Shows and Trip Planner. No ads, no signup required." />
   <meta name="twitter:image" content="https://shevato.com/images/og/apps.png" />
   <meta name="twitter:image:alt" content="Shevato apps including Mario Kart, Gym Tracker, Football H2H, FPL Planner, Rising Shows, MapTap Rivals, Arena, Trip Planner" />
   <meta name="twitter:site" content="@shevato" />
@@ -229,9 +229,20 @@
       outline: none;
       box-shadow: 0 0 0 2px rgba(32, 68, 201, 0.22);
     }
+    /* The preview link is a block with a definite width so the lazy image
+       inside it has something to resolve its percentage width against. Inside
+       the shrink-to-fit flex card an unloaded image (intrinsic width 0) used
+       to measure 3x2 px and every card below the fold grew 125-190 px as it
+       scrolled into view; on phones the loaded image also sat at 203 px in a
+       310 px card. */
+    .highlights .app-preview-link {
+      display: block;
+      width: 100%;
+    }
     .highlights .app-preview {
       display: block;
       width: 100%;
+      min-width: 100%;
       height: auto;
       aspect-ratio: 16 / 10;
       object-fit: cover;
@@ -285,7 +296,7 @@
       <p id="app-filter-status" class="sr-only" role="status" aria-live="polite"></p>
 
       <div class="highlights">
-        <section data-category="game">
+        <section data-category="game" data-keywords="arena party games multiplayer trivia globe drop quiz rooms friends">
           <div class="content">
             <a class="app-preview-link" href="apps/arena/" aria-label="Open Arena" tabindex="-1"><img class="app-preview" src="images/app-previews/arena.webp" width="720" height="450" loading="lazy" decoding="async" alt="Arena mid-game Globe Drop round with a Where is Naypyidaw geography question and a 3D Earth globe with a countdown timer" /></a>
             <header>
@@ -294,13 +305,13 @@
             </header>
             <p>Real-time multiplayer hub for private rooms with friends. Create a room, share an invite link, and play across a growing collection of games: Globe Drop geography (pin cities on a 3D globe), head-to-head Trivia, and more on the way.</p>
             <ul class="actions special">
-              <li><a href="apps/arena/" class="button" aria-label="Open Arena, Arena">Open Arena</a></li>
+              <li><a href="apps/arena/" class="button" aria-label="Open Arena">Open Arena</a></li>
             </ul>
           </div>
         </section>
-        <section data-category="game">
+        <section data-category="game" data-keywords="football h2h head to head league soccer matches penalties two players">
           <div class="content">
-            <a class="app-preview-link" href="apps/football-h2h/" aria-label="Open Football H2H" tabindex="-1"><img class="app-preview" src="images/app-previews/football-h2h.webp" width="720" height="450" loading="lazy" decoding="async" alt="Football H2H League stats with total wins for two players, a current winning streak banner, and 90 minute win tallies" /></a>
+            <a class="app-preview-link" href="apps/football-h2h/" aria-label="Open Football H2H League" tabindex="-1"><img class="app-preview" src="images/app-previews/football-h2h.webp" width="720" height="450" loading="lazy" decoding="async" alt="Football H2H League stats with total wins for two players, a current winning streak banner, and 90 minute win tallies" /></a>
             <header>
               <a href="apps/football-h2h/" class="icon fa-futbol-o brand-color-primary" aria-label="Open Football H2H League"></a>
               <h3>Football H2H League</h3>
@@ -311,9 +322,9 @@
             </ul>
           </div>
         </section>
-        <section data-category="game">
+        <section data-category="game" data-keywords="fpl fantasy premier league planner transfers captain starting xi gameweek chips">
           <div class="content">
-            <a class="app-preview-link" href="apps/fpl-planner/" aria-label="Open Fpl Planner" tabindex="-1"><img class="app-preview" src="images/app-previews/fpl-planner.webp" width="720" height="450" loading="lazy" decoding="async" alt="FPL Planner gameweek dashboard with the recommended transfer, captain pick and starting XI laid out on a pitch" /></a>
+            <a class="app-preview-link" href="apps/fpl-planner/" aria-label="Open FPL Planner" tabindex="-1"><img class="app-preview" src="images/app-previews/fpl-planner.webp" width="720" height="450" loading="lazy" decoding="async" alt="FPL Planner gameweek dashboard with the recommended transfer, captain pick and starting XI laid out on a pitch" /></a>
             <header>
               <a href="apps/fpl-planner/" class="app-logo-link" aria-label="Open FPL Planner"><img class="app-logo" src="images/fpl-planner-logo.png" width="80" height="80" alt="" loading="lazy" decoding="async" /></a>
               <h3>FPL Planner</h3>
@@ -324,7 +335,7 @@
             </ul>
           </div>
         </section>
-        <section data-category="fitness">
+        <section data-category="fitness" data-keywords="gym tracker workouts fitness strength programs exercises pwa offline">
           <div class="content">
             <a class="app-preview-link" href="apps/gym-tracker/" aria-label="Open Gym Tracker" tabindex="-1"><img class="app-preview" src="images/app-previews/gym-tracker.webp" width="720" height="450" loading="lazy" decoding="async" alt="Gym Tracker weekly dashboard showing workouts, total volume, training time, and streak tiles above a recent workout card" /></a>
             <header>
@@ -337,9 +348,9 @@
             </ul>
           </div>
         </section>
-        <section data-category="game">
+        <section data-category="game" data-keywords="maptap rivals geography daily puzzle scores streaks friends">
           <div class="content">
-            <a class="app-preview-link" href="apps/maptap-rivals/" aria-label="Open Maptap Rivals" tabindex="-1"><img class="app-preview" src="images/app-previews/maptap-rivals.webp" width="720" height="450" loading="lazy" decoding="async" alt="MapTap Rivals rivalries dashboard with head-to-head cards showing wins, losses, win rate, and recent form for each rival" /></a>
+            <a class="app-preview-link" href="apps/maptap-rivals/" aria-label="Open MapTap Rivals" tabindex="-1"><img class="app-preview" src="images/app-previews/maptap-rivals.webp" width="720" height="450" loading="lazy" decoding="async" alt="MapTap Rivals rivalries dashboard with head-to-head cards showing wins, losses, win rate, and recent form for each rival" /></a>
             <header>
               <a href="apps/maptap-rivals/" class="icon fa-crosshairs brand-color-primary" aria-label="Open MapTap Rivals"></a>
               <h3>MapTap Rivals</h3>
@@ -350,9 +361,9 @@
             </ul>
           </div>
         </section>
-        <section data-category="game">
+        <section data-category="game" data-keywords="mario kart 8 deluxe races tracker players standings achievements">
           <div class="content">
-            <a class="app-preview-link" href="apps/mario-kart/" aria-label="Open Mario Kart" tabindex="-1"><img class="app-preview" src="images/app-previews/mario-kart.webp" width="720" height="450" loading="lazy" decoding="async" alt="Mario Kart 8 Deluxe Tracker performance trends chart plotting each player's finishing position across 14 races" /></a>
+            <a class="app-preview-link" href="apps/mario-kart/" aria-label="Open Mario Kart Tracker" tabindex="-1"><img class="app-preview" src="images/app-previews/mario-kart.webp" width="720" height="450" loading="lazy" decoding="async" alt="Mario Kart 8 Deluxe Tracker performance trends chart plotting each player's finishing position across 14 races" /></a>
             <header>
               <a href="apps/mario-kart/" class="icon fa-gamepad brand-color-primary" aria-label="Open Mario Kart Tracker"></a>
               <h3>Mario Kart Tracker</h3>
@@ -363,7 +374,7 @@
             </ul>
           </div>
         </section>
-        <section data-category="tv">
+        <section data-category="tv" data-keywords="rising shows tv series imdb ratings trend episodes finder">
           <div class="content">
             <a class="app-preview-link" href="apps/rising-shows/" aria-label="Open Rising Shows" tabindex="-1"><img class="app-preview" src="images/app-previews/rising-shows.webp" width="720" height="450" loading="lazy" decoding="async" alt="Rising Shows result cards for Breaking Bad and Game of Thrones with rating trend sparklines, IMDb ratings, and per-show stats" /></a>
             <header>
@@ -376,7 +387,7 @@
             </ul>
           </div>
         </section>
-        <section data-category="travel">
+        <section data-category="travel" data-keywords="trip planner travel itinerary flights hotels map costs visa weather">
           <div class="content">
             <a class="app-preview-link" href="apps/trip-planner/" aria-label="Open Trip Planner" tabindex="-1"><img class="app-preview" src="images/app-previews/trip-planner.webp" width="720" height="450" loading="lazy" decoding="async" alt="Trip Planner itinerary timeline with flights and hotel stays, night coverage strip, status pills, and a confirmed bookings total" /></a>
             <header>
@@ -403,7 +414,36 @@
           var activeCategory = 'all';
           var searchTerm = '';
 
+          // What the placeholder promises: the card's name, its description
+          // and its data-keywords. Not the button labels or helper text, which
+          // made "open" match only Arena ("Open Arena") and "premier" match
+          // nothing.
+          function searchableText(sec) {
+            if (!sec.__searchText) {
+              var parts = [sec.getAttribute('data-keywords') || ''];
+              var h = sec.querySelector('h3'); if (h) parts.push(h.textContent);
+              sec.querySelectorAll('p').forEach(function(p) { parts.push(p.textContent); });
+              sec.__searchText = parts.join(' ').toLowerCase();
+            }
+            return sec.__searchText;
+          }
+
+          // Reflect the filter in the URL (?q= and ?category=) so a filtered
+          // view can be shared and survives Back; replaceState so typing does
+          // not pile up history entries.
+          function syncUrl() {
+            var params = new URLSearchParams(location.search);
+            if (searchTerm) params.set('q', input.value.trim()); else params.delete('q');
+            if (activeCategory !== 'all') params.set('category', activeCategory); else params.delete('category');
+            var qs = params.toString();
+            var next = location.pathname + (qs ? '?' + qs : '') + location.hash;
+            if (next !== location.pathname + location.search + location.hash) {
+              try { history.replaceState(null, '', next); } catch (e) { /* file: or sandboxed */ }
+            }
+          }
+
           function apply() {
+            syncUrl();
             var filtered = activeCategory !== 'all' || searchTerm !== '';
             var visible = 0;
             document.querySelectorAll('.highlights').forEach(function(hl) {
@@ -411,7 +451,7 @@
             });
             sections.forEach(function(sec) {
               var catOk = activeCategory === 'all' || sec.getAttribute('data-category') === activeCategory;
-              var textOk = searchTerm === '' || sec.textContent.toLowerCase().indexOf(searchTerm) !== -1;
+              var textOk = searchTerm === '' || searchableText(sec).indexOf(searchTerm) !== -1;
               var show = catOk && textOk;
               if (show) visible++;
               sec.style.display = show ? '' : 'none';
@@ -438,8 +478,16 @@
             });
           }
 
+          var initial = new URLSearchParams(location.search);
+          var cat = initial.get('category');
+          if (bar && cat && bar.querySelector('button[data-filter="' + cat.replace(/[^a-z]/g, '') + '"]')) {
+            activeCategory = cat.replace(/[^a-z]/g, '');
+            bar.querySelectorAll('button').forEach(function(b) {
+              b.setAttribute('aria-pressed', b.getAttribute('data-filter') === activeCategory ? 'true' : 'false');
+            });
+          }
           if (input) {
-            var q = new URLSearchParams(location.search).get('q');
+            var q = initial.get('q');
             if (q) {
               input.value = q;
               searchTerm = q.trim().toLowerCase();

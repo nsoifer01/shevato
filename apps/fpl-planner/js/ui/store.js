@@ -168,8 +168,25 @@ export function setTeamId(teamId) {
   if (store) store.setItem(KEYS.teamId, String(teamId));
 }
 
+export const RISK_CHOICES = ['balanced', 'aggressive', 'conservative'];
+export const VIEW_CHOICES = ['plan', 'history', 'settings'];
+
+// Settings arrive from localStorage, which another device or an older version
+// can have written with the wrong types (`{"horizon":"x","risk":42}` reached
+// the planner and produced the generic load-failure screen). Each field is
+// checked against its closed set and silently falls back to the default.
+export function sanitizeSettings(raw) {
+  const input = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const horizon = Number(input.horizon);
+  return {
+    horizon: HORIZON_CHOICES.includes(horizon) ? horizon : DEFAULT_SETTINGS.horizon,
+    risk: RISK_CHOICES.includes(input.risk) ? input.risk : DEFAULT_SETTINGS.risk,
+    lastView: VIEW_CHOICES.includes(input.lastView) ? input.lastView : DEFAULT_SETTINGS.lastView,
+  };
+}
+
 export function getSettings() {
-  return { ...DEFAULT_SETTINGS, ...readJson(KEYS.settings, {}) };
+  return sanitizeSettings({ ...DEFAULT_SETTINGS, ...readJson(KEYS.settings, {}) });
 }
 
 export function setSettings(patch) {
@@ -228,4 +245,22 @@ export function disconnectTeamKeys() {
 
 export function allKeys() {
   return [KEYS.teamId, KEYS.settings, KEYS.planHistory, KEYS.squadSnapshot];
+}
+
+// The data layer's cache keys that hold THIS MANAGER's data: the entry, its
+// history, its transfers and its picks, under a key that contains the team id.
+// They are not synced, so they are not in the lists above, but "disconnect"
+// and "delete everything" both have to take them too (2026-08-22 audit: the
+// squad, bank and history survived both buttons).
+export const ENTRY_CACHE_PREFIX = 'fpl-planner:cache:entry/';
+
+export function entryCacheKeys() {
+  const store = ls();
+  if (!store) return [];
+  const keys = [];
+  for (let i = 0; i < store.length; i++) {
+    const k = store.key(i);
+    if (k && k.startsWith(ENTRY_CACHE_PREFIX)) keys.push(k);
+  }
+  return keys;
 }

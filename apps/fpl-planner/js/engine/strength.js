@@ -34,6 +34,7 @@
 
 import { fixtureIsPlayed } from './lifecycle.js';
 import { ridge } from './ml.js';
+import { rateMinutesOf } from './normalize.js';
 
 // --- Model parameters ------------------------------------------------------
 
@@ -135,7 +136,9 @@ export function aggregateSquadXg(gameState) {
   for (const p of gameState.players.values()) {
     const row = agg.get(p.teamId);
     if (!row) continue;
-    row.minutes += p.minutes;
+    // The minutes the xG/xGC numerators cover, which with a minutes-only
+    // baseline in force are this season's alone (see normalize.js).
+    row.minutes += rateMinutesOf(p);
     row.xg += p.xG;
     row.xgcMinuteWeighted += p.xGC;
   }

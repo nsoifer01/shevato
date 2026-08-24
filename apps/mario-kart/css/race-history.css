@@ -160,7 +160,11 @@
 #history-table th:hover,
 #history-table th.sortable-header:focus-visible {
     background: rgba(255, 255, 255, 0.12);
-    outline: none;
+}
+
+#history-table th.sortable-header:focus-visible {
+    outline: 2px solid #a5b4fc;
+    outline-offset: -2px;
 }
 
 /* Sort indicator glyph. Dim when neutral (↕), full-opacity + accent tint

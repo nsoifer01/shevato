@@ -356,3 +356,23 @@ test('the homepage prose names apps in A-Z order', () => {
         .map((m) => m.name);
     assert.ok(isSortedCI(mentions), `homepage prose mentions out of A-Z order: ${mentions.join(', ')}`);
 });
+
+// Social/OG copy on the hub is what WhatsApp/LinkedIn previews show; it
+// drifted to "five apps" while the page listed eight (found 2026-08-22). The
+// og and twitter descriptions must name every manifest app.
+test('apps.html og:description and twitter:description name every manifest app', () => {
+    const html = readRepoFile('apps.html');
+    const manifest = JSON.parse(readFileSync(join(REPO_ROOT, 'assets', 'apps-manifest.json'), 'utf8'));
+    const metas = {
+        'og:description': (html.match(/property="og:description" content="([^"]*)"/) || [])[1],
+        'twitter:description': (html.match(/name="twitter:description" content="([^"]*)"/) || [])[1],
+    };
+    const problems = [];
+    for (const [tag, content] of Object.entries(metas)) {
+        assert.ok(content, `${tag} missing on apps.html`);
+        for (const app of manifest.apps) {
+            if (!content.includes(app.name)) problems.push(`${tag} does not name ${app.name}`);
+        }
+    }
+    assert.deepEqual(problems, []);
+});

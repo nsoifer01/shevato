@@ -180,18 +180,31 @@ crossTabChannel.subscribe(CHANNEL_MESSAGE_TYPES.AUTH_CHANGED, () => {
   });
 });
 
+// Every message a visitor can see. The fallback is deliberately generic:
+// the raw SDK string ("Firebase: Error (auth/network-request-failed).") is
+// never shown, whatever code comes back. Unmapped codes are logged by the
+// callers so they can be added here.
 const ERROR_MESSAGES = {
   'auth/user-not-found': 'No account found with this email address.',
   'auth/wrong-password': 'Incorrect password.',
   'auth/invalid-login-credentials': 'Invalid email or password. Please check your credentials and try again.',
+  'auth/invalid-credential': 'Invalid email or password. Please check your credentials and try again.',
   'auth/email-already-in-use': 'An account with this email already exists.',
   'auth/weak-password': 'Password should be at least 6 characters.',
   'auth/invalid-email': 'Please enter a valid email address.',
-  'auth/too-many-requests': 'Too many failed attempts. Please try again later.'
+  'auth/missing-password': 'Please enter your password.',
+  'auth/too-many-requests': 'Too many failed attempts. Please wait a few minutes and try again.',
+  'auth/network-request-failed': 'We could not reach the sign-in service. Check your connection and try again.',
+  'auth/user-disabled': 'This account has been disabled. Contact us if you think that is a mistake.',
+  'auth/operation-not-allowed': 'Email sign-in is not enabled right now. Please try again later.',
+  'auth/requires-recent-login': 'Please sign in again to continue.',
+  'auth/user-token-expired': 'Your session has expired. Please sign in again.',
+  'auth/internal-error': 'Something went wrong on the sign-in service. Please try again.'
 };
+const GENERIC_AUTH_ERROR = 'Sign-in failed. Please try again in a moment.';
 
 function formatAuthError(err) {
-  return new Error(ERROR_MESSAGES[err?.code] || err?.message || 'Authentication failed');
+  return new Error(ERROR_MESSAGES[err?.code] || GENERIC_AUTH_ERROR);
 }
 
 window.firebaseConfig = firebaseConfig;

@@ -856,8 +856,82 @@ function bindScrollMemory() {
 
 // --- bootstrap ---
 
+// Reads a response body chunk by chunk so the loading line can report
+// progress, then parses it. Content-Length is the COMPRESSED size on a
+// brotli/gzip response while the chunks arrive decompressed, so the total is
+// only quoted when the body was sent uncompressed (the local dev server);
+// otherwise the line counts received megabytes alone. The parse is the same
+// JSON.parse res.json() would have done.
+async function readJsonWithProgress(res, onProgress) {
+  if (!res.body || typeof res.body.getReader !== 'function') return res.json();
+  const encoded = res.headers.get('content-encoding');
+  const total = encoded ? 0 : (parseInt(res.headers.get('content-length'), 10) || 0);
+  const reader = res.body.getReader();
+  const chunks = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.byteLength;
+    onProgress(received, total);
+  }
+  const buf = new Uint8Array(received);
+  let off = 0;
+  for (const c of chunks) { buf.set(c, off); off += c.byteLength; }
+  return JSON.parse(new TextDecoder().decode(buf));
+}
+
+// The loading status rides in the results count line, which is already the
+// page's aria-live region, so a screen reader hears the same progress a
+// sighted user sees. The search box is marked busy (not disabled: anything
+// typed in the meantime is merged into the finder state when the index
+// lands, see load()).
+function setLoadingStatus(received, total) {
+  const mb = (n) => (n / 1048576).toFixed(0);
+  let text = 'Loading show index';
+  if (received > 0) {
+    text += total > 0
+      ? ` (${mb(received)} of ${mb(total)} MB)`
+      : ` (${mb(received)} MB)`;
+  }
+  text += '...';
+  els.finderCount.textContent = text;
+  els.finderCount.classList.add('is-loading');
+  els.finderSearch.setAttribute('aria-busy', 'true');
+}
+
+function clearLoadingStatus() {
+  els.finderCount.classList.remove('is-loading');
+  els.finderSearch.removeAttribute('aria-busy');
+}
+
+// Schema guard for the index. Anything that would throw later in load()
+// (404/500/truncated JSON are already caught by the fetch try/catch) used
+// to leave the skeleton cards up forever: `[]` crashed the matches loop and
+// a null title crashed normalizeSearch, both outside the catch. Returns the
+// message for the error panel, or null when the dataset is usable. Records
+// missing the fields the grid needs are dropped (and counted in the console)
+// rather than failing the whole load; an index with nothing left is an error.
+function validateDataset(d) {
+  if (!d || typeof d !== 'object' || !Array.isArray(d.matches)) {
+    return 'Unexpected data shape (no matches list)';
+  }
+  const ok = d.matches.filter((m) => m && typeof m === 'object'
+    && typeof m.seriesId === 'string' && typeof m.title === 'string'
+    && Number.isFinite(m.season));
+  const dropped = d.matches.length - ok.length;
+  if (dropped > 0) {
+    console.warn(`[rising-shows] dropped ${dropped} malformed season record(s) from the index`);
+    d.matches = ok;
+  }
+  if (ok.length === 0) return 'Show data is empty';
+  return null;
+}
+
 async function load() {
   showSkeletons(8);
+  setLoadingStatus(0, 0);
   try {
     // data-index.json carries everything needed to filter, sort, and render
     // the grid, so it is the ONLY data fetch at boot - critical path or not.
@@ -887,20 +961,23 @@ async function load() {
     // static SEO pages render per-episode tables from it.
     const dataRes = await fetch('data-index.json');
     if (!dataRes.ok) throw new Error(`HTTP ${dataRes.status}`);
-    dataset = await dataRes.json();
+    dataset = await readJsonWithProgress(dataRes, setLoadingStatus);
     // Validate the shape INSIDE the try. A 404, a network error and a
     // truncated body all landed on the error panel already, but a
     // well-formed JSON document with the wrong shape (a half-written index,
     // a proxy serving something else) sailed past and threw further down in
     // the render path, outside any catch, leaving the skeleton cards up
-    // forever with no message.
-    if (!dataset || typeof dataset !== 'object' || !Array.isArray(dataset.matches)) {
-      throw new Error('data-index.json is missing its matches list');
-    }
+    // forever with no message. validateDataset also drops individual
+    // malformed season records and errors when nothing usable is left.
+    const bad = validateDataset(dataset);
+    if (bad) throw new Error(bad);
   } catch (err) {
+    clearLoadingStatus();
+    els.finderCount.textContent = '';
     showError(err);
     return;
   }
+  clearLoadingStatus();
   // Precompute normalized title once per match so the search hot path doesn't
   // re-derive it on every filter pass. [[normalizeSearch]] for the rule.
   //
@@ -921,7 +998,15 @@ async function load() {
   loadChangelog();
   Watched.load();
   Compare.load();
+  // Whatever was typed into the search box while the index downloaded. The
+  // input handler is not bound yet (bindFinder runs below) and
+  // applyStateFromURL resets finderState from the hash, so without this
+  // merge a query typed during a 10-17 s throttled boot was wiped the moment
+  // the grid rendered. The hash wins when it carries its own q=.
+  const typedDuringLoad = els.finderSearch.value;
   applyStateFromURL();
+  const mergedTypedSearch = !!typedDuringLoad && !finderState.search;
+  if (mergedTypedSearch) finderState.search = typedDuringLoad.trim();
   warnIfStale();
   buildSeriesIndex();
   buildBestSeasonMap();
@@ -955,6 +1040,9 @@ async function load() {
     // scrollHeight reflects the freshly appended cards.
     requestAnimationFrame(() => ScrollMemory.restore());
   }
+  // The merged in-flight search is state the hash does not know about yet;
+  // written last so an open-modal key above is not dropped from the URL.
+  if (mergedTypedSearch) writeFinderStateToURL();
   // Deliberately NO extras fetch here: boot transfer is the index plus the
   // page's own code, nothing else. Modal data arrives per show on open.
 }
@@ -1136,8 +1224,14 @@ function showDetailError(box, message, retryFn) {
   if (!box) return;
   const text = box.querySelector('.detail-error-text');
   if (text) text.textContent = message;
+  // Marker class for "a failure notice is up right now": clearDetailError
+  // takes it off again, so a selector for it answers exactly the question the
+  // audit's D7 browser check asks (is the notice showing, and did Retry clear
+  // it?), which a permanently present, merely hidden element cannot.
+  box.classList.add('modal-detail-error');
   const btn = box.querySelector('.detail-retry');
   if (btn) {
+    btn.classList.add('modal-detail-retry');
     btn.disabled = false;
     btn.onclick = () => {
       btn.disabled = true;
@@ -1152,7 +1246,9 @@ function showDetailError(box, message, retryFn) {
 }
 
 function clearDetailError(box) {
-  if (box) box.hidden = true;
+  if (!box) return;
+  box.classList.remove('modal-detail-error');
+  box.hidden = true;
 }
 
 function buildAboveImdbMap() {
@@ -1606,20 +1702,33 @@ function showError(err) {
 // --- shared shape-tag + best-badge helpers ---
 
 // Render shape pills into a container (season detail modal).
-function fillShapeTags(container, shapes) {
+function fillShapeTags(container, shapes, confidence) {
   container.replaceChildren();
   // No "No pattern" placeholder — an empty shape container just renders
   // nothing, which keeps the card/list cleaner for seasons that don't fit
   // a recognized trajectory shape.
   if (shapes.length === 0) return;
-  for (const s of shapes) container.appendChild(makeShapeTag(s));
+  for (const s of shapes) container.appendChild(makeShapeTag(s, shapeConfidence(confidence, s)));
 }
+
+// Per-season records carry `confidence: { <shape>: 0..1 }` from the
+// classifier. Categorical tags (saved-best-for-last, shape-drift) have no
+// confidence; they return null and render as a normal pill.
+function shapeConfidence(confidence, shape) {
+  const c = confidence && confidence[shape];
+  return typeof c === 'number' ? c : null;
+}
+
+// Below this a label is a technicality (a "Big finale" on a 0.1-point
+// margin), so the pill is dimmed and its tooltip says so. Same floor the
+// Kometa builder and export-integrations.js default to.
+const LOW_CONFIDENCE_BELOW = 0.35;
 
 // A shape pill is also the shortcut to "more shows like this": activating one
 // applies that shape in the Finder and drops the user back on the filtered
 // grid, matching what the shape badges on the static show pages do. Built as a
 // real <button> so Tab reaches it and Enter/Space activate it for free.
-function makeShapeTag(shape) {
+function makeShapeTag(shape, confidence = null) {
   const label = SHAPE_LABELS[shape] || shape;
   const desc = SHAPE_DESCS[shape] || '';
   const btn = document.createElement('button');
@@ -1628,6 +1737,10 @@ function makeShapeTag(shape) {
   btn.dataset.shape = shape;
   btn.textContent = label;
   btn.title = desc ? `${desc} - show every ${label} show` : `Show every ${label} show`;
+  if (confidence != null && confidence < LOW_CONFIDENCE_BELOW) {
+    btn.classList.add('is-low-confidence');
+    btn.title = `Low confidence (${confidence.toFixed(2)}): the ${label} pattern is only just there. ${btn.title}`;
+  }
   btn.setAttribute('aria-label', `Filter the finder to ${label} shows`);
   btn.addEventListener('click', (e) => {
     // The show modal's season rows open the season on click/Enter/Space; keep
@@ -1832,6 +1945,8 @@ function fillProviderTags(container, providers) {
 function aboveImdbBadge(m) {
   if (typeof m.seriesRating !== 'number') return null;
   if (m.avgRating <= m.seriesRating) return null;
+  // Not asserted on thinly voted shows: see ABOVE_IMDB_MIN_VOTES.
+  if (!(m.seriesVotes >= RisingShowsFinder.ABOVE_IMDB_MIN_VOTES)) return null;
   const badge = document.createElement('span');
   badge.className = 'above-imdb';
   badge.textContent = '↑';
@@ -2814,7 +2929,11 @@ async function openModal(m, opts = {}) {
   els.modalTitle.textContent = m.title;
   const seasonYearStr = (m.seasonYear || m.year);
   const yearStr = seasonYearStr ? ` · ${seasonYearStr}` : '';
-  els.modalSubtitle.textContent = `Season ${m.season} · ${seasonRatedFold(m).count} episodes${yearStr} · ${m.genres.join(', ') || 'No genre listed'}`;
+  // Rated-episode count from the index record (seasonRatedFold), falling back
+  // to the index's episodeCount: a failed detail fetch used to read
+  // "0 episodes", and so did a season whose episodes are all still unrated.
+  const subtitleEps = seasonRatedFold(m).count || seasonEpisodeCount(m);
+  els.modalSubtitle.textContent = `Season ${m.season} · ${subtitleEps} episodes${yearStr} · ${m.genres.join(', ') || 'No genre listed'}`;
 
   // Shape pills + streaming chips in the modal-shapes row, matching the
   // chip row rendered on every result tile. Same suppression rule as
@@ -2824,6 +2943,7 @@ async function openModal(m, opts = {}) {
   fillShapeTags(
     els.modalShapes,
     m.shapes.filter((s) => s !== 'saved-best-for-last'),
+    m.confidence,
   );
   fillProviderTags(els.modalShapes, m.providers || []);
 
@@ -3150,10 +3270,13 @@ async function openShowModal(seriesId, opts = {}) {
   // The verdict comes from the same precomputed list the grid reads
   // (buildAboveImdbMap), so the pill here and the badge out there cannot
   // disagree; the local comparison is only the unsplit-dataset fallback.
+  // Either way it is not asserted below ABOVE_IMDB_MIN_VOTES series votes:
+  // a handful of fans rating every episode 10.0 earns it trivially.
   const aboveImdb = aboveImdbBySeries.has(seriesId)
     ? aboveImdbBySeries.get(seriesId) === true
     : (typeof meta.seriesRating === 'number' && overallAvg !== null && overallAvg > meta.seriesRating);
-  if (aboveImdb && typeof meta.seriesRating === 'number' && overallAvg !== null) {
+  if (aboveImdb && typeof meta.seriesRating === 'number' && overallAvg !== null
+      && meta.seriesVotes >= RisingShowsFinder.ABOVE_IMDB_MIN_VOTES) {
     const aboveBadge = document.createElement('span');
     aboveBadge.className = 'above-imdb above-imdb-pill';
     aboveBadge.textContent = '↑ Above IMDb';
@@ -3213,7 +3336,6 @@ async function openShowModal(seriesId, opts = {}) {
     seasonsFrag.appendChild(buildShowSeasonRow(s, bestSeason, worstSeason, mostRatedSeason));
   }
   els.showModalSeasons.replaceChildren(seasonsFrag);
-
   if (detailOk) {
     clearDetailError(els.showModalDetailError);
   } else {
@@ -3350,9 +3472,10 @@ function buildShowSeasonRow(m, bestSeason, worstSeason, mostRatedSeason) {
   // The row used to be a <li role="button" tabindex="0"> that CONTAINED the
   // season's shape pills, which are buttons: a control inside a control (axe
   // nested-interactive, 30 serious violations), and it also stripped the list
-  // its own list semantics. The season number is now the real control, the
-  // <li> keeps a plain click handler for the convenience of clicking anywhere
-  // on the row, and the pills sit beside the button rather than inside it.
+  // its own list semantics (axe `list`: an <ol> child with role=button is not
+  // a list item). The season number is now the real control, the <li> keeps a
+  // plain click handler for the convenience of clicking anywhere on the row,
+  // and the pills sit beside the button rather than inside it.
   const num = document.createElement('button');
   num.type = 'button';
   num.className = 'ss-num';
@@ -3368,8 +3491,9 @@ function buildShowSeasonRow(m, bestSeason, worstSeason, mostRatedSeason) {
   const ssRuntimeStr = formatAvgRuntime(m.avgRuntime);
   const ssRuntimeBit = ssRuntimeStr ? ` · ~${ssRuntimeStr}/ep` : '';
   // Rated-episode count from the index record, not from the loaded episode
-  // array: a failed detail fetch used to make every row read "0 eps".
-  eps.textContent = `${seasonRatedFold(m).count} eps${yearStr}${ssRuntimeBit}`;
+  // array: a failed detail fetch used to make every row read "0 eps", and so
+  // did a season whose episodes are all still unrated (seasonEpisodeCount).
+  eps.textContent = `${seasonRatedFold(m).count || seasonEpisodeCount(m)} eps${yearStr}${ssRuntimeBit}`;
   meta.appendChild(eps);
   // Per-season shape labels inside the show modal's season list — these
   // belong to an individual season, not the show as a whole, so they stay
@@ -3381,7 +3505,7 @@ function buildShowSeasonRow(m, bestSeason, worstSeason, mostRatedSeason) {
   if (rowShapes.length) {
     const shapeRow = document.createElement('span');
     shapeRow.className = 'ss-shape-row';
-    for (const s of rowShapes) shapeRow.appendChild(makeShapeTag(s));
+    for (const s of rowShapes) shapeRow.appendChild(makeShapeTag(s, shapeConfidence(m.confidence, s)));
     meta.appendChild(shapeRow);
   }
 
@@ -3454,6 +3578,15 @@ function buildShowSeasonRow(m, bestSeason, worstSeason, mostRatedSeason) {
     openModal(m);
   });
   return li;
+}
+
+// Episode count for a season row or subtitle. The index ships `episodeCount`
+// per season; the detail file brings the episodes themselves. When the
+// detail fetch failed the array is empty, and printing "0 eps" for a season
+// the index knows has 13 was the audit's D7.
+function seasonEpisodeCount(m) {
+  if (Array.isArray(m.episodes) && m.episodes.length > 0) return m.episodes.length;
+  return Number.isFinite(m.episodeCount) ? m.episodeCount : 0;
 }
 
 // TASK D: Render "More shows like this" in the show modal.
@@ -4082,7 +4215,7 @@ function filterAndSortFinder() {
   const f = finderState;
   const rows = finderRowsBeforeShape()
     .filter((s) => RisingShowsFinder.passesShapeAnd(s, f.shapes));
-  rows.sort(RisingShowsFinder.finderComparator(f.sort, f.sortDir));
+  rows.sort(RisingShowsFinder.finderStateComparator(f));
   return rows;
 }
 
@@ -4502,7 +4635,12 @@ function goToFinderPage(n, scrollAfter = true) {
   // surfaces what they came for.
   track('trackLoadMore', { pageNumber: n, itemsShown: lastFinderRowCount });
   if (scrollAfter) {
-    const top = els.finderResults.getBoundingClientRect().top + window.scrollY - 70;
+    // Land on the count line ("N shows match your filters"), not the grid:
+    // the grid's top put the count 30 px above the viewport and the top
+    // pager under the fixed header, so the user could not tell which page
+    // they were on without scrolling back up.
+    const anchor = els.finderCount || els.finderResults;
+    const top = anchor.getBoundingClientRect().top + window.scrollY - 70;
     window.scrollTo({ top, behavior: 'smooth' });
   }
 }
@@ -4724,6 +4862,22 @@ function renderFinderActiveFilterBar() {
   label.textContent = 'Active filters';
   frag.appendChild(label);
   for (const c of chips) {
+    // A note describes how the results are ranked; it is not a filter and
+    // has nothing to remove, so it renders as text rather than a button.
+    if (c.note) {
+      const note = document.createElement('span');
+      note.className = 'active-filter-note';
+      note.title = c.note;
+      const k = document.createElement('span');
+      k.className = 'chip-key';
+      k.textContent = c.key;
+      const v = document.createElement('span');
+      v.className = 'chip-val';
+      v.textContent = c.value;
+      note.append(k, v);
+      frag.appendChild(note);
+      continue;
+    }
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'active-filter-chip';
@@ -4768,6 +4922,17 @@ function renderFinderActiveFilterBar() {
 function describeFinderActiveFilters() {
   const f = finderState;
   const chips = [];
+  // Rating sorts with votes at "Any" rank the well-voted shows first (see
+  // RATING_SORT_VOTE_FLOOR in finder-lib.js). Say so where the other active
+  // filters are listed, so a 7-vote 10.0 sitting on page 40 is not a mystery.
+  if (RisingShowsFinder.ratingSortFloorActive(f)) {
+    const floor = RisingShowsFinder.RATING_SORT_VOTE_FLOOR.toLocaleString();
+    chips.push({
+      key: 'Ranking',
+      value: `${floor}+ votes first`,
+      note: `Rating sorts rank shows with ${floor}+ IMDb votes before the rest, so a handful of fans rating every episode 10.0 cannot top the list. Set a votes filter to rank everything by rating alone.`,
+    });
+  }
   if (f.search) {
     chips.push({
       key: 'Search',
@@ -5103,27 +5268,10 @@ const onFinderFilterChangeDebounced = debounce(onFinderFilterChange, 200);
 // --- Show Finder URL state ---
 
 function writeFinderStateToURL() {
-  const f = finderState;
-  const p = new URLSearchParams();
-  if (f.search) p.set('q', f.search);
-  if (f.view !== 'grid') p.set('view', f.view);
-  if (f.sort !== 'votes') p.set('sort', f.sort);
-  if (f.sortDir !== 'desc') p.set('dir', f.sortDir);
-  if (f.minEpisodes > 0) p.set('minEps', f.minEpisodes);
-  if (f.minSeasons > 0) p.set('minSeasons', f.minSeasons);
-  if (f.minVotes > 0) p.set('minVotes', f.minVotes);
-  if (f.minShowRating > 0) p.set('minShow', f.minShowRating);
-  if (f.minAvgEpisode > 0) p.set('minAvg', f.minAvgEpisode);
-  if (f.gapDir !== 'any') p.set('gapDir', f.gapDir);
-  if (f.minGap > 0) p.set('minGap', f.minGap);
-  if (f.minYear != null) p.set('minYear', f.minYear);
-  if (f.maxYear != null) p.set('maxYear', f.maxYear);
-  if (f.hiddenGems) p.set('gems', 'on');
-  if (f.genres.size) p.set('genres', [...f.genres].join(','));
-  if (f.genresExclude.size) p.set('xgenres', [...f.genresExclude].join(','));
-  if (f.languages.size) p.set('langs', [...f.languages].join(','));
-  if (f.shapes.size) p.set('shape', [...f.shapes].join(','));
-  if (f.page > 1) p.set('page', f.page);
+  // Filter params come from finder-lib so the hash, the Kometa preset export
+  // and the unit tests all agree on one serialisation (search term trimmed,
+  // defaults omitted).
+  const p = RisingShowsFinder.serializeFinderQuery(finderState);
   // Append the open-modal deep-link key so a shared/refreshed link reopens the
   // finder AND the modal. A season detail (in-show drill-down) wins over the
   // show modal when both flags somehow linger.
@@ -5353,7 +5501,16 @@ function renderChangelogSwings(entry) {
     btn.type = 'button';
     btn.className = 'changelog-item-link';
     const arrow = s.delta > 0 ? '↑' : '↓';
-    btn.innerHTML = `<span>${s.title} · S${s.season}</span> <span class="changelog-swing-delta ${s.delta > 0 ? 'is-up' : 'is-down'}">${arrow} ${s.from.toFixed(2)} → ${s.to.toFixed(2)}</span>`;
+    // Built with textContent rather than innerHTML: titles come from the IMDb
+    // pipeline, and this was the one changelog row that interpolated one into
+    // markup (site-wide audit, 2026-08-22). Every other title render in this
+    // file already goes through textContent; keep it that way.
+    const label = document.createElement('span');
+    label.textContent = `${s.title} · S${s.season}`;
+    const delta = document.createElement('span');
+    delta.className = `changelog-swing-delta ${s.delta > 0 ? 'is-up' : 'is-down'}`;
+    delta.textContent = `${arrow} ${s.from.toFixed(2)} → ${s.to.toFixed(2)}`;
+    btn.append(label, document.createTextNode(' '), delta);
     btn.addEventListener('click', () => jumpToSeason(s));
     li.appendChild(btn);
     els.changelogSwingsList.appendChild(li);
@@ -6611,6 +6768,11 @@ if (typeof window !== 'undefined') {
     pickHighlights,
     seasonVoteTotal,
     chipScrollDelta,
+    // Site-wide audit round: boot-time dataset validation, the episode-count
+    // fallback the season rows use, and the shape-pill confidence step.
+    validateDataset,
+    seasonEpisodeCount,
+    shapeConfidence,
   };
 }
 

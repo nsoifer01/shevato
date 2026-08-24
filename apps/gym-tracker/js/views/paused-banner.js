@@ -14,6 +14,7 @@ import { storageService } from '../services/StorageService.js';
 import { escapeHtml } from '../utils/helpers.js';
 import {
     activeWorkoutBannerCopy,
+    lockedByOtherTab,
     readableActiveWorkout,
     wasExplicitlyPaused,
 } from '../utils/active-workout.js';
@@ -44,6 +45,7 @@ export function renderPausedBannerHTML(opts = {}) {
     const { withCalendarMeta = true } = opts;
     const workout = readableActiveWorkout(storageService.getActiveWorkout());
     if (!workout) return null;
+    if (workoutOwnedElsewhere()) return renderWorkoutElsewhereHTML(workout);
 
     const copy = activeWorkoutBannerCopy(workout);
     const elapsed = workout.elapsedBeforePause || 0;
@@ -81,6 +83,31 @@ export function renderPausedBannerHTML(opts = {}) {
                 <button class="btn btn-outline btn-danger-outline" data-paused-action="discard">
                     <i class="fas fa-trash"></i> Discard
                 </button>
+            </div>
+        </div>
+    `;
+}
+
+/** True when another live tab is driving the stored workout (D2). */
+export function workoutOwnedElsewhere() {
+    return lockedByOtherTab(storageService.getActiveWorkoutLock(), storageService.tabId);
+}
+
+/**
+ * Shown instead of the Resume banner while another tab holds the workout
+ * lock: no Resume, no Discard, just where the workout is. The lock goes
+ * stale ~20 s after that tab stops heartbeating, after which the ordinary
+ * recovery banner returns on the next render.
+ */
+export function renderWorkoutElsewhereHTML(workout) {
+    const name = escapeHtml(workout?.workoutDayName || 'Workout');
+    return `
+        <div class="paused-workout-banner paused-workout-banner--elsewhere" role="status" data-workout-elsewhere>
+            <div class="paused-workout-icon"><i class="fas fa-window-restore"></i></div>
+            <div class="paused-workout-info">
+                <h3>Workout in progress in another tab</h3>
+                <p><strong>${name}</strong></p>
+                <p class="paused-workout-note">Finish or pause it there. If that tab was closed, Resume comes back here within about 20 seconds.</p>
             </div>
         </div>
     `;

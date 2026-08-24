@@ -242,9 +242,20 @@ class InsightsView {
 
         // Land on the most recent weeks, which is the part anyone opening the
         // heatmap actually wants; the rest of the year is a scroll away.
+        // The earlier months are off-screen to the left, which a phone
+        // gives no cue about: say so, and drop the cue once the user scrolls.
+        const hint = document.getElementById('insights-heatmap-hint');
         requestAnimationFrame(() => {
-            if (host.scrollWidth > host.clientWidth) host.scrollLeft = host.scrollWidth;
+            const overflows = host.scrollWidth > host.clientWidth;
+            if (overflows) host.scrollLeft = host.scrollWidth;
+            if (hint) hint.hidden = !overflows;
         });
+        if (hint && !host.dataset.hintWired) {
+            host.dataset.hintWired = '1';
+            host.addEventListener('scroll', () => {
+                if (host.scrollLeft < host.scrollWidth - host.clientWidth - 8) hint.hidden = true;
+            }, { passive: true });
+        }
     }
 }
 

@@ -204,6 +204,12 @@
      * @private
      */
     waitForHeader() {
+      // Bounded: pages without the header partial (moadon-alef) never grow
+      // an auth container, and an unbounded 100 ms poll ran for the life of
+      // the page. onHeaderLoaded() from the include callback still covers a
+      // header that lands after the cap.
+      let attempts = 0;
+      const MAX_ATTEMPTS = 100;
       const checkHeader = () => {
         const authContainer = $(SELECTORS.authContainer);
         if (authContainer.length > 0) {
@@ -212,6 +218,7 @@
           this.updateHeaderUI();
           return;
         }
+        if (++attempts >= MAX_ATTEMPTS || !document.querySelector('[data-include="header"]')) return;
         setTimeout(checkHeader, 100);
       };
       checkHeader();
@@ -834,22 +841,51 @@
      * @param {HTMLFormElement} form - Sign in form element
      */
     async handleSignIn(form) {
-      const formData = new FormData(form);
       const email = $('#signin-email').val().trim();
       const password = $('#signin-password').val();
 
       if (!this.validateSignInForm(email, password)) {
         return;
       }
+      if (this.state.busy) return;
 
       try {
+        this.setBusy(form, true);
         this.showMessage('Signing in...', 'info');
         await window.firebaseAuth.signIn(email, password);
         this.hideAuthModal();
       } catch (error) {
         console.error('Sign in error:', error);
-        this.showMessage(error.message, 'error');
+        this.showMessage(this.userMessage(error), 'error');
+      } finally {
+        this.setBusy(form, false);
       }
+    }
+
+    /**
+     * Disable the form's submit control while a request is in flight so a
+     * double click cannot fire two sign-in attempts. Mirrored on the modal
+     * state so the other handlers can refuse to start a second request.
+     * @private
+     */
+    setBusy(form, busy) {
+      this.state.busy = !!busy;
+      const $btn = $(form).find('button[type="submit"]');
+      $btn.prop('disabled', !!busy).attr('aria-busy', busy ? 'true' : null);
+    }
+
+    /**
+     * Only messages firebase-config.js already humanised (or our own copy)
+     * reach the banner. Anything that still looks like an SDK string, or has
+     * no message, falls back to generic copy.
+     * @private
+     */
+    userMessage(error) {
+      const text = error && typeof error.message === 'string' ? error.message.trim() : '';
+      if (!text || /^firebase\b|\(auth\//i.test(text)) {
+        return 'Something went wrong. Please try again in a moment.';
+      }
+      return text;
     }
 
     /**
@@ -865,14 +901,18 @@
       if (!this.validateSignUpForm(email, password)) {
         return;
       }
+      if (this.state.busy) return;
 
       try {
+        this.setBusy(form, true);
         this.showMessage('Creating account...', 'info');
         await window.firebaseAuth.signUp(email, password);
         this.hideAuthModal();
       } catch (error) {
         console.error('Sign up error:', error);
-        this.showMessage(error.message, 'error');
+        this.showMessage(this.userMessage(error), 'error');
+      } finally {
+        this.setBusy(form, false);
       }
     }
 
@@ -888,6 +928,9 @@
     async handleForgotPassword() {
       const email = $('#signin-email').val().trim();
       this.clearAuthFormErrors();
+      // A banner left by a failed sign-in must not sit next to a fresh field
+      // error or a reset confirmation.
+      this.clearMessages();
 
       if (!email) {
         this.showFieldError('#signin-email', '#signin-email-error', 'Enter your email above first, then tap Forgot password.');
@@ -904,7 +947,7 @@
         this.showMessage('If that address has an account, a reset link is on its way. Check your email.', 'success');
       } catch (error) {
         console.error('Password reset error:', error);
-        this.showMessage(error.message, 'error');
+        this.showMessage(this.userMessage(error), 'error');
       }
     }
 
@@ -1024,6 +1067,11 @@
       
       this.clearMessages();
       this.clearForms();
+      // Field errors and the selected tab used to survive close/reopen: the
+      // modal came back on Sign Up with a stale "valid email" error under an
+      // empty field. Reopen always starts on a clean Sign In tab.
+      this.clearAuthFormErrors();
+      if (this.state.currentTab !== 'signin') this.switchTab('signin');
       $('#auth-signin-btn').focus();
     }
 
@@ -1134,6 +1182,7 @@
     // overlay and the document scrolled underneath it.
     const focusables = () => $menu.find('a[href], button:not([disabled])').toArray();
     let menuOpen = false;
+    let lockedScrollY = null;
 
     const handleMenuVisibility = () => {
       const isVisible = $body.hasClass('is-menu-visible');
@@ -1144,6 +1193,22 @@
 
       if (isVisible === menuOpen) return; // class changed for another reason
       menuOpen = isVisible;
+
+      // Scroll lock. `body.is-menu-visible { overflow: hidden }` in main.css
+      // is NOT enough on its own: with the panel open the document still
+      // scrolled behind it (measured 0 -> 300 while body overflow computed
+      // to hidden), which is what "mobile: open menu locks page scroll" in
+      // tests/browser/suites/site.mjs catches. Pinning the body at its
+      // current offset is what actually holds, so the offset has to be
+      // restored on close or the page jumps to the top.
+      if (isVisible) {
+        lockedScrollY = window.scrollY || window.pageYOffset || 0;
+        $body.css({ position: 'fixed', top: -lockedScrollY + 'px', left: 0, right: 0, width: '100%' });
+      } else if (lockedScrollY !== null) {
+        $body.css({ position: '', top: '', left: '', right: '', width: '' });
+        window.scrollTo(0, lockedScrollY);
+        lockedScrollY = null;
+      }
 
       if (isVisible) {
         // #menu transitions `visibility` (main.css), so at this instant its
@@ -1162,6 +1227,7 @@
           $menuToggle.trigger('focus');
         }
       }
+      wasOpen = isVisible;
     };
 
     // Trap Tab / Shift+Tab inside the open panel, wrapping at both ends.
@@ -1399,6 +1465,11 @@
             if (el) { el.textContent = year; }
           });
         }
+
+        // Anything that must touch an injected partial (language-switcher.js
+        // localising the moadon-alef footer) listens for this; DOMContentLoaded
+        // fired long before the partial existed.
+        document.dispatchEvent(new CustomEvent('shevato:include-loaded', { detail: { file: includeFile } }));
       });
     });
 

@@ -20,7 +20,13 @@
   function weightedTotal(scores) {
     if (!Array.isArray(scores) || scores.length !== N_LOCS) return 0;
     let t = 0;
-    for (let i = 0; i < N_LOCS; i++) t += (scores[i] || 0) * WEIGHTS[i];
+    for (let i = 0; i < N_LOCS; i++) {
+      // A slot that is not a finite number (null, '', 'x', NaN) counts as 0,
+      // so one malformed record can never turn a total, and every average
+      // built on it, into NaN.
+      const v = Number(scores[i]);
+      t += (Number.isFinite(v) ? v : 0) * WEIGHTS[i];
+    }
     return t;
   }
 
@@ -116,13 +122,18 @@
           const monthIdx = MONTHS.findIndex(m => monthName.toLowerCase().startsWith(m));
           const day = Number(dayStr);
           if (monthIdx >= 0 && day >= 1 && day <= 31) {
-            // The share carries no year. Stamp the current one; callers that
-            // know better (the WhatsApp importer has the message's own year)
-            // rebuild the date from `dateParts` instead. A day the current
-            // year does not have (Feb 29 in a common year) yields no date
-            // rather than rolling over to Mar 1.
+            // The share carries no year. Stamp the current one, unless that
+            // lands more than a day ahead of today (a "Dec 31" pasted on
+            // Jan 1), in which case it was last year. Callers that know
+            // better (the WhatsApp importer has the message's own year)
+            // rebuild the date from `dateParts` instead. A day the year does
+            // not have (Feb 29 in a common year) yields no date rather than
+            // rolling over to Mar 1.
             dateParts = { monthIdx, day };
-            const iso = `${new Date().getFullYear()}-${String(monthIdx + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const now = new Date();
+            let year = now.getFullYear();
+            if (new Date(year, monthIdx, day).getTime() - now.getTime() > 86400000) year -= 1;
+            const iso = `${year}-${String(monthIdx + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             date = parseDateISO(iso) ? iso : null;
           }
         }
@@ -233,14 +244,18 @@
   }
 
   // ---------- aggregates ----------
-  function stdDev(values) {
+  // Both aggregates ignore non-finite entries (a legacy record with a
+  // scalar `myScore` of NaN would otherwise poison every mean it touches).
+  function stdDev(rawValues) {
+    const values = rawValues.filter(Number.isFinite);
     if (values.length < 2) return 0;
     const mean = values.reduce((a, b) => a + b, 0) / values.length;
     const variance = values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length;
     return Math.sqrt(variance);
   }
 
-  function average(values) {
+  function average(rawValues) {
+    const values = rawValues.filter(Number.isFinite);
     if (!values.length) return 0;
     return values.reduce((a, b) => a + b, 0) / values.length;
   }
@@ -1097,32 +1112,87 @@
     return out;
   }
 
+  // ---- why a row was dropped / what was repaired ----------------------
+  // Reporting only: these re-read the raw row a sanitizer already judged and
+  // put the verdict into words. They never decide anything, so the rules
+  // above stay the single source of truth for what survives an import.
+  function refusal(error) {
+    return { ok: false, error, data: { rivals: [], games: [] }, rejected: [error], repaired: [] };
+  }
+
+  function whyRivalDropped(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return 'not an object';
+    if (typeof raw.id !== 'string' || !raw.id) return 'missing id (a rival id is what its games point at, so it cannot be invented)';
+    return 'unreadable';
+  }
+
+  function noteRivalRepairs(raw, out, where, repaired) {
+    const named = raw && typeof raw.name === 'string' && raw.name.trim();
+    if (!named) repaired.push(`${where} (${out.id}): no name in the file; imported as "${out.name}"`);
+  }
+
+  function whyGameDropped(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return 'not an object';
+    if (typeof raw.rivalId !== 'string' || !raw.rivalId) return 'missing rivalId';
+    if (!parseDateISO(raw.date)) return `invalid date "${String(raw.date)}"`;
+    return 'no readable scores on either side';
+  }
+
+  function noteGameRepairs(raw, out, where, repaired) {
+    if (!(typeof raw.id === 'string' && raw.id)) repaired.push(`${where}: assigned an id`);
+    for (const side of ['my', 'their']) {
+      const arrKey = `${side}Scores`;
+      const scalarKey = `${side}Score`;
+      if (raw[arrKey] != null && out[arrKey] === undefined) {
+        repaired.push(`${where}: ${side} round scores are not 5 numbers in 0-${MAX_RAW}; dropped`);
+      } else if (out[arrKey] && raw[arrKey].some(v => typeof v === 'string')) {
+        repaired.push(`${where}: ${side} round scores read as numbers`);
+      }
+      if (raw[scalarKey] == null) continue;
+      const stated = typeof raw[scalarKey] === 'string' ? Number(raw[scalarKey]) : raw[scalarKey];
+      if (out[arrKey]) {
+        if (!Number.isFinite(stated)) repaired.push(`${where}: ${scalarKey} is not a number ("${String(raw[scalarKey])}"); recomputed from the round scores`);
+        else if (stated !== out[scalarKey]) repaired.push(`${where}: ${scalarKey} disagreed with the round scores; recomputed as ${out[scalarKey]}`);
+      } else if (out[scalarKey] === undefined) {
+        repaired.push(`${where}: ${scalarKey} is not a number in 0-${SCALAR_MAX} ("${String(raw[scalarKey])}"); dropped`);
+      }
+    }
+    if (raw.cities != null && out.cities === undefined) repaired.push(`${where}: dropped malformed geo data`);
+  }
+
   function sanitizeBackup(parsed, options) {
     const opts = options || {};
     const makeId = typeof opts.makeId === 'function' ? opts.makeId : undefined;
     const defaults = { color: opts.defaultColor || '#6366f1', icon: opts.defaultIcon || '🎯' };
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return { ok: false, error: 'Not a MapTap Rivals backup (expected an object with rivals and games).' };
+      return refusal('Not a MapTap Rivals backup (expected an object with rivals and games).');
     }
     if (!Array.isArray(parsed.rivals) || !Array.isArray(parsed.games)) {
-      return { ok: false, error: 'Not a MapTap Rivals backup (missing the rivals or games list).' };
+      return refusal('Not a MapTap Rivals backup (missing the rivals or games list).');
     }
     const rivals = [];
+    const rejected = [];
+    const repaired = [];
     const seen = new Set();
     let droppedRivals = 0;
-    for (const raw of parsed.rivals) {
+    parsed.rivals.forEach((raw, i) => {
+      const where = `rival #${i + 1}`;
       const r = sanitizeRival(raw, defaults);
-      if (!r || seen.has(r.id)) { droppedRivals++; continue; }
+      if (!r) { droppedRivals++; rejected.push(`${where}: ${whyRivalDropped(raw)}`); return; }
+      if (seen.has(r.id)) { droppedRivals++; rejected.push(`${where} (${r.name}): duplicate id "${r.id}"`); return; }
+      noteRivalRepairs(raw, r, where, repaired);
       seen.add(r.id);
       rivals.push(r);
-    }
+    });
     const games = [];
     let droppedGames = 0;
-    for (const raw of parsed.games) {
+    parsed.games.forEach((raw, i) => {
+      const where = `game #${i + 1}`;
       const g = sanitizeGame(raw, makeId);
-      if (!g) { droppedGames++; continue; }
+      if (!g) { droppedGames++; rejected.push(`${where}: ${whyGameDropped(raw)}`); return; }
+      noteGameRepairs(raw, g, `${where} (${g.date})`, repaired);
       games.push(g);
-    }
+    });
     return {
       ok: true,
       rivals,
@@ -1130,6 +1200,13 @@
       me: typeof parsed.me === 'string' && parsed.me.trim() ? parsed.me.trim().slice(0, 24) : null,
       myIcon: typeof parsed.myIcon === 'string' && parsed.myIcon.trim() ? parsed.myIcon.trim().slice(0, 8) : null,
       dropped: { rivals: droppedRivals, games: droppedGames },
+      // Same rows, in the shape the app's boot path and the import result
+      // message read (see app.js): `data` for what survived, plus a plain
+      // reason per dropped row and a disclosure per repaired one, so the user
+      // is told WHAT was wrong with the file and not only how much.
+      data: { rivals, games },
+      rejected,
+      repaired,
     };
   }
 

@@ -79,8 +79,14 @@ function switchGameVersion(version) {
         window.createAllBars();
     }
     
-    // Reload data for the new version
+    // Reload data for the new version: races, player count, names and
+    // symbols all live under the version's own keys.
+    if (window.PlayerNameManager) window.PlayerNameManager.initialize();
+    if (window.PlayerSymbolManager && window.PlayerSymbolManager.reload) window.PlayerSymbolManager.reload();
+    if (typeof resetActionHistory === 'function') resetActionHistory();
     loadData();
+    if (window.refreshSidebarRaceForm) window.refreshSidebarRaceForm();
+    if (window.updateAllPlayerIcons) window.updateAllPlayerIcons();
     updateDisplay();
     updateAchievements();
     updateClearButtonState();

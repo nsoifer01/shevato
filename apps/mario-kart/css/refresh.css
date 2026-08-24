@@ -816,3 +816,290 @@ body.mario-kart-app ::-webkit-scrollbar-thumb:hover {
 
 /* ---------- Cleanup: prevent the global generic `button:hover` glow ---------- */
 body.mario-kart-app .container button:hover { box-shadow: none; }
+
+
+/* ===========================================
+   2026-08 audit round: contrast, touch targets, toast, empty state, H2H
+   cards on phones, sidebar toggle scroll behaviour. Scoped to the app root.
+   =========================================== */
+
+/* Contrast: the 10px uppercase section titles sat at 4.04:1 on --mk-surface;
+   --mk-muted (#a4adbd) clears AA with room to spare. */
+body.mario-kart-app .sidebar-section-title {
+    color: var(--mk-muted) !important;
+}
+
+/* Trends summary line: was an inline #718096 on #2d3748 (2.98:1). */
+body.mario-kart-app #trends .trends-summary {
+    text-align: center;
+    color: var(--mk-muted);
+    margin-top: -0.5rem;
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+}
+
+/* Touch targets: 40px minimum for the sidebar header buttons, the course
+   clear buttons and the shared pagination controls. */
+body.mario-kart-app .sidebar-close-btn,
+body.mario-kart-app.theme .sidebar-close-btn,
+body.mario-kart-app .sidebar-header-clear,
+body.mario-kart-app.theme .sidebar-header-clear {
+    width: 40px !important;
+    height: 40px !important;
+}
+
+body.mario-kart-app .course-picker .cp-clear {
+    width: 28px;
+    height: 28px;
+    line-height: 26px;
+}
+
+body.mario-kart-app .course-picker .cp-search-clear {
+    width: 32px;
+    height: 32px;
+}
+
+body.mario-kart-app .pagination-btn {
+    min-width: 40px;
+    min-height: 40px;
+}
+
+/* Absent position in a history row (player sat out, or a slot added after
+   the race was recorded). */
+body.mario-kart-app #history-table .position-absent {
+    color: var(--mk-muted);
+}
+
+/* Sidebar toggle slides away while scrolling down on phones/tablets so it
+   never sits on top of scrolled content (pagination, cards). */
+@media (max-width: 900px) {
+    body.mario-kart-app .sidebar-toggle {
+        transition: transform 0.25s ease, opacity 0.25s ease !important;
+    }
+    body.mario-kart-app .sidebar-toggle.scrolled-away {
+        transform: translateX(-140%) !important;
+        pointer-events: none;
+    }
+}
+
+/* Empty state + first-run call to action */
+body.mario-kart-app .no-data-message .no-data-inner {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--mk-muted);
+}
+
+body.mario-kart-app .no-data-message .no-data-inner h3 {
+    font-size: 1.5em;
+    margin-bottom: 10px;
+    color: var(--mk-text);
+}
+
+body.mario-kart-app .mk-first-run {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem 1rem;
+    margin: 0 0 1.25rem;
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--mk-border-strong);
+    border-radius: var(--mk-radius);
+    background: var(--mk-accent-soft);
+}
+
+body.mario-kart-app .mk-first-run p {
+    margin: 0;
+    color: var(--mk-text);
+    font-weight: 600;
+}
+
+body.mario-kart-app .mk-empty-cta,
+body.mario-kart-app .mk-empty-cta:hover,
+body.mario-kart-app .mk-empty-cta:hover:active {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.75rem;
+    min-height: 44px;
+    padding: 0.6rem 1.2rem;
+    /* White on --mk-accent-strong (#6366f1) is 4.47:1, a hair under AA and a
+       serious axe failure. Indigo-600 clears it with room. Pinned with
+       !important because assets/css/main.css forces button { color:#555 }. */
+    border: 1px solid #4f46e5 !important;
+    border-radius: 999px;
+    background: #4f46e5 !important;
+    color: #ffffff !important;
+    font-weight: 700;
+    font-size: 0.95rem;
+    cursor: pointer;
+    box-shadow: var(--mk-shadow-lift);
+}
+
+body.mario-kart-app .mk-first-run .mk-empty-cta {
+    margin-top: 0;
+}
+
+body.mario-kart-app .mk-empty-cta:hover {
+    background: #4338ca !important;
+    border-color: #4338ca !important;
+    color: #ffffff !important;
+}
+
+body.mario-kart-app .mk-empty-cta:focus-visible {
+    outline: 2px solid var(--mk-text);
+    outline-offset: 2px;
+}
+
+/* H2H on phones: each player row becomes a card and each opponent cell a
+   labelled line (the "vs Name" label comes from data-vs), so nothing has to
+   scroll sideways or truncate. */
+@media (max-width: 768px) {
+    body.mario-kart-app .h2h-table-container {
+        overflow-x: visible;
+        padding: 0;
+    }
+    body.mario-kart-app .h2h-daily-breakdown::after {
+        display: none;
+    }
+    body.mario-kart-app .h2h-table,
+    body.mario-kart-app .h2h-daily-table {
+        min-width: 0;
+        width: 100%;
+        border-spacing: 0;
+        display: block;
+    }
+    body.mario-kart-app .h2h-table thead,
+    body.mario-kart-app .h2h-daily-table thead {
+        display: none;
+    }
+    body.mario-kart-app .h2h-table tbody,
+    body.mario-kart-app .h2h-daily-table tbody,
+    body.mario-kart-app .h2h-table tr,
+    body.mario-kart-app .h2h-daily-table tr {
+        display: block;
+        width: 100%;
+    }
+    body.mario-kart-app .h2h-table tr,
+    body.mario-kart-app .h2h-daily-table tr {
+        margin-bottom: 0.85rem;
+        border: 1px solid var(--mk-border-strong);
+        border-radius: var(--mk-radius-sm);
+        background: var(--mk-surface-2);
+        overflow: hidden;
+    }
+    body.mario-kart-app .h2h-table td,
+    body.mario-kart-app .h2h-daily-table td {
+        display: block;
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+        box-sizing: border-box;
+        border-radius: 0;
+        text-align: left;
+    }
+    body.mario-kart-app .h2h-table td.h2h-self,
+    body.mario-kart-app .h2h-daily-table td.h2h-self {
+        display: none;
+    }
+    body.mario-kart-app .h2h-table td.h2h-player-name,
+    body.mario-kart-app .h2h-daily-table td.h2h-player-name {
+        padding: 0.6rem 0.8rem;
+        background: var(--mk-surface-3);
+        font-weight: 700;
+        min-height: 0 !important;
+    }
+    body.mario-kart-app .h2h-table td.h2h-cell,
+    body.mario-kart-app .h2h-daily-table td.h2h-cell {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+        padding: 0.6rem 0.8rem;
+        border-top: 1px solid var(--mk-border);
+    }
+    body.mario-kart-app .h2h-table td.h2h-cell::before,
+    body.mario-kart-app .h2h-daily-table td.h2h-cell::before {
+        content: attr(data-vs);
+        flex: 0 0 34%;
+        max-width: 34%;
+        overflow-wrap: anywhere;
+        /* The cell background is the win/loss colour, so a muted grey label
+           lands at about 2:1 on it. White on a dark chip is ~7:1 whatever
+           the cell colour underneath, and reads as a label rather than as
+           more score text. */
+        color: #ffffff;
+        background: rgba(0, 0, 0, 0.35);
+        border-radius: 6px;
+        padding: 0.2rem 0.4rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+        align-self: flex-start;
+    }
+    body.mario-kart-app .h2h-table .h2h-content,
+    body.mario-kart-app .h2h-daily-table .h2h-content {
+        flex: 1 1 auto;
+        min-width: 0;
+        align-items: flex-start;
+        text-align: left;
+    }
+    body.mario-kart-app .h2h-streak,
+    body.mario-kart-app .h2h-biggest-win {
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+        min-height: 0 !important;
+        padding: 0.15rem 0 !important;
+        font-size: 0.8rem !important;
+    }
+}
+
+/* Contrast, part two (axe serious on seeded states, 2026-08 audit).
+
+   1. Manage Players dimmed inactive slots with `opacity: 0.5` on the whole
+      row, which drags every label and the status pill under 4.5:1. Carry the
+      "inactive" meaning in colour instead of transparency.
+   2. The primary modal button (Save Changes, Restore Data) was white on
+      #8b5cf6: 4.2:1, under AA for its 1rem text. Indigo-600 is 6.3:1. */
+body.mario-kart-app .sidebar-player-item.inactive {
+    opacity: 1;
+}
+
+body.mario-kart-app .sidebar-player-item.inactive .sidebar-player-label,
+body.mario-kart-app .sidebar-player-item.inactive .sidebar-initial-letter {
+    color: var(--mk-muted) !important;
+}
+
+body.mario-kart-app .sidebar-player-status,
+body.mario-kart-app.theme .sidebar-player-status {
+    background: rgba(255, 255, 255, 0.06) !important;
+    color: var(--mk-muted) !important;
+}
+
+body.mario-kart-app .sidebar-player-status.active,
+body.mario-kart-app.theme .sidebar-player-status.active {
+    background: var(--mk-good-soft) !important;
+    color: var(--mk-good) !important;
+}
+
+body.mario-kart-app .modal-btn-primary,
+body.mario-kart-app .modal-btn-primary:hover,
+body.mario-kart-app .modal-btn-primary:hover:active {
+    background: #4f46e5 !important;
+    border-color: #4f46e5 !important;
+    color: #ffffff !important;
+}
+
+body.mario-kart-app .modal-btn-primary:hover {
+    background: #4338ca !important;
+    border-color: #4338ca !important;
+}
+
+/* The self cell ("N/A", a player against themselves) carries BOTH .h2h-cell
+   and .h2h-self, so the card-layout `display: flex` above wins on source
+   order. Hide it last: on a phone card it is a row of dead space. */
+@media (max-width: 768px) {
+    body.mario-kart-app .h2h-table td.h2h-cell.h2h-self,
+    body.mario-kart-app .h2h-daily-table td.h2h-cell.h2h-self {
+        display: none;
+    }
+}

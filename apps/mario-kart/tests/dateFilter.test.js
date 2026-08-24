@@ -1,7 +1,10 @@
 'use strict';
 
-// Pin timezone: the filters mix a local "now" with UTC-parsed race dates.
-process.env.TZ = 'UTC';
+// Pin a zone WEST of UTC. Race dates are plain YYYY-MM-DD strings and the
+// filters are calendar windows on the local clock; under UTC the old
+// `new Date('YYYY-MM-DD')` (UTC midnight) bug could not show, which is how
+// this suite used to pin it as intended behaviour.
+process.env.TZ = 'America/Chicago';
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -42,24 +45,36 @@ const LOG = [
 ];
 
 // --- week ------------------------------------------------------------------
-// "Last 7 Days" is a rolling window, not a calendar week and not a run of
-// seven dates: the cutoff is the instant exactly 7 * 24h before now, compared
-// against each race date parsed as UTC midnight.
+// "Last 7 Days" is seven local calendar days: today and the six before it.
+// It is not a calendar week and not a run of seven recorded dates.
 
-test('week filter: keeps races newer than the instant 7 * 24h ago', () => {
-  const app = filterWith({ now: '2026-03-15T12:00:00Z', races: LOG });
+test('week filter: keeps today and the six calendar days before it', () => {
+  // 2026-03-15 12:00 local (17:00Z). The window is 03-09 .. 03-15 inclusive,
+  // so 03-08 (seven days back) is out and 03-09 is in.
+  const app = filterWith({ now: '2026-03-15T17:00:00Z', races: LOG });
 
-  // Cutoff is 2026-03-08T12:00Z. 03-08 midnight falls before it, so a race
-  // dated exactly seven days ago is already out of the window.
   assert.equal(app.dates('week'), '2026-03-09,2026-03-15,2026-04-01');
 });
 
-test('week filter: the boundary date moves with the time of day', () => {
-  // Same log, same calendar day, midnight instead of midday: the cutoff is now
-  // 2026-03-08T00:00Z, so the race dated exactly seven days back is back in.
-  const app = filterWith({ now: '2026-03-15T00:00:00Z', races: LOG });
+test('week filter: the boundary is a calendar day, not an instant', () => {
+  // The previous version of this test pinned the opposite ("the boundary
+  // moves with the time of day"): the filter parsed race dates as UTC
+  // midnight and compared them with now - 7*24h, so in CDT the oldest day
+  // dropped out every evening after 19:00 (audit 2026-08-22, D7). Same day at
+  // 00:30 local and at 20:30 local must give the same window.
+  const early = filterWith({ now: '2026-03-15T05:30:00Z', races: LOG }); // 00:30 CDT
+  const late = filterWith({ now: '2026-03-16T01:30:00Z', races: LOG });  // 20:30 CDT
 
-  assert.equal(app.dates('week'), '2026-03-08,2026-03-09,2026-03-15,2026-04-01');
+  assert.equal(early.dates('week'), '2026-03-09,2026-03-15,2026-04-01');
+  assert.equal(late.dates('week'), early.dates('week'));
+});
+
+test('week filter at 20:30 local keeps d-6 and drops d-7', () => {
+  // The audit repro: races on d-0, d-1, d-5, d-6, d-7 at 20:30 CDT.
+  const races = ['2026-08-22', '2026-08-21', '2026-08-17', '2026-08-16', '2026-08-15'].map((date) => ({ date }));
+  const app = filterWith({ now: '2026-08-23T01:30:00Z', races }); // 2026-08-22 20:30 CDT
+
+  assert.equal(app.dates('week'), '2026-08-22,2026-08-21,2026-08-17,2026-08-16');
 });
 
 test('week filter: has no upper bound, so future-dated races are always included', () => {
@@ -76,18 +91,21 @@ test('week filter: labels itself "Last 7 Days"', () => {
 });
 
 // --- month -----------------------------------------------------------------
-// "Last 30 Days" is the same rolling shape with a 30 * 24h cutoff. It is not
-// the calendar month: on the 2nd it still reaches back into the previous one.
+// "Last 30 Days" is the same shape: today plus the 29 local calendar days
+// before it. It is not the calendar month: on the 2nd it still reaches back
+// into the previous one.
 
-test('month filter: keeps races newer than the instant 30 * 24h ago', () => {
-  const app = filterWith({ now: '2026-03-15T12:00:00Z', races: LOG });
+test('month filter: keeps today and the 29 calendar days before it', () => {
+  const app = filterWith({ now: '2026-03-15T17:00:00Z', races: LOG });
 
-  // Cutoff is 2026-02-13T12:00Z, so 02-13 is out and 02-14 is in.
+  // Window is 02-14 .. 03-15, so 02-13 is out and 02-14 is in, at any hour.
   assert.equal(app.dates('month'), '2026-02-14,2026-03-01,2026-03-08,2026-03-09,2026-03-15,2026-04-01');
+  const evening = filterWith({ now: '2026-03-16T02:30:00Z', races: LOG }); // 21:30 CDT on 03-15
+  assert.equal(evening.dates('month'), app.dates('month'));
 });
 
 test('month filter: is a rolling 30-day window, not the current calendar month', () => {
-  const app = filterWith({ now: '2026-03-02T12:00:00Z', races: LOG });
+  const app = filterWith({ now: '2026-03-02T17:00:00Z', races: LOG });
 
   // Two days into March it still shows early February (and, having no upper
   // bound, everything dated later as well).
@@ -98,7 +116,7 @@ test('month filter: is a rolling 30-day window, not the current calendar month',
 });
 
 test('month filter: labels itself "Last 30 Days"', () => {
-  const app = filterWith({ now: '2026-03-15T12:00:00Z', races: LOG });
+  const app = filterWith({ now: '2026-03-15T17:00:00Z', races: LOG });
   app.dates('month');
 
   assert.equal(app.messages.at(-1), 'Filter set to: Last 30 Days');
@@ -108,7 +126,7 @@ test('month filter: labels itself "Last 30 Days"', () => {
 
 test('today filter: matches the local calendar date exactly', () => {
   const app = filterWith({
-    now: '2026-03-15T12:00:00Z',
+    now: '2026-03-16T03:00:00Z', // 22:00 CDT on 03-15
     races: [{ date: '2026-03-14' }, { date: '2026-03-15' }, { date: '2026-03-16' }],
   });
 

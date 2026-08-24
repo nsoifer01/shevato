@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { buildGameState } from '../js/engine/normalize.js';
 import { sellingPrice } from '../js/engine/rules.js';
 import {
+  historyIsMissing, UnknownPlayerError,
   buildSquadState, reconstructPurchasePrices, computeFreeTransfers, chipsRemaining,
 } from '../js/engine/squad.js';
 import { UNLIMITED, isUnlimited } from '../js/engine/transfer-state.js';
@@ -165,6 +166,11 @@ test('taking hits cannot drive the free transfer count negative', () => {
   assert.equal(computeFreeTransfers({ history: hits, rules, upToGw: 2 }), 1);
 });
 
+// The pure count keeps its floor: with no rows to replay, one free transfer is
+// the least a manager can have. Whether a missing history is a DEGENERATE
+// source is decided in buildSquadState (below), which is where the 2026-08-22
+// audit found "no history" silently read as "no chips used" and a Wildcard
+// recommended to a manager who had already played his.
 test('a manager with no history is pre-season before GW1 and has one after it', () => {
   // Before the first deadline the answer is unlimited, and unlimited is not a
   // number the UI may print as a count.
@@ -195,6 +201,40 @@ test('chips remaining respects both what was used and the half-season windows', 
 test('the squad state reports used and available chips together', () => {
   assert.deepEqual(squadState.chipsUsed, [{ name: 'wildcard', event: 3 }]);
   assert.deepEqual(squadState.chipsAvailable.sort(), ['3xc', 'bboost', 'freehit']);
+});
+
+// ------------------------------------------- degenerate personal sources ---
+
+test('a missing or empty season history in-season is flagged, and no chip is offered on it', () => {
+  for (const [label, degenerate] of [['null', null], ['empty current', { current: [], past: [], chips: [] }]]) {
+    const state = buildSquadState({ entry, history: degenerate, transfers, picks, gameState, gw: PLAN_GW });
+    assert.equal(state.historyMissing, true, `${label}: the degenerate history is named`);
+    assert.deepEqual(state.chipsAvailable, [], `${label}: a chip that may already be played is never offered`);
+    assert.ok(state.warnings.some(w => w.code === 'history_missing'), `${label}: a warning carries the reason`);
+  }
+  // The real history, by contrast, is read as before.
+  assert.equal(squadState.historyMissing, false);
+  assert.ok(squadState.chipsAvailable.length > 0);
+});
+
+test('an empty history before the season starts is not degenerate', () => {
+  const preSeason = buildGameState(bootstrap, fixtures, { fetchedAt: '2026-08-10T10:00:00Z' });
+  assert.equal(historyIsMissing({ current: [], past: [], chips: [] }, preSeason), false);
+  assert.equal(historyIsMissing(null, preSeason), true, 'null is degenerate in any season');
+});
+
+test('a pick the player list does not know is refused by name, not by a TypeError', () => {
+  const foreign = { ...picks, picks: picks.picks.map((p, i) => (i === 3 ? { ...p, element: 999999 } : p)) };
+  assert.throws(
+    () => buildSquadState({ entry, history, transfers, picks: foreign, gameState, gw: PLAN_GW }),
+    (err) => err instanceof UnknownPlayerError && err.code === 'unknown_player' && err.ids.includes(999999),
+  );
+});
+
+test('an empty squad in-season is warned about rather than treated as a pre-season draft', () => {
+  const state = buildSquadState({ entry, history, transfers, picks: { ...picks, picks: [] }, gameState, gw: PLAN_GW });
+  assert.equal(state.picks.length, 0);
+  assert.ok(state.warnings.some(w => w.code === 'empty_picks'));
 });
 
 // -------------------------------------------------------- squad state ------

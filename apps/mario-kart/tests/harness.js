@@ -19,7 +19,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const JS_DIR = path.join(__dirname, '..', 'js');
+// MK_JS_DIR lets a test run point at another copy of js/ (used once per fix
+// round to prove a new regression fails against the pre-fix sources).
+const JS_DIR = process.env.MK_JS_DIR || path.join(__dirname, '..', 'js');
 
 function makeContext(extra = {}) {
   const noopFn = () => null;

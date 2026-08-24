@@ -119,7 +119,7 @@
         <div class="skill-rows">
           <div class="skill-row">
             <h3>Mario Kart</h3>
-            <p>Races, player names, symbols, icons and player count for both game versions, the selected version, the sidebar open state, undo history and the automatic backup.</p>
+            <p>Races, player names, symbols, icons and player count for both game versions, the selected version, and the automatic backup.</p>
           </div>
           <div class="skill-row">
             <h3>Football H2H</h3>
@@ -131,7 +131,7 @@
           </div>
           <div class="skill-row">
             <h3>Gym Tracker</h3>
-            <p>Programs, program order and sort preference, sessions, settings, achievements, the active program, custom exercises, body measurements and their goals, warm-up preferences, a single number recording which of the app's own data upgrades have already run on your account, and — if the app ever had to ask you which units your existing measurements were entered in — the answer you gave, so it never asks again on another device.</p>
+            <p>Programs, program order and sort preference, sessions, settings, achievements, the active program, custom exercises, body measurements and their goals, warm-up preferences, a single number recording which of the app's own data upgrades have already run on your account, and (if the app ever had to ask you which units your existing measurements were entered in) the answer you gave, so it never asks again on another device.</p>
           </div>
           <div class="skill-row">
             <h3>Rising Shows</h3>
@@ -181,8 +181,14 @@
           </li>
           <li>
             <div>
-              <h3>Chat is permanent and readable by any signed-in visitor</h3>
-              <p>Room chat messages are stored with your display name and account id. The security rules allow no edits and no deletions by anyone, including you. Treat anything you type there as permanent.</p>
+              <h3>Chat is readable by any signed-in visitor, and lasts as long as the room</h3>
+              <p>Room chat messages are stored with your display name and account id. The security rules allow no edits, and no deletions at all while the room is open, so nothing can be recalled mid-game. When the last player leaves, the room is deleted and its chat goes with it. A room that is never closed cleanly keeps its chat until it is.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h3>Chat is filtered on your device only</h3>
+              <p>Before a chat message is posted it is checked against a word list built into the app, in your browser. The text is not sent to any outside moderation service.</p>
             </div>
           </li>
           <li>
@@ -345,16 +351,16 @@
 
         <ul>
           <li>Your Arena global XP leaderboard row, your head-to-head records against other players, and your Globe Drop daily-challenge scores. These live outside <code>users/&lt;your account id&gt;</code> and the security rules don't grant you deletion rights over them: leaderboard rows can only be removed by a leaderboard admin, and the other two have no deletion rule at all.</li>
-          <li>Anything you typed in Arena room chat. Chat is append-only by design, as described above, and nobody can delete it.</li>
+          <li>Anything you typed in Arena room chat, in any room that is still open. Chat cannot be edited or recalled while a room is live; it is deleted along with the room when the last player leaves.</li>
           <li>Other devices you're signed in on keep their own local copy of your app data until it's cleared there. They lose access to the cloud copy immediately, because the account no longer exists.</li>
         </ul>
 
-        <p>Two smaller notes. Device-local caches that were never part of your account, the FPL Planner's bulk fixture and projection cache and the Trip Planner's geocode cache, aren't touched by account deletion because they hold public data rather than anything about you; clearing site data removes them. And guest play in Arena signs you in anonymously without creating an account, so there is nothing to delete there either, only browser storage to clear.</p>
+        <p>Two smaller notes. Device-local caches aren't touched by account deletion: the FPL Planner's fixture, projection and team-data cache and the Trip Planner's geocode cache all stay on the device. The FPL Planner's own "Disconnect your FPL team" and "Delete all FPL Planner data" buttons clear its cached copy of your team; clearing site data removes the rest. And guest play in Arena signs you in anonymously without creating an account, so there is nothing to delete there either, only browser storage to clear.</p>
 
         <p>Per-app controls still exist for people who want to remove one app's data without closing their account:</p>
 
         <ul>
-          <li>Gym Tracker and FPL Planner can erase their own synced data: each has a control in its settings that deletes its Firestore copy. The FPL Planner offers two, kept separate on purpose: "Disconnect your FPL team" removes only the team ID and the cached squad snapshot, on the device and in the cloud, leaving your saved plans and settings alone; "Delete all FPL Planner data" removes all four of its keys locally and deletes the whole <code>fplPlannerApp</code> document from your account. Signed out, both remove the local copy only, and the app says which of the two happened.</li>
+          <li>Gym Tracker and FPL Planner can erase their own synced data: each has a control in its settings that deletes its Firestore copy. The FPL Planner offers two, kept separate on purpose: "Disconnect your FPL team" removes only the team ID and the cached squad snapshot, on the device and in the cloud, leaving your saved plans and settings alone; "Delete all FPL Planner data" removes all four of its keys locally and deletes the whole <code>fplPlannerApp</code> document from your account. Both actions also remove the cached copy of your team data (squad, bank and history, stored under your team ID) from this device; the bulk public fixture and projection cache remains. Signed out, both remove the local copy only, and the app says which of the two happened.</li>
           <li>Mario Kart, Football H2H, Rising Shows, MapTap Rivals and the Trip Planner have no equivalent per-app control. Their synced copies stay in Firestore until you delete your account or ask us to remove them.</li>
           <li>MapTap Rivals has a "Leave rival network" control that removes your published profile and handle claim without touching the rest of your account.</li>
           <li>Password reset is self-service too: the sign-in window has a "Forgot password?" link that emails you a reset link.</li>

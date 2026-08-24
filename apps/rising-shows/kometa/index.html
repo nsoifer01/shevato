@@ -117,7 +117,7 @@
             <legend>Confidence floor</legend>
             <p class="kometa-help">Higher values keep only the strongest-matching seasons. 0.35 is a good default.</p>
             <div class="kometa-slider-row">
-              <input type="range" id="confidenceSlider" min="0.10" max="0.90" step="0.05" value="0.35">
+              <input type="range" id="confidenceSlider" min="0.10" max="0.90" step="0.05" value="0.35" aria-label="Confidence floor">
               <output id="confidenceValue">0.35</output>
             </div>
             <p class="kometa-help kometa-floor-effect" id="floorEffect"></p>
@@ -155,7 +155,7 @@
               </button>
             </div>
           </header>
-          <pre class="kometa-output-pre"><code id="outputCode"></code></pre>
+          <pre class="kometa-output-pre" tabindex="0" aria-label="Generated YAML"><code id="outputCode"></code></pre>
           <p class="kometa-output-meta" id="outputMeta"></p>
         </section>
       </div>
@@ -168,7 +168,7 @@
         <article class="kometa-step">
           <header><span class="kometa-step-num">1</span><h3>Use a ready-made preset</h3></header>
           <p>Curated collections like <em>Consistently Great</em> (seasons never wavered) or <em>Went Out On Top</em> (final season rated best) ship pre-built. Point Kometa at a raw URL once and you're done:</p>
-<pre><code>libraries:
+<pre tabindex="0"><code>libraries:
   TV Shows:
     collection_files:
       - url: https://raw.githubusercontent.com/nsoifer01/shevato/master/apps/rising-shows/exports/kometa/finder-consistently-great.yml</code></pre>
@@ -190,7 +190,7 @@
           <header><span class="kometa-step-num">1</span><h3>Drop the YAMLs into your Kometa config</h3></header>
           <p>Save downloaded files under <code>config/rising-shows/</code> in your Kometa install.</p>
           <p>Prefer no copying? Point Kometa at the GitHub raw URLs - they're regenerated automatically whenever the dataset refreshes:</p>
-<pre><code>libraries:
+<pre tabindex="0"><code>libraries:
   TV Shows:
     collection_files:
       - file: config/tv_shows_collections.yml
@@ -202,7 +202,7 @@
         <article class="kometa-step">
           <header><span class="kometa-step-num">2</span><h3>Wire up season-poster overlays</h3></header>
           <p>Add <code>season-overlays.yml</code> to your TV library's <code>overlay_files</code>:</p>
-<pre><code>libraries:
+<pre tabindex="0"><code>libraries:
   TV Shows:
     overlay_files:
       - file: config/tv_shows_overlays.yml
@@ -212,7 +212,7 @@
 
         <article class="kometa-step">
           <header><span class="kometa-step-num">3</span><h3>Run Kometa</h3></header>
-<pre><code>docker exec kometa python kometa.py --run --collections-only
+<pre tabindex="0"><code>docker exec kometa python kometa.py --run --collections-only
 # then later, once collections look good:
 docker exec kometa python kometa.py --run --overlays-only</code></pre>
           <p>Open Plex → TV Shows → Collections. New collections appear sorted with <code>!rs_</code>-prefixed titles.</p>
@@ -221,7 +221,7 @@ docker exec kometa python kometa.py --run --overlays-only</code></pre>
         <article class="kometa-step kometa-step-watch">
           <header><span class="kometa-step-num">★</span><h3>"What to watch next" - CLI</h3></header>
           <p>If you have the repo on your NAS, you can also ask which seasons of a given shape live in your Plex library right now:</p>
-<pre><code>export PLEX_URL=http://nas.local:32400
+<pre tabindex="0"><code>export PLEX_URL=http://nas.local:32400
 export PLEX_TOKEN=&lt;your token&gt;
 npm run watch-next -- --shape slow-burn --limit 10</code></pre>
           <p class="kometa-help">Pipes a JSON shape via <code>--json</code> - wire it into Discord, Notifiarr, Homarr, or any cron-driven feed.</p>

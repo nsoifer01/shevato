@@ -485,6 +485,15 @@ export function createSandboxView({ onAction, onPlayerDetails }) {
     slots.note, slots.pitch, slots.bench, slots.verdict, slots.moves, slots.dock,
   ]);
   const root = el('div', {}, [toolbar, sandboxEl, slots.plan]);
+  // Escape backs out of whatever is half done: a swap waiting for its partner,
+  // an open transfer picker, or a selected card. Swap mode used to have no
+  // way out except pressing the same card again.
+  root.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || !prev || (!prev.selection && !prev.picker)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onAction('cancel');
+  });
 
   /* ----------------------------------------------------- slot renderers --- */
 

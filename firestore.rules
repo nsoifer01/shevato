@@ -51,9 +51,22 @@ service cloud.firestore {
 
     // ---------- Trivia Arena ----------
     // Multiplayer game rooms. Any signed-in user can read any room (so
-    // they can join with a code) and write to the room doc (host advances
-    // questions; players touch lastSeen-style fields). Rules deliberately
-    // stay loose on room-doc updates because game state is client-of-truth.
+    // they can join with a code). Writes follow a host-or-member model
+    // (2026-08-23 remediation of the site-wide audit):
+    //   - the host (room doc hostUid) may update anything and is the only
+    //     principal that may delete the room doc;
+    //   - any MEMBER (owns a player doc in the room) may write exactly the
+    //     per-player room-doc touches the app makes: pause/resume, end the
+    //     game early, rematch coordination, the decider's category pick,
+    //     the timed advance once a question's asking + reveal window has
+    //     elapsed on the SERVER clock (host-independent game clock), and a
+    //     host takeover when the current host's player doc is gone or stale;
+    //   - everything else (hostUid, status, question pointers, questions,
+    //     settings) is host-only, so a non-host can no longer wedge or end a
+    //     room outside those forms.
+    // Liveness constants mirror apps/arena/js/config.js
+    // (DISCONNECT_GRACE_MS 30000, PRESENCE_STALE_MS 120000, trivia reveal
+    // 2500 ms, Globe Drop reveal 10000 ms).
     //
     // Room passwords (defect 22): a new room may NEVER carry a cleartext
     // `password` field - the room doc is world-readable to signed-in
@@ -64,11 +77,109 @@ service cloud.firestore {
     // and must stay updatable (host advances questions with updateDoc,
     // which rewrites the full post-state including the old field) until
     // they expire.
+    function roomPath(code) {
+      return /databases/$(database)/documents/triviaRooms/$(code);
+    }
+    function playerPath(code, uid) {
+      return /databases/$(database)/documents/triviaRooms/$(code)/players/$(uid);
+    }
+    function roomGone(code) {
+      return !exists(roomPath(code));
+    }
+    function isRoomHost(code) {
+      return request.auth != null
+        && exists(roomPath(code))
+        && get(roomPath(code)).data.hostUid == request.auth.uid;
+    }
+    function isRoomMember(code) {
+      return request.auth != null && exists(playerPath(code, request.auth.uid));
+    }
+    // A player doc is stale when its owner announced a disconnect more
+    // than the grace window ago, or stopped heart-beating lastSeen for
+    // longer than the presence window. Mirrors RoomState.isPlayerLive.
+    function isStalePlayerData(d) {
+      return (d.get('disconnectedAt', null) is number
+              && d.disconnectedAt < request.time.toMillis() - 30000)
+        || (d.get('lastSeen', null) is timestamp
+              && d.lastSeen.toMillis() < request.time.toMillis() - 120000);
+    }
+    function playerGone(code, uid) {
+      return !exists(playerPath(code, uid))
+        || isStalePlayerData(get(playerPath(code, uid)).data);
+    }
+    function roomKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+    function revealWindowMs() {
+      return resource.data.get('gameType', 'trivia') == 'globe-drop' ? 10000 : 2500;
+    }
+    // Server-clock moment the current question is fully over (asking +
+    // reveal, or early reveal + reveal). Only meaningful while playing.
+    function questionOverMs() {
+      return resource.data.get('revealStartedAt', null) is timestamp
+        ? resource.data.revealStartedAt.toMillis() + revealWindowMs()
+        : resource.data.questionStartedAt.toMillis()
+            + resource.data.get('questionTimeMs', 15000) + revealWindowMs();
+    }
+    function memberPause() {
+      return roomKeys().hasOnly(['paused', 'pausedAt', 'pausedByUid', 'pausedByName']);
+    }
+    function memberResume() {
+      return resource.data.get('paused', false) == true
+        && roomKeys().hasOnly(['paused', 'pausedAt', 'pausedByUid', 'pausedByName', 'questionStartedAt']);
+    }
+    function memberEndGame() {
+      return request.resource.data.status == 'finished'
+        && roomKeys().hasOnly(['status', 'finishedAt', 'paused', 'pausedAt', 'finalRanking']);
+    }
+    function memberRematch() {
+      return roomKeys().hasOnly(['rematchProposedBy', 'rematchAcceptedBy', 'rematchDeclinedBy', 'rematchProposedAt']);
+    }
+    function deciderPick() {
+      return resource.data.status == 'picking'
+        && resource.data.get('deciderUid', '') == request.auth.uid
+        && roomKeys().hasOnly(['status', 'currentQuestionId', 'selectedCategory',
+                               'questionStartedAt', 'revealStartedAt', 'finishedAt']);
+    }
+    function memberTimedAdvance() {
+      return resource.data.status == 'playing'
+        && resource.data.get('paused', false) != true
+        && resource.data.get('questionStartedAt', null) is timestamp
+        && request.time.toMillis() >= questionOverMs()
+        && roomKeys().hasOnly(['status', 'currentQuestionIndex', 'currentQuestionId', 'selectedCategory',
+                               'questionStartedAt', 'revealStartedAt', 'pickingStartedAt', 'playerOrder',
+                               'deciderUid', 'playedQuestionIds', 'finishedAt', 'finalRanking',
+                               'paused', 'pausedAt']);
+    }
+    // Picking-stage deadline (PICK_DEADLINE_MS in apps/arena/js/config.js):
+    // once it passes, ANY member may pick for the room so a decider who
+    // never chooses cannot stall it forever. The pick itself is
+    // deterministic client-side, and the write is the same shape the
+    // decider's own pick uses.
+    function memberTimedPick() {
+      return resource.data.status == 'picking'
+        && resource.data.get('pickingStartedAt', null) is timestamp
+        && request.time.toMillis() >= resource.data.pickingStartedAt.toMillis() + 20000
+        && roomKeys().hasOnly(['status', 'currentQuestionId', 'selectedCategory',
+                               'questionStartedAt', 'revealStartedAt', 'finishedAt', 'finalRanking']);
+    }
+    function memberHostTakeover(code) {
+      return roomKeys().hasOnly(['hostUid'])
+        && request.resource.data.hostUid == request.auth.uid
+        && playerGone(code, resource.data.hostUid);
+    }
     match /triviaRooms/{roomCode} {
       allow read: if request.auth != null;
       allow create: if request.auth != null
+        && request.resource.data.hostUid == request.auth.uid
         && !request.resource.data.keys().hasAny(['password']);
-      allow update, delete: if request.auth != null;
+      allow update: if request.auth != null
+        && (resource.data.hostUid == request.auth.uid
+            || (isRoomMember(roomCode)
+                && (memberPause() || memberResume() || memberEndGame() || memberRematch()
+                    || deciderPick() || memberTimedAdvance() || memberTimedPick()
+                    || memberHostTakeover(roomCode))));
+      allow delete: if request.auth != null && resource.data.hostUid == request.auth.uid;
     }
     // Password gate for private rooms: { hash: SHA-256(password + ':' +
     // code) }. Readable by NOBODY - the member-create rule below reads it
@@ -76,9 +187,15 @@ service cloud.firestore {
     // a fortiori the password) never becomes client-readable through this
     // doc. Only the room's creator can write it, exactly once (no
     // updates: a host swapping the hash mid-game would lock the room in a
-    // way the UI never offers). Any signed-in user may delete it, same
-    // looseness as the room doc itself, because the last player leaving
-    // sweeps the gate alongside chat before deleting the room.
+    // way the UI never offers).
+    //
+    // DELETE is the lifecycle point that used to be a password bypass
+    // (2026-08-22 audit D1: any signed-in user could delete the gate and the
+    // member-create rule's `!exists(gate)` branch then admitted anyone).
+    // The gate may be deleted only by the room host while the room doc
+    // exists, or by any signed-in user once the room doc is gone (orphan
+    // sweep). The client deletes the room doc FIRST, then sweeps the gate,
+    // chat and leftover player docs under that second branch.
     match /triviaRooms/{roomCode}/private/{gateDoc} {
       allow read: if false;
       allow create: if request.auth != null
@@ -87,10 +204,10 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['hash'])
         && request.resource.data.hash is string;
       allow update: if false;
-      allow delete: if request.auth != null;
+      allow delete: if request.auth != null && (roomGone(roomCode) || isRoomHost(roomCode));
     }
     // Each player owns their own player doc. Score increments and answer
-    // writes happen here under the player's own uid — the host can't
+    // writes happen here under the player's own uid - the host can't
     // silently rewrite someone else's score.
     //
     // CREATE additionally enforces the password gate: when a
@@ -102,6 +219,10 @@ service cloud.firestore {
     // join exactly as before. Updates are exempt on purpose: an existing
     // player doc means the gate was already passed (reconnect-with-grace
     // rides setDoc/updateDoc on the surviving doc).
+    //
+    // DELETE: the owner always; the host may sweep a STALE doc (ghost
+    // player past the disconnect grace or presence window); anyone signed
+    // in may sweep leftovers once the room doc is gone.
     match /triviaRooms/{roomCode}/players/{playerUid} {
       allow read: if request.auth != null;
       allow create: if request.auth != null
@@ -109,8 +230,12 @@ service cloud.firestore {
         && (!exists(/databases/$(database)/documents/triviaRooms/$(roomCode)/private/gate)
             || request.resource.data.gateHash ==
                get(/databases/$(database)/documents/triviaRooms/$(roomCode)/private/gate).data.hash);
-      allow update, delete: if request.auth != null
+      allow update: if request.auth != null
         && request.auth.uid == playerUid;
+      allow delete: if request.auth != null
+        && (request.auth.uid == playerUid
+            || roomGone(roomCode)
+            || (isStalePlayerData(resource.data) && isRoomHost(roomCode)));
     }
 
     // Per-room chat. Any signed-in user can read; each user can only
@@ -125,10 +250,12 @@ service cloud.firestore {
         && request.resource.data.text is string
         && request.resource.data.text.size() > 0
         && request.resource.data.text.size() <= 280;
-      // No edits, no recalls — keep chat append-only so moderation is
-      // tractable. Hosts who want to "delete" a message can pause the
-      // room or end the game instead.
-      allow update, delete: if false;
+      // No edits, no recalls while the room lives - chat stays append-only
+      // so moderation is tractable. Once the room doc is deleted (last
+      // player left) the messages are orphans and any signed-in user may
+      // sweep them; the last leaver does so right after deleting the room.
+      allow update: if false;
+      allow delete: if request.auth != null && roomGone(roomCode);
     }
 
     // Denormalized global XP leaderboard. Read for everyone signed in

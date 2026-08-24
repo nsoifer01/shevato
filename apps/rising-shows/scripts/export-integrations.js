@@ -59,6 +59,31 @@ function writeFileIfChanged(filePath, contents) {
   return true;
 }
 
+// `--help` (and any unknown argument) prints usage and exits BEFORE the
+// export runs. The script is configured by env vars only; it used to treat
+// any argument as a normal run and rewrite the tracked exports/ tree on
+// `--help` (2026-08-22 audit, D6).
+const USAGE = `Usage: node export-integrations.js
+
+Reads ../data.json and ../finder-presets.json and rewrites ../exports/
+(Kometa collections, season overlays, MDBList id lists, exports/README.md).
+Takes no options; tunables are environment variables:
+  RS_CONFIDENCE_FLOOR   shape confidence floor (default ${DEFAULT_CONFIDENCE_FLOOR})
+  RS_MIN_SERIES         minimum series per Kometa collection (default 3)
+Run via \`npm run export:rising-shows\`.
+`;
+{
+  const args = process.argv.slice(2);
+  if (args.includes('--help') || args.includes('-h')) {
+    process.stdout.write(USAGE);
+    process.exit(0);
+  }
+  if (args.length) {
+    process.stderr.write(`Unknown argument: ${args[0]}\n${USAGE}`);
+    process.exit(2);
+  }
+}
+
 (function main() {
   if (!fs.existsSync(DATA_FILE)) {
     process.stderr.write(`data.json not found at ${DATA_FILE}. Run \`npm run build:rising-shows\` first.\n`);

@@ -338,6 +338,8 @@ function generateSidebarRaceInputs() {
                     <input 
                         type="number" 
                         id="sidebar-${player}" 
+                        inputmode="numeric"
+                        step="1"
                         min="${window.MIN_POSITIONS}" 
                         max="${window.MAX_POSITIONS}" 
                         placeholder="${window.MIN_POSITIONS}-${window.MAX_POSITIONS}"
@@ -427,18 +429,25 @@ function submitSidebarRace() {
     let hasAnyInput = false;
     
     // Collect positions for active players
+    let nonInteger = false;
     for (let i = 0; i < playerCount; i++) {
         const player = players[i];
         const sidebarInput = document.getElementById(`sidebar-${player}`);
         
-        if (sidebarInput && sidebarInput.value) {
-            const position = parseInt(sidebarInput.value);
-            positions[player] = position;
+        if (sidebarInput && sidebarInput.value.trim()) {
+            const raw = sidebarInput.value.trim();
+            // parseInt used to turn "1.5" and "1e1" into 1 without a word.
+            if (!/^\d+$/.test(raw)) { nonInteger = true; hasAnyInput = true; continue; }
+            positions[player] = parseInt(raw, 10);
             hasAnyInput = true;
         }
     }
     
     // Validation checks
+    if (nonInteger) {
+        showSidebarError('Positions must be whole numbers (no decimals)');
+        return;
+    }
     if (!hasAnyInput) {
         showSidebarError('Please enter at least one player position');
         return;
@@ -654,13 +663,18 @@ document.addEventListener('click', function(event) {
 function showMessage(message, isError = false) {
     // Create a message div
     const messageDiv = document.createElement('div');
+    // Bottom-centre so the toast never covers the page title or the tabs.
+    messageDiv.className = 'mk-toast';
+    messageDiv.setAttribute('role', 'status');
     messageDiv.style.cssText = `
         position: fixed;
-        top: 80px;
+        bottom: 28px;
         left: 50%;
         transform: translateX(-50%);
-        padding: 15px 30px;
-        background: ${isError ? '#ef4444' : '#10b981'};
+        max-width: min(92vw, 560px);
+        text-align: center;
+        padding: 12px 22px;
+        background: ${isError ? '#b91c1c' : '#047857'};
         color: white;
         border-radius: 8px;
         font-weight: 600;
@@ -674,12 +688,15 @@ function showMessage(message, isError = false) {
     const style = document.createElement('style');
     style.textContent = `
         @keyframes slideDown {
-            from { transform: translate(-50%, -100%); opacity: 0; }
+            from { transform: translate(-50%, 40px); opacity: 0; }
             to { transform: translate(-50%, 0); opacity: 1; }
         }
     `;
     document.head.appendChild(style);
 
+    // One toast at a time: a burst of filter/sort messages stacked on top of
+    // each other before.
+    document.querySelectorAll('.mk-toast').forEach((el) => el.remove());
     document.body.appendChild(messageDiv);
 
     // Remove after 3 seconds
@@ -689,6 +706,31 @@ function showMessage(message, isError = false) {
     }, 3000);
 }
 
+
+// Every "no race data" panel shares this markup: the text probes and users
+// already know, plus an Add Race call to action so the first-run path is not
+// hidden behind the sidebar toggle.
+function emptyStateHtml(title, text) {
+    return `
+            <div class="no-data-message">
+                <div class="no-data-inner">
+                    <h3>${title}</h3>
+                    <p>${text}</p>
+                    <button type="button" class="mk-empty-cta" onclick="startAddRace()">🏁 Add your first race</button>
+                </div>
+            </div>
+        `;
+}
+
+// Open the sidebar with the race form ready: the empty-state CTA and the
+// Help tab's first-run button both land here.
+function startAddRace() {
+    if (typeof openSidebar === 'function' && !document.getElementById('sidebar').classList.contains('open')) {
+        openSidebar();
+    }
+    if (!sidebarRaceFormOpen) toggleSidebarRaceForm();
+}
+window.startAddRace = startAddRace;
 
 function toggleView(view) {
     // Get the input section reference once
@@ -785,16 +827,16 @@ function createH2HView(raceData = null) {
     const statsDisplay = document.getElementById('stats-display');
 
     if (raceData.length === 0 || playerCount <= 1) {
-        statsDisplay.innerHTML = `
+        statsDisplay.innerHTML = playerCount <= 1
+            ? `
             <div class="no-data-message">
-                <div style="text-align: center; padding: 60px 20px; color: #718096;">
-                    <h3 style="font-size: 1.5em; margin-bottom: 10px;">
-                        ${playerCount <= 1 ? 'Head-to-Head requires at least 2 players' : 'No race data available'}
-                    </h3>
-                    <p>${playerCount <= 1 ? 'Add more players to see head-to-head statistics!' : 'Add some races to see head-to-head comparisons!'}</p>
+                <div class="no-data-inner">
+                    <h3>Head-to-Head requires at least 2 players</h3>
+                    <p>Add more players to see head-to-head statistics!</p>
                 </div>
             </div>
-        `;
+        `
+            : emptyStateHtml('No race data available', 'Add some races to see head-to-head comparisons!');
         return;
     }
 
@@ -1026,36 +1068,50 @@ function sortTable(column) {
 
     // For trends, activity, and analysis views, only update race history table
     if (currentView === 'trends' || currentView === 'activity' || currentView === 'analysis') {
-        let filteredRaces = getFilteredRaces();
-        // Apply sorting
-        if (sortColumn) {
-            filteredRaces = [...filteredRaces].sort((a, b) => {
-                let aVal = a[sortColumn];
-                let bVal = b[sortColumn];
-
-                // Handle null values
-                if (aVal === null && bVal === null) return 0;
-                if (aVal === null) return sortDirection === 'asc' ? 1 : -1;
-                if (bVal === null) return sortDirection === 'asc' ? -1 : 1;
-
-                // Handle date sorting (including timestamp within same day).
-                // raceDateTimeValue tolerates legacy "24:" stamps and unknown
-                // timezone abbreviations, and never yields NaN.
-                if (sortColumn === 'date') {
-                    aVal = raceDateTimeValue(a);
-                    bVal = raceDateTimeValue(b);
-                }
-
-                if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-                if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-                return 0;
-            });
-        }
-        updateRaceHistoryTable(filteredRaces);
+        updateRaceHistoryTable(getFilteredRaces());
     } else {
         // For stats view, do full update
         updateDisplay();
     }
+
+    // The header row was re-rendered; keep keyboard focus on the header that
+    // was just activated instead of dropping it to <body>.
+    const header = document.querySelector(`#history-table th[data-sort="${column}"]`);
+    if (header) header.focus();
+}
+
+// The order the history table shows. With a sort column the rows follow that
+// column in the chosen direction, so the ↑/↓ indicator and aria-sort say what
+// the rows do (the old code sorted ascending and then reversed the list).
+// Without one the table is chronological, newest first, so an edited date
+// lands where it belongs instead of staying in insertion order.
+function orderRacesForDisplay(list) {
+    if (!sortColumn) {
+        return [...list].sort((a, b) => compareRacesChronologically(b, a));
+    }
+    return [...list].sort((a, b) => {
+        let aVal = a[sortColumn];
+        let bVal = b[sortColumn];
+
+        // Absent positions (null, or a key missing after the roster widened)
+        // always sink to the bottom.
+        const aMissing = sortColumn !== 'date' && !isFinitePosition(aVal);
+        const bMissing = sortColumn !== 'date' && !isFinitePosition(bVal);
+        if (aMissing && bMissing) return 0;
+        if (aMissing) return 1;
+        if (bMissing) return -1;
+
+        // raceDateTimeValue tolerates legacy "24:" stamps and unknown
+        // timezone abbreviations, and never yields NaN.
+        if (sortColumn === 'date') {
+            aVal = raceDateTimeValue(a);
+            bVal = raceDateTimeValue(b);
+        }
+
+        if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
+    });
 }
 
 function updateHistoryTableHeaders() {
@@ -1077,12 +1133,12 @@ function updateHistoryTableHeaders() {
     // Generate dynamic headers
     const playerHeaders = players.map(player => {
         const name = escapeHtml(window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player));
-        return `<th class="sortable-header${sortedClass(player)}"${ariaSort(player)} onclick="sortTable('${player}')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('${player}')" aria-label="Sort by ${name}'s position">${name} <span class="sort-indicator">${sortIndicator(player)}</span></th>`;
+        return `<th class="sortable-header${sortedClass(player)}"${ariaSort(player)} data-sort="${player}" onclick="sortTable('${player}')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();sortTable('${player}')}" aria-label="Sort by ${name}'s position">${name} <span class="sort-indicator">${sortIndicator(player)}</span></th>`;
     }).join('');
 
     headerRow.innerHTML = `
         <th>Race #</th>
-        <th class="sortable-header${sortedClass('date')}"${ariaSort('date')} onclick="sortTable('date')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('date')" aria-label="Sort by date">Date <span class="sort-indicator">${sortIndicator('date')}</span></th>
+        <th class="sortable-header${sortedClass('date')}"${ariaSort('date')} data-sort="date" onclick="sortTable('date')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();sortTable('date')}" aria-label="Sort by date">Date <span class="sort-indicator">${sortIndicator('date')}</span></th>
         ${playerHeaders}
         <th>Action</th>
     `;
@@ -1105,13 +1161,14 @@ function updateRaceHistoryTable(filteredRaces) {
         raceHistorySection.style.display = 'block';
     }
 
-    // Reverse races to show latest first
-    const reversedRaces = filteredRaces.slice().reverse();
+    // filteredRaces arrives in insertion order (that is what "Race #N"
+    // numbers); the rows are shown in display order.
+    const orderedRaces = orderRacesForDisplay(filteredRaces);
 
     // Get paginated subset if pagination is available
     const racesToDisplay = window.GlobalPaginationManager
-        ? window.GlobalPaginationManager.getPaginatedItems('mario-kart-races', reversedRaces)
-        : reversedRaces;
+        ? window.GlobalPaginationManager.getPaginatedItems('mario-kart-races', orderedRaces)
+        : orderedRaces;
 
     // Pre-index both source arrays so lookups inside the row map are O(1)
     // instead of O(n) per row. With heavy users (1k+ races) the previous
@@ -1124,22 +1181,24 @@ function updateRaceHistoryTable(filteredRaces) {
 
     // Update history table
     const historyHtml = racesToDisplay.map((race) => {
-        const positions = players.map(player => race[player]).filter(pos => pos !== null);
+        // isFinitePosition, not `!== null`: a key missing after the roster
+        // widened rendered the literal "undefined".
+        const positions = players.map(player => race[player]).filter(isFinitePosition);
         const originalIndex = filteredIndexMap.get(race) ?? -1;
         const raceNumber = originalIndex + 1;
         const globalIndex = racesIndexMap.get(race) ?? -1;
         const playerCells = players.map(player => {
             const position = race[player];
-            return position !== null
+            return isFinitePosition(position)
                 ? `<td><span class="position-cell ${getRelativePositionClass(position, positions)}">${position}</span></td>`
-                : '<td><span style="color: #718096;">—</span></td>';
+                : '<td><span class="position-absent">-</span></td>';
         }).join('');
 
         const courseLabel = race.course ? `<br><small class="race-course-label">🗺️ ${escapeHtml(race.course)}</small>` : '';
         return `
         <tr>
             <td>${raceNumber}</td>
-            <td>${formatDateForDisplay(race.date)}${race.timestamp ? '<br><small>' + race.timestamp + '</small>' : ''}${courseLabel}</td>
+            <td>${escapeHtml(formatDateForDisplay(race.date))}${race.timestamp ? '<br><small>' + escapeHtml(race.timestamp) + '</small>' : ''}${courseLabel}</td>
             ${playerCells}
             <td>
                 <button class="edit-btn" onclick="editRace(${globalIndex})" title="Edit race">✏️</button>
@@ -1198,7 +1257,7 @@ function updateMobileRaceCards(filteredRaces, racesToDisplay, filteredIndexMap, 
     // Render the same paginated slice the table renders (latest-first, current
     // page only) so cards and table stay in lockstep.
     const mobileHtml = racesToDisplay.map((race) => {
-        const positions = players.map(player => race[player]).filter(pos => pos !== null);
+        const positions = players.map(player => race[player]).filter(isFinitePosition);
         // Race number is the position within the filtered set (1-based), matching
         // the table's numbering across pages.
         const raceNumber = (filteredIndexMap.get(race) ?? -1) + 1;
@@ -1207,7 +1266,7 @@ function updateMobileRaceCards(filteredRaces, racesToDisplay, filteredIndexMap, 
         const playerPositions = players.map(player => {
             const position = race[player];
             const playerName = window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player);
-            return position !== null
+            return isFinitePosition(position)
                 ? `
                     <div class="position-item">
                         <span class="player-label">${escapeHtml(playerName)}:</span>
@@ -1221,7 +1280,7 @@ function updateMobileRaceCards(filteredRaces, racesToDisplay, filteredIndexMap, 
         <div class="race-card">
             <div class="race-card-header">
                 <span class="race-number">Race #${raceNumber}</span>
-                <span class="race-date">${formatDateForDisplay(race.date)}${race.timestamp ? ', ' + race.timestamp : ''}</span>
+                <span class="race-date">${escapeHtml(formatDateForDisplay(race.date))}${race.timestamp ? ', ' + escapeHtml(race.timestamp) : ''}</span>
             </div>
             ${race.course ? `<div class="race-card-course"><small class="race-course-label">🗺️ ${escapeHtml(race.course)}</small></div>` : ''}
             <div class="race-positions">
@@ -1245,32 +1304,8 @@ function updateDisplay() {
     // Update table headers for dynamic player count
     updateHistoryTableHeaders();
 
-    let filteredRaces = getFilteredRaces();
-
-    // Apply sorting if a column is selected
-    if (sortColumn) {
-        filteredRaces = [...filteredRaces].sort((a, b) => {
-            let aVal = a[sortColumn];
-            let bVal = b[sortColumn];
-
-            // Handle null values
-            if (aVal === null && bVal === null) return 0;
-            if (aVal === null) return sortDirection === 'asc' ? 1 : -1;
-            if (bVal === null) return sortDirection === 'asc' ? -1 : 1;
-
-            // Handle date sorting (including timestamp within same day).
-            // raceDateTimeValue tolerates legacy "24:" stamps and unknown
-            // timezone abbreviations, and never yields NaN.
-            if (sortColumn === 'date') {
-                aVal = raceDateTimeValue(a);
-                bVal = raceDateTimeValue(b);
-            }
-
-            if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-            if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-            return 0;
-        });
-    }
+    // Insertion order; the history table applies the display order itself.
+    const filteredRaces = getFilteredRaces();
 
     // Always update race history table and achievement bars regardless of current view
     updateRaceHistoryTable(filteredRaces);
@@ -1312,17 +1347,10 @@ function updateDisplay() {
 
     // Check if we have any races
     if (filteredRaces.length === 0) {
-        document.getElementById('stats-display').innerHTML = `
-            <div class="no-data-message">
-                <div style="text-align: center; padding: 60px 20px; color: #718096;">
-                    <h3 style="font-size: 1.5em; margin-bottom: 10px;">No race data available</h3>
-                    <p>Add some races to see statistics!</p>
-                </div>
-            </div>
-        `;
+        document.getElementById('stats-display').innerHTML = emptyStateHtml('No race data available', 'Add some races to see statistics!');
 
         document.getElementById('history-body').innerHTML =
-            `<tr><td colspan="${players.length + 3}" style="text-align: center; padding: 40px; color: #718096;">No races recorded yet. Add your first race above!</td></tr>`;
+            `<tr><td colspan="${players.length + 3}" style="text-align: center; padding: 40px; color: #718096;">No races recorded yet. Use the sidebar to add your first race.</td></tr>`;
 
         // Clear all visualization bars when no data
         clearAllVisualizationBars();
@@ -1435,9 +1463,15 @@ function createHelpView() {
         return;
     }
 
+    // First run lands here with an empty log: put the Add Race call to
+    // action above the help text instead of leaving it behind the sidebar.
+    const firstRun = (!races || races.length === 0)
+        ? `<div class="mk-first-run"><p>No races yet. Record your first one to unlock every tab.</p><button type="button" class="mk-empty-cta" onclick="startAddRace()">🏁 Add your first race</button></div>`
+        : '';
     // Display the help content in the stats display area
     statsDisplay.innerHTML = `
         <div class="help-view-container" style="padding: 20px; max-width: 1200px; margin: 0 auto;">
+            ${firstRun}
             ${helpContent.innerHTML}
         </div>
     `;
@@ -1481,14 +1515,7 @@ function createAchievementsView(raceData = null) {
             inputGroup.style.display = 'none';
         }
 
-        statsDisplay.innerHTML = `
-            <div class="no-data-message">
-                <div style="text-align: center; padding: 60px 20px; color: #718096;">
-                    <h3 style="font-size: 1.5em; margin-bottom: 10px;">No race data available</h3>
-                    <p>Add some races to see achievements!</p>
-                </div>
-            </div>
-        `;
+        statsDisplay.innerHTML = emptyStateHtml('No race data available', 'Add some races to see achievements!');
         return;
     }
 
@@ -1724,6 +1751,68 @@ document.addEventListener('DOMContentLoaded', function() {
             if (window.updateAllPlayerIcons) window.updateAllPlayerIcons();
         }, 750);
     });
+
+    // Another tab on this origin wrote one of our keys. Re-read everything
+    // from storage and re-render; never write from here (the helper blocks
+    // it). The undo stack indexed the old log, so it is dropped: replaying
+    // it against the other tab's rows is how races were silently lost.
+    if (window.ShevatoTabSync) {
+        let tabSyncTimer = null;
+        window.ShevatoTabSync.watch(
+            (key) => typeof key === 'string' && key.startsWith('marioKart'),
+            () => {
+                clearTimeout(tabSyncTimer);
+                tabSyncTimer = setTimeout(() => {
+                    if (window.PlayerNameManager?.initialize) window.PlayerNameManager.initialize();
+                    if (window.PlayerSymbolManager?.reload) window.PlayerSymbolManager.reload();
+                    if (window.loadSavedData) window.loadSavedData();
+                    if (typeof resetActionHistory === 'function') resetActionHistory();
+                    updateDisplay();
+                    updateAchievements();
+                    updateClearButtonState();
+                    if (window.refreshSidebarRaceForm) window.refreshSidebarRaceForm();
+                    if (window.updateAllPlayerIcons) window.updateAllPlayerIcons();
+                }, 120);
+            }
+        );
+    }
+
+    // Tablist keyboard support: Left/Right/Home/End move between tabs and
+    // activate them (the WAI-ARIA tabs pattern).
+    const tablist = document.querySelector('.toggle-section[role="tablist"]');
+    if (tablist) {
+        tablist.addEventListener('keydown', (event) => {
+            const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
+            if (!keys.includes(event.key)) return;
+            const tabs = Array.from(tablist.querySelectorAll('[role="tab"]:not([disabled])'));
+            const current = tabs.indexOf(document.activeElement);
+            if (current === -1) return;
+            event.preventDefault();
+            let next = current;
+            if (event.key === 'ArrowLeft') next = (current - 1 + tabs.length) % tabs.length;
+            if (event.key === 'ArrowRight') next = (current + 1) % tabs.length;
+            if (event.key === 'Home') next = 0;
+            if (event.key === 'End') next = tabs.length - 1;
+            tabs[next].focus();
+            tabs[next].click();
+        });
+    }
+
+    // The fixed sidebar toggle sat on top of whatever scrolled under it on
+    // phones (the pagination "previous" button, for one). Slide it away while
+    // scrolling down and bring it back on the first scroll up.
+    const sidebarToggle = document.getElementById('sidebar-toggle');
+    if (sidebarToggle) {
+        let lastScrollY = window.scrollY;
+        window.addEventListener('scroll', () => {
+            const y = window.scrollY;
+            const goingDown = y > lastScrollY + 4;
+            const goingUp = y < lastScrollY - 4;
+            if (goingDown && y > 120) sidebarToggle.classList.add('scrolled-away');
+            else if (goingUp || y <= 120) sidebarToggle.classList.remove('scrolled-away');
+            lastScrollY = y;
+        }, { passive: true });
+    }
 
     // Subscribe to player symbol changes to update H2H tables
     if (window.PlayerSymbolManager) {

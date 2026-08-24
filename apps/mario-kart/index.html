@@ -278,8 +278,8 @@
                     <div class="help-item">
                         <div class="help-icon">📊</div>
                         <div class="help-text">
-                            <strong>6 Different Views</strong>
-                            <p>Navigate between Achievements, Stats, H2H, Analysis, Activity, and Trends tabs. Each provides insights into your racing performance.</p>
+                            <strong>8 Different Views</strong>
+                            <p>Navigate between Help, Guide, Achievements, Stats, H2H, Analysis, Activity, and Trends tabs. Each provides insights into your racing performance.</p>
                         </div>
                     </div>
                     
@@ -295,7 +295,7 @@
                         <div class="help-icon">💾</div>
                         <div class="help-text">
                             <strong>Auto-Save & Backup</strong>
-                            <p>All data auto-saves to local storage. Auto-backup every 10 minutes. Export/import JSON files for manual backups. Full undo/redo history.</p>
+                            <p>All data auto-saves to local storage. Auto-backup every 10 minutes. Export/import JSON files for manual backups. Undo/redo covers adds, edits, deletes and Clear All.</p>
                         </div>
                     </div>
                     
@@ -319,7 +319,7 @@
                         <div class="help-icon">🎨</div>
                         <div class="help-text">
                             <strong>Customization</strong>
-                            <p>Consistent theme styling, custom player icons/emojis, configurable player count (1-4, optimized for 3), and date filtering.</p>
+                            <p>Consistent theme styling, custom player icons/emojis, configurable player count (1-4), and date filtering.</p>
                         </div>
                     </div>
                 </div>
@@ -328,10 +328,10 @@
                     <h4>🚀 Quick Start Guide</h4>
                     <ol class="help-steps">
                         <li><strong>Configure Players:</strong> Open sidebar (☰) → Click 👤 Manage Players → Set 1-4 player names and feel free picking icons</li>
-                        <li><strong>Add First Race:</strong> Enter positions for each player → Click "🏁 Add Race"</li>
+                        <li><strong>Add First Race:</strong> Open sidebar (☰) → Click 🏁 Add Race → Enter each player's finishing position → Click "🏆 Save"</li>
                         <li><strong>Explore Views:</strong> Click tabs at top - Achievements shows progress, Stats compares players, H2H shows matchups, etc.</li>
                         <li><strong>Filter by Date:</strong> Use sidebar date controls - All Time, Today, Last 7/30 days, or custom date ranges</li>
-                        <li><strong>Backup Data:</strong> 📤 Export to save JSON file. 📥 Import a JSON file. Auto-backup runs every 10 minutes</li>
+                        <li><strong>Backup Data:</strong> 📤 Export to save a JSON file. 📥 Import a JSON file. Auto-backup runs every 10 minutes, and 🔄 Restore brings it back</li>
                     </ol>
                 </div>
 
@@ -450,7 +450,7 @@
                         <li>Export your data regularly as backup - local storage can be cleared by browsers</li>
                         <li>Use date filters to analyze specific sessions</li>
                         <li>The "Expand Active" button shows only achievements with current streaks</li>
-                        <li>Position picker in sidebar remembers your last selection for faster entry</li>
+                        <li>The position picker (⊞) in the sidebar highlights the position already typed for that player</li>
                         <li>Hold mouse over visualizations for detailed tooltips and counts</li>
                         <li>Charts and stats update immediately after adding each race</li>
                     </ul>
@@ -572,6 +572,7 @@
 
     <!-- Import all modules -->
     <script src="../../assets/js/escape-html.js"></script>
+    <script src="../../sync-system/tab-sync.js"></script>
     <script src="../../assets/js/sync-status.js"></script>
     <script src="js/constants.js"></script>
     <script src="js/gameVersionManager.js"></script>

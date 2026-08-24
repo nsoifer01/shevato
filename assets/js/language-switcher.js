@@ -67,15 +67,27 @@ function switchLanguage(lang) {
 // Expose for legacy callers / tests.
 window.switchLanguage = switchLanguage;
 
-document.addEventListener('DOMContentLoaded', () => {
-  let savedLang = 'en';
+function savedLanguage() {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored && SUPPORTED_LANGS.has(stored)) savedLang = stored;
+    if (stored && SUPPORTED_LANGS.has(stored)) return stored;
   } catch (_) {
-    // ignore
+    // localStorage may be unavailable in private browsing modes.
   }
-  switchLanguage(savedLang);
+  return 'en';
+}
+
+// The footer is a partial injected by jQuery .load() in main.js AFTER
+// DOMContentLoaded, so the pass below never sees it. main.js dispatches
+// `shevato:include-loaded` on document for every injected partial; re-apply
+// the current language then, so a persisted Hebrew/Russian choice localises
+// the footer too (it used to stay English until the next button click).
+document.addEventListener('shevato:include-loaded', () => {
+  switchLanguage(document.documentElement.lang || savedLanguage());
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  switchLanguage(savedLanguage());
 
   document.addEventListener('click', (event) => {
     const btn = event.target.closest('.lang-btn');

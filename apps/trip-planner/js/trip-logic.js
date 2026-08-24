@@ -394,21 +394,61 @@ const TripLogic = (() => {
     // dedupes nights covered by both (e.g. a red-eye landing mid-stay).
     // `local` is excluded for the same reason it is not transit: a taxi is
     // never somewhere you slept.
-    const bookedNightSet = new Set();
     const bookedSpans = items.filter(it => it.status === 'booked' && (isStay(it) || isTransitType(it)) && isIsoDate(it.startDate) && isIsoDate(it.endDate) && diffDays(it.startDate, it.endDate) > 0);
-    for (const it of bookedSpans) {
-      for (let d = it.startDate, n = 0; d < it.endDate && n < MAX_TRIP_DAYS; d = addDays(d, 1), n++) bookedNightSet.add(d);
-    }
-    const bookedNights = bookedNightSet.size;
-    const totalTripNights = start && end ? diffDays(start, end) : 0;
     // start/end stay honest so the issues list can name the far-out date; every
-    // per-day view walks to renderEnd instead and says it was capped.
-    let renderEnd = end, spanCapped = false;
+    // per-day view walks renderStart..renderEnd instead and says it was capped.
+    //
+    // The rendered span is anchored on the CLUSTER, never on the earliest date:
+    // anchoring on the earliest item meant one activity typed a year early
+    // became the trip, every correct item was flagged "far outside", and Days
+    // and the strip rendered 400 days from the typo (2026-08-22 audit, D3).
+    // The cluster is the largest run of items whose consecutive start dates sit
+    // within MAX_TRIP_DAYS of each other; a tie goes to the earlier run, which
+    // is exactly the old behaviour for two lone items.
+    let renderStart = start, renderEnd = end, spanCapped = false;
     if (start && end && diffDays(start, end) + 1 > MAX_TRIP_DAYS) {
-      renderEnd = addDays(start, MAX_TRIP_DAYS - 1);
+      const c = dateCluster(dated);
+      renderStart = c.start;
+      renderEnd = c.end;
+      if (diffDays(renderStart, renderEnd) + 1 > MAX_TRIP_DAYS) renderEnd = addDays(renderStart, MAX_TRIP_DAYS - 1);
       spanCapped = true;
     }
-    return { start, end, renderEnd, spanCapped, confirmed, planned, bookedNights, totalTripNights, count: items.length };
+    // Nights are counted over the window the views actually draw, so a trip
+    // stretched by one mistyped date cannot report "3 of 804": totalTripNights
+    // and bookedNights describe the same span the strip and Days show, which
+    // for an uncapped trip is the whole trip exactly as before.
+    const nightsFrom = renderStart, nightsTo = spanCapped ? renderEnd : end;
+    const bookedNightSet = new Set();
+    for (const it of bookedSpans) {
+      for (let d = it.startDate, n = 0; d < it.endDate && n < MAX_TRIP_DAYS; d = addDays(d, 1), n++) {
+        if (nightsFrom && (d < nightsFrom || d >= nightsTo)) continue;
+        bookedNightSet.add(d);
+      }
+    }
+    const bookedNights = bookedNightSet.size;
+    const totalTripNights = nightsFrom && nightsTo ? diffDays(nightsFrom, nightsTo) : 0;
+    return { start, end, renderStart, renderEnd, spanCapped, confirmed, planned, bookedNights, totalTripNights, count: items.length };
+  }
+
+  // The largest run of dated items whose consecutive start dates are never
+  // more than MAX_TRIP_DAYS apart, as { start, end } where end is the latest
+  // item end inside the run. Ties resolve to the earliest run.
+  function dateCluster(dated) {
+    const sorted = [...dated].sort((a, b) => (a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0));
+    const itemEnd = it => (isIsoDate(it.endDate) && it.endDate > it.startDate ? it.endDate : it.startDate);
+    let best = null, run = null;
+    for (const it of sorted) {
+      if (run && diffDays(run.last, it.startDate) <= MAX_TRIP_DAYS) {
+        run.count++;
+        run.last = it.startDate;
+        if (itemEnd(it) > run.end) run.end = itemEnd(it);
+      } else {
+        run = { start: it.startDate, end: itemEnd(it), last: it.startDate, count: 1 };
+        if (!best) best = run;
+      }
+      if (run.count > best.count) best = run;
+    }
+    return { start: best.start, end: best.end };
   }
 
   // Every other collision check in this app looks INSIDE one trip, so the one
@@ -442,6 +482,30 @@ const TripLogic = (() => {
 
   // ---------- route helper math ----------
   const ISLANDISH = /\b(koh?|ko|phi phi|railay|samui|lanta|tao|phangan|chang|lipe|similan|island|isla|beach)\b/i;
+
+  // Islands with no fixed link (bridge or tunnel) to a mainland, by name. The
+  // Thai resort regex above never caught Santorini, so Athens to Santorini was
+  // offered a Recommended train (2026-08-22 audit, D5). Deliberately absent
+  // because they DO have a road or rail link: Phuket, Penang, Skye, Oland,
+  // Hokkaido, Key West, Singapore. Same-country legs are affected on purpose
+  // here (the sea is the sea whichever flag is on both shores).
+  const ISLAND_NAMES = /\b(santorini|thira|mykonos|crete|heraklion|chania|rhodes|corfu|naxos|paros|kos|zakynthos|zante|kefalonia|skiathos|hydra|aegina|lesbos|lesvos|samos|chios|capri|ischia|elba|sardinia|sicily|corsica|ibiza|mallorca|majorca|menorca|tenerife|gran canaria|lanzarote|fuerteventura|madeira|azores|bali|lombok|langkawi|jeju|okinawa|tasmania|hvar|brac|korcula|gozo|gotland|bornholm|isle of wight|orkney|shetland|mull|islay|arran|vancouver island|nantucket|martha's vineyard|hainan)\b/i;
+
+  /**
+   * Is this endpoint an island? By name (ISLANDISH, ISLAND_NAMES) or by what
+   * the geocoder said it is (`kind`, Nominatim's addresstype/type, where
+   * `island` is OSM's own place=island). Unknown answers false.
+   */
+  function isIslandPlace(text, kind) {
+    const t = String(text || '');
+    if (String(kind || '').toLowerCase() === 'island') return true;
+    return ISLANDISH.test(t) || ISLAND_NAMES.test(t);
+  }
+
+  // The longest leg a ferry card is offered on. Beyond it a boat is at most a
+  // local last hop the route distance says nothing about, and a 4,800 mi
+  // Tokyo to Sydney "Ferry: varies" card was an invention.
+  const FERRY_MAX_KM = 600;
 
   // COUNTRIES YOU CANNOT DRIVE OR TAKE A TRAIN OUT OF. Every one of these is an
   // island state or territory with no land border and no fixed link (bridge or
@@ -574,6 +638,10 @@ const TripLogic = (() => {
   // headline is air time, but choosing between a plane and a train is only
   // honest once the two to three hours of airport are back in.
   function modeOptions(km, island, fastRail) {
+    // Two geocodes on the same point (Paris vs "Paris, France") are not a
+    // journey: nothing to offer rather than a 0m walk heading north.
+    if (!(km >= 0.1)) return [];
+    const ferry = island && km <= FERRY_MAX_KM;
     const ground = km * 1.25;
     const rows = [];
     const add = (key, i, name, durMin, note, extra) => rows.push(Object.assign({
@@ -592,7 +660,9 @@ const TripLogic = (() => {
           // card still printed a confident duration and a fare for city pairs
           // with no through railway at all (Lima to Cusco). The note now says
           // plainly that neither the line nor the time is confirmed.
-          : 'only if a through line runs - this time is estimated from distance, not a timetable');
+          : 'only if a through line runs - this time is estimated from distance, not a timetable',
+        // nothing confirms a line exists, so routeBadges never calls it Recommended
+        fastRail ? undefined : { unverified: true });
     }
     // On a leg that crosses water these two are still REAL - you drive onto a
     // ferry - but the time here is road time only. Saying so is the difference
@@ -608,11 +678,13 @@ const TripLogic = (() => {
         ? 'goes by ferry, which is NOT in this time - check sailings first'
         : (km >= 400 ? 'usually the cheapest option, and often overnight on a leg this long' : 'usually the cheapest option'));
     }
-    if (km >= 250) {
+    // an island hop is flown from a shorter distance than a land leg: with no
+    // road there is no 200 km drive to compete with the plane
+    if (km >= 250 || (island && km >= 150)) {
       add('air', '✈️', 'Flight', km / 750 * 60 + 35, 'add 2 to 3 hours for airports and check-in',
         { dur: `~${fmtDur(km / 750 * 60 + 35)} in the air`, cmpMin: km / 750 * 60 + 35 + 150 });
     }
-    if (island) {
+    if (ferry) {
       const hop = km <= 120 ? km / 35 * 60 : null;
       add('ferry', '⛴️', 'Ferry', hop, 'island legs end on a boat; combined bus and boat tickets are common');
     }
@@ -654,10 +726,14 @@ const TripLogic = (() => {
     const norm = (v, lo, hi) => (hi > lo ? (v - lo) / (hi - lo) : 0);
     const span = vals => [Math.min(...vals), Math.max(...vals)];
     let recommended = null;
-    if (timed.length) {
-      const [tLo, tHi] = span(timed.map(o => o.cmpMin));
-      const [cLo, cHi] = span(timed.map(mid));
-      recommended = best(timed, o => 0.6 * norm(o.cmpMin, tLo, tHi) + 0.4 * norm(mid(o), cLo, cHi));
+    // A card whose service is not known to exist (a train on a pair with no
+    // confirmed through line) competes for Fastest and Cheapest on its
+    // estimate, but is never the recommendation.
+    const verified = timed.filter(o => !o.unverified);
+    if (verified.length) {
+      const [tLo, tHi] = span(verified.map(o => o.cmpMin));
+      const [cLo, cHi] = span(verified.map(mid));
+      recommended = best(verified, o => 0.6 * norm(o.cmpMin, tLo, tHi) + 0.4 * norm(mid(o), cLo, cHi));
     }
     if (ctx && ctx.island) recommended = cand.find(o => o.key === 'ferry') || recommended;
     rank.push(['recommended', recommended]);
@@ -778,7 +854,7 @@ const TripLogic = (() => {
     const ids = [];
     const c = corridorFacts(fromText, toText);
     if (c) ids.push(...c.flags);
-    if (island) ids.push('ferry');
+    if (island && km <= FERRY_MAX_KM) ids.push('ferry');
     if (international) ids.push('border');
     if (km >= 250) ids.push('airport');
     const seen = new Set();
@@ -800,7 +876,7 @@ const TripLogic = (() => {
     const tips = [];
     const c = corridorFacts(fromText, toText);
     if (c) tips.push({ id: 'corridor', text: c.tip });
-    if (island) tips.push({ id: 'island', text: 'Boats stop running earlier than you expect, so check the last sailing before committing to a late arrival.' });
+    if (island && km <= FERRY_MAX_KM) tips.push({ id: 'island', text: 'Boats stop running earlier than you expect, so check the last sailing before committing to a late arrival.' });
     if (km >= 400 && km < 900) tips.push({ id: 'long-drive', text: 'Driving this far buys flexibility and stops on the way, but budget for tolls as well as fuel.' });
     return tips;
   }
@@ -3024,8 +3100,9 @@ const TripLogic = (() => {
     // surface that reads it. Blank is the honest answer, and it is what this
     // field did before any of this existed.
     if (!isIsoDate(stats.start)) return '';
-    if (today && today >= stats.start && today <= (stats.renderEnd || stats.start)) return today;
-    return stats.start;
+    const first = stats.renderStart || stats.start;
+    if (today && today >= first && today <= (stats.renderEnd || first)) return today;
+    return first;
   }
 
   /**
@@ -3180,10 +3257,10 @@ const TripLogic = (() => {
     // renderEnd, not end: a mistyped year must not ask for three million tiles.
     // totalDays follows it so a tile never reads "Day 1 of 2913220".
     const last = stats.renderEnd;
-    const totalDays = diffDays(stats.start, last) + 1;
+    const totalDays = diffDays(stats.renderStart, last) + 1;
     const items = trip.items || [];
     const cards = [];
-    for (let d = stats.start, i = 0; d <= last; d = addDays(d, 1), i++) {
+    for (let d = stats.renderStart, i = 0; d <= last; d = addDays(d, 1), i++) {
       const events = [];
       const untimed = [];
       for (const it of items) {
@@ -4630,10 +4707,19 @@ const TripLogic = (() => {
     return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a) <= 90 && Math.abs(b) <= 180;
   }
 
+  // A stamp a little AHEAD of the reader's clock is not junk, it is two
+  // processes disagreeing about the time: an NTP correction, a VM or laptop
+  // resume, or simply the tab that WROTE the entry reading a clock seconds
+  // ahead of the tab now reading it. `age >= 0` treated every one of those as
+  // corruption and dropped the WHOLE store, sending every venue on the trip
+  // back to Photon - the free, shared, unpaid service the lookup queue exists
+  // to go easy on. A stamp further ahead than a clock ever drifts is still
+  // junk (hand-edited storage) and still goes: minutes are skew, a day is not.
+  const VENUE_FUTURE_SLACK_MS = 5 * 60000;
   function venueFresh(rec, now) {
     if (!rec || typeof rec.at !== 'number' || !validCoord(rec.lat, rec.lon)) return false;
     const age = now - rec.at;
-    return age >= 0 && age < VENUE_TTL_MS;
+    return age > -VENUE_FUTURE_SLACK_MS && age < VENUE_TTL_MS;
   }
 
   // Applied when the persisted store is read: malformed and expired entries are
@@ -8885,7 +8971,7 @@ const TripLogic = (() => {
     templateItem, tripAsTemplate, TEMPLATE_CLEARED,
     isTransitType, isTransitSpan, overnightTransit, arrivalConflicts,
     validateItem, coverageGaps, tripStats, overlappingTrips, MAX_TRIP_DAYS, DATE_MIN, DATE_MAX, isDateInRange,
-    ISLANDISH, NO_LAND_LINK, seaCrossing, distKm, flagEmoji, compass, fmtDur, modeOptions,
+    ISLANDISH, ISLAND_NAMES, isIslandPlace, FERRY_MAX_KM, NO_LAND_LINK, seaCrossing, distKm, flagEmoji, compass, fmtDur, modeOptions,
     modeCost, modeCo2, routeBadges, corridorFacts, routeFlags, routeTips,
     routeLinks, modeLink, ROUTE_HONESTY,
     classifyGeoMatch, geoInputIsQualified, geoMatchNote,

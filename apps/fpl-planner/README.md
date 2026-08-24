@@ -321,6 +321,30 @@ Completeness is measured **per active player**, not as a league aggregate:
 after. A league aggregate silently encodes the pool size and fails on any pool
 smaller than a real league.
 
+**The snapshot carries every numerator whose denominator it restores** (version
+2, `RATE_FIELDS` in `engine/baseline.js`). Version 1 kept `{starts, minutes}`
+only, which are the DIVISORS of every rate the engine computes, while FPL
+clears the dividends (`expected_goals`, `expected_assists`,
+`expected_goals_conceded`, `bps`, saves, goals, assists, clean sheets, the
+defensive-contribution parts) in the same wipe. One match of attacking output
+over a season of minutes is how the planner came to field five defenders and
+captain one of them on 2026-08-22.
+
+**The blend fades the baseline out of numerators and denominators together.**
+`normalizePlayer` sets the evidence totals to `baseline + this season`, and the
+denominators to match: `evidenceMatches` is the baseline's season plus the
+matches this player's club has played, and every per-90 rate is read over the
+blended minutes. The two therefore grow at the same pace, and
+`baselineIsSuperseded` retires the snapshot outright once every club has played
+three matches.
+
+**A version 1 snapshot already in a user's localStorage is read, but not
+divided.** Its minutes still serve the minutes model; `rateMinutes` restricts
+every rate to THIS season's minutes, so a cleared numerator is never divided by
+a restored denominator, the shrinkage layer resolves those rates to the position
+priors, and `readiness` blocks transfers with `baseline_rates_missing` and says
+so. The next complete payload replaces it with a version 2 snapshot.
+
 The baseline is retired by `baselineIsSuperseded()` once every club has played
 three matches, so one bad August payload cannot freeze the app on last season.
 `gameState.baselineSource` says which is in force, and the UI says so too.
@@ -352,8 +376,19 @@ Chips are not evaluated at all without a chip-grade licence, and transfer
 candidates are not built without a transfer-grade one, so a refusal degrades to
 holding the squad rather than to a blank screen. Every refusal carries a code
 and a sentence. The pool is also checked for shape - a collapsed spread, start
-rates pinned at one, a best eleven that is not a football score - and those
-checks apply only to a real-sized pool, because they are claims about a league.
+rates pinned at one, a best eleven that is not a football score, and the best
+forwards and midfielders projecting BELOW the best defender (`projection_inverted`,
+the 2026-08-22 shape, which every aggregate check passed) - and those checks
+apply only to a real-sized pool, because they are claims about a league.
+
+Two further blocks are about the manager's own records rather than the pool:
+`baseline_rates_missing` (a minutes-only snapshot is standing in, so rates are
+position averages) and `history_missing` (`entry/{id}/history` came back null or
+with no gameweek rows in-season, so the chips already played and the banked free
+transfers are unknown). Both cap the ladder at `lineup`, and `buildSquadState`
+offers no chip at all when the history is degenerate: a 200 with a `null` body
+is a successful fetch, which is how a Wildcard came to be recommended to a
+manager who had already played his.
 
 Confidence follows: `assessConfidence` returns a fourth band, `unusable`, which
 is **not** the bottom of the same scale. The three ordinary bands grade how sure
@@ -377,6 +412,14 @@ Three renderings, because three states are genuinely different: a dash for a
 player whose match has not kicked off (he has no score), a zero for one whose
 match finished without him (that IS his score), and a tinted figure for one who
 played, captioned `live`, `bonus pending` or final.
+
+While the gameweek is `in-progress` and the tab is visible, the 30 second ticker
+also re-reads `event/{gw}/live` (`refreshLive` in `app.js`). The data layer's
+own 60 second TTL bounds the requests, and the view is re-rendered only when a
+score actually moved, so an open disclosure is not closed for nothing. Before
+this the endpoint was read at boot and again only on "Check for changes", so a
+manager watching a match saw frozen scores under a freshness line that kept
+ticking.
 
 ## The squad you own, not the squad you fielded
 
@@ -513,6 +556,12 @@ Settings offers two removals, and says plainly that it cannot do the third:
 - **Delete all FPL Planner data** clears all four keys and, when signed in,
   calls `eraseCloudData('fplPlannerApp')` to delete the whole Firestore
   document. It asks for confirmation first.
+- Both also drop `fpl-planner:cache:entry/*`, the unsynced cache entries that
+  hold this manager's squad, bank, history and transfers under a key containing
+  his team id (`entryCacheKeys()` plus `fplApi.clearCache({ prefix: 'entry/' })`,
+  which clears the in-memory copies too). The public bulk cache is kept: it is
+  identical for every user and says nothing about anyone. Until 2026-08-22 both
+  buttons left the entry keys behind.
 - **Deleting the Shevato account** is not offered here, because the account
   spans every app on the site.
 

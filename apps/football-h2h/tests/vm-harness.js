@@ -24,6 +24,8 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const JS_DIR = path.join(__dirname, '..', 'js');
+const ESCAPE_HTML_PATH = path.join(__dirname, '..', '..', '..', 'assets', 'js', 'escape-html.js');
+const PAGINATION_PATH = path.join(__dirname, '..', '..', '..', 'assets', 'js', 'pagination.js');
 
 // Minimal element stub: enough surface for the getters/setters the app code
 // touches (value, textContent, innerHTML, style, classList, appendChild).
@@ -106,7 +108,6 @@ function makeContext({ elements = {}, selectors = {}, readyState = 'loading', ..
         location: { hash: '', href: 'http://localhost/' },
         history: { replaceState() {} },
         navigator: { clipboard: { writeText: () => Promise.resolve() } },
-        escapeHtml: (v) => String(v == null ? '' : v),
         showToast: () => {},
         ...extra,
     };
@@ -115,6 +116,12 @@ function makeContext({ elements = {}, selectors = {}, readyState = 'loading', ..
     // `window.x = ...` exports would land on a detached object and every bare
     // identifier call between the two files would miss.
     vm.runInContext('globalThis.window = globalThis;', ctx);
+    // The REAL shared escape helper (assets/js/escape-html.js), never a
+    // pass-through stub: a stub is why no test could catch the unescaped
+    // modal layer before 2026-08-23.
+    if (!('escapeHtml' in extra)) {
+        vm.runInContext(fs.readFileSync(ESCAPE_HTML_PATH, 'utf8'), ctx, { filename: 'escape-html.js' });
+    }
     ctx.__elements = elements;
     ctx.__selectors = selectors;
     return ctx;
@@ -160,6 +167,8 @@ function fixedDate(iso) {
 
 module.exports = {
     JS_DIR,
+    ESCAPE_HTML_PATH,
+    PAGINATION_PATH,
     makeElement,
     memoryStorage,
     makeContext,

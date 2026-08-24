@@ -53,60 +53,50 @@ function restoreFromBackup() {
             return;
         }
 
+        // Same validator as import: a tampered or corrupted backup must not
+        // widen the roster or bring back 24:MM / duplicate / out-of-range rows.
+        const result = sanitizeRaceData(backupData.races);
+        if (!result.ok) {
+            showMessage(`Backup cannot be restored: ${result.error}`, true);
+            return;
+        }
+
         const backupDate = new Date(backupData.backupDate).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
-        const raceCount = backupData.races.length;
+        const raceCount = result.races.length;
 
-        // Create a beautiful confirmation modal
-        const modal = document.createElement('div');
-        modal.className = 'modal-overlay';
-
-        const dialog = document.createElement('div');
-        dialog.className = `modal-dialog `;
-
-        dialog.innerHTML = `
+        const { close } = presentModal({
+            initialFocus: '#cancel-restore',
+            html: `
             <div class="modal-icon">🔄</div>
             <h3 class="modal-title ">Restore from Backup?</h3>
             <p class="modal-text ">
                 Found backup with <strong class="">${raceCount} races</strong><br>
-                Created on: <strong class="">${backupDate}</strong><br><br>
+                Created on: <strong class="">${escapeHtml(backupDate)}</strong><br><br>
                 <span class="modal-warning ">⚠️ Warning: This will replace all current data!</span>
             </p>
             <div class="modal-buttons">
                 <button id="confirm-restore" class="modal-btn-primary">Restore Data</button>
                 <button id="cancel-restore" class="modal-btn-secondary ">Cancel</button>
             </div>
-        `;
+        `,
+        });
 
-
-        modal.appendChild(dialog);
-        document.body.appendChild(modal);
-
-        // Single teardown path so cancel/confirm/background-click/Escape
-        // all converge on the same cleanup. Older code called
-        // removeChild from each handler independently and never removed
-        // the document-level keydown listener except on the Escape path,
-        // so opening + cancelling the modal repeatedly stacked listeners.
-        const closeModal = () => {
-            if (modal.parentNode) modal.parentNode.removeChild(modal);
-            document.removeEventListener('keydown', escapeHandler);
-        };
-        const escapeHandler = (e) => { if (e.key === 'Escape') closeModal(); };
-        document.addEventListener('keydown', escapeHandler);
-
-        document.getElementById('cancel-restore').onclick = closeModal;
+        document.getElementById('cancel-restore').onclick = close;
 
         document.getElementById('confirm-restore').onclick = () => {
-            closeModal();
+            close();
 
             // Perform the restore
-            races = backupData.races || [];
+            races = result.races;
+            if (typeof resetActionHistory === 'function') resetActionHistory();
             
             // Use centralized PlayerNameManager for player names
-            if (window.PlayerNameManager && backupData.playerNames) {
-                window.PlayerNameManager.setAll(backupData.playerNames);
-            } else {
+            const restoredNames = sanitizePlayerNames(backupData.playerNames);
+            if (window.PlayerNameManager && Object.keys(restoredNames).length > 0) {
+                window.PlayerNameManager.setAll(restoredNames);
+            } else if (!window.PlayerNameManager) {
                 // Fallback
-                playerNames = backupData.playerNames || playerNames;
+                playerNames = { ...playerNames, ...restoredNames };
                 localStorage.setItem('marioKartPlayerNames', JSON.stringify(playerNames));
                 
                 // Update all player-related UI
@@ -155,11 +145,10 @@ function restoreFromBackup() {
             updateDisplay();
             updateAchievements();
             updateClearButtonState();
-            showMessage('Data restored from backup!');
+            showMessage(result.repairs.length > 0
+                ? `Data restored from backup (repaired: ${summarizeRepairs(result.repairs)})`
+                : 'Data restored from backup!');
         };
-
-        // Close on background click
-        modal.onclick = (e) => { if (e.target === modal) closeModal(); };
 
     } catch (e) {
         showMessage('Failed to restore backup', true);

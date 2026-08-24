@@ -46,7 +46,15 @@ function zIndexOf(css, selector) {
 
 test('the shared site header still sits where the app expects it', () => {
   assert.equal(zIndexOf(MAIN_CSS, '#header'), 10001);
-  assert.equal(zIndexOf(SYNC_CSS, '.sync-banner'), 10100);
+  // The banner used to sit at 10100, ABOVE the header, which made the logo,
+  // the Menu toggle and Sign In unclickable for as long as it showed, and for
+  // the whole offline period on every app page (site audit, 2026-08-22). It is
+  // now under the header and JS positions it at the header's bottom edge, so
+  // the two no longer overlap. This asserts that order rather than a literal,
+  // because the ladder is what matters.
+  const banner = zIndexOf(SYNC_CSS, '.sync-banner');
+  const header = zIndexOf(MAIN_CSS, '#header');
+  assert.ok(banner < header, `.sync-banner ${banner} must stay under #header ${header}`);
 });
 
 test('every app dialog covers the shared site header', () => {
@@ -58,9 +66,15 @@ test('every app dialog covers the shared site header', () => {
 test('the toast covers an open dialog and stays under the offline banner', () => {
   const toast = zIndexOf(APP_CSS, '.share-toast');
   const modal = zIndexOf(APP_CSS, '.modal');
-  const banner = zIndexOf(SYNC_CSS, '.sync-banner');
+  const header = zIndexOf(MAIN_CSS, '#header');
   assert.ok(toast > modal, `.share-toast ${toast} must beat .modal ${modal}`);
-  assert.ok(toast < banner, `.share-toast ${toast} must stay under .sync-banner ${banner}`);
+  // The toast used to be required to stay under the banner, which was then the
+  // top layer. Now that the banner sits under the header the pair no longer
+  // overlaps: the banner is a strip at the header's bottom edge and the toast
+  // is an app-level message. What still has to hold is that the toast clears
+  // the shared header, so it can never be half-hidden behind it. The hit-test
+  // that proves the banner itself stays visible lives in e2e/quality.mjs.
+  assert.ok(toast > header, `.share-toast ${toast} must clear #header ${header}`);
 });
 
 test('.share-toast declares its z-index exactly once', () => {

@@ -201,6 +201,28 @@ function main() {
   );
 }
 
-if (require.main === module) main();
+// `--help` (and any unknown argument) prints usage and exits BEFORE touching
+// anything. This script takes no options, but it used to run its full job on
+// any argument: `split-data.js --help` rewrote data-index.json and 34k detail
+// files (2026-08-22 audit, D6).
+const USAGE = `Usage: node split-data.js
+
+Splits ../data.json into ../data-index.json and ../data/detail/<seriesId>.json.
+Merges ../data/show-modal-extras.json into the detail files when present.
+Takes no options. Run via \`npm run build:rising-shows:split\`.
+`;
+
+if (require.main === module) {
+  const args = process.argv.slice(2);
+  if (args.includes('--help') || args.includes('-h')) {
+    process.stdout.write(USAGE);
+    process.exit(0);
+  }
+  if (args.length) {
+    process.stderr.write(`Unknown argument: ${args[0]}\n${USAGE}`);
+    process.exit(2);
+  }
+  main();
+}
 
 module.exports = { main };

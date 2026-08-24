@@ -151,6 +151,7 @@ test('vm harness: app.js exports every helper these tests drive', () => {
   const expected = [
     'ScrollMemory', 'buildSeasonShareText', 'clampScrollY', 'computeShowRelated',
     'computeStdDev', 'languagesCompatible', 'parseCompareParam',
+    'validateDataset', 'seasonEpisodeCount', 'shapeConfidence',
   ];
   const missing = expected.filter((name) => helpers[name] == null);
   assert.deepEqual(missing, [], `js/app.js stopped exporting: ${missing.join(', ')}`);
@@ -691,6 +692,55 @@ test('Compare: load truncates an oversized stored list to the cap, clear empties
   helpers.Compare.clear();
   assert.equal(helpers.Compare.size(), 0);
   assert.deepEqual(JSON.parse(ctx.localStorage.getItem(KEY_COMPARE)), []);
+});
+
+// ---------------------------------------------------------------------------
+// 2026-08-22 audit regressions
+// ---------------------------------------------------------------------------
+
+// D4: dataset shapes that used to throw AFTER load()'s try/catch (`[]` at the
+// matches loop, a null title in normalizeSearch) and leave the skeleton cards
+// up with no Retry. validateDataset runs inside the catch and turns them into
+// the existing error panel, dropping repairable records instead of dying.
+test('validateDataset: non-object and missing-matches shapes are an error, not a crash', () => {
+  assert.match(helpers.validateDataset([]), /Unexpected data shape/);
+  assert.match(helpers.validateDataset(null), /Unexpected data shape/);
+  assert.match(helpers.validateDataset({ builtAt: 'x' }), /Unexpected data shape/);
+  assert.match(helpers.validateDataset({ matches: 'nope' }), /Unexpected data shape/);
+});
+
+test('validateDataset: malformed records are dropped, an empty result is an error', () => {
+  const good = { seriesId: 'tt1', title: 'Good', season: 1 };
+  const d = { matches: [good, { seriesId: 'tt2', title: null, season: 1 }, null, { title: 'No id', season: 2 }, { seriesId: 'tt3', title: 'NaN season', season: 'x' }] };
+  const origWarn = console.warn;
+  const warned = [];
+  console.warn = (msg) => warned.push(String(msg));
+  try {
+    assert.equal(helpers.validateDataset(d), null);
+  } finally { console.warn = origWarn; }
+  assert.deepEqual(d.matches, [good], 'only the usable record survives');
+  assert.match(warned.join(' '), /dropped 4 malformed/);
+  assert.match(helpers.validateDataset({ matches: [{ title: null }] }), /Show data is empty/);
+  assert.equal(helpers.validateDataset({ matches: [good] }), null);
+});
+
+// D7: a failed detail fetch leaves `episodes` empty; the row must fall back
+// to the index's episodeCount instead of printing "0 eps".
+test('seasonEpisodeCount: loaded episodes win, then the index count, then 0', () => {
+  assert.equal(helpers.seasonEpisodeCount({ episodes: [{}, {}, {}], episodeCount: 13 }), 3);
+  assert.equal(helpers.seasonEpisodeCount({ episodes: [], episodeCount: 13 }), 13);
+  assert.equal(helpers.seasonEpisodeCount({ episodeCount: 13 }), 13);
+  assert.equal(helpers.seasonEpisodeCount({ episodes: [] }), 0);
+  assert.equal(helpers.seasonEpisodeCount({ episodes: [], episodeCount: 'x' }), 0);
+});
+
+// U2: a pill is dimmed from the season record's confidence map; categorical
+// tags carry none and render normally.
+test('shapeConfidence: reads the per-shape value, null when absent', () => {
+  assert.equal(helpers.shapeConfidence({ 'big-finale': 0.1, rising: 1 }, 'big-finale'), 0.1);
+  assert.equal(helpers.shapeConfidence({ rising: 1 }, 'shape-drift'), null);
+  assert.equal(helpers.shapeConfidence(undefined, 'rising'), null);
+  assert.equal(helpers.shapeConfidence({ rising: 'high' }, 'rising'), null);
 });
 
 // ---------------------------------------------------------------------------

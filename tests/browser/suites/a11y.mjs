@@ -80,16 +80,21 @@ async function axeScan(s) {
 }
 
 const SERIOUS = new Set(['serious', 'critical']);
+// Moderate rules promoted to failures once the estate was clean of them
+// (2026-08-22 round: the header's two "Main navigation" landmarks and the
+// moadon-alef footer's h4-under-h2 were the only offenders site-wide).
+// Their absence is now a pinned invariant, not an info line.
+const PROMOTED = new Set(['landmark-unique', 'heading-order']);
 const pairsOf = (violations) => {
   const out = [];
   for (const v of violations || []) {
-    if (!SERIOUS.has(v.impact)) continue;
+    if (!SERIOUS.has(v.impact) && !PROMOTED.has(v.id)) continue;
     for (const target of v.targets) out.push(`${v.id} [${v.impact}] @ ${target}`);
   }
   return out;
 };
 const infoOf = (violations) => (violations || [])
-  .filter((v) => !SERIOUS.has(v.impact))
+  .filter((v) => !SERIOUS.has(v.impact) && !PROMOTED.has(v.id))
   .map((v) => `${v.id}(${v.impact} x${v.count})`)
   .join(', ');
 
@@ -208,6 +213,34 @@ export async function run({ base, cdpPort }) {
     } finally { if (s) await closePage(cdpPort, s); }
   }
 
+  // State scan 3: home with the shared auth modal open. The modal is the
+  // one shared surface no page-level scan sees (defect D15, 2026-08-22: the
+  // active tab's #667eea-on-white failed contrast at 3.66:1 while every
+  // closed-modal scan was clean).
+  {
+    let s = null;
+    try {
+      s = await newPage(cdpPort);
+      await setViewport(s, 1280, 900);
+      await goto(s, `${base}/home.html`, { settle: 2400 });
+      const btnUp = await waitForExpr(s, `(()=>{const b=document.getElementById('auth-signin-btn');
+        return !!b && b.getBoundingClientRect().height>0})()`, { timeout: 12000 });
+      if (!btnUp) throw new Error('precondition missing: #auth-signin-btn never rendered');
+      await clickSel(s, '#auth-signin-btn', { settle: 700 });
+      const open = await waitForExpr(s, `document.getElementById('auth-modal').classList.contains('auth-modal--visible')`);
+      if (!open) throw new Error('auth modal never opened');
+      const ok = await injectAxe(s, axeSource);
+      const violations = ok ? await axeScan(s) : null;
+      scans.push({
+        label: 'state site auth-modal-open', siteChrome: false,
+        violations: Array.isArray(violations) ? violations : null,
+        err: Array.isArray(violations) ? '' : JSON.stringify(violations),
+      });
+    } catch (e) {
+      scans.push({ label: 'state site auth-modal-open', siteChrome: false, violations: null, err: String(e && e.message).slice(0, 120) });
+    } finally { if (s) await closePage(cdpPort, s); }
+  }
+
   // State scans 3 + 4: maptap-rivals with a SEEDED game log (rivals, synced
   // games with geo data, a rival-only day, a long name) at 1280 with the
   // predictions card rendered and the paste panel open, then the matrix at
@@ -310,17 +343,17 @@ export async function run({ base, cdpPort }) {
     }
     // Violations present: only quarantined scans may skip, and only for the
     // exact rule ids pinned at audit time. Anything else is a regression.
-    const seriousRules = new Set(x.violations.filter((v) => SERIOUS.has(v.impact)).map((v) => v.id));
+    const seriousRules = new Set(x.violations.filter((v) => SERIOUS.has(v.impact) || PROMOTED.has(v.id)).map((v) => v.id));
     const novel = [...seriousRules].filter((id) => !allowedRules || !allowedRules.has(id));
     if (novel.length) {
       t(name, false, `NEW serious/critical violation(s) beyond the pinned quarantine: `
-        + x.violations.filter((v) => SERIOUS.has(v.impact) && novel.includes(v.id))
+        + x.violations.filter((v) => (SERIOUS.has(v.impact) || PROMOTED.has(v.id)) && novel.includes(v.id))
           .map((v) => `${v.id}(${v.impact} x${v.count}) @ ${v.targets.slice(0, 3).join(' , ')}`).join('; '));
       continue;
     }
     const own = pairs.filter((p) => !sharedPairs.has(p));
     const shared = pairs.filter((p) => sharedPairs.has(p));
-    const ruleCounts = x.violations.filter((v) => SERIOUS.has(v.impact))
+    const ruleCounts = x.violations.filter((v) => SERIOUS.has(v.impact) || PROMOTED.has(v.id))
       .map((v) => `${v.id}(${v.impact} x${v.count})`).join(', ');
     let detail;
     if (shared.length && sharedListedOn === null) {
@@ -441,11 +474,45 @@ export async function run({ base, cdpPort }) {
       t('kbd mobile menu: opens via the toggle (aria-expanded=true)',
         opened && openState.vis && openState.expanded === 'true', JSON.stringify(openState));
 
+      // Focus must enter the panel on open and stay inside it (defect D3,
+      // 2026-08-22: Tab went to the hero buttons behind the panel and Escape
+      // left focus there). Both Tab directions are cycled past the ends.
+      const inMenuExpr = `(()=>{const a=document.activeElement; return !!a && !!a.closest && !!a.closest('#menu')})()`;
+      const focusEntered = await waitForExpr(s, inMenuExpr, { timeout: 2000 });
+      let stayed = true; let leftTo = '';
+      for (let i = 0; i < 18; i++) {
+        await TAB(s);
+        if (!(await evaluate(s, inMenuExpr))) {
+          stayed = false;
+          leftTo = await evaluate(s, `(document.activeElement||{}).id || (document.activeElement||{}).textContent?.trim().slice(0,30) || (document.activeElement||{}).tagName`);
+          break;
+        }
+      }
+      for (let i = 0; i < 3 && stayed; i++) {
+        await TAB(s, true);
+        if (!(await evaluate(s, inMenuExpr))) { stayed = false; leftTo = 'shift-tab escaped'; break; }
+      }
+      t('kbd mobile menu: focus moves into the open panel and Tab cycles inside it',
+        focusEntered && stayed, `entered=${focusEntered}${stayed ? '' : ', escaped to "' + leftTo + '"'}`);
+
       await ESC(s);
       await sleep(600);
       const stillOpen = await evaluate(s, menuVisible);
       t('kbd mobile menu: Escape closes the open menu', !stillOpen,
         stillOpen ? 'menu still visible after Escape' : '');
+      const backOnToggle = await evaluate(s, `document.activeElement === document.querySelector('[data-js="menu-toggle"]')`);
+      t('kbd mobile menu: Escape returns focus to the Menu toggle', !stillOpen && backOnToggle,
+        String(await evaluate(s, `(document.activeElement||{}).id || (document.activeElement||{}).textContent?.trim().slice(0,30) || (document.activeElement||{}).tagName`)));
+
+      // prefers-reduced-motion: the panel slide must collapse to no
+      // transition under the media feature (main.css honours it since
+      // 2026-08-22; only back-to-top.css and firebase-auth.css did before).
+      await s.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+      const rm = await evaluate(s, `(()=>{ const cs=getComputedStyle(document.getElementById('menu'));
+        return { dur: cs.transitionDuration, matches: matchMedia('(prefers-reduced-motion: reduce)').matches }; })()`);
+      await s.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: '' }] });
+      t('mobile menu: no slide transition under prefers-reduced-motion',
+        rm.matches && rm.dur.split(',').every((d) => parseFloat(d) === 0), JSON.stringify(rm));
 
       // Reopen (the panel plugin locks for its 500ms delay after a hide) and
       // close via the labelled close control.
@@ -479,10 +546,28 @@ export async function run({ base, cdpPort }) {
         return !!b && b.getBoundingClientRect().height>0})()`, { timeout: 12000 });
       if (!btnUp) {
         const reason = 'precondition missing: #auth-signin-btn never rendered (Firebase auth did not initialize in this environment)';
+        skip('kbd home: Sign In button shows a visible focus indicator', reason);
         skip('kbd auth modal: focus moves into the dialog on open', reason);
         skip('kbd auth modal: Tab keeps focus inside the open dialog', reason);
         skip('kbd auth modal: Escape closes and returns focus to the trigger', reason);
       } else {
+        // The header Sign In button must show a focus ring under a real Tab
+        // (defect D5, 2026-08-22: firebase-auth.css pinned outline:none and
+        // box-shadow:none !important on it, the only unlit header control).
+        await evaluate(s, `(()=>{ if(document.activeElement) document.activeElement.blur(); return 1 })()`);
+        let ring = null;
+        for (let i = 0; i < 30; i++) {
+          await TAB(s);
+          const st = await evaluate(s, `(()=>{ const b=document.getElementById('auth-signin-btn');
+            if (document.activeElement !== b) return null; const cs=getComputedStyle(b);
+            return { outlineStyle: cs.outlineStyle, outlineWidth: cs.outlineWidth, boxShadow: cs.boxShadow }; })()`);
+          if (st) { ring = st; break; }
+        }
+        const ringVisible = !!ring && ((ring.outlineStyle !== 'none' && parseFloat(ring.outlineWidth) > 0)
+          || (ring.boxShadow && ring.boxShadow !== 'none'));
+        t('kbd home: Sign In button shows a visible focus indicator', ringVisible,
+          ring ? JSON.stringify(ring) : 'Tab never reached #auth-signin-btn');
+
         await clickSel(s, '#auth-signin-btn', { settle: 700 });
         const focusIn = await waitForExpr(s, `(()=>{
           const m=document.getElementById('auth-modal');

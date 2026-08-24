@@ -459,6 +459,86 @@ test('buildShowAgg: a split row with no rated episodes is dropped, as before', (
 });
 
 // ---------------------------------------------------------------------------
+// 2026-08-22 audit regressions (D2 rating-sort vote floor, D8 search trimming)
+// ---------------------------------------------------------------------------
+
+const {
+  RATING_SORT_VOTE_FLOOR,
+  ABOVE_IMDB_MIN_VOTES,
+  serializeFinderQuery,
+  ratingSortFloorActive,
+  finderStateComparator,
+} = require('../scripts/finder-lib.js');
+
+test('D8: a padded or whitespace-only search term is trimmed on parse', () => {
+  // `#q=+++` was an active filter that filtered nothing, and `#q=++breaking++`
+  // made two users with the same query share different links.
+  assert.equal(parseFinderQuery('q=+++').search, '');
+  assert.equal(parseFinderQuery('q=++breaking++').search, 'breaking');
+  assert.equal(parseFinderQuery('q=%20%20bad%20').search, 'bad');
+});
+
+test('D8: serialize trims the term and round-trips through parse', () => {
+  const f = { ...FINDER_DEFAULTS, search: '  breaking  ', genres: new Set(), genresExclude: new Set(), languages: new Set(), shapes: new Set() };
+  assert.equal(serializeFinderQuery(f).toString(), 'q=breaking');
+  const blank = { ...f, search: '   ' };
+  assert.equal(serializeFinderQuery(blank).toString(), '', 'a whitespace term serialises to nothing');
+  const back = parseFinderQuery(serializeFinderQuery(f).toString());
+  assert.equal(back.search, 'breaking');
+  // A default state round-trips to an empty hash (no dangling keys).
+  assert.equal(serializeFinderQuery(parseFinderQuery('')).toString(), '');
+  // And every non-default knob survives the trip.
+  const full = parseFinderQuery('q=x&view=list&sort=gap&dir=asc&minEps=12&minSeasons=2&minVotes=500'
+    + '&minShow=7.5&minAvg=8&gapDir=up&minGap=0.3&minYear=1990&maxYear=2010&gems=on'
+    + '&genres=Drama&xgenres=Reality-TV&langs=en,ja&shape=rising,rebound&page=3');
+  const again = parseFinderQuery(serializeFinderQuery(full).toString());
+  for (const k of Object.keys(full)) {
+    const a = full[k] instanceof Set ? [...full[k]].sort() : full[k];
+    const b = again[k] instanceof Set ? [...again[k]].sort() : again[k];
+    assert.deepEqual(b, a, `round-trip lost ${k}`);
+  }
+});
+
+// Three rows: a 7-vote 10.0, a 400-vote 9.6 and a 50,000-vote 8.9. Without a
+// floor the rating sorts open on the 7-vote title, which is the audit's D2.
+const LOW_A = { title: 'Seven Votes', votes: 7, avgEpisode: 10, showRating: 9.9, year: 2020 };
+const LOW_B = { title: 'Four Hundred', votes: 400, avgEpisode: 9.6, showRating: 9.6, year: 2020 };
+const BIG = { title: 'Fifty Thousand', votes: 50000, avgEpisode: 8.9, showRating: 8.7, year: 2020 };
+
+test('D2: the floor applies to the two rating sorts when votes is "Any", and only then', () => {
+  assert.equal(RATING_SORT_VOTE_FLOOR, 1000, 'documented floor (README "Rating sorts")');
+  assert.equal(ratingSortFloorActive(parseFinderQuery('sort=avgEpisode')), true);
+  assert.equal(ratingSortFloorActive(parseFinderQuery('sort=showRating')), true);
+  assert.equal(ratingSortFloorActive(parseFinderQuery('sort=showRating&minVotes=100')), false,
+    'a user-set votes floor takes over');
+  assert.equal(ratingSortFloorActive(parseFinderQuery('sort=votes')), false);
+  assert.equal(ratingSortFloorActive(parseFinderQuery('sort=gap')), false);
+});
+
+test('D2: rows under the floor rank after every row above it, in both directions, without being dropped', () => {
+  const rows = [LOW_A, LOW_B, BIG];
+  const desc = rows.slice().sort(finderStateComparator(parseFinderQuery('sort=avgEpisode')));
+  assert.deepEqual(desc.map((r) => r.title), ['Fifty Thousand', 'Seven Votes', 'Four Hundred']);
+  assert.equal(desc.length, 3, 'the floor ranks, it never filters');
+  const asc = rows.slice().sort(finderStateComparator(parseFinderQuery('sort=showRating&dir=asc')));
+  assert.deepEqual(asc.map((r) => r.title), ['Fifty Thousand', 'Four Hundred', 'Seven Votes']);
+  // With an explicit votes floor the plain numeric order is back.
+  const plain = rows.slice().sort(finderStateComparator(parseFinderQuery('sort=avgEpisode&minVotes=5')));
+  assert.deepEqual(plain.map((r) => r.title), ['Seven Votes', 'Four Hundred', 'Fifty Thousand']);
+  // filterAndSortRows uses the same comparator, so the Kometa export of a
+  // rating-sorted preset matches what the Finder shows.
+  const viaExport = filterAndSortRows(rows.map((r) => ({ ...r, seriesId: 'x', episodes: 10, seasonsCount: 2, gap: 0, genres: [], language: 'en', shapes: [] })),
+    parseFinderQuery('sort=avgEpisode'));
+  assert.deepEqual(viaExport.map((r) => r.title), ['Fifty Thousand', 'Seven Votes', 'Four Hundred']);
+});
+
+test('D2: finderComparator without a floor is unchanged (plain numeric sort)', () => {
+  const order = [LOW_A, LOW_B, BIG].sort(finderComparator('avgEpisode', 'desc')).map((r) => r.title);
+  assert.deepEqual(order, ['Seven Votes', 'Four Hundred', 'Fifty Thousand']);
+  assert.equal(ABOVE_IMDB_MIN_VOTES, 1000, 'the badge floor app.js reads');
+});
+
+// ---------------------------------------------------------------------------
 // Whole-show trajectory when the newest season has not finished airing (D1).
 //
 // deriveShowShapes feeds per-season AVERAGES to the same detectors match.js

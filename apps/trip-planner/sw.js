@@ -21,7 +21,7 @@
  * MINOR when the strategy changes, MAJOR for a back-compat break.
  */
 
-const CACHE_VERSION = '2.5.2';
+const CACHE_VERSION = '2.5.3';
 const PRECACHE = `trip-precache-${CACHE_VERSION}`;
 const RUNTIME = `trip-runtime-${CACHE_VERSION}`;
 
@@ -29,9 +29,9 @@ const PRECACHE_URLS = [
   './',
   './index.html',
   './manifest.webmanifest',
-  './css/styles.css?v=64',
-  './js/trip-logic.js?v=45',
-  './js/app.js?v=71',
+  './css/styles.css?v=65',
+  './js/trip-logic.js?v=46',
+  './js/app.js?v=72',
   // The bundled airport table (see scripts/build-airports.mjs). ~260 KB, and
   // precached on purpose: an airport picker that stops working without signal
   // is useless in the one place you most need it.
@@ -54,6 +54,7 @@ const PRECACHE_URLS = [
   // load resolved each to a network error. Sync itself still needs Firebase
   // online; precaching only makes the failure quiet and complete.
   '../../sync-system/sync-immediate.js',
+  '../../sync-system/tab-sync.js',
   '../../sync-system/storage-sync-robust.js',
   '../../sync-system/app-sync-init.js',
   '../../sync-system/sync-debug.js',

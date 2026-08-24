@@ -121,7 +121,7 @@ class TooltipManager {
             '.sweet-spot-bar': this.getSweetSpotTooltip(element),
             
             // Player labels - removed tooltip for achievements section
-            '.player-name-label': element.closest('#achievements-container') ? null : `${element.textContent} - Click to customize icon`,
+            '.player-name-label': null,
             
             // Icons
             '.player-icon': `${element.getAttribute('data-player-name') || 'Player'} icon`,

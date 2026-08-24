@@ -205,3 +205,50 @@ test('taxonomy and index pages stay indexable', () => {
   assert.ok(index.includes('content="index, follow'), 'the exercise index must remain indexable');
   assert.ok(!index.includes('content="noindex'), 'the exercise index must not be noindexed');
 });
+
+// 2026-08-22 audit D6: leaf pages link Category to /exercises/muscle/<category>/
+// but the build only emitted muscle directories from `muscleGroup || category`,
+// so `back`, `chest` and `cardio` had no page and 155 leaf pages carried a 404
+// link on production. This builds the REAL catalog into a temp dir and walks
+// every internal /apps/gym-tracker/exercises/ href of every emitted page
+// against the emitted directory set.
+test('every internal exercises/ link on every built page resolves to an emitted page', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { main } = require('../scripts/build-exercise-pages.cjs');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gym-pages-'));
+  const outDir = path.join(tmp, 'exercises');
+  const sitemapFile = path.join(tmp, 'sitemap-exercises.xml');
+  try {
+    main({ outDir, sitemapFile, log: () => {} });
+    const pages = [];
+    const walk = (dir) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name === 'index.html') pages.push(full);
+      }
+    };
+    walk(outDir);
+    assert.ok(pages.length > 500, `built ${pages.length} pages`);
+    const emitted = new Set(pages.map((p) => '/apps/gym-tracker/exercises/' + path.relative(outDir, path.dirname(p)).split(path.sep).filter(Boolean).join('/')).map((u) => (u.endsWith('/') ? u : u + '/')));
+    emitted.add('/apps/gym-tracker/exercises/');
+    const dangling = new Map();
+    for (const page of pages) {
+      const html = fs.readFileSync(page, 'utf8');
+      for (const m of html.matchAll(/href="(\/apps\/gym-tracker\/exercises\/[^"#]*)"/g)) {
+        const href = m[1];
+        if (!emitted.has(href)) dangling.set(href, (dangling.get(href) || 0) + 1);
+      }
+    }
+    assert.deepEqual([...dangling.entries()], [], 'dangling internal links (href -> page count)');
+    for (const cat of ['back', 'chest', 'cardio']) {
+      assert.ok(emitted.has(`/apps/gym-tracker/exercises/muscle/${cat}/`), `category page for ${cat} emitted`);
+    }
+    const sitemap = fs.readFileSync(sitemapFile, 'utf8');
+    assert.ok(sitemap.includes('/exercises/muscle/chest/'), 'category pages are listed in the sitemap');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

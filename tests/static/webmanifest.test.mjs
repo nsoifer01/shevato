@@ -61,3 +61,18 @@ for (const manifestPath of MANIFESTS) {
     assert.deepEqual(missing, [], `icon files missing on disk for ${manifestPath}`);
   });
 }
+
+// The site manifest must launch on the canonical URL and match the dark
+// chrome. Shipped otherwise: start_url was `/home.html` (production 301s it,
+// so every installed-app launch took a redirect hop; Netlify's Pretty URLs
+// rewrite hrefs inside HTML but never JSON) and background_color was white
+// behind a #181818 header.
+test('site.webmanifest launches on the canonical /home and paints a dark splash', () => {
+  const site = JSON.parse(readFileSync(join(REPO_ROOT, 'site.webmanifest'), 'utf8'));
+  assert.equal(site.start_url, '/home', 'start_url must be the extensionless canonical URL');
+  const m = /^#([0-9a-f]{6})$/i.exec(site.background_color || '');
+  assert.ok(m, `background_color must be a 6-digit hex colour, got ${site.background_color}`);
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16));
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  assert.ok(luminance < 0.35, `background_color ${site.background_color} is light (L=${luminance.toFixed(2)}); the site is dark-chrome only`);
+});

@@ -125,7 +125,7 @@ function updatePlayerCount(newCount) {
     // Clear form inputs for removed players
     if (newCount < oldCount) {
         for (let i = newCount; i < oldCount; i++) {
-            const playerKey = allPlayers[i];
+            const playerKey = ['player1', 'player2', 'player3', 'player4'][i];
             const input = document.getElementById(playerKey);
             if (input) input.value = '';
         }
@@ -182,6 +182,8 @@ function updateInputGroupClass() {
     }
 }
 
+
+window.getPlayerCount = function () { return playerCount; };
 
 function getPlayerKey(playerIndex) {
     const keyMap = { 0: 'player1', 1: 'player2', 2: 'player3', 3: 'player4' };

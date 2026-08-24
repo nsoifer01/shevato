@@ -3211,3 +3211,22 @@ html::-webkit-scrollbar-corner { background: transparent; }
   vertical-align: -0.16em;
   margin-right: 0.5rem;
   flex-shrink: 0; }
+
+/* Reduced motion for the site chrome. Scoped to the header, the mobile menu
+   panel and the banner preload fade rather than a blanket rule, because
+   every app page loads this file and app transitions are not ours to cut. */
+@media (prefers-reduced-motion: reduce) {
+  #menu,
+  #header,
+  #header a,
+  .nav-apps__menu,
+  #banner .inner,
+  #banner:before {
+    -moz-transition: none !important;
+    -webkit-transition: none !important;
+    -ms-transition: none !important;
+    transition: none !important;
+    -moz-animation: none !important;
+    -webkit-animation: none !important;
+    -ms-animation: none !important;
+    animation: none !important; } }

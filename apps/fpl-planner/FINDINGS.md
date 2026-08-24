@@ -1176,9 +1176,28 @@ trimmed and sanitized, under `tests/fixtures/gw1-2026/`.
   first version of this check broke thirteen engine tests and was wrong, not the
   tests. The baseline retires once every club has played three matches, so one
   bad August payload cannot freeze the app on last season.
-- **Restored, not merely refused.** With the kept baseline applied to the exact
-  payload that broke production, Raya goes from 0.08 xP back to 5.40 and the
-  best eleven from 33.4 to 58.2.
+- **Restored, not merely refused - and since 2026-08-22, the rates too.** With
+  the kept baseline applied to the exact payload that broke production, Raya
+  goes from 0.08 xP back to 5.40 and the best eleven from 33.4 to 58.2. The
+  first version of the snapshot restored starts and minutes ONLY, which are the
+  DENOMINATORS of every rate; FPL clears the numerators (`expected_goals`,
+  `expected_assists`, `expected_goals_conceded`, `bps`, saves, goals, assists,
+  clean sheets, the defcon parts) in the same wipe, so `underlyingRates` divided
+  one match of attacking output by a season of minutes. Measured on the
+  2026-08-22 production payload: best forward in the pool 1.9 xP (Haaland 1.7,
+  xG 0.0028 a match), best midfielder 2.7, top defenders 4.8-5.5 with
+  xCleanSheet 0.83; the plan was 5-4-1, captain Virgil, vice Lacroix, transfer
+  Gabriel -> Virgil, readiness `transfers`, confidence HIGH. The snapshot is now
+  version 2 and carries every numerator whose denominator it restores
+  (`RATE_FIELDS`), the blend is `baseline + this season` over `baseline matches +
+  this club's matches` so numerators and denominators fade together, and every
+  per-90 division reads its denominator through `rateMinutesOf`. Same payload
+  after the fix: best FWD 5.1, best MID 6.5, best DEF 4.6, formation 3-5-2,
+  captain B.Fernandes, vice Enzo, "Roll your transfer". Pinned by
+  `season-lifecycle.test.mjs` ("with the baseline in force the plan attacks",
+  "the 2026-08-22 production payload ... projects a football-shaped pool", "a
+  legacy minutes-only snapshot is read honestly") on the committed
+  `tests/fixtures/gw1-2026/live-2026-08-22.json`.
 - **Recommendations are a ladder, not a boolean** (`engine/readiness.js`).
   Display, lineup, transfers, chips. `planner.js` consults it before proposing
   anything: chips are not evaluated without a chip-grade licence and transfer
@@ -1232,7 +1251,11 @@ Simulating the finalisation states FPL has not reached yet, on the real FT+11h
 payload, shows the repair working through all of them **for anyone who has a
 baseline** - phases progress `in-progress` to `finalising` to `complete`,
 `settled` flips only at the last, evidence stays `previous-season`, readiness
-stays `transfers`, and the plan reads 44.5 to 47.6 xP with a sensible captain.
+stays `transfers`, and the plan reads 44.5 to 47.6 xP. The total was never the
+tell: it stayed a football score all through the collapse, which is why a
+best-eleven range cannot be the health check and `projection_inverted` (best
+forward AND best midfielder below the best defender) had to be added to
+readiness. With the version 2 baseline the same states captain a midfielder.
 
 For a manager whose FIRST EVER visit is after the rollover there is no baseline
 to keep, and one gameweek of this season is genuinely not enough: the underlying
@@ -1252,6 +1275,21 @@ The refusal message follows the actual state: while the clubs are uneven it
 says so, and once a gameweek has completed it says the season is only N matches
 old. Telling someone whose gameweek has finished that "the clubs have not played
 the same number of games" is simply wrong, and it was.
+
+### The legacy snapshot, and why it is not simply thrown away
+
+Every browser that met the 2026-08-21 fix holds a version 1 (minutes-only)
+snapshot under `fplPlannerSeasonBaseline.v1`. Deleting it on sight would put
+those managers back on a payload with no evidence at all, so it is still read:
+the minutes serve the minutes model, `rateMinutes` restricts every rate to this
+season's own minutes (so a cleared numerator is never divided by a restored
+denominator), the shrinkage layer resolves those rates to the position priors,
+and readiness blocks transfers with `baseline_rates_missing`. If the resulting
+pool is still inverted, `projection_inverted` withholds the lineup too - which
+is what happens on the 2026-08-22 payload, and the test asserts exactly that
+rather than a fixed level. `saveSnapshotIfBetter` replaces a version 1 snapshot
+with the next complete payload regardless of season label, which is the upgrade
+path.
 
 ### The trap that is still open
 
@@ -1307,6 +1345,13 @@ fail and pinning the surfaces that had none. The rules worth keeping:
   season count from `scripts/backtest.mjs KNOWN_SEASONS` and asserts the
   current 60, so it fails ON PURPOSE when the season list moves, which is the
   prompt to update the counts in README, this file and the registry.
+- **The e2e lifecycle fixture no longer bakes a passed deadline into GW1.**
+  Until 2026-08-22 `deadlineOffsetMs` put the PLAN gameweek's deadline 30
+  minutes in the past for every GW1 state, so every one of those screens said
+  "Deadline passed" for GW2 and any actionability assertion there was measuring
+  the harness. GW1's own deadline is now the one in the past and GW2's is days
+  ahead, which is the real shape of a transfer window; `lifecycle.mjs` asserts
+  it (block 7b).
 - **A silent skip is a coverage change nobody approved.** The archive-gated
   tests (`player-identity.test.mjs`, 4; `train-dedupe.test.mjs`, 1) each carry
   a guard that scans the file's own source for the gated-skip count and asserts
@@ -1354,6 +1399,91 @@ fail and pinning the surfaces that had none. The rules worth keeping:
   asserts a recommendation actually rendered), and the scenario captain reader
   ran the same `.find()` three times behind an always-true guard (now the
   vice reader's shape).
+
+- **The e2e lifecycle fixture pins the PLAN gameweek's deadline to 30
+  minutes ago for every GW1 state** (`deadlineOffsetMs = -30 min` on
+  `planGw`), so those screens always say "Deadline passed" for GW2 and present
+  a plan as actionable until the 30-second tick. Any assertion about
+  actionability in those states is measuring the harness, not the app.
+
+## What the 2026-08-22 site-wide audit found, and what pins each fix
+
+Every defect below was confirmed in the browser against the production payload
+or the e2e fixtures, then fixed with a regression that fails on the old code.
+
+- **The baseline collapse (P1)** is the section above ("Restored, not merely
+  refused"), plus `projection_inverted` in `readiness.js`.
+- **A null or empty `entry/{id}/history` in-season** read as "no chips used,
+  1 FT" and recommended a Wildcard to a manager who had already played his,
+  because a 200 with a `null` body is a successful fetch. `historyIsMissing()`
+  now names the state, `buildSquadState` offers NO chip on it and raises a
+  `history_missing` warning, and readiness caps the ladder at `lineup`. The
+  banner is titled by what it is rather than as a price mismatch
+  (`squadWarningsBanner`). Pinned by `squad.test.mjs` ("a missing or empty
+  season history in-season is flagged, and no chip is offered on it", "an empty
+  history before the season starts is not degenerate"),
+  `season-lifecycle.test.mjs` ("a missing season history holds the ladder at
+  lineup") and the e2e block "a null season history is named on screen".
+- **A pick the player list does not carry** produced
+  `Cannot read properties of undefined (reading 'position')` behind the generic
+  failure screen. `buildSquadState` throws `UnknownPlayerError` naming the ids,
+  and `friendlyFailure` maps it (and the validator's own refusal string) to a
+  sentence. Pinned by `squad.test.mjs` and the e2e "an unknown pick id is
+  refused in a sentence".
+- **Disconnect and Delete all left `fpl-planner:cache:entry/*`** (squad, bank,
+  history, keyed by team id). Both now clear them, in storage and in memory
+  (`entryCacheKeys()`, `fplApi.clearCache({ prefix: 'entry/' })`). Pinned by
+  `ui-deletion.test.mjs` (the seed carries three entry-cache keys and a public
+  one; the public one must survive) and the e2e "Delete all removes every
+  fpl-planner:cache:entry/* key". **privacy.html needs the matching sentence.**
+- **Wrong-typed settings** (`{"horizon":"x","risk":42}`, reachable by sync from
+  an older version) hit the generic load-failure screen. `sanitizeSettings`
+  validates each field against its closed set. Pinned by `ui-store.test.mjs`.
+- **Every source `x-fpl-stale: true` under six hours was invisible**: the banner
+  keyed off `data_age` alone. `staleSourcesBanner` renders the stale names while
+  the plan still shows; past six hours the plan is withheld exactly as before.
+  Pinned by `ui-dashboard.test.mjs` and the e2e stale block.
+- **An empty fixture list** rendered "Roll your transfer" with a captain reading
+  "No fixture, 0.0 xP". `assessData` now withholds the plan with a reason
+  (`fixturesMissing`), judging the planner's own source list as well as the
+  fetch layer's. Pinned by `ui-plan-model.test.mjs` and an e2e block.
+- **An empty `picks` array in-season** rendered the pre-season "Build this
+  opening 15" headline; `buildSquadState` raises `empty_picks` and the banner
+  says the plan is a fresh build rather than advice about the owned team.
+- **The History chart drew the best gameweek shorter than lower ones**: the
+  caption was a flex sibling of the track, so a captioned column lost the
+  caption's height. The cap now sits INSIDE the track, positioned on top of its
+  own fill. Pinned by `ui-charts.test.mjs` (geometry: caps inside the track,
+  fill heights monotone in value) and by a rendered-geometry e2e check.
+- **Manual entry called a squad "legal so far" that could not be completed**:
+  `squadLegality` computes the cheapest legal fill for the positions still short
+  and says so when it exceeds the bank. Pinned by `ui-manual-entry.test.mjs`.
+- **Swap mode had no exit**: the action bar carries a Cancel button and Escape
+  backs out of a swap, an open picker or a selection.
+- **A plan computed past its own deadline** read as actionable until the 30
+  second tick. `computePlan` now schedules `reactToDeadline` on the next turn -
+  inline it did nothing, because the caller still holds the busy flag
+  `reactToDeadline` refuses to run under.
+- **Live scores never refreshed by themselves** during a gameweek in play; the
+  ticker now re-reads the live endpoint on its own TTL while the tab is visible.
+- **a11y and mobile**: the History tables and the manual-entry results list are
+  focusable scroll regions (`tabindex="0"`, `role="region"`); `.fpl-note > b`,
+  the dimmed scenario cards and the transfer picker's heading (which inherits
+  the site's `button { color:#555 !important }`) are pinned to readable tones;
+  the deadline pill wraps as two phrases rather than three lines at 360; names
+  in the five-wide and bench rows wrap instead of truncating; the sticky app
+  header sits below the site's fixed 3.25rem header instead of under it.
+
+Two things the audit reported that are NOT app defects, both proved by probe:
+
+- **The axe contrast readings on the plan view** (86 to 139 serious nodes)
+  come from scanning while `.fpl-view.is-active` is still fading in: axe
+  composites ancestor opacity into every measurement. Waiting for opacity to
+  reach 1 gives a clean scan on the same page. Any axe check in this app must
+  wait for the fade (`settled()` in `e2e/audit-2026-08.mjs`).
+- **The 1px document overflow at 390** is the site's shared `<header>`, which
+  renders 391px wide in a 390px viewport on every page. The app root itself
+  measures 390/390, which is what the app's own assertions check.
 
 ## Open questions / next highest-value work
 

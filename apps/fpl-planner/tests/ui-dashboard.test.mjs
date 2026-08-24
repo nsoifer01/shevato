@@ -27,7 +27,7 @@ const { buildPlan } = await import('../js/engine/planner.js');
 const { formatMoney, xp } = await import('../js/ui/format.js');
 const {
   heroCard, transfersCard, draftCard, whyCard, whyNotCard, renderWhyNot, futureCard,
-  alternativesCard, statusCard, withheldView, chipInventory, evidenceLabel,
+  alternativesCard, statusCard, withheldView, chipInventory, evidenceLabel, staleSourcesBanner, squadWarningsBanner,
 } = await import('../js/ui/dashboard.js');
 const { manualSquadState } = await import('../js/ui/preseason.js');
 
@@ -388,4 +388,35 @@ test('a withheld plan explains itself, lists the sources and offers a retry', ()
   assert.match(text, /fixtures: only an older copy is available/);
   click(buttonWith(node, 'Try again'));
   assert.equal(retried, 1, 'the retry button is wired, not decorative');
+});
+
+test('a source the proxy serves from its last copy is named while it is still young enough to plan on', async () => {
+  // Every source `x-fpl-stale: true` at 90 minutes old rendered a plan with
+  // "Last synced an hour ago" and no banner; only past six hours was the plan
+  // withheld. Under that age the banner is the whole of the disclosure.
+  const { assessData } = await import('../js/ui/plan-model.js');
+  const assessment = assessData({
+    sources: [
+      { name: 'Players, prices and news', path: 'bootstrap-static', ok: true, stale: true, ageSeconds: 5400 },
+      { name: 'Your squad', path: 'entry/1/event/5/picks', ok: true, stale: true, ageSeconds: 5400 },
+    ],
+  });
+  assert.equal(assessment.withholdPlan, false, 'young enough to show');
+  const node = staleSourcesBanner(assessment);
+  assert.ok(node, 'but not silently');
+  const text = textOf(node);
+  assert.match(text, /not answering/);
+  assert.match(text, /Players, prices and news: only an older copy/);
+  assert.match(text, /Your squad: only an older copy/);
+  assert.equal(staleSourcesBanner(assessData({ sources: [{ name: 'x', ok: true, stale: false }] })), null, 'nothing stale, no banner');
+});
+
+test('squad warnings are titled by what they are, not all as a price mismatch', () => {
+  const missing = squadWarningsBanner([{ code: 'history_missing', message: 'No season history.' }]);
+  assert.match(textOf(missing), /season history could not be read/);
+  assert.doesNotMatch(textOf(missing), /One number does not match/);
+  const empty = squadWarningsBanner([{ code: 'empty_picks', message: 'Empty squad.' }]);
+  assert.match(textOf(empty), /squad could not be read/);
+  const price = squadWarningsBanner([{ code: 'value_mismatch', message: 'Off by 0.1.' }]);
+  assert.match(textOf(price), /One number does not match/);
 });

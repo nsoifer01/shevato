@@ -66,6 +66,17 @@
     window.firebaseAuth.onAuthStateChange((user) => {
       const currentUserId = user ? user.uid : null;
 
+      // Anonymous (guest) sign-ins have nothing to sync: guests have no
+      // users/{uid} namespace, so the "Syncing..." modal plus the page
+      // reload it ends with only ever interrupted whatever triggered the
+      // sign-in (Arena's "Create room" lost its room mid-create and left
+      // an orphan doc, 2026-08-22 audit D2). Track the uid and skip.
+      if (user && user.isAnonymous) {
+        lastKnownUserId = currentUserId;
+        if (isInitialPageLoad) isInitialPageLoad = false;
+        return;
+      }
+
       if (user && currentUserId !== lastKnownUserId && !isInitialPageLoad) {
         const lastModalTime = sessionStorage.getItem('lastSyncModalTime');
         const now = Date.now();

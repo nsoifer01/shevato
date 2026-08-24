@@ -33,7 +33,7 @@ The pure game logic (scoring, room state, location/question normalization) is sp
 | Leaderboard moderation | A user with a doc at `/leaderboardAdmins/{uid}` sees a per-row delete control on the global board for removing junk entries. |
 | Display names | You choose a display name before your first published game; the default is a neutral `Player XXXX` derived from your uid, never from your email address. Whatever you choose is written to the shared leaderboard, head-to-head and daily records that any signed-in visitor can read. |
 | Head-to-head (H2H) | Per-room cumulative head-to-head record across rematches, plus a global pairwise H2H stats view. |
-| Guest play | Jump straight in as a guest (anonymous Firebase sign-in), no account needed. Guests are skipped by the leaderboard, head-to-head, and daily-board writes, and get a sign-up nudge on the end-of-game recap. |
+| Guest play | Jump straight in as a guest (anonymous Firebase sign-in), no account needed. Guests are skipped by the leaderboard, daily-board and head-to-head writes on BOTH sides (a registered opponent skips the pair row too, since a guest uid dies with browser storage), and get a sign-up nudge on the end-of-game recap. |
 | Profiles | Firebase Auth profiles. The profile card shows avg score, games played, win %, bullseyes, and best round. |
 | Post-game recap | Final scoreboard plus a side-by-side per-question / per-location recap table and detailed per-player accuracy / response-time (Trivia) or distance / region (Globe Drop) stats. |
 | Sound + haptics | WebAudio sound effects and device haptics fire on gameplay events (guess submitted, pin placed/cleared, opponent submitted, score reveal, timer low/expired, chat message, game start/end) via `js/feedback.js`. |
@@ -68,8 +68,78 @@ Private rooms are gated by a hash, never by a stored password (since 2026-08-15;
 - **Create**: the host computes `SHA-256(password + ':' + roomCode)` in the browser (`js/room-gate.js`, WebCrypto) and writes it to `triviaRooms/{code}/private/gate`. Firestore rules make that doc readable by NOBODY, writable exactly once and only by the room's creator. The room doc itself may no longer carry a `password` field at all (rules reject such creates).
 - **Join**: the joining client derives the same hash from the typed password and sends it as the `gateHash` field of its member-doc create. The rules compare it against the gate doc via `get()`, which bypasses client read permissions, so the secret never becomes readable. A wrong password surfaces as `permission-denied` and is shown as "Incorrect password."
 - **Solo / daily rooms** have no password but stay `isPrivate`; they store a random 256-bit hash no password can derive, so nobody else can ever join with the code.
-- **Legacy rooms** created before the migration still carry `data.password` and keep the old client-side compare until they expire; new rooms never write it. The last player leaving sweeps the gate doc along with chat before deleting the room.
+- **Legacy rooms** created before the migration still carry `data.password` and keep the old client-side compare until they expire; new rooms never write it.
+- **Gate deletion** is the operation that used to be the hole (a stranger with the code could delete the gate and walk in past the `!exists(gate)` branch, 2026-08-22 audit). It is now allowed only for the room HOST while the room doc exists, or for anyone once the room doc is GONE, which is the orphan sweep. See "Cleanup" below for why the teardown deletes the room doc first.
 - **Documented boundary**: a member's `gateHash` is readable by any signed-in user who has the room code (player docs are readable for the scoreboard), so it can be replayed for room ENTRY. What the design guarantees is that the password itself - the secret people reuse across sites - is never recoverable by anyone.
+
+## Who may write what (Firestore rules)
+
+Room state is shared, so the rules enumerate the writes rather than trusting
+the client:
+
+- **The host** (`hostUid` on the room doc) may write any field of the room
+  doc and is the only principal that may delete it.
+- **A member** (anyone owning a player doc in that room) may write exactly
+  the forms the app needs, each constrained with `affectedKeys().hasOnly`:
+  pause/resume, end the game early, the four rematch-coordination fields, the
+  current decider's category pick, the timed advance once the question window
+  has elapsed on the SERVER clock, and a `hostUid` takeover naming themselves
+  when the current host's player doc is gone or stale.
+- **Everyone else** signed in may read the room (that is how joining by code
+  works) and nothing more. `hostUid`, `status`, the question pointers and the
+  question pool cannot be touched by a non-host, so a stranger can no longer
+  end a room for everyone or wedge it with a bogus status or a negative
+  question index.
+- **Player docs** are owner-write. The host may delete a player doc only when
+  it is STALE (see Liveness), so ghosts can be swept but live players cannot
+  be kicked.
+- **Chat** is append-only while the room lives; deletes are allowed only once
+  the room doc is gone (the orphan sweep).
+
+Adding a room-doc write to `js/app.js` means adding its shape to the matching
+rules function, or it passes locally and 403s in production.
+
+## Game clock
+
+Progression is not the host's private business:
+
+- Every client runs `progressRoomClock` from a 500 ms `setTimeout`-style
+  interval, from `visibilitychange`, and from the render loops. The rAF loops
+  only render.
+- The host writes the early reveal (all live players answered), the
+  Ready-to-skip advance, and the timed advance as soon as the window closes.
+- Any other member performs the timed advance once the window has elapsed
+  plus `ADVANCE_FALLBACK_SLACK_MS`, so a host who locks their phone, switches
+  apps or closes the tab cannot freeze the room for everyone else.
+- **The Trivia picking stage has the same protection.** Entering it stamps
+  `pickingStartedAt`; once `PICK_DEADLINE_MS` (20 s) has passed, any member
+  may pick for the room. The choice is deterministic
+  (`RoomState.autoPickQuestion` seeds a PRNG from the room code, round and
+  question index), so every client would choose the same question and the
+  race between them is harmless. A decider who picks before the deadline
+  always wins, because the room leaves `picking` the moment they do.
+- The advance itself is a transaction with an idempotent precondition (still
+  playing, same question id and index), so the host and a member's fallback
+  can race without ever double-advancing.
+
+## Liveness and cleanup
+
+- Each client stamps `lastSeen` on its own player doc every 30 s, and writes
+  `disconnectedAt` on `beforeunload`. A player is LIVE unless the disconnect
+  is older than the 30 s rejoin grace or the heartbeat is older than 120 s
+  (`RoomState.isPlayerLive`, mirrored in `firestore.rules`). The heartbeat is
+  what catches a crashed or force-quit tab, which never fires `beforeunload`.
+- Stale players are excluded from early reveal, the Ready vote, the rematch
+  unanimity count, the Start-button minimum and the last-leaver check, and
+  they render as "Disconnected" instead of looking like a slow player. The
+  host sweeps their docs.
+- **Teardown order matters**: the last leaver takes over `hostUid` if the
+  host is already stale, deletes the ROOM DOC first, then sweeps the gate,
+  the chat messages and any leftover player docs. That order is what the
+  rules can verify, so it is what the client must do.
+- **Not covered**: a room every client abandons at once (all tabs force-quit)
+  leaves an orphan room doc that no client is left to delete. Cleaning those
+  up needs a scheduled server-side job; there is none today.
 
 ## Viewing locally
 
@@ -95,4 +165,4 @@ npm run test:arena:emulator  # two-client multiplayer e2e (emulator + headless C
 
 - **Unit** (`node --test apps/arena/tests/`): trivia scoring and streaks, Globe Drop distance/multiplier/difficulty scoring, room-code generation and alphabet validation, daily-challenge determinism, Wikidata/Trivia normalization, chat sanitization/moderation, and the room-gate hash derivation (pinned against independently computed SHA-256 vectors).
 - **Rules** (`apps/arena/tests-rules/`): runs the real `firestore.rules` inside the Firestore emulator via plain REST - player-doc ownership, the hashed password gate, chat caps and append-only, guest exclusions, admin deletes, plus no-regression pins for the shared non-arena sections. Deliberately NOT part of `npm test`: it needs Java plus a one-time firebase-tools/emulator download (pinned version, cached afterwards), which the dependency-free push/PR CI does not have. Skips cleanly when the environment is missing; CI runs it weekly with `ARENA_RULES_REQUIRE=1` (`.github/workflows/arena-rules.yml`). Rules are loaded through the emulator's `PUT :securityRules` endpoint with a deny-all negative control, because `emulators:start/exec` does not reliably compile updated rules.
-- **Multiplayer e2e** (`apps/arena/e2e/`): two real app instances against the Firestore + Auth + RTDB emulators, connected through the opt-in emulator seam in the shared `firebase-config.js` (loopback hostname AND `localStorage['shevato:firebase-emulators'] = '1'` - inert in production by construction, see `sync-system/firebase-emulator-flag.mjs`). Covers the full room lifecycle: create, join by code, start, lockstep question propagation, simultaneous answers with early reveal, score propagation, rematch, host handoff, the password gate end-to-end, and invalid-code rejection. Production Firebase hosts are intercept-failed on every page as a second line of defense.
+- **Multiplayer e2e** (`apps/arena/e2e/`): three real app instances (three origins = three Firebase users) against the Firestore + Auth + RTDB emulators, connected through the opt-in emulator seam in the shared `firebase-config.js` (loopback hostname AND `localStorage['shevato:firebase-emulators'] = '1'` - inert in production by construction, see `sync-system/firebase-emulator-flag.mjs`). Covers the full room lifecycle: create, join by code, start, lockstep question propagation, simultaneous answers with early reveal, score propagation, rematch, host handoff, the password gate end-to-end, and invalid-code rejection. It also pins the 2026-08-22 audit's regressions: a first-time guest creating a room with no sync-modal seed, the gate-deletion exploit attempted from a third client's own SDK, a ghost player past the grace, a hidden host tab (trivia and Globe Drop), an answer clicked while offline, the chat rate limit at the call site, a coordinate double-click on Start, a stale rematch prompt, the end screen after the winner leaves, chat/gate/player cleanup after the last leaver, a registered user's leaderboard row matching their profile, and seeded axe scans of the in-room states and modals at 1280 and 360. Production Firebase hosts are intercept-failed on every page as a second line of defense.

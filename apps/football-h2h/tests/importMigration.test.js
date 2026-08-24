@@ -210,12 +210,22 @@ test('import: undated games in the file are migrated on the way in', () => {
     assert.equal(stored[1].dateTime, '2026-08-14T12:00:00.000Z');
 });
 
-test('import: an empty games array is accepted and clears the list', () => {
+// Changed 2026-08-23: this test used to pin "an empty games array is
+// accepted and clears the list". A file with zero usable games replaced the
+// user's whole list (and reset the names) behind a confirm that merely
+// mentioned "0 games"; the audit called for a guard, so it is now refused.
+test('import: a file with no usable games is refused and nothing changes', () => {
     const h = importCtx([{ id: 1, player1Goals: 1, player2Goals: 0, dateTime: NOW }]);
     h.open(JSON.stringify({ games: [] }));
-    assert.ok(h.modals.confirm.message.includes('0 games'));
-    h.confirm();
-    assert.deepEqual(storedGames(h.ctx), []);
+    assert.equal(h.modals.confirm, null, 'no confirmation for an empty import');
+    assert.ok(h.modals.error && h.modals.error.title.includes('Nothing to Import'));
+    assert.deepEqual(storedGames(h.ctx).map((g) => g.id), [1]);
+
+    const allBad = importCtx([{ id: 1, player1Goals: 1, player2Goals: 0, dateTime: NOW }]);
+    allBad.open(JSON.stringify({ games: [{ id: 9, note: 'no scores' }, { id: 10, player1Goals: -1, player2Goals: 0 }] }));
+    assert.equal(allBad.modals.confirm, null);
+    assert.ok(allBad.modals.error.message.includes('2 rows'), allBad.modals.error.message);
+    assert.deepEqual(storedGames(allBad.ctx).map((g) => g.id), [1]);
 });
 
 test('import: cancelling leaves the current data untouched', () => {
@@ -306,4 +316,140 @@ test('loadGames: a stored legacy string penaltyWinner is normalized and written 
     assert.equal(stored[0].penaltyWinner, 1);
     assert.equal(typeof stored[0].penaltyWinner, 'number');
     assert.equal(ctx.window.games[0].penaltyWinner, 1, 'the in-memory list is normalized too');
+});
+
+// --- older-shape export fixture -------------------------------------------
+// What a pre-2026 export looked like: no players block, no ids, no
+// gameNumbers, string penalty winners, one undated row. It must still import
+// intact, and every row must come out with a stable id so edit / delete act
+// on exactly one game.
+
+const LEGACY_EXPORT = JSON.stringify({
+    games: [
+        { player1Goals: 1, player2Goals: 0, dateTime: '2025-08-01T10:00:00.000Z', player1Team: 'Arsenal', player2Team: 'Ultimate Team' },
+        { player1Goals: 2, player2Goals: 2, penaltyWinner: '1', dateTime: '2025-08-02T10:00:00.000Z' },
+        { player1Goals: 0, player2Goals: 1 },
+    ],
+});
+
+test('import: an older-shape export (no ids / players / gameNumbers) imports with ids and numbers assigned', () => {
+    const h = importCtx([]);
+    h.open(LEGACY_EXPORT);
+    h.confirm();
+    const stored = storedGames(h.ctx);
+    assert.equal(stored.length, 3);
+    assert.deepEqual(stored.map((g) => typeof g.id), ['number', 'number', 'number']);
+    assert.equal(new Set(stored.map((g) => g.id)).size, 3, 'ids are unique');
+    assert.deepEqual(stored.map((g) => g.gameNumber), [1, 2, 3]);
+    assert.equal(stored[1].penaltyWinner, 1);
+    assert.equal(stored[0].player1Team, 'Arsenal');
+    assert.ok(stored[2].dateTime, 'the undated row was migrated');
+    assert.deepEqual(h.players(), { player1: 'Player 1', player2: 'Player 2' });
+});
+
+test('import: repaired dates and repeated ids are disclosed in the confirmation', () => {
+    const h = importCtx([]);
+    h.open(JSON.stringify({ games: [
+        { id: 1, player1Goals: 1, player2Goals: 0, dateTime: 'garbage' },
+        { id: 1, player1Goals: 2, player2Goals: 0, dateTime: NOW },
+    ] }));
+    const msg = h.modals.confirm.message;
+    assert.ok(msg.includes('1 row has an unreadable date'), msg);
+    assert.ok(msg.includes('1 invalid row') && msg.includes('repeated id'), msg);
+});
+
+// --- delete / edit target exactly one row ------------------------------------
+
+function deleteCtx() {
+    const modals = [];
+    const ctx = appCtx({ createConfirmationModal: (opts) => { modals.push(opts); } });
+    return { ctx, modals };
+}
+
+test('delete: on an id-less stored list, loadGames heals ids and deleting one row removes exactly that row', () => {
+    const { ctx, modals } = deleteCtx();
+    ctx.localStorage.setItem('footballH2HGames', JSON.stringify([
+        { player1Goals: 1, player2Goals: 0, dateTime: '2026-08-01T10:00:00.000Z' },
+        { player1Goals: 2, player2Goals: 2, penaltyWinner: 1, dateTime: '2026-08-02T10:00:00.000Z' },
+        { player1Goals: 0, player2Goals: 1, dateTime: '2026-08-03T10:00:00.000Z' },
+    ]));
+    ctx.loadGames();
+    ctx.updateUI = () => {};
+    const games = JSON.parse(runIn(ctx, 'JSON.stringify(games)'));
+    assert.equal(new Set(games.map((g) => g.id)).size, 3, 'every row has a distinct id after load');
+    assert.deepEqual(storedGames(ctx).map((g) => typeof g.id), ['number', 'number', 'number'], 'the heal is persisted');
+
+    const target = games.find((g) => g.player1Goals === 2);
+    ctx.deleteGame(target.id);
+    assert.equal(modals.length, 1);
+    assert.ok(modals[0].message.includes('2 - 2'), 'the confirm names the game that was clicked');
+    modals[0].onConfirm();
+    assert.deepEqual(storedGames(ctx).map((g) => `${g.player1Goals}-${g.player2Goals}`), ['1-0', '0-1']);
+});
+
+test('delete / edit: an undefined id never matches a row (the mass-delete regression)', () => {
+    const { ctx, modals } = deleteCtx();
+    // Rows with no id can still arrive in memory from another device via
+    // sync; the UI must not act on `undefined`.
+    runIn(ctx, 'games = [{player1Goals:1,player2Goals:0},{player1Goals:2,player2Goals:2}]; window.games = games;');
+    ctx.deleteGame(undefined);
+    assert.equal(modals.length, 0, 'no confirm modal for an undefined id');
+    assert.equal(runIn(ctx, 'games.length'), 2);
+    let opened = false;
+    ctx.createFormModal = () => { opened = true; };
+    ctx.editGame(undefined);
+    assert.equal(opened, false, 'no edit modal for an undefined id');
+});
+
+// --- corrupted storage -----------------------------------------------------
+
+test('loadGames: corrupted JSON is reported, never thrown, and the blob is not overwritten', () => {
+    const ctx = appCtx();
+    ctx.localStorage.setItem('footballH2HGames', '{not json');
+    assert.doesNotThrow(() => ctx.loadGames());
+    assert.equal(runIn(ctx, 'games.length'), 0);
+    assert.equal(ctx.localStorage.getItem('footballH2HGames'), '{not json', 'the unreadable blob is left in place');
+
+    // A save is refused while the blob is unreadable...
+    runIn(ctx, 'games.push({id:1,player1Goals:1,player2Goals:0}); window.games = games;');
+    assert.equal(ctx.saveGames(), false);
+    assert.equal(ctx.localStorage.getItem('footballH2HGames'), '{not json');
+
+    // ...and the empty-state notice says so.
+    const p = makeElement();
+    const noGames = makeElement({ querySelector: () => p });
+    ctx.__elements.gamesTableBody = makeElement();
+    ctx.__elements.noGames = noGames;
+    ctx.renderGamesTableWithData([]);
+    assert.ok(p.textContent.includes('could not be read'), p.textContent);
+});
+
+test('loadGames: a non-array blob is treated the same as corrupted JSON', () => {
+    const ctx = appCtx();
+    ctx.localStorage.setItem('footballH2HGames', '{"a":1}');
+    assert.doesNotThrow(() => ctx.loadGames());
+    assert.equal(runIn(ctx, 'games.length'), 0);
+    assert.equal(ctx.localStorage.getItem('footballH2HGames'), '{"a":1}');
+});
+
+test('loadGames: corrupted player names / icons fall back to defaults without throwing', () => {
+    const ctx = appCtx();
+    ctx.localStorage.setItem('footballH2HPlayers', 'null');
+    ctx.localStorage.setItem('footballH2HPlayerIcons', '[]');
+    assert.doesNotThrow(() => { ctx.loadPlayers(); ctx.loadPlayerIcons(); });
+    assert.equal(runIn(ctx, 'player1Name'), 'Player 1');
+    assert.deepEqual(JSON.parse(runIn(ctx, 'JSON.stringify(playerIcons)')), { player1: '⚽', player2: '⚽' });
+});
+
+test('clear all data: replaces an unreadable blob (the one deliberate overwrite)', () => {
+    let confirm = null;
+    const ctx = appCtx({ createConfirmationModal: (opts) => { confirm = opts; }, createSuccessModal: () => {} });
+    ctx.localStorage.setItem('footballH2HGames', '{not json');
+    ctx.loadGames();
+    ctx.updateUI = () => {};
+    ctx.confirmClearData();
+    confirm.onConfirm();
+    assert.equal(ctx.localStorage.getItem('footballH2HGames'), '[]');
+    runIn(ctx, 'games.push({id:1,player1Goals:1,player2Goals:0}); window.games = games;');
+    assert.equal(ctx.saveGames(), true, 'saves work again after the clear');
 });

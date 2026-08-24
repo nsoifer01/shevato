@@ -146,3 +146,22 @@ test('lexicographic order on zero-padded YYYY-MM-DD keys equals chronological or
     assert.match(inZone('America/New_York', LATE_EVENING, 'print(h.getTodayDateString());'),
         /^\d{4}-\d{2}-\d{2}$/);
 });
+
+// 2026-08-22 audit D13: the streak built a Set of RAW `session.date`
+// strings and looked up YYYY-MM-DD keys in it, so an imported or synced
+// session whose date is a full ISO timestamp never counted towards the
+// streak although the calendar and history parse it fine via toLocalDate.
+test('getCurrentStreak counts sessions whose date is a full ISO timestamp', async () => {
+    const { AnalyticsService } = await import('../js/services/AnalyticsService.js');
+    const today = new Date();
+    today.setHours(10, 0, 0, 0);
+    const yesterday = new Date(today.getTime() - 86_400_000);
+    const sessions = [
+        { date: today.toISOString() },
+        { date: AnalyticsService.toLocalDateKey(yesterday) },
+    ];
+    assert.equal(AnalyticsService.getCurrentStreak(sessions), 2,
+        'a timestamp date and a YYYY-MM-DD date on consecutive days make a 2-day streak');
+    assert.equal(AnalyticsService.getCurrentStreak([{ date: 'not-a-date' }]), 0,
+        'an unparseable date never throws and never counts');
+});

@@ -226,7 +226,9 @@ export function historyView({ history, planHistory, gameState, captainsByGw = ne
 
   const overview = seasonOverviewCard(rows.slice().reverse(), gameState);
 
-  const table = el('div', { class: 'fpl-table-wrap' }, el('table', {}, [
+  // Wide on phones, so it scrolls sideways: a scroll region must be reachable
+  // from the keyboard (axe scrollable-region-focusable).
+  const table = el('div', { class: 'fpl-table-wrap', tabindex: '0', role: 'region', 'aria-label': 'Gameweek history table' }, el('table', {}, [
     el('thead', {}, el('tr', {}, [
       el('th', { text: 'GW' }),
       el('th', { class: 'is-num', text: 'Points' }),
@@ -295,7 +297,7 @@ export function planVersionsView({ planHistory, gameState, now = Date.now() }) {
     const versions = planHistory[String(gw)].slice().reverse();
     return el('div', {}, [
       el('div', { class: 'fpl-subhead', text: `Gameweek ${gw}` }),
-      el('div', { class: 'fpl-table-wrap' }, el('table', {}, [
+      el('div', { class: 'fpl-table-wrap', tabindex: '0', role: 'region', 'aria-label': 'Saved plan versions table' }, el('table', {}, [
         el('thead', {}, el('tr', {}, [
           el('th', { text: 'Version' }),
           el('th', { text: 'Calculated' }),

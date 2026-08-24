@@ -8,7 +8,16 @@
 import { el, card } from './dom.js';
 import { relativeTime, dateTime } from './format.js';
 import { btn } from './parts.js';
-import { KEYS, SYNC_NAMESPACE, HORIZON_CHOICES, allKeys, disconnectTeamKeys, removeKeys } from './store.js';
+import { KEYS, SYNC_NAMESPACE, HORIZON_CHOICES, allKeys, disconnectTeamKeys, removeKeys, entryCacheKeys } from './store.js';
+import { fplApi } from '../data/api.js';
+
+// The manager's cached FPL responses go with the team link: the keys from
+// storage (so a fake or real store both see them leave) and the in-memory
+// copies the data layer holds (so reconnecting does not serve them back).
+function dropEntryCache() {
+  removeKeys(entryCacheKeys());
+  fplApi.clearCache({ prefix: 'entry/' });
+}
 
 // Signed-in state comes from the shared auth object the site header mounts.
 // Read at call time: the module can load before Firebase has resolved a session.
@@ -153,6 +162,7 @@ function disconnectRow({ onDataRemoved }) {
     action.disabled = true;
     const user = currentUser();
     removeKeys(disconnectTeamKeys());
+    dropEntryCache();
     let cloudOk = false;
     let cloudError = '';
     if (user) {
@@ -168,7 +178,7 @@ function disconnectRow({ onDataRemoved }) {
 
   return settingRow({
     title: 'Disconnect your FPL team',
-    text: `Clears the linked Team ID (${KEYS.teamId}) and the cached squad snapshot (${KEYS.squadSnapshot}), on this device and in your Shevato account. Your saved plans and your planner settings are kept, and connecting the same Team ID again brings everything back.`,
+    text: `Clears the linked Team ID (${KEYS.teamId}) and the cached squad snapshot (${KEYS.squadSnapshot}), on this device and in your Shevato account, along with this device's cached copies of your FPL entry, history, transfers and picks. Your saved plans and your planner settings are kept, and connecting the same Team ID again brings everything back.`,
     actions: [action],
     statusNode: status,
   });
@@ -183,6 +193,7 @@ function deleteAllRow({ onDataRemoved }) {
     confirmBtn.disabled = true;
     const user = currentUser();
     removeKeys(allKeys());
+    dropEntryCache();
     let cloudOk = false;
     let cloudError = '';
     if (user) {

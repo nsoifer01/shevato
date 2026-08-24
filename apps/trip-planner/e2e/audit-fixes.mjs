@@ -438,8 +438,16 @@ export async function run({ base, cdpPort }) {
     await waitForExpr(s, `!!document.querySelector('[data-clip-for="audit-doc-item"]:not([hidden])')`);
     await menuAct(s, 'delete-trip', 600);
     const text = await evaluate(s, `document.getElementById('confirmText').textContent`);
-    await t('tp-audit CR-02: the confirm says the attachments cannot come back',
-      /Attached documents cannot be recovered/i.test(text), text, s);
+    // This assertion used to require the confirm to WARN that attached
+    // documents could not be recovered, which was honest while trip delete
+    // destroyed them before the undoable save. The 2026-08-22 audit round
+    // removed that limitation instead of documenting it: the documents now
+    // survive the undo window and are purged at the next boot, so the undo
+    // the dialog promises is finally whole. Asserting the old warning would
+    // now pin a defect that no longer exists, so this checks the replacement
+    // promise: the confirm must still tell the truth about attachments.
+    await t('tp-audit CR-02: the confirm says the attachments come back with the trip',
+      /Attached documents come back with it/i.test(text), text, s);
     await t('tp-audit CR-02: and still promises the undo it can keep',
       /undo this until you reload/i.test(text), text, s);
     await escape(s);
