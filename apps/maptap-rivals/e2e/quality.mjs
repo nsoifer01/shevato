@@ -520,7 +520,17 @@ export async function run({ base, cdpPort }) {
       const dayTabs = await evaluate(tzPage, "[...document.querySelectorAll('.pred-day-tab')].map(e=>(e.textContent||'').replace(/\\s+/g,' ').trim())");
       t('UTC+12: the prediction day tabs start at Today, not yesterday', /Today/.test(String(dayTabs[0] || '')), JSON.stringify(dayTabs.slice(0, 3)));
       const tzSummary = await evaluate(tzPage, "((document.querySelector('#dash-summary')||{}).textContent||'').replace(/\\s+/g,'')");
-      t('UTC+12: the summary counts the game logged today', /Today1gamelogged/.test(tzSummary), tzSummary.slice(0, 200));
+      // The expected count is DERIVED from the seed, not hardcoded. The fixture
+      // dates some games relative to the host clock, so under a UTC host (CI)
+      // one of them also lands on Auckland's today and the summary correctly
+      // reads "Today 2 games logged", while on a UTC-5 host it reads 1. The
+      // rule being asserted is that the summary counts the games whose LOCAL
+      // day is today, whatever that number is.
+      const tzExpected = f.games.filter((g) => g.date === bToday).length;
+      const tzWord = tzExpected === 1 ? 'game' : 'games';
+      t('UTC+12: the summary counts the games logged today',
+        new RegExp(`Today${tzExpected}${tzWord}logged`).test(tzSummary),
+        `expected Today ${tzExpected} ${tzWord} :: ${tzSummary.slice(0, 200)}`);
       // The heatmap lives on a rival page; cells carry their ISO day in `title`.
       await hashTo(tzPage, '#rival/r-ari', 1500);
       const heat = await evaluate(tzPage, "(()=>{const cells=[...document.querySelectorAll('#heatmap-grid .heatmap-cell:not(.heatmap-empty)')]; const last=cells[cells.length-1]; return {last: last && last.title.slice(0,10), cells: cells.length}})()");
