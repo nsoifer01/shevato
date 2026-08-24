@@ -406,7 +406,7 @@ export async function run({ base, cdpPort }) {
       await evaluate(s, "(()=>{const i=document.querySelector('#rival-name');i.value='nik';i.dispatchEvent(new Event('input',{bubbles:true}));return 1})()");
       const meHint = await txt(s, '#rival-name-hint');
       await rec('D13: typing an existing rival\'s name or my own name shows a hint in the modal',
-        /already have a rival called "Bob"/.test(dupHint || '') && /your own name/.test(meHint || ''), `${dupHint} // ${meHint}`, s);
+        /already have a rival named "Bob"/.test(dupHint || '') && /your own name/.test(meHint || ''), `${dupHint} // ${meHint}`, s);
 
       await pressKey(s, 'Escape', 'Escape', 27);
       const restored = await evaluate(s, "document.activeElement && document.activeElement.id");

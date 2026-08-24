@@ -978,7 +978,7 @@
     if (!n) return '';
     if (n === (state.me || '').trim().toLowerCase()) return `"${name.trim()}" is also your own name; predictions and the matrix will show two rows called that.`;
     const dup = state.rivals.find(r => r.id !== editingId && r.name.trim().toLowerCase() === n);
-    if (dup) return `You already have a rival called "${dup.name}". Both will be kept as separate rivals.`;
+    if (dup) return `You already have a rival named "${dup.name}". Saving will keep both.`;
     return '';
   }
   function refreshRivalNameHint() {

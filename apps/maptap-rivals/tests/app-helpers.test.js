@@ -616,7 +616,7 @@ test('dayBucketDate (D7): the body date wins; a DD/MM header no longer dates the
 test('rivalNameHint (D13): duplicate (case-insensitive) and me-equal names get a hint, others none', () => {
   const c = loadApp({ maptapRivalsRivals: [goodRival({ id: 'r1', name: 'Alice' })], maptapRivalsMe: '"Nik"' });
   const hint = c._testExports.rivalNameHint;
-  assert.match(hint('alice', null), /already have a rival called "Alice"/);
+  assert.match(hint('alice', null), /already have a rival named "Alice"/);
   assert.equal(hint('Alice', 'r1'), '', 'editing Alice herself is not a duplicate');
   assert.match(hint('nik', null), /your own name/);
   assert.equal(hint('Carol', null), '');
