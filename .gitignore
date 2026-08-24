@@ -7,9 +7,15 @@
 # Ignore temp files
 .*.sw*
 
-# Root dev dependencies (testing only: Playwright for the cross-browser
-# smoke suite). The runtime site has zero npm dependencies by design.
-/node_modules/
+# Root npm dependencies: Playwright for the cross-browser smoke suite
+# (devDependency) and @netlify/blobs, declared here so the Netlify functions
+# bundle resolves it. Browser code has zero npm dependencies by design.
+#
+# No trailing slash, deliberately. `/node_modules/` matches a DIRECTORY only,
+# so a symlink named node_modules is NOT ignored by it - one was committed
+# that way on 2026-08-23 (0ce12b9). Guarded by
+# tests/static/tracked-symlinks.test.mjs.
+/node_modules
 
 # Coverage reports written by tests/coverage/run.mjs
 /.coverage/
@@ -21,9 +27,9 @@
 
 # Netlify
 .netlify/
-netlify/functions/node_modules/
+netlify/functions/node_modules
 netlify/functions/package-lock.json
-netlify/pending-functions/node_modules/
+netlify/pending-functions/node_modules
 netlify/pending-functions/package-lock.json
 
 # Firebase local config (if you want a different local config)
