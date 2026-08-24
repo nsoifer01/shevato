@@ -72,10 +72,40 @@ array.
 ## Why it is not part of `npm test`
 
 `npm test` runs in CI on every push to master and every PR, in about three
-minutes with no browser binary. This suite needs Chromium and takes ~15
-minutes. Keeping them separate means the fast gate stays fast and
+minutes with no browser binary. This suite needs Chromium and takes about 45
+minutes end to end. Keeping them separate means the fast gate stays fast and
 dependency-free, while this runs on PRs, master pushes, and locally before a
 release.
+
+## How CI keeps that to about 12 minutes
+
+The estate is 27 suites walked one at a time in one browser, so the only way to
+finish sooner is to put the suites on more machines. `.github/workflows/browser-tests.yml`
+runs a four-job matrix, each job taking a quarter of the list:
+
+```bash
+node --experimental-websocket tests/browser/run.mjs --shard=2/4
+```
+
+The split is round-robin over `SUITES` (`index % n`), not contiguous blocks:
+the list groups related suites together (ten trip-planner ones in a row, seven
+per-app audit ones) and related suites cost about the same, so blocks would
+hand one runner most of the slow work. Striding interleaves them, and every
+suite has exactly one index, so shards 1..n run the list once and only once.
+That totality is the point: a suite belonging to no shard would report nothing
+and read as green. Each run prints the suites its shard owns before starting,
+so the shard logs side by side are the audit that the estate was fully run.
+
+The workflow derives `<n>` from `strategy.job-total`, the matrix size itself,
+so the shard count is never written down twice. Changing the parallelism is
+one edit to the `shard:` list. A `browser` job gathers the four results into a
+single verdict.
+
+Sharding is safe on separate runners and NOT safe on one machine: two runs on
+the same host share CDP port 9222 and silently drive each other's browser. The
+runner bind-tests both its ports and refuses to start for that reason, so
+running two shards locally needs `BROWSER_TEST_PORT` and
+`BROWSER_TEST_CDP_PORT` set per run.
 
 ## Skipped checks
 
@@ -164,6 +194,7 @@ repo-relative, so app-local suites can live beside their app.
 ```bash
 node --experimental-websocket tests/browser/run.mjs --only=<path-substring>
 node --experimental-websocket tests/browser/run.mjs --only=trip-planner --headed
+node --experimental-websocket tests/browser/run.mjs --shard=2/4
 ```
 
 `npm run test:trip-planner:e2e` is the shorthand for the trip-planner subset;
