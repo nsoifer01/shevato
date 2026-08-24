@@ -32,7 +32,13 @@ jobs:
     # typical runner; a slow runner was observed crossing the old 30-minute
     # cap on 2026-08-16 with no test at fault. 45 keeps hung-browser runs
     # from burning a full hour while leaving real headroom for slow silicon.
-    timeout-minutes: 45
+    # The estate grew from 1,376 to 1,915 checks on 2026-08-23, when seven
+    # per-app audit suites that had never actually executed were wired in
+    # (two returned the wrong shape and aborted the runner's loop). At 45
+    # minutes the job was being CANCELLED mid-run, which reads as a failure
+    # and hides whatever had already passed. It measures about 45 minutes on
+    # this runner, so the cap needs real headroom, not a hair above it.
+    timeout-minutes: 75
 
     steps:
       - uses: actions/checkout@v6
