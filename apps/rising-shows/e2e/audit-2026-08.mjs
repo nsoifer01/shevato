@@ -172,9 +172,16 @@ export async function run({ base, cdpPort }) {
       const clickedNext = await clickText(s, 'Next', { sel: '.pager-top .page-btn', settle: 1200 });
       const landing = await evaluate(s, `(()=>{ const c = document.getElementById('finderCount').getBoundingClientRect();
         const hdr = document.getElementById('header'); const hh = hdr ? hdr.getBoundingClientRect().bottom : 0;
-        return JSON.stringify({ top: Math.round(c.top), hdrBottom: Math.round(hh), page: location.hash }); })()`);
+        return JSON.stringify({ top: Math.round(c.top), hdrBottom: Math.round(hh), vh: window.innerHeight, page: location.hash }); })()`);
       t('U7: after Next the count line sits below the fixed header, inside the viewport',
-        clickedNext && landing.top >= landing.hdrBottom && landing.top < 400 && /page=2/.test(landing.page), JSON.stringify(landing));
+        // The defect was the count line landing ABOVE the viewport (top -30)
+        // after paging, so the reader could not see which page they were on
+        // without scrolling back up. The requirement is therefore that it
+        // sits below the fixed header and inside the upper half of the
+        // viewport, measured against the real viewport height rather than the
+        // 400 px literal this round used before the 2026-08-23 merge moved
+        // the rows above it.
+        clickedNext && landing.top >= landing.hdrBottom && landing.top < landing.vh / 2 && /page=2/.test(landing.page), JSON.stringify(landing), s);
 
       // D2: rating sort with votes "Any"
       await open(s, '#sort=avgEpisode');

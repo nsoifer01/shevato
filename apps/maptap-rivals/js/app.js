@@ -1014,8 +1014,13 @@
   function refreshRivalNameHint() {
     const input = $('#rival-name');
     if (!input) return;
-    const clash = rivalNameClash(input.value, state.editingRivalId);
-    setRivalNameFeedback('', clash ? `You already have a rival named "${clash.name}". Saving will keep both.` : '');
+    // Delegates to rivalNameHint(), which covers BOTH cases: a duplicate
+    // rival name and a name identical to your own. This function is defined
+    // after an earlier one of the same name (the 2026-08-23 merge brought
+    // together two rounds that each added one), so it is the definition that
+    // wins, and the clash-only version it replaced had quietly dropped the
+    // "that is also your own name" hint.
+    setRivalNameFeedback('', rivalNameHint(input.value, state.editingRivalId));
   }
 
   function renderColorSwatches() {
