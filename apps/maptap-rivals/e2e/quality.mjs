@@ -70,6 +70,19 @@ function fixture() {
   return { rivals, games };
 }
 
+// Fixtures for the "Sync all rivals" section. Three rivals, all with a MapTap
+// username so all three are sync targets, and a day in MapTap's web/roundData
+// shape (the one that carries city coordinates).
+const SYNC_RIVALS = [
+  { id: 'r-ari', name: 'Ari', color: '#f59e0b', icon: '🦊', maptapUsername: 'ari_mt', createdAt: 1 },
+  { id: 'r-bex', name: 'Bex', color: '#3b82f6', icon: '🐧', maptapUsername: 'bex_mt', createdAt: 2 },
+  { id: 'r-cy',  name: 'Cy',  color: '#10b981', icon: '🐢', maptapUsername: 'cy_mt',  createdAt: 3 },
+];
+const SYNC_DAY = (scores) => ({
+  finalScore: 0,
+  roundData: scores.map((score, i) => ({ round: i + 1, score, cityLat: 40 + i, cityLng: 10 + i, cityName: `City${i}` })),
+});
+
 const SEED_KV = (f) => ({
   maptapRivalsMe: JSON.stringify('Nikita'),
   maptapRivalsMyIcon: JSON.stringify('🧭'),
@@ -103,6 +116,33 @@ export async function run({ base, cdpPort }) {
   async function open() {
     const s = await newPage(cdpPort);
     await interceptNetwork(s, (url) => {
+      if (BLOCK.test(url)) return 'fail';
+      if (/this_day_in_history/.test(url)) return { status: 200, contentType: 'application/javascript', body: DAILY };
+      if (/maptap\.gg/.test(url)) return 'fail';
+      return null;
+    });
+    return s;
+  }
+  // A page whose MapTap profile endpoint ANSWERS, for the sync-all section.
+  // `syncProfiles` maps nickname -> gameHistory and is filled in just before
+  // the run. Everything else stays blackholed exactly as in open().
+  let syncProfiles = {};
+  async function open2() {
+    const s = await newPage(cdpPort);
+    await interceptNetwork(s, (url, req) => {
+      if (/getPublicProfile/.test(url)) {
+        // The app POSTs application/json, so the browser preflights. A stub
+        // that answers only the POST fails CORS on the OPTIONS and every
+        // rival reports a failure that is purely the harness's.
+        const headers = { 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
+        if (req.method === 'OPTIONS') return { status: 204, body: '', headers };
+        let nickname = '';
+        try { nickname = JSON.parse(req.postData || '{}').data.nickname; } catch { nickname = ''; }
+        const gameHistory = syncProfiles[nickname];
+        return gameHistory
+          ? { body: { result: { success: true, user: { userId: nickname, nickname, joinDate: '2026-01-01', gameHistory } } }, headers }
+          : { body: { result: { success: false, error: 'profile not found' } }, headers };
+      }
       if (BLOCK.test(url)) return 'fail';
       if (/this_day_in_history/.test(url)) return { status: 200, contentType: 'application/javascript', body: DAILY };
       if (/maptap\.gg/.test(url)) return 'fail';
@@ -539,6 +579,110 @@ export async function run({ base, cdpPort }) {
       t('UTC+12: no first-party JS errors under an overridden timezone', cleanErrors(tzPage).length === 0, cleanErrors(tzPage).join(' | '));
     } finally {
       await closePage(cdpPort, tzPage);
+    }
+
+    // ---- "Sync all rivals": progress, totals, and days only I played ----
+    // Its own page with its own interceptor: the shared open() blackholes
+    // cloudfunctions.net, and this is the one section that needs the MapTap
+    // profile endpoint to actually answer (preflight included: the app posts
+    // JSON, so a stub without Access-Control-Allow-Headers fails CORS and
+    // every rival "fails" for a reason that has nothing to do with the app).
+    mark('sync all rivals');
+    const syncPage = await open2();
+    try {
+      await setViewport(syncPage, 1280, 900);
+      await goto(syncPage, `${base}/apps/maptap-rivals/css/styles.css`, { settle: 150 });
+      const bToday = await evaluate(syncPage, "(()=>{const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')})()");
+      const back = (n) => { const [y, m, d] = bToday.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d) - n * 86400000).toISOString().slice(0, 10); };
+      const kv = {
+        maptapRivalsMe: JSON.stringify('Nikita'),
+        maptapRivalsMyIcon: JSON.stringify('🧭'),
+        maptapRivalsMyMapTap: JSON.stringify('me_mt'),
+        maptapRivalsMyProfile: JSON.stringify({ userId: 'u0', nickname: 'me_mt', joinDate: '2026-01-01', totalGames: 6, avgScore: 820, bestScore: 900, worstScore: 700, mostRecentDate: bToday, verifiedAt: '2026-08-20T15:30:00.000Z' }),
+        maptapRivalsRivals: JSON.stringify(SYNC_RIVALS),
+        maptapRivalsGames: JSON.stringify([]),
+      };
+      await evaluate(syncPage, `(()=>{ for (const k of Object.keys(localStorage)) localStorage.removeItem(k); const kv=${JSON.stringify(kv)}; for (const [k,v] of Object.entries(kv)) localStorage.setItem(k, v); return 1 })()`);
+      // I played today and the four days before it; Ari played three of those
+      // days, Bex one, Cy four, and NONE of them played today. Today is
+      // therefore a day only I played, the case that used to leave the log
+      // empty and every view reading as though I had not played at all.
+      // Every rival has a profile here on purpose: a missing one would fail
+      // its sync, and the run summary the checks below read would then be
+      // reporting the fixture rather than the app.
+      const mine = {}; for (let i = 0; i <= 4; i++) mine[back(i)] = SYNC_DAY([80, 82, 84, 86, 88]);
+      const ari = {}; for (const i of [1, 2, 3]) ari[back(i)] = SYNC_DAY([70, 72, 74, 76, 78]);
+      const bex = {}; bex[back(2)] = SYNC_DAY([60, 62, 64, 66, 68]);
+      const cy = {}; for (const i of [1, 2, 3, 4]) cy[back(i)] = SYNC_DAY([90, 90, 90, 90, 90]);
+      syncProfiles = { me_mt: mine, ari_mt: ari, bex_mt: bex, cy_mt: cy };
+      await goto(syncPage, `${base}${APP}#dashboard`, { settle: 1500 });
+      await waitForExpr(syncPage, "!!document.querySelector('#profile-card-actions button')");
+
+      // Slow every fetch so the intermediate states are observable at all:
+      // fulfilled-from-the-interceptor responses land in a millisecond, and a
+      // progress counter nobody can catch is a progress counter nobody can
+      // check. A MutationObserver records the label sequence, so the check
+      // does not depend on sampling at the right moment either.
+      await evaluate(syncPage, `(()=>{
+        const orig = window.fetch;
+        window.fetch = (...a) => new Promise(r => setTimeout(() => r(orig(...a)), 250));
+        window.__seen = [];
+        const read = () => {
+          const b = document.querySelector('#profile-card-actions button');
+          const l = document.querySelector('#profile-card-body .profile-status-line');
+          const line = (b ? b.textContent : '') + ' || ' + (l ? l.textContent : '');
+          if (window.__seen[window.__seen.length - 1] !== line) window.__seen.push(line);
+        };
+        new MutationObserver(read).observe(document.querySelector('#profile-card'), { childList: true, subtree: true, characterData: true });
+        read();
+        return 1;
+      })()`);
+
+      await evaluate(syncPage, `(()=>{ document.querySelector('#profile-card-actions button').click(); return 1 })()`);
+      await waitForExpr(syncPage, "!document.querySelector('#profile-card-actions button').textContent.includes('Syncing')", { timeout: 20000 });
+      await sleep(300);
+      const seen = await evaluate(syncPage, "JSON.stringify(window.__seen)");
+      t('sync all: the button and status line count the rivals off as they finish',
+        /Syncing 0\/3…/.test(seen) && /Syncing 2\/3…/.test(seen) && /Synced 1 of 3 rivals/.test(seen),
+        seen.slice(0, 220));
+
+      const summary1 = await txt(syncPage, '#profile-card-body .profile-status-line');
+      t('sync all: the finished run reports how many rivals and how many new games',
+        /Synced all/.test(summary1) && /3 rivals synced/.test(summary1) && /\d+ new games/.test(summary1), summary1);
+
+      const meOnly = await evaluate(syncPage, `(()=>{
+        const g = JSON.parse(localStorage.getItem('maptapRivalsGames') || '[]');
+        const today = g.filter(x => x.date === ${JSON.stringify(bToday)});
+        return JSON.stringify({
+          rivals: today.map(x => x.rivalId).sort(),
+          mine: today.every(x => Array.isArray(x.myScores)),
+          theirs: today.some(x => Array.isArray(x.theirScores)),
+        });
+      })()`);
+      t('sync all: a day only I played is stored against every rival, with no rival side invented',
+        /"rivals":\["r-ari","r-bex","r-cy"\]/.test(meOnly) && /"mine":true/.test(meOnly) && /"theirs":false/.test(meOnly), meOnly);
+
+      const myRow = await evaluate(syncPage, `(()=>{
+        const row = [...document.querySelectorAll('#todays-card-body .pred-row:not(.pred-row-head)')]
+          .find(r => /Nikita/.test(r.textContent || ''));
+        const cells = row ? [...row.querySelectorAll('.pred-cell')].map(c => (c.textContent||'').replace(/\\s+/g,' ').trim()) : [];
+        return JSON.stringify({ badge: ((document.querySelector('#todays-card-status')||{}).textContent||'').trim(), cells: cells.slice(0, 3) });
+      })()`);
+      t('sync all: my own actual score for a day only I played reaches the predictions card',
+        /GAME PLAYED/i.test(myRow) && /"852"/.test(myRow), myRow);
+
+      // Second run over the same data: nothing is new, and the line has to say
+      // that rather than going quiet, which is indistinguishable from a no-op.
+      await evaluate(syncPage, `(()=>{ document.querySelector('#profile-card-actions button').click(); return 1 })()`);
+      await waitForExpr(syncPage, "!document.querySelector('#profile-card-actions button').textContent.includes('Syncing')", { timeout: 20000 });
+      await sleep(300);
+      const summary2 = await txt(syncPage, '#profile-card-body .profile-status-line');
+      t('sync all: a second run says every rival was already up to date',
+        /3 rivals synced/.test(summary2) && /all already up to date/.test(summary2) && !/new game/.test(summary2), summary2);
+
+      t('sync all: no first-party JS errors across the run', cleanErrors(syncPage).length === 0, cleanErrors(syncPage).join(' | '));
+    } finally {
+      await closePage(cdpPort, syncPage);
     }
 
     t('no first-party JS errors across the suite', cleanErrors(s).length === 0, cleanErrors(s).join(' | '));

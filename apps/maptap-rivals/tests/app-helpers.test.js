@@ -721,3 +721,53 @@ test('streakDrama: a losing streak equal to the previous worst reads "level with
   assert.equal(d.kind, 'loss');
   assert.match(d.text, /Level with your worst slump/);
 });
+
+// ---------------------------------------------------------------------------
+// "Sync all rivals" run summary. The per-rival pills speak for one rivalry
+// each and fade after a few seconds, so this line is the only thing that
+// reports what a whole run did.
+// ---------------------------------------------------------------------------
+
+const okRun = (o = {}) => ({ ok: true, added: 0, updated: 0, backfilled: 0, ...o });
+const summary = (results) => helpers.syncAllSummary(results);
+
+test('syncAllSummary: names how many rivals were already up to date beside the new games', () => {
+  const s = summary([okRun({ added: 4 }), okRun({ added: 3 }), okRun(), okRun()]);
+  assert.equal(s.kind, 'ok');
+  assert.equal(s.msg, '4 rivals synced · 7 new games · 2 already up to date');
+});
+
+test('syncAllSummary: a run that changed nothing says so instead of going quiet', () => {
+  assert.equal(summary([okRun(), okRun(), okRun()]).msg, '3 rivals synced · all already up to date');
+  assert.equal(summary([okRun()]).msg, '1 rival synced · already up to date');
+});
+
+test('syncAllSummary: updates and backfills are reported separately from new games', () => {
+  const s = summary([okRun({ added: 1, updated: 2, backfilled: 3 })]);
+  assert.equal(s.msg, '1 rival synced · 1 new game · 2 games updated · 3 backfilled');
+});
+
+// The counts describe what SYNCED, not what was attempted: a run where every
+// rival failed must not open with "2 rivals synced".
+test('syncAllSummary: a partial failure warns, a total failure errors', () => {
+  const partial = summary([okRun({ added: 2 }), { ok: false, error: 'HTTP 500' }]);
+  assert.equal(partial.kind, 'warn');
+  assert.equal(partial.msg, '1 rival synced · 2 new games · 1 rival failed');
+
+  // "all already up to date" would read as a clean bill of health, so a run
+  // with a failure in it always spells the count out instead.
+  const mixed = summary([okRun(), okRun(), { ok: false, error: 'HTTP 500' }]);
+  assert.equal(mixed.msg, '2 rivals synced · 2 already up to date · 1 rival failed');
+
+  const total = summary([{ ok: false, error: 'HTTP 500' }, { ok: false, error: 'HTTP 500' }]);
+  assert.equal(total.kind, 'err');
+  assert.equal(total.msg, '2 rivals failed');
+});
+
+test('syncAllSummary: a rival already mid-sync from its own button is not counted', () => {
+  const s = summary([okRun({ added: 1 }), { skipped: true }]);
+  assert.equal(s.msg, '1 rival synced · 1 new game');
+  assert.equal(summary([{ skipped: true }]), null);
+  assert.equal(summary([]), null);
+  assert.equal(summary(null), null);
+});

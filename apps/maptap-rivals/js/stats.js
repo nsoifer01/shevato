@@ -225,6 +225,112 @@
     return { scores, cities };
   }
 
+  // ---------- MapTap sync merge ----------
+  // The note every synced row carries. It is what tells a later sync that a
+  // row is its own to refresh, and what the Note cell hides as boilerplate.
+  const SYNC_NOTE = 'synced from MapTap';
+
+  // A side's 5 puzzle cities, or null when the payload does not carry a clean
+  // set. Every consumer keys off `cities.length === N_LOCS`, so a short array
+  // is worse than none: it would count as a backfill without ever lighting the
+  // continent breakdown up.
+  function syncCities(side) {
+    return side && Array.isArray(side.cities) && side.cities.length === N_LOCS
+      ? side.cities
+      : null;
+  }
+
+  // Merge one rival's MapTap pull into the existing game log. Pure: it takes
+  // the two already-parsed date->rounds maps, returns the rows to append, and
+  // mutates only the existing rows it refreshes.
+  //
+  // The walk covers the UNION of the two histories, because MapTap knows
+  // nothing about rivalries and either player can be the only one who played
+  // a given day:
+  //   theirs only -> a rival-only row (they played, you didn't)
+  //   mine only   -> a me-only row    (you played, they didn't)
+  //   both        -> a full head-to-head row
+  // A one-sided row is upgraded in place as soon as the missing side's
+  // history catches up, and a side already stored is never cleared by a pull
+  // that lacks it: MapTap gains days, it never loses them. Rows the user
+  // typed or pasted (any other note) keep their scores; they still get their
+  // cities backfilled, which is additive.
+  //
+  // Returns { newGames, added, updated, backfilled }: the three counters are
+  // what the per-rival status pill and the sync-all summary read.
+  function mergeMapTapSync(opts) {
+    const o = opts || {};
+    const rivalId = o.rivalId;
+    const mineByDate = o.mineByDate || {};
+    const theirsByDate = o.theirsByDate || {};
+    const existing = Array.isArray(o.existingGames) ? o.existingGames : [];
+    const makeId = typeof o.makeId === 'function' ? o.makeId : null;
+    const now = Number.isFinite(o.now) ? o.now : 0;
+
+    // Maps, not plain objects, for every date-keyed lookup below: dates come
+    // verbatim from a remote payload, and reading `obj['__proto__']` off an
+    // object that has no such own key hands back Object.prototype, a truthy
+    // "day" with no `scores` on it. Same reasoning as mapTapHistoryToRounds.
+    const byDate = new Map();
+    for (const g of existing) {
+      if (g && g.rivalId === rivalId) byDate.set(g.date, g);
+    }
+    const mineMap = new Map(Object.entries(mineByDate));
+    const theirsMap = new Map(Object.entries(theirsByDate));
+
+    const dates = new Set(mineMap.keys());
+    for (const d of theirsMap.keys()) dates.add(d);
+
+    const newGames = [];
+    let added = 0, updated = 0, backfilled = 0;
+
+    for (const date of Array.from(dates).sort()) {
+      const mine = mineMap.get(date);
+      const theirs = theirsMap.get(date);
+      if (!mine && !theirs) continue;
+      // The 5 puzzle cities are the same for both players on a given day, so
+      // either side's copy will do. Ours wins when both exist, for parity
+      // with the behaviour before this walk covered my-only days.
+      const cities = syncCities(mine) || syncCities(theirs);
+
+      const game = byDate.get(date);
+      if (game) {
+        // Backfill: older imports (paste / WhatsApp / pre-cities sync) carry
+        // no geo info. Attaching it now lights up the continent breakdown
+        // retroactively.
+        if (cities && (!Array.isArray(game.cities) || game.cities.length !== N_LOCS)) {
+          game.cities = cities.slice();
+          backfilled++;
+        }
+        if (game.note === SYNC_NOTE) {
+          const newMy = mine ? mine.scores.slice() : null;
+          const newTheir = theirs ? theirs.scores.slice() : null;
+          const myChanged = newMy ? !arrEq(game.myScores, newMy) : false;
+          const theirChanged = newTheir ? !arrEq(game.theirScores, newTheir) : false;
+          if (myChanged || theirChanged) {
+            if (newMy) { game.myScores = newMy; game.myScore = weightedTotal(newMy); }
+            if (newTheir) { game.theirScores = newTheir; game.theirScore = weightedTotal(newTheir); }
+            updated++;
+          }
+        }
+        continue;
+      }
+
+      const fresh = { id: makeId ? makeId() : `${date}-${rivalId}`, rivalId, date };
+      if (mine) { fresh.myScores = mine.scores.slice(); fresh.myScore = weightedTotal(mine.scores); }
+      if (theirs) { fresh.theirScores = theirs.scores.slice(); fresh.theirScore = weightedTotal(theirs.scores); }
+      if (cities) fresh.cities = cities.slice();
+      fresh.note = SYNC_NOTE;
+      // Spread the createdAt stamps so the log keeps the chronological order
+      // the walk produced even when two rows land in the same millisecond.
+      fresh.createdAt = now + added;
+      newGames.push(fresh);
+      added++;
+    }
+
+    return { newGames, added, updated, backfilled };
+  }
+
   // ---------- results ----------
   function resultOf(g) {
     // Rival-only (or me-only) days have no W/L semantics — neither side beat
@@ -1237,6 +1343,8 @@
     getMyTotal, getTheirTotal,
     // parsing
     parseMapTapScore, mapTapHistoryToRounds,
+    // MapTap sync merge
+    SYNC_NOTE, mergeMapTapSync,
     // results / aggregates
     resultOf, resultLoc, stdDev, average, streaks, linearTrend, projectNext,
     rivalryScoreFromGames,

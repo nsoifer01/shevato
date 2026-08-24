@@ -130,7 +130,7 @@
   // on most rows — collapses to a tiny sync icon with a tooltip. Manual
   // notes render as quiet muted text.
   function noteCell(g) {
-    if (g.note === 'synced from MapTap') {
+    if (g.note === SYNC_NOTE) {
       return el('td', { class: 'row-note-cell' }, [
         el('span', {
           class: 'row-note-pill',
@@ -166,8 +166,9 @@
   // here so every call site below keeps using them unchanged.
   const {
     N_LOCS, WEIGHTS, MAX_RAW,
-    weightedTotal, predTotalFromScores, hasLocs, iPlayed, theyPlayed, bothPlayed, arrEq,
+    weightedTotal, predTotalFromScores, hasLocs, iPlayed, theyPlayed, bothPlayed,
     getMyTotal, getTheirTotal, parseMapTapScore, mapTapHistoryToRounds,
+    SYNC_NOTE, mergeMapTapSync,
     resultOf, resultLoc, stdDev, average, streaks, linearTrend, projectNext,
     rivalryScoreFromGames,
     isoWeekId, monthId, periodRecords, runningRivalPeriodRecords, periodTallyText,
@@ -268,6 +269,12 @@
     profileVerifying: false,
     profileError: null,
     syncAllInFlight: false,
+    // "Sync all rivals" run state, in-memory only. `syncAllProgress` is
+    // { done, total, name } while a run is walking the rivals; once it
+    // finishes `syncAllSummary` holds the { kind, msg } line the profile
+    // card shows until the next run.
+    syncAllProgress: null,
+    syncAllSummary: null,
     settings: load(KEY.SETTINGS, {}),
     selectedRivalId: loadString(KEY.SELECTED, null),
     view: 'dashboard',
@@ -3839,7 +3846,7 @@
       tableBody.appendChild(el('tr', { class: r ? '' : 'row-one-sided' }, [
         el('td', {}, shortDate(g.date)),
         scoreCell(meHere, myT,
-          hasLocs(g) ? `Rounds: ${g.myScores.join(' / ')}` : (meHere ? '' : 'You didn\'t play this day'),
+          Array.isArray(g.myScores) ? `Rounds: ${g.myScores.join(' / ')}` : (meHere ? '' : 'You didn\'t play this day'),
           state.myMapTap, 'your'),
         scoreCell(themHere, theirT,
           Array.isArray(g.theirScores) ? `Rounds: ${g.theirScores.join(' / ')}` : '',
@@ -5547,7 +5554,7 @@
         dateCell,
         el('td', {}, rival ? `${rival.icon} ${rival.name}` : '—'),
         scoreCell(meHere, myT,
-          hasLocs(g) ? `Rounds: ${g.myScores.join(' / ')}` : (meHere ? '' : 'You didn\'t play this day'),
+          Array.isArray(g.myScores) ? `Rounds: ${g.myScores.join(' / ')}` : (meHere ? '' : 'You didn\'t play this day'),
           state.myMapTap, 'your'),
         scoreCell(themHere, theirT,
           Array.isArray(g.theirScores) ? `Rounds: ${g.theirScores.join(' / ')}` : '',
@@ -5722,6 +5729,49 @@
     }
   }
 
+  // One-line outcome for a finished "Sync all rivals" run, rendered on the
+  // profile card. The per-rival pills below can only ever speak for one
+  // rivalry and clear themselves after a few seconds, so a run over five
+  // rivals had nothing that said what it did as a whole. It names both
+  // halves on purpose: how many rivals came back with something new, and
+  // how many were already up to date, because otherwise "nothing was stale" and
+  // "nothing happened" look identical.
+  //
+  // `results` are the values syncMapTapForRival resolved to, in run order.
+  // Rivals that were skipped (already mid-sync from their own button) are
+  // not counted at all: nothing was attempted for them.
+  function syncAllSummary(results) {
+    const list = (Array.isArray(results) ? results : [])
+      .filter(r => r && !r.skipped);
+    if (!list.length) return null;
+    const ok = list.filter(r => r.ok);
+    const failed = list.length - ok.length;
+    const changed = ok.filter(r => r.added || r.updated || r.backfilled).length;
+    const upToDate = ok.length - changed;
+    const newGames = ok.reduce((n, r) => n + (r.added || 0), 0);
+    const updated = ok.reduce((n, r) => n + (r.updated || 0), 0);
+    const backfilled = ok.reduce((n, r) => n + (r.backfilled || 0), 0);
+
+    // Counted on what actually synced, not on what was attempted: "2 rivals
+    // synced · 2 rivals failed" over a run where nothing synced is a lie the
+    // user can catch.
+    const parts = [];
+    if (ok.length) parts.push(`${countNoun(ok.length, 'rival')} synced`);
+    if (newGames)    parts.push(countNoun(newGames, 'new game'));
+    if (updated)     parts.push(`${countNoun(updated, 'game')} updated`);
+    if (backfilled)  parts.push(`${backfilled} backfilled`);
+    if (upToDate && upToDate === ok.length && !failed) {
+      parts.push(ok.length === 1 ? 'already up to date' : 'all already up to date');
+    } else if (upToDate) {
+      parts.push(`${upToDate} already up to date`);
+    }
+    if (failed) parts.push(`${countNoun(failed, 'rival')} failed`);
+    return {
+      kind: !failed ? 'ok' : (ok.length ? 'warn' : 'err'),
+      msg: parts.join(' · '),
+    };
+  }
+
   async function syncAllRivals() {
     if (state.syncAllInFlight) return;
     const targets = state.rivals.filter(r => r.maptapUsername && r.maptapUsername.trim());
@@ -5734,15 +5784,30 @@
       return;
     }
     state.syncAllInFlight = true;
+    state.syncAllSummary = null;
+    state.syncAllProgress = { done: 0, total: targets.length, name: targets[0].name };
     renderProfileCard();
+    const results = [];
     try {
-      // Sequential so we never see partial double-pulls of "me" data
+      // Sequential so we never see partial double-pulls of "me" data. The
+      // progress counter is repainted between rivals rather than inside the
+      // fetch, so it always reads "how many are finished", never "how many
+      // have been started".
       for (const r of targets) {
+        state.syncAllProgress.name = r.name;
+        renderProfileCard();
         // eslint-disable-next-line no-await-in-loop
-        await syncMapTapForRival(r.id);
+        results.push(await syncMapTapForRival(r.id));
+        state.syncAllProgress.done++;
+        renderProfileCard();
       }
     } finally {
       state.syncAllInFlight = false;
+      state.syncAllProgress = null;
+      // Stays up until the next run rather than self-clearing: it is the
+      // only place the run's totals are reported, and a per-rival pill has
+      // already faded by the time a long run finishes.
+      state.syncAllSummary = syncAllSummary(results);
       renderProfileCard();
     }
   }
@@ -5796,7 +5861,9 @@
           : `Sync ${targets.length} rival${targets.length === 1 ? '' : 's'}: ${targets.map(r=>r.name).join(', ')}`,
         onclick: syncAllRivals,
       }, state.syncAllInFlight
-        ? 'Syncing all…'
+        ? (state.syncAllProgress
+            ? `Syncing ${state.syncAllProgress.done}/${state.syncAllProgress.total}…`
+            : 'Syncing all…')
         : `🔄 Sync all rivals${targets.length ? ` (${targets.length})` : ''}`);
       actions.appendChild(syncAllBtn);
       actions.appendChild(el('button', {
@@ -5849,6 +5916,29 @@
       body.appendChild(el('div', { class: 'profile-status-line' }, [
         el('span', { class: 'syncing-spinner' }, '⟳'),
         el('span', { style: 'color:var(--muted)' }, `Fetching profile for "${state.myMapTap}"…`),
+      ]));
+    }
+
+    // "Sync all rivals" progress, then its totals. This line lives on the
+    // profile card because that is where the button is, and it survives the
+    // compact layout (only .profile-info / .profile-hint / .profile-meta-line
+    // are hidden there) so a collapsed card still reports the run.
+    if (state.syncAllProgress) {
+      const p = state.syncAllProgress;
+      body.appendChild(el('div', { class: 'profile-status-line' }, [
+        el('span', { class: 'syncing-spinner' }, '⟳'),
+        el('span', { style: 'color:var(--muted)' },
+          `Synced ${p.done} of ${countNoun(p.total, 'rival')}` +
+          (p.name ? ` · now ${p.name}` : '') + '…'),
+      ]));
+    } else if (state.syncAllSummary) {
+      const sum = state.syncAllSummary;
+      const tag = sum.kind === 'ok' ? '✓ Synced all'
+                : sum.kind === 'warn' ? '⚠ Synced all'
+                : '✗ Sync all failed';
+      body.appendChild(el('div', { class: 'profile-status-line' }, [
+        el('span', { class: 'tag ' + sum.kind }, tag),
+        el('span', { style: 'color:var(--muted)' }, sum.msg),
       ]));
     }
 
@@ -6880,9 +6970,13 @@
     };
   }
 
+  // Resolves to the run's outcome so "Sync all rivals" can total the pulls
+  // up: { ok, added, updated, backfilled } on success, { ok: false, error }
+  // when it could not run, { skipped: true } when this rival was already
+  // mid-sync (its own button was clicked first) and nothing was attempted.
   async function syncMapTapForRival(rivalId) {
     const rival = state.rivals.find(r => r.id === rivalId);
-    if (!rival) return;
+    if (!rival) return { ok: false, error: 'rival not found' };
 
     if (!state.myMapTap) {
       // The username lives in the profile card at the top of the dashboard
@@ -6890,15 +6984,15 @@
       // take the user there.
       setRivalSyncStatus(rivalId, 'err', 'link your MapTap profile first (top of the dashboard)');
       focusProfileUsername();
-      return;
+      return { ok: false, error: 'no MapTap profile linked' };
     }
     if (!rival.maptapUsername) {
       setRivalSyncStatus(rivalId, 'err', 'add their MapTap username');
       openRivalModal(rival.id);
       setTimeout(() => $('#rival-maptap-username').focus(), 60);
-      return;
+      return { ok: false, error: 'no MapTap username' };
     }
-    if (state.syncing.has(rivalId)) return;
+    if (state.syncing.has(rivalId)) return { skipped: true };
 
     state.syncing.add(rivalId);
     setRivalSyncStatus(rivalId, 'loading');
@@ -6916,83 +7010,19 @@
       const mineByDate = mapTapHistoryToRounds(mineProfile.gameHistory);
       const theirsByDate = mapTapHistoryToRounds(theirsProfile.gameHistory);
 
-      const existingGameByDate = new Map();
-      for (const g of state.games) {
-        if (g.rivalId === rival.id) existingGameByDate.set(g.date, g);
-      }
-
-      let added = 0;
-      let backfilled = 0;
-      let updated = 0;
-      const now = Date.now();
-      const sortedDates = Object.keys(theirsByDate).sort();
-      for (const date of sortedDates) {
-        const mine = mineByDate[date];
-        const theirs = theirsByDate[date];
-        // Skip only if the rival has no entry — there's nothing to record
-        // about a day they didn't play. Days where only the rival played
-        // (no `mine`) still get saved below as rival-only games so the
-        // user can see their rival's activity without having to play too.
-        if (!theirs) continue;
-        // Cities are identical for both players each day — take whichever
-        // side we have (preferring ours when both exist for parity with
-        // the existing behaviour).
-        const cities = (mine && mine.cities) || theirs.cities;
-
-        const existingGame = existingGameByDate.get(date);
-        if (existingGame) {
-          // Backfill: older imports (paste / WhatsApp / pre-cities sync)
-          // don't have geo info. If we have it now, attach it so the
-          // continent breakdown lights up retroactively.
-          if (!Array.isArray(existingGame.cities) || existingGame.cities.length !== N_LOCS) {
-            existingGame.cities = cities.slice();
-            backfilled++;
-          }
-          // Refresh scores for games that originally came from MapTap sync.
-          // This covers two cases:
-          //   1. The user pointed `myMapTap` at a different MapTap profile —
-          //      the stored rows still reflect the previous user and need
-          //      to be replaced.
-          //   2. A previously rival-only game (no `myScores`/`myScore`)
-          //      becomes a full H2H game once the user plays and re-syncs.
-          // Manually entered games (different `note`) are left alone so we
-          // don't clobber hand-entered data.
-          if (existingGame.note === 'synced from MapTap') {
-            const newTheir = theirs.scores.slice();
-            const newMy = mine ? mine.scores.slice() : null;
-            const myChanged = newMy
-              ? !arrEq(existingGame.myScores, newMy)
-              : false; // can't downgrade existing my-side from a sync
-            const theirChanged = !arrEq(existingGame.theirScores, newTheir);
-            if (myChanged || theirChanged) {
-              if (newMy) {
-                existingGame.myScores = newMy;
-                existingGame.myScore = weightedTotal(newMy);
-              }
-              existingGame.theirScores = newTheir;
-              existingGame.theirScore = weightedTotal(newTheir);
-              updated++;
-            }
-          }
-          continue;
-        }
-        const newGame = {
-          id: uid(),
-          rivalId: rival.id,
-          date,
-          theirScores: theirs.scores.slice(),
-          cities: cities.slice(),
-          theirScore: weightedTotal(theirs.scores),
-          note: 'synced from MapTap',
-          createdAt: now + added,
-        };
-        if (mine) {
-          newGame.myScores = mine.scores.slice();
-          newGame.myScore = weightedTotal(mine.scores);
-        }
-        state.games.push(newGame);
-        added++;
-      }
+      // The walk itself is pure and unit-tested in js/stats.js: it covers
+      // every day EITHER side played, so a day only one of you showed up for
+      // still lands in the log (rival-only or me-only) and upgrades to a
+      // full head-to-head the moment the other side's history catches up.
+      const { newGames, added, updated, backfilled } = mergeMapTapSync({
+        rivalId: rival.id,
+        mineByDate,
+        theirsByDate,
+        existingGames: state.games,
+        makeId: uid,
+        now: Date.now(),
+      });
+      for (const g of newGames) state.games.push(g);
       if (added || backfilled || updated) persistGames();
       if (added) {
         track('trackAction', 'games_logged', { entry_method: 'maptap_sync', game_count: added });
@@ -7015,8 +7045,10 @@
       else if (state.view === 'matrix') renderMatrix();
       else if (state.view === 'records') renderRecords();
       else if (state.view === 'history') renderHistory();
+      return { ok: true, added, updated, backfilled };
     } catch (err) {
       setRivalSyncStatus(rivalId, 'err', err.message || 'sync failed');
+      return { ok: false, error: err.message || 'sync failed' };
     } finally {
       state.syncing.delete(rivalId);
       refreshRivalCardSyncUI(rivalId);
@@ -7961,6 +7993,7 @@
       pasteDateHintText,
       leaveNetworkMessage,
       streakDrama,
+      syncAllSummary,
       rivalNameClash,
       classifyContinent,
       continentBreakdown,
