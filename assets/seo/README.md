@@ -1,8 +1,7 @@
 # SEO and visibility notes
 
-This directory holds the canonical JSON-LD fragments referenced from
-the site's HTML pages, plus the conventions for keeping metadata
-consistent across new pages.
+This directory holds copies of the site's shared JSON-LD nodes, plus the
+conventions for keeping metadata consistent across new pages.
 
 ## Files
 
@@ -13,9 +12,17 @@ consistent across new pages.
 - `website.jsonld` - the `WebSite` node, references the Organization
   as its publisher.
 
-These files are reference templates, not loaded at runtime. Pages
-inline the relevant subset directly in a `<script type="application/ld+json">`
-block in `<head>`.
+**`home.html` is the source of truth, not these files.** Nothing loads them
+at runtime; pages inline their JSON-LD in a
+`<script type="application/ld+json">` block in `<head>`. Each file here must
+deep-equal the node with the matching `@id` that `home.html` actually emits
+(`@context` aside, which a standalone fragment needs and an embedded node
+inherits).
+
+`tests/static/seo-jsonld-parity.test.mjs` enforces exactly that. To change a
+shared node, edit the page and re-copy the node out of it. Editing a fragment
+on its own will fail the test - which is the point: both files silently drifted
+out of sync for three and a half months before that check existed.
 
 ## Per-page metadata checklist
 

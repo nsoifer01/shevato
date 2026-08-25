@@ -319,7 +319,6 @@ function calculateAchievements(player, raceData) {
     let raceCount = 0;
     
     // Calculate final overall average for display purposes
-    const finalOverallAverage = chronologicalRaces.reduce((sum, race) => sum + race[player], 0) / chronologicalRaces.length;
     
     chronologicalRaces.forEach(race => {
         raceCount++;
@@ -718,38 +717,6 @@ function smartUpdateExpandedAchievements(raceData) {
     });
 }
 
-function collapseAllAchievements() {
-    players.forEach(player => {
-        // Collapse all expanded achievements
-        const expandedSection = document.getElementById(`${player}-expanded-achievements`);
-        if (!expandedSection) return;
-        const expandedList = expandedSection.querySelector('.expanded-achievements-list');
-        if (expandedList) {
-            Object.keys(ACHIEVEMENTS).forEach(achievementKey => {
-                const existingExpanded = document.getElementById(`${player}-${achievementKey}-expanded`);
-                if (existingExpanded) {
-                    existingExpanded.remove();
-                    // Update main achievement bar styling
-                    const mainAchievementBar = document.querySelector(`[data-player="${player}"][data-achievement="${achievementKey}"]`).closest('.achievement-bar');
-                    if (mainAchievementBar) {
-                        mainAchievementBar.classList.remove('achievement-expanded');
-                    }
-                }
-            });
-        }
-        
-        // Reset button state
-        const toggleActiveButton = document.getElementById(`${player}-toggle-active-achievements`);
-        if (toggleStreaksButton) {
-            const toggleText = toggleStreaksButton.querySelector('.toggle-streaks-text');
-            const toggleIcon = toggleStreaksButton.querySelector('.toggle-streaks-icon');
-            if (toggleText && toggleIcon) {
-                toggleText.textContent = 'Expand Active';
-                toggleIcon.textContent = '▼';
-            }
-        }
-    });
-}
 
 function clearAchievementButtons() {
     players.forEach(player => {
@@ -2052,7 +2019,6 @@ function updateSweetSpotBars(raceData) {
 
         // Find the maximum count to determine thresholds
         const maxCount = Math.max(...Object.values(positionCounts), 0);
-        const avgCount = Object.values(positionCounts).reduce((sum, count) => sum + count, 0) / Object.keys(positionCounts).length || 0;
 
         // Single color with transparency scaling based on frequency
         const getColorForCount = (count) => {

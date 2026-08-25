@@ -82,7 +82,6 @@ window.syncDebug = {
       
       if (races.length > 0) {
         // Modify the first race
-        const originalFirst = { ...races[0] };
         races[0].testSync = Date.now();
         
         console.log(`✏️ Modifying first race...`);

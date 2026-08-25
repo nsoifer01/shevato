@@ -150,7 +150,14 @@ than the whole cache.
 ## The trained model, and why nothing from it is used
 
 `scripts/train-model.mjs` writes a versioned artifact into `models/` and records
-it in `models/index.json`. `js/data/model.js` loads that index at boot, takes the
+it in `models/index.json`. **Superseded artifacts stay in `models/` and stay
+registered in the index on purpose.** Only the highest version is ever loaded,
+so `models/fpl-planner-v1.json` never reaches the engine, but it is the evidence
+behind the REJECT verdict recorded in `experiments/registry.md` section 2 and
+the comparison baseline `scripts/evaluate-model.mjs --model` takes: deleting it
+would make that verdict un-retestable. It is retained history, not a stale file.
+
+`js/data/model.js` loads that index at boot, takes the
 highest version in it, and passes on only the parts the artifact names in its own
 `engineConsumes` list, as `options.model` into `buildPlan` and from there into the
 worker where planning actually runs. A retrain is a file drop: append to the

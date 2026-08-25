@@ -127,65 +127,6 @@ function updateVersionUI() {
     document.body.classList.add(currentGameVersion === 'mk8d' ? 'mk8d-mode' : 'mkworld-mode');
 }
 
-// Override localStorage methods for the app
-const originalGetItem = localStorage.getItem.bind(localStorage);
-const originalSetItem = localStorage.setItem.bind(localStorage);
-const originalRemoveItem = localStorage.removeItem.bind(localStorage);
-
-// Wrapper for localStorage.getItem
-function getFromStorage(key) {
-    // Special keys that should not be prefixed
-    const unprefixedKeys = ['selectedGameVersion', 'theme'];
-    if (unprefixedKeys.includes(key)) {
-        return originalGetItem(key);
-    }
-    
-    // For Mario Kart specific keys, use the appropriate prefix
-    if (key.startsWith('marioKart')) {
-        const baseKey = key.replace(/^marioKart(World)?/, '');
-        const fullKey = getStorageKey(baseKey);
-        return originalGetItem(fullKey);
-    }
-    
-    return originalGetItem(key);
-}
-
-// Wrapper for localStorage.setItem
-function saveToStorage(key, value) {
-    // Special keys that should not be prefixed
-    const unprefixedKeys = ['selectedGameVersion', 'theme'];
-    if (unprefixedKeys.includes(key)) {
-        return originalSetItem(key, value);
-    }
-    
-    // For Mario Kart specific keys, use the appropriate prefix
-    if (key.startsWith('marioKart')) {
-        const baseKey = key.replace(/^marioKart(World)?/, '');
-        const fullKey = getStorageKey(baseKey);
-        return originalSetItem(fullKey, value);
-    }
-    
-    return originalSetItem(key, value);
-}
-
-// Wrapper for localStorage.removeItem
-function removeFromStorage(key) {
-    // Special keys that should not be prefixed
-    const unprefixedKeys = ['selectedGameVersion', 'theme'];
-    if (unprefixedKeys.includes(key)) {
-        return originalRemoveItem(key);
-    }
-    
-    // For Mario Kart specific keys, use the appropriate prefix
-    if (key.startsWith('marioKart')) {
-        const baseKey = key.replace(/^marioKart(World)?/, '');
-        const fullKey = getStorageKey(baseKey);
-        return originalRemoveItem(fullKey);
-    }
-    
-    return originalRemoveItem(key);
-}
-
 // Export functions for global use
 window.switchGameVersion = switchGameVersion;
 window.initializeGameVersion = initializeGameVersion;

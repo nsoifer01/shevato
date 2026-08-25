@@ -1,7 +1,17 @@
 # Test fixtures
 
-Committed JSON that every `apps/fpl-planner/tests/*.test.mjs` file imports.
-Engine tests never hit the network, so these are the only inputs.
+Committed JSON that `apps/fpl-planner/tests/*.test.mjs` files read. Engine
+tests never hit the network, so these are the only inputs.
+
+Two sets, loaded two different ways:
+
+- **This directory** - the hand-trimmed 2026/27 pre-season corpus below,
+  pulled in with static `import ... with { type: 'json' }`.
+- **`gw1-2026/`** - a real GW1 capture replayed through five lifecycle states,
+  read at runtime with `readFileSync` off a computed path
+  (`join(..., 'fixtures', 'gw1-2026')`) in `season-lifecycle.test.mjs`. Because
+  nothing imports those files by name, a plain reference search will report
+  them as unused; they are not. See "The gw1-2026 lifecycle capture" below.
 
 They were trimmed from a real capture of the public FPL API on 2026-08-10
 (`bootstrap-static`, `fixtures`) and then replayed forward, because the 2026/27
@@ -64,3 +74,33 @@ They are hand-maintainable, but they were produced from live payloads. If you
 regenerate them, keep the properties listed above: they are what the tests
 depend on, and a fixture that quietly loses its injured player or its price
 movement turns several tests into assertions that cannot fail.
+
+## The gw1-2026 lifecycle capture
+
+`gw1-2026/` exists because several states the app must survive can only be seen
+during a live gameweek, and cannot be reconstructed from a pre-season payload:
+FPL clears every player's element totals at the gameweek rollover, and leaves
+`finished: false` on fixtures for hours after full time. The set was captured
+from the live FPL proxy on 2026-08-21 and 2026-08-22 and replayed forward.
+
+The files are a base plus deltas rather than five whole payloads, which is why
+they stay small:
+
+| File | What it is |
+| --- | --- |
+| `base.json` | The full bootstrap + fixtures pair every state is rebuilt from. `payloadFor(name)` in `season-lifecycle.test.mjs` overlays a delta onto it. |
+| `manifest.json` | The register of captured states. Each entry records `withMinutes` (players with recorded minutes) and `startedFixtures`, so a regenerated capture that silently loses its distinguishing property is visible. |
+| `preseason.json` | Before kickoff: 251 players carry minutes from last season, no fixture started. |
+| `rollover-cleared.json` | Immediately after the GW rollover: totals wiped to 0 minutes, still no fixture started. This is the state that broke projections in the GW1 incident. |
+| `match-in-play.json` | One fixture started, 13 players with minutes. |
+| `ft-provisional.json` | One fixture at provisional full time - `finished_provisional` true while `finished` is still false. |
+| `ft-provisional.live.json` | The matching live-scoring payload, fed to `buildLiveStats`. |
+| `ft-provisional.picks.json` | The matching `entry/{id}/event/{gw}/picks` payload, fed to `buildSquadState`. |
+| `live-2026-08-22.json` | A later real capture: GW1 current, 6 of 10 fixtures at provisional full time, totals cleared at the rollover. |
+
+Each delta carries a `totals` table (`fields` + row arrays keyed by player id)
+and a `fixturePhases` map (`s` started, `f` finished, `p` finished_provisional).
+Regenerating one means re-capturing from the proxy during the equivalent live
+moment; the `manifest.json` counts are the check that you captured the state you
+meant to.
+

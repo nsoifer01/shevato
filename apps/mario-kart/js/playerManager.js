@@ -185,10 +185,6 @@ function updateInputGroupClass() {
 
 window.getPlayerCount = function () { return playerCount; };
 
-function getPlayerKey(playerIndex) {
-    const keyMap = { 0: 'player1', 1: 'player2', 2: 'player3', 3: 'player4' };
-    return keyMap[playerIndex];
-}
 
 function getPlayerName(playerKey) {
     const nameMap = { 'player1': playerNames.player1, 'player2': playerNames.player2, 'player3': playerNames.player3, 'player4': playerNames.player4 };

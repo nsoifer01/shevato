@@ -960,26 +960,6 @@ function createGuideView() {
     darkGradients.forEach(el => el.style.display = 'inline-flex');
 }
 
-function getPositionClass(position) {
-    // Use dynamic position ranges from achievements.js
-    const ranges = window.getPositionRanges ? window.getPositionRanges() : getDefaultPositionRanges();
-    
-    // Special handling for podium positions
-    if (position === 1) return 'pos-1';
-    if (position === 2) return 'pos-2';
-    if (position === 3) return 'pos-3';
-    
-    // Find the range this position belongs to
-    for (const range of ranges) {
-        const [min, max] = range.range;
-        if (position >= min && position <= max) {
-            return `pos-${range.label.replace('-', '-')}`.replace(/\s/g, '-');
-        }
-    }
-    
-    // Fallback to last range
-    return `pos-${ranges[ranges.length - 1].label.replace('-', '-')}`.replace(/\s/g, '-');
-}
 
 function getDefaultPositionRanges() {
     // Fallback ranges for MK World

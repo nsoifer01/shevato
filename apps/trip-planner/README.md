@@ -169,7 +169,7 @@ netlify/functions/            # Server-side (unversioned): Tier 3 assistant + ve
 ├── lib/tp-places-match.mjs   # No-match classification before anything is billed
 ├── lib/tp-places-quota.mjs   # Compare-and-swap quota (public + separate owner buckets)
 ├── lib/tp-places-store.mjs   # Blob store handles (config + usage)
-├── lib/tp-places-usage.mjs   # CAS usage accounting
+├── lib/blob-cas.mjs          # CAS usage accounting, shared by tp-places and tp-assist
 └── tests/                    # node:test for the quota math, matching, handler guards,
                               #   and the full tp-assist handler path (blobs stubbed via
                               #   a node:module hook, see tp-assist-handler.test.mjs)

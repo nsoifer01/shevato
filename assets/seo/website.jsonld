@@ -4,7 +4,17 @@
   "@id": "https://shevato.com/#website",
   "url": "https://shevato.com/",
   "name": "Shevato",
-  "description": "Software engineering services and free web apps from Shevato LLC.",
+  "description": "Software engineering services from Shevato LLC: Spring Boot microservices, REST APIs, and full stack web applications.",
   "inLanguage": "en",
-  "publisher": { "@id": "https://shevato.com/#organization" }
+  "publisher": {
+    "@id": "https://shevato.com/#organization"
+  },
+  "potentialAction": {
+    "@type": "SearchAction",
+    "target": {
+      "@type": "EntryPoint",
+      "urlTemplate": "https://shevato.com/apps?q={search_term_string}"
+    },
+    "query-input": "required name=search_term_string"
+  }
 }
