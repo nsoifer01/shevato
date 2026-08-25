@@ -1294,11 +1294,99 @@ says so, and once a gameweek has completed it says the season is only N matches
 old. Telling someone whose gameweek has finished that "the clubs have not played
 the same number of games" is simply wrong, and it was.
 
+### The shipped opening-season baseline, and the ordering that made it necessary
+
+**The 2026-08-21 repair was correct and it helped nobody.** It kept the last
+complete payload a browser had seen; it could only do that for a browser that
+was ALREADY RUNNING IT when a complete payload last arrived. Nobody was:
+
+| when (UTC) | what |
+| --- | --- |
+| 2026-08-21 18:04 | FPL clears every element total |
+| 2026-08-22 16:04 | PR #429, which keeps a baseline, merges and deploys |
+
+`snapshotFrom` returns null unless the payload it is handed is COMPLETE
+(`baseline.js`), and no payload has been complete since the wipe. So
+`saveSnapshotIfBetter` - the only writer - never had anything to write, no
+browser ever held `fplPlannerSeasonBaseline.v1`, and every visitor resolved to
+`source: 'none'` and was refused a plan until `baselineIsSuperseded` opened at
+three matches per club. That is the whole of GW2 and GW3: **the app was
+unusable for its actual purpose for the opening month of the season, for
+everyone, not just for first-time visitors.**
+
+Why five days of runbook passes did not catch it: **every check that exercised
+a baseline SEEDED one**, in node from a captured pre-wipe payload on the
+maintainer's disk, or into localStorage before loading the page. A seeded state
+production cannot reach is not a test of production. Passes 3 and 4 both
+reported "returning visitor with a kept baseline: plan renders, 46-53 xP" and
+both were describing a browser that did not exist. The class is the same one
+this app keeps meeting: **the test supplied the precondition that was itself
+the broken thing.** If a fixture has to be injected by hand, ask what writes it
+in production and when.
+
+**The repair is to ship the baseline with the app** (`data/opening-baseline.json`,
+built by `scripts/build-opening-baseline.mjs` from the last complete capture,
+`bootstrap-after.json` at 17:32:59 UTC on 2026-08-21, 31 minutes before the
+wipe; an independent capture 16 minutes earlier agrees on every total for all
+600 players, so these are settled figures rather than a mid-update read). It is
+the same shape `snapshotFrom` produces, so one code path reads both, and it is
+fetched only when `openingBaselineApplies` says the season has rolled over and
+is not yet a season of its own.
+
+The order `resolveBaseline` picks in, and why:
+
+1. **a kept snapshot that carries its rate numerators** - this browser's own
+   record of a complete payload, the best evidence there is;
+2. **the shipped asset** - the same kind of record, captured once, centrally;
+3. **a version 1 kept snapshot** - minutes only, so every rate falls back to a
+   position average: strictly less than the asset can say, which is why it is
+   below it rather than above;
+4. **nothing**, and the plan is withheld.
+
+It retires exactly as a kept baseline does, at three matches per club
+(2026-09-06 for this season), and it may only ever be applied to the season it
+was captured in: `validateOpeningBaseline` pins BOTH the season label from
+`static_content_url` and the opening deadline, so a payload that claims 2026/27
+on another calendar is refused too. Kept snapshots gained the same protection -
+`buildGameState` now SETS `seasonLabel`, a field `snapshotFrom` had been
+reading since the day it was written and which was therefore always null - and
+are refused two seasons out, with unlabelled legacy snapshots dated against the
+opening deadline instead. The tolerance is one season, not zero, because
+`seasonLabel` has meant both "the season of the payload" and "the season of the
+totals" depending on the writer, and an equality test refuses half the
+snapshots it was meant to accept.
+
+### "Plan unchanged" over "we are not showing a plan"
+
+Both withheld branches in `app.js` rendered the same top-of-page notices as a
+normal plan screen, and the plan-diff card asked only whether a diff had been
+COMPUTED. It had been: the planner still produces a bundle in the refused
+state, the diff still runs against the stored history, and the view then
+refuses to show the plan it just described. So a recalculation on a refused
+screen printed "Plan unchanged. Nothing that feeds the plan has moved since it
+was last calculated." directly above "We are not showing a plan right now".
+
+Neither notice was wrong on its own, which is what made it a STATE bug rather
+than a copy bug, and why hiding the element would have been the wrong fix. The
+rule is a property of each notice: `outdated`, the plan diff and "Plan rebuilt"
+describe A PLAN and may only appear on a screen showing one, while the sample,
+staleness and squad-warning banners describe the INPUTS and are true either
+way. That decision now lives in `noticeKinds()` in `ui/plan-model.js`, pure and
+unit tested, and `topNotices()` only turns the chosen kinds into nodes.
+
+The refusal text was wrong in the same round: it appended "and until the first
+matches are played there is nothing to project from" to an `evidence.message`
+that already said the opposite ("This season is only 1 match old"). The generic
+sentence is now used only before a ball has been kicked.
+
 ### The legacy snapshot, and why it is not simply thrown away
 
-Every browser that met the 2026-08-21 fix holds a version 1 (minutes-only)
-snapshot under `fplPlannerSeasonBaseline.v1`. Deleting it on sight would put
-those managers back on a payload with no evidence at all, so it is still read:
+A version 1 (minutes-only) snapshot under `fplPlannerSeasonBaseline.v1` is
+still read wherever one exists - the mechanism predates the discovery above
+that no production browser ever wrote one, and a browser that keeps a complete
+payload in some later pre-season will write one again. Deleting it on sight
+would put such a manager back on a payload with no evidence at all, so it is
+still read:
 the minutes serve the minutes model, `rateMinutes` restricts every rate to this
 season's own minutes (so a cleared numerator is never divided by a restored
 denominator), the shrinkage layer resolves those rates to the position priors,

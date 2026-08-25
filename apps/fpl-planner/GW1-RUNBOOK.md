@@ -40,6 +40,22 @@ folded GW1's 44 points (bonus included) into the average and the tiles, and the
 tile rank matches the row. Report:
 `.reports/fpl-planner-session-report-2026-08-25-1333.md`.
 
+**RESULT, 2026-08-25 (later the same day): pass 4 also found a
+production-blocking defect that the pass itself had been blind to.** Every
+"returning visitor with a kept baseline" check in passes 3 and 4 SEEDED that
+baseline - built in node from a pre-wipe payload on the maintainer's disk, or
+written into localStorage before the page loaded. No production browser could
+be in that state: the baseline guard reached production 22 hours AFTER FPL
+cleared the totals, and `snapshotFrom` only snapshots a complete payload, so
+none was ever written. Every real visitor, first-time or returning, was refused
+a plan and would have stayed refused until three matches per club (2026-09-06).
+
+The repair ships the baseline with the app (`data/opening-baseline.json`, built
+from the last complete capture by `scripts/build-opening-baseline.mjs`) and is
+recorded in FINDINGS under "The shipped opening-season baseline". The lesson
+for every future pass: **if a check needs a fixture injected by hand, ask what
+writes that fixture in production, and when.**
+
 Four things about Fantasy Premier League cannot be observed until the season
 actually turns over, and each one is handled without a code change whichever way
 it goes. This checklist is how we find out which way, and confirm the app agreed:
@@ -157,6 +173,11 @@ Check:
 - [ ] History moves GW1 from provisional to final: the live marker is gone, the
       points include bonus, and the rank and season average now include it.
 - [ ] the squad for GW2 is reconstructed correctly and free transfers read 1.
+- [ ] **from an EMPTY browser** (clear localStorage, set only the team id) the
+      Plan tab renders a GW2 plan rather than a refusal. Never seed a baseline
+      to make this pass: the whole point is what a real first-time visitor
+      gets. `localStorage.getItem('fplPlannerSeasonBaseline.v1')` is expected
+      to be null, and the plan must appear anyway, from the shipped asset.
 
 ## 5. After one real transfer for GW2
 

@@ -11,7 +11,7 @@
 
 import { buildRules } from './rules.js';
 import { fixtureIsPlayed } from './lifecycle.js';
-import { RATE_FIELDS, snapshotCarriesRates } from './baseline.js';
+import { RATE_FIELDS, snapshotCarriesRates, OPENING_BASELINE_KIND } from './baseline.js';
 
 const num = (v) => {
   const n = typeof v === 'number' ? v : parseFloat(v);
@@ -50,6 +50,7 @@ export function buildGameState(bootstrap, fixtures, { fetchedAt, baseline = null
   // reassigned between seasons (see FINDINGS, cross-season player identity).
   let baselineSource = 'current';
   let baselineRates = null;
+  let baselineOrigin = null;
   if (baseline && baseline.totals) {
     const carriesRates = snapshotCarriesRates(baseline);
     const byCode = new Map();
@@ -86,6 +87,11 @@ export function buildGameState(bootstrap, fixtures, { fetchedAt, baseline = null
     if (overlaid > 0) {
       baselineSource = 'baseline';
       baselineRates = carriesRates ? 'carried' : 'missing';
+      // 'shipped' for the baseline committed with the app, 'kept' for one this
+      // browser recorded itself. The distinction never changes a projection -
+      // both are the same shape and are read the same way - but the status
+      // panel has to be able to say which set of totals a plan rests on.
+      baselineOrigin = baseline.kind === OPENING_BASELINE_KIND ? 'shipped' : 'kept';
     }
   }
 
@@ -104,8 +110,15 @@ export function buildGameState(bootstrap, fixtures, { fetchedAt, baseline = null
     // minutes; 'missing' when a minutes-only snapshot is in force and rates
     // are read over this season's minutes alone; null without a baseline.
     baselineRates,
+    baselineOrigin,
     baselineCapturedAt: baselineSource === 'baseline' ? (baseline.capturedAt || null) : null,
     baselineSeasonLabel: baselineSource === 'baseline' ? (baseline.seasonLabel || null) : null,
+    // The season this payload itself belongs to, read from the static content
+    // path in `rules`. `snapshotFrom` stamps it onto every snapshot it writes,
+    // which is what lets a later season refuse an older browser's baseline.
+    // The field was READ here before it was ever SET, so every snapshot
+    // written before 2026-08-25 carries `seasonLabel: null`.
+    seasonLabel: rules.season || null,
     fixtures: normalizedFixtures,
     events,
     fetchedAt: fetchedAt || new Date().toISOString(),

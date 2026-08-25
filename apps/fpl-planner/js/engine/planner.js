@@ -846,6 +846,7 @@ function buildDataStatus({ gameState, squadState, cfg, projections, durationMs }
     readiness,
     baselineSource: gameState.baselineSource || 'current',
     baselineRates: gameState.baselineRates || null,
+    baselineOrigin: gameState.baselineOrigin || null,
     baselineCapturedAt: gameState.baselineCapturedAt || null,
     sources: [
       {

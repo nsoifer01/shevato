@@ -291,3 +291,49 @@ export function outdatedReason(oldFp, newFp) {
   }
   return { code: 'players-changed', text: 'Prices or player availability changed since this plan was calculated.' };
 }
+
+// WHICH TOP-OF-PAGE NOTICES A GIVEN SCREEN MAY SHOW.
+//
+// This is a state machine, not a list of `if`s next to the markup, because the
+// bug it exists to prevent was two individually-correct notices contradicting
+// each other on one screen: "Plan unchanged. Nothing that feeds the plan has
+// moved since it was last calculated." rendered directly above "We are not
+// showing a plan right now". Both branches called the same notice builder, and
+// the builder only asked whether a diff had been COMPUTED - which it had,
+// against a plan the view then refused to show.
+//
+// The rule is a property of each notice:
+//
+//   - `outdated`, `plan-change` and `rebuilt` describe A PLAN. They may only
+//     appear on a screen that is showing one.
+//   - `sample`, `stale`, `stale-sources` and `squad-warnings` describe the
+//     INPUTS. They are true either way and appear on both.
+//
+// Returns the notice kinds, in render order.
+export function noticeKinds({
+  planShown = true,
+  sample = false,
+  outdated = false,
+  planChange = false,
+  notice = false,
+  stale = false,
+  staleSources = false,
+  squadWarnings = false,
+} = {}) {
+  const kinds = [];
+  if (sample) kinds.push('sample');
+
+  if (planShown) {
+    // Exactly one of the three plan notices: the diff says everything the
+    // generic "rebuilt" notice says and more, and an outdated plan outranks
+    // both because it is the only one with an action attached.
+    if (outdated) kinds.push('outdated');
+    else if (planChange) kinds.push('plan-change');
+    else if (notice) kinds.push('rebuilt');
+  }
+
+  if (stale) kinds.push('stale');
+  else if (staleSources) kinds.push('stale-sources');
+  if (squadWarnings) kinds.push('squad-warnings');
+  return kinds;
+}

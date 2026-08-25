@@ -774,6 +774,17 @@ export function evidenceLabel(evidence) {
   return 'not published yet, so no plan is shown';
 }
 
+// Where the season totals behind this plan came from, and when they were
+// captured. Only ever called when a baseline is in force.
+export function baselineLabel(ds) {
+  const origin = ds.baselineOrigin === 'shipped'
+    ? 'shipped with this app'
+    : 'recorded by this browser';
+  const rates = ds.baselineRates === 'missing' ? ', minutes only' : '';
+  const when = ds.baselineCapturedAt ? `, captured ${dateTime(ds.baselineCapturedAt)}` : '';
+  return `last season's, ${origin}${rates}${when}`;
+}
+
 export function statusCard({ bundle, sources = [], runnerMode = 'worker', modelStatus = null, open = false, onToggle = null, now = Date.now() }) {
   const ds = bundle.dataStatus || {};
   // A sample snapshot carries the date it was captured, which is not a point on
@@ -795,6 +806,12 @@ export function statusCard({ bundle, sources = [], runnerMode = 'worker', modelS
       // the app around the first deadline needs to be able to read what it
       // decided rather than infer it from the projections.
       ds.evidence ? kv('Player totals', evidenceLabel(ds.evidence)) : null,
+      // Which set of totals a plan actually rests on. Silent until a baseline
+      // is standing in, and then explicit about whose it is: a plan built on
+      // the shipped opening-season figures is a different claim from one built
+      // on a payload this browser saw itself, and a reader checking the app in
+      // August has to be able to tell them apart.
+      ds.baselineSource === 'baseline' ? kv('Season baseline', baselineLabel(ds)) : null,
       kv('Horizon', `${ds.horizon} gameweeks`),
       kv('Uncertainty discount', `${ds.discount} per gameweek`),
       kv('Risk profile', ds.risk || 'balanced'),
