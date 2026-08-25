@@ -20,6 +20,26 @@ incident, and the repair is on `fix/fpl-live-gameweek-state`.
   UTC the following morning, over eleven hours later. The proxy relayed the 503 correctly; the app was
   blind to the second, and now is not.
 
+**RESULT, 2026-08-25: pass 4 is done and every check passed.** GW1 was
+finalised between 04:20 UTC and 18:17 UTC on 2026-08-25, which is 7 to 21 hours
+after the last GW1 full time (FUL 2-3 CHE, kicked off 2026-08-24 19:00 UTC).
+An attempt on the Monday night stopped at step 1 as instructed: all ten fixtures
+read `finished_provisional` with bonus posted, and `finished` and `data_checked`
+were both still false. That is the sharpest measurement of Fact 4 we have -
+**`finished` can stay false past the whole night, not merely for hours**, and
+`finished_provisional` is the only signal that says the football is over.
+
+On the finalised payload: the probe reports lifecycle `complete`, 20/20 clubs
+played and all five invariants ok; a cold visitor is still refused
+(`partial-season`, one match is not a season) and now gets the level-clubs
+wording rather than the uneven-clubs one; with a kept baseline the start-rate
+median is 0.485 with 0 of 260 pinned, the GW2 plan is 53.4 xP with a midfield
+captain, and readiness reaches `chips` for the first time because `clubs_uneven`
+and `gameweek_unsettled` have both cleared. History dropped the live marker,
+folded GW1's 44 points (bonus included) into the average and the tiles, and the
+tile rank matches the row. Report:
+`.reports/fpl-planner-session-report-2026-08-25-1333.md`.
+
 Four things about Fantasy Premier League cannot be observed until the season
 actually turns over, and each one is handled without a code change whichever way
 it goes. This checklist is how we find out which way, and confirm the app agreed:

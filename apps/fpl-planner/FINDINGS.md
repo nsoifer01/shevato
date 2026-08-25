@@ -1241,11 +1241,29 @@ trimmed and sanitized, under `tests/fixtures/gw1-2026/`.
   labelled "Gameweek N so far, provisional"; a rank FPL has not published stays
   "-", and the sentence says the figures below are provisional rather than
   excluded. Once a gameweek is finalised the tiles describe it and the live one
-  is excluded exactly as before. The e2e probe for the tile had been stripping
-  every "s" from the text (`/\s+/` inside a template literal is `/s+/`), which
-  is why its loose regex never noticed.
+  is excluded exactly as before - verified on the real finalised GW1 in pass 4
+  (2026-08-25): the LIVE chip and the "is being played" sentence are gone, the
+  tiles read "after Gameweek 1" with the same overall rank the row prints
+  (6,124,832), "Points per gameweek" shows 44.0 instead of "-", and the row's 44
+  points match `history.current[0].points` with bonus included. The e2e probe
+  for the tile had been stripping every "s" from the text (`/\s+/` inside a
+  template literal is `/s+/`), which is why its loose regex never noticed.
 
 ### A consequence worth knowing: the first weeks without a baseline
+
+**Confirmed against the real thing on 2026-08-25** (runbook pass 4): the
+simulation below was right. On the finalised payload the probe reads lifecycle
+`complete` with 20/20 clubs played and every invariant ok, a kept baseline gives
+a start-rate median of 0.485 with 0 of 260 players pinned, and the GW2 plan is
+53.4 xP captained by a midfielder. Readiness reached `chips` for the first time,
+because `clubs_uneven` and `gameweek_unsettled` both cleared when the gameweek
+was signed off. Two facts about the finalisation itself are worth keeping:
+`data_checked` lagged the last full time by between 7.5 and 21 hours (false at
+FT+7h20m with every fixture already `finished_provisional` and bonus posted,
+true by FT+21h), and a cold visitor is STILL refused afterwards, now with the
+level-clubs message ("This season is only 1 match old") rather than the
+uneven-clubs one - the branch that could not be exercised while the gameweek was
+in play.
 
 Simulating the finalisation states FPL has not reached yet, on the real FT+11h
 payload, shows the repair working through all of them **for anyone who has a
