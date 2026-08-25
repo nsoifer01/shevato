@@ -1,6 +1,233 @@
 {
   "updates": [
     {
+      "builtAt": "2026-08-25T06:52:20.596Z",
+      "totals": {
+        "seasons": 66435,
+        "delta": 16
+      },
+      "shapeCounts": {
+        "mid-peak": 4634,
+        "rebound": 10112,
+        "rising": 2606,
+        "slow-burn": 4409,
+        "big-finale": 12092,
+        "u-shaped": 3084,
+        "rollercoaster": 14122,
+        "saved-best-for-last": 1504,
+        "front-loaded": 3491,
+        "declining": 1882,
+        "bad-finale": 4648,
+        "consistent": 2627,
+        "shape-drift": 1583
+      },
+      "shapeDeltas": {
+        "mid-peak": 4,
+        "rebound": -1,
+        "rising": 1,
+        "slow-burn": 4,
+        "big-finale": 2,
+        "u-shaped": 10,
+        "rollercoaster": 8,
+        "saved-best-for-last": -1,
+        "front-loaded": 2,
+        "declining": 1,
+        "bad-finale": -1,
+        "consistent": -3,
+        "shape-drift": -2
+      },
+      "added": [
+        {
+          "seriesId": "tt0364779",
+          "title": "American Chopper: The Series",
+          "season": 7,
+          "seasonYear": 2010
+        },
+        {
+          "seriesId": "tt0364779",
+          "title": "American Chopper: The Series",
+          "season": 8,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt7165904",
+          "title": "Big City Greens",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39365311",
+          "title": "S&X",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt7318880",
+          "title": "Garage Rehab",
+          "season": 2,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt1616295",
+          "title": "Kaygisizlar",
+          "season": 3,
+          "seasonYear": 1997
+        },
+        {
+          "seriesId": "tt12915960",
+          "title": "The Patrick Star Show",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt11328426",
+          "title": "Aktivisten",
+          "season": 1,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt13084120",
+          "title": "Azur Lane: Slow Ahead!",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt15028658",
+          "title": "Schaffrillas Productions",
+          "season": 4,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt15404360",
+          "title": "The Match",
+          "season": 2,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt31947416",
+          "title": "Ragouj",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt30223097",
+          "title": "Salto de Fé",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38534436",
+          "title": "Khovaiuchy kolyshniu",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt43686384",
+          "title": "The Chase Around the World",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43725283",
+          "title": "To Kastro",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt33503513",
+          "title": "SML",
+          "season": 4,
+          "from": 7.47,
+          "to": 6.7,
+          "delta": -0.77
+        },
+        {
+          "seriesId": "tt14489144",
+          "title": "Build Divide: Code Black",
+          "season": 1,
+          "from": 7.36,
+          "to": 6.64,
+          "delta": -0.72
+        },
+        {
+          "seriesId": "tt9048998",
+          "title": "Bir Litre Gözyasi",
+          "season": 1,
+          "from": 8.21,
+          "to": 7.53,
+          "delta": -0.68
+        },
+        {
+          "seriesId": "tt0302199",
+          "title": "Sweet Life",
+          "season": 1,
+          "from": 7.23,
+          "to": 7.88,
+          "delta": 0.65
+        },
+        {
+          "seriesId": "tt33503513",
+          "title": "SML",
+          "season": 5,
+          "from": 7.73,
+          "to": 7.08,
+          "delta": -0.65
+        },
+        {
+          "seriesId": "tt33503513",
+          "title": "SML",
+          "season": 3,
+          "from": 7.23,
+          "to": 6.59,
+          "delta": -0.64
+        },
+        {
+          "seriesId": "tt43597214",
+          "title": "Bock Saga",
+          "season": 1,
+          "from": 7.97,
+          "to": 8.6,
+          "delta": 0.63
+        },
+        {
+          "seriesId": "tt19414282",
+          "title": "Between Two Ferns: The Movie - Sorta Uncut Extended Interviews",
+          "season": 1,
+          "from": 6.7,
+          "to": 6.1,
+          "delta": -0.6
+        },
+        {
+          "seriesId": "tt28777411",
+          "title": "Fated to My Forbidden Alpha",
+          "season": 1,
+          "from": 8.97,
+          "to": 8.45,
+          "delta": -0.52
+        },
+        {
+          "seriesId": "tt0996557",
+          "title": "'Da Kink in My Hair",
+          "season": 2,
+          "from": 6.18,
+          "to": 5.67,
+          "delta": -0.51
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 22667,
+        "avgRating": 1288,
+        "shapes": 221,
+        "episodeCount": 111,
+        "seriesRating": 348,
+        "poster": 21,
+        "overview": 19
+      }
+    },
+    {
       "builtAt": "2026-08-24T06:59:37.285Z",
       "totals": {
         "seasons": 66419,
@@ -6934,192 +7161,6 @@
         "poster": 1,
         "overview": 1,
         "episodeCount": 116
-      }
-    },
-    {
-      "builtAt": "2026-07-25T08:15:56.559Z",
-      "totals": {
-        "seasons": 65968,
-        "delta": 7
-      },
-      "shapeCounts": {
-        "mid-peak": 4628,
-        "rebound": 10067,
-        "rising": 2927,
-        "slow-burn": 4372,
-        "big-finale": 12026,
-        "u-shaped": 3093,
-        "rollercoaster": 14020,
-        "saved-best-for-last": 1537,
-        "front-loaded": 3462,
-        "declining": 1878,
-        "bad-finale": 4644,
-        "consistent": 2620,
-        "shape-drift": 1632
-      },
-      "shapeDeltas": {
-        "mid-peak": -1,
-        "rebound": 3,
-        "rising": -1,
-        "slow-burn": 1,
-        "big-finale": 1,
-        "u-shaped": 3,
-        "rollercoaster": -6,
-        "saved-best-for-last": 1,
-        "front-loaded": 1,
-        "declining": 3,
-        "bad-finale": -3,
-        "consistent": 1,
-        "shape-drift": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt0098740",
-          "title": "America's Funniest Home Videos",
-          "season": 25,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt37803840",
-          "title": "Police Police",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt6546832",
-          "title": "YouTube Money",
-          "season": 2,
-          "seasonYear": 2017
-        },
-        {
-          "seriesId": "tt12258686",
-          "title": "Dertigers",
-          "season": 7,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt28455470",
-          "title": "Burning Flames",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt30063915",
-          "title": "The Crow Girl",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38264348",
-          "title": "The Hairdresser Mysteries",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt5188404",
-          "title": "Comedy Club",
-          "season": 1,
-          "seasonYear": 2005
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt4508624",
-          "title": "My Lottery Dream Home",
-          "season": 9,
-          "seasonYear": 2020
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt0329829",
-          "title": "Fireman Sam",
-          "season": 11,
-          "from": 4.84,
-          "to": 6.11,
-          "delta": 1.27
-        },
-        {
-          "seriesId": "tt7301292",
-          "title": "Dry Bar Comedy",
-          "season": 6,
-          "from": 7.28,
-          "to": 6.47,
-          "delta": -0.81
-        },
-        {
-          "seriesId": "tt0329829",
-          "title": "Fireman Sam",
-          "season": 10,
-          "from": 3.82,
-          "to": 4.36,
-          "delta": 0.54
-        },
-        {
-          "seriesId": "tt37543285",
-          "title": "Solo Traveling with Tracee Ellis Ross",
-          "season": 1,
-          "from": 6.37,
-          "to": 5.87,
-          "delta": -0.5
-        },
-        {
-          "seriesId": "tt27422891",
-          "title": "LOL: Last One Laughing Poland",
-          "season": 4,
-          "from": 6.95,
-          "to": 7.36,
-          "delta": 0.41
-        },
-        {
-          "seriesId": "tt43405601",
-          "title": "Doganin Kanunu",
-          "season": 1,
-          "from": 7.88,
-          "to": 8.26,
-          "delta": 0.38
-        },
-        {
-          "seriesId": "tt10580092",
-          "title": "The Oval",
-          "season": 7,
-          "from": 7.57,
-          "to": 7.21,
-          "delta": -0.36
-        },
-        {
-          "seriesId": "tt38610771",
-          "title": "Jinn Ki Shadi Unki Shadi",
-          "season": 1,
-          "from": 8.35,
-          "to": 8.7,
-          "delta": 0.35
-        },
-        {
-          "seriesId": "tt0144061",
-          "title": "Medicopter 117 - Jedes Leben zählt",
-          "season": 2,
-          "from": 7.58,
-          "to": 7.91,
-          "delta": 0.33
-        },
-        {
-          "seriesId": "tt43658578",
-          "title": "Katie Price: Nothing to Hide",
-          "season": 1,
-          "from": 6.32,
-          "to": 6.65,
-          "delta": 0.33
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 15278,
-        "avgRating": 631,
-        "shapes": 100,
-        "seriesRating": 137,
-        "episodeCount": 31,
-        "poster": 14,
-        "overview": 4
       }
     }
   ]
