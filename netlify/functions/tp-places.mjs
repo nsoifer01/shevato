@@ -166,7 +166,7 @@ export default async function handler(req) {
   // (5) Quota. Reserve an upper bound BEFORE any upstream call so parallel
   // batches cannot overrun the cap, then release what the caches saved. Only
   // non-generic queries can ever spend, so they are the only ones reserved.
-  // The reservation is an etag-conditional write (tp-places-usage.mjs): a
+  // The reservation is an etag-conditional write (lib/blob-cas.mjs): a
   // plain read-modify-write would let concurrent requests overwrite each
   // other's counters, and the monthly cap is the one control standing between
   // a concurrent abuser and real money.

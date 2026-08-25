@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { updateUsage, MAX_CAS_ATTEMPTS } from '../lib/tp-places-usage.mjs';
+import { updateUsage, MAX_CAS_ATTEMPTS } from '../lib/blob-cas.mjs';
 import { checkQuota, releaseQuota } from '../lib/tp-places-quota.mjs';
 
 // In-memory stand-in for the conditional-write surface of a Netlify blob

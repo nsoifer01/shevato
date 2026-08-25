@@ -1917,14 +1917,6 @@ function renderShowModalCast(cast) {
 // the current filter state. The pressed state drives the yellow styling
 // in the CSS, and is also what the click handler reads to decide whether
 // a click "toggles off" the preset.
-// The mood rail shows the first MOOD_CHIP_LIMIT presets; the rest collapse
-// behind a "More moods +N" toggle so the section scales to dozens of moods
-// without dominating the page. An ACTIVE mood is never hidden, even when it
-// sits past the limit — collapsing away the user's current selection would
-// make the pressed state invisible. Same interaction family as the shape
-// bar's "More shapes" overflow.
-const MOOD_CHIP_LIMIT = 6;
-
 // Append streaming-platform chips into an existing shapes container so the
 // trajectory patterns and the platforms read as one row of metadata.
 // Distinct .provider-tag styling keeps them visually separable from the
@@ -4645,7 +4637,6 @@ function goToFinderPage(n, scrollAfter = true) {
   }
 }
 
-const renderFinderDebounced = debounce(renderFinder, 120);
 
 // Result count from the most recent renderFinder(), for analytics only.
 let lastFinderRowCount = 0;
@@ -6538,7 +6529,6 @@ function cssEscape(s) {
 // Sticky filter bar: a compact, scroll-pinned strip of shape chips +
 // search input that appears once the main filter section leaves the
 // viewport. Backed by an IntersectionObserver on the .filters element.
-let _stickyObserver = null;
 // Shape chip hover: when a shape is already active and the user hovers
 // another, swap the hovered chip's count badge to show the size of the
 // intersection (i.e. "how many would survive if I added this too?").

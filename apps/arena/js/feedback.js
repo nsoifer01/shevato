@@ -361,11 +361,6 @@
         vibrate(20);
     }
 
-    // Back-compat aliases for any older call sites.
-    function revealBullseye() { return revealExcellent(); }
-    function revealClose()    { return revealGreat(); }
-    function revealFar()      { return revealRough(); }
-
     function gameStart() {
         // Anticipatory rising arpeggio C-G-C up the octave.
         phrase([
@@ -437,9 +432,6 @@
         guessSubmitted,
         opponentSubmitted,
         revealForScore,
-        revealBullseye,
-        revealClose,
-        revealFar,
         revealExcellent,
         revealGreat,
         revealOk,

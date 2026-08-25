@@ -151,12 +151,6 @@
         return { html: html + '</div>', next: idx };
     }
 
-    // ---- Filters (desktop) ---------------------------------------------------
-    function distinctGames() {
-        const seen = [];
-        state.courses.forEach((c) => { const g = c.game || c.origin; if (g && g !== 'new' && seen.indexOf(g) === -1) seen.push(g); });
-        return seen;
-    }
     function filterLabel(f) {
         if (f === 'all') return 'All courses';
         if (f === 'favorites') return 'Favorites';

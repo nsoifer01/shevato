@@ -301,3 +301,37 @@ Pinned by `tests/static/tracked-symlinks.test.mjs`: nothing named
 the repo, and the `.gitignore` rule is checked behaviourally against a real
 symlink in a throwaway repo (in this working tree `node_modules` is a
 directory, where the broken pattern and the fixed one are indistinguishable).
+
+
+## Dead-code audits: the two traps that produce false positives here
+
+Run on 2026-08-24 across the whole repo. Both traps cost real time, so start here.
+
+**CSS.** A static "this class appears in no HTML and no JS" sweep flags ~460
+first-party selectors, and almost all of them are alive. This codebase composes
+class names at runtime constantly: `'drama-callout-' + drama.kind`,
+`` `matrix-${vm.tone}` ``, `'tp-t-' + type`, `` `is-${r.move}` ``,
+`` `vp-${info.cls}` ``, `'lb-form-' + r`. Leaflet also mints its own
+`.leaflet-popup-*` nodes at runtime. **Do not delete a selector on static
+evidence.** The one genuine finding was structural rather than per-selector:
+`apps/mario-kart/css/utilities.css` declares 217 utility classes of which 187
+are unreferenced, and three apps load it (mario-kart, football-h2h,
+gym-tracker). That one needs runtime CSS coverage across every view and state
+of all three apps before anything is cut, so it was deliberately left alone.
+
+**Generated pages.** `apps/gym-tracker/exercises/` and
+`apps/rising-shows/shows/` are gitignored build output, so the copy on your disk
+can be older than the generator. A full sweep of all 35,359 pages found 155
+leaf pages linking to `/exercises/muscle/{back,cardio,chest}/`, which do not
+exist - except that was a stale local build. `collectMuscleTaxonomy()` in
+`build-exercise-pages.cjs` already fixes exactly this (it unions category keys
+into the muscle map; the 2026-08-22 audit, finding D6, is named in its comment),
+and regenerating produced all 37 muscle directories and zero broken links.
+**Regenerate before believing anything about generated output.**
+
+Method that worked for both, and for the symbol-level sweep: count every
+identifier across the whole corpus in one pass, subtract the declaration, and
+treat anything left at zero as a candidate - then verify each by hand. Counting
+must keep string literals (shape assertions like
+`['startStorageSync', 'setCloudItem', ...]` are real usage) and must include the
+declaring file (self-recursive and internally-used helpers otherwise look dead).

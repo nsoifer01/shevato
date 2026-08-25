@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { updateUsage } from '../lib/tp-places-usage.mjs';
+import { updateUsage } from '../lib/blob-cas.mjs';
 import {
   checkQuota, releaseQuota, budgetStatus, resetAtFor,
   MONTHLY_BUDGET, DEFAULT_LIMITS, OWNER_LIMITS,

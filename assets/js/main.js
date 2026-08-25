@@ -1127,7 +1127,6 @@
 
   // Site variables
   const $window = $(window);
-  const $banner = $('#banner');
   const $body = $('body');
 
   // Breakpoints configuration

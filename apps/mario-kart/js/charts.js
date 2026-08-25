@@ -781,7 +781,6 @@ function generatePatternAnalysis(raceData) {
 
     if (allPositions.length > 0) {
         allPositions.sort((a, b) => a - b);
-        const minPos = Math.min(...allPositions);
         const maxPos = Math.max(...allPositions);
         
         // Find the most common range (group positions into ranges of 4)

@@ -7,22 +7,7 @@
   "url": "https://shevato.com/",
   "logo": {
     "@type": "ImageObject",
-    "url": "https://shevato.com/images/full-logo.svg",
-    "contentUrl": "https://shevato.com/images/full-logo.svg"
-  },
-  "founder": {
-    "@type": "Person",
-    "name": "Nikita Soifer",
-    "jobTitle": "Software Engineer"
-  },
-  "foundingDate": "2019",
-  "contactPoint": {
-    "@type": "ContactPoint",
-    "telephone": "+1-504-638-3370",
-    "email": "nikita@shevato.com",
-    "contactType": "customer service",
-    "areaServed": "Worldwide",
-    "availableLanguage": ["en"]
+    "url": "https://shevato.com/images/full-logo.svg"
   },
   "sameAs": [
     "https://www.linkedin.com/in/nikita-soifer/"

@@ -531,10 +531,6 @@
      * >= 3 continents for the four place-on-Earth round types.
      */
     async function fetchLocations(roundType, count, shuffleFn) {
-        // Back-compat: callers that haven't migrated yet pass (count, shuffleFn).
-        if (typeof roundType !== 'string') {
-            return fetchCapitalLocations(roundType, count);
-        }
         const target = Math.max(1, Number(count) || 5);
         // Over-fetch ~10× the game size (capped at 60) so the country
         // and continent caps have plenty of headroom AND so the pool

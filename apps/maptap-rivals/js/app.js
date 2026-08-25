@@ -328,7 +328,6 @@
 
   function persistRivals() { save(KEY.RIVALS, state.rivals); }
   function persistGames() { save(KEY.GAMES, state.games); }
-  function persistSettings() { save(KEY.SETTINGS, state.settings); }
   function persistMe() { saveString(KEY.ME, state.me); }
   function persistMyIcon() { saveString(KEY.MY_ICON, state.myIcon); }
   function persistMyMapTap() { saveString(KEY.MY_MAPTAP, state.myMapTap); }
@@ -6959,16 +6958,6 @@
     }
     return { scores, confidence: history.length };
   }
-  function predictTotalForPlayer(rounds, todaysCities, asOfISO) {
-    const rp = predictRoundsForPlayer(rounds, todaysCities, asOfISO);
-    if (!rp) return null;
-    let weighted = 0;
-    for (let i = 0; i < N_LOCS; i++) weighted += rp.scores[i] * WEIGHTS[i];
-    return {
-      score: Math.round(Math.max(0, Math.min(1000, weighted))),
-      confidence: rp.confidence,
-    };
-  }
 
   // Resolves to the run's outcome so "Sync all rivals" can total the pulls
   // up: { ok, added, updated, backfilled } on success, { ok: false, error }
@@ -7130,9 +7119,6 @@
     return parsed && parsed.dateParts ? parsed.dateParts : null;
   }
 
-  function waDateOrderLabel(order) {
-    return order === 'DMY' ? 'day/month/year' : order === 'YMD' ? 'year-month-day' : 'month/day/year';
-  }
 
   // Module-level state for the open import modal session.
   const waImport = {
