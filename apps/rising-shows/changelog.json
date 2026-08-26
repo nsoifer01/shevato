@@ -1,6 +1,244 @@
 {
   "updates": [
     {
+      "builtAt": "2026-08-26T06:54:48.417Z",
+      "totals": {
+        "seasons": 66451,
+        "delta": 16
+      },
+      "shapeCounts": {
+        "mid-peak": 4631,
+        "rebound": 10122,
+        "rising": 2606,
+        "slow-burn": 4402,
+        "big-finale": 12103,
+        "u-shaped": 3086,
+        "rollercoaster": 14118,
+        "saved-best-for-last": 1503,
+        "front-loaded": 3492,
+        "declining": 1880,
+        "bad-finale": 4645,
+        "consistent": 2627,
+        "shape-drift": 1588
+      },
+      "shapeDeltas": {
+        "mid-peak": -3,
+        "rebound": 10,
+        "slow-burn": -7,
+        "big-finale": 11,
+        "u-shaped": 2,
+        "rollercoaster": -4,
+        "saved-best-for-last": -1,
+        "front-loaded": 1,
+        "declining": -2,
+        "bad-finale": -3,
+        "shape-drift": 5
+      },
+      "added": [
+        {
+          "seriesId": "tt7771836",
+          "title": "Blacked",
+          "season": 2,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt41991040",
+          "title": "9/11: Reunited",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1809413",
+          "title": "1 Kadin 1 Erkek",
+          "season": 2,
+          "seasonYear": 2009
+        },
+        {
+          "seriesId": "tt4353976",
+          "title": "Antiques Road Trip",
+          "season": 17,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt28224056",
+          "title": "The Mega-Brands That Built America",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt27813193",
+          "title": "Klara",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt44280689",
+          "title": "Wiccan Chants",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt9080784",
+          "title": "Bu Gece",
+          "season": 3,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt13514470",
+          "title": "Sidemen",
+          "season": 9,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt29058981",
+          "title": "Before Us",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt3247004",
+          "title": "God of Study",
+          "season": 1,
+          "seasonYear": 2010
+        },
+        {
+          "seriesId": "tt40807419",
+          "title": "Connecting to You",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38794304",
+          "title": "Leyla Hâli",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43617065",
+          "title": "Underage",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43706563",
+          "title": "Bodeket",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43721051",
+          "title": "Portugal Criminal",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0454657",
+          "title": "Yarim Elma",
+          "season": 1,
+          "seasonYear": 2002
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt2548214",
+          "title": "Mako Mermaids",
+          "season": 4,
+          "seasonYear": 2016
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt35406274",
+          "title": "Ms. Rachel",
+          "season": 2,
+          "from": 4.63,
+          "to": 5.43,
+          "delta": 0.8
+        },
+        {
+          "seriesId": "tt38781720",
+          "title": "MrBeast Lab",
+          "season": 1,
+          "from": 5.52,
+          "to": 6.29,
+          "delta": 0.77
+        },
+        {
+          "seriesId": "tt5683292",
+          "title": "Rewrite",
+          "season": 1,
+          "from": 5.92,
+          "to": 5.16,
+          "delta": -0.76
+        },
+        {
+          "seriesId": "tt0773264",
+          "title": "House of Payne",
+          "season": 14,
+          "from": 8.96,
+          "to": 8.26,
+          "delta": -0.7
+        },
+        {
+          "seriesId": "tt0773264",
+          "title": "House of Payne",
+          "season": 12,
+          "from": 8.88,
+          "to": 8.21,
+          "delta": -0.67
+        },
+        {
+          "seriesId": "tt0773264",
+          "title": "House of Payne",
+          "season": 11,
+          "from": 8.04,
+          "to": 7.39,
+          "delta": -0.65
+        },
+        {
+          "seriesId": "tt28220415",
+          "title": "Never Have I Ever",
+          "season": 2,
+          "from": 4.51,
+          "to": 5.15,
+          "delta": 0.64
+        },
+        {
+          "seriesId": "tt43686384",
+          "title": "The Chase Around the World",
+          "season": 1,
+          "from": 6.87,
+          "to": 7.5,
+          "delta": 0.63
+        },
+        {
+          "seriesId": "tt28220415",
+          "title": "Never Have I Ever",
+          "season": 3,
+          "from": 7.16,
+          "to": 7.74,
+          "delta": 0.58
+        },
+        {
+          "seriesId": "tt0773264",
+          "title": "House of Payne",
+          "season": 13,
+          "from": 9.07,
+          "to": 8.57,
+          "delta": -0.5
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 24755,
+        "avgRating": 1454,
+        "shapes": 258,
+        "episodeCount": 122,
+        "seriesRating": 365,
+        "poster": 7,
+        "overview": 7
+      }
+    },
+    {
       "builtAt": "2026-08-25T06:52:20.596Z",
       "totals": {
         "seasons": 66435,
@@ -6870,297 +7108,6 @@
         "shapes": 338,
         "episodeCount": 127,
         "overview": 2
-      }
-    },
-    {
-      "builtAt": "2026-07-26T08:42:25.020Z",
-      "totals": {
-        "seasons": 65995,
-        "delta": 27
-      },
-      "shapeCounts": {
-        "mid-peak": 4624,
-        "rebound": 10061,
-        "rising": 2927,
-        "slow-burn": 4369,
-        "big-finale": 12031,
-        "u-shaped": 3100,
-        "rollercoaster": 14021,
-        "saved-best-for-last": 1541,
-        "front-loaded": 3462,
-        "declining": 1873,
-        "bad-finale": 4645,
-        "consistent": 2629,
-        "shape-drift": 1633
-      },
-      "shapeDeltas": {
-        "mid-peak": -4,
-        "rebound": -6,
-        "slow-burn": -3,
-        "big-finale": 5,
-        "u-shaped": 7,
-        "rollercoaster": 1,
-        "saved-best-for-last": 4,
-        "declining": -5,
-        "bad-finale": 1,
-        "consistent": 9,
-        "shape-drift": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt37614297",
-          "title": "Smoking Behind the Supermarket with You",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt34688214",
-          "title": "Pompeii: Out of Time with Tom Hiddleston",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt28088031",
-          "title": "Ransom Canyon",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0437741",
-          "title": "Project Runway",
-          "season": 22,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt37674481",
-          "title": "My Stepmother and Stepsisters Aren't Wicked",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36470536",
-          "title": "Next Gen NYC",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt40856520",
-          "title": "Adarsh Baal Vidyalaya",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt13505014",
-          "title": "The Pink Panther",
-          "season": 1,
-          "seasonYear": 1964
-        },
-        {
-          "seriesId": "tt5538644",
-          "title": "Primal Survivor",
-          "season": 4,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt6618728",
-          "title": "Suspects",
-          "season": 1,
-          "seasonYear": 2017
-        },
-        {
-          "seriesId": "tt0071057",
-          "title": "The Squirrels",
-          "season": 2,
-          "seasonYear": 1976
-        },
-        {
-          "seriesId": "tt1281983",
-          "title": "Drive Thru History",
-          "season": 5,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt0356228",
-          "title": "Bakuryuu Sentai Abaranger",
-          "season": 1,
-          "seasonYear": 2003
-        },
-        {
-          "seriesId": "tt30476504",
-          "title": "Magilumiere Magical Girls Inc.",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41515375",
-          "title": "Soy Luna. Volver a rodar",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt29033873",
-          "title": "The Man Will Burn",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38786055",
-          "title": "Kara Kis",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt7112114",
-          "title": "Nosotros los guapos",
-          "season": 2,
-          "seasonYear": 2017
-        },
-        {
-          "seriesId": "tt13192574",
-          "title": "Bungo Stray Dogs Wan!",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt14797338",
-          "title": "Freshy Kanal Rap Battles",
-          "season": 4,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt16965960",
-          "title": "De Jacht op De Mocro-Maffia",
-          "season": 1,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt16965960",
-          "title": "De Jacht op De Mocro-Maffia",
-          "season": 2,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt2252546",
-          "title": "Happily Never After",
-          "season": 2,
-          "seasonYear": 2013
-        },
-        {
-          "seriesId": "tt28220415",
-          "title": "Never Have I Ever",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36937533",
-          "title": "Everything on the Menu with Braun Strowman",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39109646",
-          "title": "Midterm",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt37970543",
-          "title": "Terror Man",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt29839098",
-          "title": "The Midnight Romance in Hagwon",
-          "season": 1,
-          "from": 8.81,
-          "to": 8.01,
-          "delta": -0.8
-        },
-        {
-          "seriesId": "tt7686456",
-          "title": "Jersey Shore: Family Vacation",
-          "season": 9,
-          "from": 8.14,
-          "to": 7.4,
-          "delta": -0.74
-        },
-        {
-          "seriesId": "tt16295758",
-          "title": "Hanoka",
-          "season": 1,
-          "from": 5.07,
-          "to": 4.33,
-          "delta": -0.74
-        },
-        {
-          "seriesId": "tt37443650",
-          "title": "Overdo",
-          "season": 1,
-          "from": 7.27,
-          "to": 6.55,
-          "delta": -0.72
-        },
-        {
-          "seriesId": "tt14183052",
-          "title": "Dogu",
-          "season": 4,
-          "from": 7.42,
-          "to": 6.71,
-          "delta": -0.71
-        },
-        {
-          "seriesId": "tt9646546",
-          "title": "Dimension 20",
-          "season": 30,
-          "from": 9.6,
-          "to": 8.98,
-          "delta": -0.62
-        },
-        {
-          "seriesId": "tt0103357",
-          "title": "Bassie & Adriaan",
-          "season": 4,
-          "from": 7.74,
-          "to": 7.15,
-          "delta": -0.59
-        },
-        {
-          "seriesId": "tt0329829",
-          "title": "Fireman Sam",
-          "season": 7,
-          "from": 4.92,
-          "to": 5.5,
-          "delta": 0.58
-        },
-        {
-          "seriesId": "tt33984346",
-          "title": "The Name Is Varvara",
-          "season": 1,
-          "from": 6.16,
-          "to": 5.61,
-          "delta": -0.55
-        },
-        {
-          "seriesId": "tt7686456",
-          "title": "Jersey Shore: Family Vacation",
-          "season": 8,
-          "from": 8.34,
-          "to": 7.81,
-          "delta": -0.53
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 23388,
-        "avgRating": 1732,
-        "seriesRating": 530,
-        "shapes": 313,
-        "poster": 1,
-        "overview": 1,
-        "episodeCount": 116
       }
     }
   ]
