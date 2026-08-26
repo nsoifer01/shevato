@@ -95,3 +95,6 @@ apps/fpl-planner/.data/availability/
 # Per-app and site-level session reports (owner-reviewed, machine-local)
 apps/*/.reports/
 .reports/
+
+# Local headless-Chrome profiles used by manual verification runs.
+.chrome-profiles/

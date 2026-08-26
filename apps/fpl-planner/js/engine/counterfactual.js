@@ -721,7 +721,12 @@ function polishFrom(ctx, squad) {
 // in which case the stored plan is stale and the fresh one is the honest
 // baseline. `stale` is non-null exactly when that happened, so the UI can offer
 // a recompute instead of quoting a number the engine no longer stands behind.
-function resolveBaseline(ctx, floorSquad = null) {
+//
+// Named for the SQUAD it resolves, not just "the baseline": `engine/baseline.js`
+// exports a `resolveBaseline` that decides which season's TOTALS to project
+// from, and the two have nothing to do with each other. One name for two
+// unrelated ideas in one engine is how the wrong import gets written.
+function resolveBaselineSquad(ctx, floorSquad = null) {
   const candidates = [{ squad: ctx.plan.squad, traj: scoreSquad(ctx, ctx.plan.squad), stored: true }];
 
   const built = unconstrainedBaseline(ctx);
@@ -804,7 +809,7 @@ function draftAnswer(ctx) {
     )], { mode: 'draft' });
   }
 
-  const baseline = resolveBaseline(ctx, built.squad);
+  const baseline = resolveBaselineSquad(ctx, built.squad);
   const baselineSquad = baseline.squad;
   const baselineTraj = baseline.traj;
 

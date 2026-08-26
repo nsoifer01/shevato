@@ -66,11 +66,13 @@ apps/fpl-planner/
     data/api.js          browser FPL client (proxy, caching, freshness, dedupe)
     data/model.js        loads the trained-model artifact, honours engineConsumes
     data/sample.js       ?demo=1 sample dataset loader
+    data/opening-baseline.js  fetches the shipped opening-season baseline
     engine/
       rules.js           rules, scoring table and chip catalogue from bootstrap
       normalize.js       bootstrap + fixtures -> Player / Team / Fixture / Event
       lifecycle.js       THE gameweek and fixture phase model (provisional vs final)
-      baseline.js        payload completeness, and the kept last-good season totals
+      baseline.js        payload completeness, the kept last-good season totals,
+                         and which baseline (kept or shipped) stands in
       readiness.js       what the data licenses: display / lineup / transfers / chips
       live.js            event/{gw}/live -> actual points, reconciled to FPL's total
       transfer-state.js  THE free-transfer state machine (pre-season, rolling, chips)
@@ -97,6 +99,7 @@ apps/fpl-planner/
                          refusal to key a cross-season join on `element`
   models/                versioned model artifacts (JSON)
   data/sample/           trimmed sample dataset for ?demo=1
+  data/opening-baseline.json  last complete pre-wipe season totals, with provenance
   experiments/           registry.md (every experiment + verdict), leaderboard.md,
                          one write-up per experiment; the registry's Methodology
                          section ranks the measurement instruments and is required
@@ -322,6 +325,20 @@ because a payload was whatever the last fetch said it was.
 2. the last one that scored well is kept in `localStorage`;
 3. a payload that fails does not replace it, and the kept baseline supplies the
    season totals until this season has enough matches of its own.
+
+**And the app ships a baseline of its own, because step 2 could not save
+anybody in 2026.** The guard above reached production 22 hours after FPL wiped
+the totals, and `snapshotFrom` only ever snapshots a COMPLETE payload, so no
+browser ever kept one and every visitor was refused a plan for the opening
+month. `data/opening-baseline.json` is the last complete payload before that
+wipe, derived by `scripts/build-opening-baseline.mjs` and committed with its
+provenance (source file, sha256, capture time). `resolveBaseline` picks, in
+order: a kept snapshot that carries its rate numerators, then the shipped
+asset, then a minutes-only kept snapshot, then nothing. The shipped asset is
+only fetched when the season has rolled over and is not yet a season of its
+own, may only be applied to the season it was captured in (`appliesToSeason`
+AND the opening deadline both have to match), and retires with every other
+baseline at three matches per club.
 
 Completeness is measured **per active player**, not as a league aggregate:
 16.8 starts each over 400 players before the wipe against 1.0 each over 22

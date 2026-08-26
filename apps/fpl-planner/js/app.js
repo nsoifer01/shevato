@@ -20,12 +20,15 @@ import { loadModel } from './data/model.js';
 import { buildGameState } from './engine/normalize.js';
 import { buildSquadState, picksCarryLineup } from './engine/squad.js';
 import { gameweekLifecycle, GW_PHASE } from './engine/lifecycle.js';
-import { saveSnapshotIfBetter, resolveBaseline, BASELINE_KEY } from './engine/baseline.js';
+import {
+  saveSnapshotIfBetter, resolveBaseline, BASELINE_KEY, assessBaseline, baselineIsSuperseded,
+} from './engine/baseline.js';
+import { loadOpeningBaseline, openingBaselineApplies } from './data/opening-baseline.js';
 import { buildLiveStats, scoreLiveSquad } from './engine/live.js';
 import { formatFreeTransfers } from './engine/transfer-state.js';
 import { el, mount, clear, stat } from './ui/dom.js';
 import { relativeTime, dateTime, formatMoney, rank, points } from './ui/format.js';
-import { assessData, inputFingerprint, outdatedReason } from './ui/plan-model.js';
+import { assessData, inputFingerprint, outdatedReason, noticeKinds } from './ui/plan-model.js';
 import { planInputs, diffPlanVersions, actionKey } from './ui/plan-diff.js';
 import * as store from './ui/store.js';
 import { banner, btn, progressView, sampleBanner, sampleTag, freshness, planChangeCard } from './ui/parts.js';
@@ -71,9 +74,6 @@ const state = {
   modelStatus: null,
   teamId: null,
   gameState: null,
-  // The last complete season totals we recorded, kept so a payload FPL has
-  // cleared mid-season cannot destroy the evidence projections rest on.
-  baseline: null,
   // elementId -> live stats for the gameweek being played, or null.
   live: null,
   entry: null,
@@ -123,6 +123,10 @@ const state = {
   // "previously we said roll" survives closing the tab.
   lastVersion: null,
   planChange: null,
+  // Why the shipped opening-season baseline could not be loaded, when it was
+  // needed and could not be had. Null both when it loaded and when the season
+  // is far enough along that it was never asked for.
+  openingBaselineError: null,
   disclosures: { why: false, whyNot: false, alts: false, status: false },
   captains: new Map(),
   historyLoaded: false,
@@ -193,14 +197,39 @@ async function loadWorld({ force = false } = {}) {
   const first = buildGameState(bootstrap.data, fixtures.data, { fetchedAt: bootstrap.fetchedAt });
   if (first.sample) {
     state.gameState = first;
-    state.baseline = null;
   } else {
     const store = safeLocalStorage();
     const kept = store ? saveSnapshotIfBetter(store, first, { capturedAt: bootstrap.fetchedAt }) : null;
-    const resolved = resolveBaseline(first, kept);
-    state.baseline = kept;
-    state.gameState = resolved.source === 'baseline' && kept
-      ? buildGameState(bootstrap.data, fixtures.data, { fetchedAt: bootstrap.fetchedAt, baseline: kept })
+
+    // The shipped baseline is only fetched in the state it exists for: a
+    // season that has rolled over and is not yet a season of its own. A
+    // browser that kept its own complete payload never needs it; neither does
+    // anyone once three matches per club have been played.
+    let shipped = null;
+    if (openingBaselineApplies(first, {
+      assessment: assessBaseline(first),
+      superseded: baselineIsSuperseded(first),
+    })) {
+      const loaded = await loadOpeningBaseline();
+      shipped = loaded.baseline;
+      state.openingBaselineError = loaded.reason;
+    }
+
+    // Whichever baseline wins is the one the game state is rebuilt with. The
+    // previous version rebuilt with `kept` regardless, so a resolution that
+    // chose anything else would have been silently discarded.
+    // The resolution is not stored on `state`: the only thing that needs it is
+    // the game state built from it, and `gameState.baselineSource` /
+    // `baselineOrigin` / `baselineCapturedAt` already carry everything the UI
+    // and the status panel read. A second copy on `state` was written in both
+    // branches and read by nothing, which is worse than no copy at all - it
+    // looks like the live baseline without being consulted by anyone.
+    const resolved = resolveBaseline(first, kept, { shipped });
+    state.gameState = resolved.source === 'baseline' && resolved.snapshot
+      ? buildGameState(bootstrap.data, fixtures.data, {
+        fetchedAt: bootstrap.fetchedAt,
+        baseline: resolved.snapshot,
+      })
       : first;
   }
 
@@ -777,7 +806,7 @@ function planView() {
   // A failure screen that is navigated away from and back to used to come back
   // as a bare "No plan yet.", with the explanation and both recovery buttons
   // gone and only a reload left. The error is state, so the view can rebuild it.
-  if (!bundle && state.loadError) return [topNotices(), loadFailureView(state.loadError)];
+  if (!bundle && state.loadError) return [topNotices({ planShown: false }), loadFailureView(state.loadError)];
   if (!bundle) return el('p', { class: 'fpl-empty', text: 'No plan yet.' });
 
   // The fetch layer knows whether each source loaded; the planner knows whether
@@ -789,7 +818,10 @@ function planView() {
     ],
   });
   if (assessment.withholdPlan) {
-    return [topNotices(), withheldView({ assessment, onRetry: () => connectAndPlan({ reason: 'manual' }) })];
+    return [
+      topNotices({ planShown: false }),
+      withheldView({ assessment, onRetry: () => connectAndPlan({ reason: 'manual' }) }),
+    ];
   }
 
   // A plan built from a payload with no season evidence in it is not a weak
@@ -799,9 +831,17 @@ function planView() {
   // same reason stale injury data is.
   const evidence = bundle.dataStatus.evidence;
   if (evidence && evidence.usable === false) {
-    return [topNotices(), withheldView({
+    return [topNotices({ planShown: false }), withheldView({
+      // `evidence.message` already states the case that actually applies, and
+      // the sentence appended here used to contradict it: telling somebody
+      // whose gameweek has finished that "until the first matches are played
+      // there is nothing to project from" is simply false. The generic
+      // explanation is kept only where it is true, which is before a ball has
+      // been kicked.
       assessment: {
-        reason: `${evidence.message} Fantasy Premier League clears last season's player totals when it rolls the new season over, and until the first matches are played there is nothing to project from.`,
+        reason: state.gameState && state.gameState.seasonStarted
+          ? evidence.message
+          : `${evidence.message} Fantasy Premier League clears last season's player totals when it rolls the new season over, and until the first matches are played there is nothing to project from.`,
         failed: [],
         stale: [],
       },
@@ -1098,26 +1138,45 @@ function sandboxNode() {
   return sandboxView.node;
 }
 
-function topNotices() {
-  const nodes = [];
-  if (state.sample) nodes.push(sampleBanner());
-  if (state.outdated) {
-    nodes.push(banner({
+// The top-of-page notices, chosen by `noticeKinds` and rendered here.
+//
+// The DECISION lives in ui/plan-model.js so it can be unit tested without a
+// DOM; this function only turns the chosen kinds into nodes. That split is the
+// fix for a state bug rather than a copy one: "Plan unchanged. Nothing that
+// feeds the plan has moved since it was last calculated." used to render
+// directly above "We are not showing a plan right now", because both withheld
+// branches called this function and it asked only whether a diff had been
+// computed - which it had, against a plan the view then refused to show.
+function topNotices({ planShown = true } = {}) {
+  const ds = state.bundle ? state.bundle.dataStatus : null;
+  const squadWarnings = (ds && ds.squadWarnings) || [];
+  const staleNotice = ds && !state.sample && !ds.stale
+    ? staleSourcesBanner(assessData({ sources: fplApi.getDataStatus().sources }))
+    : null;
+
+  const kinds = noticeKinds({
+    planShown,
+    sample: !!state.sample,
+    outdated: !!state.outdated,
+    planChange: !!state.planChange,
+    notice: !!state.notice,
+    stale: !!(ds && ds.stale),
+    staleSources: !!staleNotice,
+    squadWarnings: squadWarnings.length > 0,
+  });
+
+  const build = {
+    sample: () => sampleBanner(),
+    outdated: () => banner({
       tone: 'warn',
       mark: '!',
       title: 'Plan outdated',
       text: state.outdated.text,
       actions: [btn('Recalculate', () => recalculate(state.outdated.code), { variant: 'fpl-btn-primary' })],
-    }));
-  } else if (state.planChange) {
-    // The diff supersedes the generic "plan rebuilt" notice: it says the same
-    // thing with the previous recommendation and the fields that moved.
-    nodes.push(planChangeCard(state.planChange));
-  } else if (state.notice) {
-    nodes.push(banner({ tone: 'info', mark: 'i', title: 'Plan rebuilt', text: state.notice.text }));
-  }
-  if (state.bundle && state.bundle.dataStatus.stale) {
-    nodes.push(banner({
+    }),
+    'plan-change': () => planChangeCard(state.planChange),
+    rebuilt: () => banner({ tone: 'info', mark: 'i', title: 'Plan rebuilt', text: state.notice.text }),
+    stale: () => banner({
       tone: 'warn',
       mark: '!',
       title: 'Working from older data',
@@ -1126,19 +1185,16 @@ function topNotices() {
       // sentence above already gives. Squad warnings are a different thing and
       // get their own banner below.
       text: 'The plan is built from the most recent copy we have, which is not fresh.',
-    }));
-  } else if (state.bundle && !state.sample) {
+    }),
     // The proxy serving its last copy because FPL is down (`x-fpl-stale`) is
     // visible hours before the copy is old enough to withhold the plan.
-    const staleNotice = staleSourcesBanner(assessData({ sources: fplApi.getDataStatus().sources }));
-    if (staleNotice) nodes.push(staleNotice);
-  }
+    'stale-sources': () => staleNotice,
+    // Squad warnings are their own thing and say so, rather than being reported
+    // as the data being old.
+    'squad-warnings': () => squadWarningsBanner(squadWarnings),
+  };
 
-  // Squad warnings are their own thing and say so, rather than being reported
-  // as the data being old.
-  const squadWarnings = (state.bundle && state.bundle.dataStatus.squadWarnings) || [];
-  if (squadWarnings.length) nodes.push(squadWarningsBanner(squadWarnings));
-  return nodes;
+  return kinds.map(k => build[k]()).filter(Boolean);
 }
 
 function preSeasonView() {

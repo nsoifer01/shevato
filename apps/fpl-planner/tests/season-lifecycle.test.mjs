@@ -295,6 +295,21 @@ test('having played a match never projects a player below one who has never play
 /* ========================================================================== */
 /* THE BASELINE THAT SHOULD HAVE SURVIVED THE WIPE                            */
 /* ========================================================================== */
+/*                                                                            */
+/* EVERY TEST IN THIS SECTION SEEDS ITS OWN BASELINE, and that is deliberate: */
+/* they are unit tests of the keep/restore/upgrade mechanism, and they have to */
+/* construct the input to test it.                                            */
+/*                                                                            */
+/* What they are NOT is evidence that any browser HAS one. They cannot be:     */
+/* the guard reached production 22 hours after FPL cleared the totals, and     */
+/* `snapshotFrom` only snapshots a complete payload, so between those moments  */
+/* there was nothing left to keep and no production browser ever wrote a       */
+/* snapshot. Reading a green result here as "returning visitors are fine" is   */
+/* exactly the mistake that left the app unusable for GW2 and GW3.             */
+/*                                                                            */
+/* The production path - an EMPTY browser, and what it actually gets - lives   */
+/* in tests/opening-baseline.test.mjs and seeds nothing.                       */
+/* ========================================================================== */
 
 test('a complete payload is kept, and a wiped one cannot replace it', () => {
   const store = new Map();
