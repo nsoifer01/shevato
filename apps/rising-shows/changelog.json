@@ -1,6 +1,371 @@
 {
   "updates": [
     {
+      "builtAt": "2026-08-27T17:21:50.199Z",
+      "totals": {
+        "seasons": 66478,
+        "delta": 27
+      },
+      "shapeCounts": {
+        "mid-peak": 4638,
+        "rebound": 10133,
+        "rising": 2603,
+        "slow-burn": 4397,
+        "big-finale": 12111,
+        "u-shaped": 3093,
+        "rollercoaster": 14121,
+        "saved-best-for-last": 1503,
+        "front-loaded": 3490,
+        "declining": 1882,
+        "bad-finale": 4647,
+        "consistent": 2630,
+        "shape-drift": 1585
+      },
+      "shapeDeltas": {
+        "mid-peak": 7,
+        "rebound": 11,
+        "rising": -3,
+        "slow-burn": -5,
+        "big-finale": 8,
+        "u-shaped": 7,
+        "rollercoaster": 3,
+        "front-loaded": -2,
+        "declining": 2,
+        "bad-finale": 2,
+        "consistent": 3,
+        "shape-drift": -3
+      },
+      "added": [
+        {
+          "seriesId": "tt0472954",
+          "title": "It's Always Sunny in Philadelphia",
+          "season": 18,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt14668192",
+          "title": "Elite Short Stories: Guzmán Caye Rebe",
+          "season": 3,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt25431554",
+          "title": "Vaser Claw",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4116046",
+          "title": "24 Hours in Police Custody",
+          "season": 14,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt15614920",
+          "title": "The Real Housewives Ultimate Girls Trip",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt7050084",
+          "title": "Welcome to the Wayne",
+          "season": 2,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt43676844",
+          "title": "Double Lives of Suburban Wives",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0159847",
+          "title": "Antiques Roadshow US",
+          "season": 19,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt0159932",
+          "title": "Yawara! A Fashionable Judo Girl",
+          "season": 1,
+          "seasonYear": 1989
+        },
+        {
+          "seriesId": "tt28663723",
+          "title": "Buckingham Palace with Alexander Armstrong",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt31322270",
+          "title": "Ararat",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt35937464",
+          "title": "El Nos",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36302944",
+          "title": "High Season",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt36272586",
+          "title": "Unexpectedly Naughty Fukami",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt37599841",
+          "title": "Skibidi Toilet Multiverse",
+          "season": 11,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt38973922",
+          "title": "K-Everything",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43603717",
+          "title": "Homestead Rescue: Intervention",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt7588316",
+          "title": "Animal Cribs",
+          "season": 1,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt4397866",
+          "title": "Storyville",
+          "season": 30,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1572952",
+          "title": "Safe Sex",
+          "season": 2,
+          "seasonYear": 2007
+        },
+        {
+          "seriesId": "tt12996868",
+          "title": "Zoom Shorts",
+          "season": 3,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt1271995",
+          "title": "Ojciec Mateusz",
+          "season": 4,
+          "seasonYear": 2010
+        },
+        {
+          "seriesId": "tt13978840",
+          "title": "In Our House There Is A Robot AKA (Fe Baytena Robot)",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt16359992",
+          "title": "Gutter mot verden",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt18374408",
+          "title": "Doppelhaushälfte",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt26675358",
+          "title": "Love Is Blind: UK",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt33493320",
+          "title": "Aerial Australia",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt36625953",
+          "title": "Les Loups Garous Germany",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt34889365",
+          "title": "Paranormal Mysteries",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt8337384",
+          "title": "Yaffa",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38073770",
+          "title": "Emergência 53",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt5050648",
+          "title": "This Is Opera",
+          "season": 2,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt3911894",
+          "title": "Meri Aashiqui Tum Se Hi",
+          "season": 1,
+          "seasonYear": 2014
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt14676004",
+          "title": "Elite Short Stories: Omar Ander Alexis",
+          "season": 3,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt0198181",
+          "title": "Mickey Mouse Works",
+          "season": 3,
+          "seasonYear": 2000
+        },
+        {
+          "seriesId": "tt21243568",
+          "title": "Doctor Who: Dark Eyes",
+          "season": 1,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt21243568",
+          "title": "Doctor Who: Dark Eyes",
+          "season": 2,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt21243568",
+          "title": "Doctor Who: Dark Eyes",
+          "season": 3,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt21243568",
+          "title": "Doctor Who: Dark Eyes",
+          "season": 4,
+          "seasonYear": 2015
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt4458462",
+          "title": "Off the Map",
+          "season": 1,
+          "from": 9.52,
+          "to": 8.08,
+          "delta": -1.44
+        },
+        {
+          "seriesId": "tt12996868",
+          "title": "Zoom Shorts",
+          "season": 4,
+          "from": 9.73,
+          "to": 8.83,
+          "delta": -0.9
+        },
+        {
+          "seriesId": "tt37513722",
+          "title": "Shark! Celebrity Infested Waters",
+          "season": 1,
+          "from": 7.04,
+          "to": 6.24,
+          "delta": -0.8
+        },
+        {
+          "seriesId": "tt0320037",
+          "title": "Jimmy Kimmel Live!",
+          "season": 13,
+          "from": 6.3,
+          "to": 5.56,
+          "delta": -0.74
+        },
+        {
+          "seriesId": "tt43294748",
+          "title": "The Topurias",
+          "season": 1,
+          "from": 7.2,
+          "to": 7.9,
+          "delta": 0.7
+        },
+        {
+          "seriesId": "tt27865962",
+          "title": "Beyblade X",
+          "season": 3,
+          "from": 8.85,
+          "to": 8.16,
+          "delta": -0.69
+        },
+        {
+          "seriesId": "tt1710295",
+          "title": "Doc McStuffins: Pet Rescue/Baby/Ultimate Safari/Arctic Rescue/Toy Hospital",
+          "season": 4,
+          "from": 8.22,
+          "to": 7.6,
+          "delta": -0.62
+        },
+        {
+          "seriesId": "tt0143050",
+          "title": "Love Boat: The Next Wave",
+          "season": 2,
+          "from": 6.57,
+          "to": 5.98,
+          "delta": -0.59
+        },
+        {
+          "seriesId": "tt0379623",
+          "title": "The Ellen DeGeneres Show",
+          "season": 1,
+          "from": 6.24,
+          "to": 5.66,
+          "delta": -0.58
+        },
+        {
+          "seriesId": "tt4386224",
+          "title": "The Intern",
+          "season": 4,
+          "from": 6.2,
+          "to": 6.71,
+          "delta": 0.51
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 26220,
+        "avgRating": 1825,
+        "shapes": 335,
+        "seriesRating": 452,
+        "episodeCount": 134,
+        "overview": 5,
+        "poster": 2
+      }
+    },
+    {
       "builtAt": "2026-08-26T06:54:48.417Z",
       "totals": {
         "seasons": 66451,
@@ -6836,278 +7201,6 @@
       "modifiedCounts": {
         "overview": 3,
         "poster": 4
-      }
-    },
-    {
-      "builtAt": "2026-07-27T09:47:12.021Z",
-      "totals": {
-        "seasons": 66017,
-        "delta": 22
-      },
-      "shapeCounts": {
-        "mid-peak": 4617,
-        "rebound": 10062,
-        "rising": 2927,
-        "slow-burn": 4375,
-        "big-finale": 12047,
-        "u-shaped": 3104,
-        "rollercoaster": 14032,
-        "saved-best-for-last": 1541,
-        "front-loaded": 3462,
-        "declining": 1876,
-        "bad-finale": 4634,
-        "consistent": 2632,
-        "shape-drift": 1631
-      },
-      "shapeDeltas": {
-        "mid-peak": -7,
-        "rebound": 1,
-        "slow-burn": 6,
-        "big-finale": 16,
-        "u-shaped": 4,
-        "rollercoaster": 11,
-        "declining": 3,
-        "bad-finale": -11,
-        "consistent": 3,
-        "shape-drift": -2
-      },
-      "added": [
-        {
-          "seriesId": "tt40247521",
-          "title": "Spooky in Love",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43618445",
-          "title": "Peach and Me",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41276828",
-          "title": "Hanaori-san Still Wants to Fight in the Next Life",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt20224612",
-          "title": "Granite Harbour",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38672679",
-          "title": "Svärtan",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0496467",
-          "title": "Zatoichi: The Blind Swordsman",
-          "season": 3,
-          "seasonYear": 1978
-        },
-        {
-          "seriesId": "tt36626299",
-          "title": "4 Elements: The Fire",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1877005",
-          "title": "Moonshiners",
-          "season": 15,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0324912",
-          "title": "Sorrell and Son",
-          "season": 1,
-          "seasonYear": 1984
-        },
-        {
-          "seriesId": "tt13484110",
-          "title": "Search and Rescue: North Shore",
-          "season": 2,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt38573695",
-          "title": "Till Death Do Us Part",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39060106",
-          "title": "La disparue de Compostelle",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt37140755",
-          "title": "Ashes to Crown",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt15250594",
-          "title": "Fairies Albums",
-          "season": 4,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt18749920",
-          "title": "Face à Face",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt27078002",
-          "title": "Comic-Con at Home 2020",
-          "season": 1,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt28719186",
-          "title": "Boomer",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt35814670",
-          "title": "33 días",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt37024887",
-          "title": "The Marvellous Miniatures Workshop",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt39699537",
-          "title": "Corazón de oro",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43439118",
-          "title": "Aik Mohabbat Aur",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41278592",
-          "title": "Red River",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43639205",
-          "title": "Super Market",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt29507844",
-          "title": "I-Land",
-          "season": 1,
-          "seasonYear": 2020
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt10023178",
-          "title": "A Little Late with Lilly Singh",
-          "season": 2,
-          "from": 4.32,
-          "to": 5.93,
-          "delta": 1.61
-        },
-        {
-          "seriesId": "tt35668156",
-          "title": "Better Late Than Single",
-          "season": 2,
-          "from": 8.23,
-          "to": 7.28,
-          "delta": -0.95
-        },
-        {
-          "seriesId": "tt10023178",
-          "title": "A Little Late with Lilly Singh",
-          "season": 1,
-          "from": 2.65,
-          "to": 3.58,
-          "delta": 0.93
-        },
-        {
-          "seriesId": "tt41515375",
-          "title": "Soy Luna. Volver a rodar",
-          "season": 1,
-          "from": 5.12,
-          "to": 5.97,
-          "delta": 0.85
-        },
-        {
-          "seriesId": "tt37443650",
-          "title": "Overdo",
-          "season": 1,
-          "from": 6.55,
-          "to": 7.25,
-          "delta": 0.7
-        },
-        {
-          "seriesId": "tt9168904",
-          "title": "Bia",
-          "season": 2,
-          "from": 5.75,
-          "to": 6.44,
-          "delta": 0.69
-        },
-        {
-          "seriesId": "tt0101222",
-          "title": "Top of the Heap",
-          "season": 1,
-          "from": 4.77,
-          "to": 4.1,
-          "delta": -0.67
-        },
-        {
-          "seriesId": "tt38264348",
-          "title": "The Hairdresser Mysteries",
-          "season": 1,
-          "from": 6.4,
-          "to": 7.07,
-          "delta": 0.67
-        },
-        {
-          "seriesId": "tt3598030",
-          "title": "K.C. Undercover",
-          "season": 3,
-          "from": 6.03,
-          "to": 5.4,
-          "delta": -0.63
-        },
-        {
-          "seriesId": "tt3598030",
-          "title": "K.C. Undercover",
-          "season": 2,
-          "from": 6.39,
-          "to": 5.78,
-          "delta": -0.61
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 25367,
-        "avgRating": 1678,
-        "seriesRating": 643,
-        "shapes": 338,
-        "episodeCount": 127,
-        "overview": 2
       }
     }
   ]
