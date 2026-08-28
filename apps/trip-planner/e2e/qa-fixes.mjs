@@ -535,9 +535,17 @@ export async function run({ base, cdpPort }) {
 \`\`\``;
   // The endpoint RESOLVES the query and refuses it: exactly what the confidence
   // gate does for a landmark whose official name is not the one people type.
-  const refusedNet = (url) => {
+  const refusedNet = (url, request) => {
     if (/tp-places/.test(url)) {
-      return { body: JSON.stringify({ results: [{ query: 'Somewhere Bangkok', status: 'no_match', reason: 'low_confidence' }], attribution: { text: 'Google Maps', url: 'https://www.google.com/maps' } }), contentType: 'application/json' };
+      // Echo whatever ids were asked for, so the tombstone lands on the card
+      // that asked (the response is keyed by id now, see placesCacheUpdates).
+      let asked = [];
+      try { asked = (JSON.parse(request.postData || '{}').queries || []); } catch { /* empty */ }
+      const results = asked.map(raw => {
+        const e = typeof raw === 'string' ? { id: raw, q: raw } : raw;
+        return { id: e.id, query: e.q, status: 'no_match', reason: 'low_confidence' };
+      });
+      return { body: JSON.stringify({ results, attribution: { text: 'Google Maps', url: 'https://www.google.com/maps' } }), contentType: 'application/json' };
     }
     return /^https?:\/\/(localhost|127\.)/.test(url) ? null : 'fail';
   };

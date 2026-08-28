@@ -3726,6 +3726,19 @@ const TripLogic = (() => {
       }
       // who owes this cost travels with the item; the far side clamps it to the
       // shared traveller list, so an empty or all-hands assignment stays absent
+      // The resolved place travels too, and travelling is the point: a shared
+      // link, a synced device and the trip JSON the assistant reads all get the
+      // SAME Google place identity the card resolved, so none of them has to
+      // re-search a string and land somewhere else. Only the ID, the point and
+      // the city it was verified against - never a name, rating or hours, which
+      // Google's terms do not let us store or pass on. The far side re-runs
+      // normalizePlaceRecord, so a stale or implausible record is dropped there
+      // exactly as it is here.
+      if (it.place && typeof it.place === 'object' && typeof it.place.id === 'string' && it.place.id) {
+        out.place = { id: it.place.id, at: it.place.at };
+        if (validCoord(it.place.lat, it.place.lon)) { out.place.lat = it.place.lat; out.place.lon = it.place.lon; }
+        if (it.place.city) out.place.city = it.place.city;
+      }
       if (Array.isArray(it.travelers) && it.travelers.length) out.travelers = it.travelers;
       // and so does a hand-entered split: dropping it would leave the far side
       // showing an EVEN divide of the same cost, i.e. a confidently wrong answer
@@ -3747,7 +3760,15 @@ const TripLogic = (() => {
   // ride in a SHARE link because the person you share a trip with is the other
   // traveller on it; a model is not one, cannot act on a confirmation code, and
   // is refused one on the way back (see sanitizeActionFields).
-  const ASSIST_OMITTED_FIELDS = ['confirmation', 'paidBy', 'splitAmounts', 'payment', 'bookBy'];
+  // `place` is on this list for a different reason from the rest. The others are
+  // held back because they are the traveller's private business; the resolved
+  // place is held back because sending it would be pure leakage. It is a Google
+  // place ID and a coordinate: the model cannot look either up, has no use for
+  // either, and every byte of it competes for the trip's size budget. The
+  // model's cue that an item already HAS a place is its mapsQuery, which does
+  // travel. (privacy.html states exactly what reaches the assistant, so this
+  // list and that paragraph have to stay in step.)
+  const ASSIST_OMITTED_FIELDS = ['confirmation', 'paidBy', 'splitAmounts', 'payment', 'bookBy', 'place'];
 
   /**
    * The trip as the ASSISTANT sees it. Two deliberate differences from the
@@ -4014,49 +4035,130 @@ const TripLogic = (() => {
   function normalizePlaceQuery(q) {
     return String(q == null ? '' : q).replace(/\s+/g, ' ').trim().slice(0, 200).trim();
   }
-  const placeCacheKey = q => normalizePlaceQuery(q).toLowerCase();
+
+  // ---------- the canonical place identity ----------
+  // THE BUG THIS SECTION EXISTS FOR (2026-08-27). A place used to be identified
+  // by a QUERY STRING, and by a different one depending on who was asking: the
+  // recommendation card keyed its rating and its Maps link on the model's raw
+  // `mapsQuery`, its hours and its distance chip on a query DERIVED from title
+  // plus location, and the itinerary row - after Add to trip - derived its own
+  // again. Three derivations of "which place is this" for one place, so the
+  // card could say "No rating match" while the row beside it showed a rating,
+  // and neither was wrong about the string it happened to be holding.
+  //
+  // On top of that the key carried no geography at all, so "Royce Chocolate"
+  // meant one entry worldwide: the Hokkaido flagship's rating, coordinates and
+  // cid link, cached for thirty days and served to a Tokyo day.
+  //
+  // Both are fixed the same way: ONE derivation, and the AREA is part of the
+  // identity. `placeLookupFor` is the only thing allowed to answer "what place
+  // is this item/proposal about", and every surface - rating chip, Maps link,
+  // opening hours, distance chip, the persisted itinerary row - reads it.
+
+  // The area token that makes two same-named businesses in two cities two
+  // different cache entries. Coarse on purpose: everything in one city shares
+  // one entry (and therefore one billed lookup), and the rounded coordinate
+  // (~11 km) is the fallback for a place we can locate but cannot name.
+  function placeAreaKey(area) {
+    const a = area && typeof area === 'object' ? area : null;
+    if (!a) return '';
+    const city = String(a.city == null ? '' : a.city).trim().toLowerCase();
+    if (city) return city;
+    if (validCoord(a.lat, a.lon)) return `${Number(a.lat).toFixed(1)},${Number(a.lon).toFixed(1)}`;
+    const country = String(a.country == null ? '' : a.country).trim().toLowerCase();
+    return country;
+  }
+
+  // The cache key. `area` is optional and omitting it reproduces the old
+  // global key exactly, which is what a context-free caller (the hotel picker's
+  // one-off rating) still wants; every itinerary surface passes one.
+  const placeCacheKey = (q, area) => {
+    const base = normalizePlaceQuery(q).toLowerCase();
+    if (!base) return '';
+    const a = placeAreaKey(area);
+    return a ? base + '@' + a : base;
+  };
 
   // `known` is anything with .has(key): the live cache plus the in-flight set.
   // Returns the wire batches, each already under the server's cap of 12 (the
   // server silently DROPS queries past the cap, so overflow must batch here).
+  //
+  // An input may be a LOOKUP ({ query, area, key } from placeLookupFor) or a
+  // bare string. The lookup form is what every itinerary surface passes now:
+  // the area travels to the server, so two same-named businesses in two cities
+  // are two entries with two keys and two answers rather than one shared
+  // (and, for one of them, wrong) result.
   function planPlacesLookup(queries, known) {
     const seen = known && typeof known.has === 'function' ? known : { has: () => false };
     const local = new Set();
     const misses = [];
     for (const raw of Array.isArray(queries) ? queries : []) {
-      const query = normalizePlaceQuery(raw);
-      if (!query) continue;
-      const key = placeCacheKey(query);
-      if (local.has(key) || seen.has(key)) continue;
-      local.add(key);
-      misses.push({ key, query });
+      const lookup = asPlaceLookup(raw);
+      if (!lookup) continue;
+      if (local.has(lookup.key) || seen.has(lookup.key)) continue;
+      local.add(lookup.key);
+      misses.push(lookup);
     }
     const batches = [];
     for (let i = 0; i < misses.length; i += PLACES_BATCH_MAX) batches.push(misses.slice(i, i + PLACES_BATCH_MAX));
     return { misses, batches };
   }
 
+  // Normalizes either accepted input into the one lookup shape. A bare string
+  // carries no area, which the server reports as UNCHECKED rather than
+  // verified - so a caller that skips the context does not silently get a
+  // confident-looking answer it has not earned.
+  function asPlaceLookup(raw) {
+    if (raw && typeof raw === 'object' && typeof raw.query === 'string') {
+      const query = normalizePlaceQuery(raw.query);
+      if (!query) return null;
+      const area = raw.area && typeof raw.area === 'object' ? raw.area : null;
+      return { key: raw.key || placeCacheKey(query, area), query, area };
+    }
+    const query = normalizePlaceQuery(raw);
+    if (!query) return null;
+    return { key: placeCacheKey(query), query, area: null };
+  }
+
   // "no_match" is permanent for a query and gets cached as a tombstone so the
   // venue is never looked up again. "unavailable" is transient (quota, upstream
   // hiccup) and is deliberately NOT cached, so a later card may retry.
+  // The key a RESULT belongs to. The server echoes our own cache key back as
+  // `id`, and keying on that rather than re-deriving one from the text is what
+  // stops a response landing on the wrong card: two cities can ask about the
+  // same business name in one batch, and only the id tells the two answers
+  // apart. The `query` fallback keeps a pre-`id` server working - an old
+  // Netlify deploy permalink, which stays live forever.
+  function resultKey(r) {
+    if (!r || typeof r !== 'object') return '';
+    if (typeof r.id === 'string' && r.id) return r.id;
+    return typeof r.query === 'string' ? placeCacheKey(r.query) : '';
+  }
+
   function placesCacheUpdates(results) {
     const out = [];
     for (const r of Array.isArray(results) ? results : []) {
-      if (!r || typeof r.query !== 'string') continue;
-      const key = placeCacheKey(r.query);
+      const key = resultKey(r);
       if (!key) continue;
       // The reason rides along because "generic_query" is the server telling us,
       // for free and before any billing, that this query names no venue at all.
       // An UNRATED confident match still carries the place's opening hours (the
       // same billed response found them; only the star was missing), so the
       // hours surfaces are not blinded by a venue Google has no rating for. A
-      // low-confidence or not-found result carries none: that is a different
-      // business, and its hours would be as wrong as its rating.
+      // low-confidence, wrong-area or not-found result carries none: that is a
+      // different business or a different branch, and its hours would be as
+      // wrong as its rating.
       if (r.status === 'no_match') {
         const entry = { status: 'no_match', reason: typeof r.reason === 'string' ? r.reason : '' };
         if (entry.reason === 'unrated') {
           const hours = sanitizeHours(r.hours);
           if (hours) entry.hours = hours;
+          // An unrated place is still a RESOLVED place: it has an identity, a
+          // position and hours, and only the star is missing. Carrying that
+          // identity is what lets the row link at the exact entity, measure a
+          // real distance to it and persist it on Add to trip - all of which a
+          // venue with no reviews deserves exactly as much as a famous one.
+          Object.assign(entry, placeIdentity(r));
         }
         out.push({ key, entry });
         continue;
@@ -4080,6 +4182,7 @@ const TripLogic = (() => {
         rating: Math.round(r.rating * 10) / 10,
         userRatingCount: isFinite(count) && count > 0 ? Math.floor(count) : 0,
         mapsUri: uri,
+        ...placeIdentity(r),
       };
       // Session-only, like the rating beside it: Google's caching terms cover
       // no hours field, so this entry must never be written anywhere durable.
@@ -4087,6 +4190,22 @@ const TripLogic = (() => {
       if (hours) entry.hours = hours;
       out.push({ key, entry });
     }
+    return out;
+  }
+
+  // The half of a result that says WHICH ENTITY this is and how sure the
+  // server was, kept separate from the rating so the two can never drift.
+  // `verified` is the gate everything downstream reads: an unverified
+  // resolution draws no distance chip, no persisted record and no claim of
+  // having been checked.
+  function placeIdentity(r) {
+    const out = {
+      placeId: typeof r.placeId === 'string' ? r.placeId : '',
+      verified: r.verified === true,
+      areaBasis: typeof r.areaBasis === 'string' ? r.areaBasis : 'none',
+      confidence: typeof r.confidence === 'number' && isFinite(r.confidence) ? r.confidence : 0,
+    };
+    if (validCoord(r.lat, r.lon)) { out.lat = Number(r.lat); out.lon = Number(r.lon); }
     return out;
   }
 
@@ -4491,7 +4610,7 @@ const TripLogic = (() => {
     const maxAttempts = o.maxAttempts || PLACES_MAX_ATTEMPTS;
 
     const cache = new Map();      // key -> { status:'ok', ... } | { status:'no_match' }
-    const entries = new Map();    // key -> { key, query, priority, gen, attempts }
+    const entries = new Map();    // key -> { key, query, area, priority, gen, attempts }
     const inFlight = new Set();
     const deferred = new Map();   // key -> earliest retry timestamp
     let hi = [], lo = [];         // keys, urgent lane first
@@ -4575,7 +4694,10 @@ const TripLogic = (() => {
         busy += 1;
         stats.posts += 1;
         Promise.resolve()
-          .then(() => send(batch.map(e => e.query)))
+          // The wire form carries the AREA, not just the text: two cities
+          // asking about the same business name are two questions, and the
+          // server answers each against its own geography.
+          .then(() => send(batch.map(e => placeLookupRequest(e) || e.query)))
           .then(res => settle(batch, res || {}))
           .catch(() => settle(batch, { ok: false, transient: true }))
           .then(() => { busy -= 1; pump(); });
@@ -4592,7 +4714,7 @@ const TripLogic = (() => {
         // again once the defer window passes.
         for (const r of results) {
           if (!r || r.status !== 'unavailable') continue;
-          const key = placeCacheKey(r.query);
+          const key = resultKey(r);
           if (key && !cache.has(key)) deferred.set(key, now() + deferMs);
         }
         stats.lookups += results.filter(r => r && r.status === 'ok').length;
@@ -4627,7 +4749,7 @@ const TripLogic = (() => {
         const { misses } = planPlacesLookup(queries, known);
         if (!misses.length) return 0;
         for (const m of misses) {
-          entries.set(m.key, { key: m.key, query: m.query, priority, gen, attempts: 0 });
+          entries.set(m.key, { key: m.key, query: m.query, area: m.area || null, priority, gen, attempts: 0 });
           (priority === 'urgent' ? hi : lo).push(m.key);
         }
         pump();
@@ -4639,7 +4761,8 @@ const TripLogic = (() => {
       promote(queries) {
         let moved = 0;
         for (const raw of Array.isArray(queries) ? queries : []) {
-          const key = placeCacheKey(raw);
+          const lookup = asPlaceLookup(raw);
+          const key = lookup && lookup.key;
           const e = key && entries.get(key);
           if (!e || e.priority === 'urgent') continue;
           e.priority = 'urgent';
@@ -4652,6 +4775,18 @@ const TripLogic = (() => {
         return moved;
       },
       get: key => cache.get(key),
+      // FILE AN ALREADY-RESOLVED PLACE under the key a card will ask for.
+      // Discovery replacements arrive fully resolved from the provider (the
+      // search WAS the resolution), so re-asking for them by name would be a
+      // second billed lookup - and worse, one the name gate could refuse,
+      // because the model never named these places. Seeding is how a verified
+      // replacement reaches the card that shows it.
+      seed(key, entry) {
+        if (!key || !entry || typeof entry !== 'object') return false;
+        if (cache.has(key)) return false;
+        cache.set(key, entry);
+        return true;
+      },
       has: key => cache.has(key),
       // Consumed by the Photon top-up, which must not chase a venue whose
       // billed lookup is already going to answer with a better point.
@@ -4757,9 +4892,15 @@ const TripLogic = (() => {
   function placesLocationUpdates(results) {
     const out = [];
     for (const r of Array.isArray(results) ? results : []) {
-      if (!r || typeof r.query !== 'string') continue;
-      const key = placeCacheKey(r.query);
+      const key = resultKey(r);
       if (!key || !validCoord(r.lat, r.lon)) continue;
+      // A coordinate is only stored when the resolution was VERIFIED against
+      // the itinerary's own geography. This is the line that stops the 809 km
+      // chip: an unverified point is not a cheaper answer, it is a wrong one,
+      // and once it lands in the 30-day venue cache every later render repeats
+      // it. A place the server could not check simply has no point here, and
+      // the row draws no chip rather than a confident wrong one.
+      if (r.verified !== true) continue;
       out.push({ key, lat: Number(r.lat), lon: Number(r.lon) });
     }
     return out;
@@ -5508,11 +5649,14 @@ const TripLogic = (() => {
   // here: they are read back out of ASSIST_KINDS, the exact string the prompt
   // sends, so the renderer cannot drift from the instruction. (ASSIST_KINDS is
   // declared further down, hence the lazy read; it is a const in the same IIFE.)
-  let MEAL_PREFIXES = null;
-  function mealTitlePrefixes() {
-    if (!MEAL_PREFIXES) MEAL_PREFIXES = (ASSIST_KINDS.match(/"[A-Z][a-z]+: "/g) || []).map(s => s.slice(1, -1));
-    return MEAL_PREFIXES;
-  }
+  // THE list, and the prompt is BUILT from it (see ASSIST_KINDS), which is the
+  // same no-drift guarantee the old regex-over-the-prompt gave with none of its
+  // fragility: ASSIST_KINDS now also NAMES the prefixes a model must not invent
+  // ("Shopping: ", "Museum: "), and a regex scanning for quoted capitalised
+  // words could not tell the mandate from the prohibition. The tests still
+  // assert that every prefix here appears verbatim in the prompt.
+  const ASSIST_MEAL_PREFIXES = ['Breakfast: ', 'Lunch: ', 'Dinner: ', 'Drinks: '];
+  function mealTitlePrefixes() { return ASSIST_MEAL_PREFIXES.slice(); }
   // Matching rule: leading whitespace is ignored, case is ignored, and the
   // space after the colon is optional ("Dinner:Narisawa" counts). The colon is
   // required, so "Dinnerware shopping" is not a meal.
@@ -5668,11 +5812,21 @@ const TripLogic = (() => {
     const q = normalizePlaceQuery(mapsQuery);
     if (!q) return null;
     const search = mapsSearchUrl(q);
-    // The URI came off the network; anything that is not http(s) must not reach
-    // an href, and a search we can still render beats a link that does nothing.
-    const uri = entry && entry.status === 'ok' && typeof entry.mapsUri === 'string'
-      && /^https?:\/\//i.test(entry.mapsUri) ? entry.mapsUri : '';
-    if (uri) return { href: uri, label: '📍 Verify on Google Maps', resolved: true };
+    // A RESOLVED place is linked at the entity itself, and the link stops
+    // saying "Verify". "Verify on Google Maps" is an instruction to go and
+    // check because the app could not - printing it next to a rating and an
+    // opening-hours line the app DID verify was the interface contradicting
+    // itself, and it is exactly the state the traveller reported on
+    // 2026-08-27. So the label now follows the evidence: verified places are
+    // opened, unverified ones are verified.
+    //
+    // The href prefers the place ID, which is ours to keep and can only ever
+    // point at the entity that was actually resolved; Google's own mapsUri is
+    // the fallback for a session entry that has one but no ID.
+    const resolved = placeEntryUrl(entry);
+    const href = (entry && entry.placeId) ? resolved : (entry && entry.status === 'ok' ? resolved : '');
+    if (href && entry && entry.verified) return { href, label: '📍 Open on Google Maps', resolved: true };
+    if (href) return { href, label: '📍 Verify on Google Maps', resolved: true };
     if (entry && entry.status === 'no_match' && entry.reason === 'generic_query') {
       return { href: search, label: '📍 Search Google Maps', resolved: false };
     }
@@ -5742,17 +5896,103 @@ const TripLogic = (() => {
     return km <= WALKABLE_KM ? 'walking' : 'transit';
   }
 
+  // ---------- titles: the app's categories, and the ones a model invents ----------
+  // THE FAILURE (2026-08-27). Asked for chocolate shops, the assistant returned
+  // items titled "Shopping: Royce' Chocolate (Tokyo Station)". The contract
+  // tells it to carry a meal slot as a literal title prefix ("Dinner: "), and a
+  // model generalises: it decided "Shopping" was a category too, invented a
+  // prefix for it, and the app - which strips only the four contract prefixes -
+  // stored and rendered the invented one verbatim. "Shopping" is not one of
+  // this app's categories, has no icon, no filter and no cost bucket, so the
+  // prefix was decoration in front of the venue's real name, and it travelled
+  // into the derived Maps query as a word no business is called.
+  //
+  // The rule now: a category is STRUCTURED METADATA (item.type plus item.meal),
+  // never text in the title. A prefix the app can honour is converted into that
+  // metadata; a prefix it cannot is dropped; anything that is not a category
+  // word at all is left exactly as the model wrote it, because "teamLab:
+  // Borderless" and "Tokyo: A Walking Day" are titles, not prefixed categories.
+
+  // Prefixes that MEAN something here, mapped to the meal vocabulary in
+  // MEAL_META. Wider than the four the contract asks for (mealTitlePrefixes),
+  // because recognising "Snack: " costs nothing and drops a traveller's
+  // chocolate stop into the food-and-drink bucket it belongs in, with the
+  // snack icon the form already offers.
+  const RECOGNIZED_TITLE_PREFIXES = {
+    breakfast: 'breakfast', brunch: 'brunch', lunch: 'lunch', dinner: 'dinner',
+    supper: 'dinner', drinks: 'drinks', drink: 'drinks', cocktails: 'drinks',
+    aperitif: 'drinks', nightcap: 'drinks',
+    cafe: 'cafe', coffee: 'cafe', tea: 'cafe',
+    snack: 'snack', snacks: 'snack', dessert: 'snack', desserts: 'snack',
+    sweets: 'snack', treat: 'snack', treats: 'snack', pastry: 'snack',
+  };
+
+  // Category words a model puts in front of a venue name that this app has no
+  // category for. A CLOSED list on purpose: anything not named here is treated
+  // as part of the title, so the cleaner can never eat a real name. Time-of-day
+  // words are here for the same reason - "Evening: Golden Gai" is a slot label,
+  // and the item already carries its own startTime.
+  const DROPPED_TITLE_PREFIXES = new Set([
+    'shopping', 'shop', 'store', 'retail', 'souvenir', 'souvenirs', 'gift', 'gifts',
+    'entertainment', 'nightlife', 'show', 'activity', 'activities', 'attraction',
+    'attractions', 'sightseeing', 'sight', 'sights', 'landmark', 'landmarks',
+    'culture', 'cultural', 'experience', 'experiences', 'tour', 'tours', 'visit',
+    'explore', 'museum', 'gallery', 'temple', 'shrine', 'park', 'garden',
+    'wellness', 'spa', 'relax', 'leisure', 'optional', 'free time', 'downtime',
+    'morning', 'afternoon', 'evening', 'night', 'day trip', 'excursion',
+    'food', 'drinks and food', 'dining', 'eat', 'eats', 'meal',
+  ]);
+
+  // The leading "Word: " or "Two Words: " of a title, or ''. Letters and spaces
+  // only, at most two words: a prefix is a label, and anything longer or
+  // punctuated is prose the traveller wrote. The tail may be empty - a title
+  // that is NOTHING but its label ("Dinner:") is a real thing the model emits,
+  // and callers that need visible text fall back to the original.
+  const TITLE_LABEL_RE = /^\s*([\p{L}][\p{L}\s]{0,23}?)\s*:\s*/u;
+
+  /**
+   * Split a model-written title into the venue's own name plus the category the
+   * prefix was standing in for. Returns { title, meal }: `meal` is a MEAL_META
+   * key when the prefix mapped to one and '' otherwise, and `title` is what a
+   * human should read on the card.
+   *
+   * Deliberately conservative in three ways: only a closed list of words is
+   * ever removed, only two prefixes are peeled (a model that writes
+   * "Shopping: Snack: X" is being odd, not creative), and a title that is
+   * NOTHING but its prefix keeps the original text rather than becoming blank.
+   */
+  function cleanAssistTitle(raw) {
+    let t = String(raw == null ? '' : raw).trim();
+    let meal = '';
+    for (let pass = 0; pass < 2 && t; pass++) {
+      const m = TITLE_LABEL_RE.exec(t);
+      if (!m) break;
+      const label = m[1].trim().toLowerCase().replace(/\s+/g, ' ');
+      const rest = t.slice(m[0].length).trim();
+      if (Object.prototype.hasOwnProperty.call(RECOGNIZED_TITLE_PREFIXES, label)) {
+        // A recognised slot: keep the FIRST one found (a meal is a fact about
+        // the item, and the outermost label is the one the model meant) and
+        // stop, because everything after it belongs to the venue's name.
+        if (!meal) meal = RECOGNIZED_TITLE_PREFIXES[label];
+        t = rest;
+        break;
+      }
+      if (DROPPED_TITLE_PREFIXES.has(label)) { t = rest; continue; }
+      break;
+    }
+    return { title: t, meal };
+  }
+
   // A meal prefix is a slot label, not part of the venue's name: "Dinner:
   // Fiskfelagid" is searched as "Fiskfelagid". "Cancelled:" goes the same way,
-  // since the status is now a badge of its own.
+  // since the status is now a badge of its own. An invented category prefix
+  // ("Shopping: ") goes too, and for a sharper reason: it reaches the Google
+  // Maps query, where "shopping" is a word no business is named after and every
+  // extra one of those makes the search worse.
   const TITLE_PREFIX_RE = /^\s*cancelled\s*:\s*/i;
   function stripTitlePrefixes(title) {
-    let t = String(title == null ? '' : title).replace(TITLE_PREFIX_RE, '');
-    for (const p of mealTitlePrefixes()) {
-      const re = new RegExp('^\\s*' + p.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*', 'i');
-      if (re.test(t)) { t = t.replace(re, ''); break; }
-    }
-    return t.trim();
+    const t = String(title == null ? '' : title).replace(TITLE_PREFIX_RE, '');
+    return cleanAssistTitle(t).title.trim();
   }
 
   // The title as a human should read it on a card: the status prefix goes,
@@ -5780,6 +6020,455 @@ const TripLogic = (() => {
     // in Akureyri) is not repeated: a doubled place name is a worse search.
     const dup = where && name.toLowerCase().includes(where.toLowerCase());
     return normalizePlaceQuery(where && !dup ? `${name} ${where}` : name);
+  }
+
+  // ---------- the one place identity every surface reads ----------
+  // `itemLike` is an ITEM or a proposal's fields - the same six keys either
+  // way (type, title, location, mapsQuery, meal, place), which is what makes
+  // the recommendation card and the itinerary row it becomes resolve to the
+  // SAME entity instead of two independently-derived query strings.
+  //
+  // `ctx` carries the itinerary's own geography, injected the way isResolved
+  // and resolveIata already are, so this function stays pure and never reaches
+  // the network:
+  //   ctx.city         the day's city, used when the item names none of its own
+  //   ctx.country      the trip's country, the weakest area signal
+  //   ctx.resolvePoint (cityName) -> {lat, lon} | null, a CACHE-ONLY geocode
+  //
+  // This answers WHICH PLACE, not "does this deserve a rating". A travel leg
+  // named after a real destination ("Return to hotel" carries the hotel's own
+  // name on purpose) is about a place, and its directions link and its end of
+  // the day's distance chain both need that place's identity. Whether a row
+  // may show a STAR is a separate question the renderers ask with isPlaceType /
+  // isTravelLeg, exactly as they did before. Returns null only when there is no
+  // place to name at all - which itemMapsQuery already decides, by refusing to
+  // DERIVE a query for anything but a stay or an activity.
+  function placeLookupFor(itemLike, ctx) {
+    const it = itemLike && typeof itemLike === 'object' ? itemLike : null;
+    if (!it) return null;
+    const query = itemMapsQuery(it);
+    if (!query) return null;
+    const c = ctx && typeof ctx === 'object' ? ctx : {};
+
+    // The recommendation's OWN stated city wins over the day's: when a model
+    // says "Kyoto" on a day based in Osaka, Kyoto is the claim being checked.
+    const city = String(it.location == null ? '' : it.location).trim()
+      || String(c.city == null ? '' : c.city).trim();
+    const country = String(c.country == null ? '' : c.country).trim();
+    const point = (city && typeof c.resolvePoint === 'function') ? c.resolvePoint(city) : null;
+    const area = (city || country || (point && validCoord(point.lat, point.lon)))
+      ? {
+        city,
+        country,
+        lat: point && validCoord(point.lat, point.lon) ? Number(point.lat) : null,
+        lon: point && validCoord(point.lat, point.lon) ? Number(point.lon) : null,
+      }
+      : null;
+    return { query, area, key: placeCacheKey(query, area) };
+  }
+
+  // The wire form of one lookup: what the batch POSTs for this place. `id` is
+  // our own cache key and comes back untouched, so a response can never be
+  // re-keyed onto a different card.
+  function placeLookupRequest(lookup) {
+    if (!lookup || !lookup.query) return null;
+    const req = { id: lookup.key, q: lookup.query };
+    const a = lookup.area;
+    if (a) {
+      if (a.city) req.city = a.city;
+      if (a.country) req.country = a.country;
+      if (validCoord(a.lat, a.lon)) { req.lat = Number(a.lat); req.lon = Number(a.lon); }
+    }
+    return req;
+  }
+
+  // ---------- the canonical place record that gets PERSISTED ----------
+  // What an itinerary item keeps about the Maps entity it resolved to. Two
+  // fields and a timestamp, and the shortness is the point:
+  //   id   the Google place ID. Google's caching policy singles this out as
+  //        the one value that may be stored indefinitely, and it is the stable
+  //        identity - a name can be re-rendered, a rating changes hourly, but
+  //        the ID is the place. Every later surface links and looks up from it.
+  //   lat/lon  permitted for 30 days by Maps Service Specific Terms 14.3, which
+  //        is why they expire here on exactly that schedule.
+  //   area the city this resolution was VERIFIED against, kept so a later
+  //        change of the item's city can invalidate a record that was only ever
+  //        correct for the old one.
+  // Deliberately NOT stored: the display name, the rating, the review count,
+  // the opening hours and Google's own mapsUri. Those are Google Maps content
+  // with no caching exception; they live in the session cache and nowhere else,
+  // and the Maps URL is rebuilt from the ID (see placeMapsUrl) rather than kept.
+  const PLACE_RECORD_TTL_MS = 30 * 86400000;
+
+  // Built from a session-cache entry ONLY when that entry was actually
+  // verified. An unverified resolution is a guess, and a guess must not become
+  // a durable fact on the traveller's trip.
+  function placeRecordFrom(entry, area, now) {
+    if (!entry || typeof entry !== 'object') return null;
+    if (!entry.placeId || entry.verified !== true) return null;
+    const rec = { id: String(entry.placeId).slice(0, 200), at: Number(now) || Date.now() };
+    if (validCoord(entry.lat, entry.lon)) { rec.lat = Number(entry.lat); rec.lon = Number(entry.lon); }
+    const city = area && area.city ? String(area.city).trim().slice(0, 80) : '';
+    if (city) rec.city = city;
+    return rec;
+  }
+
+  /**
+   * THE PERSISTENCE BOUNDARY. Every path that writes an item runs its `place`
+   * through here, so the combination the 2026-08-27 bug produced - a Tokyo
+   * title next to Hokkaido coordinates - cannot be stored at all.
+   *
+   * Three refusals, in order of how badly they lie:
+   *   - malformed record, or one with no place ID: dropped entirely.
+   *   - coordinates older than the 30 days Google's terms allow: the ID
+   *     survives (it may be kept indefinitely), the point does not.
+   *   - a point that does not agree with the item's own city, when that city
+   *     resolves to a coordinate: dropped, because a distance drawn from it
+   *     would be the 809 km chip again. The ID survives: it is still the place
+   *     the traveller picked, and a fresh lookup can re-verify it.
+   */
+  function normalizePlaceRecord(rec, opts) {
+    const o = opts && typeof opts === 'object' ? opts : {};
+    const now = Number(o.now) || Date.now();
+    if (!rec || typeof rec !== 'object') return null;
+    const id = typeof rec.id === 'string' ? rec.id.trim().slice(0, 200) : '';
+    if (!id) return null;
+    const out = { id, at: typeof rec.at === 'number' && isFinite(rec.at) ? rec.at : now };
+    if (typeof rec.city === 'string' && rec.city.trim()) out.city = rec.city.trim().slice(0, 80);
+
+    if (!validCoord(rec.lat, rec.lon)) return out;
+    const age = now - out.at;
+    if (!(age > -VENUE_FUTURE_SLACK_MS && age < PLACE_RECORD_TTL_MS)) return out;
+    const at = { lat: Number(rec.lat), lon: Number(rec.lon) };
+    const anchor = o.cityPoint && validCoord(o.cityPoint.lat, o.cityPoint.lon) ? o.cityPoint : null;
+    if (anchor && distKm(anchor, at) > PLACE_AREA_MAX_KM) return out;
+    out.lat = at.lat;
+    out.lon = at.lon;
+    return out;
+  }
+
+  // THE URL FOR A RESOLVED PLACE, defined once. Three surfaces render a link to
+  // the same resolved entity - the rating chip on a card, the card's own Maps
+  // link, and the itinerary row - and before this each decided for itself: the
+  // chip used Google's `mapsUri` while the other two preferred the place ID, so
+  // one recommendation showed two different (both valid) URLs for one place.
+  // That is the same "two surfaces, two answers" shape this whole round is
+  // about, and the traveller was explicitly told the Maps URL should survive
+  // from the card into the itinerary unchanged.
+  //
+  // The place ID wins because it is the one form we can ALWAYS produce: an
+  // itinerary row rendering from its saved record has the ID and, by Google's
+  // caching terms, may not have kept `mapsUri` at all. Both forms are documented
+  // Google Maps URLs and both satisfy the attribution requirement.
+  function placeEntryUrl(entry) {
+    if (!entry || typeof entry !== 'object') return '';
+    if (entry.placeId) return placeMapsUrl({ id: entry.placeId });
+    const uri = typeof entry.mapsUri === 'string' && /^https?:\/\//i.test(entry.mapsUri) ? entry.mapsUri : '';
+    return uri;
+  }
+
+  // The Maps link for a resolved place, built from the ID rather than kept from
+  // the response. This is Google's own documented URL form for a place ID, it
+  // needs no stored Google content, and it can never point somewhere other than
+  // the entity the item actually resolved to - which a search URL, and the
+  // cached mapsUri of a DIFFERENT branch, both could.
+  function placeMapsUrl(rec) {
+    const id = rec && typeof rec.id === 'string' ? rec.id.trim() : '';
+    if (!id) return '';
+    return 'https://www.google.com/maps/place/?q=place_id:' + encodeURIComponent(id);
+  }
+
+  // How far a resolved venue may sit from the city it claims to be in before
+  // the app refuses to believe the resolution. The server applies the same
+  // radius upstream (AREA_MAX_KM in tp-places-match.mjs); this is the client's
+  // own net, so a stale cache, an old saved record or a response from a
+  // pre-fix deploy cannot put a wrong point on a chip. Generous enough for any
+  // metropolitan area on earth, tiny next to the failure it catches.
+  const PLACE_AREA_MAX_KM = 150;
+
+  // Is this resolved point plausible for a place claiming to be in this city?
+  // `cityPoint` may be null (the city was never geocoded), and an unknown
+  // anchor can never reject anything: silence is not evidence.
+  function plausiblePlacePoint(point, cityPoint) {
+    if (!point || !validCoord(point.lat, point.lon)) return false;
+    if (!cityPoint || !validCoord(cityPoint.lat, cityPoint.lon)) return true;
+    return distKm(cityPoint, point) <= PLACE_AREA_MAX_KM;
+  }
+
+  // ---------- assistant: DISCOVERY, and why it is a different mode ----------
+  // "Find me 3 good places to get Nama chocolate" and "add Royce Tokyo Station
+  // at 2pm" are different requests, and after the 2026-08-27 round they need
+  // different answers when a place cannot be verified.
+  //
+  //   DISCOVERY - the traveller asked us to FIND places. They never named one,
+  //     so an unverifiable candidate is not their input being preserved, it is
+  //     a venue the model made up. Showing it as a normal recommendation spends
+  //     one of their three slots on something that may not exist. Reject it,
+  //     replace it, and only ever present verified places.
+  //
+  //   EXPLICIT PLACE - the traveller named a venue themselves. Their words are
+  //     the point. If we cannot verify it we say so and keep it; silently
+  //     swapping in a different business would be answering a question they did
+  //     not ask.
+  //
+  // The distinction is drawn from THEIR message, not from the model's output:
+  // it is our own text, it is available before the reply arrives, and it cannot
+  // be hallucinated. The model's own hint (below) is a second, weaker signal.
+
+  // Verbs and framings that mean "go and find some". Deliberately a closed
+  // list: a false positive here silently deletes a venue the traveller typed.
+  const DISCOVERY_RE = new RegExp([
+    // verb, optional "me", then up to three filler words before the noun:
+    // "find me some good ramen spots" has three ("some good ramen"), and a
+    // fixed adjective slot could not reach past them.
+    '\\b(find|recommend|suggest|show)\\s+(me\\s+)?(?:[\\w-]+\\s+){0,3}?(places?|spots?|options?|restaurants?|cafes?|bars?|shops?|museums?|hotels?|ideas?)\\b',
+    '\\bwhere\\s+(can|should|could)\\s+(i|we)\\b',
+    '\\bwhat(\'s| is| are)\\s+(the\\s+)?(best|good)\\b',
+    '\\bany\\s+(good|nice|great)\\s+\\w+',
+    '\\bideas?\\s+for\\b',
+  ].join('|'), 'i');
+
+  // Written numbers a traveller actually uses for "how many".
+  const WORD_COUNTS = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8 };
+  const DISCOVERY_COUNT_MAX = 8;
+
+  /**
+   * Does this message ask us to FIND places, and how many?
+   * Returns { discovery, count } - count is null when they did not say.
+   */
+  function assistDiscoveryIntent(text) {
+    const t = String(text == null ? '' : text).trim();
+    if (!t) return { discovery: false, count: null };
+    const discovery = DISCOVERY_RE.test(t);
+    if (!discovery) return { discovery: false, count: null };
+    // "3 places", "three good spots", "a couple of bars"
+    const m = /\b(\d{1,2}|a|an|one|two|three|four|five|six|seven|eight)\s+(?:\w+\s+){0,2}?(places?|spots?|options?|restaurants?|cafes?|bars?|shops?|museums?|hotels?|ideas?)\b/i.exec(t);
+    let count = null;
+    if (m) {
+      const raw = m[1].toLowerCase();
+      const n = /^\d+$/.test(raw) ? Number(raw) : WORD_COUNTS[raw];
+      if (Number.isInteger(n) && n >= 1 && n <= DISCOVERY_COUNT_MAX) count = n;
+    }
+    return { discovery: true, count };
+  }
+
+  // The model may also declare the intent and hand us a SEARCH TERM, which is
+  // the one part of discovery it is genuinely good at: turning "somewhere for
+  // nama chocolate" into the words a search engine wants. It is a hint, never a
+  // fact - the places themselves still come from the provider.
+  function discoveryHintFrom(actions) {
+    for (const a of Array.isArray(actions) ? actions : []) {
+      const d = a && a.discovery;
+      if (!d || typeof d !== 'object') continue;
+      const q = clampStr(d.query, 120).trim();
+      if (!q) continue;
+      const n = Number(d.count);
+      return { query: q, count: Number.isInteger(n) && n >= 1 && n <= DISCOVERY_COUNT_MAX ? n : null };
+    }
+    return null;
+  }
+
+  // The search term for a replacement, when the model gave none. Strips the
+  // request framing down to the THING being looked for: "Find me 3 good places
+  // to get Nama chocolate during my trip in Japan" -> "Nama chocolate".
+  // Conservative by design - if it cannot find a clean subject it returns '',
+  // and the caller simply does not attempt a deterministic replacement.
+  function discoveryQueryFrom(text, city) {
+    let t = String(text == null ? '' : text).trim();
+    if (!t) return '';
+    t = t.replace(/^\s*(please\s+)?/i, '');
+    // drop the leading ask
+    t = t.replace(new RegExp('^(find|recommend|suggest|show)\\s+(me\\s+)?'
+      + '(a\\s+few|some|\\d{1,2}|a|an|one|two|three|four|five|six|seven|eight)?\\s*'
+      + '(good|great|best|nice|top)?\\s*'
+      + '(places?|spots?|options?)?\\s*'
+      + '(to\\s+(get|eat|try|buy|visit|see)|for|to)?\\s*', 'i'), '');
+    t = t.replace(/^where\s+(can|should|could)\s+(i|we)\s+(get|find|eat|buy|try|go\s+for)\s*/i, '');
+    // drop trailing trip framing
+    t = t.replace(/\s+(during|on|for)\s+(my|our)\s+(trip|stay|visit)\b.*$/i, '');
+    t = t.replace(/\s+in\s+[A-Z][\w'-]*(\s+[A-Z][\w'-]*)?\s*[.?!]*$/i, '');
+    t = t.replace(/[.?!]+\s*$/, '').trim();
+    if (t.length < 3 || t.length > 80) return '';
+    const where = String(city == null ? '' : city).trim();
+    return where && !foldWords(t).includes(foldWords(where)) ? `${t} ${where}` : t;
+  }
+
+  // Punctuation-free folding, the client's mirror of the server's
+  // normalizeQuery: "Royce' Chocolate (Tokyo Station)" and "Royce Chocolate at
+  // Tokyo Station" have to meet on the same ground before either can be
+  // matched against the other.
+  const foldWords = s => foldPlace(s).replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/\s+/g, ' ');
+
+  // ---------- discovery: how much replacing is allowed ----------
+  // Bounded three ways, and every bound is about money or patience:
+  //   ROUNDS      how many replacement passes run. One. A second pass asks the
+  //               same restricted box the same question.
+  //   PER_ROUND   billed Place Details calls one pass may make (the server caps
+  //               this again at DISCOVERY_DETAILS_MAX).
+  //   CANDIDATES  the total number of places one discovery answer may look at,
+  //               model-named and replacement together.
+  const DISCOVERY_REPLACEMENT_ROUNDS = 1;
+  const DISCOVERY_REPLACEMENTS_PER_ROUND = 4;
+  const DISCOVERY_CANDIDATE_MAX = 12;
+
+  // ---------- discovery: dedupe by IDENTITY, never by display text ----------
+  // Two names for one place is exactly what this round is about, so the key is
+  // the resolved place ID where there is one and the area-aware lookup key
+  // otherwise. `seen` accumulates BOTH kept and rejected identities, so a
+  // replacement can never be a place we already offered or already refused.
+  function placeIdentityOf(entry, lookup) {
+    if (entry && entry.placeId) return 'id:' + entry.placeId;
+    if (lookup && lookup.key) return 'key:' + lookup.key;
+    return '';
+  }
+
+  function dedupeByIdentity(items, seen) {
+    const known = seen instanceof Set ? seen : new Set();
+    const out = [];
+    for (const it of Array.isArray(items) ? items : []) {
+      const id = it && it.identity;
+      if (!id || known.has(id)) continue;
+      known.add(id);
+      out.push(it);
+    }
+    return out;
+  }
+
+  // ---------- discovery: which verified place to show first ----------
+  // A replacement must not lead just because it resolved first. The score is
+  // deliberately simple and readable: a rating is worth more when more people
+  // gave it (a 4.9 from 6 reviews is not better than a 4.4 from 3,000), and
+  // being near where the traveller actually is that day breaks ties.
+  //
+  // ORDER IS ONLY CHANGED WHEN IT IS FREE TO CHANGE. Proposals that carry
+  // distinct start times are a schedule, and reordering a schedule by quality
+  // would be a different bug; those keep their chronological order and this
+  // ranking applies only within a tie.
+  function placeQualityScore(entry, km) {
+    const rating = entry && typeof entry.rating === 'number' ? entry.rating : 0;
+    const count = entry && typeof entry.userRatingCount === 'number' ? entry.userRatingCount : 0;
+    // log-weighted confidence in the rating, capped so a mega-chain cannot
+    // outrank a genuinely better place on volume alone
+    const weight = Math.min(1, Math.log10(1 + Math.max(0, count)) / 3);
+    const near = (typeof km === 'number' && isFinite(km) && km >= 0) ? Math.max(0, 1 - km / 25) : 0.5;
+    return Math.round((rating * weight * 0.8 + near * 0.2 * 5) * 1000) / 1000;
+  }
+
+  function rankVerifiedPlaces(list) {
+    const items = (Array.isArray(list) ? list : []).map((x, i) => ({ ...x, _i: i }));
+    const timed = items.filter(x => x.time).map(x => x.time);
+    const scheduled = timed.length > 1 && new Set(timed).size > 1;
+    return items.sort((a, b) => {
+      // a real schedule keeps its clock order; quality only breaks ties
+      if (scheduled && a.time && b.time && a.time !== b.time) return a.time < b.time ? -1 : 1;
+      const d = (b.score || 0) - (a.score || 0);
+      return d !== 0 ? d : a._i - b._i;
+    }).map(({ _i, ...rest }) => rest);
+  }
+
+  // ---------- discovery: the prose has to match the cards ----------
+  // THE FAILURE THIS PREVENTS: the model writes "Royce' Chocolate at Tokyo
+  // Station is a must" in its paragraph AND emits an add action for it. If the
+  // card is dropped for failing verification but the paragraph survives, the
+  // traveller reads a confident recommendation for a place that does not exist
+  // and simply cannot find the card for it. Silently dropping the card is worse
+  // than showing it, not better, unless the prose goes with it.
+  //
+  // The prose is SANITIZED rather than regenerated: regenerating would need
+  // another model turn (cost, latency) to rewrite text that is mostly correct,
+  // and the sentences about the surviving places are worth keeping as written.
+  //
+  // Two operations, both conservative:
+  //   1. drop any block (paragraph or list item) that names a rejected venue
+  //      and no surviving one. A block that mentions both is KEPT, because
+  //      cutting it would take a good recommendation with it - the count line
+  //      below is what stops the answer over-claiming.
+  //   2. correct a count claim that is now wrong ("three excellent options" ->
+  //      "two"), and prepend an honest lead when we found fewer than asked.
+
+  const COUNT_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight'];
+
+  // A venue name reduced to the words worth matching on, so "Royce' Chocolate
+  // (Tokyo Station)" in an action matches "Royce' Chocolate at Tokyo Station"
+  // in a sentence. Requires two distinctive tokens before it will match at all:
+  // one shared word ("Chocolate") must never delete a paragraph about a
+  // different shop.
+  function proseNameTokens(name) {
+    const t = foldWords(stripTitlePrefixes(String(name == null ? '' : name)))
+      .split(' ')
+      .filter(w => w.length > 2 && !PROSE_STOPWORDS.has(w));
+    return t.slice(0, 4);
+  }
+  const PROSE_STOPWORDS = new Set(['the', 'and', 'for', 'shop', 'store', 'cafe', 'bar', 'chocolate',
+    'restaurant', 'tokyo', 'kyoto', 'osaka', 'station', 'branch', 'main', 'near', 'best']);
+
+  function proseMentions(text, tokens) {
+    if (!tokens.length) return false;
+    const hay = foldWords(text);
+    const hits = tokens.filter(w => hay.includes(w)).length;
+    // two distinctive words, or one that is the whole (single-word) name
+    return tokens.length === 1 ? hits === 1 : hits >= 2;
+  }
+
+  /**
+   * Rebuild an assistant answer around the recommendations that actually
+   * survived verification.
+   *
+   *   text      the model's prose, with its ```json block already removed
+   *   kept      display names of the verified recommendations
+   *   rejected  display names of the ones dropped
+   *   requested how many the traveller asked for (null when they did not say)
+   *
+   * Returns { text, note } - `note` is the honest one-liner when fewer places
+   * were verified than asked for, or '' when the answer is complete.
+   */
+  function rebuildAssistProse(text, { kept = [], rejected = [], requested = null } = {}) {
+    const keptTok = kept.map(proseNameTokens).filter(t => t.length);
+    const rejTok = rejected.map(proseNameTokens).filter(t => t.length);
+    const src = String(text == null ? '' : text);
+
+    let out = src;
+    if (rejTok.length) {
+      // Blocks are paragraphs and list items - the units a recommendation is
+      // actually written in. Splitting on sentences would leave dangling
+      // fragments; splitting on the whole answer would throw away everything.
+      const blocks = src.split(/\n{2,}/);
+      const survived = blocks.map(block => {
+        const lines = block.split('\n');
+        const isList = lines.length > 1 && lines.every(l => /^\s*([-*+]|\d+[.)])\s+/.test(l) || !l.trim());
+        if (isList) {
+          const keptLines = lines.filter(l => !l.trim()
+            || !rejTok.some(t => proseMentions(l, t))
+            || keptTok.some(t => proseMentions(l, t)));
+          return keptLines.join('\n');
+        }
+        const namesRejected = rejTok.some(t => proseMentions(block, t));
+        const namesKept = keptTok.some(t => proseMentions(block, t));
+        return (namesRejected && !namesKept) ? '' : block;
+      }).filter(b => b.trim());
+      out = survived.join('\n\n');
+    }
+
+    // A count claim that is now wrong is worse than no claim: it is the one
+    // sentence a traveller reads as a promise about what follows.
+    const n = kept.length;
+    if (n >= 0 && n < COUNT_WORDS.length) {
+      const wrong = COUNT_WORDS.filter((w, i) => i !== n && i > 0);
+      for (const w of wrong) {
+        out = out.replace(new RegExp(`\\b${w}\\b(?=\\s+\\w*\\s*(places?|spots?|options?|suggestions?|recommendations?|ideas?|picks?))`, 'gi'),
+          COUNT_WORDS[n]);
+      }
+      out = out.replace(/\b(\d{1,2})\b(?=\s+\w*\s*(places?|spots?|options?|suggestions?|recommendations?|ideas?|picks?))/g,
+        String(n));
+    }
+
+    const note = (Number.isInteger(requested) && n < requested)
+      ? (n === 0
+        ? 'I could not verify any places for this on Google Maps, so I have not added any. Try naming a neighbourhood, or a specific venue.'
+        : `I could verify ${COUNT_WORDS[n] || n} good ${n === 1 ? 'match' : 'matches'} for this area, not ${COUNT_WORDS[requested] || requested}. Only verified places are shown.`)
+      : '';
+
+    return { text: out.trim(), note };
   }
 
   // ---------- assistant: link segments ----------
@@ -6013,7 +6702,25 @@ const TripLogic = (() => {
     const transcribed = opts.transcribed === true;
     const f = {};
     if (typeof raw.type === 'string' && ASSIST_ACTION_TYPES.has(raw.type)) f.type = raw.type;
-    if (raw.title != null) f.title = clampStr(raw.title, 120).trim();
+    // THE ONE BOUNDARY where a model's title becomes app data, so it is the one
+    // place the category cleanup belongs. A prefix the app has a category for
+    // becomes structured metadata (`meal`); one it does not is dropped from the
+    // visible title; anything that is not a category word is left alone. See
+    // cleanAssistTitle - "Shopping: Royce' Chocolate" is the failure it exists
+    // for, and "teamLab: Borderless" is the title it must not touch.
+    if (raw.title != null) {
+      const written = clampStr(raw.title, 120).trim();
+      const cleaned = cleanAssistTitle(written);
+      // A title that was NOTHING but a category word keeps what the model
+      // wrote: blanking it would leave a card with no name at all, and the
+      // validator below refuses an empty title anyway.
+      f.title = cleaned.title || written;
+      if (cleaned.meal) f.meal = cleaned.meal;
+    }
+    // A model may also name the kind directly. Accepted only when it is a key
+    // the app actually has (MEAL_META), which is what stops "shopping" - or
+    // "__proto__" out of a hand-rolled body - becoming a category.
+    if (isMealKind(raw.meal)) f.meal = raw.meal;
     if (raw.location != null) f.location = clampStr(raw.location, 80).trim();
     if (raw.startDate != null) f.startDate = isIsoDate(raw.startDate) ? raw.startDate : '';
     if (raw.endDate != null) f.endDate = isIsoDate(raw.endDate) ? raw.endDate : '';
@@ -6076,6 +6783,13 @@ const TripLogic = (() => {
       title: bag.title || '', startDate: bag.startDate || '', startTime: bag.startTime || '',
       endDate: bag.endDate || '', estCost: null, estCostCurrency: '',
       mapsQuery: mapsQuery || '', status,
+      // The category, as METADATA. The title used to carry it ("Drinks: Above
+      // Eleven") and now does not - the venue's own name is the title, exactly
+      // as it is on the itinerary row the card becomes - so the card renders
+      // the kind beside the date and time instead, where the row shows its
+      // icon. Losing it entirely would make a single drinks card unreadable as
+      // a drinks card.
+      meal: isMealKind(bag.meal) ? bag.meal : '',
     };
     if (modelPriced) {
       d.estCost = bag.cost != null ? bag.cost : null;
@@ -6346,8 +7060,59 @@ const TripLogic = (() => {
     + 'leg from one city to the next) and "local" for getting around WITHIN one city (a metro hop, '
     + 'a taxi across town, the ride back to the hotel). '
     + 'Meals and drinks are type "activity". Carry the kind in the title '
-    + 'as one of these literal prefixes: "Breakfast: ", "Lunch: ", "Dinner: ", "Drinks: " '
-    + 'followed by the venue name, for example "Dinner: Narisawa".';
+    + 'as one of these literal prefixes: ' + ASSIST_MEAL_PREFIXES.map(p => `"${p}"`).join(', ') + ' '
+    + 'followed by the venue name, for example "Dinner: Narisawa". '
+    // The 2026-08-27 failure: asked for chocolate shops, the model generalised
+    // the four prefixes above into a category system of its own and titled
+    // every suggestion "Shopping: <venue>". There is no shopping category in
+    // this app, so the words were decoration in front of the real name - and
+    // they travelled into the Google Maps query, where "shopping" is a word no
+    // business is called. The app now strips an invented prefix at the
+    // boundary; this paragraph stops it being written in the first place.
+    + `Those ${ASSIST_MEAL_PREFIXES.length} are the ONLY title prefixes that exist. Never invent another one. `
+    + 'Do NOT write "Shopping: ", "Entertainment: ", "Activity: ", "Sightseeing: ", "Museum: ", '
+    + '"Morning: " or any other category label in front of a title. '
+    + 'Everything that is not one of those four meals is titled with the place or activity name '
+    + 'ALONE. WRONG: "Shopping: Mary\'s Chocolate Shinjuku". RIGHT: "Mary\'s Chocolate Shinjuku". '
+    + 'A snack, a dessert or a coffee stop that is not one of the four named meals is still just '
+    + 'the venue name as the title; the app files it under its own categories.';
+
+  // WHAT THE MODEL MAY ASSERT ABOUT A REAL PLACE, and what it must leave to
+  // the app. Added 2026-08-27 after a reply whose three recommendations came
+  // with a rating, a distance and a Maps link, one of which pointed 809 km
+  // away. The model is a good source for WHICH place to consider and a bad one
+  // for every fact about it: it cannot look one up, and a wrong fact wearing
+  // the app's own chip styling is indistinguishable from a right one.
+  //
+  // The corresponding half of the deal is that the app now RESOLVES every
+  // suggestion deterministically (tp-places -> a verified Google place ID,
+  // coordinates, rating, hours), so nothing is lost by the model staying quiet
+  // about the facts: they arrive anyway, and they arrive correct.
+  const ASSIST_PLACE_FACTS = 'The app resolves every place you name against the Google Places API '
+    + 'itself and renders the rating, the review count, the opening hours, the distance and the '
+    + 'Google Maps link from what it gets back. So do not produce any of those yourself: never '
+    + 'state a star rating or a number of reviews, never state opening or closing times as fact, '
+    + 'never write a Google Maps URL, a place ID or a set of coordinates, and never claim a place '
+    + 'is highly rated or popular as though you had checked. '
+    + 'What the app needs from you instead is enough GEOGRAPHY to resolve the place without '
+    + 'ambiguity, because many venues are chains: set "location" to the CITY the place is in '
+    + '(just the city, for example "Tokyo" or "Kyoto"), and make mapsQuery name the specific '
+    + 'branch plus its neighbourhood or landmark and that same city, for example '
+    + '"Royce Chocolate Tokyo Station Marunouchi Tokyo" rather than "Royce Chocolate". '
+    + 'If a place you have in mind cannot be pinned down to one branch in one city, suggest a '
+    + 'different place you can name precisely rather than a vague one. '
+    // The app REPLACES a suggestion it cannot verify with a real one it finds
+    // itself, and to do that it needs the search words - which is the one part
+    // of discovery a model is genuinely good at. Turning "somewhere for nama
+    // chocolate" into "nama chocolate" is a language task; knowing which shops
+    // exist is not.
+    + 'When the traveller asks you to FIND or RECOMMEND places (rather than naming one '
+    + 'themselves), add a "discovery" object next to "op" on the first add action, shaped '
+    + '{"discovery":{"query":"nama chocolate","count":3}}: `query` is the few words you would '
+    + 'type into a maps search for this kind of place (no city, no "best", no verbs), and '
+    + '`count` is how many they asked for. The app verifies every place you name against '
+    + 'Google Maps and, when one cannot be confirmed, uses that query to find a real '
+    + 'replacement, so a suggestion it cannot verify is dropped rather than shown.';
 
   // The app is not the model. It holds cached coordinates for the trip's places
   // and draws a straight-line distance chip on every suggestion card it renders,
@@ -6408,6 +7173,7 @@ const TripLogic = (() => {
     parts.push(ASSIST_SCHEMA);
     parts.push(ASSIST_CONTRACT);
     parts.push(ASSIST_KINDS);
+    parts.push(ASSIST_PLACE_FACTS);
     parts.push(ASSIST_AGENDA);
     parts.push(ASSIST_GROUPS_MECHANIC);
     parts.push(assistOptionRules(mode));
@@ -6486,6 +7252,7 @@ const TripLogic = (() => {
     parts.push(ASSIST_SCHEMA);
     parts.push(ASSIST_CONTRACT);
     parts.push(ASSIST_KINDS);
+    parts.push(ASSIST_PLACE_FACTS);
     parts.push(ASSIST_AGENDA);
     parts.push(ASSIST_GROUPS_MECHANIC);
     parts.push(assistOptionRules(mode));
@@ -9012,7 +9779,13 @@ const TripLogic = (() => {
     assistOptionRules, assistOriginNote, PLAN_MEAL_OPTIONS, PLAN_ACTIVITY_OPTIONS,
     buildPlanRequest, groupProposals, linkifySegments,
     parseMarkdown, parseMarkdownInline,
-    normalizePlaceQuery, placeCacheKey, planPlacesLookup, placesCacheUpdates,
+    normalizePlaceQuery, placeCacheKey, placeAreaKey, planPlacesLookup, placesCacheUpdates,
+    placeLookupFor, placeLookupRequest, asPlaceLookup, placeIdentity,
+    placeRecordFrom, normalizePlaceRecord, placeMapsUrl, placeEntryUrl, plausiblePlacePoint,
+    assistDiscoveryIntent, discoveryHintFrom, discoveryQueryFrom, rebuildAssistProse,
+    placeIdentityOf, dedupeByIdentity, placeQualityScore, rankVerifiedPlaces,
+    DISCOVERY_REPLACEMENT_ROUNDS, DISCOVERY_REPLACEMENTS_PER_ROUND, DISCOVERY_CANDIDATE_MAX,
+    PLACE_AREA_MAX_KM, PLACE_RECORD_TTL_MS, cleanAssistTitle, stripTitlePrefixes,
     createPlacesQueue, placesRetryDelay,
     sanitizeHours, normalizeGoogleHours, hoursVerdict, nextOpeningMin, hoursIntervalsForDate, hoursLineText,
     HOURS_CLOSING_SOON_MIN, RECOMMEND_HOURS_WINDOWS, recommendWindowMin,

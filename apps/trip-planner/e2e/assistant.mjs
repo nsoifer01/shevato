@@ -101,14 +101,20 @@ const VENUES = {
 };
 const CITIES = { bangkok: [13.7563, 100.5018] };
 
-function distanceStores({ venues = VENUES, cities = CITIES } = {}) {
+// `area` is the city these venues belong to. The venue store is keyed by the
+// AREA-AWARE place key now (see placeLookupFor), so a fixture seeded under a
+// bare query would simply never be found by the rows that need it - and the
+// suite would read as a distance regression rather than a stale fixture.
+function distanceStores({ venues = VENUES, cities = CITIES, area = { city: 'Bangkok' } } = {}) {
   const geo = {};
   for (const [k, v] of Object.entries(cities)) geo[k] = { lat: v[0], lon: v[1], country: 'Thailand', conf: 'confident' };
   const venue = {};
   // Stamped with the run's own clock, never a fixture constant: a venue entry
   // expires after 30 days, and a frozen timestamp would rot the suite silently.
   const now = Date.now();
-  for (const [q, v] of Object.entries(venues)) venue[TripLogic.placeCacheKey(q)] = { lat: v[0], lon: v[1], at: now };
+  for (const [q, v] of Object.entries(venues)) {
+    venue[TripLogic.placeCacheKey(q, area)] = { lat: v[0], lon: v[1], at: now };
+  }
   return { 'trip-planner:geo:v3': geo, 'trip-planner:venuegeo:v1': venue };
 }
 
@@ -170,11 +176,12 @@ const originDiag = (s, time) => evaluate(s, `(() => {
   const venue = JSON.parse(localStorage.getItem('trip-planner:venuegeo:v1') || '{}');
   const geo = JSON.parse(localStorage.getItem('trip-planner:geo:v3') || '{}');
   const o = TripLogic.proposalOrigin(items, date, ${JSON.stringify(time)});
-  const q = o && o.item ? TripLogic.itemMapsQuery(o.item) : '';
+  const oLookup = o && o.item ? TripLogic.placeLookupFor(o.item, { city: String(o.city || '') }) : null;
+  const q = oLookup ? oLookup.query : '';
   return 'DIAG=' + JSON.stringify({
     build: window.__TP_BUILD, date, items: items.length,
     origin: o ? o.source + ':' + o.label : null,
-    originVenue: q ? !!venue[TripLogic.placeCacheKey(q)] : null,
+    originVenue: oLookup ? !!venue[oLookup.key] : null,
     originCity: o ? !!(geo[String(o.city || '').toLowerCase()] || {}).lat : null,
     venueKeys: Object.keys(venue).length, geoKeys: Object.keys(geo).length,
   });
@@ -218,7 +225,12 @@ export async function run({ base, cdpPort }) {
     let painted = await chips(s);
     await t('tp-assist: every located suggestion in the reply ends up with a chip',
       allPainted, JSON.stringify(painted) + (allPainted ? '' : ' ' + await originDiag(s, '20:00')), s);
-    const bar = painted.find(c => c.label === 'Drinks: Above Eleven');
+    // A proposal's label is the VENUE'S OWN NAME now, exactly as the itinerary
+    // row it becomes shows it: the meal kind moved out of the title and into
+    // structured metadata (cleanAssistTitle -> item.meal, rendered on the
+    // card's meta line beside the date). The two surfaces used to disagree -
+    // "Drinks: Above Eleven" on the card, "Above Eleven" on the row.
+    const bar = painted.find(c => c.label === 'Above Eleven');
     await t('tp-assist: a suggestion shows its distance before it is added',
       !!bar && /~[\d.]+ mi\b/.test(bar.text) && !bar.text.includes('km'),
       JSON.stringify(painted), s);
@@ -241,7 +253,8 @@ export async function run({ base, cdpPort }) {
     // hotel it ends at, so it is measured against the 20:00 suggestion above it.
     const home = painted.find(c => c.label === 'Return to hotel');
     await t('tp-assist: return-to-hotel measures from the venue chosen earlier that evening',
-      !!home && home.text.includes('from Drinks: Above Eleven'), JSON.stringify(home), s);
+      !!home && home.text.includes('from Above Eleven') && !/from Drinks:/.test(home.text),
+      JSON.stringify(home), s);
 
     // selected bar -> hotel. A leg is not a venue anyone is choosing between,
     // so it must not wear a venue's clothes: no star rating (the reported card
@@ -332,7 +345,7 @@ export async function run({ base, cdpPort }) {
     await pasteReply(s, REPLY(iso(31)), 2);
     await waitForChips(s, 2);
     const afterLunch = await chips(s);
-    const evening = afterLunch.find(c => c.label === 'Drinks: Above Eleven');
+    const evening = afterLunch.find(c => c.label === 'Above Eleven');
     // The origin names the ITEM, and an item's name is now the venue alone:
     // the seeded "Lunch: Jay Fai" is repaired to meal:'lunch' + title:'Jay
     // Fai' at boot, so the chip reads "from Jay Fai" rather than repeating a
@@ -477,7 +490,7 @@ export async function run({ base, cdpPort }) {
     const painted1b = await chips(s);
     const home1b = painted1b.find(c => c.label === 'Return to hotel');
     await t('tp-assist: return-to-hotel resolves the hotel through the stay itself',
-      got1b && !!home1b && home1b.text.includes('from Drinks: Above Eleven'),
+      got1b && !!home1b && home1b.text.includes('from Above Eleven'),
       JSON.stringify(painted1b) + (got1b ? '' : ' ' + await originDiag(s, '21:30')), s);
     await noErrors('tp-assist 1b', s);
   } catch (err) {
@@ -493,13 +506,29 @@ export async function run({ base, cdpPort }) {
     //     closest (fastest), Bo.lan rates 4.8 (highest rated), Nahm carries
     //     1,660 reviews (most popular).
     freshIds();
-    const placesNet = (url) => {
+    // Answers the queries it is actually ASKED, echoing each one's `id` back.
+    // A fixed result list keyed only by query text no longer lands: a place's
+    // identity carries its area now, so the client re-keys on the id it sent.
+    const P4B = {
+      'Gaggan Bangkok': { rating: 4.4, userRatingCount: 500, lat: 13.7420, lon: 100.5480 },
+      'Bo.lan Bangkok': { rating: 4.8, userRatingCount: 90, lat: 13.7180, lon: 100.5820 },
+      'Nahm Bangkok': { rating: 4.1, userRatingCount: 1660, lat: 13.7250, lon: 100.5410 },
+    };
+    const placesNet = (url, request) => {
       if (url.includes('/.netlify/functions/tp-places')) {
-        return { status: 200, body: { results: [
-          { query: 'Gaggan Bangkok', status: 'ok', rating: 4.4, userRatingCount: 500, mapsUri: 'https://maps.google.com/?cid=1', lat: 13.7420, lon: 100.5480 },
-          { query: 'Bo.lan Bangkok', status: 'ok', rating: 4.8, userRatingCount: 90, mapsUri: 'https://maps.google.com/?cid=2', lat: 13.7180, lon: 100.5820 },
-          { query: 'Nahm Bangkok', status: 'ok', rating: 4.1, userRatingCount: 1660, mapsUri: 'https://maps.google.com/?cid=3', lat: 13.7250, lon: 100.5410 },
-        ] } };
+        let body = {};
+        try { body = JSON.parse(request.postData || '{}'); } catch { /* empty */ }
+        const results = (body.queries || []).map((raw, i) => {
+          const e = typeof raw === 'string' ? { id: raw, q: raw } : raw;
+          const v = P4B[e.q];
+          if (!v) return { id: e.id, query: e.q, status: 'no_match', reason: 'not_found' };
+          return {
+            id: e.id, query: e.q, status: 'ok', name: e.q, ...v,
+            mapsUri: 'https://maps.google.com/?cid=' + (i + 1),
+            placeId: 'pid-' + e.id, verified: true, areaBasis: 'point', confidence: 1,
+          };
+        });
+        return { status: 200, body: { results } };
       }
       return EXTERNAL_HOSTS.test(url) ? 'fail' : null;
     };
@@ -879,13 +908,15 @@ export async function run({ base, cdpPort }) {
       if (!url.includes('/.netlify/functions/tp-places')) return EXTERNAL_HOSTS.test(url) ? 'fail' : null;
       let body = {};
       try { body = JSON.parse(request.postData || '{}'); } catch { /* fine */ }
-      const queries = Array.isArray(body.queries) ? body.queries : [];
-      return { status: 200, body: { results: queries.map((q, i) => ({
-        query: q, status: 'ok', name: q,
-        rating: (RATING_BY_VENUE[q] || {}).rating || 4.5,
-        userRatingCount: (RATING_BY_VENUE[q] || {}).count || 100 + i,
+      const entries = (Array.isArray(body.queries) ? body.queries : [])
+        .map(raw => (typeof raw === 'string' ? { id: raw, q: raw } : raw));
+      return { status: 200, body: { results: entries.map((e, i) => ({
+        id: e.id, query: e.q, status: 'ok', name: e.q,
+        rating: (RATING_BY_VENUE[e.q] || {}).rating || 4.5,
+        userRatingCount: (RATING_BY_VENUE[e.q] || {}).count || 100 + i,
         mapsUri: 'https://maps.google.com/?cid=' + i,
-        ...(HOURS_BY_VENUE[q] ? { hours: HOURS_BY_VENUE[q] } : {}),
+        placeId: 'pid-' + e.id, verified: true, areaBasis: 'point',
+        ...(HOURS_BY_VENUE[e.q] ? { hours: HOURS_BY_VENUE[e.q] } : {}),
       })), attribution: { text: 'Google Maps', url: 'https://www.google.com/maps' } } };
     };
     const HOURS_REPLY = (date) => `Late options, and lunch.

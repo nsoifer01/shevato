@@ -533,7 +533,10 @@ export async function run({ base, cdpPort }) {
       const trip = db.trips[0];
       const it = trip.items.find(x => x.title === 'teamLab Planets');
       if (!it) return { missing: true };
-      const key = TripLogic.placeCacheKey(TripLogic.itemMapsQuery(it));
+      // The venue store is keyed by the AREA-AWARE place key now, so the
+      // fixture has to ask the same way the app does: the item's own city is
+      // part of the identity (see placeLookupFor).
+      const key = TripLogic.placeCacheKey(TripLogic.itemMapsQuery(it), { city: (it.location || '').trim() });
       const rec = (JSON.parse(localStorage.getItem('trip-planner:venuegeo:v1')||'{}'))[key] || null;
       return { key, rec, place: it.location, date: it.startDate };
     })()`);
@@ -558,7 +561,7 @@ export async function run({ base, cdpPort }) {
       const db = JSON.parse(localStorage.getItem('trip-planner:v1')||'null');
       const it = db.trips[0].items.find(x => x.title === 'Somewhere else entirely');
       if (!it) return { missing: true };
-      const key = TripLogic.placeCacheKey(TripLogic.itemMapsQuery(it));
+      const key = TripLogic.placeCacheKey(TripLogic.itemMapsQuery(it), { city: (it.location || '').trim() });
       return { key, rec: (JSON.parse(localStorage.getItem('trip-planner:venuegeo:v1')||'{}'))[key] || null };
     })()`);
     await t('tp-ui V: retyping the title drops the picked coordinates rather than moving them',
