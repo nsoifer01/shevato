@@ -4,6 +4,7 @@
 import {
   doc,
   setDoc,
+  getDoc,
   onSnapshot,
   serverTimestamp,
   deleteField,
@@ -32,7 +33,10 @@ import {
   estimatePayloadBytes,
   sameKeySet,
   decideRemoteChange,
-  requeueFailedWrites
+  requeueFailedWrites,
+  isPermanentWriteError,
+  splitIntoChunks,
+  planFlushBatches
 } from './sync-helpers.mjs';
 
 // Configuration
@@ -50,8 +54,66 @@ const MAX_AUTH_RETRY_ATTEMPTS = 4;
 const AUTH_RETRY_BASE_MS = 250;
 const USE_FIRESTORE = true;
 // Firestore rejects documents > 1 MiB. We refuse to flush above 700 KB so a
-// single namespace can't silently lose writes once payloads grow.
+// single namespace can't silently lose writes once payloads grow. With
+// chunking (below) this is a last line of defence rather than a ceiling an
+// app can actually grow into: every entry that would approach it is written
+// out of line first, and what remains is split across commits.
 const MAX_FLUSH_BYTES = 700 * 1024;
+
+// --- Out-of-line values -----------------------------------------------
+//
+// One document per namespace does not scale: an app whose data grows with
+// use (MapTap Rivals' game log grows as days x rivals) eventually cannot be
+// written at all, and every write before that point re-ships the whole
+// value. Rather than raise the ceiling (a bigger monolithic document is
+// the same architecture with a later failure date), a value past this size
+// is stored as an ordered run of part documents under
+// `users/<uid>/apps/<ns>/chunks/`, leaving a small manifest inline:
+//
+//   data[key] = { chunked: true, parts: N, rev, updatedAt, hash }
+//
+// Reads reassemble the parts and then take exactly the same path an inline
+// value takes, so nothing above this module can tell the difference. A
+// value that shrinks back under the threshold returns to inline storage and
+// its parts are deleted. Documents written before this existed carry no
+// `chunked` flag and keep being read as plain inline values, so the format
+// is backward-compatible in both directions.
+//
+// The deployed security rules already cover the subcollection: the
+// recursive `match /users/{userId}/{document=**}` in firestore.rules grants
+// the owner read/write over everything beneath their own user document.
+//
+// 128 K UTF-16 units is at most ~384 KB of UTF-8 in the worst case (every
+// character 3 bytes), comfortably inside the 1 MiB per-document limit, and
+// small enough that several changed keys still batch into one commit.
+const MAX_INLINE_VALUE_CHARS = 128 * 1024;
+const CHUNK_CHARS = 128 * 1024;
+const CHUNK_COLLECTION = 'chunks';
+// Room for the `{ data: { ... }, meta: { lastUpdated } }` envelope each
+// commit carries around the entries planFlushBatches packs.
+const FLUSH_ENVELOPE_BYTES = 256;
+
+/**
+ * Document id for one part of a chunked value.
+ *
+ * Sync keys are app-chosen strings and may contain characters Firestore
+ * forbids in a document id (`/` above all), so the readable part is
+ * sanitised and disambiguated with the key's hash, so two different keys can
+ * never collapse onto the same run of part documents.
+ */
+function chunkDocId(key, seq) {
+  const readable = String(key).replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 64);
+  return `${readable}-${hashValue(key)}__${seq}`;
+}
+
+/**
+ * One payload entry, measured the same way the flush guard measures the
+ * whole document, so the packing decision and the guard cannot disagree.
+ * `estimatePayloadBytes` is what knows how to price a Firestore sentinel.
+ */
+function measureEntry(key, entry) {
+  return { key, entry, bytes: estimatePayloadBytes({ [key]: entry }) };
+}
 
 // Global state management (singleton pattern)
 class StorageSyncManager {
@@ -63,6 +125,13 @@ class StorageSyncManager {
     this.originalMethods = null;
     this.syncLocks = new Map(); // key -> boolean (prevent echo loops)
     this.lastRemoteUpdates = new Map(); // key -> timestamp
+    // Out-of-line value bookkeeping. `chunkCounts` is the highest part
+    // count we have ever seen for a key (written or read), which is what
+    // tells a shrinking value which part documents are now garbage.
+    // `chunkFetches` de-duplicates in-flight reassemblies, because
+    // Firestore re-emits the whole document on every listener re-attach.
+    this.chunkCounts = new Map(); // `${namespace}\u0000${key}` -> part count
+    this.chunkFetches = new Set(); // `${key}:${hash}:${rev}`
     
     // Check if immediate sync override is already installed
     if (window.immediateDebug) {
@@ -439,7 +508,11 @@ class StorageSyncManager {
 
           for (const [key, info] of Object.entries(remoteData)) {
             if (!state.keys.has(key)) continue;
-            this.applyRemoteChange(key, info);
+            // A chunked entry is a manifest, not a value: its parts live in
+            // the `chunks` subcollection and have to be fetched. Everything
+            // after reassembly is the shared inline path.
+            if (info && info.chunked) this.applyChunkedRemoteChange(state, key, info);
+            else this.applyRemoteChange(key, info);
           }
 
           // Initial merge: queue any keys we have locally but Firestore
@@ -701,7 +774,20 @@ class StorageSyncManager {
 
     } catch (error) {
       console.error(`❌ Failed to flush writes for ${state.namespace}:`, error);
-      
+
+      // A deterministic rejection (our size guard, or Firestore refusing
+      // the document shape) fails identically however often it is resent,
+      // so the retry ladder is pure waste, and worse than waste while the
+      // app keeps appending to the same key between attempts, which is how
+      // the MapTap Rivals incident turned a 760 KB refusal into an 890 KB
+      // one. Drop the batch, reset the ladder, and tell the page.
+      if (isPermanentWriteError(error)) {
+        console.error(`🛑 Permanent write rejection for ${state.namespace}; not retrying:`, error.message);
+        state.retryCount = 0;
+        this.notifyWriteRejected(state, writes, error);
+        return;
+      }
+
       // Retry logic
       if (state.retryCount < MAX_RETRY_ATTEMPTS) {
         state.retryCount++;
@@ -718,6 +804,34 @@ class StorageSyncManager {
         console.error(`💥 Max retry attempts exceeded for ${state.namespace}`);
         state.retryCount = 0;
       }
+    }
+  }
+
+  /**
+   * Surface a permanently-rejected batch.
+   *
+   * The write is gone: the data is still safe in localStorage, but this
+   * device will not push it to the cloud until the value changes into
+   * something writable. That is worth more than a console line, so it also
+   * goes out as a DOM event any app (or a test) can listen for.
+   *
+   * @param {object} state sync state whose flush was rejected
+   * @param {Map<string, object>} writes the batch that will not be resent
+   * @param {Error} error the rejection
+   */
+  notifyWriteRejected(state, writes, error) {
+    if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+    try {
+      window.dispatchEvent(new CustomEvent('syncWriteRejected', {
+        detail: {
+          namespace: state.namespace,
+          keys: Array.from(writes.keys()),
+          code: error?.code || 'unknown',
+          message: error?.message || String(error)
+        }
+      }));
+    } catch (_) {
+      // An app must never break because we could not announce a failure.
     }
   }
 
@@ -744,34 +858,174 @@ class StorageSyncManager {
     const docPath = `users/${state.userId}/apps/${state.namespace}`;
     const docRef = doc(db, docPath);
 
-    const dataPayload = {};
+    const entries = [];       // { key, entry, bytes } for the inline document
+    const chunkWrites = [];   // part documents to write before the manifest
+    const staleChunks = [];   // part documents to delete after it
+
     for (const [key, info] of writes) {
       if (info.deleted) {
-        dataPayload[key] = deleteField();
-      } else {
-        dataPayload[key] = {
-          value: sanitiseForFirestore(info.value),
-          rev: info.rev,
-          updatedAt: serverTimestamp(),
-          hash: info.hash
-        };
+        entries.push(measureEntry(key, deleteField()));
+        staleChunks.push(...this.staleChunkRefs(state, key, 0));
+        continue;
       }
+
+      const value = sanitiseForFirestore(info.value);
+      const serialised = JSON.stringify(value === undefined ? null : value);
+
+      if (serialised.length <= MAX_INLINE_VALUE_CHARS) {
+        const entry = { value, rev: info.rev, updatedAt: serverTimestamp(), hash: info.hash };
+        entries.push(measureEntry(key, entry));
+        // A value that shrank back under the threshold leaves its old parts
+        // behind; they are unreferenced the moment this manifest-free entry
+        // lands, so they are swept below.
+        staleChunks.push(...this.staleChunkRefs(state, key, 0));
+        continue;
+      }
+
+      const parts = splitIntoChunks(serialised, CHUNK_CHARS);
+      parts.forEach((part, seq) => {
+        chunkWrites.push({
+          ref: doc(db, `${docPath}/${CHUNK_COLLECTION}/${chunkDocId(key, seq)}`),
+          body: { key, seq, part }
+        });
+      });
+      const entry = {
+        chunked: true,
+        parts: parts.length,
+        rev: info.rev,
+        updatedAt: serverTimestamp(),
+        hash: info.hash
+      };
+      entries.push(measureEntry(key, entry));
+      staleChunks.push(...this.staleChunkRefs(state, key, parts.length));
+      this.chunkCounts.set(this.chunkCountKey(state.namespace, key), parts.length);
     }
+
+    // Parts first, manifest second. A peer whose listener fires between the
+    // two writes must never see a manifest pointing at documents that are
+    // not there yet: it would reassemble a truncated value and JSON.parse
+    // would throw. In the other order it simply reads the previous version.
+    await Promise.all(chunkWrites.map(({ ref, body }) => setDoc(ref, body)));
 
     // Refuse to ship a payload that would breach Firestore's 1 MiB doc
-    // ceiling. Surface as a real error so the retry path requeues and the
-    // user sees something instead of a silent drop.
-    const approxBytes = estimatePayloadBytes(dataPayload);
-    if (approxBytes > MAX_FLUSH_BYTES) {
-      throw new Error(
-        `Refusing to flush ${state.namespace}: payload ~${approxBytes}B exceeds ${MAX_FLUSH_BYTES}B`
+    // ceiling. After chunking no single entry can reach it, so this is a
+    // guard against a shape we have not anticipated; it is raised as a
+    // PERMANENT error because resending it would fail identically.
+    const { batches, oversized } = planFlushBatches(entries, MAX_FLUSH_BYTES - FLUSH_ENVELOPE_BYTES);
+    if (oversized.length) {
+      const error = new Error(
+        `Refusing to flush ${state.namespace}: ${oversized.join(', ')} exceeds ${MAX_FLUSH_BYTES}B on its own`
       );
+      error.code = 'payload-too-large';
+      error.permanent = true;
+      throw error;
     }
 
-    await setDoc(docRef, {
-      data: dataPayload,
-      meta: { lastUpdated: serverTimestamp() }
-    }, { merge: true });
+    for (const batch of batches) {
+      await setDoc(docRef, {
+        data: batch,
+        meta: { lastUpdated: serverTimestamp() }
+      }, { merge: true });
+    }
+
+    // Only garbage once nothing references them. Best-effort: an orphan
+    // part document is never read (the manifest says how many parts there
+    // are) and is overwritten by the next write that needs that sequence.
+    for (const ref of staleChunks) {
+      try { await deleteDoc(ref); } catch (_) { /* swept again next time */ }
+    }
+  }
+
+  chunkCountKey(namespace, key) {
+    return `${namespace}\u0000${key}`;
+  }
+
+  /**
+   * Part documents that a write leaving `keep` parts behind makes garbage.
+   *
+   * `chunkCounts` holds the highest part count we have seen for the key, so
+   * shrinking a value (or moving it back inline, `keep === 0`) yields the
+   * tail that is no longer referenced.
+   */
+  staleChunkRefs(state, key, keep) {
+    const countKey = this.chunkCountKey(state.namespace, key);
+    const known = this.chunkCounts.get(countKey) || 0;
+    if (known <= keep) return [];
+    const base = `users/${state.userId}/apps/${state.namespace}/${CHUNK_COLLECTION}`;
+    const refs = [];
+    for (let seq = keep; seq < known; seq++) {
+      refs.push(doc(db, `${base}/${chunkDocId(key, seq)}`));
+    }
+    this.chunkCounts.set(countKey, keep);
+    return refs;
+  }
+
+  /**
+   * Reassemble a chunked remote value and hand it to `applyRemoteChange`.
+   *
+   * The verdict is taken from the MANIFEST before any part document is
+   * fetched. Firestore re-emits the entire document on every listener
+   * re-attach (network blip, tab focus, SDK session refresh), and fetching
+   * a megabyte of parts on each of those would be slow, expensive, and
+   * would re-render every view. The manifest carries the same rev,
+   * updatedAt and hash the inline entry would, so the existing
+   * `decideRemoteChange` short-circuits identically.
+   */
+  async applyChunkedRemoteChange(state, key, manifest) {
+    const parts = Number(manifest?.parts) || 0;
+    const countKey = this.chunkCountKey(state.namespace, key);
+    this.chunkCounts.set(countKey, Math.max(this.chunkCounts.get(countKey) || 0, parts));
+
+    const verdict = decideRemoteChange(
+      this.localRevisions.get(key),
+      manifest,
+      this.lastRemoteUpdates.get(key) || 0
+    );
+    if (verdict !== 'apply') {
+      if (verdict === 'skip-deduped') {
+        this.lastRemoteUpdates.set(key, getTimestamp(manifest.updatedAt));
+      }
+      return;
+    }
+
+    const token = `${key}:${manifest.hash}:${manifest.rev}`;
+    if (this.chunkFetches.has(token)) return;
+    this.chunkFetches.add(token);
+
+    try {
+      const base = `users/${state.userId}/apps/${state.namespace}/${CHUNK_COLLECTION}`;
+      const snapshots = await Promise.all(
+        Array.from({ length: parts }, (_, seq) => getDoc(doc(db, `${base}/${chunkDocId(key, seq)}`)))
+      );
+      if (state.stopped) return;
+
+      let joined = '';
+      for (let seq = 0; seq < snapshots.length; seq++) {
+        const snapshot = snapshots[seq];
+        const part = (snapshot && typeof snapshot.exists === 'function' && snapshot.exists())
+          ? snapshot.data()?.part
+          : null;
+        if (typeof part !== 'string') {
+          throw new Error(`part ${seq} of ${parts} is missing`);
+        }
+        joined += part;
+      }
+
+      // Deliberately the same entry point an inline value uses: conflict
+      // resolution, the echo lock, the revision bookkeeping and the
+      // localStorageSync dispatch must not fork per storage format.
+      this.applyRemoteChange(key, {
+        rev: manifest.rev,
+        updatedAt: manifest.updatedAt,
+        hash: manifest.hash,
+        value: JSON.parse(joined)
+      });
+    } catch (error) {
+      // Leave lastRemoteUpdates untouched so the next snapshot retries.
+      console.warn(`⚠️ Could not assemble chunked value for ${key}:`, error?.message || error);
+    } finally {
+      this.chunkFetches.delete(token);
+    }
   }
 
   /**
@@ -882,6 +1136,7 @@ class StorageSyncManager {
       this.localRevisions.delete(key);
       this.syncLocks.delete(key);
       this.lastRemoteUpdates.delete(key);
+      this.chunkCounts.delete(this.chunkCountKey(namespace, key));
     }
   }
 
@@ -979,8 +1234,27 @@ export async function eraseCloudData(namespace) {
   if (!user) {
     throw new Error('eraseCloudData: not signed in');
   }
-  const docRef = doc(db, `users/${user.uid}/apps/${namespace}`);
-  await deleteDoc(docRef);
+  const docPath = `users/${user.uid}/apps/${namespace}`;
+  // Part documents FIRST. Firestore deletes are not recursive, so a value
+  // stored out of line (see MAX_INLINE_VALUE_CHARS) survives a delete of the
+  // document that references it, and the parts are where the user's actual
+  // data lives. Removing them first means a failure part-way through leaves
+  // an empty manifest, never orphaned content.
+  await deleteChunkDocuments(docPath);
+  await deleteDoc(doc(db, docPath));
+}
+
+/**
+ * Delete every part document under one namespace's `chunks` subcollection.
+ *
+ * @param {string} docPath `users/<uid>/apps/<namespace>`
+ * @returns {Promise<void>}
+ */
+async function deleteChunkDocuments(docPath) {
+  const parts = await getDocs(collection(db, `${docPath}/${CHUNK_COLLECTION}`));
+  for (const part of parts.docs) {
+    await deleteDoc(part.ref);
+  }
 }
 
 /**

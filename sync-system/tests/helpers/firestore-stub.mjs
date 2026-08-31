@@ -18,7 +18,9 @@ export function firestoreFakes() {
     setDocResponders: [],
     // Every onSnapshot attachment: { path, options, onNext, onError, active }.
     snapshotListeners: [],
-    deleteDocCalls: []
+    deleteDocCalls: [],
+    // path -> last written body, so getDoc can serve chunk part documents.
+    docs: new Map()
   });
 }
 
@@ -57,21 +59,50 @@ export function onSnapshot(docRef, options, onNext, onError) {
   return () => { listener.active = false; };
 }
 
+/**
+ * Backing store for chunked values: path -> document body. `setDoc` fills
+ * it for every write so `getDoc` can serve the part documents the engine
+ * reassembles, which is the only read path the engine has.
+ */
+export function getDoc(docRef) {
+  const state = firestoreFakes();
+  const stored = state.docs.get(docRef.path);
+  return Promise.resolve({
+    exists: () => stored !== undefined,
+    data: () => stored
+  });
+}
+
 export function setDoc(docRef, payload, options) {
   const state = firestoreFakes();
   const call = { path: docRef.path, payload, options };
   state.setDocCalls.push(call);
+  state.docs.set(docRef.path, payload);
   const responder = state.setDocResponders.shift();
   return responder ? responder(call) : Promise.resolve();
 }
 
 export function deleteDoc(docRef) {
-  firestoreFakes().deleteDocCalls.push(docRef.path);
+  const state = firestoreFakes();
+  state.deleteDocCalls.push(docRef.path);
+  state.docs.delete(docRef.path);
   return Promise.resolve();
 }
 
 export function collection(_db, name) {
   return { __kind: 'collection', name };
+}
+
+/** Every stored document directly under a collection path. */
+function docsUnder(prefix) {
+  const state = firestoreFakes();
+  const out = [];
+  for (const [path, data] of state.docs) {
+    if (!path.startsWith(prefix + '/')) continue;
+    if (path.slice(prefix.length + 1).includes('/')) continue;
+    out.push({ ref: { __kind: 'doc', path }, data: () => data, exists: () => true });
+  }
+  return out;
 }
 
 export function query(base) {
@@ -82,6 +113,9 @@ export function where() {
   return { __kind: 'where' };
 }
 
-export function getDocs() {
+export function getDocs(base) {
+  if (base && base.__kind === 'collection') {
+    return Promise.resolve({ docs: docsUnder(base.name) });
+  }
   return Promise.resolve({ docs: [] });
 }

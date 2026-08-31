@@ -23,8 +23,13 @@
 //      and older-than-local skip, hash-dedupe skips without touching storage.
 //   4. Per-key drift reconcile on visibilitychange.
 //   5. Initial-merge gating on !snapshot.metadata.fromCache.
-//   6. MAX_FLUSH_BYTES oversize rejection (no setDoc ever issued; requeued
-//      through the retry ladder; dropped from the queue after max retries).
+//   6. Large values: a value past MAX_INLINE_VALUE_CHARS is written out of
+//      line as part documents plus an inline manifest and read back by
+//      reassembly; an unchanged rewrite stays a no-op; a shrunk value
+//      returns inline and sweeps its stale parts; a batch too big for one
+//      commit is split rather than refused; erasing a namespace sweeps the
+//      part documents too; and a PERMANENT rejection is not retried (the
+//      MapTap Rivals 760 KB -> 890 KB incident).
 //   7. stopSync cleanup (timer cancelled, listener detached, revisions
 //      cleared) and getSyncStatus().queueSize accuracy throughout.
 //   8. Listener error recovery: permission-denied tears the old listener down
@@ -527,40 +532,278 @@ test('local-only keys upload once, only after a server-confirmed snapshot', asyn
 });
 
 // ---------------------------------------------------------------------------
-// 6. MAX_FLUSH_BYTES oversize rejection
+// 6. Large values: out-of-line chunking, batching, permanent rejections
 // ---------------------------------------------------------------------------
 
-test('an oversize payload is refused before setDoc and retried, then dropped from the queue', async (t) => {
+// A namespace's Firestore document is capped at 1 MiB, and an app whose data
+// grows with use (MapTap Rivals' game log grows as days x rivals) walks into
+// that ceiling. The engine writes such a value as an ordered run of part
+// documents with a small manifest left inline, so the ceiling stops being a
+// wall. These tests pin that the round trip is lossless, that it does not
+// re-ship or re-fetch unchanged data, and that it cleans up after itself.
+
+const CHUNK_PATH = /\/chunks\/(.+)__(\d+)$/;
+
+function chunkCalls(calls, namespace) {
+  return calls.filter((c) => c.path.startsWith(`users/uid-1/apps/${namespace}/chunks/`));
+}
+
+function manifestCalls(calls, namespace) {
+  return calls.filter((c) => c.path === `users/uid-1/apps/${namespace}`);
+}
+
+/** Rejoin the part documents of one key, in sequence order. */
+function reassemble(calls, namespace, key) {
+  const parts = [];
+  for (const call of chunkCalls(calls, namespace)) {
+    const m = CHUNK_PATH.exec(call.path);
+    if (!m || call.payload.key !== key) continue;
+    parts[Number(m[2])] = call.payload.part;
+  }
+  return parts.join('');
+}
+
+test('a value past the inline ceiling is chunked into part documents, not refused', async (t) => {
   const h = await startHarness(t, ['huge']);
   const [k] = h.keys;
 
-  // 800 KB > the 700 KB MAX_FLUSH_BYTES guard.
-  localStorage.setItem(k, JSON.stringify('x'.repeat(800 * 1024)));
+  // 800 KB: the size that used to be refused outright, and the size the
+  // MapTap Rivals game log actually reached.
+  const value = { rows: Array.from({ length: 4000 }, (_, i) => ({ i, pad: 'x'.repeat(200) })) };
+  localStorage.setItem(k, JSON.stringify(value));
 
   t.mock.timers.tick(500);
   await settle();
-  assert.equal(h.setDocCalls().length, 0, 'the guard must throw BEFORE setDoc is called');
-  assert.equal(h.status().queueSize, 1, 'the refused batch is requeued');
-  assert.equal(h.status().retryCount, 1);
 
-  // Retry ladder: 1000, 2000, 3000 ms. Oversize is deterministic, so every
-  // retry refuses again.
-  for (const [delay, expectedRetry] of [[1000, 2], [2000, 3]]) {
-    t.mock.timers.tick(delay);
-    await settle();
-    assert.equal(h.setDocCalls().length, 0);
-    assert.equal(h.status().retryCount, expectedRetry);
-    assert.equal(h.status().queueSize, 1);
+  const calls = h.setDocCalls();
+  const chunks = chunkCalls(calls, h.namespace);
+  const manifests = manifestCalls(calls, h.namespace);
+
+  assert.ok(chunks.length >= 2, `an 800 KB value must span several parts, got ${chunks.length}`);
+  assert.equal(manifests.length, 1, 'the inline document is still written exactly once');
+
+  const entry = manifests[0].payload.data[k];
+  assert.equal(entry.chunked, true, 'the inline entry must be a manifest');
+  assert.equal(entry.parts, chunks.length, 'the manifest must count every part written');
+  assert.equal(entry.value, undefined, 'a chunked manifest must not also carry the value inline');
+  assert.equal(entry.hash, hashValue(value), 'the manifest hash still describes the whole value');
+  assert.ok(isServerTimestampSentinel(entry.updatedAt));
+
+  for (const c of chunks) {
+    assert.ok(c.payload.part.length <= 128 * 1024, 'no part may exceed the chunk size');
+    assert.equal(c.payload.key, k, 'each part names the key it belongs to');
   }
 
-  // Final attempt exhausts MAX_RETRY_ATTEMPTS: the engine gives up and the
-  // batch is NOT requeued. The data itself is still safe in localStorage;
-  // it just stops being pushed to the cloud until the next local write.
-  t.mock.timers.tick(3000);
+  assert.deepEqual(JSON.parse(reassemble(calls, h.namespace, k)), value,
+    'rejoining the parts must reproduce the value exactly');
+
+  // Parts are written BEFORE the manifest: a peer reading in between must
+  // never find a manifest pointing at documents that do not exist yet.
+  const firstManifestIndex = calls.indexOf(manifests[0]);
+  const lastChunkIndex = calls.indexOf(chunks[chunks.length - 1]);
+  assert.ok(lastChunkIndex < firstManifestIndex, 'every part must land before the manifest');
+
+  assert.equal(h.status().retryCount, 0, 'a chunked write is a success, not a retry');
+  assert.equal(h.status().queueSize, 0, 'the queue drains');
+});
+
+test('re-saving an unchanged large value writes nothing at all', async (t) => {
+  const h = await startHarness(t, ['huge']);
+  const [k] = h.keys;
+
+  const serialised = JSON.stringify({ rows: Array.from({ length: 4000 }, (_, i) => ({ i, pad: 'y'.repeat(200) })) });
+  localStorage.setItem(k, serialised);
+  t.mock.timers.tick(500);
   await settle();
-  assert.equal(h.setDocCalls().length, 0, 'an oversize payload must never reach Firestore');
-  assert.equal(h.status().retryCount, 0, 'counter resets after giving up');
-  assert.equal(h.status().queueSize, 0, 'exhausted batch leaves the queue');
+  const first = h.setDocCalls().length;
+  assert.ok(first > 1);
+
+  // Idempotence: the app re-saving the same state (every render loop in
+  // this repo does) must not re-ship a megabyte.
+  localStorage.setItem(k, serialised);
+  t.mock.timers.tick(500);
+  await settle();
+  assert.equal(h.setDocCalls().length, first, 'an identical large value must not be rewritten');
+  assert.equal(h.status().queueSize, 0);
+});
+
+test('a value that shrinks back under the ceiling returns inline and sweeps its stale parts', async (t) => {
+  const h = await startHarness(t, ['shrink']);
+  const [k] = h.keys;
+  const deleteBase = firestoreFakes().deleteDocCalls.length;
+
+  localStorage.setItem(k, JSON.stringify({ pad: 'z'.repeat(400 * 1024) }));
+  t.mock.timers.tick(500);
+  await settle();
+  const partCount = chunkCalls(h.setDocCalls(), h.namespace).length;
+  assert.ok(partCount >= 2);
+
+  localStorage.setItem(k, JSON.stringify({ pad: 'small' }));
+  t.mock.timers.tick(500);
+  await settle();
+
+  const manifests = manifestCalls(h.setDocCalls(), h.namespace);
+  const last = manifests[manifests.length - 1].payload.data[k];
+  assert.deepEqual(last.value, { pad: 'small' }, 'a small value goes back inline');
+  assert.equal(last.chunked, undefined, 'no manifest flag once the value fits inline');
+
+  const deletes = firestoreFakes().deleteDocCalls.slice(deleteBase)
+    .filter((p) => p.includes(`/apps/${h.namespace}/chunks/`));
+  assert.equal(deletes.length, partCount, 'every part left behind must be deleted');
+});
+
+test('a remote chunked manifest is reassembled and applied like any other value', async (t) => {
+  const h = await startHarness(t, ['remote']);
+  const [k] = h.keys;
+
+  const value = { games: Array.from({ length: 3000 }, (_, i) => ({ i, note: 'synced from MapTap' })) };
+  const serialised = JSON.stringify(value);
+  const parts = [serialised.slice(0, 40000), serialised.slice(40000)];
+
+  // Seed the part documents the way a peer device's flush would have.
+  const docs = firestoreFakes().docs;
+  const base = `users/uid-1/apps/${h.namespace}/chunks`;
+  const readable = k.replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 64);
+  parts.forEach((part, seq) => {
+    docs.set(`${base}/${readable}-${hashValue(k)}__${seq}`, { key: k, seq, part });
+  });
+
+  h.emit({
+    [k]: { chunked: true, parts: parts.length, rev: 7, updatedAt: Date.now() + 5000, hash: hashValue(value) }
+  });
+  await settle();
+
+  assert.equal(backingStore.get(k), serialised, 'the reassembled value lands in localStorage');
+  const applied = h.events().filter((e) => e.key === k && e.source === 'remote');
+  assert.equal(applied.length, 1, 'apps are notified exactly once');
+  assert.deepEqual(applied[0].value, value);
+});
+
+test('a re-emitted chunked manifest does not refetch the parts', async (t) => {
+  const h = await startHarness(t, ['reemit']);
+  const [k] = h.keys;
+
+  const value = { pad: 'q'.repeat(50000) };
+  const serialised = JSON.stringify(value);
+  const base = `users/uid-1/apps/${h.namespace}/chunks`;
+  const readable = k.replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 64);
+  firestoreFakes().docs.set(`${base}/${readable}-${hashValue(k)}__0`, { key: k, seq: 0, part: serialised });
+
+  const manifest = { chunked: true, parts: 1, rev: 3, updatedAt: Date.now() + 5000, hash: hashValue(value) };
+  h.emit({ [k]: manifest });
+  await settle();
+  assert.equal(h.events().filter((e) => e.key === k).length, 1);
+
+  // Firestore re-emits the whole document on every listener re-attach. The
+  // manifest carries the hash, so the verdict is taken without a read.
+  h.emit({ [k]: { ...manifest, updatedAt: Date.now() + 9000 } });
+  await settle();
+  assert.equal(h.events().filter((e) => e.key === k).length, 1,
+    'a hash-identical manifest must not re-apply');
+});
+
+test('a flush too large for one commit is split into several merge writes', async (t) => {
+  // Eight keys of ~120 KB each: every one fits inline, their sum does not.
+  // uploadLocalOnlyKeys ships exactly this shape on a first sign-in.
+  const names = ['b0', 'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7'];
+  const h = await startHarness(t, names);
+
+  for (const key of h.keys) localStorage.setItem(key, JSON.stringify({ pad: 'w'.repeat(120 * 1024) }));
+  t.mock.timers.tick(500);
+  await settle();
+
+  const manifests = manifestCalls(h.setDocCalls(), h.namespace);
+  assert.ok(manifests.length > 1, 'the batch must be split, not refused');
+  assert.equal(chunkCalls(h.setDocCalls(), h.namespace).length, 0, 'no single key needed chunking');
+
+  const written = new Set();
+  for (const call of manifests) {
+    const bytes = JSON.stringify(call.payload).length;
+    assert.ok(bytes <= 700 * 1024, `each commit must fit the 700 KB guard, got ${bytes}`);
+    for (const key of Object.keys(call.payload.data)) written.add(key);
+  }
+  assert.deepEqual([...written].sort(), [...h.keys].sort(), 'every key still reaches Firestore');
+  assert.equal(h.status().queueSize, 0);
+});
+
+test('a permanent write rejection is not retried and is announced to the page', async (t) => {
+  const h = await startHarness(t, ['bad']);
+  const [k] = h.keys;
+
+  const rejections = [];
+  const onRejected = (e) => rejections.push(e.detail);
+  window.addEventListener('syncWriteRejected', onRejected);
+  t.after(() => window.removeEventListener('syncWriteRejected', onRejected));
+
+  // Firestore refusing the document shape. Deterministic: resending the
+  // identical batch fails identically, and the app appending to the same
+  // key between attempts only makes the next one bigger.
+  const invalid = Object.assign(new Error('Document shape rejected'), { code: 'invalid-argument' });
+  firestoreFakes().setDocResponders.push(() => Promise.reject(invalid));
+
+  localStorage.setItem(k, JSON.stringify({ nope: true }));
+  t.mock.timers.tick(500);
+  await settle();
+
+  assert.equal(h.setDocCalls().length, 1, 'exactly one attempt');
+  assert.equal(h.status().retryCount, 0, 'the retry ladder must not start');
+  assert.equal(h.status().queueSize, 0, 'a batch that can never land is not requeued');
+
+  t.mock.timers.tick(10000);
+  await settle();
+  assert.equal(h.setDocCalls().length, 1, 'and it is never resent');
+
+  assert.equal(rejections.length, 1, 'the page is told the write was dropped');
+  assert.equal(rejections[0].namespace, h.namespace);
+  assert.deepEqual(rejections[0].keys, [k]);
+  assert.equal(rejections[0].code, 'invalid-argument');
+
+  // The data itself is untouched: it is safe locally, it just is not synced.
+  assert.equal(backingStore.get(k), JSON.stringify({ nope: true }));
+});
+
+test('erasing a namespace also deletes the part documents of its chunked values', async (t) => {
+  // Firestore deletes are not recursive, and the parts are where the user's
+  // data actually lives, so a delete that only removed the manifest would
+  // strand the content the privacy policy promises to erase.
+  const h = await startHarness(t, ['erase']);
+  const [k] = h.keys;
+
+  localStorage.setItem(k, JSON.stringify({ pad: 'e'.repeat(400 * 1024) }));
+  t.mock.timers.tick(500);
+  await settle();
+  const partPaths = chunkCalls(h.setDocCalls(), h.namespace).map((c) => c.path);
+  assert.ok(partPaths.length >= 2);
+
+  const deleteBase = firestoreFakes().deleteDocCalls.length;
+  await mod.eraseCloudData(h.namespace);
+  const deleted = firestoreFakes().deleteDocCalls.slice(deleteBase);
+
+  for (const path of partPaths) {
+    assert.ok(deleted.includes(path), `part ${path} must be deleted`);
+  }
+  assert.ok(deleted.includes(`users/uid-1/apps/${h.namespace}`), 'and the namespace document itself');
+  assert.ok(deleted.indexOf(partPaths[0]) < deleted.indexOf(`users/uid-1/apps/${h.namespace}`),
+    'parts go first, so a failure part-way leaves an empty manifest rather than orphaned content');
+});
+
+test('a transient write failure still climbs the retry ladder', async (t) => {
+  const h = await startHarness(t, ['flaky']);
+  const [k] = h.keys;
+
+  const unavailable = Object.assign(new Error('backend unavailable'), { code: 'unavailable' });
+  firestoreFakes().setDocResponders.push(() => Promise.reject(unavailable));
+
+  localStorage.setItem(k, '"transient"');
+  t.mock.timers.tick(500);
+  await settle();
+  assert.equal(h.status().retryCount, 1, 'an unknown/transient code keeps the old behaviour');
+  assert.equal(h.status().queueSize, 1, 'and the batch is requeued');
+
+  t.mock.timers.tick(1000);
+  await settle();
+  assert.equal(h.setDocCalls().length, 2, 'the retry actually resends');
+  assert.equal(h.status().queueSize, 0, 'the retry succeeded');
 });
 
 // ---------------------------------------------------------------------------

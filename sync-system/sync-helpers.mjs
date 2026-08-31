@@ -238,3 +238,102 @@ export function requeueFailedWrites(queue, failedWrites) {
   }
   return restored;
 }
+
+/**
+ * Firestore write errors that are DETERMINISTIC: the identical batch will
+ * fail the identical way however many times it is resent.
+ *
+ *   - `payload-too-large` is ours (the MAX_FLUSH_BYTES guard).
+ *   - `invalid-argument` is Firestore rejecting the document shape itself
+ *     (an unsupported value, a field path it will not accept, a document
+ *     over the 1 MiB ceiling).
+ *
+ * Retrying either one is pure waste, and worse than waste when the app is
+ * still appending to the same key between attempts: the 2026-08-31 MapTap
+ * Rivals incident retried a 760 KB refusal three times and shipped ~890 KB
+ * on the last one, because the rival sync kept adding games while the
+ * ladder ran. `flushWrites` drops a permanently-rejected batch instead.
+ *
+ * Everything else (network blips, `unavailable`, `deadline-exceeded`, an
+ * unrecognised code) stays on the retry ladder, which is the behaviour
+ * every transient failure had before.
+ *
+ * @param {{code?: string, permanent?: boolean} | null | undefined} error
+ * @returns {boolean}
+ */
+export function isPermanentWriteError(error) {
+  if (!error || typeof error !== 'object') return false;
+  if (error.permanent === true) return true;
+  return error.code === 'payload-too-large' || error.code === 'invalid-argument';
+}
+
+/**
+ * Split an already-serialised value into chunk-sized pieces.
+ *
+ * Never splits inside a UTF-16 surrogate pair. Firestore stores strings as
+ * UTF-8, and a lone surrogate does not survive that round trip; the two
+ * halves come back as replacement characters and `JSON.parse` of the
+ * rejoined string then throws. Any emoji in an app's data (every one of
+ * this repo's apps stores icons as emoji) sits exactly on that hazard.
+ *
+ * @param {string} serialised
+ * @param {number} chunkChars maximum UTF-16 code units per part
+ * @returns {string[]} at least one part; joining them reproduces the input
+ */
+export function splitIntoChunks(serialised, chunkChars) {
+  const size = Math.max(1, Math.floor(chunkChars));
+  const parts = [];
+  let i = 0;
+  while (i < serialised.length) {
+    let end = Math.min(i + size, serialised.length);
+    if (end < serialised.length) {
+      const code = serialised.charCodeAt(end - 1);
+      // High surrogate at the boundary: its low half is the next character.
+      if (code >= 0xd800 && code <= 0xdbff && end - 1 > i) end -= 1;
+    }
+    parts.push(serialised.slice(i, end));
+    i = end;
+  }
+  return parts.length ? parts : [''];
+}
+
+/**
+ * Group measured payload entries into as few flush batches as possible
+ * without any batch crossing `maxBytes`.
+ *
+ * A flush can carry several keys, and `uploadLocalOnlyKeys` carries every
+ * key an app owns at once. Per-key chunking bounds each individual entry,
+ * but nothing bounds their sum, so the batch is what actually has to fit
+ * inside one Firestore commit. Splitting is safe here precisely because the
+ * write is a `merge: true` of independently revisioned keys: two commits
+ * land the same state as one, and a failure between them leaves the keys
+ * that did land correct rather than half-applied.
+ *
+ * @param {Array<{key: string, entry: *, bytes: number}>} entries
+ * @param {number} maxBytes
+ * @returns {{batches: Array<Object<string, *>>, oversized: string[]}}
+ *   `oversized` names any single entry that cannot fit in a batch on its
+ *   own. The caller turns that into a permanent rejection.
+ */
+export function planFlushBatches(entries, maxBytes) {
+  const batches = [];
+  const oversized = [];
+  let current = null;
+  let currentBytes = 0;
+
+  for (const { key, entry, bytes } of entries) {
+    if (bytes > maxBytes) {
+      oversized.push(key);
+      continue;
+    }
+    if (!current || currentBytes + bytes > maxBytes) {
+      current = {};
+      currentBytes = 0;
+      batches.push(current);
+    }
+    current[key] = entry;
+    currentBytes += bytes;
+  }
+
+  return { batches, oversized };
+}

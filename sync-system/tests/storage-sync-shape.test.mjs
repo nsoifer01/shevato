@@ -114,4 +114,26 @@ test('storage-sync-robust gates the initial merge on the snapshot being server-c
 test('storage-sync-robust refuses oversized flushes', () => {
     assert.match(SRC, /MAX_FLUSH_BYTES/);
     assert.match(SRC, /exceeds/);
+    // The guard must stay a PERMANENT rejection. Retrying a size refusal is
+    // what turned the MapTap Rivals incident from one failed write into
+    // three progressively larger ones.
+    assert.match(SRC, /code = 'payload-too-large'/);
+    assert.match(SRC, /permanent = true/);
+    assert.match(SRC, /isPermanentWriteError\(error\)/);
+});
+
+test('storage-sync-robust stores oversized values out of line instead of raising the ceiling', () => {
+    // The fix for an over-large document is chunking, not a bigger cap:
+    // MAX_FLUSH_BYTES must stay where it was.
+    assert.match(SRC, /const MAX_FLUSH_BYTES = 700 \* 1024;/);
+    assert.match(SRC, /MAX_INLINE_VALUE_CHARS/);
+    assert.match(SRC, /CHUNK_COLLECTION = 'chunks'/);
+    // Parts are written before the manifest that points at them.
+    const partsWrite = SRC.indexOf('await Promise.all(chunkWrites.map');
+    const manifestWrite = SRC.indexOf('const { batches, oversized } = planFlushBatches');
+    assert.ok(partsWrite > -1 && manifestWrite > partsWrite,
+        'part documents must be written before the inline manifest');
+    // Reassembly funnels back into the one apply path.
+    assert.match(SRC, /applyChunkedRemoteChange/);
+    assert.match(SRC, /this\.applyRemoteChange\(key, \{/);
 });

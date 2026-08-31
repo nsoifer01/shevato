@@ -136,7 +136,9 @@ test('vm harness: app.js exports every helper these tests drive', () => {
     'mergeMatrixCells', 'matrixCellViewModel', 'rivalSummary', 'upsertPastedGame',
     'sanitizeBackup', 'liveGames', 'orphanGames', 'isValidISODate', 'localISO',
     'addDaysISO', 'buildHeatmapWeeks', 'parseWhatsAppText', 'dayBucketDate',
-    'rivalNameHint',
+    'rivalNameHint', 'storedDayCities', 'splitGameCities', 'joinGameCities',
+    'persistGames', 'loadGamesFromStorage', 'storedGamesAreInline',
+    'migrateInlineCities',
   ];
   const missing = expected.filter((name) => helpers[name] == null);
   assert.deepEqual(missing, [], `js/app.js stopped exporting: ${missing.join(', ')}`);
@@ -770,4 +772,387 @@ test('syncAllSummary: a rival already mid-sync from its own button is not counte
   assert.equal(summary([{ skipped: true }]), null);
   assert.equal(summary([]), null);
   assert.equal(summary(null), null);
+});
+
+// ---------------------------------------------------------------------------
+// Storage normalisation: the day-global puzzle geography (KEY.DAYS)
+//
+// MapTap plays the same 5 cities for everyone on a given day, but the game
+// log stores one row per (date, rival), so keeping that array inline stored
+// it once per rival. At 9 rivals it was 57% of everything the app persisted
+// and it grew as days x rivals, which is what pushed the synced document
+// past the sync layer's flush ceiling on 2026-08-31. These tests pin that
+// the normalised form is lossless, smaller, backward-compatible, and does
+// not grow when the same MapTap data is synced again.
+// ---------------------------------------------------------------------------
+
+const { splitGameCities, joinGameCities, storedDayCities } = helpers;
+
+// Long, non-ASCII names on purpose: they are what MapTap actually returns
+// and what makes the inline duplication expensive.
+const CITY_NAMES = [
+  'Knoxville, Tennessee', 'Châtellerault, France', 'Schleswig, Germany',
+  'Bingen, Germany', 'Ostashkov, Russia', 'Ulaanbaatar, Mongolia',
+  'São Paulo, Brazil', 'Wagga Wagga, Australia', 'Trondheim, Norway',
+  'Kanchipuram, India',
+];
+
+function isoDay(i) {
+  return new Date(Date.UTC(2025, 0, 1) + i * 86400000).toISOString().slice(0, 10);
+}
+
+function citiesForDay(i) {
+  return Array.from({ length: 5 }, (_, r) => ({
+    lat: Number((((i * 7 + r * 13) % 140) - 60).toFixed(2)),
+    lng: Number((((i * 11 + r * 29) % 360) - 180).toFixed(2)),
+    name: CITY_NAMES[(i + r) % CITY_NAMES.length],
+  }));
+}
+
+// A MapTap profile history in the web/roundData shape the app parses.
+function history(days, seed) {
+  const out = {};
+  for (let i = 0; i < days; i++) {
+    out[isoDay(i)] = {
+      roundData: citiesForDay(i).map((c, r) => ({
+        round: r + 1,
+        score: (seed * 17 + i * 3 + r * 11) % 101,
+        cityLat: c.lat, cityLng: c.lng, cityName: c.name,
+      })),
+    };
+  }
+  return out;
+}
+
+// Build a full synced log through the REAL merge, one rival at a time, the
+// way "Sync all rivals" does.
+function buildSyncedLog(rivalCount, days, { mine = null } = {}) {
+  const mineByDate = mine || MapTapStats.mapTapHistoryToRounds(history(days, 1));
+  const games = [];
+  let n = 0;
+  for (let r = 0; r < rivalCount; r++) {
+    const theirsByDate = MapTapStats.mapTapHistoryToRounds(history(days, r + 2));
+    const { newGames } = MapTapStats.mergeMapTapSync({
+      rivalId: `rival-${r}`,
+      mineByDate,
+      theirsByDate,
+      existingGames: games,
+      makeId: () => `g${n++}`,
+      now: 1756000000000,
+    });
+    for (const g of newGames) games.push(g);
+  }
+  return { games, mineByDate };
+}
+
+const bytes = (v) => JSON.stringify(v).length;
+const FLUSH_CEILING = 700 * 1024;
+
+test('splitGameCities/joinGameCities: the round trip is lossless', () => {
+  const cities = citiesForDay(3);
+  const games = [
+    { id: 'a', rivalId: 'r1', date: '2026-08-10', myScore: 700, cities, note: 'x' },
+    { id: 'b', rivalId: 'r2', date: '2026-08-10', myScore: 700, cities: cities.map(c => ({ ...c })) },
+    { id: 'c', rivalId: 'r1', date: '2026-08-11', myScore: 500 }, // pasted: no geo
+  ];
+  const { rows, days } = splitGameCities(games);
+
+  assert.deepEqual(Object.keys(days), ['2026-08-10'], 'one entry per date that has geo');
+  assert.equal(rows.filter(r => 'cities' in r).length, 0, 'no row keeps an inline copy');
+
+  const back = joinGameCities(plain(rows), storedDayCities(plain(days)));
+  assert.deepEqual(plain(back[0].cities), plain(cities));
+  assert.deepEqual(plain(back[1].cities), plain(cities));
+  assert.equal(back[2].cities, undefined, 'a day with no geo stays without');
+  assert.deepEqual(plain(back), plain(games).map(g => (g.cities ? g : g)));
+});
+
+test('splitGameCities: a row whose geography disagrees with the day keeps its own copy', () => {
+  // Not reachable today (both sides of a sync read the same puzzle file),
+  // but normalising over a disagreement would silently rewrite one of them.
+  const dayCities = citiesForDay(1);
+  const odd = citiesForDay(2);
+  const { rows, days } = splitGameCities([
+    { id: 'a', rivalId: 'r1', date: '2026-08-10', cities: dayCities },
+    { id: 'b', rivalId: 'r2', date: '2026-08-10', cities: odd },
+  ]);
+  assert.deepEqual(plain(days['2026-08-10']), plain(dayCities));
+  assert.equal(rows[0].cities, undefined);
+  assert.deepEqual(plain(rows[1].cities), plain(odd), 'the odd row is left inline, not rewritten');
+
+  const back = joinGameCities(plain(rows), storedDayCities(plain(days)));
+  assert.deepEqual(plain(back[0].cities), plain(dayCities));
+  assert.deepEqual(plain(back[1].cities), plain(odd));
+});
+
+test('storedDayCities: a hostile or malformed stored map cannot poison lookups', () => {
+  // Built through JSON.parse, which is how the value actually arrives (a
+  // stored string, or a synced payload): only there does '__proto__' become
+  // an OWN property rather than setting the object's prototype.
+  const map = storedDayCities(JSON.parse(JSON.stringify({
+    '2026-08-10': citiesForDay(0),
+    '2026-08-11': [{ lat: 1, lng: 2 }], // short array: not a usable day
+    '2026-08-12': 'nonsense',
+  }).replace('{', '{"__proto__":' + JSON.stringify(citiesForDay(1)) + ',')));
+  assert.equal(map.size, 2);
+  assert.ok(map.has('__proto__'), 'a __proto__ date is stored as an ordinary key');
+  assert.equal(map.get('2026-08-11'), undefined);
+  assert.equal(map.get('2026-08-12'), undefined);
+  assert.equal(storedDayCities(null).size, 0);
+  assert.equal(storedDayCities([]).size, 0);
+});
+
+test('a large rival network no longer persists over the sync flush ceiling', () => {
+  // The reported incident: 9 rivals, ~172 days each. Reproduced here at 200
+  // days so the legacy form is comfortably over the ceiling it hit.
+  const { games } = buildSyncedLog(9, 200);
+  assert.equal(games.length, 9 * 200, 'one row per rival per day, as the model requires');
+
+  const legacyBytes = bytes(games);
+  assert.ok(legacyBytes > FLUSH_CEILING,
+    `the old inline format must reproduce the failure, got ${legacyBytes}B`);
+
+  const { rows, days } = splitGameCities(games);
+  const normalisedBytes = bytes(rows) + bytes(days);
+  assert.ok(normalisedBytes < FLUSH_CEILING,
+    `the normalised format must fit, got ${normalisedBytes}B`);
+  // The duplication removed is the dominant term, not a rounding win.
+  assert.ok(normalisedBytes < legacyBytes * 0.55,
+    `expected well under half the bytes, got ${normalisedBytes} vs ${legacyBytes}`);
+
+  // And the marginal cost of one more rival is now the rival's own scores
+  // rather than another full copy of the puzzle geography.
+  const ten = splitGameCities(buildSyncedLog(10, 200).games);
+  const perRival = (bytes(ten.rows) + bytes(ten.days)) - normalisedBytes;
+  const legacyPerRival = bytes(buildSyncedLog(10, 200).games) - legacyBytes;
+  assert.ok(perRival < legacyPerRival * 0.5,
+    `per-rival growth must shrink: ${perRival}B vs ${legacyPerRival}B`);
+});
+
+test('a boot from the legacy inline format hydrates, flags migration, and rewrites normalised', () => {
+  const { games } = buildSyncedLog(3, 40);
+  const rivals = Array.from({ length: 3 }, (_, r) => ({
+    id: `rival-${r}`, name: `R${r}`, color: '#6366f1', icon: '🦊', createdAt: 1,
+  }));
+
+  const app = loadApp({ maptapRivalsRivals: rivals, maptapRivalsGames: games });
+  assert.equal(app._testExports.storedGamesAreInline(), true,
+    'a stored row carrying inline cities must be recognised as the old format');
+
+  assert.equal(app._testExports.migrateInlineCities(), true, 'the rewrite runs');
+  assert.equal(app._testExports.migrateInlineCities(), false,
+    'and is idempotent - a second pass finds nothing to do');
+
+  const storedRows = JSON.parse(app.localStorage.getItem('maptapRivalsGames'));
+  const storedDays = JSON.parse(app.localStorage.getItem('maptapRivalsDays'));
+  assert.equal(storedRows.length, games.length, 'every game survives the rewrite');
+  assert.equal(storedRows.filter(r => 'cities' in r).length, 0, 'nothing is stored inline any more');
+  assert.equal(Object.keys(storedDays).length, 40, 'one day entry per date');
+
+  const reloaded = plain(app._testExports.loadGamesFromStorage());
+  assert.equal(reloaded.length, games.length);
+  for (const g of reloaded) {
+    assert.equal(g.cities.length, 5, 'every synced row still has its geography after a reload');
+  }
+  const byId = new Map(reloaded.map(g => [g.id, g]));
+  for (const original of plain(games)) {
+    const back = byId.get(original.id);
+    assert.deepEqual(back.cities, original.cities, `geo preserved for ${original.id}`);
+    assert.deepEqual(back.myScores, original.myScores);
+    assert.deepEqual(back.theirScores, original.theirScores);
+    assert.equal(back.date, original.date);
+    assert.equal(back.rivalId, original.rivalId);
+  }
+});
+
+test('a boot from the normalised format hydrates without flagging a migration', () => {
+  const { games } = buildSyncedLog(2, 12);
+  const { rows, days } = splitGameCities(games);
+
+  const app = loadApp({
+    maptapRivalsRivals: [
+      { id: 'rival-0', name: 'A', color: '#6366f1', icon: '🦊', createdAt: 1 },
+      { id: 'rival-1', name: 'B', color: '#22d3ee', icon: '🐺', createdAt: 2 },
+    ],
+    maptapRivalsGames: rows,
+    maptapRivalsDays: days,
+  });
+
+  assert.equal(app._testExports.storedGamesAreInline(), false, 'nothing stored inline');
+  assert.equal(app._testExports.migrateInlineCities(), false,
+    'already-normalised storage must not be rewritten on every boot');
+
+  const summary = app._testExports.rivalSummary({ id: 'rival-0', name: 'A' });
+  assert.equal(summary.allGames.length, 12, 'the hydrated log reaches the dashboard');
+  assert.equal(summary.allGames.every(g => Array.isArray(g.cities) && g.cities.length === 5), true,
+    'and every row got its geography back from the day map');
+});
+
+test('games stored without their day map still load, just without geography', () => {
+  // The two keys sync independently, so a device can legitimately see one
+  // before the other. That must degrade to "no continent breakdown yet",
+  // never to a crash or to lost games.
+  const { games } = buildSyncedLog(2, 5);
+  const { rows } = splitGameCities(games);
+  const app = loadApp({
+    maptapRivalsRivals: [{ id: 'rival-0', name: 'A', color: '#6366f1', icon: '🦊', createdAt: 1 }],
+    maptapRivalsGames: rows,
+  });
+  const summary = app._testExports.rivalSummary({ id: 'rival-0', name: 'A' });
+  assert.equal(summary.allGames.length, 5, 'every game is still there');
+  assert.equal(summary.allGames.some(g => g.cities), false, 'geo is simply absent');
+});
+
+test('re-syncing the same MapTap data adds nothing and does not grow storage', () => {
+  const { games, mineByDate } = buildSyncedLog(9, 120);
+  const first = splitGameCities(games);
+  const firstBytes = bytes(first.rows) + bytes(first.days);
+
+  // Second run over byte-identical MapTap payloads, exactly what pressing
+  // "Sync all rivals" again does.
+  let added = 0, updated = 0, backfilled = 0;
+  for (let r = 0; r < 9; r++) {
+    const res = MapTapStats.mergeMapTapSync({
+      rivalId: `rival-${r}`,
+      mineByDate,
+      theirsByDate: MapTapStats.mapTapHistoryToRounds(history(120, r + 2)),
+      existingGames: games,
+      makeId: () => 'must-not-be-used',
+      now: 1756000100000,
+    });
+    added += res.added; updated += res.updated; backfilled += res.backfilled;
+    for (const g of res.newGames) games.push(g);
+  }
+
+  assert.deepEqual({ added, updated, backfilled }, { added: 0, updated: 0, backfilled: 0 },
+    'a second sync with no new MapTap data must be a no-op');
+  assert.equal(games.length, 9 * 120, 'no duplicate rows');
+
+  const second = splitGameCities(games);
+  assert.equal(bytes(second.rows) + bytes(second.days), firstBytes,
+    'and the persisted bytes must be identical, not merely similar');
+  assert.deepEqual(plain(second.days), plain(first.days));
+});
+
+test('a changed day updates the existing row on every rival instead of appending', () => {
+  const days = 30;
+  const { games, mineByDate } = buildSyncedLog(4, days);
+  const before = games.length;
+  const target = isoDay(7);
+  const targetIds = games.filter(g => g.date === target).map(g => g.id);
+  assert.equal(targetIds.length, 4);
+
+  // MapTap re-published one day with different scores for rival-1 only.
+  const revised = MapTapStats.mapTapHistoryToRounds(history(days, 3));
+  revised[target] = {
+    scores: [99, 98, 97, 96, 95],
+    cities: revised[target].cities,
+  };
+
+  const res = MapTapStats.mergeMapTapSync({
+    rivalId: 'rival-1',
+    mineByDate,
+    theirsByDate: revised,
+    existingGames: games,
+    makeId: () => 'must-not-be-used',
+    now: 1756000200000,
+  });
+
+  assert.equal(res.added, 0, 'a corrected day is not a new day');
+  assert.equal(res.updated, 1);
+  assert.equal(res.newGames.length, 0);
+  assert.equal(games.length, before, 'no row was appended');
+
+  const row = games.find(g => g.rivalId === 'rival-1' && g.date === target);
+  assert.deepEqual(row.theirScores, [99, 98, 97, 96, 95], 'the right record was updated in place');
+  assert.equal(row.theirScore, MapTapStats.weightedTotal([99, 98, 97, 96, 95]));
+  assert.ok(targetIds.includes(row.id), 'and it kept its id');
+
+  // The other rivals' rows for that day are untouched.
+  for (const other of games.filter(g => g.date === target && g.rivalId !== 'rival-1')) {
+    assert.notDeepEqual(other.theirScores, [99, 98, 97, 96, 95]);
+  }
+
+  // The day map still holds exactly one entry for that date after the edit.
+  const { days: dayMap } = splitGameCities(games);
+  assert.equal(Object.keys(dayMap).length, days);
+  assert.equal(dayMap[target].length, 5);
+});
+
+test('a remote push of the legacy format is re-normalised on arrival', () => {
+  // The pre-migration Firestore document wins the first snapshot of a
+  // session, and a device still running the old code can push it back at
+  // any time. Either way the fat copy must not become what this device
+  // syncs onward.
+  const { games } = buildSyncedLog(3, 25);
+  const { rows, days } = splitGameCities(games);
+  const app = loadApp({
+    maptapRivalsRivals: [{ id: 'rival-0', name: 'A', color: '#6366f1', icon: '🦊', createdAt: 1 }],
+    maptapRivalsGames: rows,
+    maptapRivalsDays: days,
+  });
+
+  // The sync layer writes the remote value straight into localStorage.
+  app.localStorage.setItem('maptapRivalsGames', JSON.stringify(games));
+  assert.equal(app._testExports.storedGamesAreInline(), true);
+
+  assert.equal(app._testExports.migrateInlineCities(), true);
+  const rewritten = JSON.parse(app.localStorage.getItem('maptapRivalsGames'));
+  assert.equal(rewritten.length, games.length, 'no game is lost re-normalising');
+  assert.equal(rewritten.filter(r => 'cities' in r).length, 0);
+  assert.equal(
+    JSON.parse(app.localStorage.getItem('maptapRivalsGames')).length
+      + Object.keys(JSON.parse(app.localStorage.getItem('maptapRivalsDays'))).length,
+    games.length + 25,
+  );
+});
+
+test('a synced day map that goes missing costs geography, never games', () => {
+  // The two keys are independent revisions under per-key last-write-wins,
+  // so one can be lost. The log itself must survive intact, and the next
+  // MapTap sync backfills the geography (mergeMapTapSync counts it).
+  const { games, mineByDate } = buildSyncedLog(2, 10);
+  const { rows } = splitGameCities(games);
+  const survivors = joinGameCities(plain(rows), storedDayCities(null));
+  assert.equal(survivors.length, games.length);
+  assert.equal(survivors.some(g => g.cities), false);
+
+  const res = MapTapStats.mergeMapTapSync({
+    rivalId: 'rival-0',
+    mineByDate,
+    theirsByDate: MapTapStats.mapTapHistoryToRounds(history(10, 2)),
+    existingGames: survivors,
+    makeId: () => 'must-not-be-used',
+    now: 1756000300000,
+  });
+  assert.equal(res.added, 0, 'no games are re-created');
+  assert.equal(res.backfilled, 10, 'every day gets its geography back');
+  assert.equal(survivors.filter(g => g.rivalId === 'rival-0').every(g => g.cities.length === 5), true);
+});
+
+test('splitGameCities: iOS-shaped days (NaN coordinates) still normalise to one entry', () => {
+  // The iOS 4.04 payload has city NAMES but no lat/lng, so mergeMapTapSync
+  // writes NaN coords into the freshly synced rows. NaN !== NaN, so a naive
+  // comparison would call two identical days different and leave every row
+  // after the first carrying its own inline copy - exactly the duplication
+  // this change exists to remove.
+  const ios = Array.from({ length: 5 }, (_, i) => ({ lat: NaN, lng: NaN, name: `City${i}` }));
+  const { rows, days } = splitGameCities([
+    { id: 'a', rivalId: 'r1', date: '2026-08-10', cities: ios },
+    { id: 'b', rivalId: 'r2', date: '2026-08-10', cities: ios.map(c => ({ ...c })) },
+    { id: 'c', rivalId: 'r3', date: '2026-08-10', cities: ios.map(c => ({ ...c })) },
+  ]);
+  assert.equal(rows.filter(r => 'cities' in r).length, 0, 'no row keeps an inline copy');
+  assert.equal(Object.keys(days).length, 1);
+
+  // And the round trip through storage matches what the app always stored:
+  // JSON writes NaN as null, which is what cleanCities normalises to anyway.
+  const stored = JSON.parse(JSON.stringify({ rows, days }));
+  const back = joinGameCities(stored.rows, storedDayCities(stored.days));
+  assert.equal(back.length, 3);
+  for (const g of back) {
+    assert.equal(g.cities.length, 5);
+    assert.deepEqual(g.cities.map(c => c.name), ['City0', 'City1', 'City2', 'City3', 'City4']);
+    assert.deepEqual(g.cities.map(c => c.lat), [null, null, null, null, null]);
+  }
 });

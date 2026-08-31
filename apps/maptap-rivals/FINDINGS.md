@@ -6,8 +6,8 @@ where it bites. Rewrite sections rather than appending to them.
 ## The game log stores a day once per rival
 
 `maptapRivalsGames` holds one record per (day, rival) pair. A day played
-against 3 rivals is 3 records that repeat the **same** `myScores` and the
-**same** `cities`; only `rivalId`, `theirScores` and `id` differ.
+against 3 rivals is 3 records that repeat the **same** `myScores`; only
+`rivalId`, `theirScores` and `id` differ.
 
 Consequences for anything that aggregates *my* side:
 
@@ -19,6 +19,145 @@ Consequences for anything that aggregates *my* side:
   of 5. The averages themselves barely move (the duplicated rows carry
   identical scores), so the skew is invisible without a unit test: the round
   counts, and any weighting derived from them, are what break.
+
+The same shape is why the log's SIZE grows as days x rivals, which is what
+broke cloud sync - see the next section.
+
+## The day's geography is stored once per day, not once per row (2026-08-31)
+
+**The incident.** "Sync all rivals" over 9 rivals pulled 383 new games and
+then could not persist them. The sync layer refused the write three times,
+each attempt larger than the last:
+
+```
+Failed to flush writes for maptapRivalsApp:
+Error: Refusing to flush maptapRivalsApp: payload ~760810B exceeds 716800B
+```
+
+**Root cause.** `cities` - the day's 5 puzzle locations as
+`{ lat, lng, name }` - is a property of the DATE. MapTap plays the same five
+places for everybody on a given day; the code has always known this
+(`mergeMapTapSync` takes `syncCities(mine) || syncCities(theirs)`, either
+side will do, and `computePositionHitRecords` builds a one-entry-per-date
+`citiesByDate` map). But the log keys on (date, rival), so the array was
+stored once per rival per day. Measured on the real shape:
+
+| | inline `cities` | normalised |
+| --- | --- | --- |
+| bytes per row | ~500 B | ~215 B |
+| 9 rivals x 172 days | 691 KB | 343 KB |
+| 9 rivals x 365 days | 1468 KB | 729 KB |
+
+57% of everything the app persisted was the same geography written nine
+times, and the marginal cost of a tenth rival was another full copy of it.
+
+**The fix.** `KEY.DAYS` (`maptapRivalsDays`) holds `{ 'YYYY-MM-DD': City[5] }`
+and the game rows carry no `cities` on disk. The split is entirely at the
+storage boundary - `splitGameCities` on the way out, `joinGameCities` on the
+way back in - so `state.games` in memory, every renderer, every aggregate and
+every exported backup see exactly the shape they always did. That is what
+kept a change this wide from touching ten read sites.
+
+Things worth knowing about it:
+
+- **Hydration shares the array by reference** across every row of a day. Safe
+  because `cities` is read-only everywhere: `mergeMapTapSync` reassigns with
+  a fresh `slice()` rather than mutating in place. It is also what makes a
+  1800-row log cheap in memory. If you ever mutate `g.cities[i]`, that
+  assumption is what you broke.
+- **A row whose geography disagrees with the day keeps its own copy inline.**
+  Nothing produces that today, but normalising over a disagreement would
+  silently rewrite one of the two, and no fix for a size problem is allowed
+  to lose a byte of history. The comparison is made on the values as they
+  will be STORED (non-finite coordinates read as `null`, which is what
+  `JSON.stringify` writes): the iOS 4.04 payload shape has city names but no
+  lat/lng, so freshly synced rows carry `NaN`, and `NaN !== NaN` would have
+  reported two identical days as different and left the duplication in place
+  for exactly those days.
+- **The stored map is read through `Object.entries` into a `Map`.** Dates
+  arrive verbatim from a synced payload; reading `obj['__proto__']` back off
+  a plain object hands out `Object.prototype`. Same reasoning as
+  `mapTapHistoryToRounds`.
+- **Migration runs at boot AND on every remote delivery** (`migrateInlineCities`
+  in js/app.js). Boot alone is not enough: the pre-migration Firestore
+  document wins the first snapshot of a session (remote wins on a fresh local
+  revision map), so the fat copy lands back in localStorage right after the
+  boot rewrite. Normalising on arrival is what makes the account converge.
+  It is idempotent - afterwards no stored row carries `cities`, so the check
+  is false and nothing is written.
+- **Losing the day map costs geography, never games.** The two keys are
+  independent revisions under per-key last-write-wins, so one can be dropped
+  (see the site-level "sync is per-key LWW" finding). A game row survives
+  intact without its geography, the continent band just goes quiet for those
+  days, and the next MapTap sync backfills them (`mergeMapTapSync` counts
+  that as `backfilled`). The map is grow-only and keyed by an immutable fact,
+  which is what makes it safe to carry as a second key at all.
+
+**Normalisation halves it; it does not make it unbounded.** 9 rivals x 365
+days is still 729 KB normalised. The other half of the fix is in the sync
+layer - see the next section.
+
+## The sync layer stores an oversized value out of line (2026-08-31)
+
+`storage-sync-robust.js` wrote one Firestore document per namespace, and
+Firestore caps a document at 1 MiB. Any app whose data grows with use walks
+into that, and the old guard (`MAX_FLUSH_BYTES`, 700 KB) turned it into a
+hard wall: past that size the app could never sync again.
+
+Raising the cap would have been the same architecture with a later failure
+date, so instead a value past `MAX_INLINE_VALUE_CHARS` (128 K) is written as
+an ordered run of part documents under `users/<uid>/apps/<ns>/chunks/`, with
+a small manifest left inline:
+
+```js
+data[key] = { chunked: true, parts: N, rev, updatedAt, hash }
+```
+
+Details that matter if you touch it:
+
+- **Parts are written before the manifest.** A peer whose listener fires
+  between the two writes must never find a manifest pointing at documents
+  that do not exist yet; in that order it simply reads the previous version.
+- **The read verdict is taken from the manifest, before any part is
+  fetched.** Firestore re-emits the whole document on every listener
+  re-attach, and the manifest carries the same `rev`/`updatedAt`/`hash` an
+  inline entry would, so `decideRemoteChange` short-circuits identically.
+  Without that, every tab focus would refetch a megabyte and re-render every
+  view.
+- **Reassembly funnels back into `applyRemoteChange`.** Conflict resolution,
+  the echo lock, the revision bookkeeping and the `localStorageSync` dispatch
+  must not fork per storage format.
+- **Splitting never lands inside a surrogate pair.** Firestore stores UTF-8;
+  a lone surrogate does not survive the round trip and `JSON.parse` of the
+  rejoined string would throw. Every app here stores emoji.
+- **No rules deploy was needed.** The recursive
+  `match /users/{userId}/{document=**}` in `firestore.rules` already grants
+  the owner read/write over everything beneath their own user document.
+- **Backward-compatible both ways.** A document written before this exists
+  carries no `chunked` flag and reads as a plain inline value; a value that
+  shrinks back under the threshold returns to inline storage and its parts
+  are deleted.
+
+`MAX_FLUSH_BYTES` stayed at 700 KB deliberately. After chunking no single
+entry can reach it, and a flush carrying several keys is split across
+commits (`planFlushBatches`) rather than refused - safe precisely because the
+write is a `merge: true` of independently revisioned keys.
+
+## A deterministic write rejection is not retried (2026-08-31)
+
+The incident's second half: the flush was refused, `requeueFailedWrites` put
+the batch back, and the retry ladder resent it - while "Sync all rivals" kept
+appending games to the same key. 760810 B, then ~890928 B, then a silent give
+up. Three network round trips spent on a write that could not possibly land,
+and each one bigger than the last.
+
+`isPermanentWriteError` (sync-helpers.mjs) now splits the two cases. Our own
+`payload-too-large` and Firestore's `invalid-argument` are deterministic: the
+batch is dropped, the ladder is not started, and a `syncWriteRejected`
+DOM event names the namespace and keys so the failure is not console-only.
+Everything else - `unavailable`, `deadline-exceeded`, an unrecognised code -
+keeps the retry behaviour it always had, so this cannot turn a recoverable
+blip into a permanent one.
 
 ## A sync walks BOTH histories, so one-sided days go both ways (2026-08-24)
 
@@ -158,9 +297,12 @@ scores).
 
 ## Geo data exists only on MapTap-synced games
 
-`cities` (5 entries of `{ lat, lng }`) is written by the profile-sync path.
-Games created from a manual paste have no `cities` key at all, and older
-records may carry totals only (`myScore`/`theirScore`, no per-round array).
+`cities` (5 entries of `{ lat, lng, name }`) is written by the profile-sync
+path. In memory it hangs off the game; on disk it lives once per date in
+`maptapRivalsDays` and is re-attached on load (see "The day's geography is
+stored once per day"). Games created from a manual paste have no `cities` at
+all, and older records may carry totals only (`myScore`/`theirScore`, no
+per-round array).
 Every continent aggregate therefore starts by requiring
 `Array.isArray(g.cities) && g.cities.length === N_LOCS` plus a matching
 `myScores` array, and the UI hides its whole band or section rather than
