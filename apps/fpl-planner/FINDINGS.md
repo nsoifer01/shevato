@@ -1466,9 +1466,31 @@ fail and pinning the surfaces that had none. The rules worth keeping:
   deliberate and self-reporting: `optimizer-consistency.test.mjs` skips a
   forced-inclusion class when the sample squad does not exercise it
   (data-dependent, worded in the skip message).
-- **Fixtures never read the wall clock.** `pending-transfers.test.mjs` and
-  `season-rollover.test.mjs` used `new Date()` for `fetchedAt`; both pin the
-  sample's own capture time now, like every other file.
+- **Nothing in a test reads the wall clock: not the fixtures, and not the
+  assertions.** `pending-transfers.test.mjs` and `season-rollover.test.mjs`
+  used `new Date()` for `fetchedAt`; both pin the sample's own capture time
+  now, like every other file.
+
+  The assertion half of the rule cost a red CI on 2026-08-31.
+  `opening-baseline.test.mjs` called `gameweekLifecycle(gs)` with no `now`
+  and asserted `planGw === 2`. Its fixtures carry the REAL 2026/27 deadlines
+  (GW1 2026-08-21 17:30 UTC, GW2 2026-08-28 17:30 UTC), so the engine
+  correctly began answering GW3 the moment GW2's deadline passed and the test
+  failed from 2026-08-28 17:30 UTC onwards, on every branch, for good. Nothing
+  had changed in the planner. Everything else in that scenario was already
+  pinned to GW2 by hand (`buildStrength` `asOfGw`, `buildProjections`
+  `gwFrom`/`gwTo`, `buildSquadState` `gw`, `plan.current.gw`), so the clock was
+  the single input allowed to drift away from the rest of the test.
+
+  It now pins `AS_OF = 2026-08-25T00:00:00Z`, the instant the file's own prose
+  reconstructs. `season-lifecycle.test.mjs` and `ui-confidence.test.mjs`
+  already did this; that call was the only unpinned one in the estate.
+
+  How to check the class rather than the instance: run the suite with the
+  process clock shifted a year ahead (`--import` a module that redefines
+  `Date.now`). The old code fails under it, the fixed code passes. A test
+  whose verdict depends on the day it runs is a test that will go red on a
+  branch that did not touch the app.
 - **`installDom()` at module scope must return its teardown** and register it
   with `after()` (the ui-combobox pattern): a leaked fake `document` reaches
   whatever the runner loads next in the same process. ui-pitch-markers,
