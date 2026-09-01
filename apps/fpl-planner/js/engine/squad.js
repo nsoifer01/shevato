@@ -279,7 +279,22 @@ export function buildSquadState({ entry, history, transfers, picks, gameState, g
   // bank. Do not add the bank to it again downstream.
   const frozenValueTenths = entryHistory.value ?? 0;
   const sellingTotal = built.reduce((sum, p) => sum + p.sellingTenths, 0);
-  const squadValueTenths = applied.count ? sellingTotal + bankTenths : frozenValueTenths;
+  // What the manager can spend TODAY, in every case: the fifteen at their
+  // reconstructed selling prices, plus the bank.
+  //
+  // This used to fall back to FPL's own `value` whenever no transfer had been
+  // made, and that number is a snapshot FROZEN at the gameweek deadline: it does
+  // not track price moves after it (measured 2026-08-28, see FINDINGS "Fact 3").
+  // One overnight fall was enough to make the header state 99.9 while the banner
+  // directly below it named 99.8 and called the header's figure the wrong one.
+  // Affordability was already computed from the reconstruction, so the fallback
+  // only ever affected what was DISPLAYED - and it displayed the stale half.
+  //
+  // The one case with nothing to reconstruct FROM is an in-season payload that
+  // carried no picks (`empty_picks`): there the frozen total is the only squad
+  // figure that exists, and reporting the bank alone would say the manager owns
+  // nothing.
+  const squadValueTenths = built.length ? sellingTotal + bankTenths : frozenValueTenths;
 
   // The one arithmetic check that proves the purchase-price reconstruction was
   // right. It fails when a transfer is missing from the payload or a player was
@@ -293,7 +308,10 @@ export function buildSquadState({ entry, history, transfers, picks, gameState, g
   if (!applied.count && sellingTotal + bankTenths !== frozenValueTenths) {
     warnings.push({
       code: 'value_mismatch',
-      message: `Reconstructed squad value ${(sellingTotal + bankTenths) / 10} does not match FPL's ${frozenValueTenths / 10}. Selling prices may be off by the difference.`,
+      // Both to one decimal. Dividing by 10 alone printed "100.9 does not match
+      // FPL's 101", one figure to a tenth and the other not, which read as two
+      // different kinds of number rather than the same one twice.
+      message: `Reconstructed squad value ${((sellingTotal + bankTenths) / 10).toFixed(1)} does not match FPL's ${(frozenValueTenths / 10).toFixed(1)}. Selling prices may be off by the difference.`,
     });
   }
 

@@ -1432,17 +1432,56 @@ Two consequences worth keeping:
   Trusting `value` would have the planner spending money the manager does not
   have within days of a deadline. `buildSquadState` already does the right
   thing; this is the measurement that says why it must.
-- **The header and the banner deliberately disagree.** With no transfer made,
-  `squadValueTenths` falls back to `frozenValueTenths`, so SQUAD VALUE reads
-  £100.0m while the banner names 99.9. That is the documented fallback, but it
-  does mean the app displays the number it has just told you is wrong. If that
-  is ever judged confusing, the fix is to display the reconstructed total and
-  keep the banner, not to drop the check.
+- **The header and the banner used to disagree, and no longer do.** With no
+  transfer made, `squadValueTenths` fell back to `frozenValueTenths`, so SQUAD
+  VALUE read £100.0m while the banner named 99.9: the app displayed the number
+  it had just told you was wrong. The documented fix - display the reconstructed
+  total, keep the check - was taken on 2026-08-31 (see "The header states what
+  can be spent today" below).
 
 Verified in production at 1280 and 390 on 2026-08-28: "One number does not match
 Fantasy Premier League" / "Reconstructed squad value 99.9 does not match FPL's
 100. Selling prices may be off by the difference.", no staleness banner, no
 "older copy" wording, console clean.
+
+### The header states what can be spent today, 2026-08-31
+
+`squadValueTenths` is now always `sellingTotal + bankTenths`. The fallback to
+FPL's frozen `value` survives in exactly one place: an in-season payload that
+carried `entry_history` but no fifteen (`empty_picks`), where there is nothing
+to reconstruct FROM and reporting the bank alone would say the manager owns no
+players.
+
+Why it had to change, in the owner's own words: "show me the reconstructed value
+instead of the frozen one". The live shape that prompted it, 2026-08-31 - Enzo
+Fernandez 7.0 to 6.9 after the GW2 deadline, `entry_history.value` still 999
+against a reconstruction of 998 - is Fact 3 happening for the second time in a
+week, which is the frequency that settled it: a snapshot frozen at a deadline is
+wrong for most of the days a manager looks at it.
+
+- **Nothing about affordability moved.** Transfers were always priced off the
+  per-player reconstruction; the fallback only ever chose what was DISPLAYED,
+  and it displayed the stale half. `scenario.js` and `backtest.js` already
+  computed `sellingTotal + bankTenths` directly, so this also removes a
+  divergence between the engine and the two callers that reimplemented it.
+- **The check still fires.** Displaying the right number is not a reason to stop
+  reporting that the two sources disagree; `value_mismatch` is unchanged.
+- **The banner copy names the header.** It now says the squad value shown,
+  transfers and affordability all come from the reconstruction, so the sentence
+  explains a header that agrees with it rather than one that contradicts it.
+- **Both figures print to one decimal.** The message divided by 10 raw, so a
+  frozen 1010 rendered "does not match FPL's 101" beside a reconstructed
+  "100.9".
+- **The regression test is the divergence itself**, not the equality: the sample
+  fixture is self-consistent, so a test built on it passes either way. The pin
+  doctors `entry_history.value` by one tenth and asserts the reported value is
+  the reconstruction and NOT the frozen figure. It fails on the pre-2026-08-31
+  engine.
+
+Verified in the browser at 1280 and 390 with the same doctored payload: header
+SQUAD VALUE £100.9m against a frozen £101.0m (the old engine printed £101.0m at
+both widths under an identical run), banner present and agreeing, no layout
+change.
 
 ## Browser E2E, and why it exists here now
 

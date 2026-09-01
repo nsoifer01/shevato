@@ -892,7 +892,7 @@ export function squadWarningsBanner(warnings) {
     tone: 'warn',
     mark: '!',
     title: 'One number does not match Fantasy Premier League',
-    text: 'The squad and prices are read from two Fantasy Premier League endpoints that are not always in step, most often because a price changed overnight. Transfers and affordability are calculated from your reconstructed selling prices.',
+    text: 'The squad and prices are read from two Fantasy Premier League endpoints that are not always in step, most often because a price changed overnight. The squad value shown, transfers and affordability are all calculated from your reconstructed selling prices, which is the figure that reflects what your players are worth today.',
     list: warnings.map(w => w.message),
   });
 }
