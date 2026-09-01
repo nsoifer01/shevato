@@ -38,13 +38,20 @@ test('a cold query searches, fetches details and returns the rating', async () =
   const s = spies();
   const { results, spent } = await run(['Ichiran Ramen Shibuya Tokyo'], cache, s);
   assert.deepEqual(results[0], {
+    id: 'Ichiran Ramen Shibuya Tokyo',
     query: 'Ichiran Ramen Shibuya Tokyo',
     status: 'ok',
     name: 'Ichiran Shibuya',
     rating: 4.2,
     userRatingCount: 12043,
     mapsUri: 'https://maps.google.com/?cid=1',
-    confidence: 1,
+    // No itinerary context was supplied, so the wrong-branch gate had nothing
+    // to check: `verified` is false and the confidence is capped below the
+    // verified threshold rather than reported as a full 1.
+    placeId: 'place-1',
+    verified: false,
+    areaBasis: 'none',
+    confidence: 0.5,
   });
   assert.equal(spent, 1, 'one billed Place Details call');
   assert.equal(s.calls.search.length, 1);

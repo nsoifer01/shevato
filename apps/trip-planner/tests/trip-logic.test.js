@@ -3464,9 +3464,16 @@ test('placesCacheUpdates caches ok and tombstones no_match', () => {
     { query: 'Narisawa Tokyo', status: 'ok', name: 'Narisawa', rating: 4.35, userRatingCount: 1204, mapsUri: 'https://maps.google.com/?cid=1' },
     { query: 'somewhere nice', status: 'no_match', reason: 'generic_query' },
   ]);
+  // A result with no identity fields is a pre-2026-08-27 server (an old deploy
+  // permalink): it still caches, and it caches as UNVERIFIED, which is what
+  // keeps its coordinates off the distance chips and off the saved item.
   assert.deepEqual(out[0], {
     key: 'narisawa tokyo',
-    entry: { status: 'ok', name: 'Narisawa', rating: 4.4, userRatingCount: 1204, mapsUri: 'https://maps.google.com/?cid=1' },
+    entry: {
+      status: 'ok', name: 'Narisawa', rating: 4.4, userRatingCount: 1204,
+      mapsUri: 'https://maps.google.com/?cid=1',
+      placeId: '', verified: false, areaBasis: 'none', confidence: 0,
+    },
   });
   // the tombstone keeps the reason: "generic_query" is how the card knows it can
   // only offer a search, and it costs nothing to learn (the server never bills it)
@@ -7050,15 +7057,18 @@ test('rememberVenue evicts the least recently written venue at the cap', () => {
 });
 
 test('placesLocationUpdates stores the coordinates the ratings call returned', () => {
+  // `verified: true` is now REQUIRED for a coordinate to be stored: an
+  // unverified point is what drew the 809 km chip, and once it landed in the
+  // 30-day venue cache every later render repeated it.
   const out = L.placesLocationUpdates([
-    { query: 'Ichiran Shibuya, Tokyo', status: 'ok', rating: 4.2, lat: 35.6595, lon: 139.7005 },
+    { query: 'Ichiran Shibuya, Tokyo', status: 'ok', rating: 4.2, lat: 35.6595, lon: 139.7005, verified: true },
     // an unrated but confidently matched venue still carries a position
-    { query: 'Tiny Bar, Tokyo', status: 'no_match', reason: 'unrated', lat: 35.68, lon: 139.76 },
+    { query: 'Tiny Bar, Tokyo', status: 'no_match', reason: 'unrated', lat: 35.68, lon: 139.76, verified: true },
     // a wrong business (low confidence) is sent without one, and a generic
     // query never reached Google at all
     { query: 'Ramen Shop', status: 'no_match', reason: 'generic_query' },
-    { query: 'Somewhere', status: 'ok', rating: 4, lat: 999, lon: 0 },
-    { status: 'ok', lat: 1, lon: 1 },
+    { query: 'Somewhere', status: 'ok', rating: 4, lat: 999, lon: 0, verified: true },
+    { status: 'ok', lat: 1, lon: 1, verified: true },
     null,
   ]);
   assert.deepEqual(out, [

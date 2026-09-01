@@ -58,9 +58,14 @@ test('privacy.html names the booking facts the assistant is NOT given', () => {
   const m = /const ASSIST_OMITTED_FIELDS = \[([^\]]+)\]/.exec(logic);
   assert.ok(m, 'ASSIST_OMITTED_FIELDS moved; privacy.html describes it by name');
   const fields = m[1].split(',').map(s => s.trim().replace(/^'|'$/g, ''));
-  assert.deepEqual(fields.sort(), ['bookBy', 'confirmation', 'paidBy', 'payment', 'splitAmounts'].sort());
+  // `place` joined this list on 2026-08-27: an item's resolved Google place ID
+  // and coordinates are useless to a model (it cannot look either up) and would
+  // only eat the trip's size budget, so they stay out of the assistant context
+  // while still syncing and travelling in a share link like the rest of the item.
+  assert.deepEqual(fields.sort(), ['bookBy', 'confirmation', 'paidBy', 'payment', 'place', 'splitAmounts'].sort());
   // each one, in the words the page uses for it
-  for (const phrase of [/confirmation-number field/i, /who paid/i, /how a cost is split/i, /payment tag/i, /booking deadline/i]) {
+  for (const phrase of [/confirmation-number field/i, /who paid/i, /how a cost is split/i, /payment tag/i,
+    /booking deadline/i, /resolved Google place/i]) {
     assert.match(section, phrase, `privacy.html no longer says it holds back ${phrase}`);
   }
 });

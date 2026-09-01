@@ -152,7 +152,10 @@ apps/trip-planner/
 ├── tests/                # node:test suites: trip-logic, trip-logic-hardening,
 │                         #   booking-extract, gpx-ics, day-share-spend, sw-activate,
 │                         #   smart-defaults (contextual prefill + venue ranking),
-│                         #   audit-2026-08 (date clustering, ferry/island sanity)
+│                         #   audit-2026-08 (date clustering, ferry/island sanity),
+│                         #   place-resolution (one verified place identity:
+│                         #     card == saved row, area-keyed cache, category
+│                         #     prefixes, persistence boundary)
 └── e2e/                  # browser E2E regression suites (headless Chromium via
                           #   the repo CDP harness): helpers.mjs + core, trips-sync,
                           #   share, views, ui, places, assistant, qa-fixes, pwa,
@@ -165,8 +168,10 @@ netlify/functions/            # Server-side (unversioned): Tier 3 assistant + ve
 ├── lib/tp-assist-store.mjs   # Blob store handles (config + usage)
 ├── lib/tp-assist-quota.mjs   # Pure per-client / global daily quota math
 ├── tp-places.mjs             # Google Places ratings proxy (two-call strategy, owner-token tier)
-├── lib/tp-places-lookup.mjs  # Resolve query -> place ID -> rating; place-ID cache 30d, ratings never cached
-├── lib/tp-places-match.mjs   # No-match classification before anything is billed
+├── lib/tp-places-lookup.mjs  # Resolve query (+ its area) -> place ID -> verified place; place-ID
+│                             #   cache is 30d and AREA-KEYED; ratings/names/hours never cached
+├── lib/tp-places-match.mjs   # The two gates: name confidence, and the wrong-branch
+│                             #   geographic check (verifyArea) that both must pass
 ├── lib/tp-places-quota.mjs   # Compare-and-swap quota (public + separate owner buckets)
 ├── lib/tp-places-store.mjs   # Blob store handles (config + usage)
 ├── lib/blob-cas.mjs          # CAS usage accounting, shared by tp-places and tp-assist
@@ -178,8 +183,218 @@ netlify/functions/            # Server-side (unversioned): Tier 3 assistant + ve
 The Places ratings proxy is dormant until an owner writes a `placesKey` (and,
 optionally, an `ownerToken` for a higher personal rate tier) into the
 `trip-planner-places` Blob, the same out-of-band way the assistant key is set
-above. Place IDs are cached 30 days; names and ratings are never cached, because
-no Google caching exception covers those fields.
+above. Place IDs are cached 30 days **per area** (see below); names, ratings and
+hours are never cached, because no Google caching exception covers those
+fields.
+
+### How a place recommendation is verified (and why it has to be)
+
+Everything below exists because of one class of failure: **a real business name
+does not identify a real place.** Every chain shares a name with dozens of
+branches on other continents, so a text search for "Royce Chocolate" answers
+with the flagship, not with the one on the traveller's day. On 2026-08-27 that
+produced a Tokyo recommendation linked to a shop in Hokkaido, wearing that
+shop's rating, that shop's Maps link and a distance chip reading 809 km.
+
+**One identity, resolved once.** `placeLookupFor(item, ctx)` in trip-logic.js is
+the only thing allowed to answer "which place is this row about". It takes an
+item OR a proposal's fields - the same shape either way - and returns
+`{ query, area, key }`. The recommendation card, its rating chip, its Maps link,
+its opening-hours line, its distance chip, the itinerary row it becomes and the
+Days-view row all read that one function, so no two surfaces can disagree about
+which place they are describing. (They used to: the card keyed its rating on the
+model's raw `mapsQuery` and its hours on a query derived from the title, and the
+saved row derived a third. That is how a card could say "No rating match" while
+the agenda row beside it showed a rating.)
+
+**The area is part of the identity.** The cache key is
+`normalized query + '@' + area token`, and the area travels to the server with
+every lookup. So "Takashimaya" on a Kyoto day and "Takashimaya" on a Tokyo day
+are two questions, two cache entries and two answers - never one shared entry
+whose single answer is wrong for one of them. The area is taken from the
+strongest thing available, in order: the recommendation's own `location`, then
+the itinerary day's city (`dayMorningCity`), plus that city's cached coordinate
+when the app has geocoded it. The geocode read is cache-only and never touches
+the network.
+
+**Two gates upstream, both mandatory** (`lib/tp-places-match.mjs`):
+
+| gate | question | on failure |
+| --- | --- | --- |
+| `matchConfidence` | is this the same **business**? | `no_match / low_confidence` |
+| `verifyArea` | is it the branch in **this itinerary's area**? | `no_match / wrong_area` |
+
+`verifyArea` compares the resolved place's coordinates to the expected point
+(`AREA_MAX_KM`, 150 km - a wrong-continent gate, not a walking-distance one:
+Yokohama still counts as Tokyo-area, Hokkaido does not) and falls back to
+looking for the expected city or country in the place's address and address
+components when the trip has no coordinate for its city yet. When neither is
+available the result is reported as **unchecked**, never as verified.
+
+**The search itself is constrained.** `places:searchText` is called with a
+`locationBias` circle around the expected point. That is a request parameter,
+not a field-mask entry, so it changes neither the SKU nor the price. A candidate
+the gate rejects earns exactly **one** retry: the city is spelled into the query
+and the search becomes a `locationRestriction` rectangle, which Google cannot
+answer from outside. Two wrong answers end the question - the recommendation
+comes back unresolved rather than being resolved wrongly.
+
+**Nothing about a place comes from the model.** The assistant proposes *which*
+place to consider and supplies the geography needed to find it (`location` = the
+city, `mapsQuery` = branch + neighbourhood + city). The rating, review count,
+opening hours, coordinates, place ID and Google Maps URL are all resolved
+deterministically by tp-places; the prompt (`ASSIST_PLACE_FACTS`) forbids the
+model asserting any of them.
+
+**What gets persisted.** Add to trip does not re-resolve; it *keeps* what the
+card resolved, as `item.place`:
+
+```js
+{ id: '<google place id>', lat, lon, at: <ms>, city: '<verified against>' }
+```
+
+Only a **verified** resolution is ever written (`placeRecordFrom` refuses the
+rest), and every read and write goes through `normalizePlaceRecord`, which drops
+a record with no ID, drops coordinates older than the 30 days Google's terms
+allow, and drops a point that does not agree with the item's own city. The
+combination `title: "Royce Tokyo Station"` + Hokkaido coordinates is therefore
+not storable. Deliberately **not** persisted: the display name, the rating, the
+review count and the opening hours - Google's terms permit storing the place ID
+(indefinitely) and lat/long (30 days) and nothing else. The Maps URL is rebuilt
+from the ID (`.../maps/place/?q=place_id:<id>`) rather than kept, so it can
+never point at a branch other than the one that was resolved. The record travels
+with share links and sync for the same reason it is stored at all: so the far
+side links at the same entity instead of re-searching a name.
+
+**Three states, three labels**, so no surface claims more (or less) than it
+knows: a resolved place with a rating shows the rating chip (the chip is the
+link); a resolved place Google has no stars for shows "No rating yet" beside
+"Open on Google Maps"; an unresolved one shows "No rating match" beside "Verify
+on Google Maps", with a tooltip that says whether the name or the location was
+what failed.
+
+**A search URL is not a place.** `google.com/maps/search/?api=1&query=...`
+always "works" when clicked, which is exactly why it was mistaken for a verified
+match. It is the fallback navigation link and nothing more: an unresolved
+recommendation keeps it, shows "Verify on Google Maps", and gets **no** rating,
+distance or hours. A resolved one links at the place ID and says "Open on Google
+Maps" - the two states cannot coexist.
+
+**Categories are metadata, never title text.** The contract asks the model for
+four literal title prefixes (`Breakfast: `, `Lunch: `, `Dinner: `, `Drinks: `),
+and a model generalises: it invented `Shopping: ` and the app rendered it
+verbatim. `cleanAssistTitle` now runs at the single validation boundary
+(`sanitizeActionFields`): a prefix the app has a category for becomes
+`item.meal` (the MEAL_META vocabulary, so `Snack: `, `Cafe: `, `Dessert: ` all
+land somewhere real), a prefix from the closed unsupported list
+(`Shopping: `, `Entertainment: `, `Sightseeing: `, `Evening: `, ...) is dropped,
+and anything that is not a category word is left exactly as written - so
+`teamLab: Borderless` and `Tokyo: A Walking Day` are untouched. The card then
+shows the venue's name as its title and the kind on its meta line
+("Drinks · Fri 31 Dec · 8:00 PM"), which is the same split the itinerary row
+already uses (clean title + meal icon).
+
+**The edit modal does not hunt for a venue.** Opening "Edit item" focuses no
+field - `openOverlay` has already focused the dialog, so the Tab trap and the
+screen-reader announcement are intact and the first Tab reaches the first field.
+A NEW item still focuses its first useful field. Any programmatic focus goes
+through `focusQuiet()`, which the place combobox recognises and does not search
+for: a human clicking into a filled venue field is asking to see the matches,
+the app moving the cursor is not. An edit that does not change the title or the
+city keeps the item's resolved place exactly as it was.
+
+**One URL for one place.** The rating chip, the card's Maps link and the
+itinerary row all render `placeEntryUrl(entry)`, which prefers the place ID
+(`/maps/place/?q=place_id:<id>`) and falls back to Google's `googleMapsUri`. The
+ID wins because it is the form that is always available: a row rendering from
+its saved record has the ID and, by Google's caching terms, cannot have kept the
+URI.
+
+**The retry costs a slot, so the batch reserves one.** `billableMax` is the
+number of billable queries PLUS bounded headroom (`retryHeadroom`, capped at 4).
+Without it a single-recommendation batch could never afford its own retry - the
+first lookup had taken the only slot - and the rescue was dead code. The
+headroom is an upper bound: every unspent slot is released in the same request.
+
+### Discovery: a "find me places" answer contains only verified places
+
+The verification above makes an unverifiable recommendation SAFE. For a
+discovery turn it also has to make it ABSENT: the traveller asked for three
+places, and a card for a venue the model may have invented is not one of the
+three.
+
+**Which turn is which comes from the traveller's own words**, not the model's
+output - `assistDiscoveryIntent(text)` reads their message, which is ours, is
+available before the reply lands, and cannot be hallucinated:
+
+| | |
+| --- | --- |
+| **Discovery** - "find me 3 good places for nama chocolate" | they named nothing, so an unverifiable candidate is the model's invention. Reject it, replace it, show only verified places. |
+| **Explicit place** - "add Royce Tokyo Station at 2pm" | they named it. Their words are the answer; keep them, marked unverified. |
+
+`renderAssistAnswer` therefore has two shapes. An ordinary turn renders
+immediately as before. A discovery turn holds the answer back behind one muted
+"Checking these places..." line while `verifyDiscoveryProposals` runs:
+
+1. resolve every place-type candidate and wait (`DISCOVERY_WAIT_MS`, 12s);
+2. keep the ones the server verified, drop the rest;
+3. if fewer than asked for, ask the PROVIDER for replacements - not the model;
+4. verify those too, dedupe **by place identity**, rank, render.
+
+**Replacement is deterministic.** `tp-places` has a `discover` mode: one free
+`locationRestriction` search returns a page of candidate IDs, and each is
+verified through the same `verifyArea` gate before it can be offered. The name
+gate does NOT apply there and could not - nobody named these places, so
+`matchConfidence("nama chocolate Tokyo", "Musee Du Chocolat")` is 0 by
+construction. What replaces it is that the search itself cannot return outside
+the area. A model turn was rejected as the replacement source: it costs a
+request from the traveller's daily allowance, adds 8-14s, and produces another
+name that might not exist either. The model's contribution is the search
+*words* (`{"discovery":{"query":"nama chocolate","count":3}}`), which is the
+one part of this it is genuinely good at.
+
+**Bounded three ways**, all documented in trip-logic.js:
+
+| bound | value | why |
+| --- | --- | --- |
+| `DISCOVERY_REPLACEMENT_ROUNDS` | 1 | a second pass asks the same restricted box the same question |
+| `DISCOVERY_REPLACEMENTS_PER_ROUND` | 4 | billed Place Details per pass (the server caps it again at `DISCOVERY_DETAILS_MAX`) |
+| `DISCOVERY_CANDIDATE_MAX` | 12 | total places one answer may look at, model-named and replacement together |
+
+**Dedupe is by identity, never by display text** - two names for one place is
+what this whole area is about. `placeIdentityOf` keys on the resolved place ID,
+falling back to the area-aware lookup key. The `exclude` list sent to the
+provider carries everything already offered AND already rejected, so a
+replacement is never a place we just refused, and an excluded candidate is
+never even fetched (looking costs $0.02).
+
+**The prose is rebuilt around what survived.** `rebuildAssistProse` drops any
+paragraph or list item that names a rejected venue and no surviving one,
+corrects a count claim that is now wrong ("three excellent options" → "two"),
+and returns an honest note when fewer verified than were asked for. A card
+silently missing while the paragraph still recommends the place is worse than
+showing the card - the traveller reads a confident recommendation and cannot
+find what it refers to. A block naming both a kept and a rejected venue is
+KEPT, because cutting it would take a good recommendation with it.
+
+**Ranking** (`placeQualityScore`) weights a rating by the log of its review
+count, so a 4.9 from six people does not outrank a 4.4 from three thousand,
+with proximity breaking ties. Proposals carrying distinct start times are a
+SCHEDULE and keep their clock order; ranking only applies within a tie.
+
+**When a place cannot be verified**, what happens depends on who named it. In a
+DISCOVERY answer it is dropped and replaced (above). Everywhere else - a place
+the traveller named, a manual add, an edit - the recommendation is shown
+unresolved rather than resolved wrongly: no rating, no distance chip, no hours
+line, and a plain Google Maps search link. In a pick-one set it is also excluded
+from every badge, so the traveller is choosing between the verified options.
+
+**Debugging a resolution.** Client-side: `localStorage.setItem('trip-planner:debug','places')`
+or `?tpdebug=places`, and every batch, rejected point and persisted record is
+logged to the console. Server-side: set `TP_PLACES_DEBUG=1` and each decision
+lands in the function log as one JSON line - the query, the expected area, the
+candidate's name/address/coordinates, the verdict and why. Neither logs a key or
+a client identifier, and neither is on by default.
 
 ### How a rating gets onto a row (and the opening hours with it)
 

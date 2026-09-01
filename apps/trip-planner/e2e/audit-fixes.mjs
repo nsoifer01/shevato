@@ -707,11 +707,16 @@ export async function run({ base, cdpPort }) {
     if (!url.includes('tp-places')) return /photon|nominatim|open-meteo|githubusercontent|tile\.openstreetmap|openai|googleapis|gstatic|firebase|frankfurter/i.test(url) ? 'fail' : null;
     let body = {};
     try { body = JSON.parse(request.postData || '{}'); } catch { /* empty */ }
-    const results = (body.queries || []).map(q => ({
-      query: q, status: 'ok', name: q, rating: 4.5, userRatingCount: 900,
-      mapsUri: 'https://maps.google.com/?cid=1', confidence: 1, lat: 13.7, lon: 100.5,
-      hours: /Dawn Cafe/i.test(q) ? DAY : NIGHT,
-    }));
+    // wire entries are { id, q, ... }; the endpoint still accepts bare strings
+    const results = (body.queries || []).map(raw => {
+      const e = typeof raw === 'string' ? { id: raw, q: raw } : raw;
+      return {
+        id: e.id, query: e.q, status: 'ok', name: e.q, rating: 4.5, userRatingCount: 900,
+        mapsUri: 'https://maps.google.com/?cid=1', confidence: 1, lat: 13.7, lon: 100.5,
+        placeId: 'pid-' + e.id, verified: true, areaBasis: 'point',
+        hours: /Dawn Cafe/i.test(e.q) ? DAY : NIGHT,
+      };
+    });
     return { status: 200, body: { results, attribution: { text: 'Google Maps', url: 'https://www.google.com/maps' } } };
   };
   await withPage('tp-audit HR-01', { db: dbOf([hoursTrip]), net: hoursNet }, async (s) => {
@@ -781,11 +786,12 @@ export async function run({ base, cdpPort }) {
     await evaluate(s, `(() => {
       const now = Date.now();
       const venue = {};
-      const put = (q, lat, lon) => { venue[TripLogic.placeCacheKey(q)] = { lat, lon, at: now }; };
-      put('Kimuraya Ginza Tokyo', 35.672, 139.765);
-      put('Nishiki Market Kyoto', 35.005, 135.765);
-      put('Hotel Ryumeikan Tokyo Tokyo', 35.686, 139.774);
-      put('Hotel Kanra Kyoto Kyoto', 34.996, 135.759);
+      // area-aware keys: the city is part of a place's identity now
+      const put = (q, city, lat, lon) => { venue[TripLogic.placeCacheKey(q, { city })] = { lat, lon, at: now }; };
+      put('Kimuraya Ginza Tokyo', 'Tokyo', 35.672, 139.765);
+      put('Nishiki Market Kyoto', 'Kyoto', 35.005, 135.765);
+      put('Hotel Ryumeikan Tokyo Tokyo', 'Tokyo', 35.686, 139.774);
+      put('Hotel Kanra Kyoto Kyoto', 'Kyoto', 34.996, 135.759);
       localStorage.setItem('trip-planner:venuegeo:v1', JSON.stringify(venue));
       localStorage.setItem('trip-planner:geo:v3', JSON.stringify({
         tokyo: { lat: 35.6762, lon: 139.6503, country: 'Japan', conf: 'confident' },
@@ -967,8 +973,11 @@ export async function run({ base, cdpPort }) {
       if (url.includes('tp-places')) {
         let b = {};
         try { b = JSON.parse(request.postData || '{}'); } catch { /* empty */ }
-        asked.push(...(b.queries || []));
-        return { status: 200, body: { results: (b.queries || []).map(q => ({ query: q, status: 'ok', name: q, rating: 4.4, userRatingCount: 10, mapsUri: 'https://maps.google.com/?cid=1', confidence: 1, lat: 35.7, lon: 139.8 })), attribution: { text: 'Google Maps', url: 'https://www.google.com/maps' } } };
+        // Wire entries are { id, q, city? } now; `asked` keeps the query TEXT
+        // so the assertions below still read in venue names.
+        const entries = (b.queries || []).map(raw => (typeof raw === 'string' ? { id: raw, q: raw } : raw));
+        asked.push(...entries.map(e => e.q));
+        return { status: 200, body: { results: entries.map(e => ({ id: e.id, query: e.q, status: 'ok', name: e.q, rating: 4.4, userRatingCount: 10, mapsUri: 'https://maps.google.com/?cid=1', confidence: 1, lat: 35.7, lon: 139.8, placeId: 'pid-' + e.id, verified: true, areaBasis: 'point' })), attribution: { text: 'Google Maps', url: 'https://www.google.com/maps' } } };
       }
       return /photon|nominatim|open-meteo|githubusercontent|tile\.openstreetmap|frankfurter|openai|googleapis|gstatic|firebase/i.test(url) ? 'fail' : null;
     };
