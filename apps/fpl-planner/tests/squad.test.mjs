@@ -105,6 +105,64 @@ test('the squad value invariant holds and no warning is raised', () => {
   assert.equal(squadState.squadValueTenths, picks.entry_history.value);
 });
 
+/* ------------------------------------------- value check, price movement ---
+
+FPL's `value` is frozen at the gameweek deadline, so the live reconstruction
+drifts from it the moment any owned player changes price. The check rolls the
+prices back with `costChangeEvent` before comparing, so ordinary movement is
+silent and only an unexplained remainder is reported.
+
+Doctoring a player who is already at or below his purchase price keeps the
+arithmetic exact: his selling price IS his current price, so a 0.1 fall moves
+the reconstruction by exactly 0.1. */
+
+// A squad member whose selling price tracks his current price one for one.
+const fallenId = squadState.picks.find(p => p.sellingTenths === gameState.players.get(p.playerId).nowCost).playerId;
+
+// Rebuild the world with `id` marked down by 0.1 SINCE the deadline.
+function withOvernightFall(id, { valueDelta = 0, event = null } = {}) {
+  const bs = JSON.parse(JSON.stringify(bootstrap));
+  const el = bs.elements.find(e => e.id === id);
+  el.now_cost -= 1;
+  el.cost_change_event = -1;
+  el.cost_change_start = (el.cost_change_start ?? 0) - 1;
+  const gs = buildGameState({ ...bs, events: eventsInSeason }, fixtures, { fetchedAt: '2026-09-24T10:00:00Z' });
+  const pk = {
+    ...picks,
+    entry_history: {
+      ...picks.entry_history,
+      value: picks.entry_history.value + valueDelta,
+      ...(event === null ? {} : { event }),
+    },
+  };
+  return buildSquadState({ entry, history, transfers, picks: pk, gameState: gs, gw: PLAN_GW });
+}
+
+test('an overnight price fall does NOT raise a value mismatch: FPL froze its number before the move', () => {
+  const out = withOvernightFall(fallenId);
+  const sellingTotal = out.picks.reduce((s, p) => s + p.sellingTenths, 0);
+  // The drift is real and is what the header reports ...
+  assert.equal(out.squadValueTenths, sellingTotal + out.bankTenths);
+  assert.equal(out.squadValueTenths, picks.entry_history.value - 1, 'the fall moved the reconstruction by 0.1');
+  // ... and it is NOT a fault, so nothing is reported.
+  assert.deepEqual(out.warnings, []);
+});
+
+test('a difference price movement cannot account for is still reported', () => {
+  const out = withOvernightFall(fallenId, { valueDelta: 3 });
+  assert.equal(out.warnings.length, 1);
+  assert.equal(out.warnings[0].code, 'value_mismatch');
+  assert.match(out.warnings[0].message, /do not account for the difference/);
+});
+
+test('the roll-back is only applied when the frozen picks ARE the current gameweek', () => {
+  // `costChangeEvent` measures movement since the CURRENT deadline. Against an
+  // older gameweek's picks it is the wrong yardstick, so the raw comparison
+  // stands and the drift is reported rather than explained away.
+  const out = withOvernightFall(fallenId, { event: picks.entry_history.event - 1 });
+  assert.equal(out.warnings.some(w => w.code === 'value_mismatch'), true, JSON.stringify(out.warnings));
+});
+
 // The header states what the manager can spend TODAY, never FPL's deadline
 // snapshot. Fact 3 (FINDINGS): `entry_history.value` is frozen at the gameweek
 // deadline, so one overnight price move is enough to make the two disagree, and
