@@ -547,7 +547,9 @@ export async function run({ base, cdpPort }) {
   const sStores = (venues) => {
     const venue = {};
     const now = Date.now();
-    for (const [q, v] of Object.entries(venues)) venue[TripLogic.placeCacheKey(q)] = { lat: v[0], lon: v[1], at: now };
+    // Area-aware keys: every row in this fixture is a Tokyo row, so that is the
+    // area the app will ask under (see placeLookupFor).
+    for (const [q, v] of Object.entries(venues)) venue[TripLogic.placeCacheKey(q, { city: 'Tokyo' })] = { lat: v[0], lon: v[1], at: now };
     return {
       'trip-planner:geo:v3': { tokyo: { lat: 35.6762, lon: 139.6503, country: 'Japan', conf: 'confident' } },
       'trip-planner:venuegeo:v1': venue,

@@ -26,9 +26,14 @@ function harness(overrides = {}) {
     now: () => clock,
     schedule: (fn, ms) => timers.push({ fn, at: clock + ms }),
     random: () => 0.5,
-    send: async (queries) => {
-      sent.push(queries.slice());
-      return reply(queries, sent.length);
+    // The queue now puts WIRE REQUESTS on the network - { id, q, city?,
+    // country?, lat?, lon? } - because a lookup's area is part of its identity
+    // (see placeLookupFor). The harness records the batch verbatim and hands
+    // the reply builders the query TEXT, so every assertion below still reads
+    // in venue names rather than in wire shapes.
+    send: async (reqs) => {
+      sent.push(reqs.map(r => (typeof r === 'string' ? r : r.q)));
+      return reply(reqs, sent.length);
     },
     ...overrides,
   });
@@ -50,9 +55,15 @@ function harness(overrides = {}) {
   };
 }
 
-const okResult = (query) => ({
-  query, status: 'ok', name: query, rating: 4.5, userRatingCount: 1481,
+// `req` is a wire request; the server echoes `id` so a response can never be
+// re-keyed onto another card, and `query` stays for readability.
+const reqText = r => (typeof r === 'string' ? r : r.q);
+const reqId = r => (typeof r === 'string' ? r : r.id);
+const okResult = (req) => ({
+  id: reqId(req), query: reqText(req), status: 'ok', name: reqText(req),
+  rating: 4.5, userRatingCount: 1481,
   mapsUri: 'https://maps.google.com/?cid=1',
+  placeId: 'pid-' + reqId(req), verified: true, areaBasis: 'point', confidence: 1,
 });
 
 // A drained promise chain: the queue sends inside promise callbacks, so tests
@@ -249,7 +260,7 @@ test('a partial response paints what it got and does not lose what it did not', 
   const h = harness({
     send: async (queries) => ({
       ok: true,
-      results: queries.map((q, i) => (i < 2 ? okResult(q) : { query: q, status: 'unavailable', reason: 'quota' })),
+      results: queries.map((q, i) => (i < 2 ? okResult(q) : { id: reqId(q), query: reqText(q), status: 'unavailable', reason: 'quota' })),
     }),
   });
   h.queue.request(venues(5));
@@ -263,7 +274,7 @@ test('an unavailable venue is not re-asked by the very next repaint, but is not 
   const h = harness({
     send: async (queries) => {
       calls += 1;
-      return { ok: true, results: queries.map(q => ({ query: q, status: 'unavailable', reason: 'quota' })) };
+      return { ok: true, results: queries.map(q => ({ id: reqId(q), query: reqText(q), status: 'unavailable', reason: 'quota' })) };
     },
   });
   h.queue.request(['Ichiran Shibuya Tokyo']);
@@ -373,7 +384,7 @@ test('a no_match is a session tombstone, so a category is asked about exactly on
   const h = harness({
     send: async (queries) => {
       calls += 1;
-      return { ok: true, results: queries.map(q => ({ query: q, status: 'no_match', reason: 'generic_query' })) };
+      return { ok: true, results: queries.map(q => ({ id: reqId(q), query: reqText(q), status: 'no_match', reason: 'generic_query' })) };
     },
   });
   h.queue.request(['local ramen restaurant']);

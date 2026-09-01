@@ -45,8 +45,13 @@ test('the details field mask asks for both hours fields and nothing above Enterp
   // currentOpeningHours are Place Details Enterprise fields (verified against
   // the data-fields doc 2026-08-21), the tier `rating` already bills, so this
   // mask costs exactly what the pre-hours mask cost.
+  // formattedAddress and addressComponents are Place Details ESSENTIALS
+  // fields, two tiers below Enterprise, so they ride the same billed call for
+  // nothing (2026-08-27, the wrong-branch gate). Any drift in this string is a
+  // billing change and must be a deliberate edit here as well.
   assert.equal(DETAILS_FIELD_MASK,
-    'displayName,googleMapsUri,rating,userRatingCount,location,regularOpeningHours,currentOpeningHours');
+    'displayName,googleMapsUri,rating,userRatingCount,location,formattedAddress,'
+    + 'addressComponents,regularOpeningHours,currentOpeningHours');
 });
 
 test('hours ride the ok result, and the lookup still spends exactly one call', async () => {

@@ -2730,6 +2730,15 @@
      and look the place up. */
   .ap-rating.has-rating + .assist-maps-link { display: none; }
 
+/* Discovery turns verify their places BEFORE rendering, so there is a short
+   wait where an ordinary turn would already show cards. This is the only new
+   chrome that wait needs: one muted line in the thread, in the same bubble
+   shape as everything else, so nothing jumps when it is replaced. */
+.assist-msg.assist-checking { opacity: .72; font-style: italic; }
+/* The honest count line, when fewer places verified than were asked for. Muted
+   and inline rather than a warning box: it is information, not an error. */
+.assist-msg.assist-verified-note { opacity: .82; font-size: 13px; }
+
   /* ---------- Google rating chip ----------
      Google Maps Platform attribution: rating, review count and the "Google
      Maps" wordmark sit together in ONE chip with its own border and tinted

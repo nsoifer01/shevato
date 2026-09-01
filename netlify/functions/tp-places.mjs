@@ -57,8 +57,8 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { checkQuota, releaseQuota, resetAtFor, budgetStatus, MONTHLY_BUDGET, DEFAULT_LIMITS, OWNER_LIMITS } from './lib/tp-places-quota.mjs';
 import { updateUsage } from './lib/blob-cas.mjs';
 import { originAllowed, json, upstreamSignal } from './lib/tp-http.mjs';
-import { resolveQueries } from './lib/tp-places-lookup.mjs';
-import { isGenericQuery } from './lib/tp-places-match.mjs';
+import { resolveQueries, discoverPlaces, DISCOVERY_DETAILS_MAX } from './lib/tp-places-lookup.mjs';
+import { isGenericQuery, normalizeArea } from './lib/tp-places-match.mjs';
 // The hours normalizer is shared with the client (trip-logic.js is dual-exposed
 // exactly for this, the same way tp-assist imports the shared prompt), so the
 // shape the server emits and the shape the client validates can never drift.
@@ -105,7 +105,13 @@ const SEARCH_FIELD_MASK = 'places.id';
 // exact mask. No hours field has a caching exception in Google's terms, so
 // hours are normalized and passed through but never stored (see fromDetails
 // and the id-only blob cache in tp-places-lookup.mjs).
-export const DETAILS_FIELD_MASK = 'displayName,googleMapsUri,rating,userRatingCount,location,regularOpeningHours,currentOpeningHours';
+// `formattedAddress` and `addressComponents` are "Place Details Essentials"
+// fields - two tiers BELOW the Enterprise tier this request already bills at -
+// so they ride the same billed call for exactly $0.00 extra, the same way
+// `location` does. They are what lets the wrong-branch gate answer at all when
+// the trip has not geocoded its city yet: without an address there is nothing
+// to compare "Tokyo" against, and the Hokkaido flagship walks straight through.
+export const DETAILS_FIELD_MASK = 'displayName,googleMapsUri,rating,userRatingCount,location,formattedAddress,addressComponents,regularOpeningHours,currentOpeningHours';
 
 export default async function handler(req) {
   // (1) Origin/Referer guard first: only our own site and local dev.
@@ -171,7 +177,26 @@ export default async function handler(req) {
   // other's counters, and the monthly cap is the one control standing between
   // a concurrent abuser and real money.
   const now = Date.now();
-  const billableMax = clamped.queries.filter(q => !isGenericQuery(q)).length;
+  // ONE SLOT PER QUERY IS NOT ENOUGH, and that is not a rounding error: a
+  // candidate rejected on geography earns one retry, the retry is a second
+  // billed Place Details call, and reserving exactly one slot per query meant
+  // the query's own first lookup had already taken it. The retry's claim()
+  // then always failed - so the rescue was dead code in the commonest batch of
+  // all, a single recommendation. Found on 2026-08-27 by reading a real
+  // handler's upstream call log; the pipeline tests missed it because they
+  // inject their own budget.
+  //
+  // The headroom is an UPPER BOUND, never a charge: step (7) releases every
+  // slot the batch did not spend, so a clean batch still costs exactly what it
+  // used. It is bounded so a full 12-query batch cannot reserve 24 against the
+  // monthly ceiling while it is held.
+  // A discovery request bills per candidate it looks at, up to its own hard
+  // ceiling, and never retries: the search is already restricted to the area,
+  // so a second attempt would ask the same question of the same box.
+  const billable = clamped.discover
+    ? clamped.discover.limit
+    : clamped.queries.filter(q => !isGenericQuery(q.q)).length;
+  const billableMax = clamped.discover ? billable : billable + retryHeadroom(billable);
   let granted = 0;
   if (billableMax > 0) {
     const reserved = await updateUsage(store, USAGE_KEY, usage => {
@@ -190,6 +215,38 @@ export default async function handler(req) {
     granted = q.granted;
   }
 
+  // (5b) A discovery request takes its own path: there are no named venues to
+  // resolve and no cache to consult (the query is a category, and a category's
+  // answer changes with the world), so it goes straight to a restricted search
+  // and verifies whatever comes back.
+  if (clamped.discover) {
+    let left = granted;
+    const claim = () => (left > 0 ? (left -= 1, true) : false);
+    let found;
+    try {
+      found = await discoverPlaces({
+        query: clamped.discover.q,
+        area: normalizeArea(clamped.discover),
+        limit: clamped.discover.limit,
+        exclude: clamped.discover.exclude,
+        findPlaceIds: (q, bias, pageSize) => findPlaceIds(placesKey, q, bias, pageSize),
+        fetchDetails: id => fetchDetails(placesKey, id),
+        now,
+        claim,
+        log: resolutionLogger(),
+      });
+    } catch (err) {
+      console.error('tp-places discover failed', err && err.message);
+      found = { results: [], spent: granted };
+    }
+    const unspentD = granted - found.spent;
+    if (unspentD > 0) {
+      await updateUsage(store, USAGE_KEY, latest =>
+        ({ write: releaseQuota(latest, clamped.clientId, now, unspentD, tier) }));
+    }
+    return json({ results: found.results, discovered: true, attribution: ATTRIBUTION }, 200);
+  }
+
   // (6) Resolve the batch against the caches, spending at most `granted`.
   // Wrapped because the blob cache reads/writes inside resolveQueries are I/O
   // that can reject (a transient Blobs error): unwrapped, that surfaced as a
@@ -202,14 +259,15 @@ export default async function handler(req) {
     ({ results, spent } = await resolveQueries({
       queries: clamped.queries,
       cache: blobCache(store),
-      findPlaceId: q => findPlaceId(placesKey, q),
+      findPlaceId: (q, bias) => findPlaceId(placesKey, q, bias),
       fetchDetails: id => fetchDetails(placesKey, id),
       now,
       budget: granted,
+      log: resolutionLogger(),
     }));
   } catch (err) {
     console.error('tp-places resolve failed', err && err.message);
-    results = clamped.queries.map(query => ({ query, status: 'unavailable', reason: 'upstream' }));
+    results = clamped.queries.map(q => ({ id: q.id, query: q.q, status: 'unavailable', reason: 'upstream' }));
     // Some lookups may have been billed before the failure; there is no way to
     // know how many, so the conservative answer is to keep the reservation
     // (never under-count spend against the monthly cap that protects the card).
@@ -287,9 +345,27 @@ export function quotaExceeded(scope, now) {
   });
 }
 
+// How many rescues a batch may reserve for on top of its first lookups. Small
+// and capped: a wrong-area rejection should be rare once the search is biased,
+// so most batches release this untouched, and the cap keeps the transient
+// reservation well clear of the monthly budget. Exported so a test can pin it.
+export const RETRY_HEADROOM_MAX = 4;
+export function retryHeadroom(billable) {
+  return Math.min(Math.max(0, billable), RETRY_HEADROOM_MAX);
+}
+
 // Exported for the unit tests. Duplicate queries collapse to one entry: a day
 // plan often proposes the same konbini or hotel bar twice, and every duplicate
 // would otherwise be a second billed lookup within the same request.
+//
+// A query may be a bare string (the shape this endpoint has always accepted,
+// and still the right shape for a caller with no itinerary context) or an
+// object carrying that context:
+//   { q, id, city, country, lat, lon, radiusKm }
+// `id` is the caller's own cache key and is echoed back untouched, so a
+// response can never be re-keyed onto the wrong card. Deduplication is on the
+// ID, not on the text: "Takashimaya" for a Kyoto day and "Takashimaya" for a
+// Tokyo day are two different questions and must stay two entries.
 export function clampBody(body) {
   if (!body || typeof body !== 'object') return { ok: false };
   const clientId = typeof body.clientId === 'string' ? body.clientId.slice(0, 100).trim() : '';
@@ -299,20 +375,82 @@ export function clampBody(body) {
   // megabyte for the comparison to chew on.
   const ownerToken = typeof body.ownerToken === 'string' ? body.ownerToken.slice(0, 200).trim() : '';
 
+  // A DISCOVERY request is the other shape this endpoint answers: not "resolve
+  // these named venues" but "find me candidates for this category, here". It
+  // exists so a recommendation that fails verification can be replaced with a
+  // real place deterministically, instead of asking a model to invent another
+  // name that might not exist either.
+  const discover = clampDiscover(body.discover);
+  if (discover) return { ok: true, clientId, queries: [], discover, ownerToken };
+
   const raw = Array.isArray(body.queries) ? body.queries : [];
   const seen = new Set();
   const queries = [];
-  for (const q of raw) {
-    if (typeof q !== 'string') continue;
-    const s = q.slice(0, MAX_QUERY_LEN).trim();
-    if (!s || seen.has(s)) continue;
-    seen.add(s);
-    queries.push(s);
+  for (const item of raw) {
+    const q = clampQuery(item);
+    if (!q) continue;
+    if (seen.has(q.id)) continue;
+    seen.add(q.id);
+    queries.push(q);
     if (queries.length >= MAX_QUERIES) break;
   }
   if (!queries.length) return { ok: false };
 
-  return { ok: true, clientId, queries, ownerToken };
+  return { ok: true, clientId, queries, discover: null, ownerToken };
+}
+
+// One discovery request, clamped. `exclude` is the list of place IDs already
+// spoken for (kept recommendations AND rejected candidates), so a replacement
+// can never duplicate either; it is bounded like everything else because the
+// body is attacker-controlled.
+export function clampDiscover(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const str = (v, n) => (typeof v === 'string' ? v.slice(0, n).trim() : '');
+  const num = v => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+  const q = str(raw.q, MAX_QUERY_LEN);
+  if (!q) return null;
+  const out = { q, limit: Math.max(1, Math.min(DISCOVERY_DETAILS_MAX, Number(raw.limit) || 1)) };
+  const city = str(raw.city, 80);
+  const country = str(raw.country, 80);
+  if (city) out.city = city;
+  if (country) out.country = country;
+  const lat = num(raw.lat), lon = num(raw.lon);
+  if (lat !== undefined && lon !== undefined && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
+    out.lat = lat;
+    out.lon = lon;
+  }
+  const ex = Array.isArray(raw.exclude) ? raw.exclude : [];
+  out.exclude = ex.filter(x => typeof x === 'string' && x).slice(0, 24).map(x => x.slice(0, 200));
+  return out;
+}
+
+// One entry, clamped field by field. Everything that reaches an upstream
+// request or a log line is bounded here rather than trusted: the body is
+// attacker-controlled, and `city` in particular is interpolated into a text
+// query.
+function clampQuery(item) {
+  const str = (v, n) => (typeof v === 'string' ? v.slice(0, n).trim() : '');
+  const num = v => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+  if (typeof item === 'string') {
+    const q = str(item, MAX_QUERY_LEN);
+    return q ? { q, id: q } : null;
+  }
+  if (!item || typeof item !== 'object') return null;
+  const q = str(item.q, MAX_QUERY_LEN);
+  if (!q) return null;
+  const out = { q, id: str(item.id, MAX_QUERY_LEN + 120) || q };
+  const city = str(item.city, 80);
+  const country = str(item.country, 80);
+  if (city) out.city = city;
+  if (country) out.country = country;
+  const lat = num(item.lat), lon = num(item.lon);
+  if (lat !== undefined && lon !== undefined && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
+    out.lat = lat;
+    out.lon = lon;
+  }
+  const radiusKm = num(item.radiusKm);
+  if (radiusKm !== undefined && radiusKm > 0) out.radiusKm = radiusKm;
+  return out;
 }
 
 // Constant-time comparison via fixed-length digests, so neither the length
@@ -329,7 +467,38 @@ export function ownerTokenMatches(given, expected) {
 // Text Search restricted to the ID field: the free Essentials (IDs Only) SKU.
 // pageSize 1 because we only ever consider Google's top hit; a second candidate
 // that the query does not name is not a better answer, it is a wrong one.
-async function findPlaceId(key, query) {
+//
+// `bias` is the itinerary's own area, and it is what stops Google answering a
+// question about a Tokyo branch with a chain's Hokkaido flagship. It travels as
+// `locationBias` (a hint: the top hit is steered towards the area but a venue
+// just outside it is still findable) or, on the one retry a rejected candidate
+// earns, as `locationRestriction` (a hard box: by then an unrestricted search
+// has already proved it returns the wrong region). Both are REQUEST parameters,
+// not field-mask entries, so neither changes the SKU or the price.
+async function findPlaceId(key, query, bias) {
+  const ids = await findPlaceIds(key, query, bias, 1);
+  return ids[0] || null;
+}
+
+// The same free Essentials (IDs Only) search, returning the whole page. One
+// candidate is what a NAMED lookup wants (a second hit the query does not name
+// is not a better answer, it is a wrong one); a DISCOVERY request wants the
+// page, because it is choosing among candidates rather than confirming one.
+async function findPlaceIds(key, query, bias, pageSize) {
+  const body = { textQuery: query, pageSize: Math.max(1, Math.min(20, pageSize || 1)), languageCode: 'en' };
+  if (bias && Number.isFinite(bias.lat) && Number.isFinite(bias.lon)) {
+    if (bias.restrict) {
+      body.locationRestriction = { rectangle: rectangleAround(bias) };
+    } else {
+      body.locationBias = {
+        circle: {
+          center: { latitude: bias.lat, longitude: bias.lon },
+          // Google caps the bias circle at 50,000 m.
+          radius: Math.max(1, Math.min(50000, Math.round(bias.radiusM || 30000))),
+        },
+      };
+    }
+  }
   const res = await fetch(PLACES_HOST + '/places:searchText', {
     method: 'POST',
     headers: {
@@ -337,21 +506,45 @@ async function findPlaceId(key, query) {
       'X-Goog-Api-Key': key,
       'X-Goog-FieldMask': SEARCH_FIELD_MASK,
     },
-    body: JSON.stringify({ textQuery: query, pageSize: 1, languageCode: 'en' }),
-  
+    body: JSON.stringify(body),
+
     // Deadline under Netlify's 10s ceiling; see lib/tp-http.mjs. One hung
     // lookup in a batch then costs 9s, not the whole invocation.
     signal: upstreamSignal(),
   });
   if (!res.ok) {
     // function logs only; body helps diagnose, key never logged
-    const body = await res.text().catch(() => '');
-    console.error('tp-places search error', res.status, body.slice(0, 300));
+    const errBody = await res.text().catch(() => '');
+    console.error('tp-places search error', res.status, errBody.slice(0, 300));
     throw new Error('places search ' + res.status);
   }
   const data = await res.json();
-  const first = data && Array.isArray(data.places) ? data.places[0] : null;
-  return (first && first.id) || null;
+  const places = data && Array.isArray(data.places) ? data.places : [];
+  return places.map(p => (p && p.id) || '').filter(Boolean);
+}
+
+// searchText takes a rectangle for locationRestriction, not a circle. A degree
+// of latitude is ~111 km everywhere; a degree of longitude shrinks with the
+// cosine of the latitude, and the clamp keeps the maths sane at the poles.
+// Exported for the unit tests.
+export function rectangleAround({ lat, lon, radiusM }) {
+  const km = Math.max(1, (radiusM || 30000) / 1000);
+  const dLat = km / 111;
+  const dLon = km / Math.max(1, 111 * Math.cos((lat * Math.PI) / 180));
+  return {
+    low: { latitude: Math.max(-90, lat - dLat), longitude: Math.max(-180, lon - dLon) },
+    high: { latitude: Math.min(90, lat + dLat), longitude: Math.min(180, lon + dLon) },
+  };
+}
+
+// DEVELOPMENT VISIBILITY. Every kept-or-dropped decision the resolver makes
+// lands in the FUNCTION log (never in a response, never in front of a
+// traveller) so "why did this card say no rating match / why did that chip say
+// 809 km" is answerable after the fact. Off unless TP_PLACES_DEBUG is set, so
+// a normal production invocation logs nothing new. No API key, no clientId.
+function resolutionLogger() {
+  if (process.env.TP_PLACES_DEBUG !== '1') return null;
+  return rec => console.log('tp-places resolve', JSON.stringify(rec));
 }
 
 // Place Details, Enterprise SKU. This is the only billed call in the pipeline.
@@ -373,6 +566,12 @@ async function fetchDetails(key, placeId) {
   const loc = data.location || {};
   return {
     name: (data.displayName && data.displayName.text) || '',
+    // The address half of the identity, and the only thing the wrong-branch
+    // gate can read when the trip has no coordinate for its city yet. Passed
+    // through to the gate and never returned to the client: it is Google Maps
+    // content, so it is used and dropped, never stored and never rendered.
+    address: typeof data.formattedAddress === 'string' ? data.formattedAddress : '',
+    addressComponents: Array.isArray(data.addressComponents) ? data.addressComponents : [],
     rating: typeof data.rating === 'number' ? data.rating : null,
     userRatingCount: typeof data.userRatingCount === 'number' ? data.userRatingCount : 0,
     mapsUri: typeof data.googleMapsUri === 'string' ? data.googleMapsUri : '',

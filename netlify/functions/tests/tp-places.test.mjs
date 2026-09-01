@@ -103,18 +103,18 @@ test('duplicate queries collapse to one lookup', () => {
   // A day plan proposes the same hotel bar for two slots; paying twice for it
   // inside a single request would be pure waste.
   const out = clampBody({ clientId: 'c1', queries: ['Ichiran Shibuya', 'Ichiran Shibuya', 'Nabezo Shinjuku'] });
-  assert.deepEqual(out.queries, ['Ichiran Shibuya', 'Nabezo Shinjuku']);
+  assert.deepEqual(out.queries.map(q => q.q), ['Ichiran Shibuya', 'Nabezo Shinjuku']);
 });
 
 test('query strings are clamped to the length trip-logic already enforces', () => {
   const out = clampBody({ clientId: 'c1', queries: ['x'.repeat(500)] });
-  assert.equal(out.queries[0].length, 200);
+  assert.equal(out.queries[0].q.length, 200);
 });
 
 test('the clientId is clamped and non-string entries are dropped', () => {
   const out = clampBody({ clientId: 'c'.repeat(300), queries: [null, 42, {}, '  Ichiran Shibuya  '] });
   assert.equal(out.clientId.length, 100);
-  assert.deepEqual(out.queries, ['Ichiran Shibuya']);
+  assert.deepEqual(out.queries.map(q => q.q), ['Ichiran Shibuya']);
 });
 
 test('a body whose queries are all junk is rejected rather than half-served', () => {

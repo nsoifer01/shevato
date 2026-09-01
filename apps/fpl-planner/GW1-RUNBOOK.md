@@ -5,8 +5,8 @@ Five short passes around the 2026/27 opening gameweek. **Deadline: Friday
 
 **RESULT, 2026-08-21: three of the four are now answered.** See FINDINGS, "The
 first live gameweek". Facts 1, 2 and 4 were observed live and are recorded
-below; Fact 3 still needs an overnight price move. The answers cost a production
-incident, and the repair is on `fix/fpl-live-gameweek-state`.
+below; Fact 3 was answered later, on 2026-08-28 (see below). The answers cost a
+production incident, and the repair is on `fix/fpl-live-gameweek-state`.
 
 - **Fact 1: FPL clears the element totals the moment GW1 goes current**, before
   any fixture finishes. Observed at 18:04 UTC. This is the branch that collapses
@@ -55,6 +55,30 @@ from the last complete capture by `scripts/build-opening-baseline.mjs`) and is
 recorded in FINDINGS under "The shipped opening-season baseline". The lesson
 for every future pass: **if a check needs a fixture injected by hand, ask what
 writes that fixture in production, and when.**
+
+**RESULT, 2026-08-28: Fact 3 is answered. `entry_history.value` does NOT track
+daily price moves - it is frozen at the gameweek deadline.** The first overnight
+price move of the season landed on this squad: Anderson (MCI) fell 6.5 to 6.4.
+`entry/3855835/event/1/picks` still reports `value: 1000` and `bank: 0`, while
+the fifteen at today's prices sum to 999. So the frozen number is the DEADLINE
+snapshot, not a live valuation, and it drifts by exactly the sum of price moves
+since. Reconstructing selling prices per player, rather than trusting `value`,
+is therefore required and not merely defensive.
+
+The app handles it as designed: with no transfer made, `buildSquadState`'s
+arithmetic check fires and production shows **"One number does not match Fantasy
+Premier League"** with "Reconstructed squad value 99.9 does not match FPL's 100.
+Selling prices may be off by the difference." It does NOT call the data old, and
+no "Fantasy Premier League is not answering" banner appears. Verified on
+shevato.com at 1280 and 390. Note the header still prints SQUAD VALUE £100.0m
+(the frozen total) while the banner names 99.9; that is the documented
+`squadValueTenths` fallback when `applied.count` is 0.
+
+**Pass 5 itself did not run: FPL reported no transfer.** On 2026-08-28,
+`entry/3855835/transfers` was `[]` and `last_deadline_total_transfers` was 0,
+both through the proxy and directly from `fantasy.premierleague.com`, so every
+box below that needs a made transfer is still open. Fact 3's box did not need
+one and is ticked.
 
 Four things about Fantasy Premier League cannot be observed until the season
 actually turns over, and each one is handled without a code change whichever way
@@ -197,10 +221,13 @@ Check:
 - [ ] the planner does **not** recommend the transfer just made.
 - [ ] a further transfer is priced as a **-4 hit** if no free transfer remains.
 - [ ] "Check for changes" reports the squad change rather than silence.
-- [ ] compare `entry_history.value` in the picks payload against the site's
+- [x] compare `entry_history.value` in the picks payload against the site's
       squad value after an overnight price move. *Fact 3.* If they diverge, the
       app now says one number does not match Fantasy Premier League, and says
       which; it no longer reports it as the data being old.
+      **Done 2026-08-28**, and it needed no transfer: Anderson 6.5 to 6.4 made
+      the frozen `value` (1000) and the live fifteen (999) diverge, and the app
+      named the mismatch. See the 2026-08-28 result above.
 
 ---
 

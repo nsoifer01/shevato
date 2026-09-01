@@ -23,7 +23,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 72;
+  const TP_BUILD = 74;
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   // Miles or kilometers, everywhere a distance prints. Same architecture as
@@ -102,7 +102,7 @@
     packingWho, packingRowsFor, packingProgress, packingRosterDrops, applyPackingRoster,
     tripAsTemplate,
     validateItem, coverageGaps, tripStats, overlappingTrips, DATE_MIN, DATE_MAX, isDateInRange,
-    isIslandPlace, seaCrossing, distKm, flagEmoji, compass, fmtDur, modeOptions,
+    isIslandPlace, seaCrossing, distKm, validCoord, flagEmoji, compass, fmtDur, modeOptions,
     routeBadges, routeFlags, routeTips, routeLinks, modeLink, ROUTE_HONESTY,
     classifyGeoMatch, geoMatchNote, GEO_MATCH_RANK, GEO_MATCH_TEXT,
     foldPlace, rankPlaceResults,
@@ -130,8 +130,16 @@
     extractTripActions, validateTripAction, buildAssistPackage, buildAssistSystemPrompt,
     buildPlanRequest, groupProposals, linkifySegments, parseMarkdown,
     normalizePlaceQuery, placeCacheKey, createPlacesQueue, mapsSearchUrl, assistMapsLink, costDisplayParts,
+    // the one place identity every surface resolves through, plus the record
+    // it becomes once a place is verified and saved (see placeLookupFor)
+    placeLookupFor, placeLookupRequest, placeRecordFrom, normalizePlaceRecord,
+    placeMapsUrl, placeEntryUrl, plausiblePlacePoint,
+    // discovery: only verified places reach a "find me places" answer
+    assistDiscoveryIntent, discoveryHintFrom, discoveryQueryFrom, rebuildAssistProse,
+    placeIdentityOf, dedupeByIdentity, placeQualityScore, rankVerifiedPlaces,
+    DISCOVERY_REPLACEMENT_ROUNDS, DISCOVERY_REPLACEMENTS_PER_ROUND, DISCOVERY_CANDIDATE_MAX,
     hoursVerdict, hoursIntervalsForDate, hoursLineText, HOURS_CLOSING_SOON_MIN, recommendWindowMin,
-    normalizeVenueCache, rememberVenue, placesLocationUpdates, pickVenueFeature,
+    normalizeVenueCache, rememberVenue, placesLocationUpdates, placesCacheUpdates, pickVenueFeature,
     dayAnchor, dayDistanceChain, sameSpot, shortestRoute, routeStops, distanceChipLabel, distanceChipTitle, routeFooterText,
     proposalOrigin, dayBaseOrigin, suggestionOrigins, assistDistanceChipLabel, assistDistanceChipTitle,
     isPlaceType, isTravelLeg, directionsUrl, legTravelMode,
@@ -233,6 +241,12 @@
   // floor is not an edit the traveller made.
   function save(okMsg, undoFn, outsideHistory) {
     if (sharedMode) return false; // shared view never writes to storage
+    // The day-city memo place resolution reads describes the trip as it was
+    // BEFORE this write. Dropping it here as well as at the top of render()
+    // covers the paths that resolve a place between a mutation and the repaint
+    // (the item form stamping a picked venue's coordinates, an accept writing
+    // its place record), so none of them can key a place off a stale city.
+    resetPlaceContext();
     let ok = true;
     try {
       const next = JSON.stringify(db);
@@ -452,6 +466,19 @@
         // repairItemFields above, which coerces every free-text field and
         // drops a clock or a book-by date that is not one.
         if (it.mapsQuery != null && typeof it.mapsQuery !== 'string') delete it.mapsQuery;
+        // THE PERSISTENCE BOUNDARY for the resolved place. Every entry path
+        // runs through here (boot, sync merge, share boot, undo snapshots), so
+        // this is where the combination that started the 2026-08-27 round - a
+        // Tokyo item carrying Hokkaido coordinates - stops being storable.
+        // A malformed record goes; coordinates past the 30 days Google's terms
+        // allow go (the place ID may be kept indefinitely and stays); and a
+        // point that does not agree with the item's own city goes too, so a
+        // record written before this fix, or by a stale tab, cannot draw a
+        // wrong chip. Cache-only: cityPoint never reaches the network.
+        if (it.place != null) {
+          const rec = normalizePlaceRecord(it.place, { cityPoint: cityPoint((it.location || '').trim()) });
+          if (rec) it.place = rec; else delete it.place;
+        }
         // the manual same-day position: a small whole number or nothing at all.
         // A "3" or a 1e9 out of hand-edited storage would sort as a string and
         // drag a row somewhere nobody put it.
@@ -1028,6 +1055,75 @@
     const hit = geoCache[String(place || '').trim().toLowerCase()];
     return hit ? hit.cc || '' : '';
   }
+  // and its country NAME, which is what the place resolver compares an address
+  // against ("Japan" appears in a formatted address; "JP" does not)
+  function geoCountryName(place) {
+    const hit = geoCache[String(place || '').trim().toLowerCase()];
+    return hit ? String(hit.country || '') : '';
+  }
+
+  // ---------- ONE answer to "which place is this row about" ----------
+  // Everything that resolves, rates, times, links or measures a place goes
+  // through here, so a recommendation card and the itinerary row it becomes can
+  // no longer derive two different identities for one venue (the 2026-08-27
+  // bug: the card keyed its rating on the model's raw mapsQuery, its hours and
+  // its distance chip on a query DERIVED from title + location, and the row
+  // derived a third after Add to trip - which is how one surface could say
+  // "No rating match" while the one beside it showed a rating).
+  //
+  // The context is the itinerary's own geography, and it is what lets the
+  // server reject a Tokyo recommendation that resolves to Hokkaido:
+  //   - the item's OWN city wins (it is the claim being checked)
+  //   - the day's city is the fallback, from the same dayMorningCity the
+  //     prompt and the distance anchors already use
+  //   - resolvePoint is a CACHE-ONLY geocode read: no network, ever
+  // dayMorningCity walks and sorts the whole trip, and placeFor is called once
+  // per row per render, so the answer is memoized per (trip id, date). The memo
+  // is DROPPED at the top of every render() and every save(), which is every
+  // point at which the trip can have changed under it - so it is a within-pass
+  // cache and can never serve a stale city across an edit.
+  let dayCityMemo = new Map();
+  const resetPlaceContext = () => { dayCityMemo = new Map(); };
+  function dayCityFor(items, date, tripId) {
+    const k = tripId + '|' + date;
+    if (dayCityMemo.has(k)) return dayCityMemo.get(k);
+    const day = dayMorningCity(items, date, geoResolved);
+    const city = (day && day.city) || '';
+    dayCityMemo.set(k, city);
+    return city;
+  }
+  function placeContextFor(item, trip) {
+    const t = trip || activeTrip();
+    const items = (t && t.items) || [];
+    const date = item && isIsoDate(item.startDate) ? item.startDate : '';
+    const city = date ? dayCityFor(items, date, (t && t.id) || '') : '';
+    const own = String((item && item.location) || '').trim();
+    return {
+      city,
+      country: geoCountryName(own) || geoCountryName(city),
+      resolvePoint: name => cityPoint(name),
+    };
+  }
+  // The shorthand every renderer uses. Returns { query, area, key } or null.
+  const placeFor = (item, trip) => placeLookupFor(item, placeContextFor(item, trip));
+
+  // DEVELOPMENT VISIBILITY for place resolution, off by default and never in
+  // front of a traveller. Turn it on for a session with
+  //   localStorage.setItem('trip-planner:debug', 'places')
+  // or by loading the app with ?tpdebug=places. Then every rejected point,
+  // every batch and every resolution decision the client makes is traceable in
+  // the console; the server half of the same trail lives in the function log
+  // (see resolutionLogger in tp-places.mjs).
+  const placesDebug = (() => {
+    try {
+      if (new URLSearchParams(location.search).get('tpdebug') === 'places') return true;
+      return localStorage.getItem('trip-planner:debug') === 'places';
+    } catch { return false; }
+  })();
+  function placesLog(what, detail) {
+    if (!placesDebug) return;
+    try { console.debug('[trip-planner places]', what, detail); } catch { /* never break a render */ }
+  }
 
   // ---------- rendering ----------
   const $ = sel => document.querySelector(sel);
@@ -1050,12 +1146,34 @@
   // The assistant's own cards get a smarter link: it starts as a search and is
   // upgraded in place to the resolved place URI by the ratings pass (see
   // paintMapsLink), using the batched lookup that already runs for the reply.
-  function assistMapsLinkHtml(mapsQuery) {
-    const key = placeCacheKey(mapsQuery);
-    const link = assistMapsLink(mapsQuery, placesCache.get(key));
+  function assistMapsLinkHtml(lookup) {
+    if (!lookup || !lookup.query) return '';
+    const link = assistMapsLink(lookup.query, placesCache.get(lookup.key));
     if (!link) return '';
-    return `<a class="assist-maps-link" data-place-key="${esc(key)}" data-place-query="${esc(mapsQuery)}"`
+    return `<a class="assist-maps-link"${placeHooks(lookup)}`
       + ` href="${esc(link.href)}" target="_blank" rel="noopener">${esc(link.label)}</a>`;
+  }
+
+  // The attributes that tie a rendered element to one resolved place.
+  // `data-place-area` is not decoration: it is what the batch puts on the wire
+  // so the server can reject a candidate in the wrong part of the world, and
+  // what keeps two same-named businesses in two cities from sharing a key.
+  function placeHooks(lookup) {
+    if (!lookup || !lookup.key) return '';
+    const area = lookup.area ? JSON.stringify(lookup.area) : '';
+    return ` data-place-key="${esc(lookup.key)}" data-place-query="${esc(lookup.query)}"`
+      + (area ? ` data-place-area="${esc(area)}"` : '');
+  }
+  // The inverse: a rendered element back to the lookup it was built from, so
+  // the queue can re-send it with its geography intact.
+  function lookupFromEl(el) {
+    const key = (el && el.dataset.placeKey) || '';
+    const query = (el && el.dataset.placeQuery) || '';
+    if (!key || !query) return null;
+    let area = null;
+    try { area = el.dataset.placeArea ? JSON.parse(el.dataset.placeArea) : null; }
+    catch { area = null; }
+    return { key, query, area };
   }
 
   // Itinerary cards (Timeline + Days) carry ONE combined element: the item's
@@ -1072,12 +1190,16 @@
   // made for it. A rating answers "is this worth going to", and a cancelled
   // plan is not a question - which is exactly why its hours line is suppressed
   // too, and paying $0.02 to decorate it was the odd one out.
-  function tripMapsRatingHtml(mapsQuery, lookup = true) {
-    const key = placeCacheKey(mapsQuery);
-    if (!key) return '';
-    const hooks = lookup ? ` data-place-key="${esc(key)}" data-place-query="${esc(mapsQuery)}"` : '';
+  function tripMapsRatingHtml(lookup, doLookup = true) {
+    if (!lookup || !lookup.key) return '';
+    // A row whose place is ALREADY resolved and persisted links straight at
+    // that entity from the first paint, with no lookup and no search URL in
+    // between: the saved place ID is the identity, so the link cannot drift to
+    // a different branch while the session cache warms up.
+    const saved = lookup.record ? placeMapsUrl(lookup.record) : '';
+    const hooks = doLookup ? placeHooks(lookup) : '';
     return `<a class="tp-maps-link"${hooks}`
-      + ` href="${esc(mapsSearchUrl(mapsQuery))}" target="_blank" rel="noopener">`
+      + ` href="${esc(saved || mapsSearchUrl(lookup.query))}" target="_blank" rel="noopener">`
       + `<span class="tpm-label">Google Maps</span></a>`;
   }
 
@@ -1094,12 +1216,11 @@
   // also come back 'closingSoon' - technically open, too little time left to
   // recommend. Days-view slots pass none, so a traveller's own rows keep the
   // purely advisory behaviour.
-  function hoursSlotHtml(cls, mapsQuery, date, time, windowMin) {
-    const key = placeCacheKey(mapsQuery);
-    if (!key || !isIsoDate(date)) return '';
+  function hoursSlotHtml(cls, lookup, date, time, windowMin) {
+    if (!lookup || !lookup.key || !isIsoDate(date)) return '';
     const t = /^\d{2}:\d{2}$/.test(String(time || '')) ? time : '';
     const win = Number.isInteger(windowMin) && windowMin > 0 ? ` data-hours-window="${windowMin}"` : '';
-    return `<span class="${cls} tp-hours" data-place-key="${esc(key)}" data-hours-date="${esc(date)}"${t ? ` data-hours-time="${esc(t)}"` : ''}${win}></span>`;
+    return `<span class="${cls} tp-hours" data-place-key="${esc(lookup.key)}" data-hours-date="${esc(date)}"${t ? ` data-hours-time="${esc(t)}"` : ''}${win}></span>`;
   }
 
   // A travel leg that names a real destination (a "Return to hotel" carries the
@@ -1125,7 +1246,19 @@
   // never diverge from another leg on getting directions instead of a rating.
   const mapsHtmlFor = it => (isTravelLeg(it)
     ? tripDirectionsHtml(it)
-    : tripMapsRatingHtml(itemMapsQuery(it), it.status !== 'cancelled'));
+    : tripMapsRatingHtml(savedPlaceLookup(it), it.status !== 'cancelled'));
+
+  // An itinerary item's lookup, with its PERSISTED place record attached when
+  // it has one. The record is the canonical identity Add to trip wrote (a
+  // Google place ID and, inside the 30 days the terms allow, its coordinates),
+  // so the row links at the same entity the card did instead of re-resolving a
+  // string and possibly landing somewhere else.
+  function savedPlaceLookup(it) {
+    const lookup = placeFor(it);
+    if (!lookup) return null;
+    const record = itemPlaceRecord(it);
+    return record ? { ...lookup, record } : lookup;
+  }
 
   // A Days-view PLACE row's own directions action: how to get HERE from the
   // stop before it. Rendered destination-only (Maps then asks for the start,
@@ -1159,6 +1292,9 @@
       // order read from that mixed DOM. Remote merges re-render under open UI
       // by design, so the drag is abandoned rather than corrupted.
       if (dragCtx) cancelRowDrag();
+      // The per-day city memo place resolution reads is only valid for the data
+      // this pass is about to draw, so it is dropped at the top of every render.
+      resetPlaceContext();
       ensureTrip();
       renderTripSelect();
       const trip = activeTrip();
@@ -2587,7 +2723,7 @@
     // painted from the SAME session cache the rating pass fills, so rendering
     // it never costs a request the row was not already making.
     const hrs = (ev.kind === 'checkout' || cancelled || it.type !== 'activity') ? ''
-      : hoursSlotHtml('dc-hours', itemMapsQuery(it), it.startDate, it.startTime);
+      : hoursSlotHtml('dc-hours', placeFor(it), it.startDate, it.startTime);
     const cost = ev.kind === 'checkout' ? '' : dayCostBadge(trip, it);
     // stay rows carry no real time (the assumed ones are for ordering only), so
     // the when column stays EMPTY for them rather than printing a guess
@@ -2729,8 +2865,14 @@
     // fallback plus the IATA code the airports table resolves exactly.
     const a = dayAnchor(trip.items, card.date, geoResolved);
     const place = a && a.item && a.source !== 'arrival';
+    // The anchor is an itinerary item like any other, so it stamps the SAME
+    // area-aware key its own row does: the venue cache is keyed by that key,
+    // and an anchor asking under a bare query would simply never find the
+    // point its row had already resolved.
+    const anchorLookup = place ? placeFor(a.item, trip) : null;
     const anchor = a
-      ? ` data-anchor-q="${esc(place ? itemMapsQuery(a.item) : '')}" data-anchor-name="${esc(place ? a.label : '')}"`
+      ? ` data-anchor-q="${esc(anchorLookup ? anchorLookup.query : '')}" data-anchor-name="${esc(place ? a.label : '')}"`
+        + ` data-anchor-key="${esc(anchorLookup ? anchorLookup.key : '')}"`
         + ` data-anchor-city="${esc(a.city)}" data-anchor-label="${esc(a.label)}"`
         + (a.iata ? ` data-anchor-iata="${esc(a.iata)}"` : '')
       : '';
@@ -3957,15 +4099,50 @@
   // Only for a NEW item: an edit is about changing something specific, and
   // stealing focus to the top of the form fights that.
   function focusFirstField(isEdit) {
+    // AN EDIT FOCUSES NOTHING. The comment above has said "only for a NEW item"
+    // since this function was written, but the code focused #inTitle either
+    // way - and #inTitle is a combobox, so opening "Edit item" on a saved venue
+    // put the cursor in the venue field and the place-search dropdown opened
+    // over the form, under a name the traveller had no intention of changing.
+    // The dialog reads as though it is replacing the venue when all they wanted
+    // was the time.
+    //
+    // openOverlay has already focused the .modal itself, which is what the Tab
+    // trap and the screen-reader announcement need, so leaving focus there is
+    // both the least disruptive and the accessible answer: the first Tab lands
+    // on the first field, Escape still closes, and nothing searches.
+    if (isEdit) return;
     const flightRoute = $('#inFlightFrom');
     // offsetParent, not the `hidden` property: setModalType shows and hides the
     // per-type rows with a class, so `hidden` is false for the airport pair even
     // on an Activity. Focusing an invisible input is a silent no-op, which left
     // the cursor on the dialog itself rather than on any field at all.
     const routeShown = !!(flightRoute && flightRoute.offsetParent);
-    const target = (!isEdit && routeShown && !flightRoute.value) ? flightRoute : $('#inTitle');
-    target.focus({ preventScroll: true });
+    const target = (routeShown && !flightRoute.value) ? flightRoute : $('#inTitle');
+    // A NEW item's Title is empty, so the combobox's focus handler has nothing
+    // to search for anyway - but it is focused quietly regardless, so the rule
+    // "the app never opens a dropdown the traveller did not ask for" holds
+    // whatever a preset put in the field (the closed-hours hand-off prefills a
+    // venue name).
+    focusQuiet(target);
   }
+
+  // Programmatic focus, marked as such. A combobox opens its dropdown when the
+  // field it lives on is focused WITH text already in it, which is right for a
+  // human tabbing or clicking in and wrong for the app moving the cursor: only
+  // one of the two is a request to search. The flag is read synchronously by
+  // the focus listener (focus() dispatches synchronously) and cleared straight
+  // after, so it can never leak into a later, genuine focus.
+  let programmaticFocus = false;
+  function focusQuiet(el) {
+    if (!el || typeof el.focus !== 'function') return;
+    programmaticFocus = true;
+    try { el.focus({ preventScroll: true }); }
+    finally { programmaticFocus = false; }
+  }
+  // Read by createCombobox. Exposed as a function rather than the flag itself so
+  // the combobox does not close over a `let` from another part of the file.
+  const isProgrammaticFocus = () => programmaticFocus;
 
   // WHICH FIELDS THE APP FILLED, and may therefore revise.
   //
@@ -4370,6 +4547,15 @@
     // the Maps field is not user-editable, so carry it across an edit instead
     // of silently dropping it
     if (prev.mapsQuery) it.mapsQuery = prev.mapsQuery;
+    // THE RESOLVED PLACE SURVIVES AN EDIT THAT DID NOT MOVE IT. Opening the
+    // modal, changing the cost or the time and saving must leave the identity
+    // exactly as it was - re-resolving on every save would be the second,
+    // independent lookup this whole round exists to delete. It is dropped only
+    // when the edit changed WHICH place the row is about: a new venue name or a
+    // new city means the old place ID is no longer this row's.
+    if (prev.place && prev.title === it.title && (prev.location || '') === (it.location || '')) {
+      it.place = prev.place;
+    }
     // A hand-set position belongs to the day and the time it was set on, so it
     // rides an edit that kept both and is dropped by one that moved the item:
     // a row dragged to the top of Tuesday morning has no place in Wednesday's
@@ -4493,7 +4679,10 @@
       // (see clearFieldErrors), and its rows sit after every other field anyway.
       const firstInvalid = document.querySelector('#itemForm .field.invalid input, #itemForm .field.invalid select, #itemForm .field.invalid textarea')
         || (errs.split ? $('#splitMode .split-amt') : null);
-      if (firstInvalid) firstInvalid.focus();
+      // focusQuiet, not focus: this can land on #inTitle, which is a place
+      // combobox, and a refused save is not a request to search for the venue
+      // whose name is already in the field.
+      if (firstInvalid) focusQuiet(firstInvalid);
       return;
     }
 
@@ -4524,9 +4713,12 @@
     // sites have to remember. A retyped title no longer matches `wrote`, so the
     // coordinates are dropped rather than stamped onto a different place.
     if (venuePick && it.title === venuePick.wrote) {
-      const vq = itemMapsQuery(it);
-      if (vq) {
-        rememberVenuePoint(placeCacheKey(vq), { lat: venuePick.lat, lon: venuePick.lon });
+      // placeFor - not itemMapsQuery - so the key carries the same area every
+      // read path now keys by; a bare query would write the point where nothing
+      // ever reads it.
+      const lookup = placeFor(it, trip);
+      if (lookup) {
+        rememberVenuePoint(lookup.key, { lat: venuePick.lat, lon: venuePick.lon });
         saveVenueCache();
       }
     }
@@ -5485,6 +5677,16 @@
     // a shared/imported venue must keep its verified place, or the receiving
     // end silently loses its Maps link and star rating
     if (raw.mapsQuery != null && String(raw.mapsQuery).trim()) out.mapsQuery = String(raw.mapsQuery).slice(0, 200).trim();
+    // ...and its RESOLVED identity, which is the stronger half of the same
+    // promise: the receiving end links at the exact Google entity the sender
+    // resolved rather than re-searching the name and possibly finding a
+    // different branch. Imported JSON is untrusted, so it goes through the same
+    // persistence boundary a local write does; repairDb re-checks it against
+    // the item's own city on the very next boot.
+    if (raw.place != null) {
+      const rec = normalizePlaceRecord(raw.place, { cityPoint: cityPoint(String(raw.location || '').trim()) });
+      if (rec) out.place = rec;
+    }
     // who a cost is split between is only meaningful against names the trip
     // actually carries: an import can list anyone, so each is matched (case
     // -insensitively) to a known traveller and mapped to that canonical spelling.
@@ -6225,18 +6427,24 @@
   let venueLookups = 0;
   let venueTimer = 0;
 
-  function queueVenueLookups(queries) {
+  // `wanted` holds LOOKUPS ({ query, key, city }), so the free Photon top-up is
+  // keyed and checked exactly the way the billed Google lookup is - including
+  // the city, which is what lets its answer be rejected when it lands in the
+  // wrong region (see fetchVenuePoint). Photon is as capable of answering
+  // "Royce Chocolate Tokyo Station" with a Hokkaido pin as Google was.
+  function queueVenueLookups(wanted) {
     if (!navigator.onLine) return;
     let added = 0;
-    for (const q of queries) {
+    for (const w of wanted) {
       if (added >= VENUE_PASS_MAX || venueLookups + venueQueue.length >= VENUE_SESSION_MAX) break;
-      const key = placeCacheKey(q);
-      if (!key || venueCache[key] || venueQueued.has(key) || venueMisses.has(key)) continue;
+      const lookup = (w && typeof w === 'object') ? w : { query: w, key: placeCacheKey(w), city: '' };
+      const key = lookup.key;
+      if (!key || !lookup.query || venueCache[key] || venueQueued.has(key) || venueMisses.has(key)) continue;
       // the ratings call is in flight for this exact venue and answers with a
       // better point; asking Photon too would be the same lookup twice
       if (placesQueue.isPending(key)) continue;
       venueQueued.add(key);
-      venueQueue.push({ key, query: q });
+      venueQueue.push({ key, query: lookup.query, city: lookup.city || '' });
       added++;
     }
     if (!venueQueue.length || venueTimer) return;
@@ -6269,6 +6477,15 @@
       .then(json => {
         const hit = pickVenueFeature(job.query, json);
         if (!hit) { venueMisses.add(job.key); return; }
+        // The same geographic gate the billed lookup passes through. A free
+        // answer is not a licence to store an unchecked point: a Photon hit
+        // whose name matches but whose coordinates sit outside the row's own
+        // city is the 809 km chip by another route.
+        if (!plausiblePlacePoint(hit, cityPoint(job.city))) {
+          placesLog('photon point rejected: outside its own city', { key: job.key, city: job.city, hit });
+          venueMisses.add(job.key);
+          return;
+        }
         rememberVenuePoint(job.key, hit);
         saveVenueCache();
         scheduleDistanceRepaint();
@@ -6284,10 +6501,13 @@
   // picker (rememberPickedHotel seeds the geocode cache under the hotel NAME),
   // then the city centroid. null when nothing locates it, which renders as no
   // chip rather than a guess.
-  function venuePoint(query) {
-    const key = placeCacheKey(query);
-    const rec = key && venueCache[key];
-    return rec ? { key: 'v:' + key, lat: rec.lat, lon: rec.lon } : null;
+  // Keyed by the AREA-AWARE place key, never by the bare query: two same-named
+  // businesses in two cities are two entries, and a Tokyo row can no longer
+  // read a coordinate a Hokkaido lookup wrote.
+  function venuePoint(key) {
+    const k = String(key || '');
+    const rec = k && venueCache[k];
+    return rec ? { key: 'v:' + k, lat: rec.lat, lon: rec.lon } : null;
   }
   function cityPoint(name) {
     const key = String(name || '').trim().toLowerCase();
@@ -6296,8 +6516,36 @@
   }
   // `name` is the hotel-picker rung and is only ever passed for a stay: an
   // activity called "Kyoto" must not borrow the city's centroid through it.
-  function placePoint({ query, name, city }) {
-    return venuePoint(query) || (name ? cityPoint(name) : null) || cityPoint(city);
+  // THE LAST NET before a coordinate becomes a number on screen. A venue point
+  // has to agree with the city the row itself claims: the 809 km chip was a
+  // Hokkaido coordinate rendered against a row that said "Tokyo", and every
+  // layer above believed it because nothing ever asked. When the city has no
+  // coordinate of its own nothing is rejected - silence is not evidence - and
+  // the row simply falls back to the city rung.
+  function placePoint({ key, name, city }) {
+    const anchor = cityPoint(city);
+    const venue = venuePoint(key);
+    if (venue && plausiblePlacePoint(venue, anchor)) return venue;
+    if (venue && anchor) placesLog('point rejected: outside its own city', { key, city, venue, anchor });
+    // A place the resolver actively REFUSED on geography gets no point at all,
+    // not even the city centroid. Everywhere else the centroid is the honest
+    // "roughly here" fallback for a row nobody looked up - but `wrong_area`
+    // means we DID look it up and the only candidate was somewhere else
+    // entirely, so we have positive evidence that we do not know where this
+    // venue is, or whether it is in this city at all. A confident-looking
+    // "2.1 km away" on top of that is the same lie in smaller numbers.
+    // Other no-match reasons (low_confidence, not_found, generic_query) mean we
+    // never learned the position, which is the state the city rung has always
+    // been for - and suppressing those would silently strip chips from every
+    // landmark whose official name nobody types.
+    if (key) {
+      const entry = placesCache.get(key);
+      if (entry && entry.status === 'no_match' && entry.reason === 'wrong_area') {
+        placesLog('no point: the resolver refused this place on geography', { key, city });
+        return null;
+      }
+    }
+    return (name ? cityPoint(name) : null) || anchor;
   }
 
   // ---------- distance chips (Days rows + assistant cards) ----------
@@ -6307,15 +6555,18 @@
   // itemDistAttrs), which is what lets this be a pure read of the DOM plus the
   // caches: it can run again after any lookup lands without the caller having
   // to hold on to the data the view was built from.
-  function distAttrs(query, name, city, label) {
+  function distAttrs(query, name, city, label, key) {
     return ` data-dist-q="${esc(query || '')}" data-dist-name="${esc(name || '')}"`
-      + ` data-dist-city="${esc(city || '')}" data-dist-label="${esc(label || '')}"`;
+      + ` data-dist-city="${esc(city || '')}" data-dist-label="${esc(label || '')}"`
+      + ` data-dist-key="${esc(key || '')}"`;
   }
   // The hotel-picker rung is only offered to a stay: it looks the TITLE up in
   // the geocode cache, which is a hotel's own doorstep for a stay and a
   // coincidence for anything else.
   function itemDistAttrs(it) {
-    return distAttrs(itemMapsQuery(it), isStay(it) ? displayTitle(it) : '', (it.location || '').trim(), displayTitle(it));
+    const lookup = placeFor(it);
+    return distAttrs(lookup ? lookup.query : '', isStay(it) ? displayTitle(it) : '',
+      (it.location || '').trim(), displayTitle(it), lookup ? lookup.key : '');
   }
   // The airports table is the precise rung for an "(KEF)"-style arrival
   // anchor: exact coordinates, no geocoder, and the file already ships with
@@ -6341,7 +6592,8 @@
     }
     const query = anchor ? d.anchorQ : d.distQ;
     const city = anchor ? d.anchorCity : d.distCity;
-    const p = placePoint({ query, name: anchor ? d.anchorName : d.distName, city });
+    const key = anchor ? (d.anchorKey || '') : (d.distKey || '');
+    const p = placePoint({ key, name: anchor ? d.anchorName : d.distName, city });
     // `query` is what a DIRECTIONS link can be built from, which the coordinates
     // cannot be: Maps wants a place, not a lat/lon the traveller never typed.
     return p ? { ...p, label, query: query || city || '' } : null;
@@ -6349,8 +6601,20 @@
   // A venue worth asking Photon about: it has a query of its own and no cached
   // point yet. Collected while painting, so only rows that are on screen right
   // now can ever cause a lookup.
-  function wantVenue(list, query) {
-    if (query && !venueCache[placeCacheKey(query)]) list.push(query);
+  // `el` is the row or card the query was stamped on, so the Photon top-up
+  // inherits the SAME key and the SAME area the billed lookup would have used.
+  function wantVenue(list, el, anchor) {
+    const lookup = distLookupFrom(el, anchor);
+    if (lookup && !venueCache[lookup.key]) list.push(lookup);
+  }
+  function distLookupFrom(el, anchor) {
+    if (!el) return null;
+    const d = el.dataset;
+    const query = anchor ? (d.anchorQ || '') : (d.distQ || '');
+    const key = anchor ? (d.anchorKey || '') : (d.distKey || '');
+    const city = anchor ? (d.anchorCity || '') : (d.distCity || '');
+    if (!query || !key) return null;
+    return { query, key, city };
   }
 
   function writeDistChip(row, leg) {
@@ -6400,11 +6664,11 @@
       airportKickoff = true;
       loadAirports().then(() => { if (airportRows) refreshDistances(); });
     }
-    wantVenue(wanted, cardEl.dataset.anchorQ);
+    wantVenue(wanted, cardEl, true);
     const anchor = readPoint(cardEl, 'anchor');
     const rows = [...cardEl.querySelectorAll('.dc-event[data-dist-label]')];
     const stops = rows.map((row, i) => {
-      wantVenue(wanted, row.dataset.distQ);
+      wantVenue(wanted, row, false);
       const p = readPoint(row, 'dist');
       return p ? { ...p, id: i } : { id: i };
     });
@@ -6474,10 +6738,11 @@
   // activity that happens to be named after a city.
   function resolveOriginPoint(spec) {
     if (!spec) return null;
+    const lookup = (spec.item && spec.source !== 'arrival') ? placeFor(spec.item) : null;
     const p = (spec.iata && airportPointByIata(spec.iata))
       || (spec.item && spec.source !== 'arrival'
         ? placePoint({
-          query: itemMapsQuery(spec.item),
+          key: lookup ? lookup.key : '',
           name: isStay(spec.item) ? displayTitle(spec.item) : '',
           city: spec.city,
         })
@@ -6487,7 +6752,7 @@
     // else names its own venue, falling back to its city
     const query = spec.source === 'arrival'
       ? (spec.label || spec.city || '')
-      : (itemMapsQuery(spec.item || {}) || spec.city || '');
+      : ((lookup && lookup.query) || spec.city || '');
     return { ...p, label: spec.label, query };
   }
 
@@ -6503,7 +6768,15 @@
       airportKickoff = true;
       loadAirports().then(() => { if (airportRows) refreshDistances(); });
     }
-    if (spec.item && spec.source !== 'arrival') wantVenue(wanted, itemMapsQuery(spec.item));
+    // The origin is an itinerary item like any other, so its coordinates are
+    // asked for under the SAME area-aware key its own row uses - not under a
+    // bare query that a different city could collide with.
+    if (spec.item && spec.source !== 'arrival') {
+      const lookup = placeFor(spec.item);
+      if (lookup && !venueCache[lookup.key]) {
+        wanted.push({ query: lookup.query, key: lookup.key, city: (spec.item.location || '').trim() });
+      }
+    }
   }
 
   // Where a given suggestion is measured from. Cached per (date, time) because
@@ -6542,7 +6815,7 @@
     const slots = [];
     const byCard = new Map();
     for (const [i, el] of chips.entries()) {
-      wantVenue(wanted, el.dataset.distQ);
+      wantVenue(wanted, el, false);
       const card = el.closest('.assist-proposal');
       const point = readPoint(el, 'dist');
       if (!byCard.has(card)) {
@@ -6886,7 +7159,14 @@
       clearTimeout(timer);
       timer = setTimeout(search, opts.debounce == null ? 220 : opts.debounce);
     });
-    input.addEventListener('focus', () => { if (input.value.trim()) search(); });
+    // A human focusing a field that already holds text is asking to see the
+    // matches for it; the APP focusing the same field is not. Without this
+    // split, opening any dialog that moves the cursor into a picker fired a
+    // place search for a value nobody was editing - see focusQuiet.
+    input.addEventListener('focus', () => {
+      if (isProgrammaticFocus()) return;
+      if (input.value.trim()) search();
+    });
     input.addEventListener('blur', () => { clearTimeout(timer); close(); });
 
     input.addEventListener('keydown', e => {
@@ -7144,7 +7424,12 @@
     const slot = $('#stayRating');
     if (!slot) return;
     const q = [row.value, row.locality, row.country].filter(Boolean).join(', ');
-    slot.innerHTML = ratingSlotHtml(q);
+    // A picked hotel row carries its OWN coordinates and city, so this lookup
+    // is the best-verified one the app ever makes: the server compares the
+    // resolved place against the exact point the traveller chose.
+    const area = { city: row.locality || '', country: row.country || '' };
+    if (Number.isFinite(row.lat) && Number.isFinite(row.lon)) { area.lat = row.lat; area.lon = row.lon; }
+    slot.innerHTML = ratingSlotHtml({ query: q, area, key: placeCacheKey(q, area) });
     slot.hidden = false;
     hydrateRatings(slot);
   }
@@ -8299,6 +8584,8 @@
   const CHAT_CAP = 40;
 
   let assistSending = false;
+  // the last request the traveller sent or copied out (see handleAssistPaste)
+  let assistLastRequest = '';
 
   function assistProvider() {
     const p = localStorage.getItem(AI_PROVIDER_KEY);
@@ -8584,7 +8871,7 @@
 
   // Turn the assistant's raw reply into a prose bubble plus proposal cards, then
   // persist the prose to history (proposal cards are transient by design).
-  function handleAssistantReply(reply, tripId) {
+  function handleAssistantReply(reply, tripId, requestText) {
     const { actions, cleanedText } = extractTripActions(reply);
     const history = loadChat(tripId);
     history.push({ role: 'assistant', content: cleanedText || reply });
@@ -8599,15 +8886,106 @@
     // touched while it is still showing that trip.
     const current = activeTrip();
     if (!current || current.id !== tripId) return;
-    if (cleanedText) appendBubble('assistant', cleanedText);
-    if (actions.length) {
-      const container = document.createElement('div');
-      container.className = 'assist-proposals';
-      $('#assistMessages').appendChild(container);
-      renderProposals(actions, container);
+    if (!cleanedText && !actions.length) {
+      appendBubble('assistant', 'No reply came back. Try rephrasing your request.');
+      scrollMessages();
+      return;
     }
-    if (!cleanedText && !actions.length) appendBubble('assistant', 'No reply came back. Try rephrasing your request.');
+    renderAssistAnswer({ text: cleanedText, actions, tripId, requestText });
+  }
+
+  /**
+   * Render one assistant answer - prose plus proposal cards.
+   *
+   * Two shapes, and which one is used turns on what the traveller ASKED:
+   *
+   *   ORDINARY turn - render immediately, exactly as before. Cards appear at
+   *     once and their ratings paint in as the lookups land. An unverifiable
+   *     venue keeps its honest unresolved state, because the traveller named
+   *     it and their words are the point.
+   *
+   *   DISCOVERY turn ("find me 3 places...") - verify FIRST. They never named
+   *     these venues, so an unverifiable one is not their input, it is a place
+   *     the model may have invented, and showing it would spend one of the
+   *     three slots they asked for. Failed candidates are replaced from the
+   *     provider and only verified places are rendered - prose included.
+   */
+  function renderAssistAnswer({ text, actions, tripId, requestText }) {
+    const msgs = $('#assistMessages');
+    const intent = assistDiscoveryIntent(requestText || '');
+    const hint = discoveryHintFrom(actions);
+    const discovery = intent.discovery || !!hint;
+
+    if (!discovery || !actions.length) {
+      if (text) appendBubble('assistant', text);
+      if (actions.length) {
+        const container = document.createElement('div');
+        container.className = 'assist-proposals';
+        msgs.appendChild(container);
+        renderProposals(actions, container);
+      }
+      scrollMessages();
+      return;
+    }
+
+    // Discovery: hold the answer back until the places in it are real.
+    const trip = activeTrip();
+    const proposals = validProposalsFrom(actions, trip);
+    const requested = (hint && hint.count) || intent.count || proposals.placeCount || null;
+    const query = (hint && hint.query) || requestText || '';
+
+    const pending = document.createElement('div');
+    pending.className = 'assist-msg assistant assist-checking';
+    pending.textContent = 'Checking these places on Google Maps...';
+    msgs.appendChild(pending);
     scrollMessages();
+
+    verifyDiscoveryProposals(proposals.valid, { trip, requested, query })
+      .then(({ kept, rejected, passthrough, requested: want }) => {
+        pending.remove();
+        if (!activeTrip() || activeTrip().id !== tripId) return;
+
+        // The prose is rebuilt around what actually survived, so a venue that
+        // failed cannot be recommended in the text while its card is missing.
+        const rebuilt = rebuildAssistProse(text, {
+          kept: kept.map(k => k.name),
+          rejected: rejected.map(r => r.name),
+          requested: Number.isInteger(want) ? want : null,
+        });
+        if (rebuilt.text) appendBubble('assistant', rebuilt.text);
+        if (rebuilt.note) {
+          const note = document.createElement('div');
+          note.className = 'assist-msg assistant assist-verified-note';
+          note.textContent = rebuilt.note;
+          msgs.appendChild(note);
+        }
+        if (kept.length || passthrough.length || proposals.invalid.length) {
+          const container = document.createElement('div');
+          container.className = 'assist-proposals';
+          msgs.appendChild(container);
+          renderResolvedProposals(kept.map(k => k.proposal), passthrough, proposals.invalid, container);
+        }
+        placesLog('discovery: rendered', { kept: kept.length, rejected: rejected.length });
+        scrollMessages();
+      })
+      .catch(err => {
+        // Verification must never cost the traveller their answer. If it
+        // breaks, fall back to the ordinary render.
+        //
+        // console.error, not just the debug log: this swallowed a
+        // ReferenceError for a whole E2E run and the only symptom was that
+        // discovery quietly stopped happening. A fallback that hides its own
+        // cause is how a feature silently stops existing.
+        pending.remove();
+        console.error('trip-planner: discovery verification failed', err && err.message);
+        placesLog('discovery: verification failed, rendering as an ordinary turn', err && err.message);
+        if (text) appendBubble('assistant', text);
+        const container = document.createElement('div');
+        container.className = 'assist-proposals';
+        msgs.appendChild(container);
+        renderProposals(actions, container);
+        scrollMessages();
+      });
   }
 
   // Auto-growing composer: it starts at three lines and follows the typing up
@@ -8661,6 +9039,7 @@
     // the thread is what matters from here on, so the setup block gets out of
     // its way (one tap on the summary bar brings it back)
     setSetupCollapsed(true);
+    assistLastRequest = text;
     appendBubble('user', text);
     let history = loadChat(tripId);
     history.push({ role: 'user', content: text });
@@ -8674,7 +9053,7 @@
         ? await callSiteAssistant(history, trip, mode)
         : await callByokProvider(history, trip, mode);
       typing.remove();
-      handleAssistantReply(reply, tripId);
+      handleAssistantReply(reply, tripId, text);
     } catch (err) {
       typing.remove();
       appendError(err && err.userMessage ? err.userMessage : 'Something went wrong. Try again.');
@@ -9177,6 +9556,11 @@
 
   async function copyAssistPackage(request) {
     const trip = activeTrip();
+    // Remembered so the PASTED reply can be read as discovery or not. The
+    // copy/paste tier never sees the traveller's own words on the way back -
+    // they leave in the package and return as someone else's answer - so this
+    // is the only place that request survives on this side.
+    assistLastRequest = request;
     const pkg = buildAssistPackage({
       trip, focusDate: assistFocusDate, request, mode: 'plan', origin: assistOriginContext(),
     });
@@ -9190,20 +9574,18 @@
     if (!raw.trim()) return;
     const { actions, cleanedText } = extractTripActions(raw);
     const msgs = $('#assistMessages');
-    if (cleanedText) {
-      const bubble = document.createElement('div');
-      bubble.className = 'assist-msg assistant';
-      renderMarkdownInto(bubble, cleanedText);
-      msgs.appendChild(bubble);
-    }
-    if (actions.length) {
-      const container = document.createElement('div');
-      container.className = 'assist-proposals';
-      msgs.appendChild(container);
-      renderProposals(actions, container);
-    } else if (!cleanedText) {
+    if (!actions.length && !cleanedText) {
       toast('No changes found in that reply.');
+      if (boxEl) boxEl.value = '';
+      return;
     }
+    // The pasted tier goes through the same door. Its only discovery signal is
+    // the model's OWN hint: the traveller's request was composed in the picker
+    // and copied out, so this side never saw their words.
+    const trip = activeTrip();
+    renderAssistAnswer({
+      text: cleanedText, actions, tripId: trip && trip.id, requestText: assistLastRequest,
+    });
     if (boxEl) boxEl.value = '';
     msgs.scrollTop = msgs.scrollHeight;
   }
@@ -9220,8 +9602,12 @@
   // gets the higher owner quota server-side. Everyone else has no token and
   // sends no field; there is no UI for this on purpose.
   const PLACES_OWNER_TOKEN_KEY = 'trip-planner:places:ownerToken';
-  function placesRequestBody(queries) {
+  function placesRequestBody(queries, discover) {
     const body = { clientId: assistClientId(), queries };
+    // A discovery request asks the endpoint a different question - "find me
+    // candidates for this category, here" rather than "resolve these named
+    // venues" - and carries no queries of its own.
+    if (discover) body.discover = discover;
     let token = '';
     try { token = localStorage.getItem(PLACES_OWNER_TOKEN_KEY) || ''; } catch { /* private mode */ }
     if (token) body.ownerToken = token;
@@ -9324,9 +9710,9 @@
 
   // Rendered by every card that has a mapsQuery. Empty until (and unless) a
   // rating arrives, which is what makes the unconfigured case invisible.
-  function ratingSlotHtml(mapsQuery) {
-    const key = placeCacheKey(mapsQuery);
-    return key ? `<div class="ap-rating" data-place-key="${esc(key)}" data-place-query="${esc(mapsQuery)}"></div>` : '';
+  function ratingSlotHtml(lookup) {
+    if (!lookup || !lookup.key) return '';
+    return `<div class="ap-rating"${placeHooks(lookup)}></div>`;
   }
 
   // Google Maps Platform attribution: the rating, the review count and the
@@ -9350,7 +9736,26 @@
     // upstream hiccup), it is never cached, and a later batch may still answer.
     if (entry.status === 'no_match') {
       el.dataset.painted = '1';
-      el.innerHTML = `<span class="apr-none" title="No place matched this name closely enough to attach a rating with confidence. The Google Maps link beside it still searches for it.">No rating match</span>`;
+      // Same one-line, unobtrusive state as before - only the TOOLTIP is
+      // reason-aware now. "wrong_area" is a genuinely different answer from
+      // "low_confidence": the name matched a real business, and what failed was
+      // the check that it is the branch in this itinerary's city. Saying "no
+      // place matched this name" there would describe the wrong problem to
+      // anyone who hovered it.
+      // An UNRATED place is a resolved place: the lookup found it, the app has
+      // its position, its hours and a link straight at it, and the only thing
+      // missing is a star. Calling that "No rating match" was the interface
+      // contradicting itself in the same way "Verify on Google Maps" beside a
+      // verified place did - it reads as "we could not find this", next to a
+      // link that opens exactly the right listing.
+      const unrated = entry.reason === 'unrated' && entry.verified;
+      const text = unrated ? 'No rating yet' : 'No rating match';
+      const why = unrated
+        ? 'This place is on Google Maps but has no star rating yet. Open it from the link beside this to see it.'
+        : entry.reason === 'wrong_area'
+          ? 'The closest match on Google Maps is in a different city from this plan, so its rating and hours are not shown. The link beside it searches for the right one.'
+          : 'No place matched this name closely enough to attach a rating with confidence. The Google Maps link beside it still searches for it.';
+      el.innerHTML = `<span class="apr-none" title="${esc(why)}">${esc(text)}</span>`;
       return;
     }
     if (entry.status !== 'ok') return;
@@ -9362,7 +9767,7 @@
     const count = entry.userRatingCount ? entry.userRatingCount.toLocaleString() : '';
     const label = `${entry.rating} out of 5 on Google Maps${count ? ', ' + count + ' reviews' : ''}. Opens Google Maps.`;
     el.innerHTML = `
-      <a class="apr-chip" href="${esc(entry.mapsUri)}" target="_blank" rel="noopener" aria-label="${esc(label)}">
+      <a class="apr-chip" href="${esc(placeEntryUrl(entry) || entry.mapsUri)}" target="_blank" rel="noopener" aria-label="${esc(label)}">
         <span class="apr-star" aria-hidden="true">★</span>
         <span class="apr-score">${esc(entry.rating.toFixed(1))}</span>
         ${count ? `<span class="apr-count">(${esc(count)})</span>` : ''}
@@ -9390,11 +9795,19 @@
     if (el.dataset.painted === '1') return;
     const entry = placesCache.get(el.dataset.placeKey || '');
     if (!entry || entry.status !== 'ok') return;
+    // The card and the row read the SAME entry now, so they cannot disagree
+    // about whether this place resolved - which is the whole 2026-08-27 Kyoto
+    // complaint ("No rating match" on the card, a rating on the agenda).
+
     el.dataset.painted = '1';
     const count = entry.userRatingCount ? entry.userRatingCount.toLocaleString() : '';
     const aria = `${entry.rating} out of 5 on Google Maps${count ? ', ' + count + ' reviews' : ''}. Opens Google Maps.`;
     el.setAttribute('aria-label', aria);
-    if (entry.mapsUri) el.setAttribute('href', entry.mapsUri);
+    // One definition of "the URL for a resolved place" (placeEntryUrl), shared
+    // with the card's rating chip and its Maps link, so all three surfaces
+    // point at the same entity in the same form.
+    const href = placeEntryUrl(entry);
+    if (href) el.setAttribute('href', href);
     const seg = document.createElement('span');
     seg.className = 'tpm-rating';
     seg.innerHTML = ` <span class="tpm-sep" aria-hidden="true">·</span> `
@@ -9537,14 +9950,14 @@
   let placesObserver = null;
   if (typeof IntersectionObserver === 'function') {
     placesObserver = new IntersectionObserver((entries, obs) => {
-      const queries = [];
+      const lookups = [];
       for (const e of entries) {
         if (!e.isIntersecting) continue;
         obs.unobserve(e.target);
-        const q = e.target.dataset.placeQuery || '';
-        if (q) queries.push(q);
+        const lookup = lookupFromEl(e.target);
+        if (lookup) lookups.push(lookup);
       }
-      if (queries.length) placesQueue.request(queries, { priority: 'normal' });
+      if (lookups.length) placesQueue.request(lookups, { priority: 'normal' });
     }, { rootMargin: PLACES_LOOKAHEAD });
   }
 
@@ -9555,7 +9968,7 @@
     if (placesObserver) placesObserver.observe(el);
     // No IntersectionObserver (very old browser): fall back to asking for
     // everything the render produced, which is what the app did before.
-    else placesQueue.request([el.dataset.placeQuery || ''], { priority: 'normal' });
+    else { const l = lookupFromEl(el); if (l) placesQueue.request([l], { priority: 'normal' }); }
   }
 
   // Called once per render. Paints whatever the session already knows (a
@@ -9564,44 +9977,286 @@
   function hydrateRatings(container) {
     paintPlaces(container);
     const eager = [...container.querySelectorAll('.ap-rating[data-place-key]')]
-      .map(el => el.dataset.placeQuery || '')
+      .map(lookupFromEl)
       .filter(Boolean);
     // Urgent, and PROMOTED if a row already queued the same venue: a candidate
     // set the traveller is reading must not wait behind a screen of itinerary
     // rows, because its winner badges are a judgement across the whole set.
     if (eager.length) {
+      placesLog('assistant batch', eager.map(l => ({ key: l.key, area: l.area })));
       placesQueue.promote(eager);
       placesQueue.request(eager, { priority: 'urgent' });
     }
     container.querySelectorAll('.tp-maps-link[data-place-key]').forEach(observeRatingSlot);
   }
 
+  // ---------- discovery: verify BEFORE rendering, replace what fails ----------
+  // For an ordinary turn the app renders cards first and paints ratings into
+  // them as the lookups land. For a DISCOVERY turn - the traveller asked us to
+  // find places - that order is wrong: an unverifiable candidate would already
+  // be on screen as a normal, actionable recommendation, spending one of the
+  // three slots they asked for on a venue the model may have invented.
+  //
+  // So discovery inverts it: resolve, drop what fails, replace it from the
+  // provider, and only then render. The cost of that is a short wait with a
+  // "checking these places" line instead of instant cards, which is the right
+  // trade for a question whose whole value is that the answers are real.
+
+  // How long to wait for the verification pass before giving up and rendering
+  // what we have. Long enough for a cold batch (two round trips plus a
+  // restricted retry), short enough that a wedged provider does not hang the
+  // panel. Anything unresolved when this expires is treated as unverified.
+  const DISCOVERY_WAIT_MS = 12000;
+
+  // Resolve a set of place keys, settling when every one has an answer or the
+  // deadline passes. `unavailable` results are never cached (quota, upstream
+  // hiccup), so the deadline is what ends those - and they count as unverified,
+  // which is the honest reading: we could not check.
+  function awaitPlaceKeys(keys, deadlineMs) {
+    const wanted = [...new Set(keys.filter(Boolean))];
+    if (!wanted.length) return Promise.resolve();
+    return new Promise(resolve => {
+      const started = Date.now();
+      const tick = () => {
+        if (wanted.every(k => placesCache.has(k))) return resolve();
+        if (Date.now() - started >= deadlineMs) return resolve();
+        setTimeout(tick, 120);
+      };
+      tick();
+    });
+  }
+
+  // A resolved session entry is GOOD ENOUGH to recommend when the server
+  // verified it against the itinerary's own geography. Note this accepts a
+  // verified place Google has no rating for: unrated is not unverified, and a
+  // real hole-in-the-wall in the right city is a better answer than a famous
+  // shop in the wrong one.
+  const isVerifiedEntry = e => !!e && e.verified === true
+    && (e.status === 'ok' || (e.status === 'no_match' && e.reason === 'unrated'));
+
+  // Ask the provider for replacement candidates. This is the DETERMINISTIC
+  // half of the replacement loop and the reason there is no second model turn:
+  // we already know the category the traveller asked for and the city it has
+  // to be in, and the provider can answer that directly with real places. A
+  // model turn would cost a request from their daily allowance, take another
+  // 8-14 seconds, and produce another name that might not exist either.
+  async function fetchDiscoveryCandidates(spec) {
+    let res;
+    try {
+      res = await fetch('/.netlify/functions/tp-places', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(placesRequestBody([], spec)),
+      });
+    } catch { return []; }
+    if (!res.ok) return [];
+    let data;
+    try { data = await res.json(); } catch { return []; }
+    return Array.isArray(data && data.results) ? data.results : [];
+  }
+
+  // Turn one discovered place into a proposal that looks exactly like a
+  // model-authored one, and FILE ITS RESOLUTION under the key its card will
+  // ask for. Without that seed the card would re-resolve by name - a second
+  // billed lookup, and one the name gate could refuse, because this place was
+  // found by category rather than named.
+  function proposalFromDiscovered(place, template, trip) {
+    const item = {
+      type: template.type || 'activity',
+      title: String(place.name || '').slice(0, 120).trim(),
+      location: template.location || '',
+      startDate: template.startDate,
+      startTime: template.startTime || '',
+      mapsQuery: [place.name, template.location].filter(Boolean).join(' ').slice(0, 200),
+    };
+    if (!item.title || !isIsoDate(item.startDate)) return null;
+    const action = { op: 'add', item };
+    const res = validateTripAction(action, trip);
+    if (!res.ok) return null;
+    const p = res.proposal;
+    // A replacement is a proposal like any other and needs the SAME identity
+    // the validated ones get: `pid` is what the card carries in its dataset and
+    // what acceptProposal looks the action up by. Without it the card rendered
+    // with data-proposal-id="undefined" and its "Add to trip" button did
+    // nothing at all - a silent dead end on the one card the traveller is most
+    // likely to press, because it is the one we went and found for them.
+    p.pid = 'ap' + (++assistPropSeq);
+    assistActions.set(p.pid, action);
+    const lookup = proposalPlaceLookup(p);
+    if (!lookup) return null;
+    // The discovery response IS the resolution; file it so the card paints
+    // from it instead of asking again.
+    const entry = placesCacheUpdates([{ ...place, id: lookup.key }])[0];
+    if (entry) placesQueue.seed(entry.key, entry.entry);
+    return { proposal: p, lookup, entry: entry ? entry.entry : null };
+  }
+
+  /**
+   * THE REPLACEMENT LOOP, bounded and deterministic.
+   *
+   *   verify the model's candidates
+   *   -> drop the ones that fail
+   *   -> ask the provider for that many real places in the same city
+   *   -> verify those too, dedupe by place IDENTITY
+   *   -> rank, and hand back only what survived
+   *
+   * Returns { kept, rejected, requested } where kept/rejected carry the
+   * proposals and their display names, so the prose can be rebuilt around
+   * exactly the set that is about to be rendered.
+   */
+  async function verifyDiscoveryProposals(proposals, { trip, requested, query }) {
+    const candidates = [];
+    const passthrough = [];
+    for (const p of proposals) {
+      const lookup = (p.op === 'add' && isPlaceType({ type: (p.fields || {}).type }))
+        ? proposalPlaceLookup(p) : null;
+      if (lookup) candidates.push({ proposal: p, lookup });
+      else passthrough.push(p);
+    }
+    if (!candidates.length) return { kept: proposals, rejected: [], passthrough: [], requested };
+
+    placesLog('discovery: verifying', candidates.map(c => c.lookup.key));
+    placesQueue.request(candidates.map(c => c.lookup), { priority: 'urgent' });
+    await awaitPlaceKeys(candidates.map(c => c.lookup.key), DISCOVERY_WAIT_MS);
+
+    const seen = new Set();
+    const kept = [];
+    const rejected = [];
+    let looked = candidates.length;
+    for (const c of candidates) {
+      const entry = placesCache.get(c.lookup.key);
+      const identity = placeIdentityOf(entry, c.lookup);
+      if (!isVerifiedEntry(entry) || (identity && seen.has(identity))) {
+        rejected.push({ ...c, entry, identity, name: c.proposal.display.title || '' });
+        if (identity) seen.add(identity);
+        continue;
+      }
+      seen.add(identity);
+      kept.push({ ...c, entry, identity, name: c.proposal.display.title || '' });
+    }
+    placesLog('discovery: first pass', { kept: kept.length, rejected: rejected.length });
+
+    // ---- bounded replacement ----
+    const want = Number.isInteger(requested) ? requested : candidates.length;
+    for (let round = 0; round < DISCOVERY_REPLACEMENT_ROUNDS; round++) {
+      const missing = want - kept.length;
+      if (missing <= 0 || !query) break;
+      if (looked >= DISCOVERY_CANDIDATE_MAX) {
+        placesLog('discovery: candidate ceiling reached', looked);
+        break;
+      }
+      // The replacement is looked for where the FAILED one was supposed to be,
+      // so a Kyoto miss is replaced in Kyoto and a Tokyo miss in Tokyo.
+      const template = (rejected[0] || kept[0] || candidates[0]).proposal.fields;
+      const area = (rejected[0] || kept[0] || candidates[0]).lookup.area || {};
+      const limit = Math.min(missing, DISCOVERY_REPLACEMENTS_PER_ROUND,
+        DISCOVERY_CANDIDATE_MAX - looked);
+      const spec = {
+        q: discoveryQueryFrom(query, area.city || template.location || ''),
+        city: area.city || '', country: area.country || '',
+        limit,
+        // dedupe at the SOURCE: everything already offered or already refused
+        exclude: [...kept, ...rejected].map(x => x.entry && x.entry.placeId).filter(Boolean),
+      };
+      if (!spec.q) break;
+      if (validCoord(area.lat, area.lon)) { spec.lat = area.lat; spec.lon = area.lon; }
+      placesLog('discovery: asking the provider for replacements', spec);
+      const found = await fetchDiscoveryCandidates(spec);
+      looked += found.length;
+      for (const place of found) {
+        if (kept.length >= want) break;
+        const made = proposalFromDiscovered(place, template, trip);
+        if (!made) continue;
+        const identity = placeIdentityOf(made.entry, made.lookup);
+        if (!identity || seen.has(identity)) continue;
+        if (!isVerifiedEntry(made.entry)) continue;
+        seen.add(identity);
+        kept.push({ ...made, identity, name: made.proposal.display.title || '', replacement: true });
+      }
+      placesLog('discovery: after replacement', { kept: kept.length, looked });
+    }
+
+    // ---- rank ----
+    const ranked = rankVerifiedPlaces(kept.map(k => ({
+      ...k,
+      time: (k.proposal.display && k.proposal.display.startTime) || '',
+      score: placeQualityScore(k.entry, distanceKmForProposal(k.proposal)),
+    })));
+
+    return { kept: ranked, rejected, passthrough, requested: want };
+  }
+
+  // Straight-line km from the day's origin to a proposal, when both are known.
+  // Only used to break ranking ties, so an unknown distance is not a problem.
+  function distanceKmForProposal(p) {
+    try {
+      const lookup = proposalPlaceLookup(p);
+      const entry = lookup && placesCache.get(lookup.key);
+      if (!entry || !validCoord(entry.lat, entry.lon)) return null;
+      const trip = activeTrip();
+      const spec = trip ? proposalOrigin(trip.items, p.display.startDate, p.display.startTime, geoResolved) : null;
+      const from = resolveOriginPoint(spec);
+      if (!from) return null;
+      return distKm(from, { lat: entry.lat, lon: entry.lon });
+    } catch { return null; }
+  }
+
   // ---------- proposal machinery ----------
   // No save() happens on receive/render; only Accept writes to storage.
-  function renderProposals(actions, container) {
-    const trip = activeTrip();
+  // Validation, split out from rendering so the discovery path can verify the
+  // places BETWEEN the two. `invalid` carries the refusal cards, which are
+  // rendered either way: a malformed action is the model's mistake to show,
+  // not a place to look up.
+  function validProposalsFrom(actions, trip) {
     const valid = [];
+    const invalid = [];
     for (const action of actions) {
       const res = validateTripAction(action, trip);
       const pid = 'ap' + (++assistPropSeq);
-      if (!res.ok) {
-        const card = document.createElement('div');
-        card.className = 'assist-proposal invalid';
-        card.dataset.proposalId = pid;
-        // Same anatomy as every other card: an op label, the sentence, then the
-        // actions. Without the label it read as an untitled debug slab beside
-        // the polished ADD / REMOVE / PICK ONE cards.
-        card.innerHTML = `<div class="ap-op">Cannot apply</div>
-          <div class="ap-reason">${esc(res.reason)}</div>
-          <div class="ap-actions"><button type="button" class="btn assist-reject" data-act="reject-proposal">Dismiss</button></div>`;
-        container.appendChild(card);
-        continue;
-      }
+      if (!res.ok) { invalid.push({ pid, reason: res.reason }); continue; }
       assistActions.set(pid, action);
       // the proposal carries its own id so grouping can hand it back to us
       res.proposal.pid = pid;
       valid.push(res.proposal);
     }
+    const placeCount = valid.filter(p => p.op === 'add'
+      && isPlaceType({ type: (p.fields || {}).type })).length;
+    return { valid, invalid, placeCount };
+  }
+
+  function invalidCard(entry) {
+    const card = document.createElement('div');
+    card.className = 'assist-proposal invalid';
+    card.dataset.proposalId = entry.pid;
+    // Same anatomy as every other card: an op label, the sentence, then the
+    // actions. Without the label it read as an untitled debug slab beside
+    // the polished ADD / REMOVE / PICK ONE cards.
+    card.innerHTML = `<div class="ap-op">Cannot apply</div>
+      <div class="ap-reason">${esc(entry.reason)}</div>
+      <div class="ap-actions"><button type="button" class="btn assist-reject" data-act="reject-proposal">Dismiss</button></div>`;
+    return card;
+  }
+
+  // The discovery path's renderer: the places are already resolved and already
+  // in the session cache, so this is the same card build with no verification
+  // left to do. hydrateRatings still runs - it paints from the cache and asks
+  // for nothing it already has.
+  function renderResolvedProposals(placeProposals, passthrough, invalid, container) {
+    const trip = activeTrip();
+    for (const entry of invalid) container.appendChild(invalidCard(entry));
+    for (const entry of groupProposals([...placeProposals, ...passthrough])) {
+      container.appendChild(entry.type === 'set'
+        ? alternativeSetCard(entry, trip)
+        : proposalCard(entry.proposal.pid, entry.proposal, trip));
+    }
+    hydrateRatings(container);
+    refreshDistances();
+  }
+
+  function renderProposals(actions, container) {
+    const trip = activeTrip();
+    const { valid, invalid } = validProposalsFrom(actions, trip);
+    for (const entry of invalid) container.appendChild(invalidCard(entry));
     for (const entry of groupProposals(valid)) {
       container.appendChild(entry.type === 'set'
         ? alternativeSetCard(entry, trip)
@@ -9634,7 +10289,9 @@
   function proposalDistAttrs(p, trip) {
     const f = p.fields;
     if (!f) return '';
-    const query = itemMapsQuery({ type: f.type, title: f.title, location: f.location, mapsQuery: p.display.mapsQuery });
+    const lookup = proposalPlaceLookup(p);
+    const query = (lookup && lookup.query) || '';
+    const key = (lookup && lookup.key) || '';
     const city = String(f.location || '').trim();
     if (!query && !city) return '';
     const time = /^\d{2}:\d{2}$/.test(String(f.startTime || '')) ? f.startTime : '';
@@ -9650,7 +10307,7 @@
     // exact offer itemDistAttrs makes for the stay's own row, gated the same
     // way: only when the destination IS that stay.
     const stayName = isTravelLeg({ type: f.type }) ? legDestStayName(query, trip) : '';
-    return distAttrs(query, stayName, city, f.title || '') + ` data-dist-time="${esc(time)}"`;
+    return distAttrs(query, stayName, city, f.title || '', key) + ` data-dist-time="${esc(time)}"`;
   }
   // The stay this leg ends at, by its searchable name: a match on the stay's
   // own maps query or its display title (case-folded) is the trip saying
@@ -9680,7 +10337,19 @@
   function proposalPlaceHtml(p) {
     const d = p.display;
     const type = (p.fields || {}).type || '';
-    if (!isTravelLeg({ type })) return ratingSlotHtml(d.mapsQuery) + assistMapsLinkHtml(d.mapsQuery);
+    if (!isTravelLeg({ type })) {
+      // ONE lookup for the rating chip AND the Maps link, and it is the same
+      // one the hours slot, the distance chip and (after Add to trip) the
+      // itinerary row use. Before this the rating was keyed on the model's raw
+      // mapsQuery while the hours and the chip were keyed on a DERIVED query,
+      // so a single card could hold two different opinions about which place it
+      // was describing. A proposal whose type is not a place you walk into
+      // (a note) now gets no rating slot at all, which is what the itinerary
+      // row has always done for it.
+      const lookup = proposalPlaceLookup(p);
+      if (!lookup) return '';
+      return ratingSlotHtml(lookup) + assistMapsLinkHtml(lookup);
+    }
     const dest = normalizePlaceQuery(d.mapsQuery || '');
     if (!dest) return '';
     const href = directionsUrl('', dest, legTravelMode(type, null));
@@ -9695,12 +10364,29 @@
   // costs exactly what it cost before hours existed.
   function proposalHoursHtml(p) {
     const f = p.fields;
+    // Place-type proposals only. placeLookupFor answers "which place", not
+    // "may this row show hours"; a leg is not a venue and never gets a line.
     if (!f || !isPlaceType({ type: f.type })) return '';
-    const query = itemMapsQuery({ type: f.type, title: f.title, location: f.location, mapsQuery: p.display.mapsQuery });
+    const lookup = proposalPlaceLookup(p);
+    if (!lookup) return '';
     // The category's minimum recommendation window rides on the slot so the
     // paint pass can judge closingSoon; null (a stay) means closed-only.
-    const win = recommendWindowMin({ type: f.type, title: f.title, mapsQuery: query });
-    return hoursSlotHtml('ap-hours', query, p.display.startDate, p.display.startTime, win);
+    const win = recommendWindowMin({ type: f.type, title: f.title, mapsQuery: lookup.query });
+    return hoursSlotHtml('ap-hours', lookup, p.display.startDate, p.display.startTime, win);
+  }
+
+  // A proposal is not an item yet, so its identity is read off the fields it
+  // WOULD create - the exact same object shape proposalToItem builds, which is
+  // what guarantees the card and the saved row resolve identically.
+  function proposalPlaceLookup(p) {
+    const f = p && p.fields;
+    if (!f) return null;
+    return placeFor({
+      type: f.type, title: f.title, location: f.location,
+      mapsQuery: (p.display && p.display.mapsQuery) || f.mapsQuery,
+      startDate: (p.display && p.display.startDate) || f.startDate,
+      meal: f.meal,
+    });
   }
 
   // ---------- alternative sets ----------
@@ -9710,6 +10396,7 @@
   function setOptionHtml(p, name, trip) {
     const d = p.display;
     const meta = [
+      d.meal ? mealLabel(d.meal) : '',
       isIsoDate(d.startDate) ? fmtDate(d.startDate) : '',
       d.startTime ? fmtTime(d.startTime) : '',
       proposalCostStr(d, trip),
@@ -9788,7 +10475,10 @@
     // the day this card would land on: the shortest-route footer is per day,
     // and one reply can cover several
     if (isIsoDate(d.startDate)) card.dataset.date = d.startDate;
-    const meta = [isIsoDate(d.startDate) ? fmtDate(d.startDate) : '', d.startTime ? fmtTime(d.startTime) : ''].filter(Boolean).join(' · ');
+    // The kind sits with the date and the time now that the title is the
+    // venue's own name: "Drinks · Fri 31 Dec · 8:00 PM".
+    const meta = [d.meal ? mealLabel(d.meal) : '', isIsoDate(d.startDate) ? fmtDate(d.startDate) : '',
+      d.startTime ? fmtTime(d.startTime) : ''].filter(Boolean).join(' · ');
     const costStr = proposalCostStr(d, trip);
     const acceptLabel = p.op === 'add' ? 'Add to trip' : (p.op === 'update' ? 'Apply change' : 'Remove from trip');
     const opWord = p.op === 'add' ? 'Add' : (p.op === 'update' ? 'Update' : 'Remove');
@@ -9817,6 +10507,33 @@
   // A price the model supplied is a guess, so it lands in estCost and `cost`
   // stays empty: an accepted suggestion is visible everywhere but changes no
   // total until the traveller adopts the number in the edit modal.
+  // Writes the canonical place record onto an item from whatever the session
+  // has already resolved for it. Silent when the lookup has not landed, when
+  // the server could not verify it, or when the place is not a place you walk
+  // into: an item with no record simply resolves on its next render, and an
+  // UNVERIFIED resolution is deliberately never written down.
+  function attachResolvedPlace(item, trip) {
+    const lookup = placeFor(item, trip);
+    if (!lookup) { delete item.place; return; }
+    const entry = placesCache.get(lookup.key);
+    const rec = placeRecordFrom(entry, lookup.area, Date.now());
+    if (rec) {
+      item.place = rec;
+      placesLog('place persisted', { title: item.title, key: lookup.key, place: rec });
+    } else {
+      delete item.place;
+    }
+  }
+
+  // The saved record, re-checked on every read against the item's own city.
+  // Reading is where a record written by an older build (or by another device
+  // through sync) meets today's rules, so the check lives here as well as at
+  // the write boundary.
+  function itemPlaceRecord(it) {
+    if (!it || !it.place) return null;
+    return normalizePlaceRecord(it.place, { cityPoint: cityPoint((it.location || '').trim()) });
+  }
+
   function proposalToItem(p, trip) {
     const f = p.fields;
     // A MODEL's price is a guess, so it lands in the estimate bag and stays
@@ -9835,12 +10552,23 @@
       createdAt: new Date().toISOString(),
     };
     if (f.mapsQuery) item.mapsQuery = f.mapsQuery;
+    // A category the validator recognised is STRUCTURED metadata, never text in
+    // the title: "Snack: Mary's Chocolate" is stored as meal:'snack' with the
+    // venue's own name, and "Shopping: ..." is stored with no category at all
+    // because the app has none (see cleanAssistTitle).
+    if (f.meal && item.type === 'activity') item.meal = f.meal;
     // The assistant contract still says "Dinner: Narisawa" on the wire (it is
     // a prompt instruction to a model, and a stable one), so an accepted
     // proposal is converted at the boundary into the shape everything else
     // stores: meal:'dinner', title:'Narisawa'. Same normalizer the repair and
     // import paths use, so a card and a hand-added row cannot store differently.
     normalizeMealItem(item);
+    // THE HAND-OVER. The card resolved this place; the item now KEEPS that
+    // resolution, so the row is the same entity the traveller was looking at
+    // rather than a second, independent search of a string. Only a VERIFIED
+    // resolution is persisted (placeRecordFrom refuses anything else), which is
+    // what makes "a Tokyo title next to a Hokkaido place ID" unreachable.
+    attachResolvedPlace(item, trip);
     if (p.transcribed && f.confirmation) item.confirmation = f.confirmation;
     if (p.transcribed && f.cost != null) item.costCurrency = f.costCurrency || (trip.currency || 'USD');
     if (est != null) {
@@ -9864,6 +10592,13 @@
     }
     if (f.details !== undefined) it.details = String(f.details).slice(0, 500);
     if (f.mapsQuery) it.mapsQuery = f.mapsQuery;
+    if (f.meal && (f.type || it.type) === 'activity') it.meal = f.meal;
+    // An update that moves the venue or the city re-resolves; one that only
+    // touches the time keeps the identity it already has.
+    if (f.mapsQuery !== undefined || f.title !== undefined || f.location !== undefined) {
+      delete it.place;
+      attachResolvedPlace(it, trip);
+    }
     // Status is deliberately NOT written here. validateTripAction already
     // resolves an update's status to the target's own (see AN UPDATE NEVER
     // CHANGES STATUS there), so this line only ever wrote the value back
@@ -9910,7 +10645,8 @@
   // item's own identity, not the choice, so they stay out of the comparison.
   function assistItemFingerprint(it) {
     return JSON.stringify(['type', 'title', 'location', 'startDate', 'endDate', 'startTime', 'endTime',
-      'status', 'details', 'mapsQuery', 'cost', 'costNote', 'estCost'].map(k => it[k] === undefined ? null : it[k]));
+      'status', 'details', 'mapsQuery', 'meal', 'cost', 'costNote', 'estCost'].map(k => it[k] === undefined ? null : it[k])
+      .concat([it.place ? it.place.id : null]));
   }
 
   // Enough to put a consumed card back if the accept is undone: the raw
@@ -9960,8 +10696,10 @@
     if (!isPlaceType(probe)) return null;
     const date = p.display.startDate, time = p.display.startTime;
     if (!isIsoDate(date) || !/^\d{2}:\d{2}$/.test(String(time || ''))) return null;
-    const query = itemMapsQuery(probe);
-    const entry = placesCache.get(placeCacheKey(query));
+    const lookup = placeFor({ ...probe, startDate: date });
+    if (!lookup) return null;
+    const query = lookup.query;
+    const entry = placesCache.get(lookup.key);
     const hours = entry && entry.hours;
     if (!hours) return null;
     // The same category window the card's slot was judged by: closingSoon is
@@ -10037,9 +10775,15 @@
           // else. splitMealTitle returns null for anything that is not one of
           // the four contract prefixes, which leaves an ordinary activity
           // exactly as it was.
-          const split = f.type === 'activity' ? splitMealTitle(f.title) : null;
+          // `f.meal` is where the category lives now: sanitizeActionFields has
+          // already split "Lunch: Gap Cafe" into meal:'lunch' + a clean title,
+          // so the form opens on Food & Drink with the right subtype. The
+          // splitMealTitle fallback stays for a title that somehow still
+          // carries a prefix (an old cached reply, a hand-pasted one).
+          const split = f.type === 'activity' && !f.meal ? splitMealTitle(f.title) : null;
           openItemModal(null, {
-            type: f.type, title: (split ? split.title : f.title) || '', meal: split ? split.meal : '',
+            type: f.type, title: (split ? split.title : f.title) || '',
+            meal: f.meal || (split ? split.meal : ''),
             location: f.location || '',
             startDate: p.display.startDate || '', startTime: p.display.startTime || '',
             details: f.details || '',

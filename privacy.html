@@ -230,7 +230,7 @@
           </li>
         </ol>
 
-        <p>In the second and third modes, what is sent is a trimmed copy of the current trip: its name, currency, budget, and for each item the type, title, location, dates, times, status, costs and cost notes, the map query, and the free-text <strong>details</strong> field. If you keep confirmation numbers, seat assignments or personal notes in an item's <strong>details</strong>, they are part of what is sent. What is deliberately held back: the confirmation-number field itself, who paid, how a cost is split, the payment tag and the booking deadline, along with attached documents, your packing list, your trip essentials and your passport setting. The copy-and-paste package holds back the same fields.</p>
+        <p>In the second and third modes, what is sent is a trimmed copy of the current trip: its name, currency, budget, and for each item the type, title, location, dates, times, status, costs and cost notes, the map query, and the free-text <strong>details</strong> field. If you keep confirmation numbers, seat assignments or personal notes in an item's <strong>details</strong>, they are part of what is sent. What is deliberately held back: the confirmation-number field itself, who paid, how a cost is split, the payment tag, the booking deadline and the resolved Google place saved with an item, along with attached documents, your packing list, your trip essentials and your passport setting. The copy-and-paste package holds back the same fields.</p>
 
         <h2>Other services that receive data</h2>
 
@@ -247,7 +247,7 @@
           </div>
           <div class="skill-row">
             <h3>Google Places</h3>
-            <p>Reached through a function we host, to fetch ratings and opening hours for venues in your trip. It receives the venue search text for the items being looked up, not the whole trip. That text is the item's own Maps search field where it has one, and otherwise the item's title and location, for stays and activities only. What comes back is shown on the page and kept in memory for the current page session only; ratings and opening hours are never written to storage.</p>
+            <p>Reached through a function we host, to fetch ratings and opening hours for venues in your trip. It receives the venue search text for the items being looked up, not the whole trip. That text is the item's own Maps search field where it has one, and otherwise the item's title and location, for stays and activities only. Alongside each one it receives the city that item is in (its own place field, or the city of the day it falls on), the trip's country where the app already knows it, and that city's approximate centre point if it has been looked up before. Those travel so the lookup can be told which city to search in: without them a venue that shares its name with a branch in another country resolves to the wrong one, and the rating, opening hours and distance shown to you would belong to a place you were never told about. No dates, costs, notes, item details or account identity are sent. What comes back is shown on the page and kept in memory for the current page session only; ratings, names and opening hours are never written to storage. The one thing that is kept is the resolved place's Google identifier and its coordinates, saved with the item so the same place is used everywhere in the app rather than searched for again - those are stored with your trip, and so are synced and included in a share link exactly as the rest of the item is.</p>
           </div>
           <div class="skill-row">
             <h3>Nominatim (OpenStreetMap)</h3>
@@ -314,6 +314,8 @@
         <h2>Logs and server-side records</h2>
 
         <p>Two of the functions we host, for the AI assistant and for venue ratings, log HTTP status codes and truncated error responses from the service upstream when something fails. They do not log your trip, your prompt or the assistant's reply.</p>
+
+        <p>The venue-ratings function has one diagnostic mode, off unless we deliberately switch it on to investigate a wrong result. While it is on, that function's log records the venue search text it was given, the city it was told to search in, and the name, address and coordinates of the place Google returned, so we can see why a venue resolved the way it did. It never records who asked: no account, no per-browser identifier, and nothing else from your trip. It is off by default and is not on in normal operation.</p>
 
         <p>A third function is the Fantasy Premier League proxy behind the FPL Planner. It keeps a server-side cache of what it fetches, so that many people asking for the same public data cause roughly one request upstream. Everything in that cache is a copy of a public Fantasy Premier League response, including, where a team was looked up, that team's own public FPL entry. Nothing is stored against your account, and these requests carry no per-browser identifier.</p>
 

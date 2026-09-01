@@ -477,6 +477,420 @@ Probe traps this round minted:
   from lunch. Correct behaviour; fixtures that want a pure
   anchor->stops chain start the stay the night before.
 
+## A place is an ENTITY, not a string (2026-08-27 round)
+
+The owner asked the assistant for three Nama-chocolate shops in Japan. What
+came back:
+
+| card | what was wrong |
+| --- | --- |
+| "Shopping: Royce' Chocolate (Tokyo Station)" | resolved to ROYCE' Chocolate World, New Chitose Airport, **Hokkaido**; the chip read **809 km** from Tsukiji, and the wrong POI's rating and cid link were rendered as fact |
+| "Shopping: Royce' Chocolate (Kyoto Takashimaya)" | **"No rating match"** on the card, a rating on the agenda row for the same recommendation |
+| "Shopping: Mary's Chocolate (Shinjuku)" | `Shopping` is not one of this app's categories; the model invented the prefix and the app rendered and stored it verbatim |
+
+Four symptoms, **one cause with two halves**.
+
+### Half one: the identity had no geography
+
+`matchConfidence(query, placeName)` was the whole gate, and it is a gate about
+NAMES. Run it on the actual failure:
+
+```
+matchConfidence("Royce' Chocolate Tokyo Station", "Royce' Chocolate World")
+  -> { score: 0.67, confident: true }
+```
+
+That is not a bug in the function - "royce" and "chocolate" genuinely are two of
+the three distinctive tokens of "Royce' Chocolate World". It is a **category
+error**: a chain's name cannot answer a question about WHICH BRANCH, and every
+chain on earth is this case. `findPlaceId` made it worse by asking Text Search
+globally with `pageSize: 1`, so Google's answer to a chain name is its most
+famous location. The client cache key was the bare query lowercased, so the
+Hokkaido answer was then stored under `royce chocolate ...` for **30 days** and
+served to every city.
+
+Fixed by making the AREA part of the identity, end to end:
+
+- `verifyArea` (lib/tp-places-match.mjs) is a SECOND mandatory gate. Coordinate
+  check first (`AREA_MAX_KM` = 150 km), address/administrative-component check
+  as the fallback when the trip has not geocoded its city. Both gates must pass;
+  a failure is `no_match / wrong_area` and carries **no** rating, coordinates,
+  hours, place ID or Maps URI.
+- `AREA_MAX_KM` is deliberately generous. It is a wrong-continent gate, not a
+  walking gate: Tokyo's wards span ~40 km, Greater London ~45, LA County ~120,
+  and Yokohama must still count as Tokyo-area. The failures it exists for are
+  809 km, 4,000 km and 12,000 km.
+- The search is BIASED (`locationBias` circle) towards the expected point. That
+  is a request parameter, not a field-mask entry, so the SKU and the price are
+  unchanged.
+- A rejected candidate earns **exactly one** retry: the city spelled into the
+  query and `locationRestriction` (a rectangle Google cannot answer outside).
+  The retry costs one more Place Details call and takes its own budget slot, so
+  a quota-exhausted batch simply refuses instead of retrying. Two wrong answers
+  end the question - unresolved beats resolved-wrongly.
+- `formattedAddress` + `addressComponents` were added to `DETAILS_FIELD_MASK`.
+  Both are **Place Details Essentials** fields, two tiers below the Enterprise
+  tier the call already bills at, so the address rides the existing billed call
+  for $0.00 - the same way `location` does. Do not add anything from
+  Enterprise+Atmosphere; that WOULD move the SKU.
+- Cache keys carry the area on both sides: `idCacheKey(query, area)` server-side
+  (`id:<query>@<city>`), `placeCacheKey(query, area)` client-side
+  (`<query>@<city>`). Same business name, two cities, two entries, two answers.
+
+### Half two: three derivations of "which place is this"
+
+This is what produced the Kyoto contradiction, and it is worth being precise
+about because it looked like a caching bug and was not:
+
+| surface | key it used, before |
+| --- | --- |
+| card rating chip + Maps link | `placeCacheKey(p.display.mapsQuery)` - the model's RAW string |
+| card hours slot + distance chip | `placeCacheKey(itemMapsQuery({type,title,location,mapsQuery}))` - a DERIVED string |
+| itinerary row (Timeline + Days) | `placeCacheKey(itemMapsQuery(it))` - derived again, after the accept path had rewritten the title |
+
+Whenever those strings differed - a model that omitted `mapsQuery` on a
+place-type add, a title carrying a prefix `stripTitlePrefixes` did not know
+about, a `note` carrying a mapsQuery - the card and the row asked DIFFERENT
+questions and got different answers. Neither was lying about the string it held.
+
+`placeLookupFor(itemLike, ctx)` is now the only answer. It takes an item or a
+proposal's fields (identical shape) plus injected, cache-only geography, and
+returns `{ query, area, key }`. Every surface reads it. **Never re-derive a
+place query at a call site** - that is the bug, in its general form.
+
+### Add to trip HANDS OVER the resolution; it does not repeat it
+
+`item.place = { id, lat, lon, at, city }`, written by `attachResolvedPlace` from
+the session entry the CARD resolved. Rules that keep it honest:
+
+- Only a **verified** entry is ever persisted (`placeRecordFrom` returns null
+  otherwise). An unverified guess must not become a durable fact.
+- `normalizePlaceRecord` is the persistence boundary and runs on every write,
+  every read and every import (`repairDb`, the share/import sanitizer,
+  `itemPlaceRecord`). It drops a record with no ID, drops coordinates past the
+  30 days Google's terms allow (keeping the ID, which may be kept
+  indefinitely), and drops a point that disagrees with the item's own city.
+  **`title: "Royce Tokyo Station"` + Hokkaido coordinates is now unstorable.**
+- What is NOT persisted: display name, rating, review count, opening hours,
+  Google's `mapsUri`. No caching exception covers any of them. The Maps URL is
+  rebuilt from the ID (`/maps/place/?q=place_id:<id>`), which also means it can
+  never point at a branch other than the resolved one.
+- An edit that does not move the venue keeps the record byte for byte; an edit
+  that changes the title or the city drops it, because it is no longer this
+  row's place.
+- `placesLocationUpdates` only stores a coordinate when `verified === true`, and
+  `placePoint` re-checks every venue point against the row's own city before it
+  can reach a chip. The Photon fallback goes through the SAME check - a free
+  answer is not a licence to store an unchecked point.
+- **A `wrong_area` refusal suppresses the city-centroid fallback too.** Normally
+  a row with no venue point falls back to its city's centroid, which is the
+  honest "roughly here" answer for anything nobody looked up. `wrong_area` is
+  different: it is positive evidence that the only candidate for this name was
+  somewhere else entirely, so we do not know that the venue is in this city at
+  all, and a confident "2.1 km away" on top of that is the same lie in smaller
+  numbers. The other no-match reasons (`low_confidence`, `not_found`,
+  `generic_query`) keep the centroid - they mean we never learned the position,
+  which is exactly what that rung has always been for, and suppressing them
+  would strip chips from every landmark whose official name nobody types.
+
+### Categories are structured metadata, never title text
+
+`ASSIST_KINDS` mandates four literal title prefixes ("Dinner: "). A model
+generalises from four examples, invented "Shopping: ", and `stripTitlePrefixes`
+only knew the four - so the fake category was rendered on the card, stored on
+the item, AND folded into the derived Maps query, where "shopping" is a word no
+business is named after.
+
+`cleanAssistTitle` runs at `sanitizeActionFields`, the single boundary where
+model text becomes app data:
+
+- a prefix the app HAS a category for -> `item.meal` (the full `MEAL_META`
+  vocabulary, so `Snack: `, `Dessert: `, `Cafe: `, `Coffee: `, `Brunch: ` all
+  land somewhere real), title cleaned;
+- a prefix on the closed `DROPPED_TITLE_PREFIXES` list -> dropped;
+- **anything else -> untouched.** The list is closed for exactly this reason:
+  "teamLab: Borderless" and "Tokyo: A Walking Day" are names, and eating half
+  of one would be a worse bug than the one being fixed.
+
+The card's own rendering follows: the title is the venue's name, and the KIND
+moved to the meta line beside the date and time ("Drinks · Fri 31 Dec · 8:00
+PM"), which is where the itinerary row already carries it as an icon. Before
+this the card said "Drinks: Above Eleven" and the row it became said "Above
+Eleven" - the two surfaces disagreed cosmetically about the same item, and
+`data-dist-label` (which names the origin on the NEXT card's chip) inherited the
+prefix, so a chip read "from Drinks: Above Eleven".
+
+`mealTitlePrefixes()` is now read from a data constant that ASSIST_KINDS is
+BUILT from, not from a regex over the prompt text. The old regex
+(`/"[A-Z][a-z]+: "/g`) scanned prose, and the prompt now also NAMES the prefixes
+a model must not invent - a scanner cannot tell a mandate from a prohibition.
+
+### What the model may assert
+
+`ASSIST_PLACE_FACTS` (shipped in both modes) forbids the model producing a
+rating, a review count, opening hours as fact, a Google Maps URL, a place ID or
+coordinates, and requires `location` to be the CITY and `mapsQuery` to name the
+branch plus neighbourhood plus city. The model chooses WHICH place; every fact
+about it is resolved deterministically. This is the same split `ASSIST_DISTANCE`
+already made for distances.
+
+### Three states, three honest labels
+
+The reported contradiction was "Verify on Google Maps" sitting beside
+information the app had already verified. Fixing the link exposed a second one
+in the rating slot, and both come from the same habit of collapsing distinct
+answers into one string:
+
+| what happened | slot | link |
+| --- | --- | --- |
+| resolved, Google has a rating | the rating chip (which IS the link; CSS hides the separate one) | - |
+| resolved, Google has no rating | "No rating yet" | "Open on Google Maps" |
+| name matched nothing close enough | "No rating match" | "Verify on Google Maps" |
+| matched, but in the wrong city | "No rating match" (tooltip says which) | "Verify on Google Maps" |
+
+"No rating match" against a place we had resolved, whose position we were
+drawing a chip from and whose listing the link opened, read as "we could not
+find this". No new UI: the same one-line slot, the same styles, different words
+and a reason-aware tooltip.
+
+### The edit modal stopped hunting for a venue (same round)
+
+`focusFirstField(isEdit)` had said "only for a NEW item" in its own comment
+since it was written, and focused `#inTitle` either way. `#inTitle` is a place
+combobox whose `focus` listener searches whenever the field already holds text,
+so opening "Edit item" on a saved venue opened the autocomplete over the form,
+under a name the traveller had no intention of changing - the dialog read as
+though it were replacing the venue.
+
+Two fixes, because either alone leaves a hole:
+
+- an EDIT focuses no field. `openOverlay` has already focused the `.modal`
+  itself, which is what the Tab trap and the screen-reader announcement need,
+  so the first Tab lands on the first field and nothing searches. A NEW item
+  still focuses its first useful field (the airport pair on a flight, Title
+  otherwise), because there the traveller is about to type.
+- `focusQuiet()` marks a focus as PROGRAMMATIC and the combobox skips its search
+  for those. A human focusing a filled field is asking to see the matches; the
+  app moving the cursor is not. This also covers the blocked-save path, which
+  focuses the first invalid field and could land on `#inTitle`.
+
+An unrelated edit also keeps the resolved place byte for byte (the item-form
+save carries `prev.place` when the title and city are unchanged); changing
+either drops it, because the old place ID is no longer that row's.
+
+### Traps found while fixing this
+
+- **app.js destructures ~120 names from TripLogic.** A new export is invisible
+  until it is added there, and the failure is a `ReferenceError` at RENDER time,
+  not at load - `node --check` and the whole node:test suite pass, and only the
+  browser E2E catches it. (`dayMorningCity` was already in that list; adding it
+  twice is a `SyntaxError`, which at least fails loudly.)
+- **`placeContextFor` calls `dayMorningCity` per row per render.** That walks and
+  sorts the whole trip, so it is memoized per (trip, date) and the memo is
+  cleared at the top of `render()`. A memo that outlived a render would serve a
+  stale city after an edit.
+- **Every E2E fixture that seeds `trip-planner:venuegeo:v1` had to change.** The
+  store is area-keyed now, so a fixture seeded under a bare query is simply never
+  found and the suite reads as a distance regression rather than a stale
+  fixture. Seed through `placeCacheKey(q, { city })`.
+- **The retry condition is not "the query changed".** The commonest real
+  `mapsQuery` already names the city ("Royce' Chocolate Tokyo Station"), so
+  gating the retry on a changed query skipped the exact case that failed. It is
+  gated on "the query changed OR we now have a restriction to apply".
+- **A mock that ignores `locationRestriction` proves nothing.** The Places
+  double in the geo tests filters candidates by the box, because the whole
+  mechanism the retry leans on is that a restricted search cannot return the
+  wrong region.
+- **Every tp-places mock in the E2E suites had to echo `id`.** A mock that
+  returns a fixed result list keyed only by query text no longer lands at all,
+  because the client re-keys responses on the id it sent. The symptom is silent:
+  no ratings, no badges, and a duplicate lookup on the next render (the cache
+  never filled, so the reservation never held).
+- **`#assistBtn` is inside the overflow menu at 390px**, so a selector click on
+  the hidden original does nothing and the panel never opens. Drive it with a
+  programmatic `.click()` on the real button, or go through the menu proxy.
+
+### privacy.html moved with the code (it always has to)
+
+Two promises changed, and both are checked by
+`tests/static/trip-planner-assistant-privacy.test.mjs`:
+
+- **The Places paragraph** said the function "receives the venue search text
+  ... not the whole trip". It now also receives the item's CITY, the trip's
+  country when known, and that city's cached centre point - the geography the
+  whole wrong-branch fix turns on - so the paragraph says so, says why (without
+  it the rating and hours shown belong to a place you were never told about),
+  and says what is still not sent. It also now discloses that the resolved
+  place ID and coordinates are STORED with the item, and therefore synced and
+  included in a share link.
+- **The logging paragraph** gained the `TP_PLACES_DEBUG` diagnostic mode: off by
+  default, records the query, the expected city and the candidate's name,
+  address and coordinates, and never records who asked.
+
+And `place` joined `ASSIST_OMITTED_FIELDS`, because `slimTripForShare` is also
+the assistant's projection: a place ID and a coordinate are useless to a model
+(it cannot look either up), they compete for the trip's size budget, and
+shipping them would have quietly widened what "the trip contents" means in the
+paragraph about what reaches Gemini. The model's cue that an item already has a
+place is its `mapsQuery`, which still travels.
+
+### Two bugs the live validation found that the tests had not
+
+Both were found on 2026-08-27 by driving the REAL handler and the REAL app
+against provider data instead of fixtures, and both are the same lesson: a test
+that injects its own value cannot see a bug in how that value is produced.
+
+**1. The retry was dead code.** The handler reserves quota with
+`billableMax = <number of non-generic queries>` - one slot per query. A query's
+own first Place Details call took that slot, so the retry's `claim()` always
+failed and the geographically constrained second look never happened. The
+pipeline tests all passed because they call `resolveQueries` directly with
+`budget: 10`. It was invisible in every mock and obvious the moment a real
+handler's upstream call log was read: search, details, and then nothing.
+
+It mattered most in the commonest batch of all - ONE recommendation - which is
+exactly the shape of the report the retry was written for. Fixed by reserving
+bounded headroom (`retryHeadroom`, capped at `RETRY_HEADROOM_MAX` = 4) on top of
+the first lookups. The headroom is an upper bound, never a charge: step (7)
+already releases every unspent slot, so a clean batch still costs exactly what
+it used, and the cap keeps a 12-query batch from reserving 24 against the
+monthly ceiling while it is held. Pinned by
+`netlify/functions/tests/tp-places-retry-budget.test.mjs`, which drives the
+whole handler so the budget is the real one.
+
+**2. Three surfaces, two URLs.** The rating chip on a card rendered Google's own
+`googleMapsUri`, while the card's Maps link and the itinerary row both preferred
+the place ID. Both forms are valid Google Maps URLs pointing at the same entity,
+so nothing was WRONG - but one recommendation showed two different URLs for one
+place, and the Maps URL was supposed to survive from card to itinerary
+unchanged. That is the same "two surfaces, two answers" shape the whole round is
+about, surviving in the one spot nobody had unified.
+
+`placeEntryUrl(entry)` is now the single definition and all three read it. The
+place ID wins because it is the form we can ALWAYS produce: a row rendering from
+its saved record has the ID and, by Google's caching terms, may not have kept
+`mapsUri` at all - so preferring `mapsUri` anywhere makes that row the odd one
+out by construction.
+
+### The follow-up round: discovery answers hold only verified places
+
+The round above made an unverifiable recommendation SAFE. The owner's next ask
+was that it also be ABSENT from a "find me places" answer: three requested
+places should be three real places, not two real ones and a card for something
+the model made up.
+
+**The distinction is drawn from the TRAVELLER'S words.** `assistDiscoveryIntent`
+reads their message, not the model's output - it is our own text, it exists
+before the reply arrives, and it cannot be hallucinated. "Find me 3 chocolate
+shops" is discovery (they named nothing, so an unverifiable candidate is an
+invention); "add Royce Tokyo Station" is not (they named it, so their words ARE
+the answer and swapping in a different business would answer a question nobody
+asked). The model may also declare it, but that is the weaker signal and it
+only ever ADDS discovery, never removes it.
+
+The verb pattern is a closed list on purpose: a false positive here silently
+deletes a venue the traveller typed. It cost one iteration to get right -
+"find me some good ramen spots" has three filler words between the verb and
+the noun, and a fixed adjective slot could not reach past them.
+
+**Render order inverts for discovery.** Ordinary turns render cards and paint
+ratings in as they land; a discovery turn cannot, because the unverifiable card
+would already be on screen as a normal actionable recommendation. So it holds
+the answer behind one muted line, resolves, replaces, and renders once. The
+cost is a wait; the trade is right for a question whose entire value is that
+the answers are real. `DISCOVERY_WAIT_MS` (12s) bounds it, and anything
+unresolved when it expires counts as unverified - the honest reading.
+
+**Replacement is deterministic, and that was the important design call.** The
+obvious implementation is another model turn ("that one was not real, suggest
+another"). It was rejected: it spends a request from the traveller's 30/day
+allowance, adds 8-14s to an answer that has already been waiting, needs its own
+loop guard, and produces another invented name at the same rate as the first.
+Instead `tp-places` gained a `discover` mode - one free `locationRestriction`
+search returns a page of candidate IDs and each is verified through the same
+`verifyArea` gate. We already know the category and the city; the provider can
+answer that directly with real places.
+
+**The name gate does not apply to discovery, and could not.** A named lookup
+asks "is this the same business the model named?"; discovery asks "which places
+are these?" and nobody named one, so `matchConfidence("nama chocolate Tokyo",
+"Musee Du Chocolat Theobroma")` is 0 by construction and would reject every
+correct answer. What replaces it is that the SEARCH is restricted rather than
+biased - a biased discovery search is the original bug with a wider net.
+
+**An unrated place is not offered as a replacement**, though a named lookup
+keeps one. The traveller asked for GOOD places and this candidate is only being
+offered because another failed; "we found you something, we just cannot say if
+it is any good" is not a recommendation.
+
+**Prose is sanitized, not regenerated.** Regenerating needs another model turn
+to rewrite text that is mostly correct, and the sentences about the surviving
+places are worth keeping as written. `rebuildAssistProse` drops blocks naming a
+rejected venue and no surviving one, corrects the count claim, and adds an
+honest note. Two rules keep it from eating good text: a block naming BOTH a
+kept and a rejected venue is kept (the corrected count is what stops the answer
+over-claiming), and a name must share TWO distinctive tokens before it matches -
+"chocolate" alone must never delete a paragraph about a different shop, which is
+why PROSE_STOPWORDS exists.
+
+**Seeding is how a replacement reaches its card.** The discovery response IS
+the resolution, so `createPlacesQueue.seed(key, entry)` files it under the key
+the card will ask for. Without it the card would re-resolve by name: a second
+billed call, and one the name gate could refuse, because the model never named
+this place.
+
+**Dedupe is by identity, never display text** (`placeIdentityOf`: place ID
+first, area-aware key as fallback), and the `exclude` list sent to the provider
+carries the rejected candidates as well as the kept ones - so a place we just
+refused cannot come back as its own replacement, and an excluded candidate is
+never even fetched, because looking costs $0.02.
+
+### Two defects the live pass caught in this round too
+
+Both were invisible to the unit tests and to the E2E, and both were found by
+looking at what the real app actually rendered.
+
+**1. A silent fallback hid a missing import for a whole E2E run.**
+`placesCacheUpdates` is used by `proposalFromDiscovery` but was never added to
+app.js's `window.TripLogic` destructuring, so every discovery answer threw a
+ReferenceError - straight into the `.catch` that falls back to the ordinary
+render. The only symptom was that discovery quietly did not happen: cards
+appeared instantly, the invented venue among them, exactly as before the round.
+The fallback now `console.error`s as well as debug-logging, because a fallback
+that hides its own cause is how a feature silently stops existing. app.js
+destructures ~120 names from TripLogic and a missing one is a RUNTIME error in
+one branch - `node --check` and the whole node:test suite pass. There is now a
+sweep for it in the round's notes; run it after adding any TripLogic export.
+
+**2. A replacement card could not be accepted.** `validateTripAction` does not
+assign `pid` - `validProposalsFrom` does - so a proposal built from a discovered
+place rendered with `data-proposal-id="undefined"` and no entry in
+`assistActions`. Its "Add to trip" button did nothing at all, on the one card
+the traveller is most likely to press, because it is the one we went and found
+for them. Replacements now take a pid and register their action exactly as
+model-authored proposals do.
+
+### What these rounds deliberately did NOT do
+
+**Replacement never spends a model turn.** The obvious way to replace an
+unverifiable recommendation is to ask the model for another one. It is not what
+happens, and the reasons are worth keeping: a second Gemini turn spends a
+request from the traveller's 30/day allowance silently, adds 8-14s to an answer
+that has already been waiting behind verification, needs its own loop guard, and
+invents names at the same rate the first turn did - so the replacement can fail
+verification too and the loop earns nothing. The provider already knows which
+real places match a category in a city, which is the actual question.
+
+**Only DISCOVERY answers replace.** A place the traveller NAMED is never swapped
+for a different business, however unverifiable it is. Their words are the
+answer; substituting a shop we happened to find would be answering a question
+nobody asked. Those keep the honest unresolved state - "No rating match", a
+plain search link, no rating, no distance, no hours.
+
+**Unrated places are still recommendable in a named lookup** (unrated is not
+unverified), and still excluded from every pick-one badge, because
+`candidateBadges` counts only resolved entrants.
+
 ## Places billing: the free allowance is the real ceiling (2026-08-18)
 
 **Google's billing, not our counters, is the source of truth, and they did not
