@@ -1444,6 +1444,36 @@ Fantasy Premier League" / "Reconstructed squad value 99.9 does not match FPL's
 100. Selling prices may be off by the difference.", no staleness banner, no
 "older copy" wording, console clean.
 
+### A transfer existing is not a PENDING transfer, 2026-09-01
+
+Pass 5 of the GW1 runbook was declared runnable the moment
+`entry/{id}/transfers` stopped being `[]`. That was wrong, and the distinction
+is worth keeping because it is invisible from the transfers payload alone.
+
+`entry/{id}/event/{gw}/picks` is frozen at that gameweek's DEADLINE, so where a
+transfer shows up depends on which side of the deadline it was made:
+
+- **Made before its own deadline** - it is absorbed into that gameweek's picks.
+  `transfers` and `picks` agree, `pendingTransfers({ transfers, gw })` returns
+  nothing, and none of the reconciliation code runs. The account's only transfer
+  (Lacroix out, Tarkowski in) was made at 2026-08-28T05:33Z against a 17:30Z
+  deadline, so this is the state it produced.
+- **Made after it** - it lands on `transfers` while `picks` still describes the
+  older squad. That divergence is the entire subject of pass 5, and the only
+  thing that exercises `applyPending`, the free-transfer decrement, and the
+  "do not re-recommend the move already made" rule against real data.
+
+So the test for "can pass 5 run?" is not "is `transfers` non-empty". It is
+whether the newest transfer's `event` is the gameweek being PLANNED and its
+`element_in` is absent from the frozen picks.
+
+What this cost: two boxes closed live (bank match; the -4 hit on a second
+transfer, verified in the scenario sandbox), three checked and left open because
+only the end state was observable, and one ("Check for changes" reporting a
+change) untouched. The reconciliation itself is not unverified - `gw2-window` in
+`e2e/lifecycle.mjs` drives exactly that shape - but it has still never been seen
+against live FPL.
+
 ### The header states what can be spent today, 2026-08-31
 
 `squadValueTenths` is now always `sellingTotal + bankTenths`. The fallback to
