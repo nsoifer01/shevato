@@ -297,21 +297,46 @@ export function buildSquadState({ entry, history, transfers, picks, gameState, g
   const squadValueTenths = built.length ? sellingTotal + bankTenths : frozenValueTenths;
 
   // The one arithmetic check that proves the purchase-price reconstruction was
-  // right. It fails when a transfer is missing from the payload or a player was
-  // price-changed between the two fetches, and that has to be visible: silently
-  // absorbing it would mean recommending transfers the manager cannot afford.
+  // right. It fails when a transfer is missing from the payload, and that has to
+  // be visible: silently absorbing it would mean recommending transfers the
+  // manager cannot afford.
   //
   // It is only meaningful against the FROZEN squad. Once a transfer has been
   // made for the gameweek being planned, FPL's `value` describes a squad that no
   // longer exists, so comparing against it would fire on every manager who had
   // simply used their transfer.
-  if (!applied.count && sellingTotal + bankTenths !== frozenValueTenths) {
+  //
+  // COMPARE LIKE WITH LIKE. `value` is a snapshot taken at the frozen
+  // gameweek's deadline (Fact 3), so the live reconstruction is guaranteed to
+  // drift from it the instant any owned player changes price, and it fired on
+  // that ordinary drift rather than on a fault: on 2026-09-01 one 0.1 fall put a
+  // banner on the page for a squad whose arithmetic was perfect. Roll every
+  // price back to the deadline with `costChangeEvent` first, and what is left
+  // over is the part price movement does NOT explain, which is the only part
+  // that ever meant anything.
+  const deadlineTotal = built.reduce((sum, p) => {
+    const player = gameState.players.get(p.playerId);
+    const moved = player ? player.costChangeEvent : 0;
+    const nowCost = player ? player.nowCost : 0;
+    return sum + sellingPrice(p.purchaseTenths, nowCost - moved, rules);
+  }, 0);
+  // `costChangeEvent` measures movement since the CURRENT event's deadline, so
+  // the roll-back only lines up when the frozen picks ARE the current event's.
+  // Reading an older gameweek's picks (a rollover, a hand-passed payload) makes
+  // it the wrong yardstick, and there the raw comparison is the honest one.
+  const alignedToCurrentEvent = gameState.currentEvent !== null
+    && gameState.currentEvent !== undefined
+    && entryHistory.event === gameState.currentEvent;
+  const reconciled = alignedToCurrentEvent
+    ? deadlineTotal + bankTenths === frozenValueTenths
+    : sellingTotal + bankTenths === frozenValueTenths;
+  if (!applied.count && !reconciled) {
     warnings.push({
       code: 'value_mismatch',
       // Both to one decimal. Dividing by 10 alone printed "100.9 does not match
       // FPL's 101", one figure to a tenth and the other not, which read as two
       // different kinds of number rather than the same one twice.
-      message: `Reconstructed squad value ${((sellingTotal + bankTenths) / 10).toFixed(1)} does not match FPL's ${(frozenValueTenths / 10).toFixed(1)}. Selling prices may be off by the difference.`,
+      message: `Reconstructed squad value ${((sellingTotal + bankTenths) / 10).toFixed(1)} does not match FPL's ${(frozenValueTenths / 10).toFixed(1)}, and price changes since the deadline do not account for the difference. Selling prices may be off by it.`,
     });
   }
 

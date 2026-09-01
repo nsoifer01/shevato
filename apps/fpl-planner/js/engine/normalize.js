@@ -169,6 +169,11 @@ export function normalizePlayer(e) {
     // in (nowCost - costChangeStart), which is the only purchase price the
     // public API can reconstruct for an original pick.
     costChangeStart: e.cost_change_start ?? 0,
+    // Price movement since the CURRENT gameweek's deadline, in tenths. It is
+    // what lets squad.js roll a price back to the moment FPL froze
+    // `entry_history.value`, and so tell an ordinary overnight move apart from
+    // a reconstruction that genuinely does not add up.
+    costChangeEvent: e.cost_change_event ?? 0,
     status: e.status,
     // FPL gives a percentage, the engine works in probabilities.
     chanceNext: e.chance_of_playing_next_round === null || e.chance_of_playing_next_round === undefined

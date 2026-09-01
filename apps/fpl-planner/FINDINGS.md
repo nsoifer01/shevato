@@ -1444,6 +1444,43 @@ Fantasy Premier League" / "Reconstructed squad value 99.9 does not match FPL's
 100. Selling prices may be off by the difference.", no staleness banner, no
 "older copy" wording, console clean.
 
+### The value check compares like with like, 2026-09-01
+
+`value_mismatch` fired on ordinary price movement. That was accepted when Fact 3
+was written up ("real, but fires on ordinary price movement rather than only on a
+genuine reconstruction error"), and living with it was a mistake: one 0.1 fall
+put a warning banner on a page whose arithmetic was perfect, and it would have
+done so for most of the days between any two deadlines.
+
+The check was comparing a LIVE total against a total frozen at the gameweek
+deadline. Those two are guaranteed to differ the moment any owned player changes
+price, so what it measured was mostly "has a price moved", not "is the
+reconstruction wrong".
+
+`cost_change_event` is the price movement since the current gameweek's deadline,
+which is exactly the interval `entry_history.value` was frozen across. Rolling
+every owned player back by it reproduces the deadline squad, and comparing THAT
+against `value` leaves only the part price movement does not explain. Verified
+against the owner's live payloads on 2026-09-01: the old engine emitted the
+banner ("99.8 does not match FPL's 99.9"), the new one emits nothing, and the
+header still reads 99.8 in both.
+
+Three things to keep:
+
+- **The safety property is intact.** A missing transfer in the payload still
+  leaves an unexplained remainder and still warns. The wording says so now: "and
+  price changes since the deadline do not account for the difference".
+- **The roll-back needs the frozen picks to BE the current event's.**
+  `costChangeEvent` measures from the current deadline, so against an older
+  gameweek's picks it is the wrong yardstick. `alignedToCurrentEvent` guards it
+  and the raw comparison stands otherwise, which is also what keeps every
+  fixture without `cost_change_event` behaving exactly as before.
+- **Test the silence, not just the noise.** The regression test doctors one
+  owned player down 0.1 with `cost_change_event: -1` and asserts NO warning
+  while the header still moves to the lower figure. Pick a player already at or
+  below his purchase price for it: his selling price tracks his current price
+  one for one, so the arithmetic stays exact.
+
 ### A transfer existing is not a PENDING transfer, 2026-09-01
 
 Pass 5 of the GW1 runbook was declared runnable the moment

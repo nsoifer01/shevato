@@ -65,8 +65,8 @@ snapshot, not a live valuation, and it drifts by exactly the sum of price moves
 since. Reconstructing selling prices per player, rather than trusting `value`,
 is therefore required and not merely defensive.
 
-The app handles it as designed: with no transfer made, `buildSquadState`'s
-arithmetic check fires and production shows **"One number does not match Fantasy
+The app handled it as designed: with no transfer made, `buildSquadState`'s
+arithmetic check fired and production showed **"One number does not match Fantasy
 Premier League"** with "Reconstructed squad value 99.9 does not match FPL's 100.
 Selling prices may be off by the difference." It does NOT call the data old, and
 no "Fantasy Premier League is not answering" banner appears. Verified on
@@ -74,6 +74,13 @@ shevato.com at 1280 and 390. At the time the header still printed SQUAD VALUE
 £100.0m (the frozen total) while the banner named 99.9. That fallback was
 removed on 2026-08-31: the header now states the reconstructed total in every
 case bar an in-season payload that carried no picks, so the two agree.
+
+**The banner itself was retired from this case on 2026-09-01.** Firing on a
+price move was comparing a live total against a deadline snapshot; the check now
+rolls prices back with `cost_change_event` first and reports only what movement
+cannot explain. So the Fact 3 divergence above is still real and still what the
+header reflects, but it is no longer announced. A future pass wanting to SEE the
+banner has to break the reconstruction, not wait for a price change.
 
 **Pass 5 attempted 2026-09-01: two more boxes closed, four still open, and the
 reason is a trap worth naming.** On 2026-08-28 `entry/3855835/transfers` was
