@@ -80,9 +80,9 @@ Raw test count is not evidence of correctness. Do not report it as if it were.
   tackles; MID/FWD = CBIT + recoveries + tackles; GKP none. Verified against
   live per-player sums.
 - **`entry/{id}/transfers` is served newest-first.** Never assume order.
-- **`entry_history.value` includes the bank** (self-consistent in fixtures;
-  unverifiable against a live mid-season team until GW1 is played;
-  affordability never depends on it, only display).
+- **`entry_history.value` includes the bank**, and is FROZEN at that gameweek's
+  deadline - it does not track later price moves (measured 2026-08-28; see
+  "Fact 3, answered"). Affordability never depends on it, only display.
 - **Pre-season quirks**: every event has `is_current: false` (so
   `currentEvent === null` is normal), `cost_change_start` is 0 for everyone
   (live data cannot exercise purchase/sell divergence; fixtures inject it),
@@ -783,7 +783,10 @@ ranking, and only the part of a correction that changes ORDER changes decisions
   (if not, the planner believes every manager is broke), whether
   `entry_history.value` tracks daily price moves (decides whether the
   `value_mismatch` warning is a constant false alarm), and what upstream
-  actually returns while the game is updating. `GW1-RUNBOOK.md` beside this file is the
+  actually returns while the game is updating. **All four are now answered**
+  (Facts 1, 2 and 4 on 2026-08-21, Fact 3 on 2026-08-28: it does not track
+  them, and the warning is real but fires on ordinary price movement).
+  `GW1-RUNBOOK.md` beside this file is the
   checklist for all four, with the commands and what each answer means; capture
   the bootstrap at 17:25 and 17:35 and keep both; (2) early 2026-27: confirm vaastav's merged_gw.csv is accumulating
   gameweeks - if that archive ever stops, THEN build the minimal collector;
@@ -1406,6 +1409,40 @@ arithmetic. `season-rollover.test.mjs` asserts the two together: either the
 payload is refused, or the asymmetry is gone. Whoever later makes this state
 usable - a heavier price prior, a longer-lived baseline - fails that test until
 the asymmetry is fixed too, which is the order the changes have to happen in.
+
+### Fact 3, answered 2026-08-28: `entry_history.value` is a deadline snapshot
+
+The last of the four opening-gameweek unknowns. `entry_history.value` does
+**not** track daily price moves: it is frozen at the deadline of the gameweek
+whose picks you asked for, and drifts from reality by the sum of every price
+move since.
+
+Measured on the first overnight move of the season. Anderson (MCI) fell 6.5 to
+6.4; nobody else in the fifteen moved. `entry/3855835/event/1/picks` still
+served `value: 1000, bank: 0` while the fifteen at that day's `now_cost` summed
+to 999. One player, one tenth, and the two numbers part company - which settles
+the design question that was open: the `value_mismatch` warning is **not** a
+constant false alarm, but it does fire on ordinary price movement rather than
+only on a genuine reconstruction error, so its wording has to be the
+informational one it now has and never an error.
+
+Two consequences worth keeping:
+
+- **Reconstructing selling prices per player is load-bearing, not defensive.**
+  Trusting `value` would have the planner spending money the manager does not
+  have within days of a deadline. `buildSquadState` already does the right
+  thing; this is the measurement that says why it must.
+- **The header and the banner deliberately disagree.** With no transfer made,
+  `squadValueTenths` falls back to `frozenValueTenths`, so SQUAD VALUE reads
+  £100.0m while the banner names 99.9. That is the documented fallback, but it
+  does mean the app displays the number it has just told you is wrong. If that
+  is ever judged confusing, the fix is to display the reconstructed total and
+  keep the banner, not to drop the check.
+
+Verified in production at 1280 and 390 on 2026-08-28: "One number does not match
+Fantasy Premier League" / "Reconstructed squad value 99.9 does not match FPL's
+100. Selling prices may be off by the difference.", no staleness banner, no
+"older copy" wording, console clean.
 
 ## Browser E2E, and why it exists here now
 
