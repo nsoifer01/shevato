@@ -1,6 +1,744 @@
 {
   "updates": [
     {
+      "builtAt": "2026-09-01T11:14:07.498Z",
+      "totals": {
+        "seasons": 66571,
+        "delta": 93
+      },
+      "shapeCounts": {
+        "rebound": 10159,
+        "rising": 2604,
+        "slow-burn": 4405,
+        "big-finale": 12146,
+        "u-shaped": 3094,
+        "rollercoaster": 14133,
+        "mid-peak": 4628,
+        "saved-best-for-last": 1502,
+        "front-loaded": 3489,
+        "declining": 1883,
+        "bad-finale": 4649,
+        "consistent": 2625,
+        "shape-drift": 1577
+      },
+      "shapeDeltas": {
+        "mid-peak": -10,
+        "rebound": 26,
+        "rising": 1,
+        "slow-burn": 8,
+        "big-finale": 35,
+        "u-shaped": 1,
+        "rollercoaster": 12,
+        "saved-best-for-last": -1,
+        "front-loaded": -1,
+        "declining": 1,
+        "bad-finale": 2,
+        "consistent": -5,
+        "shape-drift": -8
+      },
+      "added": [
+        {
+          "seriesId": "tt26545992",
+          "title": "Lanterns",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt14668192",
+          "title": "Elite Short Stories: Guzmán Caye Rebe",
+          "season": 4,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt33049767",
+          "title": "Adults",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt44113382",
+          "title": "Death of the Pastor's Wife",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36996011",
+          "title": "Mousetrap",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31260386",
+          "title": "Beauty in Black",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32213668",
+          "title": "Leanne",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt20516590",
+          "title": "Women in Blue",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39555444",
+          "title": "The Airport Chaplain",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt16420408",
+          "title": "Graveyard",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0320018",
+          "title": "Good Morning, Miami",
+          "season": 1,
+          "seasonYear": 2002
+        },
+        {
+          "seriesId": "tt0092447",
+          "title": "Boys Will Be Boys",
+          "season": 1,
+          "seasonYear": 1987
+        },
+        {
+          "seriesId": "tt11774420",
+          "title": "Expedition X",
+          "season": 12,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39044683",
+          "title": "Moon Shadow",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0257316",
+          "title": "My Uncle Silas",
+          "season": 2,
+          "seasonYear": 2003
+        },
+        {
+          "seriesId": "tt0078714",
+          "title": "You Can't Do That on Television",
+          "season": 1,
+          "seasonYear": 1979
+        },
+        {
+          "seriesId": "tt0133302",
+          "title": "Frontline",
+          "season": 9,
+          "seasonYear": 1991
+        },
+        {
+          "seriesId": "tt44430046",
+          "title": "ARK: Stand and Fall Tournament",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt0281450",
+          "title": "Inside Schwartz",
+          "season": 1,
+          "seasonYear": 2001
+        },
+        {
+          "seriesId": "tt32066226",
+          "title": "Bookish",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39278978",
+          "title": "Gutiérrez is mai neim",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0094516",
+          "title": "My Secret Identity",
+          "season": 3,
+          "seasonYear": 1991
+        },
+        {
+          "seriesId": "tt0086674",
+          "title": "Bottle Boys",
+          "season": 1,
+          "seasonYear": 1984
+        },
+        {
+          "seriesId": "tt11043554",
+          "title": "NWA Powerrr",
+          "season": 27,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt15856874",
+          "title": "Cinderella Chef",
+          "season": 3,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt4969082",
+          "title": "Four Seasons",
+          "season": 1,
+          "seasonYear": 1999
+        },
+        {
+          "seriesId": "tt2024343",
+          "title": "Workingirls",
+          "season": 3,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt2316036",
+          "title": "Urban Secrets",
+          "season": 1,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt27715632",
+          "title": "Jeopardy! Masters",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43697543",
+          "title": "Naked and Afraid: Shipwrecked",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43747828",
+          "title": "After Moving Seats, the Boy Behind Me Has a Crush on Me",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37884717",
+          "title": "The Early Spring",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0090440",
+          "title": "Großstadtrevier",
+          "season": 35,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt0098954",
+          "title": "Yellowthread Street",
+          "season": 1,
+          "seasonYear": 1990
+        },
+        {
+          "seriesId": "tt0211882",
+          "title": "Watership Down",
+          "season": 3,
+          "seasonYear": 2001
+        },
+        {
+          "seriesId": "tt3110590",
+          "title": "Car S.O.S.",
+          "season": 12,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt0983197",
+          "title": "Four Corners",
+          "season": 66,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4932500",
+          "title": "IMDb on the Scene",
+          "season": 11,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2223298",
+          "title": "Salvage Hunters",
+          "season": 3,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt7662316",
+          "title": "Trunkfest",
+          "season": 2,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt4969460",
+          "title": "Qalam Homra",
+          "season": 1,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt12137502",
+          "title": "Al Ayam",
+          "season": 1,
+          "seasonYear": 1979
+        },
+        {
+          "seriesId": "tt6850842",
+          "title": "True Sight",
+          "season": 2,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt4267324",
+          "title": "Variety Studio: Actors on Actors",
+          "season": 17,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt18070984",
+          "title": "Average Joe",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0395383",
+          "title": "Clash of Warriors",
+          "season": 1,
+          "seasonYear": 2002
+        },
+        {
+          "seriesId": "tt15482946",
+          "title": "Supreme Models",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt13022732",
+          "title": "Single, Out",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31975566",
+          "title": "Adv. Achinta Aich",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt35670095",
+          "title": "All Aboard!: Scotland's Poshest Train",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt37053085",
+          "title": "All the Truth in My Lies",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39061216",
+          "title": "Yemekteyiz Yasaklanan",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt37976607",
+          "title": "Hit Point",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43611974",
+          "title": "My Summer of You",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4875520",
+          "title": "Iliski Durumu: Karisik",
+          "season": 2,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt6685272",
+          "title": "The Repair Shop",
+          "season": 9,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt8572232",
+          "title": "Ralphthemoviemaker",
+          "season": 1,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt9239994",
+          "title": "The Champions",
+          "season": 8,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt10882988",
+          "title": "Benim Adim Melek",
+          "season": 2,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt10969048",
+          "title": "Stupid Children",
+          "season": 2,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt10969048",
+          "title": "Stupid Children",
+          "season": 4,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt3774766",
+          "title": "Majimoji Rurumo",
+          "season": 1,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt14039404",
+          "title": "Nishiogikubo Mitsuboshi Youshudou",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt13915848",
+          "title": "The Traitors: Netherlands",
+          "season": 6,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt11639736",
+          "title": "Poisonous Liaisons",
+          "season": 1,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt18265458",
+          "title": "True Crime Belgium",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt1235101",
+          "title": "Secret Millionaire",
+          "season": 3,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt19845624",
+          "title": "Tervo & Halme tosisuomalaisuutta etsimässä",
+          "season": 3,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt18774086",
+          "title": "Under the Skin",
+          "season": 2,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt22226256",
+          "title": "Stream",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt27690979",
+          "title": "Love Syndrome III",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt28239053",
+          "title": "Castle Secrets",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt28300326",
+          "title": "Almost Friday TV",
+          "season": 9,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt28597143",
+          "title": "War God System! I'm Counting on You!",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt0244898",
+          "title": "The Big Knights",
+          "season": 1,
+          "seasonYear": 1999
+        },
+        {
+          "seriesId": "tt31450491",
+          "title": "Wiggle and Learn",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt33145195",
+          "title": "Margarita",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt34186841",
+          "title": "Loups garous",
+          "season": 2,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt36958248",
+          "title": "Decades in Sports",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37254483",
+          "title": "Breaking the Deadlock",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38582973",
+          "title": "Melvins Macabre",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt38876221",
+          "title": "Dalliance",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39381272",
+          "title": "Flip the Frog",
+          "season": 2,
+          "seasonYear": 1931
+        },
+        {
+          "seriesId": "tt41691883",
+          "title": "Obelisk",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt42007275",
+          "title": "The Girls: A Khloé Kardashian Project",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42206320",
+          "title": "Hanzaisha",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42287789",
+          "title": "Space Jam Roblox",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43308829",
+          "title": "Patrocinio",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43455095",
+          "title": "Most Extreme Humans",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43475149",
+          "title": "Worst Yard on the Block",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39387594",
+          "title": "Take a Hike!",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43351182",
+          "title": "GTO: Great Teacher Onizuka",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43702907",
+          "title": "Hapshuta",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41880577",
+          "title": "Locker Diaries: Descendants",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt44250295",
+          "title": "Sigge får inte ligga",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2021671",
+          "title": "O Programa do Aleixo",
+          "season": 1,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt6571588",
+          "title": "Nutri Ventures",
+          "season": 1,
+          "seasonYear": 2013
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt14675560",
+          "title": "Elite Short Stories: Carla Samuel",
+          "season": 4,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt0090440",
+          "title": "Großstadtrevier",
+          "season": 34,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt4582410",
+          "title": "Open Slather",
+          "season": 1,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt0090440",
+          "title": "Großstadtrevier",
+          "season": 36,
+          "seasonYear": 2022
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt21979954",
+          "title": "Project 209",
+          "season": 1,
+          "from": 7.2,
+          "to": 5.6,
+          "delta": -1.6
+        },
+        {
+          "seriesId": "tt3857708",
+          "title": "Fleabag Monkeyface",
+          "season": 1,
+          "from": 4.14,
+          "to": 5.5,
+          "delta": 1.36
+        },
+        {
+          "seriesId": "tt38641109",
+          "title": "Terrible Mouse",
+          "season": 1,
+          "from": 7.72,
+          "to": 6.37,
+          "delta": -1.35
+        },
+        {
+          "seriesId": "tt38718126",
+          "title": "Drag Race México: Latina Royale",
+          "season": 1,
+          "from": 6.96,
+          "to": 5.7,
+          "delta": -1.26
+        },
+        {
+          "seriesId": "tt10882988",
+          "title": "Benim Adim Melek",
+          "season": 1,
+          "from": 8.82,
+          "to": 7.74,
+          "delta": -1.08
+        },
+        {
+          "seriesId": "tt34388876",
+          "title": "People Still Live Here",
+          "season": 1,
+          "from": 7.6,
+          "to": 6.58,
+          "delta": -1.02
+        },
+        {
+          "seriesId": "tt7972140",
+          "title": "Playboy Abroad: Adventures with Photographer Ana Dias",
+          "season": 1,
+          "from": 9.49,
+          "to": 8.57,
+          "delta": -0.92
+        },
+        {
+          "seriesId": "tt0845676",
+          "title": "Ekhaya: A Family Chronicle",
+          "season": 1,
+          "from": 7.85,
+          "to": 8.75,
+          "delta": 0.9
+        },
+        {
+          "seriesId": "tt17519728",
+          "title": "Taking the Stand",
+          "season": 2,
+          "from": 7.88,
+          "to": 7.09,
+          "delta": -0.79
+        },
+        {
+          "seriesId": "tt0773264",
+          "title": "House of Payne",
+          "season": 7,
+          "from": 7.17,
+          "to": 6.39,
+          "delta": -0.78
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 38905,
+        "avgRating": 4825,
+        "shapes": 888,
+        "episodeCount": 415,
+        "seriesRating": 1202,
+        "poster": 11,
+        "overview": 7
+      }
+    },
+    {
       "builtAt": "2026-08-27T17:21:50.199Z",
       "totals": {
         "seasons": 66478,
@@ -7162,45 +7900,6 @@
         "episodeCount": 144,
         "seriesRating": 487,
         "poster": 2
-      }
-    },
-    {
-      "builtAt": "2026-07-28T08:40:02.078Z",
-      "totals": {
-        "seasons": 66018,
-        "delta": 1
-      },
-      "shapeCounts": {
-        "mid-peak": 4617,
-        "rebound": 10062,
-        "rising": 2928,
-        "slow-burn": 4375,
-        "big-finale": 12047,
-        "u-shaped": 3104,
-        "rollercoaster": 14032,
-        "saved-best-for-last": 1541,
-        "front-loaded": 3462,
-        "declining": 1876,
-        "bad-finale": 4634,
-        "consistent": 2632,
-        "shape-drift": 1631
-      },
-      "shapeDeltas": {
-        "rising": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt6006298",
-          "title": "The Psycho Series",
-          "season": 3,
-          "seasonYear": 2016
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [],
-      "modifiedCounts": {
-        "overview": 3,
-        "poster": 4
       }
     }
   ]
