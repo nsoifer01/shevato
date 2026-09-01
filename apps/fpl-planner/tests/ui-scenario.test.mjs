@@ -27,7 +27,9 @@ import {
   undo, reset, canUndo, isDirty, scenarioDiff, scenarioMoney, scenarioAccounting,
   scenarioPlan, validateScenario, scenarioSquadState, transferCandidates,
   transferBlockedReason, comparison, xiPoints, sellTenthsFor, scenarioSummary,
+  captaincyScoreOf,
 } from '../js/ui/scenario.js';
+import { chooseCaptain } from '../js/engine/captain.js';
 
 const APP = join(dirname(fileURLToPath(import.meta.url)), '..');
 const sample = (name) => JSON.parse(readFileSync(join(APP, 'data', 'sample', `${name}.json`), 'utf8'));
@@ -827,4 +829,86 @@ test('reversing a transfer nets to zero through the whole ledger', () => {
   assert.equal(scenarioMoney(sc, ctx).bankAfterTenths, squadState.bankTenths);
   // Undo history is click history, on purpose: both edits remain undoable.
   assert.equal(sc.past.length, 2);
+});
+
+// ---------------------------------------------------------------------------
+// The armband's own score (added 2026-09-01)
+// ---------------------------------------------------------------------------
+//
+// `xiPoints` scores an eleven in expected points. The armband is NOT chosen on
+// expected points, so judging an armband edit with `xiPoints` told a manager who
+// moved it onto the higher-xP name that he had gained - the app congratulating
+// him for overruling its own recommendation, on a ruler that recommendation
+// never used. `captaincyScoreOf` is the ruler it did use.
+
+test('captaincyScoreOf reports exactly what chooseCaptain scored that captain', () => {
+  const sc = createScenario({ squadState, gameState, origin: 'current' });
+  const armband = chooseCaptain(sc.xi, projections, gw, gameState, {});
+  for (const candidate of armband.candidates) {
+    const read = captaincyScoreOf(sc.xi, candidate.playerId, ctx, { projections, gw });
+    assert.equal(read.score, candidate.captainScore, `player ${candidate.playerId}`);
+    assert.equal(read.eligible, !!candidate.eligible);
+    assert.equal(read.pAppear, candidate.pAppear);
+  }
+  // And the best-scoring ELIGIBLE candidate is the one chooseCaptain picked, so
+  // the two agree on the ordering and not merely on the arithmetic.
+  const best = armband.candidates.filter(c => c.eligible)
+    .reduce((a, b) => (b.captainScore > a.captainScore ? b : a));
+  assert.equal(best.playerId, armband.captain);
+});
+
+test('captaincyScoreOf refuses a captain who is not in the eleven', () => {
+  const sc = createScenario({ squadState, gameState, origin: 'current' });
+  const benched = sc.benchOrder[0];
+  assert.ok(benched !== undefined && !sc.xi.includes(benched));
+  assert.equal(captaincyScoreOf(sc.xi, benched, ctx, { projections, gw }), null);
+  assert.equal(captaincyScoreOf(sc.xi, null, ctx, { projections, gw }), null);
+  assert.equal(captaincyScoreOf([], sc.captain, ctx, { projections, gw }), null);
+});
+
+test('a sub-floor captain carries his ineligibility, not just a number', () => {
+  // The sample eleven contains one player under the 0.5 minutes floor. His
+  // captainScore is mostly the fallback term - the value of his VICE playing
+  // instead of him - so it beats several players who will actually start.
+  // Reading it as a comparable score would rank "captain someone who probably
+  // will not play" above captaining them.
+  const sc = createScenario({ squadState, gameState, origin: 'current' });
+  const scored = sc.xi.map(id => ({ id, ...captaincyScoreOf(sc.xi, id, ctx, { projections, gw }) }));
+  const unplayable = scored.filter(r => !r.eligible);
+  assert.equal(unplayable.length, 1, 'the sample fixture is expected to hold exactly one');
+  const [sub] = unplayable;
+  assert.ok(sub.pAppear < 0.5, `pAppear ${sub.pAppear} should be under the floor`);
+  // The trap this guards: his score outranks real starters.
+  const beaten = scored.filter(r => r.eligible && r.score < sub.score);
+  assert.ok(beaten.length > 0, 'the inflated score must actually outrank eligible captains');
+});
+
+test('the captaincy delta is null across the eligibility floor, never zero', () => {
+  const sc = createScenario({ squadState, gameState, origin: 'current' });
+  const sub = sc.xi.find(id => !captaincyScoreOf(sc.xi, id, ctx, { projections, gw }).eligible);
+  const moved = setCaptain(sc, ctx, sub).scenario;
+  const c = comparison(moved, ctx, { projections, gw, horizon: 3, discount: 0.85 });
+
+  assert.equal(c.captainChanged, true);
+  assert.equal(c.captaincy.delta, null, 'not comparable, and null must not be read as level');
+  assert.equal(c.captaincy.after.eligible, false);
+  assert.ok(c.captaincy.before.eligible, 'the baseline armband was a real option');
+  // Both scores are still reported, so a caller that wants them has them.
+  assert.ok(Number.isFinite(c.captaincy.before.score));
+  assert.ok(Number.isFinite(c.captaincy.after.score));
+});
+
+test('an armband edit that keeps the squad leaves the horizon alone but moves the captaincy score', () => {
+  const sc = createScenario({ squadState, gameState, origin: 'current' });
+  const other = sc.xi.find(id => id !== sc.captain
+    && captaincyScoreOf(sc.xi, id, ctx, { projections, gw }).eligible);
+  const moved = setCaptain(sc, ctx, other).scenario;
+  const c = comparison(moved, ctx, { projections, gw, horizon: 3, discount: 0.85 });
+
+  assert.equal(c.transfers, 0);
+  assert.ok(Math.abs(c.horizon.delta) < 1e-9, 'the fifteen did not change, so the squad value cannot');
+  assert.notEqual(c.captaincy.delta, null);
+  assert.ok(Math.abs(c.captaincy.delta) > 1e-9, 'but the armband did change');
+  // The delta is a difference of the two reported scores, not a third number.
+  assert.ok(Math.abs(c.captaincy.delta - (c.captaincy.after.score - c.captaincy.before.score)) < 1e-12);
 });

@@ -385,13 +385,55 @@ Two traps in that copy, both pinned by tests:
   SMALLER one. Comparing it in the same direction as the other components would
   credit the wrong player.
 
-**Deliberately not changed:** the objective. Captaincy being a certainty
-equivalent rather than an expectation is the documented design (`captain.js`
-header, and `tests/captain.test.mjs` has asserted "the captain is not simply the
-highest expected scorer" since the module was written). The hero note and the
-pitch card still print xP only; the Why card is the app's designated
-explanation surface and now carries the answer. If the objection recurs, the
-next cheapest step is a line under the hero fact, not a change to the weights.
+### The sandbox judged the armband with the wrong ruler (2026-09-01)
+
+The same root cause, second surface, fixed in the same round on the owner's
+call. `comparison()` scored an edit with `xiPoints`, which is expected points,
+and `verdictLine` led with that number whenever no transfer was made. Expected
+points is the right measure for an ELEVEN and the wrong one for the armband, so
+moving the armband onto the higher-xP name produced
+
+    "Your eleven projects +0.1 points this gameweek."   (in green)
+
+The app applauding a manager for overruling its own recommendation, on a ruler
+that recommendation never used.
+
+`comparison()` now also returns `captaincy: { before, after, delta }`, from a
+new `captaincyScoreOf(xi, captainId, ctx, ...)` that runs `chooseCaptain` on the
+given eleven and reads the NAMED captain's row out of the ranked candidate list.
+When the armband is the only thing that moved, that score leads the verdict and
+the points figure follows as the separate fact it is. When a transfer leads, the
+armband stays a footnote but one that now says which way it went.
+
+**ELIGIBILITY HAS TO TRAVEL WITH THE SCORE, and this is the trap that makes the
+feature dangerous without it.** captain.js gives every candidate a finite
+`captainScore` and then sorts every ineligible one below every eligible one,
+because a player under the 0.5 minutes floor is not a captaincy option: most of
+his score is the FALLBACK term, the value of his vice playing instead of him. In
+the sample eleven Diop scores **4.87 on a pAppear of 0.461**, of which **3.47**
+is that fallback - beating five players who will actually start. A bare score
+comparison would have told a manager that captaining someone who probably will
+not play was better than captaining Rice, which is worse than the bug being
+fixed. So `captaincyScoreOf` returns `{ score, eligible, pAppear }`, `delta` is
+**null** across the eligibility floor rather than a number, and the verdict
+checks unplayability BEFORE the delta and says the thing that actually matters:
+"Your captain is only 46% to appear, so the armband would most likely pass to
+your vice." A null delta must never be allowed to surface as "level".
+
+Both surfaces now name the same quantity, "the captaincy score", so a manager
+who reads it in the Why card meets the same words in the sandbox. The
+`captain_close` reason was reworded from "on that score" to "on the captaincy
+score" for exactly that reason.
+
+**Deliberately not changed:** the objective, and `xiPoints`. Captaincy being a
+certainty equivalent rather than an expectation is the documented design
+(`captain.js` header, and `tests/captain.test.mjs` has asserted "the captain is
+not simply the highest expected scorer" since the module was written).
+`xiPoints` stays expected points because the compare strip's "This gameweek"
+cell is a true statement about expected points and should remain one; only the
+VERDICT changed, and only for the armband. The hero note and the pitch card
+still print xP only. If the objection recurs there, the next cheapest step is a
+line under the hero fact, not a change to the weights.
 
 ## Minutes and projections
 

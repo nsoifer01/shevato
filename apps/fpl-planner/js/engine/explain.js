@@ -297,7 +297,7 @@ function captainReason(plan, ctx) {
     if (margin < 0.1) {
       reasons.push(makeReason(
         'captain_close',
-        'The two are separated by less than a tenth of a point on that score, so either armband is defensible.',
+        'The two are separated by less than a tenth of a point on the captaincy score, so either armband is defensible.',
         margin,
       ));
     }
