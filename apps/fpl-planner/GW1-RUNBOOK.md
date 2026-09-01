@@ -75,11 +75,30 @@ shevato.com at 1280 and 390. At the time the header still printed SQUAD VALUE
 removed on 2026-08-31: the header now states the reconstructed total in every
 case bar an in-season payload that carried no picks, so the two agree.
 
-**Pass 5 itself did not run: FPL reported no transfer.** On 2026-08-28,
-`entry/3855835/transfers` was `[]` and `last_deadline_total_transfers` was 0,
-both through the proxy and directly from `fantasy.premierleague.com`, so every
-box below that needs a made transfer is still open. Fact 3's box did not need
-one and is ticked.
+**Pass 5 attempted 2026-09-01: two more boxes closed, four still open, and the
+reason is a trap worth naming.** On 2026-08-28 `entry/3855835/transfers` was
+`[]`; it is not any more. One transfer exists (Lacroix out, Tarkowski in,
+`element_out` 200, `element_in` 229) and `last_deadline_total_transfers` is 1.
+
+**A transfer existing is not the state pass 5 tests.** That move was made at
+2026-08-28T05:33Z, twelve hours BEFORE the GW2 deadline it belongs to, so GW2's
+frozen picks already contain Tarkowski and no longer contain Lacroix. The
+endpoints agree, and pass 5 exists precisely to test them DISAGREEING: a move
+that is on `entry/{id}/transfers` and not yet in `picks`. What creates that is a
+transfer made for the gameweek the app is currently planning, in the window
+AFTER the previous deadline, which for GW3 means one made before 2026-09-04
+17:30 UTC.
+
+What did close, live against shevato.com with the real team: the **bank match**
+and the **-4 hit** pricing. Three more were checked and deliberately left open
+because what was observed is the end state rather than the behaviour the box
+names; each one says so beneath it. "Check for changes" answered "up to date",
+which is correct with nothing changed and is not the positive case.
+
+The reconciliation path those boxes cover is not untested, it is just not tested
+against live FPL: `e2e/lifecycle.mjs` section 6 drives it in the `gw2-window`
+state, where the transfer is on the transfers endpoint alone. Green on
+2026-09-01 (`npm run test:fpl-planner:e2e`, 203/203).
 
 Four things about Fantasy Premier League cannot be observed until the season
 actually turns over, and each one is handled without a code change whichever way
@@ -208,20 +227,57 @@ Check:
 
 Make one transfer on the Fantasy Premier League site, then reopen the app.
 
+**Timing is the whole test.** The transfer has to be made AFTER the previous
+gameweek's deadline, so that it lands on `transfers` while `picks` still
+describes the squad from before it. A transfer made before its own deadline is
+absorbed into that gameweek's picks and the two endpoints simply agree, which
+exercises none of this section (that is what happened on 2026-08-28; see the
+result block above). Check which state you are in before spending the pass:
+
 ```sh
 fpl "entry/<YOUR_ID>/transfers" | head -c 400
-fpl "entry/<YOUR_ID>/event/1/picks" | head -c 200   # still the GW1 squad
+fpl "entry/<YOUR_ID>/event/<CURRENT_GW>/picks" | head -c 200   # the frozen squad
+
+# The one comparison that says whether this section can run at all: the newest
+# transfer's `event` must be the gameweek the app is PLANNING (the next one),
+# and its `element_in` must be absent from the frozen picks above.
 ```
 
 Check:
 
 - [ ] the app shows the **new** player and not the old one, even though `picks`
       still describes the GW1 squad.
-- [ ] the bank matches the FPL site.
+      **Not closed.** The end state was verified live on 2026-09-01 (the squad
+      shows Tarkowski and not Lacroix), but the tension this box exists for was
+      not: the only transfer on the account was made BEFORE its own deadline, so
+      the frozen picks already contain the new player and there was nothing to
+      reconcile. The reconciliation path is covered by `e2e/lifecycle.mjs`
+      section 6 in the `gw2-window` state, which is the only place it has been
+      exercised.
+- [x] the bank matches the FPL site.
+      **Done 2026-09-01.** App header BANK £0.0m against `entry_history.bank` 0
+      and `entry.last_deadline_bank` 0.
 - [ ] free transfers have gone **down by one**.
+      **Not closed.** The replayed RESULT is right - the app shows 1 free
+      transfer for the GW3 window against `history.current` GW2
+      `event_transfers: 1, event_transfers_cost: 0` - but the decrement itself
+      happens at the moment a transfer is made, and no transfer was made while
+      the app was watching.
 - [ ] the planner does **not** recommend the transfer just made.
-- [ ] a further transfer is priced as a **-4 hit** if no free transfer remains.
+      **Not closed.** Verified live that the plan does not propose Lacroix to
+      Tarkowski, but with Lacroix already gone from the frozen picks that is
+      true trivially. The real case, a move present on `transfers` and absent
+      from `picks`, is the `gw2-window` assertion in `e2e/lifecycle.mjs`.
+- [x] a further transfer is priced as a **-4 hit** if no free transfer remains.
+      **Done 2026-09-01**, live, in the scenario sandbox with one free transfer
+      banked: Raya to Kelleher then Gabriel to N.Williams, and the verdict reads
+      "Your transfers project -6.9 points over the next 5 gameweeks, after the 4
+      point hit", with the Points hit comparison row moving 0 to 4.
 - [ ] "Check for changes" reports the squad change rather than silence.
+      **Not closed.** The control answers rather than going quiet ("up to date",
+      live 2026-09-01), which is the correct answer when nothing has changed.
+      The box asks for the positive case and needs a real squad change between
+      two loads.
 - [x] compare `entry_history.value` in the picks payload against the site's
       squad value after an overnight price move. *Fact 3.* If they diverge, the
       app now says one number does not match Fantasy Premier League, and says
