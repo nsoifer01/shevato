@@ -374,3 +374,127 @@ test('the same inputs give the same armband every time', () => {
   // Ties break on the lower player id so two identical players never shuffle.
   assert.equal(a.captain, 1);
 });
+
+// --- the gameweek 3 armband, and why it looks wrong on the pitch ------------
+//
+// Reproduced from live data on 2026-09-01. The plan captained Thiago on 4.887
+// xP with B.Fernandes, on 4.953, as vice. Both were nailed (pAppear 1.0), both
+// carried a ceiling of 9, both were the first-choice penalty taker and both
+// projected on high confidence. Bruno also took corners and free kicks. The
+// only thing Thiago had was the fixture: home to a difficulty-2 opponent
+// against Bruno's difficulty-3 away trip.
+//
+//   Thiago: 0.75*4.8869 + 0.25*9 + 0.25 pens + 0.00 set pieces + 0.15 fixture
+//         = 6.315158
+//   Bruno : 0.75*4.9527 + 0.25*9 + 0.25 pens + 0.10 set pieces + 0.00 fixture
+//         = 6.314560
+//
+// The armband turned on 0.0006 of a point. Nothing here is broken - it is the
+// documented objective doing exactly what it says - but the pitch prints xP and
+// nothing else, so it shows a captain on 4.9 beside a team mate on 5.0. That is
+// what explain.js has to answer for, and these tests pin the numbers so a
+// change to the weights cannot silently move the answer.
+const GW3_THIAGO = 106;
+const GW3_BRUNO = 426;
+
+function gw3World() {
+  return makeWorld([
+    {
+      id: GW3_THIAGO,
+      position: 4,
+      teamId: 4,
+      xPoints: 4.8868768368893285,
+      ceiling: 9,
+      sd: 3.585760511524807,
+      pAppear: 1,
+      confidence: 'high',
+      penaltiesOrder: 1,
+      fixtures: [{ fixtureId: 22, opponentId: 20, isHome: true, fdr: 2 }],
+    },
+    {
+      id: GW3_BRUNO,
+      position: 3,
+      teamId: 16,
+      xPoints: 4.952746603840873,
+      ceiling: 9,
+      sd: 3.6427082050419957,
+      pAppear: 1,
+      confidence: 'high',
+      penaltiesOrder: 1,
+      freekicksOrder: 1,
+      cornersOrder: 1,
+      fixtures: [{ fixtureId: 30, opponentId: 9, isHome: false, fdr: 3 }],
+    },
+    ...filler(200, 9),
+  ]);
+}
+
+test('gameweek 3: the fixture tilt outweighs a higher projection, by a hair', () => {
+  const world = gw3World();
+  const result = chooseCaptain(world.xi, world.projections, 1, world.gameState);
+
+  assert.equal(result.captain, GW3_THIAGO);
+  assert.equal(result.viceCaptain, GW3_BRUNO);
+
+  const thiago = result.candidates.find(c => c.playerId === GW3_THIAGO);
+  const bruno = result.candidates.find(c => c.playerId === GW3_BRUNO);
+
+  // The captain genuinely has FEWER expected points. This is the fact the UI
+  // has to explain, so it is asserted rather than assumed.
+  assert.ok(bruno.xPoints > thiago.xPoints);
+  assert.ok(Math.abs((bruno.xPoints - thiago.xPoints) - 0.0658697669) < 1e-9);
+
+  // And the fixture term is the whole of the captain's edge: everything else
+  // either ties or favours Bruno.
+  assert.ok(Math.abs(thiago.components.fixture - 0.15) < 1e-12);
+  assert.equal(bruno.components.fixture, 0);
+  assert.equal(thiago.components.upsideTerm, bruno.components.upsideTerm);
+  assert.equal(thiago.components.penaltyDuty, bruno.components.penaltyDuty);
+  assert.ok(bruno.components.setPieceDuty > thiago.components.setPieceDuty);
+  assert.ok(bruno.components.meanTerm > thiago.components.meanTerm);
+
+  // Both are nailed, so the joint fallback term contributes nothing at all and
+  // cannot be what decided this.
+  assert.equal(thiago.captainScore, thiago.value);
+  assert.equal(bruno.captainScore, bruno.value);
+  assert.ok(thiago.captainScore - bruno.captainScore > 0);
+  assert.ok(thiago.captainScore - bruno.captainScore < 0.001);
+});
+
+test('rounding the pitch to one decimal never reverses the true xP order', () => {
+  const world = gw3World();
+  const t = world.projections.get(GW3_THIAGO, 1);
+  const b = world.projections.get(GW3_BRUNO, 1);
+  // What the pitch prints. The displayed order must match the real order: the
+  // captain is shown BELOW his team mate because he genuinely is below him,
+  // not because a rounding step hid an edge he actually had.
+  assert.equal(t.xPoints.toFixed(1), '4.9');
+  assert.equal(b.xPoints.toFixed(1), '5.0');
+  assert.ok(Number(b.xPoints.toFixed(1)) > Number(t.xPoints.toFixed(1)));
+  assert.ok(b.xPoints > t.xPoints);
+});
+
+test('a captaincy decided inside one display decimal still resolves the same way', () => {
+  // Two players whose xP rounds to the same 4.9 on the pitch. The armband must
+  // still be decided by the objective, not by the rounded figure, and the
+  // result must be stable in both directions.
+  const build = (aXp, bXp) => makeWorld([
+    { id: 1, teamId: 1, xPoints: aXp, ceiling: 9, pAppear: 1, confidence: 'high', fixtures: [{ fdr: 2 }] },
+    { id: 2, teamId: 2, xPoints: bXp, ceiling: 9, pAppear: 1, confidence: 'high', fixtures: [{ fdr: 3 }] },
+    ...filler(200, 9),
+  ]);
+
+  const near = build(4.94, 4.9499);
+  assert.equal(near.projections.get(1, 1).xPoints.toFixed(1), '4.9');
+  assert.equal(near.projections.get(2, 1).xPoints.toFixed(1), '4.9');
+  // Player 2 has the higher mean but player 1 has the kinder fixture, worth
+  // 0.15 against 0.0075 of mean, so the fixture wins.
+  const r = chooseCaptain(near.xi, near.projections, 1, near.gameState);
+  assert.equal(r.captain, 1);
+
+  // Give player 2 a mean big enough to buy the fixture back and the armband
+  // moves, which is what proves the display decimal is not load-bearing.
+  const far = build(4.94, 4.94 + 0.15 / 0.75 + 0.01);
+  const r2 = chooseCaptain(far.xi, far.projections, 1, far.gameState);
+  assert.equal(r2.captain, 2);
+});

@@ -319,6 +319,80 @@ ranking, and only the part of a correction that changes ORDER changes decisions
   the browser silently substitutes the first option). It roughly doubles plan
   time, to about 1.1s on the sample dataset, inside a Web Worker.
 
+### The armband is not the top xP, and the pitch could not say so (2026-09-01)
+
+Reported as "the app captains Thiago on 4.9 while B.Fernandes shows 5.0, which
+looks wrong". It was not wrong, and it was not rounding, staleness or two
+snapshots disagreeing. It was the one number the pitch prints being the one
+number the armband is not chosen on.
+
+**The live GW3 values, reproduced from the proxy payload:**
+
+| | Thiago (106) | B.Fernandes (426) |
+|---|---|---|
+| xPoints | 4.8868768368893285 | 4.952746603840873 |
+| ceiling / sd | 9 / 3.586 | 9 / 3.643 |
+| pAppear / pStart | 1.0 / 0.884 | 1.0 / 0.849 |
+| confidence | high | high |
+| penalties / set pieces | 1st / none | 1st / corners + free kicks |
+| fixture | home, FDR 2 | away, FDR 3 |
+| **captaincy value** | **6.3151576277** | **6.3145599529** |
+
+Thiago won by **0.0005976747863**. His 0.15 fixture tilt (`0.15 * (3 - 2)`)
+just outweighed Bruno's higher mean (`0.75 * 0.0659 = 0.0494`) plus his
+set-piece duty (0.10). Both were nailed, so `(1 - pAppear)` is zero and the
+joint vice-fallback term contributed **nothing** to either side.
+
+**What was verified and found healthy**, so nobody re-investigates it:
+
+- Hero card and pitch both read `bundle.projections` at `plan.gw` in the same
+  render pass, through the same `getProjection`. One snapshot, never two.
+- `xp()` is `toFixed(1)`. 4.8869 -> "4.9" and 4.9527 -> "5.0" preserve the true
+  order; the display is honest and the captain really does project less.
+- "9.8 xP doubled" is `captainRow.xPoints * 2`, and the captain does contribute
+  exactly twice his xP to `plan.xPointsGw` (`captainExtra` in `squadTrajectory`
+  is the captain's own xPoints). The arithmetic is right.
+- Nothing is cached or stale: `chooseCaptain` runs inside `squadTrajectory` on
+  the same `projections` object the UI later renders.
+- The risk profile reaching `chooseCaptain` was `balanced` (the default), which
+  is what the reproduction matched to the digit.
+
+**The real defect was that every surface stated the objection and none
+answered it.** The pitch showed 4.9 next to 5.0; the Why card said "Thiago
+projects 4.9 points, doubled as captain" and then "B.Fernandes takes over if he
+does not play, projecting 5.0 points"; and the sandbox, if the manager moved the
+armband to Bruno himself, reported "Your eleven projects +0.1 points this
+gameweek" - the app telling him in its own words that overriding its own
+recommendation gains points. Meanwhile `chooseCaptain` had already computed the
+deciding term and `squadTrajectory` was already carrying the full ranked
+candidate list, components and all, on `gws[0].captainCandidates`. The
+explanation layer simply never read it.
+
+Fixed by making `captainReason` in `explain.js` answer for a captain the pitch
+shows behind a team mate: it finds the highest-xP eligible starter that is not
+the captain, and when that player leads, states the gap and the component(s)
+that actually paid for it (`captain_over_alternative`), plus a near-tie note
+when the two are within a tenth on the captaincy score (`captain_close`). Only
+terms that genuinely favour the captain by more than 0.01 are named, so the
+sentence can never claim an edge he did not have.
+
+Two traps in that copy, both pinned by tests:
+
+- A gap under 0.05 formats as "0.0", and "projects 0.0 more points" reads as a
+  rendering fault. The template switches to "fractionally more" and drops the
+  quantity while keeping it on the reason's `value`.
+- `confidencePenalty` is SUBTRACTED, so the edge belongs to the player with the
+  SMALLER one. Comparing it in the same direction as the other components would
+  credit the wrong player.
+
+**Deliberately not changed:** the objective. Captaincy being a certainty
+equivalent rather than an expectation is the documented design (`captain.js`
+header, and `tests/captain.test.mjs` has asserted "the captain is not simply the
+highest expected scorer" since the module was written). The hero note and the
+pitch card still print xP only; the Why card is the app's designated
+explanation surface and now carries the answer. If the objection recurs, the
+next cheapest step is a line under the hero fact, not a change to the weights.
+
 ## Minutes and projections
 
 - **pStart's target is the NEXT FIXTURE, not a season rate.** Validating
