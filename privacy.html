@@ -92,7 +92,7 @@
 
       <article class="about-shell">
 
-        <p><strong>Last reviewed:</strong> 27 August 2026. <!-- TODO(owner): update this date whenever the behaviour described below changes. --></p>
+        <p><strong>Last reviewed:</strong> 31 August 2026. <!-- TODO(owner): update this date whenever the behaviour described below changes. --></p>
 
         <h2>The short version</h2>
 
@@ -345,7 +345,7 @@
 
         <p>Signed in, click your name in the header, then "Sign Out", then "Delete account and all data" at the bottom of that window. Deleting is deliberately awkward: you have to enter your current password and type the word DELETE before the button becomes active. The password is checked before anything is removed, so a wrong one leaves everything untouched.</p>
 
-        <p>It removes, in this order: the synced Firestore document belonging to every app listed earlier on this page, plus the shared theme preference document; the <code>users/&lt;your account id&gt;</code> document itself, which is where Arena keeps your trivia profile (XP, wins, games played and any custom pack); your MapTap Rivals network entry, handle claim and the pair links to rivals you connected with, if you ever joined that network; every synced key in this browser's <code>localStorage</code>; and finally the Firebase Authentication user, so the email address and password credential are gone too.</p>
+        <p>It removes, in this order: the synced Firestore document belonging to every app listed earlier on this page, together with the overflow documents that hold any part of that app's data too large for one document, plus the shared theme preference document; the <code>users/&lt;your account id&gt;</code> document itself, which is where Arena keeps your trivia profile (XP, wins, games played and any custom pack); your MapTap Rivals network entry, handle claim and the pair links to rivals you connected with, if you ever joined that network; every synced key in this browser's <code>localStorage</code>; and finally the Firebase Authentication user, so the email address and password credential are gone too.</p>
 
         <p>If any one of those deletions fails, the process stops, names what failed, and leaves your account active on purpose so you can try again. It never reports success it didn't achieve, and it never deletes the credential before the data, because an account that can't sign in again could never come back to finish the job.</p>
 

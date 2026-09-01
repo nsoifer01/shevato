@@ -16,7 +16,10 @@ import {
   estimatePayloadBytes,
   sameKeySet,
   decideRemoteChange,
-  requeueFailedWrites
+  requeueFailedWrites,
+  isPermanentWriteError,
+  splitIntoChunks,
+  planFlushBatches
 } from '../sync-helpers.mjs';
 
 /* -------------------- hashValue -------------------- */
@@ -340,4 +343,91 @@ test('requeueFailedWrites replaces an older queued entry and tolerates missing r
     assert.equal(queue.get('k1').value, 'fresh');
     // A queued entry with no rev counts as rev 0 and yields to any revved one.
     assert.equal(queue.get('k2').value, 'revved');
+});
+
+// ---------------------------------------------------------------------------
+// isPermanentWriteError
+// ---------------------------------------------------------------------------
+
+test('isPermanentWriteError: deterministic rejections are permanent', () => {
+  assert.equal(isPermanentWriteError({ code: 'payload-too-large' }), true);
+  assert.equal(isPermanentWriteError({ code: 'invalid-argument' }), true);
+  assert.equal(isPermanentWriteError({ permanent: true }), true);
+});
+
+test('isPermanentWriteError: transient and unknown failures stay retryable', () => {
+  // Anything not positively known to be deterministic keeps the retry
+  // ladder it had before, so this change cannot make a recoverable blip
+  // unrecoverable.
+  assert.equal(isPermanentWriteError({ code: 'unavailable' }), false);
+  assert.equal(isPermanentWriteError({ code: 'deadline-exceeded' }), false);
+  assert.equal(isPermanentWriteError({ code: 'permission-denied' }), false);
+  assert.equal(isPermanentWriteError(new Error('network down')), false);
+  assert.equal(isPermanentWriteError(null), false);
+  assert.equal(isPermanentWriteError(undefined), false);
+  assert.equal(isPermanentWriteError('payload-too-large'), false);
+});
+
+// ---------------------------------------------------------------------------
+// splitIntoChunks
+// ---------------------------------------------------------------------------
+
+test('splitIntoChunks: parts rejoin to the exact input', () => {
+  const s = JSON.stringify({ rows: Array.from({ length: 500 }, (_, i) => ({ i, pad: 'x'.repeat(40) })) });
+  const parts = splitIntoChunks(s, 1000);
+  assert.ok(parts.length > 10);
+  assert.ok(parts.every(p => p.length <= 1000));
+  assert.equal(parts.join(''), s);
+});
+
+test('splitIntoChunks: never splits a surrogate pair', () => {
+  // Firestore stores UTF-8; a lone surrogate does not survive the round
+  // trip, and every app in this repo stores emoji (rival icons, avatars).
+  const s = '😀'.repeat(50);
+  const parts = splitIntoChunks(s, 3);
+  assert.equal(parts.join(''), s);
+  for (const part of parts) {
+    assert.equal(part.length % 2, 0, 'a part must not end mid-pair');
+    assert.equal(JSON.parse(JSON.stringify(part)), part);
+  }
+});
+
+test('splitIntoChunks: a value smaller than the chunk size is one part', () => {
+  assert.deepEqual(splitIntoChunks('abc', 1000), ['abc']);
+  assert.deepEqual(splitIntoChunks('', 1000), ['']);
+});
+
+// ---------------------------------------------------------------------------
+// planFlushBatches
+// ---------------------------------------------------------------------------
+
+test('planFlushBatches: packs entries into as few commits as fit', () => {
+  const { batches, oversized } = planFlushBatches([
+    { key: 'a', entry: 1, bytes: 300 },
+    { key: 'b', entry: 2, bytes: 300 },
+    { key: 'c', entry: 3, bytes: 300 },
+  ], 700);
+  assert.deepEqual(oversized, []);
+  assert.deepEqual(batches, [{ a: 1, b: 2 }, { c: 3 }]);
+});
+
+test('planFlushBatches: one batch when everything fits', () => {
+  const { batches } = planFlushBatches([
+    { key: 'a', entry: 1, bytes: 10 },
+    { key: 'b', entry: 2, bytes: 10 },
+  ], 700);
+  assert.equal(batches.length, 1);
+});
+
+test('planFlushBatches: an entry that cannot fit alone is reported, not silently dropped into a batch', () => {
+  const { batches, oversized } = planFlushBatches([
+    { key: 'ok', entry: 1, bytes: 100 },
+    { key: 'huge', entry: 2, bytes: 900 },
+  ], 700);
+  assert.deepEqual(oversized, ['huge']);
+  assert.deepEqual(batches, [{ ok: 1 }]);
+});
+
+test('planFlushBatches: no entries means no commits', () => {
+  assert.deepEqual(planFlushBatches([], 700), { batches: [], oversized: [] });
 });

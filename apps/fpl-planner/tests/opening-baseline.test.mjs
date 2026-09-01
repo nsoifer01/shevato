@@ -122,6 +122,19 @@ function relabelled(name, seasonPath, { deadline = null } = {}) {
 
 const POS = { GKP: 1, DEF: 2, MID: 3, FWD: 4 };
 
+// The instant this file reconstructs: 2026-08-25, GW1 finalised and signed
+// off, GW2's deadline still ahead. Every fixture here carries the REAL
+// 2026/27 deadlines (GW1 2026-08-21 17:30 UTC, GW2 2026-08-28 17:30 UTC),
+// and `gameweekLifecycle` reads the wall clock unless told otherwise, so an
+// unpinned call made the assertion describe the calendar rather than the
+// payload: it passed until 2026-08-28 17:30 UTC and from then on asserted
+// GW2 against an engine correctly answering GW3. Everything else in the
+// scenario below is already pinned to GW2 by hand (buildStrength asOfGw,
+// buildProjections gwFrom/gwTo, buildSquadState gw), so the clock was the
+// one input allowed to drift away from the rest. season-lifecycle.test.mjs
+// and ui-confidence.test.mjs pin `now` for the same reason.
+const AS_OF = Date.parse('2026-08-25T00:00:00Z');
+
 // The captured picks against the trimmed (320 player) pool: two of the fifteen
 // were cut by the sanitiser, so they are replaced by an unowned player of the
 // same position who keeps the squad legal. The plan is asserted on shape, not
@@ -181,7 +194,7 @@ test('THE FIX: the same visitor, same empty browser, gets a real GW2 plan from t
   assert.equal(evidence.usable, true, 'the blended payload IS projectable');
   assert.equal(evidence.kind, 'previous-season');
 
-  const lifecycle = gameweekLifecycle(gs);
+  const lifecycle = gameweekLifecycle(gs, { now: AS_OF });
   assert.equal(lifecycle.planGw, 2, 'and the gameweek being planned is GW2, not GW1');
 
   const strength = buildStrength(gs, { asOfGw: 2 });

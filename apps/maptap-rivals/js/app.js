@@ -56,6 +56,22 @@
     // docs that are already per-account, so syncing it across devices would
     // just fight the refresh. Every network UI state renders from this cache.
     NETWORK: 'maptapRivalsNetwork',
+    // Day-global puzzle geography, normalised out of the game log:
+    // { 'YYYY-MM-DD': City[5] }.
+    //
+    // MapTap plays the same 5 cities for everybody on a given day, so a
+    // game's `cities` array is a property of the DATE, never of the
+    // (date, rival) pair its row keys on. The log holds one row per rival
+    // per day, so storing the array inline repeated it once per rival: at
+    // 9 rivals it was 57% of everything this app persisted, and it grew as
+    // days x rivals. That is what pushed the synced document past the sync
+    // layer's flush ceiling on 2026-08-31 (see FINDINGS.md).
+    //
+    // Grow-only and keyed by an immutable fact, which is what makes it
+    // safe as a second synced key: per-key last-write-wins can drop an
+    // update, and a dropped day here only costs the continent breakdown
+    // until the next MapTap sync writes it back.
+    DAYS: 'maptapRivalsDays',
     // Per-ISO-date cache of the day's 5 puzzle lat/lng pairs. Values are
     // stored under `KEY.DAILY_CITIES_PREFIX + isoDate`. Only coordinates
     // are persisted — never names or trivia from the daily file.
@@ -249,7 +265,119 @@
       { makeId: uid, defaultColor: COLORS[0], defaultIcon: ICONS[0] },
     );
   }
-  const booted = sanitizeStored(load(KEY.RIVALS, []), load(KEY.GAMES, []));
+  // ---------- day-global puzzle geography ----------
+  // In-memory games always carry `cities`; only the PERSISTED form is
+  // normalised. splitGameCities / joinGameCities are the whole boundary,
+  // so every reader, renderer and exporter keeps seeing the shape it
+  // always saw.
+
+  // Read the stored day map into a Map. Dates arrive verbatim from a synced
+  // payload, and reading `obj['__proto__']` back off a plain object hands
+  // out Object.prototype instead of the day. Same reasoning as
+  // mapTapHistoryToRounds in stats.js.
+  function storedDayCities(raw) {
+    const out = new Map();
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+    for (const [date, cities] of Object.entries(raw)) {
+      if (Array.isArray(cities) && cities.length === N_LOCS) out.set(date, cities);
+    }
+    return out;
+  }
+
+  // Compared as they will be STORED, not as they sit in memory: the iOS
+  // 4.04 payload shape carries NaN coordinates (it has city names but no
+  // lat/lng), JSON.stringify writes those as null, and NaN !== NaN would
+  // otherwise report two identical days as different and leave every row
+  // after the first with its own inline copy.
+  const storedCoord = (v) => (Number.isFinite(v) ? v : null);
+  function sameCities(a, b) {
+    for (let i = 0; i < N_LOCS; i++) {
+      const x = a[i] || {}, y = b[i] || {};
+      if (storedCoord(x.lat) !== storedCoord(y.lat)) return false;
+      if (storedCoord(x.lng) !== storedCoord(y.lng)) return false;
+      if ((x.name || '') !== (y.name || '')) return false;
+    }
+    return true;
+  }
+
+  // Persisted split: rows without `cities`, plus one entry per date.
+  //
+  // A row whose geography disagrees with the day already recorded keeps its
+  // own copy inline. Nothing in the app produces that today (both sides of
+  // a sync read the same puzzle file), but normalising over a disagreement
+  // would silently rewrite one of the two, and this fix must not lose a
+  // byte of anyone's history.
+  function splitGameCities(games) {
+    const days = new Map();
+    const rows = [];
+    for (const g of Array.isArray(games) ? games : []) {
+      if (!g || typeof g !== 'object') continue;
+      const cities = Array.isArray(g.cities) && g.cities.length === N_LOCS ? g.cities : null;
+      if (!cities) { rows.push(g); continue; }
+      const known = days.get(g.date);
+      if (!known) days.set(g.date, cities);
+      else if (!sameCities(known, cities)) { rows.push(g); continue; }
+      const row = {};
+      for (const k of Object.keys(g)) if (k !== 'cities') row[k] = g[k];
+      rows.push(row);
+    }
+    return { rows, days: Object.fromEntries(days) };
+  }
+
+  // Re-attach the day's geography to every row that does not carry its own.
+  //
+  // The array is SHARED by reference across the rows of one day: `cities`
+  // is read-only everywhere in this app (mergeMapTapSync reassigns with a
+  // fresh slice rather than mutating in place), and one array per day
+  // instead of one per row is also what keeps a long log cheap in memory.
+  function joinGameCities(rows, dayMap) {
+    if (!Array.isArray(rows) || !dayMap || dayMap.size === 0) return rows;
+    for (const g of rows) {
+      if (!g || typeof g !== 'object') continue;
+      if (Array.isArray(g.cities) && g.cities.length === N_LOCS) continue;
+      const cities = dayMap.get(g.date);
+      if (cities) g.cities = cities;
+    }
+    return rows;
+  }
+
+  // Games and their day geography are two synced keys, and the sync layer
+  // delivers each on its own revision, so either can land first. Rebuilding
+  // from both whenever either changes is what keeps them consistent.
+  function loadGamesFromStorage() {
+    return sanitizeStored([], joinGameCities(load(KEY.GAMES, []), storedDayCities(load(KEY.DAYS, null))))
+      .data.games;
+  }
+
+  // True while STORED rows still carry the day's geography inline, i.e. this
+  // device (or the Firestore document it just received) is on the format
+  // that predates KEY.DAYS. Read off storage rather than off `state.games`,
+  // because hydration gives every row a `cities` property either way.
+  function storedGamesAreInline() {
+    const raw = load(KEY.GAMES, []);
+    return Array.isArray(raw)
+      && raw.some(g => g && Array.isArray(g.cities) && g.cities.length === N_LOCS);
+  }
+
+  // Rewrite the stored log into the normalised pair whenever the old format
+  // turns up. Called at boot and again on every remote delivery, because the
+  // pre-migration Firestore document wins the first snapshot of a session
+  // (remote wins on a fresh local revision map) and a device still running
+  // the old code can push it back at any time.
+  //
+  // Idempotent: afterwards no stored row carries `cities`, so the check is
+  // false and nothing is written; and even a redundant rewrite is dropped by
+  // the sync layer's hash comparison. Returns whether it did anything.
+  function migrateInlineCities() {
+    if (!storedGamesAreInline()) return false;
+    persistGames();
+    return true;
+  }
+
+  const booted = sanitizeStored(
+    load(KEY.RIVALS, []),
+    joinGameCities(load(KEY.GAMES, []), storedDayCities(load(KEY.DAYS, null))),
+  );
   const state = {
     // Setup cards (profile, network) collapse to one line once they are
     // settled so a returning user reaches today's rivalry first; the
@@ -327,7 +455,15 @@
   };
 
   function persistRivals() { save(KEY.RIVALS, state.rivals); }
-  function persistGames() { save(KEY.GAMES, state.games); }
+  // The day map is written FIRST so a peer that sees only one of the two
+  // keys sees the geography without the games rather than games whose
+  // geography has not arrived. In practice both land in one debounced
+  // flush, so the peer sees them together.
+  function persistGames() {
+    const { rows, days } = splitGameCities(state.games);
+    save(KEY.DAYS, days);
+    save(KEY.GAMES, rows);
+  }
   function persistMe() { saveString(KEY.ME, state.me); }
   function persistMyIcon() { saveString(KEY.MY_ICON, state.myIcon); }
   function persistMyMapTap() { saveString(KEY.MY_MAPTAP, state.myMapTap); }
@@ -7638,7 +7774,13 @@
   function onExternalStorage(e) {
     if (!e.key) return;
     if (e.key === KEY.RIVALS) state.rivals = sanitizeStored(load(KEY.RIVALS, []), []).data.rivals;
-    else if (e.key === KEY.GAMES) state.games = sanitizeStored([], load(KEY.GAMES, [])).data.games;
+    else if (e.key === KEY.GAMES || e.key === KEY.DAYS) {
+      state.games = loadGamesFromStorage();
+      // A device still on the old format, or the Firestore document as it
+      // stood before this migration, pushes rows with the geography inline.
+      // Normalise on arrival so the fat copy is not what gets synced onward.
+      migrateInlineCities();
+    }
     else if (e.key === KEY.ME) {
       state.me = loadString(KEY.ME, 'Me');
       const me = $('#my-name'); if (me) me.value = state.me;
@@ -7689,6 +7831,12 @@
 
   // ---------- init ----------
   function init() {
+    // Rewrite into the normalised storage format if this device still holds
+    // the old one, so the synced document shrinks now rather than waiting
+    // for the next game to be logged. Purely a storage-shape change -
+    // nothing a renderer, an export or a backup can see.
+    migrateInlineCities();
+
     // wire view tabs
     $$('.view-tab').forEach(tab => {
       tab.addEventListener('click', () => setView(tab.dataset.view));
@@ -7993,6 +8141,15 @@
       applyDateOrder,
       liveGames,
       orphanGames,
+      storedDayCities,
+      splitGameCities,
+      joinGameCities,
+      // The storage round trip itself: persistGames writes the normalised
+      // pair, loadGamesFromStorage reads it back the way a reload does.
+      persistGames,
+      loadGamesFromStorage,
+      storedGamesAreInline,
+      migrateInlineCities,
       isValidISODate,
       localISO,
       addDaysISO,
