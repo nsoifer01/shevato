@@ -105,6 +105,35 @@ test('the squad value invariant holds and no warning is raised', () => {
   assert.equal(squadState.squadValueTenths, picks.entry_history.value);
 });
 
+// The header states what the manager can spend TODAY, never FPL's deadline
+// snapshot. Fact 3 (FINDINGS): `entry_history.value` is frozen at the gameweek
+// deadline, so one overnight price move is enough to make the two disagree, and
+// the app used to print the frozen number while the banner below it called that
+// same number wrong.
+test('a squad with no transfer made still reports the RECONSTRUCTED value, not FPL\'s frozen one', () => {
+  const stale = { ...picks, entry_history: { ...picks.entry_history, value: picks.entry_history.value + 1 } };
+  const out = buildSquadState({ entry, history, transfers, picks: stale, gameState, gw: PLAN_GW });
+  const sellingTotal = out.picks.reduce((sum, p) => sum + p.sellingTenths, 0);
+  assert.equal(out.pendingTransfers.length, 0, 'the case this pins is the one with no transfer applied');
+  assert.equal(out.squadValueTenths, sellingTotal + out.bankTenths);
+  assert.notEqual(out.squadValueTenths, stale.entry_history.value, 'and it is NOT the frozen figure');
+  // The check still fires: displaying the right number is not a reason to stop
+  // reporting that the two sources disagree.
+  assert.equal(out.warnings.length, 1);
+  assert.equal(out.warnings[0].code, 'value_mismatch');
+});
+
+// The one case with nothing to reconstruct from. An in-season payload that
+// carries `entry_history` but no fifteen would otherwise report the bank alone,
+// which reads as "you own no players" rather than "FPL did not send them".
+test('an in-season payload with no picks falls back to the frozen total', () => {
+  const empty = { ...picks, picks: [] };
+  const out = buildSquadState({ entry, history, transfers, picks: empty, gameState, gw: PLAN_GW });
+  assert.equal(out.picks.length, 0);
+  assert.equal(out.squadValueTenths, picks.entry_history.value);
+  assert.ok(out.warnings.some(w => w.code === 'empty_picks'));
+});
+
 test('a value mismatch surfaces as a warning instead of being absorbed', () => {
   // If the reconstruction is wrong the app would recommend transfers the
   // manager cannot afford. That has to be visible, and it must not throw.

@@ -70,9 +70,10 @@ arithmetic check fires and production shows **"One number does not match Fantasy
 Premier League"** with "Reconstructed squad value 99.9 does not match FPL's 100.
 Selling prices may be off by the difference." It does NOT call the data old, and
 no "Fantasy Premier League is not answering" banner appears. Verified on
-shevato.com at 1280 and 390. Note the header still prints SQUAD VALUE £100.0m
-(the frozen total) while the banner names 99.9; that is the documented
-`squadValueTenths` fallback when `applied.count` is 0.
+shevato.com at 1280 and 390. At the time the header still printed SQUAD VALUE
+£100.0m (the frozen total) while the banner named 99.9. That fallback was
+removed on 2026-08-31: the header now states the reconstructed total in every
+case bar an in-season payload that carried no picks, so the two agree.
 
 **Pass 5 itself did not run: FPL reported no transfer.** On 2026-08-28,
 `entry/3855835/transfers` was `[]` and `last_deadline_total_transfers` was 0,
