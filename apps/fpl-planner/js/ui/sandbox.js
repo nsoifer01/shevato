@@ -230,7 +230,12 @@ function verdictLine(summary, horizon) {
   // score leads and the points figure follows as the separate fact it is.
   const movedSquad = c.transfers > 0;
   const captaincy = c.captaincy || { before: null, after: null, delta: null };
-  const armbandOnly = !movedSquad && c.captainChanged;
+  // ONLY when the armband is the only thing that moved. "No transfer" does not
+  // establish that: after "copy recommended" the scenario's eleven AND armband
+  // both differ from the picks, with zero transfers, and leading with the
+  // armband there buried a three-point rearrangement of the eleven behind
+  // "your armband is level".
+  const armbandOnly = !movedSquad && c.captainChanged && !c.xiChanged;
 
   const value = movedSquad ? c.netHorizon : c.gw.delta;
   const tone = armbandOnly

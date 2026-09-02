@@ -504,6 +504,13 @@ export function comparison(sc, ctx, { projections, gw, horizon, discount }) {
     // planner would weigh, minus what the hits cost.
     netHorizon: (afterHorizon - beforeHorizon) - acct.hitCostPoints,
     captainChanged: sc.captain !== baseCaptain,
+    // Whether the ELEVEN differs from the baseline too. The armband verdict is
+    // only allowed to lead when the armband is the ONLY thing that moved, and
+    // "no transfer" is not enough to establish that: "copy recommended" seeds a
+    // scenario whose eleven and armband both differ from the picks this
+    // comparison baselines against, with no transfer in sight. False when there
+    // is no baseline eleven to differ from.
+    xiChanged: baseXi.length > 0 && !sameSet(baseXi, sc.xi),
     // The armband's own verdict, on the score the armband was chosen with. The
     // delta exists ONLY when both sides are genuine captaincy options; across
     // the eligibility floor the two scores do not measure the same thing, and a
