@@ -1,6 +1,251 @@
 {
   "updates": [
     {
+      "builtAt": "2026-09-02T10:31:58.687Z",
+      "totals": {
+        "seasons": 66590,
+        "delta": 19
+      },
+      "shapeCounts": {
+        "rebound": 10156,
+        "rising": 2597,
+        "slow-burn": 4406,
+        "big-finale": 12142,
+        "u-shaped": 3093,
+        "rollercoaster": 14138,
+        "mid-peak": 4630,
+        "saved-best-for-last": 1503,
+        "front-loaded": 3494,
+        "declining": 1885,
+        "bad-finale": 4653,
+        "consistent": 2626,
+        "shape-drift": 1574
+      },
+      "shapeDeltas": {
+        "rebound": -3,
+        "rising": -7,
+        "slow-burn": 1,
+        "big-finale": -4,
+        "u-shaped": -1,
+        "rollercoaster": 5,
+        "mid-peak": 2,
+        "saved-best-for-last": 1,
+        "front-loaded": 5,
+        "declining": 2,
+        "bad-finale": 4,
+        "consistent": 1,
+        "shape-drift": -3
+      },
+      "added": [
+        {
+          "seriesId": "tt13660822",
+          "title": "Avatar: Super Deformed Shorts",
+          "season": 1,
+          "seasonYear": 2007
+        },
+        {
+          "seriesId": "tt11958610",
+          "title": "Trigger Point",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0159881",
+          "title": "Jeopardy!",
+          "season": 20,
+          "seasonYear": 2003
+        },
+        {
+          "seriesId": "tt7047868",
+          "title": "Ring of Honor PPV",
+          "season": 10,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt0470645",
+          "title": "Dennis the Menace",
+          "season": 2,
+          "seasonYear": 1998
+        },
+        {
+          "seriesId": "tt10521222",
+          "title": "The Last Cowboy",
+          "season": 4,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt27618426",
+          "title": "Don't Toy with Me, Miss Nagatoro 2nd Attack Mini Anime",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt43732049",
+          "title": "Joe & David's Magical Sitcom Tour",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43739197",
+          "title": "Somebody Knows Something",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt44899966",
+          "title": "El Qessa El Kamla",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt6267644",
+          "title": "Grand Designs New Zealand",
+          "season": 2,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt1578652",
+          "title": "Great British Railway Journeys",
+          "season": 16,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt27137489",
+          "title": "Road Home",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt0135733",
+          "title": "Match of the Day",
+          "season": 55,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt40217962",
+          "title": "Inside the CIA: Secrets & Spies",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41983392",
+          "title": "The Bad Game Show",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43723229",
+          "title": "Chaotic Kids Cooking",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt43723229",
+          "title": "Chaotic Kids Cooking",
+          "season": 2,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt43035122",
+          "title": "Nour",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt35932159",
+          "title": "Your Third",
+          "season": 1,
+          "from": 9.26,
+          "to": 7.62,
+          "delta": -1.64
+        },
+        {
+          "seriesId": "tt14330440",
+          "title": "Tuttle Twins",
+          "season": 3,
+          "from": 6.39,
+          "to": 5.53,
+          "delta": -0.86
+        },
+        {
+          "seriesId": "tt18070984",
+          "title": "Average Joe",
+          "season": 2,
+          "from": 7.57,
+          "to": 6.9,
+          "delta": -0.67
+        },
+        {
+          "seriesId": "tt24060452",
+          "title": "Hasratein",
+          "season": 2,
+          "from": 7.12,
+          "to": 6.45,
+          "delta": -0.67
+        },
+        {
+          "seriesId": "tt31189898",
+          "title": "Drunkard Morning",
+          "season": 2,
+          "from": 5.13,
+          "to": 5.77,
+          "delta": 0.64
+        },
+        {
+          "seriesId": "tt0320037",
+          "title": "Jimmy Kimmel Live!",
+          "season": 19,
+          "from": 5.81,
+          "to": 5.18,
+          "delta": -0.63
+        },
+        {
+          "seriesId": "tt39779938",
+          "title": "Dil Dhokha Aur Desire",
+          "season": 1,
+          "from": 5.67,
+          "to": 5.05,
+          "delta": -0.62
+        },
+        {
+          "seriesId": "tt15856874",
+          "title": "Cinderella Chef",
+          "season": 3,
+          "from": 6.58,
+          "to": 7.18,
+          "delta": 0.6
+        },
+        {
+          "seriesId": "tt0112163",
+          "title": "The Single Guy",
+          "season": 1,
+          "from": 5.6,
+          "to": 6.19,
+          "delta": 0.59
+        },
+        {
+          "seriesId": "tt0112163",
+          "title": "The Single Guy",
+          "season": 2,
+          "from": 5.32,
+          "to": 5.89,
+          "delta": 0.57
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20672,
+        "avgRating": 1281,
+        "seriesRating": 276,
+        "shapes": 222,
+        "episodeCount": 107,
+        "poster": 2,
+        "overview": 1
+      }
+    },
+    {
       "builtAt": "2026-09-01T11:14:07.498Z",
       "totals": {
         "seasons": 66571,
@@ -7566,339 +7811,6 @@
         "seriesRating": 267,
         "episodeCount": 85,
         "overview": 2,
-        "poster": 2
-      }
-    },
-    {
-      "builtAt": "2026-07-29T08:39:23.302Z",
-      "totals": {
-        "seasons": 66044,
-        "delta": 26
-      },
-      "shapeCounts": {
-        "mid-peak": 4616,
-        "rebound": 10062,
-        "rising": 2932,
-        "slow-burn": 4372,
-        "big-finale": 12059,
-        "u-shaped": 3084,
-        "rollercoaster": 14042,
-        "saved-best-for-last": 1542,
-        "front-loaded": 3465,
-        "declining": 1871,
-        "bad-finale": 4640,
-        "consistent": 2632,
-        "shape-drift": 1628
-      },
-      "shapeDeltas": {
-        "mid-peak": -1,
-        "rising": 4,
-        "slow-burn": -3,
-        "big-finale": 12,
-        "u-shaped": -20,
-        "rollercoaster": 10,
-        "saved-best-for-last": 1,
-        "front-loaded": 3,
-        "declining": -5,
-        "bad-finale": 6,
-        "shape-drift": -3
-      },
-      "added": [
-        {
-          "seriesId": "tt8019344",
-          "title": "Génération Q",
-          "season": 1,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt41293157",
-          "title": "Though I Am an Inept Villainess",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt8019344",
-          "title": "Génération Q",
-          "season": 2,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt8019344",
-          "title": "Génération Q",
-          "season": 3,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt36303968",
-          "title": "Furious",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39665097",
-          "title": "Musafir Cafe",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0068072",
-          "title": "Fat Albert and the Cosby Kids",
-          "season": 4,
-          "seasonYear": 1976
-        },
-        {
-          "seriesId": "tt43017450",
-          "title": "Yarub",
-          "season": 1,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt0191715",
-          "title": "PB&J Otter",
-          "season": 3,
-          "seasonYear": 2000
-        },
-        {
-          "seriesId": "tt0497079",
-          "title": "The Real Housewives of Orange County",
-          "season": 20,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1249208",
-          "title": "Celebrity Family Feud",
-          "season": 13,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt31806050",
-          "title": "Kaulitz & Kaulitz",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt10038600",
-          "title": "Press Your Luck",
-          "season": 7,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt2445666",
-          "title": "Studio C",
-          "season": 13,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt21952804",
-          "title": "Slugterra: Ascension",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt37520584",
-          "title": "Bust Up",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt3220514",
-          "title": "Sluipschutters",
-          "season": 5,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt10912430",
-          "title": "The Legend of Luoxiaohei",
-          "season": 1,
-          "seasonYear": 2011
-        },
-        {
-          "seriesId": "tt6777360",
-          "title": "Reported Missing",
-          "season": 3,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt1116408",
-          "title": "Istories apo tin apenanti ohthi",
-          "season": 1,
-          "seasonYear": 2007
-        },
-        {
-          "seriesId": "tt11857512",
-          "title": "Crime Beat",
-          "season": 4,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt1464852",
-          "title": "Bloedverwanten",
-          "season": 2,
-          "seasonYear": 2012
-        },
-        {
-          "seriesId": "tt16965960",
-          "title": "De Jacht op De Mocro-Maffia",
-          "season": 4,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt1932099",
-          "title": "Long Lost Family",
-          "season": 15,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt22056346",
-          "title": "The Truth About My Murder",
-          "season": 2,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt37179514",
-          "title": "The Assembly",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt40857820",
-          "title": "Isakapatnam",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41568958",
-          "title": "Hidden Beneath the Cities",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43625977",
-          "title": "Kraken. El libro negro de las horas",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39390494",
-          "title": "My Daughter's Father",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt3960394",
-          "title": "The Vampire Lestat",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt9170638",
-          "title": "The Hookup Plan",
-          "season": 1,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt9170638",
-          "title": "The Hookup Plan",
-          "season": 2,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt9170638",
-          "title": "The Hookup Plan",
-          "season": 3,
-          "seasonYear": 2022
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt26778255",
-          "title": "LOL: Last One Laughing Argentina",
-          "season": 1,
-          "from": 5.5,
-          "to": 4.36,
-          "delta": -1.14
-        },
-        {
-          "seriesId": "tt7301292",
-          "title": "Dry Bar Comedy",
-          "season": 3,
-          "from": 6.9,
-          "to": 6.1,
-          "delta": -0.8
-        },
-        {
-          "seriesId": "tt0426769",
-          "title": "Peppa Pig",
-          "season": 9,
-          "from": 8.62,
-          "to": 7.9,
-          "delta": -0.72
-        },
-        {
-          "seriesId": "tt27589772",
-          "title": "Blue Ridge: The Series",
-          "season": 2,
-          "from": 7.78,
-          "to": 8.46,
-          "delta": 0.68
-        },
-        {
-          "seriesId": "tt26761151",
-          "title": "The House That Dragons Built",
-          "season": 3,
-          "from": 9.13,
-          "to": 8.47,
-          "delta": -0.66
-        },
-        {
-          "seriesId": "tt39551287",
-          "title": "A Livid Lady's Guide to Getting Even: How I Crushed My Homeland with My Mighty Grimoires",
-          "season": 1,
-          "from": 8.2,
-          "to": 7.55,
-          "delta": -0.65
-        },
-        {
-          "seriesId": "tt43440117",
-          "title": "Love in Sync",
-          "season": 1,
-          "from": 8.53,
-          "to": 7.9,
-          "delta": -0.63
-        },
-        {
-          "seriesId": "tt0169510",
-          "title": "Shadow Raiders",
-          "season": 2,
-          "from": 7.07,
-          "to": 7.64,
-          "delta": 0.57
-        },
-        {
-          "seriesId": "tt10580768",
-          "title": "My Sweet Tyrant",
-          "season": 1,
-          "from": 7.85,
-          "to": 7.28,
-          "delta": -0.57
-        },
-        {
-          "seriesId": "tt13192574",
-          "title": "Bungo Stray Dogs Wan!",
-          "season": 2,
-          "from": 8.57,
-          "to": 8,
-          "delta": -0.57
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 24605,
-        "avgRating": 1735,
-        "shapes": 334,
-        "episodeCount": 144,
-        "seriesRating": 487,
         "poster": 2
       }
     }
