@@ -27,7 +27,7 @@ import {
   undo, reset, canUndo, isDirty, scenarioDiff, scenarioMoney, scenarioAccounting,
   scenarioPlan, validateScenario, scenarioSquadState, transferCandidates,
   transferBlockedReason, comparison, xiPoints, sellTenthsFor, scenarioSummary,
-  captaincyScoreOf,
+  captaincyScoreOf, scenarioBaseline,
 } from '../js/ui/scenario.js';
 import { chooseCaptain } from '../js/engine/captain.js';
 
@@ -53,6 +53,9 @@ const { gameState, squadState, gw, projections, ctx } = W;
 const rules = gameState.rules;
 const P = (id) => gameState.players.get(id);
 const scenario0 = () => createScenario({ squadState, gameState });
+
+// A plan for the tests that need a "copy recommended" scenario to exist.
+const planBundle = await buildPlan({ gameState, squadState, options: { horizon: 3, seed: 11 } });
 
 test('a manual squad seeds the scenario from the plan, because its picks carry no lineup', async () => {
   // manualSquadState assigns slots in position order with no captain flags:
@@ -147,7 +150,7 @@ test('a fresh scenario is exactly the imported squad, and knows it is unedited',
   assert.equal(sc.captain, picks.find(p => p.isCaptain).playerId);
   assert.equal(sc.viceCaptain, picks.find(p => p.isViceCaptain).playerId);
 
-  assert.equal(isDirty(sc, squadState), false);
+  assert.equal(isDirty(sc, ctx), false);
   assert.equal(canUndo(sc), false);
   assert.equal(validateScenario(sc, ctx).ok, true);
 
@@ -195,7 +198,7 @@ test('one transfer moves exactly the money the FPL selling rule says it does', (
   assert.equal(next.squad.includes(inId), true);
   assert.equal(next.squad.length, rules.squadSize);
   assert.equal(validateScenario(next, ctx).ok, true);
-  assert.equal(isDirty(next, squadState), true);
+  assert.equal(isDirty(next, ctx), true);
 });
 
 test('the incoming player takes the outgoing player place in the eleven', () => {
@@ -497,14 +500,14 @@ test('undo steps back through every kind of edit, one at a time', () => {
   const starter = sc.xi.find(id => P(id).position === P(sub).position);
   if (starter) ({ scenario: sc } = swapPlayers(sc, ctx, starter, sub));
 
-  assert.equal(isDirty(sc, squadState), true);
+  assert.equal(isDirty(sc, ctx), true);
   let steps = 0;
   while (canUndo(sc)) { sc = undo(sc); steps++; if (steps > 10) break; }
   assert.ok(steps >= 2);
   assert.deepEqual(sc.squad, original.squad);
   assert.deepEqual(sc.xi, original.xi);
   assert.equal(sc.captain, original.captain);
-  assert.equal(isDirty(sc, squadState), false);
+  assert.equal(isDirty(sc, ctx), false);
 });
 
 test('reset returns to the imported squad in one action and stays undoable', () => {
@@ -515,11 +518,11 @@ test('reset returns to the imported squad in one action and stays undoable', () 
   ({ scenario: sc } = setCaptain(sc, ctx, sc.xi.find(id => id !== sc.captain && id !== sc.viceCaptain)));
 
   const back = reset(sc, { squadState, gameState, plan: null });
-  assert.equal(isDirty(back, squadState), false);
+  assert.equal(isDirty(back, ctx), false);
   assert.deepEqual(back.squad, scenario0().squad);
   assert.equal(canUndo(back), true, 'even a reset can be undone');
   const undone = undo(back);
-  assert.equal(isDirty(undone, squadState), true);
+  assert.equal(isDirty(undone, ctx), true);
 });
 
 /* ------------------------------------------------------- points and compare */
@@ -911,4 +914,88 @@ test('an armband edit that keeps the squad leaves the horizon alone but moves th
   assert.ok(Math.abs(c.captaincy.delta) > 1e-9, 'but the armband did change');
   // The delta is a difference of the two reported scores, not a third number.
   assert.ok(Math.abs(c.captaincy.delta - (c.captaincy.after.score - c.captaincy.before.score)) < 1e-12);
+});
+
+// ---------------------------------------------------------------------------
+// One baseline for "changed?" and "changed by how much?" (added 2026-09-02)
+// ---------------------------------------------------------------------------
+//
+// isDirty and comparison used to resolve the baseline independently - the seed
+// for one, the manager's picks for the other. For a scenario opened from the
+// manager's own team those are the same object, so the split was invisible. For
+// one opened from the recommendation it is not, and the sandbox announced
+// "This is your team exactly as it stands" over a comparison already showing a
+// multi-point difference.
+//
+// The invariant below is the property that was actually broken, stated once and
+// swept, rather than the single state that exposed it.
+
+test('scenarioBaseline resolves to the picks in season and the seed for a fresh build', async () => {
+  const own = createScenario({ squadState, gameState, origin: 'current' });
+  const fromPicks = scenarioBaseline(own, ctx);
+  assert.equal(fromPicks.source, 'picks');
+  const slotted = squadState.picks.slice().sort((a, b) => a.slot - b.slot);
+  assert.deepEqual(fromPicks.xi, slotted.filter(p => p.slot <= 11).map(p => p.playerId));
+  assert.equal(fromPicks.captain, slotted.find(p => p.isCaptain).playerId);
+
+  // A pre-season build owns nothing, so its own seed is the only reference.
+  const { manualSquadState } = await import('../js/ui/preseason.js');
+  const ids = squadState.picks.map(p => p.playerId);
+  const manual = manualSquadState({ ids, gameState, gw });
+  const mb = await buildPlan({ gameState, squadState: manual, options: { horizon: 3, seed: 7 } });
+  const draft = createScenario({ squadState: { ...manual, picks: [] }, gameState, plan: mb.current });
+  const fromSeed = scenarioBaseline(draft, { gameState, squadState: { ...manual, picks: [] } });
+  assert.equal(fromSeed.source, 'seed');
+  assert.deepEqual(fromSeed.xi, draft.seed.xi);
+});
+
+test('a scenario opened from the recommendation is not "your team as it stands"', () => {
+  // The exact state that exposed the split: same fifteen or not, the
+  // recommendation is not what the manager owns, and saying otherwise hid a
+  // real difference behind a neutral message.
+  const copied = createScenario({ squadState, gameState, plan: planBundle.current, origin: 'recommended' });
+  const c = comparison(copied, ctx, { projections, gw, horizon: 3, discount: 0.85 });
+
+  const differs = c.transfers > 0 || c.xiChanged || c.captainChanged;
+  assert.ok(differs, 'the fixture must offer a recommendation that differs from the picks');
+  assert.equal(isDirty(copied, ctx), true, 'so the sandbox must not call it unchanged');
+});
+
+test('whatever reads clean must also compare identical, in every origin', () => {
+  // The invariant. Dirty does NOT imply a points difference - reordering the
+  // bench is an edit that moves no xP - so the implication runs one way only,
+  // which is the direction that broke.
+  const opts = { projections, gw, horizon: 3, discount: 0.85 };
+  const posOf = id => P(id).position;
+  const states = [];
+
+  for (const origin of ['current', 'recommended']) {
+    const seeded = createScenario({ squadState, gameState, plan: planBundle.current, origin });
+    states.push([`${origin}: untouched`, seeded]);
+    states.push([`${origin}: bench reordered`, moveBench(seeded, ctx, seeded.benchOrder[0], 'down').scenario]);
+
+    const other = seeded.xi.find(id => id !== seeded.captain);
+    states.push([`${origin}: armband moved`, setCaptain(seeded, ctx, other).scenario]);
+
+    for (const starter of seeded.xi) {
+      const match = seeded.benchOrder.find(b => posOf(b) === posOf(starter));
+      if (!match) continue;
+      const res = swapPlayers(seeded, ctx, starter, match);
+      if (!res.error) states.push([`${origin}: bench swap`, res.scenario]);
+      break;
+    }
+  }
+
+  let clean = 0;
+  for (const [label, sc] of states) {
+    const c = comparison(sc, ctx, opts);
+    if (isDirty(sc, ctx)) continue;
+    clean += 1;
+    assert.equal(c.transfers, 0, `${label}: reads clean but moves ${c.transfers} transfers`);
+    assert.equal(c.xiChanged, false, `${label}: reads clean but the eleven differs`);
+    assert.equal(c.captainChanged, false, `${label}: reads clean but the armband differs`);
+    assert.ok(Math.abs(c.gw.delta) < 1e-9, `${label}: reads clean but projects ${c.gw.delta.toFixed(3)} xP more`);
+  }
+  assert.ok(states.length >= 8, `only ${states.length} states built`);
+  assert.ok(clean > 0, 'no state read clean, so the invariant was never exercised');
 });

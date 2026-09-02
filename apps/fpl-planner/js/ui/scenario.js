@@ -205,18 +205,69 @@ export function scenarioDiff(sc, squadState) {
 
 export const isFreshBuild = (squadState) => baseSquadIds(squadState).length === 0;
 
-// Everything is measured against the seed, so this answers the same question
-// in season and before it. `squadState` is accepted and ignored so existing
-// callers keep working.
-export const isDirty = (sc, _squadState) => {
-  if (!sc || !sc.seed) return false;
-  const d = seedDiff(sc);
-  if (d.in.length || d.out.length) return true;
-  if (!sameSet(sc.seed.xi, sc.xi)) return true;
-  if (sc.seed.captain !== sc.captain) return true;
-  if (sc.seed.viceCaptain !== sc.viceCaptain) return true;
-  if (sc.seed.benchGk !== sc.benchGk) return true;
-  if (sc.seed.benchOrder.join(',') !== sc.benchOrder.join(',')) return true;
+// THE ONE ANSWER TO "what is this scenario being measured against?"
+//
+// `isDirty` and `comparison` used to decide this independently. isDirty always
+// measured against the scenario's own SEED; comparison measured against the
+// manager's PICKS when those encode a lineup, and against the seed otherwise.
+// For a scenario opened from the manager's own team the two are the same
+// object, so the split cost nothing and went unnoticed for months.
+//
+// For a scenario opened from the RECOMMENDATION - app.js's `copy-recommended`
+// action, with a real team on file - they are not the same. The sandbox
+// reported "This is your team exactly as it stands" over a comparison strip
+// already showing a three-point difference, and the first edit the manager made
+// then read as though it had caused all of it. That mismatch is also what let
+// the armband verdict fire in a state where the eleven had moved too.
+//
+// Both callers now come through here, so "has anything changed" and "changed by
+// how much" can never be answering about different teams.
+//
+// The baseline is built by asking createScenario for the manager's own team,
+// rather than by re-deriving slots here: a baseline that is itself a scenario is
+// guaranteed to be comparable to one, field for field.
+export function scenarioBaseline(sc, ctx) {
+  const squadState = ctx && ctx.squadState;
+  const seed = sc && sc.seed ? { source: 'seed', ...sc.seed } : null;
+  const owned = baseSquadIds(squadState);
+
+  // Nothing owned yet (a pre-season build): the seed it opened from is the only
+  // thing an edit can be measured against.
+  if (!owned.length) return seed;
+
+  // Picks always carry the SQUAD. They carry the LINEUP only when FPL assigned
+  // the slots - a manual squad's picks are a position-ordered roster with no
+  // captain, and reading those as an eleven scored a two-goalkeeper, captainless
+  // side as the baseline.
+  if (picksCarryLineup(squadState) && ctx && ctx.gameState) {
+    const own = createScenario({ squadState, gameState: ctx.gameState, origin: 'current' });
+    return { source: 'picks', ...snapshotOf(own) };
+  }
+
+  return {
+    source: 'roster',
+    squad: owned.slice(),
+    xi: seed ? seed.xi.slice() : [],
+    benchGk: seed ? seed.benchGk : null,
+    benchOrder: seed ? seed.benchOrder.slice() : [],
+    captain: seed ? seed.captain : null,
+    viceCaptain: seed ? seed.viceCaptain : null,
+  };
+}
+
+// Does this scenario differ from the team it is being compared against? Takes
+// the sandbox ctx (`{ gameState, squadState }`), because the baseline needs to
+// know positions to read a bench.
+export const isDirty = (sc, ctx) => {
+  if (!sc) return false;
+  const base = scenarioBaseline(sc, ctx);
+  if (!base) return false;
+  if (!sameSet(base.squad, sc.squad)) return true;
+  if (!sameSet(base.xi, sc.xi)) return true;
+  if (base.captain !== sc.captain) return true;
+  if (base.viceCaptain !== sc.viceCaptain) return true;
+  if (base.benchGk !== sc.benchGk) return true;
+  if ((base.benchOrder || []).join(',') !== sc.benchOrder.join(',')) return true;
   return false;
 };
 
@@ -459,23 +510,12 @@ export function captaincyScoreOf(xi, captainId, ctx, { projections, gw, opts = {
 export function comparison(sc, ctx, { projections, gw, horizon, discount }) {
   const { squadState } = ctx;
   const baseIds = baseSquadIds(squadState);
-  // The "before" eleven exists only when the picks encode a real lineup. A
-  // manual squad's picks are a roster (position-ordered slots, no captain),
-  // and reading them as a lineup scored a two-goalkeeper, captainless eleven
-  // as the baseline, so an untouched restored squad reported a phantom xP
-  // gain. For those squads the baseline is the seed the scenario opened from
-  // (the plan's arrangement of the same fifteen), which makes an untouched
-  // scenario read level, and an edit read as the edit's own effect.
-  let baseXi = [];
-  let baseCaptain = null;
-  if (picksCarryLineup(squadState)) {
-    const basePicks = squadState.picks.slice().sort((a, b) => a.slot - b.slot);
-    baseXi = basePicks.filter(p => p.slot <= 11).map(p => p.playerId);
-    baseCaptain = (basePicks.find(p => p.isCaptain) || {}).playerId ?? null;
-  } else if (baseIds.length && sc.seed) {
-    baseXi = sc.seed.xi.slice();
-    baseCaptain = sc.seed.captain;
-  }
+  // The "before" eleven, from the one resolver isDirty also uses, so an
+  // untouched scenario reads level and an edit reads as the edit's own effect.
+  // See scenarioBaseline for why the picks are not always the answer.
+  const baseline = scenarioBaseline(sc, ctx) || { xi: [], captain: null };
+  const baseXi = (baseline.xi || []).slice();
+  const baseCaptain = baseline.captain ?? null;
 
   const money = scenarioMoney(sc, ctx);
   const acct = scenarioAccounting(sc, ctx);
@@ -767,6 +807,6 @@ export function scenarioSummary(sc, ctx, { projections, gw, horizon, discount })
     reason: check.ok ? null : explainViolations(check.violations, ctx),
     plan,
     compare,
-    dirty: isDirty(sc, ctx.squadState),
+    dirty: isDirty(sc, ctx),
   };
 }

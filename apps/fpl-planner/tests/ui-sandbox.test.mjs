@@ -116,7 +116,7 @@ test('editing a pre-season build reads as edited and lists the changes', () => {
   // With no imported squad to diff against, "have I changed anything" has to be
   // answered against the fifteen this scenario was seeded from.
   const { view, base, ctx, scenario: sc } = makeView(draftPlan, draftSquad, { origin: 'recommended' });
-  assert.equal(isDirty(sc, draftSquad), false);
+  assert.equal(isDirty(sc, ctx), false);
 
   const outId = sc.xi[4];
   const inId = [...gameState.players.values()].find(p =>
@@ -125,7 +125,7 @@ test('editing a pre-season build reads as edited and lists the changes', () => {
     && !transferBlockedReason(sc, ctx, outId, p.id)).id;
   const { scenario: edited, error } = applyTransfer(sc, ctx, outId, inId);
   assert.equal(error, null);
-  assert.equal(isDirty(edited, draftSquad), true, 'a swapped player is an edit even before the season starts');
+  assert.equal(isDirty(edited, ctx), true, 'a swapped player is an edit even before the season starts');
 
   view.update({ ...base, scenario: edited });
   const box = sandboxOf(view);
@@ -583,7 +583,7 @@ test('the armband never leads a verdict when anything else moved too', () => {
         if (res.error) continue;
         sc = res.scenario;
       }
-      if (!isDirty(sc, inSeasonSquad)) continue;
+      if (!isDirty(sc, ctx)) continue;
 
       const c = comparison(sc, ctx, opts);
       view.update({ ...base, scenario: sc });
