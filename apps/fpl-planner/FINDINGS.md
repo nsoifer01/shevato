@@ -167,6 +167,47 @@ FPL's own response body verbatim, nothing is retried, and a network failure says
 explicitly that it is unclear whether anything was applied and to go and look.
 Retrying a transfer that may have half-applied is worse than refusing.
 
+### The action was invisible, and that was the whole feature (fixed 2026-09-02)
+
+It shipped as a collapsed `<details>` at the foot of the transfers card, with
+the label "Make these transfers on Fantasy Premier League". The owner could not
+find it. That is the correct verdict on the design rather than on the owner:
+
+- The app has exactly ONE action. Everything else on the screen is a number or
+  an explanation. Putting that one action behind the same disclosure chrome as
+  the why/alternatives/status panels made it read as more to read.
+- A `<details>` summary is a promise that what is inside is context. It was
+  keeping its promise; the content was simply in the wrong container.
+- Three states legitimately render nothing (a roll, the sample dataset, no team
+  id), so "I cannot see it" is ALSO a real answer sometimes. That ambiguity is
+  itself a reason the visible case has to be unmistakable.
+
+It is a primary button now, labelled with the act and the count ("Make these 2
+transfers on FPL"), with the steps in a dialog behind it. The rule this leaves
+behind: **an action never renders as a disclosure in this app.**
+
+Two things that fell out of the rework and are worth keeping:
+
+- **The clipboard write must start inside the click.** `navigator.clipboard
+  .writeText` is only permitted while a user gesture is being handled, so the
+  dialog copies the plan in `open()`, synchronously, before awaiting anything.
+  Moving that copy into the content builder (which re-runs when the install
+  step is toggled) would both break the permission and copy twice.
+- **The install step is remembered, and the signal is real DOM.** `dragstart`
+  on the bookmarklet link, or a successful copy of it, sets
+  `handoffInstalled`. A failed copy deliberately does NOT, because the user has
+  nothing installed in that case. It lives in the settings object rather than a
+  fifth storage key: settings already sync and `privacy.html` already describes
+  them as "your planner settings", so a new key would need registering with
+  sync-system and listing there separately to say the same thing.
+- **The dialog's CONTENT is a pure function, the overlay is not tested here.**
+  `handoffDialogContent()` is exported and unit tested under the mini DOM;
+  `createHandoffDialog()` is the drawer's shell (mounted on the app root
+  wrapper, scroll-locked, Escape/backdrop/focus-trap) and follows the same
+  precedent as `createPlayerDrawer`, which is also not unit tested. Escape,
+  focus return, real dragging and clipboard permission are in
+  `.features/fpl-planner-human.md`.
+
 ### Things that would be easy to get wrong here
 
 - **A bookmarklet whose expression returns a value navigates the tab to that

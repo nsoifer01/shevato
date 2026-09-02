@@ -61,7 +61,7 @@ apps/fpl-planner/
                          persistent view updated in place, draws and
                          dispatches only
     ui/handoff.js        THE plan -> bookmarklet payload contract, pure
-    ui/handoff-view.js   the install-and-paste block under the transfers card
+    ui/handoff-view.js   the "Make these transfers on FPL" button and dialog
     ui/bookmarklet-url.js  GENERATED: the bookmarklet as a javascript: URL
     ui/plan-diff.js      "what changed" between two stored plan versions
     ui/history.js        gameweek history, season-at-a-glance charts, saved plan versions
@@ -290,6 +290,18 @@ FPL's authenticated `my-team` and the live price list, shows every move, and
 POSTs to `api/transfers/` only after they confirm. It imports nothing and
 fetches nothing from shevato.com, so this site being down or slow cannot affect
 it, and it cannot be repointed at another origin by a later change here.
+
+The planner's side is a **primary button on the transfers card** labelled with
+the act ("Make these 2 transfers on FPL"), which opens a dialog. The dialog
+copies the plan to the clipboard the instant it opens, inside the click that
+opened it, because that is the only moment a browser permits a clipboard write.
+The install step is shown only until the user has actually installed the
+bookmarklet: dragging the link or copying it sets `handoffInstalled` in the
+synced settings (`js/ui/store.js` says why it lives there rather than in a fifth
+storage key), after which the dialog opens straight to "Apply it" and keeps a
+quiet way back to the install step. This was a collapsed `<details>` when it
+first shipped, which put the only action the app offers behind the same chrome
+as its context panels; FINDINGS records why that was wrong.
 
 **The payload is ids and a gameweek, and nothing else** (`js/ui/handoff.js`):
 

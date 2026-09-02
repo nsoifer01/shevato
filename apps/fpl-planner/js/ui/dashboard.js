@@ -23,7 +23,7 @@ import { formatFreeTransfers } from '../engine/transfer-state.js';
 import { openingSquadMoney, picksCarryLineup } from '../engine/squad.js';
 import { assessConfidence } from '../engine/confidence.js';
 import { describeModelStatus } from '../data/model.js';
-import { handoffSection } from './handoff-view.js';
+import { handoffAction } from './handoff-view.js';
 
 const nameOf = (gameState) => (id) => describePlayer(gameState, id).name;
 
@@ -194,10 +194,10 @@ function transferSide({ dir, playerId, gameState, projections, gw, horizon }) {
   ]);
 }
 
-// `teamId` and `sample` are not plan figures: they are what the handoff at the
-// foot of this card needs to address a real FPL team, and it renders nothing
-// without them.
-export function transfersCard({ bundle, gameState, teamId = null, sample = false }) {
+// `teamId`, `sample` and `onMakeTransfers` are not plan figures: they are what
+// the handoff button at the foot of this card needs to address a real FPL team
+// and open the dialog. Without a team id it renders nothing.
+export function transfersCard({ bundle, gameState, teamId = null, sample = false, onMakeTransfers = null }) {
   const plan = bundle.current;
   const { projections } = bundle;
   const horizon = plan.horizon;
@@ -247,7 +247,7 @@ export function transfersCard({ bundle, gameState, teamId = null, sample = false
     ]),
   ]));
 
-  const handoff = handoffSection({ plan, teamId, sample });
+  const handoff = handoffAction({ plan, teamId, sample, onOpen: onMakeTransfers });
 
   return card(`This gameweek: ${plan.transferCount} ${plural(plan.transferCount, 'transfer')}`, [...rows, money, handoff]);
 }

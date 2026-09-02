@@ -7,13 +7,15 @@
 
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { installDom, query, queryAll, textOf, click, buttonWith } from './helpers/mini-dom.mjs';
+import { installDom, query, queryAll, textOf, click, fire, buttonWith } from './helpers/mini-dom.mjs';
 
 const teardownDom = installDom();
 after(() => teardownDom());
 
 const { buildHandoff, encodeHandoff, decodeHandoff, chipRouting } = await import('../js/ui/handoff.js');
-const { handoffSection, BOOKMARKLET_NAME } = await import('../js/ui/handoff-view.js');
+const {
+  handoffAction, handoffDialogContent, transferActionLabel, BOOKMARKLET_NAME,
+} = await import('../js/ui/handoff-view.js');
 const { BOOKMARKLET_URL } = await import('../js/ui/bookmarklet-url.js');
 
 const planWith = (over = {}) => ({
@@ -90,91 +92,161 @@ test('only the two chips that ARE transfers travel with them', () => {
   assert.equal(boost.deferredChip, 'bboost');
 });
 
-/* ---------------------------------------------------------- handoffSection */
+/* ------------------------------------------------------- the card's button */
 
-const render = (over = {}) => handoffSection({
+test('the button names the act, with the count already in it', () => {
+  assert.equal(transferActionLabel(planWith({ transferCount: 1 })), 'Make this transfer on FPL');
+  assert.equal(transferActionLabel(planWith({ transferCount: 2 })), 'Make these 2 transfers on FPL');
+  assert.equal(transferActionLabel(planWith({ transferCount: 3 })), 'Make these 3 transfers on FPL');
+});
+
+const action = (over = {}) => handoffAction({
   plan: planWith(),
   teamId: '4231987',
   sample: false,
-  copyText: () => Promise.resolve(),
+  onOpen: () => {},
   ...over,
 });
 
 test('nothing is offered when there is nothing to hand over', () => {
-  assert.equal(render({ sample: true }), null, 'the sample team id belongs to nobody');
-  assert.equal(render({ teamId: null }), null);
-  assert.equal(render({ plan: planWith({ transferCount: 0, transfersOut: [], transfersIn: [] }) }), null);
-  assert.equal(render({ plan: null }), null);
+  assert.equal(action({ sample: true }), null, 'the sample team id belongs to nobody');
+  assert.equal(action({ teamId: null }), null);
+  assert.equal(action({ plan: planWith({ transferCount: 0, transfersOut: [], transfersIn: [] }) }), null);
+  assert.equal(action({ plan: null }), null);
 });
 
-test('the three steps are all there, in order', () => {
-  const node = render();
-  const steps = queryAll(node, 'fpl-handoff-step-t').map(textOf);
-  assert.deepEqual(steps, [
-    'Install it once',
-    'Copy this plan',
-    'Apply it on Fantasy Premier League',
-  ]);
-  assert.match(textOf(node), /never asks for your password/);
+test('the action is a primary button, not a disclosure to open', async () => {
+  // It shipped as a collapsed <details> and read as more context rather than
+  // as the thing to press. The class is the promise that it is a button.
+  let opened = 0;
+  const node = action({ onOpen: () => { opened += 1; } });
+  const button = buttonWith(node, 'Make this transfer on FPL');
+  assert.match(button.className, /fpl-btn-primary/);
+  await click(button);
+  assert.equal(opened, 1);
 });
 
-test('the plan on screen is exactly the plan that is copied', () => {
-  const node = render();
-  const shown = textOf(query(node, 'fpl-handoff-payload'));
-  const expected = encodeHandoff(buildHandoff({ plan: planWith(), teamId: '4231987' }).payload);
-  assert.equal(shown, expected);
-  // Shown rather than hidden behind the button: this is the text that will
-  // spend the user's transfers, so it has to be readable before it is pasted.
-  assert.equal(decodeHandoff(shown).ok, true);
+/* --------------------------------------------------------- the dialog body */
+
+const content = (over = {}) => handoffDialogContent({
+  plan: planWith(),
+  teamId: '4231987',
+  copyText: () => Promise.resolve(),
+  ...over,
 });
 
-test('Copy plan puts the payload on the clipboard and says so', async () => {
+const wrap = (c) => {
+  const box = document.createElement('div');
+  for (const n of c.nodes) box.appendChild(n);
+  return box;
+};
+
+test('a first-time user is shown the install step, and told what it is', () => {
+  const box = wrap(content({ installed: false }));
+  assert.ok(query(box, 'is-install'), 'the install block is missing');
+  assert.match(textOf(box), /First, install it \(once\)/);
+  assert.match(textOf(box), /a bookmark, not an extension/);
+  assert.match(textOf(box), /Then apply it/);
+});
+
+test('someone who has installed it does not see the install step again', () => {
+  const box = wrap(content({ installed: true }));
+  assert.equal(query(box, 'is-install'), null, 'the install block should be gone');
+  assert.match(textOf(box), /Apply it/);
+  // But it stays reachable, because a new browser or a lost bookmark happens.
+  assert.ok(buttonWith(box, 'Show the install step again'));
+});
+
+test('asking for the install step back brings it back, and drops the ask', () => {
+  const box = wrap(content({ installed: true, showInstall: true }));
+  assert.ok(query(box, 'is-install'));
+  assert.throws(() => buttonWith(box, 'Show the install step again'));
+});
+
+test('the plan on screen is exactly the plan that is copied', async () => {
   const copied = [];
-  const node = render({ copyText: (text) => { copied.push(text); return Promise.resolve(); } });
-  await click(buttonWith(node, 'Copy plan'));
-  assert.equal(copied.length, 1);
-  assert.equal(decodeHandoff(copied[0]).ok, true);
-  const status = queryAll(node, 'fpl-handoff-status').find(n => textOf(n));
-  assert.match(textOf(status), /Copied/);
+  const c = content({ installed: true, copyText: (t) => { copied.push(t); return Promise.resolve(); } });
+  const box = wrap(c);
+  assert.equal(textOf(query(box, 'fpl-handoff-payload')), c.planText);
+  assert.equal(decodeHandoff(c.planText).ok, true);
+
+  await click(buttonWith(box, 'Copy the plan again'));
+  assert.deepEqual(copied, [c.planText]);
+  assert.match(textOf(c.copyStatus), /Copied again/);
 });
 
 test('a refused clipboard is reported, not swallowed', async () => {
-  const node = render({ copyText: () => Promise.reject(new Error('denied')) });
-  await click(buttonWith(node, 'Copy plan'));
-  const bad = queryAll(node, 'fpl-handoff-status').find(n => textOf(n));
-  assert.match(textOf(bad), /copy it yourself/);
-  assert.match(bad.className, /is-bad/);
+  const c = content({ installed: true, copyText: () => Promise.reject(new Error('denied')) });
+  const box = wrap(c);
+  await click(buttonWith(box, 'Copy the plan again'));
+  assert.match(textOf(c.copyStatus), /copy it yourself/);
+  assert.match(c.copyStatus.className, /is-bad/);
 });
 
-test('the bookmarklet is offered as a draggable link and as copyable text', async () => {
-  const copied = [];
-  const node = render({ copyText: (text) => { copied.push(text); return Promise.resolve(); } });
-  const link = query(node, 'fpl-handoff-drag');
-  assert.equal(textOf(link), BOOKMARKLET_NAME);
-  assert.equal(link.getAttribute('href'), BOOKMARKLET_URL);
-  assert.ok(BOOKMARKLET_URL.startsWith('javascript:'));
+test('dragging the bookmarklet counts as installing it', async () => {
+  let installed = 0;
+  const box = wrap(content({ installed: false, onInstalled: () => { installed += 1; } }));
+  await fire(query(box, 'fpl-handoff-drag'), 'dragstart');
+  assert.equal(installed, 1, 'a dragstart is the real signal that it went to the bookmarks bar');
+});
 
-  await click(buttonWith(node, 'Copy the link instead'));
-  assert.deepEqual(copied, [BOOKMARKLET_URL]);
+test('copying the bookmarklet link also counts as installing it', async () => {
+  let installed = 0;
+  const copied = [];
+  const box = wrap(content({
+    installed: false,
+    onInstalled: () => { installed += 1; },
+    copyText: (t) => { copied.push(t); return Promise.resolve(); },
+  }));
+  await click(buttonWith(box, 'Copy the link instead'));
+  assert.equal(copied.length, 1);
+  assert.ok(copied[0].startsWith('javascript:'));
+  assert.equal(installed, 1);
+});
+
+test('a failed bookmarklet copy does not claim it was installed', async () => {
+  let installed = 0;
+  const box = wrap(content({
+    installed: false,
+    onInstalled: () => { installed += 1; },
+    copyText: () => Promise.reject(new Error('denied')),
+  }));
+  await click(buttonWith(box, 'Copy the link instead'));
+  assert.equal(installed, 0);
+  assert.match(textOf(box), /Right-click the link and copy its address/);
 });
 
 test('clicking the drag link explains itself instead of doing nothing', async () => {
-  const node = render();
-  const event = await click(query(node, 'fpl-handoff-drag'));
+  const box = wrap(content({ installed: false }));
+  const event = await click(query(box, 'fpl-handoff-drag'));
   // The site CSP blocks javascript: navigation, so an unhandled click is a
   // silent no-op and the user has no way to know they used it wrongly.
   assert.equal(event.defaultPrevented, true);
-  assert.match(textOf(node), /for dragging, not clicking/);
+  assert.match(textOf(box), /for dragging, not clicking/);
+});
+
+test('the way out to Fantasy Premier League opens in a new tab, safely', () => {
+  const link = query(wrap(content({ installed: true })), 'fpl-handoff-go');
+  assert.equal(link.getAttribute('href'), 'https://fantasy.premierleague.com/transfers');
+  assert.equal(link.getAttribute('target'), '_blank');
+  assert.equal(link.getAttribute('rel'), 'noopener noreferrer');
 });
 
 test('a chip that is not played by transferring is called out', () => {
-  const boost = render({ plan: planWith({ chip: 'bboost' }) });
+  const boost = wrap(content({ plan: planWith({ chip: 'bboost' }) }));
   assert.match(textOf(query(boost, 'fpl-handoff-warn')), /played on your Fantasy Premier League team page/);
 
-  const wild = render({ plan: planWith({ chip: 'wildcard' }) });
+  const wild = wrap(content({ plan: planWith({ chip: 'wildcard' }) }));
   assert.equal(query(wild, 'fpl-handoff-warn'), null, 'a wildcard travels with the transfers, so there is nothing to defer');
 });
 
 test('the unofficial nature of the endpoint is stated where the user acts', () => {
-  assert.match(textOf(render()), /no supported way to make a transfer from outside their site/);
+  assert.match(textOf(wrap(content({ installed: true }))), /no supported way to make a transfer from outside their site/);
+});
+
+test('a dialog opened with nothing to hand over says so instead of half-rendering', () => {
+  const c = content({ plan: planWith({ transferCount: 0, transfersOut: [], transfersIn: [] }) });
+  assert.equal(c.ok, false);
+  assert.equal(c.planText, null);
+  assert.match(textOf(wrap(c)), /Nothing to hand over/);
 });

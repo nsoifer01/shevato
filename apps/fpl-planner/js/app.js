@@ -47,6 +47,7 @@ import {
 import { createSandboxView } from './ui/sandbox.js';
 import { createPlanRunner } from './ui/plan-runner.js';
 import { createPlayerDrawer } from './ui/player-drawer.js';
+import { createHandoffDialog } from './ui/handoff-view.js';
 
 /* --------------------------------------------------------------- analytics */
 
@@ -143,6 +144,7 @@ let landingEl = null;
 let ticker = null;
 let modelPromise = null;
 let drawer = null;
+let handoffDialog = null;
 
 /* --------------------------------------------------------------- utilities */
 
@@ -869,7 +871,13 @@ function planView() {
         onRebuild: () => { state.manualIds = []; state.bundle = null; state.preSeasonStage = 'intro'; renderApp(); },
         restored: state.restoredSquad,
       })
-      : transfersCard({ bundle, gameState: state.gameState, teamId: state.teamId, sample: state.sample }),
+      : transfersCard({
+        bundle,
+        gameState: state.gameState,
+        teamId: state.teamId,
+        sample: state.sample,
+        onMakeTransfers: (opts) => { if (handoffDialog) handoffDialog.open(opts); },
+      }),
   ];
 
   if (!state.isDraft) nodes.push(chipCard({ bundle, gameState: state.gameState }));
@@ -1275,6 +1283,7 @@ function renderApp() {
   // A rebuilt screen must not leave a drawer floating over content it no
   // longer belongs to.
   if (drawer) drawer.close();
+  if (handoffDialog) handoffDialog.close();
   const body = state.view === 'history'
     ? historyTab()
     : state.view === 'settings'
@@ -1490,6 +1499,23 @@ async function boot() {
       projections: state.bundle.projections,
       gw: state.bundle.current.gw,
       horizon: state.bundle.current.horizon,
+    } : null),
+  });
+
+  // Same root and the same reason as the drawer: an overlay on the app wrapper
+  // survives a plan re-render, and the install step it remembers is a setting
+  // rather than a fifth storage key (ui/store.js says why).
+  handoffDialog = createHandoffDialog({
+    root: appEl.closest('.fpl-planner-app') || appEl.parentElement || appEl,
+    context: () => (state.bundle ? {
+      plan: state.bundle.current,
+      teamId: state.teamId,
+      installed: state.settings.handoffInstalled === true,
+      onInstalled: () => {
+        state.settings = state.sample
+          ? { ...state.settings, handoffInstalled: true }
+          : store.setSettings({ handoffInstalled: true });
+      },
     } : null),
   });
 

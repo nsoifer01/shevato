@@ -28,10 +28,20 @@ test('settings with the wrong types fall back field by field instead of breaking
   // stale or foreign write and produced the generic load-failure screen.
   assert.deepEqual(sanitizeSettings({ horizon: 'x', risk: 42, lastView: '<b>' }), DEFAULT_SETTINGS);
   assert.deepEqual(sanitizeSettings({ horizon: 8, risk: 'aggressive', lastView: 'history' }),
-    { horizon: 8, risk: 'aggressive', lastView: 'history' });
+    { ...DEFAULT_SETTINGS, horizon: 8, risk: 'aggressive', lastView: 'history' });
   assert.deepEqual(sanitizeSettings({ horizon: '8' }), { ...DEFAULT_SETTINGS, horizon: 8 }, 'a numeric string is a number');
   assert.deepEqual(sanitizeSettings({ horizon: 4 }), DEFAULT_SETTINGS, 'an unlisted horizon is not a choice');
   for (const junk of [null, [], 'x', 7]) assert.deepEqual(sanitizeSettings(junk), DEFAULT_SETTINGS);
+});
+
+test('the handoff install flag only ever reads true from a real true', () => {
+  // It decides whether a user is shown the install step, and it syncs, so a
+  // truthy string from an older or foreign write must not silently hide it.
+  assert.equal(sanitizeSettings({ handoffInstalled: true }).handoffInstalled, true);
+  for (const junk of ['true', 1, {}, [], 'yes', null, undefined, 0, false]) {
+    assert.equal(sanitizeSettings({ handoffInstalled: junk }).handoffInstalled, false,
+      `accepted ${JSON.stringify(junk)} as installed`);
+  }
 });
 
 test('team ids are validated before any network call', () => {
@@ -54,8 +64,11 @@ test('a valid team id is normalized to a plain string', () => {
   assert.equal(validateTeamId('007').teamId, '7');
 });
 
-test('default settings are the three the planner reads', () => {
-  assert.deepEqual(Object.keys(DEFAULT_SETTINGS).sort(), ['horizon', 'lastView', 'risk']);
+test('default settings are the four the planner reads', () => {
+  assert.deepEqual(Object.keys(DEFAULT_SETTINGS).sort(), ['handoffInstalled', 'horizon', 'lastView', 'risk']);
+  // A new user has not installed the transfer bookmarklet, so the dialog has
+  // to lead with the install step rather than assume it is already there.
+  assert.equal(DEFAULT_SETTINGS.handoffInstalled, false);
   // Asserted against the ENGINE's number rather than a literal. A user who has
   // never opened Settings must get the horizon the measurement chose, and these
   // two constants have to move together or the app silently plans over a

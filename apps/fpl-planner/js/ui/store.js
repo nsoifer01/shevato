@@ -29,7 +29,12 @@ export const HORIZON_CHOICES = [3, 5, 8];
 // horizon 5 matches planner.js DEFAULT_HORIZON, where the measurement that
 // chose it is written down. A test asserts this number equals the engine's
 // rather than checking it against a literal.
-export const DEFAULT_SETTINGS = { horizon: 5, risk: 'balanced', lastView: 'plan' };
+// handoffInstalled is UI memory rather than a preference, and it lives here
+// with lastView for the same reason: it is one boolean, the settings object is
+// already synced and already described in privacy.html as "your planner
+// settings", and a fifth storage key would have to be registered with
+// sync-system and listed there separately to say the same thing.
+export const DEFAULT_SETTINGS = { horizon: 5, risk: 'balanced', lastView: 'plan', handoffInstalled: false };
 
 // Plan history is synced, so it has to stay small. Five versions of the
 // current gameweek is enough to see how a plan moved during the week, and
@@ -182,6 +187,7 @@ export function sanitizeSettings(raw) {
     horizon: HORIZON_CHOICES.includes(horizon) ? horizon : DEFAULT_SETTINGS.horizon,
     risk: RISK_CHOICES.includes(input.risk) ? input.risk : DEFAULT_SETTINGS.risk,
     lastView: VIEW_CHOICES.includes(input.lastView) ? input.lastView : DEFAULT_SETTINGS.lastView,
+    handoffInstalled: input.handoffInstalled === true,
   };
 }
 
