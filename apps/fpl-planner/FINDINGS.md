@@ -434,6 +434,21 @@ otherwise points lead and the armband stays the footnote, which is what
 `armbandTail` is for. Reachable without `copy-recommended` too: move the armband
 and swap a bench player in, same fifteen, and that is how the test pins it.
 
+**And the lesson about the test, which is the durable part.** The first two
+regression tests written for this hand-built the one state already known to
+break - the kind of test that only ever catches the bug you already found. The
+test that would have caught it cold is an INVARIANT SWEEP: enumerate every
+armband the eleven allows crossed with every legal bench swap, and hold the
+whole space to one rule, "if the verdict leads with the armband, the armband is
+the only thing that moved" (plus its converse, so the branch cannot be quietly
+disabled). It mentions neither `copy-recommended` nor `xiChanged` nor the
+baseline mismatch. Mutation-checked against three broken gates - the original
+`!movedSquad && captainChanged`, the branch disabled, and the branch always on -
+and it catches all three, naming the offending captain, swap and verdict text.
+Prefer this shape wherever a UI picks WHICH of several quantities to lead with:
+the enumeration is small, the states are cheap, and the rule is the thing the
+feature actually promises.
+
 Both surfaces now name the same quantity, "the captaincy score", so a manager
 who reads it in the Why card meets the same words in the sandbox. The
 `captain_close` reason was reworded from "on that score" to "on the captaincy

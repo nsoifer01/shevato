@@ -529,3 +529,94 @@ test('xiChanged is false when only the armband moved, and true when the eleven d
   const swapped = swapPlayers(scenario, ctx, out, inn).scenario;
   assert.equal(comparison(swapped, ctx, opts).xiChanged, true);
 });
+
+// ---------------------------------------------------------------------------
+// The invariant that would have caught the scoping regression on its own
+// ---------------------------------------------------------------------------
+//
+// The two tests above pin the ONE state that broke, and they were written after
+// the state was already known - which is exactly the kind of test that only ever
+// catches the bug you already found. The regression itself slipped through 24
+// green sandbox tests and was found by running the deployed bytes against live
+// data.
+//
+// This is the test that did not need anyone to guess the state. It enumerates
+// every armband the eleven allows crossed with every legal bench swap, and
+// holds the whole space to one rule:
+//
+//   IF the verdict leads with the armband, THEN the armband is the only thing
+//   that moved.
+//
+// Nothing in it mentions `copy-recommended`, `xiChanged`, or the seed-versus-
+// picks baseline mismatch that made the state reachable. It just refuses to let
+// the armband speak for a change it did not make, which is the property the
+// feature actually has to hold.
+
+test('the armband never leads a verdict when anything else moved too', () => {
+  const { view, base, ctx, scenario } = makeView(inSeasonPlan, inSeasonSquad);
+  const opts = {
+    projections: inSeasonPlan.projections, gw: inSeasonPlan.current.gw,
+    horizon: 3, discount: 0.85,
+  };
+  const posOf = id => (gameState.players.get(id) || {}).position;
+
+  // Every legal same-position bench swap, plus the no-swap case.
+  const swaps = [null];
+  for (const starter of scenario.xi) {
+    const match = scenario.benchOrder.find(b => posOf(b) === posOf(starter));
+    if (match) swaps.push([starter, match]);
+  }
+  assert.ok(swaps.length > 1, 'the fixture must offer at least one bench swap');
+
+  let armbandLed = 0;
+  let checked = 0;
+
+  for (const captainId of scenario.xi) {
+    for (const swap of swaps) {
+      let sc = setCaptain(scenario, ctx, captainId).scenario;
+      if (swap) {
+        const [out, inn] = swap;
+        // The armband cannot follow a player out of the eleven; skip the
+        // combinations the editor itself would refuse.
+        if (out === captainId) continue;
+        const res = swapPlayers(sc, ctx, out, inn);
+        if (res.error) continue;
+        sc = res.scenario;
+      }
+      if (!isDirty(sc, inSeasonSquad)) continue;
+
+      const c = comparison(sc, ctx, opts);
+      view.update({ ...base, scenario: sc });
+      const node = query(view.node, 'fpl-verdict');
+      if (!node) continue;
+      const text = textOf(node).trim();
+      checked += 1;
+
+      const leadsWithArmband = /^Your armband|^Your captain is only/.test(text);
+      const armbandIsTheOnlyChange = c.transfers === 0 && c.captainChanged && !c.xiChanged;
+      const where = `  captain ${captainId}, swap ${swap ? swap.join('->') : 'none'}\n  verdict: ${text}`;
+
+      if (leadsWithArmband) {
+        armbandLed += 1;
+        const moved = [
+          c.transfers > 0 ? `${c.transfers} transfers` : null,
+          c.xiChanged ? 'the eleven' : null,
+        ].filter(Boolean);
+        assert.equal(
+          moved.length, 0,
+          `the armband led the verdict while ${moved.join(' and ')} also moved.\n${where}`,
+        );
+      }
+      // And the other direction, so a future "fix" cannot quietly disable the
+      // armband branch and still pass: when the armband IS the only change, it
+      // has to be the thing the verdict talks about.
+      if (armbandIsTheOnlyChange) {
+        assert.ok(leadsWithArmband, `only the armband moved, but the verdict led with something else.\n${where}`);
+      }
+    }
+  }
+
+  // The sweep has to actually reach both sides, or it proves nothing.
+  assert.ok(checked > 20, `only ${checked} states rendered a verdict`);
+  assert.ok(armbandLed > 0, 'no state in the sweep produced an armband-led verdict');
+});
