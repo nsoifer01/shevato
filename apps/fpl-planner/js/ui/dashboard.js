@@ -23,6 +23,7 @@ import { formatFreeTransfers } from '../engine/transfer-state.js';
 import { openingSquadMoney, picksCarryLineup } from '../engine/squad.js';
 import { assessConfidence } from '../engine/confidence.js';
 import { describeModelStatus } from '../data/model.js';
+import { handoffSection } from './handoff-view.js';
 
 const nameOf = (gameState) => (id) => describePlayer(gameState, id).name;
 
@@ -193,7 +194,10 @@ function transferSide({ dir, playerId, gameState, projections, gw, horizon }) {
   ]);
 }
 
-export function transfersCard({ bundle, gameState }) {
+// `teamId` and `sample` are not plan figures: they are what the handoff at the
+// foot of this card needs to address a real FPL team, and it renders nothing
+// without them.
+export function transfersCard({ bundle, gameState, teamId = null, sample = false }) {
   const plan = bundle.current;
   const { projections } = bundle;
   const horizon = plan.horizon;
@@ -243,7 +247,9 @@ export function transfersCard({ bundle, gameState }) {
     ]),
   ]));
 
-  return card(`This gameweek: ${plan.transferCount} ${plural(plan.transferCount, 'transfer')}`, [...rows, money]);
+  const handoff = handoffSection({ plan, teamId, sample });
+
+  return card(`This gameweek: ${plan.transferCount} ${plural(plan.transferCount, 'transfer')}`, [...rows, money, handoff]);
 }
 
 // Pre-season: there is no OUT -> IN pair to show, so the money story is what

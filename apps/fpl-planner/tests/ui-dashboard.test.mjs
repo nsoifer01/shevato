@@ -137,6 +137,34 @@ test('a hit is priced in points on the money row', () => {
   assert.match(textOf(transfersCard({ bundle: hitPlan, gameState })), /Points cost\s*-4/);
 });
 
+// The handoff itself is covered in ui-handoff.test.mjs; what belongs here is
+// that the card offers it at all, and only for a real team.
+test('a transfer card offers the handoff for a real team and withholds it for the sample', () => {
+  const outId = plan.squad[0];
+  const inId = [...gameState.players.keys()].find(id => !plan.squad.includes(id));
+  const moved = planWith({
+    transferCount: 1, transfersOut: [outId], transfersIn: [inId],
+    explanation: { ...plan.explanation, transferReasons: [{ out: outId, in: inId, gwGain: 1, horizonGain: 2, reasons: [] }] },
+  });
+
+  const real = transfersCard({ bundle: moved, gameState, teamId: '4231987' });
+  assert.match(textOf(real), /Make these transfers on Fantasy Premier League/);
+
+  assert.equal(
+    query(transfersCard({ bundle: moved, gameState, teamId: '4231987', sample: true }), 'fpl-handoff'), null,
+    'the sample team id belongs to nobody, so there is nothing to hand over'
+  );
+  assert.equal(
+    query(transfersCard({ bundle: moved, gameState }), 'fpl-handoff'), null,
+    'no team id, no handoff'
+  );
+});
+
+test('a roll offers no handoff, because there is nothing to submit', () => {
+  const rolled = planWith({ transferCount: 0 });
+  assert.equal(query(transfersCard({ bundle: rolled, gameState, teamId: '4231987' }), 'fpl-handoff'), null);
+});
+
 /* ---------------------------------------------------------- opening squad */
 
 test('the opening-squad card tells one money story for both pre-season encodings', async () => {

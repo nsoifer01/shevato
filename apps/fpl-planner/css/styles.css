@@ -730,6 +730,134 @@ body.fpl-page {
 }
 .fpl-planner-app .fpl-money-row b { color: var(--text); font-weight: 600; }
 
+/* --------------------------------------------------- the FPL handoff ------
+   The disclosure at the foot of the transfers card: install a bookmarklet,
+   copy the plan, apply it on fantasy.premierleague.com. Everything here is
+   instruction rather than recommendation, so it stays visually quieter than
+   the transfer rows above it and is collapsed until asked for.
+
+   The drag link is an <a> carrying a javascript: URL. main.css paints every
+   `a` #ce1b28 (no !important, so this wins on specificity) and every `.button`
+   #555 WITH !important, which is why this class is not called anything ending
+   in "button". Checked with getComputedStyle. */
+.fpl-planner-app .fpl-handoff { margin: 16px 0 0; }
+.fpl-planner-app .fpl-handoff > summary { font-size: 13px; }
+.fpl-planner-app .fpl-handoff .fpl-disclosure-body { padding: 16px 18px 18px; }
+
+.fpl-planner-app .fpl-handoff-lead {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.fpl-planner-app .fpl-handoff-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.fpl-planner-app .fpl-handoff-step { display: flex; gap: 12px; align-items: flex-start; }
+.fpl-planner-app .fpl-handoff-step-n {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.fpl-planner-app .fpl-handoff-step-body { flex: 1 1 auto; min-width: 0; }
+.fpl-planner-app .fpl-handoff-step-t {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.fpl-planner-app .fpl-handoff-drag-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.fpl-planner-app .fpl-handoff-drag-lead { font-size: 13px; color: var(--text-dim); }
+
+/* Made to look like something you pick up: a chip with a grab cursor, not a
+   call to action, because clicking it is the one thing it does not do. */
+.fpl-planner-app .fpl-handoff-drag {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: grab;
+  user-select: none;
+}
+.fpl-planner-app .fpl-handoff-drag::before { content: "\2630"; opacity: 0.7; }
+.fpl-planner-app .fpl-handoff-drag:active { cursor: grabbing; }
+
+.fpl-planner-app .fpl-handoff-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 9px;
+}
+.fpl-planner-app .fpl-handoff-status {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.fpl-planner-app .fpl-handoff-status:empty { display: none; }
+.fpl-planner-app .fpl-handoff-status.is-ok { color: var(--green); }
+.fpl-planner-app .fpl-handoff-status.is-bad { color: var(--amber); }
+
+/* The payload, shown rather than hidden: the user is about to paste it into a
+   page that will spend their transfers with it. */
+.fpl-planner-app .fpl-handoff-payload {
+  display: block;
+  margin-top: 9px;
+  padding: 10px 12px;
+  background: var(--bg-sunk);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--fpl-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.fpl-planner-app .fpl-handoff-note {
+  margin: 9px 0 0;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.fpl-planner-app .fpl-handoff-step-t + .fpl-handoff-note { margin-top: 0; }
+.fpl-planner-app .fpl-handoff-fine { margin-top: 16px; }
+
+.fpl-planner-app .fpl-handoff-warn {
+  margin: 16px 0 0;
+  padding: 10px 12px;
+  background: var(--amber-soft);
+  border: 1px solid color-mix(in srgb, var(--amber) 34%, transparent);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text);
+}
+
 /* a positive "no action" statement, never an empty state */
 .fpl-planner-app .fpl-affirm {
   display: flex;
@@ -2368,6 +2496,14 @@ body.fpl-page {
 .fpl-planner-app .fpl-btn-quiet:hover,
 .fpl-planner-app .fpl-btn-quiet:focus,
 .fpl-planner-app .fpl-btn-quiet:active { color: var(--text) !important; }
+.fpl-planner-app .fpl-handoff-drag,
+.fpl-planner-app .fpl-handoff-drag:hover,
+.fpl-planner-app .fpl-handoff-drag:focus,
+.fpl-planner-app .fpl-handoff-drag:active { color: var(--accent) !important; }
+.fpl-planner-app .fpl-handoff-link,
+.fpl-planner-app .fpl-handoff-link:hover,
+.fpl-planner-app .fpl-handoff-link:focus,
+.fpl-planner-app .fpl-handoff-link:active { color: var(--accent) !important; }
 .fpl-planner-app .fpl-btn-danger { color: color-mix(in srgb, var(--red) 74%, var(--text-dim)) !important; }
 .fpl-planner-app .fpl-btn-danger:hover,
 .fpl-planner-app .fpl-btn-danger:focus,
