@@ -195,6 +195,67 @@ function transferReasons(plan, ctx) {
 // Captain
 // ---------------------------------------------------------------------------
 
+// WHY THE ARMBAND CAN LOOK WRONG, and why this block exists.
+//
+// captain.js does not hand the armband to the highest projected scorer. It
+// maximises a certainty equivalent (mean blended with ceiling) plus penalty and
+// set-piece duty, a fixture tilt and a confidence penalty, and it picks the
+// captain and the vice as a pair. Every one of those terms is deliberate.
+//
+// The pitch, meanwhile, prints exactly one number per player: xP. So whenever
+// the two disagree the app shows a captain on 4.9 standing next to a team mate
+// on 5.0 and offers no reason, which reads as arithmetic the app got wrong
+// rather than as the risk decision it is. The fix is not to change the
+// objective; it is to say which term paid for the difference, out of the
+// components captain.js already computed and squadTrajectory already carries.
+//
+// Ordered by how much of the gap each term typically explains. The threshold
+// keeps a rounding-level difference from being reported as a reason.
+const ARMBAND_EDGES = [
+  ['upsideTerm', 'a higher ceiling'],
+  ['fixture', 'a kinder fixture'],
+  ['penaltyDuty', 'penalty duty'],
+  ['setPieceDuty', 'set-piece duty'],
+];
+const EDGE_THRESHOLD = 0.01;
+
+function edgePhrases(chosen, rival) {
+  const mine = (chosen && chosen.components) || {};
+  const theirs = (rival && rival.components) || {};
+  const phrases = [];
+  for (const [key, label] of ARMBAND_EDGES) {
+    if ((mine[key] || 0) - (theirs[key] || 0) > EDGE_THRESHOLD) phrases.push(label);
+  }
+  // A confidence penalty is subtracted, so the smaller one is the advantage.
+  if ((theirs.confidencePenalty || 0) - (mine.confidencePenalty || 0) > EDGE_THRESHOLD) {
+    phrases.push('a better-evidenced projection');
+  }
+  // The pair is chosen jointly, so a safer fallback is a real edge too. It is
+  // not a component; it is what the captaincy score adds on top of the value.
+  const myFallback = (chosen.captainScore || 0) - (chosen.value || 0);
+  const theirFallback = (rival.captainScore || 0) - (rival.value || 0);
+  if (myFallback - theirFallback > EDGE_THRESHOLD) phrases.push('a safer vice-captain behind him');
+  return phrases;
+}
+
+function joinPhrases(list) {
+  if (list.length === 1) return list[0];
+  if (list.length === 2) return `${list[0]} and ${list[1]}`;
+  return `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`;
+}
+
+// The highest-xP starter the armband could legally have gone to instead. This
+// is the player a manager compares the captain against on the pitch, so it is
+// the one the explanation has to answer for.
+function highestXpRival(captainId, candidates) {
+  let rival = null;
+  for (const c of candidates) {
+    if (c.playerId === captainId || !c.eligible) continue;
+    if (!rival || c.xPoints > rival.xPoints) rival = c;
+  }
+  return rival;
+}
+
 function captainReason(plan, ctx) {
   const { projections, gameState, trajectory } = ctx;
   const gw = plan.gw;
@@ -207,6 +268,41 @@ function captainReason(plan, ctx) {
     `${nameOf(gameState, plan.captain)} projects {v} points, doubled as captain.`,
     row ? row.xPoints : 0,
   ));
+
+  // Answer the objection the pitch raises, immediately after raising it.
+  const candidates = first && Array.isArray(first.captainCandidates) ? first.captainCandidates : [];
+  const chosen = candidates.find(c => c.playerId === plan.captain) || null;
+  const rival = chosen ? highestXpRival(plan.captain, candidates) : null;
+  if (chosen && rival && rival.xPoints > chosen.xPoints + 1e-9) {
+    const gap = rival.xPoints - chosen.xPoints;
+    const phrases = edgePhrases(chosen, rival);
+    const because = phrases.length
+      ? `on ${joinPhrases(phrases)}`
+      : 'on the captaincy score, which weighs ceiling, fixture and duty alongside the projection';
+    const rivalName = nameOf(gameState, rival.playerId);
+    const capName = nameOf(gameState, plan.captain);
+    // A gap that rounds to 0.0 must not be printed as a quantity: "projects 0.0
+    // more points" reads as a rendering fault. The value still rides on the
+    // reason for anything that wants the number.
+    reasons.push(makeReason(
+      'captain_over_alternative',
+      fmtValue(gap, 'points') === '0.0'
+        ? `${rivalName} projects fractionally more this gameweek, but ${capName} takes the armband ${because}.`
+        : `${rivalName} projects {v} more points this gameweek, but ${capName} takes the armband ${because}.`,
+      gap,
+    ));
+    // And when the pair is all but level, say so rather than letting a
+    // ten-thousandth of a point read as a confident preference.
+    const margin = (chosen.captainScore || 0) - (rival.captainScore || 0);
+    if (margin < 0.1) {
+      reasons.push(makeReason(
+        'captain_close',
+        'The two are separated by less than a tenth of a point on the captaincy score, so either armband is defensible.',
+        margin,
+      ));
+    }
+  }
+
   if (row) {
     reasons.push(makeReason(
       'captain_ceiling',

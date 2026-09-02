@@ -28,7 +28,7 @@ const { buildSquadState } = await import('../js/engine/squad.js');
 const { buildPlan } = await import('../js/engine/planner.js');
 const { pitchCard } = await import('../js/ui/dashboard.js');
 const { createSandboxView } = await import('../js/ui/sandbox.js');
-const { createScenario, setCaptain, applyTransfer, isDirty, transferBlockedReason } = await import('../js/ui/scenario.js');
+const { createScenario, setCaptain, applyTransfer, isDirty, transferBlockedReason, swapPlayers } = await import('../js/ui/scenario.js');
 
 const APP = join(dirname(fileURLToPath(import.meta.url)), '..');
 const sample = (name) => JSON.parse(readFileSync(join(APP, 'data', 'sample', `${name}.json`), 'utf8'));
@@ -375,4 +375,103 @@ test('a chip that exists in both halves is not listed as usable and unavailable 
     assert.match(later[1], /(first half|second half|this season)/,
       'a not-yet-open chip says which half-season it is');
   }
+});
+
+// ---------------------------------------------------------------------------
+// The verdict line and the armband (added 2026-09-01)
+// ---------------------------------------------------------------------------
+//
+// THE BUG THIS SECTION EXISTS FOR: the verdict judged an armband edit with
+// `c.gw.delta`, which is expected points. The armband is not chosen on expected
+// points - captain.js maximises a certainty equivalent that also weighs
+// ceiling, fixture, duty, confidence and the vice - so moving the armband onto
+// the higher-xP name was reported as "Your eleven projects +0.1 points this
+// gameweek", in green. The app was congratulating a manager for overruling its
+// own recommendation, measured with a ruler that recommendation never used.
+
+const { captaincyScoreOf } = await import('../js/ui/scenario.js');
+
+function verdictAfterCaptain(captainId) {
+  const { view, base, ctx, scenario } = makeView(inSeasonPlan, inSeasonSquad);
+  const moved = setCaptain(scenario, ctx, captainId).scenario;
+  view.update({ ...base, scenario: moved });
+  const node = query(view.node, 'fpl-verdict');
+  return { text: node ? textOf(node).trim() : '', cls: node ? (node.className || '') : '' };
+}
+
+const scoreOf = (xi, id) => captaincyScoreOf(xi, id, { gameState, squadState: inSeasonSquad },
+  { projections: inSeasonPlan.projections, gw: inSeasonPlan.current.gw });
+
+test('an armband edit is judged on the captaincy score, not on expected points', () => {
+  const { ctx, scenario } = makeView(inSeasonPlan, inSeasonSquad);
+  const base = scenario.captain;
+  const beaten = scenario.xi.find(id => id !== base
+    && scoreOf(scenario.xi, id).eligible
+    && scoreOf(scenario.xi, id).score < scoreOf(scenario.xi, base).score);
+  assert.ok(beaten, 'the fixture must offer a captain the objective rates lower');
+
+  const { text, cls } = verdictAfterCaptain(beaten);
+  // The lead sentence is about the armband, and names the score it was judged on.
+  assert.match(text, /Your armband gives up [\d.]+ on the captaincy score/);
+  assert.doesNotMatch(text, /^Your eleven projects/, 'points must not lead an armband verdict');
+  assert.match(cls, /is-down/);
+  // The reported magnitude is never a rounded-away zero.
+  assert.doesNotMatch(text, /gives up 0\.0 on/);
+  // And the points effect is still stated, as the separate fact it is.
+  assert.match(text, /This gameweek's expected points: [-+][\d.]+\./);
+});
+
+test('an armband edit the objective agrees with reads as a gain', () => {
+  const { scenario } = makeView(inSeasonPlan, inSeasonSquad);
+  const base = scenario.captain;
+  const better = scenario.xi.find(id => id !== base
+    && scoreOf(scenario.xi, id).eligible
+    && scoreOf(scenario.xi, id).score > scoreOf(scenario.xi, base).score + 0.05);
+  assert.ok(better, 'the fixture must offer a better armband than the one on file');
+
+  const { text, cls } = verdictAfterCaptain(better);
+  assert.match(text, /Your armband gains [\d.]+ on the captaincy score\./);
+  assert.match(cls, /is-up/);
+  assert.doesNotMatch(text, /gains 0\.0 on/);
+});
+
+test('captaining a player who probably will not appear is said plainly, not scored', () => {
+  // His captainScore is mostly the value of his VICE playing instead of him, so
+  // quoting it would understate the problem or even read as an upgrade. The
+  // appearance probability is the thing that matters and it is what is said.
+  const { scenario } = makeView(inSeasonPlan, inSeasonSquad);
+  const sub = scenario.xi.find(id => !scoreOf(scenario.xi, id).eligible);
+  assert.ok(sub, 'the sample eleven is expected to hold one sub-floor player');
+
+  const { text, cls } = verdictAfterCaptain(sub);
+  assert.match(text, /Your captain is only \d+% to appear, so the armband would most likely pass to your vice\./);
+  assert.doesNotMatch(text, /captaincy score/, 'an incomparable score must not be quoted');
+  assert.doesNotMatch(text, /level/, 'and a null delta must never surface as "level"');
+  assert.match(cls, /is-down/);
+});
+
+test('the points verdict still leads when the armband did not move', () => {
+  // The regression guard for the change above: an eleven edit that leaves the
+  // armband alone is still judged in points, which is the right measure for it.
+  const { view, base, ctx, scenario } = makeView(inSeasonPlan, inSeasonSquad);
+  const posOf = id => (gameState.players.get(id) || {}).position;
+  let out = null;
+  let inn = null;
+  for (const starter of scenario.xi) {
+    if (starter === scenario.captain) continue;
+    const match = scenario.benchOrder.find(b => posOf(b) === posOf(starter));
+    if (match) { out = starter; inn = match; break; }
+  }
+  assert.ok(inn, 'the fixture must offer a same-position bench swap');
+
+  const result = swapPlayers(scenario, ctx, out, inn);
+  assert.equal(result.error, null, 'the swap must be legal for this test to mean anything');
+  const swapped = result.scenario;
+  view.update({ ...base, scenario: swapped });
+  const node = query(view.node, 'fpl-verdict');
+  const text = node ? textOf(node).trim() : '';
+
+  assert.equal(swapped.captain, scenario.captain, 'this edit must not move the armband');
+  assert.doesNotMatch(text, /captaincy score/);
+  assert.match(text, /^Your eleven projects/);
 });

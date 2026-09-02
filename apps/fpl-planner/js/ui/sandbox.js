@@ -219,9 +219,23 @@ function verdictLine(summary, horizon) {
   // the eleven leaves the horizon EXACTLY unchanged, and leading with it
   // reported "level" to a manager who had just cost himself two points this
   // Saturday. When no transfer was made, this gameweek is the whole story.
+  // AND THE ARMBAND IS NOT JUDGED IN POINTS AT ALL. `c.gw.delta` is expected
+  // points, which is the right measure for an eleven and the wrong one for the
+  // captain: captain.js maximises a certainty equivalent that also weighs
+  // ceiling, fixture, penalty and set-piece duty, confidence and the vice. So a
+  // manager who moved the armband onto the higher-xP name was told "your eleven
+  // projects +0.1 points this gameweek" - the app applauding him for overruling
+  // its own recommendation, measured with a ruler that recommendation never
+  // used. When the armband is the only thing that moved, the armband's own
+  // score leads and the points figure follows as the separate fact it is.
   const movedSquad = c.transfers > 0;
+  const captaincy = c.captaincy || { before: null, after: null, delta: null };
+  const armbandOnly = !movedSquad && c.captainChanged;
+
   const value = movedSquad ? c.netHorizon : c.gw.delta;
-  const tone = value > 0.05 ? 'is-up' : value < -0.05 ? 'is-down' : '';
+  const tone = armbandOnly
+    ? armbandTone(captaincy)
+    : value > 0.05 ? 'is-up' : value < -0.05 ? 'is-down' : '';
 
   let verdict;
   if (movedSquad) {
@@ -229,6 +243,8 @@ function verdictLine(summary, horizon) {
     verdict = Math.abs(value) <= 0.05
       ? `Your transfers come out level over the next ${horizon} gameweeks${tail}.`
       : `Your transfers project ${signed(value)} points over the next ${horizon} gameweeks${tail}.`;
+  } else if (armbandOnly) {
+    verdict = armbandVerdict(captaincy);
   } else {
     verdict = Math.abs(value) <= 0.05
       ? 'Your eleven projects the same as it did before.'
@@ -240,8 +256,69 @@ function verdictLine(summary, horizon) {
     // A transfer changes both, so the gameweek number is worth stating too
     // rather than leaving the manager to subtract it out of the strip.
     movedSquad && Math.abs(c.gw.delta) > 0.05 ? ` This gameweek alone: ${signed(c.gw.delta)}.` : '',
-    c.captainChanged ? ' The armband moved too.' : '',
+    // Under an armband-led verdict the points figure is no longer the verdict,
+    // so it is stated plainly rather than dropped: the strip shows it either
+    // way and an unexplained number there is worse than an explained one.
+    armbandOnly && Math.abs(c.gw.delta) > 0.05
+      ? ` This gameweek's expected points: ${signed(c.gw.delta)}.`
+      : '',
+    !armbandOnly && c.captainChanged ? armbandTail(captaincy) : '',
   ]);
+}
+
+// A captain under the minutes floor is not a captaincy option at all, and that
+// fact outranks any score: the armband would simply pass to the vice. Checked
+// before the delta everywhere, because `delta` is deliberately null across the
+// eligibility boundary and a null must never be read as "level".
+function armbandUnplayable(captaincy) {
+  return !!(captaincy.after && !captaincy.after.eligible);
+}
+
+// Green or red must follow the sentence that leads, not a number the sentence
+// no longer reports.
+function armbandTone(captaincy) {
+  if (armbandUnplayable(captaincy)) return 'is-down';
+  const delta = captaincy.delta;
+  if (delta === null || delta === undefined) return '';
+  return delta > 0.05 ? 'is-up' : delta < -0.05 ? 'is-down' : '';
+}
+
+// The armband's verdict, on the score the armband was chosen with. The
+// thresholds match the tone above, so nothing can read green while saying
+// "level", and the reported magnitude can never round to 0.0.
+function armbandVerdict(captaincy) {
+  if (armbandUnplayable(captaincy)) {
+    const pct = Math.round((captaincy.after.pAppear || 0) * 100);
+    return `Your captain is only ${pct}% to appear, so the armband would most likely pass to your vice.`;
+  }
+  if (captaincy.before && !captaincy.before.eligible && captaincy.after) {
+    return 'Your armband moves onto a player likely to play, which is worth more here than any score.';
+  }
+  const delta = captaincy.delta;
+  if (delta === null || delta === undefined) {
+    return 'Your armband moved. There is no baseline armband here to compare it against.';
+  }
+  if (delta > 0.05) return `Your armband gains ${Math.abs(delta).toFixed(1)} on the captaincy score.`;
+  if (delta < -0.05) {
+    return `Your armband gives up ${Math.abs(delta).toFixed(1)} on the captaincy score, `
+      + 'which weighs ceiling, fixture and duty as well as expected points.';
+  }
+  return 'Your armband is level on the captaincy score, so either choice is defensible.';
+}
+
+// When a transfer leads, the armband is a footnote - but a footnote that still
+// says which way it went, because "the armband moved too" left a manager who
+// had just given up half a point believing nothing had happened.
+function armbandTail(captaincy) {
+  if (armbandUnplayable(captaincy)) {
+    const pct = Math.round((captaincy.after.pAppear || 0) * 100);
+    return ` The armband moved too, onto a player only ${pct}% to appear.`;
+  }
+  const delta = captaincy.delta;
+  if (delta === null || delta === undefined) return ' The armband moved too.';
+  if (delta > 0.05) return ` The armband moved too, gaining ${Math.abs(delta).toFixed(1)} on the captaincy score.`;
+  if (delta < -0.05) return ` The armband moved too, giving up ${Math.abs(delta).toFixed(1)} on the captaincy score.`;
+  return ' The armband moved too, and is level on the captaincy score.';
 }
 
 /* --------------------------------------------------------------- action bar */

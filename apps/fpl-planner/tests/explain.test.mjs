@@ -20,6 +20,7 @@ import { buildRules } from '../js/engine/rules.js';
 import { buildGameState } from '../js/engine/normalize.js';
 import { buildSquadState } from '../js/engine/squad.js';
 import { buildPlan } from '../js/engine/planner.js';
+import { chooseCaptain } from '../js/engine/captain.js';
 import { fmtValue, discountWeights, xpOf, CHIP_PARAMS } from '../js/engine/chips.js';
 import { explainPlan, whyNot, planHeadline, REBUILD_NOTICE, EXPLAIN_PARAMS } from '../js/engine/explain.js';
 import { manualSquadState } from '../js/ui/preseason.js';
@@ -740,4 +741,220 @@ test('the sample plan explanation survives the same number sweep', async () => {
   assert.ok(answer.deltaHorizon === null || Number.isFinite(answer.deltaHorizon));
   for (const reason of answer.reasons) assertReasonHonest(reason, allowed, 'sample whyNot');
   for (const blocker of answer.blockers) assertReasonHonest(blocker, allowed, 'sample whyNot blocker');
+});
+
+// ---------------------------------------------------------------------------
+// The armband the pitch cannot explain (the gameweek 3 case)
+// ---------------------------------------------------------------------------
+//
+// captain.js maximises a certainty equivalent, not expected points, so the
+// recommended captain is regularly NOT the highest-xP name in the eleven. The
+// pitch prints xP and nothing else, so on 2026-09-01 it showed a captain on
+// 4.9 standing beside his own vice on 5.0, with no reason given anywhere.
+//
+// The selection is correct and is not what these tests guard. What they guard
+// is that the explanation says WHICH term paid for the difference, so the
+// recommendation can never contradict the numbers on screen without answering
+// for it.
+
+function armbandWorld(specs) {
+  const players = new Map();
+  const rows = new Map();
+  for (const s of specs) {
+    players.set(s.id, {
+      id: s.id,
+      webName: `Pl${letters(s.id)}`,
+      position: s.position ?? 3,
+      teamId: s.teamId,
+      nowCost: 60,
+      status: 'a',
+      setPieces: {
+        penaltiesOrder: s.penaltiesOrder ?? null,
+        directFreekicksOrder: s.freekicksOrder ?? null,
+        cornersOrder: s.cornersOrder ?? null,
+      },
+    });
+    rows.set(s.id, {
+      playerId: s.id,
+      gw: 1,
+      fixtures: s.fixtures ?? [{ fixtureId: 1, opponentId: 99, isHome: true, fdr: 3 }],
+      pAppear: s.pAppear ?? 1,
+      pStart: s.pStart ?? s.pAppear ?? 1,
+      xMins: 85,
+      xPoints: s.xPoints,
+      sd: s.sd ?? 3,
+      ceiling: s.ceiling ?? s.xPoints * 1.8,
+      confidence: s.confidence ?? 'high',
+    });
+  }
+  const projections = {
+    gwFrom: 1,
+    gwTo: 1,
+    byPlayer: new Map([...rows].map(([id, r]) => [id, [r]])),
+    get(id, gw) { return gw === 1 ? rows.get(id) || null : null; },
+  };
+  return { projections, gameState: { players, teams: new Map(), fixtures: [], events: [] }, xi: specs.map(s => s.id) };
+}
+
+// The explanation is driven off the trajectory row squadTrajectory builds, so
+// the candidates here come out of the real engine rather than being written by
+// hand: a change to the component names must break this, not slip past it.
+function armbandExplanation(specs) {
+  const world = armbandWorld(specs);
+  const armband = chooseCaptain(world.xi, world.projections, 1, world.gameState);
+  const plan = {
+    gw: 1,
+    squad: world.xi.slice(),
+    startingXI: world.xi.slice(),
+    formation: '3-4-3',
+    captain: armband.captain,
+    viceCaptain: armband.viceCaptain,
+    transfersIn: [],
+    transfersOut: [],
+    transferCount: 0,
+    hits: 0,
+    hitCostPoints: 0,
+    chip: null,
+    xPointsGw: 50,
+    xPointsNet: 50,
+    xPointsHorizon: 50,
+    horizon: 1,
+    bench: { gk: null, order: [] },
+  };
+  const explanation = explainPlan(plan, {
+    projections: world.projections,
+    gameState: world.gameState,
+    rules: RULES,
+    squadState: { picks: [], gw: 1, chipsUsed: [], bankTenths: 0, freeTransfers: 1 },
+    horizon: 1,
+    trajectory: {
+      gws: [{
+        gw: 1,
+        xPointsXi: 50,
+        captain: armband.captain,
+        viceCaptain: armband.viceCaptain,
+        captainScore: armband.captainScore,
+        captainCandidates: armband.candidates,
+      }],
+    },
+    isDraft: true,
+  });
+  return { world, armband, explanation, reasons: explanation.captainReason.reasons };
+}
+
+// The live gameweek 3 numbers, unrounded.
+const GW3_SPECS = [
+  {
+    id: 106, position: 4, teamId: 4,
+    xPoints: 4.8868768368893285, ceiling: 9, sd: 3.585760511524807,
+    pAppear: 1, pStart: 0.8842316855270995, confidence: 'high',
+    penaltiesOrder: 1,
+    fixtures: [{ fixtureId: 22, opponentId: 20, isHome: true, fdr: 2 }],
+  },
+  {
+    id: 426, position: 3, teamId: 16,
+    xPoints: 4.952746603840873, ceiling: 9, sd: 3.6427082050419957,
+    pAppear: 1, pStart: 0.8486080361769278, confidence: 'high',
+    penaltiesOrder: 1, freekicksOrder: 1, cornersOrder: 1,
+    fixtures: [{ fixtureId: 30, opponentId: 9, isHome: false, fdr: 3 }],
+  },
+  ...Array.from({ length: 9 }, (_, i) => ({
+    id: 200 + i, teamId: 50 + i, xPoints: 2, ceiling: 4, pAppear: 0.9,
+  })),
+];
+
+test('a captain projecting less than a team mate says which term bought the armband', () => {
+  const { armband, reasons } = armbandExplanation(GW3_SPECS);
+  assert.equal(armband.captain, 106);
+  assert.equal(armband.viceCaptain, 426);
+
+  const over = reasons.find(r => r.code === 'captain_over_alternative');
+  assert.ok(over, 'the explanation must answer for a captain the pitch shows behind a team mate');
+
+  // It names the player a manager is comparing against, and the term that won.
+  assert.match(over.text, /Pl\w+ projects 0\.1 more points this gameweek/);
+  assert.match(over.text, /takes the armband on a kinder fixture/);
+
+  // The printed figure is the engine's own gap, not a written-in number.
+  assert.equal(fmtValue(over.value, 'points'), '0.1');
+  assert.ok(Math.abs(over.value - (4.952746603840873 - 4.8868768368893285)) < 1e-12);
+
+  // Nothing that did not actually favour the captain may be claimed: Bruno held
+  // the set pieces and the higher mean, and both ceilings were identical.
+  assert.doesNotMatch(over.text, /set-piece duty/);
+  assert.doesNotMatch(over.text, /higher ceiling/);
+  assert.doesNotMatch(over.text, /penalty duty/);
+
+  // A margin of six ten-thousandths must not read as a confident preference.
+  const close = reasons.find(r => r.code === 'captain_close');
+  assert.ok(close, 'a near-tie must be declared');
+  assert.ok(close.value > 0 && close.value < 0.001);
+});
+
+test('the highest projected captain is never made to explain himself', () => {
+  const { armband, reasons } = armbandExplanation([
+    { id: 1, teamId: 1, xPoints: 8, ceiling: 16, pAppear: 1, confidence: 'high', penaltiesOrder: 1, fixtures: [{ fdr: 2 }] },
+    { id: 2, teamId: 2, xPoints: 5, ceiling: 9, pAppear: 1, confidence: 'high', fixtures: [{ fdr: 4 }] },
+    ...Array.from({ length: 9 }, (_, i) => ({ id: 200 + i, teamId: 50 + i, xPoints: 2, ceiling: 4, pAppear: 0.9 })),
+  ]);
+  assert.equal(armband.captain, 1);
+  assert.equal(reasons.find(r => r.code === 'captain_over_alternative'), undefined);
+  assert.equal(reasons.find(r => r.code === 'captain_close'), undefined);
+});
+
+test('a gap too small to print is worded, never rendered as "0.0 more points"', () => {
+  // The rival leads by 0.02: real, strictly greater, and invisible at one
+  // decimal. The sentence must not claim a quantity the reader would read as
+  // zero, and must not silently drop the comparison either.
+  const { armband, reasons } = armbandExplanation([
+    { id: 1, teamId: 1, xPoints: 4.90, ceiling: 9, pAppear: 1, confidence: 'high', fixtures: [{ fdr: 2 }] },
+    { id: 2, teamId: 2, xPoints: 4.92, ceiling: 9, pAppear: 1, confidence: 'high', fixtures: [{ fdr: 3 }] },
+    ...Array.from({ length: 9 }, (_, i) => ({ id: 200 + i, teamId: 50 + i, xPoints: 2, ceiling: 4, pAppear: 0.9 })),
+  ]);
+  assert.equal(armband.captain, 1);
+
+  const over = reasons.find(r => r.code === 'captain_over_alternative');
+  assert.ok(over);
+  assert.match(over.text, /projects fractionally more this gameweek/);
+  assert.doesNotMatch(over.text, /0\.0 more points/);
+  assert.ok(over.value > 0);
+  assert.equal(fmtValue(over.value, 'points'), '0.0');
+});
+
+test('the ceiling and the evidence are named when they are what won the armband', () => {
+  // Same mean, a bigger ceiling: the upside term is the edge and must be the
+  // term reported. The fixture is level so it must NOT be claimed.
+  const ceilingCase = armbandExplanation([
+    { id: 1, teamId: 1, xPoints: 6.0, ceiling: 16, pAppear: 1, confidence: 'high', fixtures: [{ fdr: 3 }] },
+    { id: 2, teamId: 2, xPoints: 6.4, ceiling: 9, pAppear: 1, confidence: 'high', fixtures: [{ fdr: 3 }] },
+    ...Array.from({ length: 9 }, (_, i) => ({ id: 200 + i, teamId: 50 + i, xPoints: 2, ceiling: 4, pAppear: 0.9 })),
+  ]);
+  assert.equal(ceilingCase.armband.captain, 1);
+  const over = ceilingCase.reasons.find(r => r.code === 'captain_over_alternative');
+  assert.match(over.text, /a higher ceiling/);
+  assert.doesNotMatch(over.text, /kinder fixture/);
+
+  // Model confidence is a subtracted penalty, so the better-evidenced player
+  // has the edge and the sentence must say so in those words.
+  const confidenceCase = armbandExplanation([
+    { id: 1, teamId: 1, xPoints: 6.0, ceiling: 12, pAppear: 1, confidence: 'high', fixtures: [{ fdr: 3 }] },
+    { id: 2, teamId: 2, xPoints: 6.3, ceiling: 12, pAppear: 1, confidence: 'low', fixtures: [{ fdr: 3 }] },
+    ...Array.from({ length: 9 }, (_, i) => ({ id: 200 + i, teamId: 50 + i, xPoints: 2, ceiling: 4, pAppear: 0.9 })),
+  ]);
+  assert.equal(confidenceCase.armband.captain, 1);
+  assert.match(
+    confidenceCase.reasons.find(r => r.code === 'captain_over_alternative').text,
+    /a better-evidenced projection/,
+  );
+});
+
+test('the armband sentences survive the same number sweep as the rest', () => {
+  // Every digit in an explanation must be an engine quantity. The new sentences
+  // carry one number between them, and it is the reason's own value.
+  const { reasons } = armbandExplanation(GW3_SPECS);
+  for (const code of ['captain_over_alternative', 'captain_close']) {
+    const r = reasons.find(x => x.code === code);
+    const digits = r.text.match(/\d+(?:\.\d+)?/g) || [];
+    for (const d of digits) assert.equal(d, fmtValue(r.value, r.unit), `${code}: "${d}" is not the reason's value`);
+  }
 });

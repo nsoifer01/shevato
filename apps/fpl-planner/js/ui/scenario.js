@@ -33,6 +33,7 @@ import { picksCarryLineup } from '../engine/squad.js';
 import { transferAccounting, transferStateOf } from '../engine/transfer-state.js';
 import { validatePlan, formationOf, goalkeeperPositionId, benchOutfieldSlots } from '../engine/validate.js';
 import { squadHorizonValue } from '../engine/lineup.js';
+import { chooseCaptain } from '../engine/captain.js';
 import { getProjection } from './plan-model.js';
 import { formatMoney } from './format.js';
 
@@ -414,6 +415,45 @@ export function horizonPoints(squadIds, ctx, { projections, gw, horizon, discoun
   return value.total;
 }
 
+// What the armband is actually judged on.
+//
+// `xiPoints` scores an eleven in expected points, which is the right quantity
+// for an eleven and the WRONG one for the armband: captain.js does not choose a
+// captain on xP, it maximises a certainty equivalent that also weighs ceiling,
+// fixture difficulty, penalty and set-piece duty, model confidence and the vice
+// who covers him. So a manager who moved the armband to the higher-xP name used
+// to be told "your eleven projects +0.1 points this gameweek" - the app
+// congratulating him for overruling its own recommendation on a number that
+// recommendation was never made with.
+//
+// This returns the captaincy score of a NAMED captain inside a given eleven,
+// read off the same ranked candidate list chooseCaptain builds when it picks
+// one. Null when the eleven or the captain is unknown, or when the named player
+// is not in that eleven, so a caller can tell "no armband judgment available"
+// from "level".
+// Returns `{ score, eligible, pAppear }`, or null when there is nothing to
+// judge (no eleven, no named captain, or a captain who is not in that eleven).
+//
+// ELIGIBILITY TRAVELS WITH THE SCORE, and it has to. captain.js gives every
+// candidate a finite `captainScore` and then sorts every INELIGIBLE one below
+// every eligible one, because a player under the minutes floor is not a
+// captaincy option at all - his score is mostly the fallback term, the value of
+// his vice playing instead of him. In the sample squad Diop scores 4.87 on a
+// pAppear of 0.461, of which 3.47 is that fallback, which beats five players
+// who will actually start. Comparing that number against an eligible captain's
+// would tell a manager that captaining someone who probably will not play is an
+// upgrade. So callers get the flag and must refuse the comparison, exactly as
+// the ranking does.
+export function captaincyScoreOf(xi, captainId, ctx, { projections, gw, opts = {} }) {
+  const withGet = withProjectionGet(projections);
+  if (!withGet || !Array.isArray(xi) || !xi.length || captainId === null || captainId === undefined) return null;
+  if (!xi.includes(captainId)) return null;
+  const armband = chooseCaptain(xi, withGet, gw, ctx.gameState, opts);
+  const row = (armband.candidates || []).find(c => c.playerId === captainId);
+  if (!row || !Number.isFinite(row.captainScore)) return null;
+  return { score: row.captainScore, eligible: !!row.eligible, pAppear: row.pAppear };
+}
+
 // Before and after, computed by the SAME functions on both sides so the delta
 // is a difference rather than a comparison of two conventions.
 export function comparison(sc, ctx, { projections, gw, horizon, discount }) {
@@ -446,6 +486,12 @@ export function comparison(sc, ctx, { projections, gw, horizon, discount }) {
   const beforeHorizon = baseIds.length ? horizonPoints(baseIds, ctx, { projections, gw, horizon, discount }) : 0;
   const afterHorizon = horizonPoints(sc.squad, ctx, { projections, gw, horizon, discount });
 
+  // Scored on each side's OWN eleven, because that is the eleven the armband
+  // sits in. Either side can be null (a manual squad has no baseline armband),
+  // and a null delta means "not comparable", never "level".
+  const beforeCaptaincy = captaincyScoreOf(baseXi, baseCaptain, ctx, { projections, gw });
+  const afterCaptaincy = captaincyScoreOf(sc.xi, sc.captain, ctx, { projections, gw });
+
   return {
     gw: { before: beforeGw, after: afterGw, delta: afterGw - beforeGw },
     horizon: { before: beforeHorizon, after: afterHorizon, delta: afterHorizon - beforeHorizon },
@@ -458,6 +504,17 @@ export function comparison(sc, ctx, { projections, gw, horizon, discount }) {
     // planner would weigh, minus what the hits cost.
     netHorizon: (afterHorizon - beforeHorizon) - acct.hitCostPoints,
     captainChanged: sc.captain !== baseCaptain,
+    // The armband's own verdict, on the score the armband was chosen with. The
+    // delta exists ONLY when both sides are genuine captaincy options; across
+    // the eligibility floor the two scores do not measure the same thing, and a
+    // null there means "not comparable", never "level".
+    captaincy: {
+      before: beforeCaptaincy,
+      after: afterCaptaincy,
+      delta: beforeCaptaincy && afterCaptaincy && beforeCaptaincy.eligible && afterCaptaincy.eligible
+        ? afterCaptaincy.score - beforeCaptaincy.score
+        : null,
+    },
   };
 }
 
