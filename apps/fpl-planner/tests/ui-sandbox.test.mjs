@@ -28,7 +28,7 @@ const { buildSquadState } = await import('../js/engine/squad.js');
 const { buildPlan } = await import('../js/engine/planner.js');
 const { pitchCard } = await import('../js/ui/dashboard.js');
 const { createSandboxView } = await import('../js/ui/sandbox.js');
-const { createScenario, setCaptain, applyTransfer, isDirty, transferBlockedReason, swapPlayers } = await import('../js/ui/scenario.js');
+const { createScenario, setCaptain, applyTransfer, isDirty, transferBlockedReason, swapPlayers, moveBench, comparison } = await import('../js/ui/scenario.js');
 
 const APP = join(dirname(fileURLToPath(import.meta.url)), '..');
 const sample = (name) => JSON.parse(readFileSync(join(APP, 'data', 'sample', `${name}.json`), 'utf8'));
@@ -474,4 +474,58 @@ test('the points verdict still leads when the armband did not move', () => {
   assert.equal(swapped.captain, scenario.captain, 'this edit must not move the armband');
   assert.doesNotMatch(text, /captaincy score/);
   assert.match(text, /^Your eleven projects/);
+});
+
+test('the armband only leads when it is the ONLY thing that moved', () => {
+  // THE REGRESSION THIS PINS, found verifying the deploy on live data.
+  // "no transfer + the armband differs" is NOT the same as "only the armband
+  // moved". app.js's "copy recommended" action seeds a scenario from the plan
+  // while `comparison` still baselines against the manager's PICKS, so the
+  // eleven and the armband both differ with zero transfers. Leading with the
+  // armband there announced "your armband is level on the captaincy score" over
+  // a three-point rearrangement of the eleven.
+  // Reached here the way any user can: move the armband AND swap a bench player
+  // into the eleven. Same fifteen, so no transfer; both the eleven and the
+  // armband now differ from the picks this comparison baselines against.
+  const { view, base, ctx, scenario } = makeView(inSeasonPlan, inSeasonSquad);
+  const posOf = id => (gameState.players.get(id) || {}).position;
+  let out = null; let inn = null;
+  for (const starter of scenario.xi) {
+    if (starter === scenario.captain) continue;
+    const match = scenario.benchOrder.find(b => posOf(b) === posOf(starter));
+    if (match) { out = starter; inn = match; break; }
+  }
+  assert.ok(inn, 'the fixture must offer a same-position bench swap');
+  const newCaptain = scenario.xi.find(id => id !== scenario.captain && id !== out);
+  const edited = swapPlayers(setCaptain(scenario, ctx, newCaptain).scenario, ctx, out, inn).scenario;
+  const c = comparison(edited, ctx, { projections: inSeasonPlan.projections, gw: inSeasonPlan.current.gw, horizon: 3, discount: 0.85 });
+
+  assert.equal(c.transfers, 0, 'the same fifteen, so no transfer');
+  assert.equal(c.captainChanged, true, 'the armband differs');
+  assert.equal(c.xiChanged, true, 'and so does the eleven - that is the whole point');
+
+  view.update({ ...base, scenario: edited });
+  const text = textOf(query(view.node, 'fpl-verdict')).trim();
+  assert.match(text, /^Your eleven projects/, 'points must lead when the eleven also moved');
+  assert.doesNotMatch(text, /^Your armband/);
+  // The armband is still reported, as the footnote it is, and still says which way.
+  assert.match(text, /The armband moved too/);
+});
+
+test('xiChanged is false when only the armband moved, and true when the eleven did', () => {
+  const { ctx, scenario } = makeView(inSeasonPlan, inSeasonSquad);
+  const opts = { projections: inSeasonPlan.projections, gw: inSeasonPlan.current.gw, horizon: 3, discount: 0.85 };
+
+  const other = scenario.xi.find(id => id !== scenario.captain);
+  const armbandOnly = setCaptain(scenario, ctx, other).scenario;
+  assert.equal(comparison(armbandOnly, ctx, opts).xiChanged, false);
+
+  const posOf = id => (gameState.players.get(id) || {}).position;
+  let out = null; let inn = null;
+  for (const starter of scenario.xi) {
+    const match = scenario.benchOrder.find(b => posOf(b) === posOf(starter));
+    if (match) { out = starter; inn = match; break; }
+  }
+  const swapped = swapPlayers(scenario, ctx, out, inn).scenario;
+  assert.equal(comparison(swapped, ctx, opts).xiChanged, true);
 });

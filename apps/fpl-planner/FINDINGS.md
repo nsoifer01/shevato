@@ -420,6 +420,20 @@ checks unplayability BEFORE the delta and says the thing that actually matters:
 "Your captain is only 46% to appear, so the armband would most likely pass to
 your vice." A null delta must never be allowed to surface as "level".
 
+**"No transfer" does not mean "only the armband moved", and assuming it did was
+a regression caught by verifying the deploy on live data rather than by the
+suite.** The first cut gated the armband verdict on `!movedSquad &&
+captainChanged`. But `isDirty` measures against the scenario SEED while
+`comparison` baselines against the manager's PICKS, so a scenario seeded from
+the recommendation (app.js's `copy-recommended` action) differs from that
+baseline in both the eleven and the armband with **zero transfers**. The verdict
+then announced "Your armband is level on the captaincy score" over a **+3.0 xP**
+rearrangement of the eleven. `comparison` now also returns `xiChanged`, and the
+armband leads only when the armband is genuinely the only thing that moved;
+otherwise points lead and the armband stays the footnote, which is what
+`armbandTail` is for. Reachable without `copy-recommended` too: move the armband
+and swap a bench player in, same fifteen, and that is how the test pins it.
+
 Both surfaces now name the same quantity, "the captaincy score", so a manager
 who reads it in the Why card meets the same words in the sandbox. The
 `captain_close` reason was reworded from "on that score" to "on the captaincy
