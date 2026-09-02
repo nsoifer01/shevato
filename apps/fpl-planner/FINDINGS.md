@@ -434,6 +434,40 @@ otherwise points lead and the armband stays the footnote, which is what
 `armbandTail` is for. Reachable without `copy-recommended` too: move the armband
 and swap a bench player in, same fifteen, and that is how the test pins it.
 
+### One baseline for "changed?" and "changed by how much?" (2026-09-02)
+
+The follow-up to the above, and the actual root cause under it. `isDirty` and
+`comparison` each decided independently what a scenario was being measured
+against: the scenario's own SEED for one, the manager's PICKS for the other
+(falling back to the seed when the picks are a roster rather than a lineup).
+
+For a scenario opened from the manager's own team those are the same object, so
+the split cost nothing and hid for months. For one opened from the
+RECOMMENDATION - app.js's `copy-recommended` action, with a real team on file -
+they are not. On the sample squad that state reads **2 transfers, +5.8 xP this
+gameweek, +8.3 over the horizon**, and the sandbox greeted it with "This is your
+team exactly as it stands. Change something and the effect appears here." The
+first edit the manager then made reported the whole difference as its own
+effect, which is also what let the armband verdict fire over a moved eleven.
+
+Both now resolve through one exported `scenarioBaseline(sc, ctx)`. It builds the
+baseline by asking `createScenario` for the manager's own team rather than
+re-deriving slots, because a baseline that IS a scenario is guaranteed to be
+comparable to one, field for field. It returns a `source` of `picks`, `roster`
+or `seed` so a caller can tell which question it is answering. `isDirty` now
+takes the sandbox `ctx` rather than a `squadState` it ignored.
+
+`comparison` is behaviourally UNCHANGED by this - it already used the picks. Only
+`isDirty` moved, which is why the whole existing suite passed without a single
+expectation edit. The horizon side still measures against `baseSquadIds`: picks
+always carry the SQUAD correctly, and only the LINEUP can be a roster.
+
+The invariant that pins it, swept across both origins and four edit kinds:
+**whatever reads clean must also compare identical.** One-way on purpose -
+reordering the bench is an edit that moves no xP, so dirty does not imply a
+points difference. Mutation-checked against the old seed-only `isDirty`: both new
+tests fail on it.
+
 **And the lesson about the test, which is the durable part.** The first two
 regression tests written for this hand-built the one state already known to
 break - the kind of test that only ever catches the bug you already found. The
