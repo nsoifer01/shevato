@@ -52,8 +52,12 @@ Raw test count is not evidence of correctness. Do not report it as if it were.
 
 - **The API is fully public.** No key, no registration, no terms-acceptance
   flow, no robots.txt on the host. The authenticated `my-team` endpoint (exact
-  selling prices, FTs) needs the user's FPL password; deliberately not built,
-  and absent from the proxy allowlist so it cannot be reached.
+  selling prices, FTs) needs the user's FPL login, so nothing THIS APP runs ever
+  calls it: it is absent from the proxy allowlist and cannot be reached from a
+  page here. The transfer bookmarklet does call it, in the user's own browser on
+  FPL's origin, with the session that browser already holds. That is the whole
+  reason the write path is a bookmarklet and not a feature of the site; see
+  "Submitting transfers, and why it is a bookmarklet" below.
 - **No CORS headers at all**, verified with a real browser origin. A browser
   cannot call the API directly; the Netlify proxy is the only working path.
 - **Free transfers**: unlimited before the GW1 deadline (a state, not a
@@ -106,6 +110,83 @@ Raw test count is not evidence of correctness. Do not report it as if it were.
 - **The live 2026/27 pool is 587 elements**, against the 320 in the committed
   sample dataset. Anything that reasons about "a live season" from the sample
   is reasoning about a pool 45% smaller; see the plan-time note under Optimizer.
+
+## Submitting transfers, and why it is a bookmarklet
+
+Added 2026-09-02. The app could always say what to do and never do it. The three
+ways to close that, and why only one survived:
+
+1. **Server-side, on the user's behalf.** Needs their FPL email and password
+   stored somewhere this site controls, a login flow that now sits behind bot
+   protection, and a rewrite of `privacy.html` (which promises the FPL Planner
+   sends nothing but the team ID). A static site with no secrets backend holding
+   third-party passwords is the worst version of this feature.
+2. **Widen the proxy to POST.** Same credential problem, plus it would put a
+   write path behind an origin guard whose whole design is that it is read-only.
+3. **A bookmarklet in the user's own browser.** The credential already exists
+   there, belongs to that origin, and never moves. Chosen.
+
+What that buys, and what it costs:
+
+- **Nothing new is sent to this site, ever.** The bookmarklet imports nothing
+  and fetches nothing from shevato.com. It cannot be silently repointed by a
+  later change here, and it works when this site is down.
+- **The page CSP is irrelevant to it.** Bookmarklet code is exempt in Chrome and
+  Firefox, and it uses relative paths on FPL's own origin, so nothing it does is
+  a cross-origin fetch. Its source carries no `https://` literal at all, which
+  `tests/bookmarklet.test.mjs` asserts, and which is also what keeps it out of
+  the `tests/static/csp-connect-src.test.mjs` inventory.
+- **The cost is distribution.** A user installs it by dragging a link, and a
+  fix means they reinstall. That argues for the bookmarklet doing as little as
+  it can get away with, and it is why the payload it reads is ids and a
+  gameweek: the logic that changes most often (prices, free transfers, whether a
+  move is still legal) is resolved from FPL at run time, so a stale bookmarklet
+  is still a correct one.
+
+### What is verified, and what is not
+
+**Verified in this repo:** every refusal path, the submission body that gets
+built from a given `my-team` and `bootstrap-static`, the decoder, the CSRF
+cookie read, and that the committed `javascript:` URL decodes and runs. Those
+run against the SHIPPED bytes, decoded out of `js/ui/bookmarklet-url.js` into a
+`node:vm`, not against the source file, so the comment strip and URL encoding in
+`scripts/build-bookmarklet.mjs` are inside the test rather than trusted.
+
+**NOT verified against live FPL in the session that built this** (2026-09-02,
+pre-season, no squad to transfer): the `POST api/transfers/` request itself. Its
+shape (`{chip, entry, event, transfers:[{element_in, element_out,
+purchase_price, selling_price}]}` with an `X-CSRFToken` header and the session
+cookie) is the request FPL's own transfers page makes, and it is undocumented
+and unsupported. Treat it as the one assumption in this feature. It is checkable
+the moment there is a real squad and an open gameweek: make one transfer through
+the bookmarklet and confirm it on the FPL site. Until someone has, do not
+describe the write path as verified.
+
+The failure mode is designed to be loud rather than silent: a non-2xx shows
+FPL's own response body verbatim, nothing is retried, and a network failure says
+explicitly that it is unclear whether anything was applied and to go and look.
+Retrying a transfer that may have half-applied is worse than refusing.
+
+### Things that would be easy to get wrong here
+
+- **A bookmarklet whose expression returns a value navigates the tab to that
+  value.** The URL is `void`-wrapped for this, and a test asserts it, because an
+  async IIFE returning a promise is a one-character-looking edit away.
+- **`module.exports` is the wrong test seam for a bookmarklet.** Bundled sites
+  do leave a global `module` around, and the failure there is a bookmarklet that
+  silently exports instead of running. It uses a dedicated
+  `__FPL_BOOKMARKLET_EXPORT__` hook no real page defines.
+- **The decoder is duplicated on purpose** (`js/ui/handoff.js` and inside the
+  bookmarklet), because the bookmarklet cannot import. The duplication is only
+  safe while it is pinned: every case in `bookmarklet.test.mjs` runs through
+  both and asserts the same verdict AND the same wording.
+- **Objects built inside a `node:vm` carry that realm's prototypes**, so
+  `assert.deepEqual` from `node:assert/strict` rejects structurally identical
+  payloads. Compare the JSON, not the objects.
+- **The line-based comment strip in the build script is only safe while no
+  string spans a line.** It asserts that on the SURVIVING lines rather than the
+  raw file, so backticks in the source's own prose do not trip it while a real
+  template literal (whose opening backtick sits on a code line) still does.
 
 ## Cross-season player identity (critical)
 

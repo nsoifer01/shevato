@@ -869,7 +869,7 @@ function planView() {
         onRebuild: () => { state.manualIds = []; state.bundle = null; state.preSeasonStage = 'intro'; renderApp(); },
         restored: state.restoredSquad,
       })
-      : transfersCard({ bundle, gameState: state.gameState }),
+      : transfersCard({ bundle, gameState: state.gameState, teamId: state.teamId, sample: state.sample }),
   ];
 
   if (!state.isDraft) nodes.push(chipCard({ bundle, gameState: state.gameState }));
