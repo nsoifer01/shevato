@@ -590,6 +590,83 @@ VERDICT changed, and only for the armband. The hero note and the pitch card
 still print xP only. If the objection recurs there, the next cheapest step is a
 line under the hero fact, not a change to the weights.
 
+### The bench order was decided by player id, and nobody could see it (2026-09-03)
+
+Reported against team 3855835 in GW3 of 2026/27: the recommended bench read
+Dubravka (GK) 2.7, then **Calvert-Lewin 3.6, Obi 0.2, Senesi 3.6**. A
+fourth-choice forward worth a fifth of a point was second in the auto-sub
+order, ahead of a defender worth eighteen times as much.
+
+**It was not a UI sort and not a serialization slip.** The displayed xP is
+`projections.get(id, gw).xPoints`, the same field `buildRows` scores on, and
+`pitch.js` renders `plan.bench.order` in array order. The order really was the
+one the optimizer produced. Reproduced exactly, offline, from the live payload
+plus `data/opening-baseline.json` (see the repro note below).
+
+**Root cause.** `orderBench` maximizes expected auto-substitution recovery, and
+that quantity is IDENTICALLY ZERO for every bench order when no starter can be
+absent: nothing comes on, so nothing is recovered. In this squad every one of
+the eleven outfield starters had `pAppear` of exactly 1, so all six
+permutations scored 0.0 and the maximum was a plateau. The tie was then broken
+by `permLexLower`, which is ascending player id - Calvert-Lewin 346, Obi 441,
+Senesi 498. That is the order that shipped. The tie-break was written as a
+determinism device (two runs must not disagree) and was never meant to carry a
+football decision, but on the opening-baseline path it carries all of them.
+
+**The fix** (`lineup.js`): a lexicographic refinement. The objective is
+unchanged and still decides first; orders it rates equal are then compared on
+what they would recover IF a starter did miss, by re-running the same exact
+model - the same Poisson-binomial walk, the same `simulateSubs`, so formation
+legality still decides who may legally come on - with every starter's absence
+probability floored at `TIEBREAK_ABSENCE_FLOOR` (0.01, one match in a hundred).
+`permLexLower` survives as the final tie-break for genuinely identical players.
+
+**It costs nothing, and getting there took one more step.** The second pass only
+runs when the primary pass leaves more than one order standing, which a squad
+with real minutes risk never does - but the plateau state is exactly the state
+where EVERY candidate eleven ties, and running it per candidate doubled full
+plan CPU on the reported payload (501-589 ms to 1065-1174 ms). The tie-break
+cannot move `autosubValue`, which is the only thing the eleven is ranked on, so
+`optimizeLineup` now passes `resolveTies: false` through the search and resolves
+the order ONCE, on the eleven that won. Measured back at 509-552 ms, with
+`xPointsGw` bit-identical at 54.65439932876405 across all three variants.
+
+**Nothing the app reports changed.** `autosubValue` is still the primary
+maximum, so the eleven (chosen on `score + autosubValue`), `xPointsWithAutosubs`
+and every squad-level number are bit-identical. Only which of several
+equally-valued orders is returned changed. That is why this is a bug fix and
+not a registry experiment.
+
+**Two structural facts learned here, both worth keeping:**
+
+- **A substitute who cannot legally come on is FREE, not costly.**
+  `simulateSubs` skips an ineligible bench player without consuming an absence,
+  so putting him first never denies the man behind him a slot. The consequence
+  is that bench slot 1 always goes to the highest expected-recovery player,
+  and formation legality changes the VALUE of an order (and the weights inside
+  it) rather than the winner. The old test `a substitute who cannot legally
+  come on is ordered behind one who can` asserted the opposite and only passed
+  because the ascending-id tie-break happened to agree with it; it now asserts
+  what is actually true, that the bench is worth 0.5 x 1.5 rather than
+  0.5 x 5.0, which is the real proof the rule is applied.
+- **The ordering rule that falls out is points-if-he-plays, not expected
+  points.** Because a bench player who does not play is skipped rather than
+  wasted, a rarely-playing substitute costs the man behind him almost nothing.
+  The measured crossover in `tests/lineup.test.mjs` is exact: a forward who
+  appears 9.8% of the time is ordered AHEAD of a certain 3.63 as soon as his
+  conditional points clear 3.63, and behind it below. Obi's conditional points
+  were 2.07, so last is where he belongs - the model would have said so all
+  along if the plateau had not silenced it.
+
+**Reproducing this class of report offline.** `scripts/evidence-probe.mjs`
+wiring plus `entry/<id>/event/<currentEvent>/picks` is not enough: `app.js`
+rebuilds the game state through `resolveBaseline(first, kept, { shipped })`
+when `openingBaselineApplies`, and WITHOUT that step every projection is a bare
+position prior (identical `pAppear` for every defender, every midfielder) and
+the reported numbers are unrecognisable - Dubravka reads 0.14 rather than 2.7.
+Load `data/opening-baseline.json` and rebuild the game state with it before
+concluding anything about an opening-weeks report.
+
 ## Minutes and projections
 
 - **pStart's target is the NEXT FIXTURE, not a season rate.** Validating
@@ -636,6 +713,31 @@ line under the hero fact, not a change to the weights.
   the element totals relative to the first finished fixture. That does not need
   observing, because both orderings are handled and neither needs a code change;
   `GW1-RUNBOOK.md` records which way it actually went.
+- **`pStart` was un-pinned in 2026-08-15; `pAppear` still pins at exactly 1,
+  and that silently zeroes the whole auto-substitution model** (found
+  2026-09-03, NOT fixed). `baseStart` is shrunk toward a position prior with
+  `START_RATE_SHRINK_MATCHES`, but `subOnRate` - the inferred rate at which a
+  player comes off the bench in the matches he did not start - gets no
+  shrinkage at all. So a player whose evidence says "he appeared in every match
+  his club played" gets `baseAppear = baseStart + (1 - baseStart) * 1 = 1`, and
+  `pAppear` is a hard 1.0000. On the shipped opening baseline (a full previous
+  season of minutes) that is most of a decent squad: for team 3855835 in GW3 of
+  2026/27, **eleven of eleven outfield starters** were at `pAppear` 1, so
+  `absenceDistribution` said no starter can ever miss, `autosubValue` was 0 for
+  every eleven and every bench order, `gkValue` was 0, and the
+  `minutesRiskWeight * (1 - pAppear)` term of the selection score was 0 too.
+  Every piece of machinery `lineup.js` documents for weighing minutes risk -
+  including "start the coin-flip keeper and hold the nailed one in reserve" -
+  is inert in that state. It is what exposed the bench-order bug above, and the
+  bench-order fix does not address it: that fix only stops the plateau being
+  resolved arbitrarily.
+
+  This is a MODEL change, so it needs the registry, an ACCEPT/REJECT and replay
+  evidence, not a patch: shrinking `subOnRate` the way `baseStart` is shrunk
+  (or capping `pAppear` below 1) moves every projection, every transfer
+  ranking and every backtest. `pStart` had exactly this shape before
+  `seasonEvidence()`, and the fix there was worth ~2x the CPU. Left as an open
+  question rather than done quietly.
 - **Whoever builds the numerator owns the denominator.** A start rate is starts
   over MATCHES, and on a live payload there is only one kind of match, because
   FPL resets element totals every August. A caller that assembles totals from
@@ -2061,7 +2163,17 @@ read out (entry 18).
    Any new candidate must first pass the entry-12 order test: a level
    correction cancels out of every ranking and only crosses hit/chip
    thresholds.
-5. **Bookmaker odds stay deferred** (owner decision; `odds.js` inert). Every
+5. **`pAppear` pins at exactly 1 and kills the auto-substitution model**
+   (found 2026-09-03, see "Minutes and projections"). `subOnRate` is the one
+   rate in `minutes.js` with no shrinkage, so a full previous season of minutes
+   produces certainty, and on the opening baseline that was eleven of eleven
+   starters. `autosubValue`, `gkValue` and the minutes-risk term all read zero,
+   which is how a fourth-choice forward came to sit second on the recommended
+   bench. Registry-gated: shrink `subOnRate` like `baseStart`, or cap `pAppear`
+   below 1, and replay it. Highest-value of the open modelling questions,
+   because it is the same failure shape `seasonEvidence()` fixed for `pStart`
+   and it is live right now, every opening season.
+6. **Bookmaker odds stay deferred** (owner decision; `odds.js` inert). Every
    correctness round so far has been worth more than any unproven external
    signal.
 

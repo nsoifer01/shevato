@@ -214,6 +214,38 @@ test('the current view marks only what the plan sells, the recommended view only
   assert.throws(() => cardFor(recommended, 'Semenyo'), /no card for "Semenyo"/, 'a sold player is gone, not benched');
 });
 
+// The 2026-09-03 bench-order report asked whether the optimizer's order
+// survives rendering. It does, and this pins it: slot n holds order[n - 1], and
+// the reserve keeper is labelled GK rather than given a number. A misindex here
+// would have shown as the same symptom as the engine bug it was mistaken for.
+test('the bench renders in the order the plan gives, numbered 1-2-3', () => {
+  const view = pitch('recommended', DOUBLE_GW);
+  const slots = [...walk(view)].filter(n => classesOf(n).has('fpl-bench-slot'));
+  const read = slots.map(slot => ({
+    number: textOf(query(slot, 'fpl-bench-num')),
+    name: textOf(query(slot, 'fpl-pp-name')),
+  }));
+  const nameOf = id => gameState.players.get(id).webName;
+  assert.deepEqual(read, [
+    { number: 'GK', name: nameOf(plan.bench.gk) },
+    { number: '1', name: nameOf(plan.bench.order[0]) },
+    { number: '2', name: nameOf(plan.bench.order[1]) },
+    { number: '3', name: nameOf(plan.bench.order[2]) },
+  ]);
+
+  // Reverse the plan's order and the rendered order reverses with it, so the
+  // assertion above cannot be passing on a coincidence of the fixture.
+  const reversed = renderPitch({
+    mode: 'recommended', gameState, squadState, projections, gw: DOUBLE_GW,
+    plan: { ...plan, bench: { ...plan.bench, order: plan.bench.order.slice().reverse() } },
+  });
+  assert.deepEqual(
+    [...walk(reversed)].filter(n => classesOf(n).has('fpl-bench-slot'))
+      .map(slot => textOf(query(slot, 'fpl-pp-name'))),
+    [nameOf(plan.bench.gk), ...plan.bench.order.slice().reverse().map(nameOf)],
+  );
+});
+
 test('every rendered card has the four lines a card promises', () => {
   const view = pitch('recommended', DOUBLE_GW);
   const cards = queryAll(view, 'fpl-pp');

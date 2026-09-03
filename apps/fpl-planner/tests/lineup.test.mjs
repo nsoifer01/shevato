@@ -181,7 +181,13 @@ test('the eleven is the exact optimum, matching a hand-computed answer', () => {
   assert.equal(result.formation, '3-5-2');
   assert.deepEqual(result.startingXI, [1, 3, 4, 5, 8, 9, 10, 11, 12, 13, 14]);
   assert.ok(Math.abs(result.xPoints - 57.2) < 1e-9, `xPoints was ${result.xPoints}`);
-  assert.deepEqual(result.bench, { gk: 2, order: [6, 7, 15] });
+  // Nobody can be absent, so every bench order recovers exactly nothing and the
+  // objective cannot separate them. The tie is broken on what each order would
+  // recover if a starter did miss: three at the back means only a defender can
+  // replace a defender, but the 1.5 forward covers the seven midfield and
+  // forward slots the 1.0 defenders would cover no better, and he still cannot
+  // take the defensive slot from behind them.
+  assert.deepEqual(result.bench, { gk: 2, order: [15, 6, 7] });
   assert.equal(result.formationsEvaluated, 8);
 });
 
@@ -463,7 +469,7 @@ test('bench order prefers the substitute who is actually likely to play', () => 
   assert.ok(lineup.autosubValue > 0);
 });
 
-test('a substitute who cannot legally come on is ordered behind one who can', () => {
+test('a substitute who cannot legally come on never takes the slot', () => {
   // A three-at-the-back eleven with a doubtful defender. FPL will not bring a
   // midfielder on for a missing defender, because two at the back is not a
   // legal team, so the bench defender covers a risk the midfielder cannot,
@@ -486,12 +492,20 @@ test('a substitute who cannot legally come on is ordered behind one who can', ()
   const lineup = optimizeLineup(squadIds, projectionsOf(rows), 1, rules, { positionOf, ...ZERO_RISK });
   assert.equal(lineup.formation, '3-4-3');
   assert.ok(!lineup.startingXI.includes(12), 'the fifth midfielder is the one on the bench');
-  assert.equal(lineup.bench.order[0], 6, 'the bench defender covers the only absence that can happen');
-  assert.ok(lineup.bench.order.indexOf(12) > lineup.bench.order.indexOf(6));
+  // The doubtful defender is the ONLY starter who can be absent, so what the
+  // bench is worth is what a defender recovers, never what the midfielder ahead
+  // of him is worth: 0.5 x 1.5, not 0.5 x 5.0.
+  assert.ok(
+    Math.abs(lineup.autosubValue - 0.5 * 1.5) < 1e-9,
+    `the midfielder cannot cover a defender, so the bench is worth 0.75, not ${lineup.autosubValue}`,
+  );
+  // Which is exactly why the midfielder leading costs nothing, and the better
+  // of the two defenders still covers the slot he is actually eligible for.
+  assert.ok(lineup.bench.order.indexOf(6) < lineup.bench.order.indexOf(7));
 
-  // And the reason is the legality of the substitution, not the points: with
-  // five defenders allowed to start the same bench would be ordered the other
-  // way round.
+  // And the ordering is decided by the legality of the substitution, not by the
+  // points: with three at the back legal the midfielder can cover the absence
+  // himself, and then the objective, not a tie-break, puts him first.
   const openRules = {
     ...rules,
     positions: { ...rules.positions, 2: { ...rules.positions[2], minPlay: 1 } },
@@ -500,6 +514,142 @@ test('a substitute who cannot legally come on is ordered behind one who can', ()
   const benchRows = rowsFor([2, 6, 7, 12], projectionsOf(rows), ZERO_RISK);
   const relaxed = orderBench(xiRows, benchRows, openRules, { exact: true });
   assert.equal(relaxed.order[0], 12, 'with three at the back legal, the midfielder can cover and is worth more');
+});
+
+// The bug this pair of tests exists for, reported against team 3855835 in
+// GW3 of 2026/27: the recommended bench read Calvert-Lewin 3.6, Obi 0.2,
+// Senesi 3.6, with a fourth-choice forward worth a fifth of a point ordered
+// ahead of a defender worth eighteen times as much.
+//
+// Nothing about that squad was unusual except one thing: in the opening weeks
+// the shipped baseline supplies a full previous season of minutes, and every
+// starter's pAppear came out at a hard 1. No starter can be absent, so no
+// substitute can come on, so every bench order is worth EXACTLY zero and the
+// objective cannot choose between them - and the tie-break was ascending
+// player id (346 Calvert-Lewin, 441 Obi, 498 Senesi), which is the order that
+// was shown.
+
+// Ids deliberately chosen so that ascending player id, the old tie-break, is
+// exactly the order the bug produced: the near-worthless forward second.
+const CERTAIN_SQUAD = new Map([
+  [101, 1], [102, 1],                               // goalkeepers
+  [201, 2], [202, 2], [203, 2], [204, 2],           // starting defenders
+  [498, 2],                                         // the bench defender, highest id
+  [301, 3], [302, 3], [303, 3], [304, 3], [305, 3], // five nailed midfielders
+  [340, 4],                                         // the lone striker
+  [346, 4],                                         // the bench forward, lowest id
+  [441, 4],                                         // the fourth-choice forward
+]);
+
+test('a bench nobody can be substituted into is still ordered by football, not by player id', () => {
+  const ids = [...CERTAIN_SQUAD.keys()];
+  const posOf = id => CERTAIN_SQUAD.get(id);
+  // Every starter certain to play, which is what makes the objective a plateau.
+  const rows = [
+    row(101, { xPoints: 4.0 }), row(102, { xPoints: 2.7 }),
+    row(201, { xPoints: 5.5 }), row(202, { xPoints: 5.4 }),
+    row(203, { xPoints: 5.3 }), row(204, { xPoints: 5.2 }),
+    row(498, { xPoints: 3.63 }),
+    row(301, { xPoints: 5.6 }), row(302, { xPoints: 5.5 }), row(303, { xPoints: 5.4 }),
+    row(304, { xPoints: 5.3 }), row(305, { xPoints: 5.2 }),
+    row(340, { xPoints: 5.7 }),
+    row(346, { xPoints: 3.60 }),
+    // The fourth-choice forward: a fifth of a point, and he plays one match in
+    // ten. Worth 2.07 when he does play, which is the number an auto-sub would
+    // actually deliver, and still far behind both of the others.
+    row(441, { xPoints: 0.203, pAppear: 0.098 }),
+  ];
+  const projections = makeProjections(rows);
+  const lineup = optimizeLineup(ids, projections, 1, rules, { positionOf: posOf, ...ZERO_RISK });
+
+  assert.equal(lineup.formation, '4-5-1');
+  assert.equal(lineup.bench.gk, 102);
+  // The objective genuinely cannot separate these orders, and the fix does not
+  // pretend otherwise: the number the app reports is unchanged at zero.
+  assert.equal(lineup.autosubValue, 0);
+  assert.deepEqual(
+    lineup.bench.order, [498, 346, 441],
+    'the 3.63 defender leads, the 3.60 forward covers the lone striker behind him, '
+    + 'and the 0.2 forward is last',
+  );
+  assert.notDeepEqual(
+    lineup.bench.order, [346, 441, 498],
+    'ascending player id is the bug, not the answer',
+  );
+
+  // It is a real comparison and not a rule about positions: move three
+  // hundredths of a point from the defender to the forward and the order
+  // follows the points.
+  const nudged = rows.map(r => {
+    if (r.playerId === 498) return row(498, { xPoints: 3.60 });
+    if (r.playerId === 346) return row(346, { xPoints: 3.63 });
+    return r;
+  });
+  const swapped = optimizeLineup(ids, makeProjections(nudged), 1, rules, { positionOf: posOf, ...ZERO_RISK });
+  assert.deepEqual(swapped.bench.order, [346, 498, 441]);
+
+  // The fourth-choice forward is last because of what he is worth WHEN HE
+  // PLAYS, which is 2.07, and not because his expected points are small. A
+  // substitute who does not play is skipped rather than wasted, so a player who
+  // appears one match in ten costs the man behind him almost nothing and is
+  // ordered ahead of him as soon as his points-if-he-plays clear the leader's:
+  // 0.36 expected over a 9.8 per cent appearance is 3.67 when he plays, and
+  // that is a better lottery ticket than a certain 3.63.
+  const lottery = rows.map(r => (r.playerId === 441 ? row(441, { xPoints: 0.36, pAppear: 0.098 }) : r));
+  const ahead = optimizeLineup(ids, makeProjections(lottery), 1, rules, { positionOf: posOf, ...ZERO_RISK });
+  assert.deepEqual(ahead.bench.order, [441, 498, 346], 'a rarely-playing substitute does not block the ones behind him');
+
+  // And just below that line he is last again, which is what makes it a
+  // comparison rather than a preference for long shots.
+  const justUnder = rows.map(r => (r.playerId === 441 ? row(441, { xPoints: 0.3528, pAppear: 0.098 }) : r));
+  const behind = optimizeLineup(ids, makeProjections(justUnder), 1, rules, { positionOf: posOf, ...ZERO_RISK });
+  assert.deepEqual(behind.bench.order, [498, 346, 441]);
+});
+
+test('bench priority is set by FPL substitution legality, not by expected points alone', () => {
+  // A 4-5-1 with two real risks: one of the four defenders, and the lone
+  // striker. The bench is a 4.0 defender and two forwards, 2.0 and 0.1, all
+  // nailed - so the ONLY question is the order, and it is not "highest first".
+  //
+  //   defender missing only    (p 0.25)  the bench defender comes on      4.0
+  //   striker missing only     (p 0.25)  a defender may NOT replace the
+  //                                      only forward, so the 2.0 does      2.0
+  //   both missing             (p 0.25)  each covers his own position       6.0
+  //
+  //   4.0 defender first  ->  0.25 * (4.0 + 2.0 + 6.0)                  =  3.00
+  //   2.0 forward first   ->  he takes the defensive slot himself and
+  //                           strands the 4.0                           =  2.50
+  //   0.1 forward second  ->  0.25 * (4.0 + 0.1 + 4.1)                  =  2.05
+  //
+  // 3.5 would be the answer if a defender were allowed to replace the striker,
+  // so the reported value is itself the proof that the rule is applied.
+  const rows = [
+    row(1, { xPoints: 4 }), row(2, { xPoints: 1 }),
+    row(3, { xPoints: 5 }), row(4, { xPoints: 5 }), row(5, { xPoints: 5 }),
+    row(6, { xPoints: 4.5, pAppear: 0.5 }),
+    row(7, { xPoints: 4.0 }),
+    row(8, { xPoints: 6 }), row(9, { xPoints: 6 }), row(10, { xPoints: 6 }),
+    row(11, { xPoints: 6 }), row(12, { xPoints: 6 }),
+    row(13, { xPoints: 5, pAppear: 0.5 }),
+    row(14, { xPoints: 2.0 }), row(15, { xPoints: 0.1 }),
+  ];
+  const lineup = optimizeLineup(squadIds, projectionsOf(rows), 1, rules, { positionOf, ...ZERO_RISK });
+
+  assert.equal(lineup.formation, '4-5-1');
+  assert.ok(lineup.startingXI.includes(13), 'the doubtful striker still starts');
+  assert.deepEqual(lineup.bench.order, [7, 14, 15]);
+  assert.ok(
+    Math.abs(lineup.autosubValue - 3.0) < 1e-9,
+    `the bench is worth 3.0 under FPL's rules, not 3.5; got ${lineup.autosubValue}`,
+  );
+
+  // And the priority is not simply the points order: swapping the two forwards
+  // so the better one is worth LESS than nothing extra changes who leads, while
+  // the defender keeps the slot he is the only legal occupant of.
+  const cheaper = rows.map(r => (r.playerId === 7 ? row(7, { xPoints: 1.0 }) : r));
+  const flipped = optimizeLineup(squadIds, projectionsOf(cheaper), 1, rules, { positionOf, ...ZERO_RISK });
+  assert.equal(flipped.bench.order[0], 14, 'a 2.0 forward who can cover both outranks a 1.0 defender');
+  assert.equal(flipped.bench.order.indexOf(15), 2, 'the 0.1 forward is last either way');
 });
 
 test('orderBench reports the reserve keeper separately from the outfield order', () => {

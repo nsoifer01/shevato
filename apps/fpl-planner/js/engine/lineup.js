@@ -100,6 +100,36 @@ const DEFAULT_HORIZON = 5;
 // point and only cost time.
 const PROB_EPS = 1e-7;
 
+// WHY A BENCH ORDER NEEDS A SECOND OPINION.
+//
+// The bench objective is expected auto-substitution recovery, and every order
+// of a bench is worth EXACTLY THE SAME when no starter can be absent: nothing
+// comes on, so nothing is recovered, and the maximum is a plateau containing
+// all six orders. That is not a corner case. `pAppear` reaches a hard 1 for any
+// player whose evidence says he appeared in every match his club played, which
+// in the opening weeks of a season - when the shipped baseline supplies a full
+// previous season of minutes - is most of a good squad. A whole eleven at
+// pAppear 1 makes the objective identically zero across the plateau and hands
+// the answer to whatever breaks the tie.
+//
+// Until 2026-09-03 that was ascending player id, which is not football: it put
+// a 0.2 xP fourth-choice forward second on the bench, ahead of a 3.6 xP
+// defender, purely because his id was smaller (see FINDINGS).
+//
+// So a tie is broken on the question the objective could not ask: IF a starter
+// does miss, which order recovers most? Every starter's absence probability is
+// raised to at least this floor, and the same exact model - the same
+// Poisson-binomial walk, the same simulation of FPL's substitution procedure,
+// so formation legality still decides who may come on - is run again over the
+// tied orders only. One match in a hundred is a deliberately token risk: it is
+// small enough that a real risk the model DID see always dominates it, and
+// large enough that two simultaneous absences stay above PROB_EPS, which is
+// what separates bench slot 2 from slot 3.
+//
+// This never changes `autosubValue`, the eleven, or any number the app reports.
+// It chooses between orders the objective itself rates identically.
+const TIEBREAK_ABSENCE_FLOOR = 0.01;
+
 // In fast mode only the best few formations by separable score have their bench
 // evaluated. The bench is worth a fraction of a point, so a formation three or
 // more points behind on the eleven cannot win on it, and the transfer search
@@ -203,11 +233,17 @@ function compareRows(a, b) {
 // Poisson-binomial distribution of the number of absences among a set of
 // starters, truncated at `cap` because only `cap` substitutions can ever be
 // made and the tail beyond it changes nothing.
-function absenceDistribution(rows, cap) {
+//
+// `floor` raises every starter's absence probability to at least that value. It
+// is zero for the objective and non-zero only for the bench-order tie-break
+// below, which needs a world where an absence is possible at all; see
+// TIEBREAK_ABSENCE_FLOOR.
+function absenceDistribution(rows, cap, floor = 0) {
   const dist = new Array(cap + 1).fill(0);
   dist[0] = 1;
   for (const r of rows) {
-    const q = r.pAppear < 0 ? 1 : r.pAppear > 1 ? 0 : 1 - r.pAppear;
+    const raw = r.pAppear < 0 ? 1 : r.pAppear > 1 ? 0 : 1 - r.pAppear;
+    const q = raw < floor ? floor : raw;
     for (let k = cap; k >= 0; k--) {
       const p = dist[k];
       if (p === 0) continue;
@@ -426,7 +462,13 @@ function permutationIndices(n) {
 }
 
 // Best bench order for a given eleven, plus what that bench is worth.
-export function orderBench(xiRows, benchRows, rules, { exact = true } = {}) {
+//
+// `resolveTies` false skips the tie-break pass and returns an arbitrary member
+// of the plateau. It exists for `optimizeLineup`'s search, which reads
+// `autosubValue` from thousands of candidate elevens and throws every order but
+// the winner's away; the tie-break cannot change `autosubValue`, so paying for
+// it per candidate buys nothing. Callers that want the ORDER leave it alone.
+export function orderBench(xiRows, benchRows, rules, { exact = true, resolveTies = true } = {}) {
   const { fixed, outfield, posIndex, minPlay, maxPlay } = benchRulesInfo(rules);
 
   const benchFixed = benchRows.filter(r => fixed.has(r.position)).sort(compareRows);
@@ -498,16 +540,43 @@ export function orderBench(xiRows, benchRows, rules, { exact = true } = {}) {
   const caps = dists.map(d => d.length - 1);
 
   const perms = permutationIndices(benchOutfield.length);
+  // `values` aliases a scratch buffer inside expectedRecoveryAll, so everything
+  // it is needed for happens before that function is called again below.
   const values = expectedRecoveryAll(benchOutfield, perms, dists, counts, minPlay, maxPlay, posIndex, caps);
 
   let bestValue = 0;
   let bestPerm = null;
+  const tied = [];
   for (let o = 0; o < perms.length; o++) {
     const value = values[o];
-    if (bestPerm === null || value > bestValue + 1e-12
-      || (Math.abs(value - bestValue) <= 1e-12 && permLexLower(benchOutfield, perms[o], bestPerm))) {
+    if (bestPerm === null || value > bestValue + 1e-12) {
       bestValue = value;
       bestPerm = perms[o];
+      tied.length = 0;
+      tied.push(perms[o]);
+    } else if (Math.abs(value - bestValue) <= 1e-12) {
+      tied.push(perms[o]);
+    }
+  }
+
+  // Orders the objective cannot separate are separated on what they would
+  // recover if a starter did miss. See TIEBREAK_ABSENCE_FLOOR.
+  if (resolveTies && tied.length > 1) {
+    const tieDists = outfield.map(pos => absenceDistribution(
+      xiRows.filter(r => r.position === pos), cap, TIEBREAK_ABSENCE_FLOOR,
+    ));
+    const tieValues = expectedRecoveryAll(
+      benchOutfield, tied, tieDists, counts, minPlay, maxPlay, posIndex, caps,
+    );
+    let bestTie = 0;
+    bestPerm = null;
+    for (let o = 0; o < tied.length; o++) {
+      const value = tieValues[o];
+      if (bestPerm === null || value > bestTie + 1e-12
+        || (Math.abs(value - bestTie) <= 1e-12 && permLexLower(benchOutfield, tied[o], bestPerm))) {
+        bestTie = value;
+        bestPerm = tied[o];
+      }
     }
   }
 
@@ -756,10 +825,10 @@ export function optimizeLineup(squadPlayerIds, projections, gw, rules, opts = {}
 
   let best = null;
   const consider = (formation, xiRows, benchRows, score, points, variance) => {
-    const bench = orderBench(xiRows, benchRows, rules, { exact });
+    const bench = orderBench(xiRows, benchRows, rules, { exact, resolveTies: false });
     const total = score + bench.autosubValue;
     if (best === null || total > best.total + 1e-12) {
-      best = { total, score, points, variance, xiRows, bench, formation };
+      best = { total, score, points, variance, xiRows, benchRows, bench, formation };
     }
   };
 
@@ -792,6 +861,11 @@ export function optimizeLineup(squadPlayerIds, projections, gw, rules, opts = {}
       consider(formation, xiRows, benchRows, score, points, variance);
     }
   }
+
+  // The bench ORDER is decided once, on the eleven that won. Every candidate
+  // above was ranked on `autosubValue`, which no tie-break can move, so this is
+  // the only eleven whose order is ever read.
+  best.bench = orderBench(best.xiRows, best.benchRows, rules, { exact });
 
   // Contract ordering: goalkeeper first, then each outfield position in id
   // order, best first inside each.
