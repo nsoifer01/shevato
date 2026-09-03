@@ -47,8 +47,6 @@ import {
 import { createSandboxView } from './ui/sandbox.js';
 import { createPlanRunner } from './ui/plan-runner.js';
 import { createPlayerDrawer } from './ui/player-drawer.js';
-import { createHandoffDialog } from './ui/handoff-view.js';
-import { PAYLOAD_VERSION } from './ui/handoff.js';
 
 /* --------------------------------------------------------------- analytics */
 
@@ -145,7 +143,6 @@ let landingEl = null;
 let ticker = null;
 let modelPromise = null;
 let drawer = null;
-let handoffDialog = null;
 
 /* --------------------------------------------------------------- utilities */
 
@@ -801,9 +798,6 @@ function heroSlotContent() {
     now: Date.now(),
     isDraft: state.isDraft,
     sources: fplApi.getDataStatus().sources,
-    teamId: state.teamId,
-    sample: state.sample,
-    onApply: (opts) => { if (handoffDialog) handoffDialog.open(opts); },
   });
 }
 
@@ -1281,7 +1275,6 @@ function renderApp() {
   // A rebuilt screen must not leave a drawer floating over content it no
   // longer belongs to.
   if (drawer) drawer.close();
-  if (handoffDialog) handoffDialog.close();
   const body = state.view === 'history'
     ? historyTab()
     : state.view === 'settings'
@@ -1497,24 +1490,6 @@ async function boot() {
       projections: state.bundle.projections,
       gw: state.bundle.current.gw,
       horizon: state.bundle.current.horizon,
-    } : null),
-  });
-
-  // Same root and the same reason as the drawer: an overlay on the app wrapper
-  // survives a plan re-render, and the install step it remembers is a setting
-  // rather than a fifth storage key (ui/store.js says why).
-  handoffDialog = createHandoffDialog({
-    root: appEl.closest('.fpl-planner-app') || appEl.parentElement || appEl,
-    context: () => (state.bundle ? {
-      plan: state.bundle.current,
-      teamId: state.teamId,
-      isDraft: state.isDraft,
-      installedVersion: state.settings.handoffInstalledVersion || 0,
-      onInstalled: () => {
-        state.settings = state.sample
-          ? { ...state.settings, handoffInstalledVersion: PAYLOAD_VERSION }
-          : store.setSettings({ handoffInstalledVersion: PAYLOAD_VERSION });
-      },
     } : null),
   });
 
