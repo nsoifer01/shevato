@@ -148,21 +148,22 @@ test('a transfer card offers the handoff for a real team and withholds it for th
   });
 
   const real = transfersCard({ bundle: moved, gameState, teamId: '4231987' });
-  assert.match(textOf(real), /Make these transfers on Fantasy Premier League/);
+  assert.match(textOf(real), /Make this transfer on FPL/);
+  assert.ok(query(real, 'fpl-handoff-action'), 'the action row is missing from the card');
 
   assert.equal(
-    query(transfersCard({ bundle: moved, gameState, teamId: '4231987', sample: true }), 'fpl-handoff'), null,
+    query(transfersCard({ bundle: moved, gameState, teamId: '4231987', sample: true }), 'fpl-handoff-action'), null,
     'the sample team id belongs to nobody, so there is nothing to hand over'
   );
   assert.equal(
-    query(transfersCard({ bundle: moved, gameState }), 'fpl-handoff'), null,
+    query(transfersCard({ bundle: moved, gameState }), 'fpl-handoff-action'), null,
     'no team id, no handoff'
   );
 });
 
 test('a roll offers no handoff, because there is nothing to submit', () => {
   const rolled = planWith({ transferCount: 0 });
-  assert.equal(query(transfersCard({ bundle: rolled, gameState, teamId: '4231987' }), 'fpl-handoff'), null);
+  assert.equal(query(transfersCard({ bundle: rolled, gameState, teamId: '4231987' }), 'fpl-handoff-action'), null);
 });
 
 /* ---------------------------------------------------------- opening squad */
