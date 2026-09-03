@@ -48,6 +48,7 @@ import { createSandboxView } from './ui/sandbox.js';
 import { createPlanRunner } from './ui/plan-runner.js';
 import { createPlayerDrawer } from './ui/player-drawer.js';
 import { createHandoffDialog } from './ui/handoff-view.js';
+import { PAYLOAD_VERSION } from './ui/handoff.js';
 
 /* --------------------------------------------------------------- analytics */
 
@@ -800,6 +801,9 @@ function heroSlotContent() {
     now: Date.now(),
     isDraft: state.isDraft,
     sources: fplApi.getDataStatus().sources,
+    teamId: state.teamId,
+    sample: state.sample,
+    onApply: (opts) => { if (handoffDialog) handoffDialog.open(opts); },
   });
 }
 
@@ -871,13 +875,7 @@ function planView() {
         onRebuild: () => { state.manualIds = []; state.bundle = null; state.preSeasonStage = 'intro'; renderApp(); },
         restored: state.restoredSquad,
       })
-      : transfersCard({
-        bundle,
-        gameState: state.gameState,
-        teamId: state.teamId,
-        sample: state.sample,
-        onMakeTransfers: (opts) => { if (handoffDialog) handoffDialog.open(opts); },
-      }),
+      : transfersCard({ bundle, gameState: state.gameState }),
   ];
 
   if (!state.isDraft) nodes.push(chipCard({ bundle, gameState: state.gameState }));
@@ -1510,11 +1508,12 @@ async function boot() {
     context: () => (state.bundle ? {
       plan: state.bundle.current,
       teamId: state.teamId,
-      installed: state.settings.handoffInstalled === true,
+      isDraft: state.isDraft,
+      installedVersion: state.settings.handoffInstalledVersion || 0,
       onInstalled: () => {
         state.settings = state.sample
-          ? { ...state.settings, handoffInstalled: true }
-          : store.setSettings({ handoffInstalled: true });
+          ? { ...state.settings, handoffInstalledVersion: PAYLOAD_VERSION }
+          : store.setSettings({ handoffInstalledVersion: PAYLOAD_VERSION });
       },
     } : null),
   });

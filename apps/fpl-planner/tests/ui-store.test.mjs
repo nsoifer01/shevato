@@ -34,14 +34,26 @@ test('settings with the wrong types fall back field by field instead of breaking
   for (const junk of [null, [], 'x', 7]) assert.deepEqual(sanitizeSettings(junk), DEFAULT_SETTINGS);
 });
 
-test('the handoff install flag only ever reads true from a real true', () => {
+test('the handoff install memory records a version, and only a real one', () => {
   // It decides whether a user is shown the install step, and it syncs, so a
   // truthy string from an older or foreign write must not silently hide it.
-  assert.equal(sanitizeSettings({ handoffInstalled: true }).handoffInstalled, true);
+  assert.equal(sanitizeSettings({ handoffInstalledVersion: 2 }).handoffInstalledVersion, 2);
+  for (const junk of ['2', 2.5, {}, [], 'yes', null, undefined, 0, -1, false, true]) {
+    assert.equal(sanitizeSettings({ handoffInstalledVersion: junk }).handoffInstalledVersion, 0,
+      `accepted ${JSON.stringify(junk)} as a version`);
+  }
+});
+
+test('a device that installed the v1 bookmarklet is remembered as holding v1', () => {
+  // v1 wrote a boolean. Reading that as "installed, current" would hide the
+  // install step from exactly the people whose bookmarklet refuses the payload.
+  assert.equal(sanitizeSettings({ handoffInstalled: true }).handoffInstalledVersion, 1);
   for (const junk of ['true', 1, {}, [], 'yes', null, undefined, 0, false]) {
-    assert.equal(sanitizeSettings({ handoffInstalled: junk }).handoffInstalled, false,
+    assert.equal(sanitizeSettings({ handoffInstalled: junk }).handoffInstalledVersion, 0,
       `accepted ${JSON.stringify(junk)} as installed`);
   }
+  // An explicit version always outranks the legacy boolean.
+  assert.equal(sanitizeSettings({ handoffInstalled: true, handoffInstalledVersion: 2 }).handoffInstalledVersion, 2);
 });
 
 test('team ids are validated before any network call', () => {
@@ -65,10 +77,10 @@ test('a valid team id is normalized to a plain string', () => {
 });
 
 test('default settings are the four the planner reads', () => {
-  assert.deepEqual(Object.keys(DEFAULT_SETTINGS).sort(), ['handoffInstalled', 'horizon', 'lastView', 'risk']);
-  // A new user has not installed the transfer bookmarklet, so the dialog has
-  // to lead with the install step rather than assume it is already there.
-  assert.equal(DEFAULT_SETTINGS.handoffInstalled, false);
+  assert.deepEqual(Object.keys(DEFAULT_SETTINGS).sort(), ['handoffInstalledVersion', 'horizon', 'lastView', 'risk']);
+  // A new user has installed no bookmarklet at all, so the dialog has to lead
+  // with the install step rather than assume one is already there.
+  assert.equal(DEFAULT_SETTINGS.handoffInstalledVersion, 0);
   // Asserted against the ENGINE's number rather than a literal. A user who has
   // never opened Settings must get the horizon the measurement chose, and these
   // two constants have to move together or the app silently plans over a
