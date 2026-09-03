@@ -51,7 +51,11 @@ function xpOverHorizon(projections, playerId, gwFrom, horizon) {
 
 /* ------------------------------------------------------------------- hero */
 
-export function heroCard({ bundle, gameState, event, now, isDraft = false, sources = null }) {
+// `teamId`, `sample` and `onApply` are not plan figures: they are what the
+// "Apply this plan on FPL" button needs to address a real FPL team and open the
+// handoff dialog. The action sits here, under the recommendation it applies,
+// because the plan is more than its transfers and every gameweek has one.
+export function heroCard({ bundle, gameState, event, now, isDraft = false, sources = null, teamId = null, sample = false, onApply = null }) {
   const plan = bundle.current;
   const action = actionText(plan, nameOf(gameState), { isDraft });
   const cd = event ? countdown(event.deadline, now) : { text: 'unknown', urgent: false, passed: false };
@@ -104,6 +108,8 @@ export function heroCard({ bundle, gameState, event, now, isDraft = false, sourc
         el('div', { class: 'fpl-fact-note', text: `This gameweek. ${xp(plan.xPointsHorizon)} over ${plan.horizon} gameweeks` }),
       ]),
     ]),
+
+    handoffAction({ plan, teamId, sample, isDraft, onOpen: onApply }),
   ]);
 }
 
@@ -194,10 +200,7 @@ function transferSide({ dir, playerId, gameState, projections, gw, horizon }) {
   ]);
 }
 
-// `teamId`, `sample` and `onMakeTransfers` are not plan figures: they are what
-// the handoff button at the foot of this card needs to address a real FPL team
-// and open the dialog. Without a team id it renders nothing.
-export function transfersCard({ bundle, gameState, teamId = null, sample = false, onMakeTransfers = null }) {
+export function transfersCard({ bundle, gameState }) {
   const plan = bundle.current;
   const { projections } = bundle;
   const horizon = plan.horizon;
@@ -247,9 +250,7 @@ export function transfersCard({ bundle, gameState, teamId = null, sample = false
     ]),
   ]));
 
-  const handoff = handoffAction({ plan, teamId, sample, onOpen: onMakeTransfers });
-
-  return card(`This gameweek: ${plan.transferCount} ${plural(plan.transferCount, 'transfer')}`, [...rows, money, handoff]);
+  return card(`This gameweek: ${plan.transferCount} ${plural(plan.transferCount, 'transfer')}`, [...rows, money]);
 }
 
 // Pre-season: there is no OUT -> IN pair to show, so the money story is what
