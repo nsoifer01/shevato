@@ -61,12 +61,7 @@ const NOT_BROWSER_FETCHED = {
   // /.netlify/functions/fpl. requestDirect() exists for environments where a
   // browser allows it (never shevato.com) and is only reached once the proxy
   // has answered 404/405, which on production it never does.
-  //
-  // The transfer bookmarklet DOES call FPL directly, but never from a page this
-  // CSP governs: it is a javascript: URL the user installs, and it runs on
-  // fantasy.premierleague.com against that origin's own relative paths. Its
-  // source carries no origin literal, which bookmarklet.test.mjs asserts.
-  'https://fantasy.premierleague.com': 'FPL Planner reads it via the Netlify proxy only; direct fallback is dev-only, and the transfer bookmarklet runs on FPL own origin',
+  'https://fantasy.premierleague.com': 'FPL Planner reads it via the Netlify proxy only; direct fallback is dev-only',
 };
 
 // ---------------------------------------------------------------------------

@@ -54,11 +54,10 @@ Raw test count is not evidence of correctness. Do not report it as if it were.
   flow, no robots.txt on the host. The authenticated `my-team` endpoint (exact
   selling prices, FTs) needs the user's FPL login, so nothing THIS APP runs ever
   calls it: it is absent from the proxy allowlist and cannot be reached from a
-  page here. The handoff bookmarklet does call it, in the user's own browser on
-  FPL's origin, with the session that browser already holds, and it POSTs back
-  to it to set the team. That is the whole reason the write path is a
-  bookmarklet and not a feature of the site; see "Applying a plan, and why it is
-  a bookmarklet" below.
+  page here. A bookmarklet that called it from the user's own browser was built
+  and then removed; see "The write path, and why there is not one" below, which
+  also records that FPL's session cookie is now HttpOnly and carries no readable
+  CSRF token.
 - **No CORS headers at all**, verified with a real browser origin. A browser
   cannot call the API directly; the Netlify proxy is the only working path.
 - **Free transfers**: unlimited before the GW1 deadline (a state, not a
@@ -112,195 +111,93 @@ Raw test count is not evidence of correctness. Do not report it as if it were.
   sample dataset. Anything that reasons about "a live season" from the sample
   is reasoning about a pool 45% smaller; see the plan-time note under Optimizer.
 
-## Applying a plan, and why it is a bookmarklet
+## The write path, and why there is not one
 
-Added 2026-09-02, widened from transfers to the whole plan on 2026-09-03. The
-app could always say what to do and never do it. The three ways to close that,
-and why only one survived:
+Built 2026-09-02 (transfers), widened 2026-09-03 (the whole plan: eleven, bench
+order, armband, chips), **removed the same day on the owner's instruction after
+it was found not to work against live FPL.** The app recommends; the manager
+applies it on FPL by hand. This section exists so nobody rebuilds it without
+first reading what stopped it.
+
+### The three ways to close the gap, and why only one was ever plausible
 
 1. **Server-side, on the user's behalf.** Needs their FPL email and password
-   stored somewhere this site controls, a login flow that now sits behind bot
-   protection, and a rewrite of `privacy.html` (which promises the FPL Planner
-   sends nothing but the team ID). A static site with no secrets backend holding
-   third-party passwords is the worst version of this feature.
+   stored somewhere this site controls, a login flow behind bot protection, and
+   a rewrite of `privacy.html` (which promises the FPL Planner sends nothing but
+   the team ID). A static site with no secrets backend holding third-party
+   passwords is the worst version of this feature. Never attempted.
 2. **Widen the proxy to POST.** Same credential problem, plus it would put a
-   write path behind an origin guard whose whole design is that it is read-only.
-3. **A bookmarklet in the user's own browser.** The credential already exists
-   there, belongs to that origin, and never moves. Chosen.
+   write path behind an origin guard whose whole design is that it is
+   read-only. Never attempted.
+3. **A bookmarklet in the user's own browser**, where the credential already
+   exists, belongs to that origin and never moves. This is the one that was
+   built, and the one that failed.
 
-What that buys, and what it costs:
+### What actually stopped it: FPL's auth is no longer Django session + CSRF
 
-- **Nothing new is sent to this site, ever.** The bookmarklet imports nothing
-  and fetches nothing from shevato.com. It cannot be silently repointed by a
-  later change here, and it works when this site is down.
-- **The page CSP is irrelevant to it.** Bookmarklet code is exempt in Chrome and
-  Firefox, and it uses relative paths on FPL's own origin, so nothing it does is
-  a cross-origin fetch. Its source carries no `https://` literal at all, which
-  `tests/bookmarklet.test.mjs` asserts, and which is also what keeps it out of
-  the `tests/static/csp-connect-src.test.mjs` inventory.
-- **The cost is distribution.** A user installs it by dragging a link, and a
-  fix means they reinstall. That argues for the bookmarklet doing as little as
-  it can get away with, and it is why the payload it reads is ids, a gameweek
-  and two chip slots: the logic that changes most often (prices, free transfers,
-  squad positions, whether a move is still legal) is resolved from FPL at run
-  time, so a stale bookmarklet is still a correct one.
+The bookmarklet POSTed with `credentials: 'same-origin'` and an `X-CSRFToken`
+header read out of `document.cookie`, which is how FPL's own pages worked when
+the API was a Django app. Measured on fantasy.premierleague.com on 2026-09-03,
+signed in, in the owner's browser:
 
-### Transfers alone were not the plan (fixed 2026-09-03)
+- **There is no `csrftoken` cookie, and no `sessionid` cookie.** The full set of
+  cookie NAMES visible to JavaScript was: `AMCV_…@AdobeOrg`,
+  `OptanonAlertBoxClosed`, `OptanonConsent`, `__eoi`, `__gads`, `__gpi`,
+  `__spdt`, `_fbp`, `_gcl_au`, `_tt_enable_cookie`, `_ttp`, `datadome`,
+  `global_sso_id`, `kndctr_…_AdobeOrg_identity`, `pl_guest_id`, `req_language`,
+  `s_nr`, `ttcsid`, `ttcsid_…`. Analytics, consent, bot protection, and an SSO
+  id. Nothing Django-shaped.
+- **Reads still work.** `GET /api/my-team/{entry}/` returned the owner's squad
+  with cookies alone, which is how the confirm panel got built at all. So the
+  session cookie exists and is **HttpOnly**: the browser sends it, JavaScript
+  cannot read it.
+- **So `csrfFrom(document.cookie)` returned null and the write could never
+  fire.** The user got "Fantasy Premier League has not given this tab a
+  session", which was itself a wrong diagnosis: they were signed in, and only
+  the token was unreadable. Nothing was ever submitted.
+- **CSRF may not even be the gate.** A `POST /api/my-team/{someone-elses-id}/`
+  with a body carrying no `picks` key came back `404 {"detail":"Not found."}`
+  from the view rather than a 403 from a CSRF check. Suggestive, not
+  conclusive: that request was for an entry the session does not own, so DRF
+  may simply not have session-authenticated it.
 
-v1 of the payload carried transfers only, so the action could only exist in a
-week that spent money. The eleven, the bench order, the armband and two of the
-four chips change EVERY gameweek, including every week the engine says roll, so
-the one thing the app could do for you was missing from most weeks of a season.
-The fix is v2: the payload carries the team as well, and the bookmarklet makes
-two requests, `api/transfers/` then `api/my-team/{entry}/`. A roll week skips
-the first.
+### What would have to be true before trying again
 
-Consequences worth keeping:
+- Capture what FPL's OWN team page sends when you press Save Your Team: the
+  URL, the method, and whether it carries an `Authorization` /
+  `X-API-Authorization` bearer header. That single capture answers the endpoint,
+  the auth mechanism and the body shape, and nothing should be built before it
+  exists. It was requested and the feature was cancelled first.
+- **`datadome` is on the origin.** Even with the right token, automated writes
+  are a bot-protection target. A write path that works today can start
+  returning challenges without any change here.
+- Neither `POST /api/transfers/` nor `POST /api/my-team/` was EVER observed to
+  succeed from this code. Both are undocumented and unsupported. Everything the
+  repo verified was the payload, the refusals and the request bodies, never a
+  round trip.
 
-- **The two halves have to describe one squad, and that is checked twice.**
-  `decodeHandoff` refuses a payload that buys a player it leaves out of the
-  fifteen, or sells one it keeps; the bookmarklet then re-derives the
-  post-transfer squad from FPL's OWN picks and refuses if the plan's fifteen is
-  not it. The second check is the one that fires in real life: it means "your
-  team changed since this plan was built", which is the likeliest way a copied
-  plan goes stale, and the refusal names the player rather than an element id.
-- **Positions are derived on the FPL side, never carried.** FPL's slot
-  convention is 1 for the starting keeper, 2-11 for the outfield starters by
-  position, 12 for the reserve keeper and 13-15 for the outfield substitutes in
-  auto-sub order. The bookmarklet builds that from `element_types` and sorts the
-  eleven itself, with the plan's own order as the tie-break because a stable
-  sort is not guaranteed. A position in the payload would be this app asserting
-  something FPL already knows, the same mistake as sending a reconstructed
-  price.
-- **The formation is checked against FPL's published limits, not hardcoded
-  ones.** `element_types` carries `squad_min_play` and `squad_max_play` per
-  position, and the refusal quotes them ("starts 2 DEF and Fantasy Premier
-  League needs at least 3"). The same data identifies the goalkeeper as the
-  position whose min equals its max, which is how the reserve keeper's slot is
-  found without naming position 1 anywhere.
-- **Each chip travels on the endpoint that plays it.** `chipRouting` returns
-  three slots (transfers, team, deferred) rather than two. An unrecognised chip
-  goes in NEITHER request and the dialog says the user has to play it: guessing
-  which endpoint a new chip belongs to is how you spend a Triple Captain in a
-  Bench Boost week.
-- **The install memory had to become a version.** v1 remembered a boolean, and a
-  user who had installed the transfers-only bookmarklet would have been shown no
-  install step and handed a payload their bookmarklet refuses. `settings
-  .handoffInstalledVersion` records WHICH payload version is installed; a legacy
-  `handoffInstalled: true` sanitizes to 1, so exactly those users get the
-  install step back, with wording that says to replace what they have.
-- **A half-applied round is possible, and it is said out loud.** The transfers
-  landing and the team being refused is the one partial state this can reach.
-  That branch reports it in those words - the transfers ARE made, only the
-  lineup was refused, set it on the FPL team page - rather than a blanket
-  failure, because a user told "it failed" when half of it landed will do the
-  wrong thing next.
+### What was kept from the attempt
 
-### What is verified, and what is not
-
-**Verified in this repo:** every refusal path in both halves, the two submission
-bodies that get built from a given `my-team` and `bootstrap-static`, the slot
-assignment, the formation check, the change summary the confirm screen reads
-from, the decoder, the CSRF cookie read, and that the committed `javascript:`
-URL decodes and runs. Those run against the SHIPPED bytes, decoded out of
-`js/ui/bookmarklet-url.js` into a `node:vm`, not against the source file, so the
-comment strip and URL encoding in `scripts/build-bookmarklet.mjs` are inside the
-test rather than trusted.
-
-**NOT verified against live FPL:** the two POSTs themselves. `api/transfers/`
-takes `{chip, entry, event, transfers:[{element_in, element_out,
-purchase_price, selling_price}]}`; `api/my-team/{entry}/` takes `{chip,
-picks:[{element, position, is_captain, is_vice_captain}]}`. Both go with an
-`X-CSRFToken` header and the session cookie, both are the requests FPL's own
-pages make, and both are undocumented and unsupported. Treat them as the two
-assumptions in this feature. They are checkable the moment there is a real squad
-and an open gameweek: apply a plan through the bookmarklet and confirm the
-transfers, the lineup, the armband and the chip on the FPL site. Until someone
-has, do not describe the write path as verified. `submit()` itself is not unit
-tested either: it needs `fetch`, `document` and a real session, none of which
-exist in the vm the shipped bytes run in, so the sequencing and its error
-branches live in `.features/fpl-planner-human.md`.
-
-The failure mode is designed to be loud rather than silent: a non-2xx shows
-FPL's own response body verbatim, nothing is retried, and a network failure says
-explicitly that it is unclear whether anything was applied and to go and look.
-
-### The action was invisible, and that was the whole feature (fixed 2026-09-02)
-
-It shipped as a collapsed `<details>` at the foot of the transfers card, with
-the label "Make these transfers on Fantasy Premier League". The owner could not
-find it. That is the correct verdict on the design rather than on the owner:
-
-- The app has exactly ONE action. Everything else on the screen is a number or
-  an explanation. Putting that one action behind the same disclosure chrome as
-  the why/alternatives/status panels made it read as more to read.
-- A `<details>` summary is a promise that what is inside is context. It was
-  keeping its promise; the content was simply in the wrong container.
-- Three states legitimately render nothing (a roll, the sample dataset, no team
-  id), so "I cannot see it" is ALSO a real answer sometimes. That ambiguity is
-  itself a reason the visible case has to be unmistakable.
-
-It became a primary button labelled with the act, with the steps in a dialog
-behind it. The rule this leaves behind: **an action never renders as a
-disclosure in this app.**
-
-On 2026-09-03 it moved again, from the transfers card to the hero, when the
-payload grew to carry the whole plan. Two of the three "legitimately nothing"
-states above are gone with it: a roll now offers the action like any other week,
-and only the sample dataset, a missing team id and the pre-season draft withhold
-it. The rule that follows: **the action belongs beside the recommendation, not
-beside one component of it.**
-
-Three things that fell out of these reworks and are worth keeping:
-
-- **The clipboard write must start inside the click.** `navigator.clipboard
-  .writeText` is only permitted while a user gesture is being handled, so the
-  dialog copies the plan in `open()`, synchronously, before awaiting anything.
-  Moving that copy into the content builder (which re-runs when the install
-  step is toggled) would both break the permission and copy twice.
-- **The install step is remembered, and the signal is real DOM.** `dragstart`
-  on the bookmarklet link, or a successful copy of it, records the version. A
-  failed copy deliberately does NOT, because the user has nothing installed in
-  that case. It lives in the settings object rather than a fifth storage key:
-  settings already sync and `privacy.html` already describes them as "your
-  planner settings", so a new key would need registering with sync-system and
-  listing there separately to say the same thing.
-- **The dialog's CONTENT is a pure function, the overlay is not tested here.**
-  `handoffDialogContent()` is exported and unit tested under the mini DOM;
-  `createHandoffDialog()` is the drawer's shell (mounted on the app root
-  wrapper, scroll-locked, Escape/backdrop/focus-trap) and follows the same
-  precedent as `createPlayerDrawer`, which is also not unit tested. Escape,
-  focus return, real dragging and clipboard permission are in
-  `.features/fpl-planner-human.md`.
-
-### Things that would be easy to get wrong here
-
-- **A bookmarklet whose expression returns a value navigates the tab to that
-  value.** The URL is `void`-wrapped for this, and a test asserts it, because an
-  async IIFE returning a promise is a one-character-looking edit away.
-- **`module.exports` is the wrong test seam for a bookmarklet.** Bundled sites
-  do leave a global `module` around, and the failure there is a bookmarklet that
-  silently exports instead of running. It uses a dedicated
-  `__FPL_BOOKMARKLET_EXPORT__` hook no real page defines.
-- **The decoder is duplicated on purpose** (`js/ui/handoff.js` and inside the
-  bookmarklet), because the bookmarklet cannot import. The duplication is only
-  safe while it is pinned: every case in `bookmarklet.test.mjs` runs through
-  both and asserts the same verdict AND the same wording.
+- **An action never renders as a disclosure in this app.** The first version
+  shipped as a collapsed `<details>` at the foot of the transfers card and the
+  owner could not find it. That is a verdict on the design, not on the owner:
+  the app has one action and everything else on screen is a number or an
+  explanation, so disclosure chrome made it read as more to read.
+- **The action belongs beside the recommendation, not beside one component of
+  it.** Living on the transfers card meant it did not exist in a week that made
+  no transfer, which is most weeks. It moved to the hero for the day it existed.
+- **A clipboard write must start inside the click.** `navigator.clipboard
+  .writeText` is only permitted while a user gesture is being handled.
+- **`?demo=1` could not show it**, because the sample team id belongs to nobody.
+  Any future screenshot of an action gated on a real team id needs the sample
+  gate turned off locally for the run.
+- **A `--virtual-time-budget` screenshot never sees this app.** The plan is
+  computed in a worker on the real clock, so the shot fires while the loader
+  still reads "Analyzing players". Drive it through `tests/browser/cdp.mjs` and
+  wait on `.fpl-pp` (`node --experimental-websocket` on Node 20).
 - **Objects built inside a `node:vm` carry that realm's prototypes**, so
   `assert.deepEqual` from `node:assert/strict` rejects structurally identical
-  payloads AND arrays derived from them with `.map`. Compare the JSON, not the
-  objects.
-- **The line-based comment strip in the build script is only safe while no
-  string spans a line.** It asserts that on the SURVIVING lines rather than the
-  raw file, so backticks in the source's own prose do not trip it while a real
-  template literal (whose opening backtick sits on a code line) still does.
-- **`?demo=1` cannot show this button.** The sample team id belongs to nobody,
-  so the handoff is deliberately withheld in sample mode, which also means a
-  screenshot of the action needs the sample gate turned off locally for the run.
-  A `--virtual-time-budget` screenshot never sees this app at all: the plan is
-  computed in a worker on the real clock, so the shot fires while the loader is
-  still on "Analyzing players". Drive it through `tests/browser/cdp.mjs` and
-  wait on `.fpl-pp` instead (`node --experimental-websocket` on Node 20).
+  payloads AND arrays derived from them with `.map`. Compare the JSON.
 
 ## Cross-season player identity (critical)
 

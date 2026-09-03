@@ -137,48 +137,6 @@ test('a hit is priced in points on the money row', () => {
   assert.match(textOf(transfersCard({ bundle: hitPlan, gameState })), /Points cost\s*-4/);
 });
 
-// The handoff itself is covered in ui-handoff.test.mjs; what belongs here is
-// that the hero offers it at all, and only for a real team.
-test('the hero offers the handoff for a real team and withholds it for the sample', () => {
-  const event = { deadline: new Date(NOW + 26 * 3600 * 1000).toISOString() };
-  const hero = (over) => heroCard({ bundle, gameState, event, now: NOW, ...over });
-
-  const real = hero({ teamId: '4231987' });
-  assert.match(textOf(real), /Apply this plan on FPL/);
-  assert.ok(query(real, 'fpl-handoff-action'), 'the action row is missing from the hero');
-
-  assert.equal(
-    query(hero({ teamId: '4231987', sample: true }), 'fpl-handoff-action'), null,
-    'the sample team id belongs to nobody, so there is nothing to hand over'
-  );
-  assert.equal(query(hero({}), 'fpl-handoff-action'), null, 'no team id, no handoff');
-  assert.equal(
-    query(hero({ teamId: '4231987', isDraft: true }), 'fpl-handoff-action'), null,
-    'a pre-season draft has no FPL squad to apply a plan to'
-  );
-});
-
-// The reason the action moved off the transfers card: a roll still has an
-// eleven, a bench order and an armband to set, and that is most gameweeks.
-test('a roll still offers the handoff, because the team is still the plan', () => {
-  const event = { deadline: new Date(NOW + 26 * 3600 * 1000).toISOString() };
-  const rolled = planWith({ transferCount: 0, transfersOut: [], transfersIn: [] });
-  const hero = heroCard({ bundle: rolled, gameState, event, now: NOW, teamId: '4231987' });
-  assert.ok(query(hero, 'fpl-handoff-action'), 'a roll week has no way to apply its plan');
-  assert.match(textOf(hero), /Sets your XI, bench order, captain and vice-captain/);
-});
-
-test('the transfers card no longer carries the action', () => {
-  const outId = plan.squad[0];
-  const inId = [...gameState.players.keys()].find(id => !plan.squad.includes(id));
-  const moved = planWith({
-    transferCount: 1, transfersOut: [outId], transfersIn: [inId],
-    explanation: { ...plan.explanation, transferReasons: [{ out: outId, in: inId, gwGain: 1, horizonGain: 2, reasons: [] }] },
-  });
-  assert.equal(query(transfersCard({ bundle: moved, gameState }), 'fpl-handoff-action'), null,
-    'two buttons doing one thing is how the first one got lost');
-});
-
 /* ---------------------------------------------------------- opening squad */
 
 test('the opening-squad card tells one money story for both pre-season encodings', async () => {

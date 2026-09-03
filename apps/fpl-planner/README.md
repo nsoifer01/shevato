@@ -60,9 +60,6 @@ apps/fpl-planner/
                          dock, the picker, the before/after strip); a
                          persistent view updated in place, draws and
                          dispatches only
-    ui/handoff.js        THE plan -> bookmarklet payload contract, pure
-    ui/handoff-view.js   the "Apply this plan on FPL" button and dialog
-    ui/bookmarklet-url.js  GENERATED: the bookmarklet as a javascript: URL
     ui/plan-diff.js      "what changed" between two stored plan versions
     ui/history.js        gameweek history, season-at-a-glance charts, saved plan versions
     ui/settings.js       planner settings and the two deletion actions
@@ -101,9 +98,6 @@ apps/fpl-planner/
       experiment.js      paired-trajectory plan, statistics and report
       player-identity.js canonical cross-season identity (`code`), and the
                          refusal to key a cross-season join on `element`
-  bookmarklet/
-    fpl-transfer.js      the handoff bookmarklet: runs in the user's browser on
-                         fantasy.premierleague.com and submits the plan there
   models/                versioned model artifacts (JSON)
   data/sample/           trimmed sample dataset for ?demo=1
   data/opening-baseline.json  last complete pre-wipe season totals, with provenance
@@ -117,8 +111,7 @@ apps/fpl-planner/
                          train-model, evaluate-model, backtest, experiment
                          (+ its worker), evidence-probe (health invariants
                          against the live payload), derive-gw1-fixtures
-                         (sanitized lifecycle fixtures from captured payloads),
-                         build-bookmarklet (regenerates ui/bookmarklet-url.js)
+                         (sanitized lifecycle fixtures from captured payloads)
   e2e/                   browser suites (raw CDP): the interactive scenario
                          workflow and the gameweek lifecycle boundaries
   GW1-RUNBOOK.md         the live checks to run around the opening deadline
@@ -274,100 +267,19 @@ offered. A change there is a build rather than a transfer: it costs no hit and
 the bank is simply the budget less the fifteen, which is the same distinction
 `validate.js` draws with `isFreshBuild`.
 
-## Applying the plan (the handoff)
+## Why the app cannot make your transfers for you
 
-The app recommends; Fantasy Premier League is where a plan becomes real.
-Nothing here can bridge that on the user's behalf from a server: FPL's write
+The app recommends; Fantasy Premier League is where a plan becomes real, and
+the manager applies it there by hand. Nothing here can bridge that: FPL's write
 endpoints need the manager's own login, this app has no account system for
 third-party credentials, and the proxy is a read-only allowlist that would have
-to be widened to a POST for a password it must never hold. So the gap is closed
-in the one place where the credential already exists and never has to move: the
-user's own browser, on FPL's own origin.
+to be widened to a POST for a password it must never hold.
 
-`bookmarklet/fpl-transfer.js` is a bookmarklet the user installs once. Clicking
-it on fantasy.premierleague.com reads the plan they copied, resolves it against
-FPL's authenticated `my-team` and the live price list, shows every move, and
-only after they confirm submits it as two requests in the order the game needs
-them: `api/transfers/` changes who they own, then `api/my-team/{entry}/` decides
-who plays. It imports nothing and fetches nothing from shevato.com, so this site
-being down or slow cannot affect it, and it cannot be repointed at another
-origin by a later change here.
-
-**It applies the whole plan**, not only its transfers: the eleven, the bench in
-auto-sub order, the captain and vice-captain, and whichever chip the plan
-recommends. A gameweek where the advice is to roll makes no transfer and is
-still a gameweek with a lineup, a bench order and an armband to set, so the
-transfers-only version of this could not be used in most weeks of a season.
-
-The planner's side is a **primary button on the hero** ("Apply this plan on
-FPL"), under a sentence naming exactly what pressing it will do, which opens a
-dialog. The dialog copies the plan to the clipboard the instant it opens, inside
-the click that opened it, because that is the only moment a browser permits a
-clipboard write. The install step is shown only until the user has installed the
-CURRENT bookmarklet: dragging the link or copying it records the payload version
-in `handoffInstalledVersion` in the synced settings (`js/ui/store.js` says why it
-lives there rather than in a fifth storage key), after which the dialog opens
-straight to "Apply it" and keeps a quiet way back to the install step. A
-bookmarklet older than the payload gets the install step back with different
-words, because that bookmarklet would refuse the plan it is handed. This was a
-collapsed `<details>` on the transfers card when it first shipped, which put the
-only action the app offers behind the same chrome as its context panels and
-hid it in every week that made no transfer; FINDINGS records why both were
-wrong.
-
-**The payload is ids, a gameweek and two chip slots, and nothing else**
-(`js/ui/handoff.js`):
-
-```json
-{"v":2,"entry":4231987,"event":5,"chip":null,"transfers":[{"out":328,"in":401}],
- "team":{"xi":[...11 ids],"bench":[...4 ids],"captain":401,"vice":233,"chip":null}}
-```
-
-That is deliberate. Every price this app knows is reconstructed (see "The FPL
-API" above), and a reconstructed price arriving at FPL inside a submission would
-be a second opinion presented as an instruction. The same goes for squad
-POSITIONS: the bookmarklet derives all fifteen slots from FPL's own
-`element_types`, so the payload never states one. Selling prices come from
-`my-team`, buying prices from `bootstrap-static`, free transfers and the bank
-from FPL's own counters, the formation limits from `element_types`, all read at
-the moment of submission. A plan copied on Tuesday and applied on Friday can
-therefore be wrong about WHO, which is caught, but never about how much or which
-slot.
-
-The bookmarklet refuses far more readily than it submits, all before anything is
-sent: a plan whose gameweek is not the one FPL calls next, a player no longer in
-the squad, a player already owned, a swap across positions, a squad that would
-break the club limit, a bank that no longer covers the move, a fifteen that is
-not the squad those transfers leave you with, a formation outside FPL's own
-published limits, an outfielder in the reserve keeper's slot, or an armband on a
-substitute. When FPL itself refuses, its own words are shown verbatim and
-nothing is retried, because a half-applied change is worse than a refused one.
-The one case that CAN be half-applied is the transfers landing and the team
-being refused, and that message says so in those words rather than reporting a
-blanket failure.
-
-Each chip travels on the endpoint that plays it, and an unrecognised chip
-travels on neither. `wildcard` and `freehit` are played BY transferring, so they
-ride on the transfers call; `bboost` and `3xc` are played by saving the team, so
-they ride on the picks. A chip name this contract has never carried is sent
-nowhere at all and the dialog says the user still has to play it themselves,
-because guessing which endpoint a new chip belongs to is how you spend it in the
-wrong week.
-
-`js/ui/bookmarklet-url.js` is generated, not written:
-
-    node apps/fpl-planner/scripts/build-bookmarklet.mjs
-
-`tests/bookmarklet.test.mjs` regenerates it in memory and fails if the committed
-file disagrees, then decodes the committed URL and runs THOSE bytes in a vm, so
-what the tests exercise is exactly what a user installs. It also drives every
-case through both the bookmarklet's private copy of the payload decoder and
-`js/ui/handoff.js`, asserting they agree on the verdict AND the wording; the
-copy exists only because a bookmarklet cannot import anything.
-
-Neither `api/transfers/` nor `api/my-team/` is a documented or supported API.
-They are the requests FPL's own pages make, they can change or vanish without
-notice, and when they do the bookmarklet says so rather than guessing.
+A bookmarklet was built to close that gap in September 2026 and removed on
+2026-09-03 when it turned out it could not work. FINDINGS, "The write path, and
+why there is not one", records what was tried, what FPL's authentication
+actually looks like now, and what would have to change before it is worth
+attempting again. Do not rebuild it without reading that first.
 
 ## The gameweek lifecycle
 

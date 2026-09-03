@@ -23,7 +23,6 @@ import { formatFreeTransfers } from '../engine/transfer-state.js';
 import { openingSquadMoney, picksCarryLineup } from '../engine/squad.js';
 import { assessConfidence } from '../engine/confidence.js';
 import { describeModelStatus } from '../data/model.js';
-import { handoffAction } from './handoff-view.js';
 
 const nameOf = (gameState) => (id) => describePlayer(gameState, id).name;
 
@@ -51,11 +50,7 @@ function xpOverHorizon(projections, playerId, gwFrom, horizon) {
 
 /* ------------------------------------------------------------------- hero */
 
-// `teamId`, `sample` and `onApply` are not plan figures: they are what the
-// "Apply this plan on FPL" button needs to address a real FPL team and open the
-// handoff dialog. The action sits here, under the recommendation it applies,
-// because the plan is more than its transfers and every gameweek has one.
-export function heroCard({ bundle, gameState, event, now, isDraft = false, sources = null, teamId = null, sample = false, onApply = null }) {
+export function heroCard({ bundle, gameState, event, now, isDraft = false, sources = null }) {
   const plan = bundle.current;
   const action = actionText(plan, nameOf(gameState), { isDraft });
   const cd = event ? countdown(event.deadline, now) : { text: 'unknown', urgent: false, passed: false };
@@ -108,8 +103,6 @@ export function heroCard({ bundle, gameState, event, now, isDraft = false, sourc
         el('div', { class: 'fpl-fact-note', text: `This gameweek. ${xp(plan.xPointsHorizon)} over ${plan.horizon} gameweeks` }),
       ]),
     ]),
-
-    handoffAction({ plan, teamId, sample, isDraft, onOpen: onApply }),
   ]);
 }
 
