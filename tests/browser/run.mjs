@@ -73,6 +73,8 @@ const SUITES = [
   'apps/rising-shows/e2e/audit-2026-08.mjs',
   'apps/trip-planner/e2e/audit-2026-08.mjs',
   'apps/maptap-rivals/e2e/quality.mjs',
+  // The Free Hit revert, driven across the chip gameweek and the one after.
+  'apps/fpl-planner/e2e/free-hit.mjs',
 ];
 
 // --only=<substring> runs the suites whose path contains it; --shard=<i>/<n>

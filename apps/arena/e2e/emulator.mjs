@@ -486,7 +486,29 @@ export async function run({ base, cdpPort, base2 = null }) {
     // that genuinely cross scenarios are hoisted here.
     const nInLobby = (n) => `document.querySelectorAll('#lobby-player-grid li').length === ${n}`;
     let bUid = null;
+    // ARENA_E2E_ONLY=<substring> runs just the scenarios whose label matches,
+    // which is what makes this suite usable while iterating on ONE of them:
+    // the whole thing is a long multi-client session and a full pass costs
+    // tens of minutes. Unmatched scenarios are recorded as skips with the
+    // filter that excluded them, so a filtered run can never be mistaken for
+    // a full one.
+    // Comma-separated, and for LOCAL ITERATION ONLY: never treat a filtered
+    // run as verification. The scenarios share one live multi-client session
+    // and run in sequence - S1 opens the three browser pages, and each
+    // scenario leaves the clients where the next one expects them (S1 parks
+    // the third client on about:blank for its ghost check, and the scenarios
+    // between S1 and S5 are what bring it back). Filtering to `S1:,S5:` puts
+    // only two players in the lobby, so the game never starts and every
+    // downstream check compares nothing against nothing. Whatever you filter
+    // to, read the preconditions in the output before believing a pass.
+    const onlyFilter = process.env.ARENA_E2E_ONLY
+      ? process.env.ARENA_E2E_ONLY.split(',').map((x) => x.trim()).filter(Boolean)
+      : null;
     const guard = async (label, fn) => {
+      if (onlyFilter && !onlyFilter.some((f) => label.includes(f))) {
+        skip(`arena-emulator: ${label}`, `skipped by ARENA_E2E_ONLY=${onlyFilter.join(',')}`);
+        return;
+      }
       try { await fn(); } catch (e) {
         t(`arena-emulator: ${label} ran to completion`, false, String(e && e.message || e).slice(0, 200));
       }
@@ -1034,6 +1056,79 @@ export async function run({ base, cdpPort, base2 = null }) {
       const h2hRows = await ownerList('triviaH2H');
       t('emulator (D16): no triviaH2H pair row is written against a guest opponent', h2hRows.length === 0, `rows=${h2hRows.join(',')}`);
 
+      /* ---- IDEMPOTENCY: one game stays one game across reloads ----------
+       *
+       * The end-of-game write was guarded only by an in-memory flag, and the
+       * end screen is exactly where reloads happen: a pull-to-refresh on a
+       * phone, or reopening the `?postMatch=` link the app writes into the URL
+       * itself. Every reload counted the same game again on the profile, the
+       * PUBLIC leaderboard row and the room's session tally, so one game read
+       * as two, then three. The guard is now `lastCountedGame`, persisted in
+       * the same transaction as the counters it protects.
+       */
+      const countersNow = async () => {
+        const u = fieldsOf(await ownerGetDocRaw(`users/${regUid}`, PAGE_PROJECT));
+        const prof = (u.triviaProfile && u.triviaProfile.fields) ? u.triviaProfile.fields : {};
+        const board = fieldsOf(await ownerGetDocRaw(`triviaLeaderboard/${regUid}`, PAGE_PROJECT));
+        const room = fieldsOf(await ownerGetDocRaw(`triviaRooms/${code5}`, PAGE_PROJECT));
+        const num = (x) => (x && (x.integerValue ?? x.doubleValue)) != null ? Number(x.integerValue ?? x.doubleValue) : null;
+        return {
+          games: num(prof.gamesPlayed), wins: num(prof.wins), xp: num(prof.xp),
+          lbGames: board.gamesPlayed != null ? Number(board.gamesPlayed) : null,
+          lbWins: board.wins != null ? Number(board.wins) : null,
+          session: room.sessionMatchCount != null ? Number(room.sessionMatchCount) : null,
+          marker: prof.lastCountedGame ? prof.lastCountedGame.stringValue : null,
+        };
+      };
+      const before5 = await countersNow();
+      // PRECONDITION. Everything below compares a number against itself, so it
+      // would pass just as happily if the game had never been counted at all:
+      // 0 -> 0 -> 0 is "unchanged" too. That is not a hypothetical - a
+      // filtered run (ARENA_E2E_ONLY without the scenario that seats the third
+      // player) reached here with the game unplayed and these checks went
+      // green while proving nothing. Refuse to be that test.
+      const counted = before5.games === 1 && before5.session != null;
+      t('emulator (idempotency): PRECONDITION, exactly one game was counted before the reloads',
+        counted, `games=${before5.games} sessionMatchCount=${before5.session} marker=${JSON.stringify(before5.marker)}`);
+      t('emulator (idempotency): the counted game is stamped with a durable key',
+        counted && typeof before5.marker === 'string' && before5.marker.startsWith(code5 + ':'),
+        `lastCountedGame=${JSON.stringify(before5.marker)}`);
+
+      const reloadEnd = async () => {
+        await A.send('Page.reload', { ignoreCache: false });
+        await waitForExpr(A, "!!window.firebaseAuth && document.readyState === 'complete'", { timeout: 25000 });
+        const back = await waitForExpr(A, endUp, { timeout: 25000 });
+        // The write, if any, is one transaction behind the render.
+        await sleep(2500);
+        return back;
+      };
+
+      const backOnEnd1 = await reloadEnd();
+      const after1 = await countersNow();
+      const backOnEnd2 = await reloadEnd();
+      const after2 = await countersNow();
+
+      t('emulator (idempotency): a reload of the end screen lands back on the recap',
+        backOnEnd1 && backOnEnd2, `first=${backOnEnd1} second=${backOnEnd2}`);
+      t('emulator (idempotency): two reloads of the end screen leave the PROFILE at one game',
+        counted
+        && after1.games === before5.games && after2.games === before5.games
+        && after1.wins === before5.wins && after2.wins === before5.wins
+        && after1.xp === before5.xp && after2.xp === before5.xp,
+        `games ${before5.games} -> ${after1.games} -> ${after2.games};`
+        + ` wins ${before5.wins} -> ${after1.wins} -> ${after2.wins};`
+        + ` xp ${before5.xp} -> ${after1.xp} -> ${after2.xp}`);
+      t('emulator (idempotency): and the PUBLIC leaderboard row too',
+        counted && before5.lbGames === 1
+        && after1.lbGames === before5.lbGames && after2.lbGames === before5.lbGames
+        && after1.lbWins === before5.lbWins && after2.lbWins === before5.lbWins,
+        `games ${before5.lbGames} -> ${after1.lbGames} -> ${after2.lbGames};`
+        + ` wins ${before5.lbWins} -> ${after1.lbWins} -> ${after2.lbWins}`);
+      t('emulator (idempotency): and the room\'s own session match count',
+        counted && before5.session === 1
+        && after1.session === before5.session && after2.session === before5.session,
+        `sessionMatchCount ${before5.session} -> ${after1.session} -> ${after2.session}`);
+
       if (pages5.length > 2) {
         // D13: C proposes, B declines -> A's prompt must close on its own.
         await waitForExpr(C, visible('room-end-again-btn'), { timeout: 8000 });
@@ -1218,7 +1313,88 @@ export async function run({ base, cdpPort, base2 = null }) {
       t('emulator (picking deadline): the decider reconnecting does not double-advance the room',
         afterRejoin.qid === rescued.qid && afterRejoin.idx === rescued.idx,
         `qid ${rescued.qid} -> ${afterRejoin.qid} idx ${rescued.idx} -> ${afterRejoin.idx}`);
+
       await front(A);
+      await resetToLobby([A, B]);
+    });
+
+    await guard('S8: refreshing during a game must not get you swept', async () => {
+      /* ---------- S8: a refresh mid-game must not get you swept ----------
+       *
+       * `beforeUnloadCleanup` stamps `disconnectedAt` on the way out, and a
+       * refresh comes straight back through the URL-rejoin path, which used to
+       * write `lastSeen` alone. The stamp survived, so 30 s later both
+       * `RoomState.isPlayerLive` and the rules' `isStalePlayerData` called a
+       * player who was heart-beating normally stale: the host swept the doc
+       * and the player was silently dropped mid-game, absent from the reveal,
+       * the Ready vote and the final ranking, with their score gone.
+       *
+       * Own room, own preconditions: this scenario must not inherit whatever
+       * state an earlier one left the clients in.
+       */
+      await resetToLobby([A, B]);
+      await clickSel(A, '.game-type-btn[data-game-type="trivia"]', { settle: 300 });
+      await setValue(A, '#create-questions-count', '5');
+      await setValue(A, '#create-trivia-time', '30');
+      await clickSel(A, '#create-room-btn', { settle: 700 });
+      if (await evaluate(A, visible('name-prompt-modal'))) {
+        await setValue(A, '#name-prompt-input', 'Sweep Host');
+        await clickSel(A, '#name-prompt-confirm', { settle: 500 });
+      }
+      const hostUp8 = await waitForExpr(A, visible('room-panel'), { timeout: 15000 });
+      const code8 = await roomCodeOf(A);
+      t('emulator (refresh mid-game): a room exists to refresh into', hostUp8 && /^[A-Z0-9]{5}$/.test(code8), `code=${code8}`);
+
+      await setValue(B, '#join-code', code8);
+      await clickSel(B, '#join-room-btn', { settle: 700 });
+      const bIn8 = await waitForExpr(B, visible('room-panel'), { timeout: 15000 });
+      const bUid8 = await evaluate(B, 'window.firebaseAuth.getCurrentUser().uid');
+      t('emulator (refresh mid-game): the player is in the room before the refresh', bIn8 && !!bUid8, `uid=${bUid8}`);
+
+      // The URL must carry the room, because that is what the reload rejoins
+      // through. If it does not, the scenario cannot test what it claims.
+      const url8 = await evaluate(B, 'window.location.search');
+      t('emulator (refresh mid-game): PRECONDITION, the room is in the URL the reload will reuse',
+        typeof url8 === 'string' && url8.includes(`room=${code8}`), `search=${JSON.stringify(url8)}`);
+
+      // Stand in for the unload write with the owner bypass, for the same
+      // reason the ghost scenario does: a browser may cancel an unload-time
+      // write, and this is about what happens AFTER the stamp exists.
+      const stampPath8 = `triviaRooms/${code8}/players/${bUid8}`;
+      await ownerPatch(stampPath8, { disconnectedAt: Date.now() });
+      const stamped8 = !!(await ownerGetDocRaw(stampPath8, PAGE_PROJECT)).doc?.fields?.disconnectedAt;
+      t('emulator (refresh mid-game): the outgoing tab\'s disconnect stamp is in place before the reload', stamped8);
+
+      await B.send('Page.reload', { ignoreCache: false });
+      await waitForExpr(B, "!!window.firebaseAuth && document.readyState === 'complete'", { timeout: 25000 });
+      const bBack8 = await waitForExpr(B, visible('room-panel'), { timeout: 25000 });
+      const bUidAfter = await evaluate(B, '(window.firebaseAuth.getCurrentUser()||{}).uid || null');
+      // A different anonymous uid would mean a DIFFERENT player doc, so the
+      // stamp check below would be looking at a document nobody rejoined.
+      t('emulator (refresh mid-game): PRECONDITION, the reload keeps the same signed-in user',
+        !!bUidAfter && bUidAfter === bUid8, `before=${bUid8} after=${bUidAfter}`);
+      t('emulator (refresh mid-game): the refreshed player rejoins the room', bBack8,
+        `search=${JSON.stringify(await evaluate(B, 'window.location.search'))}`
+        + ` stage=${JSON.stringify(await evaluate(B, "(()=>['stage-lobby','stage-picking','stage-game','stage-end'].filter(id=>{const e=document.getElementById(id);return e&&!e.hidden})[0]||'none')()"))}`);
+
+      const cleared8 = await (async () => {
+        for (let i = 0; i < 80; i++) {
+          const d = await ownerGetDocRaw(stampPath8, PAGE_PROJECT);
+          if (d.status !== 200) return 'swept';
+          if (!d.doc?.fields?.disconnectedAt) return true;
+          await sleep(250);
+        }
+        return false;
+      })();
+      t('emulator (refresh mid-game): rejoining CLEARS the disconnect stamp instead of carrying it',
+        cleared8 === true, `result=${cleared8}`);
+
+      // The moment the sweep used to fire.
+      await sleep(31000);
+      const doc8 = await ownerGetDocRaw(stampPath8, PAGE_PROJECT);
+      t('emulator (refresh mid-game): past the 30s grace the refreshed player is still in the room',
+        doc8.status === 200 && !doc8.doc?.fields?.disconnectedAt,
+        `status=${doc8.status} stamp=${JSON.stringify(doc8.doc?.fields?.disconnectedAt || 'absent')}`);
       await resetToLobby([A, B]);
     });
 

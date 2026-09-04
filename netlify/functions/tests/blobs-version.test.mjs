@@ -66,7 +66,21 @@ test('the committed lockfile resolves @netlify/blobs to a conditional-setJSON ve
   );
 });
 
-test('the REAL installed client puts the etag condition on the wire', async () => {
+// CI deliberately never runs `npm install` (the fast gate is dependency-free),
+// so on a runner there is no client to drive. The two version assertions above
+// are the guard that always runs and they need nothing installed; this one adds
+// proof that the DECLARED version really behaves, and gates itself rather than
+// failing where the package is simply absent.
+let clientAvailable = true;
+try {
+  await import('@netlify/blobs');
+} catch {
+  clientAvailable = false;
+}
+
+test('the REAL installed client puts the etag condition on the wire', {
+  skip: clientAvailable ? false : '@netlify/blobs is not installed here (CI runs no npm install); the declared and locked version assertions above still ran',
+}, async () => {
   // Not a stub: this is the client the functions bundle. A version that drops
   // the condition sends no If-Match and resolves undefined, which is exactly
   // the failure that hid for 25 days.

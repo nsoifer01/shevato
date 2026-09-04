@@ -404,3 +404,83 @@ now escaped, matching the shared `assets/js/escape-html.js`. The same weak
 helper in `gym-tracker/js/utils/helpers.js` and `assets/js/main.js` was fixed
 at the same time (neither had a reachable attribute interpolation of user text
 today, which is one refactor away from being false).
+
+## One game must count once: the end-of-game writes are now idempotent
+
+`writeEndOfGameStats` was guarded only by the in-memory `endStageWrittenForRoom`,
+and the end screen is exactly where reloads happen: a pull-to-refresh on a
+phone, or reopening the `?postMatch=` link the app itself writes into the URL.
+Every reload counted the same game again. Reproduced on the emulator: after two
+reloads of the recap, `gamesPlayed` went 1 to 2 to 3 on the profile, on the
+PUBLIC `triviaLeaderboard` row and on the room's `sessionMatchCount`, and the
+profile card read "Games 3" for one game. `tryLoadPendingPostMatch` calls
+`renderEndStage` for any signed-in visitor, so merely opening the share link
+was enough.
+
+The guard is a durable key, `lastCountedGame = "{roomCode}:{round}"`, written
+in the SAME transaction as the counters it protects, at all three sites:
+
+| doc | field | note |
+|---|---|---|
+| `users/{uid}.triviaProfile` | `lastCountedGame` | the transaction returns false when it matches, and the leaderboard write is inside that transaction, so both skip together |
+| `triviaRooms/{code}` | `sessionCountedGame` | the session tally was a read-modify-write off `state.roomData`; it is a transaction now, reading the counters off the doc |
+| `triviaH2H/{pairKey}` | `lastCountedGame` | a lifetime record two people read |
+
+Reading the marker INSIDE the transaction is what makes it safe for two tabs,
+two devices, and a reload racing the original write: Firestore re-runs the
+transaction on contention and the loser sees the winner's marker. The round is
+part of the key, so a rematch is correctly a new game. `maybeWriteDailyLeaderboard`
+needed nothing: it already keeps only the best score for the day.
+
+No rules change and no migration. `users/{uid}` and `triviaH2H` accept
+arbitrary fields, the room doc is host-writable, and a document with no marker
+simply counts its next game once and gains one. Existing leaderboard and
+history data is untouched.
+
+## A refresh mid-game must not get you swept
+
+`beforeUnloadCleanup` stamps `disconnectedAt` on the way out, and a refresh
+comes straight back through `tryRejoinPendingRoom`, which for an existing
+member wrote `lastSeen` alone. The stamp therefore SURVIVED the rejoin, and 30
+seconds later both `RoomState.isPlayerLive` and the rules' `isStalePlayerData`
+called a player who was heart-beating normally stale: the host swept the doc
+and the player was silently dropped mid-game, missing from the early reveal and
+the Ready vote, absent from the final ranking, score gone, while their own
+answers vanished behind an optimistic "Locked in". Only `joinPlayer`'s
+reconnect branch cleared the flag, and a URL rejoin never reaches it.
+
+Two changes, because one of them can be lost: the rejoin write now clears
+`disconnectedAt` alongside the heartbeat, and the periodic heartbeat clears it
+too. A player whose heart is beating is by definition not disconnected, so a
+dropped or racing rejoin write self-heals on the next beat instead of being
+fatal half a minute later. The player-doc rules already allow a player to
+update their own doc, so no rules change was needed.
+
+## The emulator e2e is FLAKY on a loaded workstation, and what that costs
+
+Three full runs on 2026-09-03 produced 55/76, 48/80 and (S1 only) 8/21, all
+failing first at the same place: `emulator: second player joins by code`, the
+second client joining a fresh lobby. Everything after it cascades, because the
+scenarios share one live multi-client session.
+
+It is NOT caused by the round's changes: the identical failure reproduces with
+`apps/arena/js/app.js` reverted to the committed version. Treat a low pass
+count here as "re-run on an idle machine", and read the individual scenario
+before believing a regression. The documented rule still holds and is easy to
+break by accident: run this estate with nothing else heavy on the box. One of
+these runs was ruined by a concurrent `npm test`.
+
+Two consequences worth keeping:
+
+- **Filtered runs are for iteration only.** `ARENA_E2E_ONLY` (added this round)
+  takes a comma-separated list, but the scenarios are sequential: S1 opens the
+  three browser pages and each scenario leaves the clients where the next
+  expects them. `ARENA_E2E_ONLY=S1:,S5:` puts only two players in the lobby, so
+  the game never starts.
+- **Assertions that compare a number against itself must state a
+  precondition.** The idempotency checks ask "is this counter unchanged after a
+  reload", which 0 -> 0 -> 0 satisfies perfectly. On a filtered run they went
+  green having proved nothing. They now assert first that exactly one game was
+  counted, and every later check is gated on that. Any new check of this shape
+  needs the same guard.
+

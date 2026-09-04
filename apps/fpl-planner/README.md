@@ -14,6 +14,15 @@ Plans are scored over a rolling horizon, and the default is **5 gameweeks**. It 
 
 - It is fully public: **no key, no account, no credentials**.
 - It sends **no CORS headers**, so a browser on shevato.com cannot call it. Every read goes through `netlify/functions/fpl.mjs`.
+- After a **Free Hit** it hands back the rented team, not the squad you keep.
+  `entry/{id}/event/{gw}/picks/` for a Free Hit gameweek carries
+  `active_chip: "freehit"` and the fifteen you rented for that week only. The
+  app detects that (from the payload or from `history.chips`, so a reload and a
+  refresh behave alike), fetches the previous gameweek's picks, which is the
+  squad the chip reverts to, and plans from those. If it cannot read them it
+  says so and withholds transfer and chip advice rather than planning against a
+  team you do not own. The live pitch still shows the Free Hit team, because
+  those are the players actually scoring.
 - It does **not** publish selling prices. `now_cost` is the wrong number to spend against: FPL takes half the profit on any player who has risen since you bought him. Purchase prices are reconstructed from `entry/{id}/transfers` and the sell-on rule is applied on top (`js/engine/squad.js`).
 - Its `entry_history.value` is a **snapshot frozen at that gameweek's deadline**, not a live total: it does not move when prices do, so one overnight change is enough to make it disagree with what the squad is actually worth. SQUAD VALUE in the header is therefore the reconstructed total (the fifteen at their selling prices, plus the bank). A disagreement is reported rather than absorbed, but only the part of it that price movement since the deadline cannot account for: the check rolls every price back with `cost_change_event` before comparing, so an ordinary overnight move is silent and a reconstruction that genuinely fails to add up is not. The frozen figure is used for display in one case only: an in-season payload that arrives with no picks, where there is nothing to reconstruct from.
 - It does **not** publish your free transfer count. That is replayed from `entry/{id}/history` by `js/engine/transfer-state.js`, the ONE module allowed to know the transfer arithmetic: unlimited before the GW1 deadline (a state, not a number), then 1 per gameweek, rolling to a cap of 5, with wildcard and free hit weeks preserving the banked count. Every other module (planner, transfer search, chips, replay, UI wording) consumes it rather than re-deriving it; the off-by-one that lived in the scattered copies contaminated every replay until 2026-08-11.
@@ -77,7 +86,8 @@ apps/fpl-planner/
       readiness.js       what the data licenses: display / lineup / transfers / chips
       live.js            event/{gw}/live -> actual points, reconciled to FPL's total
       transfer-state.js  THE free-transfer state machine (pre-season, rolling, chips)
-      squad.js           entry data -> SquadState (prices, bank, FTs, chips)
+      squad.js           entry data -> SquadState (prices, bank, FTs, chips,
+                         and the Free Hit revert to the squad you keep)
       strength.js        team attack and defence ratings
       fixtures.js        Poisson fixture model
       minutes.js         pAppear / pStart / xMins

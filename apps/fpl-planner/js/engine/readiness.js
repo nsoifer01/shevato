@@ -220,6 +220,18 @@ export function assessReadiness({ evidence, lifecycle, vitals = null, baseline =
       LEVEL.LINEUP);
   }
 
+  // The fifteen in hand are a Free Hit team the manager only had for the
+  // gameweek he played the chip in, and the squad it reverts to could not be
+  // read. Recommending a transfer here means recommending the sale of a player
+  // he does not own, so nothing above LINEUP may be offered.
+  if (squad && squad.freeHitUnresolved) {
+    block('free_hit_squad',
+      `The squad Fantasy Premier League returned is your Free Hit team for gameweek ${squad.freeHitGw}. `
+      + 'Your own squad comes back at the next deadline and could not be read yet, so no transfers or chips '
+      + 'are recommended against a team you do not keep.',
+      LEVEL.LINEUP);
+  }
+
   let level = LEVEL.CHIPS;
   for (const b of blocked) {
     if (ORDER.indexOf(b.ceiling) < ORDER.indexOf(level)) level = b.ceiling;

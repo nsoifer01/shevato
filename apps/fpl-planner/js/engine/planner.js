@@ -554,7 +554,13 @@ export async function buildPlan({ gameState, squadState, options = {}, onProgres
     lifecycle,
     vitals,
     baseline: { source: gameState.baselineSource, rates: gameState.baselineRates },
-    squad: { historyMissing: !!workingSquad.historyMissing },
+    squad: {
+      historyMissing: !!workingSquad.historyMissing,
+      // A Free Hit team the manager no longer keeps cannot be transferred
+      // from, so readiness has to see it, not just the warning list.
+      freeHitUnresolved: !!workingSquad.freeHitUnresolved,
+      freeHitGw: workingSquad.freeHitGw ?? null,
+    },
   });
   cfg.readiness = readiness;
 
@@ -832,7 +838,11 @@ function buildDataStatus({ gameState, squadState, cfg, projections, durationMs }
     lifecycle,
     vitals: projectionVitals(projectionRowsFor(projections, cfg.gw, gameState)),
     baseline: { source: gameState.baselineSource, rates: gameState.baselineRates },
-    squad: { historyMissing: !!squadState.historyMissing },
+    squad: {
+      historyMissing: !!squadState.historyMissing,
+      freeHitUnresolved: !!squadState.freeHitUnresolved,
+      freeHitGw: squadState.freeHitGw ?? null,
+    },
   });
 
   return {

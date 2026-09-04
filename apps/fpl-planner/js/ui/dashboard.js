@@ -876,13 +876,22 @@ const SQUAD_WARNING_TITLES = {
   history_missing: 'Your season history could not be read',
   empty_picks: 'Your squad could not be read',
   missing_entry_history: 'Your bank and squad value could not be read',
+  free_hit_squad: 'This is your Free Hit team, not the squad you keep',
+  // Not a fault: the plan below is correct BECAUSE the squad was reverted, and
+  // a manager who has just played a Free Hit needs to be told which fifteen he
+  // is looking at.
+  free_hit_reverted: 'Your squad is back from the Free Hit',
 };
 export function squadWarningsBanner(warnings) {
   const special = warnings.find(w => SQUAD_WARNING_TITLES[w.code]);
   if (special) {
+    // The revert is the app working correctly, so it is stated, not warned
+    // about. Everything else here is something the manager may need to fix.
+    const informational = special.code === 'free_hit_reverted'
+      && warnings.every(w => w.code === 'free_hit_reverted');
     return banner({
-      tone: 'warn',
-      mark: '!',
+      tone: informational ? 'info' : 'warn',
+      mark: informational ? 'i' : '!',
       title: SQUAD_WARNING_TITLES[special.code],
       text: special.message,
       list: warnings.filter(w => w !== special).map(w => w.message),

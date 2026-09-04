@@ -18,7 +18,7 @@ import { fplApi, NotFoundError, ProxyUnavailableError } from './data/api.js';
 import { isDemoRequested, loadSampleData } from './data/sample.js';
 import { loadModel } from './data/model.js';
 import { buildGameState } from './engine/normalize.js';
-import { buildSquadState, picksCarryLineup } from './engine/squad.js';
+import { buildSquadState, picksCarryLineup, freeHitPicksInfo } from './engine/squad.js';
 import { gameweekLifecycle, GW_PHASE } from './engine/lifecycle.js';
 import {
   saveSnapshotIfBetter, resolveBaseline, BASELINE_KEY, assessBaseline, baselineIsSuperseded,
@@ -302,6 +302,40 @@ async function loadTeam({ force = false } = {}) {
     }
   }
   state.preSeason = !state.picks;
+
+  // FREE HIT. When the frozen gameweek was played on a Free Hit, those picks
+  // are a team the manager RENTED for that gameweek only: at the next deadline
+  // FPL hands back the squad he had before he played the chip. Planning the
+  // next gameweek from the rented fifteen recommends selling players he does
+  // not own, so fetch the squad the chip reverts TO, which is the frozen picks
+  // of the gameweek before it.
+  //
+  // Detected from the picks payload's own `active_chip` OR from `history.chips`
+  // (which is the durable record and is what survives a reload or a re-import),
+  // so the revert happens the same way on a fresh load, a forced refresh and a
+  // restored session. `state.picks` deliberately keeps the Free Hit team: it is
+  // the fifteen that are actually scoring this gameweek, which is what the live
+  // pitch must show.
+  state.revertPicks = null;
+  state.freeHitGw = null;
+  if (state.picks) {
+    const fh = freeHitPicksInfo({ picks: state.picks, history: state.history });
+    // Only a Free Hit whose gameweek is already BEHIND the one being planned
+    // needs reverting. Planning the Free Hit gameweek itself (season over, no
+    // next event) correctly uses the team that plays in it.
+    if (fh.isFreeHit && fh.event !== null && state.planGw > fh.event && fh.event > 1) {
+      state.freeHitGw = fh.event;
+      try {
+        const prior = await fplApi.getEntryPicks(state.teamId, fh.event - 1, { force });
+        state.revertPicks = prior.data;
+      } catch (err) {
+        // Leave it null. buildSquadState then reports `free_hit_squad` and
+        // readiness withholds transfer and chip advice rather than planning
+        // against a squad the manager does not keep.
+        if (!(err instanceof NotFoundError)) throw err;
+      }
+    }
+  }
 }
 
 /* ------------------------------------------------------------------- model */
@@ -503,6 +537,7 @@ async function connectAndPlan({ reason = 'first-calculation' } = {}) {
       history: state.history,
       transfers: state.transfers,
       picks: state.picks,
+      revertPicks: state.revertPicks,
       gameState: state.gameState,
       gw: state.planGw,
     });
@@ -627,7 +662,8 @@ async function refreshInputs() {
     }
     const squadState = buildSquadState({
       entry: state.entry, history: state.history, transfers: state.transfers,
-      picks: state.picks, gameState: state.gameState, gw: state.planGw,
+      picks: state.picks, revertPicks: state.revertPicks,
+      gameState: state.gameState, gw: state.planGw,
     });
     const next = inputFingerprint(squadState, state.gameState);
     state.outdated = outdatedReason(state.fingerprint, next);
@@ -1393,7 +1429,8 @@ async function reactToDeadline() {
       // earlier one). Treat it as an ordinary freshness check.
       const squadState = buildSquadState({
         entry: state.entry, history: state.history, transfers: state.transfers,
-        picks: state.picks, gameState: state.gameState, gw: state.planGw,
+        picks: state.picks, revertPicks: state.revertPicks,
+        gameState: state.gameState, gw: state.planGw,
       });
       const next = inputFingerprint(squadState, state.gameState);
       state.outdated = outdatedReason(state.fingerprint, next) || {

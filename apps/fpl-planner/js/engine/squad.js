@@ -30,6 +30,42 @@ function sortedTransfers(transfers) {
   });
 }
 
+// The gameweeks a Free Hit was played in.
+//
+// A Free Hit team exists for ONE gameweek. At the next deadline FPL hands the
+// squad back exactly as it was at the start of the gameweek the chip was
+// played in, and the transfers made under it are discarded with it. Two things
+// follow, and both are load-bearing here:
+//
+//   1. The frozen picks of a Free Hit gameweek are a RENTED fifteen. They are
+//      the right squad for that gameweek and the wrong squad for every
+//      gameweek after it.
+//   2. The transfers recorded against that gameweek did not persist either, so
+//      they must not be used to reconstruct what the manager paid for the
+//      players he actually owns.
+//
+// Read from `history.chips`, which is the durable record and survives a
+// reload, a sync and a re-import; the caller may also pass the picks payload's
+// own `active_chip`, which is what FPL puts on the frozen gameweek itself.
+export function freeHitGameweeks({ history } = {}) {
+  const chips = (history && history.chips) || [];
+  return new Set(
+    chips.filter(c => c && c.name === 'freehit' && Number.isFinite(c.event)).map(c => c.event)
+  );
+}
+
+// Is this picks payload a Free Hit team, and for which gameweek?
+// `active_chip` is the payload's own statement; `history.chips` is the record
+// that outlives it. Either is enough, because a caller may hand us a stored
+// squad snapshot that kept one and not the other.
+export function freeHitPicksInfo({ picks, history } = {}) {
+  const entryHistory = (picks && picks.entry_history) || null;
+  const event = entryHistory && Number.isFinite(entryHistory.event) ? entryHistory.event : null;
+  const byPayload = !!(picks && picks.active_chip === 'freehit');
+  const byHistory = event !== null && freeHitGameweeks({ history }).has(event);
+  return { isFreeHit: byPayload || byHistory, event };
+}
+
 // The price the manager PAID for each held player.
 //
 // Rule 1: the `element_in_cost` of the most recent transfer that brought him
@@ -38,10 +74,18 @@ function sortedTransfers(transfers) {
 // squad was created, recovered as nowCost - costChangeStart. That is exact for
 // a squad created before GW1, which is every squad that still holds an original
 // pick, and it is the closest the public API gets for one created later.
-export function reconstructPurchasePrices({ picks, transfers, gameState }) {
+export function reconstructPurchasePrices({ picks, transfers, gameState, ignoreGws = null }) {
   const list = pickList(picks) || [];
   const latestIn = new Map();
-  for (const t of sortedTransfers(transfers)) latestIn.set(t.element_in, t.element_in_cost);
+  // `ignoreGws` carries the gameweeks whose transfers were UNDONE, which today
+  // means the Free Hit weeks. Those moves never touched the persistent squad,
+  // so their `element_in_cost` is not what the manager paid for anyone he still
+  // owns. Letting one through re-prices a player the manager happened to rent
+  // as well as own, and every affordability figure downstream inherits it.
+  for (const t of sortedTransfers(transfers)) {
+    if (ignoreGws && ignoreGws.has(t.event)) continue;
+    latestIn.set(t.element_in, t.element_in_cost);
+  }
 
   const out = new Map();
   for (const p of list) {
@@ -167,11 +211,53 @@ export class UnknownPlayerError extends Error {
   }
 }
 
-export function buildSquadState({ entry, history, transfers, picks, gameState, gw, source }) {
+export function buildSquadState({ entry, history, transfers, picks, gameState, gw, source, revertPicks = null }) {
   const rules = gameState.rules;
   const targetGw = gw ?? gameState.nextEvent ?? gameState.currentEvent;
-  const list = pickList(picks);
   const warnings = [];
+
+  // FREE HIT. The frozen picks of a Free Hit gameweek are a team the manager
+  // RENTED for that gameweek; at the next deadline FPL hands his own squad
+  // back. Planning a later gameweek from the rented fifteen recommends selling
+  // players he does not own and keeping players he never had, and every money
+  // figure is the rented team's. Reproduced against the live payloads: the plan
+  // sold two players the manager did not own, kept six more, and `validatePlan`
+  // against the real squad returned eight violations.
+  //
+  // `revertPicks` is the squad the chip reverts TO: the frozen picks of the
+  // gameweek BEFORE the Free Hit, which is what FPL restores. The caller
+  // fetches it because this module cannot. Without it there is no honest squad
+  // to plan from, so the state says so and readiness withholds advice rather
+  // than inventing one.
+  const freeHit = freeHitPicksInfo({ picks, history });
+  const freeHitExpired = freeHit.isFreeHit
+    && freeHit.event !== null
+    && targetGw !== null
+    && targetGw !== undefined
+    && targetGw > freeHit.event;
+  const revertList = freeHitExpired ? pickList(revertPicks) : null;
+  const usingRevert = freeHitExpired && !!revertList && revertList.length > 0;
+  const freeHitUnresolved = freeHitExpired && !usingRevert;
+
+  if (usingRevert) {
+    warnings.push({
+      code: 'free_hit_reverted',
+      message: `You played your Free Hit in gameweek ${freeHit.event}, so that team was only yours for that `
+        + `gameweek. The squad below is the one Fantasy Premier League hands back for gameweek ${targetGw}, `
+        + 'which is what you owned before you played the chip.',
+    });
+  } else if (freeHitUnresolved) {
+    warnings.push({
+      code: 'free_hit_squad',
+      message: `The squad Fantasy Premier League returned is your Free Hit team for gameweek ${freeHit.event}, `
+        + 'which you only had for that gameweek. Your own squad returns at the next deadline and could not be '
+        + 'read, so no transfers or chips are recommended until it loads.',
+    });
+  }
+
+  // Everything below plans from the persistent squad whenever one is in hand.
+  const effectivePicks = usingRevert ? revertPicks : picks;
+  const list = pickList(effectivePicks);
 
   const historyMissing = historyIsMissing(history, gameState) && !!list;
   if (historyMissing) {
@@ -194,6 +280,12 @@ export function buildSquadState({ entry, history, transfers, picks, gameState, g
     // already have been played must never be offered.
     chipsAvailable: historyMissing ? [] : chipsRemaining({ history, rules, gw: targetGw }),
     historyMissing,
+    // Set when the picks in hand are a Free Hit team for an EARLIER gameweek
+    // and the squad it reverts to could not be read. Readiness blocks on it:
+    // the fifteen on screen are not the manager's to transfer.
+    freeHitUnresolved,
+    // The gameweek a Free Hit was played in, when it bears on this state.
+    freeHitGw: freeHitExpired ? freeHit.event : null,
     asOf: gameState.fetchedAt,
     warnings,
   };
@@ -225,14 +317,21 @@ export function buildSquadState({ entry, history, transfers, picks, gameState, g
   const applied = applyPending({ list, pending });
   const effective = applied.picks;
 
-  const purchases = reconstructPurchasePrices({ picks: effective, transfers, gameState });
-  const entryHistory = (picks && picks.entry_history) || {};
+  // The Free Hit week's transfers were undone with the team, so they say
+  // nothing about what the persistent squad cost.
+  const purchases = reconstructPurchasePrices({
+    picks: effective, transfers, gameState, ignoreGws: freeHitGameweeks({ history }),
+  });
+  // Bank and squad value come from whichever picks the squad came FROM. Taking
+  // them from the Free Hit payload while the fifteen came from the reverted one
+  // would pair the rented team's money with the real team's players.
+  const entryHistory = (effectivePicks && effectivePicks.entry_history) || {};
   // The picks payload normally carries the bank and squad value alongside the
   // fifteen. If it ever arrives without them - which cannot be observed before
   // a gameweek has actually been scored - every affordability figure would read
   // as zero and the manager would be told he is broke. Say so instead of
   // planning on it silently.
-  if (!picks || !picks.entry_history) {
+  if (!effectivePicks || !effectivePicks.entry_history) {
     warnings.push({
       code: 'missing_entry_history',
       message: 'Fantasy Premier League returned your squad without its bank and squad value, so money figures may be wrong until it does. Transfers are still checked against your reconstructed selling prices.',

@@ -585,7 +585,19 @@ async function tryRejoinPendingRoom() {
             // the end stage, lobby/picking/playing render the matching
             // stage. Either way, no error.
             clearJoinError();
-            try { await updateDoc(playerRef, { lastSeen: serverTimestamp() }); } catch (_) {}
+            // CLEAR THE DISCONNECT STAMP. `beforeUnloadCleanup` writes
+            // `disconnectedAt` on the way out, and a refresh comes straight
+            // back through this path, which used to write `lastSeen` alone.
+            // The stamp therefore survived the rejoin: 30 seconds later
+            // `RoomState.isPlayerLive` and the rules' `isStalePlayerData` both
+            // called a player who was heart-beating normally stale, the host
+            // swept the doc, and the player was silently dropped mid-game -
+            // absent from the reveal, the Ready vote and the final ranking,
+            // with their score gone. Only `joinPlayer`'s reconnect branch
+            // cleared it, and a URL rejoin never reaches that branch.
+            try {
+                await updateDoc(playerRef, { lastSeen: serverTimestamp(), disconnectedAt: deleteField() });
+            } catch (_) {}
             enterRoom(code);
             return;
         }
@@ -2014,7 +2026,14 @@ function startPresenceAndClock(code) {
     const beat = async () => {
         if (state.roomCode !== code || !state.user) return;
         try {
-            await updateDoc(doc(db, 'triviaRooms', code, 'players', state.user.uid), { lastSeen: serverTimestamp() });
+            // `disconnectedAt` is cleared on every beat, not only on rejoin.
+            // A player whose heart is beating is by definition not
+            // disconnected, and this makes a dropped or racing rejoin write
+            // self-healing rather than fatal 30 seconds later.
+            await updateDoc(doc(db, 'triviaRooms', code, 'players', state.user.uid), {
+                lastSeen: serverTimestamp(),
+                disconnectedAt: deleteField(),
+            });
         } catch (_) { /* swept or offline; the next beat retries */ }
     };
     state.heartbeatTimer = setInterval(beat, Config.PRESENCE_HEARTBEAT_MS);
@@ -6207,14 +6226,27 @@ async function renderEndStage(isHost) {
     // Write score / wins / games to profile (once per game). The
     // Firestore field is still named `xp` for backward-compat with
     // existing user docs - UI labels are "score" everywhere now.
+    // IDEMPOTENCY. `endKey` names this game: the room plus the round, so a
+    // rematch is a new game and a reload is not.
+    //
+    // `endStageWrittenForRoom` is only a cheap re-entrancy guard for THIS
+    // page: it stops a second snapshot callback racing the first while the
+    // write is in flight. It cannot survive a reload, and the end stage is
+    // exactly where reloads happen (a pull-to-refresh on a phone, or reopening
+    // the `?postMatch=` link the app writes into the URL itself). Every reload
+    // therefore counted the same game again: profile, public leaderboard row,
+    // the room's session H2H and the lifetime pair all incremented, so one
+    // game read as two, then three. The durable guard is `lastCountedGame`,
+    // persisted next to each counter and checked inside the same transaction
+    // that increments it.
     const endKey = `${state.roomCode}:${(state.roomData && state.roomData.round) || 1}`;
     if (state.user && me && endStageWrittenForRoom !== endKey) {
         endStageWrittenForRoom = endKey;
-        await writeEndOfGameStats(me, winner && winner.uid === me.uid, ranked.length);
+        await writeEndOfGameStats(me, winner && winner.uid === me.uid, ranked.length, endKey);
     }
 }
 
-async function writeEndOfGameStats(me, didWin, playerCount) {
+async function writeEndOfGameStats(me, didWin, playerCount, endKey) {
     if (!state.user) return;
     // Guests have no persistent profile or leaderboard slot - the end-
     // of-game writes would all fail at the rules layer, and we don't
@@ -6240,9 +6272,16 @@ async function writeEndOfGameStats(me, didWin, playerCount) {
         const lbRef = doc(db, 'triviaLeaderboard', state.user.uid);
         // Firestore key stays `xp` for backward-compat with existing docs;
         // UI labels say "score" everywhere.
-        await runTransaction(db, async (tx) => {
+        // Returns false when this game was already counted, so the writes that
+        // follow are skipped too rather than each needing its own reload test.
+        const applied = await runTransaction(db, async (tx) => {
             const snap = await tx.get(userRef);
             const tp = (snap.exists() && snap.data().triviaProfile) || {};
+            // The durable guard. Read INSIDE the transaction so two tabs, two
+            // devices, or a reload racing the original write cannot both pass
+            // it: Firestore re-runs the transaction on contention and the
+            // loser sees the winner's marker.
+            if (endKey && tp.lastCountedGame === endKey) return false;
             const next = {
                 xp: (tp.xp || 0) + delta.scoreDelta,
                 gamesPlayed: (tp.gamesPlayed || 0) + delta.gamesDelta,
@@ -6250,7 +6289,14 @@ async function writeEndOfGameStats(me, didWin, playerCount) {
                 lifetimeBullseyes: (tp.lifetimeBullseyes || 0) + delta.bullseyes,
                 bestRoundScore: Math.max(tp.bestRoundScore || 0, delta.bestRound)
             };
-            tx.set(userRef, { triviaProfile: Object.assign({}, next, { lastPlayedAt: serverTimestamp() }) }, { merge: true });
+            tx.set(userRef, {
+                triviaProfile: Object.assign({}, next, {
+                    lastPlayedAt: serverTimestamp(),
+                    // Stamped in the SAME write as the counters it guards, so
+                    // the marker cannot land without them or they without it.
+                    lastCountedGame: endKey || null,
+                }),
+            }, { merge: true });
             if (!isSolo) {
                 // Denormalized leaderboard write - multiplayer + daily only,
                 // from the SAME numbers the profile just received.
@@ -6265,7 +6311,12 @@ async function writeEndOfGameStats(me, didWin, playerCount) {
                     lastPlayedAt: serverTimestamp()
                 }, { merge: true });
             }
+            return true;
         });
+
+        // Already counted: a reload of the recap, or the `?postMatch=` link
+        // opened again. Nothing below may run either.
+        if (!applied) return;
 
         // Daily-challenge leaderboard write. Only the player's BEST score
         // for the day stays - we read the existing doc and only overwrite
@@ -6273,7 +6324,7 @@ async function writeEndOfGameStats(me, didWin, playerCount) {
         await maybeWriteDailyLeaderboard(me);
 
         // Pairwise head-to-head - multiplayer only, lower-uid side writes.
-        await maybeWriteH2HPairs();
+        await maybeWriteH2HPairs(endKey);
     } catch (err) {
         console.warn('End-of-game profile write failed:', err);
     }
@@ -6373,7 +6424,7 @@ function h2hPairKey(uidA, uidB) {
  * Each pair doc carries the displayed names so the H2H view can
  * render without re-fetching the leaderboard.
  */
-async function maybeWriteH2HPairs() {
+async function maybeWriteH2HPairs(endKey) {
     if (!state.user || !state.roomData || !state.roomCode) return;
     // Guest hosts: still update sessionMatchCount on the room doc (it's
     // ephemeral and helps the in-room session H2H render), but skip
@@ -6392,13 +6443,29 @@ async function maybeWriteH2HPairs() {
         const sortedByScore = players.slice().sort((a, b) => (b.score || 0) - (a.score || 0));
         const topScore = sortedByScore[0] ? (sortedByScore[0].score || 0) : 0;
         const winners = sortedByScore.filter((p) => (p.score || 0) === topScore);
-        const sessionUpdate = { sessionMatchCount: (state.roomData.sessionMatchCount || 0) + 1 };
-        if (winners.length === 1 && topScore > 0) {
-            const prevWins = (state.roomData.sessionWinsByUid && state.roomData.sessionWinsByUid[winners[0].uid]) || 0;
-            sessionUpdate[`sessionWinsByUid.${winners[0].uid}`] = prevWins + 1;
-        }
         try {
-            await updateDoc(doc(db, 'triviaRooms', state.roomCode), sessionUpdate);
+            // In a TRANSACTION, and guarded by the same game key. This was a
+            // read-modify-write off `state.roomData`, so a host who reloaded
+            // the recap incremented the room's match count again, and the
+            // in-room session H2H panel showed a rematch that never happened.
+            // The counters are read from the doc rather than from local state
+            // for the same reason.
+            const roomRef = doc(db, 'triviaRooms', state.roomCode);
+            await runTransaction(db, async (tx) => {
+                const snap = await tx.get(roomRef);
+                if (!snap.exists()) return;
+                const cur = snap.data() || {};
+                if (endKey && cur.sessionCountedGame === endKey) return;
+                const update = {
+                    sessionMatchCount: (cur.sessionMatchCount || 0) + 1,
+                    sessionCountedGame: endKey || null,
+                };
+                if (winners.length === 1 && topScore > 0) {
+                    const prevWins = (cur.sessionWinsByUid && cur.sessionWinsByUid[winners[0].uid]) || 0;
+                    update[`sessionWinsByUid.${winners[0].uid}`] = prevWins + 1;
+                }
+                tx.update(roomRef, update);
+            });
         } catch (err) {
             console.warn('Session H2H write failed:', err);
         }
@@ -6431,6 +6498,9 @@ async function maybeWriteH2HPairs() {
                 const ref = doc(db, 'triviaH2H', key);
                 const snap = await tx.get(ref);
                 const cur = snap.exists() ? snap.data() : {};
+                // Same durable guard: a reload must not add a second game to
+                // a lifetime record two people read.
+                if (endKey && cur.lastCountedGame === endKey) return;
                 const winsA = (cur.winsA || 0) + (aScore > bScore ? 1 : 0);
                 const winsB = (cur.winsB || 0) + (bScore > aScore ? 1 : 0);
                 const ties = (cur.ties || 0) + (aScore === bScore ? 1 : 0);
@@ -6445,6 +6515,7 @@ async function maybeWriteH2HPairs() {
                     winsA, winsB, ties,
                     gamesPlayed: (cur.gamesPlayed || 0) + 1,
                     lastPlayedAt: serverTimestamp(),
+                    lastCountedGame: endKey || null,
                     gameTypes: { ...prevGameTypes, [gameType]: prevTypeCount + 1 }
                 }, { merge: true });
             });
