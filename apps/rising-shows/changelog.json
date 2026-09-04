@@ -1,6 +1,214 @@
 {
   "updates": [
     {
+      "builtAt": "2026-09-04T10:30:30.570Z",
+      "totals": {
+        "seasons": 66612,
+        "delta": 13
+      },
+      "shapeCounts": {
+        "rebound": 10174,
+        "rising": 2594,
+        "slow-burn": 4413,
+        "big-finale": 12145,
+        "u-shaped": 3090,
+        "rollercoaster": 14146,
+        "mid-peak": 4629,
+        "saved-best-for-last": 1506,
+        "front-loaded": 3510,
+        "declining": 1884,
+        "bad-finale": 4650,
+        "consistent": 2627,
+        "shape-drift": 1576
+      },
+      "shapeDeltas": {
+        "rebound": 17,
+        "rising": -1,
+        "slow-burn": 3,
+        "big-finale": 3,
+        "u-shaped": -2,
+        "rollercoaster": 11,
+        "saved-best-for-last": -1,
+        "front-loaded": 7,
+        "bad-finale": 3,
+        "consistent": 1,
+        "shape-drift": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt19358400",
+          "title": "Erotic Short Stories",
+          "season": 1,
+          "seasonYear": 1999
+        },
+        {
+          "seriesId": "tt0198088",
+          "title": "Cilla's Comedy Six",
+          "season": 1,
+          "seasonYear": 1975
+        },
+        {
+          "seriesId": "tt1159863",
+          "title": "Magical Girl Lyrical Nanoha StrikerS",
+          "season": 3,
+          "seasonYear": 2007
+        },
+        {
+          "seriesId": "tt14743620",
+          "title": "Object Invasion",
+          "season": 1,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt0465809",
+          "title": "Faites entrer l'accusé",
+          "season": 26,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt2850332",
+          "title": "Brother vs. Brother",
+          "season": 7,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt16533392",
+          "title": "Nonkels",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32276608",
+          "title": "Autemials' Videopacks",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt32321928",
+          "title": "Betty La Fea: The Story Continues",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39204850",
+          "title": "Dead Man's Dog",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38453829",
+          "title": "So Far So Good",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43490607",
+          "title": "Aeronautica Imperialis",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43665893",
+          "title": "Edilgen Aticilar",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt33145195",
+          "title": "Margarita",
+          "season": 3,
+          "from": 4.4,
+          "to": 5.74,
+          "delta": 1.34
+        },
+        {
+          "seriesId": "tt33312074",
+          "title": "She, Damned Soul",
+          "season": 1,
+          "from": 7.21,
+          "to": 6.46,
+          "delta": -0.75
+        },
+        {
+          "seriesId": "tt13183442",
+          "title": "Doomsday Brothers",
+          "season": 1,
+          "from": 5.63,
+          "to": 6.3,
+          "delta": 0.67
+        },
+        {
+          "seriesId": "tt44250295",
+          "title": "Sigge får inte ligga",
+          "season": 1,
+          "from": 7.88,
+          "to": 7.33,
+          "delta": -0.55
+        },
+        {
+          "seriesId": "tt38876221",
+          "title": "Dalliance",
+          "season": 1,
+          "from": 7.46,
+          "to": 8,
+          "delta": 0.54
+        },
+        {
+          "seriesId": "tt27618426",
+          "title": "Don't Toy with Me, Miss Nagatoro 2nd Attack Mini Anime",
+          "season": 1,
+          "from": 8.2,
+          "to": 8.66,
+          "delta": 0.46
+        },
+        {
+          "seriesId": "tt39044683",
+          "title": "Moon Shadow",
+          "season": 1,
+          "from": 8.8,
+          "to": 8.4,
+          "delta": -0.4
+        },
+        {
+          "seriesId": "tt36956707",
+          "title": "Jack the Ripper: Written in Blood",
+          "season": 1,
+          "from": 6.43,
+          "to": 6.07,
+          "delta": -0.36
+        },
+        {
+          "seriesId": "tt36912840",
+          "title": "Devika & Danny",
+          "season": 1,
+          "from": 8.61,
+          "to": 8.26,
+          "delta": -0.35
+        },
+        {
+          "seriesId": "tt37053085",
+          "title": "All the Truth in My Lies",
+          "season": 1,
+          "from": 7.42,
+          "to": 7.08,
+          "delta": -0.34
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20937,
+        "avgRating": 1180,
+        "shapes": 192,
+        "episodeCount": 86,
+        "seriesRating": 273,
+        "poster": 6,
+        "overview": 5,
+        "providers": 1
+      }
+    },
+    {
       "builtAt": "2026-09-03T10:37:39.633Z",
       "totals": {
         "seasons": 66599,
@@ -7407,307 +7615,6 @@
         "shapes": 218,
         "episodeCount": 92,
         "poster": 2
-      }
-    },
-    {
-      "builtAt": "2026-07-31T09:06:37.044Z",
-      "totals": {
-        "seasons": 66092,
-        "delta": 26
-      },
-      "shapeCounts": {
-        "mid-peak": 4624,
-        "rebound": 10072,
-        "rising": 2917,
-        "slow-burn": 4374,
-        "big-finale": 12077,
-        "u-shaped": 3092,
-        "rollercoaster": 14045,
-        "saved-best-for-last": 1542,
-        "front-loaded": 3470,
-        "declining": 1869,
-        "bad-finale": 4648,
-        "consistent": 2634,
-        "shape-drift": 1639
-      },
-      "shapeDeltas": {
-        "mid-peak": 4,
-        "rebound": 9,
-        "rising": -9,
-        "slow-burn": 5,
-        "big-finale": 14,
-        "u-shaped": 3,
-        "rollercoaster": 2,
-        "saved-best-for-last": 1,
-        "front-loaded": 6,
-        "declining": -8,
-        "bad-finale": -3,
-        "consistent": 2,
-        "shape-drift": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt26450613",
-          "title": "A Shop for Killers",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0106053",
-          "title": "Late Show with David Letterman",
-          "season": 14,
-          "seasonYear": 2006
-        },
-        {
-          "seriesId": "tt0129666",
-          "title": "Bullpitt!",
-          "season": 2,
-          "seasonYear": 1998
-        },
-        {
-          "seriesId": "tt0129666",
-          "title": "Bullpitt!",
-          "season": 1,
-          "seasonYear": 1997
-        },
-        {
-          "seriesId": "tt43680755",
-          "title": "The Idaho Murders: College Nightmare",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt17066492",
-          "title": "La sposa",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt36884306",
-          "title": "Nelly & Ashanti: We Belong Together",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt0103357",
-          "title": "Bassie & Adriaan",
-          "season": 10,
-          "seasonYear": 1995
-        },
-        {
-          "seriesId": "tt37032234",
-          "title": "Liam and Michael",
-          "season": 5,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0983514",
-          "title": "Ramsay's Kitchen Nightmares USA",
-          "season": 10,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1430047",
-          "title": "Joseph Rosendo's Travelscope",
-          "season": 9,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt7939800",
-          "title": "The Undeclared War",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36093729",
-          "title": "Commandant Saint-Barth",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt39378708",
-          "title": "Love Destiny",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0423652",
-          "title": "The First 48",
-          "season": 26,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt3868860",
-          "title": "Married at First Sight",
-          "season": 20,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt12996868",
-          "title": "Zoom Shorts",
-          "season": 2,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt12996868",
-          "title": "Zoom Shorts",
-          "season": 4,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt1845930",
-          "title": "Anders och Måns",
-          "season": 1,
-          "seasonYear": 2003
-        },
-        {
-          "seriesId": "tt20912854",
-          "title": "Dirty Laundry",
-          "season": 2,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt35198307",
-          "title": "Minegate - The Minecraft Series",
-          "season": 6,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt37399646",
-          "title": "Sew-ey's No Armor Hardcore",
-          "season": 2,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt37399646",
-          "title": "Sew-ey's No Armor Hardcore",
-          "season": 3,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt42132738",
-          "title": "Must Date the Playboy!",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt42416281",
-          "title": "The Frenchman",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43106111",
-          "title": "Toonout",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43643879",
-          "title": "Unacceptable",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt1347631",
-          "title": "Confessions of a Teen Idol",
-          "season": 1,
-          "seasonYear": 2009
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt37094589",
-          "title": "Ms. X",
-          "season": 1,
-          "from": 8.45,
-          "to": 6.68,
-          "delta": -1.77
-        },
-        {
-          "seriesId": "tt1356878",
-          "title": "Hetalia: Axis Powers",
-          "season": 3,
-          "from": 8.74,
-          "to": 7.44,
-          "delta": -1.3
-        },
-        {
-          "seriesId": "tt1356878",
-          "title": "Hetalia: Axis Powers",
-          "season": 4,
-          "from": 8.6,
-          "to": 7.48,
-          "delta": -1.12
-        },
-        {
-          "seriesId": "tt0845676",
-          "title": "Ekhaya: A Family Chronicle",
-          "season": 1,
-          "from": 8.75,
-          "to": 7.85,
-          "delta": -0.9
-        },
-        {
-          "seriesId": "tt7122766",
-          "title": "In the Vault",
-          "season": 1,
-          "from": 7.61,
-          "to": 8.48,
-          "delta": 0.87
-        },
-        {
-          "seriesId": "tt10268080",
-          "title": "My Perfect Landing",
-          "season": 1,
-          "from": 4.93,
-          "to": 5.68,
-          "delta": 0.75
-        },
-        {
-          "seriesId": "tt7305166",
-          "title": "The Opposition with Jordan Klepper",
-          "season": 1,
-          "from": 7.54,
-          "to": 6.79,
-          "delta": -0.75
-        },
-        {
-          "seriesId": "tt6717892",
-          "title": "Love Advent",
-          "season": 7,
-          "from": 5.6,
-          "to": 6.34,
-          "delta": 0.74
-        },
-        {
-          "seriesId": "tt1356878",
-          "title": "Hetalia: Axis Powers",
-          "season": 2,
-          "from": 8.42,
-          "to": 7.73,
-          "delta": -0.69
-        },
-        {
-          "seriesId": "tt41278592",
-          "title": "Red River",
-          "season": 1,
-          "from": 5.97,
-          "to": 5.28,
-          "delta": -0.69
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 20432,
-        "avgRating": 1230,
-        "shapes": 231,
-        "seriesRating": 311,
-        "overview": 9,
-        "episodeCount": 127,
-        "poster": 9,
-        "providers": 2
       }
     }
   ]
