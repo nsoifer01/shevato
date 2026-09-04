@@ -46,6 +46,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          # BOT_PAT when it exists, GITHUB_TOKEN otherwise, so this workflow
+          # behaves identically before and after the secret is added. The
+          # credential matters because of what it does at the END of the job:
+          # GitHub deliberately does not start workflow runs from
+          # GITHUB_TOKEN-driven events, so a bot PR opened with it gets no CI.
+          # Events from a PAT do start runs. See the "Open and merge PR" step.
+          token: ${{ secrets.BOT_PAT || secrets.GITHUB_TOKEN }}
+          persist-credentials: true
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -319,18 +328,39 @@ jobs:
       # one check nothing else in the repo can perform (the dataset is
       # gitignored, so a runner never has it).
       #
-      # A fine-grained PAT would additionally make the bot PR run the standard
-      # workflows, and remains an owner action outside this repo: create one on
-      # nsoifer01/shevato with Contents: write and Pull requests: write, save it
-      # as an Actions secret, and swap GH_TOKEN and the `git push` credential
-      # here over to it. Worth knowing before doing it: those runs would STILL
-      # skip every data-dependent rising-shows check, because the runner has no
-      # dataset. They would add coverage of the rest of the estate against the
-      # bot's commit, not coverage of the data.
+      # THE PAT PATH IS WIRED AND WAITING FOR ITS SECRET. This step and the
+      # checkout both read `secrets.BOT_PAT || secrets.GITHUB_TOKEN`, so the
+      # day the secret exists the bot PR starts getting real runs and this step
+      # starts WAITING for them; until then nothing changes. One owner action
+      # is still required and cannot be automated, because GitHub has no API
+      # for creating a personal access token at all (web UI only):
+      #
+      #   1. github.com/settings/personal-access-tokens/new
+      #      Resource owner: nsoifer01. Repository access: only
+      #      nsoifer01/shevato. Repository permissions: Contents = Read and
+      #      write, Pull requests = Read and write. Nothing else. Expiry is a
+      #      judgement call: a shorter one is safer and the refresh starts
+      #      failing loudly when it lapses, which is the correct failure.
+      #   2. gh secret set BOT_PAT --repo nsoifer01/shevato
+      #      (or Settings > Secrets and variables > Actions > New secret)
+      #
+      # Two things to know before doing it. The runs WILL still skip every
+      # data-dependent rising-shows check, because the runner has no dataset:
+      # what they add is coverage of the rest of the estate against the files
+      # the bot commits, which is the changelog and the exports. The data
+      # itself is covered by the validate-dataset step above, and that is
+      # deliberately where it belongs. And a failing check now leaves the PR
+      # OPEN: the data is already on the release, but nothing deploys until a
+      # merge, so the site keeps serving the previous build until someone
+      # looks. That is the intended failure mode.
       - name: Open and merge PR if derived files changed
         if: steps.change.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.BOT_PAT || secrets.GITHUB_TOKEN }}
+          # Empty until the owner adds the secret. Everything that changes
+          # behaviour keys off this one flag, so the before and after are easy
+          # to reason about.
+          HAVE_PAT: ${{ secrets.BOT_PAT != '' }}
         run: |
           set -e
           if git diff --quiet \
@@ -354,4 +384,47 @@ jobs:
             --head "$BRANCH" \
             --title "chore(rising-shows): refresh data $DATE" \
             --body "Automated refresh of IMDb + TMDB data. Data assets updated on the rising-shows-data release."
+
+          if [ "$HAVE_PAT" != "true" ]; then
+            # No PAT: no run will ever start against this PR, so there is
+            # nothing to wait for and waiting would hang the job until its
+            # timeout. Merge immediately, exactly as before. The refresh's own
+            # in-job checks (the app suites, the static invariants and
+            # validate-dataset.js against the real data) are the guard.
+            echo "BOT_PAT is not set: merging without PR checks (see the note above)."
+            gh pr merge "$BRANCH" --merge --delete-branch
+            exit 0
+          fi
+
+          # With a PAT the runs DO start, so wait for them. A PAT that only
+          # made the checks appear would report after the merge had already
+          # happened, which is a red mark on history rather than a gate.
+          #
+          # Checks take a moment to be registered against a new PR, so poll for
+          # them to appear before judging them; "none yet" is not "none".
+          echo "BOT_PAT is set: waiting for this PR's checks before merging."
+          for i in $(seq 1 20); do
+            if [ -n "$(gh pr checks "$BRANCH" --json name --jq '.[].name' 2>/dev/null)" ]; then
+              break
+            fi
+            echo "  no checks registered yet (${i}/20), waiting 15s"
+            sleep 15
+          done
+
+          if [ -z "$(gh pr checks "$BRANCH" --json name --jq '.[].name' 2>/dev/null)" ]; then
+            echo "::error::BOT_PAT is set but no checks appeared on $BRANCH after 5 minutes."
+            echo "The PR is left OPEN with the data already on the release; nothing deploys until it is merged."
+            exit 1
+          fi
+
+          # --watch blocks until every check settles and exits non-zero if any
+          # of them failed.
+          if ! gh pr checks "$BRANCH" --watch --interval 30; then
+            echo "::error::CI failed on $BRANCH, so it was NOT merged."
+            echo "The refreshed data is already on the rising-shows-data release, but nothing deploys"
+            echo "until this PR merges, so the site keeps serving the previous build. Fix and merge by hand."
+            exit 1
+          fi
+
+          echo "Checks passed; merging."
           gh pr merge "$BRANCH" --merge --delete-branch

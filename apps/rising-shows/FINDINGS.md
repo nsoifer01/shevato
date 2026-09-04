@@ -609,9 +609,32 @@ There is no workflow file issue. Do not go looking for one.
 It also cannot be filtered away from inside the workflows, and the near-miss is
 worth recording: `on.pull_request.branches-ignore` matches the PR's BASE
 branch, which is `master` here, not its head. Excluding `bot/**` there looks
-right, reads right in review, and does nothing. A fine-grained PAT is the only
-thing that makes those runs execute, and it is an owner action outside the
-repo; note that even then they would skip every data-dependent check, so it
-would add coverage of the rest of the estate against the bot's commit, not
-coverage of the data.
+right, reads right in review, and does nothing.
+
+**The PAT path is wired and waiting for its secret.** The checkout and the
+merge step both read `secrets.BOT_PAT || secrets.GITHUB_TOKEN`, so behaviour is
+identical until the secret exists and changes the day it does. One owner action
+remains and cannot be automated: GitHub has no API for creating a personal
+access token, web UI only. Create a fine-grained token on nsoifer01/shevato
+with Contents and Pull requests both Read and write, nothing else, then
+`gh secret set BOT_PAT`.
+
+Two things are worth knowing before adding it.
+
+**A PAT alone would not have been a gate.** The merge used to happen about
+three seconds after the PR was created, so runs starting at last would have
+reported *after* the merge: a red mark on history rather than something that
+stops a bad commit. The step now WAITS (`gh pr checks --watch`) whenever the
+PAT is present, and merges only on success. With no PAT it merges immediately
+as before, because waiting for runs that can never start would hang the job
+until its 240-minute timeout.
+
+**What those runs would and would not cover.** They still skip every
+data-dependent rising-shows check, because the runner has no dataset. What they
+add is the rest of the estate against the files the bot actually commits, the
+changelog and the exports. The data itself is covered by the validate-dataset
+step, which is the right place for it. On failure the PR is left OPEN: the data
+is already on the release, but nothing deploys until a merge, so the site keeps
+serving the previous build until someone looks. That is the intended failure
+mode, not an oversight.
 
