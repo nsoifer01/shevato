@@ -202,16 +202,35 @@ export async function run({ base, cdpPort }) {
     t(`nav: "${label}" navigates`, clicked && pathNow.includes(label), `-> ${pathNow}`);
   }
 
-  // --- contact form --------------------------------------------------------
+  // --- contact page --------------------------------------------------------
+  // These two checks used to look for `document.querySelector('form')` and
+  // call whatever they found "the contact form". contact.html has no form at
+  // all; what they were actually inspecting is the SIGN-IN form that main.js
+  // injects into every page. So they passed while protecting nothing, and
+  // would have kept passing if the contact page went blank. Scope to the page
+  // body, assert what the page really offers, and label the fields of the one
+  // form that IS there.
   await goto(s, `${base}/contact.html`, { settle: 2200 });
   const cf = await evaluate(s, `(()=>{
-    const f=document.querySelector('form'); if(!f) return {none:true};
-    const fields=[...f.querySelectorAll('input,textarea,select')].filter(x=>x.type!=='hidden');
-    return { count:fields.length,
-      labelled: fields.every(x=> !!f.querySelector('label[for="'+x.id+'"]')
-        || !!x.getAttribute('aria-label') || !!x.closest('label') || !!x.placeholder) };})()`);
-  t('contact: form present', !cf.none);
-  if (!cf.none) t('contact: all fields labelled', cf.labelled, `${cf.count} fields`);
+    const main = document.querySelector('#main, main, #wrapper') || document.body;
+    const pageForms = [...main.querySelectorAll('form')].filter(f => !f.closest('#auth-modal'));
+    const contactLinks = [...main.querySelectorAll('a[href^="mailto:"], a[href^="tel:"]')]
+      .map(a => a.getAttribute('href'));
+    const authFields = [...document.querySelectorAll('#auth-modal input')].filter(x => x.type !== 'hidden');
+    return {
+      pageForms: pageForms.length,
+      contactLinks,
+      authFieldCount: authFields.length,
+      authLabelled: authFields.every(x =>
+        !!document.querySelector('label[for="' + x.id + '"]')
+        || !!x.getAttribute('aria-label') || !!x.closest('label')),
+    };})()`);
+  t('contact: the page offers a way to make contact',
+    cf.contactLinks.length > 0, cf.contactLinks.join(', '));
+  t('contact: the page itself carries no form (contact is by mail and phone)',
+    cf.pageForms === 0, `${cf.pageForms} page-level form(s)`);
+  t('auth modal: every field is labelled',
+    cf.authFieldCount > 0 && cf.authLabelled, `${cf.authFieldCount} fields`);
 
   // --- moadon-alef language switcher ----------------------------------------
   // Real markup: .lang-btn[data-lang] buttons; assets/js/language-switcher.js

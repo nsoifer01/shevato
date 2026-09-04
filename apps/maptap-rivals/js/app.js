@@ -4032,19 +4032,23 @@
   function buildHeatmapWeeks(firstGameISO, today) {
     const maxStartISO = addDaysISO(today, -(18 * 30 + 15)); // ~18 months back
     const startCandidateISO = firstGameISO > maxStartISO ? firstGameISO : maxStartISO;
-    const snapDate = new Date(startCandidateISO + 'T00:00:00');
-    snapDate.setDate(snapDate.getDate() - snapDate.getDay()); // rewind to Sunday
-    const startISO = localISO(snapDate);
+    // Snap back to Sunday with the timezone-free helper. This used to build a
+    // local Date and walk it with setDate(), which breaks in every zone whose
+    // DST change happens AT midnight (America/Santiago, America/Havana,
+    // Asia/Beirut, Atlantic/Azores, Africa/Cairo): the cursor lands on 01:00
+    // on the spring-forward day and stays an hour ahead for the rest of the
+    // year, so `cur <= end` is false on the last day and TODAY never gets a
+    // cell. The existing timezone tests all pin zones whose DST changes at
+    // 02:00 or 03:00, which is why they pass.
+    const startISO = addDaysISO(startCandidateISO, -dayOfWeekISO(startCandidateISO));
 
     const weeks = [];
     let week = [];
-    const cur = new Date(startISO + 'T00:00:00');
-    const end = new Date(today + 'T00:00:00');
-    while (cur <= end) {
-      const iso = localISO(cur);
-      if (cur.getDay() === 0 && week.length > 0) { weeks.push(week); week = []; }
+    let iso = startISO;
+    while (iso <= today) {
+      if (dayOfWeekISO(iso) === 0 && week.length > 0) { weeks.push(week); week = []; }
       week.push(iso);
-      cur.setDate(cur.getDate() + 1);
+      iso = addDaysISO(iso, 1);
     }
     if (week.length > 0) weeks.push(week);
     return { weeks, startISO };

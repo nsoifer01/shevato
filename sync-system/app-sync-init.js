@@ -9,6 +9,7 @@
 
 import {
   startStorageSync,
+  stopSync,
   stopAllSyncs,
   getSyncStatus,
   getGlobalSyncStatus,
@@ -171,12 +172,20 @@ const GLOBAL_SYNC_CONFIG = {
 export async function initAppSync() {
   // Persistence is configured at initializeFirestore() time in
   // firebase-config.js (persistentLocalCache + persistentMultipleTabManager),
-  // so there is nothing to enable here — the import this function used to
+  // so there is nothing to enable here: the import this function used to
   // make has been retired along with the no-op firebase-persistence shim.
-
-  // Stop any existing syncs
-  stopAllSyncs();
-  activeSyncs = [];
+  //
+  // DO NOT stopAllSyncs() here. This function runs on every delivery of the
+  // auth state, and firebase-config.js re-fans its listeners whenever ANY
+  // other shevato tab finishes loading a page, so a user with two tabs open
+  // re-enters this function constantly. Tearing every namespace down first
+  // defeated the same-user shortcut in _startSyncForUser (it can only skip
+  // the rebuild when the sync is still there to be kept), and worse,
+  // stopSync() clears the debounced write timer and deletes the pending
+  // queue: an edit made in the last 500 ms was dropped on the floor, and the
+  // older remote copy then overwrote it in localStorage and on screen.
+  // Restarting is now idempotent, and only namespaces this page no longer
+  // wants are stopped.
 
   // Determine which app we're in based on URL
   const currentPath = window.location.pathname;
@@ -206,28 +215,36 @@ export async function initAppSync() {
   // static HTML), so the warm-cache argument doesn't hold — those listeners
   // were just extra Firestore reads, extra bandwidth, and an extra race
   // against the UI on every gym/football/mario-kart page load.
+  const wanted = [];
   if (currentApp && APP_SYNC_CONFIG[currentApp]) {
-    const config = APP_SYNC_CONFIG[currentApp];
+    wanted.push({ app: currentApp, config: APP_SYNC_CONFIG[currentApp] });
+  }
+  // Sync global/shared preferences if on any app page
+  if (currentApp) {
+    wanted.push({ app: 'global', config: GLOBAL_SYNC_CONFIG });
+  }
 
-    const sync = startStorageSync({
+  // Stop only what this page no longer wants (in practice nothing, since the
+  // app is decided by the URL and the URL does not change without a reload;
+  // it matters after a sign-out/sign-in as a different user).
+  const wantedNamespaces = new Set(wanted.map((w) => w.config.namespace));
+  for (const entry of activeSyncs) {
+    const ns = entry.sync?.namespace || entry.namespace;
+    if (ns && !wantedNamespaces.has(ns)) stopSync(ns);
+  }
+
+  activeSyncs = wanted.map(({ app, config }) => ({
+    app,
+    namespace: config.namespace,
+    // Idempotent: _startSyncForUser returns the existing handle untouched
+    // when the user, namespace and key set all match, so a repeat call
+    // neither re-attaches the listener nor disturbs a pending write.
+    sync: startStorageSync({
       namespace: config.namespace,
       keys: config.keys,
       useFirestore: true
-    });
-
-    activeSyncs.push({ app: currentApp, sync });
-  }
-
-  // Sync global/shared preferences if on any app page
-  if (currentApp) {
-    const globalSync = startStorageSync({
-      namespace: GLOBAL_SYNC_CONFIG.namespace,
-      keys: GLOBAL_SYNC_CONFIG.keys,
-      useFirestore: true
-    });
-
-    activeSyncs.push({ app: 'global', sync: globalSync });
-  }
+    })
+  }));
 
   return activeSyncs.length;
 }

@@ -193,3 +193,40 @@ rendered zero rows under "Showing 201-6 of 6".
 string like `a(); b()` is a silent syntax error (an eval error object comes
 back and the page does not change). Wrap in an IIFE. Three of the 2026-08-22
 audit's first-pass mobile/keyboard probes were invalidated by this.
+
+## Edit and delete must re-resolve the row, not trust the captured object
+
+`games` is REPLACED wholesale whenever storage is re-read: a second tab
+writing, a remote sync delivery, the 10-minute auto-backup, the 1 s
+`syncSystemReady` refresh. Both dialogs captured the row OBJECT when they
+opened and looked it up by identity at commit time.
+
+- `editGame` did `games.indexOf(game)` and its `if (gameIndex !== -1)` had no
+  else, so Save silently did nothing while the dialog closed as if it worked.
+- `deleteGame` did `games.filter(m => m !== game)`, which removed nothing, yet
+  still pushed an undo entry and still toasted "Game deleted". The row stayed
+  on screen, and pressing Undo then ADDED it back, giving two rows with one id.
+
+Both now re-resolve by id at commit time and say so when the row is gone. The
+regression tests replace the whole array between opening the dialog and saving.
+
+## `saveGames()` results have to be checked
+
+`saveGames` wrote `localStorage.setItem` unguarded, so a quota error escaped
+mid-handler with the in-memory list already changed and nothing shown to the
+user. It now catches and reports. Separately, `submitSidebarGame` ignored the
+return value entirely, so adding a game while the stored blob was unreadable
+produced the error toast AND "Game added successfully!" one after the other,
+and the game was gone on reload; it now rolls the push back and stops.
+
+## Dialogs and toasts had no semantics
+
+The focus trap and the Escape handler were correct, but nothing told assistive
+technology a dialog had opened: `createModal` built `div.modal-overlay >
+div.modal-dialog` with no role, no `aria-modal` and no accessible name, and the
+toasts had no live region. This was the only app in the repo with zero
+`aria-modal` attributes. `createModal` now sets `role` (`alertdialog` for
+`createErrorModal`), `aria-modal` and `aria-labelledby` against a per-dialog
+title id; toasts are `role=status`/`aria-live=polite`, or `alert`/`assertive`
+for errors; `#iconSelectorModal` carries the same attributes and its close
+button has a label.

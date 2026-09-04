@@ -7,9 +7,21 @@
 // erases the other's reservation. Serial requests never see it; an abuser who
 // simply fires requests CONCURRENTLY walks through every cap, including the
 // monthly one that bounds real money. Netlify Blobs supports conditional
-// writes (@netlify/blobs >= 8.1: onlyIfMatch / onlyIfNew), which turns the
-// reservation into an atomic claim: the write lands only if the blob is
-// unchanged since it was read, and a lost race retries against fresh counters.
+// writes (onlyIfMatch / onlyIfNew), which turns the reservation into an
+// atomic claim: the write lands only if the blob is unchanged since it was
+// read, and a lost race retries against fresh counters.
+//
+// THE VERSION IS LOAD-BEARING. `setJSON` only forwards the condition from
+// @netlify/blobs 10.7.x; 8.x has no conditional write at all and 10.0-10.1
+// accept the option on `setJSON` and drop it on the wire (only `set()`
+// honours it there). On any of those this file is a plain read-modify-write
+// with extra steps, and it says nothing while every reservation races: 50
+// concurrent writers were all told "reserved" against one slot. The package
+// was pinned at ^8.1.0 for the 25 days after the CAS landed, so the guard
+// this file exists to provide never existed in production. The declared
+// range and the locked version are asserted by
+// `netlify/functions/tests/blobs-version.test.mjs`; `assertConditional`
+// below is the runtime half, because a lockfile cannot speak at runtime.
 //
 // The store is injected so node:test can drive genuine write collisions with
 // an in-memory etag store and no Blobs context.
@@ -41,10 +53,31 @@ export async function updateUsage(store, key, compute) {
     // claim is "still missing", so the first-ever write races on onlyIfNew.
     const condition = (cur && cur.etag) ? { onlyIfMatch: cur.etag } : { onlyIfNew: true };
     const res = await store.setJSON(key, write, condition);
+    assertConditional(res);
     // Conditional setJSON resolves { modified: false } when the precondition
-    // failed. Anything else (true, or an implementation that returns nothing)
-    // means the write landed.
-    if (!res || res.modified !== false) return { ok: true, result };
+    // failed and { modified: true } when it landed.
+    if (res.modified !== false) return { ok: true, result };
   }
   return { ok: false };
+}
+
+// A client that ignores the condition returns undefined rather than
+// { modified }. Treating that as "landed" is what let the broken pin pass
+// every test and every production request in silence, so say it once, loudly,
+// per instance. It does NOT fail the request closed: a quota that has stopped
+// being atomic is degraded, and turning that into a 429 for every visitor
+// would be a worse outcome than the race it guards. CI is the layer that
+// catches it before deploy (blobs-version.test.mjs).
+let warnedUnconditional = false;
+function assertConditional(res) {
+  if (res && typeof res.modified === 'boolean') return;
+  if (!warnedUnconditional) {
+    warnedUnconditional = true;
+    console.error(
+      'blob-cas: setJSON ignored the write condition (got '
+      + JSON.stringify(res)
+      + '), so quota reservations are NOT atomic. Check the @netlify/blobs version: '
+      + 'conditional setJSON needs >= 10.7.'
+    );
+  }
 }

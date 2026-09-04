@@ -539,3 +539,19 @@ space. `scripts/providers-lib.js` is now the single normalizer, shared by
 to print the raw vocabulary). Both surfaces show the same 9 mainstream
 brands; 5,675 pages lost a "Streaming (US)" row that had listed only
 aggregators and FAST tiers.
+
+## The daily refresh was gated on the WHOLE repo's tests
+
+`refresh-rising-shows.yml` ran `npm test` before uploading the release asset,
+so a failing test in ANY of the other seven apps stopped the data refresh. That
+is what happened on 2026-08-23 and again on 08-28 through 08-31: an fpl-planner
+test failed, the job stopped before the upload, and the live site served
+2026-08-27 data until 09-01 with nothing on the page saying so (the staleness
+badge only fires at 30 days). The changelog shows it plainly: entries jump from
+08-27 to 09-01, then catch four days up at once.
+
+The step now runs `npm run test:rising-shows && npm run test:static`. What it
+actually needs to protect is the artifacts this job commits (the changelog, the
+Kometa and MDBList exports, the split index) plus the site-wide static
+invariants the generated pages feed. The rest of the estate is gated on every
+PR and every push to master, which is where it belongs.

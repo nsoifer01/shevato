@@ -224,10 +224,20 @@ export function convertWeight(weight, fromUnit, toUnit) {
 /**
  * Escape HTML to prevent XSS
  */
+// Escape for HTML, INCLUDING both quote characters.
+//
+// The `div.textContent -> div.innerHTML` trick escapes &, < and > and leaves
+// " and ' alone, because a text node does not need them escaped. That is only
+// safe while every interpolation lands in element CONTENT. It does not here:
+// several views interpolate escaped values into `title=`, `value=` and
+// `data-*` attributes, and today those values happen to be internal strings,
+// which is one refactor away from not being true, so a value carrying a double quote closes
+// the attribute and the rest of the string becomes markup of the author's
+// choosing. Escape all five, like the shared assets/js/escape-html.js.
 export function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    return String(text == null ? '' : text).replace(/[&<>"']/g, (ch) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
 }
 
 /**

@@ -89,6 +89,12 @@ const MAX_FLUSH_BYTES = 700 * 1024;
 const MAX_INLINE_VALUE_CHARS = 128 * 1024;
 const CHUNK_CHARS = 128 * 1024;
 const CHUNK_COLLECTION = 'chunks';
+
+// Marks which account the synced localStorage keys on this device belong to,
+// so a second account signing in on a shared browser does not upload the
+// first account's data into its own cloud document. Not part of any
+// namespace's key set, so it never syncs itself.
+const SYNC_OWNER_KEY = 'shevato:sync-owner';
 // Room for the `{ data: { ... }, meta: { lastUpdated } }` envelope each
 // commit carries around the entries planFlushBatches packs.
 const FLUSH_ENVELOPE_BYTES = 256;
@@ -508,11 +514,26 @@ class StorageSyncManager {
 
           for (const [key, info] of Object.entries(remoteData)) {
             if (!state.keys.has(key)) continue;
-            // A chunked entry is a manifest, not a value: its parts live in
-            // the `chunks` subcollection and have to be fetched. Everything
-            // after reassembly is the shared inline path.
-            if (info && info.chunked) this.applyChunkedRemoteChange(state, key, info);
-            else this.applyRemoteChange(key, info);
+            // A null or non-object entry (hand-edited document, an older
+            // format) used to reach applyRemoteChange, which dereferences
+            // `remoteInfo.updatedAt` and threw INSIDE the snapshot callback:
+            // every key after it in iteration order was skipped and the
+            // initial merge never ran for the session. Skip the bad entry
+            // and keep going.
+            if (!info || typeof info !== 'object') {
+              console.warn(`Ignoring malformed remote entry for ${key} in ${state.namespace}`);
+              continue;
+            }
+            try {
+              // A chunked entry is a manifest, not a value: its parts live in
+              // the `chunks` subcollection and have to be fetched. Everything
+              // after reassembly is the shared inline path.
+              if (info.chunked) this.applyChunkedRemoteChange(state, key, info);
+              else this.applyRemoteChange(key, info);
+            } catch (err) {
+              // One unreadable key must not cost the user every other key.
+              console.error(`Failed to apply remote change for ${key} in ${state.namespace}:`, err);
+            }
           }
 
           // Initial merge: queue any keys we have locally but Firestore
@@ -864,7 +885,24 @@ class StorageSyncManager {
 
     for (const [key, info] of writes) {
       if (info.deleted) {
-        entries.push(measureEntry(key, deleteField()));
+        // TOMBSTONE, not deleteField(). The reader loop only visits keys that
+        // are PRESENT in the document (see initFirestoreSync), so a removed
+        // field is invisible to every peer: the key survived on the other
+        // device, and that device's next initial merge saw a key it had and
+        // the cloud did not, so uploadLocalOnlyKeys put it straight back.
+        // "Disconnect your FPL team" and Gym's "Delete cloud data" both
+        // promise the opposite. An explicit `deleted: true` entry is the
+        // shape applyRemoteChange already knows how to honour, it carries a
+        // rev and a timestamp so the usual last-writer-wins comparison
+        // applies, and uploadLocalOnlyKeys treats it as "present remotely"
+        // so the delete is not undone on the next load.
+        entries.push(measureEntry(key, {
+          deleted: true,
+          value: null,
+          rev: info.rev,
+          updatedAt: serverTimestamp(),
+          hash: hashValue(null)
+        }));
         staleChunks.push(...this.staleChunkRefs(state, key, 0));
         continue;
       }
@@ -934,6 +972,24 @@ class StorageSyncManager {
     for (const ref of staleChunks) {
       try { await deleteDoc(ref); } catch (_) { /* swept again next time */ }
     }
+  }
+
+  // Which account the synced localStorage keys on this device belong to.
+  // Deliberately a plain key outside every namespace's key set, so it is
+  // never itself synced and notifyLocalChange ignores it.
+  syncedDataOwner() {
+    try {
+      const getItem = this.originalMethods?.getItem || localStorage.getItem.bind(localStorage);
+      return getItem(SYNC_OWNER_KEY) || null;
+    } catch (_) { return null; }
+  }
+
+  claimSyncedData(uid) {
+    if (!uid) return;
+    try {
+      const setItem = this.originalMethods?.setItem || localStorage.setItem.bind(localStorage);
+      setItem(SYNC_OWNER_KEY, uid);
+    } catch (_) { /* storage full or blocked: the guard simply does not arm */ }
   }
 
   chunkCountKey(namespace, key) {
@@ -1081,6 +1137,24 @@ class StorageSyncManager {
       ? this.originalMethods.getItem
       : localStorage.getItem.bind(localStorage);
 
+    // Never hand one account's data to another. Signing out leaves the synced
+    // keys in localStorage on purpose (a signed-out user keeps working
+    // locally), so on a shared browser the next person to sign in arrives
+    // with the previous person's trips, workouts or races still in storage.
+    // Those keys are missing from THEIR cloud document, so this function used
+    // to upload them into it: one person's data copied into another person's
+    // account with no gesture from either. Claim the local copy for the uid
+    // that first synced it and upload only for that uid; a different uid
+    // still READS its own cloud data normally, and applyRemoteChange
+    // overwrites the stale local values as the snapshot arrives.
+    const owner = this.syncedDataOwner();
+    if (owner && owner !== state.userId) {
+      console.warn(
+        `Skipping local-only upload for ${state.namespace}: these keys were last synced by a different account`
+      );
+      return;
+    }
+
     for (const key of state.keys) {
       const localValue = getItem(key);
       if (localValue === null || localValue === undefined) continue;
@@ -1097,6 +1171,8 @@ class StorageSyncManager {
     }
 
     if (localWrites.size === 0) return;
+
+    this.claimSyncedData(state.userId);
 
     const flush = state.useFirestore
       ? this.flushToFirestore(state, localWrites)
@@ -1190,6 +1266,10 @@ const syncManager = new StorageSyncManager();
 // Export public API
 export function startStorageSync(config) {
   return syncManager.startStorageSync(config);
+}
+
+export function stopSync(namespace) {
+  syncManager.stopSync(namespace);
 }
 
 export function stopAllSyncs() {

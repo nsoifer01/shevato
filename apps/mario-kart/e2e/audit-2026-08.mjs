@@ -278,17 +278,25 @@ export async function run({ base, cdpPort }) {
       b.errors.length = 0;
       const addA = await addViaSidebar(a, { player1: '1', player2: '2', player3: '3' });
       t('the add in tab A succeeded', addA.mem === 3 && !addA.error, JSON.stringify(addA));
-      await sleep(600);
+      // Wait for the CONDITION, not for a stopwatch. These three cross-tab
+      // steps used to sleep a flat 600 ms and then assert; the delete one
+      // failed on master three times in the last thirty push runs with
+      // {"rows":4,"mem":4} on unchanged code, which reads as a real
+      // regression in the cross-tab propagation it is meant to protect. The
+      // propagation is debounced at 120 ms in main.js, so the wait is
+      // ordinarily instant and only slow CI runners pay for it.
+      await waitForExpr(b, `races.length === 3 && document.querySelectorAll('#history-body tr').length === 3`, { timeout: 8000 }).catch(() => {});
       const bState = await evaluate(b, `({ rows: document.querySelectorAll('#history-body tr').length, mem: races.length, stored: JSON.parse(localStorage.getItem('marioKartRaces')||'[]').length, view: currentView })`);
       t('tab B renders the race tab A added', bState.rows === 3 && bState.mem === 3, JSON.stringify(bState) + ' Berrs=' + errs(b).join('|'));
       const addB = await addViaSidebar(b, { player1: '2', player2: '1', player3: '3' });
       t('the add in tab B succeeded', addB.mem === 4 && !addB.error, JSON.stringify(addB));
-      await sleep(600);
+      await waitForExpr(a, `races.length === 4 && document.querySelectorAll('#history-body tr').length === 4`, { timeout: 8000 }).catch(() => {});
       const stored = await racesIn(a);
       const aRows = await evaluate(a, `document.querySelectorAll('#history-body tr').length`);
       const bMem = await evaluate(b, `races.length`);
       t('after adds in A then B storage holds all 4 and A renders 4', stored.length === 4 && aRows === 4, `stored=${stored.length} Arows=${aRows} Bmem=${bMem}`);
-      await evaluate(b, `performDeleteRace(0)`); await sleep(600);
+      await evaluate(b, `performDeleteRace(0)`);
+      await waitForExpr(a, `races.length === 3 && document.querySelectorAll('#history-body tr').length === 3`, { timeout: 8000 }).catch(() => {});
       const aAfterDelete = await evaluate(a, `({ rows: document.querySelectorAll('#history-body tr').length, mem: races.length })`);
       t('a delete in B reaches A (rows and memory both 3)', aAfterDelete.rows === 3 && aAfterDelete.mem === 3, JSON.stringify(aAfterDelete));
       await addViaSidebar(a, { player1: '3', player2: '2', player3: '1' });

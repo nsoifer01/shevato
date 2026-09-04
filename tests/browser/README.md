@@ -17,6 +17,17 @@ Three runner-level guarantees:
 - **Crash containment.** Each suite runs in its own try/catch; a suite that
   throws (import error included) records one `<suite>: suite completed`
   failure and the next suite still runs.
+- **Zero-run detection.** A suite whose every check is a SKIP asserted
+  nothing, and check-count pinning cannot see that (the checks are all still
+  there, they just did not run). The runner now names such suites in the
+  summary under "Asserted NOTHING in this run", and FAILS them unless they are
+  in `ZERO_RUN_ALLOWED` with a written reason. Today the one entry is
+  `apps/rising-shows/e2e/audit-2026-08.mjs`: its dataset is a 34 MB gitignored
+  release asset, so all 11 of its checks skip on a GitHub runner and have never
+  executed on a pull request. That is a real coverage gap, now visible in every
+  run instead of scrolling past as `0/0 passed`. Note that suite emits 51
+  checks when the dataset IS present and 11 when it is not, which is why it
+  cannot also carry an `EXPECTED_CHECKS` pin.
 - **Check-count pinning.** `EXPECTED_CHECKS` in run.mjs pins the number of
   checks a suite must emit, so a silently lost check (early return, dropped
   loop) becomes an explicit failure instead of a shrunken green run. All six

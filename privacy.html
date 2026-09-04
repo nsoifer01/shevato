@@ -102,7 +102,7 @@
 
         <h2>What stays on your device</h2>
 
-        <p>Each app stores its working data in your browser's <code>localStorage</code>, under keys scoped to that app. This includes your Mario Kart races and player names, your Football H2H games, your FPL Planner team ID, settings and saved gameweek plans, your Gym Tracker programs, sessions, settings and body measurements, your Rising Shows watched list, your MapTap Rivals rivals and games, and your Trip Planner trips and items.</p>
+        <p>Each app stores its working data in your browser's <code>localStorage</code>, under keys scoped to that app. This includes your Mario Kart races and player names, your Football H2H games, your FPL Planner team ID, settings and saved gameweek plans, your Gym Tracker programs, sessions, settings and body measurements, your Rising Shows watched list and comparison selection, your MapTap Rivals rivals, games and per-day puzzle cities, and your Trip Planner trips and items.</p>
 
         <p>The Trip Planner also stores files you attach to a trip (booking confirmations, tickets, vouchers) as blobs in an IndexedDB database named <code>trip-planner-docs</code>. Those files never leave your device: they aren't included in exports, share links, or sync.</p>
 
@@ -135,19 +135,19 @@
           </div>
           <div class="skill-row">
             <h3>Rising Shows</h3>
-            <p>Your watched list only.</p>
+            <p>Your watched list and the shows you have selected for comparison.</p>
           </div>
           <div class="skill-row">
             <h3>MapTap Rivals</h3>
-            <p>Your rival list, your games, your display name and icon, your MapTap.gg username, a snapshot of your verified MapTap profile, and UI preferences.</p>
+            <p>Your rival list, your games, the puzzle cities for each day you have logged, your display name and icon, your MapTap.gg username, a snapshot of your verified MapTap profile, which rival you last had open, and UI preferences.</p>
           </div>
           <div class="skill-row">
             <h3>Trip Planner</h3>
-            <p>All trips and their items, plus your theme, time-format, distance-unit and temperature-unit preferences. Nothing else.</p>
+            <p>All trips and their items, plus your time-format, distance-unit and temperature-unit preferences. Nothing else.</p>
           </div>
         </div>
 
-        <p>One shared preference, your light or dark theme choice, syncs across apps. Arena is not part of this system at all; it is covered separately below.</p>
+        <p>One shared value syncs across apps: a single marker recording that the dark theme is in use. The apps are dark only, so there is no light or dark choice to carry, and nothing about you is in it. Arena is not part of this system at all; it is covered separately below.</p>
 
         <h2>What never syncs</h2>
 

@@ -2324,3 +2324,55 @@ Known and deliberately unfixed:
 - `buildTeamHistory` in `scripts/train-model.mjs` keys clubs by NAME and is
   queried with a season-scoped club INDEX, so two of twenty-four declared
   features are identically zero. Reaches no user (`engineConsumes: []`).
+
+## A Free Hit squad is RENTED, and the planner has to hand it back
+
+A Free Hit team exists for one gameweek. At the next deadline FPL restores the
+squad the manager had at the start of the gameweek he played the chip in, and
+the transfers made under it are discarded with it.
+
+`entry/{id}/event/{fhGw}/picks/` therefore returns a rented fifteen with
+`active_chip: "freehit"`, and `buildSquadState` read it as the squad the
+manager owns. `app.js` fetches picks for `currentEvent` and plans `nextEvent`,
+so the gameweek AFTER a Free Hit was planned entirely from players the manager
+no longer had. Reproduced against the live payloads: the plan sold two players
+he did not own, kept six more, and `validatePlan` against his real squad
+returned eight violations (`transfer_out_not_owned`,
+`transfer_in_already_owned`, `squad_transfer_mismatch`, two `transfer_count`,
+two `money_arithmetic`, `affordability`). Nothing in the suite could see it:
+before this round no test in `apps/fpl-planner/tests` mentioned `active_chip`
+at all.
+
+**What the fix does.** `app.js` detects the chip from the picks payload's
+`active_chip` OR from `history.chips` (the durable record, so a reload, a
+forced refresh and a restored session all behave alike) and fetches
+`event/{fhGw - 1}/picks`, which is the squad the chip reverts to.
+`buildSquadState` takes it as `revertPicks` and plans from it, taking bank and
+squad value from the SAME payload the fifteen came from. `state.picks` keeps
+the Free Hit team deliberately: those are the players actually scoring this
+gameweek, which is what the live pitch must show.
+
+**Three behaviours, not one:**
+
+| situation | behaviour |
+|---|---|
+| Free Hit behind us, revert squad readable | plan from the persistent squad, `free_hit_reverted` notice |
+| Free Hit behind us, revert squad unreadable | `free_hit_squad` warning, readiness capped at LINEUP, no transfer or chip advice |
+| the Free Hit gameweek is itself the one being planned | no revert: that team is the right one for that week |
+
+The unreadable case matters because the alternative is planning against a squad
+the manager does not keep, which is exactly the bug.
+
+**Two smaller things the same rule implies.** Transfers recorded against a Free
+Hit gameweek did not persist either, so `reconstructPurchasePrices` now ignores
+them (`ignoreGws`); left in, a player who was both owned and rented took the
+rented price and every affordability figure inherited it. And the free-transfer
+arithmetic needed nothing: `replayTransferState` already reads `history.chips`
+and treats a Free Hit week as free.
+
+**Not touched, deliberately:** `projectedSquadState` in planner.js already
+implements the same revert for a Free Hit the planner RECOMMENDS in a future
+gameweek (`const revert = prevPlan.chip === 'freehit'`). The semantics were
+always known; the gap was only at the input boundary. A wildcard is explicitly
+not reverted, because a wildcard rebuilds the permanent squad, and there is a
+regression test saying so.

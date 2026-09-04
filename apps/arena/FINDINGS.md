@@ -365,3 +365,161 @@ beside it, so a regression fails a suite rather than reappearing silently.
 - privacy.html verified: it makes no claims about room passwords (only
   that rooms are readable by signed-in visitors with the code), so no
   change was needed for the hashing migration.
+
+## Three wrong answer keys in the vendored country dump
+
+`data/countries.json` is the answer key the Globe Drop capitals round scores
+against, and three records sent a correct guess thousands of kilometres wrong
+while showing a reveal pin on another continent:
+
+| record | was | why it was wrong |
+|---|---|---|
+| French Southern and Antarctic Lands | `[48.81, -1.4]` | Normandy, the mainland commune the territory is administered from; 12,756 km from Kerguelen |
+| Western Sahara | `[-13.28, 27.14]` | latitude and longitude swapped, landing in Zambia; 5,826 km out |
+| United States Minor Outlying Islands | capital "Washington DC", no coordinates | the centroid fallback pinned "Washington DC" at Wake Island |
+
+The first two are corrected; the third has its `capital` emptied, so
+`normalizeCountry` returns null and the record is never asked about.
+
+`tests/globe-drop-locations.test.js` builds its records by hand
+(`rawCountry({...})`), so it proves the normaliser is right and says nothing
+about the 250 real records. The new `tests/countries-data.test.js` decodes the
+`world-110m` topology the globe already renders and asserts every capital lies
+inside, or within 400 km of, its own country's polygon, plus explicit anchors
+for the two repaired coordinates. Tolerance is deliberately loose: a 110m
+outline is coarse and small islands are missing from it, so the assertion is
+"not on the wrong continent", not "pixel accurate".
+
+## escapeHtml has to escape quotes
+
+`escapeHtml` was `div.textContent = value; return div.innerHTML`, which escapes
+`&`, `<` and `>` and leaves both quote characters alone, because a text node
+does not need them escaped. Arena does not only interpolate into content: it
+renders another player's display name into `title="..."` on the podium and
+`data-name="..."` in the recap, and display names are trimmed and capped at 20
+characters but never quote-stripped. A name like `x" onmouseover="..."` closed
+the attribute and planted an event handler in every OTHER player's browser, and
+the site CSP is Report-Only with inline script allowed. All five characters are
+now escaped, matching the shared `assets/js/escape-html.js`. The same weak
+helper in `gym-tracker/js/utils/helpers.js` and `assets/js/main.js` was fixed
+at the same time (neither had a reachable attribute interpolation of user text
+today, which is one refactor away from being false).
+
+## One game must count once: the end-of-game writes are now idempotent
+
+`writeEndOfGameStats` was guarded only by the in-memory `endStageWrittenForRoom`,
+and the end screen is exactly where reloads happen: a pull-to-refresh on a
+phone, or reopening the `?postMatch=` link the app itself writes into the URL.
+Every reload counted the same game again. Reproduced on the emulator: after two
+reloads of the recap, `gamesPlayed` went 1 to 2 to 3 on the profile, on the
+PUBLIC `triviaLeaderboard` row and on the room's `sessionMatchCount`, and the
+profile card read "Games 3" for one game. `tryLoadPendingPostMatch` calls
+`renderEndStage` for any signed-in visitor, so merely opening the share link
+was enough.
+
+The guard is a durable key, `lastCountedGame = "{roomCode}:{round}"`, written
+in the SAME transaction as the counters it protects, at all three sites:
+
+| doc | field | note |
+|---|---|---|
+| `users/{uid}.triviaProfile` | `lastCountedGame` | the transaction returns false when it matches, and the leaderboard write is inside that transaction, so both skip together |
+| `triviaRooms/{code}` | `sessionCountedGame` | the session tally was a read-modify-write off `state.roomData`; it is a transaction now, reading the counters off the doc |
+| `triviaH2H/{pairKey}` | `lastCountedGame` | a lifetime record two people read |
+
+Reading the marker INSIDE the transaction is what makes it safe for two tabs,
+two devices, and a reload racing the original write: Firestore re-runs the
+transaction on contention and the loser sees the winner's marker. The round is
+part of the key, so a rematch is correctly a new game. `maybeWriteDailyLeaderboard`
+needed nothing: it already keeps only the best score for the day.
+
+No rules change and no migration. `users/{uid}` and `triviaH2H` accept
+arbitrary fields, the room doc is host-writable, and a document with no marker
+simply counts its next game once and gains one. Existing leaderboard and
+history data is untouched.
+
+## A refresh mid-game must not get you swept
+
+`beforeUnloadCleanup` stamps `disconnectedAt` on the way out, and a refresh
+comes straight back through `tryRejoinPendingRoom`, which for an existing
+member wrote `lastSeen` alone. The stamp therefore SURVIVED the rejoin, and 30
+seconds later both `RoomState.isPlayerLive` and the rules' `isStalePlayerData`
+called a player who was heart-beating normally stale: the host swept the doc
+and the player was silently dropped mid-game, missing from the early reveal and
+the Ready vote, absent from the final ranking, score gone, while their own
+answers vanished behind an optimistic "Locked in". Only `joinPlayer`'s
+reconnect branch cleared the flag, and a URL rejoin never reaches it.
+
+Two changes, because one of them can be lost: the rejoin write now clears
+`disconnectedAt` alongside the heartbeat, and the periodic heartbeat clears it
+too. A player whose heart is beating is by definition not disconnected, so a
+dropped or racing rejoin write self-heals on the next beat instead of being
+fatal half a minute later. The player-doc rules already allow a player to
+update their own doc, so no rules change was needed.
+
+## The emulator e2e is FLAKY on a loaded workstation, and what that costs
+
+Three full runs on 2026-09-03 produced 55/76, 48/80 and (S1 only) 8/21, all
+failing first at the same place: `emulator: second player joins by code`, the
+second client joining a fresh lobby. Everything after it cascades, because the
+scenarios share one live multi-client session.
+
+It is NOT caused by the round's changes: the identical failure reproduces with
+`apps/arena/js/app.js` reverted to the committed version. Treat a low pass
+count here as "re-run on an idle machine", and read the individual scenario
+before believing a regression. The documented rule still holds and is easy to
+break by accident: run this estate with nothing else heavy on the box. One of
+these runs was ruined by a concurrent `npm test`.
+
+Two consequences worth keeping:
+
+- **Filtered runs are for iteration only.** `ARENA_E2E_ONLY` (added this round)
+  takes a comma-separated list, but the scenarios are sequential: S1 opens the
+  three browser pages and each scenario leaves the clients where the next
+  expects them. `ARENA_E2E_ONLY=S1:,S5:` puts only two players in the lobby, so
+  the game never starts.
+- **Assertions that compare a number against itself must state a
+  precondition.** The idempotency checks ask "is this counter unchanged after a
+  reload", which 0 -> 0 -> 0 satisfies perfectly. On a filtered run they went
+  green having proved nothing. They now assert first that exactly one game was
+  counted, and every later check is gated on that. Any new check of this shape
+  needs the same guard.
+
+## Member writes are bounded by VALUE now, not only by key
+
+The 2026-08-23 allow-list (above) fixed WHICH fields a member may touch and
+said nothing about what they may put in them. `affectedKeys().hasOnly` is a
+key constraint; every value stayed free. So once a question's window had
+elapsed on the server clock, which is true every round until the host's
+advance lands and true indefinitely if the host is gone, any member could:
+
+- write `status: 'bogus'` or `currentQuestionIndex: -3` and wedge the room;
+- rewrite `questionStartedAt` with the status and index unchanged, replaying
+  the current question forever;
+- write a `playerOrder` and `deciderUid` naming only themselves, taking the
+  pick without advancing anything;
+- end the game with a `finalRanking` declaring themselves the winner at
+  999999 points, which every client then renders.
+
+Only a MEMBER of the room, so this was griefing among invited friends and
+never a stranger path, but README and this file both claimed a non-host
+"cannot wedge it with a bogus status or a negative question index", which was
+true only OUTSIDE the elapsed window. The rules test could not see it either:
+its status/index cases ran BEFORE the window elapsed, so they passed without
+covering the gap.
+
+The bounds now are: `status` in the four values the app uses; an advance
+either finishes (index unchanged) or moves on (index exactly +1), which is
+also what kills the replay; `playerOrder`/`deciderUid` only travel with an
+advance; and a `finalRanking` must be a list of at most 32 whose top entry's
+score is a number in [0, 100000].
+
+Two limits worth knowing. **Rules cannot iterate a list**, so only
+`finalRanking[0]` is checked; that is the entry a griefer must occupy to
+appear to have won, since the client writes the list already sorted
+descending, but a large score buried deeper is not rejected. And the cap is
+deliberately loose: trivia peaks at (100 base + 100 speed) x 1.5 streak = 300
+a question over at most 10 questions, Globe Drop at 100 x 3.0 round x 1.5
+streak x ~3.0 difficulty = 1,350 a round over at most 10, so 100k is about a
+7x margin over anything reachable. A tighter cap would start refusing real
+games the first time the scoring constants move.
+

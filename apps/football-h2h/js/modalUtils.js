@@ -95,12 +95,24 @@ function trapFocus(modal, dialog) {
  * @param {Array} config.buttons - Array of button configurations
  * @returns {HTMLElement} - The modal element
  */
-function createModal({ icon, title, content, buttons = [] }) {
+let modalTitleSeq = 0;
+
+function createModal({ icon, title, content, buttons = [], role = 'dialog' }) {
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
 
     const dialog = document.createElement('div');
     dialog.className = 'modal-dialog';
+
+    // Dialog semantics. The focus trap and the Escape handler were already
+    // here, but nothing TOLD assistive technology a dialog had opened: a
+    // screen reader announced nothing when the Delete or Import confirmation
+    // appeared and kept reading the page behind it. Every other app in the
+    // repo marks its dialogs; this was the only one that did not.
+    const titleId = `modal-title-${++modalTitleSeq}`;
+    dialog.setAttribute('role', role);
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-labelledby', titleId);
 
     const buttonHtml = buttons.map(btn => {
         const classes = ['modal-btn-primary', 'modal-btn-secondary', 'modal-btn-danger'];
@@ -110,7 +122,7 @@ function createModal({ icon, title, content, buttons = [] }) {
 
     dialog.innerHTML = `
         <div class="modal-icon">${esc(icon)}</div>
-        <h3 class="modal-title">${esc(title)}</h3>
+        <h3 class="modal-title" id="${titleId}">${esc(title)}</h3>
         <div class="modal-content">${content}</div>
         <div class="modal-buttons">${buttonHtml}</div>
     `;
@@ -220,11 +232,14 @@ function createErrorModal({ icon = '❌', title, message, onClose }) {
 
     const content = `<p class="modal-text">${message}</p>`;
 
+    // alertdialog, not dialog: this one always reports something that already
+    // went wrong, so a screen reader should interrupt rather than wait.
     return createModal({
         icon,
         title,
         content,
-        buttons
+        buttons,
+        role: 'alertdialog'
     });
 }
 
@@ -455,6 +470,12 @@ function showToast(message, type = 'success', duration = 3000) {
     // Create notification element
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
+    // Announce it. Without a live region "Game added successfully!", "Game
+    // deleted" and every error message were invisible to assistive tech,
+    // which is the only feedback some of those actions give. `alert` for
+    // errors so they interrupt, `status` otherwise.
+    toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    toast.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
     
     // Add icon based on type
     const icons = {

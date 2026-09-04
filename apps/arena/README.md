@@ -29,7 +29,7 @@ The pure game logic (scoring, room state, location/question normalization) is sp
 | Ready to skip (Globe Drop) | During the reveal, any player can hit "Ready" to vote to skip the between-round countdown; once everyone is ready the next round (or the end stage) fires early instead of waiting the window out. |
 | Custom Trivia packs | Save your own JSON question pack on your profile; it then appears as a question-source option when you create a Trivia room. |
 | In-room chat | Per-room chat (subscribed to `triviaRooms/{code}/chat`) with input sanitization, a client-side rate limit, and local profanity moderation (a word-boundary wordlist, so nothing leaves the browser; fail-open if the filter errors), plus a quick-tap bar of 8 one-click emoji reactions for players who don't want to type. |
-| Leaderboard | Global score leaderboard, filterable by time period and sortable on any column (click a header to toggle direction; the default is avg score, descending), plus a separate Daily challenge board scoped to the current UTC day. |
+| Leaderboard | Global score leaderboard, filterable by time period and sortable on any column (click a header to toggle direction; the default is avg score, descending), plus a separate Daily challenge board scoped to the current UTC day. A finished game is counted exactly once: the profile, the leaderboard row, the room's session tally and the head-to-head pair each carry the game's key (`{roomCode}:{round}`) and skip a repeat, so reloading the recap or reopening its share link adds nothing. |
 | Leaderboard moderation | A user with a doc at `/leaderboardAdmins/{uid}` sees a per-row delete control on the global board for removing junk entries. |
 | Display names | You choose a display name before your first published game; the default is a neutral `Player XXXX` derived from your uid, never from your email address. Whatever you choose is written to the shared leaderboard, head-to-head and daily records that any signed-in visitor can read. |
 | Head-to-head (H2H) | Per-room cumulative head-to-head record across rematches, plus a global pairwise H2H stats view. |
@@ -87,9 +87,21 @@ the client:
   when the current host's player doc is gone or stale.
 - **Everyone else** signed in may read the room (that is how joining by code
   works) and nothing more. `hostUid`, `status`, the question pointers and the
-  question pool cannot be touched by a non-host, so a stranger can no longer
+  question pool cannot be touched by a non-member, so a stranger can no longer
   end a room for everyone or wedge it with a bogus status or a negative
   question index.
+- **Member writes are bounded by value, not only by key.** The allow-list above
+  says which fields a member may touch; these say what they may put in them.
+  `status` must be one the app actually uses; an advance must either finish the
+  game (question index unchanged) or move to the next question (index exactly
+  one higher), which also means the current question's timer cannot be
+  restarted forever; the decider rotation may only travel with a real advance,
+  so nobody hands themselves the pick; and a written final ranking must be a
+  list of at most 32 whose top score is a number no real game can exceed.
+  Until 2026-09-03 all of these were unbounded once a question's window had
+  elapsed, which is every round, and indefinitely if the host went away. Rules
+  cannot iterate a list, so only the top entry of a ranking is checked, which
+  is the one a griefer has to occupy to appear to have won.
 - **Player docs** are owner-write. The host may delete a player doc only when
   it is STALE (see Liveness), so ghosts can be swept but live players cannot
   be kicked.
@@ -129,6 +141,12 @@ Progression is not the host's private business:
   is older than the 30 s rejoin grace or the heartbeat is older than 120 s
   (`RoomState.isPlayerLive`, mirrored in `firestore.rules`). The heartbeat is
   what catches a crashed or force-quit tab, which never fires `beforeunload`.
+- Coming BACK clears the disconnect stamp, on both paths: the rejoin write and
+  every subsequent heartbeat. A player whose heart is beating is by definition
+  not disconnected, so clearing it on the heartbeat too makes a dropped or
+  racing rejoin write self-healing. Until 2026-09-03 the URL-rejoin path wrote
+  `lastSeen` alone, so refreshing during a game left the stamp in place and the
+  host swept the player 30 s later, mid-game.
 - Stale players are excluded from early reveal, the Ready vote, the rematch
   unanimity count, the Start-button minimum and the last-leaver check, and
   they render as "Disconnected" instead of looking like a slow player. The

@@ -73,6 +73,8 @@ const SUITES = [
   'apps/rising-shows/e2e/audit-2026-08.mjs',
   'apps/trip-planner/e2e/audit-2026-08.mjs',
   'apps/maptap-rivals/e2e/quality.mjs',
+  // The Free Hit revert, driven across the chip gameweek and the one after.
+  'apps/fpl-planner/e2e/free-hit.mjs',
 ];
 
 // --only=<substring> runs the suites whose path contains it; --shard=<i>/<n>
@@ -102,7 +104,10 @@ const EXPECTED_CHECKS = {
   // independent rounds of checks: site 157 -> 170, a11y 74 -> 79 and
   // visual 86 -> 103. Both sides' additions are kept, so the totals are
   // the union, not a replacement.
-  'tests/browser/suites/site.mjs': 170,
+  // 170 before 2026-09-03; the two vacuous "contact form" checks became
+  // three real ones (contact routes, no page-level form, auth fields
+  // labelled), so +1.
+  'tests/browser/suites/site.mjs': 171,
   // 103 from master, plus the two Rising Shows highlight-badge checks added
   // in this branch.
   'tests/browser/suites/apps.mjs': 105,
@@ -121,7 +126,23 @@ const EXPECTED_CHECKS = {
   // Plus 6 "Sync all rivals" checks (progress counter, run totals, me-only
   // days, the predictions actual, the already-up-to-date rerun, JS errors).
   'apps/maptap-rivals/e2e/quality.mjs': 126,
+  // Deliberately NOT pinned: apps/rising-shows/e2e/audit-2026-08.mjs emits 51
+  // checks when the dataset is on disk and 11 skip entries when it is not, so
+  // a single number cannot describe both environments. The zero-run guard
+  // below is what protects it instead.
 };
+
+// Suites that may legitimately run with every check skipped. Being on this
+// list is not free: the runner still reports it, loudly, in the summary.
+const ZERO_RUN_ALLOWED = new Set([
+  // The Rising Shows dataset is a 34 MB gitignored release asset, so this
+  // suite genuinely cannot run on a GitHub runner today. Listed here so the
+  // exemption is visible rather than silently tolerated.
+  'apps/rising-shows/e2e/audit-2026-08.mjs',
+]);
+
+// Suites that ran with nothing asserted, filled in during the run.
+const zeroRunSuites = [];
 
 const selected = only ? SUITES.filter((p) => p.includes(only)) : SUITES;
 if (!selected.length) { console.error(`--only=${only} matches no suite. Suites:\n  ${SUITES.join('\n  ')}`); process.exit(2); }
@@ -293,6 +314,27 @@ try {
         detail: 'a check was silently added or lost; update EXPECTED_CHECKS in run.mjs if intentional',
       });
     }
+    // A suite that ASSERTED NOTHING is not a pass.
+    //
+    // Check-count pinning catches a suite that shrinks; it does not catch one
+    // whose every check is a skip, because the checks are all still there.
+    // The rising-shows suite has run `0/0 passed, 11 skipped` in CI since it
+    // was written: the dataset is gitignored, so every assertion it owns has
+    // never executed on a pull request, and a total collapse of that suite
+    // would look exactly the same. Skips stay legitimate (a missing
+    // precondition is not a failure) but a suite where NOTHING ran has to say
+    // so out loud.
+    const ranHere = r.filter((x) => !x.skipped).length;
+    if (r.length > 0 && ranHere === 0) {
+      zeroRunSuites.push(name);
+      if (!ZERO_RUN_ALLOWED.has(name)) {
+        r.push({
+          name: `${suiteName}: every check skipped, so this suite protected nothing`,
+          pass: false,
+          detail: 'satisfy the suite\'s precondition, or add it to ZERO_RUN_ALLOWED in run.mjs with a reason',
+        });
+      }
+    }
     results.push(...r);
     for (const x of r) {
       if (!x.pass) console.log(`  FAIL ${x.name}${x.detail ? '  [' + x.detail + ']' : ''}`);
@@ -318,6 +360,16 @@ console.log(`BROWSER REGRESSION${shardLabel}: ${ran - failed.length}/${ran} pass
 if (skipped.length) {
   console.log('\nSkipped (precondition missing, not a failure):');
   for (const s of skipped) console.log(`  - ${s.name}${s.detail ? '  [' + s.detail + ']' : ''}`);
+}
+// Say it in the summary, not only in the per-suite line. A suite reading
+// "0/0 passed" scrolls past as though it were a pass; naming it here is what
+// makes "this app has no browser coverage on a pull request" visible to
+// whoever reads the run.
+if (zeroRunSuites.length) {
+  console.log('\nAsserted NOTHING in this run (every check skipped):');
+  for (const n of zeroRunSuites) {
+    console.log(`  - ${n}${ZERO_RUN_ALLOWED.has(n) ? '  [known: precondition unavailable here]' : ''}`);
+  }
 }
 if (failed.length) {
   console.log('\nFailures:');

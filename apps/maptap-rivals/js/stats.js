@@ -114,7 +114,13 @@
 
       // "Month Day" or "Day Month"
       if (!date) {
-        const md = line.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b\s*\.?\s*(\d{1,2})/i);
+        // The day group is bounded on BOTH sides. Without the trailing
+        // (?!\d), "10 August 2026" matched Month-Day first and bound the
+        // month's day to the first two digits of the YEAR, silently filing
+        // the game on August 20. MapTap's own share writes "Aug 10", which is
+        // why the canonical fixtures never caught it; the WhatsApp importer
+        // feeds arbitrary chat lines to the same function.
+        const md = line.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b\s*\.?\s*(\d{1,2})(?!\d)/i);
         const dm = !md && line.match(/\b(\d{1,2})\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/i);
         const monthName = md ? md[1] : dm ? dm[2] : null;
         const dayStr = md ? md[2] : dm ? dm[1] : null;

@@ -404,7 +404,20 @@ function saveGames(force = false) {
         return false;
     }
     gamesLoadError = false;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(games));
+    // The write can throw (quota exhausted, Safari private mode, evicted
+    // storage). It used to be unguarded, so the exception escaped mid-handler:
+    // the in-memory list had already changed, the caller stopped, and the user
+    // was told nothing at all. Report it instead; every caller that claims
+    // something was saved checks the return value.
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(games));
+    } catch (error) {
+        console.error('Football H2H: could not write games to storage', error);
+        if (typeof showToast === 'function') {
+            showToast('Not saved: this device is out of storage space. Export a backup and clear some data.', 'error', 6000);
+        }
+        return false;
+    }
     return true;
 }
 
@@ -789,9 +802,27 @@ function editGame(id) {
                 ...(noteValue ? { note: noteValue } : { note: undefined })
             };
             
-            // Update the game in the array (by identity: exactly this row)
-            const gameIndex = games.indexOf(game);
-            if (gameIndex !== -1) {
+            // Resolve the row AT SAVE TIME, by id.
+            //
+            // `game` was captured when the dialog opened, and the whole
+            // `games` array is replaced whenever storage is refreshed: a
+            // second tab writing, a remote sync delivery, the 10-minute
+            // auto-backup, or the syncSystemReady refresh. Looking the row up
+            // by identity then found nothing, the `if` had no else, and Save
+            // silently did nothing while the dialog closed as if it had
+            // worked.
+            let gameIndex = games.indexOf(game);
+            if (gameIndex === -1 && game && game.id !== undefined) {
+                gameIndex = games.findIndex(m => m.id === game.id);
+            }
+            if (gameIndex === -1) {
+                // Returning undefined lets createFormModal close the dialog
+                // as usual; only an explicit `false` keeps it open.
+                showToast('This game changed in another tab, so it was not edited. Reopen it and try again.', 'error', 6000);
+                updateUI();
+                return;
+            }
+            {
                 games[gameIndex] = updatedGame;
                 
                 // Add to history for undo/redo
@@ -853,20 +884,35 @@ function deleteGame(id) {
         message: `Are you sure you want to delete this game? <br><strong>${escapeHtml(player1Name)} ${game.player1Goals} - ${game.player2Goals} ${escapeHtml(player2Name)}</strong>`,
         isDestructive: true,
         onConfirm: () => {
+            // Re-resolve at CONFIRM time. The captured row is stale if storage
+            // was refreshed while the dialog was open (another tab, a remote
+            // sync delivery, the auto-backup). The filter then removed
+            // nothing, yet an undo entry was still pushed and the toast still
+            // said "Game deleted", so the row stayed on screen and pressing
+            // Undo ADDED it back a second time, giving two rows with one id.
+            const target = games.includes(game)
+                ? game
+                : games.find(m => m.id === game.id);
+            if (!target) {
+                showToast('This game was already removed in another tab.', 'error', 5000);
+                updateUI();
+                return;
+            }
+
             // Add to undo history before deleting
             if (typeof addToHistory === 'function') {
                 addToHistory({
                     type: 'delete_game',
-                    data: game
+                    data: target
                 });
             }
-            
+
             // Remove exactly this row, never "every row with this id".
-            games = games.filter(m => m !== game);
+            games = games.filter(m => m !== target);
             saveGames();
             updateUI();
-            
-            showToast(`Game deleted: ${player1Name} ${game.player1Goals} - ${game.player2Goals} ${player2Name}`, 'success');
+
+            showToast(`Game deleted: ${player1Name} ${target.player1Goals} - ${target.player2Goals} ${player2Name}`, 'success');
         },
         onCancel: () => {
             // Modal closes automatically

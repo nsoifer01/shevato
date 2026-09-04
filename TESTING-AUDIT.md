@@ -657,3 +657,20 @@ PR carrying this document update. Original #385 scope:
 Playwright dev dependency), `package-lock.json` (new), `.gitignore`
 (node_modules, .coverage), `README.md` (Testing section), per-app
 `README.md`/`FINDINGS.md` testing documentation, and this file.
+
+## Addendum, 2026-09-03: a suite that asserts nothing now says so
+
+`apps/rising-shows/e2e/audit-2026-08.mjs` has reported `0/0 passed, 11 skipped`
+on every CI run since it was written: its dataset is gitignored, so not one of
+its assertions has ever executed on a pull request, and a total collapse of the
+suite would have looked identical in the log. `run.mjs` now names every suite
+that ran with nothing asserted in the summary block, and fails any such suite
+that is not in `ZERO_RUN_ALLOWED` (one entry today, with its reason). The
+check-count pin cannot cover that suite because it emits 51 checks with the
+dataset present and 11 without.
+
+Also fixed in the same round: the mario-kart two-tab e2e block waited a flat
+600 ms before asserting cross-tab propagation, which failed on master in 3 of
+the last 30 push runs on unchanged code and read as a real regression. It now
+waits on the condition with `waitForExpr`.
+

@@ -1145,3 +1145,28 @@ while every other confirmation is a styled modal; predictions still show
 "avg 0%" for a single-loss rival and Reveal buttons to users with no
 verified profile; the leaderboard and History still hide their right-hand
 columns behind an unhinted horizontal scroll on phones.
+
+## The heatmap walk broke in DST-at-midnight zones
+
+`buildHeatmapWeeks` was the last date walk still using a local `Date` and
+`setDate()`. In every zone whose DST change happens AT midnight
+(America/Santiago, America/Havana, Asia/Beirut, Atlantic/Azores, Africa/Cairo)
+the cursor lands on 01:00 on the spring-forward day and stays an hour ahead for
+the rest of the year, so `cur <= end` is false on the last day and TODAY never
+gets a cell. Measured over a year of weekly samples: Santiago failed 51 of 52,
+Havana 25, Beirut 22, Azores 22, Cairo 19. The existing timezone tests all pin
+zones whose DST changes at 02:00 or 03:00 (Chicago, Jerusalem, Kiritimati,
+Berlin, Auckland), which is why they passed.
+
+It now snaps to Sunday with `dayOfWeekISO` and walks with `addDaysISO`, both
+timezone-free, matching the rule the rest of the app already follows. All 16
+sampled zones now report 0 of 52 failures.
+
+## "10 August 2026" was filed on August 20
+
+`parseMapTapScore` tries the Month-Day regex before Day-Month, and its day
+group `(\d{1,2})` was unbounded on the right, so a Day-Month-YEAR line bound
+the month's day to the first two digits of the year. MapTap's own share writes
+"Aug 10", which is why every canonical fixture passed; the WhatsApp importer
+feeds arbitrary chat lines to the same function. The day group is now bounded
+on both sides with `(?!\d)`.

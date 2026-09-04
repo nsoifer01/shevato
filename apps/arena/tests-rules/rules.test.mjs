@@ -373,6 +373,117 @@ if (!setup.ok) {
         assert.equal(await updateDoc('triviaRooms/PUBAA', { status: 'lobby' }, HOST), 200);
     });
 
+    test('member writes are bounded by VALUE, not only by key (audit 2026-09-03)', async () => {
+        // Until this round every member rule constrained only WHICH keys could
+        // be touched. Once a question's window had elapsed on the server clock,
+        // which happens every round and lasts indefinitely if the host is gone,
+        // a member could write any value into those keys: wedge the room with a
+        // bogus status or a negative index, replay the current question
+        // forever, hand themselves the decider role, or end the game with a
+        // ranking naming themselves at 999999 points. Only a member of the
+        // room, so this was griefing among invited friends, but the README
+        // claimed the opposite.
+        const ago = (ms) => new Date(Date.now() - ms);
+        // A question whose asking window and reveal have both elapsed, so the
+        // timed-advance branch is open for guest1 on every assertion below.
+        const openWindow = async (idx) => {
+            assert.equal(await updateDoc('triviaRooms/PUBAA', {
+                status: 'playing', questionTimeMs: 10000, currentQuestionIndex: idx,
+                currentQuestionId: 'q' + idx, questionStartedAt: ago(30000),
+                revealStartedAt: null, paused: false,
+            }, HOST), 200, 'fixture: open the advance window');
+        };
+        const rotation = { playerOrder: ['host1', 'guest1'], deciderUid: 'host1' };
+        const nextQuestion = (idx) => ({
+            status: 'picking', currentQuestionIndex: idx, currentQuestionId: null,
+            selectedCategory: null, questionStartedAt: null, revealStartedAt: null,
+            playedQuestionIds: ['q' + (idx - 1)], ...rotation,
+        });
+
+        // --- the status has to be one the app actually uses -----------------
+        await openWindow(0);
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            Object.assign(nextQuestion(1), { status: 'bogus' }), GUEST), 403,
+            'a bogus status is denied even inside the elapsed window');
+
+        // --- the question index moves by exactly one, or not at all ---------
+        await openWindow(0);
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            Object.assign(nextQuestion(1), { currentQuestionIndex: -3 }), GUEST), 403,
+            'a negative question index is denied');
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            Object.assign(nextQuestion(1), { currentQuestionIndex: 5 }), GUEST), 403,
+            'skipping several questions at once is denied');
+
+        // --- replaying the CURRENT question is not an advance ---------------
+        await openWindow(0);
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            { questionStartedAt: new Date(), revealStartedAt: null }, GUEST), 403,
+            'restarting the current question\'s timer is denied: an advance either finishes or moves on');
+
+        // --- the decider rotation only travels with a real advance ----------
+        await openWindow(0);
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            { playerOrder: ['guest1'], deciderUid: 'guest1' }, GUEST), 403,
+            'a member cannot hand themselves the pick without advancing the room');
+
+        // --- the final ranking cannot be an invented scoreline ---------------
+        await openWindow(0);
+        assert.equal(await updateDoc('triviaRooms/PUBAA', {
+            status: 'finished', finishedAt: new Date(),
+            finalRanking: [{ uid: 'guest1', displayName: 'Guest', score: 999999, streak: 0 }],
+        }, GUEST), 403, 'a ranking no real game can produce is denied');
+        assert.equal(await updateDoc('triviaRooms/PUBAA', {
+            status: 'finished', finishedAt: new Date(),
+            finalRanking: [{ uid: 'guest1', displayName: 'Guest', score: 'lots', streak: 0 }],
+        }, GUEST), 403, 'a non-numeric score is denied');
+
+        // --- and the same bound applies to ending the game early ------------
+        assert.equal(await updateDoc('triviaRooms/PUBAA', { status: 'playing' }, HOST), 200);
+        assert.equal(await updateDoc('triviaRooms/PUBAA', {
+            status: 'finished', finishedAt: new Date(), paused: false, pausedAt: null,
+            finalRanking: [{ uid: 'guest1', displayName: 'Guest', score: 999999, streak: 0 }],
+        }, GUEST), 403, 'end-game-early is bounded too');
+
+        // --- CONTROLS: every legitimate shape the client writes still passes -
+        await openWindow(0);
+        assert.equal(await updateDoc('triviaRooms/PUBAA', nextQuestion(1), GUEST), 200,
+            'the real trivia advance (index + 1, rotation, picking) is still allowed');
+
+        await openWindow(3);
+        assert.equal(await updateDoc('triviaRooms/PUBAA', {
+            status: 'playing', currentQuestionIndex: 4, currentQuestionId: 'loc4',
+            questionStartedAt: new Date(), revealStartedAt: null, playedQuestionIds: ['q3'],
+        }, GUEST), 200, 'the real Globe Drop advance (no rotation) is still allowed');
+
+        await openWindow(5);
+        assert.equal(await updateDoc('triviaRooms/PUBAA', {
+            status: 'finished', finishedAt: new Date(), playedQuestionIds: ['q5'],
+            finalRanking: [{ uid: 'guest1', displayName: 'Guest', score: 1350, streak: 3 }],
+        }, GUEST), 200, 'finishing on the last question, with a ranking a real game can reach');
+
+        // An empty ranking is legitimate (everyone left) and must not trip the
+        // top-entry check, which would otherwise index an empty list.
+        await openWindow(6);
+        assert.equal(await updateDoc('triviaRooms/PUBAA', {
+            status: 'finished', finishedAt: new Date(), finalRanking: [],
+        }, GUEST), 200, 'an empty final ranking is allowed');
+
+        // --- the timed pick is bounded the same way --------------------------
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            { status: 'picking', deciderUid: 'someone-else', pickingStartedAt: ago(25000) }, HOST), 200);
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            { status: 'lobby', currentQuestionId: 'q9', selectedCategory: 'geo',
+              questionStartedAt: new Date(), revealStartedAt: null }, GUEST), 403,
+            'a timed pick cannot send the room back to the lobby');
+        assert.equal(await updateDoc('triviaRooms/PUBAA',
+            { status: 'playing', currentQuestionId: 'q9', selectedCategory: 'geo',
+              questionStartedAt: new Date(), revealStartedAt: null }, GUEST), 200,
+            'the real timed pick is still allowed');
+
+        assert.equal(await updateDoc('triviaRooms/PUBAA', { status: 'lobby' }, HOST), 200);
+    });
+
     test('liveness (audit D4): host sweeps only STALE player docs; a member takes over hostUid only from a gone host', async () => {
         const ago = (ms) => Date.now() - ms;
         assert.equal(await createDoc('triviaRooms/PUBAA/players/ghost',

@@ -335,3 +335,72 @@ treat anything left at zero as a candidate - then verify each by hand. Counting
 must keep string literals (shape assertions like
 `['startStorageSync', 'setCloudItem', ...]` are real usage) and must include the
 declaring file (self-recursive and internally-used helpers otherwise look dead).
+
+## Deletes must be tombstones, not `deleteField()`
+
+`storage-sync-robust.js` shipped a removed key as Firestore's `deleteField()`
+sentinel. The reader loop only walks keys that are PRESENT in the document, so
+a removed field reached no peer at all: the key survived on the other device,
+and that device's next initial merge saw a key it had and the cloud did not,
+so `uploadLocalOnlyKeys` uploaded it straight back. Every "delete my data"
+control in the estate was affected. FPL's "Disconnect your FPL team" and Gym's
+"Delete cloud data" both promised the opposite, and so did privacy.html.
+
+A delete now writes `{ deleted: true, value: null, rev, updatedAt, hash }`,
+the shape `applyRemoteChange` already honoured (that branch was dead code
+reachable only from a test). Because it is a real entry it carries a revision
+and a timestamp, so the ordinary last-writer-wins comparison applies, and
+`uploadLocalOnlyKeys` skips the key because it IS present remotely.
+
+Three pieces of user-facing copy already DESCRIBED the tombstone behaviour and
+were simply wrong until this change: `apps/fpl-planner/js/ui/store.js`,
+`js/ui/settings.js` ("Other devices drop it on their next sync"), the FPL
+README, and the Gym "Delete cloud data" dialog ("Other devices that sync will
+also lose this data on their next sync"). They are accurate now; do not "fix"
+them back.
+
+The old test asserted the deleteField sentinel, so it pinned the bug as
+intended behaviour. It now asserts the tombstone, and two round-trip tests
+were added: the writer's own payload is fed to a second sync state and must
+remove the key without writing anything back.
+
+## `initAppSync()` must not stop every sync before restarting
+
+It ran on every delivery of the auth state, and `firebase-config.js` re-fans
+its listeners whenever ANY other shevato tab finishes loading a page, so a
+user with two tabs open re-entered it constantly. Calling `stopAllSyncs()`
+first cleared the debounced write timer and DELETED the pending queue, so an
+edit made in the last 500 ms never reached Firestore and the older remote copy
+overwrote it in localStorage and on screen. It also defeated the same-user
+shortcut in `_startSyncForUser` (that shortcut can only skip a rebuild when
+the sync is still there to be kept), so every re-entry re-attached the
+listener and re-ran the initial merge, which is the read amplification the
+shortcut was written to stop.
+
+`initAppSync` now computes the namespaces the page wants, stops only the ones
+it no longer wants, and starts the rest; restarting is idempotent.
+`stopAppSync` (the sign-out path) still stops everything. Pinned by
+`sync-system/tests/app-sync-restart.test.mjs` (call site) and "restarting a
+live sync keeps the pending write" in `storage-sync-behavior.test.mjs`
+(behaviour).
+
+## One account's local data must not be uploaded into another's
+
+Signing out deliberately leaves the synced keys in localStorage, so on a
+shared browser the next person to sign in arrives with the previous person's
+trips, workouts or races in storage. Those keys are missing from THEIR cloud
+document, so `uploadLocalOnlyKeys` copied one person's data into another
+person's account with no gesture from either. The device now records the uid
+that owns the local copy under `shevato:sync-owner` (not part of any
+namespace's key set, so it never syncs itself) and skips the upload when a
+different uid signs in. Reading still works normally: the snapshot overwrites
+the stale local values as it arrives.
+
+## One malformed remote entry must not abort the whole snapshot
+
+`applyRemoteChange` dereferences `remoteInfo.updatedAt`, so a `null` or
+non-object entry threw INSIDE the `onSnapshot` callback: every key after it in
+iteration order was skipped and the initial merge never ran for that session.
+Only reachable from a hand-edited or older-format document, but the failure is
+silent and permanent for the session. Malformed entries are now skipped with a
+warning, and each key is applied in its own try/catch.

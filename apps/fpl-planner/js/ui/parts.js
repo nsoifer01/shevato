@@ -87,7 +87,11 @@ export function affirm({ mark = '✓', title, body, tone = '' }) {
 // `bare` drops the tinted panel for surfaces that are already inside one.
 export function confidenceStrip(assessment, { bare = false } = {}) {
   if (!assessment) return null;
-  const sentence = `${assessment.because.charAt(0).toUpperCase()}${assessment.because.slice(1)}.`;
+  // Sentence-case it and end it with exactly one full stop. Every readiness
+  // message already ends in one, so appending unconditionally printed
+  // "...no transfers or chips are recommended until it loads.." on screen.
+  const raw = `${assessment.because.charAt(0).toUpperCase()}${assessment.because.slice(1)}`;
+  const sentence = /[.!?]$/.test(raw.trim()) ? raw.trim() : `${raw.trim()}.`;
   return el('div', { class: `fpl-conf is-${assessment.band} ${bare ? 'is-bare' : ''}`.trim() }, [
     el('span', { class: 'fpl-conf-pill', text: assessment.label }),
     el('span', { class: 'fpl-conf-why', text: sentence }),

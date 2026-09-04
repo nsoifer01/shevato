@@ -265,10 +265,10 @@
 
             <!-- Icon Selector Modal -->
             <div class="modal" id="iconSelectorModal">
-                <div class="modal-content">
+                <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="iconModalTitle">
                     <div class="modal-header">
                         <h2 class="modal-title" id="iconModalTitle">Select Player Icon</h2>
-                        <button class="modal-close" onclick="closeIconSelector()">&times;</button>
+                        <button class="modal-close" onclick="closeIconSelector()" aria-label="Close">&times;</button>
                     </div>
                     <div class="modal-body" data-back-to-top>
                         <div class="icon-categories">

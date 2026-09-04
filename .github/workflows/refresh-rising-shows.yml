@@ -210,8 +210,25 @@ jobs:
         # raw GitHub URLs. Rebuild them whenever the data refreshes.
         run: node apps/rising-shows/scripts/export-integrations.js
 
+      # Gate on THIS app's own suites, not the whole repo.
+      #
+      # This step used to run `npm test`, so a failing test in any of the
+      # other seven apps blocked the data refresh. That is exactly what
+      # happened on 2026-08-23 and again on 08-28 through 08-31: an
+      # fpl-planner test failed, this step stopped the job before the release
+      # upload, and the live site served 2026-08-27 data until 09-01 with
+      # nothing on the page saying so (the staleness badge only fires at 30
+      # days). Four days of silence for a reason that had nothing to do with
+      # Rising Shows.
+      #
+      # What this step actually protects is the artifacts THIS job commits:
+      # the changelog, the Kometa/MDBList exports and the split index, all
+      # covered by the Rising Shows suite, plus the site-wide static
+      # invariants (sitemaps, internal links) that the generated pages feed.
+      # The rest of the estate is gated on every PR and on every push to
+      # master, which is where it belongs.
       - name: Run tests
-        run: npm test
+        run: npm run test:rising-shows && npm run test:static
 
       # data.json and show-modal-extras.json live on the rolling
       # "rising-shows-data" release, not in git (the pair is ~150 MB per

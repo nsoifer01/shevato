@@ -128,8 +128,43 @@ service cloud.firestore {
       return resource.data.get('paused', false) == true
         && roomKeys().hasOnly(['paused', 'pausedAt', 'pausedByUid', 'pausedByName', 'questionStartedAt']);
     }
+    // VALUE bounds for the member-write paths below.
+    //
+    // Every member rule used to constrain KEYS only (`affectedKeys().hasOnly`),
+    // which says what may be touched and nothing about what may be written.
+    // Once a question's window had elapsed on the server clock - which happens
+    // every round, and lasts indefinitely if the host is gone - any member
+    // could write `status: 'bogus'` or `currentQuestionIndex: -3` and wedge the
+    // room, restart the current question's timer forever, hand themselves the
+    // decider role, or end the game with a ranking naming themselves at
+    // 999999 points. Only a member of the room, so this was griefing among
+    // invited friends rather than a stranger path, but the README claimed the
+    // opposite and it is cheap to close.
+    function statusIsReal() {
+      return request.resource.data.status in ['lobby', 'picking', 'playing', 'finished'];
+    }
+    // The written ranking, as far as rules can check it. There is no iteration
+    // in this language, so every element cannot be validated; what IS reachable
+    // is the shape, a sane length, and the TOP entry, which is the one a
+    // griefer has to occupy to appear to have won (the client writes this list
+    // already sorted by score, descending). A legitimate game cannot approach
+    // the cap: trivia peaks at (100 base + 100 speed) x 1.5 streak = 300 a
+    // question over at most 10 questions, and Globe Drop at 100 x 3.0 round
+    // x 1.5 streak x ~3.0 difficulty = 1,350 a round over at most 10, so 100k
+    // is roughly a 7x margin over the highest score any real game can reach.
+    function rankingSane() {
+      return !roomKeys().hasAny(['finalRanking'])
+        || request.resource.data.finalRanking == null
+        || (request.resource.data.finalRanking is list
+            && request.resource.data.finalRanking.size() <= 32
+            && (request.resource.data.finalRanking.size() == 0
+                || (request.resource.data.finalRanking[0].score is number
+                    && request.resource.data.finalRanking[0].score >= 0
+                    && request.resource.data.finalRanking[0].score <= 100000)));
+    }
     function memberEndGame() {
       return request.resource.data.status == 'finished'
+        && rankingSane()
         && roomKeys().hasOnly(['status', 'finishedAt', 'paused', 'pausedAt', 'finalRanking']);
     }
     function memberRematch() {
@@ -138,14 +173,35 @@ service cloud.firestore {
     function deciderPick() {
       return resource.data.status == 'picking'
         && resource.data.get('deciderUid', '') == request.auth.uid
+        && statusIsReal()
         && roomKeys().hasOnly(['status', 'currentQuestionId', 'selectedCategory',
                                'questionStartedAt', 'revealStartedAt', 'finishedAt']);
+    }
+    function advancedByOne() {
+      return request.resource.data.get('currentQuestionIndex', 0)
+        == resource.data.get('currentQuestionIndex', 0) + 1;
     }
     function memberTimedAdvance() {
       return resource.data.status == 'playing'
         && resource.data.get('paused', false) != true
         && resource.data.get('questionStartedAt', null) is timestamp
         && request.time.toMillis() >= questionOverMs()
+        && statusIsReal()
+        && rankingSane()
+        // The advance does exactly one of two things, and the question index
+        // says which: it FINISHES the game (index unchanged), or it moves on
+        // to the next question (index exactly one higher). Anything else is
+        // not an advance. This is also what stops a member replaying the
+        // CURRENT question forever by rewriting `questionStartedAt` while the
+        // status stays 'playing' and the index stays put.
+        && ((request.resource.data.status == 'finished'
+             && request.resource.data.get('currentQuestionIndex', 0)
+                == resource.data.get('currentQuestionIndex', 0))
+            || (request.resource.data.status in ['playing', 'picking'] && advancedByOne()))
+        // The decider rotation is only ever written as part of moving to the
+        // next question, so a member cannot hand themselves the pick without
+        // advancing the room.
+        && (!roomKeys().hasAny(['playerOrder', 'deciderUid']) || advancedByOne())
         && roomKeys().hasOnly(['status', 'currentQuestionIndex', 'currentQuestionId', 'selectedCategory',
                                'questionStartedAt', 'revealStartedAt', 'pickingStartedAt', 'playerOrder',
                                'deciderUid', 'playedQuestionIds', 'finishedAt', 'finalRanking',
@@ -160,6 +216,11 @@ service cloud.firestore {
       return resource.data.status == 'picking'
         && resource.data.get('pickingStartedAt', null) is timestamp
         && request.time.toMillis() >= resource.data.pickingStartedAt.toMillis() + 20000
+        // A pick either starts the question it chose or finishes a game whose
+        // pool is exhausted. It never returns the room to the lobby, and the
+        // question index is not among the keys it may touch at all.
+        && request.resource.data.status in ['playing', 'finished']
+        && rankingSane()
         && roomKeys().hasOnly(['status', 'currentQuestionId', 'selectedCategory',
                                'questionStartedAt', 'revealStartedAt', 'finishedAt', 'finalRanking']);
     }

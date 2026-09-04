@@ -19,6 +19,7 @@ function record(name, arg) {
 }
 
 export function startStorageSync() { return { stop() {} }; }
+export function stopSync(namespace) { fakes().calls.push(`stopSync:${namespace}`); }
 export function stopAllSyncs() { fakes().calls.push('stopAllSyncs'); }
 export function getSyncStatus() { return null; }
 export function getGlobalSyncStatus() { return {}; }

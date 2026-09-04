@@ -435,19 +435,28 @@ export class StorageService {
         };
     }
 
-    /** Write a full snapshot back over the stores. Used by both import modes. */
+    /**
+     * Write a full snapshot back over the stores. Used by both import modes.
+     *
+     * Returns false if ANY store failed to write. `set()` has always reported
+     * failure honestly and every caller here used to throw the boolean away,
+     * so an import that wrote nothing (quota exhausted, Safari private mode,
+     * storage evicted) still reported "Imported: N workouts" and the user
+     * believed their backup had been restored.
+     */
     writeStores(snapshot) {
-        this.savePrograms(snapshot.programs || []);
-        this.saveWorkoutSessions(snapshot.sessions || []);
-        if (snapshot.settings) this.saveSettings(snapshot.settings);
-        this.saveAchievements(snapshot.achievements || []);
-        this.saveCustomExercises(snapshot.customExercises || []);
-        this.saveMeasurements(snapshot.measurements || []);
-        if (snapshot.activeProgram) {
-            this.set(this.keys.ACTIVE_PROGRAM, snapshot.activeProgram);
-        } else {
-            this.remove(this.keys.ACTIVE_PROGRAM);
-        }
+        const results = [
+            this.savePrograms(snapshot.programs || []),
+            this.saveWorkoutSessions(snapshot.sessions || []),
+            snapshot.settings ? this.saveSettings(snapshot.settings) : true,
+            this.saveAchievements(snapshot.achievements || []),
+            this.saveCustomExercises(snapshot.customExercises || []),
+            this.saveMeasurements(snapshot.measurements || []),
+            snapshot.activeProgram
+                ? this.set(this.keys.ACTIVE_PROGRAM, snapshot.activeProgram)
+                : this.remove(this.keys.ACTIVE_PROGRAM)
+        ];
+        return results.every((ok) => ok !== false);
     }
 
     /**
@@ -485,13 +494,13 @@ export class StorageService {
                     measurements: Array.isArray(payload.measurements) ? payload.measurements : before.measurements,
                     activeProgram: payload.activeProgram || null,
                 };
-                this.writeStores(after);
-                return { ok: true, mode, before, after, repairs };
+                const wrote = this.writeStores(after);
+                return { ok: wrote, mode, before, after, repairs, storageFull: !wrote };
             }
 
             const after = mergeImportedData(before, payload);
-            this.writeStores(after);
-            return { ok: true, mode: IMPORT_MODES.MERGE, before, after, repairs };
+            const wrote = this.writeStores(after);
+            return { ok: wrote, mode: IMPORT_MODES.MERGE, before, after, repairs, storageFull: !wrote };
         } catch (error) {
             console.error('Error importing data:', error);
             return { ok: false, mode, before: null, after: null, repairs: [] };

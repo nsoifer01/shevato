@@ -537,7 +537,13 @@ export class AchievementService {
                 return AnalyticsService.calculateAchievementProgress('exercises', sessions, 'exercises-completed');
 
             case 'workout-today': {
-                const today = new Date().toISOString().split('T')[0];
+                // LOCAL today, like 'daily-volume' below. Sessions are dated
+                // with the LOCAL day (helpers.getTodayDateString), so
+                // toISOString() compared a local date against a UTC one and
+                // the badge never unlocked for a workout finished after
+                // 19:00 CDT: the same session did unlock the daily-volume
+                // badges four lines down.
+                const today = AnalyticsService.toLocalDateKey(new Date());
                 return sessions.some(s => s.date === today) ? 1 : 0;
             }
 
@@ -731,8 +737,13 @@ export class AchievementService {
                 return count;
             }
             case 'monthly-workouts': {
+                // `new Date('2026-09-01')` is UTC midnight, which is the
+                // PREVIOUS month for anyone west of UTC, so a month whose
+                // count depended on a session dated the 1st was undercounted.
+                // toLocalDate parses the same date string in local time, and
+                // calculateProgress('monthly-workouts') already uses it.
                 const monthKey = (date) => {
-                    const d = new Date(date);
+                    const d = AnalyticsService.toLocalDate(date);
                     return `${d.getFullYear()}-${d.getMonth()}`;
                 };
                 const sessionsByMonth = new Map();

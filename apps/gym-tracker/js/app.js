@@ -551,13 +551,19 @@ class GymTrackerApp {
      * Save data to storage
      */
     savePrograms() {
-        storageService.savePrograms(this.programs.map(p => p.toJSON()));
+        const ok = storageService.savePrograms(this.programs.map(p => p.toJSON()));
         emit(EVENTS.PROGRAMS_CHANGED, this.programs);
+        return ok;
     }
 
+    // Returns false when the write did not land (quota exhausted, private
+    // mode, evicted storage). Callers that tell the user something was saved
+    // MUST check it: finishWorkout used to clear the active-workout blob and
+    // congratulate the lifter on a session that existed only in memory.
     saveWorkoutSessions() {
-        storageService.saveWorkoutSessions(this.workoutSessions.map(s => s.toJSON()));
+        const ok = storageService.saveWorkoutSessions(this.workoutSessions.map(s => s.toJSON()));
         emit(EVENTS.SESSIONS_CHANGED, this.workoutSessions);
+        return ok;
     }
 
     saveSettings() {

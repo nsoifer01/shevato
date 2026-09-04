@@ -85,8 +85,35 @@ export function sanitizeImportData(input) {
 
     if (Array.isArray(data.programs)) {
         data.programs = fixIds(data.programs, 'program(s)');
+        let badExerciseLists = 0;
+        let droppedExercises = 0;
         for (const p of data.programs) {
             if (typeof p.name !== 'string') { p.name = String(p.name ?? 'Imported program'); note('a program name was not text and was converted'); }
+
+            // `exercises` was validated nowhere, and Program's constructor
+            // does `(data.exercises || []).map(normalizeExercise)`. A program
+            // whose exercises is an object, a string, or an array holding a
+            // null therefore THREW while the store was being loaded, and
+            // app.js wraps the whole store in _safeLoad: one bad program made
+            // every program vanish behind "Could not load programs, so that
+            // section reset to empty", and the next save wrote that empty
+            // list over the intact stored one. Coerce here instead, where a
+            // repair can be reported.
+            if (p.exercises === undefined || p.exercises === null) continue;
+            if (!Array.isArray(p.exercises)) {
+                p.exercises = [];
+                badExerciseLists++;
+                continue;
+            }
+            const before = p.exercises.length;
+            p.exercises = p.exercises.filter(isPlainObject);
+            droppedExercises += before - p.exercises.length;
+        }
+        if (badExerciseLists) {
+            note(`${badExerciseLists} program(s) had an unreadable exercise list and were emptied`);
+        }
+        if (droppedExercises) {
+            note(`${droppedExercises} program exercise entries were not records and were skipped`);
         }
     }
 
