@@ -301,11 +301,60 @@ function scoreCandidate({
 
   return {
     candidate, chip, money, acct, trajectory, chipBonus,
-    xPointsGw: first.xPoints + chipBonus,
-    xPointsNet: first.xPoints + chipBonus - acct.hitCostPoints,
+    ...gameweekPoints(first, chip, acct.hitCostPoints),
     xPointsHorizon: horizonPoints,
     objective,
     transferCount: count,
+  };
+}
+
+// THE CANONICAL "expected final points this gameweek", and the one number the
+// app reports as the answer to "what will I score".
+//
+// It is what FPL will actually pay, term by term, mirroring `scoreGameweek` in
+// backtest.js which scores a real gameweek from real minutes:
+//
+//   xPointsXi          the eleven that starts
+// + xPointsAutosubs    what the bench recovers when a starter does not play,
+//                      under FPL's substitution rules - EXCEPT under bench
+//                      boost, where all fifteen score and no substitution is
+//                      made at all
+// + m * xPointsCaptaincy   the armband, m = 2 extra copies under triple
+//                      captain and 1 otherwise, and each copy is the captain's
+//                      points when he plays and the VICE'S when he does not
+// + xPointsBench       only under bench boost, where the bench is paid directly
+//
+// WHY THIS IS NOT THE OBJECTIVE. `xPointsHorizon` and `objective` are built
+// from `trajectory.total`, which is the sum of `xPointsXi + captainExtra` and
+// contains neither auto-substitutions nor vice succession. That is deliberate
+// and documented in lineup.js, and `optimizer-consistency.test.mjs` asserts
+// `squadObjective` is bit-identical to it, so this function must never be fed
+// back into the ranking. Changing what the planner MAXIMIZES is a model change
+// and needs the registry; changing what it REPORTS is this.
+//
+// Until 2026-09-04 the reported number was `xPointsXi + captainExtra + chipBonus`,
+// which omits both. Both omitted terms are exactly zero while `pAppear` is
+// pinned at 1 (see FINDINGS), which is the only reason the error was invisible.
+export function gameweekPoints(row, chip, hitCostPoints = 0) {
+  const xi = Number.isFinite(row.xPointsXi) ? row.xPointsXi : 0;
+  const armband = Number.isFinite(row.xPointsCaptaincy)
+    ? row.xPointsCaptaincy
+    : (Number.isFinite(row.captainExtra) ? row.captainExtra : 0);
+  const autosubs = chip === 'bboost' || !Number.isFinite(row.xPointsAutosubs)
+    ? 0
+    : row.xPointsAutosubs;
+  const bench = chip === 'bboost' && Number.isFinite(row.xPointsBench) ? row.xPointsBench : 0;
+  const copies = chip === '3xc' ? 2 : 1;
+  const xPointsGw = xi + autosubs + copies * armband + bench;
+  return {
+    xPointsGw,
+    xPointsNet: xPointsGw - (hitCostPoints || 0),
+    // The components, named, so nothing downstream has to re-derive them and
+    // no second definition of "expected points" can drift into existence.
+    xPointsXi: xi,
+    xPointsAutosubs: autosubs,
+    xPointsCaptaincy: copies * armband,
+    xPointsBenchPaid: bench,
   };
 }
 
@@ -345,6 +394,12 @@ function planFromScored(scored, { squadState, gameState, rules, cfg, gw, certain
     viceCaptain: first.viceCaptain,
     xPointsGw: scored.xPointsGw,
     xPointsNet: scored.xPointsNet,
+    // The named components of `xPointsGw`, so a caller can show the working
+    // and nothing has to re-derive "expected points" a second way.
+    xPointsXi: scored.xPointsXi,
+    xPointsAutosubs: scored.xPointsAutosubs,
+    xPointsCaptaincy: scored.xPointsCaptaincy,
+    xPointsBenchPaid: scored.xPointsBenchPaid,
     xPointsHorizon: scored.xPointsHorizon,
     sd: first.sd,
     certainty: certainty || 'current',
@@ -424,8 +479,7 @@ function buildDraftPlan({ squadState, projections, gameState, rules, cfg, gw }) 
     }),
     trajectory,
     chipBonus: 0,
-    xPointsGw: trajectory.gws[0].xPoints,
-    xPointsNet: trajectory.gws[0].xPoints,
+    ...gameweekPoints(trajectory.gws[0], null, 0),
     xPointsHorizon: trajectory.total,
     objective: trajectory.total,
     transferCount: 0,

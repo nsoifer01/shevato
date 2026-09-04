@@ -590,6 +590,181 @@ VERDICT changed, and only for the armband. The hero note and the pitch card
 still print xP only. If the objection recurs there, the next cheapest step is a
 line under the hero fact, not a change to the weights.
 
+### The bench order was decided by player id, and nobody could see it (2026-09-03)
+
+Reported against team 3855835 in GW3 of 2026/27: the recommended bench read
+Dubravka (GK) 2.7, then **Calvert-Lewin 3.6, Obi 0.2, Senesi 3.6**. A
+fourth-choice forward worth a fifth of a point was second in the auto-sub
+order, ahead of a defender worth eighteen times as much.
+
+**It was not a UI sort and not a serialization slip.** The displayed xP is
+`projections.get(id, gw).xPoints`, the same field `buildRows` scores on, and
+`pitch.js` renders `plan.bench.order` in array order. The order really was the
+one the optimizer produced. Reproduced exactly, offline, from the live payload
+plus `data/opening-baseline.json` (see the repro note below).
+
+**Root cause.** `orderBench` maximizes expected auto-substitution recovery, and
+that quantity is IDENTICALLY ZERO for every bench order when no starter can be
+absent: nothing comes on, so nothing is recovered. In this squad every one of
+the eleven outfield starters had `pAppear` of exactly 1, so all six
+permutations scored 0.0 and the maximum was a plateau. The tie was then broken
+by `permLexLower`, which is ascending player id - Calvert-Lewin 346, Obi 441,
+Senesi 498. That is the order that shipped. The tie-break was written as a
+determinism device (two runs must not disagree) and was never meant to carry a
+football decision, but on the opening-baseline path it carries all of them.
+
+**The fix** (`lineup.js`): a lexicographic refinement. The objective is
+unchanged and still decides first; orders it rates equal are then compared on
+what they would recover IF a starter did miss, by re-running the same exact
+model - the same Poisson-binomial walk, the same `simulateSubs`, so formation
+legality still decides who may legally come on - with every starter's absence
+probability floored at `TIEBREAK_ABSENCE_FLOOR` (0.01, one match in a hundred).
+`permLexLower` survives as the final tie-break for genuinely identical players.
+
+**It costs nothing, and getting there took one more step.** The second pass only
+runs when the primary pass leaves more than one order standing, which a squad
+with real minutes risk never does - but the plateau state is exactly the state
+where EVERY candidate eleven ties, and running it per candidate doubled full
+plan CPU on the reported payload (501-589 ms to 1065-1174 ms). The tie-break
+cannot move `autosubValue`, which is the only thing the eleven is ranked on, so
+`optimizeLineup` now passes `resolveTies: false` through the search and resolves
+the order ONCE, on the eleven that won. Measured back at 509-552 ms, with
+`xPointsGw` bit-identical at 54.65439932876405 across all three variants.
+
+**Nothing the app reports changed.** `autosubValue` is still the primary
+maximum, so the eleven (chosen on `score + autosubValue`), `xPointsWithAutosubs`
+and every squad-level number are bit-identical. Only which of several
+equally-valued orders is returned changed. That is why this is a bug fix and
+not a registry experiment.
+
+**Two structural facts learned here, both worth keeping:**
+
+- **A substitute who cannot legally come on is FREE, not costly.**
+  `simulateSubs` skips an ineligible bench player without consuming an absence,
+  so putting him first never denies the man behind him a slot. The consequence
+  is that bench slot 1 always goes to the highest expected-recovery player,
+  and formation legality changes the VALUE of an order (and the weights inside
+  it) rather than the winner. The old test `a substitute who cannot legally
+  come on is ordered behind one who can` asserted the opposite and only passed
+  because the ascending-id tie-break happened to agree with it; it now asserts
+  what is actually true, that the bench is worth 0.5 x 1.5 rather than
+  0.5 x 5.0, which is the real proof the rule is applied.
+- **The ordering rule that falls out is points-if-he-plays, not expected
+  points.** Because a bench player who does not play is skipped rather than
+  wasted, a rarely-playing substitute costs the man behind him almost nothing.
+  The measured crossover in `tests/lineup.test.mjs` is exact: a forward who
+  appears 9.8% of the time is ordered AHEAD of a certain 3.63 as soon as his
+  conditional points clear 3.63, and behind it below. Obi's conditional points
+  were 2.07, so last is where he belongs - the model would have said so all
+  along if the plateau had not silenced it.
+
+**Reproducing this class of report offline.** `scripts/evidence-probe.mjs`
+wiring plus `entry/<id>/event/<currentEvent>/picks` is not enough: `app.js`
+rebuilds the game state through `resolveBaseline(first, kept, { shipped })`
+when `openingBaselineApplies`, and WITHOUT that step every projection is a bare
+position prior (identical `pAppear` for every defender, every midfielder) and
+the reported numbers are unrecognisable - Dubravka reads 0.14 rather than 2.7.
+Load `data/opening-baseline.json` and rebuild the game state with it before
+concluding anything about an opening-weeks report.
+
+### Headline xP was not the expected gameweek score (found and FIXED 2026-09-04)
+
+Three different numbers, and the app shows the first:
+
+| number | formula | includes |
+| --- | --- | --- |
+| `plan.current.xPointsGw` (the hero card) | `xPointsXi + captainExtra` (+ chip) | eleven + armband |
+| `lineup.xPointsWithAutosubs` | `xPoints + autosubValue` | eleven + auto-subs, NO armband |
+| the honest expectation | `xPointsXi + captainExtra + autosubValue` | all three |
+
+`chips.js` `squadTrajectory` sets `xPoints = xPointsXi + captainExtra` and
+`lineup.js` documents the omission on purpose: the bench does not appear in the
+reported number because the hero card does not pay a manager for points his
+bench might recover.
+
+**That is defensible only while `autosubValue` is near zero, and today it is
+EXACTLY zero** for a squad whose starters are all pinned at `pAppear` 1. So the
+omission is currently invisible - and any correction to `pAppear` makes the
+headline move the WRONG WAY. On team 3855835 at GW3 under the (rejected)
+estimator arm D:
+
+| | shipped | arm D |
+| --- | ---: | ---: |
+| XI xP | 49.699 | 46.592 |
+| autosubValue | 0.000 | 3.649 |
+| captain extra | 4.955 | 4.641 |
+| **headline xPointsGw** | **54.654** | **51.233** |
+| eleven + armband + auto-subs | 54.654 | **54.882** |
+
+The headline falls 3.4 while the honest expectation RISES. A manager reading the
+hero card would conclude a better-calibrated model had made his team worse.
+
+**Two terms were missing, not one.** Vice succession is the second, and it was
+the more embarrassing: `captain.js` has computed `xPointsCaptaincy` - the
+captain's points when he plays and the VICE'S when he does not, with a
+club-correlation factor - since it was written, `tests/captain.test.mjs` has
+pinned it since then, and `transfers.js:363` already scored its candidates on
+`lineup.xPoints + lineup.autosubValue + captaincy.xPointsCaptaincy`. The
+reported total was the only place that used the captain's raw xP instead. So
+the canonical formula was already the intended contract; one construction site
+had drifted.
+
+**FIXED.** `planner.js` `gameweekPoints()` is now the single definition, called
+from both construction sites (`scoreCandidate` and the draft path), and the plan
+carries the named components `xPointsXi` / `xPointsAutosubs` /
+`xPointsCaptaincy` / `xPointsBenchPaid`. Chip semantics follow `scoreGameweek`
+in backtest.js, which is the authority because it scores real gameweeks from
+real minutes: Bench Boost pays the bench INSTEAD of auto-substitutions (FPL
+makes no substitution when all fifteen score), Triple Captain pays two extra
+armband copies, and wildcard and free hit change the squad rather than the
+scoring.
+
+**The objective was deliberately NOT changed.** `xPointsHorizon` and `objective`
+are still built from `trajectory.total`, which is the sum of
+`xPointsXi + captainExtra` and contains neither term; that is documented in
+lineup.js and `optimizer-consistency.test.mjs` asserts `squadObjective` is
+bit-identical to it. Proof the fix is reporting-only: replaying 2024-25 gw1-13
+before and after scores **884 points both times**, with identical captaincy
+value, transfers and hits, and only the reported `projection bias` moving
+(-19.4 to -19.0 points per gameweek, i.e. less under-projection). Whether the
+planner should also OPTIMIZE the canonical number is a model change and needs
+the registry.
+
+On live data today the correction is a no-op: both omitted terms are exactly
+zero under the `pAppear` pin, so team 3855835 still reads 54.654. Pinned by
+`tests/gameweek-points.test.mjs` (cases A-H). See registry entries 23 and 24.
+
+### The triple captain undervaluation is real and provably inert (2026-09-04)
+
+`evaluateTripleCaptain` values the chip at `now.captainExtra`, the captain's own
+xP. FPL passes a TRIPLED armband to the vice exactly as it passes a doubled one
+(`scoreGameweek` applies the vice rule before the multiplier), so the chip's
+marginal value is one more copy of `xPointsCaptaincy`. Measured, REJECTED as
+inert, registry entry 25.
+
+**The numbers.** Over 129 replay gameweeks where the chip was available,
+`valueNow` differs in 50 (38.8%), by +0.16 on average, largest single uplift
+1.78. The recommendation flips in **0** of them, because the bar is
+`valueNow - bestValue >= TRIPLE_CAPTAIN_MARGIN` and that margin is **2.5** - an
+order of magnitude larger than the correction. `chipCandidates()` then refuses
+to score any chip its evaluator did not recommend, so the corrected `chipBonus`
+never reaches a played chip either. Two gates in series, both closed. Replays
+with chips ON: +0 on all 72 trajectories, both instruments.
+
+**Two traps recorded for whoever picks this up.**
+
+- **The deciding instrument cannot see chips at all.** `INSTRUMENTS.paired` and
+  `INSTRUMENTS.windows` both set `chips: false`. A chip experiment on the
+  default instrument returns a clean, meaningless zero. Override `chips: true`
+  in the config, as entry 25's two configs do.
+- **The two sides of the comparison are not the same quantity.** `valueNow` is
+  the CHOSEN captain's expectation; `bestValue` is a max over the whole squad of
+  `estimateXp` for a future week, with no captain choice and no vice term. The
+  2.5 margin exists partly to compensate for that optimism. Correcting only the
+  now side tilts the comparison toward playing the chip early; it did not matter
+  here because nothing crossed the bar, but any arm that also touches the margin
+  must fix both sides together.
+
 ## Minutes and projections
 
 - **pStart's target is the NEXT FIXTURE, not a season rate.** Validating
@@ -636,6 +811,37 @@ line under the hero fact, not a change to the weights.
   the element totals relative to the first finished fixture. That does not need
   observing, because both orderings are handled and neither needs a code change;
   `GW1-RUNBOOK.md` records which way it actually went.
+- **`pStart` was un-pinned in 2026-08-15; `pAppear` still pins at exactly 1,
+  and that silently zeroes the whole auto-substitution model** (found
+  2026-09-03, NOT fixed). `baseStart` is shrunk toward a position prior with
+  `START_RATE_SHRINK_MATCHES`, but `subOnRate` - the inferred rate at which a
+  player comes off the bench in the matches he did not start - gets no
+  shrinkage at all. So a player whose evidence says "he appeared in every match
+  his club played" gets `baseAppear = baseStart + (1 - baseStart) * 1 = 1`, and
+  `pAppear` is a hard 1.0000. On the shipped opening baseline (a full previous
+  season of minutes) that is most of a decent squad: for team 3855835 in GW3 of
+  2026/27, **eleven of eleven outfield starters** were at `pAppear` 1, so
+  `absenceDistribution` said no starter can ever miss, `autosubValue` was 0 for
+  every eleven and every bench order, `gkValue` was 0, and the
+  `minutesRiskWeight * (1 - pAppear)` term of the selection score was 0 too.
+  Every piece of machinery `lineup.js` documents for weighing minutes risk -
+  including "start the coin-flip keeper and hold the nailed one in reserve" -
+  is inert in that state. It is what exposed the bench-order bug above, and the
+  bench-order fix does not address it: that fix only stops the plateau being
+  resolved arbitrarily.
+
+  **The obvious fix was measured and REJECTED** (registry entry 23, 2026-09-04):
+  shrinking `subOnRate` toward a measured per-position prior fixes the
+  calibration completely - the pinned bin disappears, overall appearance bias
+  halves, Brier improves, every season improves - and wins no points, t 0.93,
+  sign test 0.65, with 2024-25 and 2025-26 both LOSING. The defect is real and
+  is still open; what is closed is that particular fix. See
+  `experiments/subon-rate-shrinkage.md` for what to diagnose before trying
+  another arm, and note the deeper flaw the shrinkage only damps: `benchMinutes`
+  is `minutes - starts x prior.starterMinutes`, a residual against a
+  LEAGUE-AVERAGE constant, so it measures minutes above an average start rather
+  than bench appearances. B.Fernandes plays 87.7 per start against a prior of
+  82.30, and 37 x 5.40 = 199.9 is exactly his "bench minutes" of 200.
 - **Whoever builds the numerator owns the denominator.** A start rate is starts
   over MATCHES, and on a live payload there is only one kind of match, because
   FPL resets element totals every August. A caller that assembles totals from
@@ -2061,7 +2267,29 @@ read out (entry 18).
    Any new candidate must first pass the entry-12 order test: a level
    correction cancels out of every ranking and only crosses hit/chip
    thresholds.
-5. **Bookmaker odds stay deferred** (owner decision; `odds.js` inert). Every
+5. **`pAppear` pins at exactly 1 and kills the auto-substitution model**
+   (found 2026-09-03; the first fix REJECTED 2026-09-04, registry entry 23).
+   `subOnRate` is the one rate in `minutes.js` with no shrinkage, so a full
+   previous season of minutes produces certainty: 66 of 505 playable players and
+   41% of the pool owned by 5%+ of managers, and eleven of eleven outfield
+   starters for the team that surfaced it. `autosubValue`, `gkValue` and the
+   minutes-risk term all read zero. Shrinking the rate fixes the calibration
+   outright and wins no points (t 0.93, two of four seasons negative), so the
+   open question is now sharper, not closed: **does this defect cost points at
+   all, or only calibration?** Diagnose by measuring how often a correction
+   changes the eleven, the armband or the transfer rather than the numbers - the
+   evidence so far says rarely, which would make it a level correction of the
+   kind entry 12 says cancels out of every ranking. Fixing the contaminated
+   `benchMinutes` estimator was tried too and also REJECTED (entry 24, arm D:
+   t 0.10, sign test 1.00). **The question is now answered: it costs
+   calibration, not points.** Arm D changes the recommended plan in 52-87% of
+   gameweeks and the eleven in 45-71%, moving 1.3-1.9 players, for zero net
+   points - so the decisions it changes are near-indifferent and the churn is a
+   cost. Any further attempt should be a DATA change (accumulate appearances
+   from `event/<gw>/live`) rather than another estimator. Do not remove
+   `minutesRiskWeight` on the double-charge argument: tested, and the planner
+   then cannot name a vice-captain (`vice_missing`, 3 of 120 cells).
+6. **Bookmaker odds stay deferred** (owner decision; `odds.js` inert). Every
    correctness round so far has been worth more than any unproven external
    signal.
 

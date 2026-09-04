@@ -94,6 +94,25 @@ apps/fpl-planner/
       projections.js     position-specific expected points
       ml.js              ridge / poisson / logistic regression, calibration, metrics
       lineup.js          optimal XI and bench order
+
+**The one expected-points number, and its named parts.** `plan.xPointsGw` is
+"expected final FPL points this gameweek": what the manager should expect to
+score. `planner.js` `gameweekPoints()` is the only place it is computed:
+
+    xPointsGw = xPointsXi                       the eleven that starts
+              + xPointsAutosubs                 legal auto-substitutions,
+                                                zero under Bench Boost
+              + m * xPointsCaptaincy            m = 2 under Triple Captain else
+                                                1; each copy is the captain when
+                                                he plays and the VICE when he
+                                                does not
+              + xPointsBenchPaid                Bench Boost only
+
+Each component is carried on the plan under those names, so nothing downstream
+re-derives "expected points" a second way. `xPointsNet` is the same number less
+the hit. `xPointsHorizon` and `objective` are a DIFFERENT quantity - the
+discounted ranking objective - and deliberately contain neither
+auto-substitutions nor vice succession; see the note in `gameweekPoints`.
       captain.js         captain and vice-captain
       transfers.js       transfer search, hits, roll value
       squad-builder.js   full 15-man build (wildcard, free hit, pre-season)
