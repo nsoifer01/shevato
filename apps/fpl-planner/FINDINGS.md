@@ -667,6 +667,40 @@ the reported numbers are unrecognisable - Dubravka reads 0.14 rather than 2.7.
 Load `data/opening-baseline.json` and rebuild the game state with it before
 concluding anything about an opening-weeks report.
 
+### Headline xP is not the expected gameweek score, and the pin hides it (2026-09-04)
+
+Three different numbers, and the app shows the first:
+
+| number | formula | includes |
+| --- | --- | --- |
+| `plan.current.xPointsGw` (the hero card) | `xPointsXi + captainExtra` (+ chip) | eleven + armband |
+| `lineup.xPointsWithAutosubs` | `xPoints + autosubValue` | eleven + auto-subs, NO armband |
+| the honest expectation | `xPointsXi + captainExtra + autosubValue` | all three |
+
+`chips.js` `squadTrajectory` sets `xPoints = xPointsXi + captainExtra` and
+`lineup.js` documents the omission on purpose: the bench does not appear in the
+reported number because the hero card does not pay a manager for points his
+bench might recover.
+
+**That is defensible only while `autosubValue` is near zero, and today it is
+EXACTLY zero** for a squad whose starters are all pinned at `pAppear` 1. So the
+omission is currently invisible - and any correction to `pAppear` makes the
+headline move the WRONG WAY. On team 3855835 at GW3 under the (rejected)
+estimator arm D:
+
+| | shipped | arm D |
+| --- | ---: | ---: |
+| XI xP | 49.699 | 46.592 |
+| autosubValue | 0.000 | 3.649 |
+| captain extra | 4.955 | 4.641 |
+| **headline xPointsGw** | **54.654** | **51.233** |
+| eleven + armband + auto-subs | 54.654 | **54.882** |
+
+The headline falls 3.4 while the honest expectation RISES 0.2. A manager reading
+the hero card would conclude a better-calibrated model had made his team worse.
+Worth deciding deliberately before any future minutes change lands; not a reason
+to change the UI on its own. See registry entries 23 and 24.
+
 ## Minutes and projections
 
 - **pStart's target is the NEXT FIXTURE, not a season rate.** Validating
@@ -2182,7 +2216,15 @@ read out (entry 18).
    changes the eleven, the armband or the transfer rather than the numbers - the
    evidence so far says rarely, which would make it a level correction of the
    kind entry 12 says cancels out of every ranking. Fixing the contaminated
-   `benchMinutes` estimator is the better candidate than damping it.
+   `benchMinutes` estimator was tried too and also REJECTED (entry 24, arm D:
+   t 0.10, sign test 1.00). **The question is now answered: it costs
+   calibration, not points.** Arm D changes the recommended plan in 52-87% of
+   gameweeks and the eleven in 45-71%, moving 1.3-1.9 players, for zero net
+   points - so the decisions it changes are near-indifferent and the churn is a
+   cost. Any further attempt should be a DATA change (accumulate appearances
+   from `event/<gw>/live`) rather than another estimator. Do not remove
+   `minutesRiskWeight` on the double-charge argument: tested, and the planner
+   then cannot name a vice-captain (`vice_missing`, 3 of 120 cells).
 6. **Bookmaker odds stay deferred** (owner decision; `odds.js` inert). Every
    correctness round so far has been worth more than any unproven external
    signal.

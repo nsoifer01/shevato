@@ -1682,6 +1682,104 @@ xG/xA rate quality, and early-window squad construction where a wrong opening
 channel; running more weights is known to be useless, because no flat weight
 can satisfy three seasons whose optima genuinely differ.
 
+## 24. The sub-on ESTIMATOR: phantom bench minutes proven, every fix REJECT
+
+**Decision: REJECT, all arms.** Nothing shipped; the engine is unchanged.
+Entry 23 damped the symptom and lost; this entry attacks the estimator itself
+and loses too, but it settles what the defect IS and what it is worth.
+
+**The defect, proven against the archives.** `benchMinutes = minutes - starts *
+prior.starterMinutes` subtracts a LEAGUE-AVERAGE starter-minutes constant, so
+for any player who plays more than average per start it manufactures "bench
+minutes" out of the excess. Bruno Fernandes in 2025-26: 35 starts, 3065
+minutes, **zero substitute appearances all season**; the model computes 193
+bench minutes (= 35 x (87.6 - 82.1)), infers 3.00 sub appearances, and returns
+`subOnRate` 1.0000 against a truth of 0.0000.
+
+Over the four archives, players with 30+ starts:
+
+| quantity | truth | model | ratio |
+| --- | ---: | ---: | ---: |
+| substitute appearances | 555 | 1227.8 | **2.21x** |
+| substitute minutes | 13,829 | 68,532 | **4.96x** |
+
+`subOnRate` saturates at exactly 1 for 259 of 376 nailed player-seasons, and
+**110 of those made no substitute appearance at all**.
+
+**The archives can answer this directly and the live payload cannot.**
+`merged_gw.csv` carries `starts` and `minutes` per player per fixture, so
+started / appeared / came-on / unused-sub / club-match are all directly
+observed. `bootstrap-static` carries season aggregates only, with no appearance
+count, and the shipped opening baseline is a captured bootstrap so it inherits
+the same gap. An appearance count could be accumulated in production from
+`event/<gw>/live`, which the app already fetches - but not for the opening
+weeks, which is exactly where the pin bites hardest.
+
+**Arms.** B oracle (observed sub rate; replay-only, not shippable, kept as a
+ceiling). C sound bound: only minutes a start cannot explain (`M - 90*S`), which
+makes a phantom impossible, shrunk to a positional prior. D the same bound
+shrunk toward a prior measured as position x the player's own start rate,
+over 76,475 non-start player-matches and stable under leave-one-season-out
+(position sets the level, GKP 0.0048 / DEF 0.1143 / MID 0.2048 / FWD 0.2327;
+start rate sets the shape, 0.0505 at start-rate under 0.1 rising to 0.33-0.41).
+
+**Arm D on the deciding instrument:** mean **+0.8** a window, se 8.0,
+**t 0.10**, CI -16.0 to +17.5, **10W/9L/1T**, **sign test p 1.00**. Per season
++502 / -260 / -4 / -192.
+
+**Calibration, out of sample, 83,238 player-gameweeks** (control -> S -> C -> D):
+overall bias +0.0260 -> +0.0126 -> -0.0348 -> -0.0205; Brier 0.1434 -> 0.1400
+-> 0.1421 -> 0.1398. Every arm deletes the saturation. None is clearly better
+calibrated than entry 23's simple shrinkage, and none wins points.
+
+**THE FINDING THAT MATTERS, and it refutes entry 23's own guess.** Entry 23
+supposed this was a level correction that cancels out of every ranking. It is
+not. Measured as a counterfactual on the SAME squad (the control plays the
+season; each candidate re-plans the control's own squad state, so there is no
+cascade), arm D changes:
+
+| season | XI | captain | vice | bench | transfer | chip | ANY plan | XI players moved |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2023-24 | 47.4% | 18.4% | 26.3% | 60.5% | 39.5% | 5.3% | **57.9%** | 1.28 |
+| 2024-25 | 71.1% | 28.9% | 34.2% | 60.5% | 65.8% | 7.9% | **86.8%** | 1.85 |
+| 2025-26 | 44.7% | 5.3% | 13.2% | 55.3% | 39.5% | 5.3% | **52.6%** | 1.47 |
+
+So the correction reshuffles the recommendation in half to seven-eighths of all
+gameweeks, moves one to two players in and out of the eleven when it moves the
+eleven at all, and is worth **zero points**. The decisions it changes are
+near-indifferent in true value: the model cannot tell which side is better, and
+churning a manager's XI and transfer every other week for no measurable gain is
+a cost, not a neutral.
+
+**The season split is 2022-23, not "recent seasons are worse."** Both entry 23
+and arm D gain about +500 in 2022-23 (10-2-3 and 11-1-3) while the other three
+seasons are noise that flips sign between two near-identical candidates
+(2023-24: +296 under entry 23, -260 under arm D). The football is stable: true
+sub-on rate for nailed players is 0.415 / 0.347 / 0.369 / 0.371 and the
+measured starter-minutes prior is 82-84 in every season. The 2022-23 gain sits
+in the windows spanning the World Cup break and its unlimited-transfer
+gameweek, and the one window entirely inside the reconstructed-starts block
+(gw1-13) reads **exactly +0.0** in both arms. That is trajectory forking, which
+the Methodology section already names as the reason a single replay decides
+nothing.
+
+**A side experiment, VOID, and its failure is the result.** `minutesRiskWeight`
+looked like a double charge: the objective is `sum(score) + autosubValue`,
+`xPoints` already contains the zero for a non-appearance and `autosubValue`
+already prices the recovery and the slot it consumes, which is what
+`lineup.js` says the term is FOR. Setting it to zero did not measure: 3 of 120
+cells failed with `vice_missing`, because without it the optimizer fields an
+eleven where nobody clears `MIN_VICE_PAPPEAR` (0.35) and validation refuses the
+plan. The term is load-bearing, not redundant. Do not remove it.
+
+**What stays open.** The estimator is provably wrong and provably worth nothing
+in points. The remaining harms are calibration and reporting, not ranking: the
+pin makes `chips.js`'s `BENCH_WEAK_P_APPEAR` gate (0.5) unable to fire for 41%
+of the owned pool, and it hides the headline-xP semantics described in FINDINGS.
+Any future attempt should be a DATA change (accumulate appearances from
+`event/<gw>/live`) rather than another estimator, and must clear the churn bar
+above as well as the points bar.
+
 ## 23. Sub-on rate shrinkage: REJECT, and the defect it aimed at is still open
 
 **Decision: REJECT.** Nothing shipped; `js/engine/minutes.js` is unchanged.
