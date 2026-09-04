@@ -734,6 +734,37 @@ On live data today the correction is a no-op: both omitted terms are exactly
 zero under the `pAppear` pin, so team 3855835 still reads 54.654. Pinned by
 `tests/gameweek-points.test.mjs` (cases A-H). See registry entries 23 and 24.
 
+### The triple captain undervaluation is real and provably inert (2026-09-04)
+
+`evaluateTripleCaptain` values the chip at `now.captainExtra`, the captain's own
+xP. FPL passes a TRIPLED armband to the vice exactly as it passes a doubled one
+(`scoreGameweek` applies the vice rule before the multiplier), so the chip's
+marginal value is one more copy of `xPointsCaptaincy`. Measured, REJECTED as
+inert, registry entry 25.
+
+**The numbers.** Over 129 replay gameweeks where the chip was available,
+`valueNow` differs in 50 (38.8%), by +0.16 on average, largest single uplift
+1.78. The recommendation flips in **0** of them, because the bar is
+`valueNow - bestValue >= TRIPLE_CAPTAIN_MARGIN` and that margin is **2.5** - an
+order of magnitude larger than the correction. `chipCandidates()` then refuses
+to score any chip its evaluator did not recommend, so the corrected `chipBonus`
+never reaches a played chip either. Two gates in series, both closed. Replays
+with chips ON: +0 on all 72 trajectories, both instruments.
+
+**Two traps recorded for whoever picks this up.**
+
+- **The deciding instrument cannot see chips at all.** `INSTRUMENTS.paired` and
+  `INSTRUMENTS.windows` both set `chips: false`. A chip experiment on the
+  default instrument returns a clean, meaningless zero. Override `chips: true`
+  in the config, as entry 25's two configs do.
+- **The two sides of the comparison are not the same quantity.** `valueNow` is
+  the CHOSEN captain's expectation; `bestValue` is a max over the whole squad of
+  `estimateXp` for a future week, with no captain choice and no vice term. The
+  2.5 margin exists partly to compensate for that optimism. Correcting only the
+  now side tilts the comparison toward playing the chip early; it did not matter
+  here because nothing crossed the bar, but any arm that also touches the margin
+  must fix both sides together.
+
 ## Minutes and projections
 
 - **pStart's target is the NEXT FIXTURE, not a season rate.** Validating

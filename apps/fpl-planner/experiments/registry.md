@@ -1682,6 +1682,74 @@ xG/xA rate quality, and early-window squad construction where a wrong opening
 channel; running more weights is known to be useless, because no flat weight
 can satisfy three seasons whose optima genuinely differ.
 
+## 25. Triple captain, valued with vice succession: REJECT because it is INERT
+
+**Decision: REJECT.** Nothing shipped. The correction is mathematically right,
+changes the number in 39% of gameweeks, and changes **no decision anywhere**.
+
+- **Kind:** chip-valuation correction.
+- **Question:** FPL passes a TRIPLED armband to the vice exactly as it passes a
+  doubled one, so the chip's marginal value is one more copy of
+  `xPointsCaptaincy` (the captain when he plays, the vice when he does not) and
+  not the captain's raw xP. Does valuing it correctly win points?
+- **Candidate:** `evaluateTripleCaptain`'s `valueNow` and `scoreCandidate`'s
+  `chipBonus` for `3xc` both read `xPointsCaptaincy` instead of `captainExtra`.
+  Nothing else touched. Env-gated on `FPL_3XC_VICE`.
+- **Full write-up:** this entry; the arithmetic is in FINDINGS.
+
+**THE INSTRUMENT COULD NOT HAVE MEASURED THIS, AND THAT IS THE FIRST FINDING.**
+`INSTRUMENTS.paired` (rank 3, the decider) and `INSTRUMENTS.windows` (rank 2)
+BOTH set `chips: false`, so the rules catalogue has no chips and no chip
+decision exists to change. Only `seasons` (rank 1, the one the Methodology
+section calls "nearly useless on its own") runs chips on. A chip experiment run
+on the default instrument would have reported a clean, meaningless zero. Both
+runs below therefore override the chip flag, and any future chip experiment
+must do the same.
+
+| instrument | cells | observations | total delta | W-L-T | sign test |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| full seasons, chips on, 3 seeds | 24 | 4 windows / 12 traj | **+0** | 0-0-4 | 1.00 |
+| paired windows, `chips: true` | 120 | 20 windows / 60 traj | **+0** | 0-0-20 | 1.00 |
+
+Control 26,796 vs candidate 26,796 (seasons); 45,155 vs 45,155 (windows). Every
+season, every window and every one of the 72 trajectories is bit-identical.
+t = 0.00, p = 1.00, CI +0.0 to +0.0.
+
+**Why it is exactly zero, and this is the useful part.** The correction is real:
+across 129 gameweeks where the chip was available, `valueNow` differs in **50
+(38.8%)**, by **+0.16 points on average** with a largest single-gameweek uplift
+of **1.78**. But `evaluateTripleCaptain` recommends the chip on
+`valueNow - bestValue >= TRIPLE_CAPTAIN_MARGIN`, and that margin is **2.5**. The
+correction is an order of magnitude smaller than the bar it would have to cross,
+so the recommendation flips in **0 of 129** gameweeks and the recommended chip
+changes in **0 of 129**.
+
+`planner.js chipCandidates()` then refuses to score any chip its own evaluator
+did not recommend ("A chip is only offered when its own evaluator recommended
+it"), so the corrected `chipBonus` never reaches a chip candidate that gets
+played either. The two gates in series make the change provably inert.
+
+**What this does NOT mean.** It is not evidence the shipped valuation is right;
+it is evidence that the 2.5 margin swamps the difference. Two things could make
+it bite, and both are separate questions:
+
+- a captain with real absence risk. The uplift is `(1 - pAppear_captain) *
+  xP_vice * correlation`, which is zero while `pAppear` is pinned at 1 (see
+  entries 23 and 24) and 0.16 on replay evidence where it is not. A model that
+  fixed the pin would roughly double the population of gameweeks where the term
+  is non-zero.
+- `TRIPLE_CAPTAIN_MARGIN` itself. It was set to compensate for the future side
+  being "a max over many weeks and therefore optimistic already", and the now
+  side has just become less pessimistic, so strictly the margin is now slightly
+  too big. Re-deriving it is a separate experiment and must not be swept.
+
+**Asymmetry noted, deliberately not changed.** The now side is the CHOSEN
+captain's expectation; the future side is `max over the whole squad` of
+`estimateXp`, with no captain choice and no vice term at all. Correcting only
+the now side makes the comparison more favourable to playing the chip now.
+That bias did not matter here because nothing crossed the bar, but a future arm
+that moves the margin must fix both sides together or it will over-fire.
+
 ## 24. The sub-on ESTIMATOR: phantom bench minutes proven, every fix REJECT
 
 **Decision: REJECT, all arms.** Nothing shipped; the engine is unchanged.
