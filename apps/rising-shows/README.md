@@ -356,10 +356,21 @@ The browser URL preserves your shape/genre/sort/search selection - paste a link 
 ```sh
 npm run test:rising-shows        # this app only
 npm test                         # the whole repo, run this before any commit
+
+# The DATA, not the code. Needs a built data.json on disk, so it only means
+# something after a build or a `npm run fetch:rising-shows-data`.
+node --max-old-space-size=4096 apps/rising-shows/scripts/validate-dataset.js
 ```
 
 Everything runs under `node --test`: no browser, no server, no fixtures on disk
 outside `os.tmpdir()`.
+
+Note what that implies, because it is the reason `validate-dataset.js` exists:
+every test builds its own fixture, so the 66,000-record file the site actually
+serves is covered by none of them. The refresh workflow is the only place the
+real dataset exists (it is gitignored and lives on a GitHub release), so the
+validator runs there and gates the release upload. See FINDINGS, "The shipped
+dataset is checked now".
 
 | File | What it covers |
 | --- | --- |
