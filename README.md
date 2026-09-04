@@ -2,7 +2,7 @@
 
 ## Overview
 
-Shevato is a static, multi-page web platform built with vanilla HTML5, CSS3, and JavaScript. The marketing site (home, work, apps, about, contact) coexists with a small set of free browser apps. The repo has no asset build step (CSS is plain, JS is loaded with `<script defer>`, and partials are stitched together client-side via jQuery); `npm run build:site` generates the data-driven Rising Shows and Gym Tracker pages and stamps the sitemaps at deploy.
+Shevato is a static, multi-page web platform built with vanilla HTML5, CSS3, and JavaScript. The marketing site (home, work, apps, about, contact) coexists with a small set of free browser apps. The repo has no asset build step (CSS is plain, JS is loaded with `<script defer>`). `npm run build:site` generates the data-driven Rising Shows and Gym Tracker pages, stamps `partials/header.html` and `partials/footer.html` into every page, and stamps the sitemaps at deploy. The partials are still stitched in client-side when the build has not run, which is what makes a plain static server over the repo work in local dev; production serves them inline, so the site's navigation never depends on a crawler fetching a second document.
 
 ## Directory Structure
 
@@ -45,7 +45,7 @@ shevato/
 │
 ├── images/                           # Logos, bg.webp background, OG cards (images/og/), and app artwork
 ├── netlify/functions/                # Netlify functions (*.mjs), their lib/ helpers, tests/ and own package.json
-├── scripts/                          # Site-level build helpers (sitemap lastmod stamping from git)
+├── scripts/                          # Site-level build helpers (partial inlining, sitemap lastmod stamping, IndexNow submit)
 ├── sync-system/                      # localStorage <-> Firestore sync used by the apps (+ cross-cutting invariant tests)
 ├── tests/                            # Site-level test estate: static/, browser/, coverage/, cross-browser/
 ├── .github/workflows/                # CI: tests, browser tests, cross-browser smoke, arena rules, rising-shows refresh
@@ -60,6 +60,7 @@ shevato/
 ├── 404.html                          # Friendly not-found page (noindex, follow)
 ├── privacy.html                      # Binding per-app privacy promises (check before adding storage/tracking)
 ├── sitemap.xml, sitemap-pages.xml    # Sitemap index + the hand-listed pages (lastmod stamped at deploy, never hand-edited)
+├── <32-hex>.txt                      # IndexNow key file (the key IS the filename; public by design)
 ├── robots.txt                        # Crawler policy
 ├── site.webmanifest                  # PWA manifest for the marketing site
 ├── netlify.toml                      # Netlify build, headers, and CSP-Report-Only config
@@ -400,7 +401,13 @@ In-app navigation deliberately reports `app_view`, never a synthetic
 
 The site is deployed to Netlify. `netlify.toml` defines security headers (HSTS, X-Frame-Options, Permissions-Policy, CSP-Report-Only), short revalidating cache headers for the gym-tracker assets (300 s for js/css, 3600 s for data, all `must-revalidate`), a `Content-Type` rule for `*.webmanifest`, and the redirect inventory (canonical extensionless URLs, renamed apps, directory-index duplicates including the generated `shows/` and `exercises/` hub indexes). Any other static host works identically, just keep the directory layout intact.
 
+Partials at deploy: `scripts/inline-partials.mjs` (inside `build:site`) replaces each `<div data-include="header">` placeholder with the real markup from `partials/`, renaming the attribute to `data-include-inlined` so `main.js` activates it without re-fetching. Netlify builds in a throwaway clone, so this rewrites tracked HTML there and nowhere else - but running `npm run build:site` in YOUR clone will stamp your working copy too. It is idempotent, so nothing doubles; just `git checkout` the stamped pages rather than committing them. Anything that SELECTS the attribute in CSS or JS must match both names (see `tests/static/inline-partials.test.mjs`).
+
 Sitemaps: `sitemap.xml` is an index of three sub-sitemaps; hand-listed pages live in `sitemap-pages.xml`, whose `lastmod` values `scripts/stamp-sitemap-index.mjs` refreshes from git history at deploy (skipped in shallow clones). The generated show and exercise sitemaps carry no `lastmod` (the only date available is the build time, which is not a content date), so their index entries carry none either. Never hand-edit a `lastmod`.
+
+Search engines: `https://shevato.com/sitemap.xml` is the ONE URL submitted to Google Search Console (property `shevato.com`, verified twice over: the `google-site-verification` meta on `/` and `/home`, and the `google10670283c9d04acd.html` file, which `netlify.toml` deliberately exempts from the `.html` -> extensionless redirect because Search Console fetches that exact path). Submitting the index covers all three sub-sitemaps; there is nothing to re-submit when a sub-sitemap changes. After a structural change (a new app, a redirect, a canonical move) use URL Inspection on one affected page and request indexing for it - do not re-submit the sitemap, which does not speed anything up. Bing Webmaster Tools imports the verified Search Console property in one click, and the `<key>.txt` file at the repo root is the IndexNow key (the key IS the filename and the file's only content; it is public by design, because hosting it is what proves control of the domain). `node scripts/indexnow-submit.mjs <urls...>` announces changed URLs to Bing and the other IndexNow participants; run it by hand after something worth announcing. It is deliberately not wired into `build:site`, which runs on every deploy including the daily Rising Shows refresh - re-submitting the same two thousand URLs every day is what IndexNow asks callers not to do. Google does not participate in IndexNow.
+
+The one rule that has actually bitten: **never `Disallow` a path the pages themselves load.** Google's renderer obeys robots.txt for subresources, so a `Disallow` on something a page fetches deletes that content from the DOM Google indexes rather than merely hiding a file. `/partials/`, `/sync-system/`, `/firebase-config.js` and four dual-exposed Rising Shows scripts were all blocked that way until 2026-09-04, which cost every page its header and footer navigation in the index. `tests/static/robots-references.test.mjs` now fails on any recurrence.
 
 Firebase: the Auth "authorized domains" list in the Firebase console must keep the canonical apex `shevato.com` alongside the Netlify and `www` hosts (added 2026-08-22); a missing entry fails OAuth and email-link flows silently on the canonical URL.
 

@@ -74,7 +74,11 @@ function savedLanguage() {
   } catch (_) {
     // localStorage may be unavailable in private browsing modes.
   }
-  return 'en';
+  // Hebrew, matching <html lang="he"> and the CSS default-hide rule. The
+  // page targets an Israeli audience and every fixed string on it - title,
+  // meta description, Open Graph, the phone number - is Hebrew; defaulting
+  // to English made the rendered page disagree with all of them.
+  return 'he';
 }
 
 // The footer is a partial injected by jQuery .load() in main.js AFTER

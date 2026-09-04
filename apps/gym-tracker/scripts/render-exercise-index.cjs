@@ -18,7 +18,7 @@ function renderExerciseIndex(exercises, slugs, builtAt) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>All Exercises | Gym Tracker — Browse by Muscle Group & Equipment</title>
+  <title>All ${total} Exercises by Muscle Group and Equipment | Gym Tracker</title>
   <meta name="description" content="${escapeHtml(description)}">
   <meta name="author" content="Shevato LLC">
   <meta name="robots" content="index, follow, max-image-preview:large">
@@ -106,6 +106,98 @@ function renderExerciseIndex(exercises, slugs, builtAt) {
 `;
 }
 
+// A summary of a taxonomy page, counted from the exercises on it.
+// Deliberately derived rather than written: the exercise database holds only
+// name, category, muscle group, secondary muscles, equipment and tracking
+// type, so this is the whole of what can be said truthfully about a group
+// without inventing coaching copy that would be indistinguishable from the
+// filler every other exercise site already publishes.
+//
+// Returns { lede, description }: the lede is the visible intro, the
+// description is capped so search results do not truncate it mid-clause.
+function taxonomySummary(kind, label, exercises) {
+  const n = exercises.length;
+  const plural = n === 1 ? 'exercise' : 'exercises';
+
+  if (kind === 'equipment') {
+    const muscles = topCounts(exercises.map((e) => e.muscleGroup || e.category), 3)
+      .map((m) => labelOf(m).toLowerCase());
+    const groups = new Set(exercises.map((e) => e.muscleGroup || e.category)).size;
+    // "with a bodyweight" is not English: the bodyweight and other/none
+    // buckets are a class of exercise, not a piece of kit you pick up.
+    const opener = isBodyweight(label)
+      ? `${n} ${label.toLowerCase()} ${plural} that need no equipment`
+      : `${n} ${plural} you can do with ${indefinite(label.toLowerCase())}`;
+    const lede = `${opener}, covering ${groups} muscle ${groups === 1 ? 'group' : 'groups'}`
+      + (muscles.length ? `, most often the ${listPhrase(muscles)}.` : '.');
+    return { lede, description: describe(lede) };
+  }
+
+  const equipment = topCounts(exercises.map((e) => e.equipment), 3)
+    .filter((e) => !isBodyweight(e))
+    .map((e) => pluralise(labelOf(e).toLowerCase()));
+  const bodyweight = exercises.filter((e) => isBodyweight(e.equipment)).length;
+  const secondary = topCounts(exercises.flatMap((e) => e.secondaryMuscles || []), 2)
+    .map((m) => labelOf(m).toLowerCase());
+
+  let lede = `${n} ${plural} that primarily work the ${label.toLowerCase()}`;
+  if (equipment.length) lede += `, using ${listPhrase(equipment)}`;
+  lede += '.';
+
+  const extras = [];
+  if (bodyweight) extras.push(`${bodyweight} need no equipment at all`);
+  if (secondary.length) extras.push(`many also work the ${listPhrase(secondary)}`);
+  if (extras.length) lede += ' ' + sentenceCase(listPhrase(extras)) + '.';
+
+  return { lede, description: describe(lede) };
+}
+
+// Meta description: the lede plus a short call to action when both fit inside
+// a search snippet, the lede alone when they do not, and only then a trim to
+// the last whole sentence. Capping the combined string first threw away a
+// perfectly good second sentence to make room for the CTA.
+function describe(lede, limit = 158) {
+  const cta = 'Free to log in Gym Tracker, no account needed.';
+  if (lede.length + 1 + cta.length <= limit) return `${lede} ${cta}`;
+  if (lede.length <= limit) return lede;
+  const cut = lede.slice(0, limit);
+  const stop = cut.lastIndexOf('. ');
+  return stop > 60 ? cut.slice(0, stop + 1) : cut.replace(/[\s,;:-]+\S*$/, '') + '.';
+}
+
+const isBodyweight = (equipment) => /body ?weight|^none$|^other$/i.test(equipment || '');
+
+// Equipment reads as a class here ("using barbells and cables"), not as one
+// object. Names already ending in s are left alone.
+function pluralise(word) {
+  return /s$/.test(word) ? word : word + 's';
+}
+
+// The `limit` most common values, most frequent first, ignoring blanks.
+function topCounts(values, limit) {
+  const counts = new Map();
+  for (const v of values) {
+    if (!v) continue;
+    counts.set(v, (counts.get(v) || 0) + 1);
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit).map(([v]) => v);
+}
+
+// "a", "b and c", "a, b and c" - no serial comma, matching the site's prose.
+function listPhrase(items) {
+  if (items.length <= 1) return items[0] || '';
+  return items.slice(0, -1).join(', ') + ' and ' + items[items.length - 1];
+}
+
+function sentenceCase(text) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function indefinite(word) {
+  return (/^[aeiou]/i.test(word) ? 'an ' : 'a ') + word;
+}
+
 // Single-muscle or single-equipment landing page — short, fast, and
 // targets the high-volume query directly (e.g. "lats exercises",
 // "dumbbell exercises"). The filter callback decides which exercises
@@ -114,8 +206,16 @@ function renderTaxonomyPage({ kind, key, label, exercises, slugs, builtAt }) {
   const path = `/apps/gym-tracker/exercises/${kind}/${key}/`;
   const canonical = `${SITE}${path}`;
   const sorted = [...exercises].sort((a, b) => a.name.localeCompare(b.name));
-  const description = `${sorted.length} ${label.toLowerCase()} exercises with muscles worked, equipment, and tracking type. Free workout logger included.`;
-  const pageTitle = `${label} Exercises (${sorted.length}) — Muscles & Equipment | Gym Tracker`;
+
+  // Title leads with the count and the thing people search for ("pectorals
+  // exercises", "barbell exercises") and stays under ~60 characters so the
+  // query term is not the half Google truncates. The old form put an em dash
+  // and two extra clauses in front of the brand.
+  const pageTitle = kind === 'equipment'
+    ? `${sorted.length} ${label} Exercises, by Muscle Group | Gym Tracker`
+    : `${sorted.length} ${label} Exercises, by Equipment | Gym Tracker`;
+
+  const { lede, description } = taxonomySummary(kind, label, sorted);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -180,7 +280,7 @@ function renderTaxonomyPage({ kind, key, label, exercises, slugs, builtAt }) {
 
     <header class="index-hero">
       <h1>${escapeHtml(label)} exercises</h1>
-      <p class="lede">${sorted.length} ${escapeHtml(label.toLowerCase())} exercises. Each links to a page with muscles worked, equipment, and tracking type.</p>
+      <p class="lede">${escapeHtml(lede)}</p>
     </header>
 
     <ul class="shows-list grid-2">

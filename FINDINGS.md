@@ -8,6 +8,104 @@ Site-level knowledge that belongs to no single app: the marketing pages
 lives in `apps/<app>/FINDINGS.md`; this file follows the same living-document
 rule (rewrite, merge, delete; never an append-only diary).
 
+## robots.txt Disallow deletes content from the index, it does not hide files
+
+Google's rendering service obeys `robots.txt` for SUBRESOURCE fetches. A
+`Disallow` on a path a page *loads* therefore removes whatever that path
+contributes from the DOM Google indexes; it does not merely keep a file out of
+search results. This is the single most damaging thing that has been wrong
+with this site's SEO, and it was invisible to every check we had.
+
+Until 2026-09-04 `robots.txt` disallowed four things the pages themselves load:
+
+| Path | Loaded by | Cost |
+| --- | --- | --- |
+| `/partials/` | `assets/js/main.js` on all 17 pages | the entire header and footer navigation |
+| `/sync-system/` | first `<script>` in the head of all 9 app pages | sync boot (app still rendered) |
+| `/firebase-config.js` | a module on every page | auth boot |
+| `/apps/*/scripts/` | Rising Shows loads 4 of them with `<script src>` | the shape matcher, finder, providers and Kometa logic |
+
+Measured by rendering production in headless Chrome with exactly those paths
+blocked at the network layer: `document.getElementById('header')` was `null`
+on every page, six of the eight app pages had **zero** internal outbound links,
+and `/privacy` had zero inbound ones.
+
+Two things follow. First, `tests/static/robots-references.test.mjs` now fails
+when any path referenced by a page, an ES-module import, or an absolute path
+literal in shipped JS is matched by a `Disallow` rule - it is the only check
+that asks whether a crawler is *allowed* to fetch a resource, as opposed to
+whether the resource exists (`internal-links`) or is named canonically
+(`canonical-urls`). Second, the fix is belt AND braces: the `Disallow` lines
+are gone, and `scripts/inline-partials.mjs` stamps the header and footer into
+the HTML at deploy so the navigation no longer depends on a crawler fetching a
+second document or running JavaScript at all.
+
+Note the asymmetry that made this survive so long: the two GENERATED page
+families (`shows/`, `exercises/`) render their cross-app footer server-side, so
+they had better internal linking than the hand-written app pages they exist to
+support.
+
+## The include attribute has two names, and only one of them works locally
+
+`scripts/inline-partials.mjs` rewrites `data-include="footer"` to
+`data-include-inlined="footer"` at deploy. Anything that SELECTS the attribute
+must match both forms or it works in every local check and silently stops
+working in production. `main.css`'s sticky-footer rules
+(`body:has(> [data-include="footer"])`) shipped exactly that way for one commit
+during the 2026-09-04 round. The one deliberate exception is `main.js`'s
+runtime-fetch loop, which must match only the un-stamped form or it would
+re-fetch a partial that is already inlined.
+Pinned by `tests/static/inline-partials.test.mjs`.
+
+## Runtime JS can overwrite the `<title>` Google indexes
+
+Google indexes the RENDERED title. `apps/mario-kart/js/gameVersionManager.js`
+ran `document.title = 'MK8 Deluxe - Race Tracker'` on every load, before any
+user interaction, so the page's real `<title>` never reached the index and the
+search result named neither the site nor what the page does. In-page state (a
+game-version toggle, a selected tab) is not a different page and must not
+rewrite the document's title, canonical, description or `h1`. A sweep on
+2026-09-04 found this was the only instance; there are no runtime rewrites of
+canonical, description or robots meta anywhere in the repo.
+
+## Desktop-only CLS from the scrollbar gutter
+
+A page that paints short and then grows past the viewport when its JS renders
+gains a scrollbar mid-load, which narrows the viewport and slides every centred
+container ~5 px left. Scored against a viewport-filling element that horizontal
+move dominates CLS: Rising Shows measured **1.179** and Trip Planner 0.341 at
+1280x900. Mobile was ~0 throughout, because phone scrollbars are overlays and
+take no width, which is why this never showed in the mobile field data that
+carries the ranking weight.
+
+`html { scrollbar-gutter: stable }` in `main.css` reserves the gutter site-wide
+and took Rising Shows to **0.071** (measured A/B on identical bytes, same
+session, with the fix reverted at runtime). Containers that fill in after a
+data load also need a `min-height` or they push everything below them down:
+`.finder-moods` grew 44 px -> 112 px at ~3 s. Trip Planner's remaining shift
+could not be reproduced locally and still needs measuring on production.
+
+## App pages need prose, and it is not optional for search
+
+Six of the eight app pages rendered almost nothing but interface labels to a
+crawler - Football H2H came to 264 words, of which roughly ten were sentences.
+A page cannot rank for "head to head football score tracker" when neither that
+phrase nor any description of the tool exists on it. Each app page now carries
+a 250-400 word `.app-about` block (shared styling in `main.css`, scoped so each
+app tints it from its own palette), written from that app's README.
+
+The block goes on the app page itself, NOT on a separate `/apps/foo/about`
+page: a keyword page sitting beside the app it describes is a doorway page, and
+it splits link equity across two URLs. `apps/fpl-planner/index.html` had the
+right shape all along and is the model.
+
+Two claims in the first draft over-promised against `privacy.html`, which is
+binding: Arena guest play was described as keeping nothing (it signs you in
+anonymously to Firebase and merely cannot write to the leaderboard), and Trip
+Planner's section implied nothing ever leaves the device (the assistant and the
+venue-ratings lookup send trip contents to Google). Check new marketing copy
+against `privacy.html` the same way code is checked against it.
+
 ## Netlify rewrites hrefs inside served HTML, including XHR-fetched partials
 
 Netlify's Pretty URLs post-processes every HTML response: `href="/home.html"`

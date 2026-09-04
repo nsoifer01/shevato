@@ -4,6 +4,19 @@ Living document. State the best current understanding; rewrite rather than
 append. Read together with `README.md` (what the app is) - this file is the
 why, the traps, and the invariants.
 
+## The page carries its own explanation now (`.app-about`)
+
+Measured on production before 2026-09-04, this page rendered almost nothing but
+interface labels to a crawler, because the differentiators that make someone choose this over Wanderlog or TripIt - no account, nothing uploaded, night coverage, collision and gap warnings - all existed only inside `hidden` modals, which Google discounts and a first-time visitor never opens. Nothing on it said what the app was for,
+so nothing could match a search for one. It now carries a 289-word
+`.app-about` block below the app UI: shared styling lives in
+`assets/css/main.css` and inherits colour from the app, so the block picks up
+this app's palette rather than imposing one.
+
+The block belongs on the app page itself, not on a separate "about" URL beside
+it - that shape is a doorway page and it splits link equity across two URLs.
+A first draft of that copy over-promised against `privacy.html`, which is binding: it implied nothing ever leaves the device. The assistant and the venue-ratings lookup DO send trip contents to Google, and the block now says so. Check new marketing copy against privacy.html the way code is checked against it.
+
 ## Architecture facts that bite
 
 - **Two files, one contract.** `js/trip-logic.js` is pure and DOM-free

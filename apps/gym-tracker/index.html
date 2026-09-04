@@ -42,6 +42,7 @@
     <meta name="twitter:title" content="Gym Tracker | Free Workout Log" />
     <meta name="twitter:description" content="Log workouts, build programs, track strength progress. Free PWA that works offline." />
     <meta name="twitter:image" content="https://shevato.com/images/og/gym-tracker.png" />
+    <meta name="twitter:image:alt" content="Gym Tracker - Free Workout Log" />
     <meta name="twitter:site" content="@shevato" />
 
     <!-- WebApplication structured data -->
@@ -202,10 +203,16 @@
 
         <!-- Main Content Area -->
         <main id="main-content" class="main-content">
+            <!-- The page's single h1. Visually hidden because the design gives
+                 each view its own title instead of showing one page-level
+                 heading; without it the document's first h1 was "Dashboard"
+                 (the app shipped eleven h1 elements, one per view), which is
+                 what Google read as the subject of the page. -->
+            <h1 class="visually-hidden">Gym Tracker</h1>
             <!-- HOME / DASHBOARD VIEW -->
             <div id="home-view" class="view active">
                 <div class="view-header">
-                    <h1>Dashboard</h1>
+                    <h2>Dashboard</h2>
                     <p class="subtitle">Track your fitness journey</p>
                 </div>
 
@@ -263,7 +270,7 @@
             <!-- PROGRAMS VIEW -->
             <div id="programs-view" class="view">
                 <div class="view-header">
-                    <h1>Programs</h1>
+                    <h2>Programs</h2>
                     <button class="btn btn-primary" id="create-program-btn">
                         <i class="fas fa-plus"></i> Create Program
                     </button>
@@ -291,7 +298,7 @@
                 <!-- Workout Selection Screen -->
                 <div id="workout-selection" class="workout-screen active">
                     <div class="view-header">
-                        <h1>Start Workout</h1>
+                        <h2>Start Workout</h2>
                         <p class="subtitle">Choose a program to begin</p>
                     </div>
                     <div id="workout-program-list">
@@ -511,7 +518,7 @@
             <!-- HISTORY VIEW -->
             <div id="history-view" class="view">
                 <div class="view-header">
-                    <h1>Workout History</h1>
+                    <h2>Workout History</h2>
                 </div>
 
                 <div class="history-filters">
@@ -559,7 +566,7 @@
             <!-- EXERCISES VIEW -->
             <div id="exercises-view" class="view">
                 <div class="view-header">
-                    <h1>Exercise Database</h1>
+                    <h2>Exercise Database</h2>
                     <p class="subtitle" id="exercise-count-text">Loading exercises...</p>
                     <p class="subtitle"><a href="exercises/" class="gt-exercise-dir-link">Browse the public exercise directory →</a></p>
                     <button class="btn btn-primary" id="create-custom-exercise-btn">
@@ -705,7 +712,7 @@
             <!-- CALENDAR VIEW -->
             <div id="calendar-view" class="view">
                 <div class="view-header">
-                    <h1>Calendar</h1>
+                    <h2>Calendar</h2>
                 </div>
 
                 <div id="calendar-stats" class="calendar-stats">
@@ -752,7 +759,7 @@
             <!-- INSIGHTS VIEW -->
             <div id="insights-view" class="view">
                 <div class="view-header">
-                    <h1>Insights</h1>
+                    <h2>Insights</h2>
                     <p class="subtitle">Volume by muscle group and a year-at-a-glance heatmap.</p>
                 </div>
                 <section class="section insights-empty" id="insights-empty" hidden>
@@ -790,7 +797,7 @@
             <!-- MEASUREMENTS VIEW -->
             <div id="measurements-view" class="view">
                 <div class="view-header">
-                    <h1>Body measurements</h1>
+                    <h2>Body measurements</h2>
                     <button class="btn btn-primary" id="add-measurement-btn">
                         <i class="fas fa-plus"></i> Log measurements
                     </button>
@@ -924,7 +931,7 @@
             <!-- ACHIEVEMENTS VIEW -->
             <div id="achievements-view" class="view">
                 <div class="view-header">
-                    <h1>Achievements</h1>
+                    <h2>Achievements</h2>
                     <div class="achievement-summary">
                         <span id="unlocked-count">0</span> / <span id="total-achievements">0</span> Unlocked
                     </div>
@@ -966,7 +973,7 @@
             <!-- SETTINGS VIEW -->
             <div id="settings-view" class="view">
                 <div class="view-header settings-view-header">
-                    <h1>Settings</h1>
+                    <h2>Settings</h2>
                     <button type="submit" form="settings-form" class="btn btn-save-settings" id="save-settings-btn" disabled>
                         <i class="fas fa-check"></i> Save Settings
                     </button>
@@ -1177,7 +1184,7 @@
             <!-- MORE VIEW (Mobile Only) -->
             <div id="more-view" class="view">
                 <div class="view-header">
-                    <h1>More</h1>
+                    <h2>More</h2>
                 </div>
 
                 <div class="more-menu">
@@ -1213,6 +1220,33 @@
                     </button>
                 </div>
             </div>
+            <!-- Crawlable explanation of the app. The page rendered plenty of
+                 words to a crawler but they were interface micro-copy; the
+                 positioning that would actually win a search - free, no
+                 account, works offline, no ads - was never stated in prose.
+                 Sits at the end of <main>, after every view. -->
+            <section class="app-about" aria-labelledby="about-gym-tracker">
+              <h2 id="about-gym-tracker">A workout log with no account and no ads</h2>
+              <p>Gym Tracker is a free workout tracker that runs in your browser and installs to your phone like an app. It works offline, it costs nothing, there are no ads, and you do not have to create an account to use any part of it. Open it, log a set, close it.</p>
+
+              <h3>What you can track</h3>
+              <ul>
+                <li>Workouts set by set, with reps, weight and rest, from a database of over 500 exercises</li>
+                <li>Programs you build yourself, including supersets and scheduled training days</li>
+                <li>Strength progress per exercise over time, with personal-record detection</li>
+                <li>Body measurements, and a calendar of everything you have done</li>
+                <li>Achievements, warm-up suggestions, and a plate breakdown for the bar you are actually using</li>
+              </ul>
+
+              <h3>Built for the gym floor</h3>
+              <p>Because it installs as a progressive web app and caches everything it needs, it keeps working in a basement gym with no signal - your sets are saved locally and sync later. The rest timer and personal-record cues fire while your phone is in your pocket.</p>
+
+              <h3>Your training data is yours</h3>
+              <p>Everything is stored in your browser by default. Sign in and it syncs across your devices; either way you can export the whole history to a file and import it back, and delete it all whenever you want. The <a href="/privacy">privacy page</a> spells out what is stored and what is sent.</p>
+
+              <h3>Browse the exercise database</h3>
+              <p>Every exercise in the app has a page describing the muscles it works and the equipment it needs. <a href="exercises/">Browse the exercise directory</a> by muscle group or by equipment.</p>
+            </section>
         </main>
 
         <!-- Global floating workout button (desktop only via CSS). Lives at

@@ -239,14 +239,36 @@ export async function run({ base, cdpPort }) {
   await setViewport(s, 1280, 900);
   await goto(s, `${base}/moadon-alef.html`, { settle: 2200 });
   const langReady = await waitForExpr(s, `typeof window.switchLanguage === 'function'`);
-  const enDefault = await evaluate(s, `(()=>({
+  // Hebrew is the default, as of 2026-09-04. The page targets an Israeli
+  // audience and every fixed string on it (title, meta description, Open
+  // Graph, the phone number) is Hebrew, but it declared lang="en" and rendered
+  // English, so its strongest language signals contradicted each other and
+  // Google had to guess which language the page was for. The default now lives
+  // in three places that have to agree: <html lang="he" dir="rtl">, the
+  // default-hide rule in moadon-alef-theme.css, and savedLanguage() in
+  // language-switcher.js.
+  const heDefault = await evaluate(s, `(()=>({
     active: (document.querySelector('.lang-btn.active')||{dataset:{}}).dataset.lang,
-    dir: document.body.dir || 'ltr',
+    rootLang: document.documentElement.lang,
+    dir: document.body.dir || document.documentElement.dir || 'ltr',
+    heVisible: [...document.querySelectorAll('p[lang="he"]')].some(p=>p.getBoundingClientRect().height>0),
+    enHidden: [...document.querySelectorAll('p[lang="en"]')].every(p=>p.getBoundingClientRect().height===0),
+  }))()`);
+  t('moadon-alef: Hebrew is the default language',
+    langReady && heDefault.active === 'he' && heDefault.rootLang === 'he'
+      && heDefault.dir === 'rtl' && heDefault.heVisible && heDefault.enHidden,
+    JSON.stringify(heDefault));
+
+  // English is still one click away, and switching away from the default has
+  // to unwind the RTL layout as well as the visible language.
+  await clickSel(s, '.lang-btn[data-lang="en"]', { settle: 500 });
+  const en = await evaluate(s, `(()=>({
+    lang: document.documentElement.lang, dir: document.body.dir,
+    enVisible: [...document.querySelectorAll('p[lang="en"]')].some(p=>p.getBoundingClientRect().height>0),
     heHidden: [...document.querySelectorAll('p[lang="he"]')].every(p=>p.getBoundingClientRect().height===0),
   }))()`);
-  t('moadon-alef: English is the default language',
-    langReady && enDefault.active === 'en' && enDefault.dir !== 'rtl' && enDefault.heHidden,
-    JSON.stringify(enDefault));
+  t('moadon-alef: English switch sets lang=en, dir=ltr and swaps the copy',
+    en.lang === 'en' && en.dir !== 'rtl' && en.enVisible && en.heHidden, JSON.stringify(en));
 
   await clickSel(s, '.lang-btn[data-lang="he"]', { settle: 500 });
   const he = await evaluate(s, `(()=>({

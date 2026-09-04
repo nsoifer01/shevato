@@ -7,7 +7,7 @@
 
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="description" content="Free trip planner: build a day-by-day itinerary with flights, stays and activities, see costs and night coverage, get date-collision and gap warnings, view your route on a map, and compare ways to get from A to B.">
+  <meta name="description" content="Free trip planner: build a day-by-day itinerary with flights, stays and activities, track costs, get gap and collision warnings, and see the route on a map.">
   <meta name="keywords" content="trip planner, travel itinerary planner, itinerary builder, travel budget tracker, trip organizer, route planner, travel gap checker, vacation planner, free trip planner app">
   <meta name="author" content="Shevato LLC">
   <meta name="robots" content="index, follow, max-image-preview:large">
@@ -19,10 +19,15 @@
   <meta property="og:description" content="Build a day-by-day itinerary with flights, stays and activities. Costs, night coverage, collision warnings, a route map, and A-to-B travel options.">
   <meta property="og:url" content="https://shevato.com/apps/trip-planner/">
   <meta property="og:image" content="https://shevato.com/images/og/trip-planner.png">
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:alt" content="Trip Planner itinerary timeline with flights, stays and activities laid out day by day beside a route map" />
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Trip Planner - plan it, move it, book it">
   <meta name="twitter:description" content="Build a day-by-day itinerary with flights, stays and activities. Costs, night coverage, collision warnings, a route map, and A-to-B travel options.">
   <meta name="twitter:image" content="https://shevato.com/images/og/trip-planner.png">
+  <meta name="twitter:image:alt" content="Trip Planner itinerary timeline with flights, stays and activities laid out day by day beside a route map" />
 
   <!--
     BreadcrumbList, matching the other six app landing pages. Trip Planner was
@@ -56,7 +61,7 @@
   }
   </script>
 
-  <title>Trip Planner - Free Itinerary Builder with Route Map & Cost Tracking | Shevato</title>
+  <title>Trip Planner - Free Day-by-Day Itinerary Builder With Map</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#0e1116">
@@ -913,6 +918,30 @@
     </div>
   </div>
 </aside>
+      <!-- Crawlable explanation of the app. The differentiators that make
+           someone choose this over Wanderlog or TripIt - no account, nothing
+           uploaded, night coverage, collision and gap warnings - all existed
+           only inside modals, which a crawler discounts and a first-time
+           visitor never opens. -->
+      <section class="app-about" aria-labelledby="about-trip-planner">
+        <h2 id="about-trip-planner">A day-by-day itinerary that checks itself</h2>
+        <p>Trip Planner is a free itinerary builder for a whole trip in one place: flights, stays, transport, local travel, activities, and food. Add each item with its dates, times and cost, and the timeline, the totals and the warnings update as you go. There is no account to create and nothing to install.</p>
+
+        <h3>What it checks while you plan</h3>
+        <ul>
+          <li><strong>Night coverage</strong> - every night of the trip is either covered by a stay or an overnight flight, or it is flagged. This is the mistake that actually costs money.</li>
+          <li><strong>Date collisions</strong> - two stays claiming the same night, or an activity during a flight</li>
+          <li><strong>Gaps</strong> - a stretch of the trip with nothing in it, so you notice before you land</li>
+          <li><strong>Costs</strong> - running totals per item, per day and per trip, including refunds and credits as negative amounts</li>
+          <li><strong>Overnight arrivals</strong> - a flight landing the next day is handled properly rather than silently mis-dated</li>
+        </ul>
+
+        <h3>Seeing the shape of the trip</h3>
+        <p>Switch between a timeline, a day-by-day view and a route map that draws the whole trip in order. For any two points you can compare the ways to get between them, with official operators listed first.</p>
+
+        <h3>Where your trip data lives</h3>
+        <p>Trips are saved in your browser and the planner works without an account. Sign in and your trips sync across your devices; the geocoding and venue caches deliberately stay local. Files you attach to a trip - booking confirmations, tickets, vouchers - are stored on your device only and are left out of exports, share links and sync. Two features are the exception and say so when you use them: the assistant and the venue-ratings lookup send trip contents to Google. Export a trip as JSON, CSV, or a calendar file at any time. The <a href="/privacy">privacy page</a> states exactly which services receive what.</p>
+      </section>
 </main><!-- /.trip-planner-app -->
 
   <!-- Data-source attribution. Licence conditions, not courtesies: OpenStreetMap

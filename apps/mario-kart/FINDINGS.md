@@ -6,6 +6,29 @@ section below describes the behaviour as it now stands plus the regression
 that pins it. `README.md` beside this file says what the app is; this file
 says what we learned about it.
 
+## The game-version toggle used to destroy the page's indexed title
+
+`js/gameVersionManager.js` ran `document.title = 'MK8 Deluxe - Race Tracker'`
+on every load, before any user interaction. Google indexes the RENDERED title,
+so the page's real `<title>` ("Mario Kart Race Tracker | Mario Kart 8 Deluxe &
+Mario Kart World") never reached the index and the search result named neither
+the site nor what the page does. Removed 2026-09-04.
+
+The toggle is in-page STATE, not a different page, so it now leaves the title
+and the `h1` alone and writes the selected game into `.header-subtitle`
+instead. The kart / globe glyph follows the selection through the
+`mk8d-mode` / `mkworld-mode` body class the switcher already sets, as CSS
+generated content on `.h1-text::before/::after` - so the glyph is not part of
+the heading's text (it used to be, making the `h1` read
+"(kart) Mario Kart 8 Deluxe Tracker (kart)"), and a no-break space keeps it
+attached to the first and last word so it cannot orphan onto its own line when
+the heading wraps at 390 px.
+
+The eight help-panel headings were `<h4>` directly under the `h1`, jumping two
+outline levels. They are `<h3>` under a `<h2 class="help-panel-heading">What this tracker does</h2>` now;
+`.help-section h4` selectors in `layout.css`, `refresh.css` and
+`help-styles.css` moved with them.
+
 ## Undo/redo is a stack replayed against the live `races` array
 
 `actionHistory` holds deep-copied `{type, data}` entries whose DELETE/EDIT

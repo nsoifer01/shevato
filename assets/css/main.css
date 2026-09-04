@@ -27,7 +27,18 @@ body {
   html, body {
     min-width: 320px; } }
 html {
-  box-sizing: border-box; }
+  box-sizing: border-box;
+  /* Reserve the scrollbar gutter on every page, always.
+     Without it, a page that paints short and then grows past the viewport
+     when its JS renders gains a scrollbar mid-load, which narrows the
+     viewport and slides every centred container ~5 px left. That horizontal
+     move is scored against a viewport-filling element, so it dominated
+     Cumulative Layout Shift on the two data-heavy apps: measured on
+     production at 1280x900, Rising Shows scored 0.932 and Trip Planner 0.341
+     (Google's "poor" threshold is 0.25). Mobile was unaffected - phone
+     scrollbars are overlays and take no width - which is why this only ever
+     showed in the desktop numbers. */
+  scrollbar-gutter: stable; }
 
 *, *:before, *:after {
   box-sizing: inherit; }
@@ -1413,13 +1424,19 @@ body.is-menu-visible #menu {
   box-shadow: 0 0 1.5rem 0 rgba(0, 0, 0, 0.2);
   visibility: visible; }
 
-/* Sticky footer — keeps the data-include="footer" partial pinned to the
-   viewport bottom on short pages. Scoped via :has so unrelated pages
-   (redirects, etc.) keep normal block layout. */
+/* Sticky footer: keeps the footer partial pinned to the viewport bottom on
+   short pages. Scoped via :has so unrelated pages (redirects, etc.) keep
+   normal block layout.
+   BOTH attribute forms are matched on purpose: the footer wrapper is
+   `data-include` in the repo and `data-include-inlined` once
+   scripts/inline-partials.mjs has stamped it at deploy, so a selector naming
+   only the first one works in local dev and silently stops working in
+   production. */
 html {
   height: 100%; }
 
-body:has(> [data-include="footer"]) {
+body:has(> [data-include="footer"]),
+body:has(> [data-include-inlined="footer"]) {
   display: -webkit-flex;
   display: -ms-flexbox;
   display: flex;
@@ -1428,8 +1445,95 @@ body:has(> [data-include="footer"]) {
   flex-direction: column;
   min-height: 100vh; }
 
-body > [data-include="footer"] {
+body > [data-include="footer"],
+body > [data-include-inlined="footer"] {
   margin-top: auto; }
+
+/* ==========================================================================
+   "About this app" prose: the crawlable explanation that sits under an app's
+   UI.
+   Lives here, alongside the shared header/footer styling, for the same
+   reason: every app loads main.css and none of them load site.css.
+
+   Why the apps need it at all. Measured on production, six of the eight app
+   pages rendered almost nothing but button labels to a crawler - Football H2H
+   came to 264 words, of which roughly ten were sentences. A page cannot rank
+   for "head to head football score tracker" when that phrase, and any
+   description of what the tool does, exists only in the designer's head. The
+   FPL Planner page already carried real prose and is the model these blocks
+   follow.
+
+   Everything is scoped under .app-about and inherits colour from the app, so
+   the block picks up each app's own palette instead of imposing one. Apps
+   that want a different accent set --app-about-accent on the section.
+   ========================================================================== */
+
+.app-about {
+  max-width: 46rem;
+  margin: 3.5rem auto 0;
+  padding: 2rem 1.25rem 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 1rem;
+  line-height: 1.65;
+  text-align: left; }
+
+.app-about > h2 {
+  margin: 0 0 0.6rem;
+  font-size: 1.35rem;
+  line-height: 1.25;
+  letter-spacing: 0;
+  text-transform: none; }
+
+.app-about h3 {
+  margin: 1.75rem 0 0.4rem;
+  font-size: 1.05rem;
+  line-height: 1.3;
+  letter-spacing: 0;
+  text-transform: none; }
+
+.app-about p {
+  margin: 0 0 0.9rem;
+  color: inherit; }
+
+.app-about ul {
+  margin: 0 0 0.9rem;
+  padding-left: 1.15rem;
+  list-style: disc; }
+
+.app-about li {
+  margin-bottom: 0.35rem; }
+
+/* Counter-pin `strong`. main.css paints `strong, b { color: #555555 }` further
+   up, which is 1.9:1 on the dark app backgrounds - the exact theme collision
+   this repo keeps hitting, and the one the Trip Planner stylesheet already
+   carries two comments about. axe caught it here as 5 serious contrast
+   violations on the bolded lead-ins of the Trip Planner list. Inherit instead,
+   so the emphasis takes the app's own text colour.
+   Deliberately no `opacity` anywhere in this block either: opacity composites
+   against the background and is invisible to a getComputedStyle colour check,
+   so it hides exactly this class of failure from every probe except axe. */
+.app-about strong,
+.app-about b {
+  color: inherit; }
+
+.app-about a {
+  color: var(--app-about-accent, #4d8dff);
+  text-decoration: underline;
+  text-underline-offset: 2px; }
+
+.app-about a:hover,
+.app-about a:focus {
+  text-decoration-thickness: 2px; }
+
+/* The block is reference material, not the reason anyone opened the app, so
+   it steps back a little at phone width rather than dominating the scroll. */
+@media screen and (max-width: 736px) {
+  .app-about {
+    margin-top: 2.5rem;
+    padding: 1.5rem 1rem 0.5rem;
+    font-size: 0.95rem; }
+  .app-about > h2 {
+    font-size: 1.2rem; } }
 
 /* ==========================================================================
    Shared header/footer partial styling — lives here (not site.css) because

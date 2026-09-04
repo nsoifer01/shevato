@@ -107,7 +107,12 @@ const EXPECTED_CHECKS = {
   // 170 before 2026-09-03; the two vacuous "contact form" checks became
   // three real ones (contact routes, no page-level form, auth fields
   // labelled), so +1.
-  'tests/browser/suites/site.mjs': 171,
+  // 171 before 2026-09-04; moadon-alef's default language moved from English
+  // to Hebrew (the page is Hebrew-targeted and its title, description and
+  // Open Graph tags always were), so the default-language check was rewritten
+  // and a second one added for switching AWAY from the default, which is now
+  // the direction that has to unwind the RTL layout. +1.
+  'tests/browser/suites/site.mjs': 172,
   // 103 from master, plus the two Rising Shows highlight-badge checks added
   // in this branch.
   'tests/browser/suites/apps.mjs': 105,

@@ -93,7 +93,7 @@
     margin-bottom: 2rem;
 }
 
-.help-section h4 {
+.help-section h3 {
     color: #2d3748;
     font-size: 1.25rem;
     font-weight: 700;
@@ -194,7 +194,7 @@ body.theme .help-panel {
     border-color: rgba(74, 85, 104, 0.5);
 }
 
-body.theme .help-section h4,
+body.theme .help-section h3,
 body.theme .help-text strong,
 body.theme .help-steps strong {
     color: #e2e8f0;

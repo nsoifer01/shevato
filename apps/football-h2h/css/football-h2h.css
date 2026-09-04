@@ -189,10 +189,25 @@
     gap: 1rem;
 }
 
-.football-icon {
+/* The balls are generated content, not markup text, and they hang off the
+   TEXT span rather than off spans of their own.
+   Two reasons. As markup inside the h1 they made the page's heading read
+   "\26BD Football H2H League \26BD" to Google and made a screen reader say
+   "soccer ball" twice around the title. As free-standing spans they were flex
+   items of .app-title, so at 390px they broke onto their own lines above and
+   below the wrapped heading. The no-break space glues each ball to the word
+   it decorates at every width. */
+.app-title__text::before {
+    content: "\26BD\00A0";
+}
+
+.app-title__text::after {
+    content: "\00A0\26BD";
+}
+
+.app-title__text::before,
+.app-title__text::after {
     font-size: 2.5rem;
-    display: inline-block;
-    /* animation: footballBounce 2s ease-in-out infinite; */
     filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
     /* Override the parent gradient text styling */
     background: none !important;
@@ -2008,7 +2023,8 @@
         gap: 0.5rem;
     }
 
-    .football-icon {
+    .app-title__text::before,
+    .app-title__text::after {
         font-size: 1.75rem;
     }
 
@@ -2164,7 +2180,8 @@
         flex-wrap: wrap;
     }
 
-    .football-icon {
+    .app-title__text::before,
+    .app-title__text::after {
         font-size: 1.5rem;
     }
 

@@ -68,7 +68,20 @@ const RUNTIME_GENERATED_ALLOWLIST = new Map([
   // same build (build-exercise-pages.cjs from exercises-db.json), same
   // rationale.
   ['apps/gym-tracker/exercises/index.html',
-    'generated at deploy time by npm run build:site (gym-tracker exercise pages)']
+    'generated at deploy time by npm run build:site (gym-tracker exercise pages)'],
+  // The 14 rating-shape hubs, linked from the Rising Shows landing page's
+  // "Browse by shape" list. Same build, same gitignore as shows/ above: they
+  // are the highest search-intent pages the app has, and before that list
+  // existed they were reachable from one page, three clicks deep. Enumerated
+  // rather than pattern-matched so a typo in a shape slug still fails here.
+  ...[
+    'rising', 'slow-burn', 'consistent', 'big-finale', 'saved-best-for-last',
+    'rebound', 'u-shaped', 'mid-peak', 'front-loaded', 'declining',
+    'bad-finale', 'rollercoaster', 'shape-drift', 'outshines-reputation'
+  ].map((slug) => [
+    `apps/rising-shows/shows/shape/${slug}/index.html`,
+    'generated at deploy time by npm run build:site (rising-shows shape hub)'
+  ])
 ]);
 
 // -- Tracked-file set ---------------------------------------------------------

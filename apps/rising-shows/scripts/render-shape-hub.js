@@ -32,6 +32,93 @@ const SHAPE_SLUGS = [
   'shape-drift',
 ];
 
+// Search-facing copy per hub.
+//
+// The hubs used to take their title, heading and description straight from
+// the internal shape label: "Best Bad finale TV shows", "Best Mid-peak TV
+// shows". Those are this project's vocabulary, not anyone's search. A person
+// looking for these pages types "tv shows with bad final seasons" or "shows
+// that get better after season 1", and the mechanical template matched none
+// of it - which is a large part of why the 14 highest-intent pages on the
+// domain attract nothing.
+//
+// Each entry restates the SAME set of shows in the words people use for them.
+// Nothing here changes membership, ranking or the data; only how the page
+// describes itself. `intent` is not rendered - it records the query the
+// wording is aimed at, so a future edit can tell whether it still is.
+//
+// big-finale and saved-best-for-last are deliberately worded apart: they are
+// genuinely close (a peak final season vs. a highest-rated final season on a
+// show with no overall trajectory) and two pages chasing one phrasing would
+// just compete with each other.
+const HUB_SEO = {
+  'rising': {
+    title: 'TV Shows That Get Better Every Season',
+    heading: 'TV shows that get better every season',
+    intent: 'shows that get better each season / tv shows that improve',
+  },
+  'slow-burn': {
+    title: 'Slow-Burn TV Shows That Pay Off Later',
+    heading: 'Slow-burn TV shows that pay off later',
+    intent: 'shows that get good after season 1 / slow burn tv series',
+  },
+  'consistent': {
+    title: 'TV Shows With No Bad Season',
+    heading: 'TV shows with no bad season',
+    intent: 'shows that are good all the way through / no bad seasons',
+  },
+  'big-finale': {
+    title: 'TV Shows That Build to a Great Finale',
+    heading: 'TV shows that build to a great finale',
+    intent: 'shows with a great final season / best last season',
+  },
+  'saved-best-for-last': {
+    title: 'TV Shows With Their Best Season Last',
+    heading: 'TV shows whose best season was the last one',
+    intent: 'shows whose final season is the highest rated',
+  },
+  'bad-finale': {
+    title: 'TV Shows With a Bad Final Season',
+    heading: 'TV shows that ended badly',
+    intent: 'tv shows with bad final seasons / shows that ended badly',
+  },
+  'declining': {
+    title: 'TV Shows That Got Worse Every Season',
+    heading: 'TV shows that got worse every season',
+    intent: 'shows that went downhill / shows that got worse',
+  },
+  'front-loaded': {
+    title: 'TV Shows That Peaked Early',
+    heading: 'TV shows that peaked early',
+    intent: 'shows that were best in season 1 / peaked early',
+  },
+  'mid-peak': {
+    title: 'TV Shows That Peaked in the Middle',
+    heading: 'TV shows that peaked in the middle',
+    intent: 'shows that peaked mid-run then fell off',
+  },
+  'rebound': {
+    title: 'TV Shows That Dipped and Came Back',
+    heading: 'TV shows that dipped and came back',
+    intent: 'shows that got better after a bad season / recovered',
+  },
+  'u-shaped': {
+    title: 'TV Shows With a Great Start and Finish',
+    heading: 'TV shows with a great start and finish',
+    intent: 'shows with a weak middle / sagging middle seasons',
+  },
+  'rollercoaster': {
+    title: 'TV Shows With Wildly Uneven Seasons',
+    heading: 'TV shows with wildly uneven seasons',
+    intent: 'inconsistent tv shows / uneven seasons',
+  },
+  'shape-drift': {
+    title: 'TV Shows Whose Last Season Broke the Mould',
+    heading: 'TV shows whose last season broke the pattern',
+    intent: 'shows whose final season felt different',
+  },
+};
+
 // Every hub page under /shows/shape/: the 13 shape hubs plus the gap hub,
 // which ranks by a metric instead of by shape membership. This is the list
 // the sitemap and the browse strips walk.
@@ -126,14 +213,24 @@ function renderShapeHub(slug, shows, builtAt) {
     return rankRow(s, i, stats);
   });
 
+  // Search-facing wording, falling back to the old label template for any
+  // shape added to SHAPE_SLUGS without a HUB_SEO entry.
+  const seo = HUB_SEO[slug] || {
+    title: `Best ${label} TV shows`,
+    heading: `Best ${label} TV shows`,
+  };
+
   return renderHubPage({
     slug,
     label,
-    pageTitle: `Best ${label} TV shows - Rising Shows`,
-    description: `The ${count} best ${label.toLowerCase()} TV shows, ranked by IMDb votes. ${desc}. Episode-by-episode ratings and season-shape analysis for every show.`,
-    schemaName: `Best ${label} TV shows`,
-    ogImageAlt: `Best ${label} TV shows on Rising Shows`,
-    heading: `Best ${escapeHtml(label)} TV shows`,
+    // Kept under ~60 characters so the phrase people searched for is not the
+    // half Google truncates. The count earns its place: it is the one number a
+    // reader wants before clicking a ranked list.
+    pageTitle: `${seo.title} (${count}) - Rising Shows`,
+    description: `${count} TV shows ranked by IMDb votes: ${desc.toLowerCase()}. Season-by-season rating charts and episode-level ratings for every show.`,
+    schemaName: seo.title,
+    ogImageAlt: `${seo.title}, ranked on Rising Shows`,
+    heading: escapeHtml(seo.heading),
     // Membership has been the show's whole-run dominant shape since
     // 2026-08-08, not the shape of its single highest-rated season. The wording
     // covers both kinds of entry: a trajectory read across the seasons, and the

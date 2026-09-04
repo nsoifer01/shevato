@@ -59,6 +59,41 @@ body {
     padding: 0 0.5rem;
 }
 
+/* The kart is generated content, not markup text: inside the h1 it made the
+   page's heading read "\1F3CE\FE0F Mario Kart 8 Deluxe Tracker \1F3CE\FE0F"
+   to Google. The subtitle below the heading now carries both game names,
+   which the <title> always claimed and the heading never did. */
+/* Karts as generated content, glued to the first and last word with a
+   no-break space. Inside the h1 as markup text they made the page's heading
+   read "\1F3CE\FE0F Mario Kart 8 Deluxe Tracker \1F3CE\FE0F" to Google; as
+   free-standing inline spans they orphaned onto their own lines when the
+   heading wrapped at 390px. The NBSP keeps each glyph attached to the word it
+   decorates at every width. */
+.header-section h1 .h1-text::before {
+    content: "\1F3CE\FE0F\00A0";
+}
+
+.header-section h1 .h1-text::after {
+    content: "\00A0\1F3CE\FE0F";
+}
+
+/* The globe replaces the kart in Mario Kart World mode. gameVersionManager.js
+   already puts mk8d-mode / mkworld-mode on <body>, so the glyph follows the
+   selected game without any JS writing into the heading. */
+body.mkworld-mode .header-section h1 .h1-text::before {
+    content: "\1F30D\00A0";
+}
+
+body.mkworld-mode .header-section h1 .h1-text::after {
+    content: "\00A0\1F30D";
+}
+
+.header-section .header-subtitle {
+    margin: 0.35rem 0 0;
+    font-size: 1rem;
+    opacity: 0.75;
+}
+
 .header-section h1 {
     font-size: clamp(1.25rem, 5vw, 2rem);
     margin: 0;
