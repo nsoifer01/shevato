@@ -599,6 +599,15 @@ function evaluateTripleCaptain(ctx) {
   const now = baseline.gws[0];
   // Triple captain adds one further copy of the captain's points on top of the
   // normal double, so its value is exactly the captain's projection.
+  //
+  // KNOWN UNDER-STATEMENT, left alone on purpose (2026-09-04). The extra copy
+  // is really worth `xPointsCaptaincy` - the captain when he plays and the VICE
+  // when he does not, because FPL passes the tripled armband on exactly as it
+  // passes the doubled one - so this under-values the chip for a doubtful
+  // captain. It is zero while `pAppear` is pinned at 1. Correcting it would
+  // change WHICH GAMEWEEK the chip is recommended for, which is a planner
+  // decision and needs registry validation, so it is not part of the reporting
+  // fix that introduced `gameweekPoints`.
   const valueNow = now.captainExtra;
   const squadIds = squadState.picks.map(p => p.playerId);
 
