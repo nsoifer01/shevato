@@ -157,6 +157,18 @@ export function squadTrajectory({
     // opts that do not carry it.
     const lineup = optimizeLineup(squadIds, projections, gw, rules, { ...opts, gameState });
     const captaincy = chooseCaptain(lineup.startingXI, projections, gw, gameState, opts);
+    // TWO ARMBAND NUMBERS, AND THEY ARE NOT THE SAME.
+    //
+    // `captainExtra` is the captain's own expected points counted again. It is
+    // what the OBJECTIVE below is built from, and it is deliberately left
+    // alone: `squadObjective` in lineup.js is asserted bit-identical to this
+    // total, and moving it moves every ranking.
+    //
+    // `xPointsCaptaincy` is what the armband is actually EXPECTED TO PAY: the
+    // captain's points when he plays, and the vice's when he does not, which
+    // is FPL's rule (scoreGameweek in backtest.js applies it). captain.js has
+    // computed it, with a club-correlation factor, since it was written; the
+    // reported gameweek total simply never used it.
     const captainExtra = xpOf(projections, captaincy.captain, gw);
     const benchIds = [lineup.bench.gk, ...lineup.bench.order];
     const xPointsBench = benchIds.reduce((s, id) => s + xpOf(projections, id, gw), 0);
@@ -177,6 +189,14 @@ export function squadTrajectory({
       xPointsXi,
       xPointsBench,
       captainExtra,
+      // The two components the REPORTED gameweek total needs and the objective
+      // does not. Chip-agnostic on purpose: only the caller knows the chip, and
+      // bench boost pays the bench INSTEAD of auto-substitutions rather than as
+      // well as them.
+      xPointsAutosubs: Number.isFinite(lineup.autosubValue) ? lineup.autosubValue : 0,
+      xPointsCaptaincy: Number.isFinite(captaincy.xPointsCaptaincy)
+        ? captaincy.xPointsCaptaincy
+        : captainExtra,
       xPoints: xPointsXi + captainExtra,
       sd: Number.isFinite(lineup.sd) ? lineup.sd : 0,
     };

@@ -667,7 +667,7 @@ the reported numbers are unrecognisable - Dubravka reads 0.14 rather than 2.7.
 Load `data/opening-baseline.json` and rebuild the game state with it before
 concluding anything about an opening-weeks report.
 
-### Headline xP is not the expected gameweek score, and the pin hides it (2026-09-04)
+### Headline xP was not the expected gameweek score (found and FIXED 2026-09-04)
 
 Three different numbers, and the app shows the first:
 
@@ -696,10 +696,43 @@ estimator arm D:
 | **headline xPointsGw** | **54.654** | **51.233** |
 | eleven + armband + auto-subs | 54.654 | **54.882** |
 
-The headline falls 3.4 while the honest expectation RISES 0.2. A manager reading
-the hero card would conclude a better-calibrated model had made his team worse.
-Worth deciding deliberately before any future minutes change lands; not a reason
-to change the UI on its own. See registry entries 23 and 24.
+The headline falls 3.4 while the honest expectation RISES. A manager reading the
+hero card would conclude a better-calibrated model had made his team worse.
+
+**Two terms were missing, not one.** Vice succession is the second, and it was
+the more embarrassing: `captain.js` has computed `xPointsCaptaincy` - the
+captain's points when he plays and the VICE'S when he does not, with a
+club-correlation factor - since it was written, `tests/captain.test.mjs` has
+pinned it since then, and `transfers.js:363` already scored its candidates on
+`lineup.xPoints + lineup.autosubValue + captaincy.xPointsCaptaincy`. The
+reported total was the only place that used the captain's raw xP instead. So
+the canonical formula was already the intended contract; one construction site
+had drifted.
+
+**FIXED.** `planner.js` `gameweekPoints()` is now the single definition, called
+from both construction sites (`scoreCandidate` and the draft path), and the plan
+carries the named components `xPointsXi` / `xPointsAutosubs` /
+`xPointsCaptaincy` / `xPointsBenchPaid`. Chip semantics follow `scoreGameweek`
+in backtest.js, which is the authority because it scores real gameweeks from
+real minutes: Bench Boost pays the bench INSTEAD of auto-substitutions (FPL
+makes no substitution when all fifteen score), Triple Captain pays two extra
+armband copies, and wildcard and free hit change the squad rather than the
+scoring.
+
+**The objective was deliberately NOT changed.** `xPointsHorizon` and `objective`
+are still built from `trajectory.total`, which is the sum of
+`xPointsXi + captainExtra` and contains neither term; that is documented in
+lineup.js and `optimizer-consistency.test.mjs` asserts `squadObjective` is
+bit-identical to it. Proof the fix is reporting-only: replaying 2024-25 gw1-13
+before and after scores **884 points both times**, with identical captaincy
+value, transfers and hits, and only the reported `projection bias` moving
+(-19.4 to -19.0 points per gameweek, i.e. less under-projection). Whether the
+planner should also OPTIMIZE the canonical number is a model change and needs
+the registry.
+
+On live data today the correction is a no-op: both omitted terms are exactly
+zero under the `pAppear` pin, so team 3855835 still reads 54.654. Pinned by
+`tests/gameweek-points.test.mjs` (cases A-H). See registry entries 23 and 24.
 
 ## Minutes and projections
 
