@@ -3914,9 +3914,33 @@ case 'toggle-warmup':
         if (calories) this.currentWorkoutSession.caloriesBurned = parseInt(calories);
         if (notes) this.currentWorkoutSession.notes = notes;
 
-        // Save workout session
+        // Save workout session.
+        //
+        // The write can fail (quota exhausted, private mode, evicted
+        // storage) and `saveWorkoutSessions` reports it. Everything below
+        // this point is irreversible from the user's point of view: it clears
+        // the active-workout blob, releases the tab lock and plays the
+        // completion burst. Doing that on a failed write destroyed the only
+        // remaining copy of the session and told the lifter it was saved, so
+        // refuse instead and leave the workout live so they can retry or free
+        // some space.
         this.app.workoutSessions.push(this.currentWorkoutSession);
-        this.app.saveWorkoutSessions();
+        if (this.app.saveWorkoutSessions() === false) {
+            this.app.workoutSessions.pop();
+            // Put the session back in its live shape: endWorkout() stamped
+            // both of these, and `completed` is what readableActiveWorkout
+            // refuses to restore.
+            this.currentWorkoutSession.endTime = null;
+            this.currentWorkoutSession.completed = false;
+            showToast(
+                'Could not save this workout: device storage is full. Nothing was lost, free some space and finish again.',
+                'error',
+                6000
+            );
+            const finishEl = document.getElementById('finish-workout-modal');
+            if (finishEl) finishEl.classList.remove('active');
+            return;
+        }
 
         // The app's single most meaningful completion. Counts and duration
         // only: no exercise names, no notes, no heart-rate or calorie figures,

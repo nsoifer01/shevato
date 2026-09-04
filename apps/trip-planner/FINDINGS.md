@@ -2412,3 +2412,35 @@ product defect - production returns them correctly.
   scaffold span every card gets (`proposalDistHtml`); the paint pass only
   fills chips under `#assistMessages`. Assertions about "no chips in the
   dialog" must therefore check painted TEXT, not element existence.
+
+## Exports carry text a stranger chose
+
+A share link is a URL fragment anyone can send, and its titles, places, details
+and notes reach the CSV and ICS exports unchanged.
+
+- **CSV formula injection.** `csvCell` quoted and doubled quotes, which does
+  not stop a cell whose text begins with `=`, `+`, `-` or `@` being evaluated
+  by Excel, Sheets and LibreOffice. There are now two escapers: `csvCell` for
+  machine-written columns (dates, numbers, enum labels) and `csvTextCell`,
+  which prefixes an apostrophe, for the columns a person can put words in.
+  The split matters: a refund is a real negative number and the
+  "spreadsheet SUM equals the app total" property depends on the cost columns
+  staying bare.
+- **ICS bare carriage return.** `icsEscapeText` folded `\r\n` and `\n` but
+  not a lone `\r`, which is a line break inside a VEVENT, so a title could
+  inject a calendar property (ATTENDEE, URL) into the exported file. The regex
+  is now `/\r\n?|\n/g`.
+
+## CORRECTION: the tp-places / tp-assist quota CAS was NOT atomic
+
+This file said, of the reservation: "Atomic. The reservation runs inside the
+existing etag CAS ... 50 concurrent batches arriving with 10 calls left
+authorise 10, not 600. Pinned by a barrier test." That was false in production
+for the 25 days after the CAS landed, and the barrier test could not see it
+because it stubs the store with conditional-write semantics the shipped client
+did not have. `@netlify/blobs` was pinned `^8.1.0`, whose `setJSON` has no
+conditional write at all. Against the real 8.2.0 client, 50 barrier writers
+were ALL told "reserved" and 49 reservations were lost. See the root
+`FINDINGS.md` entry and `netlify/functions/tests/blobs-version.test.mjs`; the
+package is now `^10.7.13`, the first version whose `setJSON` puts the condition
+on the wire, and the claim above is true as of that bump.

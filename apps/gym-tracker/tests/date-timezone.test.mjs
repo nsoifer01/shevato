@@ -165,3 +165,73 @@ test('getCurrentStreak counts sessions whose date is a full ISO timestamp', asyn
     assert.equal(AnalyticsService.getCurrentStreak([{ date: 'not-a-date' }]), 0,
         'an unparseable date never throws and never counts');
 });
+
+// ---------------------------------------------------------------------------
+// AchievementService: both places that used to read the UTC day
+// ---------------------------------------------------------------------------
+
+const ACHIEVEMENT_URL = new URL('../js/services/AchievementService.js', import.meta.url).href;
+
+/** Same child-process trick, with the achievement service in scope as `a`. */
+function achievementsInZone(tz, nowIso, snippet) {
+    const script = `
+        const RealDate = Date;
+        const FIXED = new RealDate('${nowIso}').getTime();
+        class FakeDate extends RealDate {
+            constructor(...args) { args.length === 0 ? super(FIXED) : super(...args); }
+            static now() { return FIXED; }
+        }
+        globalThis.Date = FakeDate;
+        const a = (await import('${ACHIEVEMENT_URL}')).AchievementService;
+        const h = await import('${HELPERS_URL}');
+        const print = (v) => process.stdout.write(JSON.stringify(v));
+        ${snippet}
+    `;
+    const out = execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+        env: { ...process.env, TZ: tz, LANG: 'en_US.UTF-8', LC_ALL: 'en_US.UTF-8' },
+        encoding: 'utf8',
+    });
+    return JSON.parse(out);
+}
+
+// 2026-09-04T02:30Z is 21:30 on September 3 in Chicago (CDT, UTC-5). A
+// workout finished then is dated 2026-09-03 locally, and the old code
+// compared it against the UTC "today" of 2026-09-04.
+const EVENING_CDT = '2026-09-04T02:30:00Z';
+
+test('workout-today unlocks for an evening workout west of UTC', () => {
+    const progress = achievementsInZone('America/Chicago', EVENING_CDT, `
+        const today = h.getTodayDateString();
+        const sessions = [{ id: 1, date: today, exercises: [] }];
+        print({
+            today,
+            workoutToday: a.calculateProgress({ requirement: { type: 'workout-today' }, target: 1 }, sessions),
+        });
+    `);
+    assert.equal(progress.today, '2026-09-03', 'the session is dated with the LOCAL day');
+    assert.equal(progress.workoutToday, 1,
+        'a workout logged at 21:30 CDT must count as today (it used to read the UTC day)');
+});
+
+test('workout-today does not unlock when the only workout is on another day', () => {
+    // The control: a guard that always returned 1 would pass the test above.
+    const progress = achievementsInZone('America/Chicago', EVENING_CDT, `
+        const sessions = [{ id: 1, date: '2026-08-30', exercises: [] }];
+        print(a.calculateProgress({ requirement: { type: 'workout-today' }, target: 1 }, sessions));
+    `);
+    assert.equal(progress, 0);
+});
+
+test('monthly-workouts counts a month whose tally needs a session dated the 1st', () => {
+    // `new Date('2026-09-01')` is UTC midnight, which is August 31 in Chicago,
+    // so the session used to be filed under the wrong month and the month
+    // never reached its target.
+    const count = achievementsInZone('America/Chicago', EVENING_CDT, `
+        const sessions = [];
+        for (let d = 1; d <= 12; d++) {
+            sessions.push({ id: d, date: '2026-09-' + String(d).padStart(2, '0'), exercises: [] });
+        }
+        print(a.getRepetitionCount({ requirement: { type: 'monthly-workouts' }, target: 12 }, sessions));
+    `);
+    assert.equal(count, 1, 'twelve September sessions are one completed month');
+});

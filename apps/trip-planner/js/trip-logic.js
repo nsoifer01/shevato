@@ -1912,7 +1912,10 @@ const TripLogic = (() => {
       .replace(/\\/g, '\\\\')
       .replace(/;/g, '\\;')
       .replace(/,/g, '\\,')
-      .replace(/\r?\n/g, '\\n');
+      // A BARE \r has to be folded too: it is a line break inside a VEVENT,
+      // so a title carrying one could inject a whole calendar property
+      // (ATTENDEE, URL) into the exported file.
+      .replace(/\r\n?|\n/g, '\\n');
   }
 
   function icsEvent(it, stamp) {
@@ -2082,23 +2085,39 @@ const TripLogic = (() => {
       'estimatedCostCurrency', 'costNote', 'confirmation', 'travelers', 'bookBy', 'paymentMethod', 'category'];
   }
   const csvCell = v => `"${String(v).replace(/"/g, '""')}"`;
+  // A cell whose TEXT begins with =, +, - or @ is a formula to Excel, Sheets
+  // and LibreOffice, and quoting does not stop it. Trip titles, places and
+  // notes can arrive from a share link a stranger sent, so the text columns
+  // get a leading apostrophe (the spreadsheet convention for "this is
+  // literal"). Numeric columns must NOT go through this: a refund is a real
+  // negative number and the "spreadsheet SUM equals the app total" property
+  // depends on it staying one.
+  const csvTextCell = v => {
+    const s = String(v == null ? '' : v);
+    return csvCell(/^[=+\-@\t\r]/.test(s) ? `'${s}` : s);
+  };
   function buildCsv(trip, base, ratesObj) {
     const cur = base || trip.currency || 'USD';
     const lines = [csvColumns(cur).join(',')];
     for (const it of sortedItems(trip)) {
       const from = it.costCurrency || cur;
       const conv = it.cost != null && it.cost !== '' ? convertAmount(Number(it.cost), from, cur, ratesObj) : null;
+      // Two escapers on purpose: `csvCell` for machine-written columns
+      // (dates, numbers, enum labels), `csvTextCell` for anything a person or
+      // a share link can put words in.
       lines.push([
-        it.startDate, it.startTime || '', it.endDate || '', it.endTime || '', nights(it) ?? '',
-        it.type, it.title, it.location || '', it.details || '',
-        ICS_STATUS[it.status] || it.status || '',
-        it.cost ?? '', from, conv == null ? '' : conv.toFixed(2),
-        it.estCost ?? '', it.estCost != null ? (it.estCostCurrency || cur) : '',
-        it.costNote || '', it.confirmation || '',
-        Array.isArray(it.travelers) ? it.travelers.join('; ') : '',
-        it.bookBy || '', PAYMENT_LABEL[it.payment] || '',
-        mealLabel(itemMealKind(it)),
-      ].map(csvCell).join(','));
+        csvCell(it.startDate), csvCell(it.startTime || ''), csvCell(it.endDate || ''),
+        csvCell(it.endTime || ''), csvCell(nights(it) ?? ''),
+        csvCell(it.type), csvTextCell(it.title), csvTextCell(it.location || ''),
+        csvTextCell(it.details || ''),
+        csvCell(ICS_STATUS[it.status] || it.status || ''),
+        csvCell(it.cost ?? ''), csvCell(from), csvCell(conv == null ? '' : conv.toFixed(2)),
+        csvCell(it.estCost ?? ''), csvCell(it.estCost != null ? (it.estCostCurrency || cur) : ''),
+        csvTextCell(it.costNote || ''), csvTextCell(it.confirmation || ''),
+        csvTextCell(Array.isArray(it.travelers) ? it.travelers.join('; ') : ''),
+        csvCell(it.bookBy || ''), csvCell(PAYMENT_LABEL[it.payment] || ''),
+        csvCell(mealLabel(itemMealKind(it))),
+      ].join(','));
     }
     return lines.join('\n');
   }

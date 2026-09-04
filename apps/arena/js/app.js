@@ -190,10 +190,20 @@ function hide(el) { if (el) el.hidden = true; }
 function setText(el, text) { if (el) el.textContent = text; }
 function setClass(el, cls, on) { if (el) el.classList.toggle(cls, !!on); }
 
+// Escape for HTML, INCLUDING both quote characters.
+//
+// The `div.textContent -> div.innerHTML` trick escapes &, < and > and leaves
+// " and ' alone, because a text node does not need them escaped. That is only
+// safe while every interpolation lands in element CONTENT. It does not here:
+// another player's display name is interpolated into `title="..."` on the
+// podium and into `data-name="..."` in the recap, and display names are only
+// trimmed and length-capped, never quote-stripped, so a value carrying a double quote closes
+// the attribute and the rest of the string becomes markup of the author's
+// choosing. Escape all five, like the shared assets/js/escape-html.js.
 function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = String(text == null ? '' : text);
-    return div.innerHTML;
+    return String(text == null ? '' : text).replace(/[&<>"']/g, (ch) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
 }
 
 /**

@@ -171,3 +171,36 @@ silently, and the validator now rejects a stored 2.5 on import.
   cosmetic, the stamp is parsed by wall-clock only.
 - Stats cards use a 3-column grid, so a fourth player sits alone on a
   second row; mobile race cards are tall (about 360 px each, 10 per page).
+
+## The cloud-sync refresh has to drop the undo stack too
+
+The cross-tab handler always called `resetActionHistory()` after
+`loadSavedData()`, for the documented reason: `races` is replaced wholesale and
+the stack describes the OLD array. The `localStorageSync` (cloud) handler did
+not. Undo after a remote sync therefore popped whichever race was last in the
+OTHER device's log and wrote the result back, and per-key last-writer-wins
+propagated that deletion everywhere: pressing Undo deleted someone else's race.
+Both handlers now reset the stack. Pinned by `tests/syncHandlers.test.js`,
+which asserts the shape of both callbacks (main.js registers them inside DOM
+bootstrap, so the listener itself needs the whole page to drive).
+
+## REJECTED: "the stat counts render black on a dark card"
+
+A 2026-09-03 audit reported `theme.css` `body.theme .stat-count { color:
+#000000 !important }` as a contrast defect beating `stats.css`'s `#e2e8f0`,
+and it looked convincing in source. It is wrong, and the measurement is worth
+keeping so it is not re-raised.
+
+`.stat-item` does not composite to a dark surface. Compositing every ancestor
+background in a real render at 1280 gives `rgb(166, 172, 183)`, a light grey
+card. Against that:
+
+| colour | composited background | ratio |
+|---|---|---|
+| `#000000` (shipped) | `rgb(166,172,183)` | 9.21:1, passes AA |
+| `#e2e8f0` (the "fix") | `rgb(166,172,183)` | 1.85:1, fails |
+
+Removing the black pin made the counts nearly invisible. Reverted. Measure the
+COMPOSITED backdrop (walk the ancestors and blend, including translucent
+layers), never the element's own `backgroundColor`, which here is
+`rgba(255,255,255,0.1)` and tells you nothing.

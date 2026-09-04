@@ -983,7 +983,15 @@ function submitSidebarGame() {
     // Add to games
     if (window.games && Array.isArray(window.games)) {
         window.games.push(newGame);
-        if (window.saveGames) window.saveGames();
+        // saveGames() reports refusal (storage unreadable) and failure (quota).
+        // Its result used to be discarded, so a game added while the stored
+        // blob was unreadable produced an error toast AND "Game added
+        // successfully!" one after the other, and the game was gone on reload.
+        if (window.saveGames && window.saveGames() === false) {
+            window.games.pop();
+            if (window.updateUI) window.updateUI();
+            return;
+        }
         if (window.updateUI) window.updateUI();
         
         // Add to history for undo/redo

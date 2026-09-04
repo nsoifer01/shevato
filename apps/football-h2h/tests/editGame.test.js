@@ -37,12 +37,14 @@ const GAME = {
 function editCtx(seed = GAME) {
     const modal = { opts: null };
     const errors = [];
+    const toasts = [];
 
     const ctx = makeContext({
         console: quietConsole,
         createFormModal: (opts) => { modal.opts = opts; },
         showFormError: (msg) => errors.push(msg),
         hideFormError: () => {},
+        showToast: (message, type) => toasts.push({ message, type }),
     });
     loadInto(ctx, 'playerStats.js');
     loadInto(ctx, 'match-logic.js');
@@ -58,6 +60,12 @@ function editCtx(seed = GAME) {
     return {
         ctx,
         errors,
+        toasts,
+        // Stand in for what a cross-tab write, a remote sync delivery or the
+        // 10-minute auto-backup does: replace the whole `games` array while
+        // the dialog is open.
+        replaceGames: (rows) => runIn(ctx, `games = ${JSON.stringify(rows)}; window.games = games;`),
+        allGames: () => toHost(runIn(ctx, 'games')),
         // Raw form data as createFormModal would collect it, defaulting to
         // a valid no-op edit of the seeded game.
         save: (overrides = {}) => modal.opts.onSave({
@@ -128,4 +136,48 @@ test('edit game: a drawn edit stores the penalty winner as a NUMBER', () => {
     assert.deepEqual(h.errors, []);
     assert.equal(h.game().penaltyWinner, 2);
     assert.equal(typeof h.game().penaltyWinner, 'number');
+});
+
+
+// ---------------------------------------------------------------------------
+// The dialog outlives the array it was opened against.
+//
+// `games` is REPLACED wholesale whenever storage is re-read: a second tab
+// writing, a remote sync delivery, the 10-minute auto-backup, the 1 s
+// syncSystemReady refresh. The edit path looked its row up with
+// `games.indexOf(game)` on the object captured when the dialog opened, and
+// the `if (gameIndex !== -1)` had no else, so Save silently did nothing.
+// ---------------------------------------------------------------------------
+
+test('edit game: a save still lands after the games array was replaced underneath', () => {
+    const h = editCtx();
+
+    // Same row, same id, different object identity: exactly what re-reading
+    // storage produces.
+    h.replaceGames([{ ...GAME }, { ...GAME, id: 2, gameNumber: 2, player1Goals: 0, player2Goals: 0 }]);
+
+    h.save({ player1Goals: '7', player2Goals: '3' });
+
+    assert.deepEqual(h.errors, [], 'a valid edit must not raise a form error');
+    const rows = h.allGames();
+    assert.equal(rows.length, 2, 'the other row is untouched');
+    const edited = rows.find((g) => g.id === GAME.id);
+    assert.equal(edited.player1Goals, 7, 'the edit must reach the row that is actually in the array now');
+    assert.equal(edited.player2Goals, 3);
+    assert.equal(storedGames(h.ctx).find((g) => g.id === GAME.id).player1Goals, 7,
+        'and must be persisted');
+});
+
+test('edit game: editing a row that was deleted elsewhere says so instead of failing silently', () => {
+    const h = editCtx();
+    h.replaceGames([{ ...GAME, id: 99, gameNumber: 1 }]);
+
+    h.save({ player1Goals: '7' });
+
+    assert.equal(h.allGames().length, 1, 'nothing is added');
+    assert.equal(h.allGames()[0].id, 99, 'and the surviving row is not overwritten');
+    assert.ok(
+        h.toasts.some((t) => t.type === 'error' && /another tab/i.test(t.message)),
+        `the user must be told; got ${JSON.stringify(h.toasts)}`
+    );
 });

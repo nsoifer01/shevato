@@ -7826,3 +7826,68 @@ test('candidateBadges never fabricates a comparison from missing data', () => {
   assert.deepEqual(sweep[0].map(b => b.id), ['fastest', 'rated', 'popular']);
   assert.deepEqual(sweep[1], []);
 });
+
+// ---------------------------------------------------------------------------
+// Exports carry text a stranger can choose.
+//
+// A share link is a URL fragment anyone can send, and its titles, places and
+// notes flow into the CSV and ICS exports unchanged. Both formats treat
+// certain leading characters as code rather than text.
+// ---------------------------------------------------------------------------
+
+test('CSV neutralises formula-leading text without touching the numeric columns', () => {
+  const trip = { name: 'T', currency: 'USD', items: [
+    { id: 'a', type: 'activity', title: '=HYPERLINK("http://evil.example","click")',
+      location: '@SUM(1+1)', details: '+1+1', costNote: '-lookup',
+      startDate: '2027-05-01', status: 'booked', cost: 500, costCurrency: 'USD' },
+    { id: 'b', type: 'note', title: 'Refund', startDate: '2027-05-02',
+      status: 'booked', cost: -120, costCurrency: 'USD' },
+  ] };
+  const rows = parseCsv(L.buildCsv(trip, 'USD', null));
+  const head = rows[0];
+  const at = (name) => head.indexOf(name);
+
+  const hostile = rows[1];
+  for (const col of ['title', 'location', 'details', 'costNote']) {
+    const idx = at(col);
+    assert.ok(idx >= 0, `column ${col} must exist`);
+    assert.ok(hostile[idx].startsWith("'"),
+      `${col} must be prefixed so a spreadsheet reads it as text, got ${JSON.stringify(hostile[idx])}`);
+    assert.ok(!/^[=+\-@]/.test(hostile[idx]),
+      `${col} must not still open with a formula character`);
+  }
+
+  // The numeric columns must be untouched: a refund is a real negative number
+  // and the SUM property above depends on it.
+  assert.equal(rows[2][at('cost')], '-120', 'a refund must stay a signed number');
+  assert.equal(hostile[at('cost')], '500');
+  assert.equal(hostile[at('startDate')], '2027-05-01');
+});
+
+test('CSV leaves ordinary text alone', () => {
+  // The control: a guard that prefixed everything would pass the test above.
+  const trip = { name: 'T', currency: 'USD', items: [
+    { id: 'a', type: 'activity', title: 'Dinner at Sushi Dai', location: 'Tokyo',
+      startDate: '2027-05-01', status: 'booked' },
+  ] };
+  const rows = parseCsv(L.buildCsv(trip, 'USD', null));
+  const head = rows[0];
+  assert.equal(rows[1][head.indexOf('title')], 'Dinner at Sushi Dai');
+  assert.equal(rows[1][head.indexOf('location')], 'Tokyo');
+});
+
+test('ICS folds a bare carriage return so a title cannot inject a property', () => {
+  const trip = { name: 'T', currency: 'USD', items: [
+    { id: 'a', type: 'activity', title: 'Dinner\rATTENDEE:mailto:x@example.com',
+      startDate: '2027-05-01', status: 'booked' },
+  ] };
+  const ics = L.buildIcs(trip);
+  const summary = ics.split(/\r\n|\n/).filter((l) => l.startsWith('SUMMARY:'));
+  assert.equal(summary.length, 1, 'the title must stay on one content line');
+  assert.ok(!/[\r]/.test(summary[0]), 'no bare CR may survive into the file');
+  assert.ok(summary[0].includes('\\n'), 'the break must be escaped, not dropped');
+  assert.ok(
+    !ics.split(/\r\n|\n/).some((l) => l.startsWith('ATTENDEE:')),
+    'no injected calendar property may appear'
+  );
+});

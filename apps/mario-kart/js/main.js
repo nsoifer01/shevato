@@ -1727,6 +1727,13 @@ document.addEventListener('DOMContentLoaded', function() {
         __mkRemoteRefreshTimer = setTimeout(() => {
             if (window.PlayerNameManager?.initialize) window.PlayerNameManager.initialize();
             if (window.loadSavedData) window.loadSavedData();
+            // The undo stack indexed the log we just replaced, so it has to
+            // go, exactly as the cross-tab handler below already does it.
+            // Without this, Undo after a remote sync popped whichever race is
+            // last in the OTHER device's log and wrote the result back, and
+            // per-key last-writer-wins then propagated that deletion
+            // everywhere: pressing Undo deleted someone else's race.
+            if (typeof resetActionHistory === 'function') resetActionHistory();
             if (typeof updateDisplay === 'function') updateDisplay();
             if (window.updateAllPlayerIcons) window.updateAllPlayerIcons();
         }, 750);

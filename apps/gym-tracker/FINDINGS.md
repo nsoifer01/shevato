@@ -1204,3 +1204,45 @@ hit-sensitive), at 390x844, 320x700 and 1280x900:
   resilience (corrupt-blob boot, export/import round-trip), mobile spot
   checks. All passing at the end of the round; `npm test` (2430) and
   `npm run test:browser` (190) green.
+
+## A failed write must not be reported as a saved workout
+
+`StorageService.set()` has always returned `false` on a quota error, and every
+caller threw the boolean away. `finishWorkout` pushed the session, called
+`saveWorkoutSessions()`, then cleared the active-workout blob, released the tab
+lock and played the completion burst. On a failed write that destroyed the only
+remaining copy of the session and told the lifter it was saved; a reload lost
+it. `importAllData` returned `{ ok: true }` after `writeStores` even when every
+store write threw, so an import that stored nothing still toasted "Imported: N
+workouts".
+
+`writeStores` now returns false if any store failed, `importAllData` reports
+`ok:false` with `storageFull:true`, and `finishWorkout` refuses: it pops the
+session, restores its live shape (`endTime` and `completed` both cleared, so
+`readableActiveWorkout` will restore it) and toasts that storage is full,
+leaving the workout running so the lifter can free space and finish again.
+
+## The programs store could be blanked by one bad record
+
+`sanitizeImportData` validated `programs` only for id and name; `exercises` was
+never checked. `Program`'s constructor does `(data.exercises || []).map(...)`,
+so an `exercises` that is an object, a string, or an array holding `null` threw
+while the store was loading. `app.js` wraps the WHOLE store in `_safeLoad`, so
+one bad record made every program vanish behind "Could not load programs, so
+that section reset to empty", and the next `savePrograms()` (create, edit,
+reorder, delete) wrote that empty list over the intact stored one. The
+sanitiser now coerces `exercises` to an array of plain objects and reports the
+repair.
+
+## Two achievement paths read the UTC day, not the local one
+
+Sessions are dated with the LOCAL day (`getTodayDateString`).
+`calculateProgress('workout-today')` compared that against
+`new Date().toISOString().split('T')[0]`, which is UTC, so "Daily Activity"
+never unlocked for a workout finished after 19:00 CDT while the sibling
+`daily-volume` branch six lines below (which already used `toLocalDateKey`,
+with a comment explaining why) unlocked normally.
+`getRepetitionCount('monthly-workouts')` parsed `s.date` with `new Date(date)`,
+UTC midnight, so any month whose tally depended on a session dated the 1st was
+undercounted west of UTC. Both now use the local-date helpers. Pinned in
+`date-timezone.test.mjs`, which already ran child processes under a fixed TZ.

@@ -276,7 +276,12 @@ test('a fresh write resets the debounce timer so a burst becomes one flush', asy
   assert.deepEqual(Object.keys(h.setDocCalls()[0].payload.data).sort(), [kA, kB].sort());
 });
 
-test('removeItem flushes as a deleteField sentinel', async (t) => {
+test('removeItem flushes a TOMBSTONE, not a deleteField sentinel', async (t) => {
+  // A deleted FIELD is invisible to peers: the reader loop only walks keys
+  // the document still has, so the key survived on every other device and
+  // the next initial merge re-uploaded it. The delete has to be a value the
+  // reader can see. See "a peer applies a tombstone and does not resurrect
+  // the key" below for the other half of the round trip.
   const h = await startHarness(t, ['gone']);
   const [k] = h.keys;
 
@@ -290,8 +295,154 @@ test('removeItem flushes as a deleteField sentinel', async (t) => {
 
   const calls = h.setDocCalls();
   assert.equal(calls.length, 2);
-  assert.ok(isDeleteSentinel(calls[1].payload.data[k]),
-    'a removed key must ship as deleteField(), not as a value');
+  const entry = calls[1].payload.data[k];
+  assert.ok(!isDeleteSentinel(entry),
+    'a removed key must NOT ship as deleteField(): peers never see a removed field');
+  assert.equal(entry.deleted, true, 'the delete must be an explicit tombstone');
+  assert.equal(entry.value, null);
+  assert.ok(typeof entry.rev === 'number' && entry.rev > 0,
+    'the tombstone needs a revision so last-writer-wins can order it');
+  assert.ok(entry.updatedAt, 'the tombstone needs a server timestamp');
+});
+
+test('the writer output is what the reader honours (delete round trip)', async (t) => {
+  // The strongest form: take the document DEVICE A ACTUALLY WROTE and feed it
+  // to a second sync state on this page, the way Firestore delivers it. The
+  // old deleteField() shape could not make this trip at all, because the
+  // deleted field simply was not in the document the peer received.
+  const writer = await startHarness(t, ['rt']);
+  const [k] = writer.keys;
+
+  localStorage.setItem(k, '{"team":123}');
+  t.mock.timers.tick(500);
+  await settle();
+  localStorage.removeItem(k);
+  t.mock.timers.tick(500);
+  await settle();
+
+  const deletePayload = writer.setDocCalls().at(-1).payload.data[k];
+  // Firestore resolves the serverTimestamp sentinel on read, so the peer sees
+  // a real time. Substitute one exactly as a delivered snapshot would.
+  const asDelivered = { ...deletePayload, updatedAt: Date.now() };
+  // Guard the guard: a deleteField sentinel also happens to make the reader
+  // drop the key (its `value` is undefined), so without this assertion the
+  // round trip below would pass against the very shape it exists to reject.
+  assert.equal(asDelivered.deleted, true,
+    'the delivered payload must be a readable tombstone, not a field-removal sentinel');
+
+  // A second namespace standing in for the other device. startHarness enables
+  // the mock timers, which cannot be enabled twice, so this one is opened
+  // against the module directly.
+  const peerNs = 'behaviorPeerRt';
+  const peerKey = `${peerNs}:rt`;
+  const peerHandle = mod.startStorageSync({ namespace: peerNs, keys: [peerKey] });
+  t.after(() => peerHandle.stop());
+  await settle();
+  const peerListeners = activeListeners(peerNs);
+  const emitPeer = (body) => peerListeners[peerListeners.length - 1]
+    .onNext({ data: () => ({ data: body }), metadata: { fromCache: false } });
+
+  emitPeer({ [peerKey]: { value: { team: 123 }, rev: 1, updatedAt: Date.now() - 4000, hash: hashValue({ team: 123 }) } });
+  await settle();
+  assert.equal(backingStore.get(peerKey), '{"team":123}', 'peer holds the value first');
+
+  const before = firestoreFakes().setDocCalls.length;
+  emitPeer({ [peerKey]: asDelivered });
+  await settle();
+
+  assert.equal(backingStore.has(peerKey), false,
+    "the peer must drop the key when it receives the writer's own delete payload");
+  assert.equal(firestoreFakes().setDocCalls.length, before,
+    'and must not write anything back');
+});
+
+test('a peer applies a tombstone and does not resurrect the key', async (t) => {
+  // The full round trip the old shape could not make: device A deletes, the
+  // document reaches device B, B drops the key locally AND its initial merge
+  // must not upload it again.
+  const h = await startHarness(t, ['tomb']);
+  const [k] = h.keys;
+
+  h.emit({ [k]: { value: { team: 123 }, rev: 1, updatedAt: Date.now() - 3000, hash: hashValue({ team: 123 }) } });
+  assert.equal(backingStore.get(k), JSON.stringify({ team: 123 }), 'peer starts holding the value');
+
+  const before = h.setDocCalls().length;
+  h.emit({ [k]: { deleted: true, value: null, rev: 2, updatedAt: Date.now() - 1000, hash: hashValue(null) } });
+
+  assert.equal(backingStore.has(k), false, 'the tombstone must remove the local key');
+  assert.equal(h.setDocCalls().length, before,
+    'applying a tombstone must not queue a write back');
+});
+
+test('restarting a live sync keeps the pending write instead of dropping it', async (t) => {
+  // initAppSync() runs on every delivery of the auth state, and any other
+  // shevato tab finishing a page load causes one. Restarting a namespace
+  // inside the 500 ms debounce used to clear the timer and delete the queue,
+  // so the user's last edit never reached Firestore and the older remote copy
+  // then overwrote it locally.
+  const h = await startHarness(t, ['keep']);
+  const [k] = h.keys;
+
+  localStorage.setItem(k, '"the edit"');
+  assert.equal(h.status().queueSize, 1, 'the edit is queued');
+
+  // Same user, same namespace, same keys: exactly what a re-entry looks like.
+  mod.startStorageSync({ namespace: h.namespace, keys: [k] });
+  await settle();
+
+  assert.equal(h.status().queueSize, 1,
+    'a same-user restart must not discard the pending write');
+  assert.equal(activeListeners(h.namespace).length, 1,
+    'and must not attach a second listener');
+
+  t.mock.timers.tick(500);
+  await settle();
+
+  const flushed = h.setDocCalls().filter((c) => c.payload?.data?.[k]);
+  assert.equal(flushed.length, 1, 'the edit still flushes after the restart');
+  assert.equal(flushed[0].payload.data[k].value, 'the edit');
+});
+
+test('local-only keys are not uploaded into a different account', async (t) => {
+  // Shared browser: person A signs out (synced keys deliberately stay in
+  // localStorage), person B signs in. B's cloud document does not have A's
+  // keys, so the initial merge used to upload A's data into B's account.
+  // The device records which uid the local copy belongs to; here it belongs
+  // to someone other than the signed-in user.
+  backingStore.set('shevato:sync-owner', 'person-A');
+  t.after(() => backingStore.delete('shevato:sync-owner'));
+
+  const h = await startHarness(t, ['owned'], { emitInitial: false });
+  const [k] = h.keys;
+  backingStore.set(k, '"person A data"');
+
+  const before = h.setDocCalls().length;
+  h.emit({}, { fromCache: false });
+  await settle();
+
+  const uploaded = h.setDocCalls().slice(before).filter((c) => c.payload?.data?.[k]);
+  assert.equal(uploaded.length, 0,
+    "the previous account's local keys must not be uploaded into this account");
+});
+
+test('local-only keys still upload for the account that owns them', async (t) => {
+  // The control for the test above: same path, same signed-in user, and the
+  // upload must still happen. A guard that blocked everything would look
+  // identical in the test above and would break first sign-in.
+  backingStore.set('shevato:sync-owner', USER.uid);
+  t.after(() => backingStore.delete('shevato:sync-owner'));
+
+  const h = await startHarness(t, ['mine2'], { emitInitial: false });
+  const [k] = h.keys;
+  backingStore.set(k, '"my data"');
+
+  const before = h.setDocCalls().length;
+  h.emit({}, { fromCache: false });
+  await settle();
+
+  const uploaded = h.setDocCalls().slice(before).filter((c) => c.payload?.data?.[k]);
+  assert.equal(uploaded.length, 1, 'the owning account must still upload its local-only keys');
+  assert.equal(uploaded[0].payload.data[k].value, 'my data');
 });
 
 test('rewriting the same value is dropped as a no-op (writeback loop guard)', async (t) => {

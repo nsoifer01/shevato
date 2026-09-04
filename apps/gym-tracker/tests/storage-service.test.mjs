@@ -289,3 +289,82 @@ test('clearAllData removes every known key', () => {
     svc.clearAllData();
     assert.equal(store.size, 0, 'nothing left behind');
 });
+
+// ---------------------------------------------------------------------------
+// A write that did not land must never be reported as a successful import.
+// ---------------------------------------------------------------------------
+
+test('importAllData reports ok:false when a store write fails', () => {
+    // `set()` has always returned false on a quota error, and writeStores
+    // threw every one of those booleans away, so an import that stored
+    // nothing still resolved { ok: true } and the UI toasted "Imported: N
+    // workouts". The user believed their backup had been restored.
+    const svc = freshService();
+    svc.saveWorkoutSessions([{ id: 1, date: '2026-09-01', exercises: [] }]);
+
+    faults.set = true;   // the very next setItem throws (programs, written first)
+    const res = svc.importAllData({
+        version: '2.0',
+        programs: [{ id: 10, name: 'Imported', exercises: [] }],
+        sessions: [{ id: 2, date: '2026-09-02', exercises: [] }],
+    });
+
+    assert.equal(res.ok, false, 'a failed store write must not report success');
+    assert.equal(res.storageFull, true, 'and must say why');
+});
+
+test('importAllData still reports ok:true when every write lands', () => {
+    // The control: a guard that always failed would pass the test above.
+    const svc = freshService();
+    const res = svc.importAllData({
+        version: '2.0',
+        programs: [{ id: 10, name: 'Imported', exercises: [] }],
+        sessions: [{ id: 2, date: '2026-09-02', exercises: [] }],
+    });
+    assert.equal(res.ok, true);
+    assert.ok(!res.storageFull);
+    assert.equal(svc.getWorkoutSessions().length, 1);
+});
+
+// ---------------------------------------------------------------------------
+// A program whose `exercises` is not a usable array must not blank the store.
+// ---------------------------------------------------------------------------
+
+for (const [label, exercises] of [
+    ['an object', { a: 1 }],
+    ['a string', 'junk'],
+    ['an array holding null', [null]],
+]) {
+    test(`a program whose exercises is ${label} survives import and construction`, () => {
+        // Program's constructor does (data.exercises || []).map(normalizeExercise),
+        // so any of these THREW while app.js was loading the programs store.
+        // app.js wraps the whole store in _safeLoad, so one bad record made
+        // every program disappear behind "Could not load programs, so that
+        // section reset to empty" and the next save persisted that empty list.
+        const svc = freshService();
+        const res = svc.importAllData({
+            version: '2.0',
+            programs: [{ id: 10, name: 'Hostile', exercises }],
+        });
+
+        assert.equal(res.ok, true);
+        assert.ok(res.repairs.length > 0, 'the repair must be reported to the user');
+
+        const stored = svc.getPrograms();
+        assert.equal(stored.length, 1, 'the program is kept, not dropped');
+        assert.doesNotThrow(() => new Program(stored[0]),
+            'the stored record must be constructible, or the whole store is lost on load');
+        assert.ok(Array.isArray(new Program(stored[0]).exercises));
+    });
+}
+
+test('a valid program keeps every exercise through import', () => {
+    // The control for the three above: the sanitiser must not empty a good list.
+    const svc = freshService();
+    const res = svc.importAllData({
+        version: '2.0',
+        programs: [{ id: 11, name: 'Good', exercises: [{ exerciseId: 1, sets: [] }, { exerciseId: 2, sets: [] }] }],
+    });
+    assert.equal(res.ok, true);
+    assert.equal(new Program(svc.getPrograms()[0]).exercises.length, 2);
+});

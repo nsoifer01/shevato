@@ -365,3 +365,42 @@ beside it, so a regression fails a suite rather than reappearing silently.
 - privacy.html verified: it makes no claims about room passwords (only
   that rooms are readable by signed-in visitors with the code), so no
   change was needed for the hashing migration.
+
+## Three wrong answer keys in the vendored country dump
+
+`data/countries.json` is the answer key the Globe Drop capitals round scores
+against, and three records sent a correct guess thousands of kilometres wrong
+while showing a reveal pin on another continent:
+
+| record | was | why it was wrong |
+|---|---|---|
+| French Southern and Antarctic Lands | `[48.81, -1.4]` | Normandy, the mainland commune the territory is administered from; 12,756 km from Kerguelen |
+| Western Sahara | `[-13.28, 27.14]` | latitude and longitude swapped, landing in Zambia; 5,826 km out |
+| United States Minor Outlying Islands | capital "Washington DC", no coordinates | the centroid fallback pinned "Washington DC" at Wake Island |
+
+The first two are corrected; the third has its `capital` emptied, so
+`normalizeCountry` returns null and the record is never asked about.
+
+`tests/globe-drop-locations.test.js` builds its records by hand
+(`rawCountry({...})`), so it proves the normaliser is right and says nothing
+about the 250 real records. The new `tests/countries-data.test.js` decodes the
+`world-110m` topology the globe already renders and asserts every capital lies
+inside, or within 400 km of, its own country's polygon, plus explicit anchors
+for the two repaired coordinates. Tolerance is deliberately loose: a 110m
+outline is coarse and small islands are missing from it, so the assertion is
+"not on the wrong continent", not "pixel accurate".
+
+## escapeHtml has to escape quotes
+
+`escapeHtml` was `div.textContent = value; return div.innerHTML`, which escapes
+`&`, `<` and `>` and leaves both quote characters alone, because a text node
+does not need them escaped. Arena does not only interpolate into content: it
+renders another player's display name into `title="..."` on the podium and
+`data-name="..."` in the recap, and display names are trimmed and capped at 20
+characters but never quote-stripped. A name like `x" onmouseover="..."` closed
+the attribute and planted an event handler in every OTHER player's browser, and
+the site CSP is Report-Only with inline script allowed. All five characters are
+now escaped, matching the shared `assets/js/escape-html.js`. The same weak
+helper in `gym-tracker/js/utils/helpers.js` and `assets/js/main.js` was fixed
+at the same time (neither had a reachable attribute interpolation of user text
+today, which is one refactor away from being false).
