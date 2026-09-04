@@ -3,6 +3,33 @@
 A living document: best current understanding, not a diary. See the
 repo-root `CLAUDE.md` for the convention.
 
+## Shape hub copy is search-facing, and separate from the internal labels
+
+The 14 hub pages under `shows/shape/` are the highest search-intent pages on
+the domain, and until 2026-09-04 they took their title, heading and description
+straight from the internal shape label: "Best Bad finale TV shows", "Best
+Mid-peak TV shows". Nobody searches that. `HUB_SEO` in
+`scripts/render-shape-hub.js` now holds the phrasing people actually use
+("TV Shows With a Bad Final Season", "TV shows that ended badly"), with the
+target query recorded alongside each entry as `intent` so a later edit can tell
+whether the wording still aims at it. Membership, ranking and data are
+untouched - only how the page describes itself.
+
+Two entries are deliberately worded apart rather than merged: `big-finale`
+(the run builds to a peak final season) and `saved-best-for-last` (the final
+season is the highest-rated on a show with no overall trajectory) are close
+enough that one phrasing would have had two of our own pages competing for it.
+
+A shape added to `SHAPE_SLUGS` without a `HUB_SEO` entry falls back to the old
+"Best <label> TV shows" template, and `render-shape-hub.test.js` fails on
+exactly that fallback - so the failure means "this shape has no copy", not
+"the page is broken".
+
+The hubs were also reachable from one page only (the A-Z index, three clicks
+deep). The app landing page now lists all 14 in its `.app-about` block, which
+is where their internal links come from; `tests/static/internal-links.test.mjs`
+allowlists them by slug, since the pages are generated at deploy and gitignored.
+
 ## Data loading architecture (2026-08-15 lazy-extras redesign)
 
 **The app fetches exactly one dataset file at boot: `data-index.json`.**

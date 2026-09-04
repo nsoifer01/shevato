@@ -25,7 +25,7 @@ function renderExercisePage({ exercise, slug, related, builtAt }) {
   const path = `/apps/gym-tracker/exercises/${slug}/`;
   const canonical = `${SITE}${path}`;
   const name = exercise.name;
-  const pageTitle = `${name} — Muscles Worked, Equipment & How to Do It | Gym Tracker`;
+  const pageTitle = `${name}: Muscles Worked, Equipment and Tracking | Gym Tracker`;
   const description = buildDescription(exercise);
 
   return `<!DOCTYPE html>
@@ -53,7 +53,7 @@ function renderExercisePage({ exercise, slug, related, builtAt }) {
   <meta name="color-scheme" content="dark">
   <link rel="canonical" href="${canonical}">
 
-  <meta property="og:title" content="${escapeHtml(`${name} — Muscles Worked & Equipment`)}">
+  <meta property="og:title" content="${escapeHtml(`${name}: Muscles Worked and Equipment`)}">
   <meta property="og:description" content="${escapeHtml(description)}">
   <meta property="og:type" content="article">
   <meta property="og:url" content="${canonical}">
@@ -132,7 +132,7 @@ ${jsonLd(buildExerciseSchema({ exercise, canonical, description }))}
     </section>` : ''}
 
     <section class="page-footer-meta">
-      <p>Track this exercise (and 500+ others) in <a href="/apps/gym-tracker/">Gym Tracker</a> — a free, installable PWA for logging workouts and tracking strength progress.</p>
+      <p>Track this exercise (and 500+ others) in <a href="/apps/gym-tracker/">Gym Tracker</a>, a free installable app for logging workouts and tracking strength progress. No account needed.</p>
       <p class="muted">Last updated ${builtAt ? new Date(builtAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)}.</p>
     </section>
   </main>

@@ -132,11 +132,13 @@
 }
 
 /* Hide language-specific content by default.
-   Scoped away from <html>/<body> so a root-level lang attribute (e.g.
-   <html lang="he"> for Hebrew SEO/a11y) cannot match this rule and blank
-   the whole document. Mirrors the isStructuralLangHost guard in
+   Hebrew is the default: the page targets an Israeli audience and its
+   title, description and phone number are all Hebrew, so English-by-default
+   made the page contradict its own strongest language signals.
+   Scoped away from <html>/<body> so the root lang attribute
+   (<html lang="he">) cannot match this rule and blank the whole document. Mirrors the isStructuralLangHost guard in
    language-switcher.js, which skips the same elements on the JS side. */
-[lang]:not([lang="en"]):not(html):not(body) {
+[lang]:not([lang="he"]):not(html):not(body) {
   display: none;
 }
 

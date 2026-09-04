@@ -47,8 +47,8 @@
 }
 
 /* Help Headings */
-.help-section h4,
-.help-section h3 {
+.help-section h3,
+.help-panel-heading {
     color: var(--help-text-primary);
     font-weight: 700;
     margin-bottom: 1.5rem;
@@ -476,7 +476,6 @@
         padding: 1.25rem;
     }
     
-    .help-section h4,
     .help-section h3 {
         font-size: 1.125rem;
     }
@@ -495,7 +494,7 @@
 }
 
 
-.help-section:first-child h4 {
+.help-section:first-child h3 {
     font-size: 2rem;
     justify-content: center;
     margin-bottom: 1rem;

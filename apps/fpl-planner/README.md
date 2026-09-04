@@ -275,7 +275,7 @@ why that discipline exists and the measurements behind it.
 **The flow is `imported SquadState -> Scenario -> SquadState -> buildPlan`**, and
 only the first arrow copies. `js/ui/scenario.js` owns that value and no rules:
 free transfers and hits come from `transfer-state.js`, selling prices from the
-imported pick or `rules.js`, and legality from `validate.js` — the same gate
+imported pick or `rules.js`, and legality from `validate.js`, the same gate
 every recommendation passes, which is why a refused edit is explained in the
 validator's own words instead of arriving as a disabled button. "Ask the planner
 from this team" hands the edited squad to the ordinary `buildPlan`, so a
@@ -286,7 +286,7 @@ or counted by analytics.
 Two quantities are reported and they measure different things. **This gameweek**
 is the eleven and the armband the manager actually chose. **Squad, next N GWs**
 scores the fifteen with the best eleven each week, because today's lineup does
-not bind next week's — so a change that only moves the armband leaves it
+not bind next week's, so a change that only moves the armband leaves it
 identical by construction, and the verdict line leads with the gameweek number
 whenever no transfer was made.
 

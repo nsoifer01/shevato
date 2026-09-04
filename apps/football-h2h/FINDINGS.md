@@ -3,6 +3,19 @@
 Living document: rewrite sections as understanding improves. Started
 2026-08-15 during the data-integrity round that fixed audit defects 4-7.
 
+## The page carries its own explanation now (`.app-about`)
+
+Measured on production before 2026-09-04, this page rendered almost nothing but
+interface labels to a crawler - 264 words, of which roughly ten were sentences ("Control Panel", "Add Game", "Total Wins", "0"). Nothing on it said what the app was for,
+so nothing could match a search for one. It now carries a 255-word
+`.app-about` block below the app UI: shared styling lives in
+`assets/css/main.css` and inherits colour from the app, so the block picks up
+this app's palette rather than imposing one.
+
+The block belongs on the app page itself, not on a separate "about" URL beside
+it - that shape is a doorway page and it splits link equity across two URLs.
+The copy is written from this app's README, so it describes the real data model: one rivalry between exactly two named players, no roster, and penalty results stored separately from the 90-minute score.
+
 ## penaltyWinner has exactly one canonical representation
 
 The stored value is the NUMBER `1`, the NUMBER `2`, the string `'draw'`, or

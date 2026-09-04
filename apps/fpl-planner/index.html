@@ -6,14 +6,14 @@
 
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="description" content="Enter your FPL Team ID and get one clear plan for the gameweek: which transfers to make, whether to take a hit or roll, who to captain, and whether to play a chip. Every recommendation is explained from expected points, expected minutes and fixture projections.">
+  <meta name="description" content="Enter your FPL Team ID and get one plan for the gameweek: the transfer to make or bank, who to captain, and whether to play a chip, each explained.">
   <meta name="keywords" content="FPL planner, Fantasy Premier League planner, FPL transfer planner, FPL team optimizer, FPL captain picker, FPL wildcard planner, expected points FPL, FPL chip strategy, fantasy football planner">
   <meta name="author" content="Shevato LLC">
   <meta name="robots" content="index, follow, max-image-preview:large">
   <meta name="theme-color" content="#0b0d12">
   <meta name="color-scheme" content="dark">
   <link rel="canonical" href="https://shevato.com/apps/fpl-planner/" />
-  <title>FPL Planner | Fantasy Premier League transfer and captain planner - Shevato</title>
+  <title>FPL Planner - Fantasy Premier League Transfer & Captain Advice</title>
 
   <!-- Open Graph -->
   <meta property="og:title" content="FPL Planner | Your Fantasy Premier League gameweek plan" />
@@ -194,6 +194,37 @@
             <section class="fpl-prose-block is-card">
               <h2>Before the season starts</h2>
               <p>Between seasons there is no squad to import, because Fantasy Premier League only publishes picks once a gameweek has been played. The planner says so plainly and offers the same optimizer as a squad builder, so you can open the season with a legal, affordable fifteen. When gameweek one goes live, the normal import takes over.</p>
+            </section>
+            <!-- The questions the engine already answers, answered in the words
+                 people ask them in. These are among the highest-volume FPL
+                 searches there are, and the planner computes an answer to every
+                 one of them - it just never said so anywhere a search engine
+                 could read.
+                 Deliberately NOT marked up as FAQPage: Google restricted FAQ
+                 rich results to government and health sites in August 2023, so
+                 the schema would produce no result on this domain. The content
+                 is here because it is useful and because it gives the page
+                 something to match these queries on, not to chase a snippet. -->
+            <section class="fpl-prose-block is-card">
+              <h2>Questions the planner answers</h2>
+
+              <h3>Where do I find my FPL Team ID?</h3>
+              <p>Open the Fantasy Premier League site, go to the Points tab, and read the number in the address bar after <code>/entry/</code>. That number is your Team ID. It is public, it is not a password, and it is the only thing this planner needs: your squad, budget, free transfers and chip status are all read from the public FPL API.</p>
+
+              <h3>Is a -4 hit worth it?</h3>
+              <p>Only when the gain clears the cost over the whole horizon, not just the coming gameweek. The planner scores every candidate transfer across a rolling multi-gameweek window, subtracts the four points, and recommends the hit only when what is left is a clear margin rather than a rounding error. A transfer that wins this week and loses the next two is not an upgrade, and it will tell you so.</p>
+
+              <h3>Should I roll my free transfer or use it?</h3>
+              <p>Banking a transfer is treated as a real option with its own value, not as doing nothing. Holding one is worth having two next week, which is what makes a double move or an early wildcard-style repair possible, and that option value is priced in. If no available move beats keeping the transfer, the recommendation is to roll it.</p>
+
+              <h3>Who should I captain this week?</h3>
+              <p>Captaincy is scored on upside as well as expected points, because doubling a player is a risk decision rather than an average one. The planner names a captain and a vice-captain from projected minutes, fixture difficulty expressed as goal and clean-sheet probabilities, and position-specific scoring, and shows the numbers behind the call so you can disagree with it knowingly.</p>
+
+              <h3>When should I play a chip?</h3>
+              <p>Wildcard, Free Hit, Bench Boost and Triple Captain are each evaluated against the rest of the season rather than against this week alone. A chip played for a small gain is a chip you do not have when the fixture swing arrives, so "hold your chips" is a normal and confident answer here, not a failure to decide.</p>
+
+              <h3>Do I need an account, and is my team safe?</h3>
+              <p>No account, and nothing to install. The planner reads only public FPL data using the Team ID you type; it never asks for your Fantasy Premier League login and cannot make transfers on your behalf. Signing in to this site is optional and only syncs your own settings across your devices. The <a href="/privacy">privacy page</a> lists exactly what is sent where.</p>
             </section>
           </div>
         </div>

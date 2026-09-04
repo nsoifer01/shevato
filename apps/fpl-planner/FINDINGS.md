@@ -274,7 +274,7 @@ are the only accepted arbiter; the base rate for "better metrics, better team"
 in this project is zero for five. The sharpened form of the lesson, from entry
 12: an aggregate gap sits mostly on the LEVEL, the level cancels out of every
 ranking, and only the part of a correction that changes ORDER changes decisions
-— so ask what a candidate does to order before running it.
+so ask what a candidate does to order before running it.
 
 ## Optimizer
 
@@ -887,8 +887,8 @@ with chips ON: +0 on all 72 trajectories, both instruments.
   **In the TOP PROJECTION DECILE**, which is where transfers, captains and
   premium holds are decided, the opposite: expected minutes are within 1%
   (75.9 predicted against 76.8) and POINTS are 7.6% low (4.178 against 4.494).
-  A pooled per-90 that averages to zero across a gradient — over-projecting the
-  bottom decile, under-projecting the top — is exactly what hides this. Do not
+  A pooled per-90 that averages to zero across a gradient (over-projecting the
+  bottom decile, under-projecting the top) is exactly what hides this. Do not
   quote the pooled 3.825-vs-3.823 as proof the rate model is fine for the
   players that matter; it is proof only in aggregate.
 

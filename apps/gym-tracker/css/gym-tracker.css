@@ -452,7 +452,7 @@ body.gym-tracker #footer {
     margin-bottom: var(--spacing-xl);
 }
 
-.view-header h1 {
+.view-header h2 {
     margin: 0 0 var(--spacing-sm) 0;
     font-size: 2rem;
     font-weight: 700;
@@ -482,7 +482,7 @@ body.gym-tracker #footer {
     }
     .view-header > * { min-width: 0; }
 
-    .view-header h1 {
+    .view-header h2 {
         font-size: 2.5rem;
     }
 
@@ -6562,7 +6562,7 @@ button.calendar-day {
 
 /* Responsive Typography */
 @media (max-width: 767px) {
-    .view-header h1 {
+    .view-header h2 {
         font-size: 1.75rem;
     }
 
@@ -9084,7 +9084,7 @@ body.gym-tracker #finish-workout-modal .finish-workout-submit:focus-visible {
 }
 /* Solid bright title inside the card-surfaced sticky header (the sitewide
    gradient-clip h1 has too little contrast on the card background). */
-.settings-view-header h1 {
+.settings-view-header h2 {
     background: none !important;
     -webkit-background-clip: border-box !important;
     background-clip: border-box !important;
@@ -9094,7 +9094,7 @@ body.gym-tracker #finish-workout-modal .finish-workout-submit:focus-visible {
     line-height: 1.2;
 }
 @media (min-width: 768px) {
-    .settings-view-header h1 { font-size: 1.85rem !important; }
+    .settings-view-header h2 { font-size: 1.85rem !important; }
 }
 .settings-view-header .btn-save-settings {
     margin: 0;
@@ -10706,4 +10706,18 @@ body.gym-tracker #finish-workout-modal .finish-workout-submit:focus-visible {
     #program-modal .schedule-day-chip {
         font-size: 0.72rem;
     }
+}
+
+/* The page's single h1 (see index.html): named for search engines and screen
+   readers, not shown, because each view renders its own title instead. */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }

@@ -113,7 +113,12 @@ test('renderTaxonomyPage targets a high-volume query', () => {
     slugs,
     builtAt: '2026-05-18T00:00:00.000Z',
   });
-  assert.ok(html.includes('<title>Pectorals Exercises (1)'));
+  // Count first, then the query term, then the brand: the title has to stay
+  // under ~60 characters so "pectorals exercises" is not what gets truncated.
+  assert.ok(html.includes('<title>1 Pectorals Exercises, by Equipment | Gym Tracker</title>'));
+  // The intro is counted from the exercises on the page, not restated from
+  // the heading, so a taxonomy page says something its own list does not.
+  assert.match(html, /1 exercise that primarily works? the pectorals/);
   assert.ok(html.includes('canonical" href="https://shevato.com/apps/gym-tracker/exercises/muscle/pectorals/"'));
   assert.ok(html.includes('/apps/gym-tracker/exercises/archer-push-ups/'));
   assert.ok(html.includes('<link rel="stylesheet" href="/assets/css/back-to-top.css">'), 'shared back-to-top stylesheet must be linked on taxonomy page');

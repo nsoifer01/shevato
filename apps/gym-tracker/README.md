@@ -85,7 +85,7 @@ gym-tracker/
 │   ├── utils/                  # plate-calculator, program-schedule, pr-session, rest-cues,
 │   │                           #   session-merge, import-sanitize, paginator, event-bus,
 │   │                           #   dark-select, helpers, active-workout (recovery + tab lock),
-│   │                           #   analytics (bridge to the site-wide GA4 helper — distinct
+│   │                           #   analytics (bridge to the site-wide GA4 helper, distinct
 │   │                           #   from services/Analytics, which computes workout stats), ...
 │   └── views/                  # home, programs, workout, history, exercises, calendar,
 │                               #   achievements, insights, measurements, settings, paused-banner

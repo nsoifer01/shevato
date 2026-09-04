@@ -226,7 +226,7 @@ body.mario-kart-app .help-panel {
 
 body.mario-kart-app .help-content { padding: 1.5rem; }
 
-body.mario-kart-app .help-section h4 {
+body.mario-kart-app .help-section h3 {
     color: var(--mk-text) !important;
     font-size: 1.1rem;
     font-weight: 600;

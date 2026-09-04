@@ -98,7 +98,8 @@ body.football-h2h-tracker .app-title {
     margin: 0 !important;
 }
 
-body.football-h2h-tracker .football-icon {
+body.football-h2h-tracker .app-title__text::before,
+body.football-h2h-tracker .app-title__text::after {
     font-size: 1.6rem !important;
     filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
 }

@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="light" />
   <meta name="theme-color" content="#ffffff" />
-  <title>Free Apps | FPL Planner, Mario Kart, Gym, Football, Rising Shows, MapTap Rivals, Arena & Trip Planner - Shevato</title>
-  <meta name="description" content="Free web apps from Shevato: a Fantasy Premier League planner that works out your transfers, captain and starting XI, Mario Kart racing, gym workouts, head-to-head football, Rising Shows TV analytics, MapTap.gg rivalry tracking, Arena, a multiplayer party-game hub for friends in private rooms (Globe Drop, Trivia, and more), and a day-by-day trip planner with route maps." />
+  <title>Free Web Apps - No Ads, No Signup Required | Shevato</title>
+  <meta name="description" content="Eight free web apps that need no signup: a Fantasy Premier League planner, gym and workout logging, trip itineraries, TV rating trends, and party games." />
   <meta name="keywords" content="Mario Kart tracker, gym tracker, workout tracker, football statistics, head to head football, Fantasy Premier League planner, FPL transfer planner, FPL team optimizer, FPL captain picker, FPL wildcard planner, TV show ratings, episode ratings, rising shows, slow burn shows, big finale, MapTap tracker, MapTap.gg, MapTap rivals, head to head game tracker, gaming apps, race tracker, fitness tracker, sports statistics, free browser apps, Mario Kart 8 Deluxe, Mario Kart World, gym workout log, multiplayer trivia, real-time trivia, brain arena, geography game, globe drop, 3d globe game, world capitals game, trip planner, travel itinerary builder, itinerary planner" />
   <meta name="author" content="Shevato LLC" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -298,7 +298,16 @@
       <div class="highlights">
         <section data-category="game" data-keywords="arena party games multiplayer trivia globe drop quiz rooms friends">
           <div class="content">
-            <a class="app-preview-link" href="apps/arena/" aria-label="Open Arena" tabindex="-1"><img class="app-preview" src="images/app-previews/arena.webp" width="720" height="450" loading="lazy" decoding="async" alt="Arena mid-game Globe Drop round with a Where is Naypyidaw geography question and a 3D Earth globe with a countdown timer" /></a>
+            <!-- The first card's preview is this page's Largest Contentful Paint
+                 element (measured on production: LCP 644 ms, element
+                 IMG.app-preview). It is above the fold on every viewport, so
+                 lazy-loading it made the browser discover the site's LCP image
+                 late on purpose. Eager + high priority for this one; the other
+                 seven stay lazy, which is what lazy loading is for.
+                 A-Z ordering makes Arena first, and the ordering is pinned by
+                 sync-system/tests/app-naming-consistency.test.mjs, so this
+                 attribute pair travels with whichever app sorts first. -->
+            <a class="app-preview-link" href="apps/arena/" aria-label="Open Arena" tabindex="-1"><img class="app-preview" src="images/app-previews/arena.webp" width="720" height="450" loading="eager" fetchpriority="high" decoding="async" alt="Arena mid-game Globe Drop round with a Where is Naypyidaw geography question and a 3D Earth globe with a countdown timer" /></a>
             <header>
               <a href="apps/arena/" class="icon fa-trophy brand-color-primary" aria-label="Open Arena"></a>
               <h3>Arena</h3>

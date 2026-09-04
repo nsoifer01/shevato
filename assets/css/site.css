@@ -828,3 +828,56 @@ body .inline-link:hover,
 body .inline-link:focus-visible {
   color: var(--brand-blue-hover);
 }
+
+/* ==========================================================================
+   404 app list.
+   Most 404s on this domain are a stale or mistyped app URL - the app moved
+   (brain-arena -> arena, rising-seasons -> rising-shows) or the path was
+   typed short. Three top-level buttons left that visitor to go hunting, so
+   the page names every app. Order comes from assets/apps-manifest.json,
+   which is A-Z and pinned by app-naming-consistency.test.mjs.
+   ========================================================================== */
+
+.app-404-heading {
+  margin: 2.5rem 0 0.75rem;
+  font-size: 1.1rem;
+}
+
+.app-404-list {
+  list-style: none;
+  margin: 0 auto;
+  padding: 0;
+  max-width: 34rem;
+  text-align: left;
+}
+
+.app-404-list li {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.app-404-list li:last-child {
+  border-bottom: 0;
+}
+
+.app-404-list a {
+  font-weight: 600;
+}
+
+/* No `opacity` here. At 0.7 the blurb composited to a serious contrast
+   failure on the 404 page's dark ground (axe: 8 violations), and because
+   opacity does not show up in a computed `color` value, a contrast probe that
+   reads getComputedStyle sees nothing wrong. Smaller and lighter-weight is
+   enough to make it secondary. */
+.app-404-blurb {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+
+@media screen and (min-width: 737px) {
+  .app-404-blurb {
+    display: inline;
+    margin-left: 0.4rem;
+  }
+}

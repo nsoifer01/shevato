@@ -227,7 +227,12 @@
           this.updateHeaderUI();
           return;
         }
-        if (++attempts >= MAX_ATTEMPTS || !document.querySelector('[data-include="header"]')) return;
+        // Keep polling only while a header is still expected. Either include
+        // form counts: the runtime-fetch placeholder, or the build-inlined
+        // wrapper (whose auth container normally exists on the first check,
+        // so this guard is the late-arrival safety net rather than the path).
+        if (++attempts >= MAX_ATTEMPTS ||
+            !document.querySelector('[data-include="header"], [data-include-inlined="header"]')) return;
         setTimeout(checkHeader, 100);
       };
       checkHeader();
@@ -1376,108 +1381,131 @@
     // event when the adapter isn't on window yet at construction time.
     window.authUI = new AuthUI();
 
-    // Handle includes system
-    const includes = $('[data-include]');
+    // Handle includes system.
+    //
+    // Two paths reach the same activation code:
+    //
+    //   [data-include="header"]         - empty div, partial fetched at runtime.
+    //   [data-include-inlined="header"] - partial already stamped into the
+    //                                     HTML by scripts/inline-partials.mjs
+    //                                     during `npm run build:site`.
+    //
+    // Production takes the second path. That matters for more than a round
+    // trip: the fetch path put the site's entire header and footer navigation
+    // behind a subresource request, and Googlebot rendered every page without
+    // it for as long as robots.txt disallowed /partials/ (fixed 2026-09-04,
+    // pinned by tests/static/robots-references.test.mjs). Stamping the markup
+    // in at build time means no crawler, JS budget or network condition can
+    // cost the site its navigation again. The runtime fetch stays as the
+    // local-dev path, so a plain static server over the repo still works.
+    function activateInclude(includeFile) {
+      // Initialize menu after header is loaded
+      if (includeFile === 'header.html' && $('#menu').length > 0) {
+        initializeMenu();
+      }
 
-    jQuery.each(includes, function() {
-      const includeFile = $(this).data('include') + '.html';
-      const file = '/partials/' + includeFile;
-      const $element = $(this);
+      // Initialize the desktop Apps dropdown after header is loaded
+      if (includeFile === 'header.html') {
+        initializeAppsDropdown();
+      }
 
-      $element.load(file, function() {
-        // Initialize menu after header is loaded
-        if (includeFile === 'header.html' && $('#menu').length > 0) {
-          initializeMenu();
+      // Initialize auth UI after header is loaded
+      if (includeFile === 'header.html' && window.authUI && window.authUI.onHeaderLoaded) {
+        window.authUI.onHeaderLoaded();
+      }
+
+      // Update menu toggle accessibility attributes
+      if (includeFile === 'header.html') {
+        const menuToggle = $(SELECTORS.menuToggle);
+        const menu = $('#menu');
+
+        if (menuToggle.length && menu.length) {
+          menuToggle.attr('aria-expanded', 'false');
+          menu.attr('aria-hidden', 'true');
         }
 
-        // Initialize the desktop Apps dropdown after header is loaded
-        if (includeFile === 'header.html') {
-          initializeAppsDropdown();
-        }
-
-        // Initialize auth UI after header is loaded
-        if (includeFile === 'header.html' && window.authUI && window.authUI.onHeaderLoaded) {
-          window.authUI.onHeaderLoaded();
-        }
-
-        // Update menu toggle accessibility attributes
-        if (includeFile === 'header.html') {
-          const menuToggle = $(SELECTORS.menuToggle);
-          const menu = $('#menu');
-
-          if (menuToggle.length && menu.length) {
-            menuToggle.attr('aria-expanded', 'false');
-            menu.attr('aria-hidden', 'true');
-          }
-
-          // Active page highlight + aria-current (header inline nav + #menu).
-          // Skipped inside an app (/apps/<name>/): none of the five nav
-          // targets is the current page there, so nothing gets marked.
-          const path = window.location.pathname;
-          const inApp = path.indexOf('/apps/') !== -1;
-          const filename = path.split('/').pop() || 'home.html';
-          if (!inApp) {
-            // Exclude dropdown/sub-list app links: the desktop dropdown's
-            // "All Apps" item and the per-app entries share basenames with
-            // nothing here, but "All Apps" -> /apps.html would otherwise also
-            // match on /apps.html and steal the highlight from the top-level
-            // Apps toggle. Match only the top-level inline-nav and #menu links.
-            $('.header-inline-nav > a, .nav-apps__toggle, #menu > ul.links > li > a').each(function() {
-              const hrefFile = ($(this).attr('href') || '').split('/').pop();
-              if (hrefFile && hrefFile === filename) {
-                $(this).addClass('active').attr('aria-current', 'page');
-              }
-            });
-
-            // On the apps hub, the dropdown's "All Apps" item points at the
-            // current page; de-emphasise it (purely visual, no aria-current).
-            // Extension-tolerant compare for Netlify Pretty URLs: prod serves
-            // /apps while the partial href is /apps.html.
-            const currentBase = (filename || '').replace(/\.html$/, '') || 'home';
-            const $divider = $('.nav-apps__divider');
-            const dividerBase = ($divider.find('a').attr('href') || '').split('/').pop().replace(/\.html$/, '');
-            if (dividerBase && dividerBase === currentBase) {
-              $divider.addClass('is-current-page');
+        // Active page highlight + aria-current (header inline nav + #menu).
+        // Skipped inside an app (/apps/<name>/): none of the five nav
+        // targets is the current page there, so nothing gets marked.
+        const path = window.location.pathname;
+        const inApp = path.indexOf('/apps/') !== -1;
+        const filename = path.split('/').pop() || 'home.html';
+        if (!inApp) {
+          // Exclude dropdown/sub-list app links: the desktop dropdown's
+          // "All Apps" item and the per-app entries share basenames with
+          // nothing here, but "All Apps" -> /apps.html would otherwise also
+          // match on /apps.html and steal the highlight from the top-level
+          // Apps toggle. Match only the top-level inline-nav and #menu links.
+          $('.header-inline-nav > a, .nav-apps__toggle, #menu > ul.links > li > a').each(function() {
+            const hrefFile = ($(this).attr('href') || '').split('/').pop();
+            if (hrefFile && hrefFile === filename) {
+              $(this).addClass('active').attr('aria-current', 'page');
             }
+          });
+
+          // On the apps hub, the dropdown's "All Apps" item points at the
+          // current page; de-emphasise it (purely visual, no aria-current).
+          // Extension-tolerant compare for Netlify Pretty URLs: prod serves
+          // /apps while the partial href is /apps.html.
+          const currentBase = (filename || '').replace(/\.html$/, '') || 'home';
+          const $divider = $('.nav-apps__divider');
+          const dividerBase = ($divider.find('a').attr('href') || '').split('/').pop().replace(/\.html$/, '');
+          if (dividerBase && dividerBase === currentBase) {
+            $divider.addClass('is-current-page');
           }
         }
+      }
 
-        // Footer: every page shows all five Navigate links so the footer is
-        // byte-identical site-wide (no per-page hiding of the current page's
-        // link, which previously made the footer one row shorter on the five
-        // top-level marketing pages and inconsistent against the app pages).
+      // Footer: every page shows all five Navigate links so the footer is
+      // byte-identical site-wide (no per-page hiding of the current page's
+      // link, which previously made the footer one row shorter on the five
+      // top-level marketing pages and inconsistent against the app pages).
 
-        // Copyright year. This is done HERE rather than by a <script src>
-        // inside the footer partial, and that is the whole point of it.
-        //
-        // jQuery evaluates a <script> found in injected HTML through
-        // _evalUrl -> globalEval -> DOMEval, and DOMEval ends with:
-        //     doc.head.appendChild( script ).parentNode.removeChild( script )
-        // with no null guard (true in our jQuery 3.2.1 and still true in
-        // 3.7). Anything that strips injected <script> nodes back out of
-        // <head> - which several common privacy and ad-blocking extensions
-        // do - leaves parentNode null, and the page throws
-        //     Uncaught TypeError: Cannot read properties of null
-        //     (reading 'removeChild')
-        // from deep inside jquery.min.js on EVERY page load, with a stack
-        // that points at jQuery rather than at us. Filling the year from the
-        // include callback deletes that entire code path from the site: no
-        // partial ships a script tag any more, so there is nothing for
-        // jQuery to eval.
-        if (includeFile.indexOf('footer') === 0) {
-          const year = new Date().getFullYear();
-          // One span per language: the Moadon Alef footer is trilingual and
-          // carries year-ru and year-he alongside the shared year.
-          ['year', 'year-ru', 'year-he'].forEach((id) => {
-            const el = document.getElementById(id);
-            if (el) { el.textContent = year; }
-          });
-        }
+      // Copyright year. This is done HERE rather than by a <script src>
+      // inside the footer partial, and that is the whole point of it.
+      //
+      // jQuery evaluates a <script> found in injected HTML through
+      // _evalUrl -> globalEval -> DOMEval, and DOMEval ends with:
+      //     doc.head.appendChild( script ).parentNode.removeChild( script )
+      // with no null guard (true in our jQuery 3.2.1 and still true in
+      // 3.7). Anything that strips injected <script> nodes back out of
+      // <head> - which several common privacy and ad-blocking extensions
+      // do - leaves parentNode null, and the page throws
+      //     Uncaught TypeError: Cannot read properties of null
+      //     (reading 'removeChild')
+      // from deep inside jquery.min.js on EVERY page load, with a stack
+      // that points at jQuery rather than at us. Filling the year from the
+      // include callback deletes that entire code path from the site: no
+      // partial ships a script tag any more, so there is nothing for
+      // jQuery to eval.
+      if (includeFile.indexOf('footer') === 0) {
+        const year = new Date().getFullYear();
+        // One span per language: the Moadon Alef footer is trilingual and
+        // carries year-ru and year-he alongside the shared year.
+        ['year', 'year-ru', 'year-he'].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) { el.textContent = year; }
+        });
+      }
 
-        // Anything that must touch an injected partial (language-switcher.js
-        // localising the moadon-alef footer) listens for this; DOMContentLoaded
-        // fired long before the partial existed.
-        document.dispatchEvent(new CustomEvent('shevato:include-loaded', { detail: { file: includeFile } }));
+      // Anything that must touch an injected partial (language-switcher.js
+      // localising the moadon-alef footer) listens for this; DOMContentLoaded
+      // fired long before the partial existed.
+      document.dispatchEvent(new CustomEvent('shevato:include-loaded', { detail: { file: includeFile } }));
+    }
+
+    // Build-inlined partials: the markup is already in the DOM, so activate
+    // immediately. Done before the fetch path so a page that somehow carries
+    // both never races.
+    jQuery.each($('[data-include-inlined]'), function() {
+      activateInclude($(this).data('include-inlined') + '.html');
+    });
+
+    // Runtime fetch (local dev, and any page the build step did not cover).
+    jQuery.each($('[data-include]'), function() {
+      const includeFile = $(this).data('include') + '.html';
+      $(this).load('/partials/' + includeFile, function() {
+        activateInclude(includeFile);
       });
     });
 

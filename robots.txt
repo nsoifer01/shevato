@@ -4,6 +4,18 @@
 # Search engines (Google, Bing, etc.) and SEO research tools (Ahrefs, Semrush)
 # are intentionally permitted so the site is discoverable and so external
 # backlink/visibility analysis can find shevato.com.
+#
+# THE RULE THAT MATTERS HERE: never Disallow a path the pages themselves
+# load. Google's rendering service does not fetch robots-blocked
+# subresources, so a Disallow on something a page fetches deletes that
+# content from the DOM Google indexes - it does not merely hide a file.
+# /partials/, /sync-system/ and /firebase-config.js were all disallowed here
+# until 2026-09-04, and assets/js/main.js fetches /partials/header.html and
+# /partials/footer.html on every page: the site's entire header and footer
+# navigation was therefore absent from every page Google rendered, leaving
+# six of the eight app pages with zero internal outbound links and /privacy
+# with zero inbound ones. tests/static/robots-references.test.mjs now fails
+# if any path referenced by a page is matched by a Disallow rule below.
 
 User-agent: *
 Allow: /
@@ -11,11 +23,8 @@ Disallow: /.git/
 Disallow: /node_modules/
 Disallow: /.netlify/
 Disallow: /netlify/
-Disallow: /partials/
-Disallow: /sync-system/
 Disallow: /firestore.rules
 Disallow: /database.rules.json
-Disallow: /firebase-config.js
 # Repo-internal material the deploy still serves (Netlify publishes the whole
 # tracked tree). Disallow only affects crawling; the files stay fetchable.
 Disallow: /tests/
@@ -32,6 +41,17 @@ Disallow: /apps/*/tests/
 Disallow: /apps/*/e2e/
 Disallow: /apps/*/scripts/
 Disallow: /apps/*/experiments/
+# ...except the four Rising Shows files under scripts/ that are DUAL-EXPOSED:
+# node build scripts that the Show Finder and the Kometa builder also load in
+# the browser with <script src>. The blanket rule above blocked them, which
+# meant Googlebot rendered Rising Shows without its shape matcher, its finder
+# query layer, its provider vocabulary or the Kometa export logic. Longest
+# match wins in robots.txt, so these four Allow lines beat the pattern above
+# without weakening it for any other app.
+Allow: /apps/rising-shows/scripts/match.js
+Allow: /apps/rising-shows/scripts/finder-lib.js
+Allow: /apps/rising-shows/scripts/providers-lib.js
+Allow: /apps/rising-shows/scripts/integrations-lib.js
 Disallow: /*.log$
 Disallow: /*.bak$
 Disallow: /*.swp$

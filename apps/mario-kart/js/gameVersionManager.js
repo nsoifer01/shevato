@@ -108,18 +108,24 @@ function updateVersionUI() {
         }
     }
     
-    // Update page title
-    const versionName = currentGameVersion === 'mk8d' ? 'MK8 Deluxe' : 'MK World';
-    document.title = `${versionName} - Race Tracker`;
-    
-    // Update H1 title if it exists
-    const h1 = document.querySelector('.header-section h1');
-    if (h1) {
-        if (currentGameVersion === 'mk8d') {
-            h1.innerHTML = '🏎️ Mario Kart 8 Deluxe Tracker 🏎️';
-        } else {
-            h1.innerHTML = '🌍 Mario Kart World Tracker 🌍';
-        }
+    // document.title is deliberately NOT touched here.
+    //
+    // This used to run `document.title = 'MK8 Deluxe - Race Tracker'` on every
+    // load, before any user interaction. Google indexes the RENDERED title, so
+    // the page's real <title> ("Mario Kart Race Tracker | Mario Kart 8 Deluxe
+    // & Mario Kart World") never reached the index - the search result said
+    // "MK8 Deluxe - Race Tracker", which names neither the site nor what the
+    // page does. The game toggle is in-page state, not a different page, so
+    // the document keeps one title.
+    //
+    // The h1 stays fixed for the same reason: it is the page's identity.
+    // Which game you are tracking is state, and it shows in the toggle
+    // buttons above and in the subtitle below.
+    const subtitle = document.querySelector('.header-section .header-subtitle');
+    if (subtitle) {
+        subtitle.textContent = currentGameVersion === 'mk8d'
+            ? 'Tracking Mario Kart 8 Deluxe'
+            : 'Tracking Mario Kart World';
     }
     
     // Update body class for CSS styling

@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="description" content="Free Mario Kart race tracker for Mario Kart 8 Deluxe and Mario Kart World. Track races, analyze statistics, compare player performance, and view detailed race history with charts and achievements.">
+    <meta name="description" content="Free Mario Kart race tracker for Mario Kart 8 Deluxe and Mario Kart World. Log races, compare up to four players, and track stats, streaks and achievements.">
     <meta name="keywords" content="Mario Kart tracker, Mario Kart 8 Deluxe, Mario Kart World, race tracker, gaming statistics, player stats, race history, Mario Kart analytics, free game tracker">
     <meta name="author" content="Shevato LLC">
     <meta name="robots" content="index, follow, max-image-preview:large">
     <meta name="theme-color" content="#667eea">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <title>Mario Kart Race Tracker | Mario Kart 8 Deluxe &amp; Mario Kart World</title>
+    <title>Mario Kart Race Tracker - MK8 Deluxe & Mario Kart World</title>
 
     <!-- Resource hints -->
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
@@ -37,6 +37,7 @@
     <meta name="twitter:title" content="Mario Kart Race Tracker | MK8 Deluxe &amp; Mario Kart World" />
     <meta name="twitter:description" content="Free race tracker with statistics and analytics for Mario Kart 8 Deluxe and Mario Kart World." />
     <meta name="twitter:image" content="https://shevato.com/images/og/mario-kart.png" />
+    <meta name="twitter:image:alt" content="Mario Kart Race Tracker for Mario Kart 8 Deluxe and Mario Kart World" />
     <meta name="twitter:site" content="@shevato" />
 
     <!-- Breadcrumbs -->
@@ -241,7 +242,13 @@
     <div class="mario-kart-content">
     <div class="container" role="main" id="main-content">
         <div class="header-section">
-            <h1>🏎️ Mario Kart 8 Deluxe Tracker 🏎️</h1>
+            <!-- Emoji sit outside the heading text and are aria-hidden: Google read
+                 this H1 as "🏎️ Mario Kart 8 Deluxe Tracker 🏎️". The title tag
+                 covers both games, so the heading does too - the tracker has
+                 supported Mario Kart World since the game-version toggle below
+                 was added. -->
+            <h1><span class="h1-text">Mario Kart Race Tracker</span></h1>
+            <p class="header-subtitle">Mario Kart 8 Deluxe and Mario Kart World</p>
             <!-- Game Version Toggle -->
             <div class="game-version-toggle">
                 <button class="version-btn active" id="mk8d-btn" onclick="switchGameVersion('mk8d')">
@@ -269,8 +276,12 @@
         <!-- Help Information Panel (preserved for help tab content) -->
         <div class="help-panel hidden" id="help-panel">
             <div class="help-content">
+                <!-- Section heading for the panel that opens by default. Its
+                     eight headings were <h4> under an <h1>, so the outline
+                     jumped two levels; they are <h3> below this. -->
+                <h2 class="help-panel-heading">What this tracker does</h2>
                 <div class="help-section">
-                    <h4>🏆 What is this?</h4>
+                    <h3>🏆 What is this?</h3>
                     <p>A comprehensive Mario Kart race tracking application that records race results, calculates detailed statistics, tracks achievements, and provides in-depth performance analysis for up to 4 players. All data is stored locally in your browser, and syncs to your account when you sign in.</p>
                 </div>
                 
@@ -325,7 +336,7 @@
                 </div>
                 
                 <div class="help-section">
-                    <h4>🚀 Quick Start Guide</h4>
+                    <h3>🚀 Quick Start Guide</h3>
                     <ol class="help-steps">
                         <li><strong>Configure Players:</strong> Open sidebar (☰) → Click 👤 Manage Players → Set 1-4 player names and feel free picking icons</li>
                         <li><strong>Add First Race:</strong> Open sidebar (☰) → Click 🏁 Add Race → Enter each player's finishing position → Click "🏆 Save"</li>
@@ -340,7 +351,7 @@
                     <div class="viz-guide-grid">
                         <article class="viz-guide-card">
                             <header>
-                                <h4>🏆 Achievements</h4>
+                                <h3>🏆 Achievements</h3>
                             </header>
                             <p>Track milestones and streaks across 5 categories:</p>
                             <ul role="list">
@@ -357,7 +368,7 @@
                         
                         <article class="viz-guide-card">
                             <header>
-                                <h4>🌡️ Position Heat Map</h4>
+                                <h3>🌡️ Position Heat Map</h3>
                             </header>
                             <p>Shows frequency of finishing positions in ranges</p>
                             <div id="position-ranges-help">
@@ -370,7 +381,7 @@
                         
                         <article class="viz-guide-card">
                             <header>
-                                <h4>📈 Recent Streak</h4>
+                                <h3>📈 Recent Streak</h3>
                             </header>
                             <p>Your last 10 race positions at a glance with gradient colors</p>
                             <aside class="viz-tip" role="note">
@@ -380,7 +391,7 @@
                         
                         <article class="viz-guide-card">
                             <header>
-                                <h4>🎯 Sweet Spots</h4>
+                                <h3>🎯 Sweet Spots</h3>
                             </header>
                             <p>Visualizes frequency for each specific position:</p>
                             <ul role="list">
@@ -418,7 +429,7 @@
                 </section>
                 
                 <div class="help-section help-disclaimers">
-                    <h4>⚠️ Disclaimers</h4>
+                    <h3>⚠️ Disclaimers</h3>
                     <ul class="help-features disclaimer-list">
                         <li><strong>Data Storage:</strong> All data is saved locally in your browser's local storage. This means:
                             <ul>
@@ -432,7 +443,7 @@
                 </div>
 
                 <div class="help-section help-technical">
-                    <h4>🔧 Technical Details</h4>
+                    <h3>🔧 Technical Details</h3>
                     <ul class="help-features technical-list">
                         <li><strong>Data Format:</strong> Race data stored as JSON with date, timestamp, and player positions</li>
                         <li><strong>Browser Storage:</strong> Uses local storage</li>

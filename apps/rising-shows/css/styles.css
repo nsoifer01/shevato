@@ -5497,6 +5497,19 @@ a.provider-tag-link:focus-visible {
 }
 .finder-moods {
   margin-top: 0.15rem;
+  /* Reserve the strip's rendered height. The mood presets are built from
+     data.json after it loads, so the section grew 44 px -> 112 px at ~3 s and
+     pushed the filters and the whole result grid down the page: the second
+     largest layout shift on this app (0.097 of a 0.932 CLS). */
+  min-height: 6.5rem;
+}
+
+/* Reserve roughly one row of result cards so the grid does not appear out of
+   nothing when the first page of results renders. The page paints a hero and
+   a filter panel in well under half a second and the data arrives later; the
+   space below has to already be the right shape when it does. */
+.finder-results {
+  min-height: 22rem;
 }
 
 /* Tighter results header: the count, the pager and the grid sat ~100 px

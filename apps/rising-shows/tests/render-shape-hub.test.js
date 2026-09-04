@@ -141,8 +141,11 @@ test('renderShapeHub produces a valid HTML5 document', () => {
   assert.ok(html.startsWith('<!DOCTYPE html>'));
   assert.ok(html.includes('<html lang="en">'));
   assert.ok(html.trim().endsWith('</html>'));
-  assert.ok(html.includes('<title>Best Slow burn TV shows - Rising Shows</title>'));
-  assert.ok(html.includes('<h1>Best Slow burn TV shows</h1>'));
+  // Title and heading are the phrasing people actually search, not the
+  // internal shape label ("Best Slow burn TV shows"), and the count is the
+  // one number a reader wants before clicking a ranked list.
+  assert.ok(html.includes('<title>Slow-Burn TV Shows That Pay Off Later (2) - Rising Shows</title>'));
+  assert.ok(html.includes('<h1>Slow-burn TV shows that pay off later</h1>'));
 });
 
 test('renderShapeHub sets exactly one canonical matching its own URL', () => {
@@ -167,7 +170,7 @@ test('renderShapeHub describes the shape and its count', () => {
   const html = renderShapeHub('slow-burn', selectHubShows(SERIES, 'slow-burn'), '2026-05-18T00:00:00.000Z');
   assert.ok(html.includes('later seasons lift off'));
   assert.ok(html.includes('These are the 2 most-voted shows'));
-  assert.ok(/<meta name="description" content="The 2 best slow burn TV shows/.test(html));
+  assert.ok(/<meta name="description" content="2 TV shows ranked by IMDb votes: later seasons lift off/.test(html));
 });
 
 // Regression: hub membership has been the show's WHOLE-RUN dominant shape since
@@ -424,9 +427,15 @@ test('renderShapeHub renders every shape slug with real labels', () => {
   for (const slug of SHAPE_SLUGS) {
     const html = renderShapeHub(slug, [makeShow('tt1', 'Only One', 10, [slug])], null);
     assert.ok(html.includes(`href="/apps/rising-shows/#shape=${slug}"`), slug);
-    // A missing label would leak the raw slug into the h1.
-    assert.ok(!new RegExp(`<h1>Best ${slug} TV shows</h1>`).test(html), slug);
-    assert.ok(/<h1>Best [A-Z]/.test(html), slug);
+    // Every shape must carry search-facing copy from HUB_SEO. A slug with no
+    // entry falls back to the old "Best <label> TV shows" template, which is
+    // the wording this round replaced - so seeing it means a shape was added
+    // to SHAPE_SLUGS without copy, not that the page is broken.
+    assert.ok(!/<h1>Best .* TV shows<\/h1>/.test(html),
+      `${slug} has no HUB_SEO entry and fell back to the internal label`);
+    // A missing label would leak the raw slug into the heading.
+    assert.ok(!new RegExp(`<h1>[^<]*\\b${slug}\\b`).test(html), slug);
+    assert.ok(/<h1>TV [Ss]hows|<h1>Slow-burn TV shows/.test(html), slug);
   }
 });
 

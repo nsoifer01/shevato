@@ -3,6 +3,19 @@
 Living document: the current best understanding of how this app behaves and
 where it bites. Rewrite sections rather than appending to them.
 
+## The page carries its own explanation now (`.app-about`)
+
+Measured on production before 2026-09-04, this page rendered almost nothing but
+interface labels to a crawler - 531 words, every one of them a button or a column header. Nothing on it said what the app was for,
+so nothing could match a search for one. It now carries a 244-word
+`.app-about` block below the app UI: shared styling lives in
+`assets/css/main.css` and inherits colour from the app, so the block picks up
+this app's palette rather than imposing one.
+
+The block belongs on the app page itself, not on a separate "about" URL beside
+it - that shape is a doorway page and it splits link equity across two URLs.
+The copy leads with the thing MapTap.gg itself does not do (tell you whether you beat your friends), because that is the only reason this app exists and the only angle a search for it can hang on.
+
 ## The game log stores a day once per rival
 
 `maptapRivalsGames` holds one record per (day, rival) pair. A day played

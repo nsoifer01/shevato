@@ -8,14 +8,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="color-scheme" content="dark">
-    <meta name="description" content="Free head-to-head football league manager. Track matches, record scores, manage penalty shootouts, and analyze player statistics with comprehensive team performance analytics.">
+    <meta name="description" content="Free head-to-head football tracker for two players. Log every match and score, keep penalty shootouts separate, and watch the running record and streaks build.">
     <meta name="keywords" content="football tracker, head to head football, match tracker, football statistics, penalty shootout tracker, soccer league manager, football analytics, free sports tracker">
     <meta name="author" content="Shevato LLC">
     <meta name="robots" content="index, follow, max-image-preview:large">
     <meta name="theme-color" content="#667eea">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <title>Football Head-to-Head League Manager | Free Match Tracker & Statistics</title>
+    <title>Football Head-to-Head Tracker - Free Match & Score Log</title>
 
     <!-- Resource hints -->
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
@@ -25,23 +25,24 @@
     <link rel="canonical" href="https://shevato.com/apps/football-h2h/" />
 
     <!-- Open Graph tags -->
-    <meta property="og:title" content="Football Head-to-Head League Manager | Free Match Tracker" />
-    <meta property="og:description" content="Track head-to-head football matches with comprehensive statistics, penalty shootout recording, and team performance analytics." />
+    <meta property="og:title" content="Football Head-to-Head Tracker | Free Match &amp; Score Log" />
+    <meta property="og:description" content="Free head-to-head football tracker for two players. Log every match and score, keep penalty shootouts separate, and watch the running record and streaks build." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://shevato.com/apps/football-h2h/" />
     <meta property="og:image" content="https://shevato.com/images/og/football-h2h.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
     <meta property="og:image:type" content="image/png" />
-    <meta property="og:image:alt" content="Football Head-to-Head League Manager" />
+    <meta property="og:image:alt" content="Football H2H stats showing total wins for two players, a current winning streak, and 90 minute win tallies" />
     <meta property="og:site_name" content="Shevato" />
     <meta property="og:locale" content="en_US" />
 
     <!-- Twitter Card tags -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Football Head-to-Head League Manager" />
-    <meta name="twitter:description" content="Free football match tracker with statistics and penalty shootout recording" />
+    <meta name="twitter:title" content="Football Head-to-Head Tracker" />
+    <meta name="twitter:description" content="Free head-to-head football tracker for two players, with penalty shootouts counted separately." />
     <meta name="twitter:image" content="https://shevato.com/images/og/football-h2h.png" />
+    <meta name="twitter:image:alt" content="Football H2H stats showing total wins for two players, a current winning streak, and 90 minute win tallies" />
     <meta name="twitter:site" content="@shevato" />
 
     <!-- Breadcrumbs -->
@@ -62,7 +63,7 @@
     {
       "@context": "https://schema.org",
       "@type": "WebApplication",
-      "name": "Football Head-to-Head League Manager",
+      "name": "Football H2H League",
       "description": "Free head-to-head football league manager with match recording, penalty shootout tracking, team statistics, and player performance analytics",
       "url": "https://shevato.com/apps/football-h2h/",
       "applicationCategory": "SportsApplication",
@@ -252,10 +253,12 @@
         <div class="main-wrapper">
             <!-- Header Section -->
             <header class="app-header">
+                <!-- The emoji are decoration, kept OUTSIDE the heading text and
+                     aria-hidden. Inside it, Google read the page's H1 as
+                     "⚽ Football H2H League ⚽" and screen readers announced
+                     "soccer ball" twice around the title. -->
                 <h1 class="app-title">
-                    <span class="football-icon">⚽</span>
-                    Football H2H League
-                    <span class="football-icon">⚽</span>
+                    <span class="app-title__text">Football Head-to-Head Tracker</span>
                 </h1>
             </header>
 
@@ -464,6 +467,31 @@
                 </div>
             </section>
         </div>
+      <!-- Crawlable explanation of the app. Before this existed the page
+           rendered 264 words to a search engine and roughly ten of them were
+           sentences: "Control Panel", "Add Game", "Total Wins", "0". Nothing
+           on it said what the tracker was for, so nothing could match a
+           search for one. -->
+      <section class="app-about" aria-labelledby="about-football-h2h">
+        <h2 id="about-football-h2h">A scoreboard for one long-running rivalry</h2>
+        <p>Football H2H is a free head-to-head match tracker built for exactly two people who keep playing each other. It is not a league manager and it holds no squad list: it keeps one rivalry, game by game, and works out what the running record actually says.</p>
+
+        <h3>What a match record holds</h3>
+        <p>Each game stores the date, both players' goal totals, the team each player picked, and an optional note. When regulation finishes level you can record who won the shootout, and that result is kept apart from the 90-minute score - so a win on penalties never quietly counts as a win in normal time.</p>
+
+        <h3>What it works out for you</h3>
+        <ul>
+          <li>Total wins, draws, and the current streak for either player</li>
+          <li>90-minute wins and penalty-shootout wins, counted separately</li>
+          <li>Goals per game, games played, and how many went to a shootout</li>
+          <li>A matchup lookup: the record when one particular team faces another</li>
+          <li>A side-by-side comparison of both players across every stat</li>
+          <li>Full game history, filtered to today, the last 7 or 30 days, or any range you pick</li>
+        </ul>
+
+        <h3>Where your matches are kept</h3>
+        <p>Everything is saved in your own browser, so the tracker works with no account and no signup. Sign in from the header and your record follows you across devices. Either way you can export the whole history to a file and import it back, and a backup snapshot is taken automatically every ten minutes. The <a href="/privacy">privacy page</a> sets out exactly what is stored and what is sent.</p>
+      </section>
     </main>
 
 

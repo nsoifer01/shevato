@@ -9,6 +9,35 @@ works; this file says what we learned building it.
 
 ---
 
+## One h1, and why the exercise long tail stays noindex
+
+The app shipped **eleven** `<h1>` elements, one per view, and the first in
+source order was "Dashboard" - so the strongest heading signal on the page said
+the topic was a dashboard, contradicting a title and description that were both
+correct. The eleven are `<h2>` now, under a single visually hidden
+`<h1>Gym Tracker</h1>` at the top of `<main>`. Hidden because the design gives
+each view its own title and shows no page-level heading; the `h1` exists to
+name the page for search engines and for screen readers, which were previously
+announcing eleven page titles. `.view-header h1` and `.settings-view-header h1`
+in `gym-tracker.css` moved to `h2` with it.
+
+The 514 individual exercise pages stay `noindex, follow`, and a 2026-09-04
+review of that decision **reaffirmed** it after initially proposing to promote
+a curated subset. The reason is in the data: `data/exercises-db.json` carries
+only name, category, muscle group, secondary muscles, equipment and tracking
+type. There is no instructional content anywhere in the repo, so promoting
+those pages would have meant authoring several hundred exercise how-to guides
+from nothing - generic coaching copy indistinguishable from the filler every
+other exercise site already publishes, competing against sites with real
+editorial depth and video. That is the thing this project does not do.
+
+What the data DOES support is the 54 taxonomy hubs, which are list pages with
+genuine aggregate value. Their intros are now COUNTED from the exercises on the
+page (`taxonomySummary()` in `scripts/render-exercise-index.cjs`): how many
+need no equipment, which equipment dominates, which secondary muscles recur.
+That is the whole of what can be said truthfully about a group without
+inventing anything, and it is more than a list of names says on its own.
+
 ## Modal architecture: stacking is DOM order, and the picker is a child
 
 Every `.modal` overlay shares `z-index: 2000`, so **document order is the

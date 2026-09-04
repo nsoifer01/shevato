@@ -4,6 +4,19 @@ Living document: rewrite sections as understanding improves. Started
 2026-08-15 during the security + emulator-testing round (TESTING-AUDIT.md
 defects 22-25).
 
+## The page carries its own explanation now (`.app-about`)
+
+Measured on production before 2026-09-04, this page rendered almost nothing but
+interface labels to a crawler, and "Arena" on its own tells a search engine nothing - the games were described only in lobby button labels, so the two things people actually search for (a private room to play in with friends, and the individual games) were the two things the page never said in prose. Nothing on it said what the app was for,
+so nothing could match a search for one. It now carries a 248-word
+`.app-about` block below the app UI: shared styling lives in
+`assets/css/main.css` and inherits colour from the app, so the block picks up
+this app's palette rather than imposing one.
+
+The block belongs on the app page itself, not on a separate "about" URL beside
+it - that shape is a doorway page and it splits link equity across two URLs.
+A first draft said guest play "keeps nothing", which is stronger than `privacy.html` promises: guest play signs you in ANONYMOUSLY to Firebase and merely cannot write to the leaderboard or the head-to-head records. Corrected before shipping.
+
 ## Room password security architecture (defect 22)
 
 The room password is never persisted anywhere. Full design in the README
