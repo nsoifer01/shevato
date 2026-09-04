@@ -555,3 +555,63 @@ actually needs to protect is the artifacts this job commits (the changelog, the
 Kometa and MDBList exports, the split index) plus the site-wide static
 invariants the generated pages feed. The rest of the estate is gated on every
 PR and every push to master, which is where it belongs.
+
+## The shipped dataset is checked now, in the only place it can be
+
+Two facts had to meet before this was worth writing down. First, every test
+under `tests/` builds its own small fixture and asserts against that, which is
+correct for testing build logic and means the 66,000-record file the site
+actually serves was validated by nothing. Second, nothing downstream covered
+it either: the bot PR's `tests` and `browser tests` runs never execute, and
+even when they did they would skip every data-dependent check, because the
+dataset is gitignored and a runner never has it.
+
+So the refresh job is the only place the real data exists, and
+`scripts/validate-dataset.js` now runs there, gating the RELEASE UPLOAD rather
+than the whole job: a dataset that fails must not replace the asset, and the
+previous one staying live is the safe outcome.
+
+What it checks, and why each one is about the DATA rather than the code:
+
+- **The catalogue did not collapse.** A floor of 20,000 records against a real
+  66,380, so ordinary churn never trips it and a truncated build or an empty
+  parse always does. This is the failure that matters most, because a
+  half-empty data.json still renders.
+- **Every record can be rendered:** an id, a title, an episode list, and
+  ratings inside 1-10 and finite, including inside the episode list the season
+  page draws.
+- **No duplicate `(seriesId, season)`.**
+- **A shape agrees with its own ratings.** A season tagged `rising` that ends
+  lower than it started, or `declining` that ends higher, is refused. This is
+  the check worth having: a classifier regression ships silently otherwise,
+  since the finder still renders, the counts still add up, and "rising" simply
+  stops meaning rising. Only the two directional shapes are checkable this way
+  without re-deriving the classifier, which would be a mirror of the thing
+  under test.
+- **The header's `count` and `shapeCounts` match the records.**
+
+Verified by breaking real data on purpose: a 500-record slice is refused as
+truncated, and ONE flipped record among 30,000 genuine ones is caught by the
+shape check. `tests/validate-dataset.test.js` covers the validator itself, on
+the principle that a checker nobody checks is worse than no checker because it
+reads like coverage.
+
+## Why the bot PR shows two red marks every morning, and what it is not
+
+The refresh opens and merges its PR with `GITHUB_TOKEN`, and GitHub does not
+start workflow runs from `GITHUB_TOKEN` events. The run object still exists:
+`event=pull_request`, `head_branch=bot/refresh-*`, zero jobs, and since
+2026-09-01 it completes as `failure` with the banner "This run likely failed
+because of a workflow file issue" (before that it sat at `action_required`).
+
+There is no workflow file issue. Do not go looking for one.
+
+It also cannot be filtered away from inside the workflows, and the near-miss is
+worth recording: `on.pull_request.branches-ignore` matches the PR's BASE
+branch, which is `master` here, not its head. Excluding `bot/**` there looks
+right, reads right in review, and does nothing. A fine-grained PAT is the only
+thing that makes those runs execute, and it is an owner action outside the
+repo; note that even then they would skip every data-dependent check, so it
+would add coverage of the rest of the estate against the bot's commit, not
+coverage of the data.
+
