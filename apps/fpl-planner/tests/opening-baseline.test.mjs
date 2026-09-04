@@ -30,10 +30,10 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { buildGameState } from '../js/engine/normalize.js';
-import { seasonEvidence } from '../js/engine/minutes.js';
+import { seasonEvidence, projectMinutes } from '../js/engine/minutes.js';
 import { buildStrength } from '../js/engine/strength.js';
 import { buildProjections } from '../js/engine/projections.js';
-import { gameweekLifecycle } from '../js/engine/lifecycle.js';
+import { gameweekLifecycle, matchesPlayedByClub } from '../js/engine/lifecycle.js';
 import { buildSquadState } from '../js/engine/squad.js';
 import { buildPlan } from '../js/engine/planner.js';
 import {
@@ -505,6 +505,8 @@ test('this season\'s one match updates the prior rather than replacing it or bei
   let checkedBenched = 0;
   for (const p of blended.players.values()) {
     const row = SHIPPED.totals[p.id] || Object.values(SHIPPED.totals).find((r) => r.c === p.code);
+    // Players with no row are NOT covered here, and skipping them silently is
+    // how they went unguarded for a fortnight. The two tests below own them.
     if (!row) continue;
     const live = raw.players.get(p.id);
 
@@ -557,6 +559,94 @@ test('this season\'s one match updates the prior rather than replacing it or bei
       `${p.webName} came off the bench, so his start rate fell`);
     assert.ok(p.minutes > SHIPPED.totals[p.id].m, `${p.webName} still gained the minutes he played`);
   }
+});
+
+/* -------------------------- the players the baseline has never heard of */
+
+// THE BUG THE TEST ABOVE CANNOT SEE, and why it cannot see it: it walks the
+// blended pool and skips every player the baseline has no row for
+// (`if (!row) continue`), which is the SAME branch the overlay itself took. So
+// it proves the overlay is right for the players it touched and says nothing
+// whatever about the players it did not - and those are precisely the ones it
+// broke. A test written from the implementation's control flow inherits the
+// implementation's blind spot; this pair is written from the POPULATION, so
+// every player is accounted for by one assertion or the other.
+//
+// What went wrong. `snapshotFrom` records only players who actually played, so
+// everyone with no Premier League minutes last season - a signing from abroad,
+// a promoted club's squad, a youth player - has no row. The overlay lifts the
+// rest of the pool to a full season's totals, `seasonEvidence` therefore reads
+// the payload as a previous season, and every player without a DECLARED
+// denominator was handed 38 matches to divide a one-match numerator by.
+//
+// Measured on the live payload of 2026-09-04, two matches into the season: 99
+// players were in that state and 38 of them had started every match, all pinned
+// at pStart ~0.09. Villa's Suzuki had just played 90 minutes and projected 0.3
+// points for GW3, less than half what the same model gave him when he was given
+// zero minutes instead.
+test('every player in a blended payload is given a denominator, not just the overlaid ones', () => {
+  const blended = stateWith('gw1-complete', SHIPPED);
+  const played = matchesPlayedByClub(blended);
+  const teamMatches = seasonEvidence(blended).teamMatches;
+
+  // The overlay is only dangerous because it moves the POOL denominator to a
+  // full season. If it ever stops doing that, this test is guarding nothing and
+  // should be re-derived rather than deleted.
+  assert.equal(teamMatches, SHIPPED.totalEvents,
+    'the blended payload is read as a previous season, which is what makes an undeclared denominator wrong');
+
+  let overlaid = 0;
+  let unknown = 0;
+  for (const p of blended.players.values()) {
+    const row = SHIPPED.totals[p.id] || Object.values(SHIPPED.totals).find((r) => r.c === p.code);
+    const clubMatches = played.get(p.teamId) || 0;
+    if (row) {
+      assert.equal(p.evidenceMatches, SHIPPED.totalEvents + clubMatches,
+        `${p.webName}: baseline season plus his club's matches`);
+      overlaid++;
+    } else {
+      // His totals cover this season and nothing else, so that is what they are
+      // read against. Never the pool's.
+      assert.equal(p.evidenceMatches, clubMatches || null,
+        `${p.webName} is not in the baseline, so his ${p.seasonStarts} start(s) cover his club's `
+        + `${clubMatches} match(es), not ${teamMatches}`);
+      unknown++;
+    }
+  }
+  assert.ok(overlaid > 100, `${overlaid} overlaid players were checked`);
+  assert.ok(unknown > 20, `${unknown} players the baseline has never seen were checked`);
+});
+
+// The consequence, stated in the currency the app actually shows. Two groups of
+// players did the same thing on the pitch - started every match their club has
+// played - and differ only in whether last season's payload knew their name.
+// They have to read alike. Before the fix the medians were 0.08 and 0.66.
+test('starting every match reads the same whether or not the baseline knows the player', () => {
+  const blended = stateWith('gw1-complete', SHIPPED);
+  const played = matchesPlayedByClub(blended);
+  const pStart = (p) => projectMinutes(p, { gameState: blended, gw: 2 }).pStart;
+  const med = (a) => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
+
+  const everPresent = { known: [], unknown: [] };
+  for (const p of blended.players.values()) {
+    const clubMatches = played.get(p.teamId) || 0;
+    if (!clubMatches || p.seasonStarts < clubMatches) continue;
+    const row = SHIPPED.totals[p.id] || Object.values(SHIPPED.totals).find((r) => r.c === p.code);
+    everPresent[row ? 'known' : 'unknown'].push(pStart(p));
+  }
+  assert.ok(everPresent.known.length > 50 && everPresent.unknown.length > 10,
+    `both groups are populated (${everPresent.known.length} known, ${everPresent.unknown.length} unknown)`);
+
+  const known = med(everPresent.known);
+  const unknown = med(everPresent.unknown);
+  // A player with one match of evidence is shrunk harder toward the position
+  // prior than one with a season of it, so the two are not equal and should not
+  // be asserted equal. They must be the same KIND of number.
+  assert.ok(unknown > 0.35,
+    `an ever-present the baseline has never seen projects a start probability of ${unknown.toFixed(3)}`);
+  assert.ok(Math.abs(known - unknown) < 0.2,
+    `ever-presents split into ${known.toFixed(3)} (in the baseline) and ${unknown.toFixed(3)} (not in it) `
+    + 'purely by whether last season knew them');
 });
 
 /* -------------------------------------------------------- the UI state bug */
