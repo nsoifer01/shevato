@@ -480,7 +480,7 @@ export function explainPlan(plan, context = {}) {
 
   bullets.push(makeReason(
     'plan_gw_points',
-    'This plan projects {v} points this gameweek, captain included.',
+    'This plan projects {v} points this gameweek: the eleven, the armband and any auto-substitutions.',
     plan.xPointsGw,
   ));
   if (plan.hitCostPoints) {

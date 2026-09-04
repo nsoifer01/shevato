@@ -1682,6 +1682,242 @@ xG/xA rate quality, and early-window squad construction where a wrong opening
 channel; running more weights is known to be useless, because no flat weight
 can satisfy three seasons whose optima genuinely differ.
 
+## 25. Triple captain, valued with vice succession: REJECT because it is INERT
+
+**Decision: REJECT.** Nothing shipped. The correction is mathematically right,
+changes the number in 39% of gameweeks, and changes **no decision anywhere**.
+
+- **Kind:** chip-valuation correction.
+- **Question:** FPL passes a TRIPLED armband to the vice exactly as it passes a
+  doubled one, so the chip's marginal value is one more copy of
+  `xPointsCaptaincy` (the captain when he plays, the vice when he does not) and
+  not the captain's raw xP. Does valuing it correctly win points?
+- **Candidate:** `evaluateTripleCaptain`'s `valueNow` and `scoreCandidate`'s
+  `chipBonus` for `3xc` both read `xPointsCaptaincy` instead of `captainExtra`.
+  Nothing else touched. Env-gated on `FPL_3XC_VICE`.
+- **Full write-up:** this entry; the arithmetic is in FINDINGS.
+
+**THE INSTRUMENT COULD NOT HAVE MEASURED THIS, AND THAT IS THE FIRST FINDING.**
+`INSTRUMENTS.paired` (rank 3, the decider) and `INSTRUMENTS.windows` (rank 2)
+BOTH set `chips: false`, so the rules catalogue has no chips and no chip
+decision exists to change. Only `seasons` (rank 1, the one the Methodology
+section calls "nearly useless on its own") runs chips on. A chip experiment run
+on the default instrument would have reported a clean, meaningless zero. Both
+runs below therefore override the chip flag, and any future chip experiment
+must do the same.
+
+| instrument | cells | observations | total delta | W-L-T | sign test |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| full seasons, chips on, 3 seeds | 24 | 4 windows / 12 traj | **+0** | 0-0-4 | 1.00 |
+| paired windows, `chips: true` | 120 | 20 windows / 60 traj | **+0** | 0-0-20 | 1.00 |
+
+Control 26,796 vs candidate 26,796 (seasons); 45,155 vs 45,155 (windows). Every
+season, every window and every one of the 72 trajectories is bit-identical.
+t = 0.00, p = 1.00, CI +0.0 to +0.0.
+
+**Why it is exactly zero, and this is the useful part.** The correction is real:
+across 129 gameweeks where the chip was available, `valueNow` differs in **50
+(38.8%)**, by **+0.16 points on average** with a largest single-gameweek uplift
+of **1.78**. But `evaluateTripleCaptain` recommends the chip on
+`valueNow - bestValue >= TRIPLE_CAPTAIN_MARGIN`, and that margin is **2.5**. The
+correction is an order of magnitude smaller than the bar it would have to cross,
+so the recommendation flips in **0 of 129** gameweeks and the recommended chip
+changes in **0 of 129**.
+
+`planner.js chipCandidates()` then refuses to score any chip its own evaluator
+did not recommend ("A chip is only offered when its own evaluator recommended
+it"), so the corrected `chipBonus` never reaches a chip candidate that gets
+played either. The two gates in series make the change provably inert.
+
+**What this does NOT mean.** It is not evidence the shipped valuation is right;
+it is evidence that the 2.5 margin swamps the difference. Two things could make
+it bite, and both are separate questions:
+
+- a captain with real absence risk. The uplift is `(1 - pAppear_captain) *
+  xP_vice * correlation`, which is zero while `pAppear` is pinned at 1 (see
+  entries 23 and 24) and 0.16 on replay evidence where it is not. A model that
+  fixed the pin would roughly double the population of gameweeks where the term
+  is non-zero.
+- `TRIPLE_CAPTAIN_MARGIN` itself. It was set to compensate for the future side
+  being "a max over many weeks and therefore optimistic already", and the now
+  side has just become less pessimistic, so strictly the margin is now slightly
+  too big. Re-deriving it is a separate experiment and must not be swept.
+
+**Asymmetry noted, deliberately not changed.** The now side is the CHOSEN
+captain's expectation; the future side is `max over the whole squad` of
+`estimateXp`, with no captain choice and no vice term at all. Correcting only
+the now side makes the comparison more favourable to playing the chip now.
+That bias did not matter here because nothing crossed the bar, but a future arm
+that moves the margin must fix both sides together or it will over-fire.
+
+## 24. The sub-on ESTIMATOR: phantom bench minutes proven, every fix REJECT
+
+**Decision: REJECT, all arms.** Nothing shipped; the engine is unchanged.
+Entry 23 damped the symptom and lost; this entry attacks the estimator itself
+and loses too, but it settles what the defect IS and what it is worth.
+
+**The defect, proven against the archives.** `benchMinutes = minutes - starts *
+prior.starterMinutes` subtracts a LEAGUE-AVERAGE starter-minutes constant, so
+for any player who plays more than average per start it manufactures "bench
+minutes" out of the excess. Bruno Fernandes in 2025-26: 35 starts, 3065
+minutes, **zero substitute appearances all season**; the model computes 193
+bench minutes (= 35 x (87.6 - 82.1)), infers 3.00 sub appearances, and returns
+`subOnRate` 1.0000 against a truth of 0.0000.
+
+Over the four archives, players with 30+ starts:
+
+| quantity | truth | model | ratio |
+| --- | ---: | ---: | ---: |
+| substitute appearances | 555 | 1227.8 | **2.21x** |
+| substitute minutes | 13,829 | 68,532 | **4.96x** |
+
+`subOnRate` saturates at exactly 1 for 259 of 376 nailed player-seasons, and
+**110 of those made no substitute appearance at all**.
+
+**The archives can answer this directly and the live payload cannot.**
+`merged_gw.csv` carries `starts` and `minutes` per player per fixture, so
+started / appeared / came-on / unused-sub / club-match are all directly
+observed. `bootstrap-static` carries season aggregates only, with no appearance
+count, and the shipped opening baseline is a captured bootstrap so it inherits
+the same gap. An appearance count could be accumulated in production from
+`event/<gw>/live`, which the app already fetches - but not for the opening
+weeks, which is exactly where the pin bites hardest.
+
+**Arms.** B oracle (observed sub rate; replay-only, not shippable, kept as a
+ceiling). C sound bound: only minutes a start cannot explain (`M - 90*S`), which
+makes a phantom impossible, shrunk to a positional prior. D the same bound
+shrunk toward a prior measured as position x the player's own start rate,
+over 76,475 non-start player-matches and stable under leave-one-season-out
+(position sets the level, GKP 0.0048 / DEF 0.1143 / MID 0.2048 / FWD 0.2327;
+start rate sets the shape, 0.0505 at start-rate under 0.1 rising to 0.33-0.41).
+
+**Arm D on the deciding instrument:** mean **+0.8** a window, se 8.0,
+**t 0.10**, CI -16.0 to +17.5, **10W/9L/1T**, **sign test p 1.00**. Per season
++502 / -260 / -4 / -192.
+
+**Calibration, out of sample, 83,238 player-gameweeks** (control -> S -> C -> D):
+overall bias +0.0260 -> +0.0126 -> -0.0348 -> -0.0205; Brier 0.1434 -> 0.1400
+-> 0.1421 -> 0.1398. Every arm deletes the saturation. None is clearly better
+calibrated than entry 23's simple shrinkage, and none wins points.
+
+**THE FINDING THAT MATTERS, and it refutes entry 23's own guess.** Entry 23
+supposed this was a level correction that cancels out of every ranking. It is
+not. Measured as a counterfactual on the SAME squad (the control plays the
+season; each candidate re-plans the control's own squad state, so there is no
+cascade), arm D changes:
+
+| season | XI | captain | vice | bench | transfer | chip | ANY plan | XI players moved |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2023-24 | 47.4% | 18.4% | 26.3% | 60.5% | 39.5% | 5.3% | **57.9%** | 1.28 |
+| 2024-25 | 71.1% | 28.9% | 34.2% | 60.5% | 65.8% | 7.9% | **86.8%** | 1.85 |
+| 2025-26 | 44.7% | 5.3% | 13.2% | 55.3% | 39.5% | 5.3% | **52.6%** | 1.47 |
+
+So the correction reshuffles the recommendation in half to seven-eighths of all
+gameweeks, moves one to two players in and out of the eleven when it moves the
+eleven at all, and is worth **zero points**. The decisions it changes are
+near-indifferent in true value: the model cannot tell which side is better, and
+churning a manager's XI and transfer every other week for no measurable gain is
+a cost, not a neutral.
+
+**The season split is 2022-23, not "recent seasons are worse."** Both entry 23
+and arm D gain about +500 in 2022-23 (10-2-3 and 11-1-3) while the other three
+seasons are noise that flips sign between two near-identical candidates
+(2023-24: +296 under entry 23, -260 under arm D). The football is stable: true
+sub-on rate for nailed players is 0.415 / 0.347 / 0.369 / 0.371 and the
+measured starter-minutes prior is 82-84 in every season. The 2022-23 gain sits
+in the windows spanning the World Cup break and its unlimited-transfer
+gameweek, and the one window entirely inside the reconstructed-starts block
+(gw1-13) reads **exactly +0.0** in both arms. That is trajectory forking, which
+the Methodology section already names as the reason a single replay decides
+nothing.
+
+**A side experiment, VOID, and its failure is the result.** `minutesRiskWeight`
+looked like a double charge: the objective is `sum(score) + autosubValue`,
+`xPoints` already contains the zero for a non-appearance and `autosubValue`
+already prices the recovery and the slot it consumes, which is what
+`lineup.js` says the term is FOR. Setting it to zero did not measure: 3 of 120
+cells failed with `vice_missing`, because without it the optimizer fields an
+eleven where nobody clears `MIN_VICE_PAPPEAR` (0.35) and validation refuses the
+plan. The term is load-bearing, not redundant. Do not remove it.
+
+**What stays open.** The estimator is provably wrong and provably worth nothing
+in points. The remaining harms are calibration and reporting, not ranking: the
+pin makes `chips.js`'s `BENCH_WEAK_P_APPEAR` gate (0.5) unable to fire for 41%
+of the owned pool, and it hides the headline-xP semantics described in FINDINGS.
+Any future attempt should be a DATA change (accumulate appearances from
+`event/<gw>/live`) rather than another estimator, and must clear the churn bar
+above as well as the points bar.
+
+## 23. Sub-on rate shrinkage: REJECT, and the defect it aimed at is still open
+
+**Decision: REJECT.** Nothing shipped; `js/engine/minutes.js` is unchanged.
+
+- **Kind:** minutes-model correction.
+- **Question:** does shrinking `subOnRate` toward a measured per-position prior
+  win FPL points?
+- **Instrument:** 3, paired trajectories, 20 windows / 60 trajectories.
+- **Command:** `node apps/fpl-planner/scripts/experiment.mjs --config
+  apps/fpl-planner/experiments/configs/subon-shrinkage.mjs`, tree engine
+  50514c8f8267 / git 863c985, data 53e66c698d74, 120 replays in 343.5s.
+  `null-arm` was run first on the same tree and reported +0 on all 60.
+- **Full write-up:** `experiments/subon-rate-shrinkage.md`.
+
+**The defect is real and is NOT closed by this rejection.** `subOnRate` is the
+only rate in `minutes.js` with no shrinkage, and its numerator is a residual
+against a league-average starter-minutes constant, so it saturates at exactly 1
+for good starters and `pAppear` becomes a hard 1.0000. On the live 2026/27
+payload at GW3 that is 66 of 505 playable players and 41% of the pool owned by
+5% of managers or more; without the shipped baseline it is still 29 of 505.
+`pStart`, which IS shrunk, is pinned for nobody. Measured truth over 283
+nailed player-seasons: P(appear) 0.9323, P(appear | did not start) 0.3632.
+
+A whole eleven at `pAppear` 1 makes `autosubValue`, `gkValue` and the
+minutes-risk term identically zero, which is how the bench-order tie-break
+came to decide a recommendation by ascending player id (see FINDINGS,
+2026-09-03).
+
+**The result:**
+
+| measure | per window (seeds averaged) |
+| --- | ---: |
+| observations | 20 |
+| mean | +7.9 |
+| standard error | 8.5 |
+| t | 0.93 |
+| 95% CI | -9.8 to +25.6 |
+| wins / losses / ties | 11 / 8 / 1 |
+| sign test p | 0.65 |
+
+| season | control | candidate | delta | W-L-T |
+| --- | ---: | ---: | ---: | --- |
+| 2022-23 | 10606 | 11122 | +516 | 10-2-3 |
+| 2023-24 | 10943 | 11239 | +296 | 11-4-0 |
+| 2024-25 | 11788 | 11723 | -65 | 6-9-0 |
+| 2025-26 | 10677 | 10403 | -274 | 6-9-0 |
+
+Two of four seasons lose and they are the two most recent; t is 0.93 against
+this file's own "a t near 2 is suggestive, not a result"; the sign test is 0.65.
+The priors were measured on three of the four evaluated seasons, so the +473
+aggregate is if anything optimistic.
+
+**And it is the calibration trap for the third time.** Out of sample over
+83,238 player-gameweeks on the replay's leakage-guarded path, overall
+appearance bias halves (+0.0260 to +0.0126), Brier improves (0.1434 to 0.1400),
+the pinned bin (9.49% of rows, predicted 1.0000 against an observed 0.8531)
+disappears, nailed-player bias goes +0.0632 to +0.0103, every season improves
+and no new floor or ceiling appears. The points still say nothing. Entries 12
+and 13 recorded this shape; this is another instance, and the Methodology rule
+holds: prediction metrics do not decide, points decide.
+
+**Do not re-run this arm as-is.** The likely mechanism is that it is a LEVEL
+correction, and entry 12's order test says a level correction cancels out of
+every ranking. Diagnose first: measure how often the candidate changes the
+eleven, the armband or the transfer rather than the numbers. On team 3855835 at
+GW3 it changed neither the eleven nor either armband, only the bench order and
+`autosubValue`. If the decision-change rate is low, no variant of this
+shrinkage will read differently on this instrument, and the estimator itself
+(the contaminated `benchMinutes` residual) is the thing to fix instead.
+
 ## 22. The season baseline carries its rate numerators, not only its denominators
 
 - **Date:** 2026-08-22

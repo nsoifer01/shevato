@@ -441,6 +441,14 @@ export function scenarioSquadState(sc, ctx) {
 // the armband he chose, not an optimized one. Comparing a chosen eleven against
 // an optimized number would flatter or punish the user for a choice the number
 // did not actually reflect.
+//
+// DELIBERATELY NOT the canonical `xPointsGw` (planner.js `gameweekPoints`).
+// This is the eleven plus one more copy of the chosen captain, with no
+// auto-substitution recovery and no vice succession, because it exists ONLY to
+// be differenced against itself: `comparison()` reports before minus after on
+// the same formula, so the two omissions cancel and the delta is exactly the
+// effect of the edit. Never print it beside a plan's `xPointsGw`, and never
+// treat it as an expected final score.
 export function xiPoints(xi, captain, projections, gw) {
   let total = 0;
   for (const id of xi) {
