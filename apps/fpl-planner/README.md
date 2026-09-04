@@ -406,6 +406,17 @@ blended minutes. The two therefore grow at the same pace, and
 `baselineIsSuperseded` retires the snapshot outright once every club has played
 three matches.
 
+**Every player is given a denominator, including the ones the baseline has
+never heard of.** A snapshot records only players who actually played, so
+anyone with no Premier League minutes last season - a signing from abroad, a
+promoted club's squad, a youth player - has no row to overlay. Declaring
+`evidenceMatches` for the overlaid players alone left everyone else on the
+pool-wide fallback, which the overlay had just moved to a full season: a
+one-match numerator over a 38-match denominator. Those players are now read
+against the matches their own club has played, which is the same rule applied
+to a different numerator (see FINDINGS, "The players the baseline has never
+heard of").
+
 **A version 1 snapshot already in a user's localStorage is read, but not
 divided.** Its minutes still serve the minutes model; `rateMinutes` restricts
 every rate to THIS season's minutes, so a cleared numerator is never divided by

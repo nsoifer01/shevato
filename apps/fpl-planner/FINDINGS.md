@@ -1836,6 +1836,59 @@ opening deadline instead. The tolerance is one season, not zero, because
 totals" depending on the writer, and an equality test refuses half the
 snapshots it was meant to accept.
 
+### The players the baseline has never heard of (found and FIXED 2026-09-04)
+
+**The overlay moved the pool's denominator and gave a matching numerator to
+only some of the pool.** `snapshotFrom` records a player only if he actually
+played, so anyone with no Premier League minutes last season has no row: a
+signing from abroad, a promoted club's squad, a youth player. `normalize.js`
+skipped them with a bare `if (!row) continue`, so `evidenceMatches` was never
+declared for them and `evidenceMatchesFor` fell back to the pool-wide
+`teamMatches`. But the overlay had just lifted the rest of the pool to a full
+season's totals, which is what makes `seasonEvidence` classify the payload as
+`previous-season` and set that fallback to 38. Their numerator was two matches
+old. Every one of their start rates was therefore wrong by the ratio of the two
+seasons.
+
+Measured on the live payload of 2026-09-04, two matches in:
+
+| | pStart | GW3 xP |
+| --- | --- | --- |
+| Suzuki (AVL GK, 1 start in 2) as shipped | 0.090 | **0.26** |
+| the same player given zero minutes instead | 0.200 | 0.63 |
+| the same player over his club's 2 matches | 0.505 | 1.60 |
+
+**99 players were in that state and 38 of them had started every match**, all
+pinned near pStart 0.09 against 0.63 for the ever-presents the baseline did
+know. It also reproduced the one thing `minutes.js` says must never happen:
+having played was evidence AGAINST a player, because zero minutes takes the
+price-prior branch instead and that branch reads the club's real match count.
+
+The fix is one line of intent: the `!row` case sets `evidenceMatches` to the
+matches the player's club has played, which is the denominator his own totals
+were accumulated against. Pre-season `played` is 0, the field stays null, and a
+player with no minutes still takes the price prior, so nothing before GW1
+moves. It self-healed at three matches per club (2026-09-06) when
+`baselineIsSuperseded` retired the baseline, which is why it was a two-week
+window rather than a permanent defect, and why nothing in the suite noticed.
+
+**Why the tests did not catch it, which is the part worth keeping.** The guard
+that owns this arithmetic, `opening-baseline.test.mjs`, walked the blended pool
+and did `if (!row) continue` - the SAME branch the implementation took. It
+proved the overlay was right for every player it touched and asserted nothing
+at all about the players it skipped, which were exactly the broken ones. A test
+written from the implementation's control flow inherits the implementation's
+blind spot. Write the population first, then check that every member of it is
+covered by some assertion: the two tests added below that one now split the
+pool into overlaid and not-overlaid and assert on both, and they fail on the
+pre-fix code by 0.079 against a floor of 0.35.
+
+The general rule, which this app has now paid for twice (see also "whoever
+builds the numerator owns the denominator" in `minutes.js`): **a fallback that
+applies to a subset while changing a global is a bug until the complement is
+named.** `continue` in a loop that is also mutating shared state is where to
+look for it.
+
 ### "Plan unchanged" over "we are not showing a plan"
 
 Both withheld branches in `app.js` rendered the same top-of-page notices as a
@@ -1886,6 +1939,15 @@ arithmetic. `season-rollover.test.mjs` asserts the two together: either the
 payload is refused, or the asymmetry is gone. Whoever later makes this state
 usable - a heavier price prior, a longer-lived baseline - fails that test until
 the asymmetry is fixed too, which is the order the changes have to happen in.
+
+**And it escaped once, by the door that section did not guard.** The baseline
+path is not the refused path: a payload with a baseline standing in IS usable,
+so the "either refused, or the asymmetry is gone" test never runs on it, and
+the asymmetry appeared there in September 2026 for every player the baseline
+had no row for (previous section). The invariant is not "refuse the states
+where the arithmetic inverts"; it is "the arithmetic must not invert in any
+state we plan from". Assert it wherever a plan is produced, not only where one
+is withheld.
 
 ### Fact 3, answered 2026-08-28: `entry_history.value` is a deadline snapshot
 

@@ -40,6 +40,11 @@ export function buildGameState(bootstrap, fixtures, { fetchedAt, baseline = null
   // denominators therefore grow together and the baseline fades out of every
   // rate at the same pace, until `baselineIsSuperseded` retires it outright.
   //
+  // EVERY player is given a denominator here, not only the ones the baseline
+  // knows. Declaring it for the overlaid players alone silently hands everyone
+  // else the pool-wide fallback, which the overlay itself has just moved to a
+  // full season - see the `!row` branch below for what that cost.
+  //
   // A version 1 snapshot carries minutes only. Its minutes still serve the
   // minutes model, but every rate is then read over THIS season's minutes
   // alone (`rateMinutes`), so a cleared numerator is never divided by a
@@ -67,14 +72,39 @@ export function buildGameState(bootstrap, fixtures, { fetchedAt, baseline = null
     let overlaid = 0;
     for (const p of players.values()) {
       const row = byCode.get(p.code) ?? baseline.totals[p.id];
-      if (!row) continue;
+      const played = playedByClub.get(p.teamId) || 0;
+      if (!row) {
+        // A PLAYER THE BASELINE NEVER SAW, and the reason this is not a bare
+        // `continue`. `snapshotFrom` records only players who actually played,
+        // so everyone with no Premier League minutes last season - a signing
+        // from abroad, a promoted club's squad, a youth player - reaches here
+        // carrying THIS season's totals and nothing else.
+        //
+        // The overlay above lifts the rest of the pool to a full season, which
+        // is what makes `seasonEvidence` read the payload as a previous season
+        // and hand every player without a declared denominator 38 matches. His
+        // numerator is two matches old, so the rate is off by the ratio of the
+        // two seasons. On 2026-09-04 that read Villa's Suzuki as 1 start in 38
+        // rather than 1 in 2: pStart 0.09 against a true 0.5, and a GW3
+        // projection of 0.3 points for a keeper who had just played 90 minutes.
+        // Ninety-nine players were in that state and thirty-eight of them had
+        // started every match. It also inverted - the same player projected
+        // 0.63 when given zero minutes, because that takes the price-prior
+        // branch instead - which is the one thing minutes.js says must never
+        // happen: having played cannot be evidence against a player.
+        //
+        // So he gets the denominator his own totals were accumulated against,
+        // which is the same rule the overlaid players get applied to a
+        // different numerator. Before a ball is kicked `played` is 0, the field
+        // stays null, and a player with no minutes still takes the price prior.
+        p.evidenceMatches = played || null;
+        continue;
+      }
       p.starts = (row.s || 0) + (p.seasonStarts || 0);
       p.minutes = (row.m || 0) + (p.seasonMinutes || 0);
       // The denominator these totals were accumulated against: the baseline's
       // season plus whatever this club has played of the new one.
-      p.evidenceMatches = baselineMatches
-        ? baselineMatches + (playedByClub.get(p.teamId) || 0)
-        : null;
+      p.evidenceMatches = baselineMatches ? baselineMatches + played : null;
       if (carriesRates) {
         for (const [key, field] of Object.entries(RATE_FIELDS)) {
           p[field] = (row[key] || 0) + (p[field] || 0);
