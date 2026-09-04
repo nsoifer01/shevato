@@ -1682,6 +1682,76 @@ xG/xA rate quality, and early-window squad construction where a wrong opening
 channel; running more weights is known to be useless, because no flat weight
 can satisfy three seasons whose optima genuinely differ.
 
+## 23. Sub-on rate shrinkage: REJECT, and the defect it aimed at is still open
+
+**Decision: REJECT.** Nothing shipped; `js/engine/minutes.js` is unchanged.
+
+- **Kind:** minutes-model correction.
+- **Question:** does shrinking `subOnRate` toward a measured per-position prior
+  win FPL points?
+- **Instrument:** 3, paired trajectories, 20 windows / 60 trajectories.
+- **Command:** `node apps/fpl-planner/scripts/experiment.mjs --config
+  apps/fpl-planner/experiments/configs/subon-shrinkage.mjs`, tree engine
+  50514c8f8267 / git 863c985, data 53e66c698d74, 120 replays in 343.5s.
+  `null-arm` was run first on the same tree and reported +0 on all 60.
+- **Full write-up:** `experiments/subon-rate-shrinkage.md`.
+
+**The defect is real and is NOT closed by this rejection.** `subOnRate` is the
+only rate in `minutes.js` with no shrinkage, and its numerator is a residual
+against a league-average starter-minutes constant, so it saturates at exactly 1
+for good starters and `pAppear` becomes a hard 1.0000. On the live 2026/27
+payload at GW3 that is 66 of 505 playable players and 41% of the pool owned by
+5% of managers or more; without the shipped baseline it is still 29 of 505.
+`pStart`, which IS shrunk, is pinned for nobody. Measured truth over 283
+nailed player-seasons: P(appear) 0.9323, P(appear | did not start) 0.3632.
+
+A whole eleven at `pAppear` 1 makes `autosubValue`, `gkValue` and the
+minutes-risk term identically zero, which is how the bench-order tie-break
+came to decide a recommendation by ascending player id (see FINDINGS,
+2026-09-03).
+
+**The result:**
+
+| measure | per window (seeds averaged) |
+| --- | ---: |
+| observations | 20 |
+| mean | +7.9 |
+| standard error | 8.5 |
+| t | 0.93 |
+| 95% CI | -9.8 to +25.6 |
+| wins / losses / ties | 11 / 8 / 1 |
+| sign test p | 0.65 |
+
+| season | control | candidate | delta | W-L-T |
+| --- | ---: | ---: | ---: | --- |
+| 2022-23 | 10606 | 11122 | +516 | 10-2-3 |
+| 2023-24 | 10943 | 11239 | +296 | 11-4-0 |
+| 2024-25 | 11788 | 11723 | -65 | 6-9-0 |
+| 2025-26 | 10677 | 10403 | -274 | 6-9-0 |
+
+Two of four seasons lose and they are the two most recent; t is 0.93 against
+this file's own "a t near 2 is suggestive, not a result"; the sign test is 0.65.
+The priors were measured on three of the four evaluated seasons, so the +473
+aggregate is if anything optimistic.
+
+**And it is the calibration trap for the third time.** Out of sample over
+83,238 player-gameweeks on the replay's leakage-guarded path, overall
+appearance bias halves (+0.0260 to +0.0126), Brier improves (0.1434 to 0.1400),
+the pinned bin (9.49% of rows, predicted 1.0000 against an observed 0.8531)
+disappears, nailed-player bias goes +0.0632 to +0.0103, every season improves
+and no new floor or ceiling appears. The points still say nothing. Entries 12
+and 13 recorded this shape; this is another instance, and the Methodology rule
+holds: prediction metrics do not decide, points decide.
+
+**Do not re-run this arm as-is.** The likely mechanism is that it is a LEVEL
+correction, and entry 12's order test says a level correction cancels out of
+every ranking. Diagnose first: measure how often the candidate changes the
+eleven, the armband or the transfer rather than the numbers. On team 3855835 at
+GW3 it changed neither the eleven nor either armband, only the bench order and
+`autosubValue`. If the decision-change rate is low, no variant of this
+shrinkage will read differently on this instrument, and the estimator itself
+(the contaminated `benchMinutes` residual) is the thing to fix instead.
+
 ## 22. The season baseline carries its rate numerators, not only its denominators
 
 - **Date:** 2026-08-22

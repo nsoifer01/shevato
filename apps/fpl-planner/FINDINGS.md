@@ -732,12 +732,18 @@ concluding anything about an opening-weeks report.
   bench-order fix does not address it: that fix only stops the plateau being
   resolved arbitrarily.
 
-  This is a MODEL change, so it needs the registry, an ACCEPT/REJECT and replay
-  evidence, not a patch: shrinking `subOnRate` the way `baseStart` is shrunk
-  (or capping `pAppear` below 1) moves every projection, every transfer
-  ranking and every backtest. `pStart` had exactly this shape before
-  `seasonEvidence()`, and the fix there was worth ~2x the CPU. Left as an open
-  question rather than done quietly.
+  **The obvious fix was measured and REJECTED** (registry entry 23, 2026-09-04):
+  shrinking `subOnRate` toward a measured per-position prior fixes the
+  calibration completely - the pinned bin disappears, overall appearance bias
+  halves, Brier improves, every season improves - and wins no points, t 0.93,
+  sign test 0.65, with 2024-25 and 2025-26 both LOSING. The defect is real and
+  is still open; what is closed is that particular fix. See
+  `experiments/subon-rate-shrinkage.md` for what to diagnose before trying
+  another arm, and note the deeper flaw the shrinkage only damps: `benchMinutes`
+  is `minutes - starts x prior.starterMinutes`, a residual against a
+  LEAGUE-AVERAGE constant, so it measures minutes above an average start rather
+  than bench appearances. B.Fernandes plays 87.7 per start against a prior of
+  82.30, and 37 x 5.40 = 199.9 is exactly his "bench minutes" of 200.
 - **Whoever builds the numerator owns the denominator.** A start rate is starts
   over MATCHES, and on a live payload there is only one kind of match, because
   FPL resets element totals every August. A caller that assembles totals from
@@ -2164,15 +2170,19 @@ read out (entry 18).
    correction cancels out of every ranking and only crosses hit/chip
    thresholds.
 5. **`pAppear` pins at exactly 1 and kills the auto-substitution model**
-   (found 2026-09-03, see "Minutes and projections"). `subOnRate` is the one
-   rate in `minutes.js` with no shrinkage, so a full previous season of minutes
-   produces certainty, and on the opening baseline that was eleven of eleven
-   starters. `autosubValue`, `gkValue` and the minutes-risk term all read zero,
-   which is how a fourth-choice forward came to sit second on the recommended
-   bench. Registry-gated: shrink `subOnRate` like `baseStart`, or cap `pAppear`
-   below 1, and replay it. Highest-value of the open modelling questions,
-   because it is the same failure shape `seasonEvidence()` fixed for `pStart`
-   and it is live right now, every opening season.
+   (found 2026-09-03; the first fix REJECTED 2026-09-04, registry entry 23).
+   `subOnRate` is the one rate in `minutes.js` with no shrinkage, so a full
+   previous season of minutes produces certainty: 66 of 505 playable players and
+   41% of the pool owned by 5%+ of managers, and eleven of eleven outfield
+   starters for the team that surfaced it. `autosubValue`, `gkValue` and the
+   minutes-risk term all read zero. Shrinking the rate fixes the calibration
+   outright and wins no points (t 0.93, two of four seasons negative), so the
+   open question is now sharper, not closed: **does this defect cost points at
+   all, or only calibration?** Diagnose by measuring how often a correction
+   changes the eleven, the armband or the transfer rather than the numbers - the
+   evidence so far says rarely, which would make it a level correction of the
+   kind entry 12 says cancels out of every ranking. Fixing the contaminated
+   `benchMinutes` estimator is the better candidate than damping it.
 6. **Bookmaker odds stay deferred** (owner decision; `odds.js` inert). Every
    correctness round so far has been worth more than any unproven external
    signal.
