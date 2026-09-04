@@ -87,9 +87,21 @@ the client:
   when the current host's player doc is gone or stale.
 - **Everyone else** signed in may read the room (that is how joining by code
   works) and nothing more. `hostUid`, `status`, the question pointers and the
-  question pool cannot be touched by a non-host, so a stranger can no longer
+  question pool cannot be touched by a non-member, so a stranger can no longer
   end a room for everyone or wedge it with a bogus status or a negative
   question index.
+- **Member writes are bounded by value, not only by key.** The allow-list above
+  says which fields a member may touch; these say what they may put in them.
+  `status` must be one the app actually uses; an advance must either finish the
+  game (question index unchanged) or move to the next question (index exactly
+  one higher), which also means the current question's timer cannot be
+  restarted forever; the decider rotation may only travel with a real advance,
+  so nobody hands themselves the pick; and a written final ranking must be a
+  list of at most 32 whose top score is a number no real game can exceed.
+  Until 2026-09-03 all of these were unbounded once a question's window had
+  elapsed, which is every round, and indefinitely if the host went away. Rules
+  cannot iterate a list, so only the top entry of a ranking is checked, which
+  is the one a griefer has to occupy to appear to have won.
 - **Player docs** are owner-write. The host may delete a player doc only when
   it is STALE (see Liveness), so ghosts can be swept but live players cannot
   be kicked.

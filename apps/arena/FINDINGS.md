@@ -484,3 +484,42 @@ Two consequences worth keeping:
   counted, and every later check is gated on that. Any new check of this shape
   needs the same guard.
 
+## Member writes are bounded by VALUE now, not only by key
+
+The 2026-08-23 allow-list (above) fixed WHICH fields a member may touch and
+said nothing about what they may put in them. `affectedKeys().hasOnly` is a
+key constraint; every value stayed free. So once a question's window had
+elapsed on the server clock, which is true every round until the host's
+advance lands and true indefinitely if the host is gone, any member could:
+
+- write `status: 'bogus'` or `currentQuestionIndex: -3` and wedge the room;
+- rewrite `questionStartedAt` with the status and index unchanged, replaying
+  the current question forever;
+- write a `playerOrder` and `deciderUid` naming only themselves, taking the
+  pick without advancing anything;
+- end the game with a `finalRanking` declaring themselves the winner at
+  999999 points, which every client then renders.
+
+Only a MEMBER of the room, so this was griefing among invited friends and
+never a stranger path, but README and this file both claimed a non-host
+"cannot wedge it with a bogus status or a negative question index", which was
+true only OUTSIDE the elapsed window. The rules test could not see it either:
+its status/index cases ran BEFORE the window elapsed, so they passed without
+covering the gap.
+
+The bounds now are: `status` in the four values the app uses; an advance
+either finishes (index unchanged) or moves on (index exactly +1), which is
+also what kills the replay; `playerOrder`/`deciderUid` only travel with an
+advance; and a `finalRanking` must be a list of at most 32 whose top entry's
+score is a number in [0, 100000].
+
+Two limits worth knowing. **Rules cannot iterate a list**, so only
+`finalRanking[0]` is checked; that is the entry a griefer must occupy to
+appear to have won, since the client writes the list already sorted
+descending, but a large score buried deeper is not rejected. And the cap is
+deliberately loose: trivia peaks at (100 base + 100 speed) x 1.5 streak = 300
+a question over at most 10 questions, Globe Drop at 100 x 3.0 round x 1.5
+streak x ~3.0 difficulty = 1,350 a round over at most 10, so 100k is about a
+7x margin over anything reachable. A tighter cap would start refusing real
+games the first time the scoring constants move.
+
