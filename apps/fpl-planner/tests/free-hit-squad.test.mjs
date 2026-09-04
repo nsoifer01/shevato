@@ -25,6 +25,8 @@ import {
   buildSquadState, reconstructPurchasePrices, freeHitGameweeks, freeHitPicksInfo,
 } from '../js/engine/squad.js';
 import { assessReadiness } from '../js/engine/readiness.js';
+import { buildPlan } from '../js/engine/planner.js';
+import { validatePlan } from '../js/engine/validate.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (...p) => JSON.parse(readFileSync(join(here, ...p), 'utf8'));
@@ -302,3 +304,53 @@ test('the free-transfer arithmetic still treats the Free Hit week as free', () =
   assert.ok(!reverted.chipsAvailable.includes('freehit'),
     'and the chip is spent, so it may not be offered again');
 });
+
+// ------------------------------------------------- the plan the manager gets
+
+test('the whole plan is legal against the squad the manager actually keeps', () => {
+  // The end-to-end statement of the bug. Before the fix this plan sold players
+  // he did not own and kept six he never had, and validatePlan against his real
+  // squad returned eight violations.
+  const prior = priorPicks();
+  const persistent = buildSquadState({
+    entry, history: baseHistory, transfers, picks: prior, gameState, gw: PLAN_GW,
+  });
+  const reverted = buildSquadState({
+    entry, history: historyWithFreeHit, transfers,
+    picks: rentedPicks(), revertPicks: prior, gameState, gw: PLAN_GW,
+  });
+
+  return buildPlan({ gameState, squadState: reverted, options: { horizon: 3 } }).then((bundle) => {
+    const verdict = validatePlan(bundle.current, persistent, gameState, gameState.rules);
+    assert.equal(verdict.ok, true,
+      `the plan must be executable against the real squad; violations: ${(verdict.violations || []).map(v => v.code || v).join(', ')}`);
+
+    // Every player the plan sells must be one he owns.
+    const owned = new Set(persistent.picks.map(p => p.playerId));
+    for (const id of (bundle.current.transfersOut || [])) {
+      assert.ok(owned.has(id), `the plan may not sell player ${id}, who was only rented`);
+    }
+  });
+});
+
+test('the chip evaluator sees the reverted squad and does not re-offer a spent Free Hit', () => {
+  // chips.js reads squadState.picks through squadTrajectory, so changing which
+  // fifteen buildSquadState returns changes what the chip evaluator judges.
+  // That is the point (a chip decision must be about the squad he will have),
+  // but it must not produce a nonsensical recommendation.
+  const reverted = buildSquadState({
+    entry, history: historyWithFreeHit, transfers,
+    picks: rentedPicks(), revertPicks: priorPicks(), gameState, gw: PLAN_GW,
+  });
+
+  return buildPlan({ gameState, squadState: reverted, options: { horizon: 3 } }).then((bundle) => {
+    assert.notEqual(bundle.current.chip, 'freehit',
+      'the Free Hit has been played, so it may never be recommended again');
+    assert.ok(!reverted.chipsAvailable.includes('freehit'));
+    // A finite, real projection rather than NaN leaking out of the swapped squad.
+    assert.ok(Number.isFinite(bundle.current.xPointsGw),
+      `expected points must be a real number, got ${bundle.current.xPointsGw}`);
+    assert.ok(bundle.current.xPointsGw > 0);
+  });
+});
+
