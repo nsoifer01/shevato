@@ -26,7 +26,73 @@ Plans are scored over a rolling horizon, and the default is **5 gameweeks**. It 
 - It does **not** publish selling prices. `now_cost` is the wrong number to spend against: FPL takes half the profit on any player who has risen since you bought him. Purchase prices are reconstructed from `entry/{id}/transfers` and the sell-on rule is applied on top (`js/engine/squad.js`).
 - Its `entry_history.value` is a **snapshot frozen at that gameweek's deadline**, not a live total: it does not move when prices do, so one overnight change is enough to make it disagree with what the squad is actually worth. SQUAD VALUE in the header is therefore the reconstructed total (the fifteen at their selling prices, plus the bank). A disagreement is reported rather than absorbed, but only the part of it that price movement since the deadline cannot account for: the check rolls every price back with `cost_change_event` before comparing, so an ordinary overnight move is silent and a reconstruction that genuinely fails to add up is not. The frozen figure is used for display in one case only: an in-season payload that arrives with no picks, where there is nothing to reconstruct from.
 - It does **not** publish your free transfer count. That is replayed from `entry/{id}/history` by `js/engine/transfer-state.js`, the ONE module allowed to know the transfer arithmetic: unlimited before the GW1 deadline (a state, not a number), then 1 per gameweek, rolling to a cap of 5, with wildcard and free hit weeks preserving the banked count. Every other module (planner, transfer search, chips, replay, UI wording) consumes it rather than re-deriving it; the off-by-one that lived in the scattered copies contaminated every replay until 2026-08-11.
+- It **does** publish its own short-term price-change predictions, per player, and the app reads them rather than calling any predictor site. `price_change_percent` is signed progress towards a change, `price_change_projections` is three entries (`offset` 0, 1, 2 = tonight, tomorrow, the day after) of `projected_percent` and an integer `likelihood`, `price_change_locked_until` marks a player who recently moved and cannot move again yet, and `price_change_calibrating` says the prediction is still settling. `game_config.settings.price_change_deadlines` gives the exact moments changes are applied, so no time of day is ever hardcoded. See "Price changes" below.
 - Two rules genuinely are not in the payload and are the only hardcoded ones, both in `js/engine/rules.js` with a comment saying so: the defensive-contribution thresholds (10 actions for a defender, 12 for a midfielder or forward) and the 4-point transfer hit. Everything else, including the scoring table, squad size, budget, club limit, sell-on fee, free-transfer cap, position limits, chip windows and the season label, is read from `bootstrap-static`.
+
+### Price changes
+
+FPL moves player prices by 0.1m overnight, and the direction matters twice over:
+buying a player the night before he rises costs a tenth more, and holding one
+through a fall loses a tenth of team value (a fall is passed on in full, while
+FPL takes half of any profit on a rise, see `sellingPrice` in `js/engine/rules.js`).
+
+**The source is Fantasy Premier League itself.** No third-party predictor is
+called. The public predictors were measured against these fields on 2026-09-05:
+LiveFPL's `progress` matched `price_change_percent` with a median absolute
+difference of 0.00 percentage points across all 653 players, so it is re-serving
+the same numbers and adding a dependency would buy nothing.
+
+`js/engine/price-change.js` is the ONE module that interprets the raw fields;
+nothing else knows the arithmetic. It produces a display model with a direction,
+the earliest window that crosses, a confidence tier, and the lock and
+calibrating states.
+
+**Three things in it are inferred rather than documented**, and are marked as
+such in the code:
+
+1. **The ±100 threshold.** `price_change_percent` is progress towards a change
+   and the values cluster around ±100 as prices move, so 100 is treated as the
+   crossing point. It is a named constant, never a literal in a caller.
+2. **The likelihood scale.** `likelihood` is an integer in -5..+5 whose sign
+   tracks direction. It is treated as an ordinal CONFIDENCE TIER (strong /
+   moderate / slight) and is never rendered as a probability, because FPL never
+   published one.
+3. **The offset calendar.** Offsets 0/1/2 are consecutive change windows, and
+   which wall-clock moment each is comes from `price_change_deadlines`.
+
+**`price_change_hourly_rate` is deliberately unused.** It is in the payload, but
+on 2026-09-05 the rate it implies reconciled with the published projections for
+some players and not others, so nothing extrapolates from it and `normalize.js`
+does not even carry it.
+
+**Where it shows.** A compact chip under the price on each transfer side, and a
+"Price change" section in the player drawer. The chip appears only when a
+crossing is actually projected, never for the hundreds of players drifting in
+the middle. A player FPL has locked reads "Price locked" and never claims a move
+the game forbids; a calibrating one is hedged and never marked urgent.
+
+**Urgency is asymmetric.** Buying a riser and selling a faller are the two cases
+where waiting costs money, and only those are highlighted. Selling a riser or
+buying a faller is shown in the same quiet style, because what those argue for is
+waiting.
+
+**How it affects the recommendation, and how far.** It is a TIE-BREAK, and the
+bound is structural rather than a matter of tuning. The price signal never enters
+`score`, the number the app shows and explains; it lands in a separate
+`sortScore = score + adjustment` with `|adjustment| <= priceUrgencyCap`, which is
+a tenth of `ftValuePoints` (0.12 points). Because it is a bounded additive key
+rather than a "reorder within a band" comparator, the sort stays a valid total
+order, and a candidate can only ever be promoted over one at most 0.24 points
+better, which is deep inside the model's own error. A plan that is genuinely
+better on expected points cannot be displaced. The roll (zero transfers) is
+adjusted by exactly zero, so the signal can never talk a manager into a transfer.
+Locked and calibrating players contribute nothing to a decision even while they
+still display. Full reasoning is in the header of `js/engine/transfers.js`.
+
+**The horizon is three days, not five gameweeks.** FPL projects offsets 0, 1 and
+2 and no further, and nothing invents a price beyond them. The future-plan copy
+says exactly that: near-term official signals are used, later gameweeks assume
+prices unchanged.
 
 ### Pre-season
 
@@ -60,6 +126,9 @@ apps/fpl-planner/
     ui/squad-table.js    the squad as a sortable table, the pitch's alternate view
     ui/player-drawer.js  modal player drawer: projections, minutes, points breakdown,
                          season totals, all read from the plan's own inputs
+    engine/price-change.js  FPL's own price predictions -> one safe display
+                         model; the only module that knows the threshold,
+                         the tier scale and the lock gating
     ui/scroll-lock.js    reference-counted page scroll lock for modal overlays;
                          any future modal locks through it, never its own way
     ui/combobox.js       searchable, keyboard-accessible player picker

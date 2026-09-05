@@ -69,6 +69,35 @@
 // gameweek horizon is inside the model's own error. `hitMargin` is the buffer
 // that keeps the engine from selling certainty for noise.
 //
+// PRICE CHANGES ARE A TIE-BREAK, AND THE CODE MAKES THAT STRUCTURAL.
+//
+// FPL publishes its own short-term price-change predictions (engine/
+// price-change.js). Buying a player the night he rises saves 0.1m, and selling
+// one before he falls protects 0.1m of team value, so between two plans the
+// engine cannot separate on football, the one that also gets the money right is
+// the better plan. That is the ENTIRE claim. It is not a points model.
+//
+// Two design choices keep it that way, and neither is a matter of tuning:
+//
+//   1. IT DOES NOT ENTER `score`. `score` is what the app shows and explains,
+//      and it has to stay what the engine actually expects the squad to score,
+//      for the same reason `hitMargin` and `churnCost` stay out of
+//      `xPointsHorizon`. The price signal lands in a SEPARATE `sortScore`.
+//   2. IT IS A BOUNDED KEY, NOT A BAND. The obvious implementation, "if two
+//      scores are within epsilon, order by urgency instead", is not a
+//      transitive comparator: a < b, b < c and c < a are all reachable, and
+//      Array.sort on an intransitive comparator produces an order that depends
+//      on the engine's sort implementation. Instead every candidate gets
+//      `sortScore = score + adjustment` with |adjustment| <= priceUrgencyCap.
+//      That is a total order, it is deterministic, and it can only ever
+//      reorder candidates whose scores are within 2 * cap of each other. The
+//      bound is proved by construction rather than asserted in a comment.
+//
+// The cap is a tenth of `ftValuePoints`, the smallest margin the engine already
+// acts on: 0.12 points, so a plan can be promoted only over one at most 0.24
+// points better, which is deep inside the model's own error. A transfer that is
+// genuinely better on expected points cannot be displaced by any price signal.
+//
 // SELLING A DOUBT: `retentionCredit`, MEASURED AND SHIPPED AT ZERO
 //
 // The horizon is three gameweeks. A squad is not. When a player the squad
@@ -138,6 +167,7 @@ import { availabilityCeiling } from './minutes.js';
 import { chooseCaptain } from './captain.js';
 import { validatePlan } from './validate.js';
 import { transferAccounting, transferStateOf, freeTransfersFor } from './transfer-state.js';
+import { readPriceChange, priceUrgency } from './price-change.js';
 
 const UNBUYABLE_STATUSES = new Set(['u', 'n']);
 
@@ -165,7 +195,19 @@ export const TRANSFER_DEFAULTS = Object.freeze({
   // the evidence: see the header and experiments/transfer-churn.md.
   retentionCredit: 0,
   risk: 'balanced',
+  // Share of `ftValuePoints` that FPL's own price-change predictions are
+  // allowed to move a decision by. See "PRICE CHANGES ARE A TIE-BREAK" above.
+  priceUrgencyFraction: 0.1,
 });
+
+// The cap, derived rather than typed. Deriving it from a margin the engine
+// already trusts is the whole point: there is no exchange rate between 0.1m of
+// buying power and expected points, so inventing one would be a magic number
+// with a confident-sounding comment. A tenth of the smallest existing margin
+// is instead a claim about SIZE ONLY, and it is the claim the tests assert.
+export function priceUrgencyCap(cfg) {
+  return cfg.priceUrgencyFraction * cfg.ftValuePoints;
+}
 
 // ---------------------------------------------------------------------------
 
@@ -200,6 +242,15 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
   const horizonValue = playerHorizonValues(projections, gw, lastGw, cfg.discount);
   const pools = buildPools({ players, projections, horizonValue, owned, picks, bankBefore, cfg, R });
   const doubts = ownedDoubts(picks, players);
+
+  // Read once per player, not once per candidate: the same fifteen and the same
+  // pruned pools are re-examined thousands of times below, and `readPriceChange`
+  // parses dates. `now` is the moment the DATA is from, not the wall clock, so a
+  // replay of a stored payload reaches the same decision twice.
+  const priceNow = Number.isFinite(cfg.now)
+    ? cfg.now
+    : (Date.parse(gameState.fetchedAt) || Date.now());
+  const priceModels = buildPriceModels({ players, pools, ownedIds, rules: R, now: priceNow });
 
   const baseClubCounts = new Map();
   for (const id of ownedIds) {
@@ -239,6 +290,7 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
       hitCostPoints: acct.hitCostPoints,
       moneyIn, moneyOut, bankAfter,
       churnCost: churnCost(outIds, inIds, doubts, horizonValue, cfg),
+      priceAdjustment: priceAdjustment(outIds, inIds, priceModels, cfg),
     });
   };
 
@@ -300,6 +352,8 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
   const score = (c) => {
     c.xPointsHorizon = c.horizonRaw - c.hitCostPoints;
     c.score = c.xPointsHorizon - cfg.hitMargin * c.hits + c.rollValue - c.churnCost;
+    // Separate key, bounded by construction. `score` above is untouched.
+    c.sortScore = c.score + c.priceAdjustment;
   };
 
   for (const c of candidates) {
@@ -310,7 +364,7 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
     score(c);
   }
 
-  const byScore = (x, y) => (y.score - x.score) || (x.transferCount - y.transferCount) || compareKeys(x.key, y.key);
+  const byScore = (x, y) => (y.sortScore - x.sortScore) || (x.transferCount - y.transferCount) || compareKeys(x.key, y.key);
   candidates.sort(byScore);
 
   const baseline = candidates.find(c => c.transferCount === 0);
@@ -341,9 +395,51 @@ export function searchTransfers({ squadState, projections, gameState, rules, hor
     out.push(plan);
   }
 
-  out.sort((x, y) => (y.score - x.score) || (x.transferCount - y.transferCount) || compareKeys(x.key, y.key));
+  out.sort((x, y) => (y.sortScore - x.sortScore) || (x.transferCount - y.transferCount) || compareKeys(x.key, y.key));
   for (let i = 0; i < out.length; i++) out[i].rank = i + 1;
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Price-change tie-break. See "PRICE CHANGES ARE A TIE-BREAK" in the header.
+
+// One display model per player the search can actually touch: the fifteen owned
+// plus every pruned incoming pool. Nothing else can appear in a candidate.
+function buildPriceModels({ players, pools, ownedIds, rules, now }) {
+  const deadlines = (rules && rules.priceChangeDeadlines) || [];
+  const models = new Map();
+  const add = (id) => {
+    if (models.has(id)) return;
+    const player = players.get(id);
+    if (player) models.set(id, readPriceChange(player, { now, deadlines }));
+  };
+  for (const id of ownedIds) add(id);
+  for (const list of pools.values()) for (const cand of list) add(cand.id);
+  return models;
+}
+
+/**
+ * The bounded adjustment for one candidate, in points.
+ *
+ * Sums the per-player urgency of everything the plan buys and sells, clamps
+ * that to -1..1, and scales by the cap. The clamp is what makes the bound hold
+ * for a two-transfer plan as firmly as for a one-transfer one, and the roll
+ * (which buys and sells nothing) is always exactly zero, so the price signal
+ * can never talk a manager into making a transfer he would otherwise not make.
+ *
+ * Returns 0 for every candidate when no player carries price data, which is
+ * what makes the feature a no-op on a payload without it.
+ */
+export function priceAdjustment(outIds, inIds, priceModels, cfg) {
+  if (!outIds.length && !inIds.length) return 0;
+
+  let sum = 0;
+  for (const id of inIds) sum += priceUrgency(priceModels.get(id), 'in');
+  for (const id of outIds) sum += priceUrgency(priceModels.get(id), 'out');
+  if (!sum) return 0;
+
+  const clamped = Math.max(-1, Math.min(1, sum));
+  return clamped * priceUrgencyCap(cfg);
 }
 
 // ---------------------------------------------------------------------------
@@ -396,6 +492,11 @@ function finalizePlan(c, ctx) {
     xPointsHorizon: c.xPointsHorizon,
     sd: Math.sqrt(Math.max(0, variance)),
     score: c.score,
+    // Kept separate from `score` on purpose, so anything reporting the plan's
+    // expected points reports football and nothing else, while the ordering
+    // that produced the plan stays inspectable.
+    sortScore: c.sortScore,
+    priceAdjustment: c.priceAdjustment,
     rollValue: c.rollValue,
     churnCost: c.churnCost,
     horizonRaw: c.horizonRaw,

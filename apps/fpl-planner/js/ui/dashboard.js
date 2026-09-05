@@ -22,6 +22,7 @@ import { STRENGTH_PARAMS } from '../engine/strength.js';
 import { formatFreeTransfers } from '../engine/transfer-state.js';
 import { openingSquadMoney, picksCarryLineup } from '../engine/squad.js';
 import { assessConfidence } from '../engine/confidence.js';
+import { readPriceChange, priceBadge } from '../engine/price-change.js';
 import { describeModelStatus } from '../data/model.js';
 
 const nameOf = (gameState) => (id) => describePlayer(gameState, id).name;
@@ -165,10 +166,54 @@ function chipNote(bundle, chip, gameState) {
 
 /* --------------------------------------------------------------- transfers */
 
-function transferSide({ dir, playerId, gameState, projections, gw, horizon }) {
+// The price-change chip that sits under a transfer side's price.
+//
+// It renders only when FPL projects an actual crossing (or has locked a player
+// out of one), never for the 600 players drifting in the middle: a badge on
+// everything is a badge on nothing. `is-urgent` marks the two cases where
+// WAITING COSTS MONEY (buying a riser, selling a faller); the mirror cases are
+// still worth knowing and are shown in the same quiet style as everything else.
+export function priceChangeChip({ dir, player, gameState, now }) {
+  const model = readPriceChange(player, {
+    now,
+    deadlines: (gameState.rules && gameState.rules.priceChangeDeadlines) || [],
+  });
+  const badge = priceBadge(model, dir);
+  if (!badge) return null;
+
+  const title = priceChipTitle(badge);
+  return el('span', {
+    class: `fpl-chip fpl-price-chip is-${badge.kind}${badge.urgent ? ' is-urgent' : ''}`,
+    text: badge.text,
+    title,
+    // The arrow is decoration; the label already carries the direction, so the
+    // accessible name is the sentence rather than "up arrow rise tonight".
+    'aria-label': title,
+  });
+}
+
+function priceChipTitle(badge) {
+  const m = badge.model;
+  if (badge.kind === 'locked') {
+    return m.lockedUntil
+      ? `Fantasy Premier League has locked this price until ${dateTime(m.lockedUntil)}, so it cannot change before then.`
+      : 'Fantasy Premier League has locked this price, so it cannot change yet.';
+  }
+  const when = m.changeAt ? ` at ${dateTime(m.changeAt)}` : '';
+  const verb = m.direction === 'rise' ? 'rise' : 'fall';
+  if (badge.kind === 'calibrating') {
+    return `Fantasy Premier League projects a ${verb}${when}, but says the prediction is still calibrating.`;
+  }
+  const tier = m.tierLabel ? ` ${m.tierLabel.toLowerCase()}.` : '';
+  return `Fantasy Premier League projects a ${verb}${when}.${tier}`;
+}
+
+function transferSide({ dir, playerId, gameState, projections, gw, horizon, now }) {
   const info = describePlayer(gameState, playerId);
   const row = getProjection(projections, playerId, gw);
-  const avail = availability(gameState.players.get(playerId));
+  const player = gameState.players.get(playerId);
+  const avail = availability(player);
+  const priceChip = priceChangeChip({ dir, player, gameState, now });
   return el('div', { class: `fpl-tr-side is-${dir}` }, [
     el('div', { class: 'fpl-tr-dir' }, [
       dir === 'out' ? 'Out' : 'In',
@@ -179,7 +224,10 @@ function transferSide({ dir, playerId, gameState, projections, gw, horizon }) {
     el('div', { class: 'fpl-tr-nums' }, [
       el('div', {}, [
         el('div', { class: 'fpl-tr-num-k', text: 'Price' }),
-        el('div', { class: 'fpl-tr-num-v', text: formatMoney(info.priceTenths) }),
+        el('div', { class: 'fpl-tr-num-v' }, [
+          formatMoney(info.priceTenths),
+          priceChip,
+        ]),
       ]),
       el('div', {}, [
         el('div', { class: 'fpl-tr-num-k', text: 'xP this GW' }),
@@ -193,7 +241,11 @@ function transferSide({ dir, playerId, gameState, projections, gw, horizon }) {
   ]);
 }
 
-export function transfersCard({ bundle, gameState }) {
+// `now` is the READER'S clock, not the payload's. The engine scores against
+// `gameState.fetchedAt` so a decision replays identically, but a badge saying
+// "tonight" is a statement to the person looking at the screen, and the two can
+// only disagree inside the bootstrap cache window.
+export function transfersCard({ bundle, gameState, now = Date.now() }) {
   const plan = bundle.current;
   const { projections } = bundle;
   const horizon = plan.horizon;
@@ -227,9 +279,9 @@ export function transfersCard({ bundle, gameState }) {
 
   const pairs = pairUp(plan);
   const rows = pairs.map(pair => el('div', { class: 'fpl-transfer' }, [
-    transferSide({ dir: 'out', playerId: pair.out, gameState, projections, gw: plan.gw, horizon }),
+    transferSide({ dir: 'out', playerId: pair.out, gameState, projections, gw: plan.gw, horizon, now }),
     el('div', { class: 'fpl-tr-arrow', text: '→' }),
-    transferSide({ dir: 'in', playerId: pair.in, gameState, projections, gw: plan.gw, horizon }),
+    transferSide({ dir: 'in', playerId: pair.in, gameState, projections, gw: plan.gw, horizon, now }),
     el('div', { class: 'fpl-tr-gain' }, [
       el('div', {}, [
         el('div', { class: 'fpl-gain-k', text: 'Gain this gameweek' }),
@@ -729,7 +781,12 @@ export function futureCard({ bundle, gameState, sources = null, now = Date.now()
     el('div', { class: 'fpl-future' }, cols),
     el('div', { class: 'fpl-uncertain' }, [
       el('span', { text: '!' }),
-      el('span', { text: 'These are projections, not instructions. They assume the squad above, one new free transfer per gameweek, and no price changes, and each one is recomputed from real data when its own deadline comes round.' }),
+      // The old wording said "and no price changes" flatly. That is no longer
+      // true of the NEXT THREE DAYS, which is exactly as far as Fantasy Premier
+      // League's own prediction reaches, and still entirely true of everything
+      // after that. Saying both is the only accurate version, and the sentence
+      // deliberately refuses to imply a price forecast across the horizon.
+      el('span', { text: 'These are projections, not instructions. They assume the squad above and one new free transfer per gameweek. Fantasy Premier League publishes price-change predictions three days ahead, and those are shown on the transfers above and used only to separate plans that are otherwise level; beyond them, prices are assumed unchanged for the rest of the horizon. Each gameweek is recomputed from real data when its own deadline comes round.' }),
     ]),
   ]);
 }
