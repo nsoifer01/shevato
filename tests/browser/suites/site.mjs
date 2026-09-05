@@ -496,8 +496,12 @@ export async function run({ base, cdpPort }) {
   // assignment to a name declared nowhere; main.js is 'use strict', so every
   // single toggle threw "wasOpen is not defined" out of the MutationObserver
   // callback. It reached 4 external mobile users on 3 continents and was 100%
-  // of GA4 `app_error` for the 2026-08-22..09-04 fortnight while this suite
-  // stayed green, because nothing here had ever looked at s.errors.
+  // of GA4 `app_error` for the 2026-08-22..09-04 fortnight.
+  //
+  // The per-page "no JS errors" check near the top of this suite could never
+  // have caught it: it runs immediately after goto(), and goto() CLEARS
+  // s.errors, so it only ever sees load-time errors. An exception thrown by an
+  // INTERACTION needs its own assertion after that interaction.
   const menuErrs = cleanErrors(s);
   t('mobile: menu open/close throws no JS error', menuErrs.length === 0,
     menuErrs.slice(0, 2).join(' | '));

@@ -281,12 +281,18 @@ is exactly why it survived. It was caught only by GA4: 26 `app_error` events,
 
 Two lessons worth keeping:
 
-- **Every suite that toggles the menu must also assert `cleanErrors(s)`.**
-  `apps.mjs` and `pwa-gym.mjs` had "no JS errors" checks, but neither drives
-  the hamburger, and `site.mjs` - which does - never looked at `s.errors`. The
-  harness had been collecting the exception all along with nobody reading it.
-  `site.mjs` now ends its scroll-lock block with "mobile: menu open/close
-  throws no JS error".
+- **A load-time error check cannot catch an interaction-time error.**
+  `site.mjs` already asserted `${p}: no JS errors` for all 8 root pages, so on
+  paper the menu page was covered. But that check runs immediately after
+  `goto()`, and `goto()` CLEARS `s.errors`; it can only ever see errors thrown
+  during load. The menu toggle happens 400 lines later and its exception was
+  never re-read. Assert `cleanErrors(s)` AFTER each interaction that runs app
+  code, not only after navigation. `site.mjs` now ends its scroll-lock block
+  with "mobile: menu open/close throws no JS error".
+- **The suites split the coverage exactly wrong.** `a11y.mjs` toggles the menu
+  13 times and checks errors 0 times; `apps.mjs` and `pwa-gym.mjs` check errors
+  12 times between them and never touch the hamburger. Two halves of the same
+  test, in different files, that never met.
 - **A dead store in strict mode is not dead code, it is a crash.** Add this to
   the dead-code traps below: an assignment whose value is never read still
   throws if the binding does not exist, so "nothing reads `wasOpen`" was true
