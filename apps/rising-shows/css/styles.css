@@ -5498,10 +5498,16 @@ a.provider-tag-link:focus-visible {
 .finder-moods {
   margin-top: 0.15rem;
   /* Reserve the strip's rendered height. The mood presets are built from
-     data.json after it loads, so the section grew 44 px -> 112 px at ~3 s and
-     pushed the filters and the whole result grid down the page: the second
-     largest layout shift on this app (0.097 of a 0.932 CLS). */
-  min-height: 6.5rem;
+     data.json after it loads, so the section grows from its empty height to
+     112 px and pushes the filters and the whole result grid down the page.
+
+     In PIXELS, not rem, and that is the point: this was `6.5rem` and did
+     nothing, because the root font-size on this page is 14.667 px rather than
+     16 px, so 6.5rem computed to 95.3 px - under the 95 px the section already
+     occupied empty. Measured on production: 95 px with 0 chips, 112 px with 6.
+     A reservation matching a specific rendered block belongs in the unit the
+     measurement was taken in. */
+  min-height: 112px;
 }
 
 /* Reserve roughly one row of result cards so the grid does not appear out of

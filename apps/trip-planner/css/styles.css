@@ -212,7 +212,13 @@
   }
 
   /* ---------- summary ---------- */
-  .summary { display: flex; gap: 10px; flex-wrap: wrap; margin: 4px 0 16px; }
+  /* min-height reserves the three summary chips. They are rendered by JS at
+     roughly 430 ms, growing this from 0 to 62 px and pushing the toolbar and
+     everything below it down 61 px: measured on production as the whole of
+     this page's 0.189 desktop CLS. The chips render even on an empty trip
+     (Confirmed / Items / Issues), so the space is never reserved for nothing.
+     62 px is the measured height at 768 px and above. */
+  .summary { display: flex; gap: 10px; flex-wrap: wrap; margin: 4px 0 16px; min-height: 62px; }
   .chip {
     background: var(--bg-card); border: 1px solid var(--border-soft); border-radius: 12px;
     padding: 9px 14px; min-width: 118px;
@@ -3091,6 +3097,9 @@
     .tp-trip-empty .toolbar .tb-sep { display: none; }
 
     .summary {
+      /* 64 px here, not 62: the horizontal scroller adds 4 px of bottom
+         padding, and this rule's own margin differs from the base one. */
+      min-height: 64px;
       display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto;
       margin: 4px -14px 12px; padding: 0 14px 4px;
       scroll-snap-type: x proximity; scrollbar-width: thin;
