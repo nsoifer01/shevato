@@ -1240,7 +1240,6 @@
           $menuToggle.trigger('focus');
         }
       }
-      wasOpen = isVisible;
     };
 
     // Trap Tab / Shift+Tab inside the open panel, wrapping at both ends.

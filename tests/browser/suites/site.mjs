@@ -490,6 +490,22 @@ export async function run({ base, cdpPort }) {
   t('mobile: closing the menu restores the scroll position', !yAfter.open && yAfter.y === yBefore,
     `before=${yBefore} ${JSON.stringify(yAfter)}`);
 
+  // The open/close cycle above is the only thing in the suite that drives
+  // handleMenuVisibility(), so it is the only place a bug inside it can
+  // surface. `wasOpen = isVisible` survived the rename to `menuOpen` as an
+  // assignment to a name declared nowhere; main.js is 'use strict', so every
+  // single toggle threw "wasOpen is not defined" out of the MutationObserver
+  // callback. It reached 4 external mobile users on 3 continents and was 100%
+  // of GA4 `app_error` for the 2026-08-22..09-04 fortnight.
+  //
+  // The per-page "no JS errors" check near the top of this suite could never
+  // have caught it: it runs immediately after goto(), and goto() CLEARS
+  // s.errors, so it only ever sees load-time errors. An exception thrown by an
+  // INTERACTION needs its own assertion after that interaction.
+  const menuErrs = cleanErrors(s);
+  t('mobile: menu open/close throws no JS error', menuErrs.length === 0,
+    menuErrs.slice(0, 2).join(' | '));
+
   // --- shared sync banner (app pages) ---------------------------------------
   // assets/js/sync-status.js shows #sync-banner while offline. It must not
   // cover the header controls (defect D12: z-index 10100 over the fixed

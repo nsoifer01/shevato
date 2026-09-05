@@ -112,7 +112,9 @@ const EXPECTED_CHECKS = {
   // Open Graph tags always were), so the default-language check was rewritten
   // and a second one added for switching AWAY from the default, which is now
   // the direction that has to unwind the RTL layout. +1.
-  'tests/browser/suites/site.mjs': 172,
+  // 172 before 2026-09-05; +1 for the mobile menu open/close JS-error check
+  // added with the `wasOpen` fix.
+  'tests/browser/suites/site.mjs': 173,
   // 103 from master, plus the two Rising Shows highlight-badge checks added
   // in this branch.
   'tests/browser/suites/apps.mjs': 105,
