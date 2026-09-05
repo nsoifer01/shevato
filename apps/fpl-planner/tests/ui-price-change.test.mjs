@@ -25,14 +25,27 @@ const { buildSquadState } = await import('../js/engine/squad.js');
 const { buildPlan } = await import('../js/engine/planner.js');
 const { transfersCard } = await import('../js/ui/dashboard.js');
 const { drawerBodyForTest } = await import('../js/ui/player-drawer.js');
+const { readPriceChange } = await import('../js/engine/price-change.js');
 
 const APP = join(dirname(fileURLToPath(import.meta.url)), '..');
 const sample = (name) => JSON.parse(readFileSync(join(APP, 'data', 'sample', `${name}.json`), 'utf8'));
 const names = ['meta', 'bootstrap', 'fixtures', 'entry', 'entry-history', 'entry-transfers', 'entry-picks'];
 const files = assembleSampleBundle(Object.fromEntries(names.map(n => [n, sample(n)])));
 
-const baseState = buildGameState(files.bootstrap, files.fixtures, { fetchedAt: files.fetchedAt });
+const sampleState = buildGameState(files.bootstrap, files.fixtures, { fetchedAt: files.fetchedAt });
 const gw = files.planEvent;
+
+// The sample dataset SHIPS price-change data so ?demo=1 demonstrates the
+// feature. These tests are about what the card renders for ONE painted signal,
+// so they start from a stripped world and add exactly what each case needs.
+// Without this, every card would already be covered in demo chips and no
+// assertion about absence would mean anything.
+function stripPrices(state) {
+  const players = new Map();
+  for (const [id, p] of state.players) players.set(id, { ...p, priceChange: null });
+  return { ...state, players, rules: { ...state.rules, priceChangeDeadlines: [] } };
+}
+const baseState = stripPrices(sampleState);
 const squadState = buildSquadState({
   entry: files.entry, history: files.history, transfers: files.transfers,
   picks: files.picks, gameState: baseState, gw,
@@ -268,6 +281,39 @@ test('the drawer hides the whole section when the API gives nothing', () => {
   }));
   assert.doesNotMatch(text, /Price change/);
   assert.doesNotMatch(text, /Current progress/);
+});
+
+/* ------------------------------------------------------- the demo dataset */
+
+test('the shipped sample data carries price predictions, so ?demo=1 shows the feature', () => {
+  // SPEC: the demo is the only way to see this app in-season without a team id.
+  // Shipping the feature with a sample payload that predates the fields would
+  // make it invisible to every visitor who is not mid-season with an FPL team.
+  const withData = [...sampleState.players.values()].filter(p => p.priceChange);
+  assert.equal(withData.length, sampleState.players.size, 'every sample player carries a prediction');
+  assert.equal(sampleState.rules.priceChangeDeadlines.length, 3, 'and the three official windows');
+});
+
+test('the sample data exercises every state the UI can render', () => {
+  // A demo that only ever shows "rise tonight" would leave the locked and
+  // calibrating paths unseen until they appeared in production.
+  const models = [...sampleState.players.values()]
+    .map(p => readPriceChange(p, {
+      now: Date.parse('2026-11-27T21:00:00Z'),
+      deadlines: sampleState.rules.priceChangeDeadlines,
+    }));
+  const seen = new Set(models.filter(m => m.displayable).map(m => {
+    if (m.direction === 'none') return 'locked';
+    if (m.calibrating) return 'calibrating';
+    return `${m.direction}-${m.timing}`;
+  }));
+  for (const state of ['rise-tonight', 'fall-tonight', 'rise-tomorrow', 'locked', 'calibrating']) {
+    assert.ok(seen.has(state), `sample data must produce a ${state} player; saw ${[...seen].join(', ')}`);
+  }
+  // And most players must stay quiet, or the demo teaches the wrong lesson
+  // about how often prices actually move.
+  const quiet = models.filter(m => !m.displayable).length;
+  assert.ok(quiet / models.length > 0.4, `only ${quiet}/${models.length} players are quiet`);
 });
 
 /* --------------------------------------------------------------- the copy */

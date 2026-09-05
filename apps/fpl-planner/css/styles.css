@@ -998,11 +998,16 @@ body.fpl-page {
 }
 .fpl-planner-app .fpl-price-chip.is-rise { background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 30%, transparent); color: var(--green); }
 .fpl-planner-app .fpl-price-chip.is-fall { background: var(--red-soft); border-color: color-mix(in srgb, var(--red) 30%, transparent); color: var(--red); }
+/* --text-dim, not --text-faint. These two chips are the quiet states, so faint
+   was the instinct, but at 9px they are normal-sized text under WCAG and
+   --text-faint measures 3.94:1 on this background against the 4.5 required.
+   --text-dim is 5.57:1. Caught by the axe run once the demo data started
+   exercising the locked state. */
 .fpl-planner-app .fpl-price-chip.is-locked,
 .fpl-planner-app .fpl-price-chip.is-calibrating {
   background: var(--gray-soft);
   border-color: var(--border-strong);
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 /* Urgent = waiting costs money. Brighter border and a heavier weight, still
    inside the same chip shape so the row does not reflow. */

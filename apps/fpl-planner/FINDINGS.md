@@ -69,18 +69,31 @@ Raw test count is not evidence of correctness. Do not report it as if it were.
   Scout/Fix are paid. So adding one buys no information and costs a dependency,
   a CORS surface and a failure mode. **Do not add one.**
 
-  **Three semantics are INFERRED, not documented,** and are marked as such in
-  `js/engine/price-change.js`: the ±100 crossing threshold, the -5..+5
-  `likelihood` scale being an ordinal confidence tier (NEVER a probability, and
-  nothing may render it as a percentage), and offsets 0/1/2 being consecutive
-  windows. If FPL ever documents these, that module is the one place to correct.
+  **THE ±100 THRESHOLD IS MEASURED, NOT GUESSED (14/14).** Two snapshots were
+  taken either side of the 23:00 UTC window on 2026-09-05 (21:30 and 23:43).
+  Applying `|projected_percent| >= 100` at offset 0 to the first snapshot
+  predicted 2 rises (Barry, Wissa) and 12 falls. Diffing `now_cost` between the
+  snapshots found **exactly those 14 moves: no misses, no false positives, no
+  extra movers.** The rule the app uses is therefore the rule FPL applies, on a
+  full cycle. Re-verify if FPL ever changes the field's scale.
 
-  **`price_change_hourly_rate` is deliberately unused.** Its implied rate
-  reconciled with the published projections for Wissa and Barry (about
-  `rate/75` percentage points per day) but not for Rodon on the same payload, so
-  its units are not understood. `normalize.js` does not carry it, precisely so
-  nothing can extrapolate from it. Re-open only with a calibration measured
-  across a full night.
+  **Two semantics remain INFERRED** and are marked as such in
+  `js/engine/price-change.js`: the -5..+5 `likelihood` scale being an ordinal
+  confidence tier (NEVER a probability, and nothing may render it as a
+  percentage), and offsets 0/1/2 being consecutive windows. If FPL documents
+  these, that module is the one place to correct.
+
+  **`price_change_hourly_rate` units, and why it is still unused.** Measured on
+  the same two snapshots (2.2 hours apart): `rate / ~2270` is percentage points
+  per hour, p25-p75 of 2123-2430 across the 32 players whose rate was large
+  enough to clear the 0.1 reporting quantum. The earlier "`rate/75` per day"
+  guess from a single payload was wrong; the measured figure is about `rate/95`
+  per day. That is a ballpark from a window that crossed a change event, so it
+  is NOT precise enough to drive anything, and it does not need to be:
+  `price_change_projections` is first-party, carries its own confidence and
+  answers the question directly, so a rate we fitted ourselves would be
+  strictly worse. `normalize.js` does not carry the field, so nothing can start.
+  This is a CLOSED decision, not a pending item.
 
 - **A price move is worth at most 0.12 points to the transfer search, by
   construction.** The tie-break adds a bounded key (`sortScore = score +

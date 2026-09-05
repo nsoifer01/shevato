@@ -28,8 +28,20 @@ const sample = (name) => JSON.parse(readFileSync(join(APP, 'data', 'sample', `${
 const names = ['meta', 'bootstrap', 'fixtures', 'entry', 'entry-history', 'entry-transfers', 'entry-picks'];
 const files = assembleSampleBundle(Object.fromEntries(names.map(n => [n, sample(n)])));
 
-const baseState = buildGameState(files.bootstrap, files.fixtures, { fetchedAt: files.fetchedAt });
+const sampleState = buildGameState(files.bootstrap, files.fixtures, { fetchedAt: files.fetchedAt });
 const gw = files.planEvent;
+
+// The sample dataset SHIPS price-change data (so ?demo=1 demonstrates the
+// feature), so "no price data" has to be constructed rather than assumed. Every
+// test below starts from this stripped world and paints on exactly the signals
+// it is about, which keeps each test's price landscape explicit instead of
+// inheriting whatever the demo happens to carry.
+function stripPrices(state) {
+  const players = new Map();
+  for (const [id, p] of state.players) players.set(id, { ...p, priceChange: null });
+  return { ...state, players, rules: { ...state.rules, priceChangeDeadlines: [] } };
+}
+const baseState = stripPrices(sampleState);
 const squadState = buildSquadState({
   entry: files.entry, history: files.history, transfers: files.transfers,
   picks: files.picks, gameState: baseState, gw,

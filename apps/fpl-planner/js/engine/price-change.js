@@ -14,10 +14,14 @@
 // this, and three things below are read off the data rather than promised by
 // an API:
 //
-//   1. THE THRESHOLD. `price_change_percent` is signed progress towards a
-//      change and the values cluster around +-100 at the moment a price moves,
-//      so 100 is treated as the crossing point. It is a constant here with
-//      this comment, never a literal in a caller.
+//   1. THE THRESHOLD, and this one is now MEASURED rather than guessed.
+//      `price_change_percent` is signed progress towards a change, and 100 is
+//      treated as the crossing point. Verified against a full change cycle on
+//      2026-09-05: the offset-0 projections read at 21:30 UTC predicted exactly
+//      2 rises and 12 falls, and comparing `now_cost` after the 23:00 window
+//      found exactly those 14 moves, with no misses and no false positives
+//      (14/14). It is a constant here with this comment, never a literal in a
+//      caller.
 //   2. THE LIKELIHOOD SCALE. `likelihood` is an integer in -5..+5 whose sign
 //      tracks the direction. It is a CONFIDENCE TIER, not a probability, and
 //      nothing in this module or above it may render it as a percentage. The
@@ -28,10 +32,14 @@
 //      time of day.
 //
 // WHAT IS DELIBERATELY NOT USED. `price_change_hourly_rate` is carried by the
-// payload but its units do not reconcile with the published projections: on
-// 2026-09-05 the implied rate fitted some players and not others. The
-// projections are first-party and already answer the question, so nothing here
-// extrapolates from the hourly rate, and normalize.js does not even carry it.
+// payload and its units were measured on 2026-09-05 across a 2.2 hour window:
+// dividing it by roughly 2270 gives percentage points per hour (p25-p75 of
+// 2123-2430 over the 32 players whose rate was large enough to clear the 0.1
+// reporting quantum). That is only a ballpark, the window crossed a change
+// event, and NOTHING here uses it: `price_change_projections` is first-party,
+// carries its own confidence, and answers the question directly, so
+// extrapolating from a rate we fitted ourselves would be strictly worse.
+// normalize.js does not carry the field at all, so nothing can start.
 //
 // THE HORIZON IS THREE DAYS, NOT FIVE GAMEWEEKS. FPL projects offsets 0, 1 and
 // 2 and no further. Nothing in this module invents a price beyond them.

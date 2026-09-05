@@ -47,23 +47,33 @@ nothing else knows the arithmetic. It produces a display model with a direction,
 the earliest window that crosses, a confidence tier, and the lock and
 calibrating states.
 
-**Three things in it are inferred rather than documented**, and are marked as
-such in the code:
+**The ±100 threshold is measured, not assumed.** Two snapshots either side of
+the 23:00 UTC window on 2026-09-05 showed that applying `|projected_percent| >=
+100` at offset 0 predicted exactly the 2 rises and 12 falls that then happened:
+**14 out of 14, no misses and no false positives.** It is a named constant,
+never a literal in a caller.
 
-1. **The ±100 threshold.** `price_change_percent` is progress towards a change
-   and the values cluster around ±100 as prices move, so 100 is treated as the
-   crossing point. It is a named constant, never a literal in a caller.
-2. **The likelihood scale.** `likelihood` is an integer in -5..+5 whose sign
+**Two things are still inferred rather than documented**, and are marked as such
+in the code:
+
+1. **The likelihood scale.** `likelihood` is an integer in -5..+5 whose sign
    tracks direction. It is treated as an ordinal CONFIDENCE TIER (strong /
    moderate / slight) and is never rendered as a probability, because FPL never
    published one.
-3. **The offset calendar.** Offsets 0/1/2 are consecutive change windows, and
+2. **The offset calendar.** Offsets 0/1/2 are consecutive change windows, and
    which wall-clock moment each is comes from `price_change_deadlines`.
 
-**`price_change_hourly_rate` is deliberately unused.** It is in the payload, but
-on 2026-09-05 the rate it implies reconciled with the published projections for
-some players and not others, so nothing extrapolates from it and `normalize.js`
-does not even carry it.
+**`price_change_hourly_rate` is deliberately unused.** Its units were measured
+on the same two snapshots (`rate / ~2270` is percentage points per hour), but
+that is a ballpark from a window crossing a change event, and it is not needed:
+`price_change_projections` is first-party, carries its own confidence and
+answers the question directly. Nothing extrapolates from the rate and
+`normalize.js` does not carry it. This is a closed decision.
+
+**The demo shows it.** `data/sample/bootstrap.json` carries the fields, so
+`?demo=1` demonstrates the feature rather than hiding it. The states are spread
+deterministically by player id (`id % 30`), leaving about 79% of the sample
+quiet, which keeps the demo honest about how rarely prices actually move.
 
 **Where it shows.** A compact chip under the price on each transfer side, and a
 "Price change" section in the player drawer. The chip appears only when a
