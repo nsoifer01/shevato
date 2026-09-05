@@ -405,7 +405,21 @@ Partials at deploy: `scripts/inline-partials.mjs` (inside `build:site`) replaces
 
 Sitemaps: `sitemap.xml` is an index of three sub-sitemaps; hand-listed pages live in `sitemap-pages.xml`, whose `lastmod` values `scripts/stamp-sitemap-index.mjs` refreshes from git history at deploy (skipped in shallow clones). The generated show and exercise sitemaps carry no `lastmod` (the only date available is the build time, which is not a content date), so their index entries carry none either. Never hand-edit a `lastmod`.
 
-Search engines: `https://shevato.com/sitemap.xml` is the ONE URL submitted to Google Search Console (property `shevato.com`, verified twice over: the `google-site-verification` meta on `/` and `/home`, and the `google10670283c9d04acd.html` file, which `netlify.toml` deliberately exempts from the `.html` -> extensionless redirect because Search Console fetches that exact path). Submitting the index covers all three sub-sitemaps; there is nothing to re-submit when a sub-sitemap changes. After a structural change (a new app, a redirect, a canonical move) use URL Inspection on one affected page and request indexing for it - do not re-submit the sitemap, which does not speed anything up. Bing Webmaster Tools imports the verified Search Console property in one click, and the `<key>.txt` file at the repo root is the IndexNow key (the key IS the filename and the file's only content; it is public by design, because hosting it is what proves control of the domain). `node scripts/indexnow-submit.mjs <urls...>` announces changed URLs to Bing and the other IndexNow participants; run it by hand after something worth announcing. It is deliberately not wired into `build:site`, which runs on every deploy including the daily Rising Shows refresh - re-submitting the same two thousand URLs every day is what IndexNow asks callers not to do. Google does not participate in IndexNow.
+Search engines: there are THREE Search Console properties, all owned by the same account: `https://shevato.com/` (URL-prefix), `https://www.shevato.com/` (URL-prefix) and `sc-domain:shevato.com` (domain). The canonical one is `https://shevato.com/`, verified twice over by the `google-site-verification` meta on `/` and `/home` and by `google10670283c9d04acd.html`, which `netlify.toml` deliberately exempts from the `.html` -> extensionless redirect because Search Console fetches that exact path.
+
+`https://shevato.com/sitemap.xml` is submitted to the canonical property and to the domain property (2026-09-05). Submitting the index covers all three sub-sitemaps. Check the state with the API rather than assuming it:
+
+```
+TOKEN=$(gcloud auth application-default print-access-token)
+curl -H "Authorization: Bearer $TOKEN" -H 'x-goog-user-project: shevato-site' \
+  'https://searchconsole.googleapis.com/webmasters/v3/sites/https%3A%2F%2Fshevato.com%2F/sitemaps'
+```
+
+That needs `gcloud auth application-default login --scopes=https://www.googleapis.com/auth/webmasters,https://www.googleapis.com/auth/cloud-platform` once, and the Search Console API enabled on the `shevato-site` project.
+
+A stale entry for `https://www.shevato.com/sitemap.xml` (submitted 2026-08-05, reporting 34,494 URLs from before the sitemap curation) still sits on the domain property. It points at the `www` host, which 301s to the apex. Harmless, but it is not the one to read when checking status.
+
+Requesting indexing for a specific URL is UI-only. The Search Console API has no method for it (`urlInspection.index.inspect` is read-only), and the separate Indexing API is documented as `JobPosting` / `BroadcastEvent` only, so it does nothing for these pages. Use URL Inspection in the UI after a structural change.
 
 The one rule that has actually bitten: **never `Disallow` a path the pages themselves load.** Google's renderer obeys robots.txt for subresources, so a `Disallow` on something a page fetches deletes that content from the DOM Google indexes rather than merely hiding a file. `/partials/`, `/sync-system/`, `/firebase-config.js` and four dual-exposed Rising Shows scripts were all blocked that way until 2026-09-04, which cost every page its header and footer navigation in the index. `tests/static/robots-references.test.mjs` now fails on any recurrence.
 
