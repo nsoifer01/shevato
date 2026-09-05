@@ -605,6 +605,23 @@ export async function run({ base, cdpPort }) {
     void t0;
   });
 
+  // Switching the display currency flips the symbol IMMEDIATELY but converts
+  // only once the rate fetch lands, so the budget chip passes through
+  // "€0.00 of $6,000.00-$8,000.00 + 1 not converted": euros in the spent half,
+  // dollars still in the ceiling. Waiting for any '€' in #summary let the
+  // ceiling assertion run inside that window, which is how this suite flaked
+  // in CI on 2026-09-04 (shard 3, "the ceiling is CONVERTED, not relabelled").
+  // Wait for the state actually under test instead: the CEILING reading in the
+  // new currency, with nothing left unconverted. waitForExpr returns false on
+  // timeout rather than throwing, so a conversion that never lands still fails
+  // on the assertion below with the real chip text attached.
+  const BUDGET_CONVERTED = `(() => {
+    const c = [...document.querySelectorAll('#summary .chip')].find(x => /BUDGET/i.test(x.innerText));
+    if (!c) return false;
+    const txt = c.innerText.replace(/\\n/g, ' ');
+    return /of\\s+€/.test(txt) && !/not converted/i.test(txt);
+  })()`;
+
   /* ===== DM-03: the budget keeps its meaning across a currency switch ===== */
   freshIds();
   const budgetTrip = trip({
@@ -633,7 +650,7 @@ export async function run({ base, cdpPort }) {
 
     // the reported repro: switch the display currency in the totals footer
     await evaluate(s, `(()=>{const sel=document.getElementById('currencySel'); sel.value='EUR'; sel.dispatchEvent(new Event('change',{bubbles:true})); return 1})()`);
-    await waitForExpr(s, `document.getElementById('summary').innerText.includes('€')`);
+    await waitForExpr(s, BUDGET_CONVERTED);
     const eur = await chipOf();
     await t('tp-audit DM-03: the ceiling is CONVERTED, not relabelled',
       /€5,400\.00-€7,200\.00/.test(eur), eur, s);
@@ -649,7 +666,7 @@ export async function run({ base, cdpPort }) {
 
     // the trip dialog shows the budget in the currency its prefix names
     await evaluate(s, `(()=>{const sel=document.getElementById('currencySel'); sel.value='EUR'; sel.dispatchEvent(new Event('change',{bubbles:true})); return 1})()`);
-    await waitForExpr(s, `document.getElementById('summary').innerText.includes('€')`);
+    await waitForExpr(s, BUDGET_CONVERTED);
     await menuAct(s, 'rename-trip', 600);
     await t('tp-audit DM-03: the dialog opens on the converted figures',
       await evaluate(s, `document.getElementById('inTripBudgetTo').value === '7200' && document.getElementById('inTripBudgetFrom').value === '5400'`),
