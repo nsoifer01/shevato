@@ -4,6 +4,7 @@
   "type": "commonjs",
   "scripts": {
     "test": "node --test apps/gym-tracker/tests/ apps/football-h2h/tests/ apps/fpl-planner/tests/ apps/rising-shows/tests/ apps/mario-kart/tests/ apps/arena/tests/ apps/maptap-rivals/tests/ apps/trip-planner/tests/ netlify/functions/tests/ sync-system/tests/ assets/js/tests/ tests/static/",
+    "lint": "eslint .",
     "test:browser": "node --experimental-websocket tests/browser/run.mjs",
     "test:coverage": "node tests/coverage/run.mjs",
     "test:cross-browser": "node --test tests/cross-browser/",
@@ -44,6 +45,8 @@
     "@netlify/blobs": "^10.7.13"
   },
   "devDependencies": {
+    "eslint": "^10.10.0",
+    "globals": "^17.12.0",
     "playwright": "1.62.1"
   }
 }

@@ -1145,12 +1145,6 @@ function updatePlayerIconDisplays() {
 
     // Re-render sort indicators since the header rebuild above replaced the spans
     updateSortIndicators();
-
-    // Update player management modal if it's open
-    const playerModal = document.getElementById('playerManagementModal');
-    if (playerModal && playerModal.classList.contains('active')) {
-        updatePlayerModalContent();
-    }
 }
 
 

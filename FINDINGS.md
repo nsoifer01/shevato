@@ -297,6 +297,38 @@ Two lessons worth keeping:
   the dead-code traps below: an assignment whose value is never read still
   throws if the binding does not exist, so "nothing reads `wasOpen`" was true
   and still not safe to ignore.
+- **The class is now caught statically.** `npm run lint` (ESLint, `no-undef`
+  only, ~8s) fails on any undeclared identifier and would have failed the merge
+  that introduced this. It found three more on its first run: the `$a`/`b`
+  leak in `util.js` below, a call to a nonexistent
+  `updatePlayerModalContent()` in football-h2h, and two dead `typeof` branches
+  in mario-kart. Cross-file globals in the classic multi-script apps are
+  declared in `eslint.config.mjs`; add to that list when you add a real one.
+
+## `var a = 1; b = 2` silently creates a global
+
+`assets/js/util.js` `navList()` opened with
+
+```js
+var $this = $(this);      // <- semicolon, not comma
+    $a = $this.find('a'),
+    b = [];
+```
+
+so the `var` statement ended at the first line and `$a` and `b` were
+assignments to undeclared names. `util.js` has no `'use strict'`, so rather
+than throwing they would become `window.$a` and `window.b` on every call.
+
+It never actually fired: `navList` is defined here and called nowhere in the
+repo (it is an unused plugin from the original template), so the leak was
+latent, not live. Fixed 2026-09-05 by restoring the comma, and now caught by
+`no-undef`.
+
+Worth keeping for the contrast with the `wasOpen` bug above: the identical
+mistake, an assignment to an undeclared name, throws loudly in a strict file
+and silently pollutes `window` in a sloppy one. Sloppy mode hides this class
+entirely, which is exactly why a static check earns its place over relying on
+runtime error telemetry.
 
 ## axe: landmark-unique and heading-order are failures now, not info
 

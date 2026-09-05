@@ -674,3 +674,63 @@ Also fixed in the same round: the mario-kart two-tab e2e block waited a flat
 the last 30 push runs on unchanged code and read as a real regression. It now
 waits on the condition with `waitForExpr`.
 
+
+## Addendum, 2026-09-05: a static layer, added because a real bug escaped
+
+`ReferenceError: wasOpen is not defined` shipped to production on 2026-08-23
+and threw on every mobile menu open and every close for 12 days. It was a dead
+store to an undeclared binding, left behind when a merge combined two branches
+that had independently edited the same function: one used `wasOpen`, the other
+renamed the state to `menuOpen`. Neither parent was broken. Only the merged
+result was, and there was no textual conflict to review.
+
+Every layer described above missed it, and each for a defensible reason:
+
+- `npm test` never opens a browser, so it structurally cannot see a runtime
+  error in browser JS.
+- `site.mjs` DOES assert `${p}: no JS errors`, but that check runs immediately
+  after `goto()`, and `goto()` clears `s.errors`. It can only ever observe
+  load-time errors. The menu toggle happens 400 lines later.
+- `a11y.mjs` toggles the menu 13 times and checks errors 0 times. `apps.mjs`
+  and `pwa-gym.mjs` check errors 12 times between them and never touch the
+  hamburger. The two halves of the test lived in different files.
+- The throw is behaviourally invisible: it is the last statement in its
+  function and fires inside a MutationObserver callback, so it never reaches
+  the click handler. Scroll lock, focus and aria all still worked, and every
+  existing assertion passed correctly.
+- It cannot reproduce above 736px, where the toggle is `display: none`.
+
+**Added: a static layer.** ESLint with `no-undef` as the only enabled rule,
+`npm run lint`, and a per-PR `lint` workflow. It runs in about 8 seconds over
+~560 files and would have failed the merge that introduced the bug.
+
+Measured baseline before tuning: 570 violations across 25 files, of which 520
+were cross-file globals in the two classic multi-script apps (mario-kart,
+football-h2h, which share state across 10+ `<script>` tags), 17 were CDN and
+vendored libraries, and 6 were AMD `define` inside vendored minified bundles.
+Those are declared or ignored in `eslint.config.mjs`, which is bookkeeping
+rather than suppression: each name really is defined, just not somewhere
+`no-undef` can see.
+
+The remainder was real and is fixed in the same change:
+
+- `assets/js/util.js` `navList()` ended its first `var` declarator with a
+  semicolon instead of a comma, so `$a` and `b` were never declared. The file
+  is not strict, so they would leak to `window` rather than throw. Latent
+  rather than live: `navList` is called nowhere in the repo. Same family as
+  `wasOpen` (a punctuation slip creating undeclared bindings) and a good
+  illustration of why the static check matters, since sloppy mode would never
+  have reported this at runtime.
+- `apps/football-h2h/js/football-h2h.js` called `updatePlayerModalContent()`,
+  which is defined nowhere, guarded by an element id (`playerManagementModal`)
+  that appears nowhere in the repository. Dead on both counts.
+- `apps/mario-kart/js/main.js` carried two `typeof X === 'function'` branches
+  for `updateDateButtonText` and `loadPlayerNames`, neither of which exists.
+
+**Deliberately not adopted:** style rules, Prettier, or `eslint:recommended`
+wholesale. `no-unused-vars`, `no-redeclare`, `no-dupe-keys` and
+`no-unreachable` are the reasonable next candidates, but each has its own noise
+profile against classic scripts and should be measured the way `no-undef` was
+before being enabled. The `eslint-disable` comments already in the codebase
+refer to those unenabled rules, which is why `reportUnusedDisableDirectives` is
+off.

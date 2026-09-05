@@ -71,10 +71,22 @@ REJECT, whichever way it goes.
 - Dark theme only, never add a light theme or toggle. LF line endings, never
   CRLF. No asset build step at the root (`npm run build:site` only generates
   data-driven pages and stamps sitemaps at deploy), and effectively no npm dependencies: code
-  must run unchanged in a browser and under `node --test`. The two standing
+  must run unchanged in a browser and under `node --test`. The three standing
   exceptions are `@netlify/blobs` (declared at the root so the Netlify
-  functions bundle; never used by browser code) and the dev-only Playwright
-  (used solely by `tests/cross-browser/`; main CI never runs npm install).
+  functions bundle; never used by browser code), the dev-only Playwright
+  (used solely by `tests/cross-browser/`) and the dev-only ESLint (used solely
+  by `npm run lint`). None is ever imported by app or test code. Only the
+  `lint` and `cross-browser` workflows run npm install; the push/PR TEST
+  workflows stay dependency-free.
+- **`npm run lint` is a correctness gate, not a style one.** `no-undef` is the
+  only rule enabled, and it is there because a dead store to an undeclared
+  binding (`wasOpen`) shipped to production and threw on every mobile menu
+  toggle for 12 days while the whole test estate stayed green. Do NOT add
+  Prettier, a style preset, or `eslint:recommended` wholesale. Adding any rule
+  means measuring its noise against this codebase first. When a genuinely
+  cross-file global is added to mario-kart or football-h2h (classic
+  multi-script apps), declare it in `eslint.config.mjs`; that is bookkeeping,
+  not suppression.
 - `.features/` holds each app's living test-plan pair (gitignored,
   owner-reviewed); plans are archived, never deleted.
 

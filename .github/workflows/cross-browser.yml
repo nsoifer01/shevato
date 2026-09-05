@@ -5,9 +5,10 @@ name: cross-browser smoke
 # catch engine-specific breakage in the other two engines the README promises
 # support for.
 #
-# It is the ONLY workflow that installs npm dependencies (Playwright is a dev
-# dependency used by tests/cross-browser/ alone). The push/PR workflows stay
-# dependency-free on purpose. Weekly rather than per-PR: the suite is a wide
+# It is one of only two workflows that install npm dependencies (Playwright is
+# a dev dependency used by tests/cross-browser/ alone); the other is lint, for
+# ESLint. The push/PR TEST workflows stay dependency-free on purpose. Weekly
+# rather than per-PR: the suite is a wide
 # shallow smoke over hand-written vanilla JS, where engine regressions arrive
 # with browser releases, not with individual commits.
 on:
