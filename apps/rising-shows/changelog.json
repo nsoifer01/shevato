@@ -1,6 +1,177 @@
 {
   "updates": [
     {
+      "builtAt": "2026-09-05T10:10:19.312Z",
+      "totals": {
+        "seasons": 66619,
+        "delta": 7
+      },
+      "shapeCounts": {
+        "rebound": 10177,
+        "rising": 2591,
+        "slow-burn": 4416,
+        "big-finale": 12154,
+        "u-shaped": 3092,
+        "rollercoaster": 14149,
+        "mid-peak": 4624,
+        "saved-best-for-last": 1508,
+        "front-loaded": 3513,
+        "declining": 1879,
+        "bad-finale": 4654,
+        "consistent": 2627,
+        "shape-drift": 1577
+      },
+      "shapeDeltas": {
+        "rebound": 3,
+        "rising": -3,
+        "slow-burn": 3,
+        "big-finale": 9,
+        "u-shaped": 2,
+        "rollercoaster": 3,
+        "mid-peak": -5,
+        "saved-best-for-last": 2,
+        "front-loaded": 3,
+        "declining": -5,
+        "bad-finale": 4,
+        "shape-drift": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt13210838",
+          "title": "The Gentlemen",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31449991",
+          "title": "Chad Powers",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt44842745",
+          "title": "Welcome to the Family: The Murder of Dan Markel",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0043224",
+          "title": "The Red Skelton Hour",
+          "season": 6,
+          "seasonYear": 1956
+        },
+        {
+          "seriesId": "tt12752438",
+          "title": "Paris 2024: Games of the XXXIII Olympiad",
+          "season": 2,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt22688206",
+          "title": "Strula",
+          "season": 9,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt30022291",
+          "title": "Fredbear's Family Diner",
+          "season": 1,
+          "seasonYear": 2023
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt1570957",
+          "title": "Worst Cooks in America",
+          "season": 24,
+          "from": 7.65,
+          "to": 6.93,
+          "delta": -0.72
+        },
+        {
+          "seriesId": "tt14976292",
+          "title": "Link Click",
+          "season": 4,
+          "from": 8.7,
+          "to": 8.12,
+          "delta": -0.58
+        },
+        {
+          "seriesId": "tt33347879",
+          "title": "The Traitors",
+          "season": 2,
+          "from": 7.44,
+          "to": 6.91,
+          "delta": -0.53
+        },
+        {
+          "seriesId": "tt0156196",
+          "title": "Jesse",
+          "season": 1,
+          "from": 6.02,
+          "to": 6.41,
+          "delta": 0.39
+        },
+        {
+          "seriesId": "tt0156196",
+          "title": "Jesse",
+          "season": 2,
+          "from": 6.04,
+          "to": 6.42,
+          "delta": 0.38
+        },
+        {
+          "seriesId": "tt16359992",
+          "title": "Gutter mot verden",
+          "season": 1,
+          "from": 6.13,
+          "to": 5.8,
+          "delta": -0.33
+        },
+        {
+          "seriesId": "tt33297589",
+          "title": "Wild Valley",
+          "season": 1,
+          "from": 6.62,
+          "to": 6.29,
+          "delta": -0.33
+        },
+        {
+          "seriesId": "tt40444386",
+          "title": "Evil Lives Here: My Child the Killer",
+          "season": 1,
+          "from": 7.21,
+          "to": 6.9,
+          "delta": -0.31
+        },
+        {
+          "seriesId": "tt4859164",
+          "title": "The Loud House",
+          "season": 11,
+          "from": 8.98,
+          "to": 9.26,
+          "delta": 0.28
+        },
+        {
+          "seriesId": "tt12327578",
+          "title": "Star Trek: Strange New Worlds",
+          "season": 4,
+          "from": 6.48,
+          "to": 6.21,
+          "delta": -0.27
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 14225,
+        "avgRating": 611,
+        "shapes": 113,
+        "seriesRating": 155,
+        "episodeCount": 61,
+        "poster": 4
+      }
+    },
+    {
       "builtAt": "2026-09-04T10:30:30.570Z",
       "totals": {
         "seasons": 66612,
@@ -7415,206 +7586,6 @@
         "shapes": 225,
         "seriesRating": 281,
         "episodeCount": 101
-      }
-    },
-    {
-      "builtAt": "2026-08-01T08:27:04.324Z",
-      "totals": {
-        "seasons": 66104,
-        "delta": 12
-      },
-      "shapeCounts": {
-        "mid-peak": 4631,
-        "rebound": 10079,
-        "rising": 2917,
-        "slow-burn": 4372,
-        "big-finale": 12088,
-        "u-shaped": 3086,
-        "rollercoaster": 14049,
-        "saved-best-for-last": 1539,
-        "front-loaded": 3459,
-        "declining": 1874,
-        "bad-finale": 4644,
-        "consistent": 2633,
-        "shape-drift": 1639
-      },
-      "shapeDeltas": {
-        "mid-peak": 7,
-        "rebound": 7,
-        "slow-burn": -2,
-        "big-finale": 11,
-        "u-shaped": -6,
-        "rollercoaster": 4,
-        "saved-best-for-last": -3,
-        "front-loaded": -11,
-        "declining": 5,
-        "bad-finale": -4,
-        "consistent": -1
-      },
-      "added": [
-        {
-          "seriesId": "tt38865342",
-          "title": "Nation's Dumbest",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt4582410",
-          "title": "Open Slather",
-          "season": 1,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt0388255",
-          "title": "Melodifestivalen",
-          "season": 54,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt0379638",
-          "title": "Kid Notorious",
-          "season": 1,
-          "seasonYear": 2003
-        },
-        {
-          "seriesId": "tt1356878",
-          "title": "Hetalia: Axis Powers",
-          "season": 6,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt12107408",
-          "title": "Trailer Park Boys: Park After Dark",
-          "season": 1,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt11871764",
-          "title": "The Proud Family: Louder and Prouder",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43589481",
-          "title": "Thunder 3",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0162812",
-          "title": "Hunters Walk",
-          "season": 1,
-          "seasonYear": 1973
-        },
-        {
-          "seriesId": "tt32611453",
-          "title": "Unlock Your Love",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt37543285",
-          "title": "Solo Traveling with Tracee Ellis Ross",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43311796",
-          "title": "Are the Sexy Buttocks Not Good?",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt4791426",
-          "title": "My Love Eun Dong",
-          "season": 1,
-          "from": 9.13,
-          "to": 7.83,
-          "delta": -1.3
-        },
-        {
-          "seriesId": "tt2720144",
-          "title": "Peter Rabbit",
-          "season": 2,
-          "from": 8.85,
-          "to": 7.7,
-          "delta": -1.15
-        },
-        {
-          "seriesId": "tt2720144",
-          "title": "Peter Rabbit",
-          "season": 1,
-          "from": 8.8,
-          "to": 7.67,
-          "delta": -1.13
-        },
-        {
-          "seriesId": "tt1356878",
-          "title": "Hetalia: Axis Powers",
-          "season": 5,
-          "from": 8.6,
-          "to": 7.56,
-          "delta": -1.04
-        },
-        {
-          "seriesId": "tt32590226",
-          "title": "Laughter Chefs Unlimited Entertainment",
-          "season": 3,
-          "from": 8.12,
-          "to": 7.17,
-          "delta": -0.95
-        },
-        {
-          "seriesId": "tt0191715",
-          "title": "PB&J Otter",
-          "season": 3,
-          "from": 7.37,
-          "to": 8.2,
-          "delta": 0.83
-        },
-        {
-          "seriesId": "tt37520584",
-          "title": "Bust Up",
-          "season": 1,
-          "from": 6.67,
-          "to": 5.88,
-          "delta": -0.79
-        },
-        {
-          "seriesId": "tt0329829",
-          "title": "Fireman Sam",
-          "season": 12,
-          "from": 3.86,
-          "to": 4.58,
-          "delta": 0.72
-        },
-        {
-          "seriesId": "tt37543285",
-          "title": "Solo Traveling with Tracee Ellis Ross",
-          "season": 1,
-          "from": 5.9,
-          "to": 5.2,
-          "delta": -0.7
-        },
-        {
-          "seriesId": "tt32104971",
-          "title": "First Copy",
-          "season": 2,
-          "from": 5.17,
-          "to": 5.8,
-          "delta": 0.63
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 20062,
-        "avgRating": 1165,
-        "seriesRating": 343,
-        "shapes": 218,
-        "episodeCount": 92,
-        "poster": 2
       }
     }
   ]
