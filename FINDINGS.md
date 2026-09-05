@@ -268,6 +268,30 @@ Pinned by three "kbd mobile menu" checks and "mobile menu: no slide transition
 under prefers-reduced-motion" in `a11y.mjs`, plus two "mobile:" scroll-lock
 checks in `site.mjs`.
 
+A green suite is not the same as a quiet console (fixed 2026-09-05).
+`handleMenuVisibility` ended with `wasOpen = isVisible;`, a leftover of the
+rename to `menuOpen`; `wasOpen` was declared nowhere and `main.js` is
+`'use strict'`, so **every** menu open and every close threw
+`ReferenceError: wasOpen is not defined` out of the MutationObserver callback.
+Nothing broke visibly - it was the last statement, so the scroll lock and focus
+work above it had already run, and the throw died inside the observer - which
+is exactly why it survived. It was caught only by GA4: 26 `app_error` events,
+4 external mobile users, 3 continents, and 100% of `app_error` for the
+2026-08-22..09-04 fortnight.
+
+Two lessons worth keeping:
+
+- **Every suite that toggles the menu must also assert `cleanErrors(s)`.**
+  `apps.mjs` and `pwa-gym.mjs` had "no JS errors" checks, but neither drives
+  the hamburger, and `site.mjs` - which does - never looked at `s.errors`. The
+  harness had been collecting the exception all along with nobody reading it.
+  `site.mjs` now ends its scroll-lock block with "mobile: menu open/close
+  throws no JS error".
+- **A dead store in strict mode is not dead code, it is a crash.** Add this to
+  the dead-code traps below: an assignment whose value is never read still
+  throws if the binding does not exist, so "nothing reads `wasOpen`" was true
+  and still not safe to ignore.
+
 ## axe: landmark-unique and heading-order are failures now, not info
 
 `a11y.mjs` reports moderate violations as info, which is how two of them lived
