@@ -8,6 +8,51 @@ Site-level knowledge that belongs to no single app: the marketing pages
 lives in `apps/<app>/FINDINGS.md`; this file follows the same living-document
 rule (rewrite, merge, delete; never an append-only diary).
 
+## The index baseline, measured 2026-09-05
+
+Read from the Search Console URL Inspection API the day the SEO round shipped,
+so there is a real before-state to compare against rather than a guess:
+
+| URL | Google's verdict | Last crawled |
+| --- | --- | --- |
+| `/home` | Submitted and indexed | 2026-08-30 |
+| `/` | Page with redirect (correct, it 301s to /home) | 2026-08-16 |
+| `/apps/arena/` | Crawled, currently not indexed | 2026-07-14 |
+| `/apps/football-h2h/` | Crawled, currently not indexed | 2026-06-04 |
+| `/apps/gym-tracker/` | Crawled, currently not indexed | 2026-05-20 |
+| `/apps/maptap-rivals/` | Page with redirect | 2026-05-19 |
+| `/apps`, `/work`, `/about` | URL is unknown to Google | never |
+| `/apps/fpl-planner/`, `/apps/mario-kart/`, `/apps/rising-shows/`, `/apps/trip-planner/` | URL is unknown to Google | never |
+| `/apps/rising-shows/shows/shape/rising/` | URL is unknown to Google | never |
+
+**One page of the site was indexed.** Four app pages had never been crawled at
+all, and every URL inspected reported `sitemap: []` - covered by no sitemap
+Google knew about.
+
+The cause was two things compounding. The header and footer were the site's
+only internal link graph and robots.txt hid them (see the first section in this
+file), so Google had almost no path from one page to another. And the canonical
+`https://shevato.com/` property had **no sitemap submitted at all**: the only
+registration was `https://www.shevato.com/sitemap.xml` on the domain property,
+pointing at the `www` host that 301s to the apex, last downloaded 2026-08-05 and
+reporting 34,494 URLs from before the sitemap was curated. `/home` is indexed
+because it is where the apex redirect lands, which is the one path that did not
+depend on either.
+
+Two corrections to what this repo previously asserted, both of which were taken
+on trust rather than checked:
+
+- `sitemap.xml`'s own comment said submitting that one URL to Search Console
+  covers all three sub-sitemaps. True in principle, but nobody had submitted it
+  to the canonical property. Fixed 2026-09-05; Google downloaded it one second
+  later with zero errors.
+- "Re-submitting a sitemap does not speed anything up" is correct for an
+  already-registered sitemap and was the wrong thing to say here, because this
+  one was not registered.
+
+Check the state, do not assume it. The API commands are in the README's
+Deployment section.
+
 ## robots.txt Disallow deletes content from the index, it does not hide files
 
 Google's rendering service obeys `robots.txt` for SUBRESOURCE fetches. A
