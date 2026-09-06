@@ -142,19 +142,39 @@ test('a city nothing has geocoded still constrains by name', () => {
   assert.equal(L.placeLookupRequest(lookup).lat, undefined);
 });
 
-// ---------- 3. only a VERIFIED resolution becomes durable ----------
+// ---------- 3. what a RESOLUTION becomes, and what refuses it ----------
 
-// IDENTITY AND POSITION ARE SEPARATE CLAIMS (2026-09-05). The old rule was
-// "unverified -> persist nothing", which threw away the place ID of a
-// correctly identified venue on every destination whose locality Google
-// spells differently from the traveller - i.e. every island and beach.
-test('an unverified resolution keeps its identity and loses only its coordinate', () => {
+// IDENTITY AND POSITION ARE SEPARATE CLAIMS (2026-09-05), but they are not
+// separately EARNED (2026-09-06). The first rule was "unverified -> persist
+// nothing", which threw away the place ID of a correctly identified venue on
+// every destination whose locality Google spells differently from the
+// traveller. The second was "unverified -> persist the ID, drop the point",
+// which threw away Google's own coordinate for a place that had resolved in
+// full - and what filled the hole was a free global name search that answered
+// Ko Phi Phi with a cafe on Ko Tao, 286 km away. Discarding evidence does not
+// produce silence; it produces a guess.
+//
+// So a resolution keeps its point, and the thing that refuses a wrong branch is
+// EVIDENCE rather than the absence of it: the area gate at the read boundary,
+// which measures the point against a city anchor the app vouched for. The
+// 809 km chip is exactly as impossible as it was - the next test is the proof -
+// and it is now impossible for a checkable reason.
+test('an unverified resolution keeps its identity AND its point at the write boundary', () => {
   const entry = { status: 'ok', placeId: 'ChIJhokkaido', verified: false, lat: CHITOSE_POINT.lat, lon: CHITOSE_POINT.lon };
   const rec = L.placeRecordFrom(entry, { city: 'Tokyo' }, NOW);
   assert.equal(rec.id, 'ChIJhokkaido', 'a place ID cannot be off by 809 km: it is an identity, not a position');
   assert.equal(rec.verified, undefined, 'and it is not marked verified, because it was not');
-  assert.equal(rec.lat, undefined, 'the coordinate is the thing that can lie, so it does not travel');
-  assert.equal(rec.lon, undefined);
+  assert.equal(rec.lat, CHITOSE_POINT.lat, 'the point Google gave for the entity that resolved');
+});
+
+test('THE 809 KM CHIP: a vouched-for anchor still refuses the wrong branch on read', () => {
+  const entry = { status: 'ok', placeId: 'ChIJhokkaido', verified: false, lat: CHITOSE_POINT.lat, lon: CHITOSE_POINT.lon };
+  const saved = L.placeRecordFrom(entry, { city: 'Tokyo' }, NOW);
+  // Tokyo geocodes `confident`, so the app HAS evidence about where this row is
+  const read = L.normalizePlaceRecord(saved, { now: NOW, cityPoint: TOKYO_POINT });
+  assert.equal(read.id, 'ChIJhokkaido', 'the identity survives: a fresh lookup can still re-verify it');
+  assert.equal(read.lat, undefined, 'the Hokkaido point does not, and no chip is ever drawn from it');
+  assert.equal(read.lon, undefined);
 });
 
 test('a resolution with no place ID at all is still nothing', () => {

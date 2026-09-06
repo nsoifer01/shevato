@@ -552,7 +552,7 @@ export async function run({ base, cdpPort }) {
     for (const [q, v] of Object.entries(venues)) venue[TripLogic.placeCacheKey(q, { city: 'Tokyo' })] = { lat: v[0], lon: v[1], at: now };
     return {
       'trip-planner:geo:v3': { tokyo: { lat: 35.6762, lon: 139.6503, country: 'Japan', conf: 'confident' } },
-      'trip-planner:venuegeo:v1': venue,
+      'trip-planner:venuegeo:v2': venue,
     };
   };
   const sDay = iso(40);

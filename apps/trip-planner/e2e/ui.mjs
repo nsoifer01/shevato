@@ -537,7 +537,7 @@ export async function run({ base, cdpPort }) {
       // fixture has to ask the same way the app does: the item's own city is
       // part of the identity (see placeLookupFor).
       const key = TripLogic.placeCacheKey(TripLogic.itemMapsQuery(it), { city: (it.location || '').trim() });
-      const rec = (JSON.parse(localStorage.getItem('trip-planner:venuegeo:v1')||'{}'))[key] || null;
+      const rec = (JSON.parse(localStorage.getItem('trip-planner:venuegeo:v2')||'{}'))[key] || null;
       return { key, rec, place: it.location, date: it.startDate };
     })()`);
     await t('tp-ui V: a picked venue seeds its own coordinates for the saved item',
@@ -562,7 +562,7 @@ export async function run({ base, cdpPort }) {
       const it = db.trips[0].items.find(x => x.title === 'Somewhere else entirely');
       if (!it) return { missing: true };
       const key = TripLogic.placeCacheKey(TripLogic.itemMapsQuery(it), { city: (it.location || '').trim() });
-      return { key, rec: (JSON.parse(localStorage.getItem('trip-planner:venuegeo:v1')||'{}'))[key] || null };
+      return { key, rec: (JSON.parse(localStorage.getItem('trip-planner:venuegeo:v2')||'{}'))[key] || null };
     })()`);
     await t('tp-ui V: retyping the title drops the picked coordinates rather than moving them',
       !notStamped.missing && notStamped.rec === null, JSON.stringify(notStamped), s);

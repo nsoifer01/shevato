@@ -1,0 +1,341 @@
+// Trip Planner E2E: THE 344 KM DAY (owner report, 2026-09-06).
+//
+// Jan 27 2027, Ko Phi Phi. ChaoKoh Hotel Phi Phi Island -> The Mango Garden is
+// a 258 m walk. The app printed "~344 km" on the row, "🚕 344 km" in the day
+// footer, and plotted the two pins on opposite sides of the Gulf of Thailand -
+// beside a Google Maps link that opened the correct restaurant.
+//
+// The nearest existing block (assistant-identity A) is the same island and
+// still passes, because it seeds the hotel into the geocode cache as a
+// confident doorstep. That is the ONE thing the owner's session did not have:
+// they typed the hotel rather than picking it from the picker, so nothing on
+// the day had a trustworthy coordinate and every rung of the ladder fell
+// through to a guess. This suite removes that seed, which is the whole repro.
+//
+// The two impostor coordinates below are LIVE captures from 2026-09-06:
+//   Nominatim's first answer for "Ko Phi Phi" is เกาะผี, an islet in Trat
+//   Province, 606 km from the island; Photon's first answer for "The Mango
+//   Garden Ko Phi Phi" is a cafe named exactly "The Mango Garden" on Ko Tao,
+//   286 km away. Neither service is at fault. Believing them without evidence
+//   was.
+import {
+  APP, recorder, freshIds, item, trip, dbOf,
+  openApp, tpErrors, closePage, evaluate, waitForExpr, sleep,
+  clickSel, gotoHard, switchView,
+} from './helpers.mjs';
+import { EXTERNAL_HOSTS } from '../../../tests/browser/cdp.mjs';
+
+// ---------------------------------------------------------------------------
+// Geography. Real coordinates, because the bug was a number.
+const CHAOKOH = { lat: 7.7386, lon: 98.7770 };            // the hotel, Tonsai Bay
+const MANGO = { lat: 7.7402, lon: 98.7787 };              // 258 m from its door
+const LOH_DALUM = { lat: 7.740278, lon: 98.7703457 };
+const TRAT_ISLET = { lat: 11.823752, lon: 102.446346 };   // Nominatim's "Ko Phi Phi"
+const KO_TAO_MANGO = { lat: 10.0941684, lon: 99.8293127 };// Photon's "The Mango Garden"
+const MANGO_ID = 'ChIJvb7PGeDeUTARJoM-VdbMTRg';
+const HOTEL_ID = 'PID_CHAOKOH_HOTEL';
+const DALUM_ID = 'ChIJ4RXOeeDeUTARjyay8ON3bRY';
+
+const EARTH_KM = 6371;
+const rad = d => (d * Math.PI) / 180;
+function km(a, b) {
+  const dLat = rad(b.lat - a.lat), dLon = rad(b.lon - a.lon);
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * EARTH_KM * Math.asin(Math.min(1, Math.sqrt(s)));
+}
+const AREA_MAX_KM = 150;
+
+const VENUES = {
+  'ChaoKoh Hotel Phi Phi Island': { ...CHAOKOH, rating: 4.1, count: 2100, pid: HOTEL_ID, kind: 'hotel' },
+  'The Mango Garden': { ...MANGO, rating: 4.8, count: 3769, pid: MANGO_ID, kind: 'restaurant' },
+  'Loh Dalum Beach': { ...LOH_DALUM, rating: 4.1, count: 1077, pid: DALUM_ID, kind: 'beach' },
+};
+const ATTR = { text: 'Google Maps', url: 'https://www.google.com/maps' };
+const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+function venueFor(q) {
+  const n = norm(q);
+  let best = null;
+  for (const name of Object.keys(VENUES)) {
+    const nn = norm(name);
+    if (n.includes(nn) && (!best || nn.length > norm(best).length)) best = name;
+  }
+  return best;
+}
+
+// The deployed endpoint's gates, and Photon's REAL answer for the same query.
+// `verified` is false for everything here, because with no trustworthy anchor
+// the client sends no point and the server has nothing to check the locality
+// against. That is the state the whole failure lived in.
+function net(log) {
+  return (url, request) => {
+    if (url.includes('photon.komoot.io')) {
+      log.photon.push(url);
+      // Verbatim from the live service, 2026-09-06.
+      return { status: 200, body: { type: 'FeatureCollection', features: [{
+        type: 'Feature',
+        properties: { osm_type: 'N', osm_id: 12592475001, osm_key: 'amenity', osm_value: 'cafe',
+          name: 'The Mango Garden', street: 'The Place Hill', locality: 'Ban Hat Sai Ri',
+          district: 'Ko Tao Subdistrict', city: 'Ko Pha-ngan', state: 'Surat Thani Province',
+          country: 'Thailand', postcode: '84360', countrycode: 'TH' },
+        geometry: { type: 'Point', coordinates: [KO_TAO_MANGO.lon, KO_TAO_MANGO.lat] },
+      }] } };
+    }
+    if (!url.includes('tp-places')) return EXTERNAL_HOSTS.test(url) ? 'fail' : null;
+    let body = {};
+    try { body = JSON.parse(request.postData || '{}'); } catch { /* recorded empty */ }
+    const entries = Array.isArray(body.queries) ? body.queries : [];
+    log.places.push(entries);
+    if (body.discover) return { status: 200, body: { results: [], discovered: true, reason: 'no_candidates', attribution: ATTR } };
+    const results = entries.map(e => {
+      const q = String(e.q || '');
+      const name = venueFor(q);
+      if (!name) return { id: e.id, query: q, status: 'no_match', reason: 'not_found' };
+      const v = VENUES[name];
+      const hasPoint = Number.isFinite(e.lat) && Number.isFinite(e.lon);
+      if (hasPoint && km({ lat: e.lat, lon: e.lon }, v) > AREA_MAX_KM) {
+        return { id: e.id, query: q, status: 'no_match', reason: 'wrong_area' };
+      }
+      return {
+        id: e.id, query: q, status: 'ok', name, rating: v.rating, userRatingCount: v.count,
+        mapsUri: 'https://maps.google.com/?cid=' + v.pid, placeId: v.pid,
+        verified: hasPoint, areaBasis: hasPoint ? 'point' : 'address',
+        confidence: hasPoint ? 0.95 : 0.5, lat: v.lat, lon: v.lon,
+      };
+    });
+    return { status: 200, body: { results, attribution: ATTR } };
+  };
+}
+
+const DAY = '2027-01-27';
+
+const reply = `Breakfast at The Mango Garden, a short walk from your hotel.
+
+\`\`\`json
+{"tripActions":[
+ {"op":"add","item":{"type":"activity","title":"Breakfast: The Mango Garden","location":"Ko Phi Phi","startDate":"${DAY}","startTime":"08:00","mapsQuery":"The Mango Garden Ko Phi Phi","meal":"breakfast"}}
+]}
+\`\`\``;
+
+async function paste(s, text) {
+  await clickSel(s, '#assistBtn');
+  await waitForExpr(s, `!!document.querySelector('#assistTierGroup')`, { timeout: 8000 });
+  await evaluate(s, `(()=>{const r=document.querySelector('#assistTierGroup input[value="copy"]');
+    if (r && !r.checked) r.click(); return 1})()`);
+  await waitForExpr(s, `!!document.querySelector('#assistPasteBox')`, { timeout: 8000 });
+  await evaluate(s, `(()=>{const b=document.querySelector('#assistPasteBox');
+    b.value=${JSON.stringify(text)}; b.dispatchEvent(new Event('input',{bubbles:true})); return 1})()`);
+  await clickSel(s, '#assistPasteParse', { settle: 600 });
+}
+
+// Everything the traveller can read about distance on the rendered day.
+const readDay = s => evaluate(s, `(() => {
+  const card = document.querySelector('#daysList .day-card[data-date="${DAY}"]');
+  if (!card) return null;
+  const rows = [...card.querySelectorAll('.dc-event[data-dist-label]')].map(r => ({
+    label: r.dataset.distLabel || '',
+    placeId: r.dataset.distPlace || '',
+    plat: r.dataset.distPlat || '', plon: r.dataset.distPlon || '',
+    chip: ((r.querySelector('.dc-dist') || {}).textContent || '').trim(),
+    dirHref: (r.querySelector('.tp-dir-link') || {}).getAttribute
+      ? r.querySelector('.tp-dir-link').getAttribute('href') : '',
+    mapsHref: (r.querySelector('.tp-maps-link') || {}).getAttribute
+      ? r.querySelector('.tp-maps-link').getAttribute('href') : '',
+  }));
+  return {
+    anchorPlace: card.dataset.anchorPlace || '',
+    anchorPlat: card.dataset.anchorPlat || '', anchorPlon: card.dataset.anchorPlon || '',
+    footer: ((card.querySelector('.dc-route-tot') || {}).textContent || '').trim(),
+    rows,
+  };
+})()`);
+
+// The pins the Day route map actually plots, in order.
+const readRoute = s => evaluate(s, `(() => {
+  const pins = [...document.querySelectorAll('#dayRouteStops li')].map(li => ({
+    label: ((li.querySelector('.drs-label') || {}).textContent || '').trim(),
+    leg: ((li.querySelector('.drs-leg') || {}).textContent || '').trim(),
+  }));
+  return { pins, count: pins.length };
+})()`);
+
+export async function run({ base, cdpPort }) {
+  const R = [];
+  const t = recorder(R);
+  const withPage = async (label, opts, fn) => {
+    let s = null;
+    try {
+      s = await openApp(cdpPort, base, opts);
+      await fn(s);
+      await t(`${label}: no page errors`, tpErrors(s).length === 0, tpErrors(s).slice(0, 2).join(' | '), s);
+    } catch (e) {
+      await t(`${label}: block ran`, false, String(e && e.message).slice(0, 140), s);
+    } finally {
+      if (s) try { await closePage(cdpPort, s); } catch { /* gone */ }
+    }
+  };
+
+  /* =====================================================================
+     A. THE REPORTED DAY, end to end.
+     ===================================================================== */
+  freshIds();
+  {
+    const log = { photon: [], places: [] };
+    const stay = item({
+      type: 'stay', title: 'ChaoKoh Hotel Phi Phi Island', location: 'Ko Phi Phi',
+      startDate: '2027-01-26', endDate: '2027-01-29',
+      mapsQuery: 'ChaoKoh Hotel Phi Phi Island Ko Phi Phi',
+    });
+    const tp = trip({ name: 'Thailand', items: [stay] });
+    const stores = {
+      // The only thing in the geocode cache is the wrong island. The hotel is
+      // NOT here: the traveller typed it, so no doorstep was ever seeded.
+      'trip-planner:geo:v3': {
+        'ko phi phi': { ...TRAT_ISLET, country: 'Thailand', cc: 'TH', conf: 'low', kind: 'islet' },
+      },
+      // And the v1 venue store still holds the poisoned point from before the
+      // fix. The rename to v2 is what makes a traveller already carrying it
+      // stop seeing 344 km; if v1 were still read, this suite would fail.
+      'trip-planner:venuegeo:v1': {
+        'the mango garden ko phi phi@ko phi phi': { ...KO_TAO_MANGO, lat: KO_TAO_MANGO.lat, lon: KO_TAO_MANGO.lon, at: Date.now() },
+      },
+    };
+
+    await withPage('canonical-coords A', { db: dbOf([tp]), stores, net: net(log) }, async (s) => {
+      await paste(s, reply);
+      await waitForExpr(s, `!!document.querySelector('#assistMessages [data-act="accept-proposal"]')`, { timeout: 20000 });
+      await clickSel(s, '#assistMessages [data-act="accept-proposal"]', { settle: 1400 });
+
+      /* --- 1. what Add to trip wrote --- */
+      const saved = await evaluate(s, `(() => {
+        const db = JSON.parse(localStorage.getItem('trip-planner:v1') || '{}');
+        const tr = (db.trips || [])[0] || {};
+        const it = (tr.items || []).find(i => /Mango Garden/.test(i.title || ''));
+        return it && it.place ? it.place : null;
+      })()`);
+      await t('A1: Add to trip persists the canonical place ID',
+        !!saved && saved.id === MANGO_ID, JSON.stringify(saved), s);
+      await t('A2: AND the canonical coordinate, on an island nothing can corroborate',
+        !!saved && Math.abs(saved.lat - MANGO.lat) < 0.001 && Math.abs(saved.lon - MANGO.lon) < 0.001,
+        JSON.stringify(saved), s);
+
+      /* --- 2. the row, the chip and the footer --- */
+      await gotoHard(s, base + APP, { settle: 1600 });
+      await switchView(s, 'days');
+      await waitForExpr(s, `!!document.querySelector('#daysList .day-card[data-date="${DAY}"] .dc-route-tot')`, { timeout: 15000 });
+      const day = await readDay(s);
+      const mango = (day && day.rows.find(r => /Mango Garden/.test(r.label))) || null;
+      await t('A3: the row carries the canonical identity', !!mango && mango.placeId === MANGO_ID,
+        JSON.stringify(mango), s);
+      await t('A4: and the canonical point is stamped beside it',
+        !!mango && Math.abs(Number(mango.plat) - MANGO.lat) < 0.001,
+        mango ? `${mango.plat},${mango.plon}` : 'no row', s);
+
+      // The chip renders in the traveller's own unit, so read whichever it used
+      // and convert. 344 km is 214 mi; a walk is under one of either.
+      const chipVal = (text, re, factor) => {
+        const m = String(text || '').match(re);
+        return m ? Number(m[1]) * factor : NaN;
+      };
+      const chipKm = mango ? [
+        chipVal(mango.chip, /([\d.]+)\s*km/, 1),
+        chipVal(mango.chip, /([\d.]+)\s*mi\b/, 1.60934),
+        chipVal(mango.chip, /([\d.]+)\s*m\b/, 0.001),
+        chipVal(mango.chip, /([\d.]+)\s*ft\b/, 0.0003048),
+      ].find(Number.isFinite) : NaN;
+      await t('A5: THE HEADLINE - the distance chip is a walk, not 344 km',
+        Number.isFinite(chipKm) && chipKm < 1,
+        `chip read "${mango && mango.chip}" -> ${chipKm} km`, s);
+      await t('A6: the day footer does not total a 344 km taxi ride',
+        !!day && !/\d{3}\s*(km|mi)\b/.test(day.footer) && !/🚕/.test(day.footer),
+        `footer read "${day && day.footer}"`, s);
+
+      /* --- 3. the anchor, which was the other wrong endpoint --- */
+      await t('A7: the day anchors on the hotel it resolved, not on a province centroid',
+        !!day && Math.abs(Number(day.anchorPlat) - CHAOKOH.lat) < 0.001,
+        `${day && day.anchorPlat},${day && day.anchorPlon} (wrong was ${TRAT_ISLET.lat})`, s);
+      await t('A8: and the anchor carries the hotel identity',
+        !!day && day.anchorPlace === HOTEL_ID, day && day.anchorPlace, s);
+
+      /* --- 4. the Day route map --- */
+      await clickSel(s, `#daysList .day-card[data-date="${DAY}"] [data-act="day-route"]`, { settle: 1200 });
+      const route = await readRoute(s);
+      await t('A9: the Day route plots both stops', route.count === 2,
+        JSON.stringify(route.pins), s);
+      const legText = route.pins.map(p => p.leg).join(' ');
+      await t('A10: and they are adjacent, not hundreds of kilometres apart',
+        !/\d{3}\s*(km|mi)\b/.test(legText), `legs read "${legText}"`, s);
+
+      /* --- 5. the poisoned point is gone and cannot come back --- */
+      const cache = await evaluate(s, `(() => ({
+        v1: localStorage.getItem('trip-planner:venuegeo:v1'),
+        v2: localStorage.getItem('trip-planner:venuegeo:v2'),
+      }))()`);
+      const v2 = JSON.parse(cache.v2 || '{}');
+      const poisoned = Object.values(v2).some(r => r && Math.abs(r.lat - KO_TAO_MANGO.lat) < 0.01);
+      await t('A11: no Ko Tao point survives anywhere in the live venue store',
+        !poisoned, cache.v2 || '(empty)', s);
+
+      /* --- 6. links and geometry agree on one place --- */
+      await t('A12: the Maps link opens the canonical entity',
+        !!mango && mango.mapsHref.includes(MANGO_ID), mango && mango.mapsHref, s);
+      await t('A13: and Directions routes to it by ID, not by a re-interpretable string',
+        !!mango && /destination_place_id=/.test(mango.dirHref) && mango.dirHref.includes(MANGO_ID),
+        mango && mango.dirHref, s);
+    });
+  }
+
+  /* =====================================================================
+     B. RETURN TO HOTEL still ends where the day began.
+     ===================================================================== */
+  freshIds();
+  {
+    const log = { photon: [], places: [] };
+    const stay = item({
+      type: 'stay', title: 'ChaoKoh Hotel Phi Phi Island', location: 'Ko Phi Phi',
+      startDate: '2027-01-26', endDate: '2027-01-29',
+      mapsQuery: 'ChaoKoh Hotel Phi Phi Island Ko Phi Phi',
+    });
+    const breakfast = item({
+      type: 'activity', title: 'Breakfast: The Mango Garden', meal: 'breakfast',
+      location: 'Ko Phi Phi', startDate: DAY, startTime: '08:00',
+      mapsQuery: 'The Mango Garden Ko Phi Phi',
+    });
+    const beach = item({
+      type: 'activity', title: 'Loh Dalum Beach', location: 'Ko Phi Phi',
+      startDate: DAY, startTime: '11:00', mapsQuery: 'Loh Dalum Beach Ko Phi Phi',
+    });
+    const home = item({
+      type: 'local', title: 'Return to hotel', location: 'Ko Phi Phi',
+      startDate: DAY, startTime: '21:30',
+      mapsQuery: 'ChaoKoh Hotel Phi Phi Island Ko Phi Phi',
+    });
+    const tp = trip({ name: 'Thailand', items: [stay, breakfast, beach, home] });
+    const stores = {
+      'trip-planner:geo:v3': {
+        'ko phi phi': { ...TRAT_ISLET, country: 'Thailand', cc: 'TH', conf: 'low', kind: 'islet' },
+      },
+    };
+
+    await withPage('canonical-coords B', { db: dbOf([tp]), stores, net: net(log) }, async (s) => {
+      await switchView(s, 'days');
+      await waitForExpr(s, `!!document.querySelector('#daysList .day-card[data-date="${DAY}"] .dc-route-tot')`, { timeout: 20000 });
+      await sleep(1500);
+      const day = await readDay(s);
+      const back = (day && day.rows.find(r => /Return to hotel/.test(r.label))) || null;
+      await t('B1: the return leg is located by the stay, to the same coordinate',
+        !!back && Math.abs(Number(back.plat) - CHAOKOH.lat) < 0.001,
+        back ? `${back.plat},${back.plon} vs anchor ${day.anchorPlat},${day.anchorPlon}` : 'no row', s);
+      await t('B2: first hotel coordinate === return hotel coordinate',
+        !!back && back.plat === day.anchorPlat && back.plon === day.anchorPlon,
+        `${back && back.plat} vs ${day && day.anchorPlat}`, s);
+      await t('B3: every leg on the day is a walk',
+        !!day && !/\d{3}\s*(km|mi)\b/.test(day.footer) && !/🚕/.test(day.footer),
+        `footer read "${day && day.footer}"`, s);
+      const far = (day ? day.rows : []).filter(r => /\d{3}\s*(km|mi)\b/.test(r.chip));
+      await t('B4: no row anywhere on the day claims hundreds of kilometres',
+        far.length === 0, far.map(r => `${r.label}: ${r.chip}`).join(' | '), s);
+    });
+  }
+
+  return R;
+}

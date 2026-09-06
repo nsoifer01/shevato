@@ -5090,13 +5090,14 @@ const TripLogic = (() => {
     for (const r of Array.isArray(results) ? results : []) {
       const key = resultKey(r);
       if (!key || !validCoord(r.lat, r.lon)) continue;
-      // A coordinate is only stored when the resolution was VERIFIED against
-      // the itinerary's own geography. This is the line that stops the 809 km
-      // chip: an unverified point is not a cheaper answer, it is a wrong one,
-      // and once it lands in the 30-day venue cache every later render repeats
-      // it. A place the server could not check simply has no point here, and
-      // the row draws no chip rather than a confident wrong one.
-      if (r.verified !== true) continue;
+      // The coordinate of a place that RESOLVED, on the same reasoning as
+      // placeRecordFrom: this is Google's own point for the entity the lookup
+      // matched, and withholding it does not leave the row blank - it leaves
+      // the row to a free global name search that answered Ko Phi Phi with
+      // Ko Tao. What stops the 809 km chip is the area gate every READER
+      // applies (plausiblePlacePoint against a vouched-for city anchor), which
+      // is evidence rather than the absence of it.
+      if (!r.placeId && r.verified !== true) continue;
       out.push({ key, lat: Number(r.lat), lon: Number(r.lon) });
     }
     return out;
@@ -5130,6 +5131,25 @@ const TripLogic = (() => {
   // `query` is the searchable form of the same place (the venue name, or its
   // city). Coordinates cannot build a directions link a human would recognise,
   // so a leg that wants to offer one needs this to ride along with the maths.
+  // EVERY FIELD THE LEG RULES READ HAS TO SURVIVE THIS COPY (owner report,
+  // 2026-09-06: a 258 m walk on Ko Phi Phi printed as 344 km). This function
+  // rebuilds the point field by field, so a field it does not name is silently
+  // dropped - and the 2026-09-05 round added two that it never named:
+  //
+  //   `standin` - the flag that says "this centroid is standing in for a place
+  //     the row actually named". unmeasurableLeg tests `a.standin === true` to
+  //     refuse a leg that STARTS on one, and the flag was gone by the time it
+  //     looked, so that rule has never once fired in production. The Ko Phi Phi
+  //     hotel fell back to the centroid of a name Nominatim answers with an
+  //     islet in Trat Province, and the leg was drawn from it as a fact.
+  //
+  //   `placeId` - the canonical identity dayDistanceChain copies into
+  //     `fromPlaceId`/`toPlaceId` so a directions link opens on the entities
+  //     the chain measured. It read `prev.placeId` off a shape that had none,
+  //     so both were always '' and every leg link degraded to a text query.
+  //
+  // A guard that is not carried is a guard that does not exist. Anything a
+  // consumer of this shape reads MUST be named here.
   function distancePoint(p) {
     if (!p || !validCoord(p.lat, p.lon)) return null;
     return {
@@ -5140,6 +5160,12 @@ const TripLogic = (() => {
       // the old behaviour, since an unknown precision can never suppress a leg.
       precision: p.precision === 'city' ? 'city' : (p.precision === 'venue' ? 'venue' : ''),
       cityKey: p.cityKey || '',
+      // A centroid handed out IN PLACE OF a named place (see app.js placePoint).
+      standin: p.standin === true,
+      // The Google place ID of whatever this point is, when the row resolved
+      // one. Identity, not position: it rides along so a leg can link at the
+      // entity it measured rather than at a re-interpretable string.
+      placeId: p.placeId || '',
     };
   }
 
@@ -5242,6 +5268,18 @@ const TripLogic = (() => {
   //   - a leg between two identical points (both ends fell back to the same
   //     city centroid, or to the same cached venue) is dropped, because
   //     "0.0 km" is a fake fact, not a distance.
+  // Both ends claim the same city and the coordinates say otherwise, by more
+  // than the radius the whole codebase already uses for "this cannot be the
+  // same place" (PLACE_AREA_MAX_KM, the same 150 km the server's area gate and
+  // normalizePlaceRecord apply). '' when the leg is ordinary: an intercity leg
+  // has two different cityKeys and is never flagged, and a leg with no city on
+  // one end cannot be checked at all.
+  function contradictoryPair(a, b) {
+    if (!a || !b) return '';
+    if (!a.cityKey || a.cityKey !== b.cityKey) return '';
+    return distKm(a, b) > PLACE_AREA_MAX_KM ? 'same-city-far' : '';
+  }
+
   function dayDistanceChain(anchor, stops) {
     const legs = [];
     let prev = distancePoint(anchor);
@@ -5252,6 +5290,14 @@ const TripLogic = (() => {
       if (prev && !sameSpot(prev, here) && !unmeasurableLeg(prev, here)) {
         legs.push({
           id: here.id, km: distKm(prev, here),
+          // THE APP CONTRADICTING ITSELF, named rather than hidden (owner
+          // report, 2026-09-06). Nothing here changes what is drawn - a
+          // suppressed number teaches a traveller nothing and hides the fault
+          // from the next session - but a leg whose two ends the app itself
+          // places in ONE city, and whose coordinates it then puts 344 km
+          // apart, is not a long journey. It is two location models disagreeing,
+          // and it is the shape every coordinate failure this app has had takes.
+          suspect: contradictoryPair(prev, here),
           from: prev.label || '', to: here.label || '',
           // where the leg STARTS, as a place a map can search for: the label is
           // an item title ("Return to hotel") and routes nowhere
@@ -6649,14 +6695,37 @@ const TripLogic = (() => {
   //
   // `verified` rides along so later readers can tell a checked record from an
   // unchecked one without re-deriving the distinction.
+  // AND THE POSITION FOLLOWS THE IDENTITY (owner report, 2026-09-06). Splitting
+  // the two claims was right; making the coordinate wait for the AREA check was
+  // not, and it is the whole of the 344 km failure.
+  //
+  // `verified` does not mean "Google returned a point". It means the resolved
+  // place's locality could be CHECKED against the itinerary's own geography -
+  // and on Ko Phi Phi nothing can check it, because the only anchor available
+  // is a Nominatim answer the app itself scores `low`. So the coordinate of a
+  // place that resolved perfectly (one Maps entity, the name gate agreed, 4.8
+  // stars from 3,769 reviews) was thrown away for want of a second opinion
+  // nobody could give.
+  //
+  // What filled the hole was strictly worse: a free global NAME search. Photon
+  // answers "The Mango Garden Ko Phi Phi" with a cafe called exactly "The Mango
+  // Garden" on Ko Tao, 286 km away, and the day drew a confident chip to it.
+  // Discarding evidence does not produce silence - it produces a guess.
+  //
+  // So the point is kept whenever the place RESOLVED, and `verified` rides
+  // along as what it actually is: a note on how well corroborated the point is,
+  // not a licence for it to exist. The defence against a wrong branch stays
+  // where it belongs and where it can never be a guess - normalizePlaceRecord
+  // measures the point against a VOUCHED-FOR city anchor on every read, and
+  // drops it beyond PLACE_AREA_MAX_KM. A trusted anchor still refuses a
+  // Hokkaido point on a Tokyo row; an untrusted one refuses nothing, which is
+  // the same rule the rest of this file already follows.
   function placeRecordFrom(entry, area, now) {
     if (!entry || typeof entry !== 'object') return null;
     if (!entry.placeId) return null;
     const rec = { id: String(entry.placeId).slice(0, 200), at: Number(now) || Date.now() };
-    if (entry.verified === true) {
-      rec.verified = true;
-      if (validCoord(entry.lat, entry.lon)) { rec.lat = Number(entry.lat); rec.lon = Number(entry.lon); }
-    }
+    if (entry.verified === true) rec.verified = true;
+    if (validCoord(entry.lat, entry.lon)) { rec.lat = Number(entry.lat); rec.lon = Number(entry.lon); }
     const city = area && area.city ? String(area.city).trim().slice(0, 80) : '';
     if (city) rec.city = city;
     return rec;
@@ -10662,7 +10731,7 @@ const TripLogic = (() => {
     PLACES_BATCH_MAX, PLACES_CONCURRENCY, PLACES_DEFER_MS, PLACES_MAX_ATTEMPTS,
     VENUE_TTL_MS, VENUE_CACHE_MAX, venueFresh, normalizeVenueCache, rememberVenue,
     placesLocationUpdates, pickVenueFeature, validCoord,
-    SAME_SPOT_KM, sameSpot, unmeasurableLeg, distancePoint, dayAnchor, dayDistanceChain,
+    SAME_SPOT_KM, sameSpot, unmeasurableLeg, distancePoint, dayAnchor, dayDistanceChain, contradictoryPair,
     parseTravelArrival, dayArrival, proposalOrigin, dayBaseOrigin, suggestionOrigins,
     ROUTE_EXACT_MAX, shortestRoute, routeStops, setDistanceUnit, getDistanceUnit, fmtDist, distanceChipLabel, distanceChipTitle, routeFooterText,
     assistDistanceChipLabel, assistDistanceChipTitle, shortHopHint, hopTravel, fmtMins, WALKABLE_KM,
