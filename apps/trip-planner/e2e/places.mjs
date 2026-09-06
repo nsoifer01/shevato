@@ -1257,12 +1257,11 @@ Enjoy!
     const adds = [];
     let hint = '"discovery":{"query":"places for a day in Ao Nang","count":13},';
     for (const [label, time, opts] of slots) {
-      for (const [i, name] of opts.entries()) {
+      for (const name of opts) {
         adds.push(`{"op":"add",${hint}"group":"${label.toLowerCase()}","item":{"type":"activity","meal":"${label.toLowerCase()}",`
           + `"title":${JSON.stringify(name)},"location":"Ao Nang","startDate":"${day}","startTime":"${time}",`
           + `"mapsQuery":${JSON.stringify(name + ' Ao Nang')}}}`);
         hint = '';
-        void i;
       }
     }
     for (const [label, time, opts] of activities) {
