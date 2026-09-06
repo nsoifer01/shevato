@@ -188,7 +188,11 @@ test('step 7: the 502 body never carries the key or the upstream response', opts
   const res = await handler(req(goodBody()));
   assert.equal(res.status, 502);
   const raw = await res.text();
-  assert.equal(raw, JSON.stringify({ error: 'upstream' }), 'exactly the opaque error contract');
+  // The body carries the failure CLASS (2026-09-05) so the UI can stop telling
+  // a traveller to retry a revoked key - but the class is a closed vocabulary
+  // chosen here, never upstream text, so the contract is still opaque.
+  assert.equal(raw, JSON.stringify({ error: 'upstream', reason: 'upstream' }),
+    'exactly the opaque error contract, plus our own failure class');
   assert.ok(!raw.includes('secret-key-xyz'));
   assert.ok(!raw.includes('abc123'));
 });

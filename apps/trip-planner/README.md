@@ -217,14 +217,29 @@ the itinerary day's city (`dayMorningCity`), plus that city's cached coordinate
 when the app has geocoded it. The geocode read is cache-only and never touches
 the network.
 
-**Two gates upstream, both mandatory** (`lib/tp-places-match.mjs`):
+**Three gates upstream, all mandatory** (`lib/tp-places-match.mjs`):
 
 | gate | question | on failure |
 | --- | --- | --- |
 | `matchConfidence` | is this the same **business**? | `no_match / low_confidence` |
+| `typeMismatch` | is it the same **kind of thing**? | `no_match / type_mismatch` |
 
 `matchConfidence` also refuses a **chain sibling**: when the returned name and the query EACH carry an identifying word the other lacks (`Sugar Marina Hotel -FASHION- Kata Beach` against the same chain's `-POP-` property 350 m up the same beach), they are two businesses rather than one described at two lengths, and no geographic check can separate neighbours. One-sided extras still pass (`Nabezo Shinjuku` -> `Nabezo Shinjuku Sanchome`), and the query's own city is excluded from that judgement, because a `mapsQuery` carries the city as a search HINT rather than as part of the name - which is what keeps `Royce' Chocolate Tokyo Station` a question for the GEOGRAPHIC gate below rather than the name one.
 | `verifyArea` | is it the branch in **this itinerary's area**? | `no_match / wrong_area` |
+
+`typeMismatch` is what stops **proximity deciding identity**. Asked for
+"Maya Bay" - a beach 7 km offshore, boat access only - Text Search answered with
+`Maya Bay Tours`, a booking desk 100 m from the hotel, and every other gate
+agreed: the desk's name CONTAINS the query (so the name score is 1.00) and the
+desk really is nearer. It refuses on three kinds of positive evidence and is
+silent without them: the place's name advertises a **trade** the query never
+asked for (`tours`, `tickets`, `booking`, `agency`, ...); Google's own
+`primaryType` says the place IS a broker and the query never asked for one; or
+the place's kind contradicts the itinerary's own **meal slot** (a beach offered
+as the 08:00 breakfast). The meal slot is the only expectation read, and
+deliberately so - deriving one from words in the query deletes `The Mango
+Garden`, `Temple Bar` and `Long Beach Resort`, which is the failure this whole
+subsystem exists to prevent.
 
 `verifyArea` compares the resolved place's coordinates to the expected point
 (`AREA_MAX_KM`, 150 km - a wrong-continent gate, not a walking-distance one:
@@ -246,6 +261,31 @@ venues scored 1.00 on the name gate. Because the coordinate branch is the one
 that catches a wrong branch, the client now geocodes the day's city
 (`warmAreaPoints`) BEFORE verifying a discovery batch, so `basis: 'point'` is
 the normal case rather than whatever happened to be in a cache-only lookup.
+
+**The anchor has to be trustworthy, or there must be no anchor** (fixed
+2026-09-05). The coordinate branch above is only as good as the point it is
+given, and the point comes from Nominatim, which answers "Ko Phi Phi" with an
+islet in **Trat Province, 570 km away**. Measured against that, every real venue
+on the island is correctly outside the 150 km radius, so the gate refused all of
+them and a dense tourist destination came back with no restaurants. A wrong
+anchor does not reject the wrong venues - it rejects every venue.
+
+The app had already scored that geocode `low` (`classifyGeoMatch`) and was not
+reading the score. Two rules now separate the two jobs a centroid does:
+
+- as a **fallback** ("draw this row roughly here") any answer will do, and
+  `cityPoint` is unchanged - Kata Beach and Railay Beach both score `low` and
+  both have correct coordinates, so gating this would strip their chips.
+- as **evidence** ("refuse this resolved place") only a `confident` geocode
+  counts. `cityAnchor` is the one every rejecting caller reads: the area gate,
+  the Photon venue-point check, and the persisted-record sanity check.
+
+`areaAnchorFor` (trip-logic, pure, with injected cache readers so node can test
+it) picks the anchor in this order: **the day's host stay's own doorstep**, then
+a vouched-for city centroid, then the stay's city, then nothing. The hotel is
+first because the traveller chose it and it is a building rather than a
+polygon's middle; "nothing" is a real answer that resolves the place and shows
+its rating, which is strictly better than a fabricated verdict that discards it.
 
 **The search itself is constrained.** `places:searchText` is called with a
 `locationBias` circle around the expected point. That is a request parameter,
@@ -282,12 +322,23 @@ never point at a branch other than the one that was resolved. The record travels
 with share links and sync for the same reason it is stored at all: so the far
 side links at the same entity instead of re-searching a name.
 
-**Three states, three labels**, so no surface claims more (or less) than it
-knows: a resolved place with a rating shows the rating chip (the chip is the
-link); a resolved place Google has no stars for shows "No rating yet" beside
-"Open on Google Maps"; an unresolved one shows "No rating match" beside "Verify
-on Google Maps", with a tooltip that says whether the name or the location was
-what failed.
+**One sentence per state**, so no surface claims more (or less) than it knows.
+`placeStateLabel` (trip-logic) owns the wording, which is why a test can pin it:
+
+| what happened | the slot says | the link says |
+| --- | --- | --- |
+| resolved, and Google has a rating | the rating chip - and the chip IS the link | (the chip replaces it) |
+| resolved, Google has no stars yet | `No rating yet` | Open on Google Maps |
+| a real business, in another city | `Different city` | Verify on Google Maps |
+| a real business of the wrong kind (a tour desk named after the place) | `Different kind of place` | Verify on Google Maps |
+| rated, but with no link we may show it with | `Rating unavailable` | Verify on Google Maps |
+| nothing matched the name | `Not found on Google` | Verify on Google Maps |
+
+The first three rows all mean the place WAS identified, and the row's saved
+place ID says so - which is why a resolved place never reads as "not found",
+however much metadata is missing. "No rating match" used to be printed for
+every row below the first, including next to a Google Maps link that opened
+exactly the right restaurant.
 
 **A search URL is not a place.** `google.com/maps/search/?api=1&query=...`
 always "works" when clicked, which is exactly why it was mistaken for a verified

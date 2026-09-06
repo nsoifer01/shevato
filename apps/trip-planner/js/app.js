@@ -129,10 +129,10 @@
     FORECAST_DAYS, forecastEligible, forecastKey, forecastFresh, freshForecasts, summarizeForecast, forecastLine, forecastChipParts,
     extractTripActions, validateTripAction, buildAssistPackage, buildAssistSystemPrompt,
     buildPlanRequest, groupProposals, linkifySegments, parseMarkdown,
-    normalizePlaceQuery, placeCacheKey, createPlacesQueue, mapsSearchUrl, assistMapsLink, costDisplayParts,
+    normalizePlaceQuery, placeCacheKey, createPlacesQueue, mapsSearchUrl, assistMapsLink, placeStateLabel, costDisplayParts,
     // the one place identity every surface resolves through, plus the record
     // it becomes once a place is verified and saved (see placeLookupFor)
-    placeLookupFor, placeLookupRequest, placeRecordFrom, normalizePlaceRecord,
+    placeLookupFor, placeLookupRequest, placeRecordFrom, normalizePlaceRecord, areaAnchorFor,
     placeMapsUrl, placeEntryUrl, plausiblePlacePoint,
     // discovery: only verified places reach a "find me places" answer
     assistDiscoveryIntent, discoveryHintFrom, discoveryQueryFrom, rebuildAssistProse,
@@ -142,7 +142,7 @@
     normalizeVenueCache, rememberVenue, placesLocationUpdates, placesCacheUpdates, pickVenueFeature,
     dayAnchor, dayDistanceChain, sameSpot, shortestRoute, routeStops, distanceChipLabel, distanceChipTitle, routeFooterText,
     proposalOrigin, dayBaseOrigin, suggestionOrigins, assistDistanceChipLabel, assistDistanceChipTitle,
-    isPlaceType, isTravelLeg, legDestinationStay, directionsUrl, legTravelMode,
+    isPlaceType, isTravelLeg, legDestinationStay, directionsUrl, legTravelMode, impossibleHops,
     setDistanceUnit, setTempUnit, fmtDist, dayTravelTotals, dayRouteMode, directionsRouteUrl, routeUrlChunks, candidateBadges,
     hasEstimate, displayCostOf, parseMoney, roundMoney, budgetVerdict, refundParts,
     readBudgetRange, normalizeBudgetFrom, budgetFigure,
@@ -476,7 +476,7 @@
         // record written before this fix, or by a stale tab, cannot draw a
         // wrong chip. Cache-only: cityPoint never reaches the network.
         if (it.place != null) {
-          const rec = normalizePlaceRecord(it.place, { cityPoint: cityPoint((it.location || '').trim()) });
+          const rec = normalizePlaceRecord(it.place, { cityPoint: cityAnchor((it.location || '').trim()) });
           if (rec) it.place = rec; else delete it.place;
         }
         // the manual same-day position: a small whole number or nothing at all.
@@ -1105,37 +1105,21 @@
     };
   }
 
-  // THE COORDINATE THE AREA GATE NEEDS, and why it is a ladder rather than one
-  // cache read (owner report, 2026-09-05).
-  //
-  // The gate that decides whether a resolved place is the right BRANCH is only
-  // as good as the point it compares against, and `cityPoint` is cache-only and
-  // synchronous: on the first assistant turn of a session the day's city has
-  // usually not been geocoded yet, so there was no point, the gate fell back to
-  // comparing administrative NAMES, and a real venue in Ao Nang failed a day
-  // the traveller had called "Railay Beach". Every rung here is still
-  // cache-only (this runs inside a render), but there are now three of them and
-  // the missing one is fetched for next time.
-  //
-  //   1. the named city itself
-  //   2. the day's host stay - a hotel picked from the picker seeds the geocode
-  //      cache under its OWN name with its OWN doorstep, which is a better
-  //      anchor than any centroid, then that stay's city
-  //
-  // Rung 2 is offered ONLY when the item did not name a city of its own. An
-  // item that says "Nikko" on a Tokyo-based day is making a claim about Nikko,
-  // and answering it with Tokyo's hotel would check the wrong place - so an
-  // ungeocodable city of its own stays unchecked, which now resolves rather
-  // than rejects.
+  // THE COORDINATE THE AREA GATE JUDGES WITH. The rules and the reasons live
+  // with the decision, in trip-logic's areaAnchorFor; both readers here are
+  // cache-only and synchronous, because this runs inside a render and nothing
+  // in this app may reach the network to draw a chip.
+  // The app's half of areaAnchorFor: which caches the two readers look in.
+  // The decision itself (what may be trusted as evidence, and in what order)
+  // lives in trip-logic, where node:test can drive it - this boundary is
+  // exactly the one that had no test when a 570 km centroid emptied a day.
   function areaPointFor(name, dayCity, items, date) {
-    const own = cityPoint(name);
-    if (own) return own;
-    const n = String(name || '').trim().toLowerCase();
-    if (!n || n !== String(dayCity || '').trim().toLowerCase()) return null;
-    const host = (isIsoDate(date) && Array.isArray(items)) ? dayHostStay(items, date) : null;
-    if (!host) return null;
-    return cityPoint(displayTitle(host)) || cityPoint(String(host.location || '').trim());
+    return areaAnchorFor(name, dayCity, items, date, {
+      cityPoint,
+      venuePoint,
+    });
   }
+
   // The shorthand every renderer uses. Returns { query, area, key } or null.
   const placeFor = (item, trip) => placeLookupFor(item, placeContextFor(item, trip));
 
@@ -2906,6 +2890,7 @@
       ? ` data-anchor-q="${esc(anchorLookup ? anchorLookup.query : '')}" data-anchor-name="${esc(place ? a.label : '')}"`
         + ` data-anchor-key="${esc(anchorLookup ? anchorLookup.key : '')}"`
         + ` data-anchor-city="${esc(a.city)}" data-anchor-label="${esc(a.label)}"`
+        + (place ? ` data-anchor-place="${esc(canonicalPlaceId(a.item, anchorLookup))}"` : '')
         + (a.iata ? ` data-anchor-iata="${esc(a.iata)}"` : '')
       : '';
     return `
@@ -5716,7 +5701,7 @@
     // persistence boundary a local write does; repairDb re-checks it against
     // the item's own city on the very next boot.
     if (raw.place != null) {
-      const rec = normalizePlaceRecord(raw.place, { cityPoint: cityPoint(String(raw.location || '').trim()) });
+      const rec = normalizePlaceRecord(raw.place, { cityPoint: cityAnchor(String(raw.location || '').trim()) });
       if (rec) out.place = rec;
     }
     // who a cost is split between is only meaningful against names the trip
@@ -6513,7 +6498,11 @@
         // answer is not a licence to store an unchecked point: a Photon hit
         // whose name matches but whose coordinates sit outside the row's own
         // city is the 809 km chip by another route.
-        if (!plausiblePlacePoint(hit, cityPoint(job.city))) {
+        // cityAnchor, not cityPoint: a centroid the app itself scored as a weak
+        // match may not refuse a venue point. On Ko Phi Phi that centroid is
+        // 570 km out, so every correct Photon answer was thrown away and the
+        // day could not draw a single distance chip.
+        if (!plausiblePlacePoint(hit, cityAnchor(job.city))) {
           placesLog('photon point rejected: outside its own city', { key: job.key, city: job.city, hit });
           venueMisses.add(job.key);
           return;
@@ -6544,7 +6533,48 @@
   function cityPoint(name) {
     const key = String(name || '').trim().toLowerCase();
     const hit = key && geoCache[key];
-    return hit && Number.isFinite(hit.lat) ? { key: 'c:' + key, lat: hit.lat, lon: hit.lon } : null;
+    return hit && Number.isFinite(hit.lat)
+      ? { key: 'c:' + key, lat: hit.lat, lon: hit.lon, conf: String(hit.conf || '') }
+      : null;
+  }
+
+  // THE DIFFERENCE BETWEEN "ROUGHLY HERE" AND "EVIDENCE" (owner report,
+  // 2026-09-05: a whole Ko Phi Phi day came back with no ratings at all).
+  //
+  // A city centroid is used for two completely different jobs, and until now
+  // one function answered both:
+  //   - as a FALLBACK, to draw a row roughly where it probably is. A guess is
+  //     fine here: the alternative is no pin at all.
+  //   - as EVIDENCE, to REJECT a resolved place for being in the wrong part of
+  //     the world. A guess is catastrophic here, because a wrong centroid does
+  //     not reject the wrong venues, it rejects the RIGHT ones.
+  //
+  // Nominatim's top hit for "Ko Phi Phi" is Ko Phi, an islet in Trat Province
+  // 570 km away on the other side of Thailand. The app already knew that:
+  // classifyGeoMatch scores it `low` (kind `islet`, importance 0.13). Nothing
+  // read the score. So the area gate compared every real Phi Phi venue against
+  // a point near Cambodia, called all of them `wrong_area`, and the traveller
+  // got "No rating match" on The Mango Garden - a place Google rates 4.8 from
+  // 3,770 reviews and had already returned in full.
+  //
+  // The same wrong centroid then poisoned the free Photon rung
+  // (plausiblePlacePoint refused every venue point for being 570 km from the
+  // "city"), so the day could not even draw a distance chip.
+  //
+  // Islands, beaches and resort strips are hit hardest and that is not bad
+  // luck: they geocode to `islet`, `beach` and `hamlet` kinds with importance
+  // well under GEO_WEAK_IMPORTANCE, which is exactly what classifyGeoMatch
+  // calls `low`. Cities and provinces come back `confident` and always worked,
+  // which is why this looked like an island-only bug.
+  //
+  // So: a centroid may only REJECT when the app's own match classifier vouched
+  // for it. Anything else answers null, and the caller falls back to a verdict
+  // of "could not check" - which is a real state that resolves the place and
+  // shows its rating, instead of a fabricated one that throws it away.
+  const TRUSTED_GEO_CONF = 'confident';
+  function cityAnchor(name) {
+    const p = cityPoint(name);
+    return p && p.conf === TRUSTED_GEO_CONF ? p : null;
   }
   // `name` is the hotel-picker rung and is only ever passed for a stay: an
   // activity called "Kyoto" must not borrow the city's centroid through it.
@@ -6571,8 +6601,14 @@
   const CITY_PRECISION = 'city';
   const VENUE_PRECISION = 'venue';
   function placePoint({ key, name, city, strict }) {
-    const anchor = cityPoint(city);
-    const cityKey = anchor ? anchor.key : ('c:' + String(city || '').trim().toLowerCase());
+    // TWO CENTROIDS, TWO JOBS (see cityAnchor). `fallback` is the "roughly
+    // here" pin of last resort and may be any answer the geocoder gave;
+    // `anchor` is the evidence allowed to REFUSE a venue's own coordinate, and
+    // only a vouched-for match may do that. Reusing one value for both is what
+    // let a 570 km wrong centroid delete every correct point on the day.
+    const fallback = cityPoint(city);
+    const anchor = cityAnchor(city);
+    const cityKey = fallback ? fallback.key : ('c:' + String(city || '').trim().toLowerCase());
     const tag = (p, precision) => (p ? { ...p, precision, cityKey } : null);
     const venue = venuePoint(key);
     if (venue && plausiblePlacePoint(venue, anchor)) return tag(venue, VENUE_PRECISION);
@@ -6598,7 +6634,19 @@
     // The hotel-picker rung is a real doorstep (rememberPickedHotel seeds the
     // geocode cache under the hotel's own name), so it counts as a venue; the
     // city anchor below is the only rung that does not.
-    const doorstep = tag(name ? cityPoint(name) : null, VENUE_PRECISION);
+    //
+    // EXCEPT WHEN IT IS THE CITY WEARING A HOTEL'S NAME. `geoCache` is one flat
+    // namespace shared by city geocodes, picked cities and picked hotels, so a
+    // stay titled after its own town or beach ("Kata Beach Resort" on a day in
+    // "Kata Beach", or a title a traveller typed as the city) reads back the
+    // CENTROID and hands it out stamped VENUE_PRECISION - which is precisely
+    // the stamp that exempts it from the centroid rules below. That is the
+    // 14 km phantom leg with a different door into the same room. A doorstep
+    // that is the same point as the city's own is not a doorstep.
+    const named = name ? cityPoint(name) : null;
+    const isCentroidInDisguise = !!(named && fallback && sameSpot(named, fallback));
+    if (isCentroidInDisguise) placesLog('doorstep rejected: it is the city centroid under the venue name', { name, city });
+    const doorstep = tag(isCentroidInDisguise ? null : named, VENUE_PRECISION);
     if (doorstep) return doorstep;
     // A STRICT row has no location of its own: it borrows a specific building's
     // (a "Return to hotel" borrows the day's stay). If that building could not
@@ -6613,7 +6661,19 @@
       placesLog('no point: a derived row will not borrow a city centroid', { key, city });
       return null;
     }
-    return tag(anchor, CITY_PRECISION);
+    // `fallback`, not `anchor`: this is the "roughly here" rung, and a weak
+    // centroid is still the best guess available for a row nobody located.
+    // Kata Beach and Railay Beach both score `low` and both have CORRECT
+    // coordinates - gating this rung on confidence would strip their chips to
+    // fix an unrelated problem.
+    //
+    // `standin` says this centroid is being handed out IN PLACE OF a place the
+    // row actually named, which is what stops it becoming the origin of a
+    // confident-looking leg (see unmeasurableLeg). A row with no key and no
+    // name is the day's own city anchor and is openly coarse, so it is not one.
+    const p = tag(fallback, CITY_PRECISION);
+    if (p && (key || name)) p.standin = true;
+    return p;
   }
 
   // ---------- distance chips (Days rows + assistant cards) ----------
@@ -6626,10 +6686,16 @@
   // `strict` marks a row whose place is DERIVED from another item rather than
   // being its own - today that is exactly a travel leg returning to a stay. A
   // strict row refuses the city-centroid rung: see placePoint.
-  function distAttrs(query, name, city, label, key, strict) {
+  // `placeId` is the CANONICAL identity and is stamped so a route or directions
+  // link can be built from it rather than from a text query. A query is a guess
+  // Google is free to reinterpret - and when a row's own query is empty the
+  // guess degrades to the bare city name, which is how a day route that
+  // measured a doorstep still opened Maps on the middle of the province.
+  function distAttrs(query, name, city, label, key, strict, placeId) {
     return ` data-dist-q="${esc(query || '')}" data-dist-name="${esc(name || '')}"`
       + ` data-dist-city="${esc(city || '')}" data-dist-label="${esc(label || '')}"`
-      + ` data-dist-key="${esc(key || '')}"${strict ? ' data-dist-strict="1"' : ''}`;
+      + ` data-dist-key="${esc(key || '')}"${strict ? ' data-dist-strict="1"' : ''}`
+      + (placeId ? ` data-dist-place="${esc(placeId)}"` : '');
   }
   // The hotel-picker rung is only offered to a stay: it looks the TITLE up in
   // the geocode cache, which is a hotel's own doorstep for a stay and a
@@ -6666,7 +6732,19 @@
     // locates it comes from the stay.
     return distAttrs(lookup ? lookup.query : '',
       (isStay(target) ? displayTitle(target) : ''),
-      (target.location || '').trim(), displayTitle(it), lookup ? lookup.key : '', !!stay);
+      (target.location || '').trim(), displayTitle(it), lookup ? lookup.key : '', !!stay,
+      canonicalPlaceId(target, lookup));
+  }
+
+  // THE ONE ANSWER TO "which Google place is this row". The saved record first
+  // (it is durable, it survived a reload and it is what the traveller accepted),
+  // then this session's lookup. A leg that ends at a stay reads the STAY's
+  // identity, because that is the place it goes to.
+  function canonicalPlaceId(item, lookup) {
+    const rec = item && item.place && typeof item.place === 'object' ? item.place : null;
+    if (rec && typeof rec.id === 'string' && rec.id) return rec.id;
+    const entry = lookup && lookup.key ? placesCache.get(lookup.key) : null;
+    return (entry && entry.placeId) || '';
   }
   // The airports table is the precise rung for an "(KEF)"-style arrival
   // anchor: exact coordinates, no geocoder, and the file already ships with
@@ -6697,7 +6775,10 @@
       strict: !anchor && d.distStrict === '1' });
     // `query` is what a DIRECTIONS link can be built from, which the coordinates
     // cannot be: Maps wants a place, not a lat/lon the traveller never typed.
-    return p ? { ...p, label, query: query || city || '' } : null;
+    // `placeId` is the better form of the same thing when the row has one, and
+    // it is the only form that cannot be reinterpreted into another business.
+    const placeId = anchor ? (d.anchorPlace || '') : (d.distPlace || '');
+    return p ? { ...p, label, query: query || city || '', placeId } : null;
   }
   // A venue worth asking Photon about: it has a query of its own and no cached
   // point yet. Collected while painting, so only rows that are on screen right
@@ -6732,7 +6813,11 @@
       // type says how they move
       const type = dir.dataset.dirType || '';
       const mode = type === 'place' ? legTravelMode('local', leg.km) : legTravelMode(type, leg.km);
-      const href = directionsUrl(leg.fromQuery || '', dir.dataset.dirDest || '', mode);
+      // The canonical identities of both ends ride along, so the link opens on
+      // the entities the chain actually measured rather than on whatever Maps
+      // makes of two text queries.
+      const href = directionsUrl(leg.fromQuery || '', dir.dataset.dirDest || '', mode,
+        { origin: leg.fromPlaceId || '', destination: leg.toPlaceId || row.dataset.distPlace || '' });
       if (href && dir.getAttribute('href') !== href) dir.setAttribute('href', href);
     }
     let chip = facts.querySelector('.dc-dist');
@@ -7090,11 +7175,13 @@
         const group = byDate.get(date);
         group.push({
           card,
+          time: card.dataset.time || '',
           options: slots.map(el => readPoint(el.querySelector('.ap-dist'), 'dist')),
           selected: selectedOptionIndex(card),
         });
       });
       for (const [date, group] of byDate) {
+        paintScheduleWarning(group);
         const stops = routeStops(group.map((e, i) => ({ id: i, options: e.options, selected: e.selected })));
         if (stops.length < 2) continue;
         const anchor = originPointFor(specCache, date, '', wanted);
@@ -7108,6 +7195,40 @@
         group[stops[stops.length - 1].id].card.after(footer);
       }
     });
+  }
+
+  // IS THE DAY THE ASSISTANT WROTE ACTUALLY POSSIBLE? The cards already print
+  // how far apart two stops are; nothing compared that with the times printed
+  // beside them, so "12:30 lunch, 12:40 at a museum 8 km away" rendered as a
+  // normal plan with the contradiction on screen and unremarked. The check
+  // itself is in trip-logic (impossibleHops) and only ever uses TRAVEL time -
+  // never a guess about how long a meal takes - so it flags a day that cannot
+  // work rather than a day that looks busy.
+  //
+  // A warning, never a block: the traveller may know something the app does
+  // not, and the times are theirs to edit on the card.
+  function paintScheduleWarning(group) {
+    for (const g of group) g.card.querySelectorAll('.ap-schedule-warn').forEach(el => el.remove());
+    const stops = group.map(g => {
+      const p = g.options[g.selected] || g.options[0];
+      const label = (g.card.querySelector('.ap-title, .as-lead') || {}).textContent || '';
+      return p ? { time: g.time, label: label.trim(), lat: p.lat, lon: p.lon, card: g.card } : null;
+    }).filter(Boolean);
+    const clashes = impossibleHops(stops);
+    if (!clashes.length) return;
+    // The warning belongs on the LATER stop: that is the one whose time cannot
+    // be met, and it is the card the traveller would move.
+    for (const c of clashes) {
+      const target = stops.find(s => s.label === c.to);
+      if (!target) continue;
+      const meta = target.card.querySelector('.ap-meta, .as-lead');
+      const warn = document.createElement('div');
+      warn.className = 'ap-schedule-warn';
+      warn.textContent = `\u26a0 ${c.text}`;
+      warn.title = 'Travel time only, worked out from the straight-line distance between the two places. It does not allow for how long you spend at either.';
+      if (meta && meta.parentNode) meta.parentNode.insertBefore(warn, meta.nextSibling);
+      else target.card.appendChild(warn);
+    }
   }
 
   // The one entry point: paint everything from the caches, then ask for the
@@ -8779,6 +8900,17 @@
     try { localStorage.setItem(chatKey(tripId), JSON.stringify(capped)); } catch { /* best effort */ }
     return capped;
   }
+  // Undo the optimistic history write for a turn that never got an answer.
+  // Matched on the exact text so a concurrent write from another tab cannot be
+  // eaten by mistake: if the tail is not the message we pushed, nothing moves.
+  function dropLastUserTurn(tripId, text) {
+    const history = loadChat(tripId);
+    const last = history[history.length - 1];
+    if (!last || last.role !== 'user' || last.content !== text) return;
+    history.pop();
+    saveChat(tripId, history);
+  }
+
   function assistClientId() {
     let id = localStorage.getItem(CLIENT_ID_KEY);
     if (!id) { id = uid(); localStorage.setItem(CLIENT_ID_KEY, id); }
@@ -8980,7 +9112,7 @@
 
   // Turn the assistant's raw reply into a prose bubble plus proposal cards, then
   // persist the prose to history (proposal cards are transient by design).
-  function handleAssistantReply(reply, tripId, requestText) {
+  function handleAssistantReply(reply, tripId, requestText, turn) {
     const { actions, cleanedText } = extractTripActions(reply);
     const history = loadChat(tripId);
     history.push({ role: 'assistant', content: cleanedText || reply });
@@ -9000,7 +9132,7 @@
       scrollMessages();
       return;
     }
-    renderAssistAnswer({ text: cleanedText, actions, tripId, requestText });
+    renderAssistAnswer({ text: cleanedText, actions, tripId, requestText, turn });
   }
 
   /**
@@ -9019,8 +9151,33 @@
    *     three slots they asked for. Failed candidates are replaced from the
    *     provider and only verified places are rendered - prose included.
    */
-  function renderAssistAnswer({ text, actions, tripId, requestText }) {
+  // THE TURN THIS ANSWER BELONGS TO (owner report, 2026-09-05).
+  //
+  // `assistSending` guards the HTTP request and nothing else: it is cleared the
+  // moment handleAssistantReply returns, and a discovery turn returns
+  // immediately after STARTING its verification, which then runs unattended for
+  // up to DISCOVERY_WAIT_MS plus a replacement round. During that window the
+  // composer is live, so the traveller can ask a second question, get answered,
+  // and then watch the FIRST answer's prose and cards appear underneath it,
+  // out of order and with nothing saying which question they answer.
+  //
+  // A trip id cannot tell those two apart - it is the same trip. So every turn
+  // takes a number, and a completion may only touch the thread while its number
+  // is still the current one. Cheaper and stricter than aborting: the request
+  // was already paid for either way, and the only thing that must not happen is
+  // a stale WRITE.
+  let assistTurn = 0;
+  const nextAssistTurn = () => (++assistTurn);
+  const assistTurnCurrent = turn => turn === assistTurn;
+
+  function renderAssistAnswer({ text, actions, tripId, requestText, turn }) {
     const msgs = $('#assistMessages');
+    // A turn that was superseded while it was in flight renders nothing at all.
+    // `turn` is undefined for the paste tier, which is synchronous with the
+    // traveller's own click and cannot be stale.
+    const mine = () => (turn === undefined || assistTurnCurrent(turn))
+      && !!activeTrip() && activeTrip().id === tripId;
+    if (!mine()) return;
     const intent = assistDiscoveryIntent(requestText || '');
     const hint = discoveryHintFrom(actions);
     const discovery = intent.discovery || !!hint;
@@ -9050,9 +9207,9 @@
     scrollMessages();
 
     verifyDiscoveryProposals(proposals.valid, { trip, requested, query })
-      .then(({ kept, rejected, passthrough, requested: want }) => {
+      .then(({ kept, rejected, passthrough, requested: want, providerFailure }) => {
         pending.remove();
-        if (!activeTrip() || activeTrip().id !== tripId) return;
+        if (!mine()) return;
 
         // The prose is rebuilt around what actually survived, so a venue that
         // failed cannot be recommended in the text while its card is missing.
@@ -9060,6 +9217,7 @@
           kept: kept.map(k => k.name),
           rejected: rejected.map(r => r.name),
           requested: Number.isInteger(want) ? want : null,
+          providerFailure: providerFailure || '',
         });
         if (rebuilt.text) appendBubble('assistant', rebuilt.text);
         if (rebuilt.note) {
@@ -9088,6 +9246,11 @@
         pending.remove();
         console.error('trip-planner: discovery verification failed', err && err.message);
         placesLog('discovery: verification failed, rendering as an ordinary turn', err && err.message);
+        // The SAME guard the success path has. Without it a verification that
+        // threw after a trip switch rendered trip A's prose and trip A's cards
+        // into trip B's thread, validated against B - exactly the failure the
+        // success path was hardened against, reachable through the error door.
+        if (!mine()) return;
         if (text) appendBubble('assistant', text);
         const container = document.createElement('div');
         container.className = 'assist-proposals';
@@ -9155,6 +9318,10 @@
     history = saveChat(tripId, history);
 
     assistSending = true;
+    // The turn number is taken BEFORE the request and travels with the answer,
+    // so a discovery verification that outlives the composer lock still knows
+    // whether it is still the question on screen.
+    const turn = nextAssistTurn();
     syncSendState();
     const typing = showTyping();
     try {
@@ -9162,9 +9329,16 @@
         ? await callSiteAssistant(history, trip, mode)
         : await callByokProvider(history, trip, mode);
       typing.remove();
-      handleAssistantReply(reply, tripId, text);
+      handleAssistantReply(reply, tripId, text, turn);
     } catch (err) {
       typing.remove();
+      // A TURN NOBODY ANSWERED MUST NOT BECOME CONTEXT. The user message was
+      // persisted before the request, so a failed turn used to stay in the
+      // transcript forever and ride along on every later request - two user
+      // messages in a row, and the topic of a question that was never answered
+      // leaking into the next one. It is dropped again here, and the traveller
+      // still sees their own bubble plus the error beside it.
+      if (assistTurnCurrent(turn)) dropLastUserTurn(tripId, text);
       appendError(err && err.userMessage ? err.userMessage : 'Something went wrong. Try again.');
     } finally {
       assistSending = false;
@@ -9280,7 +9454,11 @@
       // has to say what happened, because "could not answer right now" would
       // send the traveller into retrying something that can never succeed.
       if (res.status === 413 || body.error === 'trip_too_large') throw assistError('This trip is too big to send to the shared assistant. Shorten some item descriptions, or split it into two trips. Copy & paste has no size limit.');
-      throw assistError('The shared assistant could not answer right now. Try again, or use Copy & paste.');
+      // The server now says WHICH upstream failure it was, and the advice
+      // follows: telling someone to "try again" is right for a timeout and
+      // actively wrong for a revoked key or a retired model pin, where the
+      // retry can never succeed and the only useful move is another tier.
+      throw assistError(UPSTREAM_ADVICE[body.reason] || UPSTREAM_ADVICE.upstream);
     }
     let data;
     // a 200 that is not JSON reached us fine; "check your connection" sent the
@@ -9288,6 +9466,18 @@
     try { data = await res.json(); } catch { throw assistError('The shared assistant sent back something unreadable. Try again, or use Copy & paste.'); }
     return data.reply || '';
   }
+
+  // One sentence per upstream failure class (see upstreamReason in
+  // tp-assist.mjs). The distinction that matters to a traveller is whether
+  // pressing send again could possibly work.
+  const UPSTREAM_ADVICE = {
+    timeout: 'The shared assistant took too long to answer. Try again, or use Copy & paste.',
+    network: 'The shared assistant could not be reached. Try again in a moment, or use Copy & paste.',
+    auth: "The site's free assistant is not working right now, and retrying will not help. Use Copy & paste, or add your own API key.",
+    model: "The site's free assistant is not working right now, and retrying will not help. Use Copy & paste, or add your own API key.",
+    empty: 'The shared assistant came back with nothing. Try rephrasing your request, or use Copy & paste.',
+    upstream: 'The shared assistant could not answer right now. Try again, or use Copy & paste.',
+  };
 
   // The copy/paste tier used to open with its own "what do you want help with"
   // textarea, which the picker already answers. Copying is now the one primary
@@ -9843,7 +10033,8 @@
     //
     // 'unavailable' is deliberately NOT handled here: it is transient (quota,
     // upstream hiccup), it is never cached, and a later batch may still answer.
-    if (entry.status === 'no_match') {
+    const state = placeStateLabel(entry);
+    if (state) {
       el.dataset.painted = '1';
       // Same one-line, unobtrusive state as before - only the TOOLTIP is
       // reason-aware now. "wrong_area" is a genuinely different answer from
@@ -9857,14 +10048,10 @@
       // contradicting itself in the same way "Verify on Google Maps" beside a
       // verified place did - it reads as "we could not find this", next to a
       // link that opens exactly the right listing.
-      const unrated = entry.reason === 'unrated' && entry.verified;
-      const text = unrated ? 'No rating yet' : 'No rating match';
-      const why = unrated
-        ? 'This place is on Google Maps but has no star rating yet. Open it from the link beside this to see it.'
-        : entry.reason === 'wrong_area'
-          ? 'The closest match on Google Maps is in a different city from this plan, so its rating and hours are not shown. The link beside it searches for the right one.'
-          : 'No place matched this name closely enough to attach a rating with confidence. The Google Maps link beside it still searches for it.';
-      el.innerHTML = `<span class="apr-none" title="${esc(why)}">${esc(text)}</span>`;
+      // The wording comes from placeStateLabel, which is a pure function in
+      // trip-logic so the exact sentence for each state is pinned by a test
+      // rather than living in a render.
+      el.innerHTML = `<span class="apr-none" title="${esc(state.why)}">${esc(state.text)}</span>`;
       return;
     }
     if (entry.status !== 'ok') return;
@@ -10128,6 +10315,16 @@
       const started = Date.now();
       const tick = () => {
         if (wanted.every(k => placesCache.has(k))) return resolve();
+        // A QUEUE THAT CANNOT ANSWER WILL NOT ANSWER IN TWELVE SECONDS EITHER.
+        // The endpoint switches itself off for the session on a 503 (no Places
+        // key configured - the DEFAULT state of this feature) and parks itself
+        // on a 429, and in both cases no entry can ever land. Polling on
+        // regardless spent the whole deadline, rejected every candidate, and
+        // told the traveller their destination could not be verified. The
+        // status is checked every tick because the FIRST batch is usually what
+        // discovers the endpoint is off.
+        const st = placesQueue.status();
+        if (st.off || st.paused) return resolve();
         if (Date.now() - started >= deadlineMs) return resolve();
         setTimeout(tick, 120);
       };
@@ -10187,19 +10384,43 @@
   // to be in, and the provider can answer that directly with real places. A
   // model turn would cost a request from their daily allowance, take another
   // 8-14 seconds, and produce another name that might not exist either.
+  // A DISCOVERY SEARCH THAT NEVER RAN IS NOT AN EMPTY NEIGHBOURHOOD.
+  // Every failure here used to return the same `[]` a genuinely empty answer
+  // does - network down, HTTP error, unparseable body, quota - so the caller
+  // could only read all of them as "we looked and there is nothing", which it
+  // then said out loud about a town full of restaurants. The shape now carries
+  // WHY, and the caller says something different for each.
+  //
+  // It also had no deadline at all: a wedged endpoint left "Checking these
+  // places on Google Maps..." on screen forever, and the traveller never got
+  // their answer - not even the fallback, because a hang never rejects.
+  const DISCOVERY_FETCH_MS = 12000;
   async function fetchDiscoveryCandidates(spec) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), DISCOVERY_FETCH_MS);
     let res;
     try {
       res = await fetch('/.netlify/functions/tp-places', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(placesRequestBody([], spec)),
+        signal: ctrl.signal,
       });
-    } catch { return []; }
-    if (!res.ok) return [];
+    } catch (err) {
+      return { results: [], failure: (err && err.name === 'AbortError') ? 'timeout' : 'network' };
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!res.ok) {
+      return { results: [], failure: res.status === 429 ? 'quota' : (res.status === 503 ? 'off' : 'upstream') };
+    }
     let data;
-    try { data = await res.json(); } catch { return []; }
-    return Array.isArray(data && data.results) ? data.results : [];
+    try { data = await res.json(); } catch { return { results: [], failure: 'malformed' }; }
+    const results = Array.isArray(data && data.results) ? data.results : [];
+    // The server distinguishes "the search ran and the area has nothing left"
+    // from "the search could not run"; carry that through untouched.
+    const reason = data && typeof data.reason === 'string' ? data.reason : '';
+    return { results, failure: reason === 'upstream' ? 'upstream' : '' };
   }
 
   // Turn one discovered place into a proposal that looks exactly like a
@@ -10262,6 +10483,23 @@
     }
     if (!candidates.length) return { kept: proposals, rejected: [], passthrough: [], requested };
 
+    // THE LOOKUP CANNOT ANSWER, SO DO NOT PRETEND IT DID (owner report,
+    // 2026-09-05: "I could verify one good match for this area, not three").
+    //
+    // When the Places endpoint is switched off (no key configured - the
+    // DEFAULT state of this feature) or parked behind a 429, no entry will
+    // ever land in the cache. The old code did not ask: it polled a cache that
+    // could not fill for the full 12 seconds, rejected 100% of the candidates
+    // as "unverified", spent a billed replacement search that also could not
+    // run, and told the traveller their dense tourist island had nothing in it.
+    //
+    // A provider that never answered is not evidence about the world. The turn
+    // degrades to an ORDINARY one: every candidate the model wrote is shown,
+    // unverified and honestly labelled, which is exactly what a site with no
+    // Places key has always done on a non-discovery turn.
+    const qStatus = placesQueue.status();
+    if (qStatus.off || qStatus.paused) return unverifiedTurn(candidates, passthrough, requested, qStatus);
+
     // GEOCODE THE DAY'S CITY FIRST. The area gate can only judge a branch
     // against a coordinate, and `cityPoint` is cache-only: on the first
     // assistant turn of a session there is nothing in it, so the whole batch
@@ -10280,28 +10518,56 @@
     for (const c of candidates) c.lookup = proposalPlaceLookup(c.proposal) || c.lookup;
 
     placesLog('discovery: verifying', candidates.map(c => c.lookup.key));
+    // PROMOTE, THEN REQUEST. `request` skips a key the queue already holds, so
+    // a candidate the itinerary's own IntersectionObserver had already queued
+    // at normal priority stayed in the slow lane behind a screenful of rows,
+    // missed the deadline, and was rejected as unverified - then replaced by a
+    // billed search for a venue whose answer arrived a second later. `promote`
+    // is what moves an existing entry into the urgent lane; hydrateRatings has
+    // always called both and this path called only one.
+    placesQueue.promote(candidates.map(c => c.lookup));
     placesQueue.request(candidates.map(c => c.lookup), { priority: 'urgent' });
     await awaitPlaceKeys(candidates.map(c => c.lookup.key), DISCOVERY_WAIT_MS);
+
+    // Asked again AFTER the wait, because the batch above is normally what
+    // discovers the endpoint is unavailable: the check before it only catches
+    // a session that already knew.
+    const settled = placesQueue.status();
+    if (settled.off || settled.paused) return unverifiedTurn(candidates, passthrough, requested, settled);
 
     const seen = new Set();
     const kept = [];
     const rejected = [];
     let looked = candidates.length;
+    // '' while everything is working; a specific failure word once a provider
+    // call did not run, so the prose can say "I could not check" instead of
+    // "there is nothing here".
+    let providerFailure = '';
+    // WHY DID THIS RECOMMENDATION DISAPPEAR? Before this the answer took an
+    // afternoon of reverse engineering, because every rejection collapsed into
+    // one silent `continue`. Each candidate now records the stage that dropped
+    // it, and `discoveryTally` rolls the stages up per slot. Development only:
+    // it goes to placesLog, which is off unless the traveller has deliberately
+    // turned the places debug on, so a normal session logs nothing extra.
+    const tally = newRejectionTally();
     for (const c of candidates) {
       const entry = placesCache.get(c.lookup.key);
       const identity = placeIdentityOf(entry, c.lookup);
+      const stage = rejectionStage(entry, identity, seen);
       // RESOLVED, not verified: see the note on isResolvedEntry. A real venue
       // whose branch could not be confirmed is still a real venue, and dropping
       // it here is what emptied a whole day's answer.
-      if (!isResolvedEntry(entry) || (identity && seen.has(identity))) {
-        rejected.push({ ...c, entry, identity, name: c.proposal.display.title || '' });
+      if (stage) {
+        countRejection(tally, c.proposal, stage);
+        rejected.push({ ...c, entry, identity, stage, name: c.proposal.display.title || '' });
         if (identity) seen.add(identity);
         continue;
       }
+      countRejection(tally, c.proposal, 'accepted');
       seen.add(identity);
       kept.push({ ...c, entry, identity, name: c.proposal.display.title || '' });
     }
-    placesLog('discovery: first pass', { kept: kept.length, rejected: rejected.length });
+    placesLog('discovery: first pass', { kept: kept.length, rejected: rejected.length, bySlot: tally });
 
     // ---- bounded replacement ----
     const want = Number.isInteger(requested) ? requested : candidates.length;
@@ -10328,7 +10594,15 @@
       if (!spec.q) break;
       if (validCoord(area.lat, area.lon)) { spec.lat = area.lat; spec.lon = area.lon; }
       placesLog('discovery: asking the provider for replacements', spec);
-      const found = await fetchDiscoveryCandidates(spec);
+      const answer = await fetchDiscoveryCandidates(spec);
+      const found = answer.results;
+      if (answer.failure) {
+        // The search did not run. Say so upward rather than letting an empty
+        // list be read as "this area has nothing else".
+        placesLog('discovery: replacement search failed', answer.failure);
+        providerFailure = answer.failure;
+        break;
+      }
       looked += found.length;
       for (const place of found) {
         if (kept.length >= want) break;
@@ -10343,6 +10617,24 @@
       placesLog('discovery: after replacement', { kept: kept.length, looked });
     }
 
+    // ---- the late arrivals ----
+    // A lookup that landed AFTER the deadline sat in the cache unread while a
+    // replacement was bought for the slot it had already filled. The cache is
+    // re-read once here, at the end, because by now the replacement round has
+    // given the slow ones several more seconds and re-reading is free.
+    for (let i = rejected.length - 1; i >= 0; i--) {
+      const r = rejected[i];
+      if (r.stage !== 'unresolved') continue;
+      const entry = placesCache.get(r.lookup.key);
+      if (!isResolvedEntry(entry)) continue;
+      const identity = placeIdentityOf(entry, r.lookup);
+      if (!identity || seen.has(identity)) continue;
+      seen.add(identity);
+      rejected.splice(i, 1);
+      kept.push({ ...r, entry, identity });
+      placesLog('discovery: a late resolution was rescued', r.lookup.key);
+    }
+
     // ---- rank ----
     const ranked = rankVerifiedPlaces(kept.map(k => ({
       ...k,
@@ -10350,7 +10642,68 @@
       score: placeQualityScore(k.entry, distanceKmForProposal(k.proposal)),
     })));
 
-    return { kept: ranked, rejected, passthrough, requested: want };
+    placesLog('discovery: rejection tally by slot', tally);
+    return { kept: ranked, rejected, passthrough, requested: want, providerFailure };
+  }
+
+  // The turn a provider that never answered gets: every candidate the model
+  // wrote, shown unverified and honestly labelled, which is exactly what a site
+  // with no Places key has always done on a NON-discovery turn. Nothing was
+  // learned about the world, so nothing may be asserted about it.
+  function unverifiedTurn(candidates, passthrough, requested, status) {
+    placesLog('discovery: provider unavailable, rendering unverified', status);
+    return {
+      kept: candidates.map(c => ({
+        ...c, entry: null, identity: placeIdentityOf(null, c.lookup),
+        name: c.proposal.display.title || '',
+      })),
+      rejected: [], passthrough, requested,
+      providerFailure: status.off ? 'off' : 'quota',
+    };
+  }
+
+  // ---------- discovery diagnostics ----------
+  // The question this answers, and the reason it is a first-class structure
+  // rather than a console.log: "the assistant gave me one activity and no
+  // meals - where did the other eleven go?". Counted per SLOT (breakfast,
+  // lunch, dinner, activities), because a whole empty slot is the failure that
+  // matters and a per-candidate line does not show it.
+  const REJECTION_STAGES = [
+    'accepted',
+    'unresolved',      // nothing came back for this name in time
+    'not_found',       // the provider searched and found no such venue
+    'low_confidence',  // a place came back whose name is a different business
+    'wrong_area',      // a real business, in a different part of the world
+    'type_mismatch',   // a real business of the wrong KIND (the tour-desk case)
+    'unattributable',  // rated, but with no link we are allowed to show it with
+    'duplicate',       // the same canonical place as one already offered
+    'generic_query',   // the model named a category, not a venue
+  ];
+  function newRejectionTally() { return {}; }
+
+  // Which stage dropped this candidate, or '' when it survived. Ordered so the
+  // most specific answer wins: a duplicate of an already-offered place is a
+  // duplicate even if it also happens to be unrated.
+  function rejectionStage(entry, identity, seen) {
+    if (isResolvedEntry(entry)) return (identity && seen.has(identity)) ? 'duplicate' : '';
+    if (!entry) return 'unresolved';
+    if (entry.status === 'unavailable') return 'unresolved';
+    const reason = typeof entry.reason === 'string' ? entry.reason : '';
+    return REJECTION_STAGES.includes(reason) ? reason : 'unresolved';
+  }
+
+  // The slot a proposal belongs to: its meal category, or 'activity'. This is
+  // what turns a flat list of rejections into "breakfast: 0 accepted, 3
+  // wrong_area", which is the sentence that would have found the Ko Phi Phi
+  // bug in a minute rather than an afternoon.
+  function proposalSlot(p) {
+    const f = (p && p.fields) || {};
+    return String(f.meal || '').trim() || 'activity';
+  }
+  function countRejection(tally, proposal, stage) {
+    const slot = proposalSlot(proposal);
+    const row = tally[slot] || (tally[slot] = {});
+    row[stage] = (row[stage] || 0) + 1;
   }
 
   // Straight-line km from the day's origin to a proposal, when both are known.
@@ -10440,6 +10793,14 @@
   // which this is, so an `update` to an item the traveller already paid for
   // shows their own $800, not "~$800". Empty string when there is nothing worth
   // showing (a typed 0 is a decision, not a price).
+  // WHERE A NUMBER ON A CARD CAME FROM. The star and the review count are
+  // Google's and wear Google's wordmark; the price is the assistant's guess and
+  // wears a tilde. A tilde alone is a weak signal for a figure a traveller
+  // might budget against, so it says so in full on hover - and the wording
+  // names the model rather than "estimated", because the question a reader
+  // actually has is whether anyone checked.
+  const EST_COST_TITLE = 'The assistant\'s own estimate, not a price from Google or a booking site. Check it before you rely on it.';
+
   function proposalCostStr(d, trip) {
     const shown = displayCostOf(d);
     if (!shown) return '';
@@ -10609,6 +10970,10 @@
     card.dataset.op = 'add';
     const setDate = entry.candidates[0].display.startDate;
     if (isIsoDate(setDate)) card.dataset.date = setDate;
+    // and the clock time, which the schedule-feasibility pass compares against
+    // the travel time between consecutive stops
+    const setTime = entry.candidates[0].display.startTime || '';
+    if (/^\d{2}:\d{2}$/.test(setTime)) card.dataset.time = setTime;
     const name = 'apset-' + (++assistPropSeq);
     card.innerHTML = `
       <div class="ap-op">Pick one</div>
@@ -10638,6 +11003,7 @@
     // the day this card would land on: the shortest-route footer is per day,
     // and one reply can cover several
     if (isIsoDate(d.startDate)) card.dataset.date = d.startDate;
+    if (/^\d{2}:\d{2}$/.test(d.startTime || '')) card.dataset.time = d.startTime;
     // The kind sits with the date and the time now that the title is the
     // venue's own name: "Drinks · Fri 31 Dec · 8:00 PM".
     const meta = [d.meal ? mealLabel(d.meal) : '', isIsoDate(d.startDate) ? fmtDate(d.startDate) : '',
@@ -10651,7 +11017,7 @@
       <div class="ap-op">${opWord}</div>
       <div class="ap-title">${esc(d.title || '(no title)')}</div>
       ${meta ? `<div class="ap-meta">${esc(meta)}</div>` : ''}
-      ${costStr ? `<div class="ap-cost">${esc(costStr)}</div>` : ''}
+      ${costStr ? `<div class="ap-cost"${d.estCost != null ? ` title="${esc(EST_COST_TITLE)}"` : ''}>${esc(costStr)}</div>` : ''}
       ${p.duplicateOf ? '<div class="ap-dup">Already on your plan at this time</div>' : ''}
       ${proposalDistHtml(p, trip)}
       ${proposalPlaceHtml(p)}
@@ -10694,7 +11060,7 @@
   // the write boundary.
   function itemPlaceRecord(it) {
     if (!it || !it.place) return null;
-    return normalizePlaceRecord(it.place, { cityPoint: cityPoint((it.location || '').trim()) });
+    return normalizePlaceRecord(it.place, { cityPoint: cityAnchor((it.location || '').trim()) });
   }
 
   function proposalToItem(p, trip) {

@@ -111,7 +111,28 @@ const SEARCH_FIELD_MASK = 'places.id';
 // `location` does. They are what lets the wrong-branch gate answer at all when
 // the trip has not geocoded its city yet: without an address there is nothing
 // to compare "Tokyo" against, and the Hokkaido flagship walks straight through.
-export const DETAILS_FIELD_MASK = 'displayName,googleMapsUri,rating,userRatingCount,location,formattedAddress,addressComponents,regularOpeningHours,currentOpeningHours';
+// `types` is a "Place Details Essentials" field and `primaryType` a "Place
+// Details Pro" one (developers.google.com/maps/documentation/places/web-service/
+// data-fields, checked 2026-09-05) - both strictly BELOW the Enterprise tier
+// this request already bills at for `rating`, exactly like `location` and
+// `formattedAddress` above. So they ride the same billed call for $0.00 extra
+// and change neither the SKU nor the request count.
+// They are what lets the resolver answer "is this the same KIND of thing?".
+// Without them "Maya Bay" resolved to "Maya Bay Tours", a tour desk 100 m from
+// the hotel, and every gate agreed: the name contains the query, and the desk
+// really is nearby. Proximity must not decide identity (see typeMismatch).
+export const DETAILS_FIELD_MASK = 'displayName,googleMapsUri,rating,userRatingCount,location,formattedAddress,addressComponents,regularOpeningHours,currentOpeningHours,types,primaryType';
+
+// The mask above WITHOUT the two type fields. A field mask Google refuses is a
+// 400 on every lookup, which would take the whole feature down rather than
+// degrade it, and this file cannot be exercised against the live API from a
+// developer machine (the production key deliberately exists only in the config
+// blob). So a mask rejection demotes the process to the previous, long-proven
+// mask and says so in the log; the type gate then simply has no evidence to
+// work with, which it already treats as "no opinion". Exported for the tests.
+export const DETAILS_FIELD_MASK_BASE = 'displayName,googleMapsUri,rating,userRatingCount,location,formattedAddress,addressComponents,regularOpeningHours,currentOpeningHours';
+let detailsMask = DETAILS_FIELD_MASK;
+export function _resetDetailsMask() { detailsMask = DETAILS_FIELD_MASK; }
 
 export default async function handler(req) {
   // (1) Origin/Referer guard first: only our own site and local dev.
@@ -229,6 +250,7 @@ export default async function handler(req) {
         area: normalizeArea(clamped.discover),
         limit: clamped.discover.limit,
         exclude: clamped.discover.exclude,
+        meal: clamped.discover.meal,
         findPlaceIds: (q, bias, pageSize) => findPlaceIds(placesKey, q, bias, pageSize),
         fetchDetails: id => fetchDetails(placesKey, id),
         now,
@@ -237,14 +259,26 @@ export default async function handler(req) {
       });
     } catch (err) {
       console.error('tp-places discover failed', err && err.message);
-      found = { results: [], spent: granted };
+      // A PROVIDER FAILURE IS NOT AN EMPTY NEIGHBOURHOOD. Both used to leave
+      // here as `results: []`, and the client could only read that as "we
+      // looked and there is nothing", which it then told the traveller about a
+      // town full of restaurants. The reason travels so the two can be told
+      // apart all the way to the sentence on screen.
+      found = { results: [], spent: granted, reason: 'upstream' };
     }
     const unspentD = granted - found.spent;
     if (unspentD > 0) {
       await updateUsage(store, USAGE_KEY, latest =>
         ({ write: releaseQuota(latest, clamped.clientId, now, unspentD, tier) }));
     }
-    return json({ results: found.results, discovered: true, attribution: ATTRIBUTION }, 200);
+    return json({
+      results: found.results,
+      discovered: true,
+      // '' when the search genuinely ran; 'upstream' / 'no_candidates' when it
+      // did not, or ran and the area was excluded from the answer.
+      reason: typeof found.reason === 'string' ? found.reason : '',
+      attribution: ATTRIBUTION,
+    }, 200);
   }
 
   // (6) Resolve the batch against the caches, spending at most `granted`.
@@ -410,6 +444,8 @@ export function clampDiscover(raw) {
   const q = str(raw.q, MAX_QUERY_LEN);
   if (!q) return null;
   const out = { q, limit: Math.max(1, Math.min(DISCOVERY_DETAILS_MAX, Number(raw.limit) || 1)) };
+  const meal = str(raw.meal, 20);
+  if (meal) out.meal = meal;
   const city = str(raw.city, 80);
   const country = str(raw.country, 80);
   if (city) out.city = city;
@@ -450,6 +486,11 @@ function clampQuery(item) {
   }
   const radiusKm = num(item.radiusKm);
   if (radiusKm !== undefined && radiusKm > 0) out.radiusKm = radiusKm;
+  // The meal slot this query was filed under, so the type gate can tell that
+  // "Anna's Restaurant" is a request for somewhere to EAT even though not one
+  // word of it names a kind of place.
+  const meal = str(item.meal, 20);
+  if (meal) out.meal = meal;
   return out;
 }
 
@@ -547,12 +588,26 @@ function resolutionLogger() {
   return rec => console.log('tp-places resolve', JSON.stringify(rec));
 }
 
-// Place Details, Enterprise SKU. This is the only billed call in the pipeline.
-async function fetchDetails(key, placeId) {
-  const res = await fetch(PLACES_HOST + '/places/' + encodeURIComponent(placeId) + '?languageCode=en', {
-    headers: { 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': DETAILS_FIELD_MASK },
+function detailsCall(key, placeId, mask) {
+  return fetch(PLACES_HOST + '/places/' + encodeURIComponent(placeId) + '?languageCode=en', {
+    headers: { 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': mask },
     signal: upstreamSignal(),
   });
+}
+
+// Place Details, Enterprise SKU. This is the only billed call in the pipeline.
+async function fetchDetails(key, placeId) {
+  let res = await detailsCall(key, placeId, detailsMask);
+  // A 400 naming a field is the one failure worth retrying differently: it
+  // means this deployment's mask is not accepted, which is permanent, so the
+  // process drops back to the proven mask once rather than failing every
+  // lookup for the life of the deploy.
+  if (!res.ok && res.status === 400 && detailsMask !== DETAILS_FIELD_MASK_BASE) {
+    const why = await res.text().catch(() => '');
+    console.error('tp-places details mask rejected, falling back', why.slice(0, 300));
+    detailsMask = DETAILS_FIELD_MASK_BASE;
+    res = await detailsCall(key, placeId, detailsMask);
+  }
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     console.error('tp-places details error', res.status, body.slice(0, 300));
@@ -577,6 +632,12 @@ async function fetchDetails(key, placeId) {
     mapsUri: typeof data.googleMapsUri === 'string' ? data.googleMapsUri : '',
     lat: typeof loc.latitude === 'number' ? loc.latitude : null,
     lon: typeof loc.longitude === 'number' ? loc.longitude : null,
+    // What Google says this place IS, used only to REFUSE a candidate whose
+    // kind contradicts the question (a tour desk answering "Maya Bay"). Absent
+    // is a real state and means "no opinion", never "mismatch". Used and
+    // dropped like the address: never returned to the client, never stored.
+    types: Array.isArray(data.types) ? data.types.filter(t => typeof t === 'string') : [],
+    primaryType: typeof data.primaryType === 'string' ? data.primaryType : '',
     // Normalized weekly + dated opening hours, or null when Google has none.
     // Null MATTERS downstream: it is the "hours unknown" state, and no layer
     // may ever read it as "open". Passed through, never stored.

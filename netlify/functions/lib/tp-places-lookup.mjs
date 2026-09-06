@@ -31,6 +31,7 @@ export const NO_MATCH_TTL_MS = 7 * 86400000;
 import {
   isGenericQuery, matchConfidence, normalizeQuery,
   normalizeArea, verifyArea, resolutionConfidence, addressTextOf,
+  typeMismatch,
   AREA_BIAS_KM,
 } from './tp-places-match.mjs';
 
@@ -75,7 +76,7 @@ export function detailsCacheKey(placeId) {
 // card, and `area` is the itinerary context the query is expected to resolve
 // inside (see normalizeArea).
 async function resolveOne(entry, { cache, findPlaceId, fetchDetails, now, claim, log }) {
-  const { id, query, area } = entry;
+  const { id, query, area, meal } = entry;
   const reply = extra => ({ id, query, ...extra });
 
   // (1) Category, not a venue: never worth a call, never a correct answer.
@@ -141,7 +142,7 @@ async function resolveOne(entry, { cache, findPlaceId, fetchDetails, now, claim,
     return { result: reply({ status: 'unavailable', reason: 'upstream' }), spent: 1 };
   }
   let spent = 1;
-  let judged = judge(query, place, placeId, area);
+  let judged = judge(query, place, placeId, area, meal);
   logDecision(log, { query, area, placeId, place, judged, attempt: 1 });
 
   // (6) THE SECOND LOOK. A candidate rejected for being in the wrong part of
@@ -175,7 +176,7 @@ async function resolveOne(entry, { cache, findPlaceId, fetchDetails, now, claim,
         catch { retryPlace = null; }
         if (retryPlace) {
           spent += 1;
-          const second = judge(query, retryPlace, retryId, area);
+          const second = judge(query, retryPlace, retryId, area, meal);
           logDecision(log, { query, area, placeId: retryId, place: retryPlace, judged: second, attempt: 2 });
           if (second.result.status !== 'no_match') {
             // The refined lookup is the answer for this query from now on.
@@ -220,7 +221,7 @@ function refineQuery(query, area) {
 // is a different branch (verifyArea). Either failure is a no_match, and the
 // reason says which, because "low_confidence" and "wrong_area" call for
 // completely different fixes.
-function judge(query, place, placeId, area) {
+function judge(query, place, placeId, area, meal) {
   const name = (place && place.name) || '';
   // The area rides along so a city named in the query is read as the search
   // hint it is, never as a discriminator competing with the place's own name.
@@ -229,6 +230,21 @@ function judge(query, place, placeId, area) {
     return {
       rejectedOnArea: false, unconfirmed: false, area: null,
       result: { status: 'no_match', reason: 'low_confidence' },
+    };
+  }
+  // THE THIRD GATE. The name gate answers "same words?" and the area gate
+  // answers "same place on earth?" - and "Maya Bay" -> "Maya Bay Tours" passes
+  // both, because the tour desk's name CONTAINS the query (matchConfidence
+  // scores containment 1.00) and the desk is nearer than the beach. What
+  // separates them is what they ARE. Rejected outright rather than shown with a
+  // caveat, for the same reason a wrong branch is: a rating, an hours line and
+  // a pin for a booking office presented as a lagoon are lies the traveller has
+  // no way to check.
+  const badType = typeMismatch(query, place, area, meal);
+  if (badType) {
+    return {
+      rejectedOnArea: false, unconfirmed: false, area: null,
+      result: { status: 'no_match', reason: 'type_mismatch', detail: badType },
     };
   }
   const at = coords(place);
@@ -363,7 +379,11 @@ export function toEntry(raw) {
   const query = typeof raw.q === 'string' ? raw.q.trim() : '';
   if (!query) return null;
   const id = typeof raw.id === 'string' && raw.id ? raw.id : query;
-  return { id, query, area: normalizeArea(raw) };
+  // The meal slot the itinerary filed this query under, when it has one. It is
+  // the only thing that can tell the type gate a query with no kind word in it
+  // ("Anna's Restaurant") is asking for somewhere to eat.
+  const meal = typeof raw.meal === 'string' ? raw.meal.slice(0, 20).trim() : '';
+  return { id, query, area: normalizeArea(raw), meal };
 }
 
 // ---------- discovery: find CANDIDATES, not a named place ----------
@@ -406,7 +426,7 @@ export const DISCOVERY_SEARCH_PAGE = 10;
  * duplicate of either under a different display name.
  */
 export async function discoverPlaces({
-  query, area, limit, exclude, findPlaceIds, fetchDetails, now, claim, log,
+  query, area, limit, exclude, meal, findPlaceIds, fetchDetails, now, claim, log,
 }) {
   const want = Math.max(1, Math.min(DISCOVERY_DETAILS_MAX, Number(limit) || 1));
   const skip = new Set(Array.isArray(exclude) ? exclude.filter(x => typeof x === 'string' && x) : []);
@@ -462,6 +482,17 @@ export async function discoverPlaces({
         judged: { area: verdict, result: { status: 'no_match', reason: verdict.ok ? 'unconstrained_search' : 'wrong_area' } } });
       continue;
     }
+    // The SAME type gate a named lookup passes through. Nobody named a venue
+    // here, so the broker half is what carries: a traveller who asked for
+    // seafood and got a dive-booking desk was answered with the wrong kind of
+    // business, however well Google ranked it.
+    const badType = typeMismatch(query, place, area, meal);
+    if (badType) {
+      logDecision(log, { query, area, placeId: id, place, attempt: 'discover',
+        judged: { area: verdict, result: { status: 'no_match', reason: 'type_mismatch', detail: badType } } });
+      continue;
+    }
+
     // A candidate nobody has rated is a poor REPLACEMENT specifically: the
     // traveller asked for good places, and the whole reason this one is being
     // offered is that another failed. An unrated place is still a real place -

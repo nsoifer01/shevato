@@ -49,9 +49,18 @@ test('the details field mask asks for both hours fields and nothing above Enterp
   // fields, two tiers below Enterprise, so they ride the same billed call for
   // nothing (2026-08-27, the wrong-branch gate). Any drift in this string is a
   // billing change and must be a deliberate edit here as well.
+  // `types` (Place Details ESSENTIALS) and `primaryType` (Place Details PRO)
+  // joined on 2026-09-05 for the entity-kind gate. Both sit below Enterprise,
+  // exactly like location/formattedAddress above, so the SKU and the price are
+  // unchanged - and no field from "Enterprise + Atmosphere" (reviews,
+  // allowsDogs, ...) may ever be added, because that WOULD move the SKU.
   assert.equal(DETAILS_FIELD_MASK,
     'displayName,googleMapsUri,rating,userRatingCount,location,formattedAddress,'
-    + 'addressComponents,regularOpeningHours,currentOpeningHours');
+    + 'addressComponents,regularOpeningHours,currentOpeningHours,types,primaryType');
+  // Nothing from the Atmosphere tier, whatever else changes.
+  for (const forbidden of ['reviews', 'allowsDogs', 'servesBeer', 'evChargeOptions', 'generativeSummary']) {
+    assert.ok(!DETAILS_FIELD_MASK.includes(forbidden), `${forbidden} would promote every lookup to a costlier SKU`);
+  }
 });
 
 test('hours ride the ok result, and the lookup still spends exactly one call', async () => {

@@ -1112,6 +1112,210 @@ bad candidate) and `apps/trip-planner/tests/assistant-geo-regression.test.js`
 hotel-by-date, prompt contract). The locality fixtures are Thai, Greek,
 Indonesian and Japanese on purpose: nothing about the fix is country-specific.
 
+## The 2026-09-05 follow-up: the anchor was wrong, not the gate
+
+The round above relaxed `verifyArea` and the assistant got visibly better - a
+realistic Ko Phi Phi day, real venues, correct Google Maps links. It still said
+**"No rating match"** on The Mango Garden, a restaurant Google rates 4.8 from
+3,770 reviews, next to a link that opens exactly that restaurant.
+
+The gate was not the problem this time. **The app was telling it the wrong place
+to look.**
+
+### The measurement that ended the argument
+
+The production endpoint, asked the way the browser asks it:
+
+```
+POST /.netlify/functions/tp-places
+  { q: "The Mango Garden Ko Phi Phi", city: "Ko Phi Phi",
+    country: "Thailand", lat: 11.8237522, lon: 102.4463456 }   <- what the app sent
+  -> { status: "no_match", reason: "wrong_area" }
+
+  { q: "The Mango Garden Ko Phi Phi", city: "Ko Phi Phi", country: "Thailand" }
+  -> { status: "ok", name: "The Mango Garden", rating: 4.8,
+       userRatingCount: 3770, placeId: "ChIJvb7PGeDeUTARJoM-VdbMTRg",
+       lat: 7.7387722, lon: 98.7714123, hours: {...} }
+```
+
+Same query, same key, same field mask. Google had already returned the rating,
+the review count, the Maps URI, the coordinates and the opening hours **in
+full**, on the first attempt. The app threw all of it away because of the two
+numbers it had attached to the question.
+
+`11.8237522, 102.4463456` is **Ko Phi, an islet in Ko Kut District, Trat
+Province** - Nominatim's top hit for the string "Ko Phi Phi", 570 km away on the
+Cambodian side of the country. Measured against it, every real venue on Phi Phi
+Don genuinely is outside the 150 km radius, so the gate refused all of them,
+correctly, one after another.
+
+**A wrong anchor does not reject the wrong venues. It rejects the right ones,
+and it rejects every single one**, which is why the failure looked like a dense
+tourist island with no restaurants in it rather than like a bad coordinate.
+
+### The app already knew the geocode was untrustworthy
+
+`classifyGeoMatch` scored that answer `low` when it was written to the cache
+(addresstype `islet`, importance 0.127). Nothing read the score. Measured
+against the live geocoder on 2026-09-05:
+
+| the itinerary says | Nominatim's top hit | conf | coordinate |
+| ------------------ | ------------------- | ---- | ---------- |
+| `Ko Phi Phi`   | Ko Phi, Trat Province      | `low`       | **570 km wrong** |
+| `Phi Phi Don`  | Ban Phai Lom, Don Thong    | `ambiguous` | **750 km wrong** |
+| `Kata Beach`   | Kata Beach, Karon          | `low`       | correct |
+| `Railay Beach` | Ao Rai Le, Railay          | `low`       | correct |
+| `Ao Nang`      | Ao Nang, Krabi             | `confident` | correct |
+| `Phuket`       | Phuket **Province**        | `confident` | 14 km off (the centroid bug) |
+| `Tokyo`        | Tokyo                      | `confident` | correct |
+
+**This is why islands and beaches were hit and cities were not**, and it is not
+about islands: settlements come back `confident`, sub-localities come back as
+`islet` / `beach` / `hamlet` kinds with importance under `GEO_WEAK_IMPORTANCE`,
+which is the definition of `low`. Islands are simply where "the geocoder is
+unsure" is the norm rather than the exception.
+
+### The rule: a centroid may only REJECT when the app vouched for it
+
+`cityPoint` was doing two jobs with one answer, and they have opposite risk
+profiles:
+
+- as a **fallback**, to draw a row roughly where it probably is. A guess is
+  fine: the alternative is no pin at all.
+- as **evidence**, to refuse a resolved place. A guess here is catastrophic.
+
+They are now two functions. `cityAnchor` (app.js) returns the point only when
+`classifyGeoMatch` called it `confident`; `cityPoint` is unchanged and still
+feeds the "roughly here" rung, so **Kata Beach and Railay Beach keep their
+chips** - both score `low` and both have correct coordinates, and gating the
+display rung on confidence would have stripped them to fix an unrelated bug.
+
+Everything that REJECTS now reads `cityAnchor`: the area gate's own anchor, the
+Photon venue-point plausibility check (which was also refusing every correct
+Phi Phi coordinate for being 570 km from the "city"), and the persisted-record
+sanity check.
+
+### The ladder, and why the hotel is now first
+
+`areaAnchorFor` (moved into trip-logic; see the testability note below):
+
+1. **the day's host stay's own doorstep**, from the geocode cache under the
+   hotel's name (the picker seeds it and marks it confident, because a human
+   chose that row) or from the venue cache. Offered only when the item named no
+   city of its own - "Nikko" on a Tokyo day is a claim about Nikko.
+2. **the named city**, and only if it was vouched for.
+3. **the host stay's city**, same condition.
+4. **nothing**, which downstream is "could not check" - the place still
+   resolves and still shows its rating.
+
+The stay was previously rung 3 and unreachable: the city rung won outright
+whenever the geocoder had an answer *of any quality*. The traveller's own hotel
+is the better anchor in every case - a building rather than a polygon's middle,
+chosen by hand, and where the day actually starts.
+
+### Two more failures the same investigation surfaced
+
+**Maya Bay became Maya Bay Tours, and every gate agreed.** Confirmed against
+master: `resolveQueries` answered `"Maya Bay Ko Phi Phi"` with a tour desk,
+`status: ok`, `verified: true`, wearing the desk's 4.6 rating and its pin.
+`matchConfidence` scores whole-name containment 1.00 (`"maya bay tours"`
+contains `"maya bay"`), and the desk is 100 m from the hotel while the beach is
+7 km offshore, so proximity *favoured* the wrong answer. **Proximity must never
+decide identity.** A third gate now runs before geography:
+
+- the place's NAME advertises a trade the query never asked for (`tours`,
+  `tickets`, `booking`, `agency`, `charter`, ...) -> `broker_name`
+- Google's own `primaryType` says it IS a broker and the query never asked for
+  one -> `broker_kind`
+- the place's kind contradicts the itinerary's own meal slot -> `kind_mismatch`
+
+`types` and `primaryType` joined the details field mask to make this possible.
+Both sit **below** the Enterprise tier the request already bills at (`types` is
+Essentials, `primaryType` is Pro), exactly like `location` and
+`formattedAddress`, so the SKU, the price and the request count are unchanged.
+
+**REFUSED, with the measurement:** deriving the expected kind from words in the
+query. It was written and thrown away, because those words are parts of names,
+not categories - `The Mango Garden` (garden -> nature), `Phi Phi Island Village`
+(island -> nature), `Temple Bar, Dublin` (temple -> worship), `Long Beach
+Resort` (beach -> nature). Every one is a correct answer the gate would have
+deleted, which is the exact failure this whole round is about. The only
+expectation source is the itinerary's own **meal slot**, which is structured
+metadata rather than a word guessed out of prose. `expectedKinds` carries the
+list; a test named `REFUSED BY DESIGN` fails if anyone reintroduces the table.
+
+**A provider that never answered was reported as an empty neighbourhood.**
+`discoverPlaces` had always distinguished `upstream` from `no_candidates`; the
+handler dropped the reason on the way out and the client's
+`fetchDiscoveryCandidates` collapsed network errors, HTTP errors, malformed
+bodies and genuine emptiness into one `[]`. Worse, `verifyDiscoveryProposals`
+never asked whether the lookup queue was **switched off**: with no Places key
+configured (the *default* state of this feature) it polled a cache that could
+never fill for the full 12 s, rejected 100% of the candidates, and told the
+traveller nothing could be verified. That turn now degrades to an ordinary one -
+every candidate shown, honestly unverified. `rebuildAssistProse` takes a
+`providerFailure` and says "I could not check", never "there is nothing here".
+
+### Identity and position are separate claims
+
+`placeRecordFrom` demanded `verified === true` or persisted **nothing**, so a
+place that resolved perfectly - one Maps entity, name gate agreed - was stored
+as nothing at all whenever the locality could not be confirmed. On every island
+and beach that is the normal case, so Add to trip silently dropped the place ID
+of a correctly identified venue, and the row re-resolved itself by name on every
+reload.
+
+They are now stored on their own evidence: **the ID whenever the place
+RESOLVED** (a place ID cannot be off by 809 km - it is an identity, not a
+position, and Google's terms single it out as the one value that may be kept
+indefinitely), **lat/lon only when the area was VERIFIED**.
+
+### Everything else this round changed
+
+| symptom | cause | fix |
+| ------- | ----- | --- |
+| "No rating match" on four different answers at once | one string for "unresolved", "wrong city", "wrong kind" and "no star" | `placeStateLabel`, a pure function with one sentence per state; a place with a `placeId` never reads as "not found" |
+| a stale answer rendering under a newer one | `assistSending` guards the request, but a discovery turn returns as soon as it has *started* verifying | a per-turn number taken before the request; both the `.then` and the `.catch` refuse to write unless it is still current |
+| trip A's cards rendered into trip B's thread | the `.catch` fallback had no trip guard at all | same guard on both arms |
+| a wedged endpoint lost the turn silently | `fetchDiscoveryCandidates` had no `AbortController` and no timeout | 12 s deadline, and a hang now surfaces as `timeout` prose |
+| candidates rejected as unverified, then re-bought | `request()` skips a key the queue already holds, so an urgent candidate stayed in the slow lane | `promote()` before `request()`, and a final re-read that rescues late resolutions |
+| a "Return to hotel" copied to another date pinned the old city | `legDestinationStay` matched by NAME across the whole trip, first hit in storage order | the day's host stay is consulted first; a named match prefers one whose own dates cover the leg |
+| the 14 km phantom, roles swapped | `unmeasurableLeg` judged only the destination, so an unresolved activity became a confident-looking ORIGIN | a centroid **standing in for a named venue** cannot start a leg either; an openly-coarse day anchor still can |
+| a hotel named after its own beach got the centroid tagged `venue` | `geoCache` is one flat namespace for cities, picked cities and picked hotels | a "doorstep" that is the same point as the city's own is not a doorstep |
+| "try again" advised for a revoked key | every upstream failure was one `{error:'upstream'}` | `upstreamReason` classifies timeout / network / auth / model / upstream / empty; the UI stops telling people to retry what cannot succeed |
+| 12:30 lunch, 12:40 at a museum 8 km away | nothing compared the printed distance with the printed times | `impossibleHops` - **travel time only**, never a guess about how long a meal takes, so it flags a day that cannot work rather than a day that looks busy |
+| a day route that measured a doorstep opened Maps on a centroid | leg queries degrade to the bare city name | `data-dist-place` carries the canonical ID; `directionsUrl` takes `origin_place_id` / `destination_place_id` |
+
+### Why the tests missed all of it
+
+**Every existing test treated the itinerary's own area as ground truth and
+varied the candidate.** All three production failures inverted that premise.
+`tp-places-geo.test.mjs` has 30 tests and every one of them supplies the
+*correct* point for the destination; the one whole-batch survival test
+(`tp-places-locality.test.mjs`) deliberately withholds the point from its eight
+survivors, so it exercised the address branch and never the point branch. Adding
+a wrong `lat`/`lon` to those eight queries reproduces production exactly.
+
+The second reason is structural: **the decision lived somewhere node could not
+load.** `cityPoint` -> `areaPointFor` -> `placeContextFor` are all in `app.js`,
+which is not a module, and the E2E suites that *can* load it seed `geoCache` by
+hand with known-good coordinates and block the network. So the one harness able
+to exercise the real geocode path explicitly stubbed it out with the right
+answer. That is why `areaAnchorFor` moved into trip-logic with injected cache
+readers: the boundary that failed is now the boundary that is tested.
+
+New coverage: `netlify/functions/tests/tp-places-identity.test.mjs` (the wrong-anchor
+repro, the type gate, provider failure vs zero results, one bad candidate among
+eight good ones, metadata belonging to one identity, and a call-count pin so the
+gate cannot get expensive), `apps/trip-planner/tests/assistant-canonical-identity.test.js`
+(the anchor ladder, hotel-by-date, the standin-centroid leg, identity through
+add and reload, the model-supplied-rating allowlist, the four honest labels,
+schedule feasibility) and `apps/trip-planner/e2e/assistant-identity.mjs` (the
+whole traveller lifecycle on Phi Phi, Kata, Maya Bay, Tokyo, a partial failure
+and a 390 px phone, against a double that implements the real server's gates).
+
+Every new test was **proven to fail against master** before being kept.
+
 ## Places billing: the free allowance is the real ceiling (2026-08-18)
 
 **Google's billing, not our counters, is the source of truth, and they did not

@@ -144,15 +144,28 @@ test('a city nothing has geocoded still constrains by name', () => {
 
 // ---------- 3. only a VERIFIED resolution becomes durable ----------
 
-test('an unverified resolution is never persisted', () => {
+// IDENTITY AND POSITION ARE SEPARATE CLAIMS (2026-09-05). The old rule was
+// "unverified -> persist nothing", which threw away the place ID of a
+// correctly identified venue on every destination whose locality Google
+// spells differently from the traveller - i.e. every island and beach.
+test('an unverified resolution keeps its identity and loses only its coordinate', () => {
   const entry = { status: 'ok', placeId: 'ChIJhokkaido', verified: false, lat: CHITOSE_POINT.lat, lon: CHITOSE_POINT.lon };
-  assert.equal(L.placeRecordFrom(entry, { city: 'Tokyo' }, NOW), null);
+  const rec = L.placeRecordFrom(entry, { city: 'Tokyo' }, NOW);
+  assert.equal(rec.id, 'ChIJhokkaido', 'a place ID cannot be off by 809 km: it is an identity, not a position');
+  assert.equal(rec.verified, undefined, 'and it is not marked verified, because it was not');
+  assert.equal(rec.lat, undefined, 'the coordinate is the thing that can lie, so it does not travel');
+  assert.equal(rec.lon, undefined);
+});
+
+test('a resolution with no place ID at all is still nothing', () => {
+  assert.equal(L.placeRecordFrom({ status: 'ok', verified: true, lat: 1, lon: 1 }, { city: 'Tokyo' }, NOW), null);
+  assert.equal(L.placeRecordFrom(null, { city: 'Tokyo' }, NOW), null);
 });
 
 test('a verified resolution persists its ID, its point and the city it was checked against', () => {
   const entry = { status: 'ok', placeId: 'ChIJtokyo', verified: true, rating: 4.1, name: 'ROYCE Tokyo Station', lat: TOKYO_POINT.lat, lon: TOKYO_POINT.lon };
   const rec = L.placeRecordFrom(entry, { city: 'Tokyo' }, NOW);
-  assert.deepEqual(rec, { id: 'ChIJtokyo', at: NOW, lat: TOKYO_POINT.lat, lon: TOKYO_POINT.lon, city: 'Tokyo' });
+  assert.deepEqual(rec, { id: 'ChIJtokyo', at: NOW, verified: true, lat: TOKYO_POINT.lat, lon: TOKYO_POINT.lon, city: 'Tokyo' });
   // Google's caching terms: the place ID may be stored indefinitely and
   // lat/long for 30 days; the NAME, the RATING and the HOURS may not be stored
   // at all. Nothing of that kind may ever appear in this record.

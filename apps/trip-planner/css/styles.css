@@ -2718,6 +2718,10 @@
      proposal (a second dinner at the same place is the traveller's call), so
      this reads as the quiet fact it is rather than a refusal. */
   .ap-dup { font-size: .78rem; color: var(--amber); margin-top: 2px; }
+  /* The day the assistant wrote does not fit in its own clock. Same amber as
+     .ap-dup: both are "look at this before you accept it", neither is an
+     error, and neither may look like the Google-sourced chips beside them. */
+  .ap-schedule-warn { font-size: .78rem; color: var(--amber); margin-top: 2px; line-height: 1.35; }
   .assist-proposal.done { border-color: var(--green); background: var(--green-soft); }
   .assist-proposal.stale { border-color: var(--border); background: var(--bg-soft); }
   .ap-op { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--text-dim); font-weight: 700; }

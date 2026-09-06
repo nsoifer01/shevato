@@ -960,8 +960,13 @@ Enjoy!
       })`);
       await t('tp-places P16: a place the TRAVELLER named is kept, not replaced',
         out.titles.length === 1 && /Named By Traveller/.test(out.titles[0]), JSON.stringify(out.titles), s);
+      // "No rating match" said four different things at once and was replaced
+      // on 2026-09-05 with one sentence per state (placeStateLabel). This
+      // candidate is refused on GEOGRAPHY - a real business, in another city -
+      // so the honest label names that, and the link still says "Verify"
+      // because the app could not confirm the place for the traveller.
       await t('tp-places P16: and it is clearly marked unverified',
-        out.unresolved.length === 1 && /No rating match/.test(out.unresolved[0]) && /Verify/.test(out.link),
+        out.unresolved.length === 1 && /Different city/.test(out.unresolved[0]) && /Verify/.test(out.link),
         JSON.stringify(out), s);
     });
   }

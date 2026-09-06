@@ -50,6 +50,7 @@ const SUITES = [
   'apps/trip-planner/e2e/ui.mjs',
   'apps/trip-planner/e2e/places.mjs',
   'apps/trip-planner/e2e/assistant.mjs',
+  'apps/trip-planner/e2e/assistant-identity.mjs',
   'apps/trip-planner/e2e/qa-fixes.mjs',
   'apps/trip-planner/e2e/audit-fixes.mjs',
   'apps/trip-planner/e2e/pwa.mjs',
@@ -214,6 +215,8 @@ const SUITE_SECONDS = {
   'tests/browser/suites/perf.mjs': 77,
   'apps/fpl-planner/e2e/scenario.mjs': 69,
   'apps/trip-planner/e2e/assistant.mjs': 63,
+  // Measured on 2026-09-05, the round that added it.
+  'apps/trip-planner/e2e/assistant-identity.mjs': 41,
   'apps/trip-planner/e2e/qa-fixes.mjs': 53,
   'apps/trip-planner/e2e/views.mjs': 49,
   'apps/trip-planner/e2e/core.mjs': 45,

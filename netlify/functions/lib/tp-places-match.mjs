@@ -149,6 +149,176 @@ export function matchConfidence(query, placeName, area) {
   return { score: Math.round(score * 100) / 100, confident: score > 0.5 };
 }
 
+// ---------- entity-type verification ----------
+// THE FAILURE THIS SECTION EXISTS FOR (owner report, 2026-09-05).
+//
+//   asked for  "Maya Bay Ko Phi Phi"   - a beach, boat access, 7 km offshore
+//   got back   "Maya Bay Tours"        - a tour desk, 100 m from the hotel
+//
+// matchConfidence scored it 0.67 and waved it through: two of the place's three
+// distinctive words ("maya", "bay") really are in the query, and the extra one
+// is one-sided, which the chain-sibling rule deliberately permits. The area
+// gate then agreed enthusiastically, because the tour desk is nearer than the
+// beach. Every gate said yes and the traveller got a shop instead of a lagoon.
+//
+// Proximity must never decide identity. What separates these two is not where
+// they are, it is WHAT THEY ARE, and the name says so: a business that sells
+// access to a landmark advertises itself with the landmark's name plus a word
+// naming the trade. Those words are a closed list here, because the cost of a
+// false positive is deleting a real venue whose name happens to contain one.
+
+// Words that name the TRADE rather than the thing. A place whose name is the
+// query plus one of these is a broker for the thing the query asked about, not
+// the thing itself. Kept deliberately small and unambiguous: every entry is a
+// word that no beach, temple, museum or restaurant is called on its own.
+const BROKER_WORDS = new Set([
+  'tour', 'tours', 'tour', 'tourism', 'excursion', 'excursions', 'trip', 'trips',
+  'ticket', 'tickets', 'booking', 'bookings', 'reservation', 'reservations',
+  'agency', 'agent', 'agents', 'travel', 'traveland', 'operator', 'operators',
+  'rental', 'rentals', 'rent', 'hire', 'charter', 'charters',
+  'transfer', 'transfers', 'shuttle', 'taxi', 'transport', 'transportation',
+  'guide', 'guides', 'guiding', 'office', 'desk', 'counter', 'center', 'centre',
+]);
+
+// True when the PLACE advertises a trade the QUERY never asked for. One-sided
+// on purpose and only in that direction: asking for "Maya Bay Tours" and
+// getting "Maya Bay Tours" is a perfect match, and asking for "Phi Phi Tour
+// Center" must still find it. Area words are stripped first for the same
+// reason matchConfidence strips them - a city in a mapsQuery is a search hint.
+export function addsBrokerWord(query, placeName, area) {
+  const skip = areaWords(area);
+  const qTok = new Set(distinctiveTokens(query).filter(t => !skip.has(t)));
+  const pTok = distinctiveTokens(placeName).filter(t => !skip.has(t));
+  if (!pTok.length) return '';
+  for (const t of pTok) {
+    if (BROKER_WORDS.has(t) && !qTok.has(t)) return t;
+  }
+  return '';
+}
+
+// ---------- coarse entity kinds, from Google's own place types ----------
+// The `types` and `primaryType` fields ride the SAME billed Place Details call
+// (Essentials and Pro respectively, both below the Enterprise tier the request
+// already pays for), so this evidence is free. It is collapsed to a handful of
+// coarse kinds because that is all the decision needs: a temple is not a cafe,
+// a beach is not a booking office, and no finer distinction is worth the risk
+// of refusing a real venue.
+const KIND_BY_TYPE = new Map(Object.entries({
+  // natural features and open-air landmarks
+  beach: 'nature', natural_feature: 'nature', national_park: 'nature',
+  hiking_area: 'nature', park: 'nature', state_park: 'nature', garden: 'nature',
+  botanical_garden: 'nature', wildlife_park: 'nature', wildlife_refuge: 'nature',
+  marina: 'nature', campground: 'nature', rv_park: 'nature',
+  // places of worship
+  church: 'worship', hindu_temple: 'worship', mosque: 'worship',
+  synagogue: 'worship', place_of_worship: 'worship',
+  // culture and sights
+  museum: 'culture', art_gallery: 'culture', historical_landmark: 'culture',
+  historical_place: 'culture', monument: 'culture', cultural_landmark: 'culture',
+  observation_deck: 'culture', aquarium: 'culture', zoo: 'culture',
+  amusement_park: 'culture', water_park: 'culture',
+  // food and drink
+  restaurant: 'food', cafe: 'food', coffee_shop: 'food', bar: 'food',
+  bakery: 'food', meal_takeaway: 'food', meal_delivery: 'food',
+  fast_food_restaurant: 'food', ice_cream_shop: 'food', dessert_shop: 'food',
+  pub: 'food', wine_bar: 'food', bar_and_grill: 'food', food_court: 'food',
+  // lodging
+  hotel: 'lodging', lodging: 'lodging', resort_hotel: 'lodging',
+  motel: 'lodging', hostel: 'lodging', guest_house: 'lodging',
+  bed_and_breakfast: 'lodging', campground_lodging: 'lodging',
+  // brokers: they sell access to the things above
+  travel_agency: 'broker', car_rental: 'broker', car_dealer: 'broker',
+  real_estate_agency: 'broker', insurance_agency: 'broker',
+  taxi_stand: 'broker', tour_agency: 'broker', ticket_agency: 'broker',
+}));
+
+/**
+ * The coarse kind of a Places result, or '' when its types say nothing this
+ * function has an opinion about. `primaryType` wins when it maps, because it is
+ * Google's own answer to "what IS this"; otherwise the first mappable entry of
+ * `types` is used. An empty answer is the normal case for the long tail and
+ * must never be read as a mismatch.
+ */
+export function placeKind(place) {
+  const primary = place && typeof place.primaryType === 'string' ? place.primaryType : '';
+  if (primary && KIND_BY_TYPE.has(primary)) return KIND_BY_TYPE.get(primary);
+  const list = place && Array.isArray(place.types) ? place.types : [];
+  for (const t of list) {
+    if (typeof t === 'string' && KIND_BY_TYPE.has(t)) return KIND_BY_TYPE.get(t);
+  }
+  return '';
+}
+
+// Which kinds a query is asking for. THE ONLY SOURCE IS THE ITINERARY'S OWN
+// MEAL SLOT, and that restraint is the whole design.
+//
+// The obvious implementation - read kind words out of the query text ("bay",
+// "temple", "park") - was written, measured against real fixtures, and thrown
+// away. Those words are not categories, they are parts of names:
+//
+//   "The Mango Garden"        garden -> nature, so a restaurant is a mismatch
+//   "Phi Phi Island Village"  island -> nature, so a hotel is a mismatch
+//   "Temple Bar, Dublin"      temple -> worship, so a pub is a mismatch
+//   "Long Beach Resort"       beach  -> nature, so lodging is a mismatch
+//
+// Every one of those is a correct answer this gate would have deleted, and
+// deleting a real venue is the exact failure the whole round is about. A meal
+// slot is different in kind: it is STRUCTURED metadata the itinerary assigned,
+// not a word guessed out of prose, so it cannot be a coincidence of naming.
+//
+// What covers the rest is the broker rule above plus `broker` as a KIND, which
+// need no guess about what the traveller meant: a booking desk is essentially
+// never the right answer to a query that did not ask for one, whatever the
+// thing being booked happens to be.
+export function expectedKinds(query, meal) {
+  const out = new Set();
+  if (meal) out.add('food');
+  return out;
+}
+
+// Does the query itself ask for the trade? "Maya Bay Tours" and "Phi Phi Dive
+// Center" do; "Maya Bay" does not.
+export function queryWantsBroker(query) {
+  return distinctiveTokens(query).some(t => BROKER_WORDS.has(t));
+}
+
+// Kinds that can never be the same thing as the kind expected.
+const INCOMPATIBLE = new Map(Object.entries({
+  // `lodging` is deliberately absent from food's row: hotel restaurants and
+  // resort breakfast rooms are real answers to a meal slot, and a gate that
+  // refused them would delete correct recommendations to fix nothing.
+  food: new Set(['nature', 'worship', 'broker']),
+}));
+
+/**
+ * THE TYPE GATE. Returns '' when the candidate may stand, or the reason it may
+ * not. Three checks, and any of them can refuse - but every one of them needs
+ * POSITIVE evidence, so an absent `types` field, a query with no trade word
+ * and an item with no meal slot all leave this silent. That also means a
+ * deploy whose field mask predates `types` behaves exactly as it did before.
+ *
+ *   1. the place's NAME advertises a trade the query never asked for
+ *      ("Maya Bay" -> "Maya Bay Tours"). Needs no provider types at all.
+ *   2. Google says the place IS a broker and the query never asked for one
+ *      ("Maya Bay" -> a travel agency that calls itself just "Maya Bay").
+ *   3. the place's kind contradicts the itinerary's own meal slot (a beach
+ *      offered as the 08:00 breakfast).
+ */
+export function typeMismatch(query, place, area, meal) {
+  const broker = addsBrokerWord(query, (place && place.name) || '', area);
+  if (broker) return 'broker_name';
+  const kind = placeKind(place);
+  if (!kind) return '';
+  if (kind === 'broker' && !queryWantsBroker(query)) return 'broker_kind';
+  const want = expectedKinds(query, meal);
+  if (!want.size || want.has(kind)) return '';
+  for (const w of want) {
+    const bad = INCOMPATIBLE.get(w);
+    if (bad && bad.has(kind)) return 'kind_mismatch';
+  }
+  return '';
+}
+
 // ---------- geographic verification ----------
 // THE FAILURE THIS SECTION EXISTS FOR. On 2026-08-27 the assistant proposed
 // "Royce' Chocolate (Tokyo Station)" for a Tokyo day. Text Search, asked
