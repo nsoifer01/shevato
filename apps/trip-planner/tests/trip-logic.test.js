@@ -7891,3 +7891,47 @@ test('ICS folds a bare carriage return so a title cannot inject a property', () 
     'no injected calendar property may appear'
   );
 });
+
+// ---------------------------------------------------------------------------
+// Google's lat/lng caching boundary (Service Specific Terms 14.3).
+// ---------------------------------------------------------------------------
+
+test('cached coordinates cannot span more than 30 calendar days', () => {
+  // SST 14.3 grants "up to 30 consecutive calendar DAYS", and a calendar day is
+  // a date, not a 24-hour period. An entry written at any time after midnight
+  // and held a full 30 x 24h exists on THIRTY-ONE dates, which is over the
+  // line. Both stores therefore hold 29 x 24h, the largest window that cannot
+  // exceed the grant from any starting time.
+  const DAY = 86400000;
+  for (const [name, ttl] of [['VENUE_TTL_MS', L.VENUE_TTL_MS], ['PLACE_RECORD_TTL_MS', L.PLACE_RECORD_TTL_MS]]) {
+    assert.ok(ttl <= 29 * DAY, `${name} must not exceed 29 days`);
+    assert.ok(ttl > 28 * DAY, `${name} must not give away allowance it is entitled to`);
+
+    // The worst-case start: one minute past midnight UTC leaves the widest
+    // possible date span for a given elapsed time.
+    const start = Date.UTC(2026, 0, 1, 23, 59, 59, 999);
+    const lastServed = start + ttl - 1;
+    const dates = new Set();
+    for (let t = start; t <= lastServed; t += 3600000) dates.add(new Date(t).toISOString().slice(0, 10));
+    dates.add(new Date(lastServed).toISOString().slice(0, 10));
+    assert.ok(dates.size <= 30, `${name} spans ${dates.size} calendar dates, over the 30 SST 14.3 allows`);
+  }
+});
+
+test('a place record keeps its ID for ever and its coordinates only for the permitted window', () => {
+  // The two halves of a saved place have different rules and must not be given
+  // the same lifetime: SST A.3 permits the identifier indefinitely, SST 14.3
+  // permits the point for a bounded number of calendar days.
+  const now = Date.UTC(2026, 5, 1);
+  const rec = { id: 'ChIJvb7PGeDeUTARJoM-VdbMTRg', lat: 7.7387722, lon: 98.7714123, city: 'Ko Phi Phi' };
+
+  const fresh = L.normalizePlaceRecord({ ...rec, at: now - 1000 }, { now });
+  assert.equal(fresh.id, rec.id);
+  assert.equal(fresh.lat, rec.lat, 'a fresh point survives');
+
+  const expired = L.normalizePlaceRecord({ ...rec, at: now - L.PLACE_RECORD_TTL_MS }, { now });
+  assert.equal(expired.id, rec.id, 'the identifier is kept indefinitely, exactly as SST A.3 permits');
+  assert.equal('lat' in expired, false, 'the coordinates are deleted, exactly as SST 14.3 requires');
+  assert.equal('lon' in expired, false);
+  assert.equal(expired.city, 'Ko Phi Phi', 'our own note about the item is not Google content');
+});

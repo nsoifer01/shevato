@@ -114,11 +114,14 @@ A first draft of that copy over-promised against `privacy.html`, which is bindin
   `Kyoto`), each aborting the one before. Before "fixing" a duplicate-looking
   warning, count `Network.requestWillBeSent` URLs: the app already caches per
   query key and aborts in flight, and there is nothing to dedupe.
-- **Google Places legal lines** (re-verified against the live terms
-  2026-08-17): place IDs cacheable indefinitely, lat/lon cacheable 30d
-  (`trip-planner:venuegeo:v2`, cap 300), names/ratings/opening hours NEVER
-  stored (no hours field has a caching exception; they follow the exact
-  session-only rule ratings do - see "Opening hours" below). The
+- **Google Places legal lines** (re-derived field by field against the LIVE
+  terms 2026-09-06; earlier checks 2026-07-20 and 2026-08-17 agreed). Place IDs
+  cacheable indefinitely, lat/lon cacheable for 30 consecutive CALENDAR days -
+  held as **29 x 24h** (`trip-planner:venuegeo:v2` cap 300, and the item's own
+  `place` record), because a full 30 x 24h from any start time after midnight
+  spans thirty-ONE dates and is over the line; see "The two 30s" below - and
+  **nothing else at all**: names, ratings, review counts,
+  addresses, opening hours, types and the Maps URI are never stored. The
   server's rating layer was found still persisting `pd:` details blobs (unread,
   unbounded); the CODE was removed 2026-08-13 but 201 stale `pd:` blobs were
   still sitting in the production store on 2026-08-17 and had to be purged
@@ -126,17 +129,154 @@ A first draft of that copy over-promised against `privacy.html`, which is bindin
   The sources, quoted, so a future session does not have to re-derive them:
   - Maps Platform ToS 3.2.3(b): "Customer will not cache Google Maps Content
     except as expressly permitted under the Maps Service Specific Terms."
+  - Maps Platform ToS 3.2.3(a): "Customer will not: (i) pre-fetch, index,
+    store, reshare, or rehost Google Maps Content outside the services; ...
+    (iii) copy and save business names, addresses, or user reviews". Names and
+    addresses are named OUTRIGHT here, not merely left out of an exception.
   - Service Specific Terms 14.3 (Places API, Legacy and New): "Customer may
     temporarily cache latitude and longitude values from the Places API for up
     to 30 consecutive calendar days, after which Customer must delete the
-    cached latitude and longitude values." That is the ONLY Places field with
-    an express caching permission.
+    cached latitude and longitude values." Section 14 grants no other caching
+    permission of any kind.
   - General Service Terms A.3 (Google ID Caching): place_id may be cached; the
     Places policies page says so too ("You can therefore store place ID values
     indefinitely").
-  So `RATING_TTL_MS` is 0 and stays 0. Holding a response in memory to paint
-  the elements that asked for it is not caching (the DOM holds the same rating);
-  writing it anywhere that outlives the page is.
+  **The omission is deliberate, and SST 16.2 is the proof.** One section past
+  Places, the Pollen API gets a TABLE of per-content caching periods (365 days
+  for today's forecast, 24 hours for forecasts and heatmaps). Google writes
+  field-level caching grants when it means them; for Places it wrote one, and
+  it covers lat/lng. So do not re-litigate this as a product trade-off - the
+  answer is not a TTL, and the sweet spot people reach for (days) does not
+  exist. `RATING_TTL_MS` is 0 and stays 0. Holding a response in memory to
+  paint the elements that asked for it is not caching (the DOM holds the same
+  rating); writing it anywhere that outlives the request is.
+  **What this leaves free to optimise** is everything that is NOT Google Maps
+  Content: our own query string, our own verdict about it, and the place ID.
+  That is exactly what the rejection tombstone stores (below), and it is why
+  its TTL is an engineering choice while the two above are not.
+
+## The billed call: one per PLACE, and never twice for the same refusal
+
+Two measured defects, both found on 2026-09-06 by driving the real pipeline
+(`resolveQueries` with injected spies) rather than by reading it. Both were pure
+waste: neither changed a single answer, both charged for it.
+
+**1. One venue, one place, three bills.** A day plan names the same venue in
+more than one voice - "The Mango Garden", "Mango Garden restaurant", "The Mango
+Garden, Ko Phi Phi". The client dedupes on ITS key before sending, which catches
+the same string twice and misses this entirely: three keys, three free ID
+searches, all three resolving to one place ID, and then **three** Place Details
+calls at the Enterprise SKU. $0.06 for one rating.
+
+`resolveQueries` now shares one in-flight Details promise per place ID for the
+length of the request. The joiners still run their own gates over the shared
+response - two queries can resolve to one place and be judged differently,
+because the gates read the query text and the meal slot, not just the place. It
+caches nothing and stores nothing: it lives exactly as long as the response
+object it feeds.
+
+**The claim moved with it.** The budget slot used to be taken before the free ID
+search, i.e. before anyone knew whether the query would need one. Two spellings
+took two slots to make one call, and in a partially granted batch the second
+slot came out of a DIFFERENT venue that then had to answer `unavailable`. The
+claim now sits against the billed call, so a slot means exactly one Place
+Details request. The price is that a batch which runs out of budget mid-way
+still finishes its free searches - the unlimited $0.00 Essentials SKU - and a
+batch granted nothing never reaches the pipeline at all (the handler 429s first).
+
+**2. A refused candidate was re-bought on every request, forever.** This is the
+worse one. When a candidate was rejected by a gate, the pipeline cached the
+REJECTED place ID and nothing else. So the next request skipped the free search,
+went straight to Place Details for a candidate we already knew we would refuse,
+paid $0.02, and answered `no_match` again - once per page load, for the thirty
+days of the ID TTL. Measured: one wrong-area venue, one billed call per request,
+with no expiry that would ever stop it.
+
+The entry now also carries the verdict: `{ placeId, at, rejected: [...] }`, where
+each rejection is `{ reason, sig, at }`. Nothing in that is Google Maps Content -
+the key is our own query, the reason is our own word, and the place ID is the one
+value SST A.3 lets us keep indefinitely - so **the TTL here is an engineering
+choice, not a legal one**, which is the opposite of the two TTLs above it.
+
+Three things make a seven-day window safe rather than merely cheap:
+
+- **The signature.** `idCacheKey` carries the query and a COARSE area (city, or
+  the point to ~11 km). The gates also read the meal slot and the exact
+  point/radius, which it does not. A verdict is only replayed when those match,
+  so a venue refused as the wrong KIND for breakfast does not answer for a
+  traveller who named no meal, and a re-anchored day is re-judged.
+- **`JUDGE_VERSION`.** The version rides in the signature, so changing a gate
+  (`matchConfidence`, `verifyArea`, `typeMismatch`, `judge`) retires every
+  stored verdict on deploy. **Bump it whenever a gate changes its mind.** Without
+  it the choice would be between paying to re-learn the same refusal every day
+  and shipping a gate fix that takes a week to reach a traveller - and the Ko Phi
+  Phi round is exactly the case that matters, where a bad anchor made the gates
+  refuse every correct venue in a region.
+- **Three signatures per entry, newest first.** One slot thrashed: the same
+  restaurant arrives as a food candidate carrying a meal slot and as a plain row
+  carrying none, and the two overwrote each other turn by turn, so every other
+  request paid to reach a refusal it had already reached.
+
+`unrated` is deliberately NOT tombstoned. It is a successful resolution that
+happens to have no star, it carries the identity, coordinates and hours the
+client needs, and replaying it as a bare tombstone would blind the rows that
+depend on them. It is also the one negative result whose content is genuinely
+Google's ("this place has no rating") rather than ours, so the compliance
+argument for storing it is weaker than for a gate verdict, and the saving is
+small.
+
+**What did NOT change, having been checked:** the field mask is already optimal
+(every field in it below the Enterprise tier the rating forces rides free, so
+trimming `displayName` or `types` would save exactly $0.00); the client's session
+cache is already correct on stale-on-error (an `unavailable` result is never
+written, so a previously painted rating survives a later Google failure, and a
+failed first lookup fabricates nothing); and no cross-request rating reuse is
+available at any price, because the terms forbid the storage it would need.
+
+## The two 30s, and why only one of them is 30
+
+Two numbers in this app were both "30 days" and they answer completely different
+questions. Conflating them is how the wrong one gets changed.
+
+**The query -> place ID mapping (`PLACE_ID_TTL_MS`, 30 days, unchanged).** Not a
+storage limit - SST A.3 permits a place ID indefinitely, and the ID stamped on an
+itinerary item genuinely never expires. What expires here is our INFERENCE that
+a piece of free text, in an area, means that place. That stops being true in
+ways a stored ID cannot notice: a different business takes the same address with
+a NEW place ID, a second branch opens and the query now names it better, a venue
+closes while Google keeps serving the entity, a name changes, an ambiguous query
+becomes resolvable. Re-searching is the only fix for any of them.
+
+Why not lengthen it, given Google would allow it? **Because it buys nothing.**
+Measured 2026-09-06: a hot mapping and a cold one both bill exactly ONE Place
+Details call on the next request. This TTL moves only the Text Search, which is
+the free unlimited Essentials (IDs Only) SKU; the billed call happens either way
+because a rating may not be cached. Lengthening it is a pure loss - no money
+saved, a strictly wider stale-inference window. It is also 12x more often than
+Google's own guidance asks (place-id docs: "Place IDs may change over time",
+refresh those older than 12 months, free), so there is no compliance pressure in
+the other direction either. Pinned by a test that asserts billed spend is
+identical hot and cold.
+
+**The coordinate window (`VENUE_TTL_MS` and `PLACE_RECORD_TTL_MS`, now 29 days).**
+This one IS a legal limit, and it was quietly one day over. SST 14.3 grants "up
+to 30 consecutive calendar DAYS". A calendar day is a date, not a 24-hour
+period, and the two are not the same measurement: an entry written at 23:00 on
+1 January and held a full 30 x 24h is still served at 22:59 on 31 January, by
+which time it has existed on **thirty-one distinct dates**. Only an entry
+written exactly at midnight stayed inside the grant. 29 x 24h is the largest
+window that cannot exceed it from any start time - 1 January to 30 January is
+exactly thirty dates, the whole allowance and not one date more.
+
+The day costs nothing: these coordinates arrive free on the Places call the
+ratings already pay for, so an entry expiring a day earlier is re-seeded by a
+lookup that was going to happen anyway. Both stores take the same boundary, and
+`tests/trip-logic.test.js` now enumerates the actual dates a window can touch
+rather than trusting the arithmetic.
+
+**The split to keep in mind:** an item's saved place keeps its `id` for ever and
+loses only its `lat`/`lon` on that schedule (`normalizePlaceRecord`). Identifier
+and coordinate have different rules and must never be given one lifetime.
 
 ## Sync model (and its sharp edges)
 
