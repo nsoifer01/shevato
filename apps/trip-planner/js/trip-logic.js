@@ -3893,17 +3893,27 @@ const TripLogic = (() => {
 
   // ---------- a plan that never arrived is not an answer ----------
   //
-  // THE FAILURE (owner report, 2026-09-06, seen twice in three live runs): the
-  // model answers a guided plan request with a paragraph - "Here is a plan for
-  // your day on October 6th, focusing on a mid-range experience." - and then
-  // stops. No fenced tripActions block, no cards, nothing to add. The panel
-  // renders the promise and falls silent, which is worse than an error,
-  // because the sentence says the work was done.
+  // THE SHAPE: a guided plan request answered with a paragraph - "Here is a
+  // plan for your day on October 6th" - and no fenced tripActions block. No
+  // cards, nothing to add. The panel renders the promise and falls silent,
+  // which is worse than an error, because the sentence says the work was done.
   //
-  // NOT reply-size truncation, which is what it looks like and what it was
-  // originally assumed to be: maxOutputTokens is 12,000 and the server appends
-  // TRUNCATION_NOTE on a MAX_TOKENS finish, and neither was present. The model
-  // simply stopped after the preamble.
+  // PROVENANCE, corrected 2026-09-06. This was written up as an observed
+  // production failure ("seen twice in three live runs") and it was not: the
+  // live harness had leaked a headless browser on a fixed CDP port, later runs
+  // attached to it, and the app was faithfully restoring the FIRST run's chat
+  // history - which persists the prose and deliberately does not persist the
+  // proposal cards. Those runs made no model call at all. The identical
+  // byte-for-byte prose across "three runs" was the tell, and it was read past.
+  //
+  // What is kept, and why, on its own merits rather than on that story: a
+  // guided plan whose reply carries nothing to add IS a failed turn from the
+  // traveller's side, the picker had already supplied everything the model
+  // needed to answer, and the response is proportionate (one follow-up, then a
+  // plain sentence). It is defence against a shape this reply format can
+  // produce - the fenced block sits at the END of the answer, which is why
+  // TRUNCATION_NOTE and a 12,000-token cap exist at all - not a fix for a
+  // failure anyone has measured in production.
   //
   // The app can be certain about this ONLY for a guided plan turn, and that is
   // the whole reason the picker's contract now travels as data: a free-form
@@ -7999,11 +8009,11 @@ const TripLogic = (() => {
     + `For every OTHER activity you suggest (a sight, a museum, a walk, a tour), propose EXACTLY ${PLAN_ACTIVITY_OPTIONS} `
     + 'candidates for that one slot, grouped the same way under a group id of their own, for '
     + 'example "activity-2026-12-31-morning": one slot, two options, the traveller picks one. '
-    // Seen twice in three live runs on 2026-09-06: a preamble promising a plan,
-    // and then nothing. The traveller reads "here is your day" and gets an
-    // empty panel, which is worse than an error because the sentence claims the
-    // work was done. The app repairs it with one follow-up turn; this is the
-    // cheaper half of the defence.
+    // A preamble promising a plan and then nothing is worse than an error,
+    // because the sentence claims the work was done. The app repairs it with
+    // one follow-up turn; this line is the cheaper half of the defence. See
+    // planReplyIncomplete for what is and is not known about how often the
+    // model actually does this.
     + 'The tripActions block is NOT optional on a planning request. Never answer one with prose '
     + 'alone: if you describe a day, every item you describe must arrive as an add action in the '
     + 'fenced JSON block. A paragraph promising a plan with no block behind it is a failed answer.';

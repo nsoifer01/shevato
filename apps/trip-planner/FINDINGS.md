@@ -1366,18 +1366,39 @@ city and country alone.
 
 ### The other thing that live run found: a plan that never arrived
 
-Twice in three live runs the model answered the guided plan with a paragraph -
-"Here is a plan for your day on October 6th, focusing on a mid-range
-experience." - and stopped. No fenced block, no cards. The panel rendered the
-promise and fell silent, which is worse than an error, because the sentence
-says the work was done.
+A guided plan answered with a paragraph - "Here is a plan for your day on
+October 6th" - and no fenced block. No cards, nothing to add. The panel renders
+the promise and falls silent, which is worse than an error, because the
+sentence says the work was done.
 
-**It is NOT reply-size truncation**, which is what it looks like and what was
-assumed first. `maxOutputTokens` is 12,000 and tp-assist appends
-`TRUNCATION_NOTE` on a `MAX_TOKENS` finish; neither was present in the captured
-replies. The model simply stopped after the preamble. Diagnosing it as the
-documented truncation would have "fixed" it by raising a limit that was not the
-constraint.
+> **THE PROVENANCE OF THIS SECTION WAS WRONG, AND THE CORRECTION IS THE MORE
+> USEFUL FINDING.** It was written up as "seen twice in three live production
+> runs". It was not seen at all. The live harness leaked a headless Chrome on a
+> fixed CDP port; every later run attached to that same browser, and the app
+> was faithfully restoring the FIRST run's chat history - which persists the
+> assistant's prose and deliberately does NOT persist the proposal cards. Those
+> runs made zero model calls. The identical byte-for-byte prose across "three
+> runs" was the tell and it was read past twice, including once while
+> explicitly hunting for the cause.
+>
+> **The lesson that generalises: a replayed chat thread is indistinguishable
+> from a model that answered with prose and no actions.** Anything driving this
+> app against a live model must use a fresh profile AND a fresh trip id per
+> run, or it will manufacture exactly this bug. `e2e/helpers.mjs` gets this
+> right by construction (one profile per suite, seeded db); a hand-rolled probe
+> does not.
+
+It is also **not reply-size truncation**, which is the other thing it looks
+like and the first thing assumed. `maxOutputTokens` is 12,000 and tp-assist
+appends `TRUNCATION_NOTE` on a `MAX_TOKENS` finish; neither was present.
+
+**What is kept, and why.** The defence stands on its own merits rather than on
+that story: a guided plan whose reply carries nothing to add IS a failed turn
+from the traveller's side, the picker had already supplied everything the model
+needed, and the response is proportionate. The fenced block sits at the END of
+the answer, which is the reason `TRUNCATION_NOTE` and a 12,000-token cap exist
+at all, so the shape is reachable. What must not be claimed is that anyone has
+measured it happening.
 
 Three layers, cheapest first:
 
