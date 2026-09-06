@@ -6,7 +6,7 @@
 	 */
 	$.fn.navList = function() {
 
-		var	$this = $(this);
+		var	$this = $(this),
 			$a = $this.find('a'),
 			b = [];
 
@@ -95,7 +95,11 @@
 			}, userConfig);
 
 			// Expand "target" if it's not a jQuery object already.
-				if (typeof config.target != 'jQuery')
+			// `typeof` never returns 'jQuery' (an object gives 'object'), so
+			// the old check was always true and re-wrapped an already-jQuery
+			// target on every call. main.js passes $body, so that was every
+			// menu build.
+				if (!(config.target instanceof $))
 					config.target = $(config.target);
 
 		// Panel.
@@ -528,7 +532,8 @@
 		var key = '__prioritize';
 
 		// Expand $elements if it's not already a jQuery object.
-			if (typeof $elements != 'jQuery')
+		// Same dead guard as in panel(): `typeof` cannot return 'jQuery'.
+			if (!($elements instanceof $))
 				$elements = $($elements);
 
 		// Step through elements.

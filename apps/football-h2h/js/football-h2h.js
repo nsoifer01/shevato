@@ -235,6 +235,11 @@ function updatePlayerNames() {
     if (player2Input) player2Name = window.FootballMatchLogic.cleanPlayerName(player2Input.value, 'Player 2');
 
     applyPlayerNameChanges(player1Name, player2Name);
+    // Was a monkey-patch further down the file that reassigned this function
+    // declaration to wrap it. Inlined here: same call order, and it no longer
+    // depends on the reassignment happening before the first caller runs.
+    // `updatePlayerIconDisplays` is a hoisted declaration, so this is safe.
+    updatePlayerIconDisplays();
 }
 
 // Function to update player name from sidebar (called from sidebar.js)
@@ -1145,12 +1150,6 @@ function updatePlayerIconDisplays() {
 
     // Re-render sort indicators since the header rebuild above replaced the spans
     updateSortIndicators();
-
-    // Update player management modal if it's open
-    const playerModal = document.getElementById('playerManagementModal');
-    if (playerModal && playerModal.classList.contains('active')) {
-        updatePlayerModalContent();
-    }
 }
 
 
@@ -1273,13 +1272,6 @@ function selectIcon(icon) {
         // Icon updated silently
     }
 }
-
-// Update the updatePlayerNames function to also update the player management display
-const originalUpdatePlayerNames = updatePlayerNames;
-updatePlayerNames = function() {
-    originalUpdatePlayerNames.call(this);
-    updatePlayerIconDisplays();
-};
 
 // Close modal when clicking outside
 window.onclick = function(event) {

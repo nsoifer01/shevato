@@ -674,3 +674,86 @@ Also fixed in the same round: the mario-kart two-tab e2e block waited a flat
 the last 30 push runs on unchanged code and read as a real regression. It now
 waits on the condition with `waitForExpr`.
 
+
+## Addendum, 2026-09-05: a static layer, added because a real bug escaped
+
+`ReferenceError: wasOpen is not defined` shipped to production on 2026-08-23
+and threw on every mobile menu open and every close for 12 days. It was a dead
+store to an undeclared binding, left behind when a merge combined two branches
+that had independently edited the same function: one used `wasOpen`, the other
+renamed the state to `menuOpen`. Neither parent was broken. Only the merged
+result was, and there was no textual conflict to review.
+
+Every layer described above missed it, and each for a defensible reason:
+
+- `npm test` never opens a browser, so it structurally cannot see a runtime
+  error in browser JS.
+- `site.mjs` DOES assert `${p}: no JS errors`, but that check runs immediately
+  after `goto()`, and `goto()` clears `s.errors`. It can only ever observe
+  load-time errors. The menu toggle happens 400 lines later.
+- `a11y.mjs` toggles the menu 13 times and checks errors 0 times. `apps.mjs`
+  and `pwa-gym.mjs` check errors 12 times between them and never touch the
+  hamburger. The two halves of the test lived in different files.
+- The throw is behaviourally invisible: it is the last statement in its
+  function and fires inside a MutationObserver callback, so it never reaches
+  the click handler. Scroll lock, focus and aria all still worked, and every
+  existing assertion passed correctly.
+- It cannot reproduce above 736px, where the toggle is `display: none`.
+
+**Added: a static layer.** ESLint via `npm run lint`, a per-PR `lint` workflow,
+and `npm run test:all` now running lint first so the cheapest gate fails
+fastest. It covers ~560 files in seconds and would have failed the merge that
+introduced the bug.
+
+Measured baseline before tuning: 570 violations across 25 files, of which 520
+were cross-file globals in the two classic multi-script apps (mario-kart,
+football-h2h, which share state across 10+ `<script>` tags), 17 were CDN and
+vendored libraries, and 6 were AMD `define` inside vendored minified bundles.
+Those are declared or ignored in `eslint.config.mjs`, which is bookkeeping
+rather than suppression: each name really is defined, just not somewhere
+`no-undef` can see.
+
+The remainder was real and is fixed in the same change:
+
+- `assets/js/util.js` `navList()` ended its first `var` declarator with a
+  semicolon instead of a comma, so `$a` and `b` were never declared. The file
+  is not strict, so they would leak to `window` rather than throw. Latent
+  rather than live: `navList` is called nowhere in the repo. Same family as
+  `wasOpen` (a punctuation slip creating undeclared bindings) and a good
+  illustration of why the static check matters, since sloppy mode would never
+  have reported this at runtime.
+- `apps/football-h2h/js/football-h2h.js` called `updatePlayerModalContent()`,
+  which is defined nowhere, guarded by an element id (`playerManagementModal`)
+  that appears nowhere in the repository. Dead on both counts.
+- `apps/mario-kart/js/main.js` carried two `typeof X === 'function'` branches
+  for `updateDateButtonText` and `loadPlayerNames`, neither of which exists.
+
+### The rule set, and how each rule was decided
+
+Every candidate was measured by injecting it into the config blocks that
+already carry `rules`, so the per-area globals, sourceType and ignores applied.
+That method matters: measuring with `eslint --rule` instead reported 8,701
+`no-undef` violations against a config that actually has zero, because the flag
+lints files this config deliberately gives no globals to.
+
+**Enabled: 29 rules**, grouped in `CORRECTNESS_RULES`. Twenty-five were already
+at zero. Four were not, and all four turned out to be real:
+
+| Rule | Found | Verdict |
+|---|---|---|
+| `no-undef` | 4 | The `wasOpen` class. Detailed above. |
+| `valid-typeof` | 2 | `typeof x != 'jQuery'` in `util.js` `panel()` and `prioritize()`. `typeof` cannot return `'jQuery'`, so both guards were always true and re-wrapped an already-jQuery value on every call. `panel()` is live: `main.js` builds the mobile menu through it with `target: $body`. |
+| `no-prototype-builtins` | 8 | `data.hasOwnProperty(...)` inside gym-tracker's import validator and mario-kart's row healer, both of which read user-supplied JSON. An import carrying its own `hasOwnProperty` key made the validator throw a TypeError instead of returning "Invalid data structure". |
+| `no-func-assign` | 1 | football-h2h reassigned the `updatePlayerNames` function declaration to wrap it. Inlined into the function instead, so behaviour no longer depends on the patch running before the first caller. |
+
+**Measured and deliberately left off**, because they report pre-existing style
+debt rather than defects, and switching them on would turn a correctness gate
+into a repo-wide cleanup mandate: `no-unused-vars` (330 across 99 files),
+`no-redeclare` (75 across 20), `no-empty` (25 across 6) and `no-useless-escape`
+(15 across 6, purely cosmetic). Each is a deliberate cleanup project, to be
+taken on its own terms rather than as a side effect of this gate. The numbers
+are recorded here so the next session does not have to re-measure.
+
+**Also not adopted:** Prettier, any style preset, or `eslint:recommended`
+wholesale. The `eslint-disable` comments already in the codebase refer to the
+unenabled hygiene rules, which is why `reportUnusedDisableDirectives` is off.

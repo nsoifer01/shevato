@@ -1597,11 +1597,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize sidebar date
     initializeSidebarDate();
 
-    // Update date button text
-    if (typeof updateDateButtonText === 'function') {
-        updateDateButtonText();
-    }
-
     // Hide theme toggle since we only have one theme
     const themeToggle = document.getElementById('theme-toggle');
     if (themeToggle) {
@@ -1648,11 +1643,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Sidebar stays closed on page load; users open it via the toggle
-
-    // Ensure player names are loaded from localStorage
-    if (typeof loadPlayerNames === 'function') {
-        playerNames = loadPlayerNames();
-    }
 
     // Update player labels with loaded names
     updatePlayerLabels();

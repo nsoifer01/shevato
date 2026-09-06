@@ -71,10 +71,29 @@ REJECT, whichever way it goes.
 - Dark theme only, never add a light theme or toggle. LF line endings, never
   CRLF. No asset build step at the root (`npm run build:site` only generates
   data-driven pages and stamps sitemaps at deploy), and effectively no npm dependencies: code
-  must run unchanged in a browser and under `node --test`. The two standing
+  must run unchanged in a browser and under `node --test`. The three standing
   exceptions are `@netlify/blobs` (declared at the root so the Netlify
-  functions bundle; never used by browser code) and the dev-only Playwright
-  (used solely by `tests/cross-browser/`; main CI never runs npm install).
+  functions bundle; never used by browser code), the dev-only Playwright
+  (used solely by `tests/cross-browser/`) and the dev-only ESLint (used solely
+  by `npm run lint`). None is ever imported by app or test code. Only the
+  `lint` and `cross-browser` workflows run npm install; the push/PR TEST
+  workflows stay dependency-free.
+- **`npm run lint` is a correctness gate, not a style one.** It exists because
+  a dead store to an undeclared binding (`wasOpen`) shipped to production and
+  threw on every mobile menu toggle for 12 days while the whole test estate
+  stayed green. `CORRECTNESS_RULES` in `eslint.config.mjs` holds 29 rules, each
+  one flagging code that is wrong rather than unfashionable. Do NOT add
+  Prettier, a style preset, or `eslint:recommended` wholesale. `no-unused-vars`,
+  `no-redeclare`, `no-empty` and `no-useless-escape` were measured and left OFF
+  deliberately: they report pre-existing style debt, and the reasons are
+  written in the config header. Adding any rule means measuring it FIRST, by
+  injecting it into the config blocks that already carry `rules` (measuring
+  with `eslint --rule` gives wildly inflated numbers, because it lints files
+  the config gives no globals to). When a genuinely cross-file global is added
+  to mario-kart or football-h2h (classic multi-script apps), declare it in
+  `eslint.config.mjs`; that is bookkeeping, not suppression.
+- `npm run test:all` is the local merge gate and now runs lint first, so the
+  cheapest check fails fastest.
 - `.features/` holds each app's living test-plan pair (gitignored,
   owner-reviewed); plans are archived, never deleted.
 

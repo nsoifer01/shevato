@@ -297,6 +297,61 @@ Two lessons worth keeping:
   the dead-code traps below: an assignment whose value is never read still
   throws if the binding does not exist, so "nothing reads `wasOpen`" was true
   and still not safe to ignore.
+- **The class is now caught statically.** `npm run lint` (ESLint, 29
+  correctness rules, seconds) fails on any undeclared identifier and would have
+  failed the merge that introduced this. It found seven more defects across its
+  first runs: the `$a`/`b` leak in `util.js` below, the always-true
+  `typeof x != 'jQuery'` guards also in `util.js`, a call to a nonexistent
+  `updatePlayerModalContent()` in football-h2h, two dead `typeof` branches in
+  mario-kart, unsafe `hasOwnProperty` in two import paths, and a function
+  declaration reassigned to monkey-patch itself. Cross-file globals in the
+  classic multi-script apps are declared in `eslint.config.mjs`; add to that
+  list when you add a real one.
+
+## `var a = 1; b = 2` silently creates a global
+
+`assets/js/util.js` `navList()` opened with
+
+```js
+var $this = $(this);      // <- semicolon, not comma
+    $a = $this.find('a'),
+    b = [];
+```
+
+so the `var` statement ended at the first line and `$a` and `b` were
+assignments to undeclared names. `util.js` has no `'use strict'`, so rather
+than throwing they would become `window.$a` and `window.b` on every call.
+
+It never actually fired: `navList` is defined here and called nowhere in the
+repo (it is an unused plugin from the original template), so the leak was
+latent, not live. Fixed 2026-09-05 by restoring the comma, and now caught by
+`no-undef`.
+
+Worth keeping for the contrast with the `wasOpen` bug above: the identical
+mistake, an assignment to an undeclared name, throws loudly in a strict file
+and silently pollutes `window` in a sloppy one. Sloppy mode hides this class
+entirely, which is exactly why a static check earns its place over relying on
+runtime error telemetry.
+
+## `typeof x != 'jQuery'` is always true
+
+Also `util.js`, also found by lint (2026-09-05). Both `panel()` and
+`$.prioritize()` opened with
+
+```js
+if (typeof config.target != 'jQuery')   // typeof gives 'object', never 'jQuery'
+    config.target = $(config.target);
+```
+
+so the guard never held and the value was re-wrapped on every call. Unlike
+`navList` this IS live: `main.js` builds the mobile menu through `panel()` with
+`target: $body`, an already-jQuery value, so every menu build re-wrapped it.
+Harmless in effect, because `$(jqObject)` yields an equivalent object, but the
+check never did what it claimed. Now `!(config.target instanceof $)`.
+
+The general trap: `typeof` only ever returns one of eight strings. Comparing it
+to a constructor or class name always succeeds, and the branch you thought was
+conditional is unconditional. `valid-typeof` is enabled to catch it.
 
 ## Seed storage BEFORE the first navigation, not between two of them
 

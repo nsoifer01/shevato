@@ -435,7 +435,11 @@ function healRace(race, repairs, label) {
     let healed = race;
     const touch = () => { if (healed === race) healed = { ...race }; };
 
-    if (race.hasOwnProperty('slav') || race.hasOwnProperty('mike') || race.hasOwnProperty('nikita')) {
+    // Through Object.prototype: this heals rows loaded from storage or an
+    // imported file, which may carry their own "hasOwnProperty" key.
+    const hasOwn = (key) => Object.prototype.hasOwnProperty.call(race, key);
+
+    if (hasOwn('slav') || hasOwn('mike') || hasOwn('nikita')) {
         touch();
         healed.player1 = race.slav || null;
         healed.player2 = race.mike || null;

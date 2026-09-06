@@ -1,0 +1,44 @@
+name: lint
+
+# Static correctness gate. `no-undef` only, no style rules.
+#
+# It exists because of a production bug the whole test estate missed: a dead
+# store to an undeclared binding (`wasOpen`) survived a merge into a
+# 'use strict' file and threw a ReferenceError on every mobile menu open and
+# close for 12 days. `npm test` never opens a browser, and the browser suites
+# only checked JS errors at moments that throw could not reach. ESLint catches
+# that class statically in seconds.
+#
+# This is the second of two workflows that install npm dependencies (the other
+# is cross-browser, for Playwright). The push/PR TEST workflows stay
+# dependency-free on purpose, so the gates that matter still run from a bare
+# checkout. Per-PR rather than weekly, unlike cross-browser: this is cheap
+# (about 8 seconds over ~560 files) and the defects it finds arrive with
+# individual commits, not with browser releases.
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Use Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Install dev dependencies
+        run: npm ci
+
+      # No build step first: eslint reads source only, and the generated pages
+      # (rising-shows/shows, gym-tracker/exercises) are ignored by the config
+      # precisely because they are absent from a bare checkout.
+      - name: Lint
+        run: npm run lint
