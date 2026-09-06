@@ -1244,12 +1244,19 @@ Enjoy!
       ['Morning', '10:00', ['P21 Viewpoint Trail', 'P21 Kayak Lagoon']],
       ['Afternoon', '15:00', ['P21 Island Hop', 'P21 Cave Temple']],
     ];
+    // A DISCOVERY turn, which is what the owner's failing request was: the
+    // "I could not verify any places" line only exists on that path. In an
+    // ORDINARY turn an unverifiable venue is deliberately kept and shown
+    // unresolved, because the traveller named it - a different contract, and
+    // one P16 already pins.
     const adds = [];
+    let hint = '"discovery":{"query":"places for a day in Ao Nang","count":13},';
     for (const [label, time, opts] of slots) {
       for (const [i, name] of opts.entries()) {
-        adds.push(`{"op":"add","group":"${label.toLowerCase()}","item":{"type":"activity","meal":"${label.toLowerCase()}",`
+        adds.push(`{"op":"add",${hint}"group":"${label.toLowerCase()}","item":{"type":"activity","meal":"${label.toLowerCase()}",`
           + `"title":${JSON.stringify(name)},"location":"Ao Nang","startDate":"${day}","startTime":"${time}",`
           + `"mapsQuery":${JSON.stringify(name + ' Ao Nang')}}}`);
+        hint = '';
         void i;
       }
     }
