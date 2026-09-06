@@ -344,17 +344,18 @@ test('no window (or zero) means no closingSoon at all: the pre-window verdict is
 
 test('recommendWindowMin: structured meal/drinks prefixes first, then unambiguous words, then 45', () => {
   const w = (title, mapsQuery = '') => L.recommendWindowMin({ type: 'activity', title, mapsQuery });
-  // structured (the assistant title contract)
-  assert.equal(w('Breakfast: Bricolage Bread & Co'), 30);
-  assert.equal(w('Lunch: Konoba Hvaranin'), 30);
-  assert.equal(w('Dinner: Narisawa'), 30);
+  // structured (the assistant title contract), per sitting since the
+  // 2026-09-05 schedule-validity round - see RECOMMEND_HOURS_WINDOWS
+  assert.equal(w('Breakfast: Bricolage Bread & Co'), 45);
+  assert.equal(w('Lunch: Konoba Hvaranin'), 45);
+  assert.equal(w('Dinner: Narisawa'), 60);
   assert.equal(w('Drinks: Above The Grid'), 45);
   // unambiguous category words in the title or maps query
   assert.equal(w('British Museum', 'British Museum London'), 60);
   assert.equal(w('Visit the National Gallery', 'National Gallery London'), 45);
   assert.equal(w('Cafe Central', 'Cafe Central Vienna'), 30);
   assert.equal(w('Borough Market', 'Borough Market London'), 30);
-  assert.equal(w('Le Petit Bistro', 'Le Petit Bistro Paris'), 30);
+  assert.equal(w('Le Petit Bistro', 'Le Petit Bistro Paris'), 45);
   assert.equal(w('Harry\'s Bar', 'Harry\'s Bar Venice'), 45);
   // no structure, no unambiguous word: the conservative 45 default
   assert.equal(w('Louvre', 'Louvre Paris'), 45);

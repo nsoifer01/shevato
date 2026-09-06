@@ -34,6 +34,11 @@ import {
   typeMismatch,
   AREA_BIAS_KM,
 } from './tp-places-match.mjs';
+// ONE definition of "is this place open then", shared with the browser. The
+// client re-runs the same function on the same normalized hours when the answer
+// arrives, so this filter is a saving (it stops a round handing back a shut
+// restaurant) and never a source of truth.
+import TripLogic from '../../../apps/trip-planner/js/trip-logic.js';
 
 function fresh(entry, ttl, now) {
   return !!entry && typeof entry.at === 'number' && (now - entry.at) < ttl;
@@ -412,6 +417,15 @@ export function toEntry(raw) {
 // candidate we then look at costs $0.02, so this is the real cost of a
 // replacement round and it is deliberately small.
 export const DISCOVERY_DETAILS_MAX = 4;
+// A SCHEDULED search may look PAST venues that are shut at the hour it is
+// filling, and looking past one costs its Place Details call: the hours only
+// exist inside that response. So the number of candidates such a search may
+// examine is larger than the number it may return, and it is its own constant
+// rather than a bigger DISCOVERY_DETAILS_MAX, because the two bound different
+// things (what the traveller is offered, and what the owner pays to look at).
+// The scan stops the moment enough usable candidates are found, so the ceiling
+// is only reached in an area where most venues really are closed then.
+export const DISCOVERY_SCAN_MAX = 6;
 // How many IDs to ask the free search for. More than we will fetch, because
 // exclusions (already-recommended places) and rejections come out of this pool.
 export const DISCOVERY_SEARCH_PAGE = 10;
@@ -426,12 +440,15 @@ export const DISCOVERY_SEARCH_PAGE = 10;
  * duplicate of either under a different display name.
  */
 export async function discoverPlaces({
-  query, area, limit, exclude, meal, findPlaceIds, fetchDetails, now, claim, log,
+  query, area, limit, exclude, meal, schedule, findPlaceIds, fetchDetails, now, claim, log,
 }) {
   const want = Math.max(1, Math.min(DISCOVERY_DETAILS_MAX, Number(limit) || 1));
   const skip = new Set(Array.isArray(exclude) ? exclude.filter(x => typeof x === 'string' && x) : []);
   const out = [];
   let spent = 0;
+  // Counted so the caller can tell "this area has nothing else" from "this area
+  // has plenty and none of it opens then", which are different sentences.
+  let hoursRejected = 0;
 
   // The search is RESTRICTED, not biased. A biased discovery search is how the
   // original bug happened in the first place: ask the whole planet for a
@@ -499,11 +516,36 @@ export async function discoverPlaces({
     // it just is not a recommendation.
     if (typeof place.rating !== 'number') continue;
 
+    // THE SCHEDULE GATE. A replacement exists because the slot it is filling
+    // has an hour attached, so a candidate that is shut at that hour is not a
+    // replacement at all - it is the same failure again, bought a second time.
+    // The Details response already holds the hours (same billed call), so this
+    // costs nothing and lets the search walk further down the free ID page
+    // instead of returning the first shut restaurant Google ranked highly.
+    //
+    // Hours UNKNOWN passes: it is not evidence of anything, and the client
+    // ranks it behind every confirmed-open candidate and labels it on the card.
+    // A future date is judged by the venue's weekly pattern for THAT weekday
+    // (hoursDow parses the ISO date as UTC, so no machine's timezone can move
+    // it); "open now" is never asked, because the trip is not now.
+    if (schedule) {
+      const hoursAt = TripLogic.hoursVerdict(place.hours, schedule.date, schedule.time, schedule.windowMin);
+      if (hoursAt.status !== 'open' && hoursAt.status !== 'unknown') {
+        hoursRejected += 1;
+        logDecision(log, { query, area, placeId: id, place, attempt: 'discover',
+          judged: { area: verdict, result: { status: 'no_match', reason: 'closed_at_requested_time', detail: hoursAt.status } } });
+        continue;
+      }
+    }
+
     const confidence = resolutionConfidence(1, verdict);
     const result = fromDetails(place, id, verdict, confidence);
     logDecision(log, { query, area, placeId: id, place, attempt: 'discover',
       judged: { area: verdict, result } });
     out.push(result);
   }
+  // Nothing survived, and hours are why: say so rather than let an empty list
+  // be read as an empty neighbourhood.
+  if (!out.length && hoursRejected) return { results: [], spent, reason: 'no_open_candidates' };
   return { results: out, spent };
 }

@@ -2804,6 +2804,12 @@
   .trip-planner-app .tp-hours { color: var(--text-dim) !important; }
   .trip-planner-app .tp-hours.is-closing { color: var(--amber) !important; }
   .trip-planner-app .tp-hours.is-closed { color: var(--red) !important; }
+  /* Hours UNCONFIRMED, which is neither of the above. It appears only on an
+     assistant candidate that survived into a schedule-checked slot with no
+     hours to check: the app looked for venues open at that hour and could not
+     confirm this one. Amber-dim rather than red, because nothing says it is
+     shut - only that nobody could say it is open. */
+  .trip-planner-app .tp-hours.is-unconfirmed { color: var(--amber) !important; opacity: 0.85; }
   /* A candidate whose verified hours refuse its own start time is demoted: it
      must never read as a normal recommendation, and it is excluded from the
      winner badges too (candidateBadges' closed rule). The text dims, the

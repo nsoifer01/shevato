@@ -3934,6 +3934,38 @@ const TripLogic = (() => {
     return out;
   }
 
+  /**
+   * THE GUIDED PLAN AS A STRUCTURE, not as a sentence.
+   *
+   * Before this the picker's answers existed only as English inside
+   * buildPlanRequest, so "I want to be at my first planned stop at 8:00 AM" was
+   * a hope addressed to the model and nothing in the app could check it, act on
+   * it, or even name it. Everything downstream that needs to know WHAT WAS
+   * ASKED - the deterministic first-stop check, the per-slot option counts, the
+   * hours validation that needs a date, the replacement search that needs to
+   * know a slot is breakfast - reads this object, and buildPlanRequest words
+   * this same object for the model. One representation, two consumers.
+   */
+  function planConstraintsFrom(prefs) {
+    const p = prefs || {};
+    const meals = p.meals || {};
+    const hhmm = t => (/^\d{1,2}:\d{2}$/.test(String(t == null ? '' : t).trim())
+      ? String(t).trim().padStart(5, '0') : '');
+    return {
+      date: isIsoDate(p.date) ? p.date : '',
+      // An ARRIVAL contract: the hour the first planned place should begin,
+      // with the travel to it before. Never a wake-up alarm (see the note in
+      // buildPlanRequest).
+      firstStopTime: hhmm(p.wakeTime) || '08:00',
+      returnBy: hhmm(p.returnTime) || '22:00',
+      meals: ['breakfast', 'lunch', 'dinner'].filter(k => meals[k] !== false),
+      mealOptions: PLAN_MEAL_OPTIONS,
+      activityOptions: PLAN_ACTIVITY_OPTIONS,
+      activities: Number(p.activities === undefined ? 3 : p.activities) || 0,
+      drinks: Number(p.drinks || 0) || 0,
+    };
+  }
+
   function buildPlanRequest(prefs, trip) {
     const p = prefs || {};
     const meals = p.meals || {};
@@ -3947,8 +3979,12 @@ const TripLogic = (() => {
     const budgetSel = Array.isArray(p.budget)
       ? [...new Set(p.budget.map(Number).filter(n => PLAN_BUDGETS[n]))].sort((a, b) => a - b)
       : [PLAN_BUDGETS[p.budget] ? Number(p.budget) : 2];
-    const wake = fmt12h(p.wakeTime || '08:00') || fmt12h('08:00');
-    const back = fmt12h(p.returnTime || '22:00') || fmt12h('22:00');
+    // The SAME structure the pipeline enforces against, worded. If these two
+    // ever disagreed the app would be checking a contract the model was never
+    // given, so there is one source for both.
+    const bounds = planConstraintsFrom(p);
+    const wake = fmt12h(bounds.firstStopTime) || fmt12h('08:00');
+    const back = fmt12h(bounds.returnBy) || fmt12h('22:00');
     const activities = planRange(p.activities === undefined ? 3 : p.activities);
     const drinks = planRange(p.drinks || 0);
 
@@ -4465,16 +4501,30 @@ const TripLogic = (() => {
   // museum entered 10 minutes before closing is open and pointless. These are
   // the minimum minutes that must remain before the covering interval closes
   // for the ASSISTANT to offer a timed venue as a normal recommendation.
-  // Deliberately small for meals - the published closing time is treated as an
-  // arrival constraint, not a finish-the-meal deadline - and larger where the
-  // visit itself needs time. Manual traveller items never consult this: hours
-  // are advisory for a person's own plan.
+  // Larger where the visit itself needs time. Manual traveller items never
+  // consult this: hours are advisory for a person's own plan.
+  //
+  // WHY THE SIT-DOWN MEALS ARE NO LONGER 30 (2026-09-05 round). The original
+  // flat `meal: 30` read the published closing time as a pure ARRIVAL
+  // constraint, on the reasoning that a restaurant seating you at 22:30 for a
+  // 23:00 close is your problem, not the app's. That is true of a coffee and a
+  // pastry and false of a dinner: a venue that locks the door 30 minutes after
+  // the proposed start cannot serve the sitting the slot is for, and now that
+  // schedule validity REPLACES a candidate instead of merely colouring it red,
+  // an under-tight window quietly keeps an unusable venue in a slot that had a
+  // real alternative available. The windows below are the planned duration of
+  // the sitting, per kind: grab-and-go stays at 30 because that genuinely is
+  // an arrival constraint.
   const RECOMMEND_HOURS_WINDOWS = {
-    meal: 30,       // restaurant / breakfast / lunch / dinner
+    breakfast: 45,  // a sat-down breakfast
+    brunch: 60,     // brunch is a long sitting by definition
+    lunch: 45,
+    dinner: 60,     // the longest ordinary meal
+    meal: 45,       // "restaurant" with no kind named: the middle of the above
     drinks: 45,     // bar / drinks
     museum: 60,     // museum / major attraction
     gallery: 45,    // gallery / smaller attraction
-    cafe: 30,       // cafe / bakery
+    cafe: 30,       // cafe / bakery: an arrival constraint, genuinely
     shop: 30,       // shop / market
     default: 45,    // any other visitable activity: conservative middle
   };
@@ -4503,7 +4553,9 @@ const TripLogic = (() => {
     const kind = itemMealKind(item);
     if (kind === 'drinks') return RECOMMEND_HOURS_WINDOWS.drinks;
     if (kind === 'cafe' || kind === 'snack') return RECOMMEND_HOURS_WINDOWS.cafe;
-    if (kind) return RECOMMEND_HOURS_WINDOWS.meal;
+    // A named meal kind gets its own sitting length; anything else the meal
+    // field can hold ("other") falls to the generic meal window.
+    if (kind) return RECOMMEND_HOURS_WINDOWS[kind] || RECOMMEND_HOURS_WINDOWS.meal;
     const text = `${item.title == null ? '' : item.title} ${item.mapsQuery == null ? '' : item.mapsQuery}`.toLowerCase();
     for (const [re, k] of RECOMMEND_KIND_RES) {
       if (re.test(text)) return RECOMMEND_HOURS_WINDOWS[k];
@@ -4552,6 +4604,126 @@ const TripLogic = (() => {
     if (!day.intervals.length) return 'Closed';
     const f = m => fmtTime(`${String(Math.floor((m % 1440) / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
     return day.intervals.map(iv => `${f(iv.startMin)}–${f(iv.endMin)}`).join(', ');
+  }
+
+  // ---------- SCHEDULE VALIDITY: a real place is not automatically a usable one
+  //
+  // THE FAILURE THIS EXISTS FOR (owner report, 2026-09-05). A guided "first
+  // planned stop at 8:00 AM" day came back with breakfast at 08:00 at a venue
+  // Google lists as opening at 10:30. Everything about that venue was correct:
+  // right business, right branch, right city, 4.7 stars from a real review
+  // count. It was simply unusable at the hour it was proposed for, and the app
+  // had no way to say so during SELECTION - it painted the card red afterwards
+  // and refused the add, which leaves the traveller holding a slot with nothing
+  // in it and no alternative offered.
+  //
+  // The two questions are now separate and both are asked before a candidate
+  // can occupy a slot:
+  //
+  //   IDENTITY VALIDITY   "is this the real Google place?"   (resolutionConfidence,
+  //                       verifyArea, typeMismatch - server side)
+  //   SCHEDULE VALIDITY   "can it be used at the proposed time?"  (here)
+  //
+  // Three tiers, and the middle one is the whole reason this is a tier system
+  // rather than a boolean:
+  //
+  //   open     verified hours cover the proposed time with the slot's whole
+  //            planned duration left. A normal recommendation.
+  //   unknown  the place is real but Google has no usable hours for it, or the
+  //            lookup could not run. NEVER treated as open, never treated as
+  //            closed: it is admissible only as filler behind every open
+  //            candidate, and whatever shows it must say the hours are
+  //            unconfirmed. This is what keeps a beach, a viewpoint or a
+  //            trailhead - none of which have business hours - from being
+  //            deleted by an hours check.
+  //   invalid  verified hours REFUSE the proposed time. Ineligible for that
+  //            slot at that time, and replaced rather than shown.
+  //
+  // Nothing here consults a clock. The date and time handed in are the
+  // itinerary's own floating local values for the destination, and the weekday
+  // comes from the calendar date through hoursDow (UTC-parsed, so the machine's
+  // timezone cannot move it). "Open now" is never asked and would be the wrong
+  // question anyway: these itineraries are for future dates.
+  const SCHEDULE_REASONS = {
+    OPENS_AFTER: 'opens_after_slot',
+    CLOSES_BEFORE: 'closes_before_slot',
+    CLOSED: 'closed_at_requested_time',
+    UNKNOWN: 'hours_unknown',
+  };
+  const SCHEDULE_TIER_ORDER = { open: 0, unknown: 1, invalid: 2 };
+
+  /**
+   * Can this venue's VERIFIED hours support (date, time) for windowMin minutes?
+   *
+   * Returns { tier, status, reason, opensMin, closesMin, minutesLeft }, where
+   * `status` is the raw hoursVerdict state (so a caller that wants to word the
+   * difference between "not open yet" and "already shut" still can) and `tier`
+   * is the selection answer. `reason` is '' for an open verdict and one of
+   * SCHEDULE_REASONS otherwise.
+   */
+  function scheduleEligibility(hours, { date, time, windowMin } = {}) {
+    const unknown = reason => ({ tier: 'unknown', status: 'unknown', reason, opensMin: null, closesMin: null, minutesLeft: null });
+    if (!isIsoDate(date) || !/^\d{2}:\d{2}$/.test(String(time == null ? '' : time))) {
+      // No proposed time is not a schedule question at all: an undated note or
+      // an all-day item cannot be closed, so it is never rejected here.
+      return unknown(SCHEDULE_REASONS.UNKNOWN);
+    }
+    const win = typeof windowMin === 'number' && windowMin > 0 ? windowMin : 0;
+    const v = hoursVerdict(hours, date, time, win);
+    const t = hhmmToMin(time);
+    if (v.status === 'unknown') return unknown(SCHEDULE_REASONS.UNKNOWN);
+    if (v.status === 'open') {
+      return {
+        tier: 'open', status: 'open', reason: '', opensMin: null,
+        closesMin: v.closesMin, minutesLeft: v.closesMin == null ? null : v.closesMin - t,
+      };
+    }
+    if (v.status === 'closingSoon') {
+      // Open at the minute asked and shut before the sitting could finish. For
+      // a RECOMMENDATION that is not a usable slot, which is exactly the state
+      // acceptProposal has always refused - selection now agrees with it.
+      return {
+        tier: 'invalid', status: 'closingSoon', reason: SCHEDULE_REASONS.CLOSES_BEFORE,
+        opensMin: null, closesMin: v.closesMin, minutesLeft: v.closesMin - t,
+      };
+    }
+    if (v.status === 'beforeOpen') {
+      return {
+        tier: 'invalid', status: 'beforeOpen', reason: SCHEDULE_REASONS.OPENS_AFTER,
+        opensMin: v.opensMin, closesMin: null, minutesLeft: null,
+      };
+    }
+    // 'closed'. Which KIND of closed decides the reason word: a day with
+    // intervals that all ended before the proposed time closed before the slot;
+    // a day with no interval at all is closed at that time full stop.
+    const day = hoursIntervalsForDate(hours, date);
+    const hadEarlier = day.known && day.intervals.some(iv => iv.startMin <= t);
+    return {
+      tier: 'invalid', status: 'closed',
+      reason: hadEarlier ? SCHEDULE_REASONS.CLOSES_BEFORE : SCHEDULE_REASONS.CLOSED,
+      opensMin: null, closesMin: null, minutesLeft: null,
+    };
+  }
+
+  /**
+   * The same question asked about a whole candidate rather than a bare hours
+   * table: `entry` is the canonical resolved place (the ONE object ratings,
+   * coordinates, Maps links and hours all come from - never a second lookup),
+   * `fields` the item the proposal would create.
+   *
+   * A non-visit (a travel leg, a note, a stay) has no recommendation window and
+   * is never schedule-judged: recommendWindowMin returns null and the answer is
+   * the unknown tier, which blocks nothing.
+   */
+  function candidateScheduleTier(entry, fields) {
+    const f = fields || {};
+    const win = recommendWindowMin(f);
+    if (win == null) {
+      return { tier: 'unknown', status: 'unknown', reason: '', opensMin: null, closesMin: null, minutesLeft: null, checked: false };
+    }
+    const hours = entry && entry.hours ? entry.hours : null;
+    const out = scheduleEligibility(hours, { date: f.startDate, time: f.startTime, windowMin: win });
+    return { ...out, windowMin: win, checked: out.tier !== 'unknown' };
   }
 
   // ---------- the Places lookup queue ----------
@@ -6672,6 +6844,177 @@ const TripLogic = (() => {
   // matched against the other.
   const foldWords = s => foldPlace(s).replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/\s+/g, ' ');
 
+  // ---------- the first stop is a CONSTRAINT, not a hint to the model --------
+  //
+  // "I want to be at my first planned stop at 8:00 AM" used to exist only as a
+  // sentence in the request, so whether the day actually began at 08:00 was
+  // decided entirely by how the model felt about it. This is the deterministic
+  // half: given the timed visits the model proposed for the day, say what has
+  // to move for the traveller's own stated hour to be true.
+  //
+  // WHAT IT WILL NOT DO. It never moves a slot to accommodate a venue. Hours
+  // play no part here at all - this runs BEFORE any hours are read, precisely
+  // so that "the restaurant opens at 10:30" can never become a reason to call
+  // the traveller's 08:00 negotiable. When a venue cannot serve the requested
+  // hour the answer is a different venue, never a different hour.
+  //
+  // Travel legs are excluded by type: the request says "with any travel to it
+  // before that time", so a 07:15 taxi is the contract being honoured, not the
+  // first stop.
+  //
+  // `entries` are plain rows - { pid, type, startDate, startTime } - so this
+  // stays pure and the caller owns the mutation of its own proposal objects.
+  function firstStopShiftPlan(entries, constraints) {
+    const c = constraints || {};
+    const target = /^\d{2}:\d{2}$/.test(String(c.firstStopTime || '')) ? c.firstStopTime : '';
+    const none = reason => ({ applied: false, reason, targetTime: target, from: '', shiftPids: [] });
+    if (!target || !isIsoDate(c.date)) return none('no_constraint');
+    const day = (Array.isArray(entries) ? entries : []).filter(e => e
+      && e.startDate === c.date
+      && /^\d{2}:\d{2}$/.test(String(e.startTime || ''))
+      && e.type === 'activity');
+    if (!day.length) return none('no_candidates');
+    const times = [...new Set(day.map(e => e.startTime))].sort();
+    const first = times[0];
+    if (first === target) return none('already_met');
+    // Moving the opening slot must not step on the one after it. A day whose
+    // second stop is at or before the requested hour is a day the model built
+    // to a different shape, and silently reordering it would be a worse answer
+    // than leaving it alone and saying so.
+    const next = times[1];
+    if (next && next <= target) return none('would_collide');
+    return {
+      applied: true, reason: '', targetTime: target, from: first,
+      shiftPids: day.filter(e => e.startTime === first).map(e => e.pid),
+    };
+  }
+
+  // ---------- what a slot IS, and how to search for another one -------------
+  //
+  // A "slot" is one question the traveller asked ("breakfast", "the morning
+  // activity"), and its candidates are the answers to that one question. The
+  // model expresses it as a shared `group` id; a proposal with no group is its
+  // own slot of one. Everything hours-related is decided per slot, because
+  // "three breakfast options" is a promise about a slot, not about the reply.
+  function proposalSlotKey(p) {
+    const g = p && typeof p.group === 'string' ? p.group.trim() : '';
+    if (g) return 'g:' + g;
+    return 'p:' + ((p && p.pid) || '');
+  }
+
+  // The words to type into a maps search to find ANOTHER answer to the same
+  // question. Category-first, because the model has already proved it cannot be
+  // trusted to name a venue that is open, and a category is exactly what Text
+  // Search is good at. The city is appended by the caller's discoveryQueryFrom
+  // convention (and doubles as the weak area constraint when no rectangle is
+  // available, see discoverPlaces).
+  const SLOT_QUERY_TERMS = {
+    breakfast: 'breakfast restaurant',
+    brunch: 'brunch restaurant',
+    lunch: 'lunch restaurant',
+    dinner: 'dinner restaurant',
+    cafe: 'cafe',
+    snack: 'snack bar',
+    drinks: 'bar',
+    other: 'restaurant',
+    activity: 'tourist attraction',
+  };
+  function slotDiscoveryQuery(kind, city) {
+    const term = SLOT_QUERY_TERMS[String(kind || '').trim()] || '';
+    if (!term) return '';
+    const where = String(city == null ? '' : city).trim();
+    return where && !foldWords(term).includes(foldWords(where)) ? `${term} ${where}` : term;
+  }
+
+  // ---------- how many more candidates does this slot need? -----------------
+  //
+  // The bounded-search policy, as one arithmetic rule rather than as conditions
+  // scattered through the loop. Two independent reasons to go looking, added
+  // rather than conflated:
+  //
+  //   SHORT     the slot has fewer candidates than the traveller asked for,
+  //             whatever the reason (the model gave two, one failed identity).
+  //   REFUSED   hours refused one of the candidates it does have, so the slot
+  //             needs enough CONFIRMED-OPEN ones to make up the count.
+  //
+  // A slot whose candidates are merely hours-unknown asks for nothing. Nothing
+  // was learned against them, and buying a replacement for a venue we have no
+  // complaint about is exactly the cost the old design was right to avoid.
+  function slotReplacementNeed({ want, kept, open, scheduleDropped }) {
+    const w = Number(want) || 0;
+    const short = w - (Number(kept) || 0);
+    const needOpen = scheduleDropped ? w - (Number(open) || 0) : 0;
+    return Math.max(0, Math.max(short, needOpen));
+  }
+
+  // ---------- which candidates the slot actually offers ---------------------
+  //
+  // THE RULE, and it is the whole point of the round: a verified-CLOSED
+  // candidate never occupies a slot (it is not in `list` by the time this runs,
+  // and is dropped here too if a caller hands one over), confirmed-open leads,
+  // and hours-unknown fills only what open could not. Trimmed to what was
+  // asked for, so a replacement that lands late cannot inflate "give me three"
+  // into five.
+  //
+  // `list` is expected pre-ranked (rankVerifiedPlaces already puts open ahead
+  // of unknown and quality within a tier); this is the promise about COUNT.
+  function selectSlotCandidates(list, want) {
+    const all = Array.isArray(list) ? list : [];
+    const tier = c => (c && c.schedule && c.schedule.tier) || 'unknown';
+    const usable = all.filter(c => tier(c) !== 'invalid');
+    const refused = all.filter(c => tier(c) === 'invalid');
+    const open = usable.filter(c => tier(c) === 'open');
+    const unknown = usable.filter(c => tier(c) !== 'open');
+    const keepN = Math.max(1, Number(want) || 0);
+    const final = [...open, ...unknown].slice(0, keepN);
+    const dropped = [...open, ...unknown].slice(keepN);
+    return { final, dropped, refused };
+  }
+
+  // ---------- saying what the hours check actually cost ---------------------
+  //
+  // The traveller asked for three and is looking at two. The old count-fixing
+  // sentence ("I could verify two good matches for this area") is the wrong
+  // explanation now: the places were verified, they were just shut. This says
+  // which, per slot, in the traveller's own time format.
+  //
+  // `slots` are { kind, time, requested, open, unknown }. Pure, formatter
+  // injected, no HTML.
+  function scheduleShortfallNote(slots, fmtTime) {
+    const fmt = typeof fmtTime === 'function' ? fmtTime : (t => t);
+    const label = k => (k === 'activity' ? 'activity' : String(k || '').trim() || 'this slot');
+    const out = [];
+    for (const s of Array.isArray(slots) ? slots : []) {
+      if (!s) continue;
+      const open = Number(s.open || 0);
+      const unknown = Number(s.unknown || 0);
+      const shown = open + unknown;
+      const want = Number(s.requested || 0);
+      // THIS NOTE ONLY EVER SPEAKS ABOUT HOURS, and only when hours actually
+      // refused something in this slot. Two ways to get that wrong, both found
+      // by tests:
+      //   - a single beach with no business hours produced "I could confirm
+      //     zero activity places open at 10:00", which is alarming, useless,
+      //     and about nothing that went wrong;
+      //   - a slot whose candidates failed IDENTITY (the venue does not exist)
+      //     produced "I could not confirm any activity place open at 2:00 PM",
+      //     which blames the clock for a hallucinated venue. That shortfall is
+      //     rebuildAssistProse's sentence to write, and it says "verify",
+      //     because existence is what was in question.
+      if (!Number(s.closed || 0)) continue;
+      const at = /^\d{2}:\d{2}$/.test(String(s.time || '')) ? ` open at ${fmt(s.time)}` : ' open at that time';
+      if (want && open < want) {
+        out.push(open === 0
+          ? `I could not confirm any ${label(s.kind)} place${at}, so ${unknown ? 'what is offered here is unconfirmed' : 'none is offered for that slot'}.`
+          : `I could confirm ${COUNT_WORDS[open] || open} ${label(s.kind)} ${open === 1 ? 'place' : 'places'}${at}, not ${COUNT_WORDS[want] || want}.`);
+      }
+      if (unknown) {
+        out.push(`Google has no opening hours for ${COUNT_WORDS[unknown] || unknown} of the ${label(s.kind)} ${shown === 1 ? 'option' : 'options'} shown, so check before you go.`);
+      }
+    }
+    return out.join(' ');
+  }
+
   // ---------- discovery: how much replacing is allowed ----------
   // Bounded three ways, and every bound is about money or patience:
   //   ROUNDS      how many replacement passes run. One. A second pass asks the
@@ -6683,6 +7026,21 @@ const TripLogic = (() => {
   const DISCOVERY_REPLACEMENT_ROUNDS = 1;
   const DISCOVERY_REPLACEMENTS_PER_ROUND = 4;
   const DISCOVERY_CANDIDATE_MAX = 12;
+  // AND the whole-turn ceiling on billed replacements, which the per-slot
+  // numbers above cannot express. A guided day has five or six slots
+  // (breakfast, lunch, dinner, two activity sets, drinks), and four
+  // replacements each would be twenty-four extra Place Details calls for one
+  // press of "Plan my day". Six is the budget the whole reply shares, spent
+  // first-come by slot order, which is chronological: the morning the
+  // traveller asked about is served before the evening.
+  const SLOT_REPLACEMENT_BUDGET = 6;
+  // ...and the number of replacement SEARCHES one reply may issue, which is the
+  // other half of the cost. A search is cheap in itself (the ID page is the
+  // free Essentials SKU) but each one may spend Place Details calls looking
+  // past venues that are shut, so the turn caps how many slots may go shopping.
+  // Slots are served in the order the day runs, so the morning the traveller
+  // asked about is filled before the evening.
+  const SLOT_REPLACEMENT_SEARCHES = 3;
 
   // ---------- discovery: dedupe by IDENTITY, never by display text ----------
   // Two names for one place is exactly what this round is about, so the key is
@@ -6727,13 +7085,25 @@ const TripLogic = (() => {
     return Math.round((rating * weight * 0.8 + near * 0.2 * 5) * 1000) / 1000;
   }
 
+  // SCHEDULE VALIDITY OUTRANKS QUALITY, INSIDE A SLOT. Two candidates for the
+  // same slot share a start time, so the chronological rule below cannot
+  // separate them and the tier does it first: a venue whose hours are confirmed
+  // to cover the slot leads one whose hours nobody could check, however well
+  // rated the unconfirmed one is. Across DIFFERENT times this never fires,
+  // because a schedule keeps its clock order (reordering a day by hours quality
+  // would be a different bug). Verified-invalid candidates never reach here at
+  // all - they are rejected before ranking - but the tier is ordered anyway so
+  // that a caller which does hand one over cannot have it lead.
   function rankVerifiedPlaces(list) {
     const items = (Array.isArray(list) ? list : []).map((x, i) => ({ ...x, _i: i }));
     const timed = items.filter(x => x.time).map(x => x.time);
     const scheduled = timed.length > 1 && new Set(timed).size > 1;
+    const tierOf = x => SCHEDULE_TIER_ORDER[(x && x.schedule && x.schedule.tier) || 'unknown'];
     return items.sort((a, b) => {
       // a real schedule keeps its clock order; quality only breaks ties
       if (scheduled && a.time && b.time && a.time !== b.time) return a.time < b.time ? -1 : 1;
+      const tier = tierOf(a) - tierOf(b);
+      if (tier !== 0) return tier;
       const d = (b.score || 0) - (a.score || 0);
       return d !== 0 ? d : a._i - b._i;
     }).map(({ _i, ...rest }) => rest);
@@ -6775,10 +7145,18 @@ const TripLogic = (() => {
   const PROSE_STOPWORDS = new Set(['the', 'and', 'for', 'shop', 'store', 'cafe', 'bar', 'chocolate',
     'restaurant', 'tokyo', 'kyoto', 'osaka', 'station', 'branch', 'main', 'near', 'best']);
 
+  // WHOLE WORDS, not substrings. `hay.includes(w)` scored "star" against the
+  // word "start", which is not a coincidence anyone can rely on: it is how
+  // "Morning Star Kitchen" (a surviving recommendation) matched the sentence
+  // "Only Noodles is a great start to the morning" and kept a REJECTED venue's
+  // recommendation in the answer, card-less, on the 2026-09-06 schedule round.
+  // The same shape gives "Anna" a hit inside "banana" and "bar" inside
+  // "barber". foldWords already reduces both sides to space-separated words, so
+  // membership is the honest test and costs one Set.
   function proseMentions(text, tokens) {
     if (!tokens.length) return false;
-    const hay = foldWords(text);
-    const hits = tokens.filter(w => hay.includes(w)).length;
+    const words = new Set(foldWords(text).split(' '));
+    const hits = tokens.filter(w => words.has(w)).length;
     // two distinctive words, or one that is the whole (single-word) name
     return tokens.length === 1 ? hits === 1 : hits >= 2;
   }
@@ -10190,11 +10568,15 @@ const TripLogic = (() => {
     placeRecordFrom, normalizePlaceRecord, placeMapsUrl, placeEntryUrl, plausiblePlacePoint,
     assistDiscoveryIntent, discoveryHintFrom, discoveryQueryFrom, rebuildAssistProse,
     placeIdentityOf, dedupeByIdentity, placeQualityScore, rankVerifiedPlaces,
+    planConstraintsFrom, firstStopShiftPlan, proposalSlotKey, slotDiscoveryQuery,
+    SLOT_QUERY_TERMS, scheduleShortfallNote, slotReplacementNeed, selectSlotCandidates,
     DISCOVERY_REPLACEMENT_ROUNDS, DISCOVERY_REPLACEMENTS_PER_ROUND, DISCOVERY_CANDIDATE_MAX,
+    SLOT_REPLACEMENT_BUDGET, SLOT_REPLACEMENT_SEARCHES,
     PLACE_AREA_MAX_KM, PLACE_RECORD_TTL_MS, cleanAssistTitle, stripTitlePrefixes,
     createPlacesQueue, placesRetryDelay,
     sanitizeHours, normalizeGoogleHours, hoursVerdict, nextOpeningMin, hoursIntervalsForDate, hoursLineText,
     HOURS_CLOSING_SOON_MIN, RECOMMEND_HOURS_WINDOWS, recommendWindowMin,
+    scheduleEligibility, candidateScheduleTier, SCHEDULE_REASONS, SCHEDULE_TIER_ORDER,
     PLACES_BATCH_MAX, PLACES_CONCURRENCY, PLACES_DEFER_MS, PLACES_MAX_ATTEMPTS,
     VENUE_TTL_MS, VENUE_CACHE_MAX, venueFresh, normalizeVenueCache, rememberVenue,
     placesLocationUpdates, pickVenueFeature, validCoord,
