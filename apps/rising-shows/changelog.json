@@ -1,6 +1,213 @@
 {
   "updates": [
     {
+      "builtAt": "2026-09-06T10:24:53.069Z",
+      "totals": {
+        "seasons": 66632,
+        "delta": 13
+      },
+      "shapeCounts": {
+        "rebound": 10179,
+        "rising": 2595,
+        "slow-burn": 4411,
+        "big-finale": 12159,
+        "u-shaped": 3090,
+        "rollercoaster": 14149,
+        "mid-peak": 4624,
+        "saved-best-for-last": 1506,
+        "front-loaded": 3505,
+        "declining": 1881,
+        "bad-finale": 4657,
+        "consistent": 2631,
+        "shape-drift": 1576
+      },
+      "shapeDeltas": {
+        "rebound": 2,
+        "rising": 4,
+        "slow-burn": -5,
+        "big-finale": 5,
+        "u-shaped": -2,
+        "saved-best-for-last": -2,
+        "front-loaded": -8,
+        "declining": 2,
+        "bad-finale": 3,
+        "consistent": 4,
+        "shape-drift": -1
+      },
+      "added": [
+        {
+          "seriesId": "tt44974627",
+          "title": "The Grand Tour",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1345472",
+          "title": "Phantom: The Animation",
+          "season": 1,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt38590339",
+          "title": "Famous Last Words",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt12259074",
+          "title": "Sin",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt27790101",
+          "title": "Conan O'Brien Must Go",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt19872918",
+          "title": "Robogobo",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt32909469",
+          "title": "Lovesick",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt17940828",
+          "title": "Shubh Mangal Mein Dangal",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt34586849",
+          "title": "Nepobaby",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt16744184",
+          "title": "My Nephew from Hell",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt39035969",
+          "title": "Weirdo 101",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43723095",
+          "title": "Meet the Owens",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt6956946",
+          "title": "Paint Me a Story",
+          "season": 2,
+          "seasonYear": 2014
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt9022950",
+          "title": "The Kelly Clarkson Show",
+          "season": 2,
+          "from": 5.83,
+          "to": 6.53,
+          "delta": 0.7
+        },
+        {
+          "seriesId": "tt39601175",
+          "title": "Amar Vishwas",
+          "season": 1,
+          "from": 7.63,
+          "to": 6.95,
+          "delta": -0.68
+        },
+        {
+          "seriesId": "tt11349896",
+          "title": "Max & the Midknights",
+          "season": 1,
+          "from": 9.05,
+          "to": 8.42,
+          "delta": -0.63
+        },
+        {
+          "seriesId": "tt0202179",
+          "title": "ABC Afterschool Specials",
+          "season": 25,
+          "from": 5.93,
+          "to": 6.55,
+          "delta": 0.62
+        },
+        {
+          "seriesId": "tt34498121",
+          "title": "Thukra Ke Mera Pyaar",
+          "season": 2,
+          "from": 6.51,
+          "to": 7.08,
+          "delta": 0.57
+        },
+        {
+          "seriesId": "tt8295372",
+          "title": "A Crazy Wind",
+          "season": 1,
+          "from": 6.32,
+          "to": 6.85,
+          "delta": 0.53
+        },
+        {
+          "seriesId": "tt14976292",
+          "title": "Link Click",
+          "season": 4,
+          "from": 8.12,
+          "to": 8.6,
+          "delta": 0.48
+        },
+        {
+          "seriesId": "tt11869098",
+          "title": "Haunting in the Heartland",
+          "season": 1,
+          "from": 7.7,
+          "to": 7.22,
+          "delta": -0.48
+        },
+        {
+          "seriesId": "tt18070984",
+          "title": "Average Joe",
+          "season": 2,
+          "from": 7.07,
+          "to": 7.55,
+          "delta": 0.48
+        },
+        {
+          "seriesId": "tt43035122",
+          "title": "Nour",
+          "season": 1,
+          "from": 9.6,
+          "to": 9.13,
+          "delta": -0.47
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20151,
+        "avgRating": 1065,
+        "shapes": 180,
+        "episodeCount": 75,
+        "seriesRating": 352,
+        "poster": 3,
+        "overview": 3
+      }
+    },
+    {
       "builtAt": "2026-09-05T10:10:19.312Z",
       "totals": {
         "seasons": 66619,
@@ -7350,242 +7557,6 @@
         "overview": 7,
         "episodeCount": 95,
         "providers": 1
-      }
-    },
-    {
-      "builtAt": "2026-08-02T08:37:02.549Z",
-      "totals": {
-        "seasons": 66122,
-        "delta": 18
-      },
-      "shapeCounts": {
-        "mid-peak": 4633,
-        "rebound": 10077,
-        "rising": 2908,
-        "slow-burn": 4371,
-        "big-finale": 12093,
-        "u-shaped": 3092,
-        "rollercoaster": 14059,
-        "saved-best-for-last": 1536,
-        "front-loaded": 3465,
-        "declining": 1868,
-        "bad-finale": 4646,
-        "consistent": 2624,
-        "shape-drift": 1639
-      },
-      "shapeDeltas": {
-        "mid-peak": 2,
-        "rebound": -2,
-        "rising": -9,
-        "slow-burn": -1,
-        "big-finale": 5,
-        "u-shaped": 6,
-        "rollercoaster": 10,
-        "saved-best-for-last": -3,
-        "front-loaded": 6,
-        "declining": -6,
-        "bad-finale": 2,
-        "consistent": -9
-      },
-      "added": [
-        {
-          "seriesId": "tt27497393",
-          "title": "Stuart Fails to Save the Universe",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38061964",
-          "title": "Drag Race Down Under vs the World",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt14681596",
-          "title": "Batman: Caped Crusader",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt27187054",
-          "title": "The Elusive Samurai",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt19896998",
-          "title": "Las Bravas F.C.",
-          "season": 2,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt43597215",
-          "title": "Blindness",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43672301",
-          "title": "Evolution",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt8365214",
-          "title": "Autonomies",
-          "season": 1,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt8652722",
-          "title": "The Freitas Brothers",
-          "season": 1,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt11833446",
-          "title": "Murder 24/7",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt9569556",
-          "title": "Dream Raider",
-          "season": 1,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt8949480",
-          "title": "Iron Island",
-          "season": 2,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt29507844",
-          "title": "I-Land",
-          "season": 1,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt28719186",
-          "title": "Boomer",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt30876892",
-          "title": "The Accidental Influencer",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt35406274",
-          "title": "Ms. Rachel",
-          "season": 2,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt38990474",
-          "title": "Treasure & Dirt",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39381272",
-          "title": "Flip the Frog",
-          "season": 1,
-          "seasonYear": 1930
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt23843134",
-          "title": "Lackadaisy Comic Dubs",
-          "season": 1,
-          "from": 2.84,
-          "to": 3.84,
-          "delta": 1
-        },
-        {
-          "seriesId": "tt39665097",
-          "title": "Musafir Cafe",
-          "season": 1,
-          "from": 9.07,
-          "to": 8.41,
-          "delta": -0.66
-        },
-        {
-          "seriesId": "tt10038600",
-          "title": "Press Your Luck",
-          "season": 1,
-          "from": 7.17,
-          "to": 7.74,
-          "delta": 0.57
-        },
-        {
-          "seriesId": "tt0159902",
-          "title": "Pit Pony",
-          "season": 2,
-          "from": 6.2,
-          "to": 5.64,
-          "delta": -0.56
-        },
-        {
-          "seriesId": "tt10448486",
-          "title": "Scams",
-          "season": 1,
-          "from": 7.23,
-          "to": 7.77,
-          "delta": 0.54
-        },
-        {
-          "seriesId": "tt42211778",
-          "title": "Zanjeerain",
-          "season": 1,
-          "from": 8.15,
-          "to": 8.68,
-          "delta": 0.53
-        },
-        {
-          "seriesId": "tt37536894",
-          "title": "Mau Makan Apa?",
-          "season": 1,
-          "from": 9.63,
-          "to": 9.13,
-          "delta": -0.5
-        },
-        {
-          "seriesId": "tt17544192",
-          "title": "SOKO Linz",
-          "season": 2,
-          "from": 6.33,
-          "to": 6.8,
-          "delta": 0.47
-        },
-        {
-          "seriesId": "tt40527341",
-          "title": "Girl from Nowhere: The Reset",
-          "season": 1,
-          "from": 6.48,
-          "to": 6.02,
-          "delta": -0.46
-        },
-        {
-          "seriesId": "tt37520584",
-          "title": "Bust Up",
-          "season": 1,
-          "from": 5.88,
-          "to": 6.34,
-          "delta": 0.46
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 20164,
-        "avgRating": 1406,
-        "shapes": 225,
-        "seriesRating": 281,
-        "episodeCount": 101
       }
     }
   ]
