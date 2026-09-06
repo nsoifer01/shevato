@@ -23,51 +23,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Should the estate run at all for this event? Same reasoning, and the same
-  # fail-open rules, as the `decide` job in test.yml: merging an up-to-date
-  # pull request produces a merge commit whose TREE is byte-identical to the
-  # PR head that went green minutes earlier, and re-running 45 runner-minutes
-  # against those exact bytes buys nothing. Measured 2026-09-05: identical for
-  # PRs #472, #473 and #474, DIFFERENT for #471 (its branch was behind), which
-  # is why this is a tree comparison and not a blanket removal.
-  decide:
-    runs-on: ubuntu-latest
-    outputs:
-      run: ${{ steps.decide.outputs.run }}
-      why: ${{ steps.decide.outputs.why }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 3
-
-      - id: decide
-        run: |
-          set -e
-          if [ "${{ github.event_name }}" != 'push' ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            echo "why=event is ${{ github.event_name }}, always run" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          head_tree="$(git rev-parse 'HEAD^{tree}')"
-          if ! merged_tree="$(git rev-parse -q --verify 'HEAD^2^{tree}' 2>/dev/null)"; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            echo "why=not a merge commit, or the second parent is unavailable" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [ "$head_tree" = "$merged_tree" ]; then
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "why=this tree ($head_tree) is the merged branch head, already tested on its PR" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            echo "why=the merge produced a tree ($head_tree) no PR run ever saw" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Say what was decided
-        run: echo "run=${{ steps.decide.outputs.run }} because ${{ steps.decide.outputs.why }}"
-
   browser-shard:
-    needs: decide
-    if: needs.decide.outputs.run == 'true'
     runs-on: ubuntu-latest
 
     # The estate is 28 suites and 1,982 checks, walked one suite at a time in
@@ -114,6 +70,53 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          # Enough history to resolve BOTH parents of a merge commit, which the
+          # already-tested guard below needs.
+          fetch-depth: 3
+
+      # Has this exact tree already been tested?
+      #
+      # Merging an up-to-date pull request produces a merge commit whose TREE is
+      # byte-identical to the PR head that went green minutes earlier, so this
+      # push-to-master run would re-test, bit for bit, a tree already known
+      # good - 46 runner-minutes of it. Measured 2026-09-05: identical for PRs
+      # #472, #473 and #474; DIFFERENT for #471, whose branch was behind master
+      # and whose merge therefore produced a combination no run had ever seen.
+      # So this cannot be a blanket removal of the push trigger, it has to be
+      # the tree comparison.
+      #
+      # A step rather than a separate gating job on purpose: a job would show up
+      # as another check on every pull request, and the point of this round was
+      # to make the check list shorter. A skipped shard then costs a checkout
+      # and a node setup instead of a quarter of the estate.
+      #
+      # Fails OPEN in every uncertain case: a non-merge push, a second parent
+      # that cannot be resolved, or any event that is not a `push`. When it
+      # skips, the shard still SUCCEEDS, so the `browser` aggregator below needs
+      # no special case.
+      - name: Already tested?
+        id: guard
+        run: |
+          set -e
+          if [ "${{ github.event_name }}" != 'push' ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "event is ${{ github.event_name }}, always run"
+            exit 0
+          fi
+          head_tree="$(git rev-parse 'HEAD^{tree}')"
+          if ! merged_tree="$(git rev-parse -q --verify 'HEAD^2^{tree}' 2>/dev/null)"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "not a merge commit, or the second parent is unavailable"
+            exit 0
+          fi
+          if [ "$head_tree" = "$merged_tree" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "tree $head_tree is the merged branch head, already tested on its pull request"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "the merge produced tree $head_tree, which no pull-request run ever saw"
+          fi
 
       - name: Use Node.js
         uses: actions/setup-node@v6
@@ -124,6 +127,7 @@ jobs:
       # a name, so an image change surfaces as a clear error here instead of a
       # confusing timeout waiting for a debugging port that never opens.
       - name: Resolve browser
+        if: steps.guard.outputs.run == 'true'
         run: |
           set -e
           for c in google-chrome google-chrome-stable chromium chromium-browser; do
@@ -156,6 +160,7 @@ jobs:
       # pass either - run.mjs names any suite that asserted nothing.
       - name: Cache the Rising Shows dataset
         id: rs-cache
+        if: steps.guard.outputs.run == 'true'
         uses: actions/cache@v4
         with:
           path: |
@@ -168,6 +173,7 @@ jobs:
             rising-shows-data-
 
       - name: Prepare the Rising Shows dataset
+        if: steps.guard.outputs.run == 'true'
         continue-on-error: true
         run: |
           set -e
@@ -192,6 +198,7 @@ jobs:
       # The run prints the suites this shard owns before it starts, so the
       # shard logs side by side are the audit that the estate was fully run.
       - name: Run browser regression suite
+        if: steps.guard.outputs.run == 'true'
         run: npm run test:browser -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
 
   # One verdict for the whole estate, so "did the browser suite pass?" has a
@@ -203,20 +210,12 @@ jobs:
   # see here" rather than "the estate did not run". For a matrix job,
   # `needs.<job>.result` is success only when every shard succeeded.
   browser:
-    needs: [decide, browser-shard]
+    needs: browser-shard
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Verify every shard passed
         run: |
-          # A deliberate skip is not a failure, and must not be reported as
-          # one - otherwise the tree-equality guard above would turn every
-          # merge red. Anything else that leaves the shards non-successful
-          # still fails here.
-          if [ '${{ needs.decide.outputs.run }}' != 'true' ]; then
-            echo "the estate was skipped on purpose: ${{ needs.decide.outputs.why }}"
-            exit 0
-          fi
           result='${{ needs.browser-shard.result }}'
           echo "browser-shard result: $result"
           if [ "$result" != 'success' ]; then
