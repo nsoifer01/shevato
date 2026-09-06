@@ -1076,7 +1076,7 @@ Enjoy!
         const now = Date.now();
         const venue = {};
         venue[TripLogic.placeCacheKey('P18 Grill House', { city: 'Phuket' })] = { lat: 7.8180, lon: 98.2980, at: now };
-        localStorage.setItem('trip-planner:venuegeo:v1', JSON.stringify(venue));
+        localStorage.setItem('trip-planner:venuegeo:v2', JSON.stringify(venue));
         localStorage.setItem('trip-planner:geo:v3', JSON.stringify({
           phuket: { lat: 7.9366, lon: 98.3529, country: 'Thailand', conf: 'confident' },
           'p18 beach resort': { lat: 7.8203, lon: 98.2988, country: 'Thailand', conf: 'confident' },
@@ -1142,7 +1142,7 @@ Enjoy!
         const now = Date.now();
         const venue = {};
         venue[TripLogic.placeCacheKey('P19 Grill House', { city: 'Phuket' })] = { lat: 7.8180, lon: 98.2980, at: now };
-        localStorage.setItem('trip-planner:venuegeo:v1', JSON.stringify(venue));
+        localStorage.setItem('trip-planner:venuegeo:v2', JSON.stringify(venue));
         localStorage.setItem('trip-planner:geo:v3', JSON.stringify({
           phuket: { lat: 7.9366, lon: 98.3529, country: 'Thailand', conf: 'confident' },
           'p19 beach resort': { lat: 7.8203, lon: 98.2988, country: 'Thailand', conf: 'confident' },
@@ -1212,7 +1212,7 @@ Enjoy!
         const now = Date.now();
         const venue = {};
         venue[TripLogic.placeCacheKey('P20 Grill House', { city: 'Phuket' })] = { lat: 7.8180, lon: 98.2980, at: now };
-        localStorage.setItem('trip-planner:venuegeo:v1', JSON.stringify(venue));
+        localStorage.setItem('trip-planner:venuegeo:v2', JSON.stringify(venue));
         // the CITY is geocoded (the province centroid); the guesthouse is not
         localStorage.setItem('trip-planner:geo:v3', JSON.stringify({
           phuket: { lat: 7.9366, lon: 98.3529, country: 'Thailand', conf: 'confident' },

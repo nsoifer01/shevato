@@ -807,9 +807,15 @@ export async function run({ base, cdpPort }) {
       const put = (q, city, lat, lon) => { venue[TripLogic.placeCacheKey(q, { city })] = { lat, lon, at: now }; };
       put('Kimuraya Ginza Tokyo', 'Tokyo', 35.672, 139.765);
       put('Nishiki Market Kyoto', 'Kyoto', 35.005, 135.765);
-      put('Hotel Ryumeikan Tokyo Tokyo', 'Tokyo', 35.686, 139.774);
-      put('Hotel Kanra Kyoto Kyoto', 'Kyoto', 34.996, 135.759);
-      localStorage.setItem('trip-planner:venuegeo:v1', JSON.stringify(venue));
+      // NOT '<title> <city>': itemMapsQuery does not repeat a city already
+      // spelled inside the title, so both of these used to be seeded under a
+      // key no read path ever asks for. The rows fell back to the city
+      // centroid and the chips were measured from the middle of Tokyo while
+      // being LABELLED with the hotel's name - which is exactly the statement
+      // the standin rule refuses, once it is actually carried (2026-09-06).
+      put('Hotel Ryumeikan Tokyo', 'Tokyo', 35.686, 139.774);
+      put('Hotel Kanra Kyoto', 'Kyoto', 34.996, 135.759);
+      localStorage.setItem('trip-planner:venuegeo:v2', JSON.stringify(venue));
       localStorage.setItem('trip-planner:geo:v3', JSON.stringify({
         tokyo: { lat: 35.6762, lon: 139.6503, country: 'Japan', conf: 'confident' },
         kyoto: { lat: 35.0116, lon: 135.7681, country: 'Japan', conf: 'confident' },
@@ -826,9 +832,8 @@ export async function run({ base, cdpPort }) {
     const market = chips.find(c => c.title.includes('Nishiki')) || {};
     const miles = str => { const m = /~([\d.]+)\s*mi\b/.exec(str || ''); return m ? Number(m[1]) : null; };
     // Tokyo-internal either way: the reported bug measured this row at ~232 mi
-    // because it started in Kyoto. (The hotel's own coordinate is not seeded
-    // here, so the anchor falls back to the Tokyo centroid, which is exactly
-    // what a trip whose hotel was typed rather than picked does.)
+    // because it started in Kyoto. It now measures from the Tokyo hotel's own
+    // doorstep (~1.1 mi), which is what the fixture always meant to seed.
     await t('tp-audit MV-01: the morning stop is measured inside Tokyo, not from the next city',
       miles(breakfast.dist) !== null && miles(breakfast.dist) < 25,
       JSON.stringify(breakfast), s);

@@ -116,7 +116,7 @@ A first draft of that copy over-promised against `privacy.html`, which is bindin
   query key and aborts in flight, and there is nothing to dedupe.
 - **Google Places legal lines** (re-verified against the live terms
   2026-08-17): place IDs cacheable indefinitely, lat/lon cacheable 30d
-  (`trip-planner:venuegeo:v1`, cap 300), names/ratings/opening hours NEVER
+  (`trip-planner:venuegeo:v2`, cap 300), names/ratings/opening hours NEVER
   stored (no hours field has a caching exception; they follow the exact
   session-only rule ratings do - see "Opening hours" below). The
   server's rating layer was found still persisting `pd:` details blobs (unread,
@@ -702,7 +702,7 @@ either drops it, because the old place ID is no longer that row's.
   sorts the whole trip, so it is memoized per (trip, date) and the memo is
   cleared at the top of `render()`. A memo that outlived a render would serve a
   stale city after an edit.
-- **Every E2E fixture that seeds `trip-planner:venuegeo:v1` had to change.** The
+- **Every E2E fixture that seeds `trip-planner:venuegeo:v2` had to change.** The
   store is area-keyed now, so a fixture seeded under a bare query is simply never
   found and the suite reads as a distance regression rather than a stale
   fixture. Seed through `placeCacheKey(q, { city })`.
@@ -1316,86 +1316,36 @@ and a 390 px phone, against a double that implements the real server's gates).
 
 Every new test was **proven to fail against master** before being kept.
 
-## The anchor loop that could never close (2026-09-06)
+## The anchor was there and arrived too late (2026-09-06, pre-merge)
 
-Found by running the real Ko Phi Phi flow against production after the
-schedule-validity round merged. A breakfast card offered **Phi Phi Bakery** at
-08:00 with a distance chip reading **~94 mi from Phi Phi Island Cabana Hotel**.
-The hours were right, the rating was real, the Maps link opened that exact
-entity - and the venue was not on the island.
+A companion to the round below, found by running the real Ko Phi Phi flow
+against production. A breakfast card offered **Phi Phi Bakery** at 08:00 with a
+chip reading **~94 mi from the hotel**: the hours were right, the rating real,
+the Maps link opened that exact entity, and the venue was not on the island.
+`PLACE_AREA_MAX_KM` is 150 km, which is **93.2 mi**, so it sat just outside the
+radius the coordinate branch exists to enforce - and that branch never ran,
+because the day had no anchor.
 
-`PLACE_AREA_MAX_KM` is 150 km, which is **93.2 mi**. The venue sat just outside
-the gate's own radius, so it is precisely the kind of answer the coordinate
-branch exists to refuse. It was not refused, because the branch never ran.
+**The loop that caused it is fixed below, not here.** The round below keeps a
+resolved place's own coordinate instead of withholding it until the area is
+verified, which is what lets the venue cache fill on an island at all; once it
+fills, `areaAnchorFor`'s existing hotel rung reads it. An earlier version of
+this round added a THIRD source to that rung, reading the same coordinate out
+of the places session cache directly. It was removed on reconciliation: two
+mechanisms for one fact is how a ladder rots, and the surviving one is the one
+that also fixes the row's own position.
 
-### The loop
+**What is left is ordering, and it is not redundant.** A candidate lookup bakes
+the anchor into its own `area` at the moment it is built, so an anchor that
+lands a second later is an anchor nobody used - and on the first assistant turn
+of a session the hotel's row lookup (normal priority, IntersectionObserver) is
+racing the candidate batch (urgent). `warmStayAnchors` resolves the day's host
+stay FIRST, bounded at 4 seconds, free whenever the row already resolved it,
+and then the existing rebuild pass re-derives every candidate lookup. Pinned in
+the browser (`e2e/schedule-slots.mjs`): the hotel is looked up before the
+candidates, and the candidates then go out carrying its coordinate rather than
+city and country alone.
 
-The round above made the day's hotel the top rung of `areaAnchorFor`, and it is
-the right rung. But:
-
-```
-the best anchor is the day's own hotel
-  -> a hotel's coordinate is only KEPT once the hotel is VERIFIED
-     (placesLocationUpdates drops an unverified point, and it is right to:
-      that rule is what stopped the 809 km chip)
-  -> verifying needs an anchor
-```
-
-On an island or a beach the city geocode is `low` **by definition** (the
-classifier table above), so rungs 2 and 3 are refused; the venue cache can
-never fill, because filling it needs the verification it is needed for; and the
-day ends up with **no anchor at all**. `plausiblePlacePoint` then correctly
-declines to reject anything (silence is not evidence), `verifyArea` falls back
-to comparing address text, and "Krabi" in a mainland address satisfies a Ko Phi
-Phi itinerary.
-
-This is why the symptom was a chip and not an empty day: nothing was wrongly
-rejected, something was wrongly ACCEPTED, and only the distance chip - measured
-from the hotel's own resolved coordinate, which the session cache did have -
-showed it.
-
-### The break: identity and position are separate claims, again
-
-The same distinction the previous round drew for persistence applies here.
-`placeIdentity` already carries `lat`/`lon` onto the session cache entry
-**whether or not the area was checked**; only the 30-day venue cache and the
-persisted record gate on `verified`. So the hotel's coordinate was sitting in
-memory the whole time, unread by the ladder.
-
-`stayAnchorPoint` reads it, as a third source on the existing stay rung, below
-the picked doorstep and the venue cache:
-
-- the entry must have RESOLVED (`ok`, or `no_match/unrated` - a hotel with no
-  reviews is still a hotel with a position)
-- it must carry a valid coordinate
-- `confidence >= STAY_ANCHOR_MIN_CONF` (0.5). This is the existing contract,
-  not a new idea: `resolutionConfidence` caps an **unchecked** area at
-  `UNCHECKED_MAX_CONFIDENCE` = 0.5, so 0.5 means "the name matched perfectly
-  and only the area is unknown". Below it is a weak name match, which is
-  exactly how a chain would anchor a day in the wrong city.
-
-Session-only, never persisted, and used as gate EVIDENCE only - it never draws
-a chip, so the 809 km rule is untouched.
-
-### Ordering is half the fix
-
-The candidate lookups bake the anchor into their own `area`, so an anchor that
-lands after them is an anchor nobody used. `warmStayAnchors` resolves the day's
-host stay **before** the candidates (and before the city geocode), bounded at 4
-seconds and free whenever the itinerary row already resolved it - which it
-usually has, because that row is on screen. Then the existing rebuild pass
-re-derives every candidate lookup, exactly as it already did after the geocode.
-
-### What this deliberately does NOT do
-
-- It does not relax `vouchedFor`, `verifyArea` or the venue-cache rule. A
-  `low` geocode is still not evidence and an unverified point still draws no
-  chip.
-- It does not tighten the gate. Everything inside 150 km is unaffected; the
-  change is that there is now something to measure against on days that had
-  nothing. Ao Nang (~33 km from the island) still passes.
-- It cannot help a day with no stay on it. Those still fall through to
-  "could not check", which is the honest answer.
 
 ### The other thing that live run found: a plan that never arrived
 
@@ -1436,6 +1386,144 @@ The certainty comes from the picker's contract travelling as data
 schedule round added for a different reason. Without it the app could not tell
 a broken plan from an ordinary conversational answer, and would have to guess
 from the prose.
+
+## The 2026-09-06 round: identity without position is still a guess
+
+**The report.** Jan 27 2027, Ko Phi Phi. ChaoKoh Hotel Phi Phi Island -> The
+Mango Garden is a 258 m walk; Google's own directions say 210 m and three
+minutes. The row printed `~344 km`, the day footer printed `🚕 344 km`, and the
+Day route map plotted the two pins on opposite sides of the Gulf of Thailand -
+beside a Maps link that opened the correct restaurant on the correct island.
+
+**The two coordinates, both wrong, both from a different hole.** Reproduced
+exactly (344.4 km) from live provider captures:
+
+| endpoint | what the app used | where it came from | error |
+| --- | --- | --- | --- |
+| ChaoKoh Hotel (origin) | 11.823752, 102.446346 | `cityPoint('Ko Phi Phi')` - Nominatim's first answer is เกาะผี, an islet in **Trat Province** | 606 km |
+| The Mango Garden (destination) | 10.0941684, 99.8293127 | Photon's first answer for `The Mango Garden Ko Phi Phi` - a cafe named **exactly** that on **Ko Tao** | 286 km |
+
+**Why the links were right and the map was wrong.** They read different things.
+Identity came from `item.place.id` (`canonicalPlaceId` -> `placeMapsUrl`), which
+is the Google place ID Add to trip accepted. Position came from `placePoint`,
+a ladder of cache lookups keyed by a **text query** that never once read
+`item.place`. One row, two location models, and nothing compared them. That is
+the split identity in its purest form: the app HELD the right answer and did not
+look at it.
+
+**Three defects, in the order they compound.**
+
+1. **`placeRecordFrom` withheld the coordinate unless the area was VERIFIED.**
+   The 2026-09-05 round separated identity from position, which was right, and
+   then made the position wait for a second opinion, which was not. `verified`
+   does not mean "Google returned a point" - it means the locality could be
+   CHECKED, and on any island, beach or resort strip nothing can check it (the
+   only anchor is a geocode the app itself scores `low`). So the coordinate of a
+   place that resolved perfectly - one Maps entity, name gate agreed, 4.8 from
+   3,769 reviews - was thrown away for want of corroboration nobody could give.
+   **Discarding evidence does not produce silence. It produces a guess**, and
+   the guess that filled the hole was a free global name search.
+
+2. **The Photon gate was open exactly where it mattered.** #484 changed
+   `plausiblePlacePoint(hit, cityPoint(job.city))` to `cityAnchor(job.city)` -
+   correctly, because a wrong centroid must not reject a right venue - but
+   `plausiblePlacePoint` returns **true** for a null anchor ("silence is not
+   evidence"). Combined, that means: where no centroid can be trusted, *nothing
+   is checked at all*. Photon answers every query with something, so the Ko Tao
+   cafe was stored in the 30-day venue cache and repeated on every render.
+
+3. **`standin` and `placeId` never survived `distancePoint`.** Both were added
+   by #484 - `standin` so `unmeasurableLeg` could refuse a leg STARTING on a
+   centroid handed out in place of a named building, `placeId` so a leg could
+   carry canonical endpoints - and `distancePoint` rebuilds a point field by
+   field. Neither field was in the list. **The guard shipped dead and had never
+   fired in production**, and every leg's `fromPlaceId`/`toPlaceId` was `''`.
+   A guard that is not carried is a guard that does not exist; anything a
+   consumer of that shape reads MUST be named in it.
+
+**#485 neither caused nor exposed this.** `git log -S` puts `standin`,
+`fromPlaceId` and the `cityAnchor` gate swap all in `35d4dc4` (#484), the commit
+BEFORE it. Before #484 the Ko Tao point was rejected - by the wrong centroid,
+for the wrong reason, but rejected. #484 removed the accidental protection and
+added the intended one dead.
+
+**The fix, structurally.**
+
+- **The canonical rung is the FIRST rung.** `placePoint` takes a `canon` point
+  and returns it above every fallback. A resolved place's own coordinate
+  outranks a name search, a picker doorstep and a centroid; none of them may
+  stand in for it. The point rides on the row in `data-dist-plat`/`plon` beside
+  `data-dist-place`, so the surfaces that read the DOM reach the same place.
+- **Position follows identity.** `placeRecordFrom` and `placesLocationUpdates`
+  keep the coordinate whenever the place RESOLVED. `verified` stays, as what it
+  actually is: a note on corroboration, not a licence to exist.
+- **The defence moved to where evidence lives.** `normalizePlaceRecord` still
+  measures every point against a VOUCHED-FOR anchor on read and drops it beyond
+  `PLACE_AREA_MAX_KM`. A confident Tokyo anchor still refuses a Hokkaido branch
+  (the 809 km chip is exactly as impossible); an untrusted one refuses nothing,
+  which is the rule the rest of the file already follows.
+- **`canonicalPointFor` mirrors `canonicalPlaceId`.** A HAND-ADDED stay never
+  gets `attachResolvedPlace` (it runs only on the assistant's accept path), so
+  the saved record is consulted first and this session's resolution second -
+  through the same two boundaries. Stamping the ID but not the point is what let
+  the links and the map disagree in the first place.
+- **The Photon gate demands evidence, and refuses without it.** `venueGateAnchor`
+  tries the vouched-for centroid, then the itinerary's own `areaAnchorFor`
+  ladder (the day's stay is a building the traveller chose). With neither, the
+  hit is refused. This does NOT restore #484's empty island: a place that
+  resolved now carries Google's own point, and this rung only ever answered for
+  rows nothing resolved.
+- **`trip-planner:venuegeo:v1` -> `v2`.** Points that entered through the open
+  gate live 30 days, so a traveller already carrying one would keep seeing
+  344 km after the fix. Renaming the store is the only way to be sure. Cost: one
+  re-lookup per venue on screen. Every E2E fixture seeding the old key moved.
+- **Impossible geography is said out loud, never hidden.** `contradictoryPair`
+  stamps `suspect: 'same-city-far'` on a leg whose two ends the app itself puts
+  in ONE city and then measures past `PLACE_AREA_MAX_KM`; `paintDayDistances`
+  logs it through `placesLog` with both endpoints. The number still renders -
+  suppressing it would hide the fault from the next session too.
+
+**What made this findable, and what nearly hid it.** The 344 km was reproducible
+from two `curl`s: Photon for the venue, Nominatim for the city, then the app's
+own `distKm` over the two answers - 344.4 km on the first try, against a reported
+"344 km". Provider captures beat reasoning about provider behaviour. What nearly
+hid it: `e2e/assistant-identity.mjs` block A is the SAME island, the same
+restaurant and the same day, and it passes - because it seeds the hotel into the
+geocode cache as a confident doorstep. The owner typed their hotel instead of
+picking it, so nothing on the day had a trustworthy coordinate. **A fixture that
+seeds the good case is a fixture that cannot see the bug**;
+`e2e/canonical-coordinates.mjs` removes exactly that one seed and reproduces the
+failure byte for byte (chip `~214 mi` = 344.39876 km, footer `🚕 214 mi`).
+
+**What reviving the standin guard flushed out.** `e2e/audit-fixes.mjs` MV-01
+seeded its two hotels under `'<title> <city>'`, and `itemMapsQuery` does not
+repeat a city already spelled inside the title ("Hotel Ryumeikan Tokyo" in
+Tokyo), so both entries were keyed `hotel ryumeikan tokyo tokyo@tokyo` and no
+read path ever asked for them. The day therefore anchored on the Tokyo centroid
+while the chip was LABELLED with the hotel's name - the same false statement
+about a specific building that the guard exists to refuse, sitting green in the
+suite for as long as the guard was dead. Seeding the key the app actually
+derives makes MV-01 measure ~1.1 mi from the hotel's own doorstep, which is what
+it always meant to assert.
+
+**And the cost #484 feared did not arrive.** That round worried that judging a
+coarse ORIGIN would "strip the chip from every row of a trip whose hotel was
+typed rather than picked". That was true when the only rungs were a picker
+doorstep and a centroid. It is not true now: a typed hotel that Google resolves
+carries its own canonical point, so what loses its chip is only a stay nothing
+can locate at all - which genuinely has no position, and whose first leg was
+never a measurement.
+
+**Coverage.** `tests/canonical-coordinates.test.js` (18 pure tests: the carried
+fields, the revived standin guard, resolution-keeps-its-point, the 809 km
+refusal, the reported day, the contradiction detector, a **generic** small-island
+lifecycle with no Thai place names at all, and return-to-hotel) - 11 of the 18
+fail against master. `e2e/canonical-coordinates.mjs` (19 checks over the real
+flow: Add to trip, reload, chip, footer, Day route pins, both links, cache
+hygiene) - 9 fail against master. Two older tests that pinned "an unverified
+resolution loses its coordinate" were REWRITTEN rather than deleted: they now
+pin the rule that replaced it, and the 809 km case they were protecting is
+asserted directly.
 
 ## Places billing: the free allowance is the real ceiling (2026-08-18)
 
@@ -2547,7 +2635,7 @@ airports-table probe (the same injection style `dayMorningCity` and
   and still gets answered immediately, but the toolbar's prefilled pair leaves
   `checkRoute` un-run with focus on the Check button. The general rule for this
   round: deriving a value is free, acting on it is the traveller's call.
-- The coordinate goes in `trip-planner:venuegeo:v1`, sharing that store's
+- The coordinate goes in `trip-planner:venuegeo:v2`, sharing that store's
   30-day TTL. An OSM coordinate is under no such obligation - the TTL exists for
   Google's terms - but sharing one store is worth more than a second one, and
   expiry just means the row is looked up again later.

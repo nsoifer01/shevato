@@ -23,7 +23,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 74;
+  const TP_BUILD = 75;
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   // Miles or kilometers, everywhere a distance prints. Same architecture as
@@ -1124,12 +1124,6 @@
     return areaAnchorFor(name, dayCity, items, date, {
       cityPoint,
       venuePoint,
-      // The day's stay as the PLACES session cache holds it. This is the rung
-      // that works on the days the other two cannot fill (see the note on
-      // stayAnchorPoint): the 30-day venue cache refuses an unverified point,
-      // and on an island nothing is ever verified, because verifying is what
-      // needed the anchor. Session-only and read-only; it never draws a chip.
-      stayEntry: key => placesCache.get(key),
     });
   }
 
@@ -2906,11 +2900,21 @@
     // and an anchor asking under a bare query would simply never find the
     // point its row had already resolved.
     const anchorLookup = place ? placeFor(a.item, trip) : null;
+    // The day's anchor is a stay, and a stay that resolved has a canonical
+    // point like any other row. Without this the CHAIN's origin fell to the
+    // city centroid while every stop above it used its own resolved point -
+    // one end of every first leg measured from somewhere nobody had located.
+    const anchorPointAttrs = it => {
+      const rec = canonicalPointFor(it, anchorLookup);
+      return rec && validCoord(rec.lat, rec.lon)
+        ? ` data-anchor-plat="${esc(String(rec.lat))}" data-anchor-plon="${esc(String(rec.lon))}"` : '';
+    };
     const anchor = a
       ? ` data-anchor-q="${esc(anchorLookup ? anchorLookup.query : '')}" data-anchor-name="${esc(place ? a.label : '')}"`
         + ` data-anchor-key="${esc(anchorLookup ? anchorLookup.key : '')}"`
         + ` data-anchor-city="${esc(a.city)}" data-anchor-label="${esc(a.label)}"`
         + (place ? ` data-anchor-place="${esc(canonicalPlaceId(a.item, anchorLookup))}"` : '')
+        + (place ? anchorPointAttrs(a.item) : '')
         + (a.iata ? ` data-anchor-iata="${esc(a.iata)}"` : '')
       : '';
     return `
@@ -6433,7 +6437,14 @@
   // Both land in one persistent, capped store, never synced (the sync key list
   // is an allowlist and this key is not on it) and expiring on the 30-day
   // schedule Google's caching terms allow for coordinates.
-  const VENUE_GEO_KEY = 'trip-planner:venuegeo:v1';
+  // v2 (2026-09-06): v1 could hold points that entered through an OPEN gate -
+  // between #484 and this round a Photon name match was stored unchecked
+  // whenever the row's city had no trusted centroid, which is every island and
+  // beach. Those entries live for 30 days and every render repeats them, so a
+  // traveller already carrying a wrong point would keep seeing 344 km after the
+  // fix. Renaming the store is the only way to be sure they are gone; the cost
+  // is one re-lookup per venue still on screen.
+  const VENUE_GEO_KEY = 'trip-planner:venuegeo:v2';
   let venueCache = {};
   try { venueCache = normalizeVenueCache(JSON.parse(localStorage.getItem(VENUE_GEO_KEY) || '{}'), Date.now()); }
   catch { venueCache = {}; }
@@ -6481,7 +6492,8 @@
       // better point; asking Photon too would be the same lookup twice
       if (placesQueue.isPending(key)) continue;
       venueQueued.add(key);
-      venueQueue.push({ key, query: lookup.query, city: lookup.city || '' });
+      venueQueue.push({ key, query: lookup.query, city: lookup.city || '',
+        date: lookup.date || '', dayCity: lookup.dayCity || lookup.city || '' });
       added++;
     }
     if (!venueQueue.length || venueTimer) return;
@@ -6506,6 +6518,20 @@
   // not lodging) and no shared abort controller (these run in parallel with
   // each other and with whatever the traveller is typing). A miss is remembered
   // for the session so a row that Photon cannot place is asked once.
+  // The strongest thing the app can say about where this row's area IS. The
+  // vouched-for city centroid first (cheap, and the common case in a city),
+  // then the itinerary's own anchor ladder - the day's stay outranks any
+  // centroid, and it is a building the traveller chose rather than the middle
+  // of a polygon. null when neither can answer, which is a refusal to judge
+  // rather than a licence to accept.
+  function venueGateAnchor(job) {
+    const city = String((job && job.city) || '').trim();
+    const trusted = cityAnchor(city);
+    if (trusted) return trusted;
+    const t = activeTrip();
+    return areaPointFor(city, job && job.dayCity ? job.dayCity : city, (t && t.items) || [], (job && job.date) || '');
+  }
+
   function fetchVenuePoint(job) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 7000);
@@ -6514,16 +6540,36 @@
       .then(json => {
         const hit = pickVenueFeature(job.query, json);
         if (!hit) { venueMisses.add(job.key); return; }
-        // The same geographic gate the billed lookup passes through. A free
-        // answer is not a licence to store an unchecked point: a Photon hit
-        // whose name matches but whose coordinates sit outside the row's own
-        // city is the 809 km chip by another route.
-        // cityAnchor, not cityPoint: a centroid the app itself scored as a weak
-        // match may not refuse a venue point. On Ko Phi Phi that centroid is
-        // 570 km out, so every correct Photon answer was thrown away and the
-        // day could not draw a single distance chip.
-        if (!plausiblePlacePoint(hit, cityAnchor(job.city))) {
-          placesLog('photon point rejected: outside its own city', { key: job.key, city: job.city, hit });
+        // THE GATE HAS TO BE EVIDENCE, AND THERE HAS TO BE SOME (owner report,
+        // 2026-09-06). This asked cityAnchor for the anchor and then let the
+        // hit through when it answered null - so on exactly the destinations
+        // where no centroid can be trusted, nothing was checked at all.
+        //
+        // Photon is a GLOBAL NAME SEARCH. Its first answer for "The Mango
+        // Garden Ko Phi Phi" is a cafe named precisely "The Mango Garden" on
+        // Ko Tao, 286 km away in another province - a perfect name match and
+        // the wrong island. Storing it put a confident 344 km leg on the day
+        // and a pin in the Gulf of Thailand, for thirty days.
+        //
+        // An unchecked answer from a name search is not a coarse answer, it is
+        // a precise-looking wrong one - the same thing this file already
+        // refuses to accept from a centroid standing in for a named venue. So
+        // the hit is stored only when something can VOUCH for the area:
+        //   - a city centroid the app's own classifier called confident, or
+        //   - the traveller's own geography for that day (their stay's
+        //     doorstep, a place already resolved there), via areaAnchorFor,
+        //     which is the ladder the ratings gate already trusts.
+        // With neither, the row keeps no point. That is not a lost chip: a
+        // place that RESOLVED now carries Google's own coordinate (see
+        // placeRecordFrom), and this rung exists for the rows nothing resolved.
+        const gate = venueGateAnchor(job);
+        if (!gate) {
+          placesLog('photon point refused: nothing can vouch for this area', { key: job.key, city: job.city, hit });
+          venueMisses.add(job.key);
+          return;
+        }
+        if (!plausiblePlacePoint(hit, gate)) {
+          placesLog('photon point rejected: outside its own city', { key: job.key, city: job.city, hit, gate });
           venueMisses.add(job.key);
           return;
         }
@@ -6620,7 +6666,27 @@
   // still is one, and those legs are unaffected.
   const CITY_PRECISION = 'city';
   const VENUE_PRECISION = 'venue';
-  function placePoint({ key, name, city, strict }) {
+  // THE CANONICAL RUNG, and why it has to be the FIRST one (owner report,
+  // 2026-09-06: ChaoKoh Hotel Phi Phi Island -> The Mango Garden, a 258 m walk,
+  // drawn as 344 km).
+  //
+  // The app already held the right answer. `item.place` is the Google identity
+  // Add to trip accepted - the place ID every Maps and Directions link on the
+  // row is built from, which is exactly why those links were RIGHT while the
+  // map beside them was wrong. This ladder never read it. Identity came from
+  // the saved record and position came from a cache lookup keyed by a text
+  // query, so one row carried two location models and nothing compared them.
+  //
+  // A resolved place's own coordinate outranks every rung below: a free name
+  // search that answered another island (venuePoint), a hotel-picker doorstep,
+  // and a city centroid. Those exist to answer a row NOBODY looked up. None of
+  // them may overwrite one that resolved.
+  //
+  // The record has already passed the persistence boundary (itemPlaceRecord ->
+  // normalizePlaceRecord): expired coordinates are gone, and a point more than
+  // PLACE_AREA_MAX_KM from a VOUCHED-FOR city anchor is gone with them. So this
+  // rung is a read of something already checked, not a new act of trust.
+  function placePoint({ key, name, city, strict, canon }) {
     // TWO CENTROIDS, TWO JOBS (see cityAnchor). `fallback` is the "roughly
     // here" pin of last resort and may be any answer the geocoder gave;
     // `anchor` is the evidence allowed to REFUSE a venue's own coordinate, and
@@ -6630,6 +6696,9 @@
     const anchor = cityAnchor(city);
     const cityKey = fallback ? fallback.key : ('c:' + String(city || '').trim().toLowerCase());
     const tag = (p, precision) => (p ? { ...p, precision, cityKey } : null);
+    if (canon && validCoord(canon.lat, canon.lon)) {
+      return tag({ key: canon.id ? 'p:' + canon.id : ('v:' + String(key || '')), lat: Number(canon.lat), lon: Number(canon.lon) }, VENUE_PRECISION);
+    }
     const venue = venuePoint(key);
     if (venue && plausiblePlacePoint(venue, anchor)) return tag(venue, VENUE_PRECISION);
     if (venue && anchor) placesLog('point rejected: outside its own city', { key, city, venue, anchor });
@@ -6711,11 +6780,18 @@
   // Google is free to reinterpret - and when a row's own query is empty the
   // guess degrades to the bare city name, which is how a day route that
   // measured a doorstep still opened Maps on the middle of the province.
-  function distAttrs(query, name, city, label, key, strict, placeId) {
+  // `rec` is the row's PERSISTED canonical record, and its coordinates are
+  // stamped beside its ID for the same reason the ID is: a surface that reads
+  // the DOM must be able to reach the same place the row resolved, without
+  // re-deriving it from a string. Stamping the ID but not the point is what
+  // let the links and the map disagree.
+  function distAttrs(query, name, city, label, key, strict, placeId, rec) {
+    const pt = rec && validCoord(rec.lat, rec.lon) ? rec : null;
     return ` data-dist-q="${esc(query || '')}" data-dist-name="${esc(name || '')}"`
       + ` data-dist-city="${esc(city || '')}" data-dist-label="${esc(label || '')}"`
       + ` data-dist-key="${esc(key || '')}"${strict ? ' data-dist-strict="1"' : ''}`
-      + (placeId ? ` data-dist-place="${esc(placeId)}"` : '');
+      + (placeId ? ` data-dist-place="${esc(placeId)}"` : '')
+      + (pt ? ` data-dist-plat="${esc(String(pt.lat))}" data-dist-plon="${esc(String(pt.lon))}"` : '');
   }
   // The hotel-picker rung is only offered to a stay: it looks the TITLE up in
   // the geocode cache, which is a hotel's own doorstep for a stay and a
@@ -6750,10 +6826,13 @@
     const lookup = placeFor(target, trip);
     // The LABEL stays the row's own title ("Return to hotel"); everything that
     // locates it comes from the stay.
+    // The record comes from the SAME target the identity does, so a "Return to
+    // hotel" is located by the stay's canonical point exactly as it is linked
+    // by the stay's canonical ID.
     return distAttrs(lookup ? lookup.query : '',
       (isStay(target) ? displayTitle(target) : ''),
       (target.location || '').trim(), displayTitle(it), lookup ? lookup.key : '', !!stay,
-      canonicalPlaceId(target, lookup));
+      canonicalPlaceId(target, lookup), canonicalPointFor(target, lookup));
   }
 
   // THE ONE ANSWER TO "which Google place is this row". The saved record first
@@ -6765,6 +6844,28 @@
     if (rec && typeof rec.id === 'string' && rec.id) return rec.id;
     const entry = lookup && lookup.key ? placesCache.get(lookup.key) : null;
     return (entry && entry.placeId) || '';
+  }
+
+  // THE SAME LADDER FOR THE POSITION, and it has to be the same one or the two
+  // halves of an identity drift apart again. `attachResolvedPlace` writes a
+  // record only on the assistant's accept path, so a HAND-ADDED stay - the
+  // hotel a traveller typed into the form, which is the case the owner
+  // reported - never has one, and stamping only the saved record would leave
+  // its row carrying an identity with no point beside it.
+  //
+  // So: the saved record first (durable, survived a reload, what the traveller
+  // accepted), then this session's own resolution put through the SAME two
+  // boundaries a saved one passes - placeRecordFrom to build it and
+  // normalizePlaceRecord to check it against a vouched-for anchor. Nothing here
+  // is trusted that a persisted record would not be.
+  function canonicalPointFor(item, lookup) {
+    const saved = itemPlaceRecord(item);
+    if (saved && validCoord(saved.lat, saved.lon)) return saved;
+    if (!lookup || !lookup.key) return saved;
+    const fresh = placeRecordFrom(placesCache.get(lookup.key), lookup.area, Date.now());
+    if (!fresh) return saved;
+    const checked = normalizePlaceRecord(fresh, { cityPoint: cityAnchor(String((item && item.location) || '').trim()) });
+    return (checked && validCoord(checked.lat, checked.lon)) ? checked : saved;
   }
   // The airports table is the precise rung for an "(KEF)"-style arrival
   // anchor: exact coordinates, no geocoder, and the file already ships with
@@ -6791,13 +6892,19 @@
     const query = anchor ? d.anchorQ : d.distQ;
     const city = anchor ? d.anchorCity : d.distCity;
     const key = anchor ? (d.anchorKey || '') : (d.distKey || '');
+    const placeId = anchor ? (d.anchorPlace || '') : (d.distPlace || '');
+    // The canonical point the row was rendered with. Stamped beside the ID by
+    // distAttrs, so the ladder can answer with the place the row RESOLVED
+    // instead of re-deriving a position from its text.
+    const plat = anchor ? d.anchorPlat : d.distPlat;
+    const plon = anchor ? d.anchorPlon : d.distPlon;
+    const canon = validCoord(plat, plon) ? { id: placeId, lat: Number(plat), lon: Number(plon) } : null;
     const p = placePoint({ key, name: anchor ? d.anchorName : d.distName, city,
-      strict: !anchor && d.distStrict === '1' });
+      strict: !anchor && d.distStrict === '1', canon });
     // `query` is what a DIRECTIONS link can be built from, which the coordinates
     // cannot be: Maps wants a place, not a lat/lon the traveller never typed.
     // `placeId` is the better form of the same thing when the row has one, and
     // it is the only form that cannot be reinterpreted into another business.
-    const placeId = anchor ? (d.anchorPlace || '') : (d.distPlace || '');
     return p ? { ...p, label, query: query || city || '', placeId } : null;
   }
   // A venue worth asking Photon about: it has a query of its own and no cached
@@ -6816,7 +6923,13 @@
     const key = anchor ? (d.anchorKey || '') : (d.distKey || '');
     const city = anchor ? (d.anchorCity || '') : (d.distCity || '');
     if (!query || !key) return null;
-    return { query, key, city };
+    // The day this row belongs to, so the Photon gate can reach the itinerary's
+    // own anchor ladder (areaAnchorFor wants a date to find the day's stay).
+    // Without it the gate can only ever consult a city centroid, which is the
+    // one kind of evidence an island never has.
+    const card = el.closest ? el.closest('.day-card[data-date]') : null;
+    const date = (card && card.dataset.date) || '';
+    return { query, key, city, date, dayCity: (card && card.dataset.anchorCity) || city };
   }
 
   function writeDistChip(row, leg) {
@@ -6884,6 +6997,20 @@
   function paintDayDistances(wanted) {
     document.querySelectorAll('#daysList .day-card').forEach(cardEl => {
       const chain = dayCardChain(cardEl, wanted);
+      // IMPOSSIBLE GEOGRAPHY IS SAID OUT LOUD, not quietly corrected. A leg the
+      // app itself places inside one city and then measures in hundreds of
+      // kilometres is two location models disagreeing; every coordinate bug
+      // this app has had looked exactly like this from the inside, and none of
+      // them left a trace. The number still renders - suppressing it would hide
+      // the fault from the next session as well as from the traveller - but the
+      // debug channel now names the contradiction and both endpoints.
+      for (const leg of chain.legs) {
+        if (!leg.suspect) continue;
+        placesLog('IMPOSSIBLE GEOGRAPHY: one city, ' + Math.round(leg.km) + ' km', {
+          date: cardEl.dataset.date, reason: leg.suspect,
+          from: leg.from, fromPlaceId: leg.fromPlaceId, to: leg.to, toPlaceId: leg.toPlaceId,
+        });
+      }
       const legs = new Map(chain.legs.map(l => [l.id, l]));
       chain.rows.forEach((row, i) => writeDistChip(row, legs.get(i)));
       paintDayRoute(cardEl, chain);
@@ -6956,6 +7083,9 @@
           name: isStay(target) ? displayTitle(target) : '',
           city: (target.location || '').trim() || spec.city,
           strict: target !== spec.item,
+          // the same canonical rung the Days chain reads, so a suggestion is
+          // measured from the same origin the itinerary row will be
+          canon: itemPlaceRecord(target),
         })
         : cityPoint(spec.city));
     if (!p) return null;
@@ -6988,7 +7118,8 @@
       const target = distTargetFor(spec.item);
       const lookup = placeFor(target);
       if (lookup && !venueCache[lookup.key]) {
-        wanted.push({ query: lookup.query, key: lookup.key, city: (target.location || '').trim() });
+        wanted.push({ query: lookup.query, key: lookup.key, city: (target.location || '').trim(),
+          date: isIsoDate(target.startDate) ? target.startDate : '', dayCity: spec.city || '' });
       }
     }
   }
@@ -11187,7 +11318,21 @@
     // find a small hotel. Offering the stay's title as the name rung is the
     // exact offer itemDistAttrs makes for the stay's own row, gated the same
     // way: only when the destination IS that stay.
-    return distAttrs(query, stay ? displayTitle(stay) : '', city, f.title || '', key, !!stay)
+    // PRE-ADD AND POST-ADD ARE THE SAME PLACE, by construction. The card has no
+    // persisted record yet, so it derives the one Add to trip is ABOUT to write
+    // - `placeRecordFrom` over this session's resolution, the identical call
+    // attachResolvedPlace makes - rather than a second opinion of its own. A
+    // leg that ends at a stay reads that stay's saved record, exactly as its
+    // identity and its query already do.
+    // Through the SAME read boundary the saved row will pass, so a card and the
+    // row it becomes cannot show two different points: a Hokkaido branch is
+    // refused on the card exactly as it is refused after a reload.
+    const derived = key ? placeRecordFrom(placesCache.get(key), lookup && lookup.area, Date.now()) : null;
+    const rec = stay
+      ? itemPlaceRecord(stay)
+      : (derived ? normalizePlaceRecord(derived, { cityPoint: cityAnchor(city) }) : null);
+    return distAttrs(query, stay ? displayTitle(stay) : '', city, f.title || '', key, !!stay,
+      (rec && rec.id) || '', rec)
       + ` data-dist-time="${esc(time)}"`;
   }
   const proposalDistHtml = (p, trip) => `<span class="ap-dist"${proposalDistAttrs(p, trip)}></span>`;
@@ -11392,10 +11537,13 @@
   // stays empty: an accepted suggestion is visible everywhere but changes no
   // total until the traveller adopts the number in the edit modal.
   // Writes the canonical place record onto an item from whatever the session
-  // has already resolved for it. Silent when the lookup has not landed, when
-  // the server could not verify it, or when the place is not a place you walk
-  // into: an item with no record simply resolves on its next render, and an
-  // UNVERIFIED resolution is deliberately never written down.
+  // has already resolved for it - the identity AND the point, on the reasoning
+  // in placeRecordFrom. Silent when the lookup has not landed or when the place
+  // is not a place you walk into: an item with no record simply resolves on its
+  // next render. An unverified resolution IS written down (it is still the
+  // entity the traveller accepted, and on an island it is the only entity
+  // anyone will ever be able to name); what refuses a wrong branch is the area
+  // gate every reader applies, not the absence of a record.
   function attachResolvedPlace(item, trip) {
     const lookup = placeFor(item, trip);
     if (!lookup) { delete item.place; return; }
@@ -11448,10 +11596,11 @@
     // import paths use, so a card and a hand-added row cannot store differently.
     normalizeMealItem(item);
     // THE HAND-OVER. The card resolved this place; the item now KEEPS that
-    // resolution, so the row is the same entity the traveller was looking at
-    // rather than a second, independent search of a string. Only a VERIFIED
-    // resolution is persisted (placeRecordFrom refuses anything else), which is
-    // what makes "a Tokyo title next to a Hokkaido place ID" unreachable.
+    // resolution - the same ID and the same coordinates - so the row is the
+    // same entity, in the same spot, that the traveller was looking at rather
+    // than a second, independent search of a string. "A Tokyo title next to a
+    // Hokkaido coordinate" stays unreachable because normalizePlaceRecord
+    // measures the point against the item's own city on every read.
     attachResolvedPlace(item, trip);
     if (p.transcribed && f.confirmation) item.confirmation = f.confirmation;
     if (p.transcribed && f.cost != null) item.costCurrency = f.costCurrency || (trip.currency || 'USD');
