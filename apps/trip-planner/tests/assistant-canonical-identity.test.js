@@ -200,11 +200,18 @@ test('INVARIANT: a resolved place keeps its identity through the persistence bou
     'the card and the reloaded row link at the same place, in the same form');
 });
 
-test('INVARIANT: an unconfirmed branch loses the coordinate and keeps the identity', () => {
+// REVISED 2026-09-06. This used to assert that an unconfirmed branch loses its
+// coordinate, and Anna's Restaurant is the case that shows why that was wrong:
+// it is on Ko Phi Phi, where NOTHING can confirm a locality, so the rule threw
+// away the right point on every island in the world and let a global name
+// search supply a wrong one. The identity keeps its position; a trusted anchor
+// is what may take it away (see place-resolution's 809 km test).
+test('INVARIANT: an unconfirmed branch keeps both claims, and says which was checked', () => {
   const entry = { status: 'ok', placeId: 'ChIJannas', verified: false, rating: 4.7, lat: PHI_PHI.lat, lon: PHI_PHI.lon };
   const saved = L.placeRecordFrom(entry, { city: 'Ko Phi Phi' }, NOW);
   assert.equal(saved.id, 'ChIJannas', 'the venue is still identified, and the next turn can exclude it');
-  assert.equal(saved.lat, undefined, 'but nothing draws a distance from a point nobody checked');
+  assert.equal(saved.lat, PHI_PHI.lat, 'and it is still where Google says it is');
+  assert.equal(saved.verified, undefined, 'while staying honest that the area was never corroborated');
   assert.equal(L.placeMapsUrl(saved), 'https://www.google.com/maps/place/?q=place_id:ChIJannas');
 });
 

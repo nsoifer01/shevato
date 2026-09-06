@@ -115,7 +115,7 @@ function distanceStores({ venues = VENUES, cities = CITIES, area = { city: 'Bang
   for (const [q, v] of Object.entries(venues)) {
     venue[TripLogic.placeCacheKey(q, area)] = { lat: v[0], lon: v[1], at: now };
   }
-  return { 'trip-planner:geo:v3': geo, 'trip-planner:venuegeo:v1': venue };
+  return { 'trip-planner:geo:v3': geo, 'trip-planner:venuegeo:v2': venue };
 }
 
 // A Bangkok trip whose first day is BOTH the arrival and the check-in: the
@@ -173,7 +173,7 @@ const originDiag = (s, time) => evaluate(s, `(() => {
   const trip = db && db.trips.find(x => x.id === db.activeTripId);
   const items = trip ? trip.items : [];
   const date = (document.querySelector('#assistMessages .assist-proposal') || { dataset: {} }).dataset.date || '';
-  const venue = JSON.parse(localStorage.getItem('trip-planner:venuegeo:v1') || '{}');
+  const venue = JSON.parse(localStorage.getItem('trip-planner:venuegeo:v2') || '{}');
   const geo = JSON.parse(localStorage.getItem('trip-planner:geo:v3') || '{}');
   const o = TripLogic.proposalOrigin(items, date, ${JSON.stringify(time)});
   const oLookup = o && o.item ? TripLogic.placeLookupFor(o.item, { city: String(o.city || '') }) : null;
