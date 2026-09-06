@@ -4132,7 +4132,8 @@ const TripLogic = (() => {
       const query = normalizePlaceQuery(raw.query);
       if (!query) return null;
       const area = raw.area && typeof raw.area === 'object' ? raw.area : null;
-      return { key: raw.key || placeCacheKey(query, area), query, area };
+      const meal = typeof raw.meal === 'string' ? raw.meal : '';
+      return { key: raw.key || placeCacheKey(query, area), query, area, meal };
     }
     const query = normalizePlaceQuery(raw);
     if (!query) return null;
@@ -4987,9 +4988,36 @@ const TripLogic = (() => {
   // Same city only: between DIFFERENT cities a centroid destination is a
   // legitimate answer (a venue in Krabi is genuinely ~60 km from Phuket) and
   // nothing changes.
+  // EITHER END IS ENOUGH TO MAKE IT MEANINGLESS. This asked only about the
+  // destination, so a mid-day activity that fell back to the centroid became
+  // the ORIGIN of the next leg and the same non-measurement was drawn with the
+  // roles swapped: "Return to hotel, ~14 km" measured from the middle of the
+  // province to the hotel's own front door. A centroid cannot resolve a
+  // distance inside its own city in either direction.
+  // WHICH COARSE ORIGIN IS HONEST, and which is a lie wearing a venue's name.
+  //
+  // A leg that ENDS on a centroid inside its own city was never a measurement,
+  // and that has always been refused. The origin side is subtler, because two
+  // different things reach it as `precision: 'city'`:
+  //
+  //   the day's ANCHOR when nothing located the hotel. It is LABELLED with the
+  //     city ("Phuket"), the traveller can see that is what it is, and "14 km
+  //     from Phuket" is a true if coarse answer. Suppressing it would strip the
+  //     chip from every row of a trip whose hotel was typed rather than picked.
+  //
+  //   a STOP that failed to resolve. It is labelled with a venue's name, so
+  //     "14 km from Kata On Fire" is a false statement about a specific
+  //     building - the same non-measurement the destination rule refuses, with
+  //     the roles swapped, and reachable whenever an unresolved activity
+  //     precedes the ride home.
+  //
+  // `standin` is what separates them: it marks a centroid handed out in place
+  // of a place the row actually named (see placePoint).
   function unmeasurableLeg(a, b) {
     if (!a || !b) return false;
-    if (b.precision !== 'city') return false;
+    const coarseEnd = b.precision === 'city';
+    const coarseStandinStart = a.precision === 'city' && a.standin === true;
+    if (!coarseEnd && !coarseStandinStart) return false;
     return !!a.cityKey && a.cityKey === b.cityKey;
   }
 
@@ -5052,6 +5080,10 @@ const TripLogic = (() => {
           // where the leg STARTS, as a place a map can search for: the label is
           // an item title ("Return to hotel") and routes nowhere
           fromQuery: prev.query || '', toQuery: here.query || '',
+          // and the canonical form of the same two places, when they resolved.
+          // A place ID cannot be reinterpreted; a query can, which is how a
+          // route that MEASURED a doorstep still OPENED on a province centroid.
+          fromPlaceId: prev.placeId || '', toPlaceId: here.placeId || '',
         });
       }
       prev = here;
@@ -5884,6 +5916,69 @@ const TripLogic = (() => {
     return { href: search, label: '📍 Verify on Google Maps', resolved: false };
   }
 
+  // ---------- what the rating slot says, and why ----------
+  // THREE DIFFERENT ANSWERS WEARING ONE SENTENCE (owner report, 2026-09-05).
+  //
+  // "No rating match" was printed for all of these at once:
+  //   A. nothing on Google matched this name          - genuinely unresolved
+  //   B. a match was found but in the wrong city      - resolved, then refused
+  //   C. the right place was found and Google has no  - resolved, and correct
+  //      star for it
+  // and, worst of all, for
+  //   D. the right place was found, Google HAS a star, and the app threw the
+  //      whole resolution away because it could not confirm the locality.
+  //
+  // D is fixed at its source (the area anchor no longer lies), but the wording
+  // was wrong on its own terms: a traveller looking at "No rating match" beside
+  // a Google Maps link that opens the correct restaurant is being told the app
+  // failed at something it did not fail at. IDENTITY and METADATA are separate
+  // claims and the copy now says which one is missing.
+  //
+  // Returns { text, why, resolved }. `resolved` is what the caller uses to
+  // decide whether the row still deserves a link straight at the entity.
+  function placeStateLabel(entry) {
+    const e = entry && typeof entry === 'object' ? entry : null;
+    if (!e || e.status !== 'no_match') return null;
+    const reason = typeof e.reason === 'string' ? e.reason : '';
+    // A place ID is proof of identity: the lookup found ONE Maps entity and the
+    // name gate agreed it is the business the recommendation named. Whether the
+    // branch could be confirmed is a different question, and a missing star is
+    // a third one - neither of them makes this "no match".
+    if (e.placeId) {
+      return {
+        text: 'No rating yet',
+        why: 'This place is on Google Maps but has no star rating yet. Open it from the link beside this to see it.',
+        resolved: true,
+      };
+    }
+    if (reason === 'wrong_area') {
+      return {
+        text: 'Different city',
+        why: 'The closest match on Google Maps is in a different city from this plan, so its rating and hours are not shown. The link beside it searches for the right one.',
+        resolved: false,
+      };
+    }
+    if (reason === 'type_mismatch') {
+      return {
+        text: 'Different kind of place',
+        why: 'The closest match on Google Maps is a different kind of business from the one this suggests - usually a tour or booking desk named after the place itself - so its rating is not shown. The link beside it searches for the real one.',
+        resolved: false,
+      };
+    }
+    if (reason === 'unattributable') {
+      return {
+        text: 'Rating unavailable',
+        why: 'Google returned a rating for this place without the link this app must show beside it, so the rating is not displayed. The link beside it searches for the place.',
+        resolved: false,
+      };
+    }
+    return {
+      text: 'Not found on Google',
+      why: 'No place matched this name closely enough to attach a rating with confidence. The Google Maps link beside it still searches for it.',
+      resolved: false,
+    };
+  }
+
   // ---------- itinerary: which query an item opens on Google Maps ----------
   // Every place a traveller can actually walk into deserves the same Maps
   // section: a hotel, a ryokan, a hostel or an apartment is a place the same way
@@ -5937,17 +6032,41 @@ const TripLogic = (() => {
   // Matched on the leg's own maps query against the stay's title or its maps
   // query, which is the trip saying "that destination is my hotel". Returns
   // null for anything else, and the caller then treats the item as itself.
+  //
+  // THE DATE IS PART OF THE QUESTION (2026-09-05). This matched by NAME across
+  // the whole trip and took the first hit in storage order, which is not the
+  // same thing as "the hotel that hosts this day" and is wrong in two reachable
+  // ways: a leg copied to another date (the app has a "copy to another date"
+  // control) keeps the old hotel's name and pins the day in the old city, and a
+  // chain booked twice under one title resolves to whichever row was saved
+  // first. So the day's own host stay is consulted FIRST and the name match is
+  // the fallback for a leg whose date nothing covers.
   const normalizeQueryText = s => String(s == null ? '' : s).trim().toLowerCase();
   function legDestinationStay(item, items) {
     const list = Array.isArray(items) ? items : [];
     if (!item || isStay(item) || !isTravelLeg(item)) return null;
     const q = normalizeQueryText(itemMapsQuery(item));
     if (!q) return null;
-    for (const s of list) {
-      if (!isStay(s) || s.status === 'cancelled') continue;
-      if (q === normalizeQueryText(displayTitle(s)) || q === normalizeQueryText(itemMapsQuery(s))) return s;
+    const named = s => q === normalizeQueryText(displayTitle(s)) || q === normalizeQueryText(itemMapsQuery(s));
+    // 1. the stay that actually hosts this leg's date. A "Return to hotel" on a
+    //    day hosted by Hotel B returns to Hotel B, whatever name the model
+    //    happened to write on it, PROVIDED the name still points at a stay at
+    //    all - a leg that names a specific different hotel is a claim about
+    //    that hotel and is answered below.
+    if (isIsoDate(item.startDate)) {
+      const host = dayHostStay(list, item.startDate);
+      if (host && named(host)) return host;
     }
-    return null;
+    // 2. otherwise the named stay, preferring one whose own dates cover the
+    //    leg, so two bookings of one chain cannot resolve by insertion order.
+    const matches = list.filter(s => isStay(s) && s.status !== 'cancelled' && named(s));
+    if (!matches.length) return null;
+    if (isIsoDate(item.startDate)) {
+      const covering = matches.find(s => isIsoDate(s.startDate) && isIsoDate(s.endDate)
+        && s.startDate <= item.startDate && item.startDate <= s.endDate);
+      if (covering) return covering;
+    }
+    return matches[0];
   }
 
   // The item whose PLACE a row is really about: itself, except for a travel leg
@@ -5959,14 +6078,23 @@ const TripLogic = (() => {
   // Maps accepts a destination-only link and asks for the starting point,
   // which beats guessing one.
   const DIRECTION_MODES = { walking: 1, transit: 1, driving: 1 };
-  function directionsUrl(origin, destination, travelmode) {
+  // `ids` is the CANONICAL form of the same two endpoints, { origin, destination }
+  // place IDs, and Google's own documented way to remove the ambiguity a text
+  // query leaves: `origin`/`destination` stay in the URL as the human-readable
+  // fallback and the *_place_id params decide which entity is actually meant.
+  // Optional throughout - a row nobody resolved links exactly as it did before.
+  function directionsUrl(origin, destination, travelmode, ids) {
     const dest = normalizePlaceQuery(destination);
     if (!dest) return '';
     const from = normalizePlaceQuery(origin);
     const mode = DIRECTION_MODES[travelmode] ? travelmode : 'transit';
+    const id = k => {
+      const v = ids && typeof ids[k] === 'string' ? ids[k].trim() : '';
+      return v ? `&${k}_place_id=${encodeURIComponent(v)}` : '';
+    };
     return 'https://www.google.com/maps/dir/?api=1'
-      + (from ? `&origin=${encodeURIComponent(from)}` : '')
-      + `&destination=${encodeURIComponent(dest)}&travelmode=${mode}`;
+      + (from ? `&origin=${encodeURIComponent(from)}${id('origin')}` : '')
+      + `&destination=${encodeURIComponent(dest)}${id('destination')}&travelmode=${mode}`;
   }
 
   // Which travelmode a leg's directions link should open in. A local hop is
@@ -5980,6 +6108,67 @@ const TripLogic = (() => {
     if (type !== 'local') return 'driving';
     if (km == null) return 'transit';
     return km <= WALKABLE_KM ? 'walking' : 'transit';
+  }
+
+  // ---------- is the day the assistant wrote actually possible? ----------
+  // THE GAP THIS CLOSES. The assistant schedules a day to the minute, and
+  // nothing ever checked that the minutes work: 12:30 lunch and 12:45 at a
+  // museum 6 km away rendered happily, with the card itself printing
+  // "~18 min by taxi" beside two times 15 minutes apart. The traveller was
+  // shown the contradiction and left to spot it.
+  //
+  // WHAT IS DELIBERATELY NOT CHECKED: how long anything takes once you are
+  // there. This app never asks for durations and must not start guessing them
+  // (the same reason sameTimeCollisions is exact-match only). So the test is
+  // the one that needs no guess and cannot be argued with: if the TRAVEL ALONE
+  // does not fit in the gap, the schedule is impossible whatever the traveller
+  // does when they arrive. Anything tighter would be an opinion about lunch.
+  //
+  // `stops` are { time, label, lat, lon } in whatever order; only pairs where
+  // both ends have a clock time AND a real coordinate can be judged, and
+  // everything else is silently passed over - an unlocated stop is not
+  // evidence of anything.
+  // The quickest way the app believes two points can be joined. hopTravel
+  // answers only for a hop short enough to be LOCAL and returns null past that,
+  // which silently exempted exactly the biggest impossibilities - "09:00
+  // breakfast on Phi Phi, 09:10 on Phuket" produced no warning at all because
+  // 81 km is not a local hop. modeOptions is the same estimator one layer down
+  // and has an answer at every distance, so the fastest of its rows is the
+  // floor: if even that does not fit, nothing does.
+  function fastestHop(km) {
+    const local = hopTravel(km);
+    if (local) return local;
+    const rows = modeOptions(km, false, false).filter(r => r && r.durMin != null);
+    if (!rows.length) return null;
+    const best = rows.reduce((a, r) => (r.durMin < a.durMin ? r : a));
+    return { key: best.key, min: best.durMin };
+  }
+
+  function impossibleHops(stops) {
+    const rows = (Array.isArray(stops) ? stops : [])
+      .filter(s => s && isClockTime(s.time) && validCoord(s.lat, s.lon))
+      .map(s => ({ ...s, at: hhmmToMin(s.time) }))
+      .sort((a, b) => a.at - b.at);
+    const out = [];
+    for (let i = 1; i < rows.length; i++) {
+      const a = rows[i - 1], b = rows[i];
+      const have = b.at - a.at;
+      if (have < 0) continue;
+      const hop = fastestHop(distKm(a, b));
+      if (!hop) continue;
+      // Compared at the precision the sentence is WRITTEN in. Using the raw
+      // fractional estimate flagged "15 min away, scheduled 15 min after",
+      // which reads as a bug in the warning rather than in the day.
+      const need = Math.round(hop.min);
+      if (need <= have) continue;
+      out.push({
+        from: a.label || '', to: b.label || '',
+        needMin: need, haveMin: have, mode: hop.key,
+        text: `${b.label || 'the next stop'} is about ${fmtMins(need)} away`
+          + ` but is scheduled ${fmtMins(have)} after ${a.label || 'the stop before it'}.`,
+      });
+    }
+    return out;
   }
 
   // ---------- titles: the app's categories, and the ones a model invents ----------
@@ -6150,7 +6339,80 @@ const TripLogic = (() => {
         lon: point && validCoord(point.lat, point.lon) ? Number(point.lon) : null,
       }
       : null;
-    return { query, area, key: placeCacheKey(query, area) };
+    // The meal slot rides along but is deliberately NOT part of the key: it is
+    // context for the resolver's type gate ("this query is asking for somewhere
+    // to eat"), not part of the place's identity. Putting it in the key would
+    // make one venue two cache entries and two billed lookups.
+    const meal = String(it.meal == null ? '' : it.meal).trim();
+    return { query, area, meal, key: placeCacheKey(query, area) };
+  }
+
+  // ---------- THE COORDINATE THE AREA GATE IS ALLOWED TO JUDGE WITH ----------
+  // THE FAILURE (owner report, 2026-09-05). A whole Ko Phi Phi day came back
+  // with "No rating match" on every card, including The Mango Garden - which
+  // Google rates 4.8 from 3,770 reviews and had already returned, in full, in
+  // the same response the app then threw away.
+  //
+  // Nothing was wrong with the lookup. The app told the resolver where Ko Phi
+  // Phi is, and it was wrong by 570 km: Nominatim's top hit for that name is
+  // Ko Phi, an islet in Trat Province on the other side of Thailand. Every real
+  // Phi Phi venue was then correctly measured against it and correctly refused
+  // as `wrong_area`. A wrong anchor does not reject the wrong venues - it
+  // rejects the right ones, and it rejects ALL of them, which is how one bad
+  // string emptied a day of a dozen recommendations.
+  //
+  // The app already knew: classifyGeoMatch scores that answer `low` (kind
+  // `islet`, importance 0.13). Nothing read the score. Two rules follow, and
+  // they are the whole of this function:
+  //
+  //   A CENTROID MAY ONLY BE EVIDENCE WHEN THE APP VOUCHED FOR IT. A geocode
+  //   the classifier called `low` or `ambiguous` is a guess, and a guess may
+  //   never REFUSE a real place. Without one the verdict is "could not check",
+  //   which resolves the place and shows its rating - strictly better than a
+  //   fabricated verdict that discards it. (It is still fine as a "roughly
+  //   here" pin; that is placePoint's job, not this one.)
+  //
+  //   THE TRAVELLER'S OWN STAY OUTRANKS ANY CENTROID. It is a building, not a
+  //   polygon's middle, they chose it, and it is where their day starts. It was
+  //   the third rung and unreachable, because the city rung above it won
+  //   whenever the geocoder had an answer of any quality at all.
+  //
+  // WHY ISLANDS AND BEACHES WERE HIT AND CITIES WERE NOT: settlements geocode
+  // `confident` (Tokyo 0.83, Phuket 0.54, Ao Nang 0.28); sub-localities come
+  // back as `islet` / `beach` / `hamlet` kinds with importance under
+  // GEO_WEAK_IMPORTANCE, which is the definition of `low`. The bug was never
+  // about islands - it was about every destination the geocoder is unsure of,
+  // and islands are simply where that is the norm.
+  //
+  // Pure and injected, the same way placeLookupFor is, so this decision is
+  // testable without a browser: `io.cityPoint(name)` reads the geocode cache
+  // (returning `conf`), `io.venuePoint(key)` reads the venue-coordinate cache.
+  const TRUSTED_GEO_CONF = 'confident';
+  const vouchedFor = p => (p && p.conf === TRUSTED_GEO_CONF ? p : null);
+
+  function areaAnchorFor(name, dayCity, items, date, io) {
+    const cityPoint = (io && typeof io.cityPoint === 'function') ? io.cityPoint : () => null;
+    const venuePoint = (io && typeof io.venuePoint === 'function') ? io.venuePoint : () => null;
+    const n = String(name || '').trim().toLowerCase();
+    const isDayCity = !!n && n === String(dayCity || '').trim().toLowerCase();
+    // The stay rung is offered ONLY when the item named no city of its own: an
+    // item that says "Nikko" on a Tokyo-based day is making a claim about
+    // Nikko, and answering it with Tokyo's hotel would check the wrong place.
+    const host = (isDayCity && isIsoDate(date) && Array.isArray(items)) ? dayHostStay(items, date) : null;
+    if (host) {
+      // Either service that can produce a doorstep: the hotel picker seeds the
+      // geocode cache under the hotel's own name and marks it confident
+      // (a human chose that row), and the venue cache holds whatever Photon or
+      // an earlier Places resolution pinned.
+      const hotel = vouchedFor(cityPoint(displayTitle(host)))
+        || venuePoint(placeCacheKey(itemMapsQuery(host),
+          { city: String(host.location || '').trim() || dayCity }));
+      if (hotel) return hotel;
+    }
+    const own = vouchedFor(cityPoint(name));
+    if (own) return own;
+    if (!host) return null;
+    return vouchedFor(cityPoint(String(host.location || '').trim()));
   }
 
   // The wire form of one lookup: what the batch POSTs for this place. `id` is
@@ -6159,6 +6421,7 @@ const TripLogic = (() => {
   function placeLookupRequest(lookup) {
     if (!lookup || !lookup.query) return null;
     const req = { id: lookup.key, q: lookup.query };
+    if (lookup.meal) req.meal = String(lookup.meal).slice(0, 20);
     const a = lookup.area;
     if (a) {
       if (a.city) req.city = a.city;
@@ -6186,14 +6449,38 @@ const TripLogic = (() => {
   // and the Maps URL is rebuilt from the ID (see placeMapsUrl) rather than kept.
   const PLACE_RECORD_TTL_MS = 30 * 86400000;
 
-  // Built from a session-cache entry ONLY when that entry was actually
-  // verified. An unverified resolution is a guess, and a guess must not become
-  // a durable fact on the traveller's trip.
+  // IDENTITY AND POSITION ARE TWO DIFFERENT CLAIMS, and this used to demand
+  // both or store neither (owner report, 2026-09-05).
+  //
+  // The old rule was `verified !== true -> return null`, so a place that
+  // RESOLVED perfectly - Google returned one Maps entity, the name gate agreed
+  // it is the business the recommendation named - was persisted as nothing at
+  // all whenever the area could not be CHECKED. On any destination whose
+  // locality Google spells differently from the traveller (every island, every
+  // beach, every resort strip: see verifyArea's note) that is the normal case,
+  // so Add to trip silently dropped the place ID of a correctly identified
+  // venue. The row then had no identity to link, to dedupe or to exclude from
+  // the next assistant turn, and re-resolved itself by name on every reload.
+  //
+  // The two claims are now stored on their own evidence:
+  //   id     kept whenever the place RESOLVED. A place ID is an identity, not
+  //          a position: it cannot be off by 809 km, it is the one value
+  //          Google's terms allow us to keep indefinitely, and it is what makes
+  //          the card and the saved row the same place.
+  //   lat/lon kept only when the area was actually VERIFIED. A coordinate is
+  //          the thing that can lie, and every failure this codebase has had
+  //          with a wrong branch was a wrong coordinate rendered as a fact.
+  //
+  // `verified` rides along so later readers can tell a checked record from an
+  // unchecked one without re-deriving the distinction.
   function placeRecordFrom(entry, area, now) {
     if (!entry || typeof entry !== 'object') return null;
-    if (!entry.placeId || entry.verified !== true) return null;
+    if (!entry.placeId) return null;
     const rec = { id: String(entry.placeId).slice(0, 200), at: Number(now) || Date.now() };
-    if (validCoord(entry.lat, entry.lon)) { rec.lat = Number(entry.lat); rec.lon = Number(entry.lon); }
+    if (entry.verified === true) {
+      rec.verified = true;
+      if (validCoord(entry.lat, entry.lon)) { rec.lat = Number(entry.lat); rec.lon = Number(entry.lon); }
+    }
     const city = area && area.city ? String(area.city).trim().slice(0, 80) : '';
     if (city) rec.city = city;
     return rec;
@@ -6508,7 +6795,22 @@ const TripLogic = (() => {
    * Returns { text, note } - `note` is the honest one-liner when fewer places
    * were verified than asked for, or '' when the answer is complete.
    */
-  function rebuildAssistProse(text, { kept = [], rejected = [], requested = null } = {}) {
+  // `providerFailure` names a lookup that NEVER RAN - a timeout, a quota
+  // rejection, an unreachable endpoint, an unconfigured key. It is the
+  // difference between "I checked and this area has nothing" and "I could not
+  // check", and telling a traveller the first when the second is true is how
+  // the assistant described a dense tourist island as empty. Anything that did
+  // not run produces a note about the check, never a verdict about the place.
+  const PROVIDER_FAILURE_NOTE = {
+    timeout: 'The Google Maps check timed out, so I could not confirm these places. They are shown as the assistant wrote them - open each one to check it yourself.',
+    network: 'I could not reach Google Maps to check these places, so they are shown unconfirmed. Open each one to check it yourself.',
+    upstream: 'Google Maps did not answer the check for these places, so they are shown unconfirmed. Open each one to check it yourself.',
+    malformed: 'Google Maps did not answer the check for these places, so they are shown unconfirmed. Open each one to check it yourself.',
+    quota: 'The free Google Maps lookup allowance is used up for now, so I could not confirm these places. They are shown unconfirmed - open each one to check it yourself.',
+    off: 'Google Maps checking is not switched on for this site, so these places are shown as the assistant wrote them. Open each one to check it yourself.',
+  };
+
+  function rebuildAssistProse(text, { kept = [], rejected = [], requested = null, providerFailure = '' } = {}) {
     const keptTok = kept.map(proseNameTokens).filter(t => t.length);
     const rejTok = rejected.map(proseNameTokens).filter(t => t.length);
     const src = String(text == null ? '' : text);
@@ -6548,11 +6850,16 @@ const TripLogic = (() => {
         String(n));
     }
 
-    const note = (Number.isInteger(requested) && n < requested)
-      ? (n === 0
-        ? 'I could not verify any places for this on Google Maps, so I have not added any. Try naming a neighbourhood, or a specific venue.'
-        : `I could verify ${COUNT_WORDS[n] || n} good ${n === 1 ? 'match' : 'matches'} for this area, not ${COUNT_WORDS[requested] || requested}. Only verified places are shown.`)
-      : '';
+    // A failure to CHECK outranks any count claim: "I found only one" would be
+    // a statement about the world, and nothing was learned about the world.
+    const failed = String(providerFailure || '');
+    const note = failed
+      ? (PROVIDER_FAILURE_NOTE[failed] || PROVIDER_FAILURE_NOTE.upstream)
+      : ((Number.isInteger(requested) && n < requested)
+        ? (n === 0
+          ? 'I could not verify any places for this on Google Maps, so I have not added any. Try naming a neighbourhood, or a specific venue.'
+          : `I could verify ${COUNT_WORDS[n] || n} good ${n === 1 ? 'match' : 'matches'} for this area, not ${COUNT_WORDS[requested] || requested}. Only verified places are shown.`)
+        : '');
 
     return { text: out.trim(), note };
   }
@@ -9879,6 +10186,7 @@ const TripLogic = (() => {
     parseMarkdown, parseMarkdownInline,
     normalizePlaceQuery, placeCacheKey, placeAreaKey, planPlacesLookup, placesCacheUpdates,
     placeLookupFor, placeLookupRequest, asPlaceLookup, placeIdentity,
+    areaAnchorFor, TRUSTED_GEO_CONF,
     placeRecordFrom, normalizePlaceRecord, placeMapsUrl, placeEntryUrl, plausiblePlacePoint,
     assistDiscoveryIntent, discoveryHintFrom, discoveryQueryFrom, rebuildAssistProse,
     placeIdentityOf, dedupeByIdentity, placeQualityScore, rankVerifiedPlaces,
@@ -9895,8 +10203,9 @@ const TripLogic = (() => {
     ROUTE_EXACT_MAX, shortestRoute, routeStops, setDistanceUnit, getDistanceUnit, fmtDist, distanceChipLabel, distanceChipTitle, routeFooterText,
     assistDistanceChipLabel, assistDistanceChipTitle, shortHopHint, hopTravel, fmtMins, WALKABLE_KM,
     isPlaceType, isTravelLeg, legDestinationStay, distanceTargetFor, directionsUrl, legTravelMode,
+    impossibleHops,
     dayTravelTotals, dayRouteMode, directionsRouteUrl, routeUrlChunks, candidateBadges,
-    mapsSearchUrl, assistMapsLink, itemMapsQuery, displayTitle, showsCostBadge, isFoodOrDrink, isEstimatedCost, costDisplayParts, mealTitlePrefixes,
+    mapsSearchUrl, assistMapsLink, placeStateLabel, itemMapsQuery, displayTitle, showsCostBadge, isFoodOrDrink, isEstimatedCost, costDisplayParts, mealTitlePrefixes,
     hasEstimate, displayCostOf, parseMoney, roundMoney, budgetVerdict, refundParts,
     readBudgetRange, normalizeBudgetFrom, budgetFigure, budgetCurrencyOf, tripBudgetIn,
     mealKind, isLongDetails,

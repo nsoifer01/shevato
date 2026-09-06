@@ -25,7 +25,7 @@ try {
 }
 const opts = hooksOk ? {} : { skip: 'node:module register() unavailable; the handler needs the @netlify/blobs hook' };
 
-const { default: handler, clampDiscover } = await import('../tp-places.mjs');
+const { default: handler, clampDiscover, DETAILS_FIELD_MASK, DETAILS_FIELD_MASK_BASE, _resetDetailsMask } = await import('../tp-places.mjs');
 const { DISCOVERY_DETAILS_MAX } = await import('../lib/tp-places-lookup.mjs');
 const STORE = 'trip-planner-places';
 
@@ -125,6 +125,55 @@ test('WRONG-AREA candidates are rejected here too - the gate is not weakened to 
   const body = await (await discover({ q: 'nama chocolate Tokyo', ...TOKYO, limit: 2 })).json();
   assert.deepEqual(body.results.map(r => r.name), ['Musee Du Chocolat Theobroma']);
   assert.equal(body.results.some(r => /ROYCE/.test(r.name)), false);
+});
+
+// THE FIELD MASK CANNOT BE TESTED AGAINST THE LIVE API from a developer
+// machine - the production credential deliberately exists only in the config
+// blob - so the code carries a fallback for the one failure that would take the
+// whole feature down rather than degrade it, and this is the test for it.
+// `types` and `primaryType` are documented as Essentials and Pro fields, both
+// below the Enterprise tier the request already bills at; if a deploy ever
+// meets a Google that disagrees, it drops to the proven mask ONCE and keeps
+// answering, with the type gate simply having no evidence to work with.
+test('a rejected field mask degrades to the proven one instead of failing every lookup', opts, async () => {
+  _resetDetailsMask();
+  const masks = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const href = String(url);
+    if (href.includes('places:searchText')) return json({ places: [{ id: 'theobroma' }] });
+    const mask = (init.headers || {})['X-Goog-FieldMask'] || '';
+    masks.push(mask);
+    // Google refuses anything carrying the two new fields.
+    if (/types|primaryType/.test(mask)) return json({ error: { message: 'Invalid field mask: types' } }, 400);
+    return json(PLACES.theobroma);
+  };
+  const body = await (await discover({ q: 'nama chocolate Tokyo', ...TOKYO, limit: 1 })).json();
+  assert.equal(masks[0], DETAILS_FIELD_MASK, 'it tries the full mask first');
+  assert.equal(masks[1], DETAILS_FIELD_MASK_BASE, 'and falls back exactly once');
+  assert.equal(body.results.length, 1, 'and the traveller still gets their place');
+  assert.equal(body.results[0].rating, 4.3);
+  _resetDetailsMask();
+});
+
+// A PROVIDER FAILURE IS NOT AN EMPTY NEIGHBOURHOOD (owner report, 2026-09-05).
+// discoverPlaces has always distinguished the two; the HANDLER threw the
+// distinction away on the way out, so the browser saw one indistinguishable
+// empty list for a 503, a timeout and a genuinely quiet area - and told the
+// traveller their dense tourist island had nothing in it.
+test('a failed discovery search says WHY, so it cannot be read as "nothing here"', opts, async () => {
+  globalThis.fetch = async url => (String(url).includes('places:searchText')
+    ? json({ error: 'UNAVAILABLE' }, 503)
+    : json({ error: 'NOT_FOUND' }, 404));
+  const body = await (await discover({ q: 'nama chocolate Tokyo', ...TOKYO, limit: 2 })).json();
+  assert.deepEqual(body.results, []);
+  assert.equal(body.reason, 'upstream', 'the failure travels all the way to the client');
+});
+
+test('a genuinely empty area is reported in its own word, not as a failure', opts, async () => {
+  searchReturns = [];
+  const body = await (await discover({ q: 'nama chocolate Tokyo', ...TOKYO, limit: 2 })).json();
+  assert.deepEqual(body.results, []);
+  assert.equal(body.reason, 'no_candidates');
 });
 
 test('an UNRATED place is not offered as a replacement', opts, async () => {

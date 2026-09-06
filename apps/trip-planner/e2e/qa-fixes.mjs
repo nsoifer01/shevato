@@ -566,8 +566,12 @@ export async function run({ base, cdpPort }) {
       if(!el) return 'missing';
       return JSON.stringify({ text: el.textContent.trim(), cls: el.className,
         mapsLinkShown: !!(el.nextElementSibling && el.nextElementSibling.getBoundingClientRect().height > 0) })})()`);
+    // The state's WORDING changed on 2026-09-05 (placeStateLabel): "No rating
+    // match" was one sentence for four different answers, and this mock's
+    // refusal is `low_confidence` - nothing on Google matched the name - which
+    // now says so in its own words.
     await t('TP-08: a refused match renders an explicit neutral state instead of nothing',
-      settled !== false && /No rating match/.test(state), state.slice(0, 200), s);
+      settled !== false && /Not found on Google/.test(state), state.slice(0, 200), s);
     await t('TP-08: the refused slot is not marked as holding a rating',
       !/has-rating/.test(state), state.slice(0, 200), s);
     await t('TP-08: so the Google Maps link beside it survives',

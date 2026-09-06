@@ -182,16 +182,44 @@ export default async function handler(req) {
     // silence is what made the plan-mode timeout 502 undiagnosable from the
     // outside. Name + message carry no key and no upstream body.
     console.error('tp-assist upstream failure', err && err.name, err && err.message);
-    return json({ error: 'upstream' }, 502);
+    // WHICH upstream failure. All of these used to be one word, so a dead API
+    // key, a retired model pin and a 45-second hang all told the traveller to
+    // "try again" - advice that is right for exactly one of the three and
+    // never becomes right for the other two. The reason names a CLASS, never
+    // an upstream body and never a key, and the UI turns it into the one
+    // sentence that is actually true for that class.
+    return json({ error: 'upstream', reason: upstreamReason(err) }, 502);
   }
 
   // (8) An empty reply (safety block, or a turn that spent its whole budget
   // thinking) would render as a blank chat bubble. Treat it as an upstream
   // failure so the UI shows its "try again, or use Tier 1" message instead.
-  if (!reply.trim()) return json({ error: 'upstream' }, 502);
+  if (!reply.trim()) return json({ error: 'upstream', reason: 'empty' }, 502);
 
   // (9) Success.
   return json({ reply }, 200);
+}
+
+// The failure CLASS behind a 502, from what the exception can tell us. Kept to
+// a closed vocabulary so the client can map each one to a sentence and nothing
+// upstream can inject text into a traveller's screen.
+//   timeout   - our own AbortSignal fired; retrying may work
+//   network   - the request never reached Google
+//   auth      - the key is missing, revoked, or not entitled: retrying cannot help
+//   model     - the pinned model is gone (see the retirement note in the header)
+//   upstream  - Google answered with a server error
+//   empty     - Google answered with nothing usable (a safety block, or a turn
+//               that spent its whole budget thinking)
+// Exported for the unit tests.
+export function upstreamReason(err) {
+  const name = (err && err.name) || '';
+  if (name === 'TimeoutError' || name === 'AbortError') return 'timeout';
+  const status = Number(err && err.status);
+  if (status === 400 || status === 401 || status === 403) return 'auth';
+  if (status === 404) return 'model';
+  if (status >= 500) return 'upstream';
+  if (name === 'TypeError') return 'network';
+  return 'upstream';
 }
 
 function clampBody(body) {
@@ -284,6 +312,10 @@ async function callGemini(key, sys, contents) {
     const body = await res.text().catch(() => '');
     console.error('tp-assist gemini error', res.status, body.slice(0, 500));
     const err = new Error('gemini ' + res.status);
+    // The status is what upstreamReason reads to tell a dead key from a busy
+    // minute from a retired model. Carried on the error rather than logged and
+    // forgotten, which is what made every one of them look the same.
+    err.status = res.status;
     // Google's free tier caps requests per minute as well as per day, so a
     // busy minute is a capacity problem, not a broken assistant. Flagged here
     // so the handler can answer 429 and the UI can say "at capacity" rather
