@@ -47,6 +47,18 @@ REJECT, whichever way it goes.
 
 ## Repo conventions (the ones that bite)
 
+- **This checkout is shared with other sessions, so check `git status` immediately
+  before EVERY branch switch, not once at the start.** Parallel worktree sessions
+  are a normal way of working here, and a tree that was clean when you began is
+  not evidence of anything an hour later. Clean and on `master` -> branch and work
+  there. Dirty with changes that are not yours -> **take a worktree**
+  (`git worktree add`), and do not switch, stash or commit; one checkout has one
+  HEAD, and `git checkout` drags uncommitted changes onto the branch you move to.
+  This bites hardest on the boring end-of-round `git checkout master && git pull`
+  after a merge: on 2026-09-06 that silently moved a concurrent session's 85 lines
+  onto `master`, where its next commit would have landed on `master`. Query other
+  refs in place instead (`git log origin/master`, `git show <ref>:<path>`). Full
+  rule, including the recovery procedure, in `~/.claude/CLAUDE.md` (rule #2).
 - **Always run `npm test` from the repo root after any change**, including
   chore/docs/seo edits, before reporting done. Cross-cutting invariant tests
   under `sync-system/tests/` catch tiny edits (sitemap forms, A-Z ordering,
