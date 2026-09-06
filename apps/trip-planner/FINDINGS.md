@@ -1316,6 +1316,77 @@ and a 390 px phone, against a double that implements the real server's gates).
 
 Every new test was **proven to fail against master** before being kept.
 
+## The anchor was there and arrived too late (2026-09-06, pre-merge)
+
+A companion to the round below, found by running the real Ko Phi Phi flow
+against production. A breakfast card offered **Phi Phi Bakery** at 08:00 with a
+chip reading **~94 mi from the hotel**: the hours were right, the rating real,
+the Maps link opened that exact entity, and the venue was not on the island.
+`PLACE_AREA_MAX_KM` is 150 km, which is **93.2 mi**, so it sat just outside the
+radius the coordinate branch exists to enforce - and that branch never ran,
+because the day had no anchor.
+
+**The loop that caused it is fixed below, not here.** The round below keeps a
+resolved place's own coordinate instead of withholding it until the area is
+verified, which is what lets the venue cache fill on an island at all; once it
+fills, `areaAnchorFor`'s existing hotel rung reads it. An earlier version of
+this round added a THIRD source to that rung, reading the same coordinate out
+of the places session cache directly. It was removed on reconciliation: two
+mechanisms for one fact is how a ladder rots, and the surviving one is the one
+that also fixes the row's own position.
+
+**What is left is ordering, and it is not redundant.** A candidate lookup bakes
+the anchor into its own `area` at the moment it is built, so an anchor that
+lands a second later is an anchor nobody used - and on the first assistant turn
+of a session the hotel's row lookup (normal priority, IntersectionObserver) is
+racing the candidate batch (urgent). `warmStayAnchors` resolves the day's host
+stay FIRST, bounded at 4 seconds, free whenever the row already resolved it,
+and then the existing rebuild pass re-derives every candidate lookup. Pinned in
+the browser (`e2e/schedule-slots.mjs`): the hotel is looked up before the
+candidates, and the candidates then go out carrying its coordinate rather than
+city and country alone.
+
+
+### The other thing that live run found: a plan that never arrived
+
+Twice in three live runs the model answered the guided plan with a paragraph -
+"Here is a plan for your day on October 6th, focusing on a mid-range
+experience." - and stopped. No fenced block, no cards. The panel rendered the
+promise and fell silent, which is worse than an error, because the sentence
+says the work was done.
+
+**It is NOT reply-size truncation**, which is what it looks like and what was
+assumed first. `maxOutputTokens` is 12,000 and tp-assist appends
+`TRUNCATION_NOTE` on a `MAX_TOKENS` finish; neither was present in the captured
+replies. The model simply stopped after the preamble. Diagnosing it as the
+documented truncation would have "fixed" it by raising a limit that was not the
+constraint.
+
+Three layers, cheapest first:
+
+- **The prompt.** The plan-mode rules now say the block is not optional and
+  that a paragraph promising a plan with nothing behind it is a failed answer.
+  Plan mode only: a free-form "what time should I leave for the airport" is
+  legitimately prose with no actions.
+- **One repair turn** (`sendMessage`). A plan turn whose reply carries no `add`
+  action is asked once, with `PLAN_REPAIR_REQUEST`, for the fenced block alone
+  and explicitly no second paragraph. The typing indicator stays up; nothing
+  appears in the traveller's transcript, because this is the app fixing its own
+  turn rather than a question anyone asked. The repair's block is appended to
+  the original prose, so `extractTripActions` reads the combined text and what
+  renders is the single answer the turn should have been. Bounded to one, and
+  never attempted on the copy/paste tier, which has no model to ask.
+- **The honest note** (`renderAssistAnswer`). If the repair also comes back
+  empty - or could not run - the answer says so: "That answer described a plan
+  but did not send any items, so nothing was added." A promise with nothing
+  behind it is the one thing that must not be rendered silently.
+
+The certainty comes from the picker's contract travelling as data
+(`planReplyIncomplete(actions, plan)`), which is the same threading the
+schedule round added for a different reason. Without it the app could not tell
+a broken plan from an ordinary conversational answer, and would have to guess
+from the prose.
+
 ## The 2026-09-06 round: identity without position is still a guess
 
 **The report.** Jan 27 2027, Ko Phi Phi. ChaoKoh Hotel Phi Phi Island -> The

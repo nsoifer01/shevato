@@ -738,7 +738,13 @@ export async function run({ base, cdpPort }) {
     const replyShown = await evaluate(s,
       `[...document.querySelectorAll('#assistMessages .assist-msg.assistant')].some(m => m.textContent.includes('Here you go.'))`);
     await t('tp-assist: the shared assistant reply renders in the thread', replyShown === true, String(replyShown), s);
-    const planned = posts[posts.length - 1] || {};
+    // The PLAN post, named rather than assumed to be the last one. Since the
+    // 2026-09-06 round a plan turn whose reply carries no actions is asked once
+    // more for the missing tripActions block, and this block's stub reply
+    // ("Here you go.") is exactly that shape - so the last post here is the
+    // repair, and reading it as the plan request tested the wrong sentence.
+    const planned = posts.find(p => ((p.messages || []).slice(-1)[0] || {}).content
+      && String(((p.messages || []).slice(-1)[0] || {}).content).startsWith('Plan my day for')) || {};
     const planCtx = planned.tripContext || {};
     await t('tp-assist: the Plan my day picker sends the guided contract',
       planCtx.mode === 'plan', JSON.stringify(planCtx.mode), s);
@@ -755,6 +761,15 @@ export async function run({ base, cdpPort }) {
     await t('tp-assist: the request carries the origin the cards measure from',
       !!planCtx.origin && planCtx.origin.label === HOTEL && planCtx.origin.source === 'stay',
       JSON.stringify(planCtx.origin), s);
+    // And the repair itself: a plan answered with prose alone is asked once for
+    // the block it never sent, carrying the original answer as context.
+    const repair = posts.find(p => String(((p.messages || []).slice(-1)[0] || {}).content || '')
+      .startsWith('You described that plan'));
+    await t('tp-assist: a plan reply with no actions is asked once for the missing block',
+      !!repair && posts.length === 2, `posts=${posts.length}`, s);
+    await t('tp-assist: and the repair carries the answer it is repairing',
+      !!repair && (repair.messages || []).some(m => m.role === 'assistant' && /Here you go\./.test(m.content || '')),
+      JSON.stringify((repair && repair.messages || []).map(m => m.role)), s);
 
     await setValue(s, '#assistInput', 'Give me 5 options, not 3.');
     await clickSel(s, '#assistSend', { settle: 400 });

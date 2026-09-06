@@ -128,6 +128,7 @@
     weatherKey, summarizeClimate, weatherLine, weatherRange, pickMonthSamples, docGuard,
     FORECAST_DAYS, forecastEligible, forecastKey, forecastFresh, freshForecasts, summarizeForecast, forecastLine, forecastChipParts,
     extractTripActions, validateTripAction, buildAssistPackage, buildAssistSystemPrompt,
+    planReplyIncomplete, PLAN_REPAIR_REQUEST,
     buildPlanRequest, groupProposals, linkifySegments, parseMarkdown,
     normalizePlaceQuery, placeCacheKey, createPlacesQueue, mapsSearchUrl, assistMapsLink, placeStateLabel, costDisplayParts,
     // the one place identity every surface resolves through, plus the record
@@ -9357,6 +9358,19 @@
         msgs.appendChild(container);
         renderProposals(actions, container);
       }
+      // THE PROMISE WITH NOTHING BEHIND IT. A guided plan that produced no
+      // actions is a broken answer however confidently its paragraph reads,
+      // and by here the one repair turn has already been spent (sendMessage)
+      // or was never possible (the copy/paste tier has no model to ask). Say
+      // so, rather than leave a traveller reading "here is your day" at an
+      // empty panel and wondering which part of it they missed.
+      if (planReplyIncomplete(actions, plan)) {
+        const note = document.createElement('div');
+        note.className = 'assist-msg assistant assist-verified-note';
+        note.textContent = 'That answer described a plan but did not send any items, so nothing was added. '
+          + 'Press "Plan my day" again, or ask for fewer options.';
+        msgs.appendChild(note);
+      }
       scrollMessages();
       return;
     }
@@ -9503,9 +9517,27 @@
     syncSendState();
     const typing = showTyping();
     try {
-      const reply = assistTier === 'site'
-        ? await callSiteAssistant(history, trip, mode)
-        : await callByokProvider(history, trip, mode);
+      const ask = h => (assistTier === 'site'
+        ? callSiteAssistant(h, trip, mode)
+        : callByokProvider(h, trip, mode));
+      let reply = await ask(history);
+      // A PLAN THAT NEVER ARRIVED IS NOT AN ANSWER. Seen twice in three live
+      // runs: a paragraph promising the day, and no tripActions block behind
+      // it. One bounded follow-up asks for the missing block and nothing else
+      // (see PLAN_REPAIR_REQUEST); the traveller sees the typing indicator
+      // stay up, not a second question in their own transcript.
+      if (planReplyIncomplete(extractTripActions(reply).actions, plan)) {
+        placesLog('assistant: plan turn came back with no actions, asking once for the block');
+        const repairHistory = [...history,
+          { role: 'assistant', content: reply },
+          { role: 'user', content: PLAN_REPAIR_REQUEST }];
+        let repaired = '';
+        try { repaired = await ask(repairHistory); } catch { repaired = ''; }
+        // Keep the model's own prose and append whatever the repair produced:
+        // extractTripActions reads the block out of the combined text, so a
+        // successful repair renders as the single answer it should have been.
+        if (repaired && extractTripActions(repaired).actions.length) reply = `${reply}\n\n${repaired}`;
+      }
       typing.remove();
       handleAssistantReply(reply, tripId, text, turn, plan);
     } catch (err) {
@@ -10560,6 +10592,36 @@
 
   // Fetch the coordinates the area gate wants, for the distinct cities in a
   // batch of lookups. Cached entries resolve instantly and cost nothing.
+  // THE DAY'S HOTEL, RESOLVED FIRST, because it is the anchor everything else
+  // is judged against and it is normally the one place already in the cache
+  // (its own row is on screen). Ordering is the whole point: the candidate
+  // lookups bake the anchor into their `area`, so an anchor that lands after
+  // them is an anchor nothing used. Bounded, never fatal, and free whenever
+  // the itinerary row got there first.
+  const STAY_ANCHOR_WAIT_MS = 4000;
+  async function warmStayAnchors(candidates, trip) {
+    const items = (trip && trip.items) || [];
+    if (!items.length) return;
+    const dates = [...new Set(candidates
+      .map(c => (c.proposal.display && c.proposal.display.startDate) || '')
+      .filter(isIsoDate))].slice(0, 3);
+    const lookups = [];
+    const seen = new Set();
+    for (const date of dates) {
+      const host = dayHostStay(items, date);
+      if (!host) continue;
+      const lookup = placeFor({ ...host, startDate: date }, trip);
+      if (!lookup || seen.has(lookup.key) || placesCache.has(lookup.key)) continue;
+      seen.add(lookup.key);
+      lookups.push(lookup);
+    }
+    if (!lookups.length) return;
+    placesLog('anchor: resolving the day\'s stay first', lookups.map(l => l.key));
+    placesQueue.promote(lookups);
+    placesQueue.request(lookups, { priority: 'urgent' });
+    await awaitPlaceKeys(lookups.map(l => l.key), STAY_ANCHOR_WAIT_MS);
+  }
+
   function warmAreaPoints(lookups) {
     const cities = [...new Set((lookups || [])
       .map(l => String((l && l.area && l.area.city) || '').trim())
@@ -10737,6 +10799,9 @@
     // lookups above were derived before the geocode landed, so they carry no
     // coordinate, and without this the freshly fetched point would never reach
     // the wire and the gate would still be judging on names alone.
+    // The hotel first, then the city geocode: on the days where the geocode is
+    // untrustworthy the hotel is the only anchor there will ever be.
+    await warmStayAnchors(candidates, trip);
     await warmAreaPoints(candidates.map(c => c.lookup));
     for (const c of candidates) c.lookup = proposalPlaceLookup(c.proposal) || c.lookup;
 

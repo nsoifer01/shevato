@@ -222,7 +222,7 @@ const SUITE_SECONDS = {
   // Measured on 2026-09-06, the round that added it (two blocks, one reload).
   'apps/trip-planner/e2e/canonical-coordinates.mjs': 20,
   // Measured on 2026-09-06, the schedule-validity round (23.6s locally).
-  'apps/trip-planner/e2e/schedule-slots.mjs': 32,
+  'apps/trip-planner/e2e/schedule-slots.mjs': 47,
   'apps/trip-planner/e2e/qa-fixes.mjs': 53,
   'apps/trip-planner/e2e/views.mjs': 49,
   'apps/trip-planner/e2e/core.mjs': 45,

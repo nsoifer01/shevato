@@ -287,6 +287,14 @@ first because the traveller chose it and it is a building rather than a
 polygon's middle; "nothing" is a real answer that resolves the place and shows
 its rating, which is strictly better than a fabricated verdict that discards it.
 
+The day's stay is resolved **before** the candidates it anchors (fixed
+2026-09-06). A candidate lookup bakes the anchor into its own area at the moment
+it is built, so an anchor that lands a second later is one nobody used - and on
+the first assistant turn of a session the hotel's own row lookup is racing the
+candidate batch. Without that ordering a Ko Phi Phi day ran the gate with no
+anchor at all, and a same-named venue 150 km inland passed on its address text
+alone: it showed up as a breakfast option wearing a ~94 mi distance chip.
+
 **The search itself is constrained.** `places:searchText` is called with a
 `locationBias` circle around the expected point. That is a request parameter,
 not a field-mask entry, so it changes neither the SKU nor the price. A candidate
@@ -574,6 +582,14 @@ reason to move an 08:00 (travel to the first stop is exempt - the request says
 answer says so in its own words ("I could confirm one breakfast place open at
 8:00 AM, not three") rather than quietly showing fewer cards, and that sentence
 is kept distinct from "the lookup could not run at all".
+
+A guided plan that comes back as prose with **no items at all** is treated as
+the broken answer it is, rather than rendered as a paragraph over an empty
+panel: the app asks the model once for the missing block (nothing appears in
+the transcript, the typing indicator simply stays up), and if that also comes
+back empty it says so plainly instead of leaving a promise on screen. This is
+only ever applied to the guided planner, whose contract the app holds as data;
+a free-form answer with no actions is an ordinary answer.
 
 The older protections are all still in place as defence in depth for anything
 that reaches a card another way: the red/amber demotion, exclusion from the
