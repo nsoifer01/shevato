@@ -555,6 +555,28 @@ Before this, a backup containing `null` rows or a game without a date was
 persisted as-is and five of the six views threw on every render until a good
 file was imported; "Clear games" would not have fixed the rival list.
 
+### The regression test for it could not fail (2026-09-06)
+
+`e2e/audit-2026-08.mjs` D1 proved the sanitiser by asserting the state left
+AFTER a junk import: two rivals, one game. The "one game" half is the load-
+bearing one - it says the four junk games were dropped - and it was written as
+`JSON.parse(after).length === 1` against a fixture seeded with
+`seed.games.slice(0, 3)`. Nothing in the assertion tied it to that 3. Reseed the
+block with a single game, or let the seed drift, and the check passes while
+proving nothing at all.
+
+The block had already read the pre-import state into `before` on its first line,
+and then discarded it with `void before;` thirty-seven lines later - so the
+value that makes the assertion falsifiable was computed, paid for, and thrown
+away. It is now part of the check (`JSON.parse(before).length === 3`).
+
+**The general shape, worth recognising elsewhere:** an assertion about a final
+count is only a test if something pins the initial count. A `void x;` sitting on
+a read that the nearby assertion obviously wants is a strong signal that the
+check was weakened during a refactor rather than deliberately narrowed - this
+repo leaves `no-unused-vars` OFF on purpose, so those statements are never
+required and are only ever camouflage.
+
 ## WhatsApp exports: formats and day/month inference (rewritten 2026-08-22)
 
 Parsing lives in js/whatsapp.js (pure, unit-tested). The header regexes read

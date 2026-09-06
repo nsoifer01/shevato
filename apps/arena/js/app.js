@@ -2659,7 +2659,6 @@ function renderRoom() {
         // solo player can restart).
         const pCount = rematchPlayerCount();
         const canRematchMulti = playMode === 'multi' && pCount >= 2;
-        void finished;
         const canRestartSolo = playMode === 'solo';
         const proposed = !!room.rematchProposedBy;
         // Hide if a proposal is already in flight (the strip below

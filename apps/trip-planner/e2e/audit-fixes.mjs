@@ -578,7 +578,6 @@ export async function run({ base, cdpPort }) {
     // blocked here, so the reminder is added through the same call the button
     // makes - the point of this block is what the ITEM does to the trip
     await evaluate(s, `(()=>{ const btn = document.querySelector('[data-remind-cc]'); if (btn) { btn.click(); return 'ui'; } return 'none'; })()`);
-    const t0 = await activeTripOf(s);
     await evaluate(s, `(() => {
       const db = JSON.parse(localStorage.getItem('trip-planner:v1'));
       const trip = db.trips[0];
@@ -602,7 +601,6 @@ export async function run({ base, cdpPort }) {
     await t('tp-audit DM-02: the reminder itself is on the plan with its deadline',
       await evaluate(s, `JSON.parse(localStorage.getItem('trip-planner:v1')).trips[0].items.some(i => i.title === 'Apply for Thailand visa' && !!i.bookBy)`), '', s);
     await t('tp-audit DM-02: no page errors so far', tpErrors(s).length === 0, tpErrors(s).slice(0, 2).join(' | '), s);
-    void t0;
   });
 
   // Switching the display currency flips the symbol IMMEDIATELY but converts
@@ -791,12 +789,8 @@ export async function run({ base, cdpPort }) {
     ],
   });
   // Coordinates warmed the way the app stores them, so no lookup is needed.
-  const mvStores = await (async () => {
-    const key = (q) => q; // filled in-page below, where TripLogic is available
-    void key;
-    return null;
-  })();
-  void mvStores;
+  // The seeding happens IN PAGE (below), because the keys come from
+  // TripLogic.placeCacheKey and that only exists inside the app.
   await withPage('tp-audit MV-01', { db: dbOf([handoverTrip]) }, async (s) => {
     // seed both caches through the app's own key function, then re-boot: the
     // caches are read into closure state exactly once, at load
