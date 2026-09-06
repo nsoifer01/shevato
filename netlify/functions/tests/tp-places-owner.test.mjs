@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkQuota, releaseQuota, MONTHLY_BUDGET, DEFAULT_LIMITS, OWNER_LIMITS } from '../lib/tp-places-quota.mjs';
+import { checkQuota, releaseQuota, MONTHLY_BUDGET, DEFAULT_LIMITS, OWNER_LIMITS, resetAtFor } from '../lib/tp-places-quota.mjs';
 import { clampBody, ownerTokenMatches } from '../tp-places.mjs';
 
 // The owner tier: requests carrying the ownerToken secret are governed by
@@ -56,7 +56,8 @@ test('the owner monthly cap is a hard ceiling, not a suggestion', () => {
   const usage = { monthBucket: MONTH, ownerMonth: OWNER_LIMITS.globalMonth };
   const q = checkQuota(usage, 'thief', NOW, 1, OWNER_LIMITS, 'owner');
   assert.equal(q.allowed, false);
-  assert.equal(q.scope, 'global_month');
+  // Named for the bucket that actually refused, not the public tier's.
+  assert.equal(q.scope, 'owner_month');
 });
 
 test('owner limits are an order of magnitude up but still finite', () => {
@@ -114,7 +115,33 @@ test('the owner pool binds before the owner per-client cap, not the other way ro
   // just been spent, cannot be the one answering.
   const next = checkQuota(usage, 'owner-browser', NOW + hours * 3600000, 1, OWNER_LIMITS, 'owner');
   assert.equal(next.allowed, false);
-  assert.equal(next.scope, 'global_day');
+  assert.equal(next.scope, 'owner_day');
+});
+
+// A live 429 on 2026-09-06 logged `global_day` while the PUBLIC day pool was
+// at 44 of 150: the owner pool was the one that had emptied, and the single
+// line the rejection writes pointed at a bucket with room to spare. The scope
+// a rejection reports must be the counter it read.
+test('an owner-pool rejection never wears the public tier\'s scope name', () => {
+  const full = { dayBucket: DAY, monthBucket: MONTH, ownerDay: OWNER_LIMITS.globalDay, globalDay: 44 };
+  const owner = checkQuota(full, 'owner-browser', NOW, 1, OWNER_LIMITS, 'owner');
+  assert.equal(owner.allowed, false);
+  assert.equal(owner.scope, 'owner_day');
+
+  // And the public tier keeps its own names, with its own pool untouched.
+  const pub = checkQuota({ dayBucket: DAY, monthBucket: MONTH, globalDay: DEFAULT_LIMITS.globalDay },
+    'visitor', NOW, 1, DEFAULT_LIMITS, 'public');
+  assert.equal(pub.allowed, false);
+  assert.equal(pub.scope, 'global_day');
+});
+
+// Both new names must reach a real bucket edge in resetAtFor. A name that
+// falls through to the 15-minute default would promise a refill that has not
+// happened and put the client straight back into a 429 loop.
+test('owner scopes resolve to the day and month boundaries, not the default', () => {
+  const t = Date.UTC(2026, 8, 6, 16, 21, 0);
+  assert.equal(resetAtFor('owner_day', t), Date.UTC(2026, 8, 7, 0, 0, 0));
+  assert.equal(resetAtFor('owner_month', t), Date.UTC(2026, 9, 1, 8, 0, 0));
 });
 
 // ---------- release symmetry ----------
