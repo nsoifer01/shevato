@@ -23,27 +23,82 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Should the estate run at all for this event? Same reasoning, and the same
+  # fail-open rules, as the `decide` job in test.yml: merging an up-to-date
+  # pull request produces a merge commit whose TREE is byte-identical to the
+  # PR head that went green minutes earlier, and re-running 45 runner-minutes
+  # against those exact bytes buys nothing. Measured 2026-09-05: identical for
+  # PRs #472, #473 and #474, DIFFERENT for #471 (its branch was behind), which
+  # is why this is a tree comparison and not a blanket removal.
+  decide:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+      why: ${{ steps.decide.outputs.why }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 3
+
+      - id: decide
+        run: |
+          set -e
+          if [ "${{ github.event_name }}" != 'push' ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "why=event is ${{ github.event_name }}, always run" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          head_tree="$(git rev-parse 'HEAD^{tree}')"
+          if ! merged_tree="$(git rev-parse -q --verify 'HEAD^2^{tree}' 2>/dev/null)"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "why=not a merge commit, or the second parent is unavailable" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$head_tree" = "$merged_tree" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "why=this tree ($head_tree) is the merged branch head, already tested on its PR" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "why=the merge produced a tree ($head_tree) no PR run ever saw" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Say what was decided
+        run: echo "run=${{ steps.decide.outputs.run }} because ${{ steps.decide.outputs.why }}"
+
   browser-shard:
+    needs: decide
+    if: needs.decide.outputs.run == 'true'
     runs-on: ubuntu-latest
 
-    # The estate is 27 suites and ~1,900 checks, walked one suite at a time in
-    # one browser. On a single runner that measured 44-45 minutes (and was
-    # being CANCELLED at the old 45-minute cap, which reads as a failure and
-    # hides everything that had already passed). Nothing in it is slow by
-    # accident: roughly nine minutes is fixed `settle`/`sleep` waiting, and axe
-    # is 553 KB of JavaScript evaluated into the page and then run as a full
-    # WCAG ruleset over data-heavy rendered views, about twenty times.
+    # The estate is 28 suites and 1,982 checks, walked one suite at a time in
+    # one browser: 46 minutes on a single runner (measured 2026-09-05, and it
+    # used to be CANCELLED at the old 45-minute cap, which reads as a failure
+    # and hides everything that had already passed).
     #
-    # So the suites are split across parallel runners instead. Each shard gets
-    # its own machine, its own static server and its own Chrome, which is what
-    # makes this safe: two runs on ONE machine would share CDP port 9222 and
-    # silently drive each other's browser (the runner bind-tests both ports and
-    # refuses to start for exactly that reason).
+    # Where that time goes, now that run.mjs measures it rather than anyone
+    # counting `sleep()` literals: 60% fixed waits, 20% navigation, 6%
+    # condition polling. Server and browser startup together are 0.8 SECONDS
+    # for the whole run, so sharing them across suites would save nothing; more
+    # machines is the only lever, plus removing waiting that buys nothing.
+    #
+    # So the suites are split across parallel runners. Each shard gets its own
+    # machine, its own static server and its own Chrome, which is what makes
+    # this safe: two runs on ONE machine would share CDP port 9222 and silently
+    # drive each other's browser (the runner bind-tests both ports and refuses
+    # to start for exactly that reason). The same isolation is what makes
+    # `npm run test:browser:parallel` safe locally.
     #
     # `strategy.job-total` is the matrix size itself, so the shard count is
-    # never written down twice and cannot drift from the list below. Adding a
-    # fifth entry is the whole change; run.mjs re-partitions on its own and
-    # prints the suites each shard owns.
+    # never written down twice and cannot drift. run.mjs re-partitions on its
+    # own and prints the suites each shard owns, with the cost it expects.
+    #
+    # THE SPLIT IS BY MEASURED COST, NOT BY SUITE COUNT. Round-robin balanced
+    # the count, and suite costs span two orders of magnitude, so it handed
+    # shard 3 twenty minutes of work while 1, 2 and 4 finished in eight or nine
+    # and sat idle: the estate's wall clock is its slowest shard, so that one
+    # runner WAS the pull-request gate. run.mjs now packs the shards
+    # longest-first from a table of measured seconds. Four shards land within
+    # 5% of each other (verified locally: 691/699/721/725 s).
     strategy:
       # One shard failing must not cancel its siblings. The estate exists to
       # tell you everything that is broken, not the first thing.
@@ -51,10 +106,10 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
 
-    # Per SHARD, not per estate. Seven suites measure around 12 minutes; the
-    # cap leaves room for slow silicon and for the fact that a round-robin
-    # split balances suite COUNT, not suite cost, so one shard can draw a
-    # heavier hand than the others.
+    # Per SHARD, not per estate. A cost-packed quarter of the estate is about
+    # ten minutes; the cap leaves generous room for slow silicon and for a
+    # suite whose measured cost has drifted from the table in run.mjs (which
+    # makes a shard uneven, never wrong).
     timeout-minutes: 35
 
     steps:
@@ -81,21 +136,58 @@ jobs:
           echo "No Chrome/Chromium found on the runner image." >&2
           exit 1
 
-      # The rising-shows dataset is gitignored and lives on a GitHub release, so
-      # it is absent here. The suite skips its data-dependent checks and reports
-      # them; every other app is fully exercised. Downloading 111 MB on every
-      # pull request is not worth those assertions.
+      # The rising-shows dataset is gitignored and lives on a rolling GitHub
+      # release. Without it, 64 assertions across three suites do not run on a
+      # pull request: apps/rising-shows/e2e/audit-2026-08.mjs reports 0/0 and
+      # 11 skips (every assertion it owns), suites/apps.mjs skips 10 and
+      # suites/perf.mjs skips its 3 rising-shows budget rows. That suite had
+      # never once executed on a pull request.
       #
-      # What is NOT skipped, and is the reason that trade is still sound: the
-      # perf suite's rising-shows boot-network contract builds a ~6 KB fixture
+      # The trade this workflow used to make - "111 MB per PR is not worth
+      # those assertions" - was made before anyone counted them, and before
+      # cross-browser.yml demonstrated the download is public, unauthenticated
+      # and quick. Cached on the release tag, it is a restore on all but the
+      # first run after a refresh.
+      #
+      # continue-on-error is the important part: if the release is unreachable
+      # or rate-limited, the suites fall back to exactly today's behaviour
+      # (reported skips) instead of turning a pull request red for a reason
+      # that has nothing to do with the change under review. Never a silent
+      # pass either - run.mjs names any suite that asserted nothing.
+      - name: Cache the Rising Shows dataset
+        id: rs-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            apps/rising-shows/data.json
+            apps/rising-shows/data-index.json
+            apps/rising-shows/data
+          key: rising-shows-data-${{ hashFiles('apps/rising-shows/scripts/fetch-data.js', 'apps/rising-shows/scripts/split-data.js') }}-${{ github.run_id }}
+          restore-keys: |
+            rising-shows-data-${{ hashFiles('apps/rising-shows/scripts/fetch-data.js', 'apps/rising-shows/scripts/split-data.js') }}-
+            rising-shows-data-
+
+      - name: Prepare the Rising Shows dataset
+        continue-on-error: true
+        run: |
+          set -e
+          if [ -f apps/rising-shows/data-index.json ]; then
+            echo "dataset restored from cache"
+          else
+            npm run fetch:rising-shows-data
+            npm run build:rising-shows:split
+          fi
+
+      # What is NOT skipped either way, and was the reason the old trade was
+      # still defensible:
+      #
+      # the perf suite's rising-shows boot-network contract builds a ~6 KB fixture
       # dataset at test time by running the real scripts/split-data.js, serves
       # it through CDP interception, and asserts which dataset URLs the app
       # fetches (index only at boot, never data.json, never the extras
       # monolith, one detail file per show open, nothing on reopen). That runs
-      # here on every pull request and needs no download. The three
-      # rising-shows byte / request / DOM budget rows, which cannot mean
-      # anything without the real dataset, are reported as skipped rather than
-      # passing vacuously on ~1.6 MB of code.
+      # here on every pull request and needs no download, so it holds even when
+      # the fetch above fails.
       #
       # The run prints the suites this shard owns before it starts, so the
       # shard logs side by side are the audit that the estate was fully run.
@@ -111,12 +203,20 @@ jobs:
   # see here" rather than "the estate did not run". For a matrix job,
   # `needs.<job>.result` is success only when every shard succeeded.
   browser:
-    needs: browser-shard
+    needs: [decide, browser-shard]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Verify every shard passed
         run: |
+          # A deliberate skip is not a failure, and must not be reported as
+          # one - otherwise the tree-equality guard above would turn every
+          # merge red. Anything else that leaves the shards non-successful
+          # still fails here.
+          if [ '${{ needs.decide.outputs.run }}' != 'true' ]; then
+            echo "the estate was skipped on purpose: ${{ needs.decide.outputs.why }}"
+            exit 0
+          fi
           result='${{ needs.browser-shard.result }}'
           echo "browser-shard result: $result"
           if [ "$result" != 'success' ]; then

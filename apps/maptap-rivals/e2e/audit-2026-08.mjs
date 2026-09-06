@@ -101,12 +101,14 @@ async function openSeeded(cdpPort, base, seed, { width = 1280, height = 900, mob
   dialogs(s);
   await setViewport(s, width, height, mobile);
   // Every page in this run shares one origin, so a previous block's seed is
-  // still in localStorage: wipe the app's keys before seeding this one.
-  await goto(s, base + APP, { settle: 600 });
-  await evaluate(s, "(()=>{for(const k of Object.keys(localStorage)) if(/^maptapRivals/.test(k)) localStorage.removeItem(k); return 1})()");
+  // still in localStorage: wipe the app's keys before seeding this one. Both
+  // happen inside seedAndReload's pre-document script, so this is ONE
+  // navigation - it used to be three (navigate to reach the origin, navigate
+  // to clear, navigate to boot the seed), each one re-rendering the 347-game
+  // fixture.
   const kv = {};
   for (const [k, v] of Object.entries(seed)) kv[k] = typeof v === 'string' ? v : JSON.stringify(v);
-  await seedAndReload(s, base + APP, kv);
+  await seedAndReload(s, base + APP, kv, { clearPrefix: 'maptapRivals' });
   await waitForExpr(s, READY, { timeout: 10000 });
   if (hash) { await goto(s, base + APP + hash, { settle: 900 }); }
   return s;

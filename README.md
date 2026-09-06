@@ -247,8 +247,13 @@ DOM behavior is covered because a copy of its logic passes in Node.
 npm test                   # fast gate: all unit/integration + static checks, no browser
                            #   (about three minutes; CI on every push to master and every PR)
 npm run test:browser       # full browser estate: site, apps, a11y, visual, perf, PWA, app E2E (CI on PRs + master)
-                           #   (about 45 minutes locally; CI splits it across a four-job matrix,
-                           #   `-- --shard=<i>/<n>`, so the gate clears in about twelve)
+                           #   (46 minutes locally, serial, measured 2026-09-05; CI splits it
+                           #   across a four-job matrix, `-- --shard=<i>/<n>`, and the shards are
+                           #   packed by MEASURED cost, so the gate clears in about twelve)
+npm run test:browser:parallel  # the same estate, 4 shards at once on this machine (about twelve
+                           #   minutes). Each shard gets its own port pair, static server, Chrome
+                           #   and profile, so it is the same isolation CI gets. `-- --shards=<n>`
+                           #   to change the width; it refuses to start if a port is busy.
 npm run test:all           # "is this change safe to merge": npm test + test:browser
 npm run test:coverage      # coverage report to .coverage/summary.md + per-area floors
 npm run test:cross-browser # Firefox/WebKit smoke (needs: npm install && npx playwright install firefox webkit;

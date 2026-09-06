@@ -4,9 +4,65 @@ on:
   push:
     branches: [master]
   pull_request:
+  # Weekly, for the coverage floors below. The `test` job runs again here too,
+  # which is cheap and means the floors are always measured against a suite
+  # that just passed.
+  schedule:
+    - cron: '0 6 * * 3'
+  workflow_dispatch:
 
 jobs:
+  # Should the heavy jobs run at all for this event?
+  #
+  # Merging an up-to-date pull request produces a merge commit whose TREE is
+  # byte-identical to the PR head that was already tested minutes earlier, so
+  # the push-to-master run re-tests, bit for bit, a tree that is already green.
+  # Measured 2026-09-05: identical for PRs #472, #473 and #474; different for
+  # #471, whose branch was behind master. So this cannot be a blanket removal -
+  # it has to be the tree comparison itself.
+  #
+  # Fails OPEN in every uncertain case: a non-merge push, a second parent that
+  # cannot be resolved, anything that is not a `push`. The only thing it ever
+  # skips is a tree it can prove was already the head of a tested pull request.
+  decide:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+      why: ${{ steps.decide.outputs.why }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Enough history to resolve BOTH parents of a merge commit.
+          fetch-depth: 3
+
+      - id: decide
+        run: |
+          set -e
+          if [ "${{ github.event_name }}" != 'push' ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "why=event is ${{ github.event_name }}, always run" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          head_tree="$(git rev-parse 'HEAD^{tree}')"
+          if ! merged_tree="$(git rev-parse -q --verify 'HEAD^2^{tree}' 2>/dev/null)"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "why=not a merge commit, or the second parent is unavailable" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$head_tree" = "$merged_tree" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "why=this tree ($head_tree) is the merged branch head, already tested on its PR" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "why=the merge produced a tree ($head_tree) no PR run ever saw" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Say what was decided
+        run: echo "run=${{ steps.decide.outputs.run }} because ${{ steps.decide.outputs.why }}"
+
   test:
+    needs: decide
+    if: needs.decide.outputs.run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -16,35 +72,36 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
-      # No npm dependencies — node:test is built in.
-      # Syntax-check only the gym-tracker tree (scoped to type=module via
-      # apps/gym-tracker/package.json). The sync-system files mix module
-      # styles and load in the browser as classic scripts — Node's --check
-      # would misclassify them.
-      - name: Syntax check (gym-tracker)
-        run: |
-          set -e
-          for f in $(git ls-files 'apps/gym-tracker/js/**/*.js' 'apps/gym-tracker/sw.js'); do
-            node --check "$f"
-          done
-
-      # Site-wide classic scripts that ship to the browser. These are
-      # plain (non-module) JS, so node --check parses them as scripts.
-      # jQuery and the vendored *.min.js bundles are skipped — they're
-      # already minified and Node's parser chokes on some legacy syntax
-      # they use.
-      - name: Syntax check (site scripts)
-        run: |
-          set -e
-          for f in assets/js/analytics.js \
-                   assets/js/apex-redirect.js \
-                   assets/js/global-icons.js \
-                   assets/js/language-switcher.js \
-                   assets/js/main.js \
-                   assets/js/pagination.js \
-                   assets/js/passive-events-fix.js; do
-            node --check "$f"
-          done
-
+      # No npm dependencies - node:test is built in.
+      #
+      # The syntax gate is NOT a step here any more. It used to be two bash
+      # loops running `node --check` over the gym-tracker tree and seven site
+      # scripts, and tests/static/syntax.test.mjs runs `node --check` over a
+      # documented SUPERSET of exactly those files: it mirrors both lists, uses
+      # the same `ls-files` invocation for the gym-tracker tree, and adds the
+      # four assets/js files the loops missed. Both ran in THIS job, seconds
+      # apart, so every one of those files was parsed twice per run for no
+      # extra coverage. The test is the survivor because it is the wider of the
+      # two and because it is runnable locally; `npm test` below executes it.
       - name: Run tests
         run: npm test
+
+  # Per-area line-coverage floors (tests/coverage/floors.json), enforced by
+  # tests/coverage/run.mjs. It re-runs the whole unit estate under V8 coverage,
+  # so it roughly doubles the cost of `npm test` and has no business on a pull
+  # request: coverage moves over weeks, not per commit. Weekly it is, which is
+  # the first time these floors have been enforced anywhere other than by hand.
+  coverage:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Use Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Coverage floors
+        run: npm run test:coverage

@@ -16,6 +16,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { snapshotWaits, waitsSince } from './cdp.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..', '..');
@@ -172,6 +173,96 @@ if (!selected.length) { console.error(`--only=${only} matches no suite. Suites:\
 // nothing and read as green. The workflow derives <n> from the matrix size
 // itself (`strategy.job-total`) rather than repeating the number, so the index
 // and the total cannot drift apart in a half-finished edit.
+// Measured cost of each suite, in seconds, from GitHub-runner logs (two
+// consecutive runs on 2026-09-05 agreed to within 0.5s on every entry, so
+// these are stable enough to schedule against). They exist for ONE reason:
+// a round-robin split balances suite COUNT, and the costs here differ by two
+// orders of magnitude, so counting suites put 20.3 minutes of work on shard 3
+// while shards 1, 2 and 4 finished in 8-9 and sat idle. The estate's wall
+// clock is its slowest shard, so balancing by cost is worth more than any
+// number of extra runners.
+//
+// A suite missing from this table is charged DEFAULT_SECONDS. That is a
+// scheduling hint only: an entry being stale or absent can make a shard
+// uneven, never wrong, because the partition below is total regardless of
+// what the numbers say. Refresh them from the timing table this runner
+// prints at the end of every run.
+const DEFAULT_SECONDS = 90;
+const SUITE_SECONDS = {
+  // 501 -> 101 with the same-document navigation fix in cdp.mjs (see FINDINGS,
+  // "A fragment-only goto() used to cost 21 seconds"), then -> 81 once
+  // seedAndReload stopped needing three navigations per boot to seed a
+  // 347-game fixture. All 53 checks pass at every step.
+  'apps/maptap-rivals/e2e/audit-2026-08.mjs': 82,
+  'tests/browser/suites/a11y.mjs': 209,
+  'apps/trip-planner/e2e/audit-fixes.mjs': 176,
+  'apps/gym-tracker/e2e/audit-2026-08.mjs': 151,
+  'tests/browser/suites/visual.mjs': 148,
+  'apps/gym-tracker/e2e/units-migration.mjs': 130,
+  // 118 without the rising-shows dataset, 120 with it.
+  'tests/browser/suites/apps.mjs': 120,
+  'apps/mario-kart/e2e/audit-2026-08.mjs': 113,
+  'tests/browser/suites/site.mjs': 111,
+  'apps/trip-planner/e2e/trips-sync.mjs': 107,
+  'apps/maptap-rivals/e2e/quality.mjs': 101,
+  'apps/trip-planner/e2e/ui.mjs': 97,
+  'apps/trip-planner/e2e/places.mjs': 95,
+  'apps/fpl-planner/e2e/lifecycle.mjs': 92,
+  'apps/trip-planner/e2e/audit-2026-08.mjs': 91,
+  'apps/fpl-planner/e2e/audit-2026-08.mjs': 76,
+  // 76 without the rising-shows dataset, 77 with its three budget rows.
+  'tests/browser/suites/perf.mjs': 77,
+  'apps/fpl-planner/e2e/scenario.mjs': 69,
+  'apps/trip-planner/e2e/assistant.mjs': 63,
+  'apps/trip-planner/e2e/qa-fixes.mjs': 53,
+  'apps/trip-planner/e2e/views.mjs': 49,
+  'apps/trip-planner/e2e/core.mjs': 45,
+  'apps/football-h2h/e2e/audit-2026-08.mjs': 42,
+  'apps/trip-planner/e2e/share.mjs': 18,
+  'tests/browser/suites/pwa-gym.mjs': 12,
+  'apps/fpl-planner/e2e/free-hit.mjs': 8,
+  'apps/trip-planner/e2e/pwa.mjs': 5,
+  // Was 0 on a runner while the dataset was absent and every check skipped.
+  // browser-tests.yml now fetches and caches it, so this is the measured cost
+  // with the data present (40.3s locally). If the fetch fails the suite skips
+  // and costs nothing, which makes a shard uneven, never wrong.
+  'apps/rising-shows/e2e/audit-2026-08.mjs': 45,
+};
+
+// Longest-processing-time-first bin packing: walk the suites heaviest first
+// and hand each to whichever shard is currently least loaded. For a spread
+// like this one it lands within a few percent of the best possible split,
+// and unlike round-robin it cannot put the two heaviest suites on the same
+// runner.
+//
+// The partition is still TOTAL by construction - every suite is placed into
+// exactly one bin, once - which is the property that actually matters,
+// because a suite belonging to no shard would report nothing and read as
+// green. The assertion below states it rather than trusting the loop.
+function partitionByCost(suites, total) {
+  const bins = Array.from({ length: total }, () => ({ load: 0, suites: [] }));
+  const cost = (s) => (SUITE_SECONDS[s] == null ? DEFAULT_SECONDS : SUITE_SECONDS[s]);
+  const order = suites.map((s, i) => ({ s, i }))
+    // Heaviest first; ties broken by list position so the split is
+    // deterministic and a re-run of the same commit produces the same shards.
+    .sort((a, b) => (cost(b.s) - cost(a.s)) || (a.i - b.i));
+  for (const { s } of order) {
+    let pick = bins[0];
+    for (const b of bins) if (b.load < pick.load) pick = b;
+    pick.suites.push(s);
+    pick.load += cost(s);
+  }
+  const placed = bins.reduce((n, b) => n + b.suites.length, 0);
+  if (placed !== suites.length) {
+    throw new Error(`shard partition lost suites: placed ${placed} of ${suites.length}`);
+  }
+  // Back into list order inside each shard, so a shard's log reads the same
+  // way the SUITES list does.
+  const rank = new Map(suites.map((s, i) => [s, i]));
+  for (const b of bins) b.suites.sort((a, c) => rank.get(a) - rank.get(c));
+  return bins;
+}
+
 let toRun = selected;
 let shardLabel = '';
 if (shard !== null) {
@@ -186,7 +277,8 @@ if (shard !== null) {
     console.error(`--shard=${shard}: there is no shard ${index} of ${total}.`);
     process.exit(2);
   }
-  toRun = selected.filter((_, i) => i % total === index - 1);
+  const bins = partitionByCost(selected, total);
+  toRun = bins[index - 1].suites;
   shardLabel = ` (shard ${index}/${total})`;
   if (!toRun.length) {
     // A shard with nothing to run exits 0 and reads as a pass. Say so instead.
@@ -195,7 +287,8 @@ if (shard !== null) {
   }
   // Printed so a CI log says exactly what this runner was responsible for;
   // the four logs side by side are the audit that the estate was fully run.
-  console.log(`shard ${index}/${total}: ${toRun.length} of ${selected.length} suites`);
+  console.log(`shard ${index}/${total}: ${toRun.length} of ${selected.length} suites`
+    + `, ~${bins[index - 1].load}s of measured work`);
   for (const p of toRun) console.log(`  ${p}`);
 }
 
@@ -239,6 +332,13 @@ const httpOk = (url) => new Promise((resolve) => {
 
 let server, chrome, profileDir;
 
+// Timing. Kept beside the results so the run can say where its wall clock
+// went: shard balance and every "is this sleep worth it?" question are
+// answered from these numbers rather than from counting sleep() literals in
+// the source, which cannot see how often a loop ran.
+const startupMs = { server: 0, browser: 0, teardown: 0 };
+const timings = [];
+
 async function startAll() {
   for (const [port, what, envVar] of [[PORT, 'static server', 'BROWSER_TEST_PORT'], [CDP_PORT, 'Chrome DevTools', 'BROWSER_TEST_CDP_PORT']]) {
     if (!(await portFree(port))) {
@@ -247,9 +347,12 @@ async function startAll() {
         + `Stop whatever is on ${port}, or set ${envVar} to a free port.`);
     }
   }
+  let t0 = Date.now();
   server = spawn('python3', ['-m', 'http.server', String(PORT), '--bind', '127.0.0.1'],
     { cwd: REPO, stdio: 'ignore' });
   await waitFor(() => httpOk(`${BASE}/home.html`), 20000, 'static server');
+  startupMs.server = Date.now() - t0;
+  t0 = Date.now();
 
   profileDir = await mkdtemp(path.join(tmpdir(), 'shevato-browser-test-'));
   const bin = process.env.CHROME_BIN || 'chromium';
@@ -264,6 +367,7 @@ async function startAll() {
   ], { stdio: 'ignore' });
   chrome.on('error', (e) => { console.error(`\nCould not launch "${bin}": ${e.message}\nSet CHROME_BIN to a Chrome/Chromium binary.`); });
   await waitFor(() => httpOk(`http://127.0.0.1:${CDP_PORT}/json/version`), 30000, 'headless Chrome');
+  startupMs.browser = Date.now() - t0;
 }
 
 // Waits for a spawned process to actually exit, bounded so a wedged process
@@ -277,20 +381,29 @@ function waitForExit(p, timeoutMs) {
 }
 
 async function stopAll() {
+  const tearStart = Date.now();
   for (const p of [chrome, server]) { try { p && p.kill(); } catch {} }
   // Wait for real exits before removing the profile dir: Chrome still holds
   // files open right after kill(), and rm-ing under it raced (EBUSY/ENOTEMPTY
   // or a half-deleted profile left behind).
   await Promise.all([waitForExit(chrome, 5000), waitForExit(server, 5000)]);
   if (profileDir) { try { await rm(profileDir, { recursive: true, force: true }); } catch {} }
+  startupMs.teardown = Date.now() - tearStart;
 }
 
 const results = [];
 try {
   await startAll();
   for (const name of toRun) {
-    const suiteName = path.basename(name, '.mjs');
+    // App-qualified, because seven suites are named audit-2026-08.mjs and a
+    // bare basename made every one of them print the same header - so a log
+    // could not say which app's regressions had just failed.
+    const suiteName = name.startsWith('apps/')
+      ? `${name.split('/')[1]}/${path.basename(name, '.mjs')}`
+      : path.basename(name, '.mjs');
     process.stdout.write(`\n--- ${suiteName} ---\n`);
+    const suiteStart = Date.now();
+    const waitsBefore = snapshotWaits();
     // Each suite runs inside its own try/catch: one suite throwing (import
     // error included) records a single failure and the NEXT suite still runs,
     // instead of the whole remainder of the matrix being aborted.
@@ -349,7 +462,10 @@ try {
     }
     const f = r.filter((x) => !x.pass).length;
     const sk = r.filter((x) => x.pass && x.skipped).length;
-    console.log(`  ${r.length - f - sk}/${r.length - sk} passed${sk ? `, ${sk} skipped` : ''}`);
+    const elapsed = Date.now() - suiteStart;
+    timings.push({ name, checks: r.length, ms: elapsed, ...waitsSince(waitsBefore) });
+    console.log(`  ${r.length - f - sk}/${r.length - sk} passed${sk ? `, ${sk} skipped` : ''}`
+      + `  (${(elapsed / 1000).toFixed(1)}s)`);
   }
 } catch (e) {
   console.error('\nrunner error:', e.message);
@@ -376,6 +492,39 @@ if (zeroRunSuites.length) {
   console.log('\nAsserted NOTHING in this run (every check skipped):');
   for (const n of zeroRunSuites) {
     console.log(`  - ${n}${ZERO_RUN_ALLOWED.has(n) ? '  [known: precondition unavailable here]' : ''}`);
+  }
+}
+
+// Where the wall clock went. Printed on every run: the slowest-first order is
+// how a shard split gets balanced by cost instead of by suite count, and the
+// fixed-vs-poll split is how a fixed wait gets defended or removed on
+// evidence. `fixed` is time spent sleeping whether or not the page was ready;
+// `poll` is waitForExpr, which stops as soon as its condition is true; `nav`
+// is Page.navigate to the load event.
+if (timings.length) {
+  const totalSuiteMs = timings.reduce((a, x) => a + x.ms, 0);
+  const pad = (s, n) => String(s).padStart(n);
+  console.log('\nTiming (slowest first):');
+  console.log('  suite                                     checks     time    fixed     poll      nav   %run');
+  for (const x of [...timings].sort((a, b) => b.ms - a.ms)) {
+    const pct = totalSuiteMs ? (100 * x.ms / totalSuiteMs) : 0;
+    console.log(`  ${x.name.replace(/^(tests\/browser\/suites|apps)\//, '').padEnd(40)}`
+      + `${pad(x.checks, 7)}${pad((x.ms / 1000).toFixed(1) + 's', 9)}`
+      + `${pad((x.fixedMs / 1000).toFixed(1) + 's', 9)}${pad((x.pollMs / 1000).toFixed(1) + 's', 9)}`
+      + `${pad((x.navMs / 1000).toFixed(1) + 's', 9)}${pad(pct.toFixed(1), 7)}`);
+  }
+  const sum = (k) => timings.reduce((a, x) => a + x[k], 0);
+  console.log(`  ${'TOTAL'.padEnd(40)}${pad(sum('checks'), 7)}`
+    + `${pad((totalSuiteMs / 1000).toFixed(1) + 's', 9)}${pad((sum('fixedMs') / 1000).toFixed(1) + 's', 9)}`
+    + `${pad((sum('pollMs') / 1000).toFixed(1) + 's', 9)}${pad((sum('navMs') / 1000).toFixed(1) + 's', 9)}`);
+  console.log(`  startup: static server ${(startupMs.server / 1000).toFixed(1)}s, `
+    + `browser ${(startupMs.browser / 1000).toFixed(1)}s, teardown ${(startupMs.teardown / 1000).toFixed(1)}s`
+    + `  |  ${sum('gotos')} navigations, ${sum('polls')} condition waits`);
+  if (process.env.BROWSER_TEST_TIMING_JSON) {
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(process.env.BROWSER_TEST_TIMING_JSON,
+      JSON.stringify({ startupMs, timings }, null, 2));
+    console.log(`  timings written to ${process.env.BROWSER_TEST_TIMING_JSON}`);
   }
 }
 if (failed.length) {
