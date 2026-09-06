@@ -1,4 +1,4 @@
-# CLAUDE.md - project rules for shevato
+# CLAUDE.md - project rules for shevato 
 
 This is a multi-app repository. The root `README.md` is the GENERAL repository
 overview; detailed knowledge lives with each app.
