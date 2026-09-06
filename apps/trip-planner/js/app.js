@@ -118,7 +118,7 @@
     transportGaps, connectionWarnings, sameTimeCollisions, TIGHT_CONNECTION_MIN, tripPhase, isPastRow,
     bookingDeadlines, paceAdvisory,
     dayShareText, shareHostStay, weekStart, spendByWeek,
-    dayCards, dayMorningCity, emptyDayNote, departureOrigin, suggestedPassport, passportAssumptionParts, defaultPlanDay, planDayGroups, overnightTransit, arrivalConflicts,
+    dayCards, dayMorningCity, dayHostStay, emptyDayNote, departureOrigin, suggestedPassport, passportAssumptionParts, defaultPlanDay, planDayGroups, overnightTransit, arrivalConflicts,
     timelineGroups, isLongDetails, itemMapsQuery, displayTitle,
     // Food & Drink is a structured field now (`meal`), so app.js asks
     // itemMealKind rather than re-reading a title prefix; mealKind /
@@ -142,7 +142,7 @@
     normalizeVenueCache, rememberVenue, placesLocationUpdates, placesCacheUpdates, pickVenueFeature,
     dayAnchor, dayDistanceChain, sameSpot, shortestRoute, routeStops, distanceChipLabel, distanceChipTitle, routeFooterText,
     proposalOrigin, dayBaseOrigin, suggestionOrigins, assistDistanceChipLabel, assistDistanceChipTitle,
-    isPlaceType, isTravelLeg, directionsUrl, legTravelMode,
+    isPlaceType, isTravelLeg, legDestinationStay, directionsUrl, legTravelMode,
     setDistanceUnit, setTempUnit, fmtDist, dayTravelTotals, dayRouteMode, directionsRouteUrl, routeUrlChunks, candidateBadges,
     hasEstimate, displayCostOf, parseMoney, roundMoney, budgetVerdict, refundParts,
     readBudgetRange, normalizeBudgetFrom, budgetFigure,
@@ -1101,8 +1101,40 @@
     return {
       city,
       country: geoCountryName(own) || geoCountryName(city),
-      resolvePoint: name => cityPoint(name),
+      resolvePoint: name => areaPointFor(name, city, items, date),
     };
+  }
+
+  // THE COORDINATE THE AREA GATE NEEDS, and why it is a ladder rather than one
+  // cache read (owner report, 2026-09-05).
+  //
+  // The gate that decides whether a resolved place is the right BRANCH is only
+  // as good as the point it compares against, and `cityPoint` is cache-only and
+  // synchronous: on the first assistant turn of a session the day's city has
+  // usually not been geocoded yet, so there was no point, the gate fell back to
+  // comparing administrative NAMES, and a real venue in Ao Nang failed a day
+  // the traveller had called "Railay Beach". Every rung here is still
+  // cache-only (this runs inside a render), but there are now three of them and
+  // the missing one is fetched for next time.
+  //
+  //   1. the named city itself
+  //   2. the day's host stay - a hotel picked from the picker seeds the geocode
+  //      cache under its OWN name with its OWN doorstep, which is a better
+  //      anchor than any centroid, then that stay's city
+  //
+  // Rung 2 is offered ONLY when the item did not name a city of its own. An
+  // item that says "Nikko" on a Tokyo-based day is making a claim about Nikko,
+  // and answering it with Tokyo's hotel would check the wrong place - so an
+  // ungeocodable city of its own stays unchecked, which now resolves rather
+  // than rejects.
+  function areaPointFor(name, dayCity, items, date) {
+    const own = cityPoint(name);
+    if (own) return own;
+    const n = String(name || '').trim().toLowerCase();
+    if (!n || n !== String(dayCity || '').trim().toLowerCase()) return null;
+    const host = (isIsoDate(date) && Array.isArray(items)) ? dayHostStay(items, date) : null;
+    if (!host) return null;
+    return cityPoint(displayTitle(host)) || cityPoint(String(host.location || '').trim());
   }
   // The shorthand every renderer uses. Returns { query, area, key } or null.
   const placeFor = (item, trip) => placeLookupFor(item, placeContextFor(item, trip));
@@ -6522,10 +6554,28 @@
   // layer above believed it because nothing ever asked. When the city has no
   // coordinate of its own nothing is rejected - silence is not evidence - and
   // the row simply falls back to the city rung.
-  function placePoint({ key, name, city }) {
+  // PRECISION TRAVELS WITH THE POINT (owner report, 2026-09-05).
+  //
+  // This ladder can answer with a doorstep or with a whole city, and until now
+  // it said which only in a comment. So a leg could measure a venue's front
+  // door against a CENTROID and print the result as a fact: "Kata On Fire ->
+  // Sugar Marina Hotel" is a 450 m walk, but the hotel had no verified
+  // coordinate, fell to the centroid of "Phuket" - which Nominatim answers with
+  // the PROVINCE, 14.2 km away - and the card read "~27 min by taxi, ~14 km".
+  // Neither number was about anything.
+  //
+  // A centroid cannot resolve distances inside its own city, so a leg with one
+  // at either end and both ends in the SAME city is not a measurement and must
+  // not be drawn (dayDistanceChain enforces it). Between different cities it
+  // still is one, and those legs are unaffected.
+  const CITY_PRECISION = 'city';
+  const VENUE_PRECISION = 'venue';
+  function placePoint({ key, name, city, strict }) {
     const anchor = cityPoint(city);
+    const cityKey = anchor ? anchor.key : ('c:' + String(city || '').trim().toLowerCase());
+    const tag = (p, precision) => (p ? { ...p, precision, cityKey } : null);
     const venue = venuePoint(key);
-    if (venue && plausiblePlacePoint(venue, anchor)) return venue;
+    if (venue && plausiblePlacePoint(venue, anchor)) return tag(venue, VENUE_PRECISION);
     if (venue && anchor) placesLog('point rejected: outside its own city', { key, city, venue, anchor });
     // A place the resolver actively REFUSED on geography gets no point at all,
     // not even the city centroid. Everywhere else the centroid is the honest
@@ -6545,7 +6595,25 @@
         return null;
       }
     }
-    return (name ? cityPoint(name) : null) || anchor;
+    // The hotel-picker rung is a real doorstep (rememberPickedHotel seeds the
+    // geocode cache under the hotel's own name), so it counts as a venue; the
+    // city anchor below is the only rung that does not.
+    const doorstep = tag(name ? cityPoint(name) : null, VENUE_PRECISION);
+    if (doorstep) return doorstep;
+    // A STRICT row has no location of its own: it borrows a specific building's
+    // (a "Return to hotel" borrows the day's stay). If that building could not
+    // be located, the honest answer is that we do not know where the leg ends -
+    // NOT the centre of the city it is in. The centroid rung exists for a row
+    // nobody looked up, and answering "Return to hotel" with the middle of
+    // Phuket province is how a 450 m walk became a 14 km taxi ride and how the
+    // Day Route map put the last pin 14 km north of the first. No point means
+    // no pin, no chip and no leg, which is the state the surfaces already have
+    // for anything they cannot place.
+    if (strict) {
+      placesLog('no point: a derived row will not borrow a city centroid', { key, city });
+      return null;
+    }
+    return tag(anchor, CITY_PRECISION);
   }
 
   // ---------- distance chips (Days rows + assistant cards) ----------
@@ -6555,18 +6623,50 @@
   // itemDistAttrs), which is what lets this be a pure read of the DOM plus the
   // caches: it can run again after any lookup lands without the caller having
   // to hold on to the data the view was built from.
-  function distAttrs(query, name, city, label, key) {
+  // `strict` marks a row whose place is DERIVED from another item rather than
+  // being its own - today that is exactly a travel leg returning to a stay. A
+  // strict row refuses the city-centroid rung: see placePoint.
+  function distAttrs(query, name, city, label, key, strict) {
     return ` data-dist-q="${esc(query || '')}" data-dist-name="${esc(name || '')}"`
       + ` data-dist-city="${esc(city || '')}" data-dist-label="${esc(label || '')}"`
-      + ` data-dist-key="${esc(key || '')}"`;
+      + ` data-dist-key="${esc(key || '')}"${strict ? ' data-dist-strict="1"' : ''}`;
   }
   // The hotel-picker rung is only offered to a stay: it looks the TITLE up in
   // the geocode cache, which is a hotel's own doorstep for a stay and a
   // coincidence for anything else.
+  // THE STAY A TRAVEL LEG ENDS AT, and why a leg is not a place of its own
+  // (owner report with the Day Route map, 2026-09-05).
+  //
+  // "Return to hotel" is not somewhere you look up. It IS the stay it returns
+  // to, and it must resolve to the SAME entity - the same place key, the same
+  // Google place ID, the same coordinates - as that stay's own row. It did not:
+  // the stay row was offered the hotel-picker rung (a doorstep the traveller
+  // themselves chose, seeded locally by rememberPickedHotel, needing no
+  // network), while the leg was denied it for the sole reason that
+  // `isStay(leg)` is false. So the leg fell all the way down to the city
+  // anchor, and Nominatim answers "Phuket" with the PROVINCE - 14 km north of
+  // Kata Beach. That is why the Day Route map plotted stop 3 far north of stop
+  // 1 while both were labelled with the same hotel, why the card read "~14 km"
+  // for a 450 m walk, and why the day footer totalled it as a taxi ride.
+  //
+  // One canonical location, derived from the accommodation assigned to the
+  // day, is the invariant. The assistant's pre-add card already had this rung
+  // (its own hotel rung); the persisted itinerary row, the
+  // Days chain and the route map did not, which is exactly why the number was
+  // right on the proposal card and wrong once the item was added.
+  const legDestStay = (it, trip) => legDestinationStay(it, ((trip || activeTrip()) || {}).items);
+  const distTargetFor = (it, trip) => legDestStay(it, trip) || it;
+
   function itemDistAttrs(it) {
-    const lookup = placeFor(it);
-    return distAttrs(lookup ? lookup.query : '', isStay(it) ? displayTitle(it) : '',
-      (it.location || '').trim(), displayTitle(it), lookup ? lookup.key : '');
+    const trip = activeTrip();
+    const stay = legDestStay(it, trip);
+    const target = stay || it;
+    const lookup = placeFor(target, trip);
+    // The LABEL stays the row's own title ("Return to hotel"); everything that
+    // locates it comes from the stay.
+    return distAttrs(lookup ? lookup.query : '',
+      (isStay(target) ? displayTitle(target) : ''),
+      (target.location || '').trim(), displayTitle(it), lookup ? lookup.key : '', !!stay);
   }
   // The airports table is the precise rung for an "(KEF)"-style arrival
   // anchor: exact coordinates, no geocoder, and the file already ships with
@@ -6593,7 +6693,8 @@
     const query = anchor ? d.anchorQ : d.distQ;
     const city = anchor ? d.anchorCity : d.distCity;
     const key = anchor ? (d.anchorKey || '') : (d.distKey || '');
-    const p = placePoint({ key, name: anchor ? d.anchorName : d.distName, city });
+    const p = placePoint({ key, name: anchor ? d.anchorName : d.distName, city,
+      strict: !anchor && d.distStrict === '1' });
     // `query` is what a DIRECTIONS link can be built from, which the coordinates
     // cannot be: Maps wants a place, not a lat/lon the traveller never typed.
     return p ? { ...p, label, query: query || city || '' } : null;
@@ -6738,13 +6839,18 @@
   // activity that happens to be named after a city.
   function resolveOriginPoint(spec) {
     if (!spec) return null;
-    const lookup = (spec.item && spec.source !== 'arrival') ? placeFor(spec.item) : null;
+    // A leg that ends at a stay is located BY that stay (see legDestStay), so
+    // an origin that is a "Return to hotel" resolves to the hotel's own point
+    // rather than to the city it sits in.
+    const target = (spec.item && spec.source !== 'arrival') ? distTargetFor(spec.item) : null;
+    const lookup = target ? placeFor(target) : null;
     const p = (spec.iata && airportPointByIata(spec.iata))
-      || (spec.item && spec.source !== 'arrival'
+      || (target
         ? placePoint({
           key: lookup ? lookup.key : '',
-          name: isStay(spec.item) ? displayTitle(spec.item) : '',
-          city: spec.city,
+          name: isStay(target) ? displayTitle(target) : '',
+          city: (target.location || '').trim() || spec.city,
+          strict: target !== spec.item,
         })
         : cityPoint(spec.city));
     if (!p) return null;
@@ -6772,9 +6878,12 @@
     // asked for under the SAME area-aware key its own row uses - not under a
     // bare query that a different city could collide with.
     if (spec.item && spec.source !== 'arrival') {
-      const lookup = placeFor(spec.item);
+      // Under the target's key, not the leg's, so the top-up fills the same
+      // cache entry resolveOriginPoint will read (see legDestStay).
+      const target = distTargetFor(spec.item);
+      const lookup = placeFor(target);
       if (lookup && !venueCache[lookup.key]) {
-        wanted.push({ query: lookup.query, key: lookup.key, city: (spec.item.location || '').trim() });
+        wanted.push({ query: lookup.query, key: lookup.key, city: (target.location || '').trim() });
       }
     }
   }
@@ -10026,13 +10135,51 @@
     });
   }
 
-  // A resolved session entry is GOOD ENOUGH to recommend when the server
-  // verified it against the itinerary's own geography. Note this accepts a
-  // verified place Google has no rating for: unrated is not unverified, and a
-  // real hole-in-the-wall in the right city is a better answer than a famous
-  // shop in the wrong one.
-  const isVerifiedEntry = e => !!e && e.verified === true
+  // TWO DIFFERENT QUESTIONS, and conflating them is what made the assistant
+  // answer "I could not verify any places" for whole tourist destinations
+  // (owner report, 2026-09-05).
+  //
+  //   RESOLVED - Google returned a real Maps entity whose name the query
+  //     accounts for. This is the anti-hallucination gate: a venue the model
+  //     invented comes back `not_found` or `low_confidence` and never gets
+  //     here. It is what decides whether a place may be RECOMMENDED.
+  //
+  //   VERIFIED - the area was actually checked and agreed. This is the
+  //     anti-wrong-BRANCH gate. It is what decides whether we may draw a
+  //     coordinate, a distance chip or a persisted place record, and it stays
+  //     exactly as strict as it was.
+  //
+  // A place can be resolved without being verified: "Anna's Restaurant" on a
+  // day the itinerary calls "Railay Beach" resolves to the real Ao Nang
+  // restaurant, but with no coordinate for Railay nothing can confirm the
+  // branch. Recommending it is right - it is a real restaurant, and the
+  // traveller asked for restaurants. Drawing "14 km" next to it would not be,
+  // and that is the other gate's job.
+  //
+  // `wrong_area` is excluded on purpose: there the area WAS checked and the
+  // only candidate was somewhere else entirely.
+  const isResolvedEntry = e => !!e
     && (e.status === 'ok' || (e.status === 'no_match' && e.reason === 'unrated'));
+  const isVerifiedEntry = e => isResolvedEntry(e) && e.verified === true;
+
+  // How long to wait for the day's city to geocode before verifying without it.
+  // Nominatim is paced at roughly a second a call and this runs once per
+  // discovery turn, behind the "Checking these places..." line the traveller is
+  // already watching.
+  const AREA_POINT_WAIT_MS = 4000;
+
+  // Fetch the coordinates the area gate wants, for the distinct cities in a
+  // batch of lookups. Cached entries resolve instantly and cost nothing.
+  function warmAreaPoints(lookups) {
+    const cities = [...new Set((lookups || [])
+      .map(l => String((l && l.area && l.area.city) || '').trim())
+      .filter(c => c.length > 2 && !cityPoint(c)))].slice(0, 3);
+    if (!cities.length || !navigator.onLine) return Promise.resolve();
+    return Promise.race([
+      Promise.all(cities.map(c => geocode(c).catch(() => null))),
+      new Promise(r => setTimeout(r, AREA_POINT_WAIT_MS)),
+    ]).then(() => { /* whatever landed is in geoCache; the rest stay unchecked */ });
+  }
 
   // Ask the provider for replacement candidates. This is the DETERMINISTIC
   // half of the replacement loop and the reason there is no second model turn:
@@ -10115,6 +10262,23 @@
     }
     if (!candidates.length) return { kept: proposals, rejected: [], passthrough: [], requested };
 
+    // GEOCODE THE DAY'S CITY FIRST. The area gate can only judge a branch
+    // against a coordinate, and `cityPoint` is cache-only: on the first
+    // assistant turn of a session there is nothing in it, so the whole batch
+    // used to be judged on administrative names alone. One geocode (cached for
+    // the session and persisted for 500 cities) buys the coordinate for every
+    // candidate in the batch. Bounded, and never fatal: if it does not land in
+    // time the lookups go ahead exactly as before, unchecked rather than wrong.
+    //
+    // The place key is city-first (placeAreaKey), so a point arriving here can
+    // never re-key a lookup that was already built - which is what makes it
+    // safe to REBUILD each lookup afterwards. Rebuilding is the point: the
+    // lookups above were derived before the geocode landed, so they carry no
+    // coordinate, and without this the freshly fetched point would never reach
+    // the wire and the gate would still be judging on names alone.
+    await warmAreaPoints(candidates.map(c => c.lookup));
+    for (const c of candidates) c.lookup = proposalPlaceLookup(c.proposal) || c.lookup;
+
     placesLog('discovery: verifying', candidates.map(c => c.lookup.key));
     placesQueue.request(candidates.map(c => c.lookup), { priority: 'urgent' });
     await awaitPlaceKeys(candidates.map(c => c.lookup.key), DISCOVERY_WAIT_MS);
@@ -10126,7 +10290,10 @@
     for (const c of candidates) {
       const entry = placesCache.get(c.lookup.key);
       const identity = placeIdentityOf(entry, c.lookup);
-      if (!isVerifiedEntry(entry) || (identity && seen.has(identity))) {
+      // RESOLVED, not verified: see the note on isResolvedEntry. A real venue
+      // whose branch could not be confirmed is still a real venue, and dropping
+      // it here is what emptied a whole day's answer.
+      if (!isResolvedEntry(entry) || (identity && seen.has(identity))) {
         rejected.push({ ...c, entry, identity, name: c.proposal.display.title || '' });
         if (identity) seen.add(identity);
         continue;
@@ -10169,7 +10336,7 @@
         if (!made) continue;
         const identity = placeIdentityOf(made.entry, made.lookup);
         if (!identity || seen.has(identity)) continue;
-        if (!isVerifiedEntry(made.entry)) continue;
+        if (!isResolvedEntry(made.entry)) continue;
         seen.add(identity);
         kept.push({ ...made, identity, name: made.proposal.display.title || '', replacement: true });
       }
@@ -10289,10 +10456,19 @@
   function proposalDistAttrs(p, trip) {
     const f = p.fields;
     if (!f) return '';
-    const lookup = proposalPlaceLookup(p);
+    // THE SAME canonical resolution the itinerary row will use once this card
+    // is accepted (legDestinationStay). Before this round the two sides derived
+    // a leg's location DIFFERENTLY - the card was offered the hotel rung and
+    // the row it became was not - so an accepted "Return to hotel" silently
+    // moved from the hotel's doorstep to the centre of its city. That is the
+    // regression the owner saw as a correct number on the proposal card and
+    // "~14 km" the moment they pressed add. One rule, both sides.
+    const t = trip || activeTrip();
+    const stay = legDestinationStay(f, (t && t.items) || []);
+    const lookup = stay ? placeFor(stay, t) : proposalPlaceLookup(p);
     const query = (lookup && lookup.query) || '';
     const key = (lookup && lookup.key) || '';
-    const city = String(f.location || '').trim();
+    const city = (stay ? String(stay.location || '') : String(f.location || '')).trim();
     if (!query && !city) return '';
     const time = /^\d{2}:\d{2}$/.test(String(f.startTime || '')) ? f.startTime : '';
     // A travel leg's destination can be a place the trip ALREADY knows: the
@@ -10306,21 +10482,8 @@
     // find a small hotel. Offering the stay's title as the name rung is the
     // exact offer itemDistAttrs makes for the stay's own row, gated the same
     // way: only when the destination IS that stay.
-    const stayName = isTravelLeg({ type: f.type }) ? legDestStayName(query, trip) : '';
-    return distAttrs(query, stayName, city, f.title || '', key) + ` data-dist-time="${esc(time)}"`;
-  }
-  // The stay this leg ends at, by its searchable name: a match on the stay's
-  // own maps query or its display title (case-folded) is the trip saying
-  // "that destination is my hotel".
-  function legDestStayName(query, trip) {
-    if (!query || !trip) return '';
-    const q = query.toLowerCase();
-    for (const it of trip.items) {
-      if (!isStay(it) || it.status === 'cancelled') continue;
-      const title = displayTitle(it);
-      if (q === title.toLowerCase() || q === itemMapsQuery(it).toLowerCase()) return title;
-    }
-    return '';
+    return distAttrs(query, stay ? displayTitle(stay) : '', city, f.title || '', key, !!stay)
+      + ` data-dist-time="${esc(time)}"`;
   }
   const proposalDistHtml = (p, trip) => `<span class="ap-dist"${proposalDistAttrs(p, trip)}></span>`;
 

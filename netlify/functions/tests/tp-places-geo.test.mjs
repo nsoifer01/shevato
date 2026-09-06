@@ -78,11 +78,49 @@ test('the same-city candidate passes the same gate', () => {
   assert.equal(v.basis, 'point');
 });
 
-test('with no coordinate for the city, the ADDRESS answers instead', () => {
+test('with no coordinate for the city, the ADDRESS can CONFIRM', () => {
   const area = normalizeArea({ city: 'Tokyo', country: 'Japan' });
-  assert.equal(verifyArea(ROYCE_HOKKAIDO, area).ok, false, 'Hokkaido address does not mention Tokyo');
-  assert.equal(verifyArea(ROYCE_TOKYO, area).ok, true);
-  assert.equal(verifyArea(ROYCE_TOKYO, area).basis, 'address');
+  const v = verifyArea(ROYCE_TOKYO, area);
+  assert.equal(v.ok, true);
+  assert.equal(v.checked, true);
+  assert.equal(v.basis, 'address');
+  assert.equal(v.reason, 'city_match');
+});
+
+// REVISED 2026-09-05. This assertion used to read `.ok === false`, and that is
+// the line that made the assistant unusable in most of the world: an address
+// that does not happen to print the traveller's word for the place was treated
+// as PROOF the venue was somewhere else. It is not proof of anything (see
+// verifyArea, and the Railay/Kata tests below); the honest verdict is that
+// nothing could be checked.
+//
+// The protection the old assertion was reaching for is still here and is what
+// this test now pins: an unconfirmed candidate is NOT verified, so it carries
+// no coordinate, draws no distance chip, is never persisted as a place record,
+// and its confidence is capped below anything a checked result can score.
+test('with no coordinate for the city, a non-matching address is UNCHECKED, not refused', () => {
+  const area = normalizeArea({ city: 'Tokyo', country: 'Japan' });
+  const v = verifyArea(ROYCE_HOKKAIDO, area);
+  assert.equal(v.ok, true, 'an absent locality name is not evidence of a wrong branch');
+  assert.equal(v.checked, false, 'and it is emphatically not a confirmation either');
+  assert.equal(v.reason, 'city_unconfirmed');
+  assert.ok(resolutionConfidence(0.67, v) <= UNCHECKED_MAX_CONFIDENCE);
+});
+
+test('a country that is genuinely absent from the address IS evidence, and refuses', () => {
+  // The wrong-continent case the gate exists for, reached without a coordinate:
+  // a Japan trip, an address in the United Kingdom.
+  const area = normalizeArea({ city: 'Tokyo', country: 'Japan' });
+  const ritzLondon = {
+    name: 'The Ritz London', lat: 51.5074, lon: -0.1419,
+    address: '150 Piccadilly, London W1J 9BR, United Kingdom',
+    addressComponents: [{ longText: 'London', shortText: 'London' }, { longText: 'United Kingdom', shortText: 'GB' }],
+  };
+  const v = verifyArea(ritzLondon, area);
+  assert.equal(v.ok, false);
+  assert.equal(v.checked, true);
+  assert.equal(v.reason, 'country_mismatch');
+  assert.equal(resolutionConfidence(1, v), 0);
 });
 
 test('the gate is generic: it rejects a wrong-city branch anywhere on earth', () => {

@@ -233,17 +233,40 @@ export function verifyArea(place, area) {
       return { ok: true, checked: true, basis: 'address', reason: 'city_match' };
     }
     if (area.country && addressMentions(text, area.country)) {
-      // The country agreeing while the city does not is the weakest pass this
-      // gate gives: it stops a Tokyo query resolving to Hokkaido only when the
-      // city name is genuinely absent from the address, which it is here. It
-      // is reported as a distinct reason so the confidence score can mark it
-      // down and the log can show why a card looked shaky.
-      return {
-        ok: !area.city, checked: true, basis: 'address',
-        reason: area.city ? 'city_missing' : 'country_match',
-      };
+      // WHY THIS IS NOT A REJECTION (fixed 2026-09-05, reported by the owner).
+      // It used to be, and that is what made the assistant unusable across most
+      // of the world's resort and island destinations.
+      //
+      // The expected city is a name a HUMAN wrote on an itinerary - "Railay
+      // Beach", "Kata Beach", "Ao Nang", "Phi Phi". Google addresses that place
+      // by its ADMINISTRATIVE chain - "Ao Nang, Mueang Krabi District, Krabi",
+      // "Karon, Mueang Phuket District, Phuket". The two agree only when the
+      // traveller happens to have typed the name of an administrative unit, so
+      // for a beach, a resort strip, an island or any sub-locality they never
+      // agree, and every real venue in the area was refused as `wrong_area`
+      // with a name score of 1.00.
+      //
+      // A locality name that does not appear in an address is not EVIDENCE of
+      // anything. It is the absence of evidence, and the module's own contract
+      // (see addressMentions) says this check may only ever CONFIRM. So the
+      // honest verdict is "could not check", which is a real state this
+      // function already has: the caller gets an unverified resolution, which
+      // carries no coordinate, draws no distance chip and links as "Verify on
+      // Google Maps" rather than "Open". A wrong BRANCH is caught by the point
+      // basis above, which is the branch that runs whenever a chip could
+      // actually be drawn - and by the second look the caller now takes.
+      return area.city
+        ? { ok: true, checked: false, basis: 'address', reason: 'city_unconfirmed' }
+        : { ok: true, checked: true, basis: 'address', reason: 'country_match' };
     }
-    return { ok: false, checked: true, basis: 'address', reason: 'address_mismatch' };
+    // A country that was expected and is genuinely absent from the address IS
+    // evidence, and it is the wrong-continent case this gate exists for.
+    if (area.country) {
+      return { ok: false, checked: true, basis: 'address', reason: 'country_mismatch' };
+    }
+    // Only a city was expected and the address does not name it. Nothing
+    // corroborates and nothing contradicts; see the note above.
+    return { ok: true, checked: false, basis: 'address', reason: 'city_unconfirmed' };
   }
 
   // Context existed but the place carried nothing to compare it against

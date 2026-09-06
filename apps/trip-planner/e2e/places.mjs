@@ -966,5 +966,374 @@ Enjoy!
     });
   }
 
+  /* ===== P17. A SUB-LOCALITY DESTINATION STILL GETS AN ANSWER =============
+     The 2026-09-05 report: whole days in Krabi/Phuket came back "I could not
+     verify any places for this on Google Maps, so I have not added any."
+     The venues were real; the itinerary just called the place "Railay Beach"
+     while Google addresses it "Ao Nang, Mueang Krabi District, Krabi", so the
+     area gate refused every one of them with a PERFECT name score.
+     Here the server answers the way it now does for that shape - resolved,
+     name-confident, but unverified because nothing could confirm the branch -
+     and the answer must contain the places rather than an apology. */
+  freshIds();
+  {
+    const day = iso(24);
+    const P17_REPLY = `Here are three good spots for your day.
+
+- P17 Anna Kitchen is a local favourite.
+- P17 Sunset Terrace has the view.
+- P17 Harbour Grill does great seafood.
+
+\`\`\`json
+{"tripActions":[
+ {"op":"add","discovery":{"query":"restaurants","count":3},"item":{"type":"activity","title":"P17 Anna Kitchen","location":"Railay Beach","startDate":"${day}","startTime":"12:00","mapsQuery":"P17 Anna Kitchen Railay Beach"}},
+ {"op":"add","item":{"type":"activity","title":"P17 Sunset Terrace","location":"Railay Beach","startDate":"${day}","startTime":"18:00","mapsQuery":"P17 Sunset Terrace Railay Beach"}},
+ {"op":"add","item":{"type":"activity","title":"P17 Harbour Grill","location":"Railay Beach","startDate":"${day}","startTime":"20:00","mapsQuery":"P17 Harbour Grill Railay Beach"}}
+]}
+\`\`\``;
+
+    // Every venue RESOLVES (a real Google entity, name confirmed) but none is
+    // VERIFIED: the trip has no coordinate for "Railay Beach" and Google's
+    // address for each says Ao Nang / Krabi. This is exactly the payload the
+    // fixed server returns for `city_unconfirmed`.
+    const p17Net = (url, request) => {
+      if (!url.includes('tp-places')) return EXTERNAL_HOSTS.test(url) ? 'fail' : null;
+      let body = {};
+      try { body = JSON.parse(request.postData || '{}'); } catch { /* empty */ }
+      if (body.discover) return { status: 200, body: { discovered: true, results: [] } };
+      const entries = (body.queries || []).map(toEntry);
+      const results = entries.map((e, i) => ({
+        id: e.id, query: e.q, status: 'ok', name: e.q,
+        rating: 4.3 + i * 0.1, userRatingCount: 400 + i,
+        mapsUri: 'https://maps.google.com/?cid=' + i,
+        placeId: 'PID_' + i, verified: false, areaBasis: 'address', confidence: 0.5,
+      }));
+      return { status: 200, body: { results, attribution: { text: 'Google Maps', url: 'https://www.google.com/maps' } } };
+    };
+
+    const p17Trip = trip({ name: 'P17 sub-locality', items: [
+      item({ type: 'stay', title: 'P17 Beach Resort', location: 'Railay Beach', startDate: iso(23), endDate: iso(26), status: 'booked' }),
+    ] });
+
+    await withPage('tp-places P17', { db: dbOf([p17Trip]), net: p17Net }, async (s) => {
+      await clickSel(s, '#assistBtn');
+      await waitForExpr(s, `!!document.querySelector('#assistTierGroup')`, { timeout: 6000 });
+      await evaluate(s, `(()=>{const r=document.querySelector('#assistTierGroup input[value="copy"]');
+        if (r && !r.checked) r.click(); return 1})()`);
+      await waitForExpr(s, `!!document.querySelector('#assistPasteBox')`, { timeout: 6000 });
+      await setValue(s, '#assistPasteBox', P17_REPLY);
+      await clickSel(s, '#assistPasteParse', { settle: 400 });
+      await waitForExpr(s, `document.querySelectorAll('#assistMessages .assist-proposal').length >= 1`, { timeout: 20000 });
+      await sleep(900);
+
+      const out = await evaluate(s, `({
+        titles: [...document.querySelectorAll('#assistMessages .ap-title')].map(e=>e.textContent.trim()),
+        note: ((document.querySelector('#assistMessages .assist-verified-note')||{}).textContent||''),
+        prose: [...document.querySelectorAll('#assistMessages .assist-msg.assistant')].map(e=>e.textContent).join(' | '),
+        chips: [...document.querySelectorAll('#assistMessages .ap-dist')].map(e=>e.textContent.trim()),
+      })`);
+
+      await t('tp-places P17: THE REGRESSION - a sub-locality day still returns its places',
+        out.titles.length === 3, JSON.stringify(out.titles), s);
+      await t('tp-places P17: and never claims it could not verify any of them',
+        !/could not verify any places/i.test(out.note + ' ' + out.prose),
+        JSON.stringify({ note: out.note, prose: out.prose.slice(0, 200) }), s);
+      await t('tp-places P17: an unverified place draws NO distance chip rather than a wrong one',
+        out.chips.every(c => c === ''), JSON.stringify(out.chips), s);
+    });
+  }
+
+  /* ===== P18. RETURN TO HOTEL IS THE HOTEL ================================
+     From the Day Route map in the 2026-09-05 report: stop 1 (the hotel) and
+     stop 2 (dinner) sat together, and stop 3 - "Return to hotel", the SAME
+     hotel - was plotted ~14 km north, on the centroid of the province. The
+     leg was denied the hotel-picker rung purely because isStay(leg) is false.
+     The invariant: the last stop must coincide with the first. */
+  freshIds();
+  {
+    const day = iso(24);
+    const p18Trip = trip({ name: 'P18 return', items: [
+      item({ id: 'p18-hotel', type: 'stay', title: 'P18 Beach Resort', location: 'Phuket',
+        startDate: iso(23), endDate: iso(26), status: 'booked' }),
+      item({ id: 'p18-dinner', type: 'activity', title: 'P18 Grill House', location: 'Phuket',
+        mapsQuery: 'P18 Grill House', startDate: day, startTime: '19:00', status: 'booked' }),
+      item({ id: 'p18-ret', type: 'local', title: 'Return to hotel', location: 'Phuket',
+        mapsQuery: 'P18 Beach Resort', startDate: day, startTime: '21:30', status: 'booked' }),
+    ] });
+
+    await withPage('tp-places P18', { db: dbOf([p18Trip]), net: (url) => (url.includes('tp-places')
+      ? { status: 200, body: { results: [] } } : (EXTERNAL_HOSTS.test(url) ? 'fail' : null)) }, async (s) => {
+      // The caches in the state that produced the report: "Phuket" geocoded to
+      // the PROVINCE centroid (what Nominatim actually answers), the hotel's
+      // own doorstep seeded under its NAME by the hotel picker, and the dinner
+      // resolved through Places. Nothing locates the LEG.
+      await evaluate(s, `(() => {
+        const now = Date.now();
+        const venue = {};
+        venue[TripLogic.placeCacheKey('P18 Grill House', { city: 'Phuket' })] = { lat: 7.8180, lon: 98.2980, at: now };
+        localStorage.setItem('trip-planner:venuegeo:v1', JSON.stringify(venue));
+        localStorage.setItem('trip-planner:geo:v3', JSON.stringify({
+          phuket: { lat: 7.9366, lon: 98.3529, country: 'Thailand', conf: 'confident' },
+          'p18 beach resort': { lat: 7.8203, lon: 98.2988, country: 'Thailand', conf: 'confident' },
+        }));
+        return 1; })()`);
+      await gotoHard(s, base + APP + '#days');
+      await waitForExpr(s, `document.querySelectorAll('#daysList .dc-event').length >= 2`, { timeout: 12000 });
+      await sleep(900);
+
+      const chips = await evaluate(s, `[...document.querySelectorAll('.dc-event')].map(r => ({
+        title: ((r.querySelector('.dc-title')||{}).textContent||'').replace(/\\s+/g,' ').trim(),
+        dist: ((r.querySelector('.dc-dist')||{}).textContent||'').trim(),
+      }))`);
+      const ret = chips.find(c => /Return to hotel/.test(c.title)) || {};
+      const km = str => { const m = /~([\d.]+)\s*(km|mi)\b/.exec(str || ''); return m ? (m[2] === 'mi' ? Number(m[1]) / 0.621371 : Number(m[1])) : null; };
+      await t('tp-places P18: THE REGRESSION - the walk home is a walk, not a 14 km taxi ride',
+        km(ret.dist) !== null && km(ret.dist) < 1.5, JSON.stringify(ret), s);
+
+      // and the map agrees: the last pin sits on the first
+      await clickSel(s, '[data-act="day-route"]', { settle: 900 });
+      await waitForExpr(s, `document.querySelectorAll('#dayRouteCanvas .stop-pin').length >= 3`, { timeout: 10000 });
+      const spread = await evaluate(s, `(() => {
+        const pins = [...document.querySelectorAll('#dayRouteCanvas .stop-pin')];
+        const box = p => { const r = p.getBoundingClientRect(); return { x: r.left + r.width/2, y: r.top + r.height/2 }; };
+        const a = box(pins[0]), c = box(pins[pins.length - 1]);
+        return { n: pins.length, dx: Math.abs(a.x - c.x), dy: Math.abs(a.y - c.y) }; })()`);
+      await t('tp-places P18: the Day route map plots the return ON the hotel, not north of it',
+        spread.dx < 40 && spread.dy < 40, JSON.stringify(spread), s);
+    });
+  }
+
+  /* ===== P19. THE ACCEPT PATH: the card and the row it becomes agree ======
+     The sharpest half of the 2026-09-05 route report. The pre-add proposal
+     card measured the return leg correctly (it had the hotel rung); the
+     itinerary row it became did not, so pressing "Add to trip" moved the
+     destination from the hotel's doorstep to the centre of its city and the
+     chip jumped from a walk to a 14 km taxi ride.
+     This drives the whole chain in the browser - suggestion, card, accept,
+     itinerary, day chain - and asserts the number does not move. */
+  freshIds();
+  {
+    const day = iso(24);
+    const P19_REPLY = `Here is the end of your evening.
+
+\`\`\`json
+{"tripActions":[
+ {"op":"add","item":{"type":"local","title":"Return to hotel","location":"Phuket","startDate":"${day}","startTime":"21:30","mapsQuery":"P19 Beach Resort"}}
+]}
+\`\`\``;
+
+    const p19Trip = trip({ name: 'P19 accept', items: [
+      item({ id: 'p19-hotel', type: 'stay', title: 'P19 Beach Resort', location: 'Phuket',
+        startDate: iso(23), endDate: iso(26), status: 'booked' }),
+      item({ id: 'p19-dinner', type: 'activity', title: 'P19 Grill House', location: 'Phuket',
+        mapsQuery: 'P19 Grill House', startDate: day, startTime: '19:00', status: 'booked' }),
+    ] });
+
+    await withPage('tp-places P19', { db: dbOf([p19Trip]), net: (url) => (url.includes('tp-places')
+      ? { status: 200, body: { results: [] } } : (EXTERNAL_HOSTS.test(url) ? 'fail' : null)) }, async (s) => {
+      // Same cache state as P18: "Phuket" is the province centroid, the hotel
+      // has its own picked doorstep, the dinner is resolved, the LEG is not.
+      await evaluate(s, `(() => {
+        const now = Date.now();
+        const venue = {};
+        venue[TripLogic.placeCacheKey('P19 Grill House', { city: 'Phuket' })] = { lat: 7.8180, lon: 98.2980, at: now };
+        localStorage.setItem('trip-planner:venuegeo:v1', JSON.stringify(venue));
+        localStorage.setItem('trip-planner:geo:v3', JSON.stringify({
+          phuket: { lat: 7.9366, lon: 98.3529, country: 'Thailand', conf: 'confident' },
+          'p19 beach resort': { lat: 7.8203, lon: 98.2988, country: 'Thailand', conf: 'confident' },
+        }));
+        return 1; })()`);
+      await gotoHard(s, base + APP);
+      await clickSel(s, '#assistBtn');
+      await waitForExpr(s, `!!document.querySelector('#assistTierGroup')`, { timeout: 6000 });
+      await evaluate(s, `(()=>{const r=document.querySelector('#assistTierGroup input[value="copy"]');
+        if (r && !r.checked) r.click(); return 1})()`);
+      await waitForExpr(s, `!!document.querySelector('#assistPasteBox')`, { timeout: 6000 });
+      await setValue(s, '#assistPasteBox', P19_REPLY);
+      await clickSel(s, '#assistPasteParse', { settle: 500 });
+      await waitForExpr(s, `document.querySelectorAll('#assistMessages .assist-proposal').length >= 1`, { timeout: 12000 });
+      await sleep(900);
+
+      const km = str => { const m = /~([\d.]+)\s*(km|mi)\b/.exec(str || ''); return m ? (m[2] === 'mi' ? Number(m[1]) / 0.621371 : Number(m[1])) : null; };
+      const cardChip = await evaluate(s,
+        `((document.querySelector('#assistMessages .ap-dist')||{}).textContent||'').trim()`);
+      await t('tp-places P19: the proposal card measures the return as a short hop',
+        km(cardChip) !== null && km(cardChip) < 1.5, JSON.stringify(cardChip), s);
+
+      // ACCEPT, then read the itinerary row the same chip became
+      await clickSel(s, '.assist-proposal[data-op="add"] [data-act="accept-proposal"]', { settle: 1000 });
+      await gotoHard(s, base + APP + '#days');
+      await waitForExpr(s, `[...document.querySelectorAll('#daysList .dc-title')].some(e => /Return to hotel/.test(e.textContent))`, { timeout: 12000 });
+      await sleep(900);
+
+      const row = await evaluate(s, `(() => {
+        const r = [...document.querySelectorAll('.dc-event')].find(e => /Return to hotel/.test(e.textContent));
+        return r ? { dist: ((r.querySelector('.dc-dist')||{}).textContent||'').trim() } : null; })()`);
+      await t('tp-places P19: THE REGRESSION - accepting the card does not move the hotel',
+        !!row && km(row.dist) !== null && km(row.dist) < 1.5,
+        JSON.stringify({ card: cardChip, row: row && row.dist }), s);
+      await t('tp-places P19: and the two agree, so no surface can contradict another',
+        !!row && Math.abs(km(row.dist) - km(cardChip)) < 0.2,
+        JSON.stringify({ card: cardChip, row: row && row.dist }), s);
+
+      // the day footer must not report a phantom taxi ride either
+      const footer = await evaluate(s,
+        `((document.querySelector('#daysList .day-card .dc-route-tot')||{}).textContent||'').trim()`);
+      await t('tp-places P19: the day footer totals the real legs, not a 14 km phantom',
+        !/1[0-9](\.\d)?\s*(km|mi)/.test(footer), JSON.stringify(footer), s);
+    });
+  }
+
+  /* ===== P20. AN UNLOCATABLE HOTEL IS UNKNOWN, NOT THE CITY CENTRE =======
+     The rule the owner asked for out loud: a city centroid may stand in for a
+     row nobody looked up, but it must never fabricate a HOTEL's position. Here
+     nothing locates the stay at all, so the return leg has no point - and the
+     surfaces must show nothing rather than a confident wrong number. */
+  freshIds();
+  {
+    const day = iso(24);
+    const p20Trip = trip({ name: 'P20 unknown hotel', items: [
+      item({ id: 'p20-hotel', type: 'stay', title: 'P20 Unlisted Guesthouse', location: 'Phuket',
+        startDate: iso(23), endDate: iso(26), status: 'booked' }),
+      item({ id: 'p20-dinner', type: 'activity', title: 'P20 Grill House', location: 'Phuket',
+        mapsQuery: 'P20 Grill House', startDate: day, startTime: '19:00', status: 'booked' }),
+      item({ id: 'p20-ret', type: 'local', title: 'Return to hotel', location: 'Phuket',
+        mapsQuery: 'P20 Unlisted Guesthouse', startDate: day, startTime: '21:30', status: 'booked' }),
+    ] });
+
+    await withPage('tp-places P20', { db: dbOf([p20Trip]), net: (url) => (url.includes('tp-places')
+      ? { status: 200, body: { results: [] } } : (EXTERNAL_HOSTS.test(url) ? 'fail' : null)) }, async (s) => {
+      await evaluate(s, `(() => {
+        const now = Date.now();
+        const venue = {};
+        venue[TripLogic.placeCacheKey('P20 Grill House', { city: 'Phuket' })] = { lat: 7.8180, lon: 98.2980, at: now };
+        localStorage.setItem('trip-planner:venuegeo:v1', JSON.stringify(venue));
+        // the CITY is geocoded (the province centroid); the guesthouse is not
+        localStorage.setItem('trip-planner:geo:v3', JSON.stringify({
+          phuket: { lat: 7.9366, lon: 98.3529, country: 'Thailand', conf: 'confident' },
+        }));
+        return 1; })()`);
+      await gotoHard(s, base + APP + '#days');
+      await waitForExpr(s, `document.querySelectorAll('#daysList .dc-event').length >= 2`, { timeout: 12000 });
+      await sleep(900);
+      const row = await evaluate(s, `(() => {
+        const r = [...document.querySelectorAll('.dc-event')].find(e => /Return to hotel/.test(e.textContent));
+        return r ? ((r.querySelector('.dc-dist')||{}).textContent||'').trim() : '(no row)'; })()`);
+      await t('tp-places P20: an unlocatable hotel draws NO distance rather than the city centre',
+        row === '', JSON.stringify(row), s);
+    });
+  }
+
+  /* ===== P21. A WHOLE DAY IN A SUB-LOCALITY DESTINATION ===================
+     The owner's actual request shape, end to end: two activities with two
+     options each, breakfast/lunch/dinner with three options each, in Ao Nang -
+     where Google's address for every venue says "Ao Nang, Mueang Krabi
+     District, Krabi" while the itinerary is based at a Railay Beach hotel.
+     One of the thirteen venues is invented.
+     Before the fix this whole answer collapsed to "I could not verify any
+     places for this on Google Maps". */
+  freshIds();
+  {
+    const day = iso(24);
+    const slots = [
+      ['Breakfast', '08:00', ['P21 Sunrise Cafe', 'P21 Beach Bakery', 'P21 Morning Pier']],
+      ['Lunch', '12:30', ['P21 Noodle House', 'P21 Harbour Deck', 'P21 Green Papaya']],
+      ['Dinner', '19:00', ['P21 Lantern Grill', 'P21 Cliff Table', 'P21 Phantom Pavilion']],
+    ];
+    const activities = [
+      ['Morning', '10:00', ['P21 Viewpoint Trail', 'P21 Kayak Lagoon']],
+      ['Afternoon', '15:00', ['P21 Island Hop', 'P21 Cave Temple']],
+    ];
+    // A DISCOVERY turn, which is what the owner's failing request was: the
+    // "I could not verify any places" line only exists on that path. In an
+    // ORDINARY turn an unverifiable venue is deliberately kept and shown
+    // unresolved, because the traveller named it - a different contract, and
+    // one P16 already pins.
+    const adds = [];
+    let hint = '"discovery":{"query":"places for a day in Ao Nang","count":13},';
+    for (const [label, time, opts] of slots) {
+      for (const [i, name] of opts.entries()) {
+        adds.push(`{"op":"add",${hint}"group":"${label.toLowerCase()}","item":{"type":"activity","meal":"${label.toLowerCase()}",`
+          + `"title":${JSON.stringify(name)},"location":"Ao Nang","startDate":"${day}","startTime":"${time}",`
+          + `"mapsQuery":${JSON.stringify(name + ' Ao Nang')}}}`);
+        hint = '';
+        void i;
+      }
+    }
+    for (const [label, time, opts] of activities) {
+      for (const name of opts) {
+        adds.push(`{"op":"add","group":"${label.toLowerCase()}","item":{"type":"activity",`
+          + `"title":${JSON.stringify(name)},"location":"Ao Nang","startDate":"${day}","startTime":"${time}",`
+          + `"mapsQuery":${JSON.stringify(name + ' Ao Nang')}}}`);
+      }
+    }
+    const P21_REPLY = `Here is a full day around Ao Nang, with options for each slot.
+
+\`\`\`json
+{"tripActions":[${adds.join(',')}]}
+\`\`\``;
+
+    // Every venue resolves EXCEPT the invented "Phantom Pavilion", and none is
+    // verified: Google's address says Krabi, the itinerary says Railay Beach.
+    const p21Net = (url, request) => {
+      if (!url.includes('tp-places')) return EXTERNAL_HOSTS.test(url) ? 'fail' : null;
+      let body = {};
+      try { body = JSON.parse(request.postData || '{}'); } catch { /* empty */ }
+      if (body.discover) return { status: 200, body: { discovered: true, results: [] } };
+      const entries = (body.queries || []).map(toEntry);
+      const results = entries.map((e, i) => (/Phantom/.test(e.q)
+        ? { id: e.id, query: e.q, status: 'no_match', reason: 'not_found' }
+        : {
+          id: e.id, query: e.q, status: 'ok', name: e.q.replace(/ Ao Nang$/, ''),
+          rating: 4.1 + (i % 8) / 10, userRatingCount: 200 + i,
+          mapsUri: 'https://maps.google.com/?cid=' + i,
+          placeId: 'PID21_' + i, verified: false, areaBasis: 'address', confidence: 0.5,
+        }));
+      return { status: 200, body: { results, attribution: { text: 'Google Maps', url: 'https://www.google.com/maps' } } };
+    };
+
+    const p21Trip = trip({ name: 'P21 full day', items: [
+      item({ type: 'stay', title: 'P21 Railay Resort', location: 'Railay Beach',
+        startDate: iso(23), endDate: iso(26), status: 'booked' }),
+    ] });
+
+    await withPage('tp-places P21', { db: dbOf([p21Trip]), net: p21Net }, async (s) => {
+      await clickSel(s, '#assistBtn');
+      await waitForExpr(s, `!!document.querySelector('#assistTierGroup')`, { timeout: 6000 });
+      await evaluate(s, `(()=>{const r=document.querySelector('#assistTierGroup input[value="copy"]');
+        if (r && !r.checked) r.click(); return 1})()`);
+      await waitForExpr(s, `!!document.querySelector('#assistPasteBox')`, { timeout: 6000 });
+      await setValue(s, '#assistPasteBox', P21_REPLY);
+      await clickSel(s, '#assistPasteParse', { settle: 500 });
+      await waitForExpr(s, `document.querySelectorAll('#assistMessages .assist-proposal').length >= 3`, { timeout: 20000 });
+      await sleep(1200);
+
+      const out = await evaluate(s, `({
+        cards: document.querySelectorAll('#assistMessages .assist-proposal').length,
+        sets: document.querySelectorAll('#assistMessages .assist-set').length,
+        titles: [...document.querySelectorAll('#assistMessages .ap-title, #assistMessages .as-title')]
+          .map(e => e.textContent.trim()),
+        note: ((document.querySelector('#assistMessages .assist-verified-note')||{}).textContent||''),
+        prose: [...document.querySelectorAll('#assistMessages .assist-msg.assistant')].map(e=>e.textContent).join(' | '),
+      })`);
+      const named = n => out.titles.some(t => t.includes(n));
+
+      await t('tp-places P21: a whole day in a sub-locality destination still answers',
+        out.cards >= 3, JSON.stringify({ cards: out.cards, sets: out.sets }), s);
+      await t('tp-places P21: and never says it could not verify any places',
+        !/could not verify any places/i.test(out.note + ' ' + out.prose),
+        JSON.stringify({ note: out.note, prose: out.prose.slice(0, 200) }), s);
+      await t('tp-places P21: every meal slot survives verification',
+        named('P21 Sunrise Cafe') && named('P21 Noodle House') && named('P21 Lantern Grill'),
+        JSON.stringify(out.titles.slice(0, 16)), s);
+      await t('tp-places P21: both activity slots survive too',
+        named('P21 Viewpoint Trail') && named('P21 Island Hop'),
+        JSON.stringify(out.titles.slice(0, 16)), s);
+      await t('tp-places P21: ONE invented venue does not take the others with it',
+        !named('P21 Phantom Pavilion') && out.titles.length >= 8,
+        JSON.stringify({ count: out.titles.length, phantom: named('P21 Phantom Pavilion') }), s);
+    });
+  }
+
   return R;
 }

@@ -154,7 +154,10 @@ async function resolveOne(entry, { cache, findPlaceId, fetchDetails, now, claim,
   //
   // The retry costs one more Place Details call, so it takes a budget slot of
   // its own and simply does not happen when the batch has none left.
-  if (judged.rejectedOnArea && area && (area.city || area.point)) {
+  // A candidate that could not be CONFIRMED gets the same second look as one
+  // that was refused. Both are the same question - "is this the branch in the
+  // traveller's area?" - and the first attempt failed to answer it either way.
+  if ((judged.rejectedOnArea || judged.unconfirmed) && area && (area.city || area.point)) {
     const retryQuery = refineQuery(query, area);
     // Worth a second look when EITHER half of the question changes: the text
     // (the city spelled in) or the search itself (restricted rather than
@@ -221,18 +224,29 @@ function judge(query, place, placeId, area) {
   const name = (place && place.name) || '';
   const { score, confident } = matchConfidence(query, name);
   if (!confident) {
-    return { rejectedOnArea: false, area: null, result: { status: 'no_match', reason: 'low_confidence' } };
+    return {
+      rejectedOnArea: false, unconfirmed: false, area: null,
+      result: { status: 'no_match', reason: 'low_confidence' },
+    };
   }
   const at = coords(place);
   const verdict = verifyArea({ ...place, ...at }, area);
   const confidence = resolutionConfidence(score, verdict);
   if (!verdict.ok) {
     return {
-      rejectedOnArea: true, area: verdict,
+      rejectedOnArea: true, unconfirmed: false, area: verdict,
       result: { status: 'no_match', reason: 'wrong_area' },
     };
   }
-  return { rejectedOnArea: false, area: verdict, result: fromDetails(place, placeId, verdict, confidence) };
+  return {
+    rejectedOnArea: false,
+    // The place is a real Maps entity whose name the query accounts for, but
+    // nothing could confirm it is the branch in the traveller's area. Worth a
+    // second look; NOT worth discarding.
+    unconfirmed: !verdict.checked,
+    area: verdict,
+    result: fromDetails(place, placeId, verdict, confidence),
+  };
 }
 
 // Shape the client-facing result for a candidate that passed BOTH gates.
@@ -401,9 +415,21 @@ export async function discoverPlaces({
   // original bug happened in the first place: ask the whole planet for a
   // chocolate shop and the famous one wins, wherever it is. Here we would
   // rather find nothing than find something in the wrong country.
+  //
+  // But `biasFor` can only build a rectangle from a COORDINATE, and returns
+  // null without one - so a trip whose city was never geocoded was in fact
+  // searching globally under a comment promising the opposite. `constrained`
+  // makes that explicit: the strong form is the rectangle; the weak form is the
+  // city spelled into the query text (which discoveryQueryFrom guarantees, and
+  // which is the whole reason "seafood Kata Beach" answers with Kata Beach
+  // seafood). With NEITHER, the search really is global and its candidates may
+  // not be accepted on a verdict nothing could check.
+  const box = biasFor(area, true);
+  const constrained = !!box
+    || !!(area && area.city && normalizeQuery(query).includes(normalizeQuery(area.city)));
   let ids = [];
   try {
-    ids = (await findPlaceIds(query, biasFor(area, true), DISCOVERY_SEARCH_PAGE)) || [];
+    ids = (await findPlaceIds(query, box, DISCOVERY_SEARCH_PAGE)) || [];
   } catch {
     return { results: [], spent: 0, reason: 'upstream' };
   }
@@ -423,9 +449,15 @@ export async function discoverPlaces({
     // makes that a guarantee rather than a hope.
     const at = coords(place);
     const verdict = verifyArea({ ...place, ...at }, area);
-    if (!verdict.ok || !verdict.checked) {
+    // A verdict that CHECKED and disagreed is always fatal. A verdict nothing
+    // could check is fatal only when the search itself was unconstrained: with
+    // a rectangle, or with the city in the query text, Google has already
+    // answered the geographic question and an administrative name that does not
+    // match the traveller's word for the place is not grounds to drop a real
+    // venue (see verifyArea's note on Railay/Ao Nang and Kata/Karon).
+    if (!verdict.ok || (!verdict.checked && !constrained)) {
       logDecision(log, { query, area, placeId: id, place, attempt: 'discover',
-        judged: { area: verdict, result: { status: 'no_match', reason: verdict.ok ? 'unchecked' : 'wrong_area' } } });
+        judged: { area: verdict, result: { status: 'no_match', reason: verdict.ok ? 'unconstrained_search' : 'wrong_area' } } });
       continue;
     }
     // A candidate nobody has rated is a poor REPLACEMENT specifically: the
