@@ -197,6 +197,10 @@ export async function run({ base, cdpPort }) {
       await rec('D1: storage holds only the readable entries (no null / number rivals)',
         rivalsAfter.length === 2 && rivalsAfter.some(r => r.name === 'Dup')
           && rivalsAfter.every(r => r && typeof r === 'object' && typeof r.id === 'string')
+          // `before` is the seeded state (3 games). Without it "after has 1
+          // game" would pass just as well on a seed that was already 1, which
+          // is a check that cannot fail rather than one that has not failed.
+          && JSON.parse(before).length === 3
           && JSON.parse(after).length === 1, JSON.stringify(rivalsAfter), s);
       await rec('D1: the dashboard still renders after the import', await waitForExpr(s, READY, { timeout: 4000 }), '', s);
       const errs = cleanErrors(s);
@@ -216,7 +220,6 @@ export async function run({ base, cdpPort }) {
       await goto(s, base + APP, { settle: 1500 });
       await rec('D1: the app reloads cleanly on the imported data',
         await waitForExpr(s, "document.querySelectorAll('.rival-card').length===1", { timeout: 6000 }), '', s);
-      void before;
     } finally { await closePage(cdpPort, s); }
   }
 

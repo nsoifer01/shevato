@@ -92,7 +92,6 @@ export async function run({ base, cdpPort }) {
     const s = await openPlanner(cdpPort, base, { state: 'inseason', viewport: [390, 844] });
     try {
       await clickText(s, 'History', { settle: 900 });
-      const cols = await evaluate(s, `JSON.stringify([...document.querySelectorAll('.fpl-chart-cols')][0] ? [...document.querySelectorAll('.fpl-chart-cols')][0].querySelectorAll('.fpl-col') : []).replace(/.*/s, '')`);
       const geo = await evaluate(s, `(()=>{
         const chart = document.querySelector('.fpl-chart-cols'); if (!chart) return null;
         return [...chart.querySelectorAll('.fpl-col')].map(c => ({
@@ -109,7 +108,6 @@ export async function run({ base, cdpPort }) {
       }
       await rec('History column fill heights order exactly as their values do', monotone,
         geo ? geo.map(g => `${g.value}:${g.fill.toFixed(0)}`).join(' ') : 'no chart', s);
-      void cols;
     } finally { await closePage(cdpPort, s); }
   }
 
