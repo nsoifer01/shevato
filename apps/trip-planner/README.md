@@ -287,6 +287,19 @@ first because the traveller chose it and it is a building rather than a
 polygon's middle; "nothing" is a real answer that resolves the place and shows
 its rating, which is strictly better than a fabricated verdict that discards it.
 
+The hotel rung has **three** sources, best evidence first: a hotel the traveller
+picked by hand, a point some earlier lookup already pinned, and the stay's own
+Google resolution as it sits in the session cache. The third exists because the
+first two cannot fill on exactly the days that need them (fixed 2026-09-06): a
+hotel's coordinate is only kept once the hotel is verified, verifying needs an
+anchor, and on an island the city geocode is never trustworthy enough to break
+the tie - so the day had no anchor at all, the coordinate branch never ran, and
+a same-named venue 150 km inland passed on its address text. A stay Google
+resolved has a coordinate whatever its area check did, and it is admitted only
+when the name matched perfectly (`confidence >= 0.5`, which is the cap an
+unchecked area imposes). It is evidence for the gate only and never draws a
+chip. The day's stay is therefore resolved **before** the candidates it anchors.
+
 **The search itself is constrained.** `places:searchText` is called with a
 `locationBias` circle around the expected point. That is a request parameter,
 not a field-mask entry, so it changes neither the SKU nor the price. A candidate

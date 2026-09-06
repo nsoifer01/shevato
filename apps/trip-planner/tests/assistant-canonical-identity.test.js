@@ -91,6 +91,113 @@ test('ANCHOR: the venue cache is the other way a stay can produce a doorstep', (
   assert.equal(p.lat, HOTEL_DOORSTEP.lat);
 });
 
+// ---------- A2. the loop that could never close (2026-09-06) ----------
+//
+// THE PRODUCTION REPORT this closes: a live Ko Phi Phi day offered "Phi Phi
+// Bakery" as an 08:00 breakfast option with a distance chip reading ~94 mi.
+// The venue was real and its address said Krabi, so the ADDRESS branch of the
+// gate accepted it; the coordinate branch never ran, because the day had no
+// anchor at all.
+//
+// It had no anchor because of a loop:
+//
+//   the best anchor is the day's hotel
+//   -> the hotel's coordinate is only kept once the hotel is VERIFIED
+//   -> verifying needs an anchor
+//
+// On an island or a beach - where the city geocode is `low` by definition
+// (see the classifier table in FINDINGS) - that loop can never close, so the
+// gate is permanently blind and every branch of a chain 150 km away passes on
+// its address text.
+//
+// The break: a stay that Google RESOLVED, whose name the gate matched, has a
+// coordinate in the session cache already (placeIdentity carries lat/lon
+// whether or not the area was checked). That point is evidence about where the
+// traveller's own hotel is, which is a different and much better question than
+// "where is the middle of the polygon Nominatim thinks this island is".
+
+// A stay as the places session cache holds it after Google resolved the name
+// but could not check the area - which on these days is the normal outcome.
+const RESOLVED_STAY = {
+  status: 'ok', placeId: 'ChIJhotel', confidence: 0.5, verified: false,
+  areaBasis: 'none', ...HOTEL_DOORSTEP,
+};
+
+test('ANCHOR: a stay Google resolved anchors the day, even when its own area could not be checked', () => {
+  const s = stay();
+  const key = L.placeCacheKey(L.itemMapsQuery(s), { city: 'Ko Phi Phi' });
+  const cities = { 'ko phi phi': { ...TRAT_ISLET, conf: 'low', key: 'c:ko phi phi' } };
+  const p = L.areaAnchorFor('Ko Phi Phi', 'Ko Phi Phi', [s], '2027-01-27',
+    { ...io(cities), stayEntry: k => (k === key ? RESOLVED_STAY : null) });
+  assert.ok(p, 'the day now has an anchor, so the coordinate branch of the gate can run');
+  assert.equal(p.lat, HOTEL_DOORSTEP.lat);
+  assert.equal(p.lon, HOTEL_DOORSTEP.lon);
+});
+
+test('ANCHOR: and it is what makes a far-away namesake refusable at all', () => {
+  // The point of an anchor is what it lets the gate REJECT. The reported
+  // breakfast card wore a "~94 mi" chip, and the gate's own radius is
+  // PLACE_AREA_MAX_KM = 150 km = 93.2 mi, so that venue sat just OUTSIDE it:
+  // with an anchor it would have been refused, and with none nothing could
+  // measure it at all. These two assertions are that difference.
+  const s = stay();
+  const key = L.placeCacheKey(L.itemMapsQuery(s), { city: 'Ko Phi Phi' });
+  const anchor = L.areaAnchorFor('Ko Phi Phi', 'Ko Phi Phi', [s], '2027-01-27',
+    { ...io({ 'ko phi phi': { ...TRAT_ISLET, conf: 'low' } }), stayEntry: k => (k === key ? RESOLVED_STAY : null) });
+  // ~151 km due north of the hotel: one minute past the radius.
+  const farNamesake = { lat: HOTEL_DOORSTEP.lat + 1.36, lon: HOTEL_DOORSTEP.lon };
+  assert.equal(L.plausiblePlacePoint(farNamesake, anchor), false,
+    'beyond the radius, and now measurably so');
+  assert.equal(L.plausiblePlacePoint({ lat: 7.7387, lon: 98.7714 }, anchor), true,
+    'while a real venue on the island still passes');
+  // Everything within the radius is untouched: this rung adds evidence, it
+  // does not tighten the gate. Ao Nang is ~33 km away and stays acceptable.
+  assert.equal(L.plausiblePlacePoint({ lat: 8.0320, lon: 98.8210 }, anchor), true);
+  // ...and with no anchor, which is what the day had, nothing is refusable
+  assert.equal(L.plausiblePlacePoint(farNamesake, null), true, 'silence is not evidence');
+});
+
+test('ANCHOR: a stay whose NAME the gate could not match is not evidence', () => {
+  // Confidence is capped at UNCHECKED_MAX_CONFIDENCE (0.5) whenever the area
+  // was not checked, so 0.5 means "the name matched perfectly, only the area
+  // is unknown". Anything below that is a weak name match, and a weak name
+  // match on a chain is exactly how a day would get anchored in another city.
+  const s = stay();
+  const key = L.placeCacheKey(L.itemMapsQuery(s), { city: 'Ko Phi Phi' });
+  const cities = { 'ko phi phi': { ...TRAT_ISLET, conf: 'low', key: 'c:ko phi phi' } };
+  const weak = k => (k === key ? { ...RESOLVED_STAY, confidence: 0.34 } : null);
+  assert.equal(L.areaAnchorFor('Ko Phi Phi', 'Ko Phi Phi', [s], '2027-01-27',
+    { ...io(cities), stayEntry: weak }), null);
+  // nor is an entry that never resolved, or one with no coordinate
+  for (const bad of [{ status: 'no_match', reason: 'not_found' }, { status: 'ok', confidence: 0.5 }, null]) {
+    assert.equal(L.areaAnchorFor('Ko Phi Phi', 'Ko Phi Phi', [s], '2027-01-27',
+      { ...io(cities), stayEntry: () => bad }), null, JSON.stringify(bad));
+  }
+});
+
+test('ANCHOR: the picked doorstep and the venue cache still outrank the places entry', () => {
+  // The new rung is a FALLBACK on the same step, not a replacement: a hotel the
+  // traveller picked by hand is still the best answer available.
+  const s = stay();
+  const key = L.placeCacheKey(L.itemMapsQuery(s), { city: 'Ko Phi Phi' });
+  const picked = { lat: 7.75, lon: 98.78, conf: 'confident', key: 'c:phi phi bayview resort' };
+  const cities = { 'ko phi phi': { ...TRAT_ISLET, conf: 'low' }, 'phi phi bayview resort': picked };
+  const withPicked = L.areaAnchorFor('Ko Phi Phi', 'Ko Phi Phi', [s], '2027-01-27',
+    { ...io(cities), stayEntry: () => RESOLVED_STAY });
+  assert.equal(withPicked.lat, picked.lat, 'the picker rung wins');
+  const withVenue = L.areaAnchorFor('Ko Phi Phi', 'Ko Phi Phi', [s], '2027-01-27',
+    { ...io({ 'ko phi phi': { ...TRAT_ISLET, conf: 'low' } }, { [key]: { lat: 7.76, lon: 98.79 } }), stayEntry: () => RESOLVED_STAY });
+  assert.equal(withVenue.lat, 7.76, 'the venue cache rung wins too');
+});
+
+test('ANCHOR: the places rung obeys the same city restraint as the rest of the stay rung', () => {
+  // "Nikko" on a Tokyo day may not borrow Tokyo's hotel, whichever cache the
+  // hotel's coordinate happens to be sitting in.
+  const s = { ...stay(), title: 'Hotel Okura Tokyo', location: 'Tokyo' };
+  assert.equal(L.areaAnchorFor('Nikko', 'Tokyo', [s], '2027-01-27',
+    { ...io({}), stayEntry: () => RESOLVED_STAY }), null);
+});
+
 test('ANCHOR: the hotel rung is refused to an item that named a city of its own', () => {
   // "Nikko" on a Tokyo-based day is a claim about Nikko. Answering it with
   // Tokyo's hotel would check the wrong place entirely.

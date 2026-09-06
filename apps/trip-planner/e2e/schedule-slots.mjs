@@ -100,7 +100,7 @@ function placesMock(log, opts = {}) {
     }
 
     const entries = (Array.isArray(body.queries) ? body.queries : []).map(toEntry);
-    log.push({ kind: 'lookup', queries: entries.map(e => e.q) });
+    log.push({ kind: 'lookup', queries: entries.map(e => e.q), entries });
     return {
       status: 200,
       body: {
@@ -578,6 +578,69 @@ export async function run({ base, cdpPort }) {
         titles.some(x => /Steakhouse/.test(x)), JSON.stringify(titles), s);
       await t('S4c: and the venue that is shut at 08:00 is still the one that is gone',
         !titles.some(x => /Only Noodles/.test(x)), JSON.stringify(titles), s);
+    });
+  }
+
+  /* ---- S4d. THE ANCHOR: the day's hotel is resolved first, and reaches the wire ---- */
+  freshIds();
+  {
+    const log = [];
+    const date = iso(30);
+    // The island condition: the geocoder is blocked (helpers' default refuses
+    // external hosts), so there is no vouched city point - exactly what
+    // `low`-confidence islands and beaches have in production. The hotel comes
+    // back RESOLVED but UNVERIFIED, which is the normal outcome there and the
+    // state that used to leave the day with no anchor at all.
+    const islandNet = (url, request) => {
+      if (!url.includes('tp-places')) return EXTERNAL_HOSTS.test(url) ? 'fail' : null;
+      let body = {};
+      try { body = JSON.parse(request.postData || '{}'); } catch { /* recorded as empty */ }
+      if (body.discover) { log.push({ kind: 'discover', spec: body.discover }); return { status: 200, body: { results: [], discovered: true, reason: '', attribution: ATTR } }; }
+      const entries = (Array.isArray(body.queries) ? body.queries : []).map(toEntry);
+      log.push({ kind: 'lookup', queries: entries.map(e => e.q), entries });
+      return {
+        status: 200,
+        body: {
+          attribution: ATTR,
+          results: entries.map(e => {
+            const isHotel = /cabana/i.test(e.q);
+            const v = venueFor(e.q);
+            if (!isHotel && !v) return { id: e.id, query: e.q, status: 'no_match', reason: 'not_found' };
+            return {
+              id: e.id, query: e.q, status: 'ok', name: isHotel ? HOTEL : v.name,
+              rating: isHotel ? 4.2 : v.rating, userRatingCount: isHotel ? 2100 : v.count,
+              mapsUri: 'https://maps.google.com/?cid=1', confidence: 0.5,
+              lat: 7.7412, lon: 98.7736, placeId: 'pid-' + slug(isHotel ? HOTEL : v.name),
+              // RESOLVED, not verified: the area could not be checked, which is
+              // the whole reason the anchor was missing.
+              verified: false, areaBasis: 'none',
+              ...(!isHotel && v.hours ? { hours: v.hours } : {}),
+            };
+          }),
+        },
+      };
+    };
+    await withPage('S4d anchor', { db: dbOf([phiPhiTrip(30)]), net: islandNet }, async (s) => {
+      await planAndPaste(s, REPLY(date), null);
+      await waitForExpr(s, `document.querySelectorAll('#assistMessages .assist-proposal').length >= 1`, { timeout: 15000 });
+      await sleep(800);
+      const lookups = log.filter(x => x.kind === 'lookup');
+      const hotelPost = lookups.findIndex(x => x.queries.some(q => /Cabana/i.test(q)));
+      const candidatePost = lookups.findIndex(x => x.queries.some(q => /Garlic 1992/i.test(q)));
+      await t('S4d: the day\'s hotel is resolved BEFORE the candidates it anchors',
+        hotelPost >= 0 && candidatePost >= 0 && hotelPost < candidatePost,
+        `hotel@${hotelPost} candidates@${candidatePost} of ${lookups.length}`, s);
+      // The anchor's whole purpose: the candidate lookups now carry a
+      // coordinate, so the server's gate can measure instead of reading
+      // addresses. Before this rung they went out with city and country only.
+      const candEntries = (lookups[candidatePost] || { entries: [] }).entries
+        .filter(e => /Garlic 1992|Only Noodles|Anna/i.test(e.q));
+      await t('S4d: and the candidates go out WITH that anchor on them',
+        candEntries.length > 0 && candEntries.every(e => Number.isFinite(e.lat) && Number.isFinite(e.lon)),
+        JSON.stringify(candEntries.map(e => ({ q: e.q, lat: e.lat, lon: e.lon }))), s);
+      await t('S4d: the anchor is the hotel\'s own coordinate, not a city centroid',
+        candEntries.every(e => Math.abs(e.lat - 7.7412) < 0.001 && Math.abs(e.lon - 98.7736) < 0.001),
+        JSON.stringify(candEntries.map(e => [e.lat, e.lon])), s);
     });
   }
 

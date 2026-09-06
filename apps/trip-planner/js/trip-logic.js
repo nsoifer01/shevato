@@ -6566,9 +6566,52 @@ const TripLogic = (() => {
   const TRUSTED_GEO_CONF = 'confident';
   const vouchedFor = p => (p && p.conf === TRUSTED_GEO_CONF ? p : null);
 
+  // THE LOOP THAT COULD NEVER CLOSE (owner report, 2026-09-06: a live Ko Phi
+  // Phi day offered "Phi Phi Bakery" for breakfast with a ~94 mi chip on it).
+  //
+  //   the best anchor is the day's own hotel
+  //   -> a hotel's coordinate is only KEPT once the hotel is VERIFIED
+  //      (placesLocationUpdates refuses an unverified point, and it is right
+  //      to: that rule is what stopped the 809 km chip)
+  //   -> verifying needs an anchor
+  //
+  // On an island or a beach the city geocode is `low` by definition, so rungs
+  // 2 and 3 are refused, the venue cache never fills, and the loop has no way
+  // to close. The day then has NO anchor, the coordinate branch of the area
+  // gate never runs, and a real branch of the same name 150 km inland passes
+  // on its address text alone.
+  //
+  // What breaks it is a distinction the round above already drew: identity and
+  // position are separate claims. A stay Google RESOLVED has its coordinate in
+  // the session cache whatever happened to the area check (placeIdentity keeps
+  // lat/lon; only the 30-day venue cache and the persisted record gate on
+  // `verified`), and that point answers a different, better question than a
+  // geocoder's guess at an island's name: it is where the traveller's own
+  // booked hotel is, according to the provider, for a name the gate matched.
+  //
+  // The guard is the confidence contract, not a new idea: an unchecked area
+  // caps confidence at UNCHECKED_MAX_CONFIDENCE (0.5, tp-places-match.mjs), so
+  // 0.5 means "the name matched perfectly and only the area is unknown".
+  // Anything less is a weak name match, which is precisely how a chain would
+  // anchor a day in the wrong city. Session-only, never persisted, and used as
+  // gate EVIDENCE only - it never draws a chip.
+  const STAY_ANCHOR_MIN_CONF = 0.5;
+  function stayAnchorPoint(entry) {
+    if (!entry || !validCoord(entry.lat, entry.lon)) return null;
+    // 'ok' is a rated resolution; an UNRATED one resolved just as well and is
+    // just as good a position (a small hotel with no reviews is still a hotel).
+    const resolved = entry.status === 'ok'
+      || (entry.status === 'no_match' && entry.reason === 'unrated');
+    if (!resolved) return null;
+    const conf = typeof entry.confidence === 'number' ? entry.confidence : 0;
+    if (conf < STAY_ANCHOR_MIN_CONF) return null;
+    return { key: 'p:' + (entry.placeId || ''), lat: Number(entry.lat), lon: Number(entry.lon) };
+  }
+
   function areaAnchorFor(name, dayCity, items, date, io) {
     const cityPoint = (io && typeof io.cityPoint === 'function') ? io.cityPoint : () => null;
     const venuePoint = (io && typeof io.venuePoint === 'function') ? io.venuePoint : () => null;
+    const stayEntry = (io && typeof io.stayEntry === 'function') ? io.stayEntry : () => null;
     const n = String(name || '').trim().toLowerCase();
     const isDayCity = !!n && n === String(dayCity || '').trim().toLowerCase();
     // The stay rung is offered ONLY when the item named no city of its own: an
@@ -6580,9 +6623,15 @@ const TripLogic = (() => {
       // geocode cache under the hotel's own name and marks it confident
       // (a human chose that row), and the venue cache holds whatever Photon or
       // an earlier Places resolution pinned.
+      const hostKey = placeCacheKey(itemMapsQuery(host),
+        { city: String(host.location || '').trim() || dayCity });
+      // Three sources for one rung, best evidence first: a hotel the traveller
+      // PICKED (a human chose that row), a point some earlier lookup already
+      // pinned, and finally the stay's own Places resolution - which is the
+      // one that is available on the days the other two never fill.
       const hotel = vouchedFor(cityPoint(displayTitle(host)))
-        || venuePoint(placeCacheKey(itemMapsQuery(host),
-          { city: String(host.location || '').trim() || dayCity }));
+        || venuePoint(hostKey)
+        || stayAnchorPoint(stayEntry(hostKey));
       if (hotel) return hotel;
     }
     const own = vouchedFor(cityPoint(name));
@@ -10645,7 +10694,7 @@ const TripLogic = (() => {
     parseMarkdown, parseMarkdownInline,
     normalizePlaceQuery, placeCacheKey, placeAreaKey, planPlacesLookup, placesCacheUpdates,
     placeLookupFor, placeLookupRequest, asPlaceLookup, placeIdentity,
-    areaAnchorFor, TRUSTED_GEO_CONF,
+    areaAnchorFor, TRUSTED_GEO_CONF, stayAnchorPoint, STAY_ANCHOR_MIN_CONF,
     placeRecordFrom, normalizePlaceRecord, placeMapsUrl, placeEntryUrl, plausiblePlacePoint,
     assistDiscoveryIntent, discoveryHintFrom, discoveryQueryFrom, rebuildAssistProse,
     placeIdentityOf, dedupeByIdentity, placeQualityScore, rankVerifiedPlaces,

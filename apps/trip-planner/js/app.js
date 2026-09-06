@@ -1123,6 +1123,12 @@
     return areaAnchorFor(name, dayCity, items, date, {
       cityPoint,
       venuePoint,
+      // The day's stay as the PLACES session cache holds it. This is the rung
+      // that works on the days the other two cannot fill (see the note on
+      // stayAnchorPoint): the 30-day venue cache refuses an unverified point,
+      // and on an island nothing is ever verified, because verifying is what
+      // needed the anchor. Session-only and read-only; it never draws a chip.
+      stayEntry: key => placesCache.get(key),
     });
   }
 
@@ -10423,6 +10429,36 @@
 
   // Fetch the coordinates the area gate wants, for the distinct cities in a
   // batch of lookups. Cached entries resolve instantly and cost nothing.
+  // THE DAY'S HOTEL, RESOLVED FIRST, because it is the anchor everything else
+  // is judged against and it is normally the one place already in the cache
+  // (its own row is on screen). Ordering is the whole point: the candidate
+  // lookups bake the anchor into their `area`, so an anchor that lands after
+  // them is an anchor nothing used. Bounded, never fatal, and free whenever
+  // the itinerary row got there first.
+  const STAY_ANCHOR_WAIT_MS = 4000;
+  async function warmStayAnchors(candidates, trip) {
+    const items = (trip && trip.items) || [];
+    if (!items.length) return;
+    const dates = [...new Set(candidates
+      .map(c => (c.proposal.display && c.proposal.display.startDate) || '')
+      .filter(isIsoDate))].slice(0, 3);
+    const lookups = [];
+    const seen = new Set();
+    for (const date of dates) {
+      const host = dayHostStay(items, date);
+      if (!host) continue;
+      const lookup = placeFor({ ...host, startDate: date }, trip);
+      if (!lookup || seen.has(lookup.key) || placesCache.has(lookup.key)) continue;
+      seen.add(lookup.key);
+      lookups.push(lookup);
+    }
+    if (!lookups.length) return;
+    placesLog('anchor: resolving the day\'s stay first', lookups.map(l => l.key));
+    placesQueue.promote(lookups);
+    placesQueue.request(lookups, { priority: 'urgent' });
+    await awaitPlaceKeys(lookups.map(l => l.key), STAY_ANCHOR_WAIT_MS);
+  }
+
   function warmAreaPoints(lookups) {
     const cities = [...new Set((lookups || [])
       .map(l => String((l && l.area && l.area.city) || '').trim())
@@ -10600,6 +10636,9 @@
     // lookups above were derived before the geocode landed, so they carry no
     // coordinate, and without this the freshly fetched point would never reach
     // the wire and the gate would still be judging on names alone.
+    // The hotel first, then the city geocode: on the days where the geocode is
+    // untrustworthy the hotel is the only anchor there will ever be.
+    await warmStayAnchors(candidates, trip);
     await warmAreaPoints(candidates.map(c => c.lookup));
     for (const c of candidates) c.lookup = proposalPlaceLookup(c.proposal) || c.lookup;
 

@@ -1316,6 +1316,96 @@ and a 390 px phone, against a double that implements the real server's gates).
 
 Every new test was **proven to fail against master** before being kept.
 
+## The anchor loop that could never close (2026-09-06)
+
+Found by running the real Ko Phi Phi flow against production after the
+schedule-validity round merged. A breakfast card offered **Phi Phi Bakery** at
+08:00 with a distance chip reading **~94 mi from Phi Phi Island Cabana Hotel**.
+The hours were right, the rating was real, the Maps link opened that exact
+entity - and the venue was not on the island.
+
+`PLACE_AREA_MAX_KM` is 150 km, which is **93.2 mi**. The venue sat just outside
+the gate's own radius, so it is precisely the kind of answer the coordinate
+branch exists to refuse. It was not refused, because the branch never ran.
+
+### The loop
+
+The round above made the day's hotel the top rung of `areaAnchorFor`, and it is
+the right rung. But:
+
+```
+the best anchor is the day's own hotel
+  -> a hotel's coordinate is only KEPT once the hotel is VERIFIED
+     (placesLocationUpdates drops an unverified point, and it is right to:
+      that rule is what stopped the 809 km chip)
+  -> verifying needs an anchor
+```
+
+On an island or a beach the city geocode is `low` **by definition** (the
+classifier table above), so rungs 2 and 3 are refused; the venue cache can
+never fill, because filling it needs the verification it is needed for; and the
+day ends up with **no anchor at all**. `plausiblePlacePoint` then correctly
+declines to reject anything (silence is not evidence), `verifyArea` falls back
+to comparing address text, and "Krabi" in a mainland address satisfies a Ko Phi
+Phi itinerary.
+
+This is why the symptom was a chip and not an empty day: nothing was wrongly
+rejected, something was wrongly ACCEPTED, and only the distance chip - measured
+from the hotel's own resolved coordinate, which the session cache did have -
+showed it.
+
+### The break: identity and position are separate claims, again
+
+The same distinction the previous round drew for persistence applies here.
+`placeIdentity` already carries `lat`/`lon` onto the session cache entry
+**whether or not the area was checked**; only the 30-day venue cache and the
+persisted record gate on `verified`. So the hotel's coordinate was sitting in
+memory the whole time, unread by the ladder.
+
+`stayAnchorPoint` reads it, as a third source on the existing stay rung, below
+the picked doorstep and the venue cache:
+
+- the entry must have RESOLVED (`ok`, or `no_match/unrated` - a hotel with no
+  reviews is still a hotel with a position)
+- it must carry a valid coordinate
+- `confidence >= STAY_ANCHOR_MIN_CONF` (0.5). This is the existing contract,
+  not a new idea: `resolutionConfidence` caps an **unchecked** area at
+  `UNCHECKED_MAX_CONFIDENCE` = 0.5, so 0.5 means "the name matched perfectly
+  and only the area is unknown". Below it is a weak name match, which is
+  exactly how a chain would anchor a day in the wrong city.
+
+Session-only, never persisted, and used as gate EVIDENCE only - it never draws
+a chip, so the 809 km rule is untouched.
+
+### Ordering is half the fix
+
+The candidate lookups bake the anchor into their own `area`, so an anchor that
+lands after them is an anchor nobody used. `warmStayAnchors` resolves the day's
+host stay **before** the candidates (and before the city geocode), bounded at 4
+seconds and free whenever the itinerary row already resolved it - which it
+usually has, because that row is on screen. Then the existing rebuild pass
+re-derives every candidate lookup, exactly as it already did after the geocode.
+
+### What this deliberately does NOT do
+
+- It does not relax `vouchedFor`, `verifyArea` or the venue-cache rule. A
+  `low` geocode is still not evidence and an unverified point still draws no
+  chip.
+- It does not tighten the gate. Everything inside 150 km is unaffected; the
+  change is that there is now something to measure against on days that had
+  nothing. Ao Nang (~33 km from the island) still passes.
+- It cannot help a day with no stay on it. Those still fall through to
+  "could not check", which is the honest answer.
+
+### The other thing that live run found
+
+Two of three attempts came back as **prose with no plan**: the model wrote
+"Here is a plan for your day on October 6th" and the fenced JSON never arrived
+(the block sits at the END of the answer, so an overrun loses it). The app
+renders the paragraph and says nothing about the missing cards. Not fixed here
+and not caused by this round; recorded because a traveller sees a promise and
+an empty panel.
+
 ## Places billing: the free allowance is the real ceiling (2026-08-18)
 
 **Google's billing, not our counters, is the source of truth, and they did not
