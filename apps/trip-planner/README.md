@@ -588,6 +588,14 @@ answer says so in its own words ("I could confirm one breakfast place open at
 8:00 AM, not three") rather than quietly showing fewer cards, and that sentence
 is kept distinct from "the lookup could not run at all".
 
+A guided plan that comes back as prose with **no items at all** is treated as
+the broken answer it is, rather than rendered as a paragraph over an empty
+panel: the app asks the model once for the missing block (nothing appears in
+the transcript, the typing indicator simply stays up), and if that also comes
+back empty it says so plainly instead of leaving a promise on screen. This is
+only ever applied to the guided planner, whose contract the app holds as data;
+a free-form answer with no actions is an ordinary answer.
+
 The older protections are all still in place as defence in depth for anything
 that reaches a card another way: the red/amber demotion, exclusion from the
 winner badges, and the accept refusal that will not write a known-closed venue

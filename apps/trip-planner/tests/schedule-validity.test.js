@@ -659,3 +659,62 @@ test('MEAL FITNESS survives into slot selection, and never outranks being OPEN',
   assert.deepEqual(final.map(x => x.name), ['Brunch', 'Steak'],
     'the fit one leads, the open steakhouse still stands, and the shut bakery is out however well typed and rated');
 });
+
+// ---------- a plan that never arrived is not an answer ----------
+//
+// Seen twice in three live production runs on 2026-09-06: the model answers a
+// guided plan with a paragraph ("Here is a plan for your day on October 6th,
+// focusing on a mid-range experience.") and stops. No fenced block, no cards.
+// The panel used to render the promise and fall silent.
+
+test('PLAN REPAIR: a guided plan with no add actions is a broken answer', () => {
+  const plan = L.planConstraintsFrom({ date: WED, wakeTime: '08:00' });
+  assert.equal(L.planReplyIncomplete([], plan), true, 'the reported case: prose only');
+  assert.equal(L.planReplyIncomplete([{ op: 'remove', targetId: 'x' }], plan), true,
+    'removes and updates cannot fill a slot either');
+  assert.equal(L.planReplyIncomplete([{ op: 'add', item: {} }], plan), false);
+  assert.equal(L.planReplyIncomplete([{ op: 'update' }, { op: 'add' }], plan), false);
+});
+
+test('PLAN REPAIR: a free-form turn is never judged this way', () => {
+  // "What time should I leave for the airport" is legitimately prose with no
+  // actions. Only the guided picker's own contract makes silence a defect,
+  // which is exactly why that contract travels as data.
+  assert.equal(L.planReplyIncomplete([], null), false);
+  assert.equal(L.planReplyIncomplete([], undefined), false);
+});
+
+test('PLAN REPAIR: the follow-up asks for the block and forbids another paragraph', () => {
+  const r = L.PLAN_REPAIR_REQUEST;
+  assert.match(r, /tripActions/, 'it names the thing that is missing');
+  assert.match(r, /json/i, 'and the format');
+  assert.match(r, /No prose/i, 're-sending the prose is what would run it out of room again');
+  assert.ok(r.length < 500, 'a repair request that is itself long defeats the point');
+});
+
+test('PLAN REPAIR: the plan prompt tells the model the block is not optional', () => {
+  const sys = L.buildAssistSystemPrompt({
+    trip: { name: 'T', items: [] }, focusDate: WED, today: '2027-01-01', mode: 'plan',
+  });
+  assert.match(sys, /tripActions block is NOT optional/i);
+  // ...and a free-form turn does not carry the guided contract at all
+  const chat = L.buildAssistSystemPrompt({
+    trip: { name: 'T', items: [] }, focusDate: WED, today: '2027-01-01', mode: 'chat',
+  });
+  assert.equal(/tripActions block is NOT optional/i.test(chat), false);
+});
+
+test('PLAN REPAIR: a repaired reply parses as one answer, prose plus the late block', () => {
+  // The recovery concatenates the model's original prose with the repair, and
+  // extractTripActions reads the block out of the combined text - so what
+  // renders is the single answer the turn should have been.
+  const prose = 'Here is a plan for your day on October 6th, focusing on a mid-range experience.';
+  const repair = '```json\n{"tripActions":[{"op":"add","group":"breakfast-2027-01-27","item":'
+    + '{"type":"activity","meal":"breakfast","title":"Cafe One","location":"Ko Phi Phi",'
+    + '"startDate":"2027-01-27","startTime":"08:00","mapsQuery":"Cafe One Ko Phi Phi"}}]}\n```';
+  const out = L.extractTripActions(`${prose}\n\n${repair}`);
+  assert.equal(out.actions.length, 1);
+  assert.equal(out.actions[0].item.title, 'Cafe One');
+  assert.equal(out.cleanedText, prose, 'the paragraph survives, the block is lifted out of it');
+  assert.equal(L.planReplyIncomplete(out.actions, { date: WED }), false, 'and the turn is whole again');
+});

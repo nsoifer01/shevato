@@ -3891,6 +3891,42 @@ const TripLogic = (() => {
     return { actions, cleanedText: cleaned.replace(/\n{3,}/g, '\n\n').trim() };
   }
 
+  // ---------- a plan that never arrived is not an answer ----------
+  //
+  // THE FAILURE (owner report, 2026-09-06, seen twice in three live runs): the
+  // model answers a guided plan request with a paragraph - "Here is a plan for
+  // your day on October 6th, focusing on a mid-range experience." - and then
+  // stops. No fenced tripActions block, no cards, nothing to add. The panel
+  // renders the promise and falls silent, which is worse than an error,
+  // because the sentence says the work was done.
+  //
+  // NOT reply-size truncation, which is what it looks like and what it was
+  // originally assumed to be: maxOutputTokens is 12,000 and the server appends
+  // TRUNCATION_NOTE on a MAX_TOKENS finish, and neither was present. The model
+  // simply stopped after the preamble.
+  //
+  // The app can be certain about this ONLY for a guided plan turn, and that is
+  // the whole reason the picker's contract now travels as data: a free-form
+  // "what time should I leave for the airport" is legitimately prose with no
+  // actions, while "plan breakfast, lunch and dinner, three options each" that
+  // comes back with nothing to add is a broken answer whatever it says.
+  function planReplyIncomplete(actions, plan) {
+    if (!plan) return false;
+    const list = Array.isArray(actions) ? actions : [];
+    // An `add` is the only op that can fill a slot. A reply of pure removes or
+    // updates is not the plan that was asked for either.
+    return !list.some(a => a && a.op === 'add');
+  }
+
+  // The follow-up that repairs it, sent once and only for a plan turn. It asks
+  // for the ONE thing that is missing, names the format, and forbids a second
+  // paragraph - the prose already exists and re-sending it is what would run
+  // the reply out of room for the block a second time.
+  const PLAN_REPAIR_REQUEST = 'You described that plan but did not send the tripActions block, so '
+    + 'nothing could be added to the trip. Send it now: the ```json fenced block ALONE, with one '
+    + '"add" action per item you just described, in the same format and with the same slot groups. '
+    + 'No prose, no explanation, no apology - the JSON block and nothing else.';
+
   // ---------- assistant: "plan my day" request builder ----------
   // Turns the day-picker's preferences into the traveller-facing prose that is
   // sent as the chat message. Kept pure (and out of app.js) so the exact wording
@@ -7934,7 +7970,15 @@ const TripLogic = (() => {
     + `those), propose EXACTLY ${PLAN_MEAL_OPTIONS} candidates grouped as above, so the traveller picks one of them. `
     + `For every OTHER activity you suggest (a sight, a museum, a walk, a tour), propose EXACTLY ${PLAN_ACTIVITY_OPTIONS} `
     + 'candidates for that one slot, grouped the same way under a group id of their own, for '
-    + 'example "activity-2026-12-31-morning": one slot, two options, the traveller picks one.';
+    + 'example "activity-2026-12-31-morning": one slot, two options, the traveller picks one. '
+    // Seen twice in three live runs on 2026-09-06: a preamble promising a plan,
+    // and then nothing. The traveller reads "here is your day" and gets an
+    // empty panel, which is worse than an error because the sentence claims the
+    // work was done. The app repairs it with one follow-up turn; this is the
+    // cheaper half of the defence.
+    + 'The tripActions block is NOT optional on a planning request. Never answer one with prose '
+    + 'alone: if you describe a day, every item you describe must arrive as an add action in the '
+    + 'fenced JSON block. A paragraph promising a plan with no block behind it is a failed answer.';
 
   // FREE-FORM chat only, and deliberately WITHOUT a number in it. An earlier
   // version of this capped chat at 8 per slot, which just replaced one
@@ -10690,6 +10734,7 @@ const TripLogic = (() => {
     extractTripActions, validateTripAction, buildAssistPackage, buildAssistSystemPrompt,
     fitAssistContext, ASSIST_DETAILS_BUDGET, ASSIST_TRUNCATED_NOTE,
     assistOptionRules, assistOriginNote, PLAN_MEAL_OPTIONS, PLAN_ACTIVITY_OPTIONS,
+    planReplyIncomplete, PLAN_REPAIR_REQUEST,
     buildPlanRequest, groupProposals, linkifySegments,
     parseMarkdown, parseMarkdownInline,
     normalizePlaceQuery, placeCacheKey, placeAreaKey, planPlacesLookup, placesCacheUpdates,

@@ -1397,14 +1397,45 @@ re-derives every candidate lookup, exactly as it already did after the geocode.
 - It cannot help a day with no stay on it. Those still fall through to
   "could not check", which is the honest answer.
 
-### The other thing that live run found
+### The other thing that live run found: a plan that never arrived
 
-Two of three attempts came back as **prose with no plan**: the model wrote
-"Here is a plan for your day on October 6th" and the fenced JSON never arrived
-(the block sits at the END of the answer, so an overrun loses it). The app
-renders the paragraph and says nothing about the missing cards. Not fixed here
-and not caused by this round; recorded because a traveller sees a promise and
-an empty panel.
+Twice in three live runs the model answered the guided plan with a paragraph -
+"Here is a plan for your day on October 6th, focusing on a mid-range
+experience." - and stopped. No fenced block, no cards. The panel rendered the
+promise and fell silent, which is worse than an error, because the sentence
+says the work was done.
+
+**It is NOT reply-size truncation**, which is what it looks like and what was
+assumed first. `maxOutputTokens` is 12,000 and tp-assist appends
+`TRUNCATION_NOTE` on a `MAX_TOKENS` finish; neither was present in the captured
+replies. The model simply stopped after the preamble. Diagnosing it as the
+documented truncation would have "fixed" it by raising a limit that was not the
+constraint.
+
+Three layers, cheapest first:
+
+- **The prompt.** The plan-mode rules now say the block is not optional and
+  that a paragraph promising a plan with nothing behind it is a failed answer.
+  Plan mode only: a free-form "what time should I leave for the airport" is
+  legitimately prose with no actions.
+- **One repair turn** (`sendMessage`). A plan turn whose reply carries no `add`
+  action is asked once, with `PLAN_REPAIR_REQUEST`, for the fenced block alone
+  and explicitly no second paragraph. The typing indicator stays up; nothing
+  appears in the traveller's transcript, because this is the app fixing its own
+  turn rather than a question anyone asked. The repair's block is appended to
+  the original prose, so `extractTripActions` reads the combined text and what
+  renders is the single answer the turn should have been. Bounded to one, and
+  never attempted on the copy/paste tier, which has no model to ask.
+- **The honest note** (`renderAssistAnswer`). If the repair also comes back
+  empty - or could not run - the answer says so: "That answer described a plan
+  but did not send any items, so nothing was added." A promise with nothing
+  behind it is the one thing that must not be rendered silently.
+
+The certainty comes from the picker's contract travelling as data
+(`planReplyIncomplete(actions, plan)`), which is the same threading the
+schedule round added for a different reason. Without it the app could not tell
+a broken plan from an ordinary conversational answer, and would have to guess
+from the prose.
 
 ## Places billing: the free allowance is the real ceiling (2026-08-18)
 

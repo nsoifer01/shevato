@@ -644,6 +644,74 @@ export async function run({ base, cdpPort }) {
     });
   }
 
+  /* ---- S4e. A PLAN THAT NEVER ARRIVED: repaired, then said out loud ---- */
+  // Driven on the SITE tier with tp-assist mocked, because the failure is a
+  // model-reply shape and the recovery is a second model turn. The mock
+  // answers the first call with the exact production shape - a paragraph
+  // promising a day, no fenced block - and the second with the block alone.
+  freshIds();
+  {
+    const date = iso(30);
+    const PREAMBLE = 'Since you are staying at the hotel, you are centrally located near the main pier. '
+      + 'Here is a plan for your day, focusing on a mid-range experience.';
+    const BLOCK = `\`\`\`json\n{"tripActions":[\n {"op":"add","group":"breakfast-${date}","item":{"type":"activity","meal":"breakfast","title":"Garlic 1992 Restaurant","location":"Ko Phi Phi","startDate":"${date}","startTime":"08:00","mapsQuery":"Garlic 1992 Restaurant Ko Phi Phi"}}\n]}\n\`\`\``;
+
+    const assistNet = (calls, replies) => (url, request) => {
+      if (url.includes('tp-assist')) {
+        let body = {};
+        try { body = JSON.parse(request.postData || '{}'); } catch { /* recorded as empty */ }
+        calls.push((body.messages || []).map(m => `${m.role}:${String(m.content || '').slice(0, 40)}`));
+        return { status: 200, body: { reply: replies[Math.min(calls.length - 1, replies.length - 1)] } };
+      }
+      if (url.includes('tp-places')) return placesMock([], {})(url, request);
+      return EXTERNAL_HOSTS.test(url) ? 'fail' : null;
+    };
+
+    // (a) the repair succeeds: one extra turn, and the traveller sees the plan
+    const okCalls = [];
+    await withPage('S4e repaired', { db: dbOf([phiPhiTrip(30)]), net: assistNet(okCalls, [PREAMBLE, BLOCK]) }, async (s) => {
+      await evaluate(s, `(()=>{const r=document.querySelector('#assistTierGroup input[value="site"]');
+        if (r && !r.checked) r.click(); return 1})()`);
+      await waitForExpr(s, `!!document.querySelector('[data-plan-send]')`, { timeout: 6000 });
+      await evaluate(s, `(()=>{const b=document.querySelector('[data-plan-time="wake"][data-plan-val="08:00"]'); if (b) b.click(); return 1})()`);
+      await sleep(300);
+      await clickSel(s, '[data-plan-send]', { settle: 800 });
+      await waitForExpr(s, `document.querySelectorAll('#assistMessages .assist-proposal').length >= 1`, { timeout: 20000 });
+      await sleep(500);
+      await t('S4e: a plan that came back as prose alone is asked once for the block',
+        okCalls.length === 2, `${okCalls.length} model calls`, s);
+      await t('S4e: the follow-up carries the original answer and the repair request',
+        okCalls.length === 2 && okCalls[1].some(m => /^user:You described that plan/.test(m)),
+        JSON.stringify(okCalls[1] || []).slice(0, 200), s);
+      const titles = await evaluate(s, `[...document.querySelectorAll('#assistMessages .assist-proposal')]
+        .map(c => (c.querySelector('.ap-title, .as-lead') || {}).textContent || '')`);
+      await t('S4e: and the traveller gets the plan, not an apology',
+        titles.some(x => /Garlic 1992/.test(x)), JSON.stringify(titles), s);
+      const prose = await proseText(s);
+      await t('S4e: the model\'s own paragraph survives the repair',
+        /Here is a plan for your day/.test(prose), prose.slice(0, 120), s);
+      await t('S4e: and nothing claims the plan is missing, because it is not',
+        !/did not send any items/.test(prose), prose.slice(0, 200), s);
+    });
+
+    // (b) the repair fails too: the app says so instead of showing a promise
+    const badCalls = [];
+    await withPage('S4e unrepairable', { db: dbOf([phiPhiTrip(30)]), net: assistNet(badCalls, [PREAMBLE, PREAMBLE]) }, async (s) => {
+      await evaluate(s, `(()=>{const r=document.querySelector('#assistTierGroup input[value="site"]');
+        if (r && !r.checked) r.click(); return 1})()`);
+      await waitForExpr(s, `!!document.querySelector('[data-plan-send]')`, { timeout: 6000 });
+      await clickSel(s, '[data-plan-send]', { settle: 800 });
+      await waitForExpr(s, `document.querySelectorAll('#assistMessages .assist-verified-note').length >= 1`, { timeout: 20000 });
+      const note = await noteText(s);
+      await t('S4e: exactly one repair is attempted, never a loop',
+        badCalls.length === 2, `${badCalls.length} model calls`, s);
+      await t('S4e: and the failure is stated plainly rather than left as a promise',
+        /did not send any items/.test(note) && /nothing was added/.test(note), note.slice(0, 200), s);
+      const cards = await evaluate(s, `document.querySelectorAll('#assistMessages .assist-proposal').length`);
+      await t('S4e: with no cards invented to fill the gap', cards === 0, String(cards), s);
+    });
+  }
+
   /* ---- S5. A NORMAL CITY: nothing is shut, so nothing is bought ---- */
   freshIds();
   {

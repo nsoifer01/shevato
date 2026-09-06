@@ -128,6 +128,7 @@
     weatherKey, summarizeClimate, weatherLine, weatherRange, pickMonthSamples, docGuard,
     FORECAST_DAYS, forecastEligible, forecastKey, forecastFresh, freshForecasts, summarizeForecast, forecastLine, forecastChipParts,
     extractTripActions, validateTripAction, buildAssistPackage, buildAssistSystemPrompt,
+    planReplyIncomplete, PLAN_REPAIR_REQUEST,
     buildPlanRequest, groupProposals, linkifySegments, parseMarkdown,
     normalizePlaceQuery, placeCacheKey, createPlacesQueue, mapsSearchUrl, assistMapsLink, placeStateLabel, costDisplayParts,
     // the one place identity every surface resolves through, plus the record
@@ -9226,6 +9227,19 @@
         msgs.appendChild(container);
         renderProposals(actions, container);
       }
+      // THE PROMISE WITH NOTHING BEHIND IT. A guided plan that produced no
+      // actions is a broken answer however confidently its paragraph reads,
+      // and by here the one repair turn has already been spent (sendMessage)
+      // or was never possible (the copy/paste tier has no model to ask). Say
+      // so, rather than leave a traveller reading "here is your day" at an
+      // empty panel and wondering which part of it they missed.
+      if (planReplyIncomplete(actions, plan)) {
+        const note = document.createElement('div');
+        note.className = 'assist-msg assistant assist-verified-note';
+        note.textContent = 'That answer described a plan but did not send any items, so nothing was added. '
+          + 'Press "Plan my day" again, or ask for fewer options.';
+        msgs.appendChild(note);
+      }
       scrollMessages();
       return;
     }
@@ -9372,9 +9386,27 @@
     syncSendState();
     const typing = showTyping();
     try {
-      const reply = assistTier === 'site'
-        ? await callSiteAssistant(history, trip, mode)
-        : await callByokProvider(history, trip, mode);
+      const ask = h => (assistTier === 'site'
+        ? callSiteAssistant(h, trip, mode)
+        : callByokProvider(h, trip, mode));
+      let reply = await ask(history);
+      // A PLAN THAT NEVER ARRIVED IS NOT AN ANSWER. Seen twice in three live
+      // runs: a paragraph promising the day, and no tripActions block behind
+      // it. One bounded follow-up asks for the missing block and nothing else
+      // (see PLAN_REPAIR_REQUEST); the traveller sees the typing indicator
+      // stay up, not a second question in their own transcript.
+      if (planReplyIncomplete(extractTripActions(reply).actions, plan)) {
+        placesLog('assistant: plan turn came back with no actions, asking once for the block');
+        const repairHistory = [...history,
+          { role: 'assistant', content: reply },
+          { role: 'user', content: PLAN_REPAIR_REQUEST }];
+        let repaired = '';
+        try { repaired = await ask(repairHistory); } catch { repaired = ''; }
+        // Keep the model's own prose and append whatever the repair produced:
+        // extractTripActions reads the block out of the combined text, so a
+        // successful repair renders as the single answer it should have been.
+        if (repaired && extractTripActions(repaired).actions.length) reply = `${reply}\n\n${repaired}`;
+      }
       typing.remove();
       handleAssistantReply(reply, tripId, text, turn, plan);
     } catch (err) {
