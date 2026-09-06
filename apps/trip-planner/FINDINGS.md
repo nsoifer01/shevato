@@ -904,6 +904,176 @@ plain search link, no rating, no distance, no hours.
 unverified), and still excluded from every pick-one badge, because
 `candidateBadges` counts only resolved entrants.
 
+## The 2026-09-05 round: the gate that emptied the assistant, and the hotel with two locations
+
+Three symptoms, reported together with screenshots. Two of them share a cause;
+the third is independent.
+
+### 1. "I could not verify any places for this on Google Maps"
+
+Whole days in Krabi and Phuket came back with zero places, including turns where
+the traveller named a real restaurant outright.
+
+**Cause: `verifyArea` treated an absent locality name as proof of a wrong
+branch.** With no coordinate for the expected city, the gate fell to comparing
+the itinerary's HUMAN name for a place against Google's ADMINISTRATIVE address,
+and a miss returned `ok: false` -> `no_match / wrong_area`:
+
+| the itinerary says | Google's address says                            |
+| ------------------ | ------------------------------------------------ |
+| `Railay Beach`     | Ao Nang, Mueang Krabi District, Krabi, Thailand   |
+| `Kata Beach`       | Karon, Mueang Phuket District, Phuket, Thailand   |
+| `Ko Phi Phi`       | Ao Nang, Mueang Krabi District, Krabi, Thailand   |
+
+Beaches, resort strips and islands are not administrative units, so the two
+never agree, and every real venue in the area was refused **while scoring 1.00
+on the name gate**. The replacement loop applied the same rule to its own
+candidates, so it could not rescue the answer either: zero places, deterministically, for a
+whole class of destination.
+
+Why it was intermittent rather than constant: the coordinate branch is the one
+that normally answers, and `cityPoint` is **cache-only**. On the first assistant
+turn of a session the day's city has not been geocoded, so there was no point
+and the brittle text branch decided.
+
+**Fix, in three parts.**
+
+- `verifyArea`: a locality miss with the country agreeing is now
+  `{ ok: true, checked: false, reason: 'city_unconfirmed' }` - "could not
+  check", not "wrong". A country that is genuinely absent IS evidence and still
+  refuses (`country_mismatch`). The coordinate branch is unchanged and still
+  rejects at 150 km, which is what catches the 809 km case.
+- The client separates two questions that had been conflated into one flag:
+  **`isResolvedEntry`** (Google returned a real entity whose name the query
+  accounts for - the anti-hallucination gate, and what decides whether a place
+  may be RECOMMENDED) from **`isVerifiedEntry`** (the area was checked and
+  agreed - what decides whether a coordinate, a distance chip or a persisted
+  place record may be drawn). Discovery now gates on the former. A hallucinated
+  venue still comes back `not_found` / `low_confidence` and is never substituted.
+- `warmAreaPoints` geocodes the day's city **before** a discovery batch is
+  verified, so `basis: 'point'` is the normal case rather than the exception.
+  Safe because `placeAreaKey` is city-first: a coordinate arriving later cannot
+  re-key a lookup.
+
+`discoverPlaces` additionally tracks whether its search was actually
+constrained (a rectangle, or the city spelled into the query text). An unchecked
+verdict is accepted only when it was; a genuinely global search still refuses.
+Note the old `biasFor(area, true)` returned **null** with no point, so the
+search documented as "RESTRICTED, not biased" was in fact unrestricted.
+
+**THE DECISION HIERARCHY**, strongest evidence first. Only rungs 1 and 4 may
+ever REJECT, and both of them reject on real evidence rather than on wording:
+
+| # | evidence | verdict | effect |
+| - | -------- | ------- | ------ |
+| 1 | a coordinate for the expected area | `point`, ≤150 km | **verified**; >150 km **rejected** (`wrong_area`) |
+| 2 | no coordinate, address names the expected city | `city_match` | **verified** |
+| 3 | no coordinate, address names the country but not the city | `city_unconfirmed` | **resolved, NOT verified** |
+| 4 | no coordinate, address names neither, a country was expected | `country_mismatch` | **rejected** |
+| 5 | no usable context at all | `no_area` / `no_evidence` | unchecked, never verified |
+
+The name gate is orthogonal and untouched: `matchConfidence` must account for
+more than half of the returned place's own distinctive tokens or the candidate
+is `low_confidence`, whatever its geography.
+
+This is what separates the two cases that were being conflated. "Railay Beach"
+against an Ao Nang address is rung 3 at worst and rung 1 (5 km, verified) as
+soon as the day's city is geocoded - which `warmAreaPoints` now makes the normal
+case. A same-named restaurant 700 km away is rung 1 (rejected on distance), or
+rung 4 if it is in another country. Rung 3 is the only relaxation, and what it
+buys is a *recommendation without a coordinate*: the venue is shown, but it
+draws no distance, persists no place record, and links as "Verify on Google
+Maps" rather than "Open".
+
+### 2. "~27 min by taxi, ~14 km" for a 450 m walk
+
+The Day Route map for the reported day drew stop 1 (the hotel) and stop 2
+(dinner) together on Kata Beach, and stop 3 - labelled "Return to hotel",
+meaning **the same hotel** - about 14 km NORTH of both.
+
+**Cause: the hotel had two independently resolved locations, and the leg got the
+worse one.** `itemDistAttrs` and `resolveOriginPoint` offered the hotel-picker
+rung (`cityPoint(displayTitle(item))`, a doorstep the traveller chose, seeded
+locally by `rememberPickedHotel`, needing no network) only when
+`isStay(item)`. A "Return to hotel" is type `local`, so it was denied that rung,
+its own Places lookup had stored no coordinate, and it fell all the way to the
+city anchor - and Nominatim answers **"Phuket" with the PROVINCE**, centroid
+7.9366, 98.3529, which is 14.2 km north of Kata Beach. Traced values:
+
+| stop                | point                | identity                          | source                       |
+| ------------------- | -------------------- | --------------------------------- | ---------------------------- |
+| 1 Sugar Marina      | 7.8203, 98.2988      | `c:sugar marina hotel -fashion...`| hotel-picker rung            |
+| 2 Kata On Fire      | 7.8180, 98.2980      | `v:kata on fire...@phuket`        | Google Place Details         |
+| 3 Return to hotel   | **7.9366, 98.3529**  | **`c:phuket`**                    | **city anchor (province)**   |
+
+The two rows did not even share a place key: the stay's `itemMapsQuery` appends
+its location (`...kata beach phuket@phuket`) while the leg uses the model's raw
+`mapsQuery` (`...kata beach@phuket`), so they were two separate Google lookups
+of the same building. Everything that measured the day - the card chip, the day
+footer total and the route line - inherited the wrong point, which is why the
+modal and the day card agreed with each other and both were wrong.
+
+**Fix.** `legDestinationStay` / `distanceTargetFor` (trip-logic, exported and
+shared) make a travel leg that ends at a stay resolve **as that stay**: same
+key, same place ID, same coordinates. A leg is not an independent place and is
+never geocoded, looked up or centroid-ed on its own. `itemDistAttrs`,
+`resolveOriginPoint`, `primeOrigin` AND `proposalDistAttrs` all route through
+it - the last one matters most, because the pre-add card and the row it became
+used to derive a leg's location by different rules (the card had a hotel rung of
+its own, `legDestStayName`, and the row had none), which is precisely why the
+number was right until the traveller pressed Add. That helper is now deleted;
+there is one rule and both sides read it.
+
+**And a derived row refuses the centroid.** `distAttrs` stamps `data-dist-strict`
+on a row whose place comes from another item, and `placePoint` returns **null**
+rather than the city anchor for such a row. A city centroid is a fair answer for
+a row nobody looked up; it must never fabricate a *hotel's* position. So an
+unlocatable stay now yields no pin, no chip and no leg - an explicit unknown -
+instead of a confident wrong number. Everything that measures a day reads this
+one ladder (`readPoint` -> `placePoint`), so the card chips, the day footer
+totals, the Day Route list and its map pins all move together.
+
+**Defence in depth: `unmeasurableLeg`.** Points now carry `precision`
+(`venue` | `city`) and a `cityKey`, and `dayDistanceChain` drops a leg whose
+DESTINATION is a city centroid in the same city as its origin. Only the
+destination is judged, and the asymmetry is deliberate: an origin that is openly
+the city ("~4 mi from Tokyo") is a long-standing honest answer to a coarse
+question, and suppressing it strips the chip from every trip whose hotel was
+typed rather than picked - the trip-planner E2E `MV-01` block catches exactly
+that over-reach, and did. A coarse DESTINATION is different: "Return to hotel -
+14 km" is a claim about one named building.
+
+### 3. An unasked-for paragraph about entry requirements
+
+A day-planning answer opened with "Regarding your question about entry
+requirements, I cannot confirm visa, passport, or health-related entry rules for
+Thailand..." when no such question was asked.
+
+**Cause: `ASSIST_HONESTY` is in every system prompt, and its entry-requirements
+clause read as an instruction to DELIVER a paragraph** ("If the traveller asks
+about any of them, say plainly that...") rather than as a limit on what may be
+asserted. The model discharged it unprompted. The clause now says explicitly
+that it is a limit on assertions, not a disclaimer to volunteer, that the
+subject must not be raised unless the CURRENT message raises it, and that
+earlier turns are context for the current request rather than a topic to
+continue.
+
+### What the tests had missed
+
+Every address-basis fixture in `tp-places-geo.test.mjs` used a city Google
+actually prints ("Tokyo", "Paris", "Kyoto"), so the address branch's **rejection
+power was never exercised against a legitimate place**. One assertion there
+(`verifyArea(ROYCE_HOKKAIDO, {city:'Tokyo'}).ok === false`) encoded the bug and
+had to be revised; it now pins the protection it was reaching for - that an
+unconfirmed candidate is not VERIFIED - instead of the over-rejection.
+
+New coverage: `netlify/functions/tests/tp-places-locality.test.mjs` (the gate,
+the discovery constraint, distinguishable failure reasons, a batch surviving one
+bad candidate) and `apps/trip-planner/tests/assistant-geo-regression.test.js`
+(the return-to-hotel invariant, precision-tagged legs, coordinate transposition,
+hotel-by-date, prompt contract). The locality fixtures are Thai, Greek,
+Indonesian and Japanese on purpose: nothing about the fix is country-specific.
+
 ## Places billing: the free allowance is the real ceiling (2026-08-18)
 
 **Google's billing, not our counters, is the source of truth, and they did not

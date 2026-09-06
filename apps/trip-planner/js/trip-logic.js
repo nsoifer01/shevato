@@ -4958,7 +4958,39 @@ const TripLogic = (() => {
     return {
       id: p.id, key: p.key || '', label: p.label || '', query: p.query || '',
       lat: Number(p.lat), lon: Number(p.lon),
+      // How exact this point is, and which city it belongs to. Both are set by
+      // the resolver (app.js placePoint); a caller that supplies neither gets
+      // the old behaviour, since an unknown precision can never suppress a leg.
+      precision: p.precision === 'city' ? 'city' : (p.precision === 'venue' ? 'venue' : ''),
+      cityKey: p.cityKey || '',
     };
+  }
+
+  // A leg nobody can actually measure. A CITY point is a centroid - Nominatim
+  // answers "Phuket" with the province - and a centroid cannot resolve
+  // distances INSIDE its own city: the 450 m walk from Kata On Fire to the
+  // Sugar Marina printed as "~14 km by taxi" because the destination fell back
+  // to that centroid (owner report, 2026-09-05).
+  //
+  // Only the DESTINATION is judged here, and the asymmetry is deliberate.
+  //
+  //   The ORIGIN is a day-level anchor. When nothing has located the hotel it
+  //   is openly the city ("~4 mi from Tokyo"), which is a long-standing and
+  //   honest coarse answer to "how far across town is this?", and suppressing
+  //   it would strip the chips from every trip whose hotel was typed rather
+  //   than picked from the picker.
+  //
+  //   The DESTINATION is the row's own subject. "Return to hotel - 14 km" is a
+  //   claim about one named building, and answering it with the centroid of the
+  //   province the building sits in is not a coarse answer, it is a wrong one.
+  //
+  // Same city only: between DIFFERENT cities a centroid destination is a
+  // legitimate answer (a venue in Krabi is genuinely ~60 km from Phuket) and
+  // nothing changes.
+  function unmeasurableLeg(a, b) {
+    if (!a || !b) return false;
+    if (b.precision !== 'city') return false;
+    return !!a.cityKey && a.cityKey === b.cityKey;
   }
 
   // Two points close enough that a leg between them would be a lie: they came
@@ -5013,7 +5045,7 @@ const TripLogic = (() => {
       if (!stop || stop.skip) continue;
       const here = distancePoint(stop);
       if (!here) continue;
-      if (prev && !sameSpot(prev, here)) {
+      if (prev && !sameSpot(prev, here) && !unmeasurableLeg(prev, here)) {
         legs.push({
           id: here.id, km: distKm(prev, here),
           from: prev.label || '', to: here.label || '',
@@ -5886,6 +5918,41 @@ const TripLogic = (() => {
   const isPlaceType = item => !!(item && PLACE_TYPES[item.type]);
   const TRAVEL_TYPES = { flight: 1, transport: 1, local: 1 };
   const isTravelLeg = item => !!(item && TRAVEL_TYPES[item.type]);
+
+  // THE ONE CANONICAL LOCATION OF A "RETURN TO HOTEL" (owner report with the
+  // Day Route map, 2026-09-05).
+  //
+  // A travel leg that ends at a stay is not an independent place, and it must
+  // never be located as one: no separate geocode, no second Places lookup, no
+  // city centroid, no coordinate from the model. It IS that stay, and it has
+  // to resolve to the stay's own key, place ID and coordinates so the two rows
+  // cannot disagree.
+  //
+  // They did disagree. The Day Route map drew stop 1 (the hotel) on its
+  // doorstep and stop 3 ("Return to hotel", the same hotel) 14 km north, on the
+  // centroid of the province, because only the stay row was offered the
+  // hotel-picker rung. Every surface that measured the day - the card chip, the
+  // day footer total and the route line - inherited that point.
+  //
+  // Matched on the leg's own maps query against the stay's title or its maps
+  // query, which is the trip saying "that destination is my hotel". Returns
+  // null for anything else, and the caller then treats the item as itself.
+  const normalizeQueryText = s => String(s == null ? '' : s).trim().toLowerCase();
+  function legDestinationStay(item, items) {
+    const list = Array.isArray(items) ? items : [];
+    if (!item || isStay(item) || !isTravelLeg(item)) return null;
+    const q = normalizeQueryText(itemMapsQuery(item));
+    if (!q) return null;
+    for (const s of list) {
+      if (!isStay(s) || s.status === 'cancelled') continue;
+      if (q === normalizeQueryText(displayTitle(s)) || q === normalizeQueryText(itemMapsQuery(s))) return s;
+    }
+    return null;
+  }
+
+  // The item whose PLACE a row is really about: itself, except for a travel leg
+  // that ends at a stay, which is about that stay.
+  const distanceTargetFor = (item, items) => legDestinationStay(item, items) || item;
 
   // Google Maps directions, the same URL shape travelLinks already builds for
   // the route dialog's transit and driving buttons. `origin` is optional:
@@ -6962,10 +7029,22 @@ const TripLogic = (() => {
     + 'authorizations, passport validity rules, onward-ticket rules, vaccination or health entry rules, '
     + 'international driving permits, and customs or currency limits. These change without notice, differ '
     + 'by nationality, and can differ again for a transit or a layover, and you have no way to check them. '
-    + 'If the traveller asks about any of them, say plainly that you cannot confirm it and that they must '
-    + "check the destination government's official immigration site or its embassy for their own "
-    + 'nationality before booking. Never guess, never quote a number of visa-free days, and never reassure '
-    + 'them that nothing is required.';
+    + 'ONLY IF the traveller asks about one of them in their CURRENT message, say plainly that you cannot '
+    + "confirm it and that they must check the destination government's official immigration site or its "
+    + 'embassy for their own nationality before booking. Never guess, never quote a number of visa-free '
+    + 'days, and never reassure them that nothing is required. '
+    // The disclaimer used to arrive uninvited. The rule above reads as an
+    // instruction to DELIVER a paragraph rather than a limit on what may be
+    // asserted, and the model discharged it on turns that never mentioned the
+    // subject: a "plan my day in Krabi" answer came back carrying "Regarding
+    // your question about entry requirements, I cannot confirm visa, passport
+    // or health-related entry rules for Thailand..." next to the restaurants
+    // (owner report, 2026-09-05). Answer the message in front of you.
+    + 'This is a limit on what you may ASSERT, not a disclaimer to volunteer. If the traveller has not '
+    + 'raised entry requirements in their current message, do not mention visas, passports, vaccinations '
+    + 'or entry rules at all, and never open a reply by referring to a question they did not ask. '
+    + 'Earlier turns in this conversation are context for the CURRENT request only: never continue, '
+    + 're-answer or append a previous topic to a new one.';
 
   // The agenda rules exist because of real failures in production replies: one
   // fat "New Year's Eve in Tokyo" item with the whole timetable stuffed into
@@ -9811,11 +9890,11 @@ const TripLogic = (() => {
     PLACES_BATCH_MAX, PLACES_CONCURRENCY, PLACES_DEFER_MS, PLACES_MAX_ATTEMPTS,
     VENUE_TTL_MS, VENUE_CACHE_MAX, venueFresh, normalizeVenueCache, rememberVenue,
     placesLocationUpdates, pickVenueFeature, validCoord,
-    SAME_SPOT_KM, sameSpot, distancePoint, dayAnchor, dayDistanceChain,
+    SAME_SPOT_KM, sameSpot, unmeasurableLeg, distancePoint, dayAnchor, dayDistanceChain,
     parseTravelArrival, dayArrival, proposalOrigin, dayBaseOrigin, suggestionOrigins,
     ROUTE_EXACT_MAX, shortestRoute, routeStops, setDistanceUnit, getDistanceUnit, fmtDist, distanceChipLabel, distanceChipTitle, routeFooterText,
     assistDistanceChipLabel, assistDistanceChipTitle, shortHopHint, hopTravel, fmtMins, WALKABLE_KM,
-    isPlaceType, isTravelLeg, directionsUrl, legTravelMode,
+    isPlaceType, isTravelLeg, legDestinationStay, distanceTargetFor, directionsUrl, legTravelMode,
     dayTravelTotals, dayRouteMode, directionsRouteUrl, routeUrlChunks, candidateBadges,
     mapsSearchUrl, assistMapsLink, itemMapsQuery, displayTitle, showsCostBadge, isFoodOrDrink, isEstimatedCost, costDisplayParts, mealTitlePrefixes,
     hasEstimate, displayCostOf, parseMoney, roundMoney, budgetVerdict, refundParts,
