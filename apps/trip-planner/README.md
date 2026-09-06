@@ -518,11 +518,16 @@ request (`createPlacesQueue` in trip-logic.js):
   bucket rejected the batch and when it refills (`scope` + `resetAt` +
   `Retry-After`), the queue waits exactly that long and then serves the same
   venues. Retries are bounded, and a rejection that will not clear for hours is
-  not re-asked every few seconds.
+  not re-asked every few seconds. The owner tier names its OWN buckets
+  (`owner_day`, `owner_month`) rather than the public tier's: it spends against
+  separate counters, so reporting `global_day` for an owner rejection pointed
+  diagnosis at a pool that still had room.
 - **Degrading is quiet.** A venue with no rating is an ordinary `Google Maps`
   link, exactly as it looks when no key is configured. If the allowance is gone
   for long enough to matter, the app says so once in a toast rather than putting
-  an error badge on forty rows.
+  an error badge on forty rows, and the toast names WHICH allowance ran out:
+  an hourly or daily cap refills within the day, and only a monthly rejection
+  means ratings are gone until the billing month turns.
 
 ### Schedule validity: what a slot may be filled with
 

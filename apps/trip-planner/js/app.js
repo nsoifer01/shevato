@@ -10178,6 +10178,21 @@
   // traveller would otherwise wonder why half the rows never got a rating. A
   // short contention backoff resolves itself in seconds and says nothing; a
   // per-row error badge on forty rows is exactly the noise this avoids.
+  // WHICH allowance ran out, because the two are days apart and the traveller
+  // reads this line to decide whether to wait. Until 2026-09-06 every pause
+  // said "the free lookup allowance is used up", which on a daily cap was
+  // simply untrue: the day pool emptied with 411 of the 850 monthly lookups
+  // still unspent, and ratings were back the same evening.
+  function placesPauseReason(scope) {
+    switch (scope) {
+      case 'client_hour': return "this browser's hourly lookup allowance is used up";
+      case 'client_day': return "this browser's daily lookup allowance is used up";
+      case 'global_day':
+      case 'owner_day': return "today's lookup allowance is used up";
+      default: return 'the free lookup allowance for this month is used up';
+    }
+  }
+
   let placesNoticeShown = false;
   const PLACES_NOTICE_MIN_MS = 5 * 60000;
   function placesQuotaNotice() {
@@ -10186,7 +10201,7 @@
     if (st.off || !st.pausedUntil) return;
     if (st.pausedUntil - Date.now() < PLACES_NOTICE_MIN_MS) return;
     placesNoticeShown = true;
-    toast('Google ratings are paused for now - the free lookup allowance is used up. Everything else works as usual.');
+    toast('Google ratings are paused for now - ' + placesPauseReason(st.scope) + '. Everything else works as usual.');
   }
 
   const placesQueue = createPlacesQueue({

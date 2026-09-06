@@ -4807,12 +4807,14 @@ const TripLogic = (() => {
     switch (scope) {
       case 'client_hour': return HOUR - (t % HOUR);
       case 'client_day':
-      case 'global_day': return DAY - (t % DAY);
+      case 'global_day':
+      case 'owner_day': return DAY - (t % DAY);
       // The monthly free-allowance budget (see MONTHLY_BUDGET server-side).
       // Nothing frees up until the billing month turns, so this parks rather
       // than retries; the 8h shift matches the server's boundary, which is
       // deliberately no earlier than Google's own reset.
       case 'global_month':
+      case 'owner_month':
       case 'free_month': {
         const shift = 8 * HOUR;
         const d = new Date(t - shift);
