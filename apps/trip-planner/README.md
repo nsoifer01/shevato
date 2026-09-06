@@ -542,6 +542,16 @@ that opens at 10:30. Three answers, and the middle one carries its weight:
 - **verified closed** - the hours refuse the time. Ineligible for that slot, and
   **replaced rather than shown**.
 
+A candidate that is open is not automatically appropriate, so the slot's own
+meal kind is a ranking term too, on the evidence of Google's Places **type**
+rather than of words in a venue's name: a breakfast slot prefers a place typed
+`breakfast_restaurant`, `bakery` or `cafe` over an equally open `steak_house`,
+and a dinner slot prefers the steakhouse. It is a nudge, not a filter. A
+`restaurant` with a broad menu (and a place with no type at all) is never
+demoted, nothing is excluded, and the nudge is sized to turn over a close call
+and lose a clear one: a 4.6 brunch place takes an 08:00 slot from a 4.8
+steakhouse, while a 4.9 institution keeps it from a 3.9 bakery.
+
 When a slot loses a candidate this way, the app goes and finds another one: a
 category search for that slot's own kind (`breakfast restaurant Ao Nang`,
 `bar Tokyo`, `tourist attraction Krabi`) in the day's area, with the slot's

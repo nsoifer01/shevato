@@ -4244,6 +4244,10 @@ const TripLogic = (() => {
       // no hours field, so this entry must never be written anywhere durable.
       const hours = sanitizeHours(r.hours);
       if (hours) entry.hours = hours;
+      // Google's own food type, session-only like everything else here. It is
+      // the daypart evidence the slot ranking reads (mealFitness); one short
+      // allowlisted word, and anything else on the wire is dropped.
+      if (typeof r.foodType === 'string' && /^[a-z_]{1,40}$/.test(r.foodType)) entry.foodType = r.foodType;
       out.push({ key, entry });
     }
     return out;
@@ -7075,14 +7079,91 @@ const TripLogic = (() => {
   // distinct start times are a schedule, and reordering a schedule by quality
   // would be a different bug; those keep their chronological order and this
   // ranking applies only within a tie.
-  function placeQualityScore(entry, km) {
+  // ---------- is this place the right KIND of place for this meal? ----------
+  //
+  // THE GAP THIS CLOSES. Schedule validity answers "is it open at eight"; it
+  // has no opinion about whether a steakhouse that happens to open at eight is
+  // a breakfast recommendation. With rating as the only other term, a 4.8
+  // steakhouse led a 4.6 brunch place for a breakfast slot, and the category
+  // search that went looking for "breakfast restaurant" had its own relevance
+  // ordering thrown away on arrival.
+  //
+  // The evidence is Google's Places TYPE (`foodType`, allowlisted server-side
+  // in foodTypeOf), never a word read out of a venue's name. Names are where
+  // this kind of logic goes wrong: "The Breakfast Club" is a nightclub in
+  // Shoreditch, and "Bar Restaurant" is most of Italy.
+  //
+  // Two restraints, and both are the difference between a nudge and a filter:
+  //
+  //   ONLY POSITIVE EVIDENCE COUNTS. `restaurant` (and an absent type) is the
+  //   broad-menu middle and scores exactly nothing either way. A place is only
+  //   promoted when Google says it IS a breakfast place, and only demoted when
+  //   Google says it is something the slot's hour contradicts outright - a
+  //   night club at 08:00. A trattoria that serves a fine breakfast is neutral,
+  //   which is the honest answer.
+  //
+  //   IT IS A SCORE, NOT A GATE. Nothing is excluded, and the nudge is sized to
+  //   flip a close call and lose a clear one. Sizing it needs BOTH axes of the
+  //   score, which is what the first attempt got wrong: it was calibrated
+  //   against the star rating alone at 0.35, and the review-count weight ate it
+  //   (4.6 from 640 reviews scores 0.4 below 4.8 from 2,000, not 0.16). The
+  //   browser test caught that. Measured gaps it must and must not bridge:
+  //
+  //     4.8/2,000 steakhouse vs 4.6/640 bakery        0.40   flips  (the case)
+  //     4.9/1,000 restaurant vs 4.3/1,000 breakfast   0.48   flips  (boundary)
+  //     4.9/1,000 restaurant vs 4.0/1,000 breakfast   0.72   holds
+  //     4.5/3,000 restaurant vs 4.4/150 cafe          1.04   holds
+  //     4.9/5,000 institution vs 3.9/200 bakery       1.53   holds
+  const MEAL_FIT_MORNING = ['breakfast_restaurant', 'brunch_restaurant', 'bakery', 'cafe',
+    'coffee_shop', 'bagel_shop', 'donut_shop', 'tea_house', 'juice_shop', 'acai_shop',
+    'diner', 'deli', 'sandwich_shop', 'cafeteria'];
+  const MEAL_FIT_LIGHT = ['cafe', 'coffee_shop', 'bakery', 'tea_house', 'juice_shop',
+    'ice_cream_shop', 'dessert_shop', 'dessert_restaurant', 'confectionery', 'candy_store',
+    'chocolate_shop', 'donut_shop', 'bagel_shop', 'acai_shop'];
+  const MEAL_FIT_MIDDAY = ['sandwich_shop', 'deli', 'food_court', 'cafeteria', 'diner',
+    'fast_food_restaurant', 'buffet_restaurant', 'meal_takeaway'];
+  const MEAL_FIT_EVENING = ['fine_dining_restaurant', 'steak_house', 'bar_and_grill'];
+  const MEAL_FIT_NIGHT = ['bar', 'pub', 'wine_bar', 'night_club', 'bar_and_grill'];
+  const MEAL_FIT_MORNING_ONLY = ['breakfast_restaurant', 'bakery', 'donut_shop', 'bagel_shop',
+    'juice_shop', 'acai_shop', 'cafeteria'];
+  // A slot with no entry here (an untyped activity, 'other') has no opinion at
+  // all, which is why the table is sparse rather than exhaustive.
+  const MEAL_FIT = {
+    breakfast: { fit: MEAL_FIT_MORNING, poor: MEAL_FIT_NIGHT },
+    brunch: { fit: MEAL_FIT_MORNING, poor: MEAL_FIT_NIGHT },
+    lunch: { fit: MEAL_FIT_MIDDAY, poor: ['night_club', 'wine_bar'] },
+    dinner: { fit: MEAL_FIT_EVENING, poor: MEAL_FIT_MORNING_ONLY },
+    cafe: { fit: MEAL_FIT_LIGHT, poor: ['night_club', 'steak_house', 'fine_dining_restaurant'] },
+    snack: { fit: MEAL_FIT_LIGHT, poor: ['night_club', 'steak_house', 'fine_dining_restaurant'] },
+    drinks: { fit: MEAL_FIT_NIGHT, poor: ['breakfast_restaurant', 'bakery', 'cafeteria'] },
+  };
+
+  /**
+   * 'fit', 'poor' or '' for a Google food type against a meal slot. '' is both
+   * the no-evidence answer and the broad-menu answer, and they are deliberately
+   * the same answer: neither is a reason to move a candidate.
+   */
+  function mealFitness(foodType, meal) {
+    const t = String(foodType == null ? '' : foodType).trim();
+    const rules = MEAL_FIT[String(meal == null ? '' : meal).trim()];
+    if (!t || t === 'restaurant' || !rules) return '';
+    if (rules.fit.includes(t)) return 'fit';
+    if (rules.poor.includes(t)) return 'poor';
+    return '';
+  }
+
+  const MEAL_FIT_NUDGE = 0.5;
+
+  function placeQualityScore(entry, km, meal) {
     const rating = entry && typeof entry.rating === 'number' ? entry.rating : 0;
     const count = entry && typeof entry.userRatingCount === 'number' ? entry.userRatingCount : 0;
     // log-weighted confidence in the rating, capped so a mega-chain cannot
     // outrank a genuinely better place on volume alone
     const weight = Math.min(1, Math.log10(1 + Math.max(0, count)) / 3);
     const near = (typeof km === 'number' && isFinite(km) && km >= 0) ? Math.max(0, 1 - km / 25) : 0.5;
-    return Math.round((rating * weight * 0.8 + near * 0.2 * 5) * 1000) / 1000;
+    const fit = meal ? mealFitness(entry && entry.foodType, meal) : '';
+    const nudge = fit === 'fit' ? MEAL_FIT_NUDGE : (fit === 'poor' ? -MEAL_FIT_NUDGE : 0);
+    return Math.round((rating * weight * 0.8 + near * 0.2 * 5 + nudge) * 1000) / 1000;
   }
 
   // SCHEDULE VALIDITY OUTRANKS QUALITY, INSIDE A SLOT. Two candidates for the
@@ -10568,6 +10649,7 @@ const TripLogic = (() => {
     placeRecordFrom, normalizePlaceRecord, placeMapsUrl, placeEntryUrl, plausiblePlacePoint,
     assistDiscoveryIntent, discoveryHintFrom, discoveryQueryFrom, rebuildAssistProse,
     placeIdentityOf, dedupeByIdentity, placeQualityScore, rankVerifiedPlaces,
+    mealFitness, MEAL_FIT_NUDGE,
     planConstraintsFrom, firstStopShiftPlan, proposalSlotKey, slotDiscoveryQuery,
     SLOT_QUERY_TERMS, scheduleShortfallNote, slotReplacementNeed, selectSlotCandidates,
     DISCOVERY_REPLACEMENT_ROUNDS, DISCOVERY_REPLACEMENTS_PER_ROUND, DISCOVERY_CANDIDATE_MAX,

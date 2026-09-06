@@ -10821,7 +10821,11 @@
       const ranked = rankVerifiedPlaces(slot.kept.map(k => ({
         ...k,
         time: (k.proposal.display && k.proposal.display.startTime) || '',
-        score: placeQualityScore(k.entry, distanceKmForProposal(k.proposal)),
+        // The slot's own meal kind rides into the score, so a breakfast slot
+        // prefers a place Google types as a breakfast place over an equally
+        // open steakhouse. Bounded to a close call (see MEAL_FIT_NUDGE), and
+        // 'activity' has no daypart opinion at all.
+        score: placeQualityScore(k.entry, distanceKmForProposal(k.proposal), slot.kind),
       })));
       const { final, dropped } = selectSlotCandidates(ranked, slot.want);
       for (const d of dropped) {

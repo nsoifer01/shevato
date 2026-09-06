@@ -24,6 +24,7 @@ try {
 const opts = hooksOk ? {} : { skip: 'node:module register() unavailable; the handler needs the @netlify/blobs hook' };
 
 const { default: handler, clampDiscover } = await import('../tp-places.mjs');
+const { foodTypeOf } = await import('../lib/tp-places-match.mjs');
 const STORE = 'trip-planner-places';
 
 // Google's own shape: regularOpeningHours.periods, day 0 = Sunday, hour/minute.
@@ -207,6 +208,45 @@ test('the planned duration counts: a venue closing 15 minutes in is skipped', op
   })).json();
   assert.deepEqual(body.results.map(r => r.name), ['Sunrise Cafe'],
     'a 45-minute breakfast cannot happen in the 15 minutes before the shutters');
+});
+
+// ---------- the food type, which is what makes a breakfast place a
+// ---------- breakfast place rather than merely an open one ----------
+
+test('Google\'s own food type travels with the answer', opts, async () => {
+  PLACES.typedCafe = {
+    ...PLACES.earlyOne,
+    displayName: { text: 'Typed Cafe' },
+    primaryType: 'breakfast_restaurant',
+    types: ['breakfast_restaurant', 'restaurant', 'food', 'point_of_interest'],
+  };
+  searchReturns = ['typedCafe'];
+  const body = await (await discover({
+    q: 'breakfast restaurant Ao Nang', ...AO_NANG, limit: 1, meal: 'breakfast', schedule: BREAKFAST,
+  })).json();
+  assert.equal(body.results[0].foodType, 'breakfast_restaurant');
+});
+
+test('the type is the MOST SPECIFIC one, and `restaurant` is the answer of last resort', opts, () => {
+  assert.equal(foodTypeOf({ primaryType: 'steak_house', types: ['steak_house', 'restaurant'] }), 'steak_house');
+  assert.equal(foodTypeOf({ primaryType: 'restaurant', types: ['restaurant', 'bakery'] }), 'bakery',
+    'a specific type in the list beats a generic primaryType');
+  assert.equal(foodTypeOf({ primaryType: 'restaurant', types: ['restaurant', 'food'] }), 'restaurant');
+  // no opinion is the normal case for the long tail, and must stay empty
+  assert.equal(foodTypeOf({ types: ['point_of_interest', 'establishment'] }), '');
+  assert.equal(foodTypeOf({ primaryType: 'thai_restaurant', types: ['thai_restaurant'] }), '',
+    'a cuisine is not a daypart, so it is not in the allowlist');
+  assert.equal(foodTypeOf({}), '');
+  assert.equal(foodTypeOf(null), '');
+});
+
+test('a place with no types at all still answers, it just says nothing about its daypart', opts, async () => {
+  searchReturns = ['earlyOne'];
+  const body = await (await discover({
+    q: 'breakfast restaurant Ao Nang', ...AO_NANG, limit: 1, meal: 'breakfast', schedule: BREAKFAST,
+  })).json();
+  assert.equal(body.results[0].name, 'Sunrise Cafe');
+  assert.equal(body.results[0].foodType, undefined, 'absent, never guessed');
 });
 
 // ---------- the clamp ----------

@@ -31,7 +31,7 @@ export const NO_MATCH_TTL_MS = 7 * 86400000;
 import {
   isGenericQuery, matchConfidence, normalizeQuery,
   normalizeArea, verifyArea, resolutionConfidence, addressTextOf,
-  typeMismatch,
+  typeMismatch, foodTypeOf,
   AREA_BIAS_KM,
 } from './tp-places-match.mjs';
 // ONE definition of "is this place open then", shared with the browser. The
@@ -294,6 +294,12 @@ function fromDetails(place, placeId, verdict, confidence) {
   // Opening hours travel with every accepted match for the same reason, and are
   // passed through, never stored (no Google caching exception covers hours).
   const hours = place.hours && typeof place.hours === 'object' ? { hours: place.hours } : {};
+  // And Google's own food type, for the same reason and under the same rule:
+  // one allowlisted word, passed through, never stored. It is what lets a
+  // breakfast slot prefer a breakfast place over an equally open steakhouse
+  // without anyone reading words out of a venue's name.
+  const ft = foodTypeOf(place);
+  const food = ft ? { foodType: ft } : {};
   const identity = {
     placeId: placeId || '',
     verified: !!verdict.checked && verdict.ok,
@@ -301,6 +307,7 @@ function fromDetails(place, placeId, verdict, confidence) {
     confidence,
     ...at,
     ...hours,
+    ...food,
   };
   if (typeof place.rating !== 'number') {
     return { status: 'no_match', reason: 'unrated', ...identity };

@@ -2004,6 +2004,48 @@ venue and kept a REJECTED venue's recommendation in the answer with no card
 under it. The same shape gives "Anna" a hit inside "banana". Now a word-set
 membership test, which `foldWords` already makes trivial.
 
+### Meal fitness: open is not the same as appropriate (2026-09-06, pre-merge QA)
+
+Schedule validity answers "is it open at eight". It has no opinion about
+whether a steakhouse that happens to open at eight is a BREAKFAST
+recommendation, and with rating as the only other term it led a lower-rated
+brunch place - while the category search that went looking for "breakfast
+restaurant" had its own relevance ordering discarded on arrival.
+
+- **The evidence is Google's Places TYPE, never a word from the venue's name.**
+  `DETAILS_FIELD_MASK` already fetched `types,primaryType` for the mismatch
+  gate; `fromDetails` simply never passed them on. `foodTypeOf` now picks the
+  most specific allowlisted food type (`breakfast_restaurant`, `bakery`,
+  `steak_house`, `wine_bar`...) and it travels as one short word, passed
+  through and never stored, exactly like hours.
+- **The type travels, the VERDICT does not, and that is a bug avoided rather
+  than a preference.** A session cache entry is keyed by venue and area with
+  the meal slot deliberately left out, so one entry serves a breakfast slot and
+  a dinner slot; a fitness verdict baked in server-side would be whichever slot
+  looked it up first. `TripLogic.mealFitness(foodType, meal)` maps per slot.
+- **Only positive evidence moves anything.** `restaurant` and an absent type
+  are the same answer - no opinion - so a trattoria with a broad menu is never
+  demoted. A candidate is promoted only when Google says it IS a place of that
+  daypart, and demoted only on outright contradiction (a night club at 08:00).
+  Cuisine types are deliberately absent: a `thai_restaurant` is not a daypart.
+- **It is a score, not a gate**, and sizing it needs BOTH axes. The first
+  attempt (0.35) was calibrated against the star rating alone and the
+  review-count weight ate it: 4.6-from-640 sits 0.40 below 4.8-from-2,000, not
+  0.16. The browser block caught it. At 0.5 the measured boundaries are:
+
+  | comparison | score gap | outcome |
+  | --- | --- | --- |
+  | 4.8/2,000 steakhouse vs 4.6/640 bakery | 0.40 | the bakery takes the slot |
+  | 4.9/1,000 restaurant vs 4.3/1,000 breakfast place | 0.48 | the breakfast place takes it |
+  | 4.9/1,000 restaurant vs 4.0/1,000 breakfast place | 0.72 | quality wins |
+  | 4.5/3,000 restaurant vs 4.4/150 cafe | 1.04 | quality wins |
+  | 4.9/5,000 institution vs 3.9/200 bakery | 1.53 | quality wins |
+
+- **Nothing is excluded and the badges do not move.** The steakhouse is still
+  offered, and it still wears `Highest rated` if that is what it objectively
+  is: the badge is a fact about the set, not a recommendation. Only the ORDER
+  of the slot changes.
+
 ### Cost, measured
 
 For the reported shape (three breakfast candidates, two shut, replacements

@@ -544,3 +544,118 @@ test('INVARIANT D: the hours that decide come from the provider entry, never fro
   // while the same fields against a real entry are judged by that entry
   assert.equal(L.candidateScheduleTier({ status: 'ok', hours: daily('10:30', '22:00') }, lying).tier, 'invalid');
 });
+
+// ---------- meal fitness: open is not the same as appropriate ----------
+//
+// Schedule validity says a steakhouse that opens at 08:00 CAN be used at
+// 08:00. It has no opinion about whether it is a breakfast recommendation, and
+// with rating as the only other term a 4.8 steakhouse led a 4.6 brunch place.
+// The evidence is Google's own Places type, never a word from the venue's name.
+
+test('MEAL FITNESS: a breakfast slot prefers a breakfast place over a better-rated steakhouse', () => {
+  const steak = { rating: 4.8, userRatingCount: 2000, foodType: 'steak_house' };
+  const brunch = { rating: 4.6, userRatingCount: 900, foodType: 'brunch_restaurant' };
+  assert.ok(L.placeQualityScore(brunch, 1, 'breakfast') > L.placeQualityScore(steak, 1, 'breakfast'),
+    'the brunch place takes the slot despite the lower star rating');
+  // and the SAME pair for dinner goes the other way, because the steakhouse is
+  // the one Google types as a dinner place
+  assert.ok(L.placeQualityScore(steak, 1, 'dinner') > L.placeQualityScore(brunch, 1, 'dinner'));
+  // with no meal in play at all, neither is nudged and the rating decides
+  assert.ok(L.placeQualityScore(steak, 1) > L.placeQualityScore(brunch, 1));
+});
+
+test('MEAL FITNESS is a nudge, not a gate: a clear rating gap still wins', () => {
+  // The failure mode of over-correcting: a mediocre bakery must not take the
+  // slot from an institution just because Google typed it `bakery`.
+  const institution = { rating: 4.9, userRatingCount: 5000, foodType: 'restaurant' };
+  const mediocre = { rating: 3.9, userRatingCount: 200, foodType: 'bakery' };
+  assert.ok(L.placeQualityScore(institution, 1, 'breakfast') > L.placeQualityScore(mediocre, 1, 'breakfast'));
+  // The nudge is sized against BOTH axes of the score, not the star rating
+  // alone: the review-count weight is what makes 4.6-from-640 sit 0.4 below
+  // 4.8-from-2,000 rather than 0.16, and the first calibration (0.35, stars
+  // only) lost to it. These are the measured boundaries.
+  assert.equal(L.MEAL_FIT_NUDGE, 0.5);
+  const flips = [
+    [{ rating: 4.8, userRatingCount: 2000, foodType: 'steak_house' },
+      { rating: 4.6, userRatingCount: 640, foodType: 'bakery' }],
+    [{ rating: 4.9, userRatingCount: 1000, foodType: 'restaurant' },
+      { rating: 4.3, userRatingCount: 1000, foodType: 'breakfast_restaurant' }],
+  ];
+  for (const [neutral, fit] of flips) {
+    assert.ok(L.placeQualityScore(fit, 1, 'breakfast') > L.placeQualityScore(neutral, 1, 'breakfast'),
+      `a close call goes to the breakfast place: ${fit.rating}/${fit.userRatingCount}`);
+  }
+  const holds = [
+    [{ rating: 4.9, userRatingCount: 1000, foodType: 'restaurant' },
+      { rating: 4.0, userRatingCount: 1000, foodType: 'breakfast_restaurant' }],
+    [{ rating: 4.5, userRatingCount: 3000, foodType: 'restaurant' },
+      { rating: 4.4, userRatingCount: 150, foodType: 'cafe' }],
+    [{ rating: 4.9, userRatingCount: 5000, foodType: 'restaurant' },
+      { rating: 3.9, userRatingCount: 200, foodType: 'bakery' }],
+  ];
+  for (const [neutral, fit] of holds) {
+    assert.ok(L.placeQualityScore(neutral, 1, 'breakfast') > L.placeQualityScore(fit, 1, 'breakfast'),
+      `a clear quality gap survives the nudge: ${neutral.rating}/${neutral.userRatingCount}`);
+  }
+});
+
+test('A BROAD MENU IS NOT A DEMOTION: `restaurant` and no type at all score the same', () => {
+  const broad = { rating: 4.5, userRatingCount: 800, foodType: 'restaurant' };
+  const untyped = { rating: 4.5, userRatingCount: 800 };
+  for (const meal of ['breakfast', 'brunch', 'lunch', 'dinner', 'drinks', 'cafe', 'snack']) {
+    assert.equal(L.placeQualityScore(broad, 1, meal), L.placeQualityScore(untyped, 1, meal), meal);
+    assert.equal(L.placeQualityScore(broad, 1, meal), L.placeQualityScore(broad, 1), meal + ' is unnudged');
+  }
+  assert.equal(L.mealFitness('restaurant', 'breakfast'), '', 'the broad-menu middle has no opinion');
+  assert.equal(L.mealFitness('', 'breakfast'), '', 'and neither does an absent type');
+  assert.equal(L.mealFitness('thai_restaurant', 'breakfast'), '', 'nor a cuisine, which is not a daypart');
+});
+
+test('MEAL FITNESS: the mapping is per daypart, and only positive evidence moves anything', () => {
+  const cases = [
+    ['breakfast_restaurant', 'breakfast', 'fit'],
+    ['bakery', 'breakfast', 'fit'],
+    ['cafe', 'breakfast', 'fit'],
+    ['night_club', 'breakfast', 'poor'],
+    ['bar', 'breakfast', 'poor'],
+    ['steak_house', 'breakfast', ''],       // unusual, not contradictory
+    ['fine_dining_restaurant', 'dinner', 'fit'],
+    ['steak_house', 'dinner', 'fit'],
+    ['bakery', 'dinner', 'poor'],
+    ['sandwich_shop', 'lunch', 'fit'],
+    ['night_club', 'lunch', 'poor'],
+    ['bar', 'drinks', 'fit'],
+    ['wine_bar', 'drinks', 'fit'],
+    ['bakery', 'drinks', 'poor'],
+    ['coffee_shop', 'cafe', 'fit'],
+    ['ice_cream_shop', 'snack', 'fit'],
+    // an activity slot has no daypart opinion whatsoever
+    ['steak_house', 'activity', ''],
+    ['breakfast_restaurant', 'activity', ''],
+    ['breakfast_restaurant', '', ''],
+  ];
+  for (const [type, meal, want] of cases) {
+    assert.equal(L.mealFitness(type, meal), want, `${type} for ${meal}`);
+  }
+});
+
+test('MEAL FITNESS survives into slot selection, and never outranks being OPEN', () => {
+  const f = breakfastAt('08:00');
+  const mk = (name, hours, foodType, rating) => ({
+    name,
+    entry: { status: 'ok', placeId: 'pid-' + name, rating, userRatingCount: 1000, hours, foodType },
+    proposal: { pid: 'p-' + name, display: { title: name, startDate: WED, startTime: '08:00' }, fields: f },
+    schedule: L.candidateScheduleTier({ hours, foodType }, f),
+    time: '08:00',
+  });
+  const steak = mk('Steak', daily('06:00', '23:00'), 'steak_house', 4.8);
+  const brunch = mk('Brunch', daily('07:00', '15:00'), 'brunch_restaurant', 4.6);
+  const shutBakery = mk('Shut Bakery', daily('10:30', '18:00'), 'bakery', 4.9);
+  const scored = [steak, brunch, shutBakery].map(c => ({
+    ...c, score: L.placeQualityScore(c.entry, 1, 'breakfast'),
+  }));
+  const ranked = L.rankVerifiedPlaces(scored);
+  const { final } = L.selectSlotCandidates(ranked, 3);
+  assert.deepEqual(final.map(x => x.name), ['Brunch', 'Steak'],
+    'the fit one leads, the open steakhouse still stands, and the shut bakery is out however well typed and rated');
+});

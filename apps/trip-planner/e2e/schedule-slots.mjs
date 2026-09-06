@@ -43,6 +43,7 @@ const HM = (h, m = 0) => h * 60 + m;
 // Named venues the model can propose, and what Google says about each.
 const VENUES = {
   'only noodles': { name: 'Only Noodles', rating: 4.7, count: 1481, hours: daily(HM(10, 30), HM(22)) },
+  'steak': { name: 'Phi Phi Steakhouse', rating: 4.8, count: 2000, hours: daily(HM(6), HM(23)), foodType: 'steak_house' },
   'anna': { name: "Anna's Restaurant", rating: 4.5, count: 980, hours: daily(HM(12), HM(22)) },
   'garlic': { name: 'Garlic 1992 Restaurant', rating: 4.4, count: 760, hours: daily(HM(7), HM(23)) },
   'dinner one': { name: 'Papaya Restaurant', rating: 4.3, count: 1200, hours: daily(HM(11), HM(23)) },
@@ -52,8 +53,8 @@ const VENUES = {
 
 // What a category search finds when a slot goes looking. Both are open early.
 const DISCOVERED = [
-  { name: 'Ciao Bella Bakery', rating: 4.6, count: 640, hours: daily(HM(6, 30), HM(12)) },
-  { name: 'Morning Star Kitchen', rating: 4.3, count: 310, hours: daily(HM(7, 30), HM(15)) },
+  { name: 'Ciao Bella Bakery', rating: 4.6, count: 640, hours: daily(HM(6, 30), HM(12)), foodType: 'bakery' },
+  { name: 'Morning Star Kitchen', rating: 4.3, count: 310, hours: daily(HM(7, 30), HM(15)), foodType: 'breakfast_restaurant' },
 ];
 
 function venueFor(query, table) {
@@ -91,7 +92,8 @@ function placesMock(log, opts = {}) {
             status: 'ok', name: v.name, rating: v.rating, userRatingCount: v.count,
             mapsUri: 'https://maps.google.com/?cid=90' + i, confidence: 1,
             lat: 7.7390, lon: 98.7714, placeId: 'pid-disc-' + slug(v.name),
-            verified: true, areaBasis: 'point', ...(v.hours ? { hours: v.hours } : {}),
+            verified: true, areaBasis: 'point',
+            ...(v.hours ? { hours: v.hours } : {}), ...(v.foodType ? { foodType: v.foodType } : {}),
           })),
         },
       };
@@ -110,7 +112,8 @@ function placesMock(log, opts = {}) {
             id: e.id, query: e.q, status: 'ok', name: v.name, rating: v.rating,
             userRatingCount: v.count, mapsUri: 'https://maps.google.com/?cid=1',
             confidence: 1, lat: 7.7390, lon: 98.7714, placeId: 'pid-' + slug(v.name),
-            verified: true, areaBasis: 'point', ...(v.hours ? { hours: v.hours } : {}),
+            verified: true, areaBasis: 'point',
+            ...(v.hours ? { hours: v.hours } : {}), ...(v.foodType ? { foodType: v.foodType } : {}),
           };
         }),
       },
@@ -534,6 +537,47 @@ export async function run({ base, cdpPort }) {
         JSON.stringify(spec), s);
       await t('S4b: one search was enough, and only one was bought',
         log.filter(x => x.kind === 'discover').length === 1, String(log.filter(x => x.kind === 'discover').length), s);
+    });
+  }
+
+  /* ---- S4c. OPEN IS NOT THE SAME AS APPROPRIATE ---- */
+  freshIds();
+  {
+    const log = [];
+    const date = iso(30);
+    // A steakhouse that really is open at 08:00, better rated than either
+    // breakfast place, and typed by Google as a steakhouse.
+    const MIXED = `Three for breakfast.
+
+\`\`\`json
+{"tripActions":[
+ {"op":"add","group":"breakfast-${date}","item":{"type":"activity","meal":"breakfast","title":"Phi Phi Steakhouse","location":"Ko Phi Phi","startDate":"${date}","startTime":"08:00","mapsQuery":"steak Ko Phi Phi"}},
+ {"op":"add","group":"breakfast-${date}","item":{"type":"activity","meal":"breakfast","title":"Only Noodles","location":"Ko Phi Phi","startDate":"${date}","startTime":"08:00","mapsQuery":"Only Noodles Ko Phi Phi"}},
+ {"op":"add","group":"breakfast-${date}","item":{"type":"activity","meal":"breakfast","title":"Garlic 1992 Restaurant","location":"Ko Phi Phi","startDate":"${date}","startTime":"08:00","mapsQuery":"Garlic 1992 Restaurant Ko Phi Phi"}}
+]}
+\`\`\``;
+    await withPage('S4c meal fitness', { db: dbOf([phiPhiTrip(30)]), net: placesMock(log) }, async (s) => {
+      await planAndPaste(s, MIXED, null);
+      await waitForExpr(s, `document.querySelectorAll('#assistMessages .assist-set').length >= 1`, { timeout: 15000 });
+      await sleep(700);
+      const sets = await options(s);
+      const breakfast = sets.find(x => x.group.startsWith('breakfast')) || { opts: [] };
+      const titles = breakfast.opts.map(o => o.title);
+      // The rendered title carries its badges ("Phi Phi Steakhouse⭐ Highest
+      // rated"), so the positions are found by match rather than by equality.
+      const at = re => titles.findIndex(x => re.test(x));
+      await t('S4c: the breakfast-typed replacement leads the better-rated steakhouse',
+        at(/Ciao Bella/) >= 0 && at(/Steakhouse/) >= 0 && at(/Ciao Bella/) < at(/Steakhouse/),
+        JSON.stringify(titles), s);
+      // The steakhouse still WEARS "Highest rated": that badge is an objective
+      // fact about the set, not a recommendation, and the round does not change
+      // what is true about its stars - only which candidate leads the slot.
+      await t('S4c: and the objective badges still say what is objectively true',
+        titles.some(x => /Steakhouse/.test(x) && /Highest rated/.test(x)), JSON.stringify(titles), s);
+      await t('S4c: but the steakhouse is still OFFERED, because it is open and real',
+        titles.some(x => /Steakhouse/.test(x)), JSON.stringify(titles), s);
+      await t('S4c: and the venue that is shut at 08:00 is still the one that is gone',
+        !titles.some(x => /Only Noodles/.test(x)), JSON.stringify(titles), s);
     });
   }
 
