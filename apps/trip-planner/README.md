@@ -222,6 +222,8 @@ the network.
 | gate | question | on failure |
 | --- | --- | --- |
 | `matchConfidence` | is this the same **business**? | `no_match / low_confidence` |
+
+`matchConfidence` also refuses a **chain sibling**: when the returned name and the query EACH carry an identifying word the other lacks (`Sugar Marina Hotel -FASHION- Kata Beach` against the same chain's `-POP-` property 350 m up the same beach), they are two businesses rather than one described at two lengths, and no geographic check can separate neighbours. One-sided extras still pass (`Nabezo Shinjuku` -> `Nabezo Shinjuku Sanchome`), and the query's own city is excluded from that judgement, because a `mapsQuery` carries the city as a search HINT rather than as part of the name - which is what keeps `Royce' Chocolate Tokyo Station` a question for the GEOGRAPHIC gate below rather than the name one.
 | `verifyArea` | is it the branch in **this itinerary's area**? | `no_match / wrong_area` |
 
 `verifyArea` compares the resolved place's coordinates to the expected point

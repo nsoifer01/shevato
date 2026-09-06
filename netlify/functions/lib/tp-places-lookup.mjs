@@ -222,7 +222,9 @@ function refineQuery(query, area) {
 // completely different fixes.
 function judge(query, place, placeId, area) {
   const name = (place && place.name) || '';
-  const { score, confident } = matchConfidence(query, name);
+  // The area rides along so a city named in the query is read as the search
+  // hint it is, never as a discriminator competing with the place's own name.
+  const { score, confident } = matchConfidence(query, name, area);
   if (!confident) {
     return {
       rejectedOnArea: false, unconfirmed: false, area: null,
