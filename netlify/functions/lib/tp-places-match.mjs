@@ -67,12 +67,37 @@ export function isGenericQuery(s) {
   return distinctiveTokens(s).length === 0;
 }
 
+// The words an AREA contributes to a query, which are search hints rather than
+// part of the venue's name. "Kata Beach" in a mapsQuery says WHERE to look; it
+// does not claim the business is called that.
+function areaWords(area) {
+  const out = new Set();
+  if (!area || typeof area !== 'object') return out;
+  for (const v of [area.city, area.country]) {
+    for (const w of tokens(v)) out.add(w);
+  }
+  return out;
+}
+
+// True when each name carries an identifying word the other lacks. See the
+// note in matchConfidence: this is the chain-sibling signal.
+export function hasCompetingDiscriminator(query, placeName, area) {
+  const skip = areaWords(area);
+  const qTok = distinctiveTokens(query).filter(t => !skip.has(t));
+  const pTok = distinctiveTokens(placeName).filter(t => !skip.has(t));
+  if (!qTok.length || !pTok.length) return false;
+  const qSet = new Set(qTok), pSet = new Set(pTok);
+  const placeAdds = pTok.some(t => !qSet.has(t));
+  const queryAdds = qTok.some(t => !pSet.has(t));
+  return placeAdds && queryAdds;
+}
+
 // How much of the place Google returned is actually accounted for by the query.
 // Scored over the PLACE's distinctive tokens, not the query's: the query is
 // usually longer (it carries city, cuisine and neighbourhood as search hints),
 // so scoring over the query would punish a perfect match. A returned place
 // whose own name is mostly absent from the query is a different business.
-export function matchConfidence(query, placeName) {
+export function matchConfidence(query, placeName, area) {
   const q = normalizeQuery(query);
   const p = normalizeQuery(placeName);
   if (!q || !p) return { score: 0, confident: false };
@@ -84,6 +109,36 @@ export function matchConfidence(query, placeName) {
   const pTokens = distinctiveTokens(placeName);
   if (!pTokens.length) return { score: 0, confident: false };
   const qSet = new Set(tokens(query));
+
+  // COMPETING DISCRIMINATORS (owner report, 2026-09-05, found while verifying
+  // the fix above against production).
+  //
+  //   asked for  "Sugar Marina Hotel -FASHION- Kata Beach"
+  //   got back   "Sugar Marina Hotel -POP- Kata Beach"
+  //
+  // A different hotel of the same chain, 350 m up the same beach. It scored
+  // 0.80 and walked through, because four of the place's five distinctive
+  // words ("sugar", "marina", "kata", "beach") really are in the query. Chains
+  // name their properties exactly like this - one word apart, and that word is
+  // the whole identity: -POP- / -FASHION- / -SURF- / -ART-.
+  //
+  // The signal is MUTUAL disagreement. When the place carries a distinctive
+  // word the query never asked for AND the query carries one the place does
+  // not have, the two names are not a longer and a shorter form of one
+  // business - they are two businesses whose discriminators contradict. One
+  // sided extras stay fine, and that is what keeps the ordinary cases working:
+  // "Nabezo Shinjuku" -> "Nabezo Shinjuku Sanchome" (only the place adds a
+  // word) and "Ichiran (Shibuya branch)" -> "Ichiran Shibuya" (only the query
+  // does) both still pass.
+  //
+  // The query's own AREA words are excluded before this is judged, because a
+  // mapsQuery legitimately carries the city as a search hint rather than as a
+  // discriminator - that is what stops "Royce' Chocolate Tokyo Station" being
+  // read as contradicting "ROYCE' Chocolate World" over the word "Tokyo". That
+  // one is a WRONG BRANCH, and the geographic gate is what answers it.
+  if (hasCompetingDiscriminator(query, placeName, area)) {
+    return { score: 0, confident: false, reason: 'competing_discriminator' };
+  }
 
   const hits = pTokens.filter(t => qSet.has(t)).length;
   const score = hits / pTokens.length;

@@ -272,6 +272,49 @@ test('THE COUNTERPART: a same-named venue in the wrong place is still refused', 
   assert.ok(areaDistanceKm({ lat: 8.0115, lon: 98.8378 }, ANNAS_BANGKOK) > 600);
 });
 
+test('THE CHAIN SIBLING: a neighbouring property of the same chain is not "the same place"', async () => {
+  // Found by verifying the locality fix against production: the query named
+  // the -FASHION- property, Google answered with the chain's -POP- property
+  // 350 m up the same beach, and the old name gate scored it 0.80. Geography
+  // cannot separate two hotels on one beach; only the name can, and the
+  // discriminating word is the one the two names disagree about.
+  const SUGAR_POP = {
+    name: 'Sugar Marina Hotel -POP- Kata Beach',
+    address: '10 Kata Rd, Karon, Mueang Phuket District, Phuket 83100, Thailand',
+    addressComponents: [{ longText: 'Karon', shortText: 'Karon' },
+      { longText: 'Phuket', shortText: 'Phuket' }, { longText: 'Thailand', shortText: 'TH' }],
+    rating: 4.3, userRatingCount: 1500, mapsUri: 'https://maps.google.com/?cid=31',
+    lat: 7.8233, lon: 98.2990,
+  };
+  const r = await resolveQueries({
+    queries: [{ q: 'Sugar Marina Hotel -FASHION- Kata Beach', id: 'k',
+      city: 'Kata Beach', country: 'Thailand' }],
+    cache: memCache(), now: NOW, budget: 4, ...alwaysProvider(SUGAR_POP),
+  });
+  assert.equal(r.results[0].status, 'no_match');
+  assert.equal(r.results[0].reason, 'low_confidence');
+  assert.equal(r.results[0].name, undefined, 'the sibling must not ride back under this query');
+  assert.equal(RESOLVED(r.results[0]), false);
+});
+
+test('THE CHAIN SIBLING: the property that WAS asked for still resolves', async () => {
+  const SUGAR_FASHION = {
+    name: 'Sugar Marina Hotel -FASHION- Kata Beach',
+    address: '4/70 Karon Rd, Karon, Mueang Phuket District, Phuket 83100, Thailand',
+    addressComponents: [{ longText: 'Karon', shortText: 'Karon' },
+      { longText: 'Phuket', shortText: 'Phuket' }, { longText: 'Thailand', shortText: 'TH' }],
+    rating: 4.4, userRatingCount: 1200, mapsUri: 'https://maps.google.com/?cid=32',
+    lat: 7.8203, lon: 98.2988,
+  };
+  const r = await resolveQueries({
+    queries: [{ q: 'Sugar Marina Hotel -FASHION- Kata Beach', id: 'k',
+      city: 'Kata Beach', country: 'Thailand' }],
+    cache: memCache(), now: NOW, budget: 4, ...alwaysProvider(SUGAR_FASHION),
+  });
+  assert.equal(r.results[0].status, 'ok');
+  assert.ok(RESOLVED(r.results[0]));
+});
+
 // ---------- the wrong-branch gate is intact ----------
 
 test('the 809 km branch is STILL refused whenever a coordinate can say so', async () => {

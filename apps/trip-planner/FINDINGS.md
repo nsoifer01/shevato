@@ -1058,6 +1058,44 @@ subject must not be raised unless the CURRENT message raises it, and that
 earlier turns are context for the current request rather than a topic to
 continue.
 
+### 4. The chain sibling (found by verifying the fix on production)
+
+Verifying the round against the live site turned up a fourth defect of the same
+family. Asked for the hotel from the owner's own screenshots:
+
+    query   "Sugar Marina Hotel -FASHION- Kata Beach"
+    got     "Sugar Marina Hotel -POP- Kata Beach"     score 0.80, accepted
+
+A DIFFERENT hotel, of the same chain, 350 m up the same beach. Four of the
+place's five distinctive words really are in the query, so the name gate was
+not being unreasonable - and geography cannot help at all here, because the two
+buildings are neighbours. Chains name properties exactly like this: `-POP-`,
+`-FASHION-`, `-SURF-`, `-ART-`, one word apart, and that word is the whole
+identity.
+
+**The signal is MUTUAL disagreement.** When the place carries a distinctive word
+the query never asked for AND the query carries one the place does not have, the
+names are not a longer and a shorter form of one business; they are two
+businesses whose discriminators contradict. `hasCompetingDiscriminator` returns
+true only for that shape, so one-sided extras keep working, which is what
+protects the ordinary cases:
+
+| query | place | verdict |
+| ----- | ----- | ------- |
+| `Nabezo Shinjuku` | `Nabezo Shinjuku Sanchome` | pass - only the PLACE adds |
+| `Ichiran (Shibuya branch)` | `Ichiran Shibuya` | pass - only the QUERY adds |
+| `Hilton Tokyo` | `Hilton Tokyo Bay` | pass - one-sided |
+| `Sugar Marina ... -FASHION- ...` | `Sugar Marina ... -POP- ...` | **refused** - mutual |
+
+**The area is excluded before judging, and that is load-bearing.** A mapsQuery
+legitimately carries the city as a search HINT ("Anna's Restaurant Ao Nang"),
+not as part of the name. Without excluding it, `Royce' Chocolate Tokyo Station`
+would read as contradicting `ROYCE' Chocolate World` over the word "Tokyo" and
+be refused on the NAME - which would be the right answer for the wrong reason,
+and would stop the geographic gate ever being reached. `judge` therefore passes
+its `area` into `matchConfidence`, and the 809 km case still resolves the way it
+is documented to: name says yes, geography says no.
+
 ### What the tests had missed
 
 Every address-basis fixture in `tp-places-geo.test.mjs` used a city Google

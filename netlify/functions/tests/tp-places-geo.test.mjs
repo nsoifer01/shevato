@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normalizeArea, verifyArea, addressMentions, addressTextOf, areaDistanceKm,
-  resolutionConfidence, matchConfidence, AREA_MAX_KM, UNCHECKED_MAX_CONFIDENCE,
+  resolutionConfidence, matchConfidence, hasCompetingDiscriminator,
+  AREA_MAX_KM, UNCHECKED_MAX_CONFIDENCE,
 } from '../lib/tp-places-match.mjs';
 import { resolveQueries, idCacheKey, areaCacheKey, toEntry } from '../lib/tp-places-lookup.mjs';
 import { rectangleAround, clampBody } from '../tp-places.mjs';
@@ -58,9 +59,53 @@ test('the NAME gate alone still accepts the wrong branch, which is why the geo g
   // Not a bug being pinned, a limit being documented: "royce" and "chocolate"
   // genuinely are two thirds of "Royce' Chocolate World". A name can never
   // answer a question about WHERE, and this is what that looks like.
-  const m = matchConfidence("Royce' Chocolate Tokyo Station", ROYCE_HOKKAIDO.name);
+  //
+  // REVISED 2026-09-05: the area is passed here because the pipeline passes it
+  // (see judge). It is what tells the name gate that "Tokyo" in the query is a
+  // search HINT rather than a discriminator competing with "World" - without
+  // that, the competing-discriminator rule would refuse this pair on the name
+  // alone and the geographic question would never be reached. The limit being
+  // documented is unchanged: the name gate says yes, and only the geo gate can
+  // say where.
+  const area = { city: 'Tokyo', country: 'Japan' };
+  const m = matchConfidence("Royce' Chocolate Tokyo Station", ROYCE_HOKKAIDO.name, area);
   assert.equal(m.confident, true);
   assert.ok(m.score > 0.5);
+});
+
+test('but a chain SIBLING is refused on the name, before geography is asked', () => {
+  // Found while verifying the 2026-09-05 fix against production: asked for
+  // "Sugar Marina Hotel -FASHION- Kata Beach", Google returned the same
+  // chain's -POP- property 350 m up the same beach, and it scored 0.80.
+  // Both names carry a word the other lacks, and that word is the whole
+  // identity. Geography cannot separate these - they are neighbours.
+  const area = { city: 'Kata Beach', country: 'Thailand' };
+  const m = matchConfidence(
+    'Sugar Marina Hotel -FASHION- Kata Beach', 'Sugar Marina Hotel -POP- Kata Beach', area);
+  assert.equal(m.confident, false);
+  assert.equal(m.reason, 'competing_discriminator');
+  // and the same chain's own property still resolves to itself
+  assert.equal(matchConfidence(
+    'Sugar Marina Hotel -FASHION- Kata Beach', 'Sugar Marina Hotel -FASHION- Kata Beach', area).confident, true);
+});
+
+test('one-sided extra words are a longer form of one name, not a conflict', () => {
+  // The rule must not fire when only ONE side adds something: that is the
+  // ordinary case of a query and a listing describing the same business at
+  // different lengths, and breaking it would refuse half the real world.
+  const area = { city: 'Tokyo', country: 'Japan' };
+  for (const [q, p] of [
+    ['Nabezo Shinjuku', 'Nabezo Shinjuku Sanchome'],      // the place adds
+    ['Ichiran (Shibuya branch)', 'Ichiran Shibuya'],       // the query adds
+    ['teamLab Planets TOKYO', 'teamLab Planets TOKYO DMM'],
+    ['Hilton Tokyo', 'Hilton Tokyo Bay'],
+  ]) {
+    assert.equal(matchConfidence(q, p, area).confident, true, `${q} -> ${p}`);
+  }
+  assert.equal(hasCompetingDiscriminator('Nabezo Shinjuku', 'Nabezo Shinjuku Sanchome', area), false);
+  assert.equal(hasCompetingDiscriminator(
+    'Sugar Marina Hotel -FASHION- Kata Beach', 'Sugar Marina Hotel -POP- Kata Beach',
+    { city: 'Kata Beach' }), true);
 });
 
 test('a candidate 800 km from the expected point is rejected', () => {
