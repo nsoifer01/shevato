@@ -240,6 +240,12 @@ test('the retry delay matches the bucket that actually refills', () => {
   // budget earlier than Google does, and the client must not retry sooner.
   assert.equal(new Date(t + L.placesRetryDelay('global_month', t)).toISOString(), '2026-09-01T08:00:00.000Z');
   assert.equal(new Date(t + L.placesRetryDelay('free_month', t)).toISOString(), '2026-09-01T08:00:00.000Z');
+
+  // The owner tier names its own pools (see poolKeys in tp-places-quota.mjs).
+  // An unrecognised scope falls through to the 15-minute default, which on a
+  // day pool would re-ask 95 times before the bucket actually rolled.
+  assert.equal(L.placesRetryDelay('owner_day', t), L.placesRetryDelay('global_day', t));
+  assert.equal(new Date(t + L.placesRetryDelay('owner_month', t)).toISOString(), '2026-09-01T08:00:00.000Z');
   // Contention is the one genuinely transient scope: seconds, with jitter.
   const c = L.placesRetryDelay('contention', t, 1, () => 0.5);
   assert.ok(c >= 500 && c <= 1000, `contention backs off in seconds, got ${c}`);

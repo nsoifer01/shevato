@@ -259,6 +259,23 @@ A first draft of that copy over-promised against `privacy.html`, which is bindin
   `{ status: 'unavailable', reason: 'upstream' }`, so a Google throttle cannot
   reach the browser wearing a 429. When a 429 shows up in the console, read its
   `scope`: it names one of our own buckets and nothing else can produce it.
+- **The owner tier reports `owner_day` / `owner_month`, not the public names.**
+  Fixed 2026-09-06 after a live console 429 on shevato.com. `poolKeys` sent the
+  owner tier's counters to `ownerDay`/`ownerMonth` but left the SCOPE strings
+  as `global_day`/`global_month`, so the one line a rejection logs named a
+  bucket that was 44 of 150 full while `ownerDay` sat at exactly 300 of 300.
+  Diagnosis meant reading the usage blob by hand (`netlify blobs:get
+  trip-planner-places usage`) - the same blind spot `quotaExceeded` was written
+  to close. `resetAtFor` and the client's `placesRetryDelay` both learned the
+  two new names; either falling through to its default would have turned a
+  day-pool pause into a 15-minute retry loop.
+  **Reading the blob is the fastest diagnosis** for any live 429: the counters
+  are current-bucket only, so the exhausted row is visible directly.
+- **The quota toast used to name the wrong allowance.** Every pause said "the
+  free lookup allowance is used up" whatever refused it; on the 2026-09-06
+  daily cap that was false, with 411 of the 850 monthly lookups unspent and
+  ratings back the same evening. `placesPauseReason` now keys the wording on
+  `status().scope`, which the queue already tracked.
 - **The public $10/month and owner $40/month ceilings are NOT additive with two
   free allowances.** Google's 1,000 complimentary Place Details Enterprise
   calls are per SKU per PROJECT, and both pools (globalMonth 1500 + ownerMonth

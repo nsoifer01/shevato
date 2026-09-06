@@ -157,8 +157,10 @@ export function resetAtFor(scope, now) {
   switch (scope) {
     case 'client_hour': return (hourBucket(t) + 1) * HOUR_MS;
     case 'client_day':
-    case 'global_day': return (dayBucket(t) + 1) * DAY_MS;
+    case 'global_day':
+    case 'owner_day': return (dayBucket(t) + 1) * DAY_MS;
     case 'global_month':
+    case 'owner_month':
     case 'free_month': {
       // The next SHIFTED month boundary, so the reset we promise is the one
       // the counter actually honours (08:00Z on the 1st, see BILLING_SHIFT_MS).
@@ -195,10 +197,16 @@ export function budgetStatus(usage, now) {
 // Which pooled counters a tier spends against. Split so the owner's own use
 // is still metered (and visible in the blob) without ever consuming the
 // public allowance.
+// The scope names travel with the counters. An owner-tier rejection says
+// `owner_day` / `owner_month` rather than borrowing the public tier's names:
+// on 2026-09-06 a live 429 logged `global_day` while the PUBLIC day pool sat
+// at 44 of 150, so the one line the rejection writes pointed at the wrong
+// bucket and the blob had to be read by hand to find the real one. That is
+// exactly the blind spot quotaExceeded exists to close.
 function poolKeys(tier) {
   return tier === 'owner'
-    ? { day: 'ownerDay', month: 'ownerMonth' }
-    : { day: 'globalDay', month: 'globalMonth' };
+    ? { day: 'ownerDay', month: 'ownerMonth', dayScope: 'owner_day', monthScope: 'owner_month' }
+    : { day: 'globalDay', month: 'globalMonth', dayScope: 'global_day', monthScope: 'global_month' };
 }
 
 // Returns { allowed, scope?, granted, usage }.
@@ -220,8 +228,8 @@ export function checkQuota(usage, clientId, now, cost = 1, limits = DEFAULT_LIMI
   const room = [
     ['client_hour', limits.perClientHour - (u.clientHour[id] || 0)],
     ['client_day', limits.perClientDay - (u.clientDay[id] || 0)],
-    ['global_day', limits.globalDay - u[pool.day]],
-    ['global_month', limits.globalMonth - u[pool.month]],
+    [pool.dayScope, limits.globalDay - u[pool.day]],
+    [pool.monthScope, limits.globalMonth - u[pool.month]],
     // Checked for BOTH tiers, and it is the row that actually stands between
     // this app and a Google invoice. Listed last so that when several caps are
     // exhausted at once the response names this one, which is the one worth
