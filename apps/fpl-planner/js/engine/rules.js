@@ -69,7 +69,26 @@ export function buildRules(bootstrap) {
     scoring: normalizeScoring(config.scoring || {}, positions),
     defConThresholds: { ...DEF_CON_THRESHOLDS },
     chips: normalizeChips(bootstrap.chips || []),
+    // The wall-clock moments FPL applies price changes at, in order. This is a
+    // published field, so the app never hardcodes a time of day: the hour has
+    // moved between seasons and is not ours to assume. Empty when the payload
+    // does not carry it, and the UI then falls back to relative wording.
+    priceChangeDeadlines: normalizePriceChangeDeadlines(
+      config.settings && config.settings.price_change_deadlines,
+    ),
   };
+}
+
+// Unparseable entries are dropped rather than kept as NaN, and the result is
+// sorted so index order is time order however the payload arrived. ISO strings
+// throughout, so nothing downstream has to guess a timezone.
+function normalizePriceChangeDeadlines(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map(d => Date.parse(String(d)))
+    .filter(ms => Number.isFinite(ms))
+    .sort((a, b) => a - b)
+    .map(ms => new Date(ms).toISOString());
 }
 
 // game_config.scoring keys its per-position values by position SHORT NAME

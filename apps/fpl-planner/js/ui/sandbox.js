@@ -49,7 +49,7 @@
 
 import { el, append, disclosure } from './dom.js';
 import { formatMoney, xp } from './format.js';
-import { btn, banner } from './parts.js';
+import { btn, banner, priceChangeChip } from './parts.js';
 import { describePlayer, fixtureLabel, availability, getProjection, pitchRows } from './plan-model.js';
 import { formationOf } from '../engine/validate.js';
 import {
@@ -107,6 +107,11 @@ function editableCard({
   if (row && fixtures.length === 0) flags.push(el('span', { class: 'fpl-chip is-bgw', text: 'Blank' }));
   if (avail && avail.kind === 'out') flags.push(el('span', { class: 'fpl-chip is-inj', text: avail.label, title: avail.news }));
   if (avail && avail.kind === 'doubt') flags.push(el('span', { class: 'fpl-chip is-doubt', text: avail.label, title: avail.news }));
+  // Same compact chip the pitch uses: this card is the same width and the
+  // sandbox is where a manager is actively deciding who to sell, which is
+  // exactly when a price about to move matters.
+  const priceChip = priceChangeChip({ player: gameState.players.get(playerId), gameState, compact: true });
+  if (priceChip) flags.push(priceChip);
 
   // Progressive disclosure: the card always carries name, club, price, fixture
   // and this gameweek's projection, because those are what a decision needs.

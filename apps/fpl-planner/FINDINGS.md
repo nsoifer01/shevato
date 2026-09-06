@@ -50,6 +50,71 @@ Raw test count is not evidence of correctness. Do not report it as if it were.
 
 ## FPL rules and API facts (verified against live data)
 
+- **FPL publishes its own price-change predictions, and no predictor site is
+  needed** (measured 2026-09-05 against the live payload). Every player in
+  `bootstrap-static` carries `price_change_percent` (signed progress towards a
+  change), `price_change_projections` (three `{offset, projected_percent,
+  likelihood}` entries for tonight / +1 day / +2 days), `price_change_hourly_rate`,
+  `price_change_locked_until` and `price_change_calibrating`, and
+  `game_config.settings.price_change_deadlines` gives the exact application
+  times. On the live payload that day: 653 players carried the fields, 51 were
+  locked, none were calibrating, and 2 rises and 12 falls were projected for that
+  night.
+
+  **The external predictors are re-serving these fields.** LiveFPL's
+  `livefpl.us/api/prices.json` (200, CORS `*`, 108 KB) was matched player by
+  player against `price_change_percent`: median absolute difference **0.00**
+  percentage points, p90 0.10, sign agreement 651/653. fplstatistics.co.uk timed
+  out on both hosts, fplpricechanges.com is DNS-dead, and Fantasy Football
+  Scout/Fix are paid. So adding one buys no information and costs a dependency,
+  a CORS surface and a failure mode. **Do not add one.**
+
+  **THE ±100 THRESHOLD IS MEASURED, NOT GUESSED (14/14).** Two snapshots were
+  taken either side of the 23:00 UTC window on 2026-09-05 (21:30 and 23:43).
+  Applying `|projected_percent| >= 100` at offset 0 to the first snapshot
+  predicted 2 rises (Barry, Wissa) and 12 falls. Diffing `now_cost` between the
+  snapshots found **exactly those 14 moves: no misses, no false positives, no
+  extra movers.** The rule the app uses is therefore the rule FPL applies, on a
+  full cycle. Re-verify if FPL ever changes the field's scale.
+
+  **Two semantics remain INFERRED** and are marked as such in
+  `js/engine/price-change.js`: the -5..+5 `likelihood` scale being an ordinal
+  confidence tier (NEVER a probability, and nothing may render it as a
+  percentage), and offsets 0/1/2 being consecutive windows. If FPL documents
+  these, that module is the one place to correct.
+
+  **`price_change_hourly_rate` units, and why it is still unused.** Measured on
+  the same two snapshots (2.2 hours apart): `rate / ~2270` is percentage points
+  per hour, p25-p75 of 2123-2430 across the 32 players whose rate was large
+  enough to clear the 0.1 reporting quantum. The earlier "`rate/75` per day"
+  guess from a single payload was wrong; the measured figure is about `rate/95`
+  per day. That is a ballpark from a window that crossed a change event, so it
+  is NOT precise enough to drive anything, and it does not need to be:
+  `price_change_projections` is first-party, carries its own confidence and
+  answers the question directly, so a rate we fitted ourselves would be
+  strictly worse. `normalize.js` does not carry the field, so nothing can start.
+  This is a CLOSED decision, not a pending item.
+
+- **A price move is worth at most 0.12 points to the transfer search, by
+  construction.** The tie-break adds a bounded key (`sortScore = score +
+  adjustment`, `|adjustment| <= 0.1 * ftValuePoints`) rather than a "reorder if
+  within epsilon" comparator. That distinction is the whole design: a band
+  comparator is NOT transitive (a<b, b<c, c<a are all reachable) and
+  `Array.sort` on an intransitive comparator gives an engine-defined order. The
+  bounded key is a total order and provably reorders only candidates within
+  `2 * cap` of each other. `score` itself stays pure football, for the same
+  reason `hitMargin` and `churnCost` stay out of `xPointsHorizon`: the number
+  shown to a user must be what the engine expects to score.
+
+  **A signal every candidate shares decides nothing**, which is not obvious and
+  cost a wrong test on the way in. In the sample squad every top one-transfer
+  candidate sells the same player, so marking him a faller adds the identical
+  constant to all of them and the ordering cannot move. A tie-break only
+  separates plans it treats differently, so a test that paints a shared player
+  and expects a reorder is testing nothing. Paint the INCOMING player, which is
+  what differs between candidates. Pinned both ways in
+  `tests/transfers-price-tiebreak.test.mjs`.
+
 - **The API is fully public.** No key, no registration, no terms-acceptance
   flow, no robots.txt on the host. The authenticated `my-team` endpoint (exact
   selling prices, FTs) needs the user's FPL login, so nothing THIS APP runs ever

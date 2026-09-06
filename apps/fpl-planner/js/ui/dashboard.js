@@ -14,7 +14,7 @@ import { el, card, disclosure } from './dom.js';
 import { combobox } from './combobox.js';
 import { formatMoney, xp, signedXp, points, countdown, dateTime, relativeTime, chipLabel, plural } from './format.js';
 import { actionText, pairUp, chipDecision, getProjection, describePlayer, fixtureLabel, availability } from './plan-model.js';
-import { btn, affirm, banner, kv, sampleTag, confidenceStrip, emphasize } from './parts.js';
+import { btn, affirm, banner, kv, sampleTag, confidenceStrip, emphasize, priceChangeChip } from './parts.js';
 import { renderPitch, pitchViewModel } from './pitch.js';
 import { renderSquadTable } from './squad-table.js';
 import { columnChart } from './charts.js';
@@ -165,10 +165,12 @@ function chipNote(bundle, chip, gameState) {
 
 /* --------------------------------------------------------------- transfers */
 
-function transferSide({ dir, playerId, gameState, projections, gw, horizon }) {
+function transferSide({ dir, playerId, gameState, projections, gw, horizon, now }) {
   const info = describePlayer(gameState, playerId);
   const row = getProjection(projections, playerId, gw);
-  const avail = availability(gameState.players.get(playerId));
+  const player = gameState.players.get(playerId);
+  const avail = availability(player);
+  const priceChip = priceChangeChip({ dir, player, gameState, now });
   return el('div', { class: `fpl-tr-side is-${dir}` }, [
     el('div', { class: 'fpl-tr-dir' }, [
       dir === 'out' ? 'Out' : 'In',
@@ -179,7 +181,10 @@ function transferSide({ dir, playerId, gameState, projections, gw, horizon }) {
     el('div', { class: 'fpl-tr-nums' }, [
       el('div', {}, [
         el('div', { class: 'fpl-tr-num-k', text: 'Price' }),
-        el('div', { class: 'fpl-tr-num-v', text: formatMoney(info.priceTenths) }),
+        el('div', { class: 'fpl-tr-num-v' }, [
+          formatMoney(info.priceTenths),
+          priceChip,
+        ]),
       ]),
       el('div', {}, [
         el('div', { class: 'fpl-tr-num-k', text: 'xP this GW' }),
@@ -193,7 +198,11 @@ function transferSide({ dir, playerId, gameState, projections, gw, horizon }) {
   ]);
 }
 
-export function transfersCard({ bundle, gameState }) {
+// `now` is the READER'S clock, not the payload's. The engine scores against
+// `gameState.fetchedAt` so a decision replays identically, but a badge saying
+// "tonight" is a statement to the person looking at the screen, and the two can
+// only disagree inside the bootstrap cache window.
+export function transfersCard({ bundle, gameState, now = Date.now() }) {
   const plan = bundle.current;
   const { projections } = bundle;
   const horizon = plan.horizon;
@@ -227,9 +236,9 @@ export function transfersCard({ bundle, gameState }) {
 
   const pairs = pairUp(plan);
   const rows = pairs.map(pair => el('div', { class: 'fpl-transfer' }, [
-    transferSide({ dir: 'out', playerId: pair.out, gameState, projections, gw: plan.gw, horizon }),
+    transferSide({ dir: 'out', playerId: pair.out, gameState, projections, gw: plan.gw, horizon, now }),
     el('div', { class: 'fpl-tr-arrow', text: '→' }),
-    transferSide({ dir: 'in', playerId: pair.in, gameState, projections, gw: plan.gw, horizon }),
+    transferSide({ dir: 'in', playerId: pair.in, gameState, projections, gw: plan.gw, horizon, now }),
     el('div', { class: 'fpl-tr-gain' }, [
       el('div', {}, [
         el('div', { class: 'fpl-gain-k', text: 'Gain this gameweek' }),
@@ -729,7 +738,12 @@ export function futureCard({ bundle, gameState, sources = null, now = Date.now()
     el('div', { class: 'fpl-future' }, cols),
     el('div', { class: 'fpl-uncertain' }, [
       el('span', { text: '!' }),
-      el('span', { text: 'These are projections, not instructions. They assume the squad above, one new free transfer per gameweek, and no price changes, and each one is recomputed from real data when its own deadline comes round.' }),
+      // The old wording said "and no price changes" flatly. That is no longer
+      // true of the NEXT THREE DAYS, which is exactly as far as Fantasy Premier
+      // League's own prediction reaches, and still entirely true of everything
+      // after that. Saying both is the only accurate version, and the sentence
+      // deliberately refuses to imply a price forecast across the horizon.
+      el('span', { text: 'These are projections, not instructions. They assume the squad above and one new free transfer per gameweek. Fantasy Premier League publishes price-change predictions three days ahead, and those are shown on the transfers above and used only to separate plans that are otherwise level; beyond them, prices are assumed unchanged for the rest of the horizon. Each gameweek is recomputed from real data when its own deadline comes round.' }),
     ]),
   ]);
 }

@@ -10,6 +10,7 @@ import { el } from './dom.js';
 import { formatMoney, xp } from './format.js';
 import { pitchRows, describePlayer, fixtureLabel, availability, getProjection } from './plan-model.js';
 import { formationOf, goalkeeperPositionId } from '../engine/validate.js';
+import { priceChangeChip } from './parts.js';
 
 const POSITION_COLORS = [
   ['GKP', 'var(--amber)'],
@@ -68,7 +69,7 @@ function livePointsClass(row) {
 
 export function playerCard({
   playerId, gameState, projections, gw, isCaptain = false, isVice = false, move = null,
-  benchNumber = null, isBenchGk = false, onClick = null,
+  benchNumber = null, isBenchGk = false, onClick = null, now = Date.now(),
   // Live scoring for the gameweek being PLAYED, which is a different gameweek
   // from `gw` (what the plan is for) and a different quantity from xP. Passed
   // as a row from engine/live.js, or null when nothing is in play.
@@ -91,6 +92,11 @@ export function playerCard({
   if (row && fixtures.length === 0) flags.push(el('span', { class: 'fpl-chip is-bgw', text: 'Blank' }));
   if (avail && avail.kind === 'out') flags.push(el('span', { class: 'fpl-chip is-inj', text: avail.label, title: avail.news }));
   if (avail && avail.kind === 'doubt') flags.push(el('span', { class: 'fpl-chip is-doubt', text: avail.label, title: avail.news }));
+  // Compact here: a pitch card is about 100px wide and already carries up to
+  // two flags, so the chip shows the arrow and the timing and leaves the word
+  // ("Rise"/"Fall") to the tooltip and the accessible name.
+  const priceChip = priceChangeChip({ player: rawPlayer(gameState, playerId), gameState, now, compact: true });
+  if (priceChip) flags.push(priceChip);
 
   if (onClick) classes.push('is-press');
   const card = el('div', {
@@ -191,7 +197,7 @@ export function pitchViewModel({ mode, plan, squadState, gameState }) {
 }
 
 export function renderPitch({
-  mode, plan, squadState, gameState, projections, gw, onPlayerClick = null,
+  mode, plan, squadState, gameState, projections, gw, onPlayerClick = null, now = Date.now(),
   // Rows from engine/live.js scoreLiveSquad(), keyed by player id. Present only
   // while a gameweek is being played and only on the CURRENT team view: the
   // recommended eleven is advice about a future gameweek and has no live score.
@@ -214,6 +220,7 @@ export function renderPitch({
     move: moveOf(id),
     liveRow: liveOf(id),
     onClick: onPlayerClick,
+    now,
   })))));
 
   const benchOrder = vm.bench && Array.isArray(vm.bench.order) ? vm.bench.order : [];
@@ -221,11 +228,11 @@ export function renderPitch({
     el('div', { class: 'fpl-bench-title', text: 'Bench, in auto-sub order' }),
     el('div', { class: 'fpl-bench-row' }, [
       vm.bench && vm.bench.gk
-        ? playerCard({ playerId: vm.bench.gk, gameState, projections, gw, move: moveOf(vm.bench.gk), liveRow: liveOf(vm.bench.gk), benchNumber: 0, isBenchGk: true, onClick: onPlayerClick })
+        ? playerCard({ playerId: vm.bench.gk, gameState, projections, gw, move: moveOf(vm.bench.gk), liveRow: liveOf(vm.bench.gk), benchNumber: 0, isBenchGk: true, onClick: onPlayerClick, now })
         : null,
       ...benchOrder.map((id, i) => playerCard({
         playerId: id, gameState, projections, gw, move: moveOf(id), liveRow: liveOf(id),
-        benchNumber: i + 1, onClick: onPlayerClick,
+        benchNumber: i + 1, onClick: onPlayerClick, now,
       })),
     ]),
   ]);

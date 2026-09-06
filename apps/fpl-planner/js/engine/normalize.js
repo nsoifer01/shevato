@@ -204,6 +204,11 @@ export function normalizePlayer(e) {
     // `entry_history.value`, and so tell an ordinary overnight move apart from
     // a reconstruction that genuinely does not add up.
     costChangeEvent: e.cost_change_event ?? 0,
+    // FPL's OWN short-term price-change prediction, or null when the payload
+    // does not carry one (it did not exist before 2026/27, and every fixture
+    // recorded before then is missing it). engine/price-change.js is the only
+    // module allowed to interpret this; see its header for what is inferred.
+    priceChange: normalizePriceChange(e),
     status: e.status,
     // FPL gives a percentage, the engine works in probabilities.
     chanceNext: e.chance_of_playing_next_round === null || e.chance_of_playing_next_round === undefined
@@ -270,6 +275,78 @@ export function normalizePlayer(e) {
       cornersOrder: e.corners_and_indirect_freekicks_order ?? null,
     },
   };
+}
+
+// bootstrap-static's price-change fields -> one object, or null.
+//
+// DEFENSIVE ON PURPOSE. These fields are new, undocumented, and ship their
+// numbers as strings ("116.5"), so every one of them is parsed and range
+// checked here and nothing downstream ever sees a raw payload value. Returning
+// null for "no usable data" rather than an object full of nulls is what lets
+// every caller ask one question instead of five.
+//
+// `price_change_hourly_rate` is READ AND DROPPED. See the price-change module
+// header: its units do not reconcile with the projections, so carrying it would
+// only invite something to extrapolate from it.
+export function normalizePriceChange(e) {
+  if (!e || typeof e !== 'object') return null;
+
+  const progress = finiteOrNull(e.price_change_percent);
+  const projections = normalizePriceProjections(e.price_change_projections);
+  const lockedUntil = isoOrNull(e.price_change_locked_until);
+  const calibrating = e.price_change_calibrating === true;
+
+  // A payload that carries none of it is a payload from before the feature
+  // existed, and that is not an error state: the app simply shows no prices.
+  if (progress === null && !projections.length && !lockedUntil && !calibrating) return null;
+
+  return { progressPercent: progress, projections, lockedUntil, calibrating };
+}
+
+// Malformed entries are DROPPED rather than defaulted. A projection with an
+// unreadable percent is not a projection of zero, and treating it as one would
+// invent a "no movement" claim the API never made.
+function normalizePriceProjections(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const p of raw) {
+    if (!p || typeof p !== 'object') continue;
+    const offset = finiteOrNull(p.offset);
+    const projectedPercent = finiteOrNull(p.projected_percent);
+    if (offset === null || projectedPercent === null) continue;
+    if (!Number.isInteger(offset) || offset < 0) continue;
+    if (seen.has(offset)) continue;         // first wins; a duplicate offset is not two windows
+    seen.add(offset);
+
+    // Clamped, not rejected: an out-of-range likelihood from a future API is a
+    // tier we do not know, and losing the projection over it would be worse
+    // than reading its confidence conservatively.
+    const rawLikelihood = finiteOrNull(p.likelihood);
+    const likelihood = rawLikelihood === null
+      ? null
+      : Math.max(-5, Math.min(5, Math.trunc(rawLikelihood)));
+
+    out.push({ offset, projectedPercent, likelihood });
+  }
+  // Sorted so index order is time order regardless of how the payload arrived.
+  out.sort((a, b) => a.offset - b.offset);
+  return out;
+}
+
+// Unlike `num()` above, these two answer "was this present and readable?" and
+// so must be able to say no. `num()` folds every failure to 0, which is right
+// for a rate and wrong for a prediction.
+function finiteOrNull(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function isoOrNull(v) {
+  if (!v) return null;
+  const ms = Date.parse(String(v));
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 }
 
 export function normalizeFixture(f) {

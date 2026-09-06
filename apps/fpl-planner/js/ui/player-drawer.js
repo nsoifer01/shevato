@@ -18,6 +18,8 @@ import { formatMoney, xp, percent } from './format.js';
 import { describePlayer, getProjection, availability, fixtureLabel } from './plan-model.js';
 import { sparkline } from './charts.js';
 import { lockScroll, unlockScroll } from './scroll-lock.js';
+import { readPriceChange, upcomingDeadlines } from '../engine/price-change.js';
+import { dateTime } from './format.js';
 
 const BREAKDOWN_LABELS = {
   appearance: 'Appearance',
@@ -84,7 +86,93 @@ export function seasonTotalsLabel(evidence, { baselineSource = null, seasonStart
   return 'This season so far';
 }
 
-function drawerContent({ playerId, gameState, projections, gw, horizon, evidence = null }) {
+// A signed percentage, always with its sign, because the sign IS the direction
+// and "84%" alone does not say which way the player is travelling.
+function signedPercent(v) {
+  if (!Number.isFinite(v)) return '-';
+  return `${v > 0 ? '+' : ''}${v.toFixed(0)}%`;
+}
+
+// Fantasy Premier League's own price prediction, laid out as the three windows
+// it actually publishes and no further.
+//
+// Returns null when the payload carries nothing, which is the case for every
+// pre-2026/27 fixture and for any future season where FPL withdraws the fields.
+// The drawer then looks exactly as it did before this feature existed.
+function priceChangeSection(player, gameState, now) {
+  if (!player || !player.priceChange) return null;
+
+  const deadlines = (gameState.rules && gameState.rules.priceChangeDeadlines) || [];
+  const windows = upcomingDeadlines(deadlines, now);
+  const model = readPriceChange(player, { now, deadlines });
+  const pc = player.priceChange;
+
+  const rows = pc.projections.map((p) => {
+    const when = windows[p.offset];
+    // The VISIBLE label is the relative word, because the row's label column is
+    // sized for "GW 13" and a localised "Sun, 6 Sep, 05:02 PM" wrapped it onto
+    // four lines. The exact official moment is not lost: it is the row's
+    // tooltip, so the precise time is a hover away and is never invented.
+    const label = ['Tonight', 'Tomorrow', 'In 2 days'][p.offset] || `In ${p.offset} days`;
+    // The tier is a WORD, never a percentage: `likelihood` is an ordinal
+    // confidence rating and rendering it as "100% likely" would be the app
+    // inventing a probability Fantasy Premier League never published.
+    const tier = tierWordFor(p.likelihood, pc.calibrating);
+    return el('div', {
+      class: 'fpl-dw-gw',
+      title: when ? `Fantasy Premier League applies this change at ${dateTime(when)}` : undefined,
+    }, [
+      el('span', { class: 'fpl-dw-gw-k', text: label }),
+      el('span', {
+        class: `fpl-dw-gw-v ${Math.abs(p.projectedPercent) >= 100 ? (p.projectedPercent > 0 ? 'is-rise' : 'is-fall') : ''}`.trim(),
+        text: signedPercent(p.projectedPercent),
+      }),
+      el('span', { class: 'fpl-dw-gw-f', text: tier || '' }),
+    ]);
+  });
+
+  const notes = [];
+  if (model.locked) {
+    notes.push(model.lockedUntil
+      ? `Price locked until ${dateTime(model.lockedUntil)}. It cannot change before then, whatever the projection reads.`
+      : 'Price locked. It cannot change yet, whatever the projection reads.');
+  }
+  if (pc.calibrating) {
+    notes.push('Fantasy Premier League reports this prediction as still calibrating, so it is shown without a confidence rating.');
+  }
+
+  return el('section', { class: 'fpl-dw-section' }, [
+    el('div', { class: 'fpl-subhead', text: 'Price change' }),
+    el('div', { class: 'fpl-dw-stats' }, [
+      statCell(
+        'Current progress',
+        signedPercent(pc.progressPercent),
+        'Towards a change at 100%',
+      ),
+    ]),
+    rows.length ? el('div', { class: 'fpl-dw-gws' }, rows) : null,
+    ...notes.map(text => el('p', { class: 'fpl-dw-news', text })),
+    el('p', {
+      class: 'fpl-card-sub',
+      text: 'Predicted by Fantasy Premier League and read straight from its data. It reaches three days ahead and no further.',
+    }),
+  ]);
+}
+
+// |likelihood| -> the word shown. Kept alongside the section that renders it
+// rather than exported from the engine, because the ENGINE'S tiers drive a
+// decision and this is only ever prose.
+function tierWordFor(likelihood, calibrating) {
+  if (calibrating) return 'Calibrating';
+  if (!Number.isFinite(likelihood)) return null;
+  const mag = Math.abs(likelihood);
+  if (mag >= 5) return 'Strong signal';
+  if (mag >= 3) return 'Moderate signal';
+  if (mag >= 1) return 'Slight signal';
+  return 'No signal';
+}
+
+function drawerContent({ playerId, gameState, projections, gw, horizon, evidence = null, now = Date.now() }) {
   const info = describePlayer(gameState, playerId);
   const player = rawPlayer(gameState, playerId);
   const avail = player ? availability(player) : null;
@@ -159,7 +247,17 @@ function drawerContent({ playerId, gameState, projections, gw, horizon, evidence
     ]),
   ]) : null;
 
-  return [header, news, projection, minutes, season];
+  return [header, news, projection, minutes, priceChangeSection(player, gameState, now), season];
+}
+
+// The drawer's body, rendered into a detached node.
+//
+// Exported so the sections can be asserted under `node --test` without driving
+// the modal's focus trap and scroll lock, which need a real browser. The open
+// path below renders the same `drawerContent`, so a test here is a test of what
+// ships rather than of a parallel description of it.
+export function drawerBodyForTest(args) {
+  return el('div', {}, drawerContent(args));
 }
 
 // One drawer per app. `context()` is read at open time so the drawer always

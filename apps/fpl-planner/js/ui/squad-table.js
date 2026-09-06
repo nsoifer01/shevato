@@ -4,6 +4,7 @@
 // changes nothing else.
 
 import { el } from './dom.js';
+import { priceChangeChip } from './parts.js';
 import { formatMoney, xp } from './format.js';
 import { describePlayer, getProjection, availability, fixtureLabel } from './plan-model.js';
 
@@ -74,7 +75,7 @@ export function sortSquadRows(rows, key, dir) {
   });
 }
 
-export function renderSquadTable({ vm, gameState, projections, gw, horizon, onPlayerClick = null }) {
+export function renderSquadTable({ vm, gameState, projections, gw, horizon, onPlayerClick = null, now = Date.now() }) {
   let sortKey = null; // null = squad order (XI then bench)
   let sortDir = 'desc';
   const baseRows = squadTableRows({ vm, gameState, projections, gw, horizon });
@@ -118,7 +119,10 @@ export function renderSquadTable({ vm, gameState, projections, gw, horizon, onPl
         ]),
         el('td', { text: r.positionShort }),
         el('td', { text: r.club }),
-        el('td', { class: 'is-num', text: formatMoney(r.price) }),
+        el('td', { class: 'is-num' }, [
+          formatMoney(r.price),
+          priceChangeChip({ player: gameState.players.get(r.id), gameState, now, compact: true }),
+        ]),
         el('td', { class: 'is-num', text: r.ownership === null ? '-' : `${r.ownership.toFixed(1)}%` }),
         el('td', { class: 'is-num is-strong', text: r.xpGw === null ? '-' : xp(r.xpGw) }),
         el('td', { class: 'is-num', text: xp(r.xpHorizon) }),
