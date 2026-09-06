@@ -736,7 +736,7 @@ That method matters: measuring with `eslint --rule` instead reported 8,701
 `no-undef` violations against a config that actually has zero, because the flag
 lints files this config deliberately gives no globals to.
 
-**Enabled: 29 rules**, grouped in `CORRECTNESS_RULES`. Twenty-five were already
+**Enabled: 28 rules**, grouped in `CORRECTNESS_RULES`. Twenty-four were already
 at zero. Four were not, and all four turned out to be real:
 
 | Rule | Found | Verdict |
