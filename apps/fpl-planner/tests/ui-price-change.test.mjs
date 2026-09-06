@@ -244,6 +244,60 @@ test('the drawer breaks the prediction out into the three published windows', ()
   assert.match(text, /three days ahead and no further/);
 });
 
+test('a projection just short of the threshold is not rounded into a change', () => {
+  // SPEC: the real regression, seen on the live site 2026-09-06. Thiago sat at
+  // -99.8% tonight, which does NOT cross, and the drawer printed "-100%" beside
+  // a badge that correctly said tomorrow. The row read as a change tonight that
+  // the app was not predicting. Near the threshold the number keeps a decimal.
+  const state = stateWith({ [pair.in]: {
+    price_change_percent: '-94.3',
+    price_change_projections: [
+      { offset: 0, projected_percent: '-99.8', likelihood: -4 },
+      { offset: 1, projected_percent: '-105.9', likelihood: -5 },
+      { offset: 2, projected_percent: '-111.9', likelihood: -5 },
+    ],
+  } });
+  const text = textOf(drawerBodyForTest({
+    playerId: pair.in, gameState: state, projections: bundle.projections, gw, horizon: 3, now: NOW,
+  }));
+  assert.match(text, /-99\.8%/, 'the sub-threshold value keeps its decimal');
+  assert.doesNotMatch(text, /-100%/, 'and is never rounded into a crossing');
+  // The ones that genuinely cross stay whole numbers.
+  assert.match(text, /-106%/);
+  assert.match(text, /-112%/);
+});
+
+test('a value that genuinely crosses is not given a spurious decimal', () => {
+  // The complement: the decimal appears ONLY when rounding would change which
+  // side of the threshold the reader lands on.
+  const state = stateWith({ [pair.in]: {
+    price_change_percent: '96.0',
+    price_change_projections: [
+      { offset: 0, projected_percent: '100.4', likelihood: 4 },
+      { offset: 1, projected_percent: '52.0', likelihood: 2 },
+    ],
+  } });
+  const text = textOf(drawerBodyForTest({
+    playerId: pair.in, gameState: state, projections: bundle.projections, gw, horizon: 3, now: NOW,
+  }));
+  assert.match(text, /\+100%/, '100.4 rounds to 100 and still crosses, so no decimal is needed');
+  assert.match(text, /\+52%/, 'ordinary values stay whole');
+  assert.doesNotMatch(text, /\+100\.4%/);
+});
+
+test('a value rounding UP into a crossing also keeps its decimal', () => {
+  // 99.6 rounds to 100 and would read as a change; it is not one.
+  const state = stateWith({ [pair.in]: {
+    price_change_percent: '95.0',
+    price_change_projections: [{ offset: 0, projected_percent: '99.6', likelihood: 4 }],
+  } });
+  const text = textOf(drawerBodyForTest({
+    playerId: pair.in, gameState: state, projections: bundle.projections, gw, horizon: 3, now: NOW,
+  }));
+  assert.match(text, /\+99\.6%/);
+  assert.doesNotMatch(text, /\+100%/);
+});
+
 test('the drawer never renders likelihood as a probability', () => {
   // SPEC: `likelihood` is an ordinal tier. "100% likely" would be the app
   // inventing a number Fantasy Premier League never published.
