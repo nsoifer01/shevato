@@ -700,9 +700,10 @@ Every layer described above missed it, and each for a defensible reason:
   existing assertion passed correctly.
 - It cannot reproduce above 736px, where the toggle is `display: none`.
 
-**Added: a static layer.** ESLint with `no-undef` as the only enabled rule,
-`npm run lint`, and a per-PR `lint` workflow. It runs in about 8 seconds over
-~560 files and would have failed the merge that introduced the bug.
+**Added: a static layer.** ESLint via `npm run lint`, a per-PR `lint` workflow,
+and `npm run test:all` now running lint first so the cheapest gate fails
+fastest. It covers ~560 files in seconds and would have failed the merge that
+introduced the bug.
 
 Measured baseline before tuning: 570 violations across 25 files, of which 520
 were cross-file globals in the two classic multi-script apps (mario-kart,
@@ -727,10 +728,32 @@ The remainder was real and is fixed in the same change:
 - `apps/mario-kart/js/main.js` carried two `typeof X === 'function'` branches
   for `updateDateButtonText` and `loadPlayerNames`, neither of which exists.
 
-**Deliberately not adopted:** style rules, Prettier, or `eslint:recommended`
-wholesale. `no-unused-vars`, `no-redeclare`, `no-dupe-keys` and
-`no-unreachable` are the reasonable next candidates, but each has its own noise
-profile against classic scripts and should be measured the way `no-undef` was
-before being enabled. The `eslint-disable` comments already in the codebase
-refer to those unenabled rules, which is why `reportUnusedDisableDirectives` is
-off.
+### The rule set, and how each rule was decided
+
+Every candidate was measured by injecting it into the config blocks that
+already carry `rules`, so the per-area globals, sourceType and ignores applied.
+That method matters: measuring with `eslint --rule` instead reported 8,701
+`no-undef` violations against a config that actually has zero, because the flag
+lints files this config deliberately gives no globals to.
+
+**Enabled: 29 rules**, grouped in `CORRECTNESS_RULES`. Twenty-five were already
+at zero. Four were not, and all four turned out to be real:
+
+| Rule | Found | Verdict |
+|---|---|---|
+| `no-undef` | 4 | The `wasOpen` class. Detailed above. |
+| `valid-typeof` | 2 | `typeof x != 'jQuery'` in `util.js` `panel()` and `prioritize()`. `typeof` cannot return `'jQuery'`, so both guards were always true and re-wrapped an already-jQuery value on every call. `panel()` is live: `main.js` builds the mobile menu through it with `target: $body`. |
+| `no-prototype-builtins` | 8 | `data.hasOwnProperty(...)` inside gym-tracker's import validator and mario-kart's row healer, both of which read user-supplied JSON. An import carrying its own `hasOwnProperty` key made the validator throw a TypeError instead of returning "Invalid data structure". |
+| `no-func-assign` | 1 | football-h2h reassigned the `updatePlayerNames` function declaration to wrap it. Inlined into the function instead, so behaviour no longer depends on the patch running before the first caller. |
+
+**Measured and deliberately left off**, because they report pre-existing style
+debt rather than defects, and switching them on would turn a correctness gate
+into a repo-wide cleanup mandate: `no-unused-vars` (330 across 99 files),
+`no-redeclare` (75 across 20), `no-empty` (25 across 6) and `no-useless-escape`
+(15 across 6, purely cosmetic). Each is a deliberate cleanup project, to be
+taken on its own terms rather than as a side effect of this gate. The numbers
+are recorded here so the next session does not have to re-measure.
+
+**Also not adopted:** Prettier, any style preset, or `eslint:recommended`
+wholesale. The `eslint-disable` comments already in the codebase refer to the
+unenabled hygiene rules, which is why `reportUnusedDisableDirectives` is off.

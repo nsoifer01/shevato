@@ -9,7 +9,7 @@
     "test:coverage": "node tests/coverage/run.mjs",
     "test:cross-browser": "node --test tests/cross-browser/",
     "test:static": "node --test tests/static/",
-    "test:all": "npm test && npm run test:browser",
+    "test:all": "npm run lint && npm test && npm run test:browser",
     "test:trip-planner:e2e": "node --experimental-websocket tests/browser/run.mjs --only=trip-planner",
     "test:fpl-planner:e2e": "node --experimental-websocket tests/browser/run.mjs --only=fpl-planner",
     "test:maptap-rivals:e2e": "node --experimental-websocket tests/browser/run.mjs --only=maptap-rivals",

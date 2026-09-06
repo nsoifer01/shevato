@@ -1,17 +1,30 @@
 // Correctness gate, not a style gate.
 //
-// `no-undef` is the only rule enabled, and it exists here because of one
-// production bug: `wasOpen = isVisible` survived a rename to `menuOpen` through
-// a merge, main.js is 'use strict', and the resulting dead store to an
-// undeclared binding threw a ReferenceError on every mobile menu open and close
-// for 12 days. Nothing in the estate caught it: `npm test` never opens a
-// browser, and the browser suites only checked JS errors at moments that throw
-// could not reach. This rule catches that class in about 8 seconds, statically,
-// before the code is ever run.
+// It exists because of one production bug: `wasOpen = isVisible` survived a
+// rename to `menuOpen` through a merge, main.js is 'use strict', and the
+// resulting dead store to an undeclared binding threw a ReferenceError on
+// every mobile menu open and close for 12 days. Nothing in the estate caught
+// it: `npm test` never opens a browser, and the browser suites only checked JS
+// errors at moments that throw could not reach. `no-undef` catches that class
+// in seconds, statically, before the code is ever run.
+//
+// The rest of CORRECTNESS_RULES below was added the same way: measured first,
+// enabled only after the codebase was at zero for it or had been fixed.
 //
 // Deliberately NOT here: formatting, style, or opinionated presets. No
-// Prettier, no Airbnb, no `eslint:recommended`. Adding a rule means measuring
-// its noise against this codebase first, the way `no-undef` was measured.
+// Prettier, no Airbnb, no `eslint:recommended` wholesale. Every rule in this
+// file flags code that is wrong; none of it flags code that merely looks
+// unusual. Three hygiene rules were measured and left OFF on purpose, because
+// they report pre-existing style debt rather than defects and would turn a
+// correctness gate into a cleanup mandate: no-unused-vars (330 across 99
+// files), no-redeclare (75 across 20) and no-empty (25 across 6). Turning any
+// of them on is a deliberate cleanup project, not a side effect of this gate.
+// no-useless-escape (15) is cosmetic for the same reason.
+//
+// To add a rule: inject it into the blocks below that already carry `rules`,
+// so the per-area globals, sourceType and ignores apply, then count. Measuring
+// with `eslint --rule` instead gives wildly inflated numbers, because that
+// applies the rule to files this config deliberately gives no globals to.
 import globals from 'globals';
 
 // The two oldest apps are classic multi-script pages: index.html loads 10+
@@ -72,6 +85,61 @@ const dualExposureGlobals = {
 
 const asReadonly = (names) => Object.fromEntries(names.map((n) => [n, 'writable']));
 
+// Every rule here was measured against this codebase before being switched on,
+// by injecting it into these same config blocks so the per-area globals,
+// sourceType and ignores all applied. All but four were already at zero
+// violations; the four that were not are fixed in the same change as this
+// config (see TESTING-AUDIT.md for the numbers and what each one found).
+//
+// They are all CORRECTNESS rules: each one flags code that is wrong or cannot
+// do what it says, never code that is merely unfashionable. Nothing here is
+// about style.
+const CORRECTNESS_RULES = {
+  // The rule this whole gate exists for.
+  'no-undef': 'error',
+
+  // Things that silently cannot work.
+  'no-func-assign': 'error',
+  'no-import-assign': 'error',
+  'no-const-assign': 'error',
+  'no-class-assign': 'error',
+  'no-global-assign': 'error',
+  'no-setter-return': 'error',
+  'no-this-before-super': 'error',
+  'no-obj-calls': 'error',
+  'no-unsafe-optional-chaining': 'error',
+
+  // Duplicates: the later one silently wins.
+  'no-dupe-keys': 'error',
+  'no-dupe-args': 'error',
+  'no-dupe-class-members': 'error',
+
+  // Comparisons and conditions that cannot be true.
+  'valid-typeof': 'error',
+  'use-isnan': 'error',
+  'no-compare-neg-zero': 'error',
+  'no-self-assign': 'error',
+  'no-unsafe-negation': 'error',
+
+  // Control flow that does not do what it looks like.
+  'no-unreachable': 'error',
+  'no-fallthrough': 'error',
+  'no-ex-assign': 'error',
+  'require-yield': 'error',
+  'no-async-promise-executor': 'error',
+
+  // Data handling that breaks on hostile or unusual input. The repo imports
+  // user-supplied JSON in several apps, so `hasOwnProperty` must be called
+  // through Object.prototype rather than off the untrusted object.
+  'no-prototype-builtins': 'error',
+  'no-sparse-arrays': 'error',
+  'no-invalid-regexp': 'error',
+  'no-misleading-character-class': 'error',
+
+  // Left in the source by accident.
+  'no-debugger': 'error',
+};
+
 export default [
   {
     // The codebase already carries `eslint-disable` comments for rules this
@@ -107,7 +175,7 @@ export default [
         ...globals.browser, ...globals.jquery, ...vendorGlobals, ...dualExposureGlobals,
       },
     },
-    rules: { 'no-undef': 'error' },
+    rules: CORRECTNESS_RULES,
   },
 
   // ...except the parts of the estate that really are ES modules. Measured,
@@ -152,7 +220,7 @@ export default [
       // exercise them) branch on it to decide whether they are in a browser.
       globals: { ...globals.node, window: 'readonly', document: 'readonly' },
     },
-    rules: { 'no-undef': 'error' },
+    rules: CORRECTNESS_RULES,
   },
   // .cjs and the handful of classic-script .js helpers under Node are CommonJS.
   {

@@ -60,10 +60,17 @@ function validateImportData(data) {
         return 'Invalid data format';
     }
 
+    // Called through Object.prototype, not off `data`: this validates an
+    // IMPORTED file, so `data` may legitimately carry its own
+    // "hasOwnProperty" key. Calling data.hasOwnProperty() there throws a
+    // TypeError and the import fails with a crash instead of a clean
+    // "Invalid data structure".
+    const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+
     const hasValidStructure =
-        data.hasOwnProperty('programs') ||
-        data.hasOwnProperty('sessions') ||
-        data.hasOwnProperty('settings');
+        hasOwn(data, 'programs') ||
+        hasOwn(data, 'sessions') ||
+        hasOwn(data, 'settings');
 
     if (!hasValidStructure) {
         return 'Invalid data structure';
@@ -75,11 +82,11 @@ function validateImportData(data) {
     // shape - list stores are arrays, settings is a plain object.
     const arrayStores = ['programs', 'sessions', 'customExercises', 'measurements', 'achievements'];
     for (const key of arrayStores) {
-        if (data.hasOwnProperty(key) && !Array.isArray(data[key])) {
+        if (hasOwn(data, key) && !Array.isArray(data[key])) {
             return `Invalid "${key}" data: expected a list`;
         }
     }
-    if (data.hasOwnProperty('settings')
+    if (hasOwn(data, 'settings')
         && (typeof data.settings !== 'object' || data.settings === null || Array.isArray(data.settings))) {
         return 'Invalid "settings" data: expected an object';
     }
