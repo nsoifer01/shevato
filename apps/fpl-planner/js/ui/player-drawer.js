@@ -18,7 +18,7 @@ import { formatMoney, xp, percent } from './format.js';
 import { describePlayer, getProjection, availability, fixtureLabel } from './plan-model.js';
 import { sparkline } from './charts.js';
 import { lockScroll, unlockScroll } from './scroll-lock.js';
-import { readPriceChange, upcomingDeadlines } from '../engine/price-change.js';
+import { readPriceChange, upcomingDeadlines, PRICE_CHANGE_THRESHOLD } from '../engine/price-change.js';
 import { dateTime } from './format.js';
 
 const BREAKDOWN_LABELS = {
@@ -88,9 +88,21 @@ export function seasonTotalsLabel(evidence, { baselineSource = null, seasonStart
 
 // A signed percentage, always with its sign, because the sign IS the direction
 // and "84%" alone does not say which way the player is travelling.
+//
+// WHOLE NUMBERS EXCEPT NEAR THE THRESHOLD. Rounding to no decimals is right for
+// almost every value, but it can move a number ACROSS the crossing point and
+// make the drawer contradict its own badge: Thiago sat at -99.8% on 2026-09-06,
+// which rounded to "-100%" and read as a change tonight while the chip
+// correctly said tomorrow, because -99.8 does not cross. So when rounding would
+// put a value on the other side of the threshold from where it really is, one
+// decimal is shown instead. Everything else stays a whole number.
 function signedPercent(v) {
   if (!Number.isFinite(v)) return '-';
-  return `${v > 0 ? '+' : ''}${v.toFixed(0)}%`;
+  const rounded = Math.round(v);
+  const crossesReally = Math.abs(v) >= PRICE_CHANGE_THRESHOLD;
+  const crossesRounded = Math.abs(rounded) >= PRICE_CHANGE_THRESHOLD;
+  const digits = crossesReally === crossesRounded ? 0 : 1;
+  return `${v > 0 ? '+' : ''}${v.toFixed(digits)}%`;
 }
 
 // Fantasy Premier League's own price prediction, laid out as the three windows
@@ -124,7 +136,10 @@ function priceChangeSection(player, gameState, now) {
     }, [
       el('span', { class: 'fpl-dw-gw-k', text: label }),
       el('span', {
-        class: `fpl-dw-gw-v ${Math.abs(p.projectedPercent) >= 100 ? (p.projectedPercent > 0 ? 'is-rise' : 'is-fall') : ''}`.trim(),
+        // The threshold constant, never a literal 100: this class is what
+        // colours a row as an actual change, so it has to agree with the badge
+        // exactly rather than by coincidence.
+        class: `fpl-dw-gw-v ${Math.abs(p.projectedPercent) >= PRICE_CHANGE_THRESHOLD ? (p.projectedPercent > 0 ? 'is-rise' : 'is-fall') : ''}`.trim(),
         text: signedPercent(p.projectedPercent),
       }),
       el('span', { class: 'fpl-dw-gw-f', text: tier || '' }),
@@ -147,7 +162,7 @@ function priceChangeSection(player, gameState, now) {
       statCell(
         'Current progress',
         signedPercent(pc.progressPercent),
-        'Towards a change at 100%',
+        `Towards a change at ${PRICE_CHANGE_THRESHOLD}%`,
       ),
     ]),
     rows.length ? el('div', { class: 'fpl-dw-gws' }, rows) : null,
