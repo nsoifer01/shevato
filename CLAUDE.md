@@ -81,7 +81,7 @@ REJECT, whichever way it goes.
 - **`npm run lint` is a correctness gate, not a style one.** It exists because
   a dead store to an undeclared binding (`wasOpen`) shipped to production and
   threw on every mobile menu toggle for 12 days while the whole test estate
-  stayed green. `CORRECTNESS_RULES` in `eslint.config.mjs` holds 29 rules, each
+  stayed green. `CORRECTNESS_RULES` in `eslint.config.mjs` holds 28 rules, each
   one flagging code that is wrong rather than unfashionable. Do NOT add
   Prettier, a style preset, or `eslint:recommended` wholesale. `no-unused-vars`,
   `no-redeclare`, `no-empty` and `no-useless-escape` were measured and left OFF
