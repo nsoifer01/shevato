@@ -516,6 +516,70 @@ request (`createPlacesQueue` in trip-logic.js):
   for long enough to matter, the app says so once in a toast rather than putting
   an error badge on forty rows.
 
+### Schedule validity: what a slot may be filled with
+
+A recommendation has to pass two independent gates before it can occupy a slot,
+and they answer different questions:
+
+| gate | question | where |
+| --- | --- | --- |
+| identity | is this the real Google place, in the right area, of the right kind? | server (`resolutionConfidence`, `verifyArea`, `typeMismatch`) |
+| schedule | can it be used at the hour proposed for it? | `candidateScheduleTier` (client and server, one function) |
+
+The second gate is why an 08:00 breakfast is never filled with a restaurant
+that opens at 10:30. Three answers, and the middle one carries its weight:
+
+- **open** - verified hours cover the proposed time with the slot's whole
+  planned sitting left (breakfast 45 min, brunch and dinner 60, lunch 45,
+  drinks 45, museum 60, gallery 45, cafe/snack/shop 30, 45 otherwise). A normal
+  recommendation.
+- **hours unknown** - a real place Google has no hours for (or a lookup that
+  could not run). Never treated as open and never as closed: it may fill a slot
+  only behind every confirmed-open candidate, and its card says
+  `Hours unavailable · verify before going`. This is what keeps a beach, a
+  viewpoint or a trailhead - none of which have business hours - from being
+  deleted by an hours check.
+- **verified closed** - the hours refuse the time. Ineligible for that slot, and
+  **replaced rather than shown**.
+
+A candidate that is open is not automatically appropriate, so the slot's own
+meal kind is a ranking term too, on the evidence of Google's Places **type**
+rather than of words in a venue's name: a breakfast slot prefers a place typed
+`breakfast_restaurant`, `bakery` or `cafe` over an equally open `steak_house`,
+and a dinner slot prefers the steakhouse. It is a nudge, not a filter. A
+`restaurant` with a broad menu (and a place with no type at all) is never
+demoted, nothing is excluded, and the nudge is sized to turn over a close call
+and lose a clear one: a 4.6 brunch place takes an 08:00 slot from a 4.8
+steakhouse, while a 4.9 institution keeps it from a 3.9 bakery.
+
+When a slot loses a candidate this way, the app goes and finds another one: a
+category search for that slot's own kind (`breakfast restaurant Ao Nang`,
+`bar Tokyo`, `tourist attraction Krabi`) in the day's area, with the slot's
+date, time and sitting length attached so the endpoint skips venues that are
+shut then and keeps walking its (free) results page. Everything that comes back
+goes through both gates again. The search is bounded: one round per slot, at
+most 4 replacements in it, at most 6 replacement candidates and 3 searches for
+a whole reply, and a scheduled search may spend at most 6 Place Details calls
+looking past closed venues. A slot whose candidates are merely hours-unknown
+buys nothing - nothing was learned against them.
+
+A guided **Plan my day** request is treated as a discovery request whatever
+words it happens to contain: the picker's answers travel to the pipeline as a
+structured contract (the day, the first-stop hour, the return hour, which meals,
+how many options each), not only as prose for the model. That contract is also
+enforced: the day's first planned stop is pulled to the hour the traveller asked
+for, before any venue is looked at, so a closed restaurant can never become a
+reason to move an 08:00 (travel to the first stop is exempt - the request says
+"with any travel to it before that time"). If a slot still cannot be filled, the
+answer says so in its own words ("I could confirm one breakfast place open at
+8:00 AM, not three") rather than quietly showing fewer cards, and that sentence
+is kept distinct from "the lookup could not run at all".
+
+The older protections are all still in place as defence in depth for anything
+that reaches a card another way: the red/amber demotion, exclusion from the
+winner badges, and the accept refusal that will not write a known-closed venue
+to the trip.
+
 ### The monthly budget (why ratings can stop, on purpose)
 
 A rating is a Place Details Enterprise call: **1,000 free per calendar month

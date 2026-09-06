@@ -1770,12 +1770,14 @@ them on the SAME lookup and validates deterministically. The invariant:
   traveller items are never auto-moved. The PROMPT also tells the model to
   respect hours (`ASSIST_HOURS`), but that is defence-in-depth only - model
   knowledge of hours is not evidence.
-- **Why no automatic replacement of a closed candidate.** Tier 1
-  (copy/paste) has no model round trip to make, and for tiers 2/3 a
-  constrained retry would double latency and spend for a case the demotion
-  already communicates; the traveller can ask the open panel for a
-  replacement in one message. Revisit only if closed candidates turn out to
-  be common in practice.
+- **~~Why no automatic replacement of a closed candidate.~~ REVERSED
+  2026-09-06, and the reversal is the point of the round below.** The
+  original reasoning was: a constrained retry would double latency and spend
+  "for a case the demotion already communicates", and the traveller can ask
+  for a replacement in one message. It ended with "revisit only if closed
+  candidates turn out to be common in practice". They turned out to be
+  common in practice - see the section that follows - so the demotion is no
+  longer the end of the story.
 - **Display.** Days view: activity rows only (travel legs, notes, stays,
   cancelled rows get nothing - a leg's hours are a category error and a
   hotel's "Open 24 hours" is noise), always against the row's SCHEDULED
@@ -1799,6 +1801,266 @@ them on the SAME lookup and validates deterministically. The invariant:
   (unverified, silent); and anything proposed while hours are unverifiable.
   The traveller-facing mitigation is the same one ratings use: the card's
   own Google Maps link for self-verification.
+
+## Schedule validity: a verified place is not a usable one (2026-09-06)
+
+The reported failure: a guided **"I want to be at my first planned stop at
+8:00 AM"** day came back offering breakfast at 08:00 at **Only Noodles**,
+which Google lists as opening at **10:30**, next to a second restaurant that
+opened at 12:00. Nothing was wrong with the venues: right business, right
+branch, right island, 4.7 stars from 1,481 real reviews. They were simply
+unusable at the hour they were proposed for, and the app had no way to act on
+that during SELECTION - it painted the cards red afterwards, dropped them from
+the winner badges, refused the add, and left the traveller holding a breakfast
+slot with nothing in it and no alternative offered. **Zero searches were ever
+made for a place open at 08:00.**
+
+This section supersedes the "why no automatic replacement" decision recorded in
+the 2026-08-21 round above. That decision was explicitly conditional ("revisit
+only if closed candidates turn out to be common in practice") and the condition
+has now been met by real usage.
+
+### The distinction the pipeline was missing
+
+> **IDENTITY VALIDITY** "is this the real Google place?" (resolutionConfidence,
+> verifyArea, typeMismatch)
+> **SCHEDULE VALIDITY** "can it be used at the hour proposed for it?"
+> (`scheduleEligibility` / `candidateScheduleTier`)
+>
+> Both are asked before a candidate may occupy a slot. A candidate that fails
+> the second one is REPLACED, not decorated.
+
+Only identity was ever a selection criterion. `REJECTION_STAGES` had nine
+stages and none of them was about time; `placeQualityScore` and
+`rankVerifiedPlaces` scored rating, review count and distance; `hoursVerdict`
+had exactly two call sites in the whole client, `paintHoursSlot` (after render)
+and `closedHoursFor` (at accept). Hours were post-render decoration and a
+write-time veto, which together mean "we will tell you our recommendation is
+useless, twice".
+
+### Three tiers, and the middle one is why it is not a boolean
+
+| tier | means | what happens |
+| --- | --- | --- |
+| `open` | verified hours cover the time **with the slot's whole planned duration left** | a normal recommendation |
+| `unknown` | real place, no usable hours (or no lookup) | admissible only BEHIND every open candidate, and the card says the hours are unconfirmed |
+| `invalid` | verified hours refuse the time | ineligible for that slot; replaced, never shown |
+
+`unknown` is what keeps a beach, a viewpoint or a trailhead alive: Google
+returns no hours for natural features, and a boolean gate would have deleted
+every one of them. Absence of hours is never evidence, in either direction.
+The reasons are named (`opens_after_slot`, `closes_before_slot`,
+`closed_at_requested_time`, `hours_unknown`) and roll up per slot in the
+rejection tally, so "breakfast: 0 accepted, 2 opens_after_slot" is one line in
+the places debug log.
+
+### The pipeline now
+
+```
+enforce the traveller's own first-stop hour   (no hours are read yet, deliberately)
+-> verify IDENTITY
+-> validate SCHEDULE against the proposed date/time/duration
+-> group survivors by SLOT
+-> for every slot a verdict emptied: ask the provider for more real places of
+   that CATEGORY that are open then, and put those through both gates too
+-> rank inside the slot (open ahead of hours-unknown, then quality)
+-> trim to what was asked for, and say honestly what could not be filled
+```
+
+- **A SLOT is the unit**, not the reply. "Three breakfast options" is a promise
+  about a slot. Slots are the model's own `group` id (`proposalSlotKey`); an
+  ungrouped proposal is a slot of one, which is what keeps a single "Return to
+  hotel" card single and stops a lone museum suggestion growing a second option
+  nobody asked for.
+- **A GUIDED PLAN IS A DISCOVERY REQUEST**, whatever words it used. This was
+  the load-bearing bug: `assistDiscoveryIntent` is a regex over what the
+  traveller TYPED, the picker's own wording contains no "find"/"recommend"/
+  "suggest", so `discovery` was false and the guided path skipped verification
+  entirely - cards first, hours later, no replacement path in reach. The regex
+  is deliberately NOT widened (a false positive there silently deletes a venue
+  the traveller typed). Instead the picker's constraints travel as DATA:
+  `planConstraintsFrom(prefs)` -> `sendMessage(text, 'plan', plan)` ->
+  `renderAssistAnswer({ plan })`, and `discovery = intent.discovery || !!hint
+  || !!plan`. The copy/paste tier remembers the same object in
+  `assistLastPlan`, because the reply comes back through someone else's chat
+  window and this side never sees the request again.
+- **The replacement search is CATEGORY-first** (`slotDiscoveryQuery`:
+  "breakfast restaurant Ao Nang", "bar Tokyo", "tourist attraction Krabi"). The
+  model has already proved it cannot be relied on to name a venue that is open,
+  and a category is what Text Search is good at. The traveller's own words
+  (`discoveryQueryFrom`) remain the fallback for a free-form turn.
+- **The hours question travels with the search.** `discover.schedule =
+  { date, time, windowMin }` reaches `discoverPlaces`, which runs the SAME
+  `TripLogic.hoursVerdict` on the hours already inside the Place Details
+  response it is paying for, and walks further down the free ID page instead of
+  handing back another shut restaurant. The client re-runs the identical check
+  on the identical normalized hours when the answer lands: the server filter is
+  a saving, never a source of truth.
+- **`no_open_candidates`** is a third answer beside `no_candidates` (the area
+  really is empty) and `upstream` (nothing was checked). "This street has
+  nothing" and "this street has plenty and none of it opens at eight" are
+  different sentences.
+
+### The bounds, and why each one exists
+
+| bound | value | what it protects |
+| --- | --- | --- |
+| `DISCOVERY_REPLACEMENT_ROUNDS` | 1 | a second pass asks the same box the same question |
+| `DISCOVERY_REPLACEMENTS_PER_ROUND` | 4 | per slot, per round |
+| `DISCOVERY_CANDIDATE_MAX` | 12 | total candidates one slot may examine |
+| `SLOT_REPLACEMENT_BUDGET` | 6 | **replacement candidates the whole reply shares** |
+| `SLOT_REPLACEMENT_SEARCHES` | 3 | **slots per reply that may go shopping** |
+| `DISCOVERY_SCAN_MAX` / `DISCOVERY_SCAN_HEADROOM` | 6 / +3 | Place Details a SCHEDULED search may spend looking past closed venues |
+
+The last one is the non-obvious one. A venue is only discovered to be shut by
+paying for its Details call, so a search for two open breakfast places that
+stops after two closed ones reports an empty street. The reservation is an
+upper bound that step (7) of the handler releases unspent, so a search whose
+first candidates are open costs exactly what it used.
+
+The whole-reply bounds matter because a guided day has five or six slots. Four
+replacements each would be twenty-four extra billed calls for one press of
+"Plan my day"; six shared, across at most three searches, is the ceiling.
+Slots are served in the order the day runs, so the morning the traveller asked
+about is filled before the evening.
+
+### What triggers a search, and what deliberately does not
+
+`slotReplacementNeed` adds two independent reasons rather than conflating them:
+the slot is SHORT of cards (whatever the cause), and/or hours REFUSED one of
+the cards it has. **A slot whose candidates are merely hours-unknown asks for
+nothing**: nothing was learned against them, and buying a replacement for a
+venue we have no complaint about is exactly the cost the old design was right
+to avoid.
+
+### The first stop is a constraint now, not a hope
+
+`firstStopShiftPlan` is deterministic and runs BEFORE any lookup, which is the
+whole design: hours cannot reach it, so "the restaurant opens at 10:30" can
+never become a reason to call the traveller's 08:00 negotiable. When a venue
+cannot serve the hour the answer is a different venue. It pulls the day's
+earliest timed ACTIVITY to the requested hour (travel legs are exempt by type -
+the request says "with any travel to it before that time"), refuses to move
+anything if the second stop would collide, and re-validates the action rather
+than patching display strings, so a card can never say 09:00 while the item it
+would create says 08:00.
+
+### The sitting length, corrected
+
+`RECOMMEND_HOURS_WINDOWS` used a flat `meal: 30` on the reasoning that a
+published closing time is an ARRIVAL constraint. That is true of a coffee and
+false of a dinner, and it stopped being harmless the moment the window decided
+whether a venue is REPLACED rather than merely coloured red: an under-tight
+window keeps an unusable venue in a slot that had alternatives. Now per kind:
+breakfast 45, brunch 60, lunch 45, dinner 60, generic meal 45, drinks 45,
+museum 60, gallery 45, cafe/snack 30 (grab-and-go genuinely IS an arrival
+constraint), shop 30, default 45.
+
+Two related bugs found while auditing it: `proposalHoursHtml` and
+`closedHoursFor` each built their own probe object and BOTH dropped `meal`, so
+every Food & Drink proposal was judged by the generic default instead of its
+own sitting - `sanitizeActionFields` lifts "Dinner:" out of the title, which
+leaves the title-prefix fallback nothing to read. One derivation now:
+`recommendWindowForFields`.
+
+### Timezones: audited, and the answer is that there is no timezone math
+
+Every itinerary time is a floating local time for the destination, and every
+hours period is minutes past midnight in the venue's own local time. They are
+therefore directly comparable and nothing converts anything. The one place a
+machine's clock could have leaked in is the weekday, and `hoursDow` parses the
+ISO date at UTC midnight (`new Date(date + 'T00:00:00Z').getUTCDay()`), so
+"2027-01-27" is a Wednesday in Louisiana, in Bangkok and on a Frankfurt build
+server alike. Pinned by a test that runs the same fixture under five values of
+`process.env.TZ` either side of the date line. **"Open now" is never asked and
+would be the wrong question**: these itineraries are for future dates, and the
+weekly pattern for the requested weekday is what decides.
+
+### What the traveller sees
+
+- A verified-closed candidate is **not among the choices at all**. The
+  demotion, the badge exclusion and the accept refusal all remain, unchanged,
+  as defence in depth for anything that reaches a card by another route (an
+  explicit-place turn, a late verdict, a provider that answered after render).
+- An hours-unknown candidate that survives into a schedule-checked slot paints
+  **"Hours unavailable · verify before going"** in amber. Everywhere else
+  unknown hours stay silent, which is still right: nobody claimed anything
+  either way there. The state rides on `data-hours-unconfirmed`, set only by
+  the pipeline.
+- The shortfall sentence is separate from the identity one:
+  `scheduleShortfallNote` says "I could confirm one breakfast place open at
+  8:00 AM, not three", where `rebuildAssistProse` would have said "I could
+  verify one good match for this area" - a claim about existence, which is the
+  wrong explanation when three real restaurants were found and two were shut.
+  A provider failure still outranks both: nothing was learned, so no count may
+  be claimed. Nothing is said about a slot that went fine.
+
+### A prose bug found by the new e2e
+
+`proseMentions` tested `hay.includes(word)`, a SUBSTRING match. "Morning Star
+Kitchen" (a surviving replacement) matched the word "start" in "Only Noodles is
+a great start to the morning", which made the block count as naming a kept
+venue and kept a REJECTED venue's recommendation in the answer with no card
+under it. The same shape gives "Anna" a hit inside "banana". Now a word-set
+membership test, which `foldWords` already makes trivial.
+
+### Meal fitness: open is not the same as appropriate (2026-09-06, pre-merge QA)
+
+Schedule validity answers "is it open at eight". It has no opinion about
+whether a steakhouse that happens to open at eight is a BREAKFAST
+recommendation, and with rating as the only other term it led a lower-rated
+brunch place - while the category search that went looking for "breakfast
+restaurant" had its own relevance ordering discarded on arrival.
+
+- **The evidence is Google's Places TYPE, never a word from the venue's name.**
+  `DETAILS_FIELD_MASK` already fetched `types,primaryType` for the mismatch
+  gate; `fromDetails` simply never passed them on. `foodTypeOf` now picks the
+  most specific allowlisted food type (`breakfast_restaurant`, `bakery`,
+  `steak_house`, `wine_bar`...) and it travels as one short word, passed
+  through and never stored, exactly like hours.
+- **The type travels, the VERDICT does not, and that is a bug avoided rather
+  than a preference.** A session cache entry is keyed by venue and area with
+  the meal slot deliberately left out, so one entry serves a breakfast slot and
+  a dinner slot; a fitness verdict baked in server-side would be whichever slot
+  looked it up first. `TripLogic.mealFitness(foodType, meal)` maps per slot.
+- **Only positive evidence moves anything.** `restaurant` and an absent type
+  are the same answer - no opinion - so a trattoria with a broad menu is never
+  demoted. A candidate is promoted only when Google says it IS a place of that
+  daypart, and demoted only on outright contradiction (a night club at 08:00).
+  Cuisine types are deliberately absent: a `thai_restaurant` is not a daypart.
+- **It is a score, not a gate**, and sizing it needs BOTH axes. The first
+  attempt (0.35) was calibrated against the star rating alone and the
+  review-count weight ate it: 4.6-from-640 sits 0.40 below 4.8-from-2,000, not
+  0.16. The browser block caught it. At 0.5 the measured boundaries are:
+
+  | comparison | score gap | outcome |
+  | --- | --- | --- |
+  | 4.8/2,000 steakhouse vs 4.6/640 bakery | 0.40 | the bakery takes the slot |
+  | 4.9/1,000 restaurant vs 4.3/1,000 breakfast place | 0.48 | the breakfast place takes it |
+  | 4.9/1,000 restaurant vs 4.0/1,000 breakfast place | 0.72 | quality wins |
+  | 4.5/3,000 restaurant vs 4.4/150 cafe | 1.04 | quality wins |
+  | 4.9/5,000 institution vs 3.9/200 bakery | 1.53 | quality wins |
+
+- **Nothing is excluded and the badges do not move.** The steakhouse is still
+  offered, and it still wears `Highest rated` if that is what it objectively
+  is: the badge is a fact about the set, not a recommendation. Only the ORDER
+  of the slot changes.
+
+### Cost, measured
+
+For the reported shape (three breakfast candidates, two shut, replacements
+found) the turn costs **the three named lookups it always cost, plus one free
+ID search, plus 2-4 Place Details for the replacement scan**. The scan stops
+the moment the slot is full. A day where nothing is refused costs exactly what
+it did before this round: no search is issued at all.
+
+### What this still cannot guarantee
+
+Everything the 2026-08-21 section already lists (stale provider hours, holiday
+closures outside the dated window, last-entry and kitchen-closing times,
+reservation-only seatings) plus: a category search is only as good as Google's
+Text Search ranking for that category in that area, and a slot in a genuinely
+empty area still ends up short - honestly labelled, which is the point.
 
 ## Food & Drink is a FIELD, not a seventh type (2026-08-21)
 

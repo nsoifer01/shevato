@@ -138,6 +138,12 @@
     assistDiscoveryIntent, discoveryHintFrom, discoveryQueryFrom, rebuildAssistProse,
     placeIdentityOf, dedupeByIdentity, placeQualityScore, rankVerifiedPlaces,
     DISCOVERY_REPLACEMENT_ROUNDS, DISCOVERY_REPLACEMENTS_PER_ROUND, DISCOVERY_CANDIDATE_MAX,
+    SLOT_REPLACEMENT_BUDGET, SLOT_REPLACEMENT_SEARCHES,
+    // schedule validity: a verified place is not automatically a usable one
+    planConstraintsFrom, firstStopShiftPlan, proposalSlotKey, slotDiscoveryQuery,
+    scheduleShortfallNote, candidateScheduleTier,
+    slotReplacementNeed, selectSlotCandidates,
+    PLAN_MEAL_OPTIONS, PLAN_ACTIVITY_OPTIONS,
     hoursVerdict, hoursIntervalsForDate, hoursLineText, HOURS_CLOSING_SOON_MIN, recommendWindowMin,
     normalizeVenueCache, rememberVenue, placesLocationUpdates, placesCacheUpdates, pickVenueFeature,
     dayAnchor, dayDistanceChain, sameSpot, shortestRoute, routeStops, distanceChipLabel, distanceChipTitle, routeFooterText,
@@ -1232,11 +1238,18 @@
   // also come back 'closingSoon' - technically open, too little time left to
   // recommend. Days-view slots pass none, so a traveller's own rows keep the
   // purely advisory behaviour.
-  function hoursSlotHtml(cls, lookup, date, time, windowMin) {
+  function hoursSlotHtml(cls, lookup, date, time, windowMin, unconfirmed) {
     if (!lookup || !lookup.key || !isIsoDate(date)) return '';
     const t = /^\d{2}:\d{2}$/.test(String(time || '')) ? time : '';
     const win = Number.isInteger(windowMin) && windowMin > 0 ? ` data-hours-window="${windowMin}"` : '';
-    return `<span class="${cls} tp-hours" data-place-key="${esc(lookup.key)}" data-hours-date="${esc(date)}"${t ? ` data-hours-time="${esc(t)}"` : ''}${win}></span>`;
+    // A candidate that reached a SCHEDULE-CHECKED slot with no hours to check.
+    // Silence is the right answer for unknown hours everywhere else (the Days
+    // view, an ordinary turn: nobody claimed anything either way), but here the
+    // app went looking for venues open at this hour, could not confirm this
+    // one, and is showing it because there was nothing better - which the card
+    // has to say out loud rather than leave as an absence.
+    const unc = unconfirmed ? ' data-hours-unconfirmed="1"' : '';
+    return `<span class="${cls} tp-hours" data-place-key="${esc(lookup.key)}" data-hours-date="${esc(date)}"${t ? ` data-hours-time="${esc(t)}"` : ''}${win}${unc}></span>`;
   }
 
   // A travel leg that names a real destination (a "Return to hotel" carries the
@@ -8816,6 +8829,11 @@
   let assistSending = false;
   // the last request the traveller sent or copied out (see handleAssistPaste)
   let assistLastRequest = '';
+  // The picker's structured constraints for the LAST guided request, kept for
+  // the copy/paste tier: the reply comes back through someone else's chat
+  // window, so the day, the first-stop hour and the option counts have to be
+  // remembered on this side or the pasted answer is judged with none of them.
+  let assistLastPlan = null;
 
   function assistProvider() {
     const p = localStorage.getItem(AI_PROVIDER_KEY);
@@ -9112,7 +9130,7 @@
 
   // Turn the assistant's raw reply into a prose bubble plus proposal cards, then
   // persist the prose to history (proposal cards are transient by design).
-  function handleAssistantReply(reply, tripId, requestText, turn) {
+  function handleAssistantReply(reply, tripId, requestText, turn, plan) {
     const { actions, cleanedText } = extractTripActions(reply);
     const history = loadChat(tripId);
     history.push({ role: 'assistant', content: cleanedText || reply });
@@ -9132,7 +9150,7 @@
       scrollMessages();
       return;
     }
-    renderAssistAnswer({ text: cleanedText, actions, tripId, requestText, turn });
+    renderAssistAnswer({ text: cleanedText, actions, tripId, requestText, turn, plan });
   }
 
   /**
@@ -9170,7 +9188,7 @@
   const nextAssistTurn = () => (++assistTurn);
   const assistTurnCurrent = turn => turn === assistTurn;
 
-  function renderAssistAnswer({ text, actions, tripId, requestText, turn }) {
+  function renderAssistAnswer({ text, actions, tripId, requestText, turn, plan }) {
     const msgs = $('#assistMessages');
     // A turn that was superseded while it was in flight renders nothing at all.
     // `turn` is undefined for the paste tier, which is synchronous with the
@@ -9180,7 +9198,19 @@
     if (!mine()) return;
     const intent = assistDiscoveryIntent(requestText || '');
     const hint = discoveryHintFrom(actions);
-    const discovery = intent.discovery || !!hint;
+    // A GUIDED PLAN IS A DISCOVERY REQUEST, WHATEVER WORDS IT USED.
+    //
+    // "Plan breakfast, lunch and dinner, and give me 3 options for each one"
+    // asks us to find nine venues the traveller has never heard of. It just
+    // does not contain the word "find", so the intent regex - written for what
+    // somebody TYPES - said no, and the guided path skipped verification
+    // entirely: cards first, hours afterwards, closed venues left in place with
+    // nothing looking for an alternative. That is the whole 08:00 report.
+    //
+    // The structured request settles it now. `plan` is the picker's own
+    // constraints object, so the pipeline knows the day, the first-stop hour
+    // and the option counts as data instead of inferring them from prose.
+    const discovery = intent.discovery || !!hint || !!plan;
 
     if (!discovery || !actions.length) {
       if (text) appendBubble('assistant', text);
@@ -9206,8 +9236,8 @@
     msgs.appendChild(pending);
     scrollMessages();
 
-    verifyDiscoveryProposals(proposals.valid, { trip, requested, query })
-      .then(({ kept, rejected, passthrough, requested: want, providerFailure }) => {
+    verifyDiscoveryProposals(proposals.valid, { trip, requested, query, plan })
+      .then(({ kept, rejected, passthrough, requested: want, providerFailure, slots }) => {
         pending.remove();
         if (!mine()) return;
 
@@ -9220,10 +9250,18 @@
           providerFailure: providerFailure || '',
         });
         if (rebuilt.text) appendBubble('assistant', rebuilt.text);
-        if (rebuilt.note) {
+        // TWO DIFFERENT SHORTFALLS, TWO DIFFERENT SENTENCES. "I could verify
+        // two matches, not three" is about places that could not be confirmed
+        // to EXIST; it is the wrong explanation when three real restaurants
+        // were found and two of them are shut at breakfast. A provider that
+        // never answered outranks both, because then nothing was learned about
+        // the world at all and no count may be claimed.
+        const shortfall = providerFailure ? '' : scheduleShortfallNote(slots || [], fmtTime);
+        const noteText = providerFailure ? rebuilt.note : (shortfall || rebuilt.note);
+        if (noteText) {
           const note = document.createElement('div');
           note.className = 'assist-msg assistant assist-verified-note';
-          note.textContent = rebuilt.note;
+          note.textContent = noteText;
           msgs.appendChild(note);
         }
         if (kept.length || passthrough.length || proposals.invalid.length) {
@@ -9281,6 +9319,9 @@
     if (!text || assistSending) return;
     input.value = '';
     autoGrowInput();
+    // A typed follow-up is free-form by definition and carries no picker
+    // contract, so the guided constraints do not ride along into it.
+    assistLastPlan = null;
     sendMessage(text, 'chat');
   }
 
@@ -9303,7 +9344,7 @@
   // `mode` is per TURN, never per conversation: the picker's contract applies
   // to the turn the picker sent and to nothing after it, so a follow-up typed
   // into the composer is answered as free-form even mid-thread.
-  async function sendMessage(text, mode) {
+  async function sendMessage(text, mode, plan) {
     if (assistSending) return;
     const trip = activeTrip();
     if (!trip) return;
@@ -9329,7 +9370,7 @@
         ? await callSiteAssistant(history, trip, mode)
         : await callByokProvider(history, trip, mode);
       typing.remove();
-      handleAssistantReply(reply, tripId, text, turn);
+      handleAssistantReply(reply, tripId, text, turn, plan);
     } catch (err) {
       typing.remove();
       // A TURN NOBODY ANSWERED MUST NOT BECOME CONTEXT. The user message was
@@ -9848,9 +9889,14 @@
     if (!planPrefs || !planUsable(planPrefs) || assistSending) return;
     const text = buildPlanRequest(planPrefs, activeTrip());
     // The ONE path that carries the guided contract: the picker composed this
-    // request, so its bounded slot counts are what the traveller chose.
+    // request, so its bounded slot counts are what the traveller chose. The
+    // same contract now travels as DATA beside the prose, which is what lets
+    // the pipeline enforce the first-stop hour and judge each slot's hours
+    // instead of hoping the model read the sentence.
+    const plan = planConstraintsFrom(planPrefs);
+    assistLastPlan = plan;
     if (assistTier === 'copy') { copyAssistPackage(text); return; }
-    sendMessage(text, 'plan');
+    sendMessage(text, 'plan', plan);
   }
 
   async function copyAssistPackage(request) {
@@ -9884,6 +9930,7 @@
     const trip = activeTrip();
     renderAssistAnswer({
       text: cleanedText, actions, tripId: trip && trip.id, requestText: assistLastRequest,
+      plan: assistLastPlan,
     });
     if (boxEl) boxEl.value = '';
     msgs.scrollTop = msgs.scrollHeight;
@@ -10145,6 +10192,15 @@
       // session; an 'unavailable' entry never lands in the cache, so a later
       // batch may still fill this slot in.
       el.dataset.painted = '1';
+      // ...unless this candidate is only on screen because the slot could not
+      // be filled with confirmed-open venues. Then the absence of hours is
+      // itself the finding, and it is stated rather than implied.
+      if (el.dataset.hoursUnconfirmed === '1') {
+        el.classList.add('is-unconfirmed');
+        el.dataset.verdict = 'unknown';
+        el.textContent = 'Hours unavailable · verify before going';
+        el.title = 'Google has no opening hours for this place, so nothing could confirm it is open at the time proposed. Check before you go.';
+      }
       return;
     }
     el.dataset.painted = '1';
@@ -10428,7 +10484,7 @@
   // ask for. Without that seed the card would re-resolve by name - a second
   // billed lookup, and one the name gate could refuse, because this place was
   // found by category rather than named.
-  function proposalFromDiscovered(place, template, trip) {
+  function proposalFromDiscovered(place, template, trip, group) {
     const item = {
       type: template.type || 'activity',
       title: String(place.name || '').slice(0, 120).trim(),
@@ -10437,8 +10493,16 @@
       startTime: template.startTime || '',
       mapsQuery: [place.name, template.location].filter(Boolean).join(' ').slice(0, 200),
     };
+    // The meal category travels with the slot, not with the venue: a
+    // replacement for breakfast is breakfast, which is what gives the card its
+    // contract title, its icon and - the reason it matters here - the sitting
+    // length its hours are judged against.
+    if (template.meal) item.meal = template.meal;
     if (!item.title || !isIsoDate(item.startDate)) return null;
-    const action = { op: 'add', item };
+    // A replacement joins the SET it is replacing inside. Without the group id
+    // it rendered as a stray single card beside the pick-one it belongs to, so
+    // the traveller was offered "one of these two" plus an orphan.
+    const action = group ? { op: 'add', group, item } : { op: 'add', item };
     const res = validateTripAction(action, trip);
     if (!res.ok) return null;
     const p = res.proposal;
@@ -10460,19 +10524,33 @@
   }
 
   /**
-   * THE REPLACEMENT LOOP, bounded and deterministic.
+   * THE SLOT PIPELINE, bounded and deterministic.
    *
-   *   verify the model's candidates
-   *   -> drop the ones that fail
-   *   -> ask the provider for that many real places in the same city
-   *   -> verify those too, dedupe by place IDENTITY
-   *   -> rank, and hand back only what survived
+   *   enforce the traveller's own first-stop hour (never a venue's hour)
+   *   -> verify IDENTITY   "is this the real Google place?"
+   *   -> validate SCHEDULE "can it be used at the hour proposed for it?"
+   *   -> group what survived by SLOT, because "three breakfast options" is a
+   *      promise about a slot and not about the reply as a whole
+   *   -> for every slot a verdict emptied, ask the provider for more real
+   *      places of that category that ARE open then, and put those through the
+   *      same two gates
+   *   -> rank inside the slot, verified-open ahead of hours-unknown
+   *   -> hand back only what the traveller can actually use
    *
-   * Returns { kept, rejected, requested } where kept/rejected carry the
-   * proposals and their display names, so the prose can be rebuilt around
-   * exactly the set that is about to be rendered.
+   * WHY SCHEDULE VALIDITY MOVED HERE (owner report, 2026-09-05). It used to be
+   * consulted for the first time AFTER the cards had rendered: the paint pass
+   * coloured a closed candidate red, the badges dropped it and the accept gate
+   * refused it, so the traveller was reliably told that the app's own
+   * recommendation was unusable - and then left to ask for another one by hand.
+   * A slot filled with a venue that cannot serve it is an empty slot with extra
+   * steps. Precision alone is not the goal: a rejected candidate is REPLACED,
+   * so the answer keeps its recall.
+   *
+   * Returns { kept, rejected, passthrough, requested, providerFailure, slots }.
+   * `slots` carries the per-slot arithmetic the prose needs to say honestly
+   * what it could and could not fill.
    */
-  async function verifyDiscoveryProposals(proposals, { trip, requested, query }) {
+  async function verifyDiscoveryProposals(proposals, { trip, requested, query, plan }) {
     const candidates = [];
     const passthrough = [];
     for (const p of proposals) {
@@ -10481,7 +10559,14 @@
       if (lookup) candidates.push({ proposal: p, lookup });
       else passthrough.push(p);
     }
-    if (!candidates.length) return { kept: proposals, rejected: [], passthrough: [], requested };
+    if (!candidates.length) return { kept: proposals, rejected: [], passthrough: [], requested, slots: [] };
+
+    // THE TRAVELLER'S HOUR IS SETTLED BEFORE ANY VENUE IS LOOKED AT. Doing it
+    // here rather than after the lookups is the point: hours cannot influence
+    // it, so "the restaurant opens at 10:30" can never become a reason to move
+    // an 08:00 the traveller asked for. When a venue cannot serve the hour, the
+    // answer is a different venue.
+    applyFirstStop(candidates, plan, trip);
 
     // THE LOOKUP CANNOT ANSWER, SO DO NOT PRETEND IT DID (owner report,
     // 2026-09-05: "I could verify one good match for this area, not three").
@@ -10496,7 +10581,8 @@
     // A provider that never answered is not evidence about the world. The turn
     // degrades to an ORDINARY one: every candidate the model wrote is shown,
     // unverified and honestly labelled, which is exactly what a site with no
-    // Places key has always done on a non-discovery turn.
+    // Places key has always done on a non-discovery turn. Hours are part of
+    // that silence - nothing was checked, so nothing is claimed or rejected.
     const qStatus = placesQueue.status();
     if (qStatus.off || qStatus.paused) return unverifiedTurn(candidates, passthrough, requested, qStatus);
 
@@ -10517,7 +10603,7 @@
     await warmAreaPoints(candidates.map(c => c.lookup));
     for (const c of candidates) c.lookup = proposalPlaceLookup(c.proposal) || c.lookup;
 
-    placesLog('discovery: verifying', candidates.map(c => c.lookup.key));
+    placesLog('slots: verifying', candidates.map(c => c.lookup.key));
     // PROMOTE, THEN REQUEST. `request` skips a key the queue already holds, so
     // a candidate the itinerary's own IntersectionObserver had already queued
     // at normal priority stayed in the slow lane behind a screenful of rows,
@@ -10535,10 +10621,10 @@
     const settled = placesQueue.status();
     if (settled.off || settled.paused) return unverifiedTurn(candidates, passthrough, requested, settled);
 
+    // `seen` accumulates the identity of everything offered OR refused, across
+    // every slot, so a replacement can never be a place this answer already
+    // showed or already dropped.
     const seen = new Set();
-    const kept = [];
-    const rejected = [];
-    let looked = candidates.length;
     // '' while everything is working; a specific failure word once a provider
     // call did not run, so the prose can say "I could not check" instead of
     // "there is nothing here".
@@ -10546,11 +10632,36 @@
     // WHY DID THIS RECOMMENDATION DISAPPEAR? Before this the answer took an
     // afternoon of reverse engineering, because every rejection collapsed into
     // one silent `continue`. Each candidate now records the stage that dropped
-    // it, and `discoveryTally` rolls the stages up per slot. Development only:
-    // it goes to placesLog, which is off unless the traveller has deliberately
-    // turned the places debug on, so a normal session logs nothing extra.
+    // it, and the tally rolls the stages up per slot. Development only: it goes
+    // to placesLog, which is off unless the traveller has deliberately turned
+    // the places debug on, so a normal session logs nothing extra.
     const tally = newRejectionTally();
+
+    // ---- pass 1: identity, then schedule, filed by slot ----
+    const slots = new Map();
+    const slotFor = (c) => {
+      const key = proposalSlotKey(c.proposal);
+      let slot = slots.get(key);
+      if (!slot) {
+        slot = {
+          key,
+          kind: proposalSlot(c.proposal),
+          group: (c.proposal.group || ''),
+          time: c.proposal.display.startTime || '',
+          date: c.proposal.display.startDate || '',
+          template: c.proposal.fields,
+          area: c.lookup.area || {},
+          n: 0, kept: [], rejected: [], scheduleDropped: 0, looked: 0,
+        };
+        slots.set(key, slot);
+      }
+      slot.n += 1;
+      slot.looked += 1;
+      return slot;
+    };
+
     for (const c of candidates) {
+      const slot = slotFor(c);
       const entry = placesCache.get(c.lookup.key);
       const identity = placeIdentityOf(entry, c.lookup);
       const stage = rejectionStage(entry, identity, seen);
@@ -10559,91 +10670,238 @@
       // it here is what emptied a whole day's answer.
       if (stage) {
         countRejection(tally, c.proposal, stage);
-        rejected.push({ ...c, entry, identity, stage, name: c.proposal.display.title || '' });
+        slot.rejected.push({ ...c, entry, identity, stage, name: c.proposal.display.title || '' });
         if (identity) seen.add(identity);
         continue;
       }
-      countRejection(tally, c.proposal, 'accepted');
-      seen.add(identity);
-      kept.push({ ...c, entry, identity, name: c.proposal.display.title || '' });
-    }
-    placesLog('discovery: first pass', { kept: kept.length, rejected: rejected.length, bySlot: tally });
-
-    // ---- bounded replacement ----
-    const want = Number.isInteger(requested) ? requested : candidates.length;
-    for (let round = 0; round < DISCOVERY_REPLACEMENT_ROUNDS; round++) {
-      const missing = want - kept.length;
-      if (missing <= 0 || !query) break;
-      if (looked >= DISCOVERY_CANDIDATE_MAX) {
-        placesLog('discovery: candidate ceiling reached', looked);
-        break;
-      }
-      // The replacement is looked for where the FAILED one was supposed to be,
-      // so a Kyoto miss is replaced in Kyoto and a Tokyo miss in Tokyo.
-      const template = (rejected[0] || kept[0] || candidates[0]).proposal.fields;
-      const area = (rejected[0] || kept[0] || candidates[0]).lookup.area || {};
-      const limit = Math.min(missing, DISCOVERY_REPLACEMENTS_PER_ROUND,
-        DISCOVERY_CANDIDATE_MAX - looked);
-      const spec = {
-        q: discoveryQueryFrom(query, area.city || template.location || ''),
-        city: area.city || '', country: area.country || '',
-        limit,
-        // dedupe at the SOURCE: everything already offered or already refused
-        exclude: [...kept, ...rejected].map(x => x.entry && x.entry.placeId).filter(Boolean),
-      };
-      if (!spec.q) break;
-      if (validCoord(area.lat, area.lon)) { spec.lat = area.lat; spec.lon = area.lon; }
-      placesLog('discovery: asking the provider for replacements', spec);
-      const answer = await fetchDiscoveryCandidates(spec);
-      const found = answer.results;
-      if (answer.failure) {
-        // The search did not run. Say so upward rather than letting an empty
-        // list be read as "this area has nothing else".
-        placesLog('discovery: replacement search failed', answer.failure);
-        providerFailure = answer.failure;
-        break;
-      }
-      looked += found.length;
-      for (const place of found) {
-        if (kept.length >= want) break;
-        const made = proposalFromDiscovered(place, template, trip);
-        if (!made) continue;
-        const identity = placeIdentityOf(made.entry, made.lookup);
-        if (!identity || seen.has(identity)) continue;
-        if (!isResolvedEntry(made.entry)) continue;
+      // IDENTITY PASSED. The second question is the one this round is about.
+      const schedule = candidateScheduleTier(entry, c.proposal.fields);
+      if (schedule.tier === 'invalid') {
+        countRejection(tally, c.proposal, schedule.reason);
+        slot.rejected.push({ ...c, entry, identity, schedule, stage: schedule.reason, name: c.proposal.display.title || '' });
+        slot.scheduleDropped += 1;
         seen.add(identity);
-        kept.push({ ...made, identity, name: made.proposal.display.title || '', replacement: true });
+        continue;
       }
-      placesLog('discovery: after replacement', { kept: kept.length, looked });
+      countRejection(tally, c.proposal, schedule.tier === 'unknown' ? 'accepted_hours_unknown' : 'accepted');
+      seen.add(identity);
+      slot.kept.push({ ...c, entry, identity, schedule, name: c.proposal.display.title || '' });
+    }
+    for (const slot of slots.values()) slot.want = slotWant(slot, { plan, requested, slotCount: slots.size });
+    placesLog('slots: first pass', [...slots.values()].map(s => ({ kind: s.kind, want: s.want, kept: s.kept.length, rejected: s.rejected.length })));
+
+    // ---- bounded replacement, per slot ----
+    // The budget is a whole-turn one: a day with breakfast, lunch, dinner and
+    // two activity slots must not be able to buy four replacements for each of
+    // them. Correctness first, but a bounded amount of it.
+    let budget = SLOT_REPLACEMENT_BUDGET;
+    let searches = SLOT_REPLACEMENT_SEARCHES;
+    for (const slot of slots.values()) {
+      if (budget <= 0 || searches <= 0) break;
+      const openCount = () => slot.kept.filter(k => k.schedule && k.schedule.tier === 'open').length;
+      // The bounded-search policy lives in trip-logic (slotReplacementNeed), so
+      // it is one arithmetic rule with its own tests rather than a condition
+      // spelled out inside this loop.
+      let missing = slotReplacementNeed({
+        want: slot.want, kept: slot.kept.length, open: openCount(), scheduleDropped: slot.scheduleDropped,
+      });
+      if (missing <= 0) continue;
+
+      const city = slot.area.city || (slot.template && slot.template.location) || '';
+      // Category-first for a structured slot ("breakfast restaurant Ao Nang"),
+      // because the model has already proved it cannot be relied on to name a
+      // venue that is open. The traveller's own words are the fallback, which
+      // is what a free-form "find me 3 ramen places" turn has always used.
+      const q = (plan ? slotDiscoveryQuery(slot.kind, city) : '')
+        || discoveryQueryFrom(query, city)
+        || slotDiscoveryQuery(slot.kind, city);
+      if (!q) { placesLog('slots: no replacement query for', slot.kind); continue; }
+
+      for (let round = 0; round < DISCOVERY_REPLACEMENT_ROUNDS; round++) {
+        if (missing <= 0 || budget <= 0) break;
+        if (slot.looked >= DISCOVERY_CANDIDATE_MAX) { placesLog('slots: candidate ceiling reached', slot.kind); break; }
+        const limit = Math.min(missing, DISCOVERY_REPLACEMENTS_PER_ROUND, budget,
+          DISCOVERY_CANDIDATE_MAX - slot.looked);
+        if (limit <= 0) break;
+        const spec = {
+          q, city, country: slot.area.country || '', limit,
+          // dedupe at the SOURCE: everything already offered or already refused
+          exclude: [...seen].map(id => (id.startsWith('id:') ? id.slice(3) : '')).filter(Boolean),
+          // The category the slot is FOR, which is also what the server's type
+          // gate judges a candidate against (a dive-booking desk is not lunch).
+          meal: slot.kind === 'activity' ? '' : slot.kind,
+        };
+        // THE HOURS QUESTION TRAVELS WITH THE SEARCH. The server holds the
+        // Details response - the only place hours exist - so asking it to skip
+        // venues that are shut at the slot's hour costs nothing extra and stops
+        // a replacement round handing back another closed restaurant. The
+        // client re-checks every answer anyway (below): a filter is a saving,
+        // never a source of truth.
+        if (slot.date && slot.time) {
+          const win = recommendWindowForFields(slot.template) || 0;
+          spec.schedule = { date: slot.date, time: slot.time, windowMin: win };
+        }
+        if (validCoord(slot.area.lat, slot.area.lon)) { spec.lat = slot.area.lat; spec.lon = slot.area.lon; }
+        placesLog('slots: asking the provider for replacements', spec);
+        searches -= 1;
+        const answer = await fetchDiscoveryCandidates(spec);
+        if (answer.failure) {
+          // The search did not run. Say so upward rather than letting an empty
+          // list be read as "this area has nothing else".
+          placesLog('slots: replacement search failed', answer.failure);
+          providerFailure = answer.failure;
+          break;
+        }
+        const found = answer.results;
+        slot.looked += found.length;
+        budget -= found.length;
+        for (const place of found) {
+          if (missing <= 0) break;
+          const made = proposalFromDiscovered(place, slot.template, trip, slot.group);
+          if (!made) continue;
+          const identity = placeIdentityOf(made.entry, made.lookup);
+          if (!identity || seen.has(identity)) continue;
+          if (!isResolvedEntry(made.entry)) continue;
+          // THE SAME GATE THE MODEL'S OWN CANDIDATES PASS. The server filtered
+          // on the same data, but a replacement that arrives closed must never
+          // be shown just because something upstream said it would not: one
+          // deterministic rule, applied where the decision is made.
+          const schedule = candidateScheduleTier(made.entry, made.proposal.fields);
+          seen.add(identity);
+          if (schedule.tier === 'invalid') {
+            countRejection(tally, made.proposal, schedule.reason);
+            slot.rejected.push({ ...made, identity, schedule, stage: schedule.reason, name: made.proposal.display.title || '', replacement: true });
+            continue;
+          }
+          countRejection(tally, made.proposal, schedule.tier === 'unknown' ? 'accepted_hours_unknown' : 'accepted');
+          slot.kept.push({ ...made, identity, schedule, name: made.proposal.display.title || '', replacement: true });
+          missing -= 1;
+        }
+        placesLog('slots: after replacement', { kind: slot.kind, kept: slot.kept.length, open: openCount(), budget });
+      }
     }
 
     // ---- the late arrivals ----
     // A lookup that landed AFTER the deadline sat in the cache unread while a
     // replacement was bought for the slot it had already filled. The cache is
     // re-read once here, at the end, because by now the replacement round has
-    // given the slow ones several more seconds and re-reading is free.
-    for (let i = rejected.length - 1; i >= 0; i--) {
-      const r = rejected[i];
-      if (r.stage !== 'unresolved') continue;
-      const entry = placesCache.get(r.lookup.key);
-      if (!isResolvedEntry(entry)) continue;
-      const identity = placeIdentityOf(entry, r.lookup);
-      if (!identity || seen.has(identity)) continue;
-      seen.add(identity);
-      rejected.splice(i, 1);
-      kept.push({ ...r, entry, identity });
-      placesLog('discovery: a late resolution was rescued', r.lookup.key);
+    // given the slow ones several more seconds and re-reading is free. A
+    // rescued candidate faces the schedule gate like any other: arriving late
+    // is not a reason to be exempt from being open.
+    for (const slot of slots.values()) {
+      for (let i = slot.rejected.length - 1; i >= 0; i--) {
+        const r = slot.rejected[i];
+        if (r.stage !== 'unresolved') continue;
+        const entry = placesCache.get(r.lookup.key);
+        if (!isResolvedEntry(entry)) continue;
+        const identity = placeIdentityOf(entry, r.lookup);
+        if (!identity || seen.has(identity)) continue;
+        const schedule = candidateScheduleTier(entry, r.proposal.fields);
+        if (schedule.tier === 'invalid') {
+          r.entry = entry; r.identity = identity; r.schedule = schedule; r.stage = schedule.reason;
+          slot.scheduleDropped += 1;
+          seen.add(identity);
+          continue;
+        }
+        seen.add(identity);
+        slot.rejected.splice(i, 1);
+        slot.kept.push({ ...r, entry, identity, schedule });
+        placesLog('slots: a late resolution was rescued', r.lookup.key);
+      }
     }
 
-    // ---- rank ----
-    const ranked = rankVerifiedPlaces(kept.map(k => ({
-      ...k,
-      time: (k.proposal.display && k.proposal.display.startTime) || '',
-      score: placeQualityScore(k.entry, distanceKmForProposal(k.proposal)),
-    })));
+    // ---- rank, trim, report ----
+    // Open ahead of hours-unknown inside every slot (rankVerifiedPlaces reads
+    // the tier), then quality. The slot is trimmed to what was asked for, so a
+    // replacement that arrived late cannot inflate a "give me three" into five.
+    const kept = [];
+    const rejected = [];
+    const report = [];
+    for (const slot of slots.values()) {
+      const ranked = rankVerifiedPlaces(slot.kept.map(k => ({
+        ...k,
+        time: (k.proposal.display && k.proposal.display.startTime) || '',
+        // The slot's own meal kind rides into the score, so a breakfast slot
+        // prefers a place Google types as a breakfast place over an equally
+        // open steakhouse. Bounded to a close call (see MEAL_FIT_NUDGE), and
+        // 'activity' has no daypart opinion at all.
+        score: placeQualityScore(k.entry, distanceKmForProposal(k.proposal), slot.kind),
+      })));
+      const { final, dropped } = selectSlotCandidates(ranked, slot.want);
+      for (const d of dropped) {
+        countRejection(tally, d.proposal, 'surplus');
+        rejected.push({ ...d, stage: 'surplus' });
+      }
+      // An hours-unknown candidate that SURVIVED into a schedule-checked slot
+      // has to say so on its card: it is being shown because there was nothing
+      // better to show, not because anybody confirmed it opens.
+      for (const k of final) {
+        if (k.schedule && k.schedule.tier === 'unknown' && k.schedule.windowMin) k.proposal.hoursUnconfirmed = true;
+      }
+      kept.push(...final);
+      rejected.push(...slot.rejected);
+      report.push({
+        kind: slot.kind, time: slot.time, requested: slot.want,
+        open: final.filter(k => k.schedule && k.schedule.tier === 'open').length,
+        unknown: final.filter(k => !k.schedule || k.schedule.tier !== 'open').length,
+        closed: slot.scheduleDropped,
+      });
+    }
 
-    placesLog('discovery: rejection tally by slot', tally);
-    return { kept: ranked, rejected, passthrough, requested: want, providerFailure };
+    placesLog('slots: rejection tally by slot', tally);
+    return {
+      kept, rejected, passthrough,
+      requested: Number.isInteger(requested) ? requested : kept.length,
+      providerFailure, slots: report,
+    };
+  }
+
+  // How many candidates should this slot end up offering?
+  //
+  //   a GUIDED plan slot the model answered with a set  the count the picker
+  //     asked for, never fewer (3 meal options, 2 activity options), and never
+  //     fewer than the model itself produced
+  //   the ONE slot of a free-form "find me 3 places" turn  the 3 they asked for
+  //   anything else  exactly what the model offered, which is what keeps a
+  //     single "Return to hotel" card a single card and stops a lone museum
+  //     suggestion growing a second option nobody asked for
+  function slotWant(slot, { plan, requested, slotCount }) {
+    if (plan && slot.n >= 2) {
+      return Math.max(slot.n, slot.kind === 'activity' ? PLAN_ACTIVITY_OPTIONS : PLAN_MEAL_OPTIONS);
+    }
+    if (slotCount === 1 && Number.isInteger(requested) && requested > 0) return requested;
+    return slot.n;
+  }
+
+  // The traveller's first-stop hour, applied to the proposals before anything
+  // is looked up. Returns the plan that was applied (or why it was not), and
+  // mutates nothing the model did not put a time on.
+  function applyFirstStop(candidates, plan, trip) {
+    if (!plan) return { applied: false, reason: 'no_plan' };
+    const shift = firstStopShiftPlan(candidates.map(c => ({
+      pid: c.proposal.pid,
+      type: (c.proposal.fields || {}).type,
+      startDate: c.proposal.display.startDate,
+      startTime: c.proposal.display.startTime,
+    })), plan);
+    if (!shift.applied) { placesLog('slots: first stop unchanged', shift); return shift; }
+    const pids = new Set(shift.shiftPids);
+    for (const c of candidates) {
+      if (!pids.has(c.proposal.pid)) continue;
+      const action = assistActions.get(c.proposal.pid);
+      if (!action || !action.item) continue;
+      action.item.startTime = shift.targetTime;
+      // Re-validated rather than patched in place: the proposal's display strings
+      // are DERIVED from the action, and hand-editing one of them is how a card
+      // ends up saying 09:00 while the item it would create says 08:00.
+      const res = validateTripAction(action, trip);
+      if (!res.ok) { action.item.startTime = shift.from; continue; }
+      res.proposal.pid = c.proposal.pid;
+      c.proposal = res.proposal;
+      c.lookup = proposalPlaceLookup(res.proposal) || c.lookup;
+    }
+    placesLog('slots: first stop pulled to the requested hour', shift);
+    return shift;
   }
 
   // The turn a provider that never answered gets: every candidate the model
@@ -10659,6 +10917,9 @@
       })),
       rejected: [], passthrough, requested,
       providerFailure: status.off ? 'off' : 'quota',
+      // No slot arithmetic, because no slot was judged. An unchecked turn must
+      // not produce a sentence about how many places are open at 08:00.
+      slots: [],
     };
   }
 
@@ -10668,8 +10929,14 @@
   // meals - where did the other eleven go?". Counted per SLOT (breakfast,
   // lunch, dinner, activities), because a whole empty slot is the failure that
   // matters and a per-candidate line does not show it.
+  // IDENTITY stages answer "is this the real place?"; SCHEDULE stages answer
+  // "can it be used at the hour proposed for it?". Both drop a candidate, and
+  // keeping them in one vocabulary is what lets the tally say "breakfast: 0
+  // accepted, 2 opens_after_slot" - the sentence that would have explained the
+  // 08:00 report in a minute rather than an afternoon.
   const REJECTION_STAGES = [
     'accepted',
+    'accepted_hours_unknown',   // shown, but Google has no hours to confirm it
     'unresolved',      // nothing came back for this name in time
     'not_found',       // the provider searched and found no such venue
     'low_confidence',  // a place came back whose name is a different business
@@ -10678,6 +10945,12 @@
     'unattributable',  // rated, but with no link we are allowed to show it with
     'duplicate',       // the same canonical place as one already offered
     'generic_query',   // the model named a category, not a venue
+    // --- schedule validity (2026-09-05) ---
+    'opens_after_slot',           // real, but the doors open later that day
+    'closes_before_slot',         // real, but shut (or shutting) before the visit
+    'closed_at_requested_time',   // real, and closed that day altogether
+    'hours_unknown',              // dropped as surplus behind a confirmed-open one
+    'surplus',                    // more usable candidates than the slot asked for
   ];
   function newRejectionTally() { return {}; }
 
@@ -10895,9 +11168,20 @@
     if (!lookup) return '';
     // The category's minimum recommendation window rides on the slot so the
     // paint pass can judge closingSoon; null (a stay) means closed-only.
-    const win = recommendWindowMin({ type: f.type, title: f.title, mapsQuery: lookup.query });
-    return hoursSlotHtml('ap-hours', lookup, p.display.startDate, p.display.startTime, win);
+    const win = recommendWindowForFields({ ...f, mapsQuery: lookup.query });
+    return hoursSlotHtml('ap-hours', lookup, p.display.startDate, p.display.startTime, win, p.hoursUnconfirmed);
   }
+
+  // ONE derivation of "how long does this stop need to stay open", read by the
+  // card that paints the hours line, the selection pass that rejects a venue
+  // for its slot, and the accept gate that refuses the write. They used to
+  // build the probe separately and BOTH dropped `meal`, so a dinner proposal
+  // was judged by the 45-minute default instead of its own sitting: the field
+  // exists precisely because sanitizeActionFields has already lifted "Dinner:"
+  // out of the title, which leaves the title-prefix fallback nothing to read.
+  const recommendWindowForFields = f => recommendWindowMin({
+    type: f && f.type, meal: f && f.meal, title: f && f.title, mapsQuery: f && f.mapsQuery,
+  });
 
   // A proposal is not an item yet, so its identity is read off the fields it
   // WOULD create - the exact same object shape proposalToItem builds, which is
@@ -11216,7 +11500,9 @@
     if (!p || (p.op !== 'add' && p.op !== 'update')) return null;
     let probe;
     if (p.op === 'add') {
-      probe = { type: p.fields.type, title: p.fields.title, location: p.fields.location, mapsQuery: p.fields.mapsQuery };
+      // `meal` travels: it is what names the sitting, and without it a dinner
+      // was gated on the generic default window (see recommendWindowForFields).
+      probe = { type: p.fields.type, meal: p.fields.meal, title: p.fields.title, location: p.fields.location, mapsQuery: p.fields.mapsQuery };
     } else {
       const target = (trip.items || []).find(x => x.id === p.targetId);
       if (!target) return null;
@@ -11234,7 +11520,7 @@
     // The same category window the card's slot was judged by: closingSoon is
     // a refusal-worthy state for a RECOMMENDATION exactly as closed is, and
     // the two are told apart in `kind` so the dialog can say which.
-    const win = recommendWindowMin({ ...probe, mapsQuery: query }) || 0;
+    const win = recommendWindowForFields({ ...probe, mapsQuery: query }) || 0;
     const v = hoursVerdict(hours, date, time, win);
     if (v.status !== 'closed' && v.status !== 'beforeOpen' && v.status !== 'closingSoon') return null;
     const day = hoursIntervalsForDate(hours, date);

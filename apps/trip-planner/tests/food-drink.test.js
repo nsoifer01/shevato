@@ -215,15 +215,23 @@ test('a share link carries the category, so the far side is not left guessing', 
 });
 
 test('the recommendation window reads the structured field, and knows the new kinds', () => {
-  // meals 30, drinks 45, cafe/snack 30 - the same numbers, now reachable
-  // without a prefix in the title
-  assert.equal(L.recommendWindowMin(act({ meal: 'dinner', title: 'Saba' })), 30);
-  assert.equal(L.recommendWindowMin(act({ meal: 'brunch', title: 'Elizabeths' })), 30);
+  // PER SITTING since the 2026-09-05 schedule-validity round. The old flat
+  // `meal: 30` read a published closing time as a pure arrival constraint,
+  // which is true of a coffee and false of a dinner - and now that the window
+  // decides whether a venue is REPLACED rather than merely coloured red, an
+  // under-tight window keeps an unusable venue in a slot that had alternatives.
+  assert.equal(L.recommendWindowMin(act({ meal: 'dinner', title: 'Saba' })), 60);
+  assert.equal(L.recommendWindowMin(act({ meal: 'brunch', title: 'Elizabeths' })), 60);
+  assert.equal(L.recommendWindowMin(act({ meal: 'breakfast', title: 'Bricolage' })), 45);
+  assert.equal(L.recommendWindowMin(act({ meal: 'lunch', title: 'Konoba' })), 45);
   assert.equal(L.recommendWindowMin(act({ meal: 'drinks', title: 'Hot Tin' })), 45);
+  // grab-and-go genuinely IS an arrival constraint, and stays at 30
   assert.equal(L.recommendWindowMin(act({ meal: 'cafe', title: 'Cafe Du Monde' })), 30);
   assert.equal(L.recommendWindowMin(act({ meal: 'snack', title: 'Angelo Brocato' })), 30);
+  // 'other' has no sitting of its own and falls to the generic meal window
+  assert.equal(L.recommendWindowMin(act({ meal: 'other', title: 'Somewhere' })), 45);
   // and the legacy prefix still resolves for un-repaired data
-  assert.equal(L.recommendWindowMin(act({ title: 'Dinner: Narisawa' })), 30);
+  assert.equal(L.recommendWindowMin(act({ title: 'Dinner: Narisawa' })), 60);
   // an ordinary activity is untouched
   assert.equal(L.recommendWindowMin(act({ title: 'Louvre' })), 45);
 });

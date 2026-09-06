@@ -232,6 +232,63 @@ const KIND_BY_TYPE = new Map(Object.entries({
   taxi_stand: 'broker', tour_agency: 'broker', ticket_agency: 'broker',
 }));
 
+// THE FOOD TYPE, kept as Google's own word rather than as a verdict.
+//
+// `placeKind` above collapses every eatery to 'food', which is the right
+// granularity for the question it answers (is this a restaurant or a dive
+// shop?) and the wrong one for "is this a breakfast place or a steakhouse?".
+// The daypart question needs the specific type, and Google has already
+// answered it: `breakfast_restaurant`, `brunch_restaurant`, `bakery`,
+// `steak_house`, `wine_bar` and the rest are Places types, not words scraped
+// out of a name.
+//
+// What travels is the TYPE, never a fitness verdict. Two reasons, and the
+// second is a bug avoided rather than a preference: a session cache entry is
+// keyed by venue and area with the meal slot deliberately left out, so the
+// same cafe serves a breakfast slot and a dinner slot from one entry - a
+// verdict baked in here would be whichever slot looked it up first. The client
+// maps type x meal per slot (TripLogic.mealFitness).
+//
+// Allowlisted so the payload cannot grow an arbitrary provider string, and
+// ordered most-specific-first so a place typed both `breakfast_restaurant` and
+// `restaurant` answers with the one that says something.
+const FOOD_TYPES = new Set([
+  // morning and all-day light
+  'breakfast_restaurant', 'brunch_restaurant', 'bakery', 'cafe', 'coffee_shop',
+  'bagel_shop', 'donut_shop', 'tea_house', 'juice_shop', 'acai_shop',
+  'diner', 'deli', 'sandwich_shop', 'cafeteria',
+  // sweet
+  'ice_cream_shop', 'dessert_shop', 'dessert_restaurant', 'confectionery',
+  'candy_store', 'chocolate_shop',
+  // midday and volume
+  'fast_food_restaurant', 'food_court', 'buffet_restaurant', 'meal_takeaway',
+  // evening
+  'fine_dining_restaurant', 'steak_house', 'bar_and_grill',
+  'bar', 'pub', 'wine_bar', 'night_club',
+  // the broad-menu middle: a real answer, and deliberately one that says
+  // nothing about a daypart
+  'restaurant',
+]);
+
+/**
+ * Google's own most specific food type for this place, or '' when it has none
+ * this module recognises (the normal case for the long tail, and never to be
+ * read as evidence of anything). `primaryType` wins when it is one, because it
+ * is Google's answer to "what IS this".
+ */
+export function foodTypeOf(place) {
+  const primary = place && typeof place.primaryType === 'string' ? place.primaryType : '';
+  if (FOOD_TYPES.has(primary) && primary !== 'restaurant') return primary;
+  const list = place && Array.isArray(place.types) ? place.types : [];
+  for (const t of list) {
+    if (typeof t === 'string' && FOOD_TYPES.has(t) && t !== 'restaurant') return t;
+  }
+  // 'restaurant' is the answer of last resort: it is true of almost every
+  // eatery and is exactly what "broad menu, no daypart opinion" looks like.
+  if (primary === 'restaurant' || list.includes('restaurant')) return 'restaurant';
+  return '';
+}
+
 /**
  * The coarse kind of a Places result, or '' when its types say nothing this
  * function has an opinion about. `primaryType` wins when it maps, because it is

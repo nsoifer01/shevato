@@ -57,7 +57,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { checkQuota, releaseQuota, resetAtFor, budgetStatus, MONTHLY_BUDGET, DEFAULT_LIMITS, OWNER_LIMITS } from './lib/tp-places-quota.mjs';
 import { updateUsage } from './lib/blob-cas.mjs';
 import { originAllowed, json, upstreamSignal } from './lib/tp-http.mjs';
-import { resolveQueries, discoverPlaces, DISCOVERY_DETAILS_MAX } from './lib/tp-places-lookup.mjs';
+import { resolveQueries, discoverPlaces, DISCOVERY_DETAILS_MAX, DISCOVERY_SCAN_MAX } from './lib/tp-places-lookup.mjs';
 import { isGenericQuery, normalizeArea } from './lib/tp-places-match.mjs';
 // The hours normalizer is shared with the client (trip-logic.js is dual-exposed
 // exactly for this, the same way tp-assist imports the shared prompt), so the
@@ -214,8 +214,13 @@ export default async function handler(req) {
   // A discovery request bills per candidate it looks at, up to its own hard
   // ceiling, and never retries: the search is already restricted to the area,
   // so a second attempt would ask the same question of the same box.
+  //
+  // A SCHEDULED discovery search gets headroom of its own, for the same shape
+  // of reason: see DISCOVERY_SCAN_HEADROOM.
   const billable = clamped.discover
-    ? clamped.discover.limit
+    ? (clamped.discover.schedule
+      ? Math.min(DISCOVERY_SCAN_MAX, clamped.discover.limit + DISCOVERY_SCAN_HEADROOM)
+      : clamped.discover.limit)
     : clamped.queries.filter(q => !isGenericQuery(q.q)).length;
   const billableMax = clamped.discover ? billable : billable + retryHeadroom(billable);
   let granted = 0;
@@ -251,6 +256,10 @@ export default async function handler(req) {
         limit: clamped.discover.limit,
         exclude: clamped.discover.exclude,
         meal: clamped.discover.meal,
+        // Hours are already in the Details response this search pays for, so
+        // filtering on them here costs nothing and stops the round returning
+        // another venue that is shut at the hour being planned.
+        schedule: clamped.discover.schedule,
         findPlaceIds: (q, bias, pageSize) => findPlaceIds(placesKey, q, bias, pageSize),
         fetchDetails: id => fetchDetails(placesKey, id),
         now,
@@ -275,7 +284,9 @@ export default async function handler(req) {
       results: found.results,
       discovered: true,
       // '' when the search genuinely ran; 'upstream' / 'no_candidates' when it
-      // did not, or ran and the area was excluded from the answer.
+      // did not, or ran and the area was excluded from the answer;
+      // 'no_open_candidates' when it found real places and every one of them
+      // was shut at the hour asked about.
       reason: typeof found.reason === 'string' ? found.reason : '',
       attribution: ATTRIBUTION,
     }, 200);
@@ -388,6 +399,14 @@ export function retryHeadroom(billable) {
   return Math.min(Math.max(0, billable), RETRY_HEADROOM_MAX);
 }
 
+// The same idea for a SCHEDULED discovery search, which has its own reason to
+// look past a candidate: a venue that is shut at the hour being filled is only
+// discovered to be shut by paying for its Details call. Without headroom a
+// search for two open breakfast places stops after the first two closed ones
+// and reports an empty street. Bounded by DISCOVERY_SCAN_MAX, and released
+// unspent like every other reservation.
+export const DISCOVERY_SCAN_HEADROOM = 3;
+
 // Exported for the unit tests. Duplicate queries collapse to one entry: a day
 // plan often proposes the same konbini or hotel bar twice, and every duplicate
 // would otherwise be a second billed lookup within the same request.
@@ -457,6 +476,23 @@ export function clampDiscover(raw) {
   }
   const ex = Array.isArray(raw.exclude) ? raw.exclude : [];
   out.exclude = ex.filter(x => typeof x === 'string' && x).slice(0, 24).map(x => x.slice(0, 200));
+  // The SLOT this search is filling: an itinerary date, the local time the
+  // stop is planned for, and how long it has to stay open to be worth
+  // recommending. Present only for a timed slot, and validated to shape here
+  // like everything else that arrives in an attacker-controlled body - a
+  // malformed schedule is dropped entirely rather than half-applied, because a
+  // half-applied hours filter would silently reject real venues.
+  const sched = raw.schedule;
+  if (sched && typeof sched === 'object'
+    && /^\d{4}-\d{2}-\d{2}$/.test(String(sched.date || ''))
+    && /^\d{2}:\d{2}$/.test(String(sched.time || ''))) {
+    const win = Number(sched.windowMin);
+    out.schedule = {
+      date: String(sched.date),
+      time: String(sched.time),
+      windowMin: Number.isFinite(win) && win > 0 ? Math.min(240, Math.round(win)) : 0,
+    };
+  }
   return out;
 }
 
