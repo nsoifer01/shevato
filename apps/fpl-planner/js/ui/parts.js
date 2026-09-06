@@ -7,6 +7,65 @@
 
 import { el } from './dom.js';
 import { PROGRESS_STAGES } from '../engine/planner.js';
+import { readPriceChange, priceBadge } from '../engine/price-change.js';
+import { dateTime } from './format.js';
+
+// The price-change chip, in ONE place because five surfaces show a player's
+// price (transfer cards, pitch cards, the squad table, the sandbox cards and
+// the drawer) and a chip that said different things on different screens would
+// be worse than no chip at all.
+//
+// It renders only when FPL projects an actual crossing, or has locked a player
+// out of one. Never for the hundreds of players drifting in the middle: a badge
+// on everything is a badge on nothing.
+//
+// `is-urgent` marks the two cases where WAITING COSTS MONEY (buying a riser,
+// selling a faller). `dir` is 'in', 'out', or null where the surface is not a
+// transfer and there is no side to be urgent about, which is every surface
+// except the transfer card.
+export function priceChangeChip({ dir = null, player, gameState, now = Date.now(), compact = false }) {
+  const model = readPriceChange(player, {
+    now,
+    deadlines: (gameState && gameState.rules && gameState.rules.priceChangeDeadlines) || [],
+  });
+  const badge = priceBadge(model, dir);
+  if (!badge) return null;
+
+  const title = priceChipTitle(badge);
+  return el('span', {
+    class: `fpl-chip fpl-price-chip is-${badge.kind}${badge.urgent ? ' is-urgent' : ''}${compact ? ' is-compact' : ''}`,
+    // On a crowded surface the direction arrow and the timing carry the whole
+    // message; the sentence stays available as the accessible name and tooltip.
+    text: compact ? compactText(badge) : badge.text,
+    title,
+    'aria-label': title,
+  });
+}
+
+// "Rise tonight" -> "↑ Tonight". The word is dropped, never the arrow, because
+// the arrow is the direction and the direction is the point.
+function compactText(badge) {
+  if (badge.kind === 'locked') return 'Locked';
+  const arrow = badge.model.direction === 'rise' ? '↑' : '↓';
+  const when = badge.model.timingLabel || 'soon';
+  return `${arrow} ${when.charAt(0).toUpperCase()}${when.slice(1)}${badge.kind === 'calibrating' ? '?' : ''}`;
+}
+
+export function priceChipTitle(badge) {
+  const m = badge.model;
+  if (badge.kind === 'locked') {
+    return m.lockedUntil
+      ? `Fantasy Premier League has locked this price until ${dateTime(m.lockedUntil)}, so it cannot change before then.`
+      : 'Fantasy Premier League has locked this price, so it cannot change yet.';
+  }
+  const when = m.changeAt ? ` at ${dateTime(m.changeAt)}` : '';
+  const verb = m.direction === 'rise' ? 'rise' : 'fall';
+  if (badge.kind === 'calibrating') {
+    return `Fantasy Premier League projects a ${verb}${when}, but says the prediction is still calibrating.`;
+  }
+  const tier = m.tierLabel ? ` ${m.tierLabel.toLowerCase()}.` : '';
+  return `Fantasy Premier League projects a ${verb}${when}.${tier}`;
+}
 
 export function btn(label, onClick, { variant = '', size = '', title = null, disabled = false, dataset = null } = {}) {
   return el('button', {

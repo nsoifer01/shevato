@@ -1018,6 +1018,18 @@ body.fpl-page {
 .fpl-planner-app .fpl-price-chip.is-rise.is-urgent { border-color: color-mix(in srgb, var(--green) 65%, transparent); }
 .fpl-planner-app .fpl-price-chip.is-fall.is-urgent { border-color: color-mix(in srgb, var(--red) 65%, transparent); }
 
+/* The compact variant, used on the pitch, the sandbox and the squad table.
+   Those cards are about 100px wide and already carry up to two flags, so the
+   chip sits inline in the flag row at flag size rather than annotating a price
+   on its own line. */
+.fpl-planner-app .fpl-price-chip.is-compact {
+  margin-left: 0;
+  font-size: 8.5px;
+  letter-spacing: 0.03em;
+}
+/* In the squad table it annotates the Price cell, so it keeps its gap. */
+.fpl-planner-app td .fpl-price-chip.is-compact { margin-left: 6px; }
+
 /* Drawer price rows reuse the gameweek row shell, so only the value colour is
    new here. */
 .fpl-planner-app .fpl-dw-gw-v.is-rise { color: var(--green); }

@@ -14,7 +14,7 @@ import { el, card, disclosure } from './dom.js';
 import { combobox } from './combobox.js';
 import { formatMoney, xp, signedXp, points, countdown, dateTime, relativeTime, chipLabel, plural } from './format.js';
 import { actionText, pairUp, chipDecision, getProjection, describePlayer, fixtureLabel, availability } from './plan-model.js';
-import { btn, affirm, banner, kv, sampleTag, confidenceStrip, emphasize } from './parts.js';
+import { btn, affirm, banner, kv, sampleTag, confidenceStrip, emphasize, priceChangeChip } from './parts.js';
 import { renderPitch, pitchViewModel } from './pitch.js';
 import { renderSquadTable } from './squad-table.js';
 import { columnChart } from './charts.js';
@@ -22,7 +22,6 @@ import { STRENGTH_PARAMS } from '../engine/strength.js';
 import { formatFreeTransfers } from '../engine/transfer-state.js';
 import { openingSquadMoney, picksCarryLineup } from '../engine/squad.js';
 import { assessConfidence } from '../engine/confidence.js';
-import { readPriceChange, priceBadge } from '../engine/price-change.js';
 import { describeModelStatus } from '../data/model.js';
 
 const nameOf = (gameState) => (id) => describePlayer(gameState, id).name;
@@ -165,48 +164,6 @@ function chipNote(bundle, chip, gameState) {
 }
 
 /* --------------------------------------------------------------- transfers */
-
-// The price-change chip that sits under a transfer side's price.
-//
-// It renders only when FPL projects an actual crossing (or has locked a player
-// out of one), never for the 600 players drifting in the middle: a badge on
-// everything is a badge on nothing. `is-urgent` marks the two cases where
-// WAITING COSTS MONEY (buying a riser, selling a faller); the mirror cases are
-// still worth knowing and are shown in the same quiet style as everything else.
-export function priceChangeChip({ dir, player, gameState, now }) {
-  const model = readPriceChange(player, {
-    now,
-    deadlines: (gameState.rules && gameState.rules.priceChangeDeadlines) || [],
-  });
-  const badge = priceBadge(model, dir);
-  if (!badge) return null;
-
-  const title = priceChipTitle(badge);
-  return el('span', {
-    class: `fpl-chip fpl-price-chip is-${badge.kind}${badge.urgent ? ' is-urgent' : ''}`,
-    text: badge.text,
-    title,
-    // The arrow is decoration; the label already carries the direction, so the
-    // accessible name is the sentence rather than "up arrow rise tonight".
-    'aria-label': title,
-  });
-}
-
-function priceChipTitle(badge) {
-  const m = badge.model;
-  if (badge.kind === 'locked') {
-    return m.lockedUntil
-      ? `Fantasy Premier League has locked this price until ${dateTime(m.lockedUntil)}, so it cannot change before then.`
-      : 'Fantasy Premier League has locked this price, so it cannot change yet.';
-  }
-  const when = m.changeAt ? ` at ${dateTime(m.changeAt)}` : '';
-  const verb = m.direction === 'rise' ? 'rise' : 'fall';
-  if (badge.kind === 'calibrating') {
-    return `Fantasy Premier League projects a ${verb}${when}, but says the prediction is still calibrating.`;
-  }
-  const tier = m.tierLabel ? ` ${m.tierLabel.toLowerCase()}.` : '';
-  return `Fantasy Premier League projects a ${verb}${when}.${tier}`;
-}
 
 function transferSide({ dir, playerId, gameState, projections, gw, horizon, now }) {
   const info = describePlayer(gameState, playerId);
