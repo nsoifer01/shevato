@@ -448,6 +448,15 @@ export async function run({ base, cdpPort }) {
     }
     await setViewport(s, 390, 844, true);
     await hashTo(s, '#dashboard', 1200);
+    // The strip's overflow state is written by an observer AFTER layout
+    // settles at the new width, so reading it on a fixed settle is a race the
+    // test loses under load: on a 4-way parallel run this reported
+    // {scroll:"none", mask:false, scrollable:true} - the element was already
+    // overflowing while the app had not yet said so. Wait for the state the
+    // assertion is about. A timeout here is not silent: waitForExpr returns
+    // false, the read below still happens, and the check fails with whatever
+    // the strip actually shows.
+    await waitForExpr(s, "(()=>{const n=document.querySelector('.view-tabs'); return !!n && n.scrollWidth > n.clientWidth && n.dataset.scroll === 'start'})()", { timeout: 5000 });
     const tabs = await evaluate(s, "(()=>{const n=document.querySelector('.view-tabs'); return {scroll:n.dataset.scroll, mask: getComputedStyle(n).maskImage !== 'none' || getComputedStyle(n).webkitMaskImage !== 'none', scrollable: n.scrollWidth > n.clientWidth}})()");
     t('390px: the tab strip is scrollable and fades its overflowing edge', tabs.scrollable && tabs.scroll === 'start' && tabs.mask, JSON.stringify(tabs));
     const days = await evaluate(s, "(()=>{const n=document.querySelector('.pred-day-tabs'); const r=n.getBoundingClientRect(); return {tabs:n.children.length, fit: n.scrollWidth <= n.clientWidth + 1, minFont: Math.min(...[...n.querySelectorAll('.pred-day-tab-name')].map(e=>parseFloat(getComputedStyle(e).fontSize)))}})()");

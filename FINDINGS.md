@@ -298,6 +298,110 @@ Two lessons worth keeping:
   throws if the binding does not exist, so "nothing reads `wasOpen`" was true
   and still not safe to ignore.
 
+## Seed storage BEFORE the first navigation, not between two of them
+
+Every seeding helper in this repo grew the same shape, for the same reason:
+localStorage can only be written from a page already on the target origin, so
+you navigate, write, and navigate again. `seedAndReload` did it, `apps.mjs`'s
+`fresh()` does it, `a11y.mjs`'s app-root loop does it, and the maptap audit did
+it three times over (reach the origin, clear, boot the seed).
+
+CDP removes the constraint. **`Page.addScriptToEvaluateOnNewDocument` runs
+before any page script on the next document**, so the seed is already in
+storage the first and only time the app boots. `seedAndReload` now installs the
+seed (and, with `clearPrefix`, the wipe) that way, navigates once, and removes
+the script immediately - leaving it installed would silently re-seed every
+later navigation in the suite and undo anything a test wrote and reloaded to
+check.
+
+Measured on `apps/maptap-rivals/e2e/audit-2026-08.mjs`, whose fixture is 347
+games so every navigation re-renders all of them: **100.7s -> 81.4s**, 53/53
+checks unchanged.
+
+**The bigger reason is correctness, not speed.** The two-navigation shape boots
+a REAL instance of the app against unseeded storage, and that instance can
+still write. `trip-planner`'s `ensureTrip()` is the documented case: seeing no
+trip, it creates an empty default and saves it, landing AFTER the fixture and
+replacing it, so a test whose first assertion needs an item fails while one
+that only counts rendered cards passes. `apps/trip-planner/e2e/helpers.mjs`
+carries a verify-and-reseed retry loop purely to survive that. Seed before the
+first document and no unseeded instance ever runs, so there is nothing to
+clobber and nothing to retry.
+
+`openApp` (trip-planner), `fresh()` (apps.mjs) and the a11y app-root loop still
+use the old shape. Converting them is the same change and worth doing; it was
+left alone here only because each one owns a retry or cleanup path that has to
+be unwound with it.
+
+## Fixed waits are 60% of the browser estate, and most have a condition available
+
+Measured 2026-09-05 across all 28 suites (`run.mjs` prints the breakdown): the
+estate spends **60% of its wall clock on fixed sleeps**, 20% on navigation, 6%
+on condition polling. There are 249 explicit `sleep(N)` sites totalling 142.5
+seconds, before the `settle:` values and before loop multiplication.
+
+Triaged by what surrounds them:
+
+| class | sites | ms | verdict |
+|---|---:|---:|---|
+| quiescence / negative assertion | 69 | 48,170 | **required**, but should become an idle-wait |
+| already preceded by `waitForExpr` | 26 | 15,650 | redundant |
+| after a click | 44 | 24,150 | replaceable with the DOM effect |
+| after an in-page call | 46 | 17,050 | replaceable with the rendered result |
+| after a scroll / view switch | 13 | 6,620 | replaceable with the view's marker |
+| uncertain | 51 | 30,880 | needs reading |
+
+Two rules worth keeping:
+
+- **You cannot wait for something NOT to happen, so a quiescence sleep is
+  legitimate** - `places.mjs` proves "this render billed no new Places calls" by
+  waiting and then asserting the counter did not move. The improvement there is
+  not deletion, it is waiting until the counter has been IDLE for a few hundred
+  ms instead of sleeping a flat 3 seconds.
+- **A fixed settle before a layout-dependent read is a flake, not a wait.**
+  `quality.mjs` read `.view-tabs` `dataset.scroll` after `hashTo(..., 1200)`;
+  the app writes that from an observer after layout settles at the new width,
+  and on a 4-way parallel run it reported `{scroll:"none", mask:false,
+  scrollable:true}` - the strip was already overflowing while the app had not
+  yet said so. Serial runs hid it. It now waits for the state the assertion is
+  about.
+
+## A fragment-only `goto()` used to cost 21 seconds, silently
+
+`goto()` navigates and then waits for `Page.loadEventFired`, racing it against
+a 20-second guard. A SAME-DOCUMENT navigation - `/apps/maptap-rivals/` to
+`/apps/maptap-rivals/#history` - loads no document, so that event never fires.
+Every such call therefore burned the full guard and then set
+`s.lastNavTimedOut = true` on a navigation that had in fact succeeded
+instantly. Nothing failed, so nothing said so.
+
+Measured 2026-09-05 on the maptap-rivals app: **21,394 ms** for a fragment-only
+`goto()` against **438 ms** for a real page load. `apps/maptap-rivals/e2e/
+audit-2026-08.mjs` has around twenty of them, and spent **420 of its 518
+seconds** inside `Page.navigate` because of it - 18% of the entire browser
+estate's wall clock, and the reason that one suite was 41% of the slowest CI
+shard. Two consecutive CI runs agreed to within 0.3 s, so it was never
+variance.
+
+The fix is in the harness, not the suites, because Chromium already tells us
+which kind of navigation it was: **`Page.navigate` returns a `loaderId` for a
+cross-document navigation and omits it for a same-document one.** `goto()` now
+waits for the load event only when a `loaderId` came back. The caller's
+`settle` still runs afterwards, which is what gives a `hashchange` handler its
+chance to re-render, so the wait is the same one as before minus twenty dead
+seconds: **21,394 ms -> 6 ms**.
+
+Two things to keep:
+
+- **A test that waits for an event that cannot arrive looks exactly like a slow
+  test.** The only reason this was findable is that the runner now reports
+  navigation time separately from fixed sleeps and condition polling. Counting
+  `sleep()` literals in the source would never have found it - the source says
+  `settle: 900`.
+- **`--only=` hides it.** Run alone, the suite is "a bit slow"; it is only in
+  the estate's own timing table, ranked against 27 others, that a suite at
+  9.8 seconds per check next to a median of 1.0 stands out.
+
 ## axe: landmark-unique and heading-order are failures now, not info
 
 `a11y.mjs` reports moderate violations as info, which is how two of them lived

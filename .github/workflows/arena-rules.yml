@@ -1,7 +1,8 @@
-name: arena firestore rules
+name: arena emulator
 
-# Runs the Arena security-rules suite (apps/arena/tests-rules/) against the
-# real Firestore emulator. Isolated from the push/PR workflows on purpose,
+# Runs BOTH Arena suites that need the real Firebase emulators:
+# the security-rules suite (apps/arena/tests-rules/) and the two-client
+# multiplayer e2e (apps/arena/e2e/emulator.mjs). Isolated from the push/PR workflows on purpose,
 # following cross-browser.yml's pattern: this job needs Java plus a
 # firebase-tools/emulator download, and the fast CI stays dependency-free.
 # Weekly rather than per-PR: firestore.rules changes are rare and always land
@@ -20,7 +21,8 @@ on:
 jobs:
   rules:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Both suites, plus a cold firebase-tools download on a cache miss.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
 
@@ -51,3 +53,37 @@ jobs:
         env:
           ARENA_RULES_REQUIRE: '1'
         run: npm run test:arena:rules
+
+      # The multiplayer e2e ran in NO workflow until 2026-09-05. At 1,407 lines
+      # it is the largest e2e file in the repo, it is the only thing that
+      # exercises two clients against real Firestore + Auth + RTDB, and it was
+      # executed only when somebody remembered to type the command. It belongs
+      # here rather than in browser-tests.yml because it needs exactly what
+      # this job already pays for: Java 21, the firebase-tools download and the
+      # emulator jar, all cached above. Marginal cost is the suite's own
+      # runtime.
+      #
+      # It brings up its own emulators, two static servers (two origins, so
+      # three distinct Firebase users) and its own Chrome, and tears all of
+      # them down. ARENA_RULES_REQUIRE is read by the same harness, so the
+      # skip-when-Java-is-missing path is a hard failure here too.
+      #
+      # Chrome comes from the runner image; resolve it rather than assume a
+      # name, the same way browser-tests.yml does.
+      - name: Resolve browser
+        run: |
+          set -e
+          for c in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$c" >/dev/null 2>&1; then
+              echo "CHROME_BIN=$c" >> "$GITHUB_ENV"
+              echo "Using $c: $("$c" --version)"
+              exit 0
+            fi
+          done
+          echo "No Chrome/Chromium found on the runner image." >&2
+          exit 1
+
+      - name: Run the multiplayer e2e against the emulators
+        env:
+          ARENA_RULES_REQUIRE: '1'
+        run: npm run test:arena:emulator

@@ -1,7 +1,37 @@
 // Minimal CDP driver. Node 20 needs --experimental-websocket for global WebSocket.
 import http from 'node:http';
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// ---------------------------------------------------------------------------
+// Wait accounting.
+//
+// Every suite's wall clock is mostly waiting, and the three kinds of waiting
+// are not equally defensible: a FIXED sleep burns its full duration whether or
+// not the page was ready, a CONDITION poll stops the moment the page says yes,
+// and NAVIGATION is the page actually loading. Reading source and adding up
+// `sleep(...)` literals only ever gives a lower bound (it cannot see how many
+// times a loop ran), so the counters below record what actually elapsed.
+//
+// run.mjs snapshots them around each suite and prints the breakdown. They are
+// two additions on paths that are already awaiting a timer, so leaving them on
+// costs nothing measurable.
+export const waitStats = { fixedMs: 0, pollMs: 0, navMs: 0, gotos: 0, polls: 0 };
+export function snapshotWaits() { return { ...waitStats }; }
+export function waitsSince(before) {
+  const now = waitStats;
+  return {
+    fixedMs: now.fixedMs - before.fixedMs, pollMs: now.pollMs - before.pollMs,
+    navMs: now.navMs - before.navMs, gotos: now.gotos - before.gotos,
+    polls: now.polls - before.polls,
+  };
+}
+
+// The un-counted primitive. Only the polling loops use it, because their
+// waiting is bounded by a condition rather than spent unconditionally.
+const rawSleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// The counted one. Everything a suite does deliberately - goto settle, click
+// settle, an explicit sleep in a suite - goes through here.
+const sleep = (ms) => { waitStats.fixedMs += ms; return rawSleep(ms); };
 
 function httpJson(port, path, method = 'GET') {
   return new Promise((resolve, reject) => {
@@ -21,7 +51,7 @@ export async function waitForBrowser(port, timeoutMs = 30000) {
   const start = Date.now();
   for (;;) {
     try { return await httpJson(port, '/json/version'); }
-    catch { if (Date.now() - start > timeoutMs) throw new Error('browser never came up'); await sleep(250); }
+    catch { if (Date.now() - start > timeoutMs) throw new Error('browser never came up'); await rawSleep(250); }
   }
 }
 
@@ -119,17 +149,39 @@ export async function goto(s, url, { settle = 2500 } = {}) {
     h = (m) => { if (m === 'Page.loadEventFired') res('loaded'); };
     s.on(h);
   });
+  const navStart = Date.now();
   try {
-    await s.send('Page.navigate', { url });
-    // The race keeps a dead page from hanging the whole suite, but a timeout
-    // must not be silent: callers can check s.lastNavTimedOut after goto.
-    const outcome = await Promise.race([loaded, sleep(20000).then(() => 'timeout')]);
-    s.lastNavTimedOut = outcome === 'timeout';
+    const nav = await s.send('Page.navigate', { url });
+    // A SAME-DOCUMENT navigation - navigating from /app/ to /app/#history, say
+    // - never fires Page.loadEventFired, because no document is loaded. Racing
+    // it against the guard therefore burned the FULL 20 seconds, every time,
+    // and then set lastNavTimedOut on a navigation that had actually succeeded
+    // instantly. Measured 2026-09-05: 21.4s for a fragment-only goto against
+    // 0.45s for a real load, and 420 of the 518 seconds in
+    // apps/maptap-rivals/e2e/audit-2026-08.mjs were exactly this.
+    //
+    // Chromium tells us which kind it was: Page.navigate returns a loaderId
+    // for a cross-document navigation and omits it for a same-document one
+    // (verified against Page.navigatedWithinDocument / Page.loadEventFired on
+    // both paths). So ask, rather than wait for an event that cannot arrive.
+    // The caller's `settle` below still runs, which is what gives a hashchange
+    // handler its chance to re-render - so this is the same wait as before,
+    // minus twenty dead seconds.
+    if (nav && nav.loaderId) {
+      // The race keeps a dead page from hanging the whole suite, but a timeout
+      // must not be silent: callers can check s.lastNavTimedOut after goto.
+      // rawSleep for the guard: it is a bound on the load, not waiting we chose
+      // to do, and counting 20s of it would swamp the fixed-wait figure.
+      const outcome = await Promise.race([loaded, rawSleep(20000).then(() => 'timeout')]);
+      s.lastNavTimedOut = outcome === 'timeout';
+    }
   } finally {
     // One-shot: without this every navigation leaked a handler (O(n^2) event
     // dispatch over a long suite).
     s.off(h);
   }
+  waitStats.navMs += Date.now() - navStart;
+  waitStats.gotos += 1;
   await sleep(settle);
 }
 
@@ -178,11 +230,16 @@ export async function evalAsync(s, expression) {
 // throwing the suite over.
 export async function waitForExpr(s, expression, { timeout = 8000, poll = 150 } = {}) {
   const start = Date.now();
-  for (;;) {
-    const v = await evaluate(s, expression);
-    if (v && !v.__evalError) return true;
-    if (Date.now() - start > timeout) return false;
-    await sleep(poll);
+  waitStats.polls += 1;
+  try {
+    for (;;) {
+      const v = await evaluate(s, expression);
+      if (v && !v.__evalError) return true;
+      if (Date.now() - start > timeout) return false;
+      await rawSleep(poll);
+    }
+  } finally {
+    waitStats.pollMs += Date.now() - start;
   }
 }
 
@@ -276,12 +333,43 @@ export async function pressKey(s, key, code, keyCode, modifiers = 0, text) {
   await sleep(150);
 }
 
-// Seed storage then reload, because app state is closure-scoped and only read at boot.
-export async function seedAndReload(s, url, kv) {
-  await goto(s, url, { settle: 900 });
-  await evaluate(s, `(()=>{ ${Object.entries(kv).map(([k, v]) =>
-    `localStorage.setItem(${JSON.stringify(k)}, ${JSON.stringify(typeof v === 'string' ? v : JSON.stringify(v))});`).join('')} return 1 })()`);
-  await goto(s, url, { settle: 2500 });
+// Seed storage then boot, because app state is closure-scoped and only read at
+// boot.
+//
+// ONE navigation, not two. localStorage can only be written from a page already
+// on the target origin, which is why every seeding helper in this repo grew the
+// same "navigate, write, navigate again" shape. CDP removes the constraint:
+// Page.addScriptToEvaluateOnNewDocument runs BEFORE any page script on the next
+// document, so the seed is already in storage the first and only time the app
+// boots.
+//
+// That is not just faster (one page load and ~900 ms less per call). It closes
+// a race the two-navigation shape creates and cannot fully defend against: the
+// first navigation boots a REAL instance of the app against unseeded storage,
+// and that instance can still write - trip-planner's ensureTrip() sees no trip,
+// creates an empty default and saves it, landing after the fixture and
+// replacing it. apps/trip-planner/e2e/helpers.mjs carries a verify-and-reseed
+// loop for exactly that. With the seed installed before the first document,
+// no unseeded instance ever runs, so there is nothing to clobber.
+//
+// clearPrefix wipes the app's own keys in the same pass, so a caller does not
+// need a prior navigation just to clear storage either.
+export async function seedAndReload(s, url, kv, { settle = 2500, clearPrefix = null } = {}) {
+  const sets = Object.entries(kv).map(([k, v]) =>
+    `localStorage.setItem(${JSON.stringify(k)}, ${JSON.stringify(typeof v === 'string' ? v : JSON.stringify(v))});`).join('');
+  const clear = clearPrefix
+    ? `for (const k of Object.keys(localStorage)) if (k.indexOf(${JSON.stringify(clearPrefix)}) === 0) localStorage.removeItem(k);`
+    : '';
+  const source = `(()=>{ try { ${clear}${sets} } catch (e) {} })()`;
+  const { identifier } = await s.send('Page.addScriptToEvaluateOnNewDocument', { source });
+  try {
+    await goto(s, url, { settle });
+  } finally {
+    // Removed straight away: while installed it would re-seed EVERY subsequent
+    // navigation in the suite, which would silently undo anything a test wrote
+    // and then reloaded to check.
+    try { await s.send('Page.removeScriptToEvaluateOnNewDocument', { identifier }); } catch {}
+  }
 }
 
 export async function screenshot(s, path) {
