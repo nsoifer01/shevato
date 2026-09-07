@@ -19,29 +19,56 @@
  *
  * CACHE_VERSION is semver: bump PATCH when the precache contents change,
  * MINOR when the strategy changes, MAJOR for a back-compat break.
+ *
+ * ESSENTIAL vs OPTIONAL (2026-09-07): the precache used to be one list added
+ * with `cache.add(u).catch(() => {})` per URL, so an install in which the
+ * stylesheet 404'd still RESOLVED - and `activate` then deleted the previous
+ * version's caches, which were the last working shell on the device. That is
+ * exactly how a first-visit-then-offline reload produced a white, unstyled
+ * page with hidden menus visible. The shell files an offline load cannot do
+ * without are now installed with `addAll`, which is atomic: one 404 rejects
+ * the install, the new worker never activates, and the device keeps the shell
+ * it already had. Everything else (the airport table, Leaflet, icons, the
+ * sync scripts) stays best-effort, because a missing one of those degrades a
+ * feature rather than the page.
  */
 
-const CACHE_VERSION = '2.6.0';
+const CACHE_VERSION = '2.7.0';
 const PRECACHE = `trip-precache-${CACHE_VERSION}`;
 const RUNTIME = `trip-runtime-${CACHE_VERSION}`;
 
-const PRECACHE_URLS = [
+// The shell an offline load is not allowed to lose. `?v=` is part of the
+// cache key, so these strings must match index.html EXACTLY; a stale version
+// here is a request that misses the cache and fails offline
+// (apps/trip-planner/tests/sw-precache-completeness.test.mjs pins the parity,
+// because the v=67-vs-v=66 drift shipped and was only found in a live cold
+// offline reload).
+const ESSENTIAL_URLS = [
   './',
   './index.html',
-  './manifest.webmanifest',
   './css/styles.css?v=68',
   './js/trip-logic.js?v=53',
   './js/app.js?v=79',
+  '../../assets/css/main.css',
+  // The shared auth modal's stylesheet. index.html links it unconditionally,
+  // so without it an offline load paints an unstyled auth card over the app.
+  '../../assets/css/firebase-auth.css',
+];
+
+// Everything else the shell references. A miss here costs a feature, not the
+// page, so these install best-effort and never block the worker.
+const OPTIONAL_URLS = [
+  './manifest.webmanifest',
   // The bundled airport table (see scripts/build-airports.mjs). ~260 KB, and
   // precached on purpose: an airport picker that stops working without signal
   // is useless in the one place you most need it.
   './data/airports.json',
-  '../../assets/css/main.css',
   '../../assets/css/sync-status.css',
   '../../assets/css/back-to-top.css',
   '../../assets/js/passive-events-fix.js',
   '../../assets/js/sync-status.js',
   '../../assets/js/back-to-top.js',
+  '../../assets/js/analytics.js',
   '../../assets/js/jquery.min.js',
   '../../assets/js/browser.min.js',
   '../../assets/js/breakpoints.min.js',
@@ -74,12 +101,22 @@ const PRECACHE_URLS = [
   // again afterwards - including offline.
 ];
 
+// The whole shell, in one list, for the completeness test and for anything
+// that wants to know what this worker holds.
+const PRECACHE_URLS = [...ESSENTIAL_URLS, ...OPTIONAL_URLS];
+
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(PRECACHE);
-    // addAll would fail atomically on a single 404; add each URL on its own so
-    // one missing asset never blocks the whole install.
-    await Promise.all(PRECACHE_URLS.map((u) => cache.add(u).catch(() => {})));
+    // ATOMIC, and deliberately so: if any one of these 404s the whole install
+    // rejects, this worker never activates, and the previously installed
+    // version keeps serving its own (complete) shell. The alternative -
+    // swallowing the failure - installs a shell that is missing its
+    // stylesheet and then deletes the good one on activate.
+    await cache.addAll(ESSENTIAL_URLS);
+    // Best-effort, and only AFTER the shell is safely in: a missing airport
+    // table or icon must never cost the user their offline planner.
+    await Promise.all(OPTIONAL_URLS.map((u) => cache.add(u).catch(() => {})));
     await self.skipWaiting();
   })());
 });
@@ -110,6 +147,26 @@ self.addEventListener('activate', (event) => {
   })());
 });
 
+// How long a network-first read may hold the page before the cache answers
+// instead. `fetch` on a dead-but-not-refused connection (captive portal,
+// train tunnel, "lie-fi") does not reject: it hangs until the browser's own
+// multi-minute timeout, and network-first means the app hangs with it even
+// though a perfectly good precached copy is sitting on disk. Generous enough
+// that a slow-but-real 3G response still wins and gets runtime-cached.
+const NETWORK_FIRST_TIMEOUT_MS = 6000;
+
+// fetch(req) with a deadline. Rejects (rather than resolving to a bad
+// response) on timeout so the caller's existing catch runs the cache path.
+function fetchWithDeadline(req, ms) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('network-first timeout')), ms);
+    fetch(req).then(
+      (res) => { clearTimeout(timer); resolve(res); },
+      (err) => { clearTimeout(timer); reject(err); }
+    );
+  });
+}
+
 self.addEventListener('fetch', (event) => {
   // Off-origin first: never touch Nominatim / tiles / frankfurter / Open-Meteo
   // / raw.githubusercontent / Firebase.
@@ -120,7 +177,7 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith((async () => {
     try {
-      const res = await fetch(req);
+      const res = await fetchWithDeadline(req, NETWORK_FIRST_TIMEOUT_MS);
       if (res && res.ok) {
         const cache = await caches.open(RUNTIME);
         cache.put(req, res.clone()).catch(() => {});
