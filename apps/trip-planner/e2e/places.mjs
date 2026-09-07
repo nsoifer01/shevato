@@ -715,6 +715,15 @@ export async function run({ base, cdpPort }) {
 
       // Renaming the venue is a different place, so the old identity must go
       // rather than follow a name it was never resolved for.
+      //
+      // REVISED 2026-09-06. This used to assert `!place`, because a record
+      // could only ever arrive through the assistant's accept path, so absence
+      // was the only available way to say "PID_KEEPME did not follow the new
+      // name". A hand-added row now keeps its own resolution too
+      // (persistResolvedPlaces), so a renamed row legitimately acquires a
+      // record FOR THE NEW NAME once the lookup lands. The invariant is
+      // unchanged and is now asserted directly: whatever is there, it is not
+      // the old identity.
       await clickSel(s, '#board .row-btn[data-act="edit"], #board [data-act="edit"]', { settle: 700 });
       await waitForExpr(s, `document.querySelector('#itemOverlay').classList.contains('open')`, { timeout: 6000 });
       await setValue(s, '#inTitle', 'P13 Somewhere Else');
@@ -725,7 +734,12 @@ export async function run({ base, cdpPort }) {
         return { title: it.title, place: it.place || null };
       })()`);
       await t('tp-places P13: renaming the venue drops the old place rather than moving it',
-        renamed.title === 'P13 Somewhere Else' && !renamed.place, JSON.stringify(renamed), s);
+        renamed.title === 'P13 Somewhere Else'
+          && (!renamed.place || renamed.place.id !== 'PID_KEEPME'), JSON.stringify(renamed), s);
+      // and if a record IS there, it belongs to the name that was typed
+      await t('tp-places P13: any record on the renamed row was resolved for the NEW name',
+        !renamed.place || /somewhere else/i.test(renamed.place.id),
+        JSON.stringify(renamed.place), s);
     });
   }
 
