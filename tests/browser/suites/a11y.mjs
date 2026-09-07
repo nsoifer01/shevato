@@ -350,8 +350,18 @@ export async function run({ base, cdpPort }) {
       });
       await goto(s, `${base}/apps/maptap-rivals/`, { settle: 800 });
       await evaluate(s, seedExpr);
-      await goto(s, `${base}/apps/maptap-rivals/index.html#dashboard`, { settle: 1500 });
-      await waitForExpr(s, "!!document.getElementById('chart-trend') && !!document.querySelector('[data-chart-a11y=\"chart-trend\"]')", { timeout: 12000 });
+      // The charts live on a RIVAL DETAIL view, not the dashboard. Navigating
+      // straight to `#rival/<id>` is a race the app loses: applyUrlHash runs
+      // at boot and falls back to the dashboard when state.rivals is not
+      // populated yet, so the assertions below ran against a hidden view and
+      // reported the feature missing. Load the app, wait until it HAS its
+      // rivals, then change the hash in-page - which reaches applyUrlHash
+      // through hashchange with the data in hand, and avoids the
+      // fragment-only goto() stall this repo has been bitten by before.
+      await goto(s, `${base}/apps/maptap-rivals/index.html`, { settle: 1500 });
+      await waitForExpr(s, "document.querySelectorAll('.rival-card').length > 0", { timeout: 15000 });
+      await evaluate(s, "(location.hash = 'rival/r-ari', 1)");
+      await waitForExpr(s, "!!document.getElementById('chart-trend') && !!document.querySelector('[data-chart-a11y=\"chart-trend\"] tbody tr')", { timeout: 15000 });
 
       const label = await evaluate(s, "(document.getElementById('chart-trend')||{}).getAttribute ? document.getElementById('chart-trend').getAttribute('aria-label') : ''");
       t('a chart canvas names itself and its values to the accessibility tree',
@@ -390,8 +400,10 @@ export async function run({ base, cdpPort }) {
         localStorage.setItem('maptapRivalsGames', JSON.stringify(games.slice(0, 3)));
         return 1;
       })()`);
-      await goto(s, `${base}/apps/maptap-rivals/index.html#dashboard`, { settle: 1500 });
-      await waitForExpr(s, "!!document.querySelector('[data-chart-a11y=\"chart-trend\"] tbody tr')", { timeout: 12000 });
+      await goto(s, `${base}/apps/maptap-rivals/index.html`, { settle: 1500 });
+      await waitForExpr(s, "document.querySelectorAll('.rival-card').length > 0", { timeout: 15000 });
+      await evaluate(s, "(location.hash = 'rival/r-ari', 1)");
+      await waitForExpr(s, "!!document.querySelector('[data-chart-a11y=\"chart-trend\"] tbody tr')", { timeout: 15000 });
       const rowsAfter = await evaluate(s, "document.querySelectorAll('[data-chart-a11y=\"chart-trend\"] tbody tr').length");
       t('the table follows the data when the chart does',
         rowsAfter < rowsBefore && rowsAfter > 0, `${rowsBefore} -> ${rowsAfter} rows`);

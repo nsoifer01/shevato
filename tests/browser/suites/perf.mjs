@@ -358,6 +358,17 @@ async function measureStartupShift(cdpPort, base, app) {
       downloadThroughput: 1.6 * 1024 * 1024 / 8, uploadThroughput: 750 * 1024 / 8,
     });
     await s.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+    // Same reason as the budgets above: a startup measured against another
+    // suite's leftover data is not this app's startup. Cleared on a first
+    // visit, then the observer runs on the reload.
+    await goto(s, `${base}/apps/${app}/index.html`, { settle: 500 });
+    await evalAsync(s, `(async()=>{ try{
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const r of regs) await r.unregister();
+      for (const k of await caches.keys()) await caches.delete(k);
+      localStorage.clear();
+      sessionStorage.clear();
+      return 1; } catch(e){ return 0; } })()`);
     await s.send('Page.addScriptToEvaluateOnNewDocument', { source: CLS_OBSERVER });
     await goto(s, `${base}/apps/${app}/index.html`, { settle: 0 });
     await sleep(9000);
@@ -402,10 +413,27 @@ export async function run({ base, cdpPort }) {
         // registrations and Cache API stores can be cleared; the measured
         // load is the clean reload after that.
         await goto(s, base + b.path, { settle: 1500 });
+        // Clear everything an EARLIER SUITE could have left on this origin,
+        // then measure the reload. Service workers and the Cache API were
+        // already cleared here; STORED APP DATA was not, and that is the
+        // difference between measuring a page and measuring the residue of
+        // whatever ran before it. The header above claims these numbers are
+        // "bit-for-bit stable run to run", and they were - until the shard
+        // packing changed and perf landed after a suite that seeds trips,
+        // which rendered a populated timeline and pushed the Trip Planner's
+        // DOM count from ~940 to 1,729 against a 1,300 budget. A budget that
+        // depends on execution order is not a budget.
         await evalAsync(s, `(async()=>{ try{
           const regs = await navigator.serviceWorker.getRegistrations();
           for (const r of regs) await r.unregister();
           for (const k of await caches.keys()) await caches.delete(k);
+          localStorage.clear();
+          sessionStorage.clear();
+          if (indexedDB.databases) {
+            for (const db of await indexedDB.databases()) {
+              if (db.name) indexedDB.deleteDatabase(db.name);
+            }
+          }
           return 1; } catch(e){ return 0; } })()`);
         await goto(s, base + b.path, { settle: 2500 });
         // Late fetches (data files, lazy modules) land after onload; wait for
