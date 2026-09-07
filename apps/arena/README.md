@@ -85,11 +85,26 @@ the client:
   current decider's category pick, the timed advance once the question window
   has elapsed on the SERVER clock, and a `hostUid` takeover naming themselves
   when the current host's player doc is gone or stale.
-- **Everyone else** signed in may read the room (that is how joining by code
-  works) and nothing more. `hostUid`, `status`, the question pointers and the
+- **Everyone else** signed in may read the room's PUBLIC LOBBY DOC
+  (`triviaRooms/<code>/public/lobby`: `{ isPrivate, gameType }`, immutable)
+  and nothing else. `hostUid`, `status`, the question pointers and the
   question pool cannot be touched by a non-member, so a stranger can no longer
   end a room for everyone or wedge it with a bogus status or a negative
   question index.
+- **A room's contents are members-only** (`scopedReads: true`, on every room
+  created since 2026-09-07). Before it, one signed-in stranger who obtained a
+  five-character code could read the room doc - questions and `correctIndex`
+  included - the whole roster, and every chat message, and could post chat
+  without ever joining. The code is a shared secret people paste into group
+  chats and screenshots; it was never meant to be the only thing between an
+  outsider and a private room. Rooms created before the flag stay open on
+  purpose: they live for one sitting, an old client cannot write the flag, and
+  locking them out would break a game in progress during a deploy.
+- **The admission proof is not a durable record.** A joiner presents
+  `gateHash` on the player-doc create, and the client clears the field
+  immediately afterwards. It used to sit on a broadly readable player doc,
+  which made it a replayable credential: anyone with the code could copy a
+  member's hash and walk in without the password.
 - **Member writes are bounded by value, not only by key.** The allow-list above
   says which fields a member may touch; these say what they may put in them.
   `status` must be one the app actually uses; an advance must either finish the
@@ -105,8 +120,21 @@ the client:
 - **Player docs** are owner-write. The host may delete a player doc only when
   it is STALE (see Liveness), so ghosts can be swept but live players cannot
   be kicked.
-- **Chat** is append-only while the room lives; deletes are allowed only once
-  the room doc is gone (the orphan sweep).
+- **Chat** is members-only in both directions, and append-only while the room
+  lives; deletes are allowed only once the room doc is gone (the orphan
+  sweep). The create rule used to check the author's uid and the text length
+  and never whether the author was in the room.
+- **Persistent rows are bounded.** Scores are computed on the client, so a
+  leaderboard row, a daily score and a head-to-head record are CLAIMS - the UI
+  and privacy.html say so. What the rules add is the difference between a
+  claim and a fabrication: one game per write, counters that only rise, and a
+  per-game ceiling far above anything the scoring can produce. A synthetic
+  score of 999,999,999 was accepted until 2026-09-07.
+- **A head-to-head pair is addressed by its participants.** The document id
+  must be `{lower}__{higher}`, the uids are frozen on update, and the caller
+  must be one of them CHECKED AGAINST THE STORED RECORD. The old rule looked
+  only at the submitted document, so an unrelated registered user could open
+  someone else's pair, name themselves and post 9,999 wins.
 
 Adding a room-doc write to `js/app.js` means adding its shape to the matching
 rules function, or it passes locally and 403s in production.
@@ -155,9 +183,35 @@ Progression is not the host's private business:
   host is already stale, deletes the ROOM DOC first, then sweeps the gate,
   the chat messages and any leftover player docs. That order is what the
   rules can verify, so it is what the client must do.
-- **Not covered**: a room every client abandons at once (all tabs force-quit)
-  leaves an orphan room doc that no client is left to delete. Cleaning those
-  up needs a scheduled server-side job; there is none today.
+- **A room every client abandons at once** (all tabs force-quit) is reaped by
+  the server, not by a client. Every room created since 2026-09-07 carries
+  `expiresAt` (creation + 24 h, bounded by the rules at 48 h so a client
+  cannot mint one that outlives the policy), which is the input to a Firestore
+  TTL policy on `triviaRooms.expiresAt`. Firestore deletes the room DOC on its
+  own schedule, and every rule keyed on `roomGone()` then applies: the
+  leftover players, chat and gate become orphans any signed-in client may
+  sweep, which is the same path the last-leaver teardown already uses.
+
+  **This needs one setting outside the repo.** Enable the TTL policy once, on
+  the `triviaRooms` collection group, field `expiresAt`:
+
+  ```
+  gcloud firestore fields ttls update expiresAt \
+    --collection-group=triviaRooms --enable-ttl --project=shevato-site
+  ```
+
+  (or Firestore console -> the database -> Time-to-live -> Create policy).
+  Until it is enabled the field is written and inert, and cleanup behaves
+  exactly as it did before. Firestore TTL deletes the document only, not its
+  subcollections - which is precisely why the orphan-sweep rules above are the
+  other half of the design.
+
+- **Deleting your account takes your Arena records with it.** The global XP
+  leaderboard row and every Globe Drop daily score are deleted; head-to-head
+  records are ANONYMISED (your name becomes "Former player") rather than
+  deleted, because a pair record is the other player's history too. Until
+  2026-09-07 none of the three had a deletion rule the owner could use, and
+  privacy.html had to say so.
 
 ## Viewing locally
 

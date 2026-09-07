@@ -665,3 +665,37 @@ is already on the release, but nothing deploys until a merge, so the site keeps
 serving the previous build until someone looks. That is the intended failure
 mode, not an oversight.
 
+## The boot fold was doing the same work twice (2026-09-05 F08)
+
+`load()` ran `normalizeSearch` over every one of ~66,380 SEASON records to
+derive `titleSearch` - a measured 110 ms of a ~420 ms main-thread boot task on
+a desktop, so roughly half a second of a mid-range phone's startup. The only
+consumer of the result is `buildSeriesIndex`, which keys by SERIES: nearly half
+of that work was folding the same title again for another season of the same
+show. It now happens once per series, where the answer is used. Measured: 110 ms
+to 63 ms, with no change to the payload and none to search behaviour.
+
+The folding functions moved from `js/app.js` into `scripts/finder-lib.js` while
+doing it. Not copied - a second implementation would be a second search
+behaviour waiting to diverge, and this file is the one place the runtime finder
+and the build are meant to agree.
+
+**Stamping the folded title into the index at build time was measured and
+rejected.** It saved 107 ms of CPU and cost 0.27 MB of production-quality
+brotli (3.17 -> 3.44 MB) on a file every visitor downloads, which on a phone
+connection is a wash at best. The numbers are here so the next person does not
+have to re-derive them before deciding.
+
+**What remains, and why it is not a small change.** The audit's F08 asks for a
+compact SHOW-level search record so the browser stops downloading 66,380 season
+records (32.8 MB raw, ~3.2 MB brotli) and stops aggregating them at boot
+(`buildShowAgg`, a further 128 ms). The aggregate itself is easy - it is
+already a shared pure function and would produce byte-identical rows if run at
+build time. What is not easy is that `dataset.matches` is read directly in ten
+other places in `js/app.js`: modal opening, per-season lookups, the detail
+join, the best/worst-season badges, the series index, the compare and watched
+paths. Shipping the aggregate ALONGSIDE the season index would add 22 MB rather
+than remove any, so the payload only falls once every one of those readers has
+a different source. That is a multi-day refactor with a full-catalogue parity
+obligation, not a session-sized change, and doing half of it would make the app
+slower.

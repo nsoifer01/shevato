@@ -1205,3 +1205,50 @@ the month's day to the first two digits of the year. MapTap's own share writes
 "Aug 10", which is why every canonical fixture passed; the WhatsApp importer
 feeds arbitrary chat lines to the same function. The day group is now bounded
 on both sides with `(?!\d)`.
+
+## A connection one person could grant themselves (2026-09-05 F03)
+
+"Only connected rivals can read your profile" was a condition the attacker
+satisfied on their own. `maptapRivalsLinks` create required only that the
+caller be one of the two uids, and `isLinkedTo()` then granted profile access
+on the document's existence. The audit reproduced it end to end: profile read
+403, attacker-created pair 200, profile read 200.
+
+A link is now an INVITATION. It records who has accepted it, and only a
+mutually accepted link grants a read; the document id must be the canonical
+`{lower}__{higher}` pair key, so a forged id cannot exist; and the only
+permitted update is the other side adding itself, so the inviter cannot accept
+on the invitee's behalf.
+
+**Naming somebody as a rival IS your consent.** `tryLinkRival` runs for a rival
+the user typed a MapTap username for, so when it finds a pending invitation
+from that person it accepts it rather than queueing a second confirmation of a
+decision already made. What reaches the "Connection requests" list in the
+network card is therefore only people the user has not named.
+
+**Links written before consent existed are honoured.** They carry no
+`acceptedBy` and read as accepted, in both the rules and the client. Breaking
+every existing connection to close a hole that is already closed for new links
+would have cost real people their rival network; the create rule is what stops
+a new unilateral link.
+
+## "Verified" was a word we had not earned (2026-09-05 F03)
+
+The Verify button fetched a public maptap.gg profile. That proves the ACCOUNT
+EXISTS. It proves nothing about who is holding this browser, and handle claims
+were first-come for any handle at all - anyone could claim an unclaimed one.
+
+Establishing ownership needs a server that can challenge maptap.gg, and this
+app has none. So the product stopped claiming it: the button reads "Look up
+profile", the card reads "Linked" and "Last checked", the network hint spells
+out that first claim wins and that deleting a claim releases it, and
+privacy.html says the same. The contract is now exactly what the code does.
+
+## Leaving took nothing with it (2026-09-05 F18)
+
+`leaveNetwork` deleted the handle claim and the published profile and left
+every pair document behind: an invisible connection no surface listed, that the
+peer's client still counted, and that would silently reconnect the moment the
+user rejoined. It now deletes the links too, read from Firestore rather than
+from the local cache so a device that has been offline still sweeps the ones it
+never saw, and reports a partial failure honestly.

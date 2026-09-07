@@ -449,7 +449,50 @@ function filterAndSortRows(rows, f) {
     .sort(finderStateComparator(f));
 }
 
+// --- search folding, shared with the build (2026-09-05 audit F08) ----------
+//
+// These four moved here from js/app.js. They used to live only in the browser,
+// and js/app.js ran `normalizeSearch` over all 66,380 season records on every
+// page load - a measured 112 ms of a ~420 ms main-thread boot task, on a
+// desktop. It is a PURE function of the title, so scripts/split-data.js now
+// stamps the result into the index at build time and the browser uses it.
+//
+// MOVED, not copied. A second implementation would be a second search
+// behaviour waiting to diverge, and the point of this file is that the
+// runtime finder and the build agree by construction.
+//
+// "Pokemon" has to find "Pokemon" spelled with an accented e, "Shogun" the one
+// with a macron, "Elite" the Spanish "Elite" with an acute. NFKD splits a
+// precomposed letter into base + combining mark, which the replace drops; the
+// handful of letters NFKD does not decompose are mapped explicitly.
+const SEARCH_FOLD_MAP = {
+  'ø': 'o', 'ł': 'l', 'đ': 'd', 'ð': 'd', 'þ': 'th', 'ß': 'ss',
+  'æ': 'ae', 'œ': 'oe', 'ı': 'i', 'ŋ': 'n', 'ħ': 'h',
+};
+
+function foldSearchChar(ch) {
+  const base = ch.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  return SEARCH_FOLD_MAP[base] !== undefined ? SEARCH_FOLD_MAP[base] : base;
+}
+
+function foldSearch(s) {
+  let out = '';
+  for (const ch of String(s)) out += foldSearchChar(ch);
+  return out;
+}
+
+function normalizeSearch(s) {
+  return foldSearch(s)
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/^(the|a|an) /, '');
+}
+
 const API = {
+  SEARCH_FOLD_MAP,
+  foldSearchChar,
+  foldSearch,
+  normalizeSearch,
   FINDER_DEFAULTS,
   HIDDEN_GEM_MIN_AVG,
   HIDDEN_GEM_MAX_VOTES_PER_EP,

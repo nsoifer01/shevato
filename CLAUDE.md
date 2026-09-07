@@ -33,9 +33,8 @@ review that app's `README.md` and `FINDINGS.md` against everything learned or
 changed, and update them where appropriate. Use judgment: no noise after
 trivial edits, no drift after real work.
 
-**Future apps:** seven of the eight apps have both files today (mario-kart
-has a README only). New apps gain them when meaningful work on them begins;
-do not retro-document every app speculatively. Site-level work (marketing pages,
+**Future apps:** all eight apps have both files today. New apps gain them when
+meaningful work on them begins; do not retro-document every app speculatively. Site-level work (marketing pages,
 `sync-system/`, shared assets) counts as "the site": record durable site-level
 findings in the most relevant app's FINDINGS if they surfaced there, or start
 the convention where the work happens.

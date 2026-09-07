@@ -427,8 +427,15 @@ jobs:
       # the bot commits, which is the changelog and the exports. The data
       # itself is covered by the validate-dataset step above, and that is
       # deliberately where it belongs. And a failing check now leaves the PR
-      # OPEN: the data is already on the release, but nothing deploys until a
-      # merge, so the site keeps serving the previous build until someone
+      # OPEN: the data is already on the release under an IMMUTABLE name, and
+      # apps/rising-shows/data-release.json - the pin that decides which
+      # release a build resolves - is in this pull request. So until it merges
+      # every deploy still fetches the PREVIOUS approved pair, which is what
+      # makes the sentence below true. It was not true before 2026-09-07: the
+      # rolling asset names meant any deploy triggered meanwhile picked up
+      # data whose review had not happened (2026-09-05 audit F13).
+      #
+      # The site keeps serving the previous build until someone
       # looks. That is the intended failure mode.
       - name: Open and merge PR if derived files changed
         if: steps.change.outputs.changed == 'true'
