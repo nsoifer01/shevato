@@ -12,6 +12,14 @@
 // site.webmanifest start_url of /home.html, and the apex redirect landing
 // on /home.html).
 //
+// The apex itself is the same trap wearing a different hat: netlify.toml
+// 301s `/` onto /home, so `"url": "https://shevato.com/"` in a JSON-LD
+// Organization / WebSite / breadcrumb block is a redirect hop too, on every
+// page carrying that block. The ~35k generated pages already said
+// `${SITE}/home`; ten hand-written ones still named the apex until
+// 2026-09-06, which is what the "Page with redirect" Search Console alert
+// of that day pointed at.
+//
 // Deliberately OUT of scope: plain <a href> / <link href> inside page bodies
 // and partials. Those keep the `.html` form on purpose so the repo works
 // under a plain static server (python http.server, the browser harness),
@@ -68,13 +76,38 @@ function urlProblems(url, { directoryPage }) {
   return out;
 }
 
+// The raw text of every JSON-LD block on the page.
+function jsonLdBlocks(html) {
+  return [...html.matchAll(/<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)]
+    .map((m) => m[1]);
+}
+
 // Every https://shevato.com/... string inside the page's JSON-LD blocks.
 function jsonLdUrls(html) {
   const urls = [];
-  for (const m of html.matchAll(/<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
-    for (const u of m[1].matchAll(/https:\/\/shevato\.com[^"'\s<\\]*/g)) urls.push(u[0]);
+  for (const block of jsonLdBlocks(html)) {
+    for (const u of block.matchAll(/https:\/\/shevato\.com[^"'\s<\\]*/g)) urls.push(u[0]);
   }
   return urls;
+}
+
+// Paths to every `url` / `item` string in a parsed JSON-LD node that equals
+// the apex. `@id` is deliberately not inspected: `https://shevato.com/#website`
+// is a node identifier in the sitewide graph, never a URL anything fetches.
+function apexUrlPaths(node, path = '$') {
+  const out = [];
+  if (Array.isArray(node)) {
+    node.forEach((entry, i) => out.push(...apexUrlPaths(entry, `${path}[${i}]`)));
+    return out;
+  }
+  if (!node || typeof node !== 'object') return out;
+  for (const [key, value] of Object.entries(node)) {
+    if ((key === 'url' || key === 'item') && (value === ORIGIN || value === `${ORIGIN}/`)) {
+      out.push(`${path}.${key}`);
+    }
+    out.push(...apexUrlPaths(value, `${path}.${key}`));
+  }
+  return out;
 }
 
 // -- Per-page canonical / og:url ----------------------------------------------
@@ -105,6 +138,14 @@ for (const page of ALL_PAGES) {
       .filter((u) => !u.startsWith(`${ORIGIN}/images/`))
       .filter((u) => /\.html$/i.test(u) || /index\.html/i.test(u));
     assert.deepEqual(bad, [], `${page}: JSON-LD names .html page URLs`);
+  });
+
+  test(`${page}: no JSON-LD url/item names the redirecting apex`, () => {
+    const bad = [];
+    jsonLdBlocks(read(page)).forEach((raw, i) => {
+      bad.push(...apexUrlPaths(JSON.parse(raw), `block #${i + 1}`));
+    });
+    assert.deepEqual(bad, [], `${page}: JSON-LD names ${ORIGIN}/, which netlify.toml 301s to /home`);
   });
 }
 
