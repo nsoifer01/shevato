@@ -1456,3 +1456,62 @@ body.football-h2h-tracker .games-table .pen-label {
         overflow-wrap: anywhere;
     }
 }
+
+/* ---------------------------------------------------------------------------
+   First run (2026-09-05 audit F17).
+
+   A phone opening this app for the first time met seven stat cards reading
+   zero, and the only pointer to the primary action was a line at the very
+   bottom of an empty history table naming a sidebar the visitor had not
+   opened. This sits ABOVE those statistics and says what to do; football-h2h.js
+   hides it the moment the first game exists, so a returning user never sees it.
+
+   In refresh.css because that is the sheet the page loads last (index.html
+   links css/football-h2h.css then css/refresh.css). A `css/styles.css` in this
+   directory is linked by nothing.
+   --------------------------------------------------------------------------- */
+body.football-h2h-tracker .first-run {
+    margin: 0 auto 1.5rem;
+    max-width: 42rem;
+    padding: 1.25rem 1.5rem;
+    text-align: center;
+    background: var(--fh-surface, rgba(255, 255, 255, 0.03));
+    border: 1px solid var(--fh-border, rgba(255, 255, 255, 0.09));
+    border-radius: 14px;
+}
+body.football-h2h-tracker .first-run-title {
+    margin: 0 0 0.4rem;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--fh-text, #f1f3f8);
+}
+body.football-h2h-tracker .first-run-body {
+    margin: 0 0 1rem;
+    font-size: 0.9rem;
+    line-height: 1.55;
+    color: var(--fh-muted, #a0aec0);
+}
+/* The colour is PINNED, not inherited: the site's shared assets/css/main.css
+   sets `button { color: #555 !important }`, which an unpinned app button
+   silently loses to (the repo's shared-UI scoping contract, and the reason
+   every app here pins its own button colours). */
+body.football-h2h-tracker .first-run-cta {
+    display: inline-block;
+    padding: 0.65rem 1.4rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #ffffff !important;
+    background: linear-gradient(135deg, #16a34a, #15803d);
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+}
+body.football-h2h-tracker .first-run-cta:hover,
+body.football-h2h-tracker .first-run-cta:focus-visible {
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    color: #ffffff !important;
+}
+@media (max-width: 600px) {
+    body.football-h2h-tracker .first-run { margin: 0 0.75rem 1.25rem; padding: 1rem; }
+    body.football-h2h-tracker .first-run-cta { width: 100%; }
+}
