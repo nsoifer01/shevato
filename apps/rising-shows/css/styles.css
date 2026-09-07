@@ -3129,54 +3129,68 @@ body:has(.modal:not([hidden])) .back-to-top {
   margin-top: 0.35rem;
 }
 /* Forces the wrap point. A flex item that is full-width and zero-height ends
-   the line it is on, which is how the primary action keeps a row to itself
-   without being stretched across it (flex-basis:100% on the button itself
-   would make it a full-width bar). */
+   the line it is on, which is how the outbound chips get a line of their own
+   under the actions without being stretched across it (flex-basis:100% on an
+   item itself would make it a full-width bar). The small extra margin buys the
+   chip line a little more air than the row gap alone, so the group reads as
+   "actions, then references" rather than one block of four rows. */
 .action-row-break {
   flex: 0 0 100%;
   height: 0;
-  margin: -0.25rem 0;
+  margin-top: 0.1rem;
 }
 
-/* Outbound link pills (IMDb, TVDB). Same pill geometry as the provider chips
-   so the modal has one vocabulary for "a small labelled thing you can click",
-   but neutral rather than cyan: cyan means "where to watch this". They sit at
-   the end of the utility line and read as references, not as actions - which
-   is what they are, and what five identical ghost buttons hid. */
+/* Outbound reference chips (IMDb, TVDB), on their own line under the actions.
+ * The middle ground between a bare text link and a fifth button: pill geometry
+ * borrowed from the provider chips, so the modal keeps one vocabulary for "a
+ * small labelled thing you can click", but neutral rather than cyan, because
+ * cyan already means "where to watch this". The pill shape against the
+ * buttons' 10 px radius is the signal that these are a different KIND of
+ * thing, and the smaller type and quieter ink keep them from competing with
+ * the primary action. Same surface, border and lit top edge as the buttons
+ * above, which is what keeps them part of the group.
+ *
+ * Deliberately NO external-link glyph: nothing else in this app marks outbound
+ * links that way, and inventing the pattern here would be the one flashy note
+ * in a restrained group. Where the link goes is in the accessible name and the
+ * tooltip instead (see setOutboundLabel). */
 .outbound-tag {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  min-height: 28px;
-  padding: 0.1rem 0.6rem;
+  min-height: 30px;
+  padding: 0 0.7rem;
   border-radius: 999px;
   border: 1px solid var(--border);
+  border-top-color: rgba(255, 255, 255, 0.06);
   background: var(--surface-2);
   color: var(--muted) !important;
-  font-size: 0.72rem;
+  font-size: 0.74rem;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
   white-space: nowrap;
   text-decoration: none;
   cursor: pointer;
-  transition: background-color 0.12s, border-color 0.12s, color 0.12s;
+  transition: background 0.16s var(--ease), border-color 0.16s var(--ease),
+              color 0.16s var(--ease), transform 0.1s var(--ease);
 }
-/* The "leaves the site" mark, kept out of the accessible name. */
-.outbound-tag::after {
-  content: '↗';
-  font-size: 0.7em;
-  opacity: 0.8;
-}
-.outbound-tag:hover,
-.outbound-tag:focus-visible {
-  background: var(--accent-soft);
-  border-color: var(--accent-strong);
-  color: var(--accent) !important;
+.outbound-tag:hover {
+  background: var(--surface-3);
+  border-color: rgba(245, 197, 24, 0.3);
+  border-top-color: rgba(255, 210, 74, 0.4);
+  color: var(--accent-warm) !important;
   text-decoration: none;
 }
+.outbound-tag:active {
+  transform: translateY(1px);
+  background: var(--surface-2);
+}
+/* The same focus treatment the buttons use, so keyboard focus looks like one
+ * language across all six controls rather than a ring here and a glow there. */
 .outbound-tag:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: none;
+  color: var(--accent-warm) !important;
+  border-color: rgba(245, 197, 24, 0.3);
+  box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 1px var(--accent);
 }
 
 /* Cast strip — horizontal-scrolling row of head-and-shoulders cards
@@ -3422,31 +3436,107 @@ a.cast-card-inner:focus-visible {
 .modal-episodes .ep-flag-worst { color: var(--danger); }
 .modal-episodes .ep-flag-most-rated { color: var(--warn); }
 
-/* Hierarchy inside .modal-primary-actions: each modal's primary action (watch
- * on season-modal, compare on show-modal) gets an accent surface so it reads
- * as the obvious primary button among the ghost utilities beside it. These
- * were scoped to a `.modal-actions` wrapper that no longer exists, so they had
- * silently stopped applying and the primary button rendered as one more plain
- * button; the row only reads as a hierarchy with them live. */
+/* --- The modal action group ----------------------------------------------
+ *
+ * Everything below is scoped to .modal-primary-actions on purpose. The shared
+ * `.btn` / `.btn-ghost` primitives dress the whole site (toolbar, pager, close
+ * button, provider chips), so this group gets a local variant instead: the
+ * modal's action area is the one place where a primary action, three
+ * secondary ones and two outbound references sit shoulder to shoulder and have
+ * to read as three ranks rather than six equals.
+ *
+ * The whole thing is built from existing tokens. The only literals are the two
+ * hairline highlights, which are white/gold at 4-8% and exist because a token
+ * for "the lit top edge of a raised surface" does not.
+ */
+
+/* Common to all four buttons: the shared control height and radius, and a
+ * label a shade heavier than the site default so a 0.9rem control does not
+ * look like body text in a box. */
+.modal-primary-actions .btn {
+  font-weight: 550;
+  letter-spacing: 0.005em;
+  /* A touch tighter than the site-wide --ctrl-pad-x (0.95rem). Four controls
+     share a 532 px column here, where the toolbar's buttons have the whole
+     page; the same padding that reads as generous out there reads as slack in
+     a group this size. Height and type size stay on the site's scale. */
+  padding: 0 0.8rem;
+}
+
+/* Secondary actions. `.btn-ghost` is transparent with a --border-strong
+ * outline, which on the modal panel is literally a rectangle drawn on the
+ * card - the "generic outlined button" look. Filling them one surface step up
+ * with a HAIRLINE border inverts that: they become objects sitting on the
+ * card. The lighter top border is the resting-state depth; it is what keeps a
+ * flat fill from reading as a disabled input, and it costs no shadow (the
+ * shared `.btn` pins box-shadow to none !important, and fighting that would
+ * mean another !important). */
+.modal-primary-actions .btn-ghost,
+.modal-primary-actions .btn-ghost:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+  border-top-color: rgba(255, 255, 255, 0.07);
+  color: var(--text) !important;
+}
+.modal-primary-actions .btn-ghost:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+/* Pressed: the surface drops back to its resting fill while the button moves
+ * down, so the press reads as the control being pushed INTO the card rather
+ * than just nudged. */
+.modal-primary-actions .btn-ghost:active {
+  background: var(--surface-2);
+  border-top-color: var(--border);
+}
+
+/* Primary action (compare on the show modal, watch on the season modal). Same
+ * gold language as before, dialled back: this was a 700-weight label inside a
+ * 32%-opacity gold border, which next to the calmer secondaries read as a
+ * warning strip rather than a first choice. 600 weight, a softer border, the
+ * warm gold for the label, and the same lit top edge the secondaries get, so
+ * it is unmistakably first without being a bright CTA. */
 .modal-primary-actions .watch-btn,
 .modal-primary-actions .compare-btn {
   background: var(--accent-soft);
-  border: 1px solid var(--accent-strong);
-  color: var(--accent) !important;
-  font-weight: 700;
+  border: 1px solid rgba(245, 197, 24, 0.22);
+  border-top-color: rgba(255, 210, 74, 0.34);
+  color: var(--accent-warm) !important;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 .modal-primary-actions .watch-btn:hover,
 .modal-primary-actions .compare-btn:hover {
-  background: rgba(245, 197, 24, 0.18);
-  border-color: rgba(245, 197, 24, 0.5);
+  background: rgba(245, 197, 24, 0.17);
+  border-color: rgba(245, 197, 24, 0.34);
+  border-top-color: rgba(255, 210, 74, 0.45);
+  color: var(--accent-warm) !important;
+}
+.modal-primary-actions .watch-btn:active,
+.modal-primary-actions .compare-btn:active {
+  background: var(--accent-soft);
+  border-top-color: rgba(245, 197, 24, 0.22);
 }
 /* "Already added" state — green to signal the success-of-state, same
  * pattern the watch button uses when a season is marked watched. */
 .modal-primary-actions .watch-btn.is-watched,
 .modal-primary-actions .compare-btn.is-in-compare {
-  background: rgba(74, 222, 128, 0.16);
-  border-color: rgba(74, 222, 128, 0.45);
+  background: var(--good-soft);
+  border-color: rgba(52, 211, 158, 0.4);
+  border-top-color: rgba(52, 211, 158, 0.5);
   color: var(--good) !important;
+}
+
+/* The permalink arrow. A real element, so it can carry its own spacing and a
+ * 2 px nudge on hover instead of sitting in the label as a stray glyph. */
+.modal-primary-actions .btn-arrow {
+  display: inline-block;
+  margin-left: 0.05rem;
+  transition: transform 0.16s var(--ease);
+}
+.modal-primary-actions .btn:hover .btn-arrow {
+  transform: translateX(2px);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3454,6 +3544,12 @@ a.cast-card-inner:focus-visible {
     animation: none;
   }
   .card, .row { transition: none; }
+  /* The action group's two bits of motion: the permalink arrow's nudge and the
+     chips' press. Colour feedback carries the states on its own. */
+  .modal-primary-actions .btn-arrow,
+  .outbound-tag { transition: none; }
+  .modal-primary-actions .btn:hover .btn-arrow,
+  .outbound-tag:active { transform: none; }
   /* The mobile drawer's slide-up and backdrop fade-in can feel abrupt
      for motion-sensitive users — disable both and just show/hide. */
   .advanced-backdrop,
@@ -3708,11 +3804,12 @@ body.advanced-drawer-open {
     min-height: 44px;
     flex: 1 1 auto;
   }
-  /* The pills grow to a comfortable tap target too, but stay pills: they share
-     a line rather than each taking one. */
+  /* The chips grow to a comfortable tap target too, but stay chips: they share
+     their line rather than each taking one, and stay visibly smaller than the
+     buttons above so the ranking survives the wrap. */
   .outbound-tag {
     min-height: 36px;
-    padding: 0.1rem 0.85rem;
+    padding: 0 0.95rem;
     font-size: 0.78rem;
   }
 }

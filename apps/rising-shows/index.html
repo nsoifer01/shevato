@@ -428,8 +428,8 @@
           <div class="modal-primary-actions">
             <button type="button" class="btn" id="modalViewShow">📺 View show</button>
             <button type="button" class="btn watch-btn" id="modalWatchBtn"></button>
-            <span class="action-row-break" aria-hidden="true"></span>
             <button type="button" class="btn btn-ghost" id="modalShareCard">Share card</button>
+            <span class="action-row-break" aria-hidden="true"></span>
             <!-- Outbound links are pills, not buttons: they leave the site, and
                  four same-sized buttons made the row read as four equal
                  choices. openModal writes the accessible name, which says
@@ -485,16 +485,22 @@
                phone: a permalink nobody can reach is not a permalink. -->
           <div class="modal-primary-actions">
             <button type="button" class="btn compare-btn" id="showModalCompare">+ Add to compare</button>
-            <!-- Zero-height full-width flex item: forces a line break so the
-                 primary action holds its own row and is not one of six
-                 same-sized things. -->
-            <span class="action-row-break" aria-hidden="true"></span>
             <button type="button" class="btn btn-ghost" id="showModalShareCard">Share card</button>
             <button type="button" class="btn btn-ghost" id="showModalShareChart" hidden>Share chart image</button>
-            <a class="btn btn-ghost" id="showModalPermalink">Permalink →</a>
-            <!-- Outbound links are pills, not buttons: they leave the site,
-                 they are the least-used thing in the row, and as full buttons
-                 they cost a whole second line. -->
+            <!-- The arrow is its own element so it can be spaced and nudged;
+                 as a glyph in the label it read as an appended character.
+                 aria-hidden keeps the accessible name "Permalink". -->
+            <!-- Zero-height full-width flex item: ends the line. Line one is
+                 what the modal DOES, line two is where it GOES - permalink
+                 first, then the outbound references. The four buttons do not
+                 fit one line here (they need 591 px of a 532 px column at
+                 1280), and splitting them by verb beats shrinking them. -->
+            <span class="action-row-break" aria-hidden="true"></span>
+            <a class="btn btn-ghost" id="showModalPermalink">Permalink <span class="btn-arrow" aria-hidden="true">→</span></a>
+            <!-- Outbound links are compact chips, not buttons: they leave the
+                 site and are the least-used thing here, so they read as
+                 references under the action row rather than a fifth and sixth
+                 equal choice. -->
             <a class="outbound-tag" id="showModalImdb" target="_blank" rel="noopener" aria-label="This show on IMDb">IMDb</a>
             <a class="outbound-tag" id="showModalTvdb" target="_blank" rel="noopener" aria-label="This show on TVDB" hidden>TVDB</a>
           </div>

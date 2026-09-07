@@ -62,6 +62,24 @@ test('the primary action leads its row: accent rules are scoped to the live wrap
   }
 });
 
+test('the group is a local variant: the shared .btn-ghost primitive is untouched', () => {
+  // The modal group is restyled entirely through `.modal-primary-actions ...`
+  // rules. If someone ever "fixes" it by editing the shared primitive instead,
+  // every ghost button on the site changes with it - the toolbar, the pager,
+  // the compare overlay. The shared rule's own declaration is the tripwire.
+  const shared = CSS.slice(CSS.indexOf('\n.btn-ghost,'));
+  const block = shared.slice(0, shared.indexOf('}'));
+  assert.match(block, /background:\s*transparent/,
+    'shared .btn-ghost is no longer transparent, so the modal restyle leaked out of its scope');
+});
+
+test('the permalink arrow is decorative, so the accessible name stays "Permalink"', () => {
+  const row = actionRowFor('showModal');
+  const link = row.slice(row.indexOf('id="showModalPermalink"'));
+  assert.match(link.slice(0, link.indexOf('</a>')), /class="btn-arrow"[^>]*aria-hidden="true"/,
+    'the arrow must be aria-hidden, or screen readers read "Permalink right arrow"');
+});
+
 test('the retired action-row classes are gone from both files', () => {
   // `modal-actions-top` outlived its markup by two weeks; these are the names
   // that would quietly resurrect a second row.

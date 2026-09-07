@@ -57,6 +57,40 @@ buttons:
 `.modal-imdb` are all gone from the CSS; `modal-actions-top` had already been
 dead since 2026-08-23.
 
+### The group is a LOCAL variant, and why (same round)
+
+Every rule for this group is scoped to `.modal-primary-actions` / `.outbound-tag`.
+The shared `.btn` and `.btn-ghost` primitives dress the toolbar, the pager, the
+close button and the provider chips, and the modal action area is the one place
+on the site where a primary action, three secondary ones and two outbound
+references sit shoulder to shoulder and have to read as three ranks. Restyling
+the primitives to fix this one group would have moved every button on the site.
+
+What the local variant changes, all from existing tokens:
+
+- **Secondary buttons are filled, not outlined.** `.btn-ghost` is transparent
+  with a `--border-strong` outline, which on the modal panel is literally a
+  rectangle drawn on the card. Filling with `--surface-2` and dropping to a
+  hairline `--border` inverts it: they become objects sitting on the card.
+- **The resting-state depth is a lighter TOP border**, not a shadow. `.btn`
+  pins `box-shadow: none !important`, so any shadow would need a second
+  `!important`; a 7% white top edge gets the same "lit from above" read for
+  free, and is what keeps a flat fill from looking like a disabled input.
+- **The primary is dialled back.** It was a 700-weight label inside a
+  32%-opacity gold border, which beside the calmer secondaries read as a
+  warning strip. 600 weight, a 22% border and `--accent-warm` for the label:
+  measured 9.98:1 against its own composited background, still unmistakably
+  first. (Measure gold-on-translucent-gold by COMPOSITING the button's
+  background over the panel first; comparing the label to the raw
+  `rgba(245,197,24,0.12)` reports a meaningless 1.13:1.)
+- **One focus language.** Buttons and chips both take
+  `box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 1px var(--accent)` rather
+  than a ring on one and a glow on the other.
+- **No external-link glyph on the chips.** Nothing else in the app marks
+  outbound links that way, so inventing the pattern here would be the one
+  flashy note in a restrained group. Where the link goes lives in the
+  accessible name and the tooltip.
+
 ### Three tiers, not one row of equals (same round)
 
 Six same-sized buttons on one row say all six are equally worth doing. The row
@@ -72,8 +106,13 @@ is now read top to bottom as primary, actions, references:
   means "where to watch this". A `::after` ↗ marks that they leave the site and
   stays out of the accessible name. Measured 7.54:1 against the panel, 28 px
   tall on desktop and 36 px on a phone.
-- Desktop is 2 lines (compare / everything else) and a phone is 3. As full
-  buttons IMDb and TVDB cost a whole extra line.
+- **The lines split by verb.** Line one is what the modal DOES (compare, share
+  card, share chart image); line two is where it GOES (permalink, then the two
+  outbound chips). The four buttons do not fit one line in this column - they
+  need 591 px of a 532 px heading column at 1280 - and the only ways to force
+  it are shrinking the group ~11% below the site's control scale, or moving the
+  row out of the heading to span the panel. Splitting by verb costs neither,
+  and the owner picked it over both on 2026-09-07.
 
 A pill shows only the site name, so **the accessible name carries what the href
 actually points at** - "Season 1 on IMDb", "This series on TVDB" - set by
