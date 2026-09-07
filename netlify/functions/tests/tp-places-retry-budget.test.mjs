@@ -119,9 +119,15 @@ test('headroom is reserved but RELEASED when no retry is needed', opts, async ()
   // The reservation is an upper bound, not a charge. A batch whose candidates
   // all resolve first time must leave the counters at exactly what it spent,
   // or every clean batch would quietly burn the traveller's hourly allowance.
+  // TWO DISTINCT BRANCHES, and the distinctness is load-bearing: two queries
+  // that resolve to the SAME place ID are now one billed call, so reusing one
+  // ID here would measure the dedup instead of the headroom release.
   globalThis.fetch = async (url, init = {}) => {
     const href = String(url);
-    if (href.includes('places:searchText')) return json({ places: [{ id: 'near' }] });
+    if (href.includes('places:searchText')) {
+      const body = JSON.parse(init.body || '{}');
+      return json({ places: [{ id: /Chiyoda/.test(body.textQuery || '') ? 'near-2' : 'near' }] });
+    }
     return json(NEAR);
   };
   await post([
