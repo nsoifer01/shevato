@@ -151,7 +151,7 @@ test('vm harness: app.js exports every helper these tests drive', () => {
   const expected = [
     'ScrollMemory', 'buildSeasonShareText', 'clampScrollY', 'computeShowRelated',
     'computeStdDev', 'languagesCompatible', 'parseCompareParam',
-    'validateDataset', 'seasonEpisodeCount', 'shapeConfidence',
+    'validateDataset', 'seasonEpisodeCount', 'shapeConfidence', 'viewKeyFromHash',
   ];
   const missing = expected.filter((name) => helpers[name] == null);
   assert.deepEqual(missing, [], `js/app.js stopped exporting: ${missing.join(', ')}`);
@@ -195,6 +195,7 @@ test('clampScrollY: a non-scrollable page (maxScrollY <= 0) restores to top', ()
 // ---------------------------------------------------------------------------
 
 const SCROLL_KEY = 'rising-seasons:scroll';
+const VIEW_KEY = 'rising-seasons:scrollView';
 
 function withPage({ hash = '', anchorFound = false, scrollHeight = 6000, scrollY = 0, scrollTop = 0, grow = null }, fn) {
   const saved = {
@@ -329,7 +330,92 @@ test('ScrollMemory: a filter hash is not an anchor, so the offset still restores
 
 test('ScrollMemory: restore does nothing when nothing was saved', () => {
   withPage({}, ({ scrolledTo }) => {
-    helpers.ScrollMemory.restore();
+    assert.equal(helpers.ScrollMemory.restore(), false);
+    assert.deepEqual(scrolledTo, []);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scroll restoration: the offset belongs to ONE view
+//
+// Reading the "What a rating shape is" section at the bottom of the page,
+// following one of its shape links, then coming back through that hub's
+// "Filter Declining shows in the explorer →" CTA used to reinstate the
+// bottom-of-page offset over a view the visitor had never scrolled: the
+// filter was applied 4,600 px above them, with no card on screen.
+// ---------------------------------------------------------------------------
+
+test('viewKeyFromHash: the same filters in any order are one view', () => {
+  assert.equal(
+    helpers.viewKeyFromHash('#sort=gap&gapDir=up&minVotes=5000'),
+    helpers.viewKeyFromHash('#minVotes=5000&sort=gap&gapDir=up'),
+  );
+});
+
+test('viewKeyFromHash: a bare hash is the default view, and different filters differ', () => {
+  assert.equal(helpers.viewKeyFromHash(''), '');
+  assert.equal(helpers.viewKeyFromHash('#'), '');
+  assert.equal(helpers.viewKeyFromHash(null), '');
+  assert.notEqual(helpers.viewKeyFromHash('#shape=declining'), helpers.viewKeyFromHash(''));
+  assert.notEqual(
+    helpers.viewKeyFromHash('#shape=declining'),
+    helpers.viewKeyFromHash('#shape=rising'),
+  );
+});
+
+test('ScrollMemory: save records which view the offset was taken in', () => {
+  withPage({ hash: '#shape=rising', scrollY: 1240 }, () => {
+    helpers.ScrollMemory.save();
+    assert.equal(ctx.sessionStorage.getItem(VIEW_KEY), 'shape=rising');
+    assert.equal(helpers.ScrollMemory.readView(), 'shape=rising');
+  });
+});
+
+test('ScrollMemory: saving at the top clears the recorded view with the offset', () => {
+  withPage({ hash: '#shape=rising', scrollY: 0 }, () => {
+    ctx.sessionStorage.setItem(SCROLL_KEY, '900');
+    ctx.sessionStorage.setItem(VIEW_KEY, 'shape=declining');
+    helpers.ScrollMemory.save();
+    assert.equal(ctx.sessionStorage.getItem(VIEW_KEY), null);
+    assert.equal(helpers.ScrollMemory.readView(), null);
+  });
+});
+
+test('ScrollMemory: an offset saved in another view is not reinstated', () => {
+  // Saved at the bottom of the unfiltered page; arriving on #shape=declining
+  // from a shape hub's explorer CTA is a different view.
+  withPage({ hash: '#shape=declining', scrollHeight: 6000 }, ({ scrolledTo }) => {
+    ctx.sessionStorage.setItem(SCROLL_KEY, '5337');
+    ctx.sessionStorage.setItem(VIEW_KEY, '');
+    assert.equal(helpers.ScrollMemory.restore(), false);
+    assert.deepEqual(scrolledTo, [], 'the bottom of the previous view is not this view');
+  });
+});
+
+test('ScrollMemory: an offset saved in this same view still restores', () => {
+  // A refresh, or a Back out of a show page: same filters, same position.
+  withPage({ hash: '#gapDir=up&sort=gap', scrollHeight: 6000 }, ({ scrolledTo }) => {
+    ctx.sessionStorage.setItem(SCROLL_KEY, '4800');
+    // Written in the other param order - same view, so it must still match.
+    ctx.sessionStorage.setItem(VIEW_KEY, 'gapDir=up&sort=gap');
+    assert.equal(helpers.ScrollMemory.restore(), true);
+    assert.deepEqual(scrolledTo, [4800]);
+  });
+});
+
+test('ScrollMemory: an offset with no recorded view restores as it always did', () => {
+  // A tab that stored an offset before the view key existed.
+  withPage({ hash: '#shape=declining', scrollHeight: 6000 }, ({ scrolledTo }) => {
+    ctx.sessionStorage.setItem(SCROLL_KEY, '4800');
+    assert.equal(helpers.ScrollMemory.restore(), true);
+    assert.deepEqual(scrolledTo, [4800]);
+  });
+});
+
+test('ScrollMemory: restore reports that a real anchor took the position', () => {
+  withPage({ hash: '#season-3', anchorFound: true }, ({ scrolledTo }) => {
+    ctx.sessionStorage.setItem(SCROLL_KEY, '4800');
+    assert.equal(helpers.ScrollMemory.restore(), true);
     assert.deepEqual(scrolledTo, []);
   });
 });
