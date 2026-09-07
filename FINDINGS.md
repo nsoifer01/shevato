@@ -62,9 +62,9 @@ returned 200, matching the `submitted: 2172` the API reports for
 `https://shevato.com/sitemap.xml`. So the redirecting URL was not in a
 sitemap this repo produces.
 
-It was in the stale `https://www.shevato.com/sitemap.xml` registration on the
-domain property (submitted 2026-08-05, 34,494 pre-curation URLs, re-downloaded
-2026-09-05 14:19 UTC). URL Inspection settles it without guessing, because
+It was in the stale `https://www.shevato.com/sitemap.xml` registration
+(submitted 2026-08-05, 34,494 pre-curation URLs, re-downloaded 2026-09-05
+14:19 UTC). URL Inspection settles it without guessing, because
 `indexStatusResult.referringUrls` names where Google found a URL:
 
 ```
@@ -78,6 +78,15 @@ the URL and read `referringUrls` before touching anything.** The verdict is a
 statement about a fetch Google made, possibly months ago, from a source that
 may no longer exist; `sitemap: []` on such a URL means "not in a sitemap I
 list for this property", not "no sitemap sent me here".
+
+Sitemap registrations are **per property**, and that stale one was on two of
+the three: the `sc-domain:shevato.com` domain property and the
+`https://www.shevato.com/` URL-prefix property. Deleting it from the domain
+property alone would have left Google re-downloading it through the other, so
+list every property before concluding a sitemap is gone. Both were deleted on
+2026-09-06 (HTTP 204 each), leaving `https://shevato.com/sitemap.xml` as the
+only registration anywhere and the `www` property with none, which is correct:
+every URL on that host 301s to the apex.
 
 Two more verdicts worth knowing, from the same sweep: a coverage state can be
 stale in the good direction too (`/apps/maptap-rivals/` was `Page with
