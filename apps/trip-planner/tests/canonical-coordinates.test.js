@@ -285,3 +285,40 @@ test('a typed stay whose city IS trusted still refuses a wrong branch', () => {
   assert.equal(read.id, 'ChIJwrong');
   assert.equal(read.lat, undefined, 'a hand-typed row gets no exemption from the 150 km gate');
 });
+
+// ---------- 9. a hop too short to offer modes is still a walk ----------
+// Owner report, 2026-09-06, from their own Jan 27: dinner at Acqua Restaurant
+// is 93 m from their hotel, and that walk home was totalled in the day's TAXI
+// column. modeOptions refuses anything under 100 m on purpose ("two geocodes on
+// the same point are not a journey"), which is right for the route modal, where
+// the question is how you would travel it. hopTravel asks a different question -
+// this leg exists, which column does it go in - and it inherited the refusal,
+// returned null, and dayTravelTotals buckets a null hop as a ride. The shortest
+// legs on a trip, the ones that are unambiguously walks, were the taxi rides.
+
+test('a sub-100 m hop is a walk, not a taxi ride', () => {
+  const hop = L.hopTravel(0.093);
+  assert.ok(hop, 'a leg that exists gets a mode');
+  assert.equal(hop.key, 'walk');
+  assert.equal(hop.icon, '🚶');
+});
+
+test('the route modal still refuses to offer modes for the same point', () => {
+  // The floor that caused this is deliberate elsewhere and must stay.
+  assert.deepEqual(L.modeOptions(0.093, false, false), [],
+    'nothing to offer rather than a 0 m walk heading north');
+});
+
+test('THE REPORTED DAY: the walk home lands in the walk column', () => {
+  // Their real Jan 27, to the metre.
+  const legs = [{ km: 0.648 }, { km: 0.399 }, { km: 7.653 }, { km: 6.780 }, { km: 0.093 }];
+  const t = L.dayTravelTotals(legs);
+  assert.ok(Math.abs(t.byMode.walk - 1.140) < 0.001, `walk was ${t.byMode.walk}`);
+  assert.ok(Math.abs(t.byMode.ride - 14.433) < 0.001, `ride was ${t.byMode.ride}`);
+  assert.equal(t.legCount, 5);
+});
+
+test('the walk/ride boundary is unmoved', () => {
+  assert.equal(L.hopTravel(1.9).key, 'walk');
+  assert.equal(L.hopTravel(2.1).key, 'ride');
+});
