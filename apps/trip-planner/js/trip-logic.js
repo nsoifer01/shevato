@@ -10819,7 +10819,7 @@ const TripLogic = (() => {
     scheduleEligibility, candidateScheduleTier, SCHEDULE_REASONS, SCHEDULE_TIER_ORDER,
     PLACES_BATCH_MAX, PLACES_CONCURRENCY, PLACES_DEFER_MS, PLACES_MAX_ATTEMPTS,
     VENUE_TTL_MS, VENUE_CACHE_MAX, venueFresh, normalizeVenueCache, rememberVenue,
-    placesLocationUpdates, pickVenueFeature, validCoord,
+    placesLocationUpdates, pickVenueFeature, validCoord, resultKey,
     SAME_SPOT_KM, sameSpot, unmeasurableLeg, distancePoint, dayAnchor, dayDistanceChain, contradictoryPair,
     parseTravelArrival, dayArrival, proposalOrigin, dayBaseOrigin, suggestionOrigins,
     ROUTE_EXACT_MAX, shortestRoute, routeStops, setDistanceUnit, getDistanceUnit, fmtDist, distanceChipLabel, distanceChipTitle, routeFooterText,

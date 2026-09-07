@@ -1692,6 +1692,59 @@ carries its own canonical point, so what loses its chip is only a stay nothing
 can locate at all - which genuinely has no position, and whose first leg was
 never a measurement.
 
+### The follow-up: a row the traveller TYPED keeps its resolution too
+
+Read off the owner's own synced trip on 2026-09-06, which is the only reason it
+was found: every activity on the Ko Phi Phi day carried a canonical record, and
+`ChaoKoh Hotel Phi Phi Island` - the stay they had typed, and the ANCHOR of the
+whole day - carried `place: NONE`.
+
+`attachResolvedPlace` runs on the assistant's accept path and nowhere else, so
+anything added through the form never kept the identity the app had already paid
+Google for. Nothing looked wrong, because the session lookup feeds
+`canonicalPointFor` and the row resolves correctly while the tab is open. It
+simply re-resolved from a text query on every load, and until that landed the
+day had no anchor at all.
+
+`persistResolvedPlaces(results)` now runs when a Places batch lands. Three
+guards keep it from becoming write churn: it only considers items whose lookup
+is IN THAT RESPONSE (a warm repaint writes nothing), it saves once for the whole
+batch, and it saves `outsideHistory` so a background resolution never becomes an
+Undo step. `save()` already refuses in shared mode.
+
+**IT FILLS A HOLE. IT NEVER OVERWRITES AN IDENTITY, and the first draft did.**
+That draft compared the whole record and wrote on any difference, so a lookup
+landing on boot quietly replaced a stored place ID with whatever the batch
+answered - the "the app changed the place under me" failure of this very round,
+reintroduced from the other end. `e2e/places.mjs` P13 caught all three symptoms
+(a saved record not surviving boot, an unrelated time edit rewriting it, a
+rename re-pointing it). The rule now is:
+
+  - no record at all -> write it. This is the case the report was about.
+  - a record with a DIFFERENT id -> never touched. A saved identity is the
+    traveller's; a background re-resolution is not a licence to replace it.
+  - a record with the SAME id but no usable coordinates, or coordinates aged
+    past the 30 days Google allows -> position refreshed, identity untouched.
+
+**One existing assertion changed, deliberately.** P13's third check asserted
+`!place` after a rename. That tested ABSENCE as a proxy for "the old identity
+did not follow the new name", which was the only way to express it while records
+could arrive solely through the assistant. A renamed row now legitimately
+re-resolves under its new name, so the check asserts the invariant directly
+(`place.id !== 'PID_KEEPME'`) and a second one requires any record present to
+belong to the new name. Strictly more specific than what it replaced.
+
+**`privacy.html` was already wrong before this round touched it.** It still
+described the pre-2026-09-06 rule ("coordinates only when the lookup could
+confirm the city"), which the canonical-coordinate round had already replaced
+and had failed to update - a binding document left stating something false for
+the length of one PR. It now describes what actually happens: the coordinates
+are kept whenever Google returns them, dropped on read when a TRUSTED city
+position says they are far outside it, expiring at thirty days, and applying to
+a row whether it was typed or accepted. `Last reviewed` moved with it. Checking
+that page is part of the diff, not a follow-up, and this is the second time this
+codebase has learned it.
+
 **Coverage.** `tests/canonical-coordinates.test.js` (18 pure tests: the carried
 fields, the revived standin guard, resolution-keeps-its-point, the 809 km
 refusal, the reported day, the contradiction detector, a **generic** small-island
@@ -2814,9 +2867,10 @@ airports-table probe (the same injection style `dayMorningCity` and
   `checkRoute` un-run with focus on the Check button. The general rule for this
   round: deriving a value is free, acting on it is the traveller's call.
 - The coordinate goes in `trip-planner:venuegeo:v2`, sharing that store's
-  30-day TTL. An OSM coordinate is under no such obligation - the TTL exists for
-  Google's terms - but sharing one store is worth more than a second one, and
-  expiry just means the row is looked up again later.
+  29-day TTL. An OSM coordinate is under no such obligation - the TTL exists for
+  Google's terms, and is 29 rather than 30 because the grant counts calendar
+  days (see "The two 30s") - but sharing one store is worth more than a second
+  one, and expiry just means the row is looked up again later.
 
 ### The venue picker, and what it is not
 
