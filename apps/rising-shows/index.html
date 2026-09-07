@@ -421,9 +421,16 @@
           <p class="modal-subtitle" id="modalSubtitle"></p>
           <div class="modal-shapes" id="modalShapes"></div>
           <p class="modal-stats" id="modalStats"></p>
+          <!-- One action row, beside the season's identity. The utilities used
+               to sit under the episode list, which on a 20-episode season put
+               them ~2,000 px down a scrolling panel: nobody scrolls past the
+               content they came for to find a share link. -->
           <div class="modal-primary-actions">
             <button type="button" class="btn" id="modalViewShow">📺 View show</button>
             <button type="button" class="btn watch-btn" id="modalWatchBtn"></button>
+            <button type="button" class="btn btn-ghost" id="modalShareCard">Share card</button>
+            <a class="btn btn-ghost" id="modalImdb" target="_blank" rel="noopener">Season on IMDb →</a>
+            <a class="btn btn-ghost" id="modalTvdb" target="_blank" rel="noopener" hidden>Series on TVDB →</a>
           </div>
         </div>
       </div>
@@ -440,11 +447,6 @@
       </svg>
       <p class="modal-curve-annotation" id="modalCurveAnnotation" hidden></p>
       <ol class="modal-episodes" id="modalEpisodes"></ol>
-      <div class="modal-actions modal-actions-bottom">
-        <button type="button" class="btn btn-ghost" id="modalShareCard">Share card</button>
-        <a class="btn btn-ghost modal-imdb" id="modalImdb" target="_blank" rel="noopener">Season on IMDb →</a>
-        <a class="btn btn-ghost" id="modalTvdb" target="_blank" rel="noopener" hidden>Series on TVDB →</a>
-      </div>
     </article>
   </div>
 
@@ -472,8 +474,17 @@
             <div class="provider-badges" id="showModalProviders"></div>
             <span class="watch-row-note">opens a search on each service</span>
           </div>
+          <!-- One action row, beside the show's identity. The utilities used to
+               sit after "More shows like this", ~1,900 px down a scrolling
+               panel on desktop and at the very bottom of a 2,500 px sheet on a
+               phone: a permalink nobody can reach is not a permalink. -->
           <div class="modal-primary-actions">
             <button type="button" class="btn compare-btn" id="showModalCompare">+ Add to compare</button>
+            <button type="button" class="btn btn-ghost" id="showModalShareCard">Share card</button>
+            <button type="button" class="btn btn-ghost" id="showModalShareChart" hidden>Share chart image</button>
+            <a class="btn btn-ghost" id="showModalPermalink">Permalink →</a>
+            <a class="btn btn-ghost" id="showModalImdb" target="_blank" rel="noopener">IMDb →</a>
+            <a class="btn btn-ghost" id="showModalTvdb" target="_blank" rel="noopener" hidden>TVDB →</a>
           </div>
         </div>
       </div>
@@ -503,16 +514,6 @@
         <h3 class="modal-section">More shows like this</h3>
         <div class="show-related-grid"></div>
       </section>
-      <!-- Utilities last. These used to sit in two rows above the overview,
-           which put seven buttons between the title and the first thing a
-           reader wants (what the show is, and how its ratings moved). -->
-      <div class="modal-actions modal-actions-bottom">
-        <button type="button" class="btn btn-ghost" id="showModalShareCard">Share card</button>
-        <button type="button" class="btn btn-ghost" id="showModalShareChart" hidden>Share chart image</button>
-        <a class="btn btn-ghost" id="showModalPermalink">Permalink →</a>
-        <a class="btn btn-ghost" id="showModalImdb" target="_blank" rel="noopener">IMDb →</a>
-        <a class="btn btn-ghost" id="showModalTvdb" target="_blank" rel="noopener" hidden>TVDB →</a>
-      </div>
     </article>
   </div>
 

@@ -3,6 +3,60 @@
 A living document: best current understanding, not a diary. See the
 repo-root `CLAUDE.md` for the convention.
 
+## The modal action row, moved down and then back up (2026-09-07)
+
+The show and season modals now carry **one** action row, in the heading beside
+the poster: the primary action (compare / mark as watched) then the ghost
+utilities (share card, share chart image, permalink, IMDb, TVDB).
+
+They were there originally. On 2026-08-23 (commit 231a8f1, PR #435) they moved
+to a `modal-actions-bottom` row after the content, on the reasoning recorded in
+the markup at the time: the utilities "used to sit in two rows above the
+overview, which put seven buttons between the title and the first thing a
+reader wants". That was part of a measured above-the-fold pass, and the
+diagnosis was right about the old layout - **two full-width rows** with a
+divider, between the title and the overview.
+
+What it got wrong was the remedy. Measured on the show modal (Breaking Bad,
+the panel is the scroll container):
+
+| | desktop 1280x900 | mobile 390x844 |
+|---|---|---|
+| panel scroll height | 1,992 px | 2,484 px |
+| visible at a time | 869 px | 828 px |
+| utility row top | 1,929 px | 2,220 px |
+
+So the fix for "these are in the way" was to put them past the cast, the
+seasons overlay, the full season list and "More shows like this". A permalink
+you reach by scrolling 1,900 px is not a permalink, and the owner asked for
+them back on 2026-09-07.
+
+The row works in the heading because it is now **one wrapped row of compact
+buttons**, not two full-width rows with a divider. After: every button is in
+the viewport on both sizes (desktop 216/264 px, mobile 321/372/424 px), and the
+panel got SHORTER (1,948 / 2,294 px) because the separate row and its divider
+are gone. The cost is the overview starting lower - 275 -> 322 px on desktop,
+374 -> 480 px on mobile - and it is still on the first screen at both sizes.
+
+Two things had to come with the move, or the row reads as six identical
+buttons:
+
+- **The accent rules were dead.** `.modal-actions .watch-btn/.compare-btn` gave
+  the primary action its accent surface, but the 2026-08-23 change left the
+  primary button in `.modal-primary-actions` and deleted the `.modal-actions`
+  wrapper around it. The selectors never matched again, and the compare button
+  had been rendering as a plain `.btn` (measured `rgb(18,21,29)`, not
+  `--accent-soft`) for two weeks. They are re-scoped to
+  `.modal-primary-actions`, so `+ Add to compare` leads the row again.
+- **Mobile stacking had to go.** The old `.modal-actions` mobile rule made each
+  button a full-width 44 px bar. Six of those is 264 px of an 844 px screen,
+  which is the problem this move set out to solve. The buttons now wrap two per
+  line with `min-height: 44px`, so the tap target survives without the bars.
+
+`.modal-actions`, `.modal-actions-top`, `.modal-actions-bottom` and
+`.modal-imdb` are all gone from the CSS; `modal-actions-top` had already been
+dead since 2026-08-23.
+
 ## A saved scroll offset belongs to ONE view (2026-09-07)
 
 `ScrollMemory` exists because the grid renders only after the index is fetched,

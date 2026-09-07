@@ -3115,12 +3115,16 @@ body:has(.modal:not([hidden])) .back-to-top {
 }
 .modal-overview:empty { display: none; }
 
-/* Primary actions cluster — sits inside .modal-heading so the action
-   is tied visually to the show/season identity rather than buried in
-   the row of external-link buttons below. */
+/* The modal's one action row, inside .modal-heading so every action is
+   tied visually to the show/season identity. It carries the primary action
+   (compare / watch) AND the utilities (share, permalink, IMDb, TVDB), which
+   used to live in a separate row after the content; see the note on the
+   hierarchy rules below. `flex`, not `inline-flex`: the row now wraps to two
+   lines and each line should start at the column's left edge. */
 .modal-primary-actions {
-  display: inline-flex;
+  display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.5rem;
   margin-top: 0.35rem;
 }
@@ -3368,45 +3372,32 @@ a.cast-card-inner:focus-visible {
 .modal-episodes .ep-flag-worst { color: var(--danger); }
 .modal-episodes .ep-flag-most-rated { color: var(--warn); }
 
-.modal-actions {
-  display: flex;
-  gap: 0.6rem;
-  align-items: center;
-  flex-wrap: wrap;
-}
-/* Top-of-modal action row: a thin divider underneath separates it from the
- * descriptive content (overview / episodes) that follows. Extra vertical
- * padding gives the buttons breathing room. */
-.modal-actions-top {
-  margin: 0.25rem 0 0.1rem;
-  padding: 0.75rem 0 1.1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-/* Hierarchy inside .modal-actions: each modal's primary action (watch
- * on season-modal, compare on show-modal) gets an accent surface so it
- * reads as the obvious primary button. Secondary buttons stay ghost.
- * IMDb anchor sits flush-right via margin-left:auto. */
-.modal-actions .watch-btn,
-.modal-actions .compare-btn {
+/* Hierarchy inside .modal-primary-actions: each modal's primary action (watch
+ * on season-modal, compare on show-modal) gets an accent surface so it reads
+ * as the obvious primary button among the ghost utilities beside it. These
+ * were scoped to a `.modal-actions` wrapper that no longer exists, so they had
+ * silently stopped applying and the primary button rendered as one more plain
+ * button; the row only reads as a hierarchy with them live. */
+.modal-primary-actions .watch-btn,
+.modal-primary-actions .compare-btn {
   background: var(--accent-soft);
   border: 1px solid var(--accent-strong);
   color: var(--accent) !important;
   font-weight: 700;
 }
-.modal-actions .watch-btn:hover,
-.modal-actions .compare-btn:hover {
+.modal-primary-actions .watch-btn:hover,
+.modal-primary-actions .compare-btn:hover {
   background: rgba(245, 197, 24, 0.18);
   border-color: rgba(245, 197, 24, 0.5);
 }
 /* "Already added" state — green to signal the success-of-state, same
  * pattern the watch button uses when a season is marked watched. */
-.modal-actions .watch-btn.is-watched,
-.modal-actions .compare-btn.is-in-compare {
+.modal-primary-actions .watch-btn.is-watched,
+.modal-primary-actions .compare-btn.is-in-compare {
   background: rgba(74, 222, 128, 0.16);
   border-color: rgba(74, 222, 128, 0.45);
   color: var(--good) !important;
 }
-.modal-imdb { margin-left: auto; }
 
 @media (prefers-reduced-motion: reduce) {
   .skeleton, .skeleton .skeleton-block, .skeleton .skeleton-line {
@@ -3659,17 +3650,14 @@ body.advanced-drawer-open {
     grid-template-columns: 2.6rem 1fr auto auto;
   }
 
-  /* Action buttons stack to be each full-width tappable bars. */
-  .modal-actions {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.55rem;
+  /* Phone: keep the 44 px tap height the stacked full-width bars used to give
+     these buttons, but let them wrap side by side. Six full-width bars in the
+     header would be 264 px of a 844 px screen, which is the problem this row
+     was moved up to solve, not a fix for it. */
+  .modal-primary-actions .btn {
+    min-height: 44px;
+    flex: 1 1 auto;
   }
-  .modal-actions .btn {
-    width: 100%;
-    height: 44px;
-  }
-  .modal-imdb { margin-left: 0; }
 }
 
 /* ----------------------------------------------------------------------------
@@ -5445,16 +5433,6 @@ a.provider-tag-link:focus-visible {
   flex: 0 0 auto;
   min-height: 2.25rem;
   padding: 0.35rem 0.9rem;
-}
-
-/* --- Modal utility row (share / permalink / outbound links) ---------------
-   Moved below the content: these used to sit in two rows between the title and
-   the overview, which pushed the show's own story and its chart off the first
-   screen on mobile. */
-.modal-actions-bottom {
-  margin-top: 1.25rem;
-  padding-top: 0.9rem;
-  border-top: 1px solid var(--border);
 }
 
 /* --- Footer: visible staleness ------------------------------------------ */
