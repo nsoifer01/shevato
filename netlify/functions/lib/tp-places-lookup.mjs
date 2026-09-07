@@ -4,22 +4,73 @@
 // miss, no match, budget exhaustion, upstream failure) with no Blobs context
 // and no billed calls.
 //
-// CACHING (Google Maps Platform terms, not a performance preference):
-//   Places API policies, "Exceptions from caching restrictions": "the place ID
-//   ... is exempt from the caching restrictions. You can therefore store place
-//   ID values indefinitely." That is why the query -> place ID map is the layer
-//   we lean on, and why it gets a long TTL.
-//   Everything else is governed by Google Maps Platform Terms of Service
-//   3.2.3(b) No Caching ("Customer will not cache Google Maps Content except as
-//   expressly permitted under the Maps Service Specific Terms"), and Maps
-//   Service Specific Terms 14.3 expressly permits only latitude/longitude, for
-//   30 days. Ratings and display names are NOT covered, so the rating layer is
-//   a deliberately short-lived request cache, not storage.
-//   SET TO 0 (2026-07-20, legal review): 24 hours was a reading of the terms,
-//   and 0 is the only reading that needs no interpretation. Ratings and display
-//   names are now never reused across requests; the place-ID layer above still
-//   absorbs the expensive half of the lookup, and the billed-call ceiling is
-//   unchanged because the per-client and global quotas bound it, not this TTL.
+// CACHING. What may be stored is set by Google's terms, not by what would be
+// convenient. Re-derived field by field from the LIVE terms on 2026-09-06 (the
+// third check; 2026-07-20 and 2026-08-17 before it) because "our comment says
+// so" is not a source. What those documents say today, quoted:
+//
+//   ToS 3.2.3(b) No Caching: "Customer will not cache Google Maps Content
+//     except as expressly permitted under the Maps Service Specific Terms."
+//   ToS 3.2.3(a) No Scraping: "Customer will not: (i) pre-fetch, index, store,
+//     reshare, or rehost Google Maps Content outside the services; ... (iii)
+//     copy and save business names, addresses, or user reviews".
+//   SST A.3 Google ID Caching: "Customer may cache the Google ID values from
+//     the Services that return such field and allow caching ... For example,
+//     Customer may cache (a) place_id from Places API".
+//   SST 14 (Places API, Legacy and New) grants exactly ONE caching permission,
+//     14.3: "Customer may temporarily cache latitude and longitude values from
+//     the Places API for up to 30 consecutive calendar days, after which
+//     Customer must delete the cached latitude and longitude values."
+//
+// SO: place ID indefinitely, lat/lng for 30 days, and NOTHING ELSE. That is a
+// deliberate omission rather than a gap, and the proof is one section further
+// down the same document: SST 16.2 gives the Pollen API a TABLE of per-content
+// caching periods (365 days for today's forecast, 24 hours for forecasts and
+// heatmaps). Google writes field-level caching grants when it means them.
+// Section 14 names one field class. Ratings, review counts, display names,
+// addresses, opening hours, types and the Maps URI are not among them, and
+// names/addresses/reviews are additionally called out by 3.2.3(a)(iii).
+//
+// Hence RATING_TTL_MS = 0, and it is not a tuning knob. Holding a response in
+// memory to paint the elements that asked for it is not caching (the DOM holds
+// the same rating); writing it anywhere that outlives the request is. The
+// place-ID layer absorbs the free half of the lookup, and the billed-call
+// ceiling is bounded by the quotas, not by this TTL.
+//
+// The Maps URI needs no storage anyway: it is derivable from the place ID,
+// which we ARE allowed to keep.
+// HOW LONG A QUERY IS TAKEN TO MEAN A PLACE - which is NOT the same question
+// as how long a place ID may be stored, and conflating the two is how this
+// number gets argued about.
+//
+// SST A.3 lets us keep a place ID indefinitely, and we do: the ID stamped on an
+// itinerary item never expires (normalizePlaceRecord in trip-logic.js keeps
+// `id` forever and expires only the coordinates beside it). What expires here
+// is something else entirely - our INFERENCE that a particular piece of free
+// text, in a particular area, means that place. Google's permission to store an
+// ID says nothing about whether that inference is still true.
+//
+// It stops being true in ways a stored ID cannot notice: a business is replaced
+// at the same address by a different one with a NEW place ID, a second branch
+// opens and the query now names it better, a venue closes while Google keeps
+// serving the dead entity, a name changes, an ambiguous query becomes
+// resolvable. Every one of those is fixed by asking Text Search again, and by
+// nothing else.
+//
+// SO WHY NOT LONGER, given the ID itself may be kept forever? Because a longer
+// window buys exactly nothing. MEASURED 2026-09-06 against this pipeline: a hot
+// mapping and a cold one both bill ONE Place Details call on the next request.
+// The only thing this TTL moves is the Text Search, which is the free,
+// unlimited Essentials (IDs Only) SKU at $0.00 - the billed call happens either
+// way, because a rating may not be cached and must be re-fetched every time. So
+// lengthening this is a pure loss: no money saved, and a strictly wider window
+// in which a replaced or re-branched venue is served from a stale inference.
+//
+// Thirty days is also comfortably inside Google's own staleness guidance -
+// developers.google.com/maps/documentation/places/web-service/place-id says
+// "Place IDs may change over time" and recommends refreshing IDs more than 12
+// months old - so this refreshes an ID twelve times more often than Google asks,
+// for free.
 export const PLACE_ID_TTL_MS = 30 * 86400000;
 export const RATING_TTL_MS = 0;
 
@@ -27,6 +78,43 @@ export const RATING_TTL_MS = 0;
 // day plan re-pays for the same failed search. Shorter than the place-ID TTL
 // because a genuinely new venue should become findable within the week.
 export const NO_MATCH_TTL_MS = 7 * 86400000;
+
+// How long a REJECTION is remembered. A query whose place Google found but the
+// gates refused (wrong branch, different business, wrong kind of place) used to
+// remember only the rejected place ID, which is the worst of both worlds: the
+// ID cache guaranteed the next request would fetch Details for a candidate we
+// already knew we would refuse, pay the Enterprise SKU for it, and answer
+// `no_match` again - once per page load, for the thirty days of the ID TTL.
+// Measured on 2026-09-06 against the real pipeline: one wrong-area venue, one
+// billed call per request, forever.
+//
+// THIS TTL IS NOT A LEGAL QUESTION, and it is worth saying so because the two
+// TTLs above are. A tombstone stores no Google Maps Content: the key is our own
+// query string, the verdict is our own reason word, and the only Google value
+// in it is a place ID, which SST A.3 lets us keep indefinitely. Nothing here is
+// a name, a rating, an address or an hours line.
+//
+// So the length is decided by one risk only: OUR judgment changes, and a
+// remembered refusal keeps a fixed gate from reaching the card. The Ko Phi Phi
+// round (2026-09-05) is the worst case on record - a bad anchor made the gates
+// refuse every correct venue in a region - and a long tombstone would have kept
+// those cards blank long after the fix shipped.
+//
+// That risk is answered directly by JUDGE_VERSION below rather than by keeping
+// the window short and paying for it every day. With the version in the
+// signature, changing a gate retires every tombstone the moment the deploy goes
+// out, so the window can be as long as the verdict is actually stable: seven
+// days, the same as a no-match, and in any case bounded above by the 30-day
+// place-ID TTL, after which the query is re-searched from scratch anyway.
+export const REJECT_TTL_MS = 7 * 86400000;
+
+// BUMP THIS WHENEVER A GATE CHANGES ITS MIND - matchConfidence, verifyArea,
+// typeMismatch, or judge() itself. It rides in the rejection signature, so a
+// bump makes every stored verdict stop matching and every refused venue get
+// looked at again with the new logic. It is what makes a long REJECT_TTL_MS
+// safe: without it, the choice is between paying to re-learn the same refusal
+// every day and shipping a gate fix that takes a week to reach a traveller.
+export const JUDGE_VERSION = 'j1';
 
 import {
   isGenericQuery, matchConfidence, normalizeQuery,
@@ -71,6 +159,63 @@ export function detailsCacheKey(placeId) {
   return 'pd:' + placeId;
 }
 
+// WHAT A REMEMBERED REJECTION IS ALLOWED TO ANSWER FOR.
+//
+// `idCacheKey` covers the normalized query and a COARSE area - the city name,
+// or the point rounded to ~11 km. The gates read two things it does not: the
+// meal slot (`typeMismatch` uses it to know that "Anna's Restaurant" is a
+// request to eat) and the exact point/radius (`verifyArea` measures against
+// them). Replaying a verdict that depended on either would answer a question
+// nobody asked: a venue refused as the wrong KIND for breakfast is not refused
+// for a traveller who asked about it with no meal slot at all.
+//
+// So a tombstone carries a signature of exactly those un-keyed inputs and is
+// only honoured when they match. The point is rounded to the same 1 decimal
+// (~11 km) `areaCacheKey` already uses, and the radius gate is 150 km wide, so
+// two hotels in one city share a signature and a lookup - while a different
+// city, a different meal slot or a re-anchored day gets its own verdict.
+export function rejectionSignature(area, meal) {
+  const m = typeof meal === 'string' ? meal.trim().toLowerCase() : '';
+  const p = area && area.point
+    ? `${area.point.lat.toFixed(1)},${area.point.lon.toFixed(1)}`
+    : '';
+  const r = area && Number.isFinite(area.radiusKm) ? Math.round(area.radiusKm) : '';
+  return `${JUDGE_VERSION}|${m}|${p}|${r}`;
+}
+
+// A CACHE KEY HOLDS MORE THAN ONE VERDICT, because a venue is asked about in
+// more than one voice. The same restaurant reaches this function as a food
+// candidate carrying a meal slot and as a plain itinerary row carrying none,
+// and those are two signatures (see rejectionSignature). With a single slot the
+// two overwrote each other turn by turn, so every other request paid to reach a
+// refusal it had already reached - the exact waste the tombstone exists to stop.
+//
+// Bounded hard at three: this rides in the same small blob as the place ID, it
+// is keyed by a query that only ever has a handful of sensible signatures, and
+// an unbounded list in a cache entry is how the `pd:` blobs got away from us.
+export const REJECT_SIGNATURES_MAX = 3;
+
+// Tolerates the single-object form written before this shipped, so entries
+// already in the production store keep working rather than being re-bought.
+function rejectionList(entry) {
+  const r = entry && entry.rejected;
+  if (Array.isArray(r)) return r.filter(x => x && typeof x === 'object');
+  return r && typeof r === 'object' ? [r] : [];
+}
+
+function readRejection(entry, sig, now) {
+  for (const r of rejectionList(entry)) {
+    if (r.sig === sig && fresh(r, REJECT_TTL_MS, now)) return r;
+  }
+  return null;
+}
+
+function writeRejection(entry, veto, now) {
+  const kept = rejectionList(entry)
+    .filter(r => r.sig !== veto.sig && fresh(r, REJECT_TTL_MS, now));
+  return [veto, ...kept].slice(0, REJECT_SIGNATURES_MAX);
+}
+
 // Resolve one entry. Returns { result, spent } where spent counts billed Place
 // Details calls. `claim()` takes a slot from the batch budget and returns falsy
 // when the budget is gone; it is called as late as possible so cache hits never
@@ -80,9 +225,10 @@ export function detailsCacheKey(placeId) {
 // echoed back untouched so a response can never be re-keyed onto the wrong
 // card, and `area` is the itinerary context the query is expected to resolve
 // inside (see normalizeArea).
-async function resolveOne(entry, { cache, findPlaceId, fetchDetails, now, claim, log }) {
+async function resolveOne(entry, { cache, findPlaceId, now, claim, details, log }) {
   const { id, query, area, meal } = entry;
   const reply = extra => ({ id, query, ...extra });
+  const sig = rejectionSignature(area, meal);
 
   // (1) Category, not a venue: never worth a call, never a correct answer.
   if (isGenericQuery(query)) {
@@ -95,11 +241,24 @@ async function resolveOne(entry, { cache, findPlaceId, fetchDetails, now, claim,
   const cachedId = await cache.get(idKey);
   let placeId = null;
   let searched = false;
+  // The stamp the place ID was FIRST written with. A rejection must not renew
+  // it: the 30-day TTL is what eventually re-resolves a venue that moved or
+  // closed, and refreshing it every time we refuse the same candidate would
+  // pin a wrong answer in place for as long as anyone kept asking.
+  let placeIdAt = now;
   if (fresh(cachedId, cachedId && cachedId.placeId ? PLACE_ID_TTL_MS : NO_MATCH_TTL_MS, now)) {
     if (!cachedId.placeId) {
       return { result: reply({ status: 'no_match', reason: cachedId.reason || 'not_found' }), spent: 0 };
     }
     placeId = cachedId.placeId;
+    placeIdAt = cachedId.at;
+    // (2b) We have already looked at this exact candidate, for this exact
+    // question, and refused it. Fetching its Details again cannot change the
+    // answer - it can only cost $0.02 to reach the same one.
+    const veto = readRejection(cachedId, sig, now);
+    if (veto) {
+      return { result: reply({ status: 'no_match', reason: veto.reason || 'wrong_area' }), spent: 0 };
+    }
   } else {
     searched = true;
   }
@@ -111,11 +270,16 @@ async function resolveOne(entry, { cache, findPlaceId, fetchDetails, now, claim,
   // terms say may not be stored. Both sides are gone; the place-ID layer
   // above is the whole cache.
 
-  // (4) Everything past here costs money.
-  if (!claim()) {
-    return { result: reply({ status: 'unavailable', reason: 'quota' }), spent: 0 };
-  }
-
+  // (4) The free half. THE BUDGET IS NOT CLAIMED HERE, and that moved: it used
+  // to be taken before this search, which meant a query claimed a slot before
+  // anyone knew whether it would need one. Two spellings of one venue then took
+  // two slots to make one billed call, and in a partially granted batch the
+  // second slot was taken from a DIFFERENT venue that had to pay for its own.
+  // The claim now sits against the billed call, so a slot means exactly one
+  // Place Details request. The price is that a batch which runs out of budget
+  // mid-way still finishes its free searches; they are the unlimited $0.00
+  // Essentials SKU, and a batch granted nothing at all never reaches this
+  // function (the handler answers 429 first).
   if (searched) {
     // Text Search with an ID-only field mask is the "Text Search Essentials
     // (IDs Only)" SKU: unlimited, no charge. The billed step is (5).
@@ -136,17 +300,17 @@ async function resolveOne(entry, { cache, findPlaceId, fetchDetails, now, claim,
     await cache.set(idKey, { placeId, at: now });
   }
 
-  // (5) Place Details, Enterprise SKU. This is the $0.02.
-  let place;
-  try {
-    place = await fetchDetails(placeId);
-  } catch {
-    return { result: reply({ status: 'unavailable', reason: 'upstream' }), spent: 1 };
+  // (5) Place Details, Enterprise SKU. This is the $0.02 - once per PLACE, not
+  // once per spelling of it (see `details` in resolveQueries).
+  const first = await details(placeId, claim);
+  if (first.denied) {
+    return { result: reply({ status: 'unavailable', reason: 'quota' }), spent: 0 };
   }
+  let spent = first.billed ? 1 : 0;
+  const place = first.place;
   if (!place) {
-    return { result: reply({ status: 'unavailable', reason: 'upstream' }), spent: 1 };
+    return { result: reply({ status: 'unavailable', reason: 'upstream' }), spent };
   }
-  let spent = 1;
   let judged = judge(query, place, placeId, area, meal);
   logDecision(log, { query, area, placeId, place, judged, attempt: 1 });
 
@@ -171,16 +335,15 @@ async function resolveOne(entry, { cache, findPlaceId, fetchDetails, now, claim,
     // of all - a mapsQuery that already names the city, which is exactly what
     // "Royce' Chocolate Tokyo Station" is, and exactly the one that failed.
     const worthRetrying = retryQuery !== query || !!area.point;
-    if (worthRetrying && claim()) {
+    if (worthRetrying) {
       let retryId = null;
       try { retryId = await findPlaceId(retryQuery, biasFor(area, true)); }
       catch { retryId = null; }
       if (retryId && retryId !== placeId) {
-        let retryPlace = null;
-        try { retryPlace = await fetchDetails(retryId); }
-        catch { retryPlace = null; }
+        const again = await details(retryId, claim);
+        const retryPlace = again.denied ? null : again.place;
         if (retryPlace) {
-          spent += 1;
+          if (again.billed) spent += 1;
           const second = judge(query, retryPlace, retryId, area, meal);
           logDecision(log, { query, area, placeId: retryId, place: retryPlace, judged: second, attempt: 2 });
           if (second.result.status !== 'no_match') {
@@ -188,9 +351,39 @@ async function resolveOne(entry, { cache, findPlaceId, fetchDetails, now, claim,
             await cache.set(idKey, { placeId: retryId, at: now });
             return { result: reply(second.result), spent };
           }
+          // The second look found a DIFFERENT place and refused that one too.
+          // It is the more informative verdict (the restricted search is the
+          // question we meant to ask), so it is the one remembered, against the
+          // ID it actually judged.
+          judged = second;
+          placeId = retryId;
+          placeIdAt = now;
         }
       }
     }
+  }
+
+  // (7) REMEMBER A REFUSAL, so the next request does not pay to be refused
+  // again. Only a GATE rejection is remembered: `unrated` is a successful
+  // resolution that happens to have no star, and it carries the identity,
+  // coordinates and hours the client needs, so replaying it as a bare
+  // tombstone would blind the rows that depend on them.
+  if (judged.rejected) {
+    await cache.set(idKey, {
+      placeId,
+      at: placeIdAt,
+      // Verdicts carry forward only while they are verdicts about THE SAME
+      // candidate. A place ID that was re-searched after its 30 days, or
+      // replaced by the second look, is a different place that nothing has
+      // judged yet, and a fresh refusal of the OLD one must not veto it
+      // unseen - the signature says which question was asked, not which place
+      // answered it.
+      rejected: writeRejection(
+        cachedId && cachedId.placeId === placeId ? cachedId : null,
+        { reason: judged.result.reason, sig, at: now },
+        now,
+      ),
+    });
   }
 
   return { result: reply(judged.result), spent };
@@ -233,7 +426,7 @@ function judge(query, place, placeId, area, meal) {
   const { score, confident } = matchConfidence(query, name, area);
   if (!confident) {
     return {
-      rejectedOnArea: false, unconfirmed: false, area: null,
+      rejectedOnArea: false, unconfirmed: false, area: null, rejected: true,
       result: { status: 'no_match', reason: 'low_confidence' },
     };
   }
@@ -248,7 +441,7 @@ function judge(query, place, placeId, area, meal) {
   const badType = typeMismatch(query, place, area, meal);
   if (badType) {
     return {
-      rejectedOnArea: false, unconfirmed: false, area: null,
+      rejectedOnArea: false, unconfirmed: false, area: null, rejected: true,
       result: { status: 'no_match', reason: 'type_mismatch', detail: badType },
     };
   }
@@ -257,7 +450,7 @@ function judge(query, place, placeId, area, meal) {
   const confidence = resolutionConfidence(score, verdict);
   if (!verdict.ok) {
     return {
-      rejectedOnArea: true, unconfirmed: false, area: verdict,
+      rejectedOnArea: true, unconfirmed: false, area: verdict, rejected: true,
       result: { status: 'no_match', reason: 'wrong_area' },
     };
   }
@@ -368,9 +561,44 @@ function logDecision(log, { query, area, placeId, place, judged, attempt }) {
 export async function resolveQueries({ queries, cache, findPlaceId, fetchDetails, now, budget, log }) {
   let left = Math.max(0, budget);
   const claim = () => (left > 0 ? (left -= 1, true) : false);
+
+  // ONE BILLED CALL PER PLACE, NOT PER SPELLING.
+  //
+  // The batch is deduplicated on the CLIENT's key before it is sent, which
+  // catches the same string asked twice - and misses the case that actually
+  // happens. A day plan names the same venue in more than one voice ("The
+  // Mango Garden", "Mango Garden restaurant", "The Mango Garden, Ko Phi Phi"),
+  // the free ID search maps all of them onto ONE place ID, and every one of
+  // them then bought its own Place Details call at the Enterprise SKU.
+  // Measured on 2026-09-06 against the real pipeline: three spellings, three
+  // billed calls, $0.06 for one venue.
+  //
+  // A place ID resolved inside one request is asked about once and the answer
+  // shared. This is not a cache and stores nothing: it lives for the length of
+  // the request, exactly like the response object it feeds, so it is the same
+  // permission the DOM has to hold a rating it is painting. The joiners still
+  // run their OWN gates over the shared response - two queries can resolve to
+  // one place and be judged differently, because the gates read the query text
+  // and the meal slot, not just the place.
+  const inFlight = new Map();
+  const details = async (placeId, take) => {
+    const joined = inFlight.get(placeId);
+    // A joiner pays nothing and therefore claims nothing.
+    if (joined) return { place: await joined, billed: false, denied: false };
+    if (!take()) return { place: null, billed: false, denied: true };
+    // Stored synchronously, before the first await, so two queries resolving
+    // in the same tick cannot both start a request.
+    const p = (async () => {
+      try { return await fetchDetails(placeId); }
+      catch { return null; }
+    })();
+    inFlight.set(placeId, p);
+    return { place: await p, billed: true, denied: false };
+  };
+
   const entries = (Array.isArray(queries) ? queries : []).map(toEntry).filter(Boolean);
   const settled = await Promise.all(entries.map(e =>
-    resolveOne(e, { cache, findPlaceId, fetchDetails, now, claim, log })));
+    resolveOne(e, { cache, findPlaceId, now, claim, details, log })));
 
   // The caller reserved `budget` up front; `spent` is what was actually billed,
   // and the difference is released so a cached itinerary costs no quota.
