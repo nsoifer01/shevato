@@ -187,7 +187,8 @@ test('a verified resolution persists its ID, its point and the city it was check
   const rec = L.placeRecordFrom(entry, { city: 'Tokyo' }, NOW);
   assert.deepEqual(rec, { id: 'ChIJtokyo', at: NOW, verified: true, lat: TOKYO_POINT.lat, lon: TOKYO_POINT.lon, city: 'Tokyo' });
   // Google's caching terms: the place ID may be stored indefinitely and
-  // lat/long for 30 days; the NAME, the RATING and the HOURS may not be stored
+  // lat/long for up to 30 calendar days (we hold 29); the NAME, the RATING
+  // and the HOURS may not be stored
   // at all. Nothing of that kind may ever appear in this record.
   for (const k of ['name', 'rating', 'userRatingCount', 'hours', 'mapsUri']) {
     assert.equal(rec[k], undefined, `${k} must never be persisted`);
@@ -218,7 +219,7 @@ test('an ungeocoded city cannot reject anything: silence is not evidence', () =>
   assert.equal(rec.lat, 64.14);
 });
 
-test('coordinates expire on the 30-day schedule the terms allow; the ID does not', () => {
+test('coordinates expire on the 29-day schedule we hold them for; the ID does not', () => {
   const stale = { id: 'x', at: NOW - (31 * 86400000), lat: 35.66, lon: 139.7, city: 'Tokyo' };
   const rec = L.normalizePlaceRecord(stale, { now: NOW, cityPoint: TOKYO_POINT });
   assert.equal(rec.id, 'x');
@@ -274,7 +275,7 @@ test('an unrated but verified place keeps its identity, its point and its hours'
   assert.equal(up.entry.hours.always, true);
 });
 
-test('an unverified coordinate never reaches the 30-day venue store', () => {
+test('an unverified coordinate never reaches the 29-day venue store', () => {
   const out = L.placesLocationUpdates([
     { id: 'a', status: 'ok', lat: CHITOSE_POINT.lat, lon: CHITOSE_POINT.lon, verified: false },
     { id: 'b', status: 'ok', lat: TOKYO_POINT.lat, lon: TOKYO_POINT.lon, verified: true },

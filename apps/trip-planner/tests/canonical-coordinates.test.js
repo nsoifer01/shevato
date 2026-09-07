@@ -132,7 +132,7 @@ test('an UNTRUSTED area refuses nothing, because silence is not evidence', () =>
   assert.equal(rec.lat, MANGO.lat);
 });
 
-test('a coordinate past its 30 days goes; the ID Google lets us keep stays', () => {
+test('a coordinate past its 29 days goes; the ID Google lets us keep stays', () => {
   const old = NOW - 31 * 86400000;
   const rec = L.normalizePlaceRecord({ id: MANGO_ID, ...MANGO, at: old }, { now: NOW, cityPoint: null });
   assert.equal(rec.id, MANGO_ID);

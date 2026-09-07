@@ -22,7 +22,10 @@
 //     the Places API for up to 30 consecutive calendar days, after which
 //     Customer must delete the cached latitude and longitude values."
 //
-// SO: place ID indefinitely, lat/lng for 30 days, and NOTHING ELSE. That is a
+// SO: place ID indefinitely, lat/lng for up to 30 consecutive CALENDAR days
+// (this app holds them 29 x 24h, because a full 30 x 24h started after midnight
+// spans thirty-one dates - see VENUE_TTL_MS in trip-logic.js), and NOTHING
+// ELSE. That is a
 // deliberate omission rather than a gap, and the proof is one section further
 // down the same document: SST 16.2 gives the Pollen API a TABLE of per-content
 // caching periods (365 days for today's forecast, 24 hours for forecasts and
@@ -114,6 +117,13 @@ export const REJECT_TTL_MS = 7 * 86400000;
 // looked at again with the new logic. It is what makes a long REJECT_TTL_MS
 // safe: without it, the choice is between paying to re-learn the same refusal
 // every day and shipping a gate fix that takes a week to reach a traveller.
+//
+// YOU CANNOT FORGET. `tests/tp-places-judge-version.test.mjs` hashes the gate
+// sources and fails if they move without this being reconsidered, because a
+// forgotten bump is otherwise SILENT - nothing looks wrong while travellers are
+// shown refusals the current code would not have reached, for up to a week.
+// Comment-only edits are ignored by that hash, so the commentary this repo runs
+// on can be rewritten freely.
 export const JUDGE_VERSION = 'j1';
 
 import {

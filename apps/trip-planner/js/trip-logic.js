@@ -6747,8 +6747,11 @@ const TripLogic = (() => {
   //        the one value that may be stored indefinitely, and it is the stable
   //        identity - a name can be re-rendered, a rating changes hourly, but
   //        the ID is the place. Every later surface links and looks up from it.
-  //   lat/lon  permitted for 30 days by Maps Service Specific Terms 14.3, which
-  //        is why they expire here on exactly that schedule.
+  //   lat/lon  permitted for up to 30 consecutive CALENDAR days by Maps
+  //        Service Specific Terms 14.3, which is why they expire here at all -
+  //        and at 29 x 24h rather than 30, because a full 30 x 24h started at
+  //        any time after midnight spans thirty-ONE dates. See
+  //        PLACE_RECORD_TTL_MS just below.
   //   area the city this resolution was VERIFIED against, kept so a later
   //        change of the item's city can invalidate a record that was only ever
   //        correct for the old one.

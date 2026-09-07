@@ -205,13 +205,24 @@ Three things make a seven-day window safe rather than merely cheap:
   point/radius, which it does not. A verdict is only replayed when those match,
   so a venue refused as the wrong KIND for breakfast does not answer for a
   traveller who named no meal, and a re-anchored day is re-judged.
-- **`JUDGE_VERSION`.** The version rides in the signature, so changing a gate
-  (`matchConfidence`, `verifyArea`, `typeMismatch`, `judge`) retires every
-  stored verdict on deploy. **Bump it whenever a gate changes its mind.** Without
-  it the choice would be between paying to re-learn the same refusal every day
-  and shipping a gate fix that takes a week to reach a traveller - and the Ko Phi
-  Phi round is exactly the case that matters, where a bad anchor made the gates
-  refuse every correct venue in a region.
+- **`JUDGE_VERSION`, and a test that will not let you forget it.** The version
+  rides in the signature, so changing a gate (`matchConfidence`, `verifyArea`,
+  `typeMismatch`, `judge`) retires every stored verdict on deploy. **Bump it
+  whenever a gate changes its mind.** Without it the choice would be between
+  paying to re-learn the same refusal every day and shipping a gate fix that
+  takes a week to reach a traveller - and the Ko Phi Phi round is exactly the
+  case that matters, where a bad anchor made the gates refuse every correct
+  venue in a region.
+  That used to rest on one human remembering, and a forgotten bump is SILENT:
+  no test fails, nothing looks wrong, and travellers keep seeing a refusal the
+  current code would not reach. `tests/tp-places-judge-version.test.mjs` now
+  hashes `tp-places-match.mjs` plus `judge()` (comment-only lines stripped, so
+  prose churn is free) and fails with instructions if either moves. Verified
+  2026-09-07 to fail on a real gate change (`AREA_MAX_KM` 150 -> 200, and a
+  reason string inside `judge`) and to pass on pure comment edits. Scope is
+  deliberately narrow: the rest of the lookup module is caching and budget work
+  that changes for reasons a verdict does not care about, and including it would
+  make the check fail so often that people would learn to ignore it.
 - **Three signatures per entry, newest first.** One slot thrashed: the same
   restaurant arrives as a food candidate carrying a meal slot and as a plain row
   carrying none, and the two overwrote each other turn by turn, so every other
@@ -738,8 +749,9 @@ the session entry the CARD resolved. Rules that keep it honest:
 - `normalizePlaceRecord` is the persistence boundary and runs on every write,
   every read and every import (`repairDb`, the share/import sanitizer,
   `itemPlaceRecord`). It drops a record with no ID, drops coordinates past the
-  30 days Google's terms allow (keeping the ID, which may be kept
-  indefinitely), and drops a point that disagrees with the item's own city.
+  29 days we hold them for (Google allows up to 30 consecutive calendar days;
+  we stop a day early - see "The two 30s") while keeping the ID, which may be
+  kept indefinitely, and drops a point that disagrees with the item's own city.
   **`title: "Royce Tokyo Station"` + Hokkaido coordinates is now unstorable.**
 - What is NOT persisted: display name, rating, review count, opening hours,
   Google's `mapsUri`. No caching exception covers any of them. The Maps URL is
@@ -1608,7 +1620,8 @@ look at it.
    `plausiblePlacePoint` returns **true** for a null anchor ("silence is not
    evidence"). Combined, that means: where no centroid can be trusted, *nothing
    is checked at all*. Photon answers every query with something, so the Ko Tao
-   cafe was stored in the 30-day venue cache and repeated on every render.
+   cafe was stored in the venue cache (30 days at the time; 29 since 2026-09-06)
+   and repeated on every render.
 
 3. **`standin` and `placeId` never survived `distancePoint`.** Both were added
    by #484 - `standin` so `unmeasurableLeg` could refuse a leg STARTING on a
@@ -1652,7 +1665,8 @@ added the intended one dead.
   resolved now carries Google's own point, and this rung only ever answered for
   rows nothing resolved.
 - **`trip-planner:venuegeo:v1` -> `v2`.** Points that entered through the open
-  gate live 30 days, so a traveller already carrying one would keep seeing
+  gate lived 30 days (the store's TTL at the time; 29 since 2026-09-06), so a
+  traveller already carrying one would keep seeing
   344 km after the fix. Renaming the store is the only way to be sure. Cost: one
   re-lookup per venue on screen. Every E2E fixture seeding the old key moved.
 - **Impossible geography is said out loud, never hidden.** `contradictoryPair`
@@ -1724,7 +1738,7 @@ rename re-pointing it). The rule now is:
   - a record with a DIFFERENT id -> never touched. A saved identity is the
     traveller's; a background re-resolution is not a licence to replace it.
   - a record with the SAME id but no usable coordinates, or coordinates aged
-    past the 30 days Google allows -> position refreshed, identity untouched.
+    past the 29 days we hold them -> position refreshed, identity untouched.
 
 **One existing assertion changed, deliberately.** P13's third check asserted
 `!place` after a rename. That tested ABSENCE as a proxy for "the old identity
@@ -1740,7 +1754,7 @@ confirm the city"), which the canonical-coordinate round had already replaced
 and had failed to update - a binding document left stating something false for
 the length of one PR. It now describes what actually happens: the coordinates
 are kept whenever Google returns them, dropped on read when a TRUSTED city
-position says they are far outside it, expiring at thirty days, and applying to
+position says they are far outside it, expiring at twenty-nine days, and applying to
 a row whether it was typed or accepted. `Last reviewed` moved with it. Checking
 that page is part of the diff, not a follow-up, and this is the second time this
 codebase has learned it.
