@@ -143,8 +143,15 @@ fails, fix the ordering rather than the test.
 9. `netlify.toml` - redirects only if a path moved.
 10. `assets/og/cards.json` entry + `node assets/og/build-og-cards.mjs <slug>`
    (commit the generated `images/og/<slug>.png`).
-11. `images/app-previews/<slug>.webp` (720x450) - rendered from SAMPLE data
-    only, never a real user's content.
+11. `images/app-previews/<slug>.webp` (720x405, 16:9) - rendered from SAMPLE
+    data only, never a real user's content. If the app has a one-click sample
+    state, add it to `assets/app-previews/build-previews.mjs` and run
+    `node --experimental-websocket assets/app-previews/build-previews.mjs
+    <slug>` rather than capturing by hand: the script anchors the crop to a
+    named element, so the framing matches the rest of the hub and a layout
+    change makes the capture fail loudly instead of drifting. Apps whose
+    interesting state needs hand-seeded storage stay hand-captured; the hub
+    frames whatever it is given (see the preview block in `apps.html`).
 12. Root `README.md` - repo tree line + Apps table row above.
 13. `package.json` - aggregate `test` script list + `test:<slug>`.
 14. `sync-system/app-sync-init.js` - namespace + URL routing (only if the app

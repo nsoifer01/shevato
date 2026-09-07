@@ -1169,15 +1169,29 @@ with chips ON: +0 on all 72 trajectories, both instruments.
   apps.html card mark until 2026-09-07, when the owner asked for the card to
   match the other seven: a 5rem image tile read as bigger and heavier next to
   seven thin blue glyphs. Every card now uses a Font Awesome glyph in
-  `brand-color-primary`; FPL Planner's is `fa-calendar-check-o`, matching the
-  card's own CTA ("Plan My Gameweek"). The per-card `.app-logo` CSS override
-  in apps.html went with the image. Note `fa-clipboard` was tried first and
-  rejected on sight: in FA 4.7 it is aliased to `fa-paste` and renders as two
-  overlapping pages, which reads as copy/paste, not planning. The PNG is kept
+  `brand-color-primary`; FPL Planner's is `fa-list-ol` (the owner's pick), the
+  numbered list standing for the ranked starting XI and bench order. The
+  per-card `.app-logo` CSS override in apps.html went with the image. Two
+  glyphs were tried and dropped on the way: `fa-clipboard`, which in FA 4.7 is
+  aliased to `fa-paste` and renders as two overlapping pages, so it reads as
+  copy/paste rather than planning, and `fa-calendar-check-o`. The PNG is kept
   but unreferenced. Both images were cropped from larger uploads to rounded
   tiles with transparent corners and palette-quantized (11 KB / 3 KB); the
   originals are deleted, so reviving the logo means re-cropping new art, not
   tweaking a source file.
+- **The apps-hub preview is generated, not art: do not hand-edit it.**
+  `images/app-previews/fpl-planner.webp` comes from
+  `assets/app-previews/build-previews.mjs`, which loads `?demo=1`, hides the
+  `.fpl-sample-banner` (demo-mode scaffolding, not product), and clips a 16:9
+  window centred on `.fpl-hero`. The banner has to go or the top third of the
+  thumbnail is a disclaimer; the DATA is still the sample dataset either way,
+  which is what the sample-data-only rule in the root README is about. The
+  clip is anchored to `.fpl-hero` rather than to coordinates, so if that class
+  is renamed the script throws instead of silently shipping a crop of the
+  wrong thing. Before 2026-09-07 this preview was a hand-captured whole-page
+  screenshot that included the site nav and rendered every label unreadably
+  small; the hub's own framing cannot rescue a capture like that, because
+  reaching legibility needs roughly a 3x upscale of a 720px file.
 - **Emphasized sentences are multiple inline nodes, and flex containers wedge
   them apart.** `parts.js emphasize()` splits an engine sentence into text
   fragments and `<strong>` spans; any list item styled `display: flex` with

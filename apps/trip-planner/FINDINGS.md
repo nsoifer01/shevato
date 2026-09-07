@@ -3737,3 +3737,18 @@ were ALL told "reserved" and 49 reservations were lost. See the root
 `FINDINGS.md` entry and `netlify/functions/tests/blobs-version.test.mjs`; the
 package is now `^10.7.13`, the first version whose `setJSON` puts the condition
 on the wire, and the claim above is true as of that bump.
+
+- **The apps-hub preview is generated, not art: do not hand-edit it.**
+  `images/app-previews/trip-planner.webp` comes from
+  `assets/app-previews/build-previews.mjs`, which loads the app, clicks "Load
+  an example trip" in the Timeline empty state, hides the resulting toast, and
+  clips a 16:9 window over `#board`. The clip snaps to whole itinerary rows:
+  it starts at the top of the first row and ends at the first row boundary AT
+  OR PAST the 16:9 height, never one short of it. Stopping short is the
+  tempting bug, and it is what the first version did: a shorter clip forces a
+  narrower one to keep 16:9, and since `#board` fills the column that narrower
+  window crops the rows horizontally, cutting the type icons off one edge and
+  the prices off the other. Going long instead pads with page background,
+  which is uniform, so it costs nothing. Before 2026-09-07 this preview was a
+  hand-captured whole-page screenshot including the site nav, at a scale where
+  no row was readable.

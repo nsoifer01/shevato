@@ -229,27 +229,108 @@
       outline: none;
       box-shadow: 0 0 0 2px rgba(32, 68, 201, 0.22);
     }
-    /* The preview link is a block with a definite width so the lazy image
-       inside it has something to resolve its percentage width against. Inside
-       the shrink-to-fit flex card an unloaded image (intrinsic width 0) used
-       to measure 3x2 px and every card below the fold grew 125-190 px as it
+    /* --- Preview thumbnails ---------------------------------------------
+       Every card opens with a screenshot, and the eight sources are not
+       interchangeable: six are hand-captured 16:10 stills of app states that
+       need seeded storage, two are generated 16:9 crops
+       (assets/app-previews/build-previews.mjs). One frame normalises them.
+       The frame owns all the geometry - ratio, radius, hairline, backdrop -
+       and each image declares only WHERE its window sits in the source, via
+       --preview-focus. Nothing is ever scaled up: the widest a preview is
+       ever painted is 337 px against a 720 px file.
+
+       The link is a block with a definite width so the lazy image inside it
+       has something to resolve its percentage width against. Inside the
+       shrink-to-fit flex card an unloaded image (intrinsic width 0) used to
+       measure 3x2 px and every card below the fold grew 125-190 px as it
        scrolled into view; on phones the loaded image also sat at 203 px in a
        310 px card. */
     .highlights .app-preview-link {
       display: block;
+      position: relative;
       width: 100%;
+      margin-bottom: 1.5rem;
+      border-radius: 8px;
+      /* Visible only in the beat before a lazy image paints, so it is the
+         apps' own near-black: a white flash under a dark screenshot reads as
+         a broken image. It also backs the rounded corners, which the image
+         cannot paint into. */
+      background-color: #0b0d12;
+      overflow: hidden;
+      box-shadow:
+        0 1px 2px rgba(16, 22, 36, 0.10),
+        0 10px 24px -16px rgba(16, 22, 36, 0.55);
+    }
+    /* The hairline is drawn INSIDE the frame. A border on the image sits
+       outside object-fit's box, so it rides the element edge rather than the
+       rounded corner and thickens the card by 2px; an inset shadow follows
+       the radius exactly and adds no size, so eight screenshots with eight
+       different edge colours all terminate on the same line. */
+    .highlights .app-preview-link::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      box-shadow: inset 0 0 0 1px rgba(16, 22, 36, 0.16);
+      pointer-events: none;
     }
     .highlights .app-preview {
       display: block;
       width: 100%;
       min-width: 100%;
       height: auto;
-      aspect-ratio: 16 / 10;
+      /* 16:9, not the stills' native 16:10. That 10% of height is the focal
+         budget: it is what lets a capture whose bottom edge slices a row in
+         half be trimmed back to a clean boundary. */
+      aspect-ratio: 16 / 9;
       object-fit: cover;
-      object-position: top center;
-      border-radius: 6px;
-      margin-bottom: 1.5rem;
-      border: solid 1px rgba(0, 0, 0, 0.08);
+      object-position: var(--preview-focus, 50% 50%);
+      /* The second half of the focal system. object-position can only PAN
+         inside the 10% that the 16:9 fit already discards, which is not
+         enough to clear a PWA tab bar or a row of half-cut posters. scale
+         zooms the window as well, anchored to the same edge the pan uses.
+         It stays sharp because there is so much headroom: the widest a
+         preview is painted is 337 px against a 720 px file, so even a 2x
+         zoom is still resolving a downscale. */
+      scale: var(--preview-zoom, 1);
+      transform-origin: var(--preview-focus, 50% 50%);
+      border-radius: inherit;
+    }
+    /* Where each still's window sits, and how tight it is. Only the captures
+       that need one are listed; the rest take the centred, unzoomed default.
+       fpl-planner and trip-planner are generated at 16:9 from the live app,
+       so their window is the whole file and the default lands on it exactly.
+
+       Zoom is used sparingly and never to trim a bottom edge. It scales both
+       axes, so buying 12% off the bottom also costs 12% off each side, and
+       these captures carry their headings at the top left: zooming to clear
+       gym-tracker's tab bar sliced "This Week" to "his Week", maptap's
+       "Rivalries" to "ries" and rising-shows' "Breaking Bad" to "aking Bad".
+       A sliced heading looks more broken than the artefact it removed, so
+       those three pan only, and zoom is left to the two captures whose waste
+       is at the SIDES, where cropping costs nothing:
+         arena        the globe panel is letterboxed by dark side margins
+         mario-kart   the chart is inset in its panel, padded on both sides
+
+       Pan-only cases, all trimming the discarded 10% off the bottom:
+         football-h2h   bottom edge slices the penalty-wins row mid-tile
+         gym-tracker    bottom edge is the PWA tab bar, not app content
+         maptap-rivals  bottom right is empty background under the third
+                        rival, whose card is also cut
+         rising-shows   bottom edge holds the back-to-top button and two
+                        half-cut posters */
+    .highlights .app-preview[src$="football-h2h.webp"],
+    .highlights .app-preview[src$="gym-tracker.webp"],
+    .highlights .app-preview[src$="maptap-rivals.webp"],
+    .highlights .app-preview[src$="rising-shows.webp"] {
+      --preview-focus: 50% 0%;
+    }
+    .highlights .app-preview[src$="arena.webp"] {
+      --preview-zoom: 1.12;
+    }
+    .highlights .app-preview[src$="mario-kart.webp"] {
+      --preview-focus: 50% 28%;
+      --preview-zoom: 1.12;
     }
   </style>
 </head>
@@ -324,9 +405,9 @@
         </section>
         <section data-category="game" data-keywords="fpl fantasy premier league planner transfers captain starting xi gameweek chips">
           <div class="content">
-            <a class="app-preview-link" href="apps/fpl-planner/" aria-label="Open FPL Planner" tabindex="-1"><img class="app-preview" src="images/app-previews/fpl-planner.webp" width="720" height="450" loading="lazy" decoding="async" alt="FPL Planner gameweek dashboard with the recommended transfer, captain pick and starting XI laid out on a pitch" /></a>
+            <a class="app-preview-link" href="apps/fpl-planner/" aria-label="Open FPL Planner" tabindex="-1"><img class="app-preview" src="images/app-previews/fpl-planner.webp" width="720" height="405" loading="lazy" decoding="async" alt="FPL Planner gameweek decision card recommending two transfers, alongside the captain pick, chip advice and projected points" /></a>
             <header>
-              <a href="apps/fpl-planner/" class="icon fa-calendar-check-o brand-color-primary" aria-label="Open FPL Planner"></a>
+              <a href="apps/fpl-planner/" class="icon fa-list-ol brand-color-primary" aria-label="Open FPL Planner"></a>
               <h3>FPL Planner</h3>
             </header>
             <p>Plan your FPL gameweek from your Team ID: transfers or roll, hits, starting XI and bench order, captain and chips - with the numbers behind every recommendation.</p>
@@ -389,7 +470,7 @@
         </section>
         <section data-category="travel" data-keywords="trip planner travel itinerary flights hotels map costs visa weather">
           <div class="content">
-            <a class="app-preview-link" href="apps/trip-planner/" aria-label="Open Trip Planner" tabindex="-1"><img class="app-preview" src="images/app-previews/trip-planner.webp" width="720" height="450" loading="lazy" decoding="async" alt="Trip Planner itinerary timeline with flights and hotel stays, night coverage strip, status pills, and a confirmed bookings total" /></a>
+            <a class="app-preview-link" href="apps/trip-planner/" aria-label="Open Trip Planner" tabindex="-1"><img class="app-preview" src="images/app-previews/trip-planner.webp" width="720" height="405" loading="lazy" decoding="async" alt="Trip Planner itinerary timeline of a Croatia trip, each flight, ferry and hotel row showing its dates, a booked status pill and its cost" /></a>
             <header>
               <a href="apps/trip-planner/" class="icon fa-map brand-color-primary" aria-label="Open Trip Planner"></a>
               <h3>Trip Planner</h3>
