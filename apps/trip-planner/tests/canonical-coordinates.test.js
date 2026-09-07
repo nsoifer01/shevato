@@ -364,3 +364,82 @@ test('the footer NAMES what it could not locate, instead of counting it', () => 
   assert.equal(L.unlocatedSummary(['A', 'A']), 'A not located', 'one place named twice is one place');
   assert.equal(L.unlocatedSummary([null, '', '  ']), '', 'blank labels are not names');
 });
+
+// ---------- 11. a renamed stay takes its return legs with it ----------
+// Owner report, 2026-09-07, found in their own synced trip. Their hotel could
+// not be identified, so they took the app's advice and corrected the name - and
+// their "Return to hotel" kept the OLD one. A leg stores the hotel's name as
+// TEXT, and that text is the only link legDestinationStay has, so the rename
+// orphaned it: it stopped resolving to the stay, fell back to a name no longer
+// anywhere in the trip, and lost its position, its chip and its place ID.
+//
+// Loosening the matcher would be wrong - a leg naming a place that is not a
+// stay in this trip is a claim about that place, and the day's bed is not a
+// safe answer for it. The link is text, so the text is kept in step.
+
+const stayFx = (over = {}) => ({
+  id: 'stay1', type: 'stay', title: 'ChaoKoh Hotel Phi Phi Island', location: 'Ko Phi Phi',
+  startDate: '2027-01-26', endDate: '2027-01-29', ...over,
+});
+const legFx = (over = {}) => ({
+  id: 'leg1', type: 'local', title: 'Return to hotel', location: 'Ko Phi Phi',
+  startDate: '2027-01-27', mapsQuery: 'ChaoKoh Hotel Phi Phi Island', ...over,
+});
+
+test('a return leg is bound to the stay it names, on the nights that stay covers', () => {
+  const stay = stayFx();
+  const found = L.legsBoundToStay([stay, legFx()], stay);
+  assert.equal(found.length, 1);
+  assert.equal(found[0].id, 'leg1');
+});
+
+test('a leg naming somewhere else is NOT dragged along by a rename', () => {
+  const stay = stayFx();
+  const other = legFx({ id: 'leg2', title: 'Taxi to the pier', mapsQuery: 'Tonsai Pier Ko Phi Phi' });
+  assert.deepEqual(L.legsBoundToStay([stay, other], stay), []);
+});
+
+test('two bookings of one chain do not drag each other\'s legs', () => {
+  // Same name, different weeks. Only the nights THIS booking covers belong to it.
+  const first = stayFx({ id: 'stayA', startDate: '2027-01-26', endDate: '2027-01-29' });
+  const second = stayFx({ id: 'stayB', startDate: '2027-02-10', endDate: '2027-02-14' });
+  const legA = legFx({ id: 'legA', startDate: '2027-01-27' });
+  const legB = legFx({ id: 'legB', startDate: '2027-02-11' });
+  assert.deepEqual(L.legsBoundToStay([first, second, legA, legB], first).map(l => l.id), ['legA']);
+  assert.deepEqual(L.legsBoundToStay([first, second, legA, legB], second).map(l => l.id), ['legB']);
+});
+
+test('the stay itself is never in its own list', () => {
+  const stay = stayFx();
+  assert.ok(!L.legsBoundToStay([stay, legFx()], stay).some(l => l.id === stay.id));
+});
+
+test('a leg matching the stay by TITLE counts, not only by mapsQuery', () => {
+  const stay = stayFx({ title: 'Chao Koh Phi Phi Hotel', mapsQuery: 'Chao Koh Phi Phi Hotel Ko Phi Phi' });
+  const byTitle = legFx({ mapsQuery: 'Chao Koh Phi Phi Hotel' });
+  assert.equal(L.legsBoundToStay([stay, byTitle], stay).length, 1);
+});
+
+test('THE REPORTED CASE: a rename orphans the leg, and carrying it heals that', () => {
+  const before = stayFx();
+  const leg = legFx();
+  // while the names agree, the leg resolves to its stay
+  assert.equal(L.legDestinationStay(leg, [before, leg]).id, 'stay1');
+
+  // THE ORPHAN: the stay is renamed and the leg is left naming the old title,
+  // which is now no stay in the trip. This is what the owner's data looked
+  // like after they corrected an unidentifiable hotel name.
+  const after = stayFx({ title: 'Chao Koh Phi Phi Hotel And Resort' });
+  assert.equal(L.legDestinationStay(leg, [after, leg]), null,
+    'the leg no longer points at any stay, so it resolves a hotel that is gone');
+
+  // THE CARRY, computed against the stay as it was BEFORE the replacement -
+  // which is the only moment the old name still exists.
+  const bound = L.legsBoundToStay([before, leg], before);
+  assert.equal(bound.length, 1);
+  for (const l of bound) l.mapsQuery = L.itemMapsQuery(after);
+
+  const dest = L.legDestinationStay(leg, [after, leg]);
+  assert.ok(dest, 'the leg resolves again');
+  assert.equal(dest.id, after.id, 'and to the stay it always meant');
+});

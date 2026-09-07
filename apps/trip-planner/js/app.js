@@ -23,7 +23,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 78;
+  const TP_BUILD = 79;
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   // Miles or kilometers, everywhere a distance prints. Same architecture as
@@ -134,7 +134,7 @@
     // the one place identity every surface resolves through, plus the record
     // it becomes once a place is verified and saved (see placeLookupFor)
     placeLookupFor, placeLookupRequest, placeRecordFrom, normalizePlaceRecord, areaAnchorFor,
-    placeUnresolved, unlocatedSummary,
+    placeUnresolved, unlocatedSummary, legsBoundToStay,
     placeMapsUrl, placeEntryUrl, plausiblePlacePoint,
     // discovery: only verified places reach a "find me places" answer
     assistDiscoveryIntent, discoveryHintFrom, discoveryQueryFrom, rebuildAssistProse,
@@ -4776,7 +4776,12 @@
         return;
       }
       it.createdAt = trip.items[idx].createdAt;
+      // WORK OUT WHO FOLLOWS THIS STAY *BEFORE* REPLACING IT. The legs are
+      // matched against the stay's OLD name, which only exists until the next
+      // line runs.
+      const following = isStay(it) ? legsBoundToStay(trip.items, trip.items[idx]) : [];
       trip.items[idx] = it;
+      carryReturnLegs(following, it);
     } else {
       it.createdAt = new Date().toISOString();
       trip.items.push(it);
@@ -6868,6 +6873,36 @@
       (isStay(target) ? displayTitle(target) : ''),
       (target.location || '').trim(), displayTitle(it), lookup ? lookup.key : '', !!stay,
       canonicalPlaceId(target, lookup), canonicalPointFor(target, lookup));
+  }
+
+  // A RENAMED STAY TAKES ITS RETURN LEGS WITH IT (owner report, 2026-09-07,
+  // found in their own synced trip).
+  //
+  // A "Return to hotel" stores the hotel's NAME as text; that text is the only
+  // link between the leg and the stay, and legDestinationStay matches on it. So
+  // correcting a hotel's name - which is exactly what the app now ASKS the
+  // traveller to do when a stay cannot be located - silently orphaned every leg
+  // that returned to it. The leg stopped resolving to the stay, fell back to a
+  // name no longer anywhere in the trip, and lost its position, its chip and
+  // its place ID. The owner hit this the moment they took the app's advice.
+  //
+  // Only the legs bound to THIS booking by name and by date move, so two
+  // bookings of one chain cannot drag each other's legs.
+  function carryReturnLegs(legs, stay) {
+    const q = itemMapsQuery(stay);
+    if (!q || !Array.isArray(legs) || !legs.length) return;
+    const same = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+    let moved = 0;
+    for (const leg of legs) {
+      // an edit that did not touch the name must not churn the leg's identity
+      if (same(itemMapsQuery(leg), q)) continue;
+      leg.mapsQuery = q;
+      // the old identity belonged to the old name; a stale record here is the
+      // "a place ID following a name it was never resolved for" failure
+      delete leg.place;
+      moved++;
+    }
+    if (moved) placesLog('renamed stay carried its return legs', { stay: q, legs: moved });
   }
 
   // THE ONE ANSWER TO "which Google place is this row". The saved record first
