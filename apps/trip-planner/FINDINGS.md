@@ -3737,3 +3737,54 @@ were ALL told "reserved" and 49 reservations were lost. See the root
 `FINDINGS.md` entry and `netlify/functions/tests/blobs-version.test.mjs`; the
 package is now `^10.7.13`, the first version whose `setJSON` puts the condition
 on the wire, and the claim above is true as of that bump.
+
+## The offline promise, and the install that accepted half a shell (2026-09-05 F06)
+
+`index.html` asked for `css/styles.css?v=67` while `sw.js` precached `?v=66`.
+The query string is part of the Cache API key, so those are two different
+entries: a first online visit followed by a cold offline reload asked for v=67,
+found nothing, and rendered a white unstyled page with menus that should have
+been hidden. Nine passing PWA browser checks did not see it, because none of
+them asserted that the cached URL is the URL the document asks for.
+
+Aligning the version is the smaller half. The durable defect was the install:
+every URL was added with `cache.add(u).catch(() => {})`, so a shell missing its
+stylesheet still RESOLVED - and `activate` then deleted the previous version's
+caches, which were the last working shell on the device. The shell now installs
+with `addAll`, which is atomic: one 404 rejects the install, the new worker
+never activates, and the device keeps what it had. Everything else (the airport
+table, Leaflet, the icons, the sync scripts) stays best-effort, because a
+missing one of those degrades a feature rather than the page.
+
+`firebase-auth.css` joined the shell for the same reason it was found: it is
+linked unconditionally, so without it an offline load paints an unstyled auth
+card over the app.
+
+Network-first reads also carry a 6 s deadline. `fetch` on a hung-but-not-refused
+connection does not reject - it waits for the browser's own multi-minute
+timeout - so lie-fi held the page while a perfectly good precached copy sat on
+disk.
+
+`tests/sw-precache-completeness.test.mjs` pins all of it, and fails on the
+exact v=66/v=68 pair that shipped.
+
+## Reserving the board, not shrinking it (2026-09-05 F07)
+
+At 390x844 under Fast-3G-ish throttling the planner measured 0.253
+session-window CLS - Google's "good" threshold is 0.1 - and the mover was
+`section.app-about`, pushed down as the timeline rendered above it. The content
+region simply had no size until its content arrived.
+
+`.tp-wrap { min-height: 100svh }` reserves it. One viewport and no more: a
+rendered trip is always taller, so it costs nothing once loaded and cannot
+leave a band of empty space. `svh` rather than `vh` because a phone's dynamic
+toolbars make `vh` the LARGEST viewport, which would over-reserve. Measured
+after: 0.000.
+
+The twelve `.overlay` dialogs also gained the `hidden` ATTRIBUTE alongside the
+`display: none` rule they already had. The rule only applies once the
+stylesheet has parsed; the attribute applies from the UA stylesheet, which is
+in force from the first byte of markup - so the dialogs never lay out in flow
+(8,173px of them) before the CSS arrives. `.overlay.open` outranks the
+attribute (0,2,0 against 0,1,0), so opening a dialog is still exactly "add the
+class" and nothing has to remember to clear anything.

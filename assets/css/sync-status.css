@@ -66,6 +66,10 @@
 .sync-banner[hidden] { display: none; }
 .sync-banner[data-state="offline"] { background: rgba(100, 116, 139, 0.95); }
 .sync-banner[data-state="synced"]  { background: rgba(34, 197, 94, 0.95); }
+/* A conflict is not a failure and not a success: two devices both had work,
+   and one of them is now sitting in a recovery copy. Amber, and it stays up
+   until dismissed - a message nobody reads is the same as no message. */
+.sync-banner[data-state="conflict"] { background: rgba(217, 119, 6, 0.95); }
 .sync-banner[data-fading="true"]   { opacity: 0; transform: translateY(-4px); }
 .sync-banner__close {
     flex: none;

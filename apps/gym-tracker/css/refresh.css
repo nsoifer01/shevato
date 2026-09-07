@@ -4750,3 +4750,19 @@ body.gym-tracker .settings-units-result {
 }
 
 body.gym-tracker .settings-units-result[hidden] { display: none; }
+
+/* The four reference sections of the welcome tour, collapsed (2026-09-05
+   audit F17). The modal used to open with five sections and thirteen items -
+   about 2,100px of body in a 574px viewport - so a new user's first screen
+   was a manual rather than the three steps to a first workout. Nothing was
+   removed; it is one tap away, in a native <details> that stays
+   keyboard-operable and findable with find-in-page. */
+body.gym-tracker .onboarding-more > summary.onboarding-more-summary {
+  cursor: pointer;
+  outline-offset: 2px;
+  /* Inherits the section-title type above; the marker is what says it opens. */
+  list-style: revert;
+}
+body.gym-tracker .onboarding-more[open] > summary.onboarding-more-summary {
+  margin-bottom: var(--spacing-sm, 0.5rem);
+}

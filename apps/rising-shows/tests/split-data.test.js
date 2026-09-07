@@ -418,3 +418,55 @@ test('split-data: inProgress survives the split and still suppresses the show-le
   // Detail files are episodes/overview only; the flag has no business there.
   assert.deepEqual(Object.keys(AIRING_SPLIT.detail.tt0000030.seasons['4']), ['episodes']);
 });
+
+/* ---------------------------------------------------------------------------
+ * The search fold is SHARED, not copied (2026-09-05 audit F08).
+ *
+ * js/app.js used to define its own diacritic folding and run it over every one
+ * of ~66,380 season records at boot - a measured 110 ms of a ~420 ms
+ * main-thread task on a desktop - to derive a string whose only consumer keys
+ * by SERIES. It now folds once per series, inside buildSeriesIndex, using the
+ * finder core's implementation rather than a second copy of it: two
+ * implementations would be two search behaviours waiting to diverge, and a
+ * search that disagrees with its own index is worse than a slow one.
+ *
+ * Stamping the folded title into the index at build time was measured and
+ * rejected: it cost 0.27 MB of production brotli (3.17 -> 3.44 MB) to save
+ * 107 ms of CPU, which on a phone connection is a wash at best.
+ * ------------------------------------------------------------------------ */
+
+test('the finder core owns the search fold, and app.js takes it from there', () => {
+  const finder = require('../scripts/finder-lib.js');
+  assert.equal(typeof finder.normalizeSearch, 'function');
+  assert.equal(typeof finder.foldSearch, 'function');
+
+  const app = fs.readFileSync(path.join(__dirname, '..', 'js', 'app.js'), 'utf8');
+  assert.equal(/^function normalizeSearch\(/m.test(app), false,
+    'app.js must not carry a second definition of the fold');
+  assert.match(app, /window\.RisingShowsFinder\.normalizeSearch/,
+    'it binds the shared one instead');
+});
+
+test('the fold behaves the way the search depends on', () => {
+  const { foldSearch, normalizeSearch } = require('../scripts/finder-lib.js');
+  // Typing the ASCII spelling has to find the real title. Before the fold
+  // existed, each of these pairs found only its own spelling.
+  assert.equal(foldSearch('Pokémon'), 'pokemon');
+  assert.equal(foldSearch('Shōgun'), 'shogun');
+  assert.equal(foldSearch('Straße'), 'strasse');
+  assert.equal(foldSearch('Æon Flux'), 'aeon flux');
+  assert.equal(foldSearch(foldSearch('Pokémon')), 'pokemon', 'and folding is idempotent');
+  assert.equal(normalizeSearch('The X-Files'), 'x files');
+  assert.equal(normalizeSearch('Pokémon: Indigo League'), 'pokemon indigo league');
+});
+
+test('the boot loop that folded every season record is gone', () => {
+  // The regression this guards: re-adding a per-season fold would silently
+  // put ~47 ms of desktop (and ~200 ms of phone) main-thread work back into
+  // the critical path, and nothing else in the estate would notice.
+  const app = fs.readFileSync(path.join(__dirname, '..', 'js', 'app.js'), 'utf8');
+  assert.equal(/for \(const m of dataset\.matches\) \{\s*m\.titleSearch =/.test(app), false,
+    'titleSearch must be derived per SERIES in buildSeriesIndex, not per season at boot');
+  assert.match(app, /titleSearch: normalizeSearch\(m\.title\)/,
+    'and derived where it is used');
+});

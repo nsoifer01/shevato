@@ -54,5 +54,13 @@ jobs:
           npm run fetch:rising-shows-data
           npm run build:rising-shows:split
 
+      # CROSS_BROWSER_REQUIRE=1 turns the harness's launch-failure SKIP into a
+      # failure. Without it this workflow reported "4 passed, 4 skipped" with
+      # every WebKit check among the skipped ones (2026-09-05 audit F21): the
+      # job whose entire purpose is engine coverage went green having tested
+      # one engine. Local runs keep the skip, which is right on a machine
+      # without WebKit's host libraries.
       - name: Run cross-browser smoke suite
+        env:
+          CROSS_BROWSER_REQUIRE: '1'
         run: npm run test:cross-browser

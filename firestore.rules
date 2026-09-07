@@ -10,16 +10,34 @@ service cloud.firestore {
         && request.auth.token.firebase.sign_in_provider != 'anonymous';
     }
 
-    // Helper: is the caller connected to this MapTap Rivals member? The pair
-    // link doc id is the two uids sorted lexicographically and joined by
-    // '__' (see pairKey() in apps/maptap-rivals/js/network.js). Rather than
-    // re-deriving that sort here, check both orderings: it costs one extra
-    // exists() only on a miss, and it stays correct even if a client ever
-    // writes the pair key in the other order, which a sort re-derived here
-    // would silently fail to match.
+    // Helper: is the caller connected to this MapTap Rivals member?
+    //
+    // The pair link doc id is the two uids sorted lexicographically and
+    // joined by '__' (see pairKey() in apps/maptap-rivals/js/app.js). The
+    // sort is re-derived here rather than probing both orderings, because
+    // the create rule below now REQUIRES the canonical key: a forged id can
+    // no longer exist, so there is only one path to look at.
+    //
+    // ACCEPTANCE (2026-09-07). A link used to grant private-profile access
+    // the moment it existed, and anyone could create one naming themselves
+    // and a stranger - so "only connected rivals can read your profile"
+    // protected nothing: the stranger simply created the connection. A link
+    // now records who has accepted it, and only a MUTUALLY accepted link
+    // grants a read.
+    //
+    // Links written before this change carry no acceptedBy field and are
+    // honoured as accepted. Breaking every existing connection to close a
+    // hole that is already closed for new ones would cost real users their
+    // rival network; the create rule is what stops a new unilateral link.
+    function pairPath(a, b) {
+      return /databases/$(database)/documents/maptapRivalsLinks/$(a < b ? a + '__' + b : b + '__' + a);
+    }
+    function linkAccepted(d) {
+      return d.get('acceptedBy', null) == null || d.acceptedBy.size() >= 2;
+    }
     function isLinkedTo(otherUid) {
-      return exists(/databases/$(database)/documents/maptapRivalsLinks/$(request.auth.uid + '__' + otherUid))
-        || exists(/databases/$(database)/documents/maptapRivalsLinks/$(otherUid + '__' + request.auth.uid));
+      return exists(pairPath(request.auth.uid, otherUid))
+        && linkAccepted(get(pairPath(request.auth.uid, otherUid)).data);
     }
 
     // Users can only read/write their own data. Anonymous users have no
@@ -93,6 +111,32 @@ service cloud.firestore {
     }
     function isRoomMember(code) {
       return request.auth != null && exists(playerPath(code, request.auth.uid));
+    }
+    // Does this room keep its contents to its members?
+    //
+    // `scopedReads: true` is written by every room created since 2026-09-07.
+    // Before it, one signed-in stranger who obtained a five-character code
+    // could read the room doc (including the questions and their
+    // correctIndex), the whole roster (including each member's gateHash,
+    // which is a replayable admission proof) and every chat message. The
+    // code is a shared secret people paste into group chats and screenshots;
+    // it was never meant to be the only thing between an outsider and a
+    // private room.
+    //
+    // Rooms created before the flag stay open. That is deliberate: they are
+    // ephemeral (a room lives for one sitting), an old client cannot write
+    // the flag, and locking them out would break a game already in progress
+    // during the deploy. The flag is what a NEW room gets, and the boundary
+    // is complete within one room's lifetime.
+    function roomScoped(code) {
+      return exists(roomPath(code))
+        && get(roomPath(code)).data.get('scopedReads', false) == true;
+    }
+    // May the caller read this room's members-only content (roster, chat)?
+    // Once the room doc is gone the content is orphaned and any signed-in
+    // user may read it in order to sweep it, exactly as before.
+    function mayReadRoomContent(code) {
+      return request.auth != null && (!roomScoped(code) || isRoomMember(code));
     }
     // A player doc is stale when its owner announced a disconnect more
     // than the grace window ago, or stopped heart-beating lastSeen for
@@ -230,10 +274,27 @@ service cloud.firestore {
         && playerGone(code, resource.data.hostUid);
     }
     match /triviaRooms/{roomCode} {
-      allow read: if request.auth != null;
+      // `resource == null` is allowed on purpose: a read of a room that does
+      // not exist must answer "not found" rather than erroring on
+      // resource.data and denying, which is what reserveUniqueRoomCode and
+      // "Room not found." both depend on. It reveals only whether a code is
+      // taken, never anything inside the room.
+      allow read: if request.auth != null
+        && (resource == null
+            || resource.data.get('scopedReads', false) != true
+            || isRoomMember(roomCode));
       allow create: if request.auth != null
         && request.resource.data.hostUid == request.auth.uid
-        && !request.resource.data.keys().hasAny(['password']);
+        && !request.resource.data.keys().hasAny(['password'])
+        // A room must carry its own expiry (2026-09-05 audit F18). It is the
+        // input to a Firestore TTL policy on triviaRooms.expiresAt, which is
+        // the only thing that reaps a room every one of whose clients
+        // force-quit - cleanup has otherwise always depended on somebody's
+        // browser being alive to do it. Bounded so a client cannot mint a
+        // room that outlives the policy by choosing its own date.
+        && request.resource.data.expiresAt is timestamp
+        && request.resource.data.expiresAt > request.time
+        && request.resource.data.expiresAt < request.time + duration.value(48, 'h');
       allow update: if request.auth != null
         && (resource.data.hostUid == request.auth.uid
             || (isRoomMember(roomCode)
@@ -242,6 +303,31 @@ service cloud.firestore {
                     || memberHostTakeover(roomCode))));
       allow delete: if request.auth != null && resource.data.hostUid == request.auth.uid;
     }
+    // The one thing about a room that a NON-member is allowed to learn:
+    // whether it exists, whether it wants a password, and which game it is.
+    // Everything a joiner needs to reach the join form, and nothing else.
+    //
+    // Deliberately IMMUTABLE (no update rule). Mirroring the room's live
+    // status here would mean re-writing this document on every question
+    // advance and every stage change - a second write on the hot path of a
+    // real-time game, and a second place for state to be wrong. Everything
+    // that changes during play is read from the room doc, which the joiner
+    // can read the moment their player doc exists.
+    match /triviaRooms/{roomCode}/public/{docId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && docId == 'lobby'
+        && isRoomHost(roomCode)
+        && request.resource.data.keys().hasOnly(['isPrivate', 'gameType'])
+        && request.resource.data.isPrivate is bool
+        && request.resource.data.gameType is string
+        && request.resource.data.gameType.size() <= 32;
+      allow update: if false;
+      // Same lifecycle as the gate: the host while the room lives, anyone
+      // once the room doc is gone (orphan sweep).
+      allow delete: if request.auth != null && (roomGone(roomCode) || isRoomHost(roomCode));
+    }
+
     // Password gate for private rooms: { hash: SHA-256(password + ':' +
     // code) }. Readable by NOBODY - the member-create rule below reads it
     // via get(), which bypasses client read permissions, so the hash (and
@@ -285,9 +371,21 @@ service cloud.firestore {
     // player past the disconnect grace or presence window); anyone signed
     // in may sweep leftovers once the room doc is gone.
     match /triviaRooms/{roomCode}/players/{playerUid} {
-      allow read: if request.auth != null;
+      // `get` on YOUR OWN doc is always allowed - that is the membership
+      // probe every rejoin path starts with, and it has to answer on a
+      // document that may not exist. Reading anyone ELSE's player doc, and
+      // listing the roster at all, needs membership in a scoped room: the
+      // roster is where the gateHash lived, and a readable admission proof
+      // is a replayable one.
+      allow get: if request.auth != null
+        && (request.auth.uid == playerUid || mayReadRoomContent(roomCode));
+      allow list: if mayReadRoomContent(roomCode);
       allow create: if request.auth != null
         && request.auth.uid == playerUid
+        // No joining a room that is not there. Without this a player doc
+        // could be created under any five-character string, leaving a
+        // subcollection nobody owns and nobody sweeps.
+        && exists(roomPath(roomCode))
         && (!exists(/databases/$(database)/documents/triviaRooms/$(roomCode)/private/gate)
             || request.resource.data.gateHash ==
                get(/databases/$(database)/documents/triviaRooms/$(roomCode)/private/gate).data.hash);
@@ -305,8 +403,13 @@ service cloud.firestore {
     // with megabytes; the rules-side check is the last line of defense
     // (the client also enforces this).
     match /triviaRooms/{roomCode}/chat/{messageId} {
-      allow read: if request.auth != null;
+      // Members only, both ways. An outsider used to be able to read a
+      // private room's whole conversation AND post into it without ever
+      // joining: the create rule checked the author's uid and the text
+      // length, never whether the author was in the room.
+      allow read: if mayReadRoomContent(roomCode);
       allow create: if request.auth != null
+        && isRoomMember(roomCode)
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.text is string
         && request.resource.data.text.size() > 0
@@ -319,6 +422,43 @@ service cloud.firestore {
       allow delete: if request.auth != null && roomGone(roomCode);
     }
 
+    // ---------- persistent-record bounds ----------
+    //
+    // Arena scores are computed on the client, so a persistent row is a
+    // CLAIM, not a measurement. Nothing here can make it a measurement -
+    // that needs an authoritative server this project deliberately does not
+    // run - and the product no longer says otherwise (the leaderboard is
+    // labelled self-reported in the UI and in privacy.html).
+    //
+    // What these bounds DO buy is the difference between a claim and a
+    // fabrication. The audit wrote a synthetic score of 999,999,999 and the
+    // rules took it; a single row like that makes the whole board
+    // meaningless to everyone else. So: one game per write, a per-game
+    // ceiling far above anything the scoring can produce (a 10-question
+    // trivia round tops out near 3,000; Globe Drop's per-location maximum
+    // times its location cap is the same order), and counters that can only
+    // go up.
+    function scoreCeiling() { return 100000; }
+    function isCount(v, max) { return v is int && v >= 0 && v <= max; }
+    // A field that is absent on both sides, or absent-then-set, or grown by
+    // at most `step`. Absent reads as 0, which is what a merge-write of a
+    // partial document (propagateDisplayName) produces.
+    function grewBy(field, step, max) {
+      return isCount(request.resource.data.get(field, 0), max)
+        && request.resource.data.get(field, 0) >= resource.data.get(field, 0)
+        && request.resource.data.get(field, 0) - resource.data.get(field, 0) <= step;
+    }
+    function leaderboardShape() {
+      return request.resource.data.get('displayName', '') is string
+        && request.resource.data.get('displayName', '').size() <= 20
+        && isCount(request.resource.data.get('xp', 0), 1000000000)
+        && isCount(request.resource.data.get('gamesPlayed', 0), 1000000)
+        && isCount(request.resource.data.get('wins', 0), 1000000)
+        && isCount(request.resource.data.get('lifetimeBullseyes', 0), 10000000)
+        && isCount(request.resource.data.get('bestRoundScore', 0), scoreCeiling())
+        && request.resource.data.get('wins', 0) <= request.resource.data.get('gamesPlayed', 0);
+    }
+
     // Denormalized global XP leaderboard. Read for everyone signed in
     // (guests included — they can browse the boards). Writes require a
     // real account so guest uids can't pollute the public leaderboard.
@@ -326,9 +466,28 @@ service cloud.firestore {
     // any row — used to moderate stale or abusive entries.
     match /triviaLeaderboard/{userId} {
       allow read: if request.auth != null;
-      allow create, update: if isRegistered() && request.auth.uid == userId;
+      allow create: if isRegistered() && request.auth.uid == userId
+        && leaderboardShape()
+        && request.resource.data.get('xp', 0) <= scoreCeiling()
+        && request.resource.data.get('gamesPlayed', 0) <= 1
+        && request.resource.data.get('wins', 0) <= 1;
+      allow update: if isRegistered() && request.auth.uid == userId
+        && leaderboardShape()
+        // One game per write. A client that has been offline still writes
+        // once per finished game, so this never blocks honest play.
+        && grewBy('xp', scoreCeiling(), 1000000000)
+        && grewBy('gamesPlayed', 1, 1000000)
+        && grewBy('wins', 1, 1000000)
+        && grewBy('lifetimeBullseyes', 1000, 10000000);
+      // The OWNER may remove their own row, and an admin may remove any
+      // (2026-09-05 audit F18). Owner deletion did not exist, so
+      // privacy.html had to say out loud that closing an account left a
+      // public leaderboard row behind that nobody but a moderator could ever
+      // remove. A row nobody can delete is not a leaderboard entry, it is a
+      // permanent record of somebody who left.
       allow delete: if isRegistered()
-        && exists(/databases/$(database)/documents/leaderboardAdmins/$(request.auth.uid));
+        && (request.auth.uid == userId
+            || exists(/databases/$(database)/documents/leaderboardAdmins/$(request.auth.uid)));
     }
 
     // Admin registry for leaderboard moderation. Each doc id is a uid;
@@ -351,11 +510,73 @@ service cloud.firestore {
     // write requires the caller to actually be one of the two players
     // in the pair AND to be a registered (non-anonymous) user — guests
     // play ephemerally and shouldn't create H2H pair rows.
+    // The participants are the DOCUMENT KEY, and both create and update are
+    // authorised against them.
+    //
+    // The hole this closes: the old rule checked only the uids in the
+    // SUBMITTED document, so an unrelated registered user could open
+    // `victim-a__victim-b`, rewrite uidA to themselves, and post 9,999 wins
+    // over a stranger. Ownership of the existing record was never consulted,
+    // and neither was the key. Now the key must be the two participants in
+    // canonical order, the caller must be one of them, and on an update the
+    // participants are frozen: an existing pair's identity cannot be
+    // replaced by anyone, including its own members.
+    function h2hParticipantsCanonical(pairKey) {
+      return request.resource.data.uidA is string
+        && request.resource.data.uidB is string
+        && request.resource.data.uidA < request.resource.data.uidB
+        && pairKey == request.resource.data.uidA + '__' + request.resource.data.uidB;
+    }
+    function h2hIsMine() {
+      return request.resource.data.uidA == request.auth.uid
+        || request.resource.data.uidB == request.auth.uid;
+    }
+    function h2hShape() {
+      return isCount(request.resource.data.get('winsA', 0), 1000000)
+        && isCount(request.resource.data.get('winsB', 0), 1000000)
+        && isCount(request.resource.data.get('ties', 0), 1000000)
+        && isCount(request.resource.data.get('gamesPlayed', 0), 1000000)
+        && request.resource.data.get('winsA', 0)
+           + request.resource.data.get('winsB', 0)
+           + request.resource.data.get('ties', 0)
+           <= request.resource.data.get('gamesPlayed', 0)
+        && request.resource.data.get('displayNameA', '') is string
+        && request.resource.data.get('displayNameA', '').size() <= 20
+        && request.resource.data.get('displayNameB', '') is string
+        && request.resource.data.get('displayNameB', '').size() <= 20;
+    }
     match /triviaH2H/{pairKey} {
       allow read: if request.auth != null;
-      allow create, update: if isRegistered()
-        && (request.resource.data.uidA == request.auth.uid
-            || request.resource.data.uidB == request.auth.uid);
+      allow create: if isRegistered()
+        && h2hParticipantsCanonical(pairKey)
+        && h2hIsMine()
+        && h2hShape()
+        && request.resource.data.get('gamesPlayed', 0) <= 1;
+      allow update: if isRegistered()
+        // The participants of an EXISTING pair are immutable, and the caller
+        // must be one of them - checked against the stored record, not the
+        // submitted one.
+        && request.resource.data.uidA == resource.data.uidA
+        && request.resource.data.uidB == resource.data.uidB
+        && (resource.data.uidA == request.auth.uid || resource.data.uidB == request.auth.uid)
+        && h2hParticipantsCanonical(pairKey)
+        && h2hShape()
+        // Each side owns its OWN name on the record, and only its own. This
+        // is what makes anonymisation possible on a SHARED row (2026-09-05
+        // audit F18): a pair record is two people's history, so deleting it
+        // to close one account would erase the other's. Replacing your own
+        // display name with a placeholder removes the identity and leaves
+        // their record intact - and, because the rule is per side, the other
+        // player cannot rewrite your name for you.
+        && (request.resource.data.get('displayNameA', '') == resource.data.get('displayNameA', '')
+            || resource.data.uidA == request.auth.uid)
+        && (request.resource.data.get('displayNameB', '') == resource.data.get('displayNameB', '')
+            || resource.data.uidB == request.auth.uid)
+        // One game per write, and counters that only ever go up.
+        && grewBy('winsA', 1, 1000000)
+        && grewBy('winsB', 1, 1000000)
+        && grewBy('ties', 1, 1000000)
+        && grewBy('gamesPlayed', 1, 1000000);
     }
 
     // Brain Arena — Globe Drop daily challenge leaderboard.
@@ -366,7 +587,19 @@ service cloud.firestore {
     // daily top spot that would orphan as soon as their session ends.
     match /globeDropDailyLeaderboard/{date}/scores/{userId} {
       allow read: if request.auth != null;
-      allow create, update: if isRegistered() && request.auth.uid == userId;
+      allow create, update: if isRegistered() && request.auth.uid == userId
+        && request.resource.data.get('displayName', '') is string
+        && request.resource.data.get('displayName', '').size() <= 20
+        && isCount(request.resource.data.get('score', 0), scoreCeiling())
+        && isCount(request.resource.data.get('locations', 0), 1000)
+        && request.resource.data.get('roundType', '') is string
+        && request.resource.data.get('roundType', '').size() <= 32
+        && request.resource.data.get('difficulty', '') is string
+        && request.resource.data.get('difficulty', '').size() <= 32;
+      // Your own daily score is yours to withdraw (2026-09-05 audit F18).
+      // There was no delete rule at all, so a closed account's scores stayed
+      // on the daily boards for good.
+      allow delete: if isRegistered() && request.auth.uid == userId;
     }
 
     // ---------- MapTap Rivals - rival network ----------
@@ -381,6 +614,14 @@ service cloud.firestore {
     // can claim, and only for their own uid. First claim wins: once the doc
     // exists, update/delete require the caller to already own it, so nobody
     // can steal someone else's handle.
+    //
+    // WHAT A CLAIM IS NOT: proof that the claimant owns that maptap.gg
+    // account. Nothing here can establish that - it would need a server that
+    // can challenge maptap.gg, and this app has none - so the product no
+    // longer says it does. The app's button now reads "Look up profile", the
+    // card says "Linked (not owner-verified)", and privacy.html says the
+    // same. First-claim-wins plus owner-only release is the whole contract:
+    // a handle taken by the wrong person is released by deleting the claim.
     match /maptapRivalsHandles/{handleLower} {
       allow read: if request.auth != null;
       allow create: if isRegistered()
@@ -428,12 +669,48 @@ service cloud.firestore {
         && (resource == null || request.auth.uid in resource.data.uids);
       allow list: if isRegistered()
         && request.auth.uid in resource.data.uids;
+
+      // A NEW link is an INVITATION, not a connection.
+      //
+      // It used to be both: create a document naming yourself and a stranger
+      // and isLinkedTo() immediately granted you their private profile, so
+      // "only connected rivals can read your profile" was a claim the caller
+      // could satisfy by themselves. A new link now records exactly one
+      // acceptor - its creator - and grants nothing until the other side
+      // adds itself.
+      //
+      // The key must also be canonical: `{lower}__{higher}`. A forged id
+      // (the same pair under a different key, or a key naming uids the
+      // document does not) used to be writable and would then be found by a
+      // membership probe that looked at the document rather than the name.
       allow create: if isRegistered()
+        && request.resource.data.uids is list
         && request.resource.data.uids.size() == 2
-        && request.auth.uid in request.resource.data.uids;
+        && request.resource.data.uids[0] is string
+        && request.resource.data.uids[1] is string
+        && request.resource.data.uids[0] < request.resource.data.uids[1]
+        && pairKey == request.resource.data.uids[0] + '__' + request.resource.data.uids[1]
+        && request.auth.uid in request.resource.data.uids
+        && request.resource.data.get('acceptedBy', []) == [request.auth.uid];
+
+      // The ONLY update is the other side accepting. Nothing else may move:
+      // neither member can rewrite the other's handle or name, which was the
+      // reason this document was immutable before consent existed.
+      allow update: if isRegistered()
+        && request.auth.uid in resource.data.uids
+        && !(request.auth.uid in resource.data.get('acceptedBy', []))
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['acceptedBy', 'acceptedAt'])
+        && request.resource.data.acceptedBy.hasAll(resource.data.get('acceptedBy', []))
+        && request.resource.data.acceptedBy.size()
+           == resource.data.get('acceptedBy', []).size() + 1
+        && request.auth.uid in request.resource.data.acceptedBy
+        && request.resource.data.uids.hasAll(request.resource.data.acceptedBy);
+
+      // Either member may tear the connection down: that is "delete this
+      // rival", and it is also how an unwanted invitation is declined.
       allow delete: if isRegistered()
         && request.auth.uid in resource.data.uids;
-      allow update: if false;
     }
 
     // Deny all other access

@@ -103,6 +103,11 @@
   <link rel="dns-prefetch" href="https://www.google-analytics.com">
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-GEQGY35JJN"></script>
   <script defer src="/assets/js/analytics.js"></script>
+  <!-- The accessible half of every canvas chart (2026-09-05 audit F16):
+       a name, a trend summary and an expandable data table, all built
+       from the SAME series object handed to Chart.js. Not deferred: the
+       chart code calls it synchronously as each chart is created. -->
+  <script src="/assets/js/chart-a11y.js"></script>
 </head>
 <body class="maptap-rivals-app">
 <a class="skip-link" href="#main-content">Skip to main content</a>

@@ -77,6 +77,21 @@ function cspHeaderLines() {
   );
 }
 
+/**
+ * The policy that governs connect-src.
+ *
+ * There are now TWO headers (2026-09-05 audit F14): an ENFORCED one carrying
+ * only the directives this site is compatible with today (object-src,
+ * base-uri, form-action, frame-ancestors), and the REPORT-ONLY one that still
+ * describes the full intended policy - including connect-src, which is what
+ * this file is about. tests/static/csp-enforced.test.mjs owns the enforced
+ * header's contract and asserts the two agree wherever they overlap.
+ */
+function connectSrcPolicyLine() {
+  const reportOnly = CSP_LINES.find((l) => /-Report-Only/.test(l));
+  return reportOnly || CSP_LINES[0];
+}
+
 function directive(policy, name) {
   const found = policy
     .split(';')
@@ -89,20 +104,25 @@ function directive(policy, name) {
 const CSP_LINES = cspHeaderLines();
 
 test('netlify.toml is the only place a CSP is defined', () => {
+  // Two headers, and exactly two: the enforced baseline and the report-only
+  // full policy. A third would mean somebody added a per-path override, and
+  // this file would stop describing what production sends.
   assert.equal(
-    CSP_LINES.length, 1,
-    `expected exactly one CSP header in netlify.toml, found ${CSP_LINES.length}`
+    CSP_LINES.length, 2,
+    `expected the enforced + report-only pair in netlify.toml, found ${CSP_LINES.length}`
   );
+  assert.equal(CSP_LINES.filter((l) => /-Report-Only/.test(l)).length, 1);
 
   // A second definition elsewhere would make this whole test lie about what
   // production sends, and a Netlify _headers file WINS over netlify.toml. The
-  // publish root is the repo root ([dev] publish = "."), so scan the tree the
-  // deploy actually uploads: everything but node_modules and the dot-dirs
-  // (.git, .netlify build cache, .screenshots), none of which deploy.
+  // deploy publishes dist/ (scripts/build-publish-dir.mjs), which is built
+  // from this tree, so scanning the SOURCE catches a stray _headers before it
+  // can ever be linked into the publish directory. dist itself is skipped: it
+  // is a hard-linked copy and would only report the same file twice.
   const strays = [];
   const walkAll = (dir) => {
     for (const name of readdirSync(dir)) {
-      if (name === 'node_modules' || name.startsWith('.')) continue;
+      if (name === 'node_modules' || name === 'dist' || name.startsWith('.')) continue;
       const full = join(dir, name);
       if (statSync(full).isDirectory()) walkAll(full);
       else if (name === '_headers') strays.push(relative(REPO_ROOT, full));
@@ -112,7 +132,8 @@ test('netlify.toml is the only place a CSP is defined', () => {
   assert.deepEqual(strays, [], `Netlify _headers files override netlify.toml: ${strays.join(', ')}`);
 });
 
-const POLICY = CSP_LINES[0].slice(CSP_LINES[0].indexOf('=') + 1).trim().replace(/^"|"$/g, '');
+const POLICY_LINE = connectSrcPolicyLine();
+const POLICY = POLICY_LINE.slice(POLICY_LINE.indexOf('=') + 1).trim().replace(/^"|"$/g, '');
 const CONNECT_SRC = directive(POLICY, 'connect-src');
 
 test('connect-src exists and is not a blanket allow', () => {
@@ -179,7 +200,7 @@ test('both Open-Meteo endpoints the Trip Planner uses are allowed', () => {
 const SCAN_ROOTS = ['apps', 'assets', 'sync-system'];
 // Not shipped to a browser page, so not governed by this CSP: node tests,
 // e2e/CDP harnesses, build scripts, and third-party vendored bundles.
-const SKIP_DIR = /(^|\/)(node_modules|vendor|tests|tests-rules|e2e|scripts|coverage|\.screenshots)(\/|$)/;
+const SKIP_DIR = /(^|\/)(node_modules|dist|vendor|tests|tests-rules|e2e|scripts|coverage|\.screenshots)(\/|$)/;
 // Identifier names that hold an endpoint: FOO_API, API_URL, HOTEL_API, url,
 // SPARQL_ENDPOINT, DIRECT_BASE, MAPTAP_DAILY_URL_BASE...
 const ENDPOINT_NAME = /(^|_)(api|url|uri|endpoint|base|host)(_|$)/i;

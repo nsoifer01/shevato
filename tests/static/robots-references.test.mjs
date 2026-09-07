@@ -134,7 +134,7 @@ function shippedScripts() {
     for (const entry of readdirSync(abs, { withFileTypes: true })) {
       const rel = `${relDir}/${entry.name}`;
       if (entry.isDirectory()) {
-        if (['tests', 'e2e', 'scripts', 'vendor', 'node_modules', 'experiments'].includes(entry.name)) continue;
+        if (['tests', 'e2e', 'scripts', 'vendor', 'node_modules', 'dist', 'experiments'].includes(entry.name)) continue;
         walk(rel);
       } else if (entry.name.endsWith('.js') && !entry.name.endsWith('.min.js')) {
         out.push(rel);

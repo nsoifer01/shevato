@@ -5,15 +5,42 @@ name: arena emulator
 # multiplayer e2e (apps/arena/e2e/emulator.mjs). Isolated from the push/PR workflows on purpose,
 # following cross-browser.yml's pattern: this job needs Java plus a
 # firebase-tools/emulator download, and the fast CI stays dependency-free.
-# Weekly rather than per-PR: firestore.rules changes are rare and always land
-# with a local `npm run test:arena:rules` pass; this run exists to catch
-# emulator/tooling drift (a firebase-tools or jar release changing behavior),
-# which arrives on the tools' schedule, not with our commits.
+# TWO TRIGGERS, for two different kinds of drift.
+#
+# CHANGE-TRIGGERED (2026-09-05 audit F21). "firestore.rules changes are rare
+# and always land with a local pass" was the old justification for weekly-only,
+# and it is not a gate: it is a description of a habit. An authorization
+# boundary is exactly the thing that must be checked by a machine before it
+# lands, and the paths below are the ones whose change can move that boundary -
+# the ruleset itself, the Arena app that writes through it, and this workflow.
+# A documentation edit still runs nothing, which is the other half of the
+# requirement: bounded CI.
+#
+# WEEKLY, unchanged: emulator/tooling drift (a firebase-tools or jar release
+# changing behaviour) arrives on the tools' schedule, not with our commits, so
+# a scheduled run is the only thing that catches it.
 #
 # ARENA_RULES_REQUIRE=1 turns the suite's local skip-when-unavailable
 # behavior into a hard failure here, so a broken Java setup or download can
 # never fake a green run.
 on:
+  pull_request:
+    paths:
+      - 'firestore.rules'
+      - 'firebase.json'
+      - 'database.rules.json'
+      - 'apps/arena/**'
+      - 'sync-system/**'
+      - '.github/workflows/arena-rules.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'firestore.rules'
+      - 'firebase.json'
+      - 'database.rules.json'
+      - 'apps/arena/**'
+      - 'sync-system/**'
+      - '.github/workflows/arena-rules.yml'
   schedule:
     - cron: '0 7 * * 2'
   workflow_dispatch:

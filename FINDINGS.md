@@ -795,3 +795,92 @@ iteration order was skipped and the initial merge never ran for that session.
 Only reachable from a hand-edited or older-format document, but the failure is
 silent and permanent for the session. Malformed entries are now skipped with a
 warning, and each key is applied in its own try/catch.
+
+## Chunked sync was not a snapshot (2026-09-05 F04)
+
+Part documents were keyed by `(key, sequence)` alone, so version N+1 wrote over
+version N's parts. Parts land BEFORE the manifest (deliberately - a manifest
+pointing at documents that are not there yet would assemble a truncated value),
+so a reader holding version N's manifest read version N+1's parts under it and
+assembled the head of one version with the tail of another. That parses. Valid
+JSON was never proof that the parts belonged together, and nothing checked.
+
+Three changes, all of them in `storage-sync-robust.js`:
+
+- **the part id carries a version token** (`rev` + content hash), so a new
+  version writes new documents and the previous snapshot stays readable;
+- **the predecessor is collected only after the new manifest is durable**, so
+  at no instant is there a published manifest whose parts are absent or belong
+  to a different version;
+- **the reader verifies before it applies**: part count, the version stamp on
+  each part, the assembled LENGTH against `manifest.chars`, and the content
+  digest against `manifest.hash`. A mismatch is not applied and not recorded,
+  so the next snapshot retries.
+
+Old manifests (no `chunkVersion`) still read, and the first write after the
+upgrade collects the unversioned run the old engine left behind - otherwise a
+device would carry two copies forever.
+
+## The clock had a vote it should never have had (2026-09-05 F05)
+
+`decideRemoteChange` compared `localRev.updatedAt` - this device's `Date.now()`
+- against a Firestore SERVER timestamp. A device an hour fast answered
+`skip-older` to an hour of legitimate updates. Revision is now the order, and
+`applyRemoteChange` advances it to `max(local, remote)`, which makes it a
+Lamport counter: strictly causal, agreed by every device, no clock involved.
+
+## Two devices, one string (2026-09-05 F05)
+
+Every app syncs whole localStorage VALUES, so `gymTrackerSessions` is one
+string holding many independent workouts. Device A adding an evening and device
+B adding an evening did not edit two records - they edited one string, and
+last-writer-wins threw one away.
+
+A key with unflushed local work is now a CONFLICT rather than a comparison, and
+a conflict is resolved by a three-way merge against the state the two sides
+last agreed on. The base is an id -> content-hash INDEX of the records, not a
+copy of them: ~18 bytes a record rather than a second copy of an 800 KB game
+log on a 5 MB budget, and it is exactly what the merge needs.
+
+Per id: in both and identical, keep; in both with one side matching the base,
+take the side that changed; in both and both changed, deterministic winner and
+a recoverable copy of the loser; in one side only and NOT in the base, an
+addition, keep; in one side only and IN the base, a deletion, honour it. That
+last line is the whole reason the merge is three-way - a two-way union
+resurrects every deletion.
+
+Values that are not collections of identified records (settings objects,
+preference strings) fall back to a deterministic winner with the loser
+preserved under `shevato:sync-conflict:*`, capped at 20 copies. Either way the
+page is told, via a `syncConflict` event the shared sync banner renders: a
+conflict nobody knows about is the same as a conflict that lost data.
+
+## The deploy served the repository (2026-09-05 F15)
+
+Netlify published the tracked tree, so `/FINDINGS.md`, `/TESTING-AUDIT.md` and
+`/netlify/functions/lib/tp-assist-quota.mjs` all returned 200. `robots.txt`
+said so in its own comments and used `Disallow` to hide them - which is a
+crawling hint, not an access control, and left every future internal file one
+commit away from being a public artifact by default.
+
+`scripts/build-publish-dir.mjs` now assembles `dist/` from an explicit allow
+list (hard links, so 70k files cost directory entries), and `netlify.toml` sets
+it as `publish`. Functions still bundle from the repo root, so they deploy and
+stop being downloadable. `tests/static/publish-graph.test.mjs` asserts BOTH
+directions - the dangerous one being a careless exclusion breaking generated
+pages, a service worker asset or the Search Console verification file.
+
+## Node 22, and the two things that broke on it (2026-09-05 F19)
+
+`.nvmrc` said 20, which was end-of-life. The move is not a version bump alone:
+
+- Node 22's test runner treats a positional DIRECTORY as a file to EXECUTE
+  (`Cannot find module .../apps/arena/tests`), so `npm test` and
+  `tests/coverage/run.mjs` moved to glob patterns;
+- Node 22's coverage report is an INDENTED TREE, not flat paths. Parsed as
+  flat, it yields basenames, every area prefix matches nothing, and the report
+  claims 0.00% across the board while listing every production file as
+  unmeasured. The parser handles both shapes.
+
+`scripts/require-node.mjs` runs as `pretest` so an old runtime says what to do
+instead of reporting a missing file.

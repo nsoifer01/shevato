@@ -114,6 +114,12 @@ function makeContext(extra = {}) {
     matchMedia: () => ({ matches: false, addEventListener() {} }),
     // Never-settling fetch so load()'s async chain never throws an unhandled rejection.
     fetch: () => new Promise(() => {}),
+    // index.html loads scripts/finder-lib.js BEFORE js/app.js, and app.js
+    // takes its search folding from it (2026-09-05 audit F08 moved the
+    // implementation there so the build could stamp `titleSearch` into the
+    // index with the same function the finder searches with). Without this
+    // the sandbox exercises app.js's degraded fallback instead of the page.
+    RisingShowsFinder: require('../scripts/finder-lib.js'),
     ...extra,
   };
   // window self-reference

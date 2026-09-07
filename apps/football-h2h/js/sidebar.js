@@ -490,7 +490,19 @@ function initializeSidebar() {
 // Initialize sidebar on page load (fallback)
 document.addEventListener('DOMContentLoaded', function() {
     // This will be called by football-h2h.js when ready
-    
+
+    // The first-run call to action (2026-09-05 audit F17) is the one control
+    // outside the sidebar that opens the sidebar's game form. It does exactly
+    // what "Add Game" in the sidebar does - same form, same focus - so there
+    // is one add-a-game path, reachable from two places.
+    const firstRunCta = document.getElementById('first-run-cta');
+    if (firstRunCta) {
+        firstRunCta.addEventListener('click', function() {
+            openSidebar();
+            if (!sidebarGameFormOpen) toggleSidebarGameForm();
+        });
+    }
+
     
     // Handle escape key to close sidebar. A modal takes priority: when one
     // is open, Escape closes only the topmost modal (its own handler), and

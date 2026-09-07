@@ -45,6 +45,21 @@ export const TTL = {
 export const DEADLINE_WINDOW_MS = 6 * 60 * 60 * 1000;
 export const DEADLINE_TTL_SECONDS = 120;
 
+// How far past its TTL a cached copy may still be SERVED while one caller
+// refreshes it. Deliberately short: long enough to absorb the burst that
+// arrives the moment a popular key expires, short enough that nobody reads a
+// plan built on numbers from another gameweek. Past this window every caller
+// goes upstream, so a permanently failing refresh degrades into the old
+// behaviour rather than serving something stale forever.
+export const STALE_SERVE_SECONDS = 60;
+
+// How long one caller may hold the right to refresh a key. Sized above the
+// function's own 9s upstream deadline plus a cold start, so a legitimate slow
+// refresh is not preempted, and far below any TTL, so a crashed owner costs
+// one short window rather than a wedged key.
+export const REFRESH_LEASE_SECONDS = 20;
+export const leaseKey = (key) => `lease:${key}`;
+
 // Strips a leading/trailing slash and rejects anything not on the allowlist.
 // Returns the canonical path, or null.
 export function canonicalPath(raw) {
@@ -98,14 +113,40 @@ export async function fplStore() {
 //
 // Returns { status, body, cache, fetchedAt, stale, ageSeconds }. The caller
 // turns that into a Response, so this stays testable without a Request.
-export async function serveFpl({ path, store, fetchUpstream, now }) {
-  const cached = await readCache(store, cacheKey(path));
+export async function serveFpl({ path, store, fetchUpstream, now, leaseId }) {
+  const key = cacheKey(path);
+  const cached = await readCache(store, key);
 
   if (cached) {
     const nextDeadline = await readDeadline(store);
     const age = ageSeconds(cached.fetchedAt, now);
     if (age < ttlSeconds(path, { now, nextDeadline })) {
       return { status: 200, body: cached.body, cache: 'hit', fetchedAt: cached.fetchedAt, stale: false, ageSeconds: age };
+    }
+
+    // EXPIRED, BUT WE STILL HAVE IT. One refresh is enough; the rest of a
+    // burst can be answered from the copy in hand.
+    //
+    // Netlify runs one function instance per request, so twenty browsers
+    // asking for `fixtures` the second its TTL lapses used to make twenty
+    // identical upstream calls - measured, 20/20 - and every one of them paid
+    // 1.3 MB of latency for an answer nineteen of them did not need. The
+    // lease is an etag-conditional claim on a tiny blob: exactly one caller
+    // wins it and goes upstream, and everyone else is served the stale copy,
+    // clearly marked, for at most STALE_SERVE_SECONDS past the TTL.
+    //
+    // An owner that crashes or times out cannot wedge the key: the lease
+    // carries an expiry, and once it lapses the next caller claims it. And
+    // once the copy is older than the stale window, every caller goes
+    // upstream again rather than serving something too old to be useful.
+    if (age < ttlSeconds(path, { now, nextDeadline }) + STALE_SERVE_SECONDS) {
+      const owner = await claimRefreshLease(store, key, now, leaseId);
+      if (!owner) {
+        return {
+          status: 200, body: cached.body, cache: 'hit', fetchedAt: cached.fetchedAt,
+          stale: true, ageSeconds: age, coalesced: true,
+        };
+      }
     }
   }
 
@@ -139,7 +180,7 @@ export async function serveFpl({ path, store, fetchUpstream, now }) {
     // fresh response away and answered 503, or served a day-old copy instead of
     // the one already in hand.
     try {
-      await store.setJSON(cacheKey(path), { fetchedAt, body });
+      await store.setJSON(key, { fetchedAt, body });
       if (path === 'bootstrap-static') {
         await store.setJSON(DEADLINE_KEY, { nextDeadline: nextDeadlineFrom(body, now) });
       }
@@ -158,6 +199,46 @@ export async function serveFpl({ path, store, fetchUpstream, now }) {
       };
     }
     return { status: 503, body: { error: 'upstream_unavailable' }, cache: 'miss', fetchedAt: new Date(now).toISOString(), stale: false, ageSeconds: 0 };
+  }
+}
+
+/**
+ * Try to become the one caller that refreshes `key`.
+ *
+ * Etag-conditional, so this is a genuine claim and not a read-then-hope: two
+ * instances that read the same absent/expired lease both try to write it, and
+ * Blobs admits exactly one. The loser is told to serve stale.
+ *
+ * Fails OPEN. If the store cannot be read or written the answer is "yes, you
+ * refresh" - a cache is an optimisation in front of a public API, and losing
+ * the coalescing must cost extra upstream calls, never an error.
+ *
+ * @returns {Promise<boolean>} true when this caller owns the refresh.
+ */
+export async function claimRefreshLease(store, key, now, leaseId) {
+  const id = leaseId || `${now}-${Math.random().toString(36).slice(2, 10)}`;
+  let current;
+  try {
+    current = await store.getWithMetadata(leaseKey(key), { type: 'json' });
+  } catch (err) {
+    console.error('fpl lease read failed', key, String(err && err.message));
+    return true;
+  }
+  const held = current && current.data && typeof current.data === 'object' ? current.data : null;
+  if (held && Number(held.expiresAt) > now) return false;   // somebody else is on it
+
+  const condition = (current && current.etag) ? { onlyIfMatch: current.etag } : { onlyIfNew: true };
+  try {
+    const res = await store.setJSON(
+      leaseKey(key), { owner: id, expiresAt: now + REFRESH_LEASE_SECONDS * 1000 }, condition
+    );
+    // A client that ignores the condition returns undefined rather than
+    // { modified }. Treat that as "won" - the same fail-open reasoning as
+    // above, and blobs-version.test.mjs is the layer that catches the pin.
+    return !res || res.modified !== false;
+  } catch (err) {
+    console.error('fpl lease write failed', key, String(err && err.message));
+    return true;
   }
 }
 

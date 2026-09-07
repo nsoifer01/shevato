@@ -2800,3 +2800,27 @@ body.fpl-page {
   color: var(--amber);
 }
 .fpl-planner-app tr.is-live td { background: rgba(237, 175, 70, 0.05); }
+
+/* The sample-plan offer under the onboarding form (2026-09-05 audit F17).
+   ?demo=1 has always worked and has always been clearly labelled while in
+   use; it was only reachable from an ERROR path, so the one visitor
+   guaranteed not to see it was the one who had not started yet. Quiet by
+   design: findable by somebody without a Team ID, without competing with the
+   primary action for somebody who has one.
+
+   Scoped under .fpl-planner-app like every other rule in this file (see the
+   scoping contract at the top): the site's shared main.css carries an
+   !important link colour that unpinned app styles lose to. */
+.fpl-planner-app .fpl-onboard-demo {
+  margin: 14px 0 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--text-faint);
+}
+.fpl-planner-app .fpl-demo-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.fpl-planner-app .fpl-demo-link:hover,
+.fpl-planner-app .fpl-demo-link:focus-visible { color: var(--text); }

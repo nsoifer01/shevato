@@ -28,12 +28,39 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..', '..');
 
 // Same directories as the package.json `test` script; keep in sync.
+//
+// Glob patterns rather than bare directories: Node 22's test runner treats a
+// positional DIRECTORY as a file to execute (it reports "Cannot find module
+// .../apps/arena/tests" and exits 1), so the same change the `test` script
+// needed applies here.
 const SUITE_DIRS = [
   'apps/gym-tracker/tests/', 'apps/football-h2h/tests/', 'apps/fpl-planner/tests/',
   'apps/rising-shows/tests/', 'apps/mario-kart/tests/', 'apps/arena/tests/',
   'apps/maptap-rivals/tests/', 'apps/trip-planner/tests/', 'apps/quotescout/tests/',
   'netlify/functions/tests/', 'sync-system/tests/', 'assets/js/tests/', 'tests/static/',
 ];
+const SUITE_GLOBS = SUITE_DIRS.map((d) => `${d}**/*.test.*`);
+
+// Production files that no unit test imports.
+//
+// V8 coverage only reports files something LOADED, so a module nothing
+// imports does not appear in the table at all - it is not 0%, it is absent,
+// and an area's weighted average is computed as though it did not exist. That
+// is how a large untested file can sit next to a healthy-looking percentage
+// (2026-09-05 audit F21). The inventory below is walked from disk and
+// subtracted from what coverage reported, so the report NAMES what it did not
+// measure instead of quietly dropping it.
+//
+// Excluded from the inventory, with reasons: vendored third-party code, the
+// generated data bundles, build scripts (run by the build, not by the app),
+// and the e2e/test trees themselves.
+const INVENTORY_ROOTS = [
+  'apps/gym-tracker/js', 'apps/football-h2h', 'apps/fpl-planner/js',
+  'apps/rising-shows/js', 'apps/mario-kart/js', 'apps/arena/js',
+  'apps/maptap-rivals/js', 'apps/trip-planner/js',
+  'netlify/functions', 'sync-system', 'assets/js',
+];
+const INVENTORY_SKIP = /(^|\/)(tests?|e2e|tests-rules|vendor|node_modules|scripts|experiments|data|fixtures|helpers)(\/|$)|\.min\.js$|\.test\.(js|cjs|mjs)$/;
 
 // Area -> path prefix used to bucket per-file rows.
 const AREAS = [
@@ -55,11 +82,23 @@ const AREAS = [
 // minus a small working margin. Raising a floor is always fine; lowering one
 // needs a written justification in TESTING-AUDIT.md. The floors are on the
 // line-weighted LINE percentage of covered source files in that area.
+//
+// site-shared gained a floor on 2026-09-07 (audit F21): assets/js became
+// measurable when chart-a11y.js arrived with unit tests, and an area with
+// coverage and no floor is an area that can quietly lose it.
+//
+// mario-kart still has NO floor, and that is not an oversight: not one of its
+// source files is loaded by the unit estate (its tests build vm contexts,
+// which V8 coverage does not attribute to the file), so there is no number to
+// put a floor under. A floor over an empty set would read as coverage. What
+// the audit actually asked for - that the gap be visible rather than absent -
+// is the unmeasured-file inventory at the bottom of the report, which names
+// every one of them.
 const FLOORS = JSON.parse(await readFile(path.join(HERE, 'floors.json'), 'utf8'));
 
 function runCoverage() {
   return new Promise((resolve) => {
-    const args = ['--test', '--experimental-test-coverage', ...SUITE_DIRS];
+    const args = ['--test', '--experimental-test-coverage', ...SUITE_GLOBS];
     const child = spawn(process.execPath, args, { cwd: REPO });
     let out = '';
     child.stdout.on('data', (c) => { out += c; });
@@ -69,13 +108,29 @@ function runCoverage() {
 }
 
 function parseTable(out) {
-  // Rows look like:
-  // # apps/foo/js/bar.js | 99.62 | 79.34 | 100.00 | 351-352
+  // TWO TABLE SHAPES, because Node changed it.
+  //
+  // Node 20 printed one flat repo-relative path per row:
+  //     # apps/foo/js/bar.js | 99.62 | 79.34 | 100.00 | 351-352
+  //
+  // Node 22 prints an indented TREE, where a directory row carries no
+  // percentages and a file row's full path is its own name prefixed by the
+  // directories above it at smaller indents:
+  //     # apps                     |        |        |        |
+  //     #  gym-tracker             |        |        |        |
+  //     #   js                     |        |        |        |
+  //     #    app.js                |  91.20 |  84.10 |  88.00 | 12-14
+  //
+  // Reading the second as though it were the first yields BASENAMES, every
+  // area prefix matches nothing, and the report says 0.00% across the board
+  // while claiming every production file is unmeasured. Both are parsed here
+  // so the runner is not silently wrong on either runtime.
   const rows = [];
   let inTable = false;
   const summary = {};
+  const stack = [];   // [{ indent, name }] for the Node 22 tree
   for (const line of out.split('\n')) {
-    if (line.includes('start of coverage report')) { inTable = true; continue; }
+    if (line.includes('start of coverage report')) { inTable = true; stack.length = 0; continue; }
     if (line.includes('end of coverage report')) { inTable = false; continue; }
     const m = /^# tests (\d+)|^# pass (\d+)|^# fail (\d+)|^# skipped (\d+)|^# todo (\d+)/.exec(line);
     if (m) {
@@ -86,14 +141,25 @@ function parseTable(out) {
       if (m[5] != null) summary.todo = Number(m[5]);
     }
     if (!inTable) continue;
-    const r = /^#\s+([^|]+?)\s+\|\s+([\d.]+)\s+\|\s+([\d.]+)\s+\|\s+([\d.]+)\s+\|/.exec(line);
+
+    // `# ` then the (possibly indented) name, then the three percentage
+    // columns. A directory row has them blank.
+    const r = /^#(\s+)([^|]*?)\s*\|\s*([\d.]*)\s*\|\s*([\d.]*)\s*\|\s*([\d.]*)\s*\|/.exec(line);
     if (!r) continue;
-    const file = r[1].trim();
-    if (file === 'file' || file === 'all files') {
-      if (file === 'all files') summary.allFiles = { line: +r[2], branch: +r[3], funcs: +r[4] };
+    const indent = r[1].length;
+    const name = r[2].trim();
+    if (!name || name === 'file') continue;
+    const isDir = r[3] === '' && r[4] === '' && r[5] === '';
+
+    while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
+    if (isDir) { stack.push({ indent, name }); continue; }
+
+    if (name === 'all files') {
+      summary.allFiles = { line: +r[3], branch: +r[4], funcs: +r[5] };
       continue;
     }
-    rows.push({ file, line: +r[2], branch: +r[3], funcs: +r[4] });
+    const file = [...stack.map((e) => e.name), name].join('/');
+    rows.push({ file, line: +r[3], branch: +r[4], funcs: +r[5] });
   }
   return { rows, summary };
 }
@@ -105,6 +171,25 @@ const isTestFile = (f) =>
 async function lineCount(file) {
   try { return (await readFile(path.join(REPO, file), 'utf8')).split('\n').length; }
   catch { return 0; }
+}
+
+/** Every production source file under INVENTORY_ROOTS, repo-relative. */
+async function productionInventory() {
+  const { readdir } = await import('node:fs/promises');
+  const found = [];
+  async function walk(dir) {
+    let entries;
+    try { entries = await readdir(path.join(REPO, dir), { withFileTypes: true }); }
+    catch { return; }
+    for (const e of entries) {
+      const rel = `${dir}/${e.name}`;
+      if (INVENTORY_SKIP.test(rel)) continue;
+      if (e.isDirectory()) await walk(rel);
+      else if (/\.(js|mjs|cjs)$/.test(e.name)) found.push(rel);
+    }
+  }
+  for (const root of INVENTORY_ROOTS) await walk(root);
+  return found;
 }
 
 const { code, out } = await runCoverage();
@@ -151,11 +236,29 @@ for (const r of [...srcRows].sort((a, b) => a.line - b.line)) {
 }
 report.push('');
 
+// What coverage never saw. Not a floor - some of these are genuinely browser-
+// only surface the CDP suite covers instead - but it has to be VISIBLE, or an
+// untested module is indistinguishable from a well-tested one in every number
+// above it.
+const inventory = await productionInventory();
+const measured = new Set(srcRows.map((r) => r.file));
+const unmeasured = inventory.filter((f) => !measured.has(f));
+report.push('## Production files no unit test loaded');
+report.push('');
+report.push(`${unmeasured.length} of ${inventory.length} production source files were never `
+  + 'imported by the unit estate, so they appear in no percentage above. '
+  + 'The browser suite covers much of this surface; anything here that it does '
+  + 'not is untested.');
+report.push('');
+for (const f of unmeasured.sort()) report.push(`- ${f}`);
+report.push('');
+
 await mkdir(path.join(REPO, '.coverage'), { recursive: true });
 await writeFile(path.join(REPO, '.coverage', 'summary.md'), report.join('\n'));
 
 console.log(report.slice(0, 20).join('\n'));
-console.log(`\nFull report: .coverage/summary.md (${srcRows.length} source files)`);
+console.log(`\nFull report: .coverage/summary.md (${srcRows.length} measured, `
+  + `${unmeasured.length} of ${inventory.length} production files unmeasured)`);
 if (summary.fail) console.error(`\nFAIL: ${summary.fail} test(s) failed under coverage.`);
 if (floorsFailed) console.error(`FAIL: ${floorsFailed} area(s) below their line-coverage floor.`);
 process.exit(summary.fail || floorsFailed || code ? 1 : 0);

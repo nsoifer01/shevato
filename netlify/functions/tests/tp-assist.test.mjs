@@ -232,17 +232,41 @@ test('an oversize trip is no longer a bad request', async () => {
   const ctx = heavyContext(50, 500);
   assert.ok(JSON.stringify(ctx).length > 30000, 'fixture must actually be oversize');
   // It gets PAST the clamp, so execution reaches the lazy Blob store import,
-  // which throws in a bare test environment. That throw is the proof: the old
-  // code returned a 400 here and never got this far. The exact message depends
-  // on the environment: where @netlify/blobs is installed (local, in the
-  // gitignored functions node_modules) getStore throws "...Netlify Blobs..."
-  // not-configured; on CI the package is absent so the import itself fails with
-  // "Cannot find package '@netlify/blobs'". Either one means we reached the
-  // store, so match both rather than pinning one machine's shape.
-  await assert.rejects(
-    () => handler(req({ origin: 'https://shevato.com', body: bodyWith(ctx) })),
-    /Netlify Blobs|@netlify\/blobs/i,
-  );
+  // which cannot succeed in a bare test environment (either getStore refuses
+  // without a Netlify context, or the package is absent on CI). Reaching it at
+  // all is the proof: the old code returned a 400 here and never got this far.
+  //
+  // What that now LOOKS like changed with the 2026-09-05 audit's F22: store
+  // acquisition used to sit outside every try, so it escaped as an
+  // uncontrolled platform failure and this test asserted the throw. A
+  // dependency being unreachable is not a reason to hand the traveller a
+  // gateway page instead of the JSON their UI knows how to read, so it is now
+  // a documented 503.
+  const res = await handler(req({ origin: 'https://shevato.com', body: bodyWith(ctx) }));
+  assert.equal(res.status, 503);
+  assert.equal((await res.json()).error, 'store_unavailable');
+});
+
+test('a store that cannot be reached is a documented 503, never a platform failure', async () => {
+  // The boundary itself, on the ordinary path rather than the oversize one.
+  // A Blobs incident, a misconfigured deploy or a package missing from the
+  // bundle all land here, and all three used to escape as a 500 with no body
+  // - which the Trip Planner's assistant UI cannot tell apart from anything
+  // else, so it showed the generic failure instead of "not available now".
+  const res = await handler(req({
+    origin: 'https://shevato.com',
+    body: JSON.stringify({
+      clientId: 'client-1',
+      messages: [{ role: 'user', content: 'hello' }],
+      tripContext: {},
+    }),
+  }));
+  assert.equal(res.status, 503);
+  const body = await res.json();
+  assert.equal(body.error, 'store_unavailable');
+  // And it says nothing about what went wrong beyond the code: an upstream
+  // message can carry a path, a bucket name or a token.
+  assert.deepEqual(Object.keys(body), ['error']);
 });
 
 test('a trip too big even without descriptions answers 413, not a bare 400', async () => {

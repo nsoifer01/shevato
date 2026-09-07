@@ -619,21 +619,23 @@ function posterInitial(title) {
 // NFKD splits a precomposed letter into base + combining mark, which the
 // second replace drops. NFKD does not decompose a handful of letters that are
 // their own base character, so those are mapped explicitly.
-const SEARCH_FOLD_MAP = {
-  'ø': 'o', 'ł': 'l', 'đ': 'd', 'ð': 'd', 'þ': 'th', 'ß': 'ss',
-  'æ': 'ae', 'œ': 'oe', 'ı': 'i', 'ŋ': 'n', 'ħ': 'h',
-};
-
-function foldSearchChar(ch) {
-  const base = ch.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  return SEARCH_FOLD_MAP[base] !== undefined ? SEARCH_FOLD_MAP[base] : base;
-}
-
-function foldSearch(s) {
-  let out = '';
-  for (const ch of String(s)) out += foldSearchChar(ch);
-  return out;
-}
+// --- search folding (diacritics) ---
+//
+// THE IMPLEMENTATION LIVES IN scripts/finder-lib.js (2026-09-05 audit F08),
+// because the BUILD needs it too: split-data.js stamps `titleSearch` into the
+// index so the browser no longer normalises 66,380 titles on every page load.
+// Two copies would be two search behaviours waiting to diverge, so these are
+// bindings, not definitions.
+//
+// finder-lib is a plain <script src> loaded before this file; the fallbacks
+// keep the page working (unsorted-but-usable search) if it ever is not.
+const SEARCH_FOLD_MAP = (window.RisingShowsFinder && window.RisingShowsFinder.SEARCH_FOLD_MAP) || {};
+const foldSearchChar = (window.RisingShowsFinder && window.RisingShowsFinder.foldSearchChar)
+  || ((ch) => String(ch).toLowerCase());
+const foldSearch = (window.RisingShowsFinder && window.RisingShowsFinder.foldSearch)
+  || ((str) => String(str).toLowerCase());
+const normalizeSearch = (window.RisingShowsFinder && window.RisingShowsFinder.normalizeSearch)
+  || ((str) => String(str).toLowerCase());
 
 // Same fold, plus the offset map needed to highlight a match in the ORIGINAL
 // string: folding can change length (one accented code point becomes one
@@ -663,12 +665,6 @@ function foldSearchWithMap(s) {
 // show name ("office" → The Office) get an exact match, not a contains hit
 // behind unrelated titles that happen to start with the bare noun.
 // Same form is applied to both query and indexed title before comparing.
-function normalizeSearch(s) {
-  return foldSearch(s)
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim()
-    .replace(/^(the|a|an) /, '');
-}
 
 // fuzzy-search: character-bigram set used by the Dice-coefficient
 // scorer. Run on already-normalized strings so "The Bear" and "bear"
@@ -1079,9 +1075,18 @@ async function load() {
   // the assignment was the only reference in the file. It walked every episode
   // of all ~66,000 season records on every page load to produce a number no
   // code consumed.
-  for (const m of dataset.matches) {
-    m.titleSearch = normalizeSearch(m.title);
-  }
+  //
+  // THE FOLD MOVED (2026-09-05 audit F08). This loop normalised the title of
+  // every one of ~66,380 SEASON records at boot - a measured 112 ms of a
+  // ~420 ms main-thread task on a desktop, so roughly half a second of a
+  // mid-range phone's startup - and the only consumer of the result is
+  // buildSeriesIndex, which keys by SERIES. Nearly half of that work was
+  // folding the same title again for another season of the same show.
+  //
+  // It now happens once per series, inside buildSeriesIndex, where the answer
+  // is actually used. Stamping it into the index at build time was measured
+  // too and rejected: it cost 0.27 MB of brotli for 107 ms of CPU, which on a
+  // phone connection is a wash at best.
   // Dataset freshness is a property of the DATASET, so it renders as soon as
   // the dataset lands. It used to be painted only from loadChangelog()'s
   // success path, so a 404 or a malformed changelog.json (a fresh checkout, a
@@ -1512,7 +1517,10 @@ function buildSeriesIndex() {
       entry = {
         seriesId: m.seriesId,
         title: m.title,
-        titleSearch: m.titleSearch,
+        // Folded HERE, once per series (see the note in load()). The whole
+        // point of the move is that this runs 34,615 times rather than
+        // 66,380: every season of a show folds the identical title.
+        titleSearch: normalizeSearch(m.title),
         year: m.year || null,
         poster: m.poster || null,
         // Series-level IMDb vote count — used to rank suggestion buckets

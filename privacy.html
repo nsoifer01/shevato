@@ -145,7 +145,7 @@
           </div>
           <div class="skill-row">
             <h3>MapTap Rivals</h3>
-            <p>Your rival list, your games, the puzzle cities for each day you have logged, your display name and icon, your MapTap.gg username, a snapshot of your verified MapTap profile, which rival you last had open, and UI preferences.</p>
+            <p>Your rival list, your games, the puzzle cities for each day you have logged, your display name and icon, your MapTap.gg username, a snapshot of the MapTap profile that username resolves to (looked up on maptap.gg, which confirms the account exists rather than that you own it), which rival you last had open, and UI preferences.</p>
           </div>
           <div class="skill-row">
             <h3>Trip Planner</h3>
@@ -353,15 +353,16 @@
 
         <p>Signed in, click your name in the header, then "Sign Out", then "Delete account and all data" at the bottom of that window. Deleting is deliberately awkward: you have to enter your current password and type the word DELETE before the button becomes active. The password is checked before anything is removed, so a wrong one leaves everything untouched.</p>
 
-        <p>It removes, in this order: the synced Firestore document belonging to every app listed earlier on this page, together with the overflow documents that hold any part of that app's data too large for one document, plus the shared theme preference document; the <code>users/&lt;your account id&gt;</code> document itself, which is where Arena keeps your trivia profile (XP, wins, games played and any custom pack); your MapTap Rivals network entry, handle claim and the pair links to rivals you connected with, if you ever joined that network; every synced key in this browser's <code>localStorage</code>; and finally the Firebase Authentication user, so the email address and password credential are gone too.</p>
+        <p>It removes, in this order: the synced Firestore document belonging to every app listed earlier on this page, together with the overflow documents that hold any part of that app's data too large for one document, plus the shared theme preference document; the <code>users/&lt;your account id&gt;</code> document itself, which is where Arena keeps your trivia profile (XP, wins, games played and any custom pack); your MapTap Rivals network entry, handle claim and the pair links to rivals you connected with, if you ever joined that network; your Arena global XP leaderboard row and every Globe Drop daily-challenge score you set; every synced key in this browser's <code>localStorage</code>; and finally the Firebase Authentication user, so the email address and password credential are gone too.</p>
+
+        <p>Your head-to-head records against other players are treated differently, on purpose. Each one is a record of games two people played, so deleting it would take the other player's history with it. Your name on those records is replaced with "Former player" instead, and the win, loss and draw counts stay. The security rules let each side rewrite only its own name, so nobody can do this to you.</p>
 
         <p>If any one of those deletions fails, the process stops, names what failed, and leaves your account active on purpose so you can try again. It never reports success it didn't achieve, and it never deletes the credential before the data, because an account that can't sign in again could never come back to finish the job.</p>
 
-        <p>Three things survive, and we would rather say so than imply otherwise:</p>
+        <p>Two things survive, and we would rather say so than imply otherwise:</p>
 
         <ul>
-          <li>Your Arena global XP leaderboard row, your head-to-head records against other players, and your Globe Drop daily-challenge scores. These live outside <code>users/&lt;your account id&gt;</code> and the security rules don't grant you deletion rights over them: leaderboard rows can only be removed by a leaderboard admin, and the other two have no deletion rule at all.</li>
-          <li>Anything you typed in Arena room chat, in any room that is still open. Chat cannot be edited or recalled while a room is live; it is deleted along with the room when the last player leaves.</li>
+          <li>Anything you typed in Arena room chat, in any room that is still open. Chat cannot be edited or recalled while a room is live; it is deleted along with the room when the last player leaves, and every room is also given an expiry when it is created, so a room whose players all closed their browsers is removed within a day rather than sitting there.</li>
           <li>Other devices you're signed in on keep their own local copy of your app data until it's cleared there. They lose access to the cloud copy immediately, because the account no longer exists.</li>
         </ul>
 
@@ -372,12 +373,11 @@
         <ul>
           <li>Gym Tracker and FPL Planner can erase their own synced data: each has a control in its settings that deletes its Firestore copy. The FPL Planner offers two, kept separate on purpose: "Disconnect your FPL team" removes only the team ID and the cached squad snapshot, on the device and in the cloud, leaving your saved plans and settings alone; "Delete all FPL Planner data" removes all four of its keys locally and deletes the whole <code>fplPlannerApp</code> document from your account. Both actions also remove the cached copy of your team data (squad, bank and history, stored under your team ID) from this device; the bulk public fixture and projection cache remains. Signed out, both remove the local copy only, and the app says which of the two happened.</li>
           <li>Mario Kart, Football H2H, Rising Shows, MapTap Rivals and the Trip Planner have no equivalent per-app control. Their synced copies stay in Firestore until you delete your account or ask us to remove them.</li>
-          <li>MapTap Rivals has a "Leave rival network" control that removes your published profile and handle claim without touching the rest of your account.</li>
+          <li>MapTap Rivals has a "Leave rival network" control that removes your published profile, your handle claim and every connection to a rival, without touching the rest of your account.</li>
           <li>Password reset is self-service too: the sign-in window has a "Forgot password?" link that emails you a reset link.</li>
         </ul>
 
-        <p>If you'd rather not do it yourself, or you want the Arena entries above removed as well, email <a href="mailto:nikita@shevato.com">nikita@shevato.com</a> and we'll take care of it manually.
-        <!-- TODO(owner): state a turnaround commitment you can actually keep (for example "within 30 days") for the manual requests that remain, namely the Arena leaderboard, head-to-head and daily-score rows that a user cannot delete themselves. --></p>
+        <p>If you'd rather not do it yourself, email <a href="mailto:nikita@shevato.com">nikita@shevato.com</a> and we'll take care of it manually.</p>
 
         <p>One scope note: this is an informational page, not a formal legal policy. It makes no statement about legal basis, statutory rights, where data is transferred, use by children, or how changes to this page are announced.
         <!-- TODO(owner): the sentence above is deliberately scoped. Add legal basis, GDPR/CCPA rights, data-transfer locations, children's use, and a policy-change notification process if you need this page to serve a compliance purpose rather than an informational one. None of those are decisions the code can answer. --></p>

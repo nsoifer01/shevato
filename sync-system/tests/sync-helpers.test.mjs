@@ -251,13 +251,56 @@ test('decideRemoteChange: newer remote timestamp → apply', () => {
     assert.equal(verdict, 'apply');
 });
 
-test('decideRemoteChange: older remote timestamp → skip-older', () => {
-    const verdict = decideRemoteChange(
+test('decideRemoteChange: the wall clock has no vote, the revision decides', () => {
+    // This test used to assert skip-older for a remote at rev 3 with an
+    // older TIMESTAMP than a local at rev 2, which is the defect F05 names:
+    // localRev.updatedAt is this device's Date.now() and remoteInfo.updatedAt
+    // is a Firestore server timestamp, so the verdict depended on how well
+    // two clocks agreed. A device an hour fast rejected an hour of
+    // legitimate updates as skip-older.
+    const laterVersionOlderClock = decideRemoteChange(
         { rev: 2, updatedAt: 2000, hash: 'h1' },
         { rev: 3, updatedAt: 1000, hash: 'h2' },
         500
     );
-    assert.equal(verdict, 'skip-older');
+    assert.equal(laterVersionOlderClock, 'apply',
+        'rev 3 has seen more than rev 2, whatever the clocks say');
+
+    const earlierVersionNewerClock = decideRemoteChange(
+        { rev: 3, updatedAt: 1000, hash: 'h1' },
+        { rev: 2, updatedAt: 9999, hash: 'h2' },
+        500
+    );
+    assert.equal(earlierVersionNewerClock, 'skip-older',
+        'and rev 2 has seen less, whatever the clocks say');
+});
+
+test('decideRemoteChange: unflushed local work makes it a conflict, not a loss', () => {
+    // `dirty` means this device holds an edit the cloud has not accepted, so
+    // both sides have moved since they last agreed. Answering that with a
+    // winner and no copy is exactly how "device A adds a workout, device B
+    // adds a workout" used to lose one of them.
+    const verdict = decideRemoteChange(
+        { rev: 2, updatedAt: 1000, hash: 'h1', dirty: true },
+        { rev: 5, updatedAt: 2000, hash: 'h2' },
+        500
+    );
+    assert.equal(verdict, 'conflict');
+
+    // Even when the remote is at a LOWER revision: both moved, so both have
+    // something the other has not seen.
+    assert.equal(decideRemoteChange(
+        { rev: 9, updatedAt: 1000, hash: 'h1', dirty: true },
+        { rev: 2, updatedAt: 2000, hash: 'h2' },
+        500
+    ), 'conflict');
+
+    // A dedupe still wins over a conflict: identical content is not one.
+    assert.equal(decideRemoteChange(
+        { rev: 2, updatedAt: 1000, hash: 'same', dirty: true },
+        { rev: 5, updatedAt: 2000, hash: 'same' },
+        500
+    ), 'skip-deduped');
 });
 
 test('decideRemoteChange: same timestamp, higher remote rev → apply', () => {
@@ -269,19 +312,21 @@ test('decideRemoteChange: same timestamp, higher remote rev → apply', () => {
     assert.equal(verdict, 'apply');
 });
 
-test('decideRemoteChange: same timestamp, lower-or-equal remote rev → skip-older', () => {
-    const equal = decideRemoteChange(
+test('decideRemoteChange: an equal revision on a clean local copy applies', () => {
+    // Equal rev and different content, with nothing unflushed here: our copy
+    // came from the cloud and has not been touched, so there is nothing of
+    // ours to lose and the cloud is the authority. (When there IS something
+    // unflushed, `dirty` makes the same pair a conflict - see above.)
+    assert.equal(decideRemoteChange(
         { rev: 2, updatedAt: 1000, hash: 'h1' },
         { rev: 2, updatedAt: 1000, hash: 'h2' },
         500
-    );
-    const lower = decideRemoteChange(
+    ), 'apply');
+    assert.equal(decideRemoteChange(
         { rev: 3, updatedAt: 1000, hash: 'h1' },
         { rev: 2, updatedAt: 1000, hash: 'h2' },
         500
-    );
-    assert.equal(equal, 'skip-older');
-    assert.equal(lower, 'skip-older');
+    ), 'skip-older');
 });
 
 test('decideRemoteChange: Firestore-shaped timestamp inputs are honored', () => {

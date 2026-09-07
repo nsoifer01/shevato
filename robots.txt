@@ -25,8 +25,12 @@ Disallow: /.netlify/
 Disallow: /netlify/
 Disallow: /firestore.rules
 Disallow: /database.rules.json
-# Repo-internal material the deploy still serves (Netlify publishes the whole
-# tracked tree). Disallow only affects crawling; the files stay fetchable.
+# Repo-internal material. These are NOT on the deploy any more: the site ships
+# an explicit publish directory built from an allow list
+# (scripts/build-publish-dir.mjs), so /FINDINGS.md, /tests/ and the Netlify
+# function sources 404 rather than being merely un-crawled. The rules below
+# are kept because a Disallow costs nothing and stops a crawler wasting a
+# request on a path that used to exist.
 Disallow: /tests/
 Disallow: /scripts/
 Disallow: /assets/seo/

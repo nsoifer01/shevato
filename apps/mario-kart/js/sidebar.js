@@ -30,6 +30,13 @@ function initializeSidebar() {
                 h3Title.style.display = 'none';
             }
         }
+        // REVEAL IT, wherever it ended up (2026-09-05 audit F07). index.html
+        // ships this block with display:none so its 384px never occupies the
+        // main column before this move - everything below it used to be
+        // painted there and then jump up. Unconditional on purpose: if the
+        // move above could not happen (no sidebar in the DOM), the filter
+        // still has to be usable where it stands rather than invisible.
+        if (dateFilterSection) dateFilterSection.style.display = '';
         
         // Move action buttons to sidebar
         const actionButtons = document.querySelector('.input-section .action-buttons');

@@ -200,12 +200,41 @@ export function decideRemoteChange(localRev, remoteInfo, lastRemoteUpdate) {
 
   if (!localRev) return 'apply';
 
-  if (remoteTimestamp < localRev.updatedAt) return 'skip-older';
-  if (remoteTimestamp > localRev.updatedAt) return 'apply';
+  // DIRTY = this device holds edits the cloud has not accepted yet, so both
+  // sides have moved since they last agreed. That is a conflict, and the
+  // caller resolves it by merging or by preserving the loser - never by
+  // silently dropping one of them.
+  if (localRev.dirty) return 'conflict';
 
-  // Equal timestamps — compare revisions.
-  if ((remoteInfo?.rev || 0) > (localRev.rev || 0)) return 'apply';
-  return 'skip-older';
+  // Clean copy: whatever is here came FROM the cloud and has not been
+  // touched since, so the only question left is which logical version is
+  // later. `rev` is a Lamport counter - applyRemoteChange advances it to
+  // max(local, remote) - so a higher rev is strictly later in the causal
+  // order, on every device, with no clock involved.
+  if ((remoteInfo?.rev || 0) < (localRev.rev || 0)) return 'skip-older';
+  return 'apply';
+}
+
+/**
+ * Which side of a conflict wins, when the values cannot be merged.
+ *
+ * DETERMINISTIC, and that is the whole requirement: both devices see the
+ * same two versions and must reach the same answer, or they ping-pong
+ * forever. Higher revision wins (it is later in the causal order); an exact
+ * tie is broken on the content hash, which is arbitrary but identical
+ * everywhere. The loser is never discarded - the caller keeps it as a
+ * recoverable copy - so "wins" decides what is live, not what survives.
+ *
+ * @returns {'local'|'remote'}
+ */
+export function pickConflictWinner(localRev, remoteInfo) {
+  const localRevNum = (localRev && localRev.rev) || 0;
+  const remoteRevNum = (remoteInfo && remoteInfo.rev) || 0;
+  if (remoteRevNum > localRevNum) return 'remote';
+  if (remoteRevNum < localRevNum) return 'local';
+  const localHash = String((localRev && localRev.hash) || '');
+  const remoteHash = String((remoteInfo && remoteInfo.hash) || '');
+  return remoteHash > localHash ? 'remote' : 'local';
 }
 
 /**
@@ -336,4 +365,118 @@ export function planFlushBatches(entries, maxBytes) {
   }
 
   return { batches, oversized };
+}
+
+/* -------------------------------------------------------------------------
+ * Record-level reconciliation (2026-09-05 audit F05).
+ *
+ * Every app in this repo syncs whole localStorage VALUES, so two devices
+ * adding two different games to `maptapRivalsGames` do not edit two records -
+ * they edit one string, and last-writer-wins throws one of the two away. The
+ * value is usually an array of records with a stable `id`, and that is
+ * enough to do better: a three-way merge against the last state the two
+ * sides agreed on tells added apart from deleted, which a two-way union
+ * cannot (a union resurrects every deletion).
+ *
+ * The base is not the values themselves - storing a second copy of an 800 KB
+ * game log would be a real cost on a 5 MB budget - but an id -> content-hash
+ * index of them, which is all the merge needs and is ~18 bytes a record.
+ * ---------------------------------------------------------------------- */
+
+/**
+ * An id -> hash index of a record collection, or null when the value is not
+ * one. "Is one" is deliberately strict: a non-empty array whose every entry
+ * is a plain object carrying a unique string/number `id`. Anything else -
+ * an object, an array of primitives, records without ids, duplicate ids -
+ * falls back to whole-value handling, because a merge that guessed at the
+ * identity of a record would be worse than an honest conflict copy.
+ *
+ * @param {*} value
+ * @returns {Record<string, string> | null}
+ */
+export function recordIndex(value) {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  // Null prototype: record ids come from stored user data, and '__proto__'
+  // as an id would otherwise write through to Object.prototype.
+  const index = Object.create(null);
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+    const id = entry.id;
+    if (typeof id !== 'string' && typeof id !== 'number') return null;
+    const key = String(id);
+    if (!key || index[key] !== undefined) return null;   // missing or duplicate
+    index[key] = hashValue(entry);
+  }
+  return index;
+}
+
+/**
+ * Three-way merge of two record collections against the state they last
+ * agreed on.
+ *
+ * Per id:
+ *   - in both, same content            -> keep it
+ *   - in both, one side matches base   -> the other side changed it, take that
+ *   - in both, both changed            -> conflict; deterministic winner kept,
+ *                                          and the id is reported
+ *   - in one side only, NOT in base    -> that side added it, keep it
+ *   - in one side only, IS in base     -> the other side deleted it, drop it
+ *
+ * Order is taken from the remote collection (which both devices can see),
+ * with each side's own additions appended in its own order. The result is
+ * therefore not byte-identical on the two devices in the same round, but it
+ * IS monotone: each round the two record sets move toward their union and
+ * then stop changing, at which point the hashes match and the exchange ends.
+ *
+ * @param {Record<string,string>|null} baseIndex id -> hash they last agreed on
+ * @param {*} localValue
+ * @param {*} remoteValue
+ * @returns {{merged: Array, conflicts: string[]} | null} null when the shapes
+ *          do not qualify for a record merge.
+ */
+export function mergeRecordCollections(baseIndex, localValue, remoteValue) {
+  const localIndex = recordIndex(localValue);
+  const remoteIndex = recordIndex(remoteValue);
+  if (!localIndex || !remoteIndex) return null;
+
+  const base = baseIndex && typeof baseIndex === 'object' ? baseIndex : Object.create(null);
+  const localById = new Map(localValue.map((r) => [String(r.id), r]));
+  const remoteById = new Map(remoteValue.map((r) => [String(r.id), r]));
+  const conflicts = [];
+  const keep = new Map();   // id -> record
+
+  const decide = (id) => {
+    const inLocal = localById.has(id);
+    const inRemote = remoteById.has(id);
+    const inBase = Object.prototype.hasOwnProperty.call(base, id);
+
+    if (inLocal && inRemote) {
+      const lh = localIndex[id];
+      const rh = remoteIndex[id];
+      if (lh === rh) return remoteById.get(id);
+      const bh = inBase ? base[id] : undefined;
+      if (bh !== undefined && lh === bh) return remoteById.get(id);   // remote edited
+      if (bh !== undefined && rh === bh) return localById.get(id);    // local edited
+      // Both edited, or no base to tell. Deterministic on the content hash
+      // so both devices choose the same record.
+      conflicts.push(id);
+      return rh > lh ? remoteById.get(id) : localById.get(id);
+    }
+    if (inLocal) return inBase ? null : localById.get(id);            // deleted remotely / added locally
+    return inBase ? null : remoteById.get(id);                        // deleted locally / added remotely
+  };
+
+  for (const record of remoteValue) {
+    const id = String(record.id);
+    const chosen = decide(id);
+    if (chosen) keep.set(id, chosen);
+  }
+  for (const record of localValue) {
+    const id = String(record.id);
+    if (keep.has(id) || remoteById.has(id)) continue;
+    const chosen = decide(id);
+    if (chosen) keep.set(id, chosen);
+  }
+
+  return { merged: [...keep.values()], conflicts };
 }

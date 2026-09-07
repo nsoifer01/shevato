@@ -513,7 +513,43 @@ async function tryLoadPendingPostMatch() {
     setView('play');
     showJoinError('Loading recap…');
     try {
-        const snap = await getDoc(doc(db, 'triviaRooms', code));
+        // STILL IN THE ROOM? Then this is not a recap, it is the room.
+        //
+        // The end screen rewrites the URL to ?postMatch=<code> so a refresh
+        // and a share both land back on it - and a refresh is exactly what
+        // happens on the end screen (a pull-to-refresh on a phone, reopening
+        // the link the app put in the address bar). Coming back through the
+        // recap path attached NO room listener, so a player who was still a
+        // member stopped hearing about the room entirely: the rematch someone
+        // else proposed never reached them, and the restart that followed
+        // left them staring at a frozen podium. The read-only recap is for
+        // people who were NOT in the room; a member re-enters it live.
+        try {
+            const mine = await getDoc(doc(db, 'triviaRooms', code, 'players', state.user.uid));
+            if (mine.exists()) {
+                clearJoinError();
+                state.postMatchCode = null;
+                try {
+                    await updateDoc(doc(db, 'triviaRooms', code, 'players', state.user.uid),
+                        { lastSeen: serverTimestamp(), disconnectedAt: deleteField() });
+                } catch (_) { /* presence is best-effort */ }
+                enterRoom(code);
+                return;
+            }
+        } catch (_) { /* not readable: fall through to the recap path */ }
+
+        let snap;
+        try {
+            snap = await getDoc(doc(db, 'triviaRooms', code));
+        } catch (_) {
+            // A scoped room this user was never in. The recap is part of the
+            // room's private content, so say what is true rather than
+            // pretending the room is gone.
+            showJoinError('That recap is only visible to the players who were in the room.');
+            state.postMatchCode = null;
+            syncUrlToState();
+            return;
+        }
         if (!snap.exists()) {
             showJoinError('Recap not found - that room may have been cleaned up.');
             state.postMatchCode = null;
@@ -567,19 +603,17 @@ async function tryRejoinPendingRoom() {
     setView('play');
     showJoinError('Loading room…');
     try {
-        const snap = await getDoc(doc(db, 'triviaRooms', code));
-        if (!snap.exists()) {
-            showJoinError('Room not found.');
-            return;
-        }
-        const data = snap.data() || {};
-        // Membership lookup. We *must* do this BEFORE evaluating
-        // status==='finished', because a previous player coming back to a
-        // finished room should still land on the end-of-game screen (to
-        // see the podium / rematch), not the "room finished" error wall.
+        // MEMBERSHIP FIRST. It always was semantically ("a previous player
+        // coming back to a finished room should land on the end screen, not
+        // an error wall"), and since F01 it is also mechanically required:
+        // in a scoped room the room doc is not readable until this probe
+        // says yes. Your own player doc is always readable, present or not.
         const playerRef = doc(db, 'triviaRooms', code, 'players', state.user.uid);
-        const playerSnap = await getDoc(playerRef);
-        const wasAlreadyMember = playerSnap.exists();
+        let wasAlreadyMember = false;
+        try {
+            const playerSnap = await getDoc(playerRef);
+            wasAlreadyMember = playerSnap.exists();
+        } catch (_) { /* treat an unreadable probe as "not a member" */ }
         if (wasAlreadyMember) {
             // Member rejoin - works for any status. Finished rooms render
             // the end stage, lobby/picking/playing render the matching
@@ -601,15 +635,21 @@ async function tryRejoinPendingRoom() {
             enterRoom(code);
             return;
         }
-        // Non-member: now it's safe to evaluate status. A non-member
-        // trying to join a finished room sees the expected error.
-        if (data.status === 'finished') {
+        // Non-member: everything below comes from what a non-member is
+        // allowed to see. A scoped room answers with its lobby doc; an older
+        // one with the room doc itself.
+        const info = await readRoomJoinInfo(code);
+        if (!info.exists) {
+            showJoinError('Room not found.');
+            return;
+        }
+        if (info.legacyRoom && info.legacyRoom.status === 'finished') {
             showJoinError('That room has already finished.');
             return;
         }
         const codeInput = $('#join-code');
         if (codeInput) codeInput.value = code;
-        if (data.isPrivate) {
+        if (info.isPrivate) {
             setJoinPwFieldVisible(true);
             showJoinError('This room is private. Enter the password to join.');
         } else {
@@ -1500,11 +1540,40 @@ async function createRoom(opts) {
             status: 'lobby',
             isPrivate,
             gameType,
+            // MEMBERS-ONLY CONTENT (2026-09-07 audit F01). With this flag set,
+            // firestore.rules keeps the room doc, the roster and the chat log
+            // to players who are actually in the room. Before it, one
+            // signed-in stranger who obtained the five-character code could
+            // read the questions (correctIndex included), the whole roster
+            // (including each member's replayable gateHash) and every message.
+            // Everything a NON-member needs to reach the join form lives in
+            // the public lobby doc written below instead.
+            scopedReads: true,
             currentQuestionIndex: 0,
             questionStartedAt: null,
             round: 1,
             createdAt: serverTimestamp(),
-            finishedAt: null
+            finishedAt: null,
+            // WHEN THIS ROOM STOPS EXISTING, WITHOUT A CLIENT (2026-09-05
+            // audit F18). Cleanup has always depended on somebody's browser:
+            // the last player to leave deletes the room and sweeps its
+            // subcollections. Every client force-quitting - a lost tab, a
+            // phone that sleeps, a closed laptop - leaves the room and its
+            // players, chat and gate behind for good, which
+            // apps/arena/FINDINGS.md has recorded as unswept.
+            //
+            // This field is the input to a Firestore TTL policy on
+            // triviaRooms.expiresAt (one console/gcloud setting, named in
+            // apps/arena/README.md). Firestore then deletes the room DOC on
+            // its own schedule, and every rule that turns on `roomGone()`
+            // starts applying: the leftover players, chat and gate become
+            // orphans any signed-in client may sweep, which is exactly the
+            // path the last-leaver teardown already uses.
+            //
+            // 24 hours, not minutes: a room is for one sitting, and a paused
+            // game or a slow rematch must never be swept out from under the
+            // people playing it.
+            expiresAt: new Date(Date.now() + ROOM_TTL_MS)
         };
 
         if (gameType === 'globe-drop') {
@@ -1610,6 +1679,21 @@ async function createRoom(opts) {
             await setDoc(doc(db, 'triviaRooms', code, 'private', 'gate'), { hash: gateHash });
         }
 
+        // The public face of a scoped room: does it exist, does it want a
+        // password, which game is it. Immutable, so it is written once and
+        // never has to be kept in step with a game in progress.
+        //
+        // BEST EFFORT on purpose. Rules deploy separately from this file, so
+        // a build can reach production before `firestore.rules` does; if this
+        // write is refused the room simply has no lobby doc, the old rules
+        // still allow the room doc to be read, and joinRoom's legacy fallback
+        // handles it. The room is never left uncreatable by a rules lag.
+        try {
+            await setDoc(doc(db, 'triviaRooms', code, 'public', 'lobby'), { isPrivate, gameType });
+        } catch (err) {
+            console.warn('lobby doc write refused (rules not deployed yet?):', err && err.code);
+        }
+
         try {
             await joinPlayer(code, displayName, /* isHost */ true, -1, gateHash);
         } catch (err) {
@@ -1617,6 +1701,7 @@ async function createRoom(opts) {
             // it would be an orphan nobody can ever sweep (audit D2). Roll it
             // back (host may delete the room; the gate is sweepable once the
             // room is gone).
+            try { await deleteDoc(doc(db, 'triviaRooms', code, 'public', 'lobby')); } catch (_) { /* best-effort */ }
             try { await deleteDoc(ref); } catch (_) { /* best-effort */ }
             if (isPrivate) { try { await deleteDoc(doc(db, 'triviaRooms', code, 'private', 'gate')); } catch (_) { /* best-effort */ } }
             throw err;
@@ -1654,12 +1739,26 @@ async function createRoom(opts) {
     }
 }
 
+// How long after creation a room may be reaped by the server-side TTL policy
+// (see `expiresAt` on the room doc). A room is for one sitting; a day is far
+// more than any real game needs and far less than "forever", which is what it
+// was before.
+const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
+
 async function reserveUniqueRoomCode() {
     // Try a handful of times - collisions on a 31^5 space are vanishingly rare.
     for (let i = 0; i < 6; i++) {
         const code = RoomState.generateRoomCode();
-        const snap = await getDoc(doc(db, 'triviaRooms', code));
-        if (!snap.exists()) return code;
+        try {
+            const snap = await getDoc(doc(db, 'triviaRooms', code));
+            if (!snap.exists()) return code;
+        } catch (_) {
+            // Since F01 a scoped room answers a non-member's read with
+            // permission-denied rather than a document. That is not an error
+            // here - it is the strongest possible evidence the code is taken,
+            // so draw another. (A missing room still reads as missing: the
+            // rule allows resource == null precisely so this loop works.)
+        }
     }
     throw new Error('Could not reserve a room code; try again.');
 }
@@ -1689,9 +1788,12 @@ async function maybeRevealJoinPasswordField(rawValue) {
     if (!state.user) return; // can't peek; rules require auth
     const token = ++joinPeekToken;
     try {
-        const snap = await getDoc(doc(db, 'triviaRooms', code));
+        // Reads the lobby doc for a scoped room and the room doc for an
+        // older one - the peek is the same question the join asks, so it
+        // uses the same reader.
+        const info = await readRoomJoinInfo(code);
         if (token !== joinPeekToken) return;
-        const isPrivate = snap.exists() && !!snap.data().isPrivate;
+        const isPrivate = info.exists && info.isPrivate;
         if (isPrivate) {
             setJoinPwFieldVisible(true);
         } else {
@@ -1700,6 +1802,53 @@ async function maybeRevealJoinPasswordField(rawValue) {
         }
     } catch (_) {
         if (token === joinPeekToken) setJoinPwFieldVisible(false);
+    }
+}
+
+/**
+ * What a NON-member is allowed to learn about a room, from whichever source
+ * this room has.
+ *
+ * Rooms created since the F01 remediation publish an immutable
+ * `public/lobby` doc ({ isPrivate, gameType }) and keep the room doc itself
+ * to their members. Older rooms - and rooms created while the rules lagged
+ * the client - have no lobby doc and a world-readable room doc, exactly as
+ * before. Both are handled here so a join never depends on which of the two
+ * it is looking at.
+ *
+ * @returns {Promise<{exists: boolean, isPrivate: boolean, gameType: string,
+ *                    legacyRoom: object|null}>}
+ */
+async function readRoomJoinInfo(code) {
+    try {
+        const lobby = await getDoc(doc(db, 'triviaRooms', code, 'public', 'lobby'));
+        if (lobby.exists()) {
+            const d = lobby.data() || {};
+            return {
+                exists: true,
+                isPrivate: !!d.isPrivate,
+                gameType: d.gameType || 'unknown',
+                legacyRoom: null,
+            };
+        }
+    } catch (_) { /* fall through to the legacy read */ }
+    // No lobby doc: either a room that predates it, or the rules refused the
+    // lobby write. The room doc is readable in both of those cases.
+    try {
+        const snap = await getDoc(doc(db, 'triviaRooms', code));
+        if (!snap.exists()) return { exists: false, isPrivate: false, gameType: 'unknown', legacyRoom: null };
+        const d = snap.data() || {};
+        return {
+            exists: true,
+            isPrivate: !!d.isPrivate,
+            gameType: d.gameType || 'unknown',
+            legacyRoom: d,
+        };
+    } catch (_) {
+        // A scoped room whose lobby doc is missing AND whose room doc we may
+        // not read. Nothing else can be learned from outside; let the join
+        // attempt itself be the answer.
+        return { exists: true, isPrivate: true, gameType: 'unknown', legacyRoom: null };
     }
 }
 
@@ -1718,20 +1867,22 @@ async function joinRoom() {
         showJoinError(`Enter a ${Config.ROOM_CODE_LENGTH}-character room code.`);
         return;
     }
-    const ref = doc(db, 'triviaRooms', code);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) {
+    const info = await readRoomJoinInfo(code);
+    if (!info.exists) {
         showJoinError('Room not found.');
         return;
     }
-    const data = snap.data();
-    if (data.status === 'finished') {
+    const legacy = info.legacyRoom;
+    // A legacy (world-readable) room can still be checked before joining.
+    // A scoped one cannot: status lives on the room doc, and reading it is
+    // exactly what membership buys. The check moves below the join.
+    if (legacy && legacy.status === 'finished') {
         showJoinError('That room has already finished.');
         return;
     }
 
     let gateHash = null;
-    if (data.isPrivate) {
+    if (info.isPrivate) {
         const passwordField = $('#join-password-field');
         passwordField.hidden = false;
         const password = String($('#join-password').value || '').trim();
@@ -1739,12 +1890,12 @@ async function joinRoom() {
             showJoinError('This room is private. Enter the password.');
             return;
         }
-        if (typeof data.password === 'string' && data.password) {
+        if (legacy && typeof legacy.password === 'string' && legacy.password) {
             // Legacy room created before the hashed gate (defect 22): the
             // cleartext password still sits on the room doc, so compare it
             // client-side exactly as before. New rooms never write
             // data.password, so this branch dies out as old rooms expire.
-            if (password !== data.password) {
+            if (password !== legacy.password) {
                 showJoinError('Incorrect password.');
                 return;
             }
@@ -1757,21 +1908,10 @@ async function joinRoom() {
         }
     }
 
-    // Capacity guard
-    const playersSnap = await getDocs(collection(db, 'triviaRooms', code, 'players'));
-    if (playersSnap.size >= Config.MAX_PLAYERS_PER_ROOM) {
-        showJoinError('That room is full.');
-        return;
-    }
-
     const displayName = await ensureDisplayNameChosen();
     if (!displayName) return;
-    // Mark the player as a spectator if they're joining mid-game so the UI
-    // can show a "Spectating - joining next round" banner and gate submitting.
-    const isSpectator = data.status === 'playing';
     try {
-        await joinPlayer(code, displayName, /* isHost */ false,
-            isSpectator ? (data.currentQuestionIndex || 0) : -1, gateHash);
+        await joinPlayer(code, displayName, /* isHost */ false, -1, gateHash);
     } catch (err) {
         // The rules gate rejects a bad hash as permission-denied; map it
         // to the same message the legacy compare shows.
@@ -1783,15 +1923,60 @@ async function joinRoom() {
         }
         return;
     }
+
+    // FROM HERE ON WE ARE A MEMBER, which is what makes the room doc and the
+    // roster readable. The capacity guard and the finished/spectator checks
+    // used to run before the join, on documents an outsider was allowed to
+    // read; they run here now, and back the join out when they fail. The
+    // pre-join versions were racy anyway (two joiners could both pass a
+    // capacity check that neither had reserved a seat in).
+    let room = null;
+    try {
+        const snap = await getDoc(doc(db, 'triviaRooms', code));
+        room = snap.exists() ? snap.data() : null;
+    } catch (_) { /* treated as unknown below */ }
+
+    if (room && room.status === 'finished') {
+        await leaveJoinedRoom(code);
+        showJoinError('That room has already finished.');
+        return;
+    }
+    try {
+        const playersSnap = await getDocs(collection(db, 'triviaRooms', code, 'players'));
+        if (playersSnap.size > Config.MAX_PLAYERS_PER_ROOM) {
+            await leaveJoinedRoom(code);
+            showJoinError('That room is full.');
+            return;
+        }
+    } catch (_) { /* a roster we cannot read must not block a valid join */ }
+
+    // Mark the player as a spectator if they joined mid-game so the UI can
+    // show a "Spectating - joining next round" banner and gate submitting.
+    const isSpectator = !!room && room.status === 'playing';
+    if (isSpectator || (room && (room.round || 1) !== 1)) {
+        try {
+            const patch = { round: (room && room.round) || 1 };
+            if (isSpectator) patch.joinedAtQuestionIndex = room.currentQuestionIndex || 0;
+            await updateDoc(doc(db, 'triviaRooms', code, 'players', state.user.uid), patch);
+        } catch (_) { /* the snapshot listener corrects the view either way */ }
+    }
+
     // Reported only after every guard has passed and the player doc is
     // written, so a wrong password, a full room or an abandoned name prompt is
     // never counted as a join. The room code is a shared secret that grants
     // entry, and the display name is user-entered - neither is sent.
     track('trackAction', 'room_joined', {
-        game_type: data.gameType || 'unknown',
+        game_type: (room && room.gameType) || info.gameType || 'unknown',
         joined_as: isSpectator ? 'spectator' : 'player',
     });
     enterRoom(code);
+}
+
+/** Undo a join that a post-join guard rejected. Best effort by design. */
+async function leaveJoinedRoom(code) {
+    try {
+        await deleteDoc(doc(db, 'triviaRooms', code, 'players', state.user.uid));
+    } catch (_) { /* the stale-player sweep collects it */ }
 }
 
 async function joinPlayer(code, displayName, isHost, joinedAtQuestionIndex, gateHash) {
@@ -1799,6 +1984,11 @@ async function joinPlayer(code, displayName, isHost, joinedAtQuestionIndex, gate
     // Pull the room's current round so we don't carry stale "joinedAt round 1"
     // markers into round 2+. We can't write across players, so each player
     // is responsible for keeping their own `round` field current.
+    //
+    // A joiner is not yet a member, so in a scoped room this read is DENIED
+    // and `round` falls back to 1. joinRoom corrects it immediately after
+    // the create, when membership makes the room doc readable; the host and
+    // every reconnect path can read it here as they always could.
     let currentRound = 1;
     try {
         const roomSnap = await getDoc(doc(db, 'triviaRooms', code));
@@ -1851,13 +2041,22 @@ async function joinPlayer(code, displayName, isHost, joinedAtQuestionIndex, gate
         doc_data.joinedAtQuestionIndex = joinedAtQuestionIndex;
     }
     // Proof-of-password for gated rooms: firestore.rules compares this
-    // against the unreadable /private/gate hash on member CREATE. It is
-    // visible to signed-in users who can read player docs - the password
-    // itself never is (see js/room-gate.js for the boundary discussion).
+    // against the unreadable /private/gate hash on member CREATE.
     if (gateHash) {
         doc_data.gateHash = gateHash;
     }
     await setDoc(pref, doc_data, { merge: true });
+    // AND THEN THROW IT AWAY. The hash is an admission proof: anyone holding
+    // it can enter the room without the password. It only has to exist for
+    // the length of the create above (that is the write the rules evaluate),
+    // and leaving it on the document made it a durable, replayable
+    // credential sitting in a record other people can read. Scoped rooms
+    // already keep the roster to their members; this makes the proof
+    // undiscoverable even to them. Best effort: a failure here leaves the
+    // pre-2026-09-07 situation, which the read scope already covers.
+    if (gateHash) {
+        try { await updateDoc(pref, { gateHash: deleteField() }); } catch (_) { /* see above */ }
+    }
 }
 
 function openSignInPrompt() {
@@ -2107,6 +2306,7 @@ async function sweepRoomLeftovers(code, leftoverPlayerUids) {
         snap.docs.forEach((d) => tasks.push(deleteDoc(doc(db, 'triviaRooms', code, 'chat', d.id)).catch(() => {})));
     } catch (e) { /* ignore */ }
     tasks.push(deleteDoc(doc(db, 'triviaRooms', code, 'private', 'gate')).catch(() => {}));
+    tasks.push(deleteDoc(doc(db, 'triviaRooms', code, 'public', 'lobby')).catch(() => {}));
     (leftoverPlayerUids || []).forEach((uid) => {
         tasks.push(deleteDoc(doc(db, 'triviaRooms', code, 'players', uid)).catch(() => {}));
     });

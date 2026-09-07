@@ -48,6 +48,36 @@ export const RETRY_STATUSES = [500, 502, 503, 504, 408, 429];
 export const RETRY_DELAY_MS = 300;
 export const RETRY_JITTER_MS = 200;
 
+// Deadlines, because a request that never settles is not a failure any of the
+// code above can see.
+//
+// Retry and stale-fallback both live in a `catch`, so they only run once a
+// request FAILS. A connection that is opened and then simply never answers
+// (captive portal, a dead middlebox, a mobile handover) rejects nothing: the
+// planner sat on its loading state, and because fetchPath de-duplicates by
+// path, a second refresh - including a FORCED one - joined the same stuck
+// promise instead of starting a live request. The server's own upstream
+// timeout bounds function-to-FPL, not browser-to-function.
+//
+// ATTEMPT_TIMEOUT_MS bounds one network attempt. It is deliberately larger
+// than the function's own 9s upstream budget plus a cold start, so a slow but
+// working request is never killed for being slow.
+//
+// TOTAL_DEADLINE_MS bounds the whole operation (attempt + retry delay +
+// retry). Past it the operation gives up rather than starting work it cannot
+// finish, and fetchPath's existing handler serves the stale cached copy.
+export const ATTEMPT_TIMEOUT_MS = 15000;
+export const TOTAL_DEADLINE_MS = 32000;
+
+/** A request that ran out of time rather than being refused. */
+export class RequestTimeoutError extends Error {
+  constructor(path) {
+    super(`timed out fetching ${path}`);
+    this.name = 'RequestTimeoutError';
+    this.path = path;
+  }
+}
+
 const SOURCE_LABELS = [
   [/^bootstrap-static$/, 'Players, prices and news'],
   [/^fixtures$/, 'Fixtures'],
@@ -122,6 +152,10 @@ export function createFplApi({
   now = () => Date.now(),
   proxyUrl = PROXY_URL,
   directBase = DIRECT_BASE,
+  // Injectable so tests can exercise a real timeout in milliseconds rather
+  // than waiting fifteen seconds for the production budget.
+  attemptTimeoutMs = ATTEMPT_TIMEOUT_MS,
+  totalDeadlineMs = TOTAL_DEADLINE_MS,
 } = {}) {
   const doFetch = fetchImpl || (typeof fetch === 'function' ? (...a) => fetch(...a) : null);
   const store = storage !== undefined ? storage : safeLocalStorage();
@@ -290,70 +324,142 @@ export function createFplApi({
   // manager's GW1 picks before the GW1 deadline), and deadline day is exactly
   // when a transient 5xx is most likely. A 404 is a real answer and is never
   // retried; neither is a 403 or a 400.
-  const retryable = (err, status) => RETRY_STATUSES.includes(status)
-    || (err && (err.name === 'AbortError' || err.name === 'TypeError'));
+  // A retryable STATUS is decided by the consumer (it holds the response);
+  // this decides retryable ERRORS. A timeout is one: the attempt budget is
+  // deliberately smaller than the operation budget so a single stall gets a
+  // second chance rather than costing the whole request.
+  const retryable = (err) => !!err
+    && (err.name === 'AbortError' || err.name === 'TypeError'
+        || err instanceof RequestTimeoutError);
 
-  async function fetchWithRetry(url, init) {
-    let res;
+  // One attempt, with its own abort deadline, and the BODY READ INSIDE IT.
+  //
+  // AbortController rather than AbortSignal.timeout so the timer is ours to
+  // clear: leaving a 15s timer armed after a fast response keeps the event
+  // loop alive for no reason.
+  //
+  // `consume` reads the response while the signal is still armed. That is the
+  // whole reason this takes a callback: headers can arrive promptly and the
+  // BODY then stall forever (a proxy that opens a response and never fills
+  // it), and a deadline that is cleared the moment the Response object exists
+  // bounds nothing that matters. `res.json()` has to happen under the same
+  // abort as the connection that produced it.
+  //
+  // `deadline` is the wall-clock moment the WHOLE operation must be done by;
+  // the attempt gets the smaller of its own budget and what is left of that,
+  // so a retry can never run past the operation deadline.
+  async function attempt(url, init, deadline, consume) {
+    const remaining = deadline - now();
+    if (remaining <= 0) throw timeoutError(url);
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    const budget = Math.min(attemptTimeoutMs, remaining);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      if (controller) controller.abort();
+    }, budget);
+    try {
+      const res = await doFetch(url, controller ? { ...init, signal: controller.signal } : init);
+      return await consume(res);
+    } catch (err) {
+      // An abort we caused is a timeout, not "the user navigated away", and
+      // it must carry that meaning into the stale-fallback path.
+      if (timedOut) throw timeoutError(url);
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  function timeoutError(url) {
+    return new RequestTimeoutError(url);
+  }
+
+  // A consumed result may ask for a retry instead of being an answer, because
+  // the retry decision is made on the status line while the body is still
+  // unread. `{ retryStatus }` is that marker and never escapes this file.
+  const retryMarker = (status) => ({ retryStatus: status });
+
+  async function fetchWithRetry(url, init, deadline, consume) {
     let firstErr = null;
     try {
-      res = await doFetch(url, init);
-      if (!retryable(null, res.status)) return res;
+      const out = await attempt(url, init, deadline, consume);
+      if (!out || out.retryStatus === undefined) return out;
+      firstErr = new Error(`upstream ${out.retryStatus} for ${url}`);
     } catch (err) {
       firstErr = err;
       if (!retryable(err, 0)) throw err;
     }
-    await new Promise(r => setTimeout(r, RETRY_DELAY_MS + Math.floor(Math.random() * RETRY_JITTER_MS)));
+    const delay = RETRY_DELAY_MS + Math.floor(Math.random() * RETRY_JITTER_MS);
+    // No point sleeping through a deadline that has already passed, and no
+    // point starting a retry there is no time left to finish.
+    if (now() + delay >= deadline) throw firstErr;
+    await new Promise(r => setTimeout(r, delay));
+    let out;
     try {
-      return await doFetch(url, init);
+      out = await attempt(url, init, deadline, consume);
     } catch (err) {
       throw firstErr || err;
     }
+    if (out && out.retryStatus !== undefined) throw firstErr;
+    return out;
   }
 
-  async function requestProxy(path) {
-    const res = await fetchWithRetry(`${proxyUrl}?path=${encodeURIComponent(path)}`, {
-      headers: { Accept: 'application/json' },
-    });
-    // Our function always stamps x-fpl-cache. A 404 without it is the static
-    // dev server saying the function does not exist here, not FPL saying the
-    // team id is unknown, and the two must not be confused.
-    const isOurs = !!res.headers.get('x-fpl-cache');
-    if (!isOurs && (res.status === 404 || res.status === 405)) return { absent: true };
-    if (res.status === 404) throw new NotFoundError(path);
-    if (!res.ok) throw new Error(`proxy ${res.status} for ${path}`);
-    return {
-      data: await res.json(),
-      fetchedAt: res.headers.get('x-fpl-fetched-at') || new Date(now()).toISOString(),
-      stale: res.headers.get('x-fpl-stale') === 'true',
-      // The proxy computes this on its own clock, which is the only clock that
-      // can say how old the DATA is. Carried through so freshness never has to
-      // be inferred by subtracting a server timestamp from a device clock.
-      serverAgeSeconds: Number.parseInt(res.headers.get('x-fpl-age-seconds') || '', 10),
-    };
+  async function requestProxy(path, deadline) {
+    return fetchWithRetry(
+      `${proxyUrl}?path=${encodeURIComponent(path)}`,
+      { headers: { Accept: 'application/json' } },
+      deadline,
+      async (res) => {
+        if (RETRY_STATUSES.includes(res.status)) return retryMarker(res.status);
+        // Our function always stamps x-fpl-cache. A 404 without it is the
+        // static dev server saying the function does not exist here, not FPL
+        // saying the team id is unknown, and the two must not be confused.
+        const isOurs = !!res.headers.get('x-fpl-cache');
+        if (!isOurs && (res.status === 404 || res.status === 405)) return { absent: true };
+        if (res.status === 404) throw new NotFoundError(path);
+        if (!res.ok) throw new Error(`proxy ${res.status} for ${path}`);
+        return {
+          data: await res.json(),
+          fetchedAt: res.headers.get('x-fpl-fetched-at') || new Date(now()).toISOString(),
+          stale: res.headers.get('x-fpl-stale') === 'true',
+          // The proxy computes this on its own clock, which is the only clock
+          // that can say how old the DATA is. Carried through so freshness
+          // never has to be inferred by subtracting a server timestamp from a
+          // device clock.
+          serverAgeSeconds: Number.parseInt(res.headers.get('x-fpl-age-seconds') || '', 10),
+        };
+      }
+    );
   }
 
   // Direct upstream. Only reachable where CORS is not in the way (a
   // `netlify dev` session serves the proxy instead, and a plain static server
   // on localhost will be blocked by FPL's missing CORS headers). Kept because
   // it costs nothing and makes the client work anywhere the browser allows it.
-  async function requestDirect(path) {
-    const res = await doFetch(`${directBase}${path}/`, { headers: { Accept: 'application/json' } });
-    if (res.status === 404) throw new NotFoundError(path);
-    if (!res.ok) throw new Error(`upstream ${res.status} for ${path}`);
-    return { data: await res.json(), fetchedAt: new Date(now()).toISOString(), stale: false };
+  async function requestDirect(path, deadline) {
+    return attempt(
+      `${directBase}${path}/`,
+      { headers: { Accept: 'application/json' } },
+      deadline,
+      async (res) => {
+        if (res.status === 404) throw new NotFoundError(path);
+        if (!res.ok) throw new Error(`upstream ${res.status} for ${path}`);
+        return { data: await res.json(), fetchedAt: new Date(now()).toISOString(), stale: false };
+      }
+    );
   }
 
-  async function load(path) {
+  async function load(path, deadline) {
     let proxyWasAbsent = false;
     if (proxyAvailable) {
-      const out = await requestProxy(path);
+      const out = await requestProxy(path, deadline);
       if (!out.absent) return out;
       proxyAvailable = false;
       proxyWasAbsent = true;
     }
     try {
-      return await requestDirect(path);
+      return await requestDirect(path, deadline);
     } catch (err) {
       // A NotFoundError is a real answer from FPL (unknown team id) and must
       // keep its meaning. Anything else, once we already know the proxy is not
@@ -379,9 +485,10 @@ export function createFplApi({
     // components for the bootstrap at once downloads it four times.
     if (inflight.has(path)) return inflight.get(path);
 
+    const deadline = now() + totalDeadlineMs;
     const job = (async () => {
       try {
-        const fresh = await load(path);
+        const fresh = await load(path, deadline);
         // `receivedAt` is this device's clock at the moment the copy arrived, so
         // freshness is later measured against the same clock that recorded it.
         const entry = {
@@ -430,6 +537,10 @@ export function createFplApi({
     getEntryPicks: (entryId, gw, opts) => fetchPath(`entry/${id(entryId, 'team id')}/event/${id(gw, 'gameweek')}/picks`, opts),
     getElementSummary: (playerId, opts) => fetchPath(`element-summary/${id(playerId, 'player id')}`, opts),
     getEventLive: (gw, opts) => fetchPath(`event/${id(gw, 'gameweek')}/live`, opts),
+
+    // The deadlines this instance is running with, so the UI (and a test) can
+    // say how long a request is allowed to take before it becomes an error.
+    deadlines: () => ({ attemptTimeoutMs, totalDeadlineMs }),
 
     // DataStatus.sources, in the order the paths were first requested.
     getDataStatus() {
