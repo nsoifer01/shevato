@@ -43,7 +43,7 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 // moment the script runs, whereas a bad path in shipped code 404s silently in
 // somebody's browser. Third-party vendor bundles are excluded outright.
 const EXCLUDED_SEGMENTS = new Set([
-  'vendor', 'node_modules', 'tests', 'tests-rules', 'e2e', 'scripts', 'experiments',
+  'vendor', 'node_modules', 'dist', 'tests', 'tests-rules', 'e2e', 'scripts', 'experiments',
 ]);
 
 function trackedFiles() {

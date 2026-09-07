@@ -43,6 +43,7 @@ const SUITES = [
   'tests/browser/suites/visual.mjs',
   'tests/browser/suites/perf.mjs',
   'tests/browser/suites/pwa-gym.mjs',
+  'tests/browser/suites/csp.mjs',
   'apps/trip-planner/e2e/core.mjs',
   'apps/trip-planner/e2e/trips-sync.mjs',
   'apps/trip-planner/e2e/share.mjs',
@@ -128,6 +129,10 @@ const EXPECTED_CHECKS = {
   'tests/browser/suites/visual.mjs': 103,
   'tests/browser/suites/perf.mjs': 51,
   'tests/browser/suites/pwa-gym.mjs': 14,
+  // The enforced CSP, verified by a browser refusing things rather than by
+  // reading the header as a string (audit F14): 1 header check, 4 blocking
+  // checks, 2 per page across 13 pages, and 2 integration checks.
+  'tests/browser/suites/csp.mjs': 33,
   // 56 from the 2026-08-22 audit pass, plus, added 2026-08-23: 15 modal/header
   // stacking checks, 3 route-change checks, 30 overflow checks (6 views x 7
   // widths), 5 UTC+12 rendered-day checks, 3 stale-matrix-selection checks and
@@ -136,7 +141,9 @@ const EXPECTED_CHECKS = {
   // instead of aborting the run, so a shrunken run would otherwise look green.
   // Plus 6 "Sync all rivals" checks (progress counter, run totals, me-only
   // days, the predictions actual, the already-up-to-date rerun, JS errors).
-  'apps/maptap-rivals/e2e/quality.mjs': 126,
+  // 126 before 2026-09-07; +1 for the check that the profile card claims a
+  // LOOKUP rather than an ownership check (audit F03).
+  'apps/maptap-rivals/e2e/quality.mjs': 127,
   // Deliberately NOT pinned: apps/rising-shows/e2e/audit-2026-08.mjs emits 51
   // checks when the dataset is on disk and 11 skip entries when it is not, so
   // a single number cannot describe both environments. The zero-run guard

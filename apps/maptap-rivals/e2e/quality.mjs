@@ -191,8 +191,13 @@ export async function run({ base, cdpPort }) {
     t('#1 dashboard strip excludes the orphaned game (banner and strip agree)', /over 22 games/.test(strip) && !/over 23 games/.test(strip), strip);
     const profile = await txt(s, '#profile-card');
     t('#2 profile card counts eligible H2H games only (22, not 24)', /Tracked H2H games22/.test(profile), profile);
-    t('#3 "Last verified" and "joined" render dates for datetime values', /Last verified Aug 20, 2026/.test(profile) && /joined Mar 2, 2025/.test(profile), profile);
-    t('profile card collapses to one line once verified (expand control present)', (await evaluate(s, "document.getElementById('profile-card').classList.contains('is-compact') && !!document.querySelector('#profile-card .card-toggle')")));
+    // "Last checked", not "Last verified" (2026-09-05 audit F03): looking a
+    // handle up on maptap.gg proves the ACCOUNT EXISTS and nothing about who
+    // is holding this browser, and the copy no longer implies otherwise.
+    t('#3 "Last checked" and "joined" render dates for datetime values', /Last checked Aug 20, 2026/.test(profile) && /joined Mar 2, 2025/.test(profile), profile);
+    t('the profile card claims a lookup, never an ownership check',
+      /✓ Linked/.test(profile) && !/Verified/.test(profile), profile);
+    t('profile card collapses to one line once linked (expand control present)', (await evaluate(s, "document.getElementById('profile-card').classList.contains('is-compact') && !!document.querySelector('#profile-card .card-toggle')")));
     await clickSel(s, '#profile-card .card-toggle', { settle: 300 });
     t('profile card expands on demand and shows its stats', !(await evaluate(s, "document.getElementById('profile-card').classList.contains('is-compact')")) && (await evaluate(s, "document.querySelectorAll('#profile-card .profile-info-cell').length")) === 4);
 

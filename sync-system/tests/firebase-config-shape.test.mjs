@@ -72,7 +72,8 @@ test('firebase-config still talks to the v10 modular SDK only (no compat re-intr
 
 function collectFiles(dir, predicate, acc = []) {
     for (const entry of readdirSync(dir)) {
-        if (entry === 'node_modules' || entry.startsWith('.')) continue;
+        // `dist` is the publish directory: a hard-linked copy of this tree.
+        if (entry === 'node_modules' || entry === 'dist' || entry.startsWith('.')) continue;
         const full = join(dir, entry);
         const stat = statSync(full);
         if (stat.isDirectory()) collectFiles(full, predicate, acc);

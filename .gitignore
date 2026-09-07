@@ -98,3 +98,4 @@ apps/*/.reports/
 
 # Local headless-Chrome profiles used by manual verification runs.
 .chrome-profiles/
+dist/

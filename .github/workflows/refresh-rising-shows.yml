@@ -59,7 +59,10 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          # .nvmrc, not a literal: this workflow spent the whole Node 20
+          # end-of-life window pinned to a version the rest of the estate had
+          # already left, and nothing said so.
+          node-version-file: '.nvmrc'
 
       # The previous dataset is the diff baseline for change detection and
       # the changelog entry. It lives on the rolling release, not in git.
@@ -265,6 +268,24 @@ jobs:
       # cast strips, per-season overviews, and per-episode titles / runtimes
       # / IMDb ids for the modal, and it must be published alongside data.json
       # or new shows ship with no cast or episode titles on the live site.
+      # IMMUTABLE NAMES FIRST, THEN THE ROLLING ONES (2026-09-05 audit F13).
+      #
+      # The rolling pair alone made every deploy - a documentation fix, a
+      # rollback to last week's commit - pick up whatever data happened to be
+      # on the release at that minute, including data whose review PR had not
+      # merged. It also let the two files come from different refreshes, since
+      # they are uploaded one after another.
+      #
+      # Each asset is therefore ALSO uploaded under a release-stamped name that
+      # is never overwritten, and apps/rising-shows/data-release.json - which
+      # names that release and carries the SHA-256 of both files - is committed
+      # in the same pull request as the derived files below. A build resolves
+      # the pin in its own commit, so code and data roll back together, and
+      # fetch-data.js refuses a file whose digest does not match.
+      #
+      # The rolling names stay, uploaded LAST: a checkout without the pin (an
+      # older commit, a fresh clone of a branch that predates it) still works
+      # exactly as it did.
       - name: Upload data to the rising-shows-data release
         # Gated on the content hash (see "Detect content change"). The old
         # in-step `cmp -s` guard is gone: builtAt made it unreachable, so this
@@ -277,10 +298,66 @@ jobs:
           mkdir -p /tmp/rs-new
           gzip -9 -c apps/rising-shows/data.json > /tmp/rs-new/data.json.gz
           gzip -9 -c apps/rising-shows/data/show-modal-extras.json > /tmp/rs-new/show-modal-extras.json.gz
+
+          RELEASE_ID="$(date -u +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}"
+          DATA_SHA="$(sha256sum /tmp/rs-new/data.json.gz | cut -d' ' -f1)"
+          EXTRAS_SHA="$(sha256sum /tmp/rs-new/show-modal-extras.json.gz | cut -d' ' -f1)"
+          DATA_BYTES="$(stat -c%s /tmp/rs-new/data.json.gz)"
+          EXTRAS_BYTES="$(stat -c%s /tmp/rs-new/show-modal-extras.json.gz)"
+
+          cp /tmp/rs-new/data.json.gz "/tmp/rs-new/data-${RELEASE_ID}.json.gz"
+          cp /tmp/rs-new/show-modal-extras.json.gz "/tmp/rs-new/show-modal-extras-${RELEASE_ID}.json.gz"
+
+          # Immutable copies first. If the job dies between the two uploads the
+          # pin is not written either, so no commit can ever point at a half
+          # published release.
+          gh release upload rising-shows-data \
+            "/tmp/rs-new/data-${RELEASE_ID}.json.gz" \
+            "/tmp/rs-new/show-modal-extras-${RELEASE_ID}.json.gz"
+
+          node -e '
+            const fs = require("fs");
+            const [releaseId, dataSha, dataBytes, extrasSha, extrasBytes] = process.argv.slice(1);
+            fs.writeFileSync("apps/rising-shows/data-release.json", JSON.stringify({
+              releaseId,
+              builtAt: new Date().toISOString(),
+              assets: {
+                "data.json.gz": { sha256: dataSha, bytes: Number(dataBytes) },
+                "show-modal-extras.json.gz": { sha256: extrasSha, bytes: Number(extrasBytes) },
+              },
+            }, null, 2) + "\n");
+          ' "$RELEASE_ID" "$DATA_SHA" "$DATA_BYTES" "$EXTRAS_SHA" "$EXTRAS_BYTES"
+
+          # The rolling names last, for checkouts with no pin.
           gh release upload rising-shows-data \
             /tmp/rs-new/data.json.gz \
             /tmp/rs-new/show-modal-extras.json.gz \
             --clobber
+
+          echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
+
+      # Immutable assets accumulate ~40 MB a day, so the old ones are pruned.
+      # KEEP is deliberately generous: it is how far back a rollback can reach,
+      # and a commit older than the oldest kept release falls back to the
+      # rolling names (correct data, just not the pinned one).
+      - name: Prune superseded immutable assets
+        if: steps.change.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          KEEP=14
+          gh release view rising-shows-data --json assets \
+            --jq '.assets[].name' \
+            | grep -E '^data-[0-9]{8}-[0-9]{6}-[0-9a-f]{7}\.json\.gz$' \
+            | sort -r | tail -n +$((KEEP + 1)) > /tmp/rs-prune-data || true
+          while read -r name; do
+            [ -n "$name" ] || continue
+            stamp="${name#data-}"; stamp="${stamp%.json.gz}"
+            echo "pruning release $stamp"
+            gh release delete-asset rising-shows-data "$name" -y || true
+            gh release delete-asset rising-shows-data "show-modal-extras-${stamp}.json.gz" -y || true
+          done < /tmp/rs-prune-data
 
       # master is protected by a "PR before Merge" ruleset, so direct pushes
       # are rejected. We push to a short-lived branch, open a PR, and merge
