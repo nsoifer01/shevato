@@ -17,6 +17,6 @@ Trust boundaries: browser → Netlify request handler → server-only Blobs conf
 | Forged county / normalized inputs | County must belong to provider-returned ZIP/year set; no browser-submitted state/vehicle object | Enrichment source correctness is authoritative source responsibility |
 | Preview accidentally spends | Paid adapters disabled outside production unless explicit local opt-in; no fallback public CMS key | Do not enable opt-in for untrusted preview branches |
 
-Origin checks are a browser misuse barrier, not authentication. IP must come from Netlify context, not a caller-supplied forwarding header. IP counters are daily-hashed and hourly-scoped; random session IDs do not bypass IP/global quota. Quote contents are never written into Blobs. NHTSA enrichment cache can contain its VIN-bearing response, documented in privacy.
+Origin checks are a browser misuse barrier, not authentication. IP must come from Netlify context, not a caller-supplied forwarding header. IP counters are daily-hashed and hourly-scoped; random session IDs do not bypass IP/global quota. Quote contents are never written into Blobs. NHTSA enrichment retains validated vehicle specifications under a hashed VIN key; it does not retain the VIN-bearing raw response.
 
 Ordinary CI uses deterministic fixtures. Public API/sandbox checks are separate. Test prices live only in test/e2e directories. UI uses no innerHTML for provider data and has associated labels, error announcements and expiry handling. No API call purchases, binds, enrolls or contacts a sales agent.

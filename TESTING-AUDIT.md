@@ -201,6 +201,7 @@ coverage.
 | Gym Tracker | FULL | FULL | FULL | FULL | FULL | FULL | Views via source extraction; SW at unit + browser layers |
 | MapTap Rivals | part | FULL | FULL | FULL | FULL | part | stats/network deep; app.js IIFE reachable only via browser |
 | Mario Kart | FULL | FULL | FULL | FULL | FULL | part | Achievements engine still uncovered (large, low risk) |
+| QuoteScout | FULL | FULL | FULL | FULL | FULL | part | Strict API schemas, provenance/ranking, quotas/cache isolation, streaming and progressive questions; paid-provider contract tests require access |
 | Rising Shows | FULL | FULL | FULL | FULL | FULL | FULL | Producers + consumers tied; finder E2E data-gated |
 | Trip Planner | FULL | FULL | FULL | FULL | FULL | FULL | Reference estate |
 | sync-system | FULL | part | n/a | n/a | n/a | FULL | Behavioral harness on the real engine; RTDB path out of scope |

@@ -73,8 +73,11 @@ export function createAdapters(config = {}, fetcher = fetch, now = Date.now) {
       } },
     { id: 'cms', name: 'CMS Marketplace', vertical: 'health-insurance', enabled: !!config.cmsKey, ttl: 900000,
       async quote(input, ctx) {
-        const data = await ctx.enrich(`county:${input.year}:${input.zip}`, 86400000, () => upstream(cmsURL(`counties/by/zip/${input.zip}?year=${input.year}`), { ...ctx, fetcher }));
-        if (!Array.isArray(data.counties) || data.counties.length > 30 || data.counties.some(c => !/^\d{5}$/.test(c.fips) || !/^[A-Z]{2}$/.test(c.state) || !text(c.name))) throw new ScoutError('MALFORMED');
+        const data = await ctx.enrich(`county:${input.year}:${input.zip}`, 86400000, async () => {
+          const result = await upstream(cmsURL(`counties/by/zip/${input.zip}?year=${input.year}`), { ...ctx, fetcher });
+          if (!Array.isArray(result.counties) || result.counties.length > 30 || result.counties.some(c => !/^\d{5}$/.test(c.fips) || !/^[A-Z]{2}$/.test(c.state) || !text(c.name))) throw new ScoutError('MALFORMED');
+          return { counties: result.counties.map(c => ({ fips: c.fips, state: c.state, name: c.name })) };
+        });
         if (!data.counties.length) throw new ScoutError('UNSUPPORTED');
         const county = input.county ? data.counties.find(c => c.fips === input.county) : data.counties.length === 1 ? data.counties[0] : null;
         if (input.county && !county) throw new ScoutError('INVALID_INPUT');
@@ -85,11 +88,15 @@ export function createAdapters(config = {}, fetcher = fetch, now = Date.now) {
       } },
     { id: 'vpic', name: 'NHTSA vPIC', vertical: 'vehicle-data', enabled: true, ttl: 900000,
       async quote(input, ctx) {
-        const data = await ctx.enrich(`vin:${input.vin}`, 30 * 86400000, () => upstream(`https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${input.vin}?format=json`, { ...ctx, fetcher }));
-        const v = data.Results?.[0];
-        if (!v || !text(v.Make) || !text(v.Model) || !/^\d{4}$/.test(v.ModelYear)) throw new ScoutError('UNSUPPORTED');
-        if (typeof v.ErrorCode !== 'string' || v.ErrorCode.split(',').some(c => c.trim() !== '0')) throw new ScoutError('UNSUPPORTED');
-        return { quotes: [], vehicle: { make: v.Make, model: v.Model, year: v.ModelYear, trim: text(v.Trim), body: text(v.BodyClass), engine: text(v.EngineModel), fuel: text(v.FuelTypePrimary), source: 'NHTSA vPIC manufacturer-reported data', warning: 'Decoded specifications are not a title, history, recall or insurance-eligibility check.' } };
+        const vehicle = await ctx.enrich(`vin:${input.vin}`, 30 * 86400000, async () => {
+          const data = await upstream(`https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${input.vin}?format=json`, { ...ctx, fetcher });
+          const v = data.Results?.[0];
+          if (!v || !text(v.Make) || !text(v.Model) || !/^\d{4}$/.test(v.ModelYear)) throw new ScoutError('UNSUPPORTED');
+          if (typeof v.ErrorCode !== 'string' || v.ErrorCode.split(',').some(c => c.trim() !== '0')) throw new ScoutError('UNSUPPORTED');
+          // Cache only validated specifications, never the VIN-bearing raw response.
+          return { make: v.Make, model: v.Model, year: v.ModelYear, trim: text(v.Trim), body: text(v.BodyClass), engine: text(v.EngineModel), fuel: text(v.FuelTypePrimary), retrievedAt: new Date(now()).toISOString(), source: 'NHTSA vPIC manufacturer-reported data', warning: 'Decoded specifications are not a title, history, recall or insurance-eligibility check.' };
+        });
+        return { quotes: [], vehicle };
       } },
   ];
 }

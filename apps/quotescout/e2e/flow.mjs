@@ -33,7 +33,9 @@ export async function run({base,cdpPort}) {
     await screenshot(s,new URL('../.reports/desktop.png',import.meta.url).pathname);
     await clickSel(s,'#qs-modify');await setValue(s,'#qs-vin','');
     await setViewport(s,720,450);await evaluate(s,'window.scrollTo(0,320)');
-    const preview=await s.send('Page.captureScreenshot',{format:'webp',quality:85});await writeFile(new URL('../../../images/app-previews/quotescout.webp',import.meta.url),Buffer.from(preview.data,'base64'));
+    const preview=await s.send('Page.captureScreenshot',{format:'webp',quality:85});
+    await writeFile(new URL('../.reports/preview.webp',import.meta.url),Buffer.from(preview.data,'base64'));
+    if (process.env.QUOTESCOUT_UPDATE_PREVIEW === '1') await writeFile(new URL('../../../images/app-previews/quotescout.webp',import.meta.url),Buffer.from(preview.data,'base64'));
     await setViewport(s,1280,900);await setValue(s,'#qs-category','package-shipping');
     for(const [key,value]of Object.entries(input))await setValue(s,`#qs-${key}`,String(value));
     await clickSel(s,'#qs-submit');await waitForExpr(s,"document.querySelectorAll('.qs-result').length===3");

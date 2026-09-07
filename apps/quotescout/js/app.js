@@ -107,7 +107,7 @@ function renderResults() {
   for (const p of providers) {
     if (p.vehicle) {
       const box = el('section', undefined, 'qs-result'); box.append(el('h3', `${p.vehicle.year} ${p.vehicle.make} ${p.vehicle.model}`), el('p', p.vehicle.source));
-      const list = el('dl'); for (const key of ['trim','body','engine','fuel']) { list.append(el('dt',key[0].toUpperCase()+key.slice(1)),el('dd',p.vehicle[key] || 'Not reported')); } box.append(list,el('p',p.vehicle.warning)); container.append(box);
+      const list = el('dl'); for (const key of ['trim','body','engine','fuel']) { list.append(el('dt',key[0].toUpperCase()+key.slice(1)),el('dd',p.vehicle[key] || 'Not reported')); } if (p.vehicle.retrievedAt) box.append(el('p', `Retrieved ${new Date(p.vehicle.retrievedAt).toLocaleString()}`, 'qs-muted')); box.append(list,el('p',p.vehicle.warning)); container.append(box);
     }
     if (p.questions?.length) {
       const form = el('form', undefined, 'qs-question');
