@@ -5628,8 +5628,24 @@ const TripLogic = (() => {
   // city), so the ride is named instead and the walk moves to the tooltip.
   // Past every in-city mode there is nothing honest to say, so nothing is said.
   const WALKABLE_KM = 2;
+  // A HOP TOO SHORT TO OFFER MODES IS STILL A WALK (owner report, 2026-09-06:
+  // a 93 m walk home from dinner was totalled in the day's TAXI column).
+  //
+  // modeOptions refuses anything under 100 m on purpose - "two geocodes on the
+  // same point are not a journey", which is the right answer for the route
+  // modal, where the question is "how would you travel this?" and the honest
+  // reply is that you would not. hopTravel asks a different question: this leg
+  // EXISTS and the day total has to put it in a column. It inherited the refusal,
+  // returned null, and dayTravelTotals buckets a null hop as a ride - so the
+  // shortest legs on a trip, the ones that are unambiguously walks, were the
+  // ones counted as taxi rides.
+  const SHORT_HOP_KM = 0.1;
   function hopTravel(km) {
     if (!(km > 0)) return null;
+    if (km < SHORT_HOP_KM) {
+      // the same arithmetic modeOptions uses for a walk, applied below its floor
+      return { key: 'walk', icon: '🚶', min: km * 1.25 * 12, text: `~${fmtMins(km * 1.25 * 12)} walk` };
+    }
     const rows = modeOptions(km, false, false);
     const walk = rows.find(r => r.key === 'walk');
     const ride = rows.find(r => r.key === 'local');
