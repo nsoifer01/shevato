@@ -1770,6 +1770,40 @@ resolution loses its coordinate" were REWRITTEN rather than deleted: they now
 pin the rule that replaced it, and the 809 km case they were protecting is
 asserted directly.
 
+## A hop too short to offer modes is still a walk (2026-09-06)
+
+Owner report, from their own Jan 27 on Ko Phi Phi: dinner at Acqua Restaurant is
+**93 m** from their hotel, and that walk home was totalled in the day's **taxi**
+column.
+
+`modeOptions` refuses anything under 100 m, deliberately: "two geocodes on the
+same point are not a journey", and offering "a 0 m walk heading north" for a
+duplicate pin would be worse than offering nothing. That is the right answer for
+the route modal, where the question is *how would you travel this*.
+
+`hopTravel` asks a different question - *this leg exists, which column does it go
+in* - and it inherited the refusal. It returned `null`, and `dayTravelTotals`
+buckets a null hop as a ride:
+
+```js
+byMode[hop && hop.key === 'walk' ? 'walk' : 'ride'] += leg.km;
+```
+
+So the SHORTEST legs on a trip, the ones that are unambiguously walks, were the
+ones counted as taxi rides. It is invisible in the total (93 m inside 14 km) and
+wrong in the only way that matters: the footer said the traveller took a taxi
+across the street.
+
+`hopTravel` now answers `walk` below the floor, with the same arithmetic
+`modeOptions` uses for one. `modeOptions` itself is untouched and a test pins
+that it still returns `[]` for the same distance, because the two callers want
+different answers and that is the whole point.
+
+**The general shape:** a guard written for one caller was inherited by a second
+caller asking a different question. Worth looking for wherever a helper wraps a
+stricter primitive - the inherited refusal does not announce itself, it just
+falls into whatever the `else` branch happens to be.
+
 ## Places billing: the free allowance is the real ceiling (2026-08-18)
 
 **Google's billing, not our counters, is the source of truth, and they did not
