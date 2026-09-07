@@ -239,27 +239,105 @@
        --preview-focus. Nothing is ever scaled up: the widest a preview is
        ever painted is 337 px against a 720 px file.
 
-       The link is a block with a definite width so the lazy image inside it
-       has something to resolve its percentage width against. Inside the
-       shrink-to-fit flex card an unloaded image (intrinsic width 0) used to
-       measure 3x2 px and every card below the fold grew 125-190 px as it
-       scrolled into view; on phones the loaded image also sat at 203 px in a
-       310 px card. */
+       The mat and the link are both blocks with a definite width so the lazy
+       image inside has something to resolve its percentage width against.
+       Inside the shrink-to-fit flex card an unloaded image (intrinsic width
+       0) used to measure 3x2 px and every card below the fold grew 125-190 px
+       as it scrolled into view; on phones the loaded image also sat at 203 px
+       in a 310 px card.
+
+       Why a stage rather than a screenshot sitting on the card. Seven of the
+       eight captures are near-black, and two things made them read as blocks
+       dropped onto a card rather than part of one. First the tonal edge: dark
+       UI butted straight against white, with the card's 3rem padding leaving
+       a wide white margin all round, so the screenshot looked like an object
+       placed on the card instead of a region of it. Second the gap below it:
+       .content is a full-height flex column with justify-content:
+       space-between, so the leftover space collects under the screenshot and
+       is a different size on every card, which is what made the previews look
+       adrift.
+
+       The stage answers both. It spans the card edge to edge, so the
+       screenshot stops floating in a white surround and the top of the card
+       becomes a designed region with a boundary of its own; and it is a light
+       wash, so stepping white -> wash -> app UI means no single edge carries
+       the whole contrast. Anchoring it to the card's top edge also takes it
+       out of the space-between distribution, so the slack now falls between
+       the text and the button, where it is invisible, instead of under the
+       screenshot. The stage is LIGHT on purpose: the complaint was that the
+       top felt heavy, and a full-bleed screenshot would have made it heavier
+       still. Here the dark area stays about the size it was and only its
+       surround changes. */
+    /* Cards are stretched to the tallest in the row, and main.css spends the
+       slack with justify-content: space-between - which puts a share of it
+       straight under the screenshot, a different amount on every card. That
+       gap is most of why the previews read as detached: the screenshot sat in
+       a pool of white that belonged to nothing. Collecting the slack above
+       the button instead makes the top of every card identical and tight, and
+       the button still lands on the same baseline across the row, which is
+       what space-between was there for. */
+    .highlights .content {
+      justify-content: flex-start;
+    }
+    .highlights .content .actions {
+      margin-top: auto;
+    }
+    .highlights .app-preview-stage {
+      /* Load-bearing, and the reason the old code put width:100% on the link.
+         .content is a flex column with align-items: CENTER, so its children
+         are shrink-to-fit, not stretched. A shrink-to-fit stage is sized by
+         its content, and a lazy image that has not loaded has no intrinsic
+         width - so the stage measured full width once the screenshot arrived
+         and ZERO before it, which is the D1 layout-shift defect the visual
+         suite guards (it caught exactly this). align-self makes the stage's
+         width definite from the card instead of from its contents, so the
+         chain stage -> link -> img has something to resolve against at first
+         paint and the 16:9 box reserves its height before the image loads. */
+      align-self: stretch;
+      width: auto;
+      /* Cancels the card's padding exactly. The card is padded `2.25em 1.5em`
+         against a font-size that itself changes with the breakpoint, so the
+         computed padding takes four different values (33/22px at 1280 and
+         1000, 36/24 at 900, 29.6/20 at 736, 27.1/18.3 at 390). A px or rem
+         margin is therefore wrong at every width except the one it was
+         measured at: an earlier pass hardcoded 3rem and the stage overhung
+         the card by 22px a side, spilling into the grid gutters and welding
+         each row into one continuous band. Stated in the same em the card
+         uses, against the same inherited font-size, it tracks all four for
+         free - only the 736px ratio change needs a media query. */
+      margin: -2.25em -1.5em 1.5rem;
+      padding: 2rem;
+      /* Matches the card's own 4px corner, so the stage ends where the card
+         does instead of showing a square shoulder outside a rounded card. */
+      border-radius: 4px 4px 0 0;
+      background-image: linear-gradient(180deg, #f7f9fc 0%, #eff3f8 100%);
+      /* The one clean line in the whole treatment: the stage's bottom edge is
+         where the card turns from presentation to content, and it is a soft
+         grey rather than the screenshot's own hard tonal edge. */
+      border-bottom: 1px solid rgba(16, 22, 36, 0.07);
+    }
     .highlights .app-preview-link {
       display: block;
       position: relative;
       width: 100%;
-      margin-bottom: 1.5rem;
-      border-radius: 8px;
+      /* Concentric with the mat: 14px outer radius less 8px of padding. Any
+         other value makes the two curves visibly disagree at the corners. */
+      border-radius: 6px;
       /* Visible only in the beat before a lazy image paints, so it is the
          apps' own near-black: a white flash under a dark screenshot reads as
          a broken image. It also backs the rounded corners, which the image
          cannot paint into. */
       background-color: #0b0d12;
+      /* Also what clips --preview-zoom, so the link hugs the image exactly:
+         the padding belongs to the mat, never here. overflow clips at the
+         padding box, so padding on this element would let a zoomed image
+         bleed across the mat before being cut. */
       overflow: hidden;
+      /* Gentler than a drop shadow on white: just enough to lift the plate,
+         not enough to make it hover. */
       box-shadow:
-        0 1px 2px rgba(16, 22, 36, 0.10),
-        0 10px 24px -16px rgba(16, 22, 36, 0.55);
+        0 1px 2px rgba(16, 22, 36, 0.07),
+        0 4px 10px -7px rgba(16, 22, 36, 0.40);
     }
     /* The hairline is drawn INSIDE the frame. A border on the image sits
        outside object-fit's box, so it rides the element edge rather than the
@@ -271,7 +349,7 @@
       position: absolute;
       inset: 0;
       border-radius: inherit;
-      box-shadow: inset 0 0 0 1px rgba(16, 22, 36, 0.16);
+      box-shadow: inset 0 0 0 1px rgba(16, 22, 36, 0.10);
       pointer-events: none;
     }
     .highlights .app-preview {
@@ -332,6 +410,23 @@
       --preview-focus: 50% 28%;
       --preview-zoom: 1.12;
     }
+    /* Only the stage's OWN padding needs breakpoints - the negative margin
+       tracks the card on its own. 2rem inside a card this narrow crowds the
+       screenshot. */
+    @media screen and (max-width: 980px) {
+      .highlights .app-preview-stage {
+        margin-bottom: 1.75rem;
+        padding: 1.5rem;
+      }
+    }
+    /* The card's padding ratio itself changes here, from 2.25em/1.5em to
+       1.85em/1.25em, so the cancelling margin has to change with it. */
+    @media screen and (max-width: 736px) {
+      .highlights .app-preview-stage {
+        margin: -1.85em -1.25em 1.5rem;
+        padding: 1.25rem;
+      }
+    }
   </style>
 </head>
 <body class="is-preload">
@@ -379,7 +474,7 @@
                  A-Z ordering makes Arena first, and the ordering is pinned by
                  sync-system/tests/app-naming-consistency.test.mjs, so this
                  attribute pair travels with whichever app sorts first. -->
-            <a class="app-preview-link" href="apps/arena/" aria-label="Open Arena" tabindex="-1"><img class="app-preview" src="images/app-previews/arena.webp" width="720" height="450" loading="eager" fetchpriority="high" decoding="async" alt="Arena mid-game Globe Drop round with a Where is Naypyidaw geography question and a 3D Earth globe with a countdown timer" /></a>
+            <div class="app-preview-stage"><a class="app-preview-link" href="apps/arena/" aria-label="Open Arena" tabindex="-1"><img class="app-preview" src="images/app-previews/arena.webp" width="720" height="450" loading="eager" fetchpriority="high" decoding="async" alt="Arena mid-game Globe Drop round with a Where is Naypyidaw geography question and a 3D Earth globe with a countdown timer" /></a></div>
             <header>
               <a href="apps/arena/" class="icon fa-trophy brand-color-primary" aria-label="Open Arena"></a>
               <h3>Arena</h3>
@@ -392,7 +487,7 @@
         </section>
         <section data-category="game" data-keywords="football h2h head to head league soccer matches penalties two players">
           <div class="content">
-            <a class="app-preview-link" href="apps/football-h2h/" aria-label="Open Football H2H League" tabindex="-1"><img class="app-preview" src="images/app-previews/football-h2h.webp" width="720" height="450" loading="lazy" decoding="async" alt="Football H2H League stats with total wins for two players, a current winning streak banner, and 90 minute win tallies" /></a>
+            <div class="app-preview-stage"><a class="app-preview-link" href="apps/football-h2h/" aria-label="Open Football H2H League" tabindex="-1"><img class="app-preview" src="images/app-previews/football-h2h.webp" width="720" height="450" loading="lazy" decoding="async" alt="Football H2H League stats with total wins for two players, a current winning streak banner, and 90 minute win tallies" /></a></div>
             <header>
               <a href="apps/football-h2h/" class="icon fa-futbol-o brand-color-primary" aria-label="Open Football H2H League"></a>
               <h3>Football H2H League</h3>
@@ -405,7 +500,7 @@
         </section>
         <section data-category="game" data-keywords="fpl fantasy premier league planner transfers captain starting xi gameweek chips">
           <div class="content">
-            <a class="app-preview-link" href="apps/fpl-planner/" aria-label="Open FPL Planner" tabindex="-1"><img class="app-preview" src="images/app-previews/fpl-planner.webp" width="720" height="405" loading="lazy" decoding="async" alt="FPL Planner gameweek decision card recommending two transfers, alongside the captain pick, chip advice and projected points" /></a>
+            <div class="app-preview-stage"><a class="app-preview-link" href="apps/fpl-planner/" aria-label="Open FPL Planner" tabindex="-1"><img class="app-preview" src="images/app-previews/fpl-planner.webp" width="720" height="405" loading="lazy" decoding="async" alt="FPL Planner gameweek decision card recommending two transfers, alongside the captain pick, chip advice and projected points" /></a></div>
             <header>
               <a href="apps/fpl-planner/" class="icon fa-list-ol brand-color-primary" aria-label="Open FPL Planner"></a>
               <h3>FPL Planner</h3>
@@ -418,7 +513,7 @@
         </section>
         <section data-category="fitness" data-keywords="gym tracker workouts fitness strength programs exercises pwa offline">
           <div class="content">
-            <a class="app-preview-link" href="apps/gym-tracker/" aria-label="Open Gym Tracker" tabindex="-1"><img class="app-preview" src="images/app-previews/gym-tracker.webp" width="720" height="450" loading="lazy" decoding="async" alt="Gym Tracker weekly dashboard showing workouts, total volume, training time, and streak tiles above a recent workout card" /></a>
+            <div class="app-preview-stage"><a class="app-preview-link" href="apps/gym-tracker/" aria-label="Open Gym Tracker" tabindex="-1"><img class="app-preview" src="images/app-previews/gym-tracker.webp" width="720" height="450" loading="lazy" decoding="async" alt="Gym Tracker weekly dashboard showing workouts, total volume, training time, and streak tiles above a recent workout card" /></a></div>
             <header>
               <a href="apps/gym-tracker/" class="icon fa-heartbeat brand-color-primary" aria-label="Open Gym Tracker"></a>
               <h3>Gym Tracker</h3>
@@ -431,7 +526,7 @@
         </section>
         <section data-category="game" data-keywords="maptap rivals geography daily puzzle scores streaks friends">
           <div class="content">
-            <a class="app-preview-link" href="apps/maptap-rivals/" aria-label="Open MapTap Rivals" tabindex="-1"><img class="app-preview" src="images/app-previews/maptap-rivals.webp" width="720" height="450" loading="lazy" decoding="async" alt="MapTap Rivals rivalries dashboard with head-to-head cards showing wins, losses, win rate, and recent form for each rival" /></a>
+            <div class="app-preview-stage"><a class="app-preview-link" href="apps/maptap-rivals/" aria-label="Open MapTap Rivals" tabindex="-1"><img class="app-preview" src="images/app-previews/maptap-rivals.webp" width="720" height="450" loading="lazy" decoding="async" alt="MapTap Rivals rivalries dashboard with head-to-head cards showing wins, losses, win rate, and recent form for each rival" /></a></div>
             <header>
               <a href="apps/maptap-rivals/" class="icon fa-crosshairs brand-color-primary" aria-label="Open MapTap Rivals"></a>
               <h3>MapTap Rivals</h3>
@@ -444,7 +539,7 @@
         </section>
         <section data-category="game" data-keywords="mario kart 8 deluxe mk8 mk8d world races tracker players standings achievements">
           <div class="content">
-            <a class="app-preview-link" href="apps/mario-kart/" aria-label="Open Mario Kart Tracker" tabindex="-1"><img class="app-preview" src="images/app-previews/mario-kart.webp" width="720" height="450" loading="lazy" decoding="async" alt="Mario Kart 8 Deluxe Tracker performance trends chart plotting each player's finishing position across 14 races" /></a>
+            <div class="app-preview-stage"><a class="app-preview-link" href="apps/mario-kart/" aria-label="Open Mario Kart Tracker" tabindex="-1"><img class="app-preview" src="images/app-previews/mario-kart.webp" width="720" height="450" loading="lazy" decoding="async" alt="Mario Kart 8 Deluxe Tracker performance trends chart plotting each player's finishing position across 14 races" /></a></div>
             <header>
               <a href="apps/mario-kart/" class="icon fa-gamepad brand-color-primary" aria-label="Open Mario Kart Tracker"></a>
               <h3>Mario Kart Tracker</h3>
@@ -457,7 +552,7 @@
         </section>
         <section data-category="tv" data-keywords="rising shows tv series imdb ratings trend episodes finder plex kometa">
           <div class="content">
-            <a class="app-preview-link" href="apps/rising-shows/" aria-label="Open Rising Shows" tabindex="-1"><img class="app-preview" src="images/app-previews/rising-shows.webp" width="720" height="450" loading="lazy" decoding="async" alt="Rising Shows result cards for Breaking Bad and Game of Thrones with rating trend sparklines, IMDb ratings, and per-show stats" /></a>
+            <div class="app-preview-stage"><a class="app-preview-link" href="apps/rising-shows/" aria-label="Open Rising Shows" tabindex="-1"><img class="app-preview" src="images/app-previews/rising-shows.webp" width="720" height="450" loading="lazy" decoding="async" alt="Rising Shows result cards for Breaking Bad and Game of Thrones with rating trend sparklines, IMDb ratings, and per-show stats" /></a></div>
             <header>
               <a href="apps/rising-shows/" class="icon fa-line-chart brand-color-primary" aria-label="Open Rising Shows"></a>
               <h3>Rising Shows</h3>
@@ -470,7 +565,7 @@
         </section>
         <section data-category="travel" data-keywords="trip planner travel itinerary flights hotels map costs visa weather">
           <div class="content">
-            <a class="app-preview-link" href="apps/trip-planner/" aria-label="Open Trip Planner" tabindex="-1"><img class="app-preview" src="images/app-previews/trip-planner.webp" width="720" height="405" loading="lazy" decoding="async" alt="Trip Planner itinerary timeline of a Croatia trip, each flight, ferry and hotel row showing its dates, a booked status pill and its cost" /></a>
+            <div class="app-preview-stage"><a class="app-preview-link" href="apps/trip-planner/" aria-label="Open Trip Planner" tabindex="-1"><img class="app-preview" src="images/app-previews/trip-planner.webp" width="720" height="405" loading="lazy" decoding="async" alt="Trip Planner itinerary timeline of a Croatia trip, each flight, ferry and hotel row showing its dates, a booked status pill and its cost" /></a></div>
             <header>
               <a href="apps/trip-planner/" class="icon fa-map brand-color-primary" aria-label="Open Trip Planner"></a>
               <h3>Trip Planner</h3>
