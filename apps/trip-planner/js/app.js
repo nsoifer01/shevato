@@ -23,7 +23,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 77;
+  const TP_BUILD = 78;
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   // Miles or kilometers, everywhere a distance prints. Same architecture as
@@ -134,6 +134,7 @@
     // the one place identity every surface resolves through, plus the record
     // it becomes once a place is verified and saved (see placeLookupFor)
     placeLookupFor, placeLookupRequest, placeRecordFrom, normalizePlaceRecord, areaAnchorFor,
+    placeUnresolved, unlocatedSummary,
     placeMapsUrl, placeEntryUrl, plausiblePlacePoint,
     // discovery: only verified places reach a "find me places" answer
     assistDiscoveryIntent, discoveryHintFrom, discoveryQueryFrom, rebuildAssistProse,
@@ -1226,6 +1227,32 @@
     return `<a class="tp-maps-link"${hooks}`
       + ` href="${esc(saved || mapsSearchUrl(lookup.query))}" target="_blank" rel="noopener">`
       + `<span class="tpm-label">Google Maps</span></a>`;
+  }
+
+  // THE STAY SAYS SO ITSELF WHEN IT COULD NOT BE FOUND (owner report,
+  // 2026-09-06). Their hotel was titled with a name no business has, so the
+  // lookup honestly refused it - correct behaviour, and completely invisible.
+  // The only sign anywhere was "1 not located" in the day footer, in small
+  // grey text, next to four rows that HAD resolved. A traveller reads that as
+  // a rounding note, not as "your hotel is not on the map and every distance
+  // on this day is measured from nothing".
+  //
+  // The assistant's own card has always said this (paintRatingSlot renders
+  // placeStateLabel), so the app already knew how to tell the truth here - it
+  // simply stopped telling it the moment the place became an itinerary row.
+  // This is that same sentence, on the row.
+  //
+  // It is a BUTTON, not a badge, because the fix is always the same: the name
+  // is wrong and only the traveller can correct it. It carries `data-act=edit`
+  // and the item id, which is the existing route to the edit modal.
+  //
+  // Rendered empty and hidden. Only a landed answer may fill it: a lookup in
+  // flight must read as silence, or every stay flashes a warning on load and
+  // the warning stops meaning anything.
+  function placeWarnHtml(it, lookup) {
+    if (!it || !lookup || !lookup.key || !isStay(it)) return '';
+    return `<button type="button" class="tp-place-warn" data-act="edit" data-id="${esc(it.id)}"`
+      + ` data-warn-key="${esc(lookup.key)}" hidden></button>`;
   }
 
   // The empty scaffold an opening-hours line paints into once the SAME Places
@@ -2796,6 +2823,10 @@
     // become the origin of the next one: it is the same booking a second time,
     // exactly as it is for the cost and Maps cells above.
     const dist = ev.kind === 'checkout' ? '' : itemDistAttrs(it);
+    // A check-OUT row repeats a booking that started earlier, exactly as its
+    // cost and Maps cells are suppressed, so the warning belongs on the row
+    // that OWNS the stay and not on both.
+    const warn = ev.kind === 'checkout' ? '' : placeWarnHtml(it, savedPlaceLookup(it));
     return `<div class="dc-event ${look.cls}${travelCls}${isStayRow ? ' is-stay' : ''}${issueCls} ${sm.cls} ${cancelled ? 'is-cancelled' : ''}"${tie ? ` data-id="${it.id}" data-tie="${esc(tie)}"` : ''}${dist}>
       <div class="dc-rail">
         <span class="dc-dot" role="img" aria-label="${esc(sm.label)}" title="${esc(sm.label)}"></span>
@@ -2809,7 +2840,7 @@
             <div class="dc-title">${esc(displayTitle(it))}${clip}${loc}${issueBadge}</div>
             ${ref}
           </div>
-          <div class="dc-facts">${cost}${maps}${hrs}${dir}</div>
+          <div class="dc-facts">${cost}${maps}${hrs}${dir}${warn}</div>
           <div class="dc-btns">${grip}${edit}${del}</div>
         </div>
         ${details}
@@ -2916,6 +2947,7 @@
         + ` data-anchor-key="${esc(anchorLookup ? anchorLookup.key : '')}"`
         + ` data-anchor-city="${esc(a.city)}" data-anchor-label="${esc(a.label)}"`
         + (place ? ` data-anchor-place="${esc(canonicalPlaceId(a.item, anchorLookup))}"` : '')
+        + (place ? ` data-anchor-id="${esc(a.item.id)}"` : '')
         + (place ? anchorPointAttrs(a.item) : '')
         + (a.iata ? ` data-anchor-iata="${esc(a.iata)}"` : '')
       : '';
@@ -2926,6 +2958,7 @@
             <b>${card.dayNumber}</b><small>/${card.totalDays}</small>
           </span>
           <span class="dc-headings">
+            <button type="button" class="tp-place-warn dc-anchor-warn" data-act="edit" hidden></button>
             <span class="dc-dow">${fmtDow(card.date)}${isToday ? ' <span class="dc-today">Today</span>' : ''}</span>
             <span class="dc-date">${fmtDate(card.date)}</span>
             ${daySpendHtml(card, trip)}
@@ -7015,8 +7048,55 @@
       }
       const legs = new Map(chain.legs.map(l => [l.id, l]));
       chain.rows.forEach((row, i) => writeDistChip(row, legs.get(i)));
+      paintAnchorWarning(cardEl, chain);
       paintDayRoute(cardEl, chain);
     });
+  }
+
+  // THE DAY'S OWN HOTEL, SAID ON THE DAY (owner report, 2026-09-06).
+  //
+  // A stay is a ROW only on its check-in and check-out days (dayEventsFor
+  // pushes `checkin` on startDate and `checkout` on endDate). On every night in
+  // between it is the day's ANCHOR and nothing else - so the row warning, which
+  // is the right place to say this, does not exist on the days the traveller
+  // spends most of their time reading. Their hotel was unidentifiable for a
+  // whole session and the only sign was a count in the footer.
+  //
+  // The header carries it on every day the stay anchors, because the stay is
+  // broken on every one of those days: no distance on the card starts from a
+  // real place. It names the hotel and opens its edit modal, which is the only
+  // fix there is.
+  function paintAnchorWarning(cardEl, chain) {
+    const el = cardEl.querySelector('.dc-anchor-warn');
+    if (!el) return;
+    const id = cardEl.dataset.anchorId || '';
+    const label = (cardEl.dataset.anchorLabel || '').trim();
+    // Only a STAY anchor that had something to look up: an arrival anchor is a
+    // travel leg (the airports table places it) and a bare city anchor is
+    // openly coarse and not a failure.
+    // NOT `chain.anchor === null`. The anchor is non-strict on purpose, so an
+    // unlocated stay still yields the city centroid - a point, tagged `city`
+    // and `standin`, that unmeasurableLeg then refuses to draw a leg from. So
+    // the chain has an anchor and the day has no chips, and testing the anchor
+    // for null would report "located" about a hotel nobody found. The row, the
+    // header and the footer all ask stayIsLocated, which is the same `strict`
+    // ladder the distances ask, so the three can never disagree.
+    const it = (activeTrip() || { items: [] }).items.find(x => x.id === id);
+    const lookup = it ? savedPlaceLookup(it) : null;
+    if (!id || !it || !label || !cardEl.dataset.anchorKey || stayIsLocated(it, lookup)) {
+      el.hidden = true;
+      el.textContent = '';
+      return;
+    }
+    // Same rule as the row: only a landed answer may speak.
+    if (!placesCache.get(cardEl.dataset.anchorKey)) { el.hidden = true; return; }
+    el.hidden = false;
+    el.dataset.id = id;
+    el.title = `${label} could not be located, so no distance on this day starts from your stay. `
+      + 'Click to edit it - the name the hotel uses on Google Maps usually resolves.';
+    el.setAttribute('aria-label', `${label} could not be located. Click to edit this stay.`);
+    el.innerHTML = `<span class="tpw-ico" aria-hidden="true">⚠</span> `
+      + `<span class="tpw-text">Could not locate ${esc(label)}</span>`;
   }
 
   // The compact day-route strip at the bottom of a day card: what today's
@@ -7030,14 +7110,31 @@
     const legs = chain.legs;
     if (!legs.length) { if (old) old.remove(); return; }
     const totals = dayTravelTotals(legs);
-    // a stop that wanted a place but resolved nowhere keeps the total honest:
-    // the strip says the figure is partial rather than pretending completeness
-    const unplaced = chain.stops.filter(s => s.lat === undefined && chain.rows[s.id]
-      && (chain.rows[s.id].dataset.distQ || chain.rows[s.id].dataset.distCity)).length;
+    // A stop that wanted a place but resolved nowhere keeps the total honest:
+    // the strip says the figure is partial rather than pretending completeness.
+    //
+    // IT NAMES THEM NOW. "1 not located" is a true sentence that cannot be
+    // acted on, and on a day whose ANCHOR was the unlocated thing it was also
+    // the only sign anywhere that the hotel was missing (owner report,
+    // 2026-09-06). The anchor is included for exactly that reason: it was
+    // excluded before, so the one failure that silently breaks every distance
+    // on the day was the one the strip never mentioned.
+    const unplacedNames = chain.stops
+      .filter(s => s.lat === undefined && chain.rows[s.id]
+        && (chain.rows[s.id].dataset.distQ || chain.rows[s.id].dataset.distCity))
+      .map(s => (chain.rows[s.id].dataset.distLabel || '').trim());
+    const anchorItem = cardEl.dataset.anchorId
+      ? (activeTrip() || { items: [] }).items.find(x => x.id === cardEl.dataset.anchorId) : null;
+    if (anchorItem && cardEl.dataset.anchorKey && cardEl.dataset.anchorLabel
+      && !stayIsLocated(anchorItem, savedPlaceLookup(anchorItem))) {
+      unplacedNames.unshift(String(cardEl.dataset.anchorLabel).trim());
+    }
+    const unplaced = unplacedNames.length;
     const parts = [];
     if (totals.byMode.walk > 0) parts.push(`🚶 ${fmtDist(totals.byMode.walk)}`);
     if (totals.byMode.ride > 0) parts.push(`🚕 ${fmtDist(totals.byMode.ride)}`);
-    const tot = parts.join(' · ') + (unplaced ? ` <span class="dc-route-part">· ${unplaced} not located</span>` : '');
+    const tot = parts.join(' · ')
+      + (unplaced ? ` <span class="dc-route-part dc-route-unplaced">· ${esc(unlocatedSummary(unplacedNames))}</span>` : '');
     // the external route walks the chain itself: consecutive by construction,
     // chunked so a very busy day never silently drops a stop
     const queries = [legs[0].fromQuery, ...legs.map(l => l.toQuery)];
@@ -10412,6 +10509,56 @@
     el.appendChild(seg);
   }
 
+  // WHAT "LOCATED" MEANS HERE, and why it reuses placePoint rather than
+  // re-deriving it: `strict: true` is already the app's word for "a real
+  // position or nothing" - it is what refuses the city-centroid rung for a row
+  // that borrows another item's place. Asking the same ladder the DISTANCES ask
+  // means the warning cannot disagree with the chips: if this says located, a
+  // chip can be drawn, and if it says not, no chip could have been.
+  function stayIsLocated(it, lookup) {
+    if (!it || !lookup) return false;
+    const p = placePoint({
+      key: lookup.key,
+      name: displayTitle(it),
+      city: String(it.location || '').trim(),
+      strict: true,                       // no centroid may stand in for a hotel
+      canon: canonicalPointFor(it, lookup),
+    });
+    return !!p;
+  }
+
+  function paintPlaceWarning(el) {
+    const key = el.dataset.warnKey || '';
+    const it = (activeTrip() || { items: [] }).items.find(x => x.id === el.dataset.id);
+    if (!it) { el.hidden = true; return; }
+    const lookup = savedPlaceLookup(it);
+    if (!lookup || lookup.key !== key) { el.hidden = true; return; }
+    // Located: nothing to say, and say nothing LOUDLY - a stale warning left
+    // behind after the traveller fixed the name would be worse than the silence
+    // this replaces, so the slot is cleared on every paint.
+    if (stayIsLocated(it, lookup)) { el.hidden = true; el.textContent = ''; return; }
+    // Not located, but has the lookup actually answered? A batch in flight is
+    // not evidence of anything and must not paint.
+    const entry = placesCache.get(key);
+    if (!entry) { el.hidden = true; return; }
+    const unresolved = placeUnresolved(entry);
+    if (!unresolved && entry.status !== 'ok') { el.hidden = true; return; }
+    // Two honest states, and they are genuinely different problems:
+    //   the name matched nothing  -> the traveller has to change the name
+    //   it matched, but the point was refused as implausible for this city
+    //     -> the name is probably right and the CITY is probably wrong
+    const text = unresolved ? 'Location not verified' : 'Location looks wrong';
+    const why = unresolved
+      ? `No place on Google Maps matched "${displayTitle(it)}" closely enough to be sure, so this stay has no position: `
+        + 'distances and the day route cannot start from it. Click to edit the name - the one the hotel uses on Google Maps usually resolves.'
+      : `A place matched "${displayTitle(it)}", but its position is too far from ${String(it.location || 'this city').trim()} to believe, `
+        + 'so it is not used. Click to edit - the stay\'s place field is usually what needs correcting.';
+    el.hidden = false;
+    el.title = why;
+    el.setAttribute('aria-label', `${text}. ${why}`);
+    el.innerHTML = `<span class="tpw-ico" aria-hidden="true">⚠</span> <span class="tpw-text">${esc(text)}</span>`;
+  }
+
   // Opening hours for the scheduled date, painted from the same session cache
   // the ratings live in. Three visual states and one deliberate silence:
   //   (nothing)   - hours unknown. The place resolved without hours, the lookup
@@ -10526,6 +10673,9 @@
     scope.querySelectorAll('.assist-maps-link[data-place-key]').forEach(paintMapsLink);
     scope.querySelectorAll('.tp-maps-link[data-place-key]').forEach(paintTripMapsLink);
     scope.querySelectorAll('.tp-hours[data-place-key]').forEach(paintHoursSlot);
+    // Repainted (not once-only like the rating): this slot has to be able to go
+    // BACK to hidden the moment a corrected name resolves.
+    scope.querySelectorAll('.tp-place-warn[data-warn-key]').forEach(paintPlaceWarning);
     // ratings feed the rated/popular badges, so a batch landing re-judges the
     // pick-one sets it just informed
     scope.querySelectorAll('.assist-set').forEach(paintSetBadges);

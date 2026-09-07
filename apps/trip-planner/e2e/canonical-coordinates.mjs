@@ -21,7 +21,7 @@
 import {
   APP, recorder, freshIds, item, trip, dbOf,
   openApp, tpErrors, closePage, evaluate, waitForExpr, sleep,
-  clickSel, gotoHard, switchView,
+  clickSel, gotoHard, switchView, setValue,
 } from './helpers.mjs';
 import { EXTERNAL_HOSTS } from '../../../tests/browser/cdp.mjs';
 
@@ -47,10 +47,18 @@ const AREA_MAX_KM = 150;
 
 const VENUES = {
   'ChaoKoh Hotel Phi Phi Island': { ...CHAOKOH, rating: 4.1, count: 2100, pid: HOTEL_ID, kind: 'hotel' },
+  // the hotel's REAL name on Maps, which is what block E corrects the stay to
+  'Chao Koh Phi Phi Hotel & Resort': { ...CHAOKOH, rating: 4.1, count: 2100, pid: HOTEL_ID, kind: 'hotel' },
   'The Mango Garden': { ...MANGO, rating: 4.8, count: 3769, pid: MANGO_ID, kind: 'restaurant' },
   'Loh Dalum Beach': { ...LOH_DALUM, rating: 4.1, count: 1077, pid: DALUM_ID, kind: 'beach' },
 };
 const ATTR = { text: 'Google Maps', url: 'https://www.google.com/maps' };
+// A name the resolver cannot identify. The owner's real hotel was titled
+// "ChaoKoh Hotel Phi Phi Island", which matches no business on Google Maps
+// (Photon's top hits for it are hotels in Bali and the Philippines); the real
+// one is "Chao Koh Phi Phi Hotel & Resort". The double refuses the first and
+// resolves the second, which is exactly what production did.
+const UNIDENTIFIABLE = /chaokoh hotel phi phi island/i;
 const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 function venueFor(q) {
   const n = norm(q);
@@ -66,7 +74,10 @@ function venueFor(q) {
 // `verified` is false for everything here, because with no trustworthy anchor
 // the client sends no point and the server has nothing to check the locality
 // against. That is the state the whole failure lived in.
-function net(log) {
+// `refuse` is opt-in and block-scoped. Making it global would quietly turn the
+// hotel unresolvable for every other block in this file, which is exactly what
+// it did on the first run: A, B and C all lost their anchor.
+function net(log, refuse) {
   return (url, request) => {
     if (url.includes('photon.komoot.io')) {
       log.photon.push(url);
@@ -88,6 +99,7 @@ function net(log) {
     if (body.discover) return { status: 200, body: { results: [], discovered: true, reason: 'no_candidates', attribution: ATTR } };
     const results = entries.map(e => {
       const q = String(e.q || '');
+      if (refuse && refuse.test(q)) return { id: e.id, query: q, status: 'no_match', reason: 'low_confidence' };
       const name = venueFor(q);
       if (!name) return { id: e.id, query: q, status: 'no_match', reason: 'not_found' };
       const v = VENUES[name];
@@ -430,6 +442,134 @@ export async function run({ base, cdpPort }) {
           && afterReload['ChaoKoh Hotel Phi Phi Island'].id === HOTEL_ID
           && Math.abs(afterReload['ChaoKoh Hotel Phi Phi Island'].lat - CHAOKOH.lat) < 0.001,
         JSON.stringify(afterReload['ChaoKoh Hotel Phi Phi Island']), s);
+    });
+  }
+
+  /* =====================================================================
+     E. AN UNLOCATED STAY SAYS SO, WHERE THE STAY IS.
+
+        Owner report: their hotel was unidentifiable for a whole session and
+        the only sign was "1 not located" in small grey text in the day footer,
+        beside four rows that HAD resolved.
+     ===================================================================== */
+  freshIds();
+  {
+    const log = { photon: [], places: [] };
+    const MIDDLE = '2027-01-27';
+    const BAD = 'ChaoKoh Hotel Phi Phi Island';        // matches no business
+    const GOOD = 'Chao Koh Phi Phi Hotel & Resort';    // the real one
+    const stay = item({
+      type: 'stay', title: BAD, location: 'Ko Phi Phi',
+      startDate: '2027-01-26', endDate: '2027-01-29',
+    });
+    const beach = item({
+      type: 'activity', title: 'Loh Dalum Beach', location: 'Ko Phi Phi',
+      startDate: MIDDLE, startTime: '11:00', mapsQuery: 'Loh Dalum Beach Ko Phi Phi',
+    });
+    const mango = item({
+      type: 'activity', title: 'The Mango Garden', meal: 'lunch', location: 'Ko Phi Phi',
+      startDate: MIDDLE, startTime: '13:00', mapsQuery: 'The Mango Garden Ko Phi Phi',
+    });
+    const tp = trip({ name: 'Thailand', items: [stay, beach, mango] });
+    const stores = {
+      'trip-planner:geo:v3': {
+        'ko phi phi': { ...TRAT_ISLET, country: 'Thailand', cc: 'TH', conf: 'low', kind: 'islet' },
+      },
+    };
+
+    await withPage('canonical-coords E', { db: dbOf([tp]), stores, net: net(log, UNIDENTIFIABLE) }, async (s) => {
+      await switchView(s, 'days');
+      await waitForExpr(s, `!!document.querySelector('#daysList .day-card[data-date="${MIDDLE}"]')`, { timeout: 20000 });
+      await sleep(4000);
+
+      const warn = () => evaluate(s, `(() => {
+        const out = { header: [], rows: [], footer: '' };
+        for (const c of document.querySelectorAll('#daysList .day-card')) {
+          const h = c.querySelector('.dc-anchor-warn');
+          if (h && !h.hidden) out.header.push({ date: c.dataset.date, text: h.textContent.replace(/\\s+/g,' ').trim(), id: h.dataset.id || '' });
+          const f = c.querySelector('.dc-route-unplaced');
+          if (f && c.dataset.date === '${MIDDLE}') out.footer = f.textContent.replace(/\\s+/g,' ').trim();
+        }
+        for (const b of document.querySelectorAll('.dc-event .tp-place-warn')) {
+          if (!b.hidden) out.rows.push({ text: b.textContent.replace(/\\s+/g,' ').trim(),
+            row: (b.closest('.dc-event') || {}).dataset ? b.closest('.dc-event').dataset.distLabel : '' });
+        }
+        return out; })()`);
+
+      /* --- 1. flagged directly where the hotel is shown --- */
+      const w = await warn();
+      await t('E1: the unlocated stay is flagged on the day itself, not only in a footer',
+        w.header.length > 0, JSON.stringify(w.header).slice(0, 200), s);
+
+      /* --- 2. you can tell WHICH hotel --- */
+      await t('E2: the warning names the specific stay',
+        w.header.every(h => h.text.includes(BAD)), JSON.stringify(w.header).slice(0, 200), s);
+      await t('E2b: and the footer names it instead of counting it',
+        /not located/.test(w.footer) && w.footer.includes(BAD) && !/^\W*·?\s*1 not located/.test(w.footer),
+        `footer="${w.footer}"`, s);
+
+      /* --- it is flagged on EVERY night the stay anchors, not just check-in --- */
+      await t('E2c: every night of the stay is flagged, including middle nights',
+        w.header.some(h => h.date === MIDDLE), JSON.stringify(w.header.map(h => h.date)), s);
+
+      /* --- and the check-in ROW carries it too --- */
+      await t('E2d: the stay row itself carries the warning',
+        w.rows.some(r => /Location not verified/.test(r.text)), JSON.stringify(w.rows), s);
+
+      /* --- 5. nothing was guessed --- */
+      const guessed = await evaluate(s, `(() => {
+        const db = JSON.parse(localStorage.getItem('trip-planner:v1') || '{}');
+        const it = ((db.trips || [])[0] || {}).items.find(i => /ChaoKoh/.test(i.title || ''));
+        return it && it.place ? it.place : null; })()`);
+      await t('E5: no place is invented to make the warning go away',
+        guessed === null, JSON.stringify(guessed), s);
+
+      const anchorPt = await evaluate(s, `(() => {
+        const c = document.querySelector('#daysList .day-card[data-date="${MIDDLE}"]');
+        return { plat: c.dataset.anchorPlat || '', plon: c.dataset.anchorPlon || '' }; })()`);
+      await t('E5b: and no centroid is substituted for the hotel either',
+        !anchorPt.plat, JSON.stringify(anchorPt), s);
+
+      /* --- 4. correct the name and the warning goes --- */
+      await clickSel(s, `#daysList .day-card[data-date="2027-01-26"] .dc-event.is-stay [data-act="edit"]`, { settle: 800 });
+      await waitForExpr(s, `document.querySelector('#itemOverlay').classList.contains('open')`, { timeout: 8000 });
+      await setValue(s, '#inTitle', GOOD);
+      await clickSel(s, '#itemSaveBtn', { settle: 1200 });
+      await switchView(s, 'days');
+      await sleep(4500);
+
+      const after = await warn();
+      await t('E4: correcting the name clears the warning everywhere',
+        after.header.length === 0 && after.rows.length === 0,
+        `header=${JSON.stringify(after.header)} rows=${JSON.stringify(after.rows)}`, s);
+      await t('E4b: and the footer stops reporting anything unlocated',
+        !after.footer, `footer="${after.footer}"`, s);
+
+      /* --- 3 + 6. a resolved stay behaves normally --- */
+      const day = await readDay(s);
+      await t('E6: routing now uses the canonical resolved coordinates',
+        !!day && Math.abs(Number(day.anchorPlat) - CHAOKOH.lat) < 0.001,
+        `anchorPlat=${day && day.anchorPlat}`, s);
+      const first = (day && day.rows.find(r => /Loh Dalum/.test(r.label))) || null;
+      await t('E6b: and the day draws real distances from it',
+        !!first && /\d/.test(first.chip), `chip="${first && first.chip}"`, s);
+
+      /* --- 7. persistence --- */
+      const saved = await evaluate(s, `(() => {
+        const db = JSON.parse(localStorage.getItem('trip-planner:v1') || '{}');
+        const it = ((db.trips || [])[0] || {}).items.find(i => /Chao Koh/.test(i.title || ''));
+        return it && it.place ? it.place : null; })()`);
+      await t('E7: the corrected stay persists its canonical place',
+        !!saved && saved.id === HOTEL_ID && Math.abs(saved.lat - CHAOKOH.lat) < 0.001,
+        JSON.stringify(saved), s);
+
+      await gotoHard(s, base + APP, { settle: 1600 });
+      await switchView(s, 'days');
+      await sleep(3500);
+      const reloaded = await warn();
+      await t('E7b: and after a reload the warning stays gone',
+        reloaded.header.length === 0 && reloaded.rows.length === 0,
+        JSON.stringify(reloaded).slice(0, 200), s);
     });
   }
 

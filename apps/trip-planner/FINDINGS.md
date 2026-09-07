@@ -1804,6 +1804,90 @@ caller asking a different question. Worth looking for wherever a helper wraps a
 stricter primitive - the inherited refusal does not announce itself, it just
 falls into whatever the `else` branch happens to be.
 
+## An unlocated stay has to say so, where the stay is (2026-09-06)
+
+**The report.** The owner's hotel could not be identified for a whole session -
+their stay was titled `ChaoKoh Hotel Phi Phi Island`, a name no business has
+(Photon's top hits for it are hotels in Bali and the Philippines; the real one
+is `Chao Koh Phi Phi Hotel & Resort`). The lookup honestly refused it, which is
+**correct**: after the 2026-09-06 coordinate round the app declines rather than
+falling back to a centroid. The problem was that it declined in silence.
+
+The only sign anywhere was `1 not located`, in small grey text, in the day
+footer, beside four rows that HAD resolved. That reads as a rounding note, not
+as "your hotel is not on the map and every distance on this day is measured from
+nothing". The traveller reasonably assumed the hotel was fine.
+
+**The app already knew how to say this.** `paintRatingSlot` renders
+`placeStateLabel` on the assistant's own cards - "Not found on Google",
+"Different city", "Different kind of place". It simply stopped saying it the
+moment a place became a saved itinerary row: `paintTripMapsLink` returns early
+unless `status === 'ok'`, so an unresolved row is pixel-identical to one whose
+lookup has not landed yet.
+
+**Three surfaces, ONE definition of located.** `stayIsLocated(item, lookup)`
+asks `placePoint({ strict: true })` - which is already the app's word for "a real
+position or nothing", the rung that refuses a city centroid standing in for a
+named building. The row warning, the day-header warning and the footer all ask
+it, so they cannot disagree with each other or with the chips: if it says
+located a chip can be drawn, and if it says not, no chip could have been.
+
+The naive test - `chain.anchor === null` - is WRONG and was the first attempt.
+The anchor is deliberately non-strict, so an unlocated stay still yields the city
+centroid: a point, tagged `city` and `standin`, that `unmeasurableLeg` then
+refuses to draw a leg from. The chain HAS an anchor and the day has no chips, so
+testing for null reports "located" about a hotel nobody found.
+
+**Where it renders, and why both places are needed.** A stay is a ROW only on
+its check-in and check-out days (`dayEventsFor` pushes `checkin` on startDate and
+`checkout` on endDate). On every night in between it is the day's ANCHOR and
+nothing else - which is most of a stay, and exactly where the owner was reading.
+So:
+  - the stay's own row carries `Location not verified` (check-out is suppressed,
+    as its cost and Maps cells already are: it repeats a booking);
+  - the day HEADER carries `Could not locate <name>` on every night the stay
+    anchors, because the day is broken on every one of them;
+  - the footer NAMES what it could not locate instead of counting it, and now
+    includes the anchor - previously the one failure that silently breaks every
+    distance on the day was the one the strip never mentioned.
+
+Both are `<button data-act="edit">`: the only fix is to correct the name, and
+that is the existing route to the modal. Amber, not red - nothing is broken and
+no data is lost, the app simply does not know where this is. `color` is pinned
+`!important` because `assets/css/main.css` sets `button { color:#555 !important }`
+site-wide and would silently grey it out.
+
+**Silence is not a verdict.** Only a LANDED answer may paint. A batch in flight
+must read as silence or every stay flashes a warning on load and the warning
+stops meaning anything; `placeUnresolved(null)` is false for exactly that reason.
+The slot is also REPAINTED rather than painted once, so it can go back to hidden
+the moment a corrected name resolves.
+
+**Nothing is invented to make it disappear.** The e2e asserts no `place` record
+appears and no `data-anchor-plat` is stamped while the stay is unresolved.
+
+### An element that sets `display` must restate `hidden`
+
+The warning slot renders empty and `hidden`, and `.tp-place-warn { display:
+inline-flex }` BEATS the user agent's `[hidden] { display: none }` - same
+specificity fight `[hidden]` always loses when a rule sets `display` on the
+element itself. So an empty amber chip rendered on every stay row and every day
+header until a lookup painted it, and an empty `<button>` has no accessible
+name: the a11y scan caught it as `button-name`, critical, twelve times, in a
+suite that has nothing to do with places. `[hidden] { display: none !important }`
+is restated beside the rule that broke it.
+
+### Two traps this round walked into
+
+- **A test double's refusal must be block-scoped.** Teaching the shared double to
+  refuse the hotel name broke blocks A, B and C in the same file, which all use
+  that stay as their anchor. `net(log, refuse)` takes the pattern per block.
+- **`\s` inside a template literal is `s`.** The e2e read `textContent.replace(/\s+/g,' ')`
+  inside a backtick string passed to `evaluate`; JS drops the unknown escape, so
+  the regex became `/s+/g` and every "s" was replaced with a space. The assertion
+  failed on `ChaoKoh Hotel Phi Phi I land` and looked exactly like an app bug
+  mangling the name. Escapes bound for an evaluated string need doubling.
+
 ## Places billing: the free allowance is the real ceiling (2026-08-18)
 
 **Google's billing, not our counters, is the source of truth, and they did not

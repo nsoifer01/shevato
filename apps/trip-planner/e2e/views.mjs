@@ -653,8 +653,12 @@ export async function run({ base, cdpPort }) {
     await switchView(s, 'days');
     await waitForExpr(s, `!!document.querySelector('#daysList .dc-route') && /not located/.test(document.querySelector('#daysList .dc-route-tot').textContent)`, { timeout: 10000 });
     const tot = await evaluate(s, `document.querySelector('#daysList .dc-route-tot').textContent`);
-    await t('tp-views S2: an unlocatable stop marks the total as partial',
-      /1 not located/.test(tot), JSON.stringify(tot), s);
+    // Was `/1 not located/`. The strip NAMES what it could not place now: a
+    // count is true and cannot be acted on, and on a day whose own anchor was
+    // the unplaced thing it was the only sign anywhere. Asserting the name is
+    // strictly more specific - it would fail if the wrong item were reported.
+    await t('tp-views S2: an unlocatable stop marks the total as partial, by name',
+      /Meiji Jingu not located/.test(tot), JSON.stringify(tot), s);
     // flip the preference through its menu row: every chip and the strip
     // switch to kilometers together, and the choice survives a reload
     await menuAct(s, 'distunit', 800);

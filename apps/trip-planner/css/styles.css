@@ -4127,6 +4127,53 @@
 }
 .dc-route-tot { white-space: nowrap; }
 .dc-route-part { color: var(--amber); }
+/* The named unlocated list carries the same amber as the count it replaced;
+   it is longer text, so it is allowed to wrap rather than push the strip. */
+.dc-route-unplaced { white-space: normal; }
+
+/* ---------- "this stay could not be located" ----------
+   A place that did not resolve has to say so where the place is, not only in
+   the day's totals. Amber, not red: nothing is broken and no data is lost -
+   the app simply does not know where this is, and the traveller can fix it.
+
+   `color` is pinned with !important because assets/css/main.css sets
+   `button { color:#555 !important }` site-wide, which silently defeats any
+   unpinned colour on a <button> (see CLAUDE.md). This is a button because the
+   only fix is to edit the name, and it opens that modal. */
+/* `display` here BEATS the user agent's `[hidden] { display: none }`, so the
+   slot rendered as an empty amber chip on every stay until it was painted -
+   and an empty <button> has no accessible name, which is how the a11y scan
+   caught it (button-name, critical x12). An element that sets `display` must
+   restate hidden. */
+.trip-planner-app .tp-place-warn[hidden] { display: none !important; }
+.trip-planner-app .tp-place-warn {
+  display: inline-flex; align-items: center; gap: 5px;
+  width: auto; min-height: 0; padding: 2px 8px;
+  border: 1px solid rgba(240, 179, 78, 0.45);
+  border-radius: 999px;
+  background: var(--amber-soft);
+  color: var(--amber) !important;
+  font-size: 12px; line-height: 1.5; font-weight: 600;
+  white-space: nowrap; cursor: pointer;
+}
+.trip-planner-app .tp-place-warn:hover,
+.trip-planner-app .tp-place-warn:focus-visible {
+  border-color: var(--amber);
+  background: rgba(240, 179, 78, 0.22);
+  color: var(--amber) !important;
+}
+.trip-planner-app .tp-place-warn .tpw-ico { font-size: 11px; }
+/* In the day header it sits above the weekday, full width of the heading
+   column, so it reads as a statement about the DAY rather than a stray chip. */
+.trip-planner-app .dc-anchor-warn {
+  align-self: flex-start;
+  margin: 0 0 4px;
+  max-width: 100%;
+  white-space: normal; text-align: left;
+}
+@media (max-width: 560px) {
+  .trip-planner-app .tp-place-warn { white-space: normal; text-align: left; }
+}
 .dc-route-acts { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; min-width: 0; }
 .trip-planner-app .dc-route-btn { width: auto; padding: 0 9px; font-size: 12px; white-space: nowrap; }
 
