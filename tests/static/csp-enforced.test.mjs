@@ -135,3 +135,59 @@ test('the enforced policy is a SUBSET of the report-only one', () => {
       `${name} is enforced as "${value}" but the report-only policy says "${reported.get(name)}"`);
   }
 });
+
+// ---------------------------------------------------------------------------
+// netlify.toml has to PARSE, which is not a given.
+//
+// `[functions] node_version = "22"` looks obviously right and is not: the
+// config schema reads any unrecognised key under [functions] as a
+// per-function SCOPE OBJECT, so the whole file was rejected with
+// "functions.node_version must be an object" and every deploy check on
+// PR #506 failed at once. A config that does not parse is a total outage, and
+// nothing in the estate could see it - these are the keys this repo sets, and
+// the shapes they have to have.
+// ---------------------------------------------------------------------------
+
+test('the deploy config sets the keys it means to, in the shapes Netlify accepts', () => {
+  const value = (key, section) => {
+    const lines = toml.split('\n');
+    let inSection = !section;
+    for (const line of lines) {
+      const header = /^\s*\[([^\]]+)\]/.exec(line);
+      if (header) { inSection = header[1] === section; continue; }
+      if (!inSection) continue;
+      const m = new RegExp(`^\\s*${key}\\s*=\\s*"(.*)"`).exec(line);
+      if (m) return m[1];
+    }
+    return null;
+  };
+
+  assert.equal(value('publish', 'build'), 'dist',
+    'the deploy publishes the allow-listed directory, not the repo tree');
+  assert.equal(value('functions', 'build'), 'netlify/functions',
+    'functions bundle from the repo, which is why their source can leave the publish dir');
+  assert.equal(value('node_bundler', 'functions'), 'esbuild');
+
+  // The runtime pins. Both live in [build.environment]; neither belongs under
+  // [functions], where the schema wants an object.
+  assert.equal(value('NODE_VERSION', 'build.environment'), '22');
+  assert.match(value('AWS_LAMBDA_JS_RUNTIME', 'build.environment') || '', /^nodejs\d+\.x$/);
+
+  // The pin that actually failed. Any scalar key under [functions] other than
+  // the documented ones is read as a scope name and rejects the file.
+  const functionsBlock = /\n\[functions\]\n([\s\S]*?)(?=\n\[|$)/.exec(toml);
+  assert.ok(functionsBlock, '[functions] block found');
+  const keys = [...functionsBlock[1].matchAll(/^\s*([A-Za-z_]+)\s*=/gm)].map((m) => m[1]);
+  const allowed = new Set(['node_bundler', 'directory', 'included_files', 'external_node_modules', 'deno_import_map']);
+  for (const k of keys) {
+    assert.ok(allowed.has(k), `[functions] ${k} is not a documented scalar key; the schema will read it as a scope object and reject the whole config`);
+  }
+});
+
+test('the runtime pins agree with .nvmrc', () => {
+  const nvmrc = readFileSync(join(REPO_ROOT, '.nvmrc'), 'utf8').trim();
+  assert.match(toml, new RegExp(`NODE_VERSION = "${nvmrc}"`),
+    'the build runs on the version .nvmrc names');
+  assert.match(toml, new RegExp(`AWS_LAMBDA_JS_RUNTIME = "nodejs${nvmrc}\\.x"`),
+    'and so do the functions');
+});

@@ -33,13 +33,20 @@
 # before the 2026-09-05 audit; 22 is the active LTS.
 [build.environment]
   NODE_VERSION = "22"
+  # The FUNCTIONS runtime, pinned separately from the build's Node. There is no
+  # `node_version` under [functions] - the config schema reads that key as a
+  # per-function scope object and refuses the file outright, which is how the
+  # first attempt at this failed every deploy check on PR #506 with
+  # "functions.node_version must be an object". AWS_LAMBDA_JS_RUNTIME is the
+  # documented mechanism, and it keeps the pin explicit: a function that
+  # inherits whatever the platform defaults to is a runtime that moves under
+  # you without a commit. Matches NODE_VERSION and .nvmrc; @netlify/blobs 10.x
+  # and the conditional-write path in lib/blob-cas.mjs are exercised on it by
+  # netlify/functions/tests/blobs-version.test.mjs.
+  AWS_LAMBDA_JS_RUNTIME = "nodejs22.x"
 
 [functions]
   node_bundler = "esbuild"
-  # Matches NODE_VERSION above and .nvmrc. @netlify/blobs 10.x and the
-  # conditional-write path in lib/blob-cas.mjs are exercised on this runtime by
-  # netlify/functions/tests/blobs-version.test.mjs.
-  node_version = "22"
 
 # Local dev only (netlify dev); no effect on deploys. Pins the dev server
 # to one address instead of a random port per run, serving the repo root
