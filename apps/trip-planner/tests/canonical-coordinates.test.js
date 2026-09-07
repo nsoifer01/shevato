@@ -322,3 +322,45 @@ test('the walk/ride boundary is unmoved', () => {
   assert.equal(L.hopTravel(1.9).key, 'walk');
   assert.equal(L.hopTravel(2.1).key, 'ride');
 });
+
+// ---------- 10. an unlocated stay has to SAY so ----------
+// Owner report, 2026-09-06: their hotel could not be identified for a whole
+// session, and the only sign anywhere was "1 not located" in small grey text in
+// a day footer, beside four rows that HAD resolved. That reads as a rounding
+// note, not as "your hotel is not on the map and every distance on this day is
+// measured from nothing". The assistant's own card has always said this
+// (paintRatingSlot renders placeStateLabel); the itinerary row stopped saying
+// it the moment the place became a saved row.
+//
+// The rendering lives in app.js and is covered by e2e block E. What is pinned
+// here is the vocabulary it leans on.
+
+test('a lookup that found nothing reads as unresolved', () => {
+  assert.equal(L.placeUnresolved({ status: 'no_match', reason: 'low_confidence' }), true);
+  assert.equal(L.placeUnresolved({ status: 'no_match', reason: 'wrong_area' }), true);
+  assert.equal(L.placeUnresolved({ status: 'no_match', reason: 'type_mismatch' }), true);
+});
+
+test('a place that RESOLVED is never called unresolved, rating or not', () => {
+  assert.equal(L.placeUnresolved({ status: 'ok', rating: 4.5 }), false);
+  // an unrated place is a found place: it has an ID, a position and a link
+  assert.equal(L.placeUnresolved({ status: 'no_match', placeId: 'ChIJx' }), false);
+});
+
+test('SILENCE IS NOT A VERDICT: a lookup in flight says nothing', () => {
+  // Without this every stay flashes a warning on load and the warning stops
+  // meaning anything.
+  assert.equal(L.placeUnresolved(null), false);
+  assert.equal(L.placeUnresolved(undefined), false);
+  assert.equal(L.placeUnresolved({}), false);
+  assert.equal(L.placeUnresolved({ status: 'unavailable' }), false, 'transient, and a later batch may answer');
+});
+
+test('the footer NAMES what it could not locate, instead of counting it', () => {
+  assert.equal(L.unlocatedSummary(['Chao Koh Phi Phi Hotel']), 'Chao Koh Phi Phi Hotel not located');
+  assert.equal(L.unlocatedSummary(['A Hotel', 'B Cafe']), 'A Hotel and B Cafe not located');
+  assert.equal(L.unlocatedSummary(['A', 'B', 'C']), 'A and 2 more not located');
+  assert.equal(L.unlocatedSummary([]), '', 'nothing unlocated says nothing at all');
+  assert.equal(L.unlocatedSummary(['A', 'A']), 'A not located', 'one place named twice is one place');
+  assert.equal(L.unlocatedSummary([null, '', '  ']), '', 'blank labels are not names');
+});

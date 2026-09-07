@@ -6282,6 +6282,34 @@ const TripLogic = (() => {
     };
   }
 
+  // ---------- did this lookup SETTLE on "no, we cannot identify it"? --------
+  // `placeStateLabel` already classifies every answer the resolver can give and
+  // carries `resolved`, which is the one bit that matters here: a place with an
+  // ID resolved (an unrated place is still a found place), and everything else
+  // is the lookup saying it could not name this business.
+  //
+  // The distinction that matters for the UI is between "not resolved" and "not
+  // asked yet". Only a LANDED answer may be reported to the traveller; silence
+  // while a batch is in flight has to read as silence, or every stay flashes a
+  // warning on load and the warning stops meaning anything.
+  function placeUnresolved(entry) {
+    const state = placeStateLabel(entry);
+    return !!(state && state.resolved === false);
+  }
+
+  // "1 not located" is a true sentence that tells you nothing (owner report,
+  // 2026-09-06: their hotel was unidentifiable for a whole session and the only
+  // sign was that count, in small text, in a day footer). A count cannot be
+  // acted on; a NAME can. The names come from the same chain the chips are
+  // drawn from, so this can never disagree with what the day actually did.
+  function unlocatedSummary(names) {
+    const list = [...new Set((Array.isArray(names) ? names : []).map(n => String(n || '').trim()).filter(Boolean))];
+    if (!list.length) return '';
+    if (list.length === 1) return `${list[0]} not located`;
+    if (list.length === 2) return `${list[0]} and ${list[1]} not located`;
+    return `${list[0]} and ${list.length - 1} more not located`;
+  }
+
   // ---------- itinerary: which query an item opens on Google Maps ----------
   // Every place a traveller can actually walk into deserves the same Maps
   // section: a hotel, a ryokan, a hostel or an apartment is a place the same way
@@ -10836,6 +10864,7 @@ const TripLogic = (() => {
     PLACES_BATCH_MAX, PLACES_CONCURRENCY, PLACES_DEFER_MS, PLACES_MAX_ATTEMPTS,
     VENUE_TTL_MS, VENUE_CACHE_MAX, venueFresh, normalizeVenueCache, rememberVenue,
     placesLocationUpdates, pickVenueFeature, validCoord, resultKey,
+    placeUnresolved, unlocatedSummary,
     SAME_SPOT_KM, sameSpot, unmeasurableLeg, distancePoint, dayAnchor, dayDistanceChain, contradictoryPair,
     parseTravelArrival, dayArrival, proposalOrigin, dayBaseOrigin, suggestionOrigins,
     ROUTE_EXACT_MAX, shortestRoute, routeStops, setDistanceUnit, getDistanceUnit, fmtDist, distanceChipLabel, distanceChipTitle, routeFooterText,
