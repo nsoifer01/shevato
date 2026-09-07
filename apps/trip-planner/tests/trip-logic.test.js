@@ -7059,7 +7059,7 @@ test('rememberVenue evicts the least recently written venue at the cap', () => {
 test('placesLocationUpdates stores the coordinates the ratings call returned', () => {
   // `verified: true` is now REQUIRED for a coordinate to be stored: an
   // unverified point is what drew the 809 km chip, and once it landed in the
-  // 30-day venue cache every later render repeated it.
+  // 29-day venue cache every later render repeated it.
   const out = L.placesLocationUpdates([
     { query: 'Ichiran Shibuya, Tokyo', status: 'ok', rating: 4.2, lat: 35.6595, lon: 139.7005, verified: true },
     // an unrated but confidently matched venue still carries a position
