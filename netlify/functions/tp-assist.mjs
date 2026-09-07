@@ -19,6 +19,7 @@
 import { checkQuota } from './lib/tp-assist-quota.mjs';
 import { updateUsage } from './lib/blob-cas.mjs';
 import { originAllowed, json, upstreamSignal } from './lib/tp-http.mjs';
+import { networkIdFor } from './lib/tp-client-identity.mjs';
 // SINGLE SOURCE OF TRUTH for the assistant contract. This used to be a
 // hand-copied SYSTEM_PREAMBLE, which meant Tier 3 silently kept the old shape
 // every time the client contract changed. trip-logic.js is a classic script
@@ -155,8 +156,13 @@ export default async function handler(req) {
   // closed, because many writers fighting over this one blob is exactly the
   // load the quota exists to stop.
   const now = Date.now();
+  // The caller mints clientId, so it bounds a cooperative browser and nothing
+  // else. networkId is derived from the address the platform reports and is a
+  // day-scoped digest, so rotating client ids no longer multiplies one
+  // source's share of the daily allowance (audit F12).
+  const networkId = networkIdFor(req, now);
   const reserved = await updateUsage(store, USAGE_KEY, usage => {
-    const q = checkQuota(usage, clamped.clientId, now);
+    const q = checkQuota(usage, clamped.clientId, now, undefined, networkId);
     return { write: q.allowed ? q.usage : null, result: q };
   });
   if (!reserved.ok) return json({ error: 'quota_exceeded', scope: 'contention' }, 429);

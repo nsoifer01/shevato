@@ -4815,8 +4815,14 @@ const TripLogic = (() => {
   function placesRetryDelay(scope, now, attempt = 1, random = Math.random) {
     const t = Number(now) || 0;
     switch (scope) {
-      case 'client_hour': return HOUR - (t % HOUR);
+      case 'client_hour':
+      // The network buckets roll on exactly the same edges as the client
+      // ones (lib/tp-places-quota.mjs resetAtFor), so waiting for a different
+      // clock here would either waste the rest of an hour or re-ask a day cap
+      // hourly - the two failures the scope-aware delay exists to avoid.
+      case 'network_hour': return HOUR - (t % HOUR);
       case 'client_day':
+      case 'network_day':
       case 'global_day':
       case 'owner_day': return DAY - (t % DAY);
       // The monthly free-allowance budget (see MONTHLY_BUDGET server-side).

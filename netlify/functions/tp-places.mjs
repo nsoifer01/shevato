@@ -57,6 +57,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { checkQuota, releaseQuota, resetAtFor, budgetStatus, MONTHLY_BUDGET, DEFAULT_LIMITS, OWNER_LIMITS } from './lib/tp-places-quota.mjs';
 import { updateUsage } from './lib/blob-cas.mjs';
 import { originAllowed, json, upstreamSignal } from './lib/tp-http.mjs';
+import { networkIdFor } from './lib/tp-client-identity.mjs';
 import { resolveQueries, discoverPlaces, DISCOVERY_DETAILS_MAX, DISCOVERY_SCAN_MAX } from './lib/tp-places-lookup.mjs';
 import { isGenericQuery, normalizeArea } from './lib/tp-places-match.mjs';
 // The hours normalizer is shared with the client (trip-logic.js is dual-exposed
@@ -198,6 +199,12 @@ export default async function handler(req) {
   // other's counters, and the monthly cap is the one control standing between
   // a concurrent abuser and real money.
   const now = Date.now();
+  // The caller mints clientId, so it bounds a cooperative browser and nothing
+  // else. networkId is a day-scoped digest of the address the platform
+  // reports, so rotating client ids no longer multiplies one source's share
+  // of the shared allowance (audit F12). The owner tier ignores it: that tier
+  // presents a secret, which is identity rather than an inference.
+  const networkId = networkIdFor(req, now);
   // ONE SLOT PER QUERY IS NOT ENOUGH, and that is not a rounding error: a
   // candidate rejected on geography earns one retry, the retry is a second
   // billed Place Details call, and reserving exactly one slot per query meant
@@ -226,7 +233,7 @@ export default async function handler(req) {
   let granted = 0;
   if (billableMax > 0) {
     const reserved = await updateUsage(store, USAGE_KEY, usage => {
-      const q = checkQuota(usage, clamped.clientId, now, billableMax, limits, tier);
+      const q = checkQuota(usage, clamped.clientId, now, billableMax, limits, tier, networkId);
       // A partial grant still serves: the cards it covers get ratings and the
       // rest come back `unavailable`. Only a zero grant is a 429; a rejection
       // reads the counters but writes nothing.
@@ -278,7 +285,7 @@ export default async function handler(req) {
     const unspentD = granted - found.spent;
     if (unspentD > 0) {
       await updateUsage(store, USAGE_KEY, latest =>
-        ({ write: releaseQuota(latest, clamped.clientId, now, unspentD, tier) }));
+        ({ write: releaseQuota(latest, clamped.clientId, now, unspentD, tier, networkId) }));
     }
     return json({
       results: found.results,
@@ -327,7 +334,7 @@ export default async function handler(req) {
   const unspent = granted - spent;
   if (unspent > 0) {
     await updateUsage(store, USAGE_KEY, latest =>
-      ({ write: releaseQuota(latest, clamped.clientId, now, unspent, tier) }));
+      ({ write: releaseQuota(latest, clamped.clientId, now, unspent, tier, networkId) }));
   }
 
   return json({ results, attribution: ATTRIBUTION }, 200);

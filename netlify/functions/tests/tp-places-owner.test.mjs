@@ -71,6 +71,14 @@ test('owner limits are an order of magnitude up but still finite', () => {
     globalMonth: 600,
   });
   for (const k of Object.keys(DEFAULT_LIMITS)) {
+    // perNetwork* is deliberately absent from OWNER_LIMITS: the owner tier
+    // presents a secret, which is identity, so it is exempt from the address
+    // dimension the public tier gets (audit F12). checkQuota skips those rows
+    // for tier === 'owner', so a value here would never be read.
+    if (k.startsWith('perNetwork')) {
+      assert.equal(OWNER_LIMITS[k], undefined, k + ' does not apply to the owner tier');
+      continue;
+    }
     assert.ok(Number.isFinite(OWNER_LIMITS[k]), k + ' is finite');
   }
   // The owner may draw FASTER than the public tier...

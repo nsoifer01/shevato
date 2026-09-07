@@ -10321,6 +10321,12 @@
     switch (scope) {
       case 'client_hour': return "this browser's hourly lookup allowance is used up";
       case 'client_day': return "this browser's daily lookup allowance is used up";
+      // Named apart from the browser scopes on purpose: the traveller has not
+      // done anything, and telling them their browser is at its limit when
+      // somebody else on the same connection spent the share would send them
+      // clearing storage for nothing.
+      case 'network_hour': return "this connection's hourly lookup allowance is used up";
+      case 'network_day': return "this connection's daily lookup allowance is used up";
       case 'global_day':
       case 'owner_day': return "today's lookup allowance is used up";
       default: return 'the free lookup allowance for this month is used up';
