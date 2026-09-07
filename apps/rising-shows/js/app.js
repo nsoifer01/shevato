@@ -312,6 +312,9 @@ const STORAGE_NS = 'rising-seasons';
 const KEY_WATCHED = `${STORAGE_NS}:watched`;
 const KEY_COMPARE = `${STORAGE_NS}:compare`;
 const KEY_SCROLL = `${STORAGE_NS}:scroll`;
+// Which view the saved offset belongs to. Written and cleared with KEY_SCROLL,
+// never on its own; see ScrollMemory.
+const KEY_SCROLL_VIEW = `${STORAGE_NS}:scrollView`;
 const COMPARE_LIMIT = 5;
 const PAGE_SIZE = 24;
 const STALE_DAYS = 30;
@@ -786,12 +789,42 @@ function clampScrollY(stored, maxScrollY) {
   return Math.min(stored, maxScrollY);
 }
 
+// A stable identity for the view a hash describes. The same filters in a
+// different order are the same view, so `#sort=gap&gapDir=up` and
+// `#gapDir=up&sort=gap` produce one key; a bare hash is the default view and
+// produces ''. Used to decide whether a saved scroll offset still belongs to
+// what is on screen.
+function viewKeyFromHash(hash) {
+  const raw = String(hash == null ? '' : hash).replace(/^#/, '');
+  if (!raw) return '';
+  return [...new URLSearchParams(raw)]
+    .map(([k, v]) => `${k}=${v}`)
+    .sort()
+    .join('&');
+}
+
+// True when the hash names a real element on the page. A bare `#key=value`
+// hash is RS's own filter state, not an anchor, so the id lookup is what
+// separates a genuine anchor deep link (which the browser scrolls to itself)
+// from finder state.
+function hashTargetsElement() {
+  const hash = location.hash.replace(/^#/, '');
+  if (!hash) return false;
+  try { return !!document.getElementById(decodeURIComponent(hash)); }
+  catch { return false; }
+}
+
 const ScrollMemory = {
   save() {
     try {
       const y = window.scrollY || document.documentElement.scrollTop || 0;
-      if (y > 0) sessionStorage.setItem(KEY_SCROLL, String(y));
-      else sessionStorage.removeItem(KEY_SCROLL);
+      if (y > 0) {
+        sessionStorage.setItem(KEY_SCROLL, String(y));
+        sessionStorage.setItem(KEY_SCROLL_VIEW, viewKeyFromHash(location.hash));
+      } else {
+        sessionStorage.removeItem(KEY_SCROLL);
+        sessionStorage.removeItem(KEY_SCROLL_VIEW);
+      }
     } catch { /* sessionStorage disabled — position just won't persist */ }
   },
   read() {
@@ -802,9 +835,16 @@ const ScrollMemory = {
       return Number.isFinite(n) ? n : null;
     } catch { return null; }
   },
+  // The view the saved offset was taken in, or null when nothing recorded one
+  // (a tab holding an offset written before this key existed).
+  readView() {
+    try {
+      const raw = sessionStorage.getItem(KEY_SCROLL_VIEW);
+      return typeof raw === 'string' ? raw : null;
+    } catch { return null; }
+  },
   // Restore after the grid (the content that defines page height) has been
-  // appended. A bare `#key=value` hash is RS's own filter state, not an
-  // anchor; only skip restoration when the hash targets a real element id so
+  // appended. Only skip restoration when the hash targets a real element id so
   // genuine deep-link anchors win over the saved offset.
   //
   // The grid's cards lay out (and the fonts/SVG curves settle) over a few
@@ -812,16 +852,20 @@ const ScrollMemory = {
   // first try. Re-apply across a handful of frames until the document is tall
   // enough to reach the stored offset, then stop. Capped so a genuinely short
   // result set (stored offset unreachable) settles instead of looping.
+  //
+  // Returns true when it took charge of where the page sits, so the caller
+  // knows not to place the visitor somewhere else.
   restore() {
-    const hash = location.hash.replace(/^#/, '');
-    if (hash) {
-      let target = null;
-      try { target = document.getElementById(decodeURIComponent(hash)); }
-      catch { target = null; }
-      if (target) return;
-    }
+    if (hashTargetsElement()) return true;
     const stored = this.read();
-    if (stored == null || stored <= 0) return;
+    if (stored == null || stored <= 0) return false;
+    // An offset is only meaningful in the view it was taken in. Someone who
+    // read the shape explainer at the bottom of the page, followed a shape
+    // hub link and came back through "Filter Declining shows in the explorer"
+    // arrives at a DIFFERENT view, and reinstating 5,300 px drops them at the
+    // bottom again with no sign the filter landed.
+    const savedView = this.readView();
+    if (savedView !== null && savedView !== viewKeyFromHash(location.hash)) return false;
     let attempts = 0;
     const apply = () => {
       const maxScrollY = document.documentElement.scrollHeight - window.innerHeight;
@@ -835,6 +879,7 @@ const ScrollMemory = {
       }
     };
     apply();
+    return true;
   },
 };
 
@@ -847,6 +892,53 @@ function bindScrollMemory() {
   // pagehide covers both real unloads and bfcache freezes (and fires on
   // mobile where 'beforeunload' is unreliable).
   window.addEventListener('pagehide', () => ScrollMemory.save());
+}
+
+// A link click or a typed URL is a fresh arrival; a refresh and a Back/Forward
+// are returns to a view the visitor already had a position in, which is
+// ScrollMemory's to hand back. Navigation Timing answers this directly.
+function isFreshNavigation() {
+  try {
+    const entries = performance.getEntriesByType('navigation');
+    if (entries && entries.length && typeof entries[0].type === 'string') {
+      return entries[0].type === 'navigate';
+    }
+    // Legacy Navigation Timing: 0 = navigate, 1 = reload, 2 = back/forward.
+    const legacy = performance.navigation;
+    if (legacy && typeof legacy.type === 'number') return legacy.type === 0;
+  } catch { /* Navigation Timing unavailable: treat it as a fresh arrival */ }
+  return true;
+}
+
+// Where the visitor should be once the grid is in the DOM. Three outcomes, in
+// priority order:
+//
+//   1. the hash names a real element - the browser's own anchor scrolling wins;
+//   2. a fresh navigation into a non-default view - land on the count line, so
+//      the filter the link asked for is the thing they see. Everything above
+//      that line looks identical whatever the filter says, and the shape hubs'
+//      "Filter Declining shows in the explorer →" CTA is a link into exactly
+//      that: a filtered view somebody has never scrolled;
+//   3. anything else (a refresh, a Back) - hand back the offset they left,
+//      as long as it was saved in this same view.
+function settleInitialScroll() {
+  if (hashTargetsElement()) return;
+  if (isFreshNavigation() && hasNonDefaultFinderState()) {
+    // 'auto', not 'smooth': at first paint there is nothing to follow, and an
+    // 800 px animated glide from the top just delays the results.
+    scrollToFinderResults('auto');
+    return;
+  }
+  ScrollMemory.restore();
+}
+
+// Does the URL ask for something other than the default finder view? Answered
+// through the same serializer the hash is written with, which omits every
+// default, so an empty query means "nothing was asked for".
+function hasNonDefaultFinderState() {
+  try {
+    return RisingShowsFinder.serializeFinderQuery(finderState).toString() !== '';
+  } catch { return false; }
 }
 
 // Chrome (header / footer / menu / auth UI) is loaded by
@@ -1034,11 +1126,12 @@ async function load() {
   renderFinder();
   bindScrollMemory();
   if (!consumePendingDeepLinks()) {
-    // Restore the saved scroll position now that the grid (which defines the
-    // page height) is in the DOM. A modal deep-link opens at the top instead,
-    // so this only runs for the plain grid view. rAF lets layout settle so
-    // scrollHeight reflects the freshly appended cards.
-    requestAnimationFrame(() => ScrollMemory.restore());
+    // Place the visitor now that the grid (which defines the page height) is
+    // in the DOM: back where they left off, or on the results a filtered link
+    // asked for. A modal deep-link opens at the top instead, so this only runs
+    // for the plain grid view. rAF lets layout settle so scrollHeight and the
+    // count line's box reflect the freshly appended cards.
+    requestAnimationFrame(() => settleInitialScroll());
   }
   // The merged in-flight search is state the hash does not know about yet;
   // written last so an open-modal key above is not dropped from the URL.
@@ -4626,15 +4719,18 @@ function goToFinderPage(n, scrollAfter = true) {
   // How deep people page is the clearest signal of whether the default sort
   // surfaces what they came for.
   track('trackLoadMore', { pageNumber: n, itemsShown: lastFinderRowCount });
-  if (scrollAfter) {
-    // Land on the count line ("N shows match your filters"), not the grid:
-    // the grid's top put the count 30 px above the viewport and the top
-    // pager under the fixed header, so the user could not tell which page
-    // they were on without scrolling back up.
-    const anchor = els.finderCount || els.finderResults;
-    const top = anchor.getBoundingClientRect().top + window.scrollY - 70;
-    window.scrollTo({ top, behavior: 'smooth' });
-  }
+  if (scrollAfter) scrollToFinderResults();
+}
+
+// Land on the count line ("N shows match your filters"), not the grid: the
+// grid's top put the count 30 px above the viewport and the top pager under
+// the fixed header, so the user could not tell which page they were on
+// without scrolling back up. The 70 px lifts it clear of the fixed header.
+function scrollToFinderResults(behavior = 'smooth') {
+  const anchor = els.finderCount || els.finderResults;
+  if (!anchor || typeof anchor.getBoundingClientRect !== 'function') return;
+  const top = anchor.getBoundingClientRect().top + window.scrollY - 70;
+  window.scrollTo({ top: Math.max(0, top), behavior });
 }
 
 
@@ -6737,6 +6833,7 @@ if (typeof window !== 'undefined') {
     computeShowRelated,
     languagesCompatible,
     clampScrollY,
+    viewKeyFromHash,
     ScrollMemory,
     buildSeasonShareText,
     parseCompareParam,

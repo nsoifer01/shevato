@@ -3,6 +3,60 @@
 A living document: best current understanding, not a diary. See the
 repo-root `CLAUDE.md` for the convention.
 
+## A saved scroll offset belongs to ONE view (2026-09-07)
+
+`ScrollMemory` exists because the grid renders only after the index is fetched,
+so at the moment the browser would natively restore scroll the document is
+still skeletons and short: native `auto` restoration clamps a bottom-of-page
+offset to that short height and strands a refresh in the middle. We take it
+over with `history.scrollRestoration = 'manual'` and a sessionStorage offset.
+
+What that missed is that an offset is only meaningful in the view it was taken
+in, and sessionStorage outlives a navigation to another page. The route that
+exposed it is entirely inside the app's own SEO surface:
+
+1. read the "What a rating shape is" section at the very bottom of the app
+   (~5,300 px down, so that is the saved offset);
+2. follow one of its shape links to `shows/shape/declining/`;
+3. come back through that hub's "Filter Declining shows in the explorer →"
+   CTA, which links to `/apps/rising-shows/#shape=declining`.
+
+The filter applied correctly and the visitor landed at 5,337 px with the count
+line 4,606 px above the viewport and **zero** cards on screen. Measured, not
+inferred - the whole flow reproduces headlessly by clicking the two real links
+in one tab. `#shape=declining` is finder state rather than an element id, so
+the existing "a real anchor wins" guard never fired.
+
+Two things fix it, and both are needed:
+
+- **The offset carries the view it was taken in** (`rising-seasons:scrollView`,
+  written and cleared with the offset). `viewKeyFromHash` sorts the hash's
+  params so `#sort=gap&gapDir=up` and `#gapDir=up&sort=gap` are one view, and
+  a bare hash is `''`. Restoration is declined when the recorded view is not
+  the current one. An offset with NO recorded view (a tab that stored one
+  before this key existed) restores as it always did.
+- **A fresh navigation into a non-default view lands on the count line.**
+  The view key alone is not enough: a visitor already on `#shape=declining`
+  who reads the same explainer and takes the same CTA comes back to the *same*
+  view key and would be restored to the bottom again. Navigation Timing
+  separates the cases - `navigate` is a link click or a typed URL, `reload`
+  and `back_forward` are returns to a position the visitor already had, which
+  stays ScrollMemory's to hand back.
+
+Priority order lives in `settleInitialScroll`: a real element anchor, then a
+fresh navigation into a filtered view, then the saved offset. "Filtered" is
+`serializeFinderQuery(finderState).toString() !== ''` - the same serializer the
+hash is written with, which omits every default, so there is no second
+definition of what counts as a non-default view. The landing target is the
+count line at `-70 px`, the same one paging has always used, which is what puts
+the header clear and the first row of cards on screen.
+
+Regressions to keep in mind when touching this: a refresh at the bottom of a
+filtered view must still come back to the bottom, Back out of a show page must
+return to where the visitor was, and a fresh visit to the unfiltered app in a
+tab that holds a filtered-view offset must sit at the top. All three are
+covered in `tests/app-features.test.js` alongside the two CTA flows.
+
 ## Shape hub copy is search-facing, and separate from the internal labels
 
 The 14 hub pages under `shows/shape/` are the highest search-intent pages on
