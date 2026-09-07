@@ -1866,6 +1866,39 @@ the moment a corrected name resolves.
 **Nothing is invented to make it disappear.** The e2e asserts no `place` record
 appears and no `data-anchor-plat` is stamped while the stay is unresolved.
 
+### A renamed stay takes its return legs with it (2026-09-07)
+
+Found in the owner's own synced trip while verifying the warning above, and it
+is the warning's own advice biting: they corrected an unidentifiable hotel name,
+and their `Return to hotel` kept the OLD one.
+
+A return leg stores the hotel's name as **text**. That text is the only link
+`legDestinationStay` has - it matches a leg to a stay by `named(s)`, comparing
+the leg's query against the stay's title and mapsQuery. So a rename orphans
+every leg that returned to it: `named(host)` fails, no stay matches, the
+function returns null, and the leg falls back to resolving a hotel that is no
+longer anywhere in the trip. It loses its position, its chip and its place ID.
+
+**Loosening the matcher would be wrong** and was rejected. A leg naming a place
+that is not a stay in this trip is a claim about that place, and the day's bed
+is not a safe answer for it - "Taxi to the airport hotel" must not silently
+become the hotel you are already booked into. The link is text, so the fix is to
+keep the text in step at the one moment it moves.
+
+`legsBoundToStay(items, stay)` (trip-logic, pure) returns the legs bound to a
+stay by name AND by date; `carryReturnLegs` (app.js, on the item save path)
+rewrites their `mapsQuery` and DELETES their stored `place`, because an identity
+must never follow a name it was not resolved for. The date bound is what stops
+two bookings of one chain dragging each other's legs.
+
+**The order matters and is easy to get wrong:** the bound legs are computed
+against the item as it was BEFORE the replacement, because the old name only
+exists until `trip.items[idx] = it` runs.
+
+The leg then re-resolves under the corrected name and stores the RIGHT record,
+which is the system working - the e2e asserts "no stale identity", not "no
+identity", and asserting the latter fails against correct behaviour.
+
 ### An element that sets `display` must restate `hidden`
 
 The warning slot renders empty and `hidden`, and `.tp-place-warn { display:

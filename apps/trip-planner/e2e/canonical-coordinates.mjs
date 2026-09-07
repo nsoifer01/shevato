@@ -470,7 +470,13 @@ export async function run({ base, cdpPort }) {
       type: 'activity', title: 'The Mango Garden', meal: 'lunch', location: 'Ko Phi Phi',
       startDate: MIDDLE, startTime: '13:00', mapsQuery: 'The Mango Garden Ko Phi Phi',
     });
-    const tp = trip({ name: 'Thailand', items: [stay, beach, mango] });
+    // The leg that returns to this stay, naming it by TEXT - which is the only
+    // link there is, and the thing a rename breaks.
+    const home = item({
+      type: 'local', title: 'Return to hotel', location: 'Ko Phi Phi',
+      startDate: MIDDLE, startTime: '21:30', mapsQuery: BAD,
+    });
+    const tp = trip({ name: 'Thailand', items: [stay, beach, mango, home] });
     const stores = {
       'trip-planner:geo:v3': {
         'ko phi phi': { ...TRAT_ISLET, country: 'Thailand', cc: 'TH', conf: 'low', kind: 'islet' },
@@ -570,6 +576,33 @@ export async function run({ base, cdpPort }) {
       await t('E7b: and after a reload the warning stays gone',
         reloaded.header.length === 0 && reloaded.rows.length === 0,
         JSON.stringify(reloaded).slice(0, 200), s);
+
+      /* --- the rename must carry the leg that RETURNS to this stay --- */
+      // A "Return to hotel" stores the hotel's name as text, and that text is
+      // the only link legDestinationStay has. Correcting the name - which is
+      // exactly what the warning asks the traveller to do - orphaned it: the
+      // leg stopped resolving to the stay and fell back to a name no longer
+      // anywhere in the trip. The owner hit this taking the app's own advice.
+      const legAfter = await evaluate(s, `(() => {
+        const db = JSON.parse(localStorage.getItem('trip-planner:v1') || '{}');
+        const it = ((db.trips || [])[0] || {}).items.find(i => /Return to hotel/.test(i.title || ''));
+        return it ? { q: it.mapsQuery || '', place: it.place || null } : null; })()`);
+      await t('E8: renaming the stay carried its return leg to the new name',
+        !!legAfter && legAfter.q.includes('Chao Koh'), JSON.stringify(legAfter), s);
+      // NOT "the leg has no place". The carry DROPS the old record, and the leg
+      // then legitimately re-resolves under the corrected name and stores the
+      // right one - which is the system working. The invariant is that no
+      // identity survives a rename it was not resolved for.
+      await t('E8b: no stale identity followed the new name',
+        !!legAfter && (!legAfter.place
+          || (legAfter.place.id === HOTEL_ID && Math.abs(legAfter.place.lat - CHAOKOH.lat) < 0.001)),
+        JSON.stringify(legAfter && legAfter.place), s);
+
+      const dayNow = await readDay(s);
+      const backRow = (dayNow && dayNow.rows.find(r => /Return to hotel/.test(r.label))) || null;
+      await t('E8c: so the return leg is located again and draws a distance',
+        !!backRow && Math.abs(Number(backRow.plat) - CHAOKOH.lat) < 0.001,
+        backRow ? `${backRow.plat},${backRow.plon} chip="${backRow.chip}"` : 'no row', s);
     });
   }
 

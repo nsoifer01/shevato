@@ -6400,6 +6400,39 @@ const TripLogic = (() => {
     return matches[0];
   }
 
+  // EVERY LEG THAT RETURNS TO THIS STAY, so a rename can carry them.
+  //
+  // legDestinationStay matches a leg to a stay BY NAME - the leg stores the
+  // hotel's name as text, and that text is the only link between them. So
+  // renaming a stay orphans every leg that returned to it: the name no longer
+  // matches any stay in the trip, `named(host)` fails, and the leg falls back
+  // to resolving a hotel that no longer exists (owner report, 2026-09-07,
+  // found in their own synced trip - they corrected an unidentifiable hotel
+  // name and their "Return to hotel" kept the old one, silently losing its
+  // distance chip and its place).
+  //
+  // Loosening the MATCHER instead would be wrong: a leg naming a place that is
+  // not a stay in this trip is a claim about that place, and the day's bed is
+  // not a safe answer for it. The link is text, so the fix is to keep the text
+  // in step at the moment it moves.
+  //
+  // Bounded by DATE. Two bookings of one chain share a name, and only the legs
+  // on nights this booking actually covers belong to it.
+  function legsBoundToStay(items, stay) {
+    const list = Array.isArray(items) ? items : [];
+    if (!stay || !isStay(stay)) return [];
+    const names = new Set([
+      normalizeQueryText(displayTitle(stay)),
+      normalizeQueryText(itemMapsQuery(stay)),
+    ].filter(Boolean));
+    if (!names.size) return [];
+    const covers = d => isIsoDate(d) && isIsoDate(stay.startDate) && isIsoDate(stay.endDate)
+      && stay.startDate <= d && d <= stay.endDate;
+    return list.filter(leg => leg && leg.id !== stay.id && !isStay(leg) && isTravelLeg(leg)
+      && covers(leg.startDate)
+      && names.has(normalizeQueryText(itemMapsQuery(leg))));
+  }
+
   // The item whose PLACE a row is really about: itself, except for a travel leg
   // that ends at a stay, which is about that stay.
   const distanceTargetFor = (item, items) => legDestinationStay(item, items) || item;
@@ -10867,7 +10900,7 @@ const TripLogic = (() => {
     PLACES_BATCH_MAX, PLACES_CONCURRENCY, PLACES_DEFER_MS, PLACES_MAX_ATTEMPTS,
     VENUE_TTL_MS, VENUE_CACHE_MAX, venueFresh, normalizeVenueCache, rememberVenue,
     placesLocationUpdates, pickVenueFeature, validCoord, resultKey,
-    placeUnresolved, unlocatedSummary,
+    placeUnresolved, unlocatedSummary, legsBoundToStay,
     SAME_SPOT_KM, sameSpot, unmeasurableLeg, distancePoint, dayAnchor, dayDistanceChain, contradictoryPair,
     parseTravelArrival, dayArrival, proposalOrigin, dayBaseOrigin, suggestionOrigins,
     ROUTE_EXACT_MAX, shortestRoute, routeStops, setDistanceUnit, getDistanceUnit, fmtDist, distanceChipLabel, distanceChipTitle, routeFooterText,
