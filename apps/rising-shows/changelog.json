@@ -1,6 +1,339 @@
 {
   "updates": [
     {
+      "builtAt": "2026-09-07T11:24:02.374Z",
+      "totals": {
+        "seasons": 66648,
+        "delta": 16
+      },
+      "shapeCounts": {
+        "rebound": 10180,
+        "rising": 2597,
+        "slow-burn": 4415,
+        "big-finale": 12145,
+        "u-shaped": 3085,
+        "rollercoaster": 14140,
+        "mid-peak": 4622,
+        "saved-best-for-last": 1506,
+        "front-loaded": 3504,
+        "declining": 1884,
+        "bad-finale": 4654,
+        "consistent": 2639,
+        "shape-drift": 1576
+      },
+      "shapeDeltas": {
+        "rebound": 1,
+        "rising": 2,
+        "slow-burn": 4,
+        "big-finale": -14,
+        "u-shaped": -5,
+        "rollercoaster": -9,
+        "mid-peak": -2,
+        "front-loaded": -1,
+        "declining": 3,
+        "bad-finale": -3,
+        "consistent": 8
+      },
+      "added": [
+        {
+          "seriesId": "tt34754087",
+          "title": "BuxaVerso",
+          "season": 2,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt39368345",
+          "title": "Four Hands, Two Sonatas",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0928368",
+          "title": "The Pyjamas",
+          "season": 3,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt4760100",
+          "title": "Toon Sandwich",
+          "season": 7,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt0442722",
+          "title": "The Doodlebops",
+          "season": 1,
+          "seasonYear": 2005
+        },
+        {
+          "seriesId": "tt8883700",
+          "title": "SOKO Potsdam",
+          "season": 8,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38128496",
+          "title": "GANSO! BanG Dream Chan",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt1385821",
+          "title": "Schlag den Star",
+          "season": 17,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt5270356",
+          "title": "Ice Road Rescue",
+          "season": 5,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt12164342",
+          "title": "Dhar Mann",
+          "season": 13,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt20318388",
+          "title": "Interrogation Raw",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt23472304",
+          "title": "Not a Murder Story",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt30975092",
+          "title": "Push",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt33296313",
+          "title": "Coming from America",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt34274341",
+          "title": "Interview with a Killer",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt35681708",
+          "title": "Gelboys",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt34088531",
+          "title": "Taste",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt39308936",
+          "title": "Banjo and Ro's Grand Island Hotel",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41856393",
+          "title": "Gakuen Handsome",
+          "season": 1,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt43397016",
+          "title": "The 2026 NBA Finals",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43602967",
+          "title": "2026-2027 Premier League",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37206153",
+          "title": "München Beats",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38267578",
+          "title": "Filter",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt44800247",
+          "title": "One-Room TA",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0077108",
+          "title": "Zehu Ze",
+          "season": 1,
+          "seasonYear": 1978
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt34754087",
+          "title": "BuxaVerso",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt32583236",
+          "title": "The Richest Man in Game",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt27350543",
+          "title": "Rock Musical Bleach",
+          "season": 1,
+          "seasonYear": 2005
+        },
+        {
+          "seriesId": "tt13084120",
+          "title": "Azur Lane: Slow Ahead!",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0190210",
+          "title": "Wild West C.O.W.-Boys of Moo Mesa",
+          "season": 2,
+          "seasonYear": 1993
+        },
+        {
+          "seriesId": "tt0242213",
+          "title": "The Little Lulu Show",
+          "season": 2,
+          "seasonYear": 1996
+        },
+        {
+          "seriesId": "tt12083320",
+          "title": "The Way to World Culture",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt0260931",
+          "title": "Honour of the Gods",
+          "season": 1,
+          "seasonYear": 2001
+        },
+        {
+          "seriesId": "tt1332701",
+          "title": "I Love My Family",
+          "season": 2,
+          "seasonYear": 1994
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt13214882",
+          "title": "Scumbag System",
+          "season": 1,
+          "from": 4.68,
+          "to": 8.2,
+          "delta": 3.52
+        },
+        {
+          "seriesId": "tt27442011",
+          "title": "Dragon Raja -The Blazing Dawn-",
+          "season": 2,
+          "from": 5.43,
+          "to": 8.18,
+          "delta": 2.75
+        },
+        {
+          "seriesId": "tt36987898",
+          "title": "Arknights: Rise from Ember",
+          "season": 1,
+          "from": 5.82,
+          "to": 8.43,
+          "delta": 2.61
+        },
+        {
+          "seriesId": "tt36836504",
+          "title": "The All-devouring Whale: Homecoming",
+          "season": 1,
+          "from": 6.53,
+          "to": 8.6,
+          "delta": 2.07
+        },
+        {
+          "seriesId": "tt27442011",
+          "title": "Dragon Raja -The Blazing Dawn-",
+          "season": 1,
+          "from": 6.72,
+          "to": 8.55,
+          "delta": 1.83
+        },
+        {
+          "seriesId": "tt1343645",
+          "title": "Pandora Hearts",
+          "season": 1,
+          "from": 5.98,
+          "to": 7.8,
+          "delta": 1.82
+        },
+        {
+          "seriesId": "tt38353703",
+          "title": "The Fated Magical Princess: Who Made Me a Princess",
+          "season": 1,
+          "from": 6.42,
+          "to": 7.81,
+          "delta": 1.39
+        },
+        {
+          "seriesId": "tt0108914",
+          "title": "The Romance of Three Kingdoms",
+          "season": 4,
+          "from": 7.83,
+          "to": 9.16,
+          "delta": 1.33
+        },
+        {
+          "seriesId": "tt13084120",
+          "title": "Azur Lane: Slow Ahead!",
+          "season": 1,
+          "from": 5.27,
+          "to": 6.59,
+          "delta": 1.32
+        },
+        {
+          "seriesId": "tt0108914",
+          "title": "The Romance of Three Kingdoms",
+          "season": 5,
+          "from": 7.69,
+          "to": 8.99,
+          "delta": 1.3
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 24244,
+        "avgRating": 1953,
+        "shapes": 346,
+        "episodeCount": 102,
+        "seriesRating": 829,
+        "poster": 4
+      }
+    },
+    {
       "builtAt": "2026-09-06T10:24:53.069Z",
       "totals": {
         "seasons": 66632,
@@ -7379,184 +7712,6 @@
         "seriesRating": 394,
         "poster": 3,
         "overview": 2
-      }
-    },
-    {
-      "builtAt": "2026-08-03T09:35:02.058Z",
-      "totals": {
-        "seasons": 66130,
-        "delta": 8
-      },
-      "shapeCounts": {
-        "mid-peak": 4633,
-        "rebound": 10082,
-        "rising": 2899,
-        "slow-burn": 4377,
-        "big-finale": 12100,
-        "u-shaped": 3092,
-        "rollercoaster": 14055,
-        "saved-best-for-last": 1539,
-        "front-loaded": 3464,
-        "declining": 1871,
-        "bad-finale": 4651,
-        "consistent": 2620,
-        "shape-drift": 1637
-      },
-      "shapeDeltas": {
-        "rebound": 5,
-        "rising": -9,
-        "slow-burn": 6,
-        "big-finale": 7,
-        "rollercoaster": -4,
-        "saved-best-for-last": 3,
-        "front-loaded": -1,
-        "declining": 3,
-        "bad-finale": 5,
-        "consistent": -4,
-        "shape-drift": -2
-      },
-      "added": [
-        {
-          "seriesId": "tt4504724",
-          "title": "Markiplier",
-          "season": 1,
-          "seasonYear": 2012
-        },
-        {
-          "seriesId": "tt42006748",
-          "title": "House of Stassi",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt21806310",
-          "title": "Breaking Bear",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt4855286",
-          "title": "Moses and the Ten Commandments",
-          "season": 2,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt19845624",
-          "title": "Tervo & Halme tosisuomalaisuutta etsimässä",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt31019576",
-          "title": "Mökkinaapurit",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt38224299",
-          "title": "That Thrifting Show",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39381272",
-          "title": "Flip the Frog",
-          "season": 3,
-          "seasonYear": 1932
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt43658562",
-          "title": "Asirlik Gece",
-          "season": 1,
-          "from": 3.9,
-          "to": 7.93,
-          "delta": 4.03
-        },
-        {
-          "seriesId": "tt2400629",
-          "title": "Coke Studio Pakistan",
-          "season": 2,
-          "from": 5.17,
-          "to": 6.36,
-          "delta": 1.19
-        },
-        {
-          "seriesId": "tt39381272",
-          "title": "Flip the Frog",
-          "season": 1,
-          "from": 4.5,
-          "to": 5.4,
-          "delta": 0.9
-        },
-        {
-          "seriesId": "tt38821672",
-          "title": "Phoenix",
-          "season": 1,
-          "from": 6.45,
-          "to": 5.72,
-          "delta": -0.73
-        },
-        {
-          "seriesId": "tt14363574",
-          "title": "Advokado",
-          "season": 1,
-          "from": 5.18,
-          "to": 5.88,
-          "delta": 0.7
-        },
-        {
-          "seriesId": "tt38119083",
-          "title": "Last Summer",
-          "season": 1,
-          "from": 8.93,
-          "to": 8.26,
-          "delta": -0.67
-        },
-        {
-          "seriesId": "tt0437741",
-          "title": "Project Runway",
-          "season": 22,
-          "from": 3.67,
-          "to": 4.33,
-          "delta": 0.66
-        },
-        {
-          "seriesId": "tt31806050",
-          "title": "Kaulitz & Kaulitz",
-          "season": 3,
-          "from": 6.9,
-          "to": 7.55,
-          "delta": 0.65
-        },
-        {
-          "seriesId": "tt3010520",
-          "title": "Turbo FAST",
-          "season": 2,
-          "from": 5.18,
-          "to": 5.78,
-          "delta": 0.6
-        },
-        {
-          "seriesId": "tt36626299",
-          "title": "4 Elements: The Fire",
-          "season": 1,
-          "from": 9.2,
-          "to": 8.6,
-          "delta": -0.6
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 21544,
-        "avgRating": 1124,
-        "seriesRating": 405,
-        "shapes": 216,
-        "poster": 2,
-        "overview": 7,
-        "episodeCount": 95,
-        "providers": 1
       }
     }
   ]
