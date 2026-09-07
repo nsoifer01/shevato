@@ -422,7 +422,7 @@ curl -H "Authorization: Bearer $TOKEN" -H 'x-goog-user-project: shevato-site' \
 
 That needs `gcloud auth application-default login --scopes=https://www.googleapis.com/auth/webmasters,https://www.googleapis.com/auth/cloud-platform` once, and the Search Console API enabled on the `shevato-site` project.
 
-A stale entry for `https://www.shevato.com/sitemap.xml` (submitted 2026-08-05, reporting 34,494 URLs from before the sitemap curation) still sits on the domain property. It points at the `www` host, which 301s to the apex. Harmless, but it is not the one to read when checking status.
+A stale entry for `https://www.shevato.com/sitemap.xml` (submitted 2026-08-05, reporting 34,494 URLs from before the sitemap curation) still sits on the domain property. It points at the `www` host, which 301s to the apex. It is **not** harmless, and it is not the one to read when checking status: Google re-downloaded it on 2026-09-05 and it still lists pre-rebrand URLs such as `/apps/brain-arena/`, which `netlify.toml` 301s. URL Inspection names that sitemap as the only referring URL for `/apps/brain-arena/`, and the "Page with redirect" mails of 2026-09-06 followed. Delete it (`DELETE .../sites/sc-domain%3Ashevato.com/sitemaps/<url-encoded feedpath>`); the live sitemaps carry no redirecting URL.
 
 Requesting indexing for a specific URL is UI-only. The Search Console API has no method for it (`urlInspection.index.inspect` is read-only), and the separate Indexing API is documented as `JobPosting` / `BroadcastEvent` only, so it does nothing for these pages. Use URL Inspection in the UI after a structural change.
 
