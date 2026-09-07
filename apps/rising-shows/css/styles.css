@@ -3115,14 +3115,131 @@ body:has(.modal:not([hidden])) .back-to-top {
 }
 .modal-overview:empty { display: none; }
 
-/* Primary actions cluster — sits inside .modal-heading so the action
-   is tied visually to the show/season identity rather than buried in
-   the row of external-link buttons below. */
+/* The modal's one action row, inside .modal-heading so every action is
+   tied visually to the show/season identity. It carries the primary action
+   (compare / watch) AND the utilities (share, permalink, IMDb, TVDB), which
+   used to live in a separate row after the content; see the note on the
+   hierarchy rules below. `flex`, not `inline-flex`: the row now wraps to two
+   lines and each line should start at the column's left edge. */
 .modal-primary-actions {
-  display: inline-flex;
+  display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.5rem;
   margin-top: 0.35rem;
+
+  /* The primary action's hue, local to this group.
+   *
+   * It used to be the app accent, gold. Gold now belongs to the IMDb chip two
+   * lines below, and one colour cannot mean both "the action to take here" and
+   * "IMDb". Every other palette colour in this app is already spoken for:
+   * --good green is the added/watched state AND the TVDB chip, the provider
+   * chips are cyan, #c084fc is a special episode (in the season modal, which
+   * carries this very row), --warn is orange and --danger is red. Indigo is
+   * the one unassigned hue, so it becomes "the action". */
+  --act-ink: #a9b8ff;
+  --act-fill: rgba(122, 145, 255, 0.14);
+  --act-fill-hover: rgba(122, 145, 255, 0.2);
+  --act-line: rgba(122, 145, 255, 0.34);
+  --act-line-hover: rgba(122, 145, 255, 0.48);
+  --act-lift: rgba(169, 184, 255, 0.42);
+}
+/* Forces the wrap point. A flex item that is full-width and zero-height ends
+   the line it is on, which is how the outbound chips get a line of their own
+   under the actions without being stretched across it (flex-basis:100% on an
+   item itself would make it a full-width bar). The small extra margin buys the
+   chip line a little more air than the row gap alone, so the group reads as
+   "actions, then references" rather than one block of four rows. */
+.action-row-break {
+  flex: 0 0 100%;
+  height: 0;
+  margin-top: 0.1rem;
+}
+
+/* Outbound reference chips (IMDb, TVDB), on their own line under the actions.
+ * The middle ground between a bare text link and a fifth button: pill geometry
+ * borrowed from the provider chips, so the modal keeps one vocabulary for "a
+ * small labelled thing you can click", but neutral rather than cyan, because
+ * cyan already means "where to watch this". The pill shape against the
+ * buttons' 10 px radius is the signal that these are a different KIND of
+ * thing, and the smaller type and quieter ink keep them from competing with
+ * the primary action. Same surface, border and lit top edge as the buttons
+ * above, which is what keeps them part of the group.
+ *
+ * Deliberately NO external-link glyph: nothing else in this app marks outbound
+ * links that way, and inventing the pattern here would be the one flashy note
+ * in a restrained group. Where the link goes is in the accessible name and the
+ * tooltip instead (see setOutboundLabel). */
+.outbound-tag {
+  /* Each chip carries its source's colour, so every state below is written
+   * once and follows whichever hue the variant sets. An untagged chip falls
+   * back to neutral, which is what a third source would get until someone
+   * gives it a colour. */
+  --tag-ink: var(--muted);
+  --tag-fill: var(--surface-2);
+  --tag-fill-hover: var(--surface-3);
+  --tag-line: var(--border);
+  --tag-lift: rgba(255, 255, 255, 0.06);
+  --tag-ring: rgba(255, 255, 255, 0.1);
+
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--tag-line);
+  border-top-color: var(--tag-lift);
+  background: var(--tag-fill);
+  color: var(--tag-ink) !important;
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.16s var(--ease), border-color 0.16s var(--ease),
+              color 0.16s var(--ease), transform 0.1s var(--ease);
+}
+.outbound-tag:hover {
+  background: var(--tag-fill-hover);
+  border-color: var(--tag-lift);
+  text-decoration: none;
+}
+.outbound-tag:active {
+  transform: translateY(1px);
+  background: var(--tag-fill);
+}
+/* Focus is the buttons' ring in the chip's own colour: one focus LANGUAGE
+ * across all six controls, without a gold ring landing on a green chip. */
+.outbound-tag:focus-visible {
+  outline: none;
+  border-color: var(--tag-lift);
+  box-shadow: 0 0 0 3px var(--tag-ring), 0 0 0 1px var(--tag-ink);
+}
+
+/* IMDb keeps the app's own gold, which IS IMDb's brand yellow (--accent is
+ * commented as such in the palette). It no longer collides with the primary
+ * action, because the primary action is no longer gold. */
+.outbound-tag-imdb {
+  --tag-ink: var(--accent);
+  --tag-fill: var(--accent-soft);
+  --tag-fill-hover: rgba(245, 197, 24, 0.2);
+  --tag-line: rgba(245, 197, 24, 0.34);
+  --tag-lift: rgba(245, 197, 24, 0.5);
+  --tag-ring: var(--accent-soft);
+}
+/* TVDB's brand green. Deliberately its own #6cd491 rather than --good
+ * (#34d39e): --good is the "added / watched" state that the primary button
+ * turns when you act on it, and a link with no state at all should not be
+ * painted in the state colour. Keeping the two greens distinguishable is the
+ * point of not reusing the token here. */
+.outbound-tag-tvdb {
+  --tag-ink: #6cd491;
+  --tag-fill: rgba(108, 212, 145, 0.12);
+  --tag-fill-hover: rgba(108, 212, 145, 0.19);
+  --tag-line: rgba(108, 212, 145, 0.34);
+  --tag-lift: rgba(108, 212, 145, 0.5);
+  --tag-ring: rgba(108, 212, 145, 0.14);
 }
 
 /* Cast strip — horizontal-scrolling row of head-and-shoulders cards
@@ -3368,51 +3485,118 @@ a.cast-card-inner:focus-visible {
 .modal-episodes .ep-flag-worst { color: var(--danger); }
 .modal-episodes .ep-flag-most-rated { color: var(--warn); }
 
-.modal-actions {
-  display: flex;
-  gap: 0.6rem;
-  align-items: center;
-  flex-wrap: wrap;
+/* --- The modal action group ----------------------------------------------
+ *
+ * Everything below is scoped to .modal-primary-actions on purpose. The shared
+ * `.btn` / `.btn-ghost` primitives dress the whole site (toolbar, pager, close
+ * button, provider chips), so this group gets a local variant instead: the
+ * modal's action area is the one place where a primary action, three
+ * secondary ones and two outbound references sit shoulder to shoulder and have
+ * to read as three ranks rather than six equals.
+ *
+ * The whole thing is built from existing tokens. The only literals are the two
+ * hairline highlights, which are white/gold at 4-8% and exist because a token
+ * for "the lit top edge of a raised surface" does not.
+ */
+
+/* Common to all four buttons: the shared control height and radius, and a
+ * label a shade heavier than the site default so a 0.9rem control does not
+ * look like body text in a box. */
+.modal-primary-actions .btn {
+  font-weight: 550;
+  letter-spacing: 0.005em;
+  /* A touch tighter than the site-wide --ctrl-pad-x (0.95rem). Four controls
+     share a 532 px column here, where the toolbar's buttons have the whole
+     page; the same padding that reads as generous out there reads as slack in
+     a group this size. Height and type size stay on the site's scale. */
+  padding: 0 0.8rem;
 }
-/* Top-of-modal action row: a thin divider underneath separates it from the
- * descriptive content (overview / episodes) that follows. Extra vertical
- * padding gives the buttons breathing room. */
-.modal-actions-top {
-  margin: 0.25rem 0 0.1rem;
-  padding: 0.75rem 0 1.1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+
+/* Secondary actions. `.btn-ghost` is transparent with a --border-strong
+ * outline, which on the modal panel is literally a rectangle drawn on the
+ * card - the "generic outlined button" look. Filling them one surface step up
+ * with a HAIRLINE border inverts that: they become objects sitting on the
+ * card. The lighter top border is the resting-state depth; it is what keeps a
+ * flat fill from reading as a disabled input, and it costs no shadow (the
+ * shared `.btn` pins box-shadow to none !important, and fighting that would
+ * mean another !important). */
+.modal-primary-actions .btn-ghost,
+.modal-primary-actions .btn-ghost:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+  border-top-color: rgba(255, 255, 255, 0.07);
+  color: var(--text) !important;
 }
-/* Hierarchy inside .modal-actions: each modal's primary action (watch
- * on season-modal, compare on show-modal) gets an accent surface so it
- * reads as the obvious primary button. Secondary buttons stay ghost.
- * IMDb anchor sits flush-right via margin-left:auto. */
-.modal-actions .watch-btn,
-.modal-actions .compare-btn {
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-strong);
-  color: var(--accent) !important;
-  font-weight: 700;
+.modal-primary-actions .btn-ghost:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  border-top-color: rgba(255, 255, 255, 0.1);
 }
-.modal-actions .watch-btn:hover,
-.modal-actions .compare-btn:hover {
-  background: rgba(245, 197, 24, 0.18);
-  border-color: rgba(245, 197, 24, 0.5);
+/* Pressed: the surface drops back to its resting fill while the button moves
+ * down, so the press reads as the control being pushed INTO the card rather
+ * than just nudged. */
+.modal-primary-actions .btn-ghost:active {
+  background: var(--surface-2);
+  border-top-color: var(--border);
+}
+
+/* Primary action (compare on the show modal, watch on the season modal). Held
+ * by hue rather than by weight: a tinted fill, a soft border, the same lit top
+ * edge the secondaries get, and a 600-weight label. It reads first because it
+ * is the only coloured control in the group, not because it is loud. */
+.modal-primary-actions .watch-btn,
+.modal-primary-actions .compare-btn {
+  background: var(--act-fill);
+  border: 1px solid var(--act-line);
+  border-top-color: var(--act-lift);
+  color: var(--act-ink) !important;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.modal-primary-actions .watch-btn:hover,
+.modal-primary-actions .compare-btn:hover {
+  background: var(--act-fill-hover);
+  border-color: var(--act-line-hover);
+  border-top-color: var(--act-lift);
+  color: var(--act-ink) !important;
+}
+.modal-primary-actions .watch-btn:active,
+.modal-primary-actions .compare-btn:active {
+  background: var(--act-fill);
+  border-top-color: var(--act-line);
 }
 /* "Already added" state — green to signal the success-of-state, same
  * pattern the watch button uses when a season is marked watched. */
-.modal-actions .watch-btn.is-watched,
-.modal-actions .compare-btn.is-in-compare {
-  background: rgba(74, 222, 128, 0.16);
-  border-color: rgba(74, 222, 128, 0.45);
+.modal-primary-actions .watch-btn.is-watched,
+.modal-primary-actions .compare-btn.is-in-compare {
+  background: var(--good-soft);
+  border-color: rgba(52, 211, 158, 0.4);
+  border-top-color: rgba(52, 211, 158, 0.5);
   color: var(--good) !important;
 }
-.modal-imdb { margin-left: auto; }
+
+/* The permalink arrow. A real element, so it can carry its own spacing and a
+ * 2 px nudge on hover instead of sitting in the label as a stray glyph. */
+.modal-primary-actions .btn-arrow {
+  display: inline-block;
+  margin-left: 0.05rem;
+  transition: transform 0.16s var(--ease);
+}
+.modal-primary-actions .btn:hover .btn-arrow {
+  transform: translateX(2px);
+}
 
 @media (prefers-reduced-motion: reduce) {
   .skeleton, .skeleton .skeleton-block, .skeleton .skeleton-line {
     animation: none;
   }
   .card, .row { transition: none; }
+  /* The action group's two bits of motion: the permalink arrow's nudge and the
+     chips' press. Colour feedback carries the states on its own. */
+  .modal-primary-actions .btn-arrow,
+  .outbound-tag { transition: none; }
+  .modal-primary-actions .btn:hover .btn-arrow,
+  .outbound-tag:active { transform: none; }
   /* The mobile drawer's slide-up and backdrop fade-in can feel abrupt
      for motion-sensitive users — disable both and just show/hide. */
   .advanced-backdrop,
@@ -3659,17 +3843,22 @@ body.advanced-drawer-open {
     grid-template-columns: 2.6rem 1fr auto auto;
   }
 
-  /* Action buttons stack to be each full-width tappable bars. */
-  .modal-actions {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.55rem;
+  /* Phone: keep the 44 px tap height the stacked full-width bars used to give
+     these buttons, but let them wrap side by side. Six full-width bars in the
+     header would be 264 px of a 844 px screen, which is the problem this row
+     was moved up to solve, not a fix for it. */
+  .modal-primary-actions .btn {
+    min-height: 44px;
+    flex: 1 1 auto;
   }
-  .modal-actions .btn {
-    width: 100%;
-    height: 44px;
+  /* The chips grow to a comfortable tap target too, but stay chips: they share
+     their line rather than each taking one, and stay visibly smaller than the
+     buttons above so the ranking survives the wrap. */
+  .outbound-tag {
+    min-height: 36px;
+    padding: 0 0.95rem;
+    font-size: 0.78rem;
   }
-  .modal-imdb { margin-left: 0; }
 }
 
 /* ----------------------------------------------------------------------------
@@ -5445,16 +5634,6 @@ a.provider-tag-link:focus-visible {
   flex: 0 0 auto;
   min-height: 2.25rem;
   padding: 0.35rem 0.9rem;
-}
-
-/* --- Modal utility row (share / permalink / outbound links) ---------------
-   Moved below the content: these used to sit in two rows between the title and
-   the overview, which pushed the show's own story and its chart off the first
-   screen on mobile. */
-.modal-actions-bottom {
-  margin-top: 1.25rem;
-  padding-top: 0.9rem;
-  border-top: 1px solid var(--border);
 }
 
 /* --- Footer: visible staleness ------------------------------------------ */
