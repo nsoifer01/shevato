@@ -175,6 +175,16 @@ test('no test, e2e or markdown file is published, anywhere', () => {
   assert.deepEqual(leaked, [], leaked.join(', '));
 });
 
+test('no package manifest is published, at any depth', () => {
+  // The root ones never could be - the root is an explicit allow list - but an
+  // app can carry its own (apps/quotescout does), and that one sits inside a
+  // published tree. It shipped until the deny rule reached any depth. A
+  // manifest names dependencies, scripts and internal paths, and no page
+  // fetches one.
+  const leaked = [...published].filter((f) => /(^|\/)package(-lock)?\.json$/.test(f));
+  assert.deepEqual(leaked, [], leaked.join(', '));
+});
+
 test('isPublished is deny-by-default for anything outside the named roots', () => {
   // The property that makes this an allow list rather than a deny list: a new
   // top-level directory is not published until somebody says so.

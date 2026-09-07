@@ -36,7 +36,7 @@ const REPO = path.resolve(HERE, '..', '..');
 const SUITE_DIRS = [
   'apps/gym-tracker/tests/', 'apps/football-h2h/tests/', 'apps/fpl-planner/tests/',
   'apps/rising-shows/tests/', 'apps/mario-kart/tests/', 'apps/arena/tests/',
-  'apps/maptap-rivals/tests/', 'apps/trip-planner/tests/',
+  'apps/maptap-rivals/tests/', 'apps/trip-planner/tests/', 'apps/quotescout/tests/',
   'netlify/functions/tests/', 'sync-system/tests/', 'assets/js/tests/', 'tests/static/',
 ];
 const SUITE_GLOBS = SUITE_DIRS.map((d) => `${d}**/*.test.*`);
@@ -70,6 +70,7 @@ const AREAS = [
   ['gym-tracker', 'apps/gym-tracker/'],
   ['maptap-rivals', 'apps/maptap-rivals/'],
   ['mario-kart', 'apps/mario-kart/'],
+  ['quotescout', 'apps/quotescout/'],
   ['rising-shows', 'apps/rising-shows/'],
   ['trip-planner', 'apps/trip-planner/'],
   ['netlify-functions', 'netlify/'],

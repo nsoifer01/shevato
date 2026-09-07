@@ -312,6 +312,9 @@ const STORAGE_NS = 'rising-seasons';
 const KEY_WATCHED = `${STORAGE_NS}:watched`;
 const KEY_COMPARE = `${STORAGE_NS}:compare`;
 const KEY_SCROLL = `${STORAGE_NS}:scroll`;
+// Which view the saved offset belongs to. Written and cleared with KEY_SCROLL,
+// never on its own; see ScrollMemory.
+const KEY_SCROLL_VIEW = `${STORAGE_NS}:scrollView`;
 const COMPARE_LIMIT = 5;
 const PAGE_SIZE = 24;
 const STALE_DAYS = 30;
@@ -401,6 +404,7 @@ const els = {
   shortcutLegend: document.getElementById('shortcutLegend'),
   modalCurveAnnotation: document.getElementById('modalCurveAnnotation'),
   showModalWatch: document.getElementById('showModalWatch'),
+  showModalWatchNote: document.getElementById('showModalWatchNote'),
   showModalDetailError: document.getElementById('showModalDetailError'),
   showModalOverlayHint: document.getElementById('showModalOverlayHint'),
   compareModalXMode: document.getElementById('compareModalXMode'),
@@ -782,12 +786,42 @@ function clampScrollY(stored, maxScrollY) {
   return Math.min(stored, maxScrollY);
 }
 
+// A stable identity for the view a hash describes. The same filters in a
+// different order are the same view, so `#sort=gap&gapDir=up` and
+// `#gapDir=up&sort=gap` produce one key; a bare hash is the default view and
+// produces ''. Used to decide whether a saved scroll offset still belongs to
+// what is on screen.
+function viewKeyFromHash(hash) {
+  const raw = String(hash == null ? '' : hash).replace(/^#/, '');
+  if (!raw) return '';
+  return [...new URLSearchParams(raw)]
+    .map(([k, v]) => `${k}=${v}`)
+    .sort()
+    .join('&');
+}
+
+// True when the hash names a real element on the page. A bare `#key=value`
+// hash is RS's own filter state, not an anchor, so the id lookup is what
+// separates a genuine anchor deep link (which the browser scrolls to itself)
+// from finder state.
+function hashTargetsElement() {
+  const hash = location.hash.replace(/^#/, '');
+  if (!hash) return false;
+  try { return !!document.getElementById(decodeURIComponent(hash)); }
+  catch { return false; }
+}
+
 const ScrollMemory = {
   save() {
     try {
       const y = window.scrollY || document.documentElement.scrollTop || 0;
-      if (y > 0) sessionStorage.setItem(KEY_SCROLL, String(y));
-      else sessionStorage.removeItem(KEY_SCROLL);
+      if (y > 0) {
+        sessionStorage.setItem(KEY_SCROLL, String(y));
+        sessionStorage.setItem(KEY_SCROLL_VIEW, viewKeyFromHash(location.hash));
+      } else {
+        sessionStorage.removeItem(KEY_SCROLL);
+        sessionStorage.removeItem(KEY_SCROLL_VIEW);
+      }
     } catch { /* sessionStorage disabled — position just won't persist */ }
   },
   read() {
@@ -798,9 +832,16 @@ const ScrollMemory = {
       return Number.isFinite(n) ? n : null;
     } catch { return null; }
   },
+  // The view the saved offset was taken in, or null when nothing recorded one
+  // (a tab holding an offset written before this key existed).
+  readView() {
+    try {
+      const raw = sessionStorage.getItem(KEY_SCROLL_VIEW);
+      return typeof raw === 'string' ? raw : null;
+    } catch { return null; }
+  },
   // Restore after the grid (the content that defines page height) has been
-  // appended. A bare `#key=value` hash is RS's own filter state, not an
-  // anchor; only skip restoration when the hash targets a real element id so
+  // appended. Only skip restoration when the hash targets a real element id so
   // genuine deep-link anchors win over the saved offset.
   //
   // The grid's cards lay out (and the fonts/SVG curves settle) over a few
@@ -808,16 +849,20 @@ const ScrollMemory = {
   // first try. Re-apply across a handful of frames until the document is tall
   // enough to reach the stored offset, then stop. Capped so a genuinely short
   // result set (stored offset unreachable) settles instead of looping.
+  //
+  // Returns true when it took charge of where the page sits, so the caller
+  // knows not to place the visitor somewhere else.
   restore() {
-    const hash = location.hash.replace(/^#/, '');
-    if (hash) {
-      let target = null;
-      try { target = document.getElementById(decodeURIComponent(hash)); }
-      catch { target = null; }
-      if (target) return;
-    }
+    if (hashTargetsElement()) return true;
     const stored = this.read();
-    if (stored == null || stored <= 0) return;
+    if (stored == null || stored <= 0) return false;
+    // An offset is only meaningful in the view it was taken in. Someone who
+    // read the shape explainer at the bottom of the page, followed a shape
+    // hub link and came back through "Filter Declining shows in the explorer"
+    // arrives at a DIFFERENT view, and reinstating 5,300 px drops them at the
+    // bottom again with no sign the filter landed.
+    const savedView = this.readView();
+    if (savedView !== null && savedView !== viewKeyFromHash(location.hash)) return false;
     let attempts = 0;
     const apply = () => {
       const maxScrollY = document.documentElement.scrollHeight - window.innerHeight;
@@ -831,6 +876,7 @@ const ScrollMemory = {
       }
     };
     apply();
+    return true;
   },
 };
 
@@ -843,6 +889,53 @@ function bindScrollMemory() {
   // pagehide covers both real unloads and bfcache freezes (and fires on
   // mobile where 'beforeunload' is unreliable).
   window.addEventListener('pagehide', () => ScrollMemory.save());
+}
+
+// A link click or a typed URL is a fresh arrival; a refresh and a Back/Forward
+// are returns to a view the visitor already had a position in, which is
+// ScrollMemory's to hand back. Navigation Timing answers this directly.
+function isFreshNavigation() {
+  try {
+    const entries = performance.getEntriesByType('navigation');
+    if (entries && entries.length && typeof entries[0].type === 'string') {
+      return entries[0].type === 'navigate';
+    }
+    // Legacy Navigation Timing: 0 = navigate, 1 = reload, 2 = back/forward.
+    const legacy = performance.navigation;
+    if (legacy && typeof legacy.type === 'number') return legacy.type === 0;
+  } catch { /* Navigation Timing unavailable: treat it as a fresh arrival */ }
+  return true;
+}
+
+// Where the visitor should be once the grid is in the DOM. Three outcomes, in
+// priority order:
+//
+//   1. the hash names a real element - the browser's own anchor scrolling wins;
+//   2. a fresh navigation into a non-default view - land on the count line, so
+//      the filter the link asked for is the thing they see. Everything above
+//      that line looks identical whatever the filter says, and the shape hubs'
+//      "Filter Declining shows in the explorer →" CTA is a link into exactly
+//      that: a filtered view somebody has never scrolled;
+//   3. anything else (a refresh, a Back) - hand back the offset they left,
+//      as long as it was saved in this same view.
+function settleInitialScroll() {
+  if (hashTargetsElement()) return;
+  if (isFreshNavigation() && hasNonDefaultFinderState()) {
+    // 'auto', not 'smooth': at first paint there is nothing to follow, and an
+    // 800 px animated glide from the top just delays the results.
+    scrollToFinderResults('auto');
+    return;
+  }
+  ScrollMemory.restore();
+}
+
+// Does the URL ask for something other than the default finder view? Answered
+// through the same serializer the hash is written with, which omits every
+// default, so an empty query means "nothing was asked for".
+function hasNonDefaultFinderState() {
+  try {
+    return RisingShowsFinder.serializeFinderQuery(finderState).toString() !== '';
+  } catch { return false; }
 }
 
 // Chrome (header / footer / menu / auth UI) is loaded by
@@ -1039,11 +1132,12 @@ async function load() {
   renderFinder();
   bindScrollMemory();
   if (!consumePendingDeepLinks()) {
-    // Restore the saved scroll position now that the grid (which defines the
-    // page height) is in the DOM. A modal deep-link opens at the top instead,
-    // so this only runs for the plain grid view. rAF lets layout settle so
-    // scrollHeight reflects the freshly appended cards.
-    requestAnimationFrame(() => ScrollMemory.restore());
+    // Place the visitor now that the grid (which defines the page height) is
+    // in the DOM: back where they left off, or on the results a filtered link
+    // asked for. A modal deep-link opens at the top instead, so this only runs
+    // for the plain grid view. rAF lets layout settle so scrollHeight and the
+    // count line's box reflect the freshly appended cards.
+    requestAnimationFrame(() => settleInitialScroll());
   }
   // The merged in-flight search is state the hash does not know about yet;
   // written last so an open-modal key above is not dropped from the URL.
@@ -3122,17 +3216,20 @@ async function openModal(m, opts = {}) {
   els.modalEpisodes.replaceChildren(epFrag);
 
   els.modalImdb.href = `https://www.imdb.com/title/${m.seriesId}/episodes/?season=${m.season}`;
-
+  // The pill says "IMDb"; what it links to (this season, not the show) lives in
+  // the accessible name and the tooltip. Both still CONTAIN the visible word,
+  // so the accessible name matches the label a speech user would say.
+  setOutboundLabel(els.modalImdb, `Season ${m.season} on IMDb`);
 
   // Prefer the season-level dereferrer when we have a season tvdbId; otherwise
   // fall back to the series page (still useful, just not deep-linked).
   if (m.seasonTvdbId) {
     els.modalTvdb.href = `https://thetvdb.com/dereferrer/season/${m.seasonTvdbId}`;
-    els.modalTvdb.textContent = 'View season on TVDB →';
+    setOutboundLabel(els.modalTvdb, `Season ${m.season} on TVDB`);
     els.modalTvdb.hidden = false;
   } else if (m.tvdbId) {
     els.modalTvdb.href = `https://thetvdb.com/dereferrer/series/${m.tvdbId}`;
-    els.modalTvdb.textContent = 'View series on TVDB →';
+    setOutboundLabel(els.modalTvdb, 'This series on TVDB');
     els.modalTvdb.hidden = false;
   } else {
     els.modalTvdb.removeAttribute('href');
@@ -4634,15 +4731,18 @@ function goToFinderPage(n, scrollAfter = true) {
   // How deep people page is the clearest signal of whether the default sort
   // surfaces what they came for.
   track('trackLoadMore', { pageNumber: n, itemsShown: lastFinderRowCount });
-  if (scrollAfter) {
-    // Land on the count line ("N shows match your filters"), not the grid:
-    // the grid's top put the count 30 px above the viewport and the top
-    // pager under the fixed header, so the user could not tell which page
-    // they were on without scrolling back up.
-    const anchor = els.finderCount || els.finderResults;
-    const top = anchor.getBoundingClientRect().top + window.scrollY - 70;
-    window.scrollTo({ top, behavior: 'smooth' });
-  }
+  if (scrollAfter) scrollToFinderResults();
+}
+
+// Land on the count line ("N shows match your filters"), not the grid: the
+// grid's top put the count 30 px above the viewport and the top pager under
+// the fixed header, so the user could not tell which page they were on
+// without scrolling back up. The 70 px lifts it clear of the fixed header.
+function scrollToFinderResults(behavior = 'smooth') {
+  const anchor = els.finderCount || els.finderResults;
+  if (!anchor || typeof anchor.getBoundingClientRect !== 'function') return;
+  const top = anchor.getBoundingClientRect().top + window.scrollY - 70;
+  window.scrollTo({ top: Math.max(0, top), behavior });
 }
 
 
@@ -5867,6 +5967,16 @@ function flashButtonLabel(buttonEl, label) {
   }, 1800);
 }
 
+// An outbound pill shows the site name and nothing else, so what it actually
+// points at (this season vs the whole series) has to reach assistive tech and
+// a hovering mouse some other way. Every name passed here contains the pill's
+// own visible word, which is what WCAG's "label in name" asks for.
+function setOutboundLabel(el, name) {
+  if (!el) return;
+  el.setAttribute('aria-label', name);
+  el.title = name;
+}
+
 function shareText(text, buttonEl) {
   const flashLabel = (label) => flashButtonLabel(buttonEl, label);
   const manualFallback = () => {
@@ -6166,18 +6276,45 @@ function downloadBlob(blob, filename) {
   return 'downloaded';
 }
 
-// Native share sheet where files are supported (mobile), plain download
-// everywhere else. A cancelled share sheet is a deliberate no-op, not a
-// reason to drop a file in the user's downloads folder.
-function deliverChartImage(blob, filename, shareTitle) {
+// Put the PNG on the clipboard. Resolves to 'copied', or to null for every
+// reason it could not happen, so the caller falls through instead of throwing:
+// the API needs a secure context, a live user gesture and a focused document,
+// and Safari rejects a ClipboardItem built from an already-resolved blob.
+// Nothing here is worth an error message when a share sheet or a download will
+// do the job.
+function copyImageToClipboard(blob) {
+  if (!navigator.clipboard || typeof navigator.clipboard.write !== 'function'
+      || typeof ClipboardItem !== 'function') {
+    return Promise.resolve(null);
+  }
+  let item;
+  try { item = new ClipboardItem({ 'image/png': blob }); }
+  catch { return Promise.resolve(null); }
+  return navigator.clipboard.write([item]).then(() => 'copied').catch(() => null);
+}
+
+// Clipboard first: the chart is something you paste into a message, and its
+// neighbour "Share card" already copies. A file in the downloads folder, or a
+// share sheet asking which app to hand it to, is a detour around that. The
+// share sheet stays as the fallback for where an image clipboard write is not
+// available (iOS Safari), and a download is the last resort. A CANCELLED share
+// sheet is a deliberate no-op, not a reason to drop a file in someone's
+// downloads folder.
+async function deliverChartImage(blob, filename, shareTitle) {
+  const copied = await copyImageToClipboard(blob);
+  if (copied) return copied;
   const file = typeof File === 'function' ? new File([blob], filename, { type: 'image/png' }) : null;
   if (file && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
     return navigator.share({ files: [file], title: shareTitle })
       .then(() => 'shared')
       .catch((err) => (err && err.name === 'AbortError' ? 'cancelled' : downloadBlob(blob, filename)));
   }
-  return Promise.resolve(downloadBlob(blob, filename));
+  return downloadBlob(blob, filename);
 }
+
+// Confirmation wording per delivery route, so the button never claims a
+// download that went to the clipboard.
+const CHART_IMAGE_FLASH = { copied: 'Copied!', shared: 'Shared!', downloaded: 'Downloaded!' };
 
 async function shareChartImage(buttonEl, opts) {
   if (buttonEl) buttonEl.disabled = true;
@@ -6185,7 +6322,7 @@ async function shareChartImage(buttonEl, opts) {
     const blob = await buildChartCardBlob(opts);
     const how = await deliverChartImage(blob, opts.filename, opts.title);
     if (how !== 'cancelled') {
-      flashButtonLabel(buttonEl, how === 'shared' ? 'Shared!' : 'Downloaded!');
+      flashButtonLabel(buttonEl, CHART_IMAGE_FLASH[how] || 'Done!');
       track('trackAction', 'share_chart_image', {
         surface: opts.surface,
         method: how,
@@ -6626,6 +6763,17 @@ const PROVIDER_URLS = {
   'Crunchyroll':        (q) => `https://www.crunchyroll.com/search?q=${q}`,
 };
 
+// What the streaming row's note says. Its job is to warn that a chip runs a
+// SEARCH rather than deep-linking the title, and most shows stream on exactly
+// one service, where "each service" is wrong English about a set of one. Only
+// the quantifier changes, so a reader who sees both forms across shows sees
+// one sentence rather than two.
+function watchRowNote(count) {
+  return count === 1
+    ? 'opens a search on that service'
+    : 'opens a search on each service';
+}
+
 // The show modal's streaming row: the provider chips ARE the links, one
 // search per mainstream service the show streams on. Until 2026-08 this
 // rendered a separate "Watch on X" button per provider BESIDE a row of
@@ -6645,6 +6793,7 @@ function renderShowModalWatchRow(meta) {
     return;
   }
   if (row) row.hidden = false;
+  if (els.showModalWatchNote) els.showModalWatchNote.textContent = watchRowNote(providers.length);
   for (const p of providers) {
     const url = PROVIDER_URLS[p];
     if (url) {
@@ -6745,7 +6894,11 @@ if (typeof window !== 'undefined') {
     computeShowRelated,
     languagesCompatible,
     clampScrollY,
+    viewKeyFromHash,
     ScrollMemory,
+    deliverChartImage,
+    CHART_IMAGE_FLASH,
+    watchRowNote,
     buildSeasonShareText,
     parseCompareParam,
     Watched,

@@ -33,7 +33,7 @@ const AXE_PATH = path.resolve(HERE, '..', 'vendor', 'axe.min.js');
 
 const SITE_PAGES = ['home', 'work', 'apps', 'about', 'contact', 'privacy', '404', 'moadon-alef'];
 const APP_ROOTS = ['arena', 'football-h2h', 'fpl-planner', 'gym-tracker',
-  'maptap-rivals', 'mario-kart', 'rising-shows', 'trip-planner'];
+  'maptap-rivals', 'mario-kart', 'quotescout', 'rising-shows', 'trip-planner'];
 
 // Same production-protection list as suites/apps.mjs.
 const FIREBASE_HOSTS = /firestore\.googleapis\.com|firebaseio\.com|identitytoolkit\.googleapis\.com|securetoken\.googleapis\.com/i;

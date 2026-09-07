@@ -344,3 +344,22 @@
   for = "/*.webmanifest"
   [headers.values]
     Content-Type = "application/manifest+json"
+# Quote Scout fixtures are test-only and must never be served as production data.
+# Force is intentional: these source files exist in the root publish directory.
+[[redirects]]
+  from = "/apps/quotescout/tests/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/apps/quotescout/e2e/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/netlify/functions/tests/*"
+  to = "/404.html"
+  status = 404
+  force = true
