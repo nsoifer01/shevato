@@ -1852,6 +1852,17 @@ the moment a corrected name resolves.
 **Nothing is invented to make it disappear.** The e2e asserts no `place` record
 appears and no `data-anchor-plat` is stamped while the stay is unresolved.
 
+### An element that sets `display` must restate `hidden`
+
+The warning slot renders empty and `hidden`, and `.tp-place-warn { display:
+inline-flex }` BEATS the user agent's `[hidden] { display: none }` - same
+specificity fight `[hidden]` always loses when a rule sets `display` on the
+element itself. So an empty amber chip rendered on every stay row and every day
+header until a lookup painted it, and an empty `<button>` has no accessible
+name: the a11y scan caught it as `button-name`, critical, twelve times, in a
+suite that has nothing to do with places. `[hidden] { display: none !important }`
+is restated beside the rule that broke it.
+
 ### Two traps this round walked into
 
 - **A test double's refusal must be block-scoped.** Teaching the shared double to

@@ -4140,6 +4140,12 @@
    `button { color:#555 !important }` site-wide, which silently defeats any
    unpinned colour on a <button> (see CLAUDE.md). This is a button because the
    only fix is to edit the name, and it opens that modal. */
+/* `display` here BEATS the user agent's `[hidden] { display: none }`, so the
+   slot rendered as an empty amber chip on every stay until it was painted -
+   and an empty <button> has no accessible name, which is how the a11y scan
+   caught it (button-name, critical x12). An element that sets `display` must
+   restate hidden. */
+.trip-planner-app .tp-place-warn[hidden] { display: none !important; }
 .trip-planner-app .tp-place-warn {
   display: inline-flex; align-items: center; gap: 5px;
   width: auto; min-height: 0; padding: 2px 8px;
