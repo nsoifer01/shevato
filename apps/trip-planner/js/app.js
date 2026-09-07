@@ -23,7 +23,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 75;
+  const TP_BUILD = 76;
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   // Miles or kilometers, everywhere a distance prints. Same architecture as
@@ -146,7 +146,7 @@
     slotReplacementNeed, selectSlotCandidates,
     PLAN_MEAL_OPTIONS, PLAN_ACTIVITY_OPTIONS,
     hoursVerdict, hoursIntervalsForDate, hoursLineText, HOURS_CLOSING_SOON_MIN, recommendWindowMin,
-    normalizeVenueCache, rememberVenue, placesLocationUpdates, placesCacheUpdates, pickVenueFeature,
+    normalizeVenueCache, rememberVenue, placesLocationUpdates, placesCacheUpdates, pickVenueFeature, resultKey,
     dayAnchor, dayDistanceChain, sameSpot, shortestRoute, routeStops, distanceChipLabel, distanceChipTitle, routeFooterText,
     proposalOrigin, dayBaseOrigin, suggestionOrigins, assistDistanceChipLabel, assistDistanceChipTitle,
     isPlaceType, isTravelLeg, legDestinationStay, directionsUrl, legTravelMode, impossibleHops,
@@ -10218,9 +10218,75 @@
         saveVenueCache();
         scheduleDistanceRepaint();
       }
+      persistResolvedPlaces(results);
       placesQuotaNotice();
     },
   });
+
+  // A HAND-ADDED ROW KEEPS ITS RESOLUTION TOO (owner report, 2026-09-06, on
+  // their own synced trip: every activity on the Ko Phi Phi day carried a
+  // canonical record and the stay they had TYPED carried `place: NONE`).
+  //
+  // `attachResolvedPlace` runs on the assistant's accept path and nowhere else,
+  // so a place the traveller typed themselves - which is every stay added
+  // through the form, and the anchor of every day - never had a durable
+  // identity. It still resolved correctly while the tab was open (the session
+  // lookup feeds canonicalPointFor), so nothing looked wrong; it simply
+  // re-resolved from a text query on every load, and until that landed the day
+  // had no anchor at all. An identity the app has already paid Google for
+  // should survive a reload the same way an accepted suggestion's does.
+  //
+  // Three things keep this from becoming write churn:
+  //   - it only fires for items whose lookup is IN THIS RESPONSE, so a repaint
+  //     with a warm cache writes nothing;
+  //   - it compares against the record already stored and skips an identical
+  //     one, so re-resolving the same venue is a no-op;
+  //   - it saves ONCE for the whole batch, and `outsideHistory` so a background
+  //     resolution never becomes an Undo step (the same treatment repairs and
+  //     ensureTrip get).
+  // `save()` itself refuses in shared mode, so a stranger's trip is never
+  // written to.
+  function persistResolvedPlaces(results) {
+    const trip = activeTrip();
+    if (!trip || !Array.isArray(trip.items) || sharedMode) return;
+    const keys = new Set();
+    for (const r of Array.isArray(results) ? results : []) {
+      const k = resultKey(r);
+      if (k) keys.add(k);
+    }
+    if (!keys.size) return;
+    let changed = 0;
+    for (const it of trip.items) {
+      const lookup = placeFor(it, trip);
+      if (!lookup || !keys.has(lookup.key)) continue;
+      const rec = placeRecordFrom(placesCache.get(lookup.key), lookup.area, Date.now());
+      if (!rec) continue;
+      // THIS FILLS A HOLE. IT NEVER OVERWRITES AN IDENTITY (tp-places P13).
+      //
+      // A saved record is the traveller's: it is what they accepted, it
+      // survived a reload, and a background re-resolution is not a licence to
+      // replace it. The first draft of this compared the whole record and
+      // wrote on any difference, which meant a lookup landing on boot quietly
+      // replaced a stored place ID with whatever the batch answered - the
+      // exact "the app changed the place under me" failure this whole round
+      // exists to stop, reintroduced from the other end.
+      //
+      // So the identity is written ONCE, into an empty slot. The position may
+      // additionally be filled or refreshed for a record that already agrees
+      // on the identity, which is what keeps a row working after its
+      // coordinates age past the 30 days Google's terms allow.
+      const now = it.place && typeof it.place === 'object' ? it.place : null;
+      if (now && now.id !== rec.id) continue;               // never re-point an identity
+      const fresh = now && validCoord(now.lat, now.lon)
+        && normalizePlaceRecord(now, { cityPoint: cityAnchor((it.location || '').trim()) });
+      if (now && fresh && validCoord(fresh.lat, fresh.lon)) continue; // already positioned
+      if (now && !validCoord(rec.lat, rec.lon)) continue;   // nothing new to add
+      it.place = rec;
+      changed++;
+      placesLog('place persisted from a lookup', { title: it.title, key: lookup.key, place: rec });
+    }
+    if (changed) save('', null, true);
+  }
 
   // Everything that used to read the raw Map still reads exactly one cache;
   // the queue owns it now so nothing can resolve a venue behind its back.

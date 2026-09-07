@@ -337,5 +337,101 @@ export async function run({ base, cdpPort }) {
     });
   }
 
+  /* =====================================================================
+     C. A TYPED STAY KEEPS ITS RESOLUTION (owner report on their own trip:
+        every activity carried a canonical record, the stay they had typed
+        carried `place: NONE`).
+     ===================================================================== */
+  freshIds();
+  {
+    const log = { photon: [], places: [] };
+    const stay = item({
+      type: 'stay', title: 'ChaoKoh Hotel Phi Phi Island', location: 'Ko Phi Phi',
+      startDate: '2027-01-26', endDate: '2027-01-29',
+      mapsQuery: 'ChaoKoh Hotel Phi Phi Island Ko Phi Phi',
+    });
+    const beach = item({
+      type: 'activity', title: 'Loh Dalum Beach', location: 'Ko Phi Phi',
+      startDate: DAY, startTime: '11:00', mapsQuery: 'Loh Dalum Beach Ko Phi Phi',
+    });
+    const tp = trip({ name: 'Thailand', items: [stay, beach] });
+    const stores = {
+      'trip-planner:geo:v3': {
+        'ko phi phi': { ...TRAT_ISLET, country: 'Thailand', cc: 'TH', conf: 'low', kind: 'islet' },
+      },
+    };
+
+    await withPage('canonical-coords C', { db: dbOf([tp]), stores, net: net(log) }, async (s) => {
+      await switchView(s, 'days');
+      await waitForExpr(s, `!!document.querySelector('#daysList .day-card[data-date="${DAY}"] .dc-route-tot')`, { timeout: 20000 });
+      await sleep(2500);
+
+      const saved = () => evaluate(s, `(() => {
+        const db = JSON.parse(localStorage.getItem('trip-planner:v1') || '{}');
+        const tr = (db.trips || [])[0] || {};
+        const out = {};
+        for (const i of (tr.items || [])) out[i.title] = i.place || null;
+        return out;
+      })()`);
+
+      const rec = await saved();
+      const hotel = rec['ChaoKoh Hotel Phi Phi Island'];
+      await t('C1: a stay the traveller TYPED now keeps its canonical identity',
+        !!hotel && hotel.id === HOTEL_ID, JSON.stringify(hotel), s);
+      await t('C2: and its coordinate, so the day anchor survives a reload',
+        !!hotel && Math.abs(hotel.lat - CHAOKOH.lat) < 0.001 && Math.abs(hotel.lon - CHAOKOH.lon) < 0.001,
+        JSON.stringify(hotel), s);
+      await t('C3: the hand-added activity keeps its record too',
+        !!rec['Loh Dalum Beach'] && rec['Loh Dalum Beach'].id === DALUM_ID,
+        JSON.stringify(rec['Loh Dalum Beach']), s);
+
+      /* --- the write is idempotent: a repaint must not rewrite the trip --- */
+      const before = await evaluate(s, `localStorage.getItem('trip-planner:v1')`);
+      await evaluate(s, `window.dispatchEvent(new Event('resize'))`);
+      await sleep(2000);
+      const after = await evaluate(s, `localStorage.getItem('trip-planner:v1')`);
+      await t('C4: a repaint with a warm cache rewrites nothing',
+        before === after, before === after ? '' : 'storage changed on a no-op repaint', s);
+
+      /* --- and it is not an undo step --- */
+      const undoDisabled = await evaluate(s, `(() => {
+        const b = document.querySelector('#undoBtn, [data-act="undo"]');
+        return b ? (b.disabled || b.getAttribute('aria-disabled') === 'true') : 'no undo button';
+      })()`);
+      await t('C5: persisting a background resolution is not an Undo step',
+        undoDisabled === true || undoDisabled === 'no undo button', String(undoDisabled), s);
+
+      /* --- and it FILLS A HOLE, it never overwrites what is already there --- */
+      // The first draft of persistResolvedPlaces compared the whole record and
+      // wrote on any difference, so a lookup landing on boot quietly replaced a
+      // stored place ID with whatever the batch answered. That is the "the app
+      // changed the place under me" failure of this very round, reintroduced
+      // from the other end. tp-places P13 caught it; it is pinned here too,
+      // beside the feature that caused it.
+      await evaluate(s, `(() => {
+        const db = JSON.parse(localStorage.getItem('trip-planner:v1'));
+        const it = db.trips[0].items.find(i => /Loh Dalum/.test(i.title));
+        it.place = { id: 'PID_THE_TRAVELLER_ACCEPTED', at: Date.now(), lat: 7.7403, lon: 98.7704, city: 'Ko Phi Phi' };
+        localStorage.setItem('trip-planner:v1', JSON.stringify(db));
+        return 1; })()`);
+      await gotoHard(s, base + APP, { settle: 1600 });
+      await switchView(s, 'days');
+      await sleep(3000);
+      const kept = await saved();
+      await t('C7: a record the traveller already had is never re-pointed by a lookup',
+        !!kept['Loh Dalum Beach'] && kept['Loh Dalum Beach'].id === 'PID_THE_TRAVELLER_ACCEPTED',
+        JSON.stringify(kept['Loh Dalum Beach']), s);
+
+      /* --- survives the reload, which is the whole point --- */
+      await gotoHard(s, base + APP, { settle: 1600 });
+      const afterReload = await saved();
+      await t('C6: the identity and the point are both there after a reload',
+        !!afterReload['ChaoKoh Hotel Phi Phi Island']
+          && afterReload['ChaoKoh Hotel Phi Phi Island'].id === HOTEL_ID
+          && Math.abs(afterReload['ChaoKoh Hotel Phi Phi Island'].lat - CHAOKOH.lat) < 0.001,
+        JSON.stringify(afterReload['ChaoKoh Hotel Phi Phi Island']), s);
+    });
+  }
+
   return R;
 }

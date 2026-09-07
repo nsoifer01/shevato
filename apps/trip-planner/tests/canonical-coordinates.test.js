@@ -238,3 +238,50 @@ test('RETURN TO HOTEL: the day ends where it began, to the metre', () => {
   assert.ok(back.km < 1, `a walk home, got ${back.km.toFixed(3)} km`);
   assert.ok(legs.every(l => !l.suspect), 'nothing on this day contradicts itself');
 });
+
+// ---------- 8. a resolution the traveller TYPED is durable too ----------
+// Owner report, 2026-09-06, read off their own synced trip: every activity on
+// the Ko Phi Phi day carried a canonical record and the stay they had typed
+// carried `place: NONE`. `attachResolvedPlace` runs on the assistant's accept
+// path and nowhere else, so a hand-added stay - the anchor of every day - never
+// kept the identity the app had already paid Google for. It re-resolved from a
+// text query on every load, and until that landed the day had no anchor.
+//
+// The client half (persistResolvedPlaces) lives in app.js and is covered by
+// e2e/canonical-coordinates.mjs block C. What is pinned here is the rule it
+// leans on: the record a background lookup would write for a typed stay is
+// exactly the record an accepted suggestion writes, so the two paths cannot
+// drift into storing different things about the same place.
+
+test('a typed stay and an accepted suggestion store the SAME record', () => {
+  const entry = { status: 'ok', placeId: HOTEL_ID, ...CHAOKOH, verified: false, rating: 4.1 };
+  const area = { city: 'Ko Phi Phi' };
+  const viaAccept = L.placeRecordFrom(entry, area, NOW);   // attachResolvedPlace
+  const viaLookup = L.placeRecordFrom(entry, area, NOW);   // persistResolvedPlaces
+  assert.deepEqual(viaAccept, viaLookup);
+  assert.equal(viaAccept.id, HOTEL_ID);
+  assert.equal(viaAccept.lat, CHAOKOH.lat, 'the anchor of the day keeps its own coordinate');
+});
+
+test('re-resolving an unchanged place produces an identical record but for `at`', () => {
+  // persistResolvedPlaces compares everything EXCEPT `at` before writing, so a
+  // warm repaint cannot rewrite the trip and wake the sync layer on every
+  // ratings response.
+  const entry = { status: 'ok', placeId: HOTEL_ID, ...CHAOKOH, verified: false };
+  const first = L.placeRecordFrom(entry, { city: 'Ko Phi Phi' }, NOW);
+  const later = L.placeRecordFrom(entry, { city: 'Ko Phi Phi' }, NOW + 3600000);
+  assert.notEqual(first.at, later.at, 'the timestamp does move');
+  for (const k of ['id', 'lat', 'lon', 'city', 'verified']) {
+    assert.equal(first[k], later[k], `${k} is identity, not freshness`);
+  }
+});
+
+test('a typed stay whose city IS trusted still refuses a wrong branch', () => {
+  // The typed-stay path must not become a way around the area gate.
+  const rec = L.placeRecordFrom(
+    { status: 'ok', placeId: 'ChIJwrong', lat: 43.0621, lon: 141.3544, verified: false },
+    { city: 'Tokyo' }, NOW);
+  const read = L.normalizePlaceRecord(rec, { now: NOW, cityPoint: { lat: 35.6812, lon: 139.7671 } });
+  assert.equal(read.id, 'ChIJwrong');
+  assert.equal(read.lat, undefined, 'a hand-typed row gets no exemption from the 150 km gate');
+});
