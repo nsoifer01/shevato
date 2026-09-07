@@ -18,8 +18,16 @@
 //                   for the owner quota tier (neither ever served to the
 //                   browser)
 //   usage           rolling quota counters (see tp-places-quota.mjs)
-//   id:<hash>       normalized query -> place ID (or a cached "no match")
-//   pd:<placeId>    place ID -> rating payload, short-lived (see tp-places.mjs)
+//   id:<hash>       normalized query + area -> the place ID it resolved to (or
+//                   a cached "no match"), plus any verdicts the gates reached
+//                   about that candidate. See tp-places-lookup.mjs for the
+//                   shape and the TTLs.
+// There is deliberately NO key holding a rating, a name, an address or an hours
+// line, and there must never be one: Google's terms permit the place ID
+// indefinitely (SST A.3) and lat/lng for 30 days (SST 14.3) and grant nothing
+// else for Places. A `pd:<placeId>` details cache used to live here; the writer
+// was removed on 2026-08-13 and 201 stale blobs had to be purged from the
+// production store separately on 2026-08-17. Removing a cache is two jobs.
 // Cache entries are per-key rather than one big object so two concurrent
 // batches cannot clobber each other's writes.
 

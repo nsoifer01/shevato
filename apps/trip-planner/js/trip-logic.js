@@ -5071,11 +5071,28 @@ const TripLogic = (() => {
   // is allowed to look a place up merely to print a distance.
 
   // Google Maps Platform's Maps Service Specific Terms 14.3 expressly permit
-  // caching latitude/longitude, and only for 30 days (the same rule the server
-  // side notes in lib/tp-places-lookup.mjs), so a stored venue coordinate
-  // expires on that schedule. The cap bounds a long trip's worth of venues; the
-  // oldest write goes first, which is also the entry closest to expiring.
-  const VENUE_TTL_MS = 30 * 86400000;
+  // caching latitude/longitude, and only for "up to 30 consecutive calendar
+  // days, after which Customer must delete the cached latitude and longitude
+  // values" (the same rule the server side notes in lib/tp-places-lookup.mjs).
+  //
+  // TWENTY-NINE, NOT THIRTY, AND THE MISSING DAY IS THE POINT. The permission
+  // counts CALENDAR DAYS - dates - not 24-hour periods, and those are not the
+  // same measurement. An entry written at 23:00 on 1 January and held for a
+  // full 30 x 24h is still being served at 22:59 on 31 January, by which time
+  // it has existed on thirty-ONE distinct dates. Only an entry written exactly
+  // at midnight stays inside the limit. Holding it 29 x 24h instead is the
+  // largest window that cannot exceed the permission from ANY starting time:
+  // 1 January to 30 January is exactly thirty dates, which is the whole
+  // allowance and not one date more.
+  //
+  // The day costs nothing. These coordinates arrive free on the Places call the
+  // ratings already pay for (`location` is a lower billing tier than `rating`),
+  // so an entry expiring a day earlier is re-seeded by a lookup that was going
+  // to happen anyway - it does not buy a single extra billed call.
+  //
+  // The cap bounds a long trip's worth of venues; the oldest write goes first,
+  // which is also the entry closest to expiring.
+  const VENUE_TTL_MS = 29 * 86400000;
   const VENUE_CACHE_MAX = 300;
 
   // A coordinate pair only counts when BOTH halves are real numbers in range.
@@ -6723,7 +6740,13 @@ const TripLogic = (() => {
   // the opening hours and Google's own mapsUri. Those are Google Maps content
   // with no caching exception; they live in the session cache and nowhere else,
   // and the Maps URL is rebuilt from the ID (see placeMapsUrl) rather than kept.
-  const PLACE_RECORD_TTL_MS = 30 * 86400000;
+  // 29 days, for exactly the reason VENUE_TTL_MS is 29: Service Specific Terms
+  // 14.3 grants "up to 30 consecutive calendar DAYS", and 30 x 24h spans
+  // thirty-one dates for anything written after midnight. This is the second
+  // place Google coordinates come to rest, so it takes the same boundary; the
+  // place ID beside them has no expiry at all, because SST A.3 permits that
+  // one indefinitely.
+  const PLACE_RECORD_TTL_MS = 29 * 86400000;
 
   // IDENTITY AND POSITION ARE TWO DIFFERENT CLAIMS, and this used to demand
   // both or store neither (owner report, 2026-09-05).
@@ -6792,8 +6815,11 @@ const TripLogic = (() => {
    *
    * Three refusals, in order of how badly they lie:
    *   - malformed record, or one with no place ID: dropped entirely.
-   *   - coordinates older than the 30 days Google's terms allow: the ID
-   *     survives (it may be kept indefinitely), the point does not.
+   *   - coordinates older than the window Google's terms allow (29 days; see
+   *     PLACE_RECORD_TTL_MS for why the grant of "30 consecutive calendar
+   *     days" is not 30 x 24h): the ID survives, because SST A.3 permits a
+   *     place ID indefinitely and the traveller picked that place. The point
+   *     does not.
    *   - a point that does not agree with the item's own city, when that city
    *     resolves to a coordinate: dropped, because a distance drawn from it
    *     would be the 809 km chip again. The ID survives: it is still the place
