@@ -4,7 +4,7 @@
   "@id": "https://shevato.com/#organization",
   "name": "Shevato LLC",
   "alternateName": "Shevato",
-  "url": "https://shevato.com/",
+  "url": "https://shevato.com/home",
   "logo": {
     "@type": "ImageObject",
     "url": "https://shevato.com/images/full-logo.svg"

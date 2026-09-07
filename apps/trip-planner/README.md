@@ -191,7 +191,8 @@ already rejected is never re-bought. Names, ratings, review counts, addresses
 and hours are never cached at all, because Google's terms grant no caching
 permission for them: ToS 3.2.3(b) forbids caching Google Maps Content except as
 the Service Specific Terms allow, SST 14.3 allows exactly one thing for Places
-(latitude/longitude, 30 days), and SST A.3 allows the place ID indefinitely.
+(latitude/longitude, up to 30 consecutive calendar days - we hold 29, see
+below), and SST A.3 allows the place ID indefinitely.
 Re-derived field by field against the live terms on 2026-09-06; the field table
 and the reasoning are in `FINDINGS.md`. **This is not a tuning knob** - there is
 no rating TTL to find, and the layers that CAN be tuned are the place ID, the
@@ -531,7 +532,10 @@ request (`createPlacesQueue` in trip-logic.js):
   thirty days. The verdict now rides in the same entry for 7 days, keyed by a
   signature of the inputs the cache key does not carry (the meal slot, the exact
   anchor and radius) plus `JUDGE_VERSION` - **bump that constant whenever a gate
-  changes its mind**, and every stored verdict retires on deploy.
+  changes its mind**, and every stored verdict retires on deploy. Forgetting is
+  not possible: `netlify/functions/tests/tp-places-judge-version.test.mjs`
+  hashes the gate sources (ignoring comments) and fails with instructions if
+  they change.
 - **Opening hours ride the same response.** `regularOpeningHours` and
   `currentOpeningHours` are Place Details Enterprise fields - the exact SKU the
   rating already bills - so the field mask asks for them in the SAME request and

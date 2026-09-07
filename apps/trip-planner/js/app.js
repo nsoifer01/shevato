@@ -478,8 +478,10 @@
         // runs through here (boot, sync merge, share boot, undo snapshots), so
         // this is where the combination that started the 2026-08-27 round - a
         // Tokyo item carrying Hokkaido coordinates - stops being storable.
-        // A malformed record goes; coordinates past the 30 days Google's terms
-        // allow go (the place ID may be kept indefinitely and stays); and a
+        // A malformed record goes; coordinates past the 29 days we hold them
+        // go (Google allows 30 calendar days; we stop a day early so the span
+        // can never cover thirty-one dates - the place ID may be kept
+        // indefinitely and stays); and a
         // point that does not agree with the item's own city goes too, so a
         // record written before this fix, or by a stale tab, cannot draw a
         // wrong chip. Cache-only: cityPoint never reaches the network.
@@ -1307,7 +1309,7 @@
 
   // An itinerary item's lookup, with its PERSISTED place record attached when
   // it has one. The record is the canonical identity Add to trip wrote (a
-  // Google place ID and, inside the 30 days the terms allow, its coordinates),
+  // Google place ID and, inside the 29 days we hold coordinates, its point),
   // so the row links at the same entity the card did instead of re-resolving a
   // string and possibly landing somewhere else.
   function savedPlaceLookup(it) {
@@ -4780,7 +4782,7 @@
       trip.items.push(it);
     }
     // A venue picked from the title dropdown knows exactly where it is, so the
-    // coordinate goes into the same 30-day store the ratings call and the Photon
+    // coordinate goes into the same 29-day store the ratings call and the Photon
     // top-up fill, under the key the SAVED item will ask for. Computing that key
     // from `it` through itemMapsQuery - the same function every read path uses -
     // is what makes agreement structural rather than a convention two call
@@ -10371,7 +10373,7 @@
       // So the identity is written ONCE, into an empty slot. The position may
       // additionally be filled or refreshed for a record that already agrees
       // on the identity, which is what keeps a row working after its
-      // coordinates age past the 30 days Google's terms allow.
+      // coordinates age past the 29 days we hold them for.
       const now = it.place && typeof it.place === 'object' ? it.place : null;
       if (now && now.id !== rec.id) continue;               // never re-point an identity
       const fresh = now && validCoord(now.lat, now.lon)
