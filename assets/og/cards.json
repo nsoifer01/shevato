@@ -91,6 +91,13 @@
       "title": "Shevato Apps",
       "subtitle": "Free web apps for games, fitness, football, TV analytics, and MapTap rivalries.",
       "accent": "#ce1b28"
+    },
+    {
+      "slug": "quotescout",
+      "eyebrow": "Shevato / QuoteScout",
+      "title": "QuoteScout",
+      "subtitle": "Compare prices without the spam. Clear sources. No guessed quotes.",
+      "accent": "#a7d3ff"
     }
   ]
 }

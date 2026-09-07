@@ -36,7 +36,7 @@ const BASE = `http://127.0.0.1:${PORT}`;
 
 const SITE_PAGES = ['home', 'work', 'apps', 'about', 'contact', 'privacy', '404', 'moadon-alef'];
 const APPS = ['arena', 'football-h2h', 'fpl-planner', 'gym-tracker',
-  'maptap-rivals', 'mario-kart', 'rising-shows', 'trip-planner'];
+  'maptap-rivals', 'mario-kart', 'quotescout', 'rising-shows', 'trip-planner'];
 // moadon-alef deliberately carries no site header.
 const NO_HEADER = new Set(['moadon-alef']);
 
@@ -86,6 +86,11 @@ async function withBrowser(t, engineName, fn) {
 async function newPage(browser) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   await context.route('**/*', (route) => {
+    // This harness is static-only. Explicitly stand in for an unavailable
+    // QuoteScout backend; the app's own E2E suite tests provider responses.
+    if (route.request().url() === BASE + '/.netlify/functions/quotescout' && route.request().method() === 'GET') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ verticals: [], vehicleData: false }) });
+    }
     if (EXTERNAL.test(route.request().url())) return route.abort();
     return route.continue();
   });

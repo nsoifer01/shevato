@@ -74,6 +74,7 @@ const SUITES = [
   'apps/gym-tracker/e2e/audit-2026-08.mjs',
   'apps/maptap-rivals/e2e/audit-2026-08.mjs',
   'apps/mario-kart/e2e/audit-2026-08.mjs',
+  'apps/quotescout/e2e/flow.mjs',
   'apps/rising-shows/e2e/audit-2026-08.mjs',
   'apps/trip-planner/e2e/audit-2026-08.mjs',
   'apps/maptap-rivals/e2e/quality.mjs',
@@ -118,15 +119,15 @@ const EXPECTED_CHECKS = {
   // the direction that has to unwind the RTL layout. +1.
   // 172 before 2026-09-05; +1 for the mobile menu open/close JS-error check
   // added with the `wasOpen` fix.
-  'tests/browser/suites/site.mjs': 173,
+  'tests/browser/suites/site.mjs': 174,
   // 103 from master, plus the two Rising Shows highlight-badge checks added
   // in this branch.
-  'tests/browser/suites/apps.mjs': 105,
+  'tests/browser/suites/apps.mjs': 108,
   // 72 from master's B7/B8 keyboard + touch-target blocks, plus the two
   // seeded MapTap Rivals state scans added in this branch.
-  'tests/browser/suites/a11y.mjs': 79,
-  'tests/browser/suites/visual.mjs': 103,
-  'tests/browser/suites/perf.mjs': 51,
+  'tests/browser/suites/a11y.mjs': 82,
+  'tests/browser/suites/visual.mjs': 111,
+  'tests/browser/suites/perf.mjs': 55,
   'tests/browser/suites/pwa-gym.mjs': 14,
   // 56 from the 2026-08-22 audit pass, plus, added 2026-08-23: 15 modal/header
   // stacking checks, 3 route-change checks, 30 overflow checks (6 views x 7
