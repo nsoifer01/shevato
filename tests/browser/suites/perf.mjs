@@ -290,6 +290,89 @@ async function measureRisingShowsContract(base, cdpPort) {
 }
 
 
+
+// ---------------------------------------------------------------------------
+// STARTUP LAYOUT STABILITY (2026-09-05 audit F07).
+//
+// The budgets above measure weight, request count and DOM size, and every one
+// of them passed while three apps moved their controls hundreds of pixels
+// under a reader's thumb during startup - the audit measured 0.636 (Mario
+// Kart), 0.297 (MapTap Rivals) and 0.253 (Trip Planner) session-window CLS at
+// 390x844, against Google's 0.1 "good" threshold. A settled-geometry check
+// cannot see that: the FINAL layout was correct in all three.
+//
+// Two things make this measurable rather than accidental:
+//
+//  1. THROTTLING. Served from local disk, every asset arrives before first
+//     paint, so the script that mutates the DOM has already run by the time
+//     anything is painted and the number is a flat zero for a page that is
+//     visibly terrible on a phone. Fast-3G-ish transport plus a 4x CPU
+//     slowdown is the mid-range-phone stand-in, and it reproduces the audit's
+//     production numbers within a few hundredths.
+//  2. THE OBSERVER IS INSTALLED BEFORE THE PAGE'S OWN SCRIPTS, via
+//     Page.addScriptToEvaluateOnNewDocument. A PerformanceObserver added
+//     after boot misses exactly the shifts that matter.
+//
+// The budget is 0.1 - Google's threshold, not a number picked to fit what the
+// apps happen to do. Raising it is not a fix.
+export const CLS_BUDGET = 0.1;
+
+const CLS_OBSERVER = `(() => {
+  window.__cls = { worst: 0, sources: [] };
+  let cur = 0, first = 0, last = 0;
+  new PerformanceObserver((list) => {
+    for (const e of list.getEntries()) {
+      if (e.hadRecentInput) continue;
+      const t = e.startTime;
+      // Session window: a new one starts after a 1s gap or a 5s span, which
+      // is how Chrome and CrUX define the metric.
+      if (cur && (t - first > 5000 || t - last > 1000)) { cur = 0; first = t; }
+      if (!cur) first = t;
+      last = t;
+      cur += e.value;
+      window.__cls.worst = Math.max(window.__cls.worst, cur);
+      for (const s of (e.sources || [])) {
+        const n = s.node;
+        if (!n || !n.tagName) continue;
+        const id = n.id ? '#' + n.id : '';
+        const cl = typeof n.className === 'string' && n.className.trim()
+          ? '.' + n.className.trim().split(/\\s+/).slice(0, 2).join('.') : '';
+        window.__cls.sources.push({ tag: n.tagName.toLowerCase() + id + cl, value: +e.value.toFixed(4) });
+      }
+    }
+  }).observe({ type: 'layout-shift', buffered: true });
+  return 1;
+})()`;
+
+/** Session-window CLS for one app root at 390x844 under throttling. */
+async function measureStartupShift(cdpPort, base, app) {
+  const s = await newPage(cdpPort);
+  try {
+    await interceptNetwork(s, (url) => (FIREBASE_HOSTS.test(url) ? 'fail' : null));
+    await s.send('Emulation.setDeviceMetricsOverride', {
+      width: 390, height: 844, deviceScaleFactor: 3, mobile: true,
+    });
+    await s.send('Network.setCacheDisabled', { cacheDisabled: true });
+    await s.send('Network.emulateNetworkConditions', {
+      offline: false, latency: 150,
+      downloadThroughput: 1.6 * 1024 * 1024 / 8, uploadThroughput: 750 * 1024 / 8,
+    });
+    await s.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+    await s.send('Page.addScriptToEvaluateOnNewDocument', { source: CLS_OBSERVER });
+    await goto(s, `${base}/apps/${app}/index.html`, { settle: 0 });
+    await sleep(9000);
+    const cls = JSON.parse(await evaluate(s, 'JSON.stringify(window.__cls || {worst:0,sources:[]})'));
+    const top = {};
+    for (const src of (cls.sources || [])) top[src.tag] = (top[src.tag] || 0) + src.value;
+    const named = Object.entries(top).sort((a, b) => b[1] - a[1]).slice(0, 3)
+      .map(([k, v]) => `${k} ${v.toFixed(3)}`).join(', ');
+    return { cls: cls.worst || 0, named };
+  } finally {
+    // The overrides live on this target; the page is closed either way.
+    await closePage(cdpPort, s);
+  }
+}
+
 export async function run({ base, cdpPort }) {
   const R = [];
   const t = (name, pass, detail = '') => R.push({ name, pass: !!pass, detail });
@@ -400,6 +483,24 @@ export async function run({ base, cdpPort }) {
   t('perf rising-shows contract: the legacy fallback fires on modal open, never at boot',
     Array.isArray(c.legacyBoot) && has(c.legacyBoot, 'data/show-modal-extras.json') === 0
       && has(c.legacyBoot, 'data-index.json') === 1, details(c.legacyBoot));
+
+  // --------------------------------------------------- startup stability ---
+  // Every app root, not only the three the audit measured: a budget that
+  // covers the apps that were bad and not the ones that were fine tests the
+  // fix rather than the property.
+  for (const app of ['arena', 'football-h2h', 'fpl-planner', 'gym-tracker',
+    'maptap-rivals', 'mario-kart', 'trip-planner']) {
+    try {
+      const m = await measureStartupShift(cdpPort, base, app);
+      t(`perf ${app}: startup layout shift within budget (390x844, throttled)`,
+        m.cls <= CLS_BUDGET,
+        `session-window CLS ${m.cls.toFixed(3)} (budget ${CLS_BUDGET})`
+        + (m.named ? ` - moved: ${m.named}` : ''));
+    } catch (e) {
+      t(`perf ${app}: startup layout shift within budget (390x844, throttled)`,
+        false, `measurement failed: ${String(e && e.message).slice(0, 160)}`);
+    }
+  }
 
   return R;
 }

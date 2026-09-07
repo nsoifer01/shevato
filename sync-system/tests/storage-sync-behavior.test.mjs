@@ -1500,3 +1500,80 @@ test('F05: a fresh device with no base still never loses its own records', async
         ['cloud-only', 'local-only']
     );
 });
+
+/* ---------------------------------------------------------------------------
+ * Arena identity outside users/{uid} (2026-09-05 audit F18).
+ *
+ * Closing an account used to leave three things behind for good: a public XP
+ * leaderboard row, a daily-challenge score on every day the player appeared,
+ * and a head-to-head record against every opponent. None had a deletion rule
+ * the owner could use, so privacy.html had to say out loud that the only way
+ * to remove them was to email the owner.
+ *
+ * Two treatments, because they are two different things. The leaderboard row
+ * and the daily scores are the departing player's alone and are deleted. A
+ * head-to-head record is SHARED - it is the other player's history too - so
+ * the identity is removed and the counts stand.
+ * ------------------------------------------------------------------------ */
+
+test('account deletion erases the Arena leaderboard and daily scores, and anonymises H2H', async () => {
+  const { eraseArenaIdentity, ARENA_ANONYMOUS_NAME } = mod;
+  const fakes = firestoreFakes();
+  fakes.docs.clear();
+  fakes.deleteDocCalls.length = 0;
+
+  fakes.docs.set('triviaLeaderboard/uid-1', { uid: 'uid-1', displayName: 'Me', xp: 900 });
+  fakes.docs.set('triviaLeaderboard/uid-2', { uid: 'uid-2', displayName: 'Someone else', xp: 400 });
+  fakes.docs.set('globeDropDailyLeaderboard/2026-09-01/scores/uid-1', { uid: 'uid-1', score: 480 });
+  fakes.docs.set('globeDropDailyLeaderboard/2026-09-02/scores/uid-1', { uid: 'uid-1', score: 500 });
+  fakes.docs.set('globeDropDailyLeaderboard/2026-09-02/scores/uid-2', { uid: 'uid-2', score: 700 });
+  fakes.docs.set('triviaH2H/uid-1__uid-9', {
+    uidA: 'uid-1', uidB: 'uid-9', displayNameA: 'Me', displayNameB: 'Opponent',
+    winsA: 3, winsB: 2, ties: 0, gamesPlayed: 5,
+  });
+  fakes.docs.set('triviaH2H/uid-0__uid-1', {
+    uidA: 'uid-0', uidB: 'uid-1', displayNameA: 'Other', displayNameB: 'Me',
+    winsA: 1, winsB: 4, ties: 1, gamesPlayed: 6,
+  });
+
+  await eraseArenaIdentity();
+
+  assert.equal(fakes.docs.has('triviaLeaderboard/uid-1'), false, 'own leaderboard row is gone');
+  assert.equal(fakes.docs.has('triviaLeaderboard/uid-2'), true, "and nobody else's is touched");
+  assert.equal(fakes.docs.has('globeDropDailyLeaderboard/2026-09-01/scores/uid-1'), false);
+  assert.equal(fakes.docs.has('globeDropDailyLeaderboard/2026-09-02/scores/uid-1'), false);
+  assert.equal(fakes.docs.has('globeDropDailyLeaderboard/2026-09-02/scores/uid-2'), true,
+    'a stranger who happened to play the same day keeps their score');
+
+  // SHARED history survives, without the name.
+  const a = fakes.docs.get('triviaH2H/uid-1__uid-9');
+  assert.equal(a.displayNameA, ARENA_ANONYMOUS_NAME);
+  assert.equal(a.displayNameB, 'Opponent', "the opponent's own name is untouched");
+  assert.equal(a.gamesPlayed, 5, 'and their record of those games survives');
+  const b = fakes.docs.get('triviaH2H/uid-0__uid-1');
+  assert.equal(b.displayNameB, ARENA_ANONYMOUS_NAME, 'either side of the pair key');
+  assert.equal(b.displayNameA, 'Other');
+  assert.equal(b.winsA, 1);
+});
+
+test('Arena erasure is not derailed by a record that has already gone', async () => {
+  const { eraseArenaIdentity } = mod;
+  const fakes = firestoreFakes();
+  fakes.docs.clear();
+  // Nothing of this user's exists at all: a guest who never played, or a
+  // second deletion attempt after the first was interrupted. Both must
+  // succeed, or a retry could never finish what it started.
+  await assert.doesNotReject(() => eraseArenaIdentity());
+});
+
+test('the Arena collection names match the ones the app writes', async () => {
+  // The same invariant RIVAL_NETWORK_COLLECTIONS carries: a rename in the app
+  // that is not mirrored here would silently leave a departed player's public
+  // records behind forever, and nothing would fail.
+  const { ARENA_IDENTITY_COLLECTIONS } = mod;
+  const { readFileSync } = await import('node:fs');
+  const app = readFileSync(new URL('../../apps/arena/js/app.js', import.meta.url), 'utf8');
+  for (const name of Object.values(ARENA_IDENTITY_COLLECTIONS)) {
+    assert.ok(app.includes(`'${name}'`), `${name} must be the collection apps/arena/js/app.js writes`);
+  }
+});

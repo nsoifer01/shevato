@@ -311,6 +311,99 @@ export async function run({ base, cdpPort }) {
     }
   }
 
+  // ------------------------------------------------------------------------
+  // Charts, read through the ACCESSIBILITY TREE rather than looked at
+  // (2026-09-05 audit F16).
+  //
+  // Every axe scan above was clean while the only route to a plotted value
+  // was hovering a point with a mouse: axe checks the markup that IS there,
+  // and a <canvas> is one element with no content. So these assert the two
+  // things a keyboard or screen-reader user actually needs - that the chart
+  // announces itself with its numbers, and that the full series is reachable
+  // as a table - and that BOTH follow the data when it changes.
+  // ------------------------------------------------------------------------
+  {
+    const daily = 'const cities = [' + [[-12.05, -77.04], [30.04, 31.24], [28.61, 77.21], [21.31, -157.86], [64.15, -21.94]]
+      .map(([lat, lng]) => `{ name: "c", lat: ${lat}, lng: ${lng} }`).join(',') + '];';
+    const geo = JSON.stringify([{ lat: 48.8566, lng: 2.3522 }, { lat: 52.52, lng: 13.405 }, { lat: 35.6762, lng: 139.6503 }, { lat: 40.7128, lng: -74.006 }, { lat: -33.9249, lng: 18.4241 }]);
+    const seedExpr = `(()=>{ for (const k of Object.keys(localStorage)) localStorage.removeItem(k);
+      const d = (n) => { const t = new Date(); t.setDate(t.getDate() - n); return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); };
+      const geo = ${geo};
+      const games = [];
+      for (let i = 6; i >= 1; i--) games.push({ id: 'a' + i, rivalId: 'r-ari', date: d(i), myScores: [70, 65, 80, 75, 60], theirScores: i % 2 ? [60,60,60,60,60] : [90,90,90,90,90], myScore: 700, theirScore: i % 2 ? 600 : 900, cities: geo, note: 'synced from MapTap', createdAt: i });
+      localStorage.setItem('maptapRivalsMe', JSON.stringify('Nikita'));
+      localStorage.setItem('maptapRivalsRivals', JSON.stringify([
+        { id: 'r-ari', name: 'Ari', color: '#f59e0b', icon: '🦊', maptapUsername: 'ari_mt', createdAt: 1 },
+      ]));
+      localStorage.setItem('maptapRivalsGames', JSON.stringify(games));
+      localStorage.setItem('maptapRivalsSelectedRivalId', JSON.stringify('r-ari'));
+      return 1 })()`;
+    let s = null;
+    try {
+      s = await newPage(cdpPort);
+      await setViewport(s, 1280, 900, false);
+      await interceptNetwork(s, (url) => {
+        if (FIREBASE_HOSTS.test(url)) return 'fail';
+        if (/this_day_in_history/.test(url)) return { status: 200, contentType: 'application/javascript', body: daily };
+        if (/maptap\.gg|cloudfunctions\.net/i.test(url)) return 'fail';
+        return null;
+      });
+      await goto(s, `${base}/apps/maptap-rivals/`, { settle: 800 });
+      await evaluate(s, seedExpr);
+      await goto(s, `${base}/apps/maptap-rivals/index.html#dashboard`, { settle: 1500 });
+      await waitForExpr(s, "!!document.getElementById('chart-trend') && !!document.querySelector('[data-chart-a11y=\"chart-trend\"]')", { timeout: 12000 });
+
+      const label = await evaluate(s, "(document.getElementById('chart-trend')||{}).getAttribute ? document.getElementById('chart-trend').getAttribute('aria-label') : ''");
+      t('a chart canvas names itself and its values to the accessibility tree',
+        /Score over time/.test(String(label)) && /\d/.test(String(label)), String(label).slice(0, 200));
+      t('the canvas is exposed as an image rather than as an unnamed element',
+        (await evaluate(s, "document.getElementById('chart-trend').getAttribute('role')")) === 'img');
+
+      const tableText = await evaluate(s, "(document.querySelector('[data-chart-a11y=\"chart-trend\"] table')||{}).textContent || ''");
+      t('the full series is reachable as a real table, not only as points',
+        /700/.test(String(tableText)) && String(tableText).length > 40, String(tableText).slice(0, 200));
+      t('the table has column headers so a screen reader can read a cell in context',
+        (await evaluate(s, "document.querySelectorAll('[data-chart-a11y=\"chart-trend\"] th[scope=\"col\"]').length")) >= 2);
+      t('and row headers, so a value is never announced without its date',
+        (await evaluate(s, "document.querySelectorAll('[data-chart-a11y=\"chart-trend\"] th[scope=\"row\"]').length")) >= 2);
+
+      // <details><summary> is focusable and Enter/Space-activated for free,
+      // which is the cheapest correct answer to "make any meaningful chart
+      // action keyboard usable".
+      t('the data table is keyboard-reachable (a native disclosure)',
+        (await evaluate(s, "document.querySelector('[data-chart-a11y=\"chart-trend\"]').tagName")) === 'DETAILS');
+      t('a trend summary states the direction in words',
+        /to|up|down|level/.test(String(await evaluate(s, "(document.querySelector('[data-chart-a11y=\"chart-trend\"] .chart-a11y-trend')||{}).textContent || ''"))));
+
+      // Every chart on the view, not just the first.
+      for (const id of ['chart-wins', 'chart-diff']) {
+        t(`${id} has an accessible equivalent too`,
+          await evaluate(s, `!!document.querySelector('[data-chart-a11y="${id}"] table') && !!document.getElementById('${id}').getAttribute('aria-label')`));
+      }
+
+      // THE DRIFT CHECK. Both representations come from the same series
+      // object, so a filter that changes the chart must change the table in
+      // the same render or the guarantee is worthless.
+      const rowsBefore = await evaluate(s, "document.querySelectorAll('[data-chart-a11y=\"chart-trend\"] tbody tr').length");
+      await evaluate(s, `(() => {
+        const games = JSON.parse(localStorage.getItem('maptapRivalsGames'));
+        localStorage.setItem('maptapRivalsGames', JSON.stringify(games.slice(0, 3)));
+        return 1;
+      })()`);
+      await goto(s, `${base}/apps/maptap-rivals/index.html#dashboard`, { settle: 1500 });
+      await waitForExpr(s, "!!document.querySelector('[data-chart-a11y=\"chart-trend\"] tbody tr')", { timeout: 12000 });
+      const rowsAfter = await evaluate(s, "document.querySelectorAll('[data-chart-a11y=\"chart-trend\"] tbody tr').length");
+      t('the table follows the data when the chart does',
+        rowsAfter < rowsBefore && rowsAfter > 0, `${rowsBefore} -> ${rowsAfter} rows`);
+      t('and there is exactly ONE table per chart after a re-render',
+        (await evaluate(s, "document.querySelectorAll('[data-chart-a11y=\"chart-trend\"]').length")) === 1);
+
+      await evaluate(s, CLEAR_STORAGE);
+    } catch (e) {
+      t('chart accessibility scan ran', false, String(e && e.message).slice(0, 200));
+    } finally { if (s) await closePage(cdpPort, s); }
+  }
+
   // Shared-chrome dedupe: a serious rule+selector pair present on most of the
   // chrome-bearing site pages lives in the injected header/footer, not the
   // page. It is listed in full once (first affected page) and referenced

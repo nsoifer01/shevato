@@ -197,18 +197,81 @@ if (!setup.ok) {
     });
 
     test('room create: signed-in only, own uid as hostUid, and NEVER with a cleartext password field (defect 22)', async () => {
+        const soon = new Date(Date.now() + 3600_000);
         assert.equal(await createDoc('triviaRooms/NEWAA',
-            { code: 'NEWAA', hostUid: 'alice', isPrivate: false }, null), 403,
+            { code: 'NEWAA', hostUid: 'alice', isPrivate: false, expiresAt: soon }, null), 403,
             'unauthenticated create denied');
         assert.equal(await createDoc('triviaRooms/NEWAA',
-            { code: 'NEWAA', hostUid: 'alice', isPrivate: true, password: LEGACY_FIXTURE_PW }, ALICE), 403,
+            { code: 'NEWAA', hostUid: 'alice', isPrivate: true, password: LEGACY_FIXTURE_PW, expiresAt: soon }, ALICE), 403,
             'a new room carrying a password field must be rejected');
         assert.equal(await createDoc('triviaRooms/NEWAA',
-            { code: 'NEWAA', hostUid: 'bob', isPrivate: false }, ALICE), 403,
+            { code: 'NEWAA', hostUid: 'bob', isPrivate: false, expiresAt: soon }, ALICE), 403,
             'a room cannot be created on behalf of another uid');
         assert.equal(await createDoc('triviaRooms/NEWAA',
-            { code: 'NEWAA', hostUid: 'alice', isPrivate: true }, ALICE), 200,
+            { code: 'NEWAA', hostUid: 'alice', isPrivate: true, expiresAt: soon }, ALICE), 200,
             'the same create without the field is allowed');
+    });
+
+    test('F18: a room must carry its own expiry, and cannot choose to outlive the policy', async () => {
+        // The TTL field is what reaps a room every one of whose clients
+        // force-quit. Cleanup has otherwise always depended on somebody's
+        // browser being alive to do it, and apps/arena/FINDINGS.md has
+        // recorded rooms abandoned by every client as unswept.
+        assert.equal(await createDoc('triviaRooms/NOTTL',
+            { code: 'NOTTL', hostUid: 'alice', isPrivate: false }, ALICE), 403,
+            'a room with no expiry is refused');
+        assert.equal(await createDoc('triviaRooms/PASTTL',
+            { code: 'PASTTL', hostUid: 'alice', isPrivate: false, expiresAt: new Date(Date.now() - 1000) }, ALICE), 403,
+            'an expiry already in the past is refused');
+        assert.equal(await createDoc('triviaRooms/FARTTL',
+            { code: 'FARTTL', hostUid: 'alice', isPrivate: false, expiresAt: new Date(Date.now() + 90 * 3600_000) }, ALICE), 403,
+            'a client cannot mint a room that outlives the policy');
+        assert.equal(await createDoc('triviaRooms/OKTTL',
+            { code: 'OKTTL', hostUid: 'alice', isPrivate: false, expiresAt: new Date(Date.now() + 24 * 3600_000) }, ALICE), 200,
+            'the shape the app writes is allowed');
+        assert.equal(await deleteDoc('triviaRooms/OKTTL', ALICE), 200);
+    });
+
+    test('F18: a departing player can remove their own public records', async () => {
+        // Closing an account used to leave a public XP leaderboard row and a
+        // daily-challenge score behind for good: neither had a deletion rule
+        // the owner could use, so privacy.html had to say the only way to
+        // remove them was to email the owner.
+        assert.equal(await createDoc('triviaLeaderboard/alice',
+            { uid: 'alice', displayName: 'Alice', xp: 1800, gamesPlayed: 1, wins: 1 }, ALICE), 200);
+        assert.equal(await deleteDoc('triviaLeaderboard/alice', BOB), 403,
+            'and only their own');
+        assert.equal(await deleteDoc('triviaLeaderboard/alice', ALICE), 200);
+
+        assert.equal(await createDoc('globeDropDailyLeaderboard/2026-09-07/scores/alice',
+            { uid: 'alice', score: 480 }, ALICE), 200);
+        assert.equal(await deleteDoc('globeDropDailyLeaderboard/2026-09-07/scores/alice', BOB), 403);
+        assert.equal(await deleteDoc('globeDropDailyLeaderboard/2026-09-07/scores/alice', ALICE), 200);
+    });
+
+    test('F18: a shared H2H record is anonymised, not deleted, and each side owns its own name', async () => {
+        // A pair record is two people's history. Deleting it to close one
+        // account would take the other's games with it, so the identity goes
+        // and the counts stay - and the rule is per side, so the other player
+        // cannot rewrite your name for you.
+        const LEAVER_B = authToken('leaver-b');
+        // Seeded here rather than relying on an earlier test's leftovers: a
+        // filtered run must exercise the same thing a full one does.
+        assert.equal(await createDoc('triviaH2H/leaver-a__leaver-b',
+            { uidA: 'leaver-a', uidB: 'leaver-b', displayNameA: 'A', displayNameB: 'B',
+              winsA: 3, winsB: 1, ties: 0, gamesPlayed: 4 }, OWNER), 200);
+        assert.equal(await updateDoc('triviaH2H/leaver-a__leaver-b',
+            { uidA: 'leaver-a', uidB: 'leaver-b', displayNameA: 'Former player',
+              winsA: 3, winsB: 1, ties: 0, gamesPlayed: 4 }, authToken('leaver-a')), 200,
+            'your own name on the record is yours to remove');
+        assert.equal(await updateDoc('triviaH2H/leaver-a__leaver-b',
+            { uidA: 'leaver-a', uidB: 'leaver-b', displayNameA: 'Something else',
+              winsA: 3, winsB: 1, ties: 0, gamesPlayed: 4 }, LEAVER_B), 403,
+            "but not the other side's");
+        assert.equal(await updateDoc('triviaH2H/leaver-a__leaver-b',
+            { uidA: 'leaver-a', uidB: 'leaver-b', displayNameA: 'Former player',
+              displayNameB: 'Former player', winsA: 3, winsB: 1, ties: 0, gamesPlayed: 4 }, LEAVER_B), 200,
+            'each side removes its own');
     });
 
     test('room update: host may write anything (legacy password rooms included); strangers and non-members are denied (audit D10)', async () => {
@@ -683,7 +746,7 @@ if (!setup.ok) {
 
     /* ---------------- leaderboard + admin registry ---------------- */
 
-    test('leaderboard: guests excluded from writes, self-only rows, admin-only deletes', async () => {
+    test('leaderboard: guests excluded from writes, self-only rows, owner or admin deletes', async () => {
         assert.equal(await createDoc('triviaLeaderboard/alice',
             { uid: 'alice', xp: 100 }, ALICE), 200);
         assert.equal(await createDoc('triviaLeaderboard/guest1',
@@ -693,10 +756,18 @@ if (!setup.ok) {
             { uid: 'bob', xp: 1 }, ALICE), 403, 'own row only');
         assert.equal(await getDoc('triviaLeaderboard/alice', GUEST), 200,
             'guests can browse the board');
-        assert.equal(await deleteDoc('triviaLeaderboard/alice', ALICE), 403,
-            'row owner is not an admin');
+        assert.equal(await deleteDoc('triviaLeaderboard/alice', BOB), 403,
+            "a stranger cannot remove somebody else's row");
+        // This line used to assert the OPPOSITE ("row owner is not an admin"),
+        // and that was the whole problem: closing an account left a public
+        // leaderboard row nobody but a moderator could remove, which
+        // privacy.html had to say out loud (2026-09-05 audit F18).
+        assert.equal(await deleteDoc('triviaLeaderboard/alice', ALICE), 200,
+            'your own row is yours to withdraw');
+        assert.equal(await createDoc('triviaLeaderboard/alice',
+            { uid: 'alice', xp: 100 }, ALICE), 200);
         assert.equal(await deleteDoc('triviaLeaderboard/alice', ADMIN), 200,
-            'presence of /leaderboardAdmins/{uid} grants delete');
+            'and presence of /leaderboardAdmins/{uid} still grants moderation');
     });
 
     test('leaderboardAdmins registry: readable when signed in, writable by nobody', async () => {

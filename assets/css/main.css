@@ -1886,3 +1886,55 @@ html::-webkit-scrollbar-corner { background: transparent; }
     -webkit-animation: none !important;
     -ms-animation: none !important;
     animation: none !important; } }
+
+/* ---------------------------------------------------------------------------
+   Accessible chart equivalents (assets/js/chart-a11y.js, 2026-09-05 audit F16).
+
+   A <canvas> chart is a picture; these are the same numbers as text and as a
+   real table, collapsed by default so a sighted reader is not handed a
+   duplicate of every chart. Site-level rather than per-app because both
+   MapTap Rivals and Mario Kart use it and the two apps' palettes differ -
+   everything here is neutral and inherits colour from the page.
+   --------------------------------------------------------------------------- */
+.chart-a11y {
+  margin-top: 0.6rem;
+  font-size: 0.8rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 0.5rem;
+}
+.chart-a11y > summary {
+  cursor: pointer;
+  opacity: 0.75;
+  padding: 0.15rem 0;
+  /* A summary is focusable and Enter/Space-activated for free; make the focus
+     ring visible rather than inheriting a reset that hides it. */
+  outline-offset: 2px;
+}
+.chart-a11y > summary:hover { opacity: 1; }
+.chart-a11y-trend {
+  margin: 0.4rem 0;
+  line-height: 1.5;
+  opacity: 0.85;
+}
+.chart-a11y-table {
+  width: 100%;
+  border-collapse: collapse;
+  /* Wide series scroll inside the disclosure rather than pushing the page. */
+  display: block;
+  max-height: 18rem;
+  overflow: auto;
+}
+.chart-a11y-table caption {
+  text-align: left;
+  padding-bottom: 0.3rem;
+  opacity: 0.7;
+}
+.chart-a11y-table th,
+.chart-a11y-table td {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0.2rem 0.45rem;
+  text-align: right;
+  white-space: nowrap;
+}
+.chart-a11y-table th[scope="row"] { text-align: left; font-weight: 500; }
+.chart-a11y-table thead th { position: sticky; top: 0; background: #1f232f; }

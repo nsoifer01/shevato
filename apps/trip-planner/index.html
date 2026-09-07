@@ -276,7 +276,7 @@
 </div>
 
 <!-- item modal -->
-<div class="overlay" id="itemOverlay">
+<div class="overlay" id="itemOverlay" hidden>
   <form class="modal" id="itemForm" novalidate role="dialog" aria-modal="true" aria-labelledby="itemModalTitle" tabindex="-1">
     <div class="m-head">
       <h2 id="itemModalTitle">Add item</h2>
@@ -465,7 +465,7 @@
 </div>
 
 <!-- shift modal -->
-<div class="overlay" id="shiftOverlay">
+<div class="overlay" id="shiftOverlay" hidden>
   <form class="modal small" id="shiftForm" role="dialog" aria-modal="true" aria-labelledby="shiftTitle" tabindex="-1" novalidate>
     <div class="m-head">
       <h2 id="shiftTitle">Shift dates</h2>
@@ -503,7 +503,7 @@
 </div>
 
 <!-- duplicate day modal -->
-<div class="overlay" id="dupDayOverlay">
+<div class="overlay" id="dupDayOverlay" hidden>
   <form class="modal small" id="dupDayForm" role="dialog" aria-modal="true" aria-labelledby="dupDayTitle" tabindex="-1" novalidate>
     <div class="m-head">
       <h2 id="dupDayTitle">Copy this day</h2>
@@ -526,7 +526,7 @@
 </div>
 
 <!-- trip modal -->
-<div class="overlay" id="tripOverlay">
+<div class="overlay" id="tripOverlay" hidden>
   <form class="modal small" id="tripForm" role="dialog" aria-modal="true" aria-labelledby="tripModalTitle" tabindex="-1" novalidate>
     <div class="m-head">
       <h2 id="tripModalTitle">New trip</h2>
@@ -603,7 +603,7 @@
 </div>
 
 <!-- confirm modal -->
-<div class="overlay" id="confirmOverlay">
+<div class="overlay" id="confirmOverlay" hidden>
   <div class="modal compact" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmText" tabindex="-1">
     <div class="m-head">
       <span class="m-icon danger" aria-hidden="true">🗑</span>
@@ -620,7 +620,7 @@
 </div>
 
 <!-- packing checklist modal -->
-<div class="overlay" id="packingOverlay">
+<div class="overlay" id="packingOverlay" hidden>
   <div class="modal small" role="dialog" aria-modal="true" aria-labelledby="packingTitle" tabindex="-1">
     <div class="m-head">
       <span class="m-icon" aria-hidden="true">🎒</span>
@@ -653,7 +653,7 @@
 </div>
 
 <!-- trip essentials modal (emergency contact, insurance, medical notes) -->
-<div class="overlay" id="essentialsOverlay">
+<div class="overlay" id="essentialsOverlay" hidden>
   <form class="modal small" id="essentialsForm" role="dialog" aria-modal="true" aria-labelledby="essentialsTitle" tabindex="-1">
     <div class="m-head">
       <span class="m-icon" aria-hidden="true">🆘</span>
@@ -693,7 +693,7 @@
 </div>
 
 <!-- visa requirements modal -->
-<div class="overlay" id="visaOverlay">
+<div class="overlay" id="visaOverlay" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="visaModalTitle" tabindex="-1">
     <div class="m-head">
       <h2 id="visaModalTitle">Visa requirements</h2>
@@ -732,7 +732,7 @@
 </div>
 
 <!-- read a booking confirmation -->
-<div class="overlay" id="importBookingOverlay">
+<div class="overlay" id="importBookingOverlay" hidden>
   <form class="modal" id="importBookingForm" role="dialog" aria-modal="true" aria-labelledby="importBookingTitle" tabindex="-1">
     <div class="m-head">
       <span class="m-icon" aria-hidden="true">📄</span>
@@ -765,7 +765,7 @@
 </div>
 
 <!-- route helper modal -->
-<div class="overlay" id="routeOverlay">
+<div class="overlay" id="routeOverlay" hidden>
   <form class="modal" id="routeForm" role="dialog" aria-modal="true" aria-labelledby="routeModalTitle" tabindex="-1">
     <div class="m-head">
       <span class="m-icon" aria-hidden="true">🧭</span>
@@ -802,7 +802,7 @@
 <!-- one day's route: the day's stops in schedule order on a zoomed-in map,
      with the same per-leg figures the day card prints. Content is rendered by
      openDayRoute from the day's own chain; nothing here is trip state. -->
-<div class="overlay" id="dayRouteOverlay">
+<div class="overlay" id="dayRouteOverlay" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="dayRouteTitle" tabindex="-1">
     <div class="m-head">
       <span class="m-icon" aria-hidden="true">🗺</span>
@@ -823,7 +823,7 @@
 
 <!-- keyboard shortcuts help: static, read-only, and identical on a shared trip.
      It reads no state and writes none, so it is markup rather than a render. -->
-<div class="overlay" id="shortcutsOverlay">
+<div class="overlay" id="shortcutsOverlay" hidden>
   <div class="modal small" role="dialog" aria-modal="true" aria-labelledby="shortcutsTitle" tabindex="-1">
     <div class="m-head">
       <span class="m-icon" aria-hidden="true">⌨️</span>

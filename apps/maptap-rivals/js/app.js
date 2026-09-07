@@ -4692,7 +4692,7 @@
 
     destroyChart('locWinrate');
     const winrates = s.locStats.map(l => +(l.winPct * 100).toFixed(1));
-    state.charts.locWinrate = new Chart($('#chart-loc-winrate'), {
+    const locWinrateConfig = {
       type: 'bar',
       data: {
         labels,
@@ -4712,7 +4712,9 @@
         },
         plugins: { legend: { display: false } },
       }),
-    });
+    };
+    if (window.Chart) state.charts.locWinrate = new Chart($('#chart-loc-winrate'), locWinrateConfig);
+    describeChart('#chart-loc-winrate', locWinrateConfig, { title: 'Win rate per round', axis: 'Round' });
   }
 
   // ---------- charts ----------
@@ -4748,7 +4750,12 @@
   }
 
   function renderCharts(s) {
-    if (!window.Chart) return;
+    // Chart.js comes from a CDN. When it does not arrive - a blocked script,
+    // an offline load, a CDN outage - the canvases stay blank, and the
+    // ACCESSIBLE table below each one becomes the only place the numbers
+    // exist. So the descriptions are attached whether or not the library
+    // loaded: `describeChart` reads the config object, not the chart.
+    const canDraw = !!window.Chart;
     const last30 = s.games.slice(-30);
 
     // Trend line: my score vs theirs
@@ -4759,7 +4766,7 @@
     // Floor the axis at 0: a 0-1000 score never goes negative, and a short
     // history used to start the axis at -50.
     const trendYMin = trendScores.length ? Math.max(0, Math.min(...trendScores) - 50) : 0;
-    state.charts.trend = new Chart($('#chart-trend'), {
+    const trendConfig = {
       type: 'line',
       data: {
         labels: last30.map(g => fmtDateShort(g.date)),
@@ -4793,15 +4800,18 @@
           x: { ticks: { color: '#9aa3b2', maxRotation: 0, autoSkip: true }, grid: { color: '#1f232f' } },
         },
       }),
-    });
+    };
+    if (canDraw) state.charts.trend = new Chart($('#chart-trend'), trendConfig);
+    describeChart('#chart-trend', trendConfig, { title: 'Score over time', axis: 'Date' });
 
     // Win pie
     destroyChart('wins');
-    state.charts.wins = new Chart($('#chart-wins'), {
+    const winsConfig = {
       type: 'doughnut',
       data: {
         labels: ['Wins', 'Losses', 'Ties'],
         datasets: [{
+          label: 'Games',
           data: [s.wins, s.losses, s.ties],
           backgroundColor: ['#4ade80', '#f87171', '#9aa3b2'],
           borderColor: '#161922',
@@ -4809,7 +4819,9 @@
         }],
       },
       options: chartCommon({ cutout: '60%' }),
-    });
+    };
+    if (canDraw) state.charts.wins = new Chart($('#chart-wins'), winsConfig);
+    describeChart('#chart-wins', winsConfig, { title: 'Win distribution', axis: 'Result' });
 
     // Differential bars
     destroyChart('diff');
@@ -4826,7 +4838,7 @@
       const window = diffs.slice(start, i + 1);
       return window.reduce((a, v) => a + v, 0) / window.length;
     });
-    state.charts.diff = new Chart($('#chart-diff'), {
+    const diffConfig = {
       data: {
         labels: last30.map(g => fmtDateShort(g.date)),
         datasets: [
@@ -4876,7 +4888,27 @@
           },
         },
       }),
-    });
+    };
+    if (canDraw) state.charts.diff = new Chart($('#chart-diff'), diffConfig);
+    describeChart('#chart-diff', diffConfig, { title: 'Score differential per game', axis: 'Date' });
+  }
+
+  /**
+   * The accessible half of a chart (2026-09-05 audit F16).
+   *
+   * A <canvas> is a picture: the labels, datasets and tooltip callbacks handed
+   * to Chart.js are drawn, not exposed, so the only route to a plotted value
+   * was hovering a point with a mouse. An axe pass over this page was clean
+   * the whole time, because axe checks the markup that IS there.
+   *
+   * Called with the SAME config object the chart was built from, in the same
+   * place, so a filter change updates the picture and the table together -
+   * there is no second copy of the numbers to drift.
+   */
+  function describeChart(selector, config, meta) {
+    try {
+      if (window.ChartA11y) window.ChartA11y.attach($(selector), config, meta);
+    } catch (_) { /* an accessible extra must never break the chart */ }
   }
 
   function chartCommon(extra) {

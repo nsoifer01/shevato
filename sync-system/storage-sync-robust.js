@@ -10,6 +10,7 @@ import {
   deleteField,
   deleteDoc,
   collection,
+  collectionGroup,
   getDocs,
   query,
   where
@@ -1721,6 +1722,94 @@ export async function eraseAccountProfile() {
     throw new Error('eraseAccountProfile: not signed in');
   }
   await deleteDoc(doc(db, 'users', user.uid));
+}
+
+/**
+ * Collections that hold ARENA identity outside users/{uid}.
+ *
+ * Mirrors the collection names in apps/arena/js/app.js; the invariant test in
+ * sync-system/tests/account-deletion.test.mjs asserts the two stay equal.
+ */
+export const ARENA_IDENTITY_COLLECTIONS = Object.freeze({
+  leaderboard: 'triviaLeaderboard',
+  daily: 'globeDropDailyLeaderboard',
+  h2h: 'triviaH2H'
+});
+
+/** What a departed player's name becomes on a record two people share. */
+export const ARENA_ANONYMOUS_NAME = 'Former player';
+
+/**
+ * Remove or anonymise the Arena records that live OUTSIDE users/{uid}
+ * (2026-09-05 audit F18).
+ *
+ * Until this existed, privacy.html had to say out loud that closing an
+ * account left three things behind for good: a public XP leaderboard row, a
+ * daily-challenge score on every day you played, and a head-to-head record
+ * against every opponent. None of them had a deletion rule the owner could
+ * use, so "delete my account" left a permanent public record of somebody who
+ * had left, removable only by emailing the owner.
+ *
+ * Two different treatments, because they are two different things:
+ *
+ *   - The leaderboard row and the daily scores are YOURS. They are deleted.
+ *   - A head-to-head record is SHARED: it is the other player's history too,
+ *     and deleting it would take their games with it. So the identity is
+ *     removed and the record is kept - your display name becomes "Former
+ *     player" and the counts stand. firestore.rules enforces that each side
+ *     can only rewrite its own name.
+ *
+ * Best effort per document, and never fatal: a daily score whose date
+ * document has been swept, or a pair row an opponent has already tidied, is
+ * not a reason to abandon an account deletion half way through.
+ */
+export async function eraseArenaIdentity() {
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error('eraseArenaIdentity: not signed in');
+  }
+  const uid = user.uid;
+
+  await deleteDoc(doc(db, ARENA_IDENTITY_COLLECTIONS.leaderboard, uid));
+
+  // Daily scores live at globeDropDailyLeaderboard/{date}/scores/{uid}. A
+  // collection-group query finds every one of them in a single read; without
+  // it there is no way to learn which dates a player appears on, because the
+  // date documents themselves are not readable as a list.
+  try {
+    const scores = await getDocs(query(
+      collectionGroup(db, 'scores'),
+      where('uid', '==', uid)
+    ));
+    for (const score of scores.docs) {
+      try { await deleteDoc(score.ref); } catch (_) { /* already gone */ }
+    }
+  } catch (error) {
+    // A missing composite index makes this query fail rather than return
+    // nothing, and that must not sink the whole deletion: everything else has
+    // already been removed, and the rows that remain are the ones the policy
+    // page names.
+    console.warn('Arena daily scores could not be enumerated:', error?.message || error);
+  }
+
+  // Head-to-head: anonymise BOTH orderings, since a pair key names the two
+  // uids sorted and this account can be either side of it.
+  for (const field of ['uidA', 'uidB']) {
+    try {
+      const pairs = await getDocs(query(
+        collection(db, ARENA_IDENTITY_COLLECTIONS.h2h),
+        where(field, '==', uid)
+      ));
+      for (const pair of pairs.docs) {
+        const patch = field === 'uidA'
+          ? { displayNameA: ARENA_ANONYMOUS_NAME }
+          : { displayNameB: ARENA_ANONYMOUS_NAME };
+        try { await setDoc(pair.ref, patch, { merge: true }); } catch (_) { /* leave it */ }
+      }
+    } catch (error) {
+      console.warn(`Arena H2H rows (${field}) could not be enumerated:`, error?.message || error);
+    }
+  }
 }
 
 /**

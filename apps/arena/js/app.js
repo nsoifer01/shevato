@@ -1553,7 +1553,27 @@ async function createRoom(opts) {
             questionStartedAt: null,
             round: 1,
             createdAt: serverTimestamp(),
-            finishedAt: null
+            finishedAt: null,
+            // WHEN THIS ROOM STOPS EXISTING, WITHOUT A CLIENT (2026-09-05
+            // audit F18). Cleanup has always depended on somebody's browser:
+            // the last player to leave deletes the room and sweeps its
+            // subcollections. Every client force-quitting - a lost tab, a
+            // phone that sleeps, a closed laptop - leaves the room and its
+            // players, chat and gate behind for good, which
+            // apps/arena/FINDINGS.md has recorded as unswept.
+            //
+            // This field is the input to a Firestore TTL policy on
+            // triviaRooms.expiresAt (one console/gcloud setting, named in
+            // apps/arena/README.md). Firestore then deletes the room DOC on
+            // its own schedule, and every rule that turns on `roomGone()`
+            // starts applying: the leftover players, chat and gate become
+            // orphans any signed-in client may sweep, which is exactly the
+            // path the last-leaver teardown already uses.
+            //
+            // 24 hours, not minutes: a room is for one sitting, and a paused
+            // game or a slow rematch must never be swept out from under the
+            // people playing it.
+            expiresAt: new Date(Date.now() + ROOM_TTL_MS)
         };
 
         if (gameType === 'globe-drop') {
@@ -1718,6 +1738,12 @@ async function createRoom(opts) {
         btn.innerHTML = originalLabel;
     }
 }
+
+// How long after creation a room may be reaped by the server-side TTL policy
+// (see `expiresAt` on the room doc). A room is for one sitting; a day is far
+// more than any real game needs and far less than "forever", which is what it
+// was before.
+const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
 
 async function reserveUniqueRoomCode() {
     // Try a handful of times - collisions on a 31^5 space are vanishingly rare.

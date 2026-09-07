@@ -285,7 +285,16 @@ service cloud.firestore {
             || isRoomMember(roomCode));
       allow create: if request.auth != null
         && request.resource.data.hostUid == request.auth.uid
-        && !request.resource.data.keys().hasAny(['password']);
+        && !request.resource.data.keys().hasAny(['password'])
+        // A room must carry its own expiry (2026-09-05 audit F18). It is the
+        // input to a Firestore TTL policy on triviaRooms.expiresAt, which is
+        // the only thing that reaps a room every one of whose clients
+        // force-quit - cleanup has otherwise always depended on somebody's
+        // browser being alive to do it. Bounded so a client cannot mint a
+        // room that outlives the policy by choosing its own date.
+        && request.resource.data.expiresAt is timestamp
+        && request.resource.data.expiresAt > request.time
+        && request.resource.data.expiresAt < request.time + duration.value(48, 'h');
       allow update: if request.auth != null
         && (resource.data.hostUid == request.auth.uid
             || (isRoomMember(roomCode)
@@ -470,8 +479,15 @@ service cloud.firestore {
         && grewBy('gamesPlayed', 1, 1000000)
         && grewBy('wins', 1, 1000000)
         && grewBy('lifetimeBullseyes', 1000, 10000000);
+      // The OWNER may remove their own row, and an admin may remove any
+      // (2026-09-05 audit F18). Owner deletion did not exist, so
+      // privacy.html had to say out loud that closing an account left a
+      // public leaderboard row behind that nobody but a moderator could ever
+      // remove. A row nobody can delete is not a leaderboard entry, it is a
+      // permanent record of somebody who left.
       allow delete: if isRegistered()
-        && exists(/databases/$(database)/documents/leaderboardAdmins/$(request.auth.uid));
+        && (request.auth.uid == userId
+            || exists(/databases/$(database)/documents/leaderboardAdmins/$(request.auth.uid)));
     }
 
     // Admin registry for leaderboard moderation. Each doc id is a uid;
@@ -545,6 +561,17 @@ service cloud.firestore {
         && (resource.data.uidA == request.auth.uid || resource.data.uidB == request.auth.uid)
         && h2hParticipantsCanonical(pairKey)
         && h2hShape()
+        // Each side owns its OWN name on the record, and only its own. This
+        // is what makes anonymisation possible on a SHARED row (2026-09-05
+        // audit F18): a pair record is two people's history, so deleting it
+        // to close one account would erase the other's. Replacing your own
+        // display name with a placeholder removes the identity and leaves
+        // their record intact - and, because the rule is per side, the other
+        // player cannot rewrite your name for you.
+        && (request.resource.data.get('displayNameA', '') == resource.data.get('displayNameA', '')
+            || resource.data.uidA == request.auth.uid)
+        && (request.resource.data.get('displayNameB', '') == resource.data.get('displayNameB', '')
+            || resource.data.uidB == request.auth.uid)
         // One game per write, and counters that only ever go up.
         && grewBy('winsA', 1, 1000000)
         && grewBy('winsB', 1, 1000000)
@@ -569,6 +596,10 @@ service cloud.firestore {
         && request.resource.data.get('roundType', '').size() <= 32
         && request.resource.data.get('difficulty', '') is string
         && request.resource.data.get('difficulty', '').size() <= 32;
+      // Your own daily score is yours to withdraw (2026-09-05 audit F18).
+      // There was no delete rule at all, so a closed account's scores stayed
+      // on the daily boards for good.
+      allow delete: if isRegistered() && request.auth.uid == userId;
     }
 
     // ---------- MapTap Rivals - rival network ----------

@@ -1455,6 +1455,44 @@ function createHelpView() {
             ${helpContent.innerHTML}
         </div>
     `;
+
+    // PROGRESSIVE DISCLOSURE (2026-09-05 audit F17). The whole guide is copied
+    // into the main view, and on a phone that produced a ~7,970-pixel page
+    // whose first screen was reference material rather than the thing the app
+    // does. The first section ("What this tracker does") stays open, because
+    // it answers "what am I looking at"; the eight that follow are collapsed
+    // into native <details>, which are keyboard-operable and searchable
+    // without any script of ours.
+    //
+    // Done here rather than in index.html so the help PANEL - the one the
+    // Help button opens over the app, which a returning user opens
+    // deliberately and reads in full - is untouched.
+    collapseHelpSections(statsDisplay);
+}
+
+/**
+ * Turn each help section after the first into a collapsed disclosure.
+ *
+ * Structure assumed: `.help-section` blocks whose first child is a heading.
+ * A section that does not match is left exactly as it was, so a future
+ * rewrite of the guide degrades to today's behaviour rather than losing text.
+ */
+function collapseHelpSections(root) {
+    const sections = Array.from(root.querySelectorAll('.help-section'));
+    sections.forEach((section, index) => {
+        if (index === 0) return;                    // the "what is this" section
+        const heading = section.querySelector('h3');
+        if (!heading) return;
+        const details = document.createElement('details');
+        details.className = 'help-section-collapsed';
+        const summary = document.createElement('summary');
+        summary.className = 'help-section-summary';
+        summary.textContent = heading.textContent;
+        details.appendChild(summary);
+        heading.remove();
+        while (section.firstChild) details.appendChild(section.firstChild);
+        section.appendChild(details);
+    });
 }
 
 function createAchievementsView(raceData = null) {

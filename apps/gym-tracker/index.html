@@ -1294,7 +1294,14 @@
                  scroll, so opting the panel in would have done nothing
                  (GT-35). -->
             <div class="modal-body onboarding-body" data-back-to-top>
-                <p class="onboarding-intro">A quick tour of everything Gym Tracker can do, from building your first program to reviewing the trends after months of training.</p>
+                <!-- SHORT BY DEFAULT (2026-09-05 audit F17). This modal used to open
+                     with five sections and thirteen items - about 2,100px of body in
+                     a 574px viewport - so the first thing a new user met was a
+                     manual. "Getting started" is the only part that is a task; the
+                     other four are reference and are one tap away as native
+                     <details>, which stay keyboard-operable and findable with
+                     find-in-page. Nothing was removed. -->
+                <p class="onboarding-intro">Three steps to your first workout. Everything else is below, whenever you want it.</p>
 
                 <section class="onboarding-section">
                     <h3 class="onboarding-section-title">Getting started</h3>
@@ -1330,7 +1337,9 @@
                 </section>
 
                 <section class="onboarding-section">
-                    <h3 class="onboarding-section-title">Plan smarter</h3>
+                    <details class="onboarding-more">
+                        <summary class="onboarding-section-title onboarding-more-summary">Plan smarter</summary>
+
                     <ul class="onboarding-items">
                         <li class="onboarding-item">
                             <span class="onboarding-item-icon"><i class="fas fa-calendar-days" aria-hidden="true"></i></span>
@@ -1347,10 +1356,13 @@
                             </div>
                         </li>
                     </ul>
+                                    </details>
                 </section>
 
                 <section class="onboarding-section">
-                    <h3 class="onboarding-section-title">During your workout</h3>
+                    <details class="onboarding-more">
+                        <summary class="onboarding-section-title onboarding-more-summary">During your workout</summary>
+
                     <ul class="onboarding-items">
                         <li class="onboarding-item">
                             <span class="onboarding-item-icon"><i class="fas fa-trophy" aria-hidden="true"></i></span>
@@ -1367,10 +1379,13 @@
                             </div>
                         </li>
                     </ul>
+                                    </details>
                 </section>
 
                 <section class="onboarding-section">
-                    <h3 class="onboarding-section-title">After the workout</h3>
+                    <details class="onboarding-more">
+                        <summary class="onboarding-section-title onboarding-more-summary">After the workout</summary>
+
                     <ul class="onboarding-items">
                         <li class="onboarding-item">
                             <span class="onboarding-item-icon"><i class="fas fa-calendar-check" aria-hidden="true"></i></span>
@@ -1404,10 +1419,13 @@
                             </div>
                         </li>
                     </ul>
+                                    </details>
                 </section>
 
                 <section class="onboarding-section">
-                    <h3 class="onboarding-section-title">Your data</h3>
+                    <details class="onboarding-more">
+                        <summary class="onboarding-section-title onboarding-more-summary">Your data</summary>
+
                     <ul class="onboarding-items">
                         <li class="onboarding-item">
                             <span class="onboarding-item-icon"><i class="fas fa-sliders" aria-hidden="true"></i></span>
@@ -1427,6 +1445,7 @@
                             </div>
                         </li>
                     </ul>
+                                    </details>
                 </section>
             </div>
             <div class="modal-footer" style="display:flex;justify-content:flex-end;padding:var(--spacing-md) var(--spacing-lg);gap:var(--spacing-sm);">

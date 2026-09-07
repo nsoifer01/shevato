@@ -77,7 +77,17 @@ export function setDoc(docRef, payload, options) {
   const state = firestoreFakes();
   const call = { path: docRef.path, payload, options };
   state.setDocCalls.push(call);
-  state.docs.set(docRef.path, payload);
+  // `{ merge: true }` MERGES, top level, the way Firestore does. It used to
+  // replace, which is the opposite: a caller writing one field to keep the
+  // rest (account deletion anonymising its own name on a record two people
+  // share) looked like it had wiped the document, and a test could not tell
+  // the two apart. Nested merge is deliberately not modelled - nothing in
+  // this repo relies on it, and a half-right merge would be worse than none.
+  if (options && options.merge && state.docs.has(docRef.path)) {
+    state.docs.set(docRef.path, { ...state.docs.get(docRef.path), ...payload });
+  } else {
+    state.docs.set(docRef.path, payload);
+  }
   const responder = state.setDocResponders.shift();
   return responder ? responder(call) : Promise.resolve();
 }
@@ -93,6 +103,17 @@ export function collection(_db, name) {
   return { __kind: 'collection', name };
 }
 
+/**
+ * A collection-group query matches every collection with this NAME at any
+ * depth: `collectionGroup(db, 'scores')` finds
+ * globeDropDailyLeaderboard/2026-09-07/scores/<uid> as well as any other
+ * `scores` collection. Account deletion uses it to find a user's daily
+ * scores, whose date documents cannot be listed.
+ */
+export function collectionGroup(_db, name) {
+  return { __kind: 'collectionGroup', name };
+}
+
 /** Every stored document directly under a collection path. */
 function docsUnder(prefix) {
   const state = firestoreFakes();
@@ -105,17 +126,47 @@ function docsUnder(prefix) {
   return out;
 }
 
-export function query(base) {
-  return base;
+/** Every document whose PARENT collection segment is `name`, at any depth. */
+function docsInGroup(name) {
+  const state = firestoreFakes();
+  const out = [];
+  for (const [path, data] of state.docs) {
+    const parts = path.split('/');
+    if (parts.length < 2 || parts[parts.length - 2] !== name) continue;
+    out.push({ ref: { __kind: 'doc', path }, data: () => data, exists: () => true });
+  }
+  return out;
 }
 
-export function where() {
-  return { __kind: 'where' };
+/**
+ * `where` clauses are RECORDED and applied, not discarded.
+ *
+ * They used to be dropped, so `getDocs(query(collection(...), where('uid',
+ * '==', me)))` returned every document in the collection and a test could not
+ * tell "deleted only mine" from "deleted everyone's" - which is exactly the
+ * distinction account deletion has to get right.
+ */
+export function query(base, ...clauses) {
+  return { __kind: 'query', base, clauses: clauses.filter((c) => c && c.__kind === 'where') };
+}
+
+export function where(field, op, value) {
+  return { __kind: 'where', field, op, value };
+}
+
+function matches(data, clause) {
+  const actual = data ? data[clause.field] : undefined;
+  if (clause.op === '==') return actual === clause.value;
+  if (clause.op === 'array-contains') return Array.isArray(actual) && actual.includes(clause.value);
+  return true;
 }
 
 export function getDocs(base) {
-  if (base && base.__kind === 'collection') {
-    return Promise.resolve({ docs: docsUnder(base.name) });
-  }
-  return Promise.resolve({ docs: [] });
+  const source = base && base.__kind === 'query' ? base.base : base;
+  const clauses = base && base.__kind === 'query' ? base.clauses : [];
+  let docs = [];
+  if (source && source.__kind === 'collection') docs = docsUnder(source.name);
+  else if (source && source.__kind === 'collectionGroup') docs = docsInGroup(source.name);
+  for (const clause of clauses) docs = docs.filter((d) => matches(d.data(), clause));
+  return Promise.resolve({ docs });
 }

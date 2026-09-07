@@ -159,9 +159,25 @@ export default async function handler(req) {
   }
 
   // (4) Shared key from the config blob; absent -> not configured.
-  const { placesStore, blobCache, CONFIG_KEY, USAGE_KEY } = await import('./lib/tp-places-store.mjs');
-  const store = placesStore();
-  const cfg = (await store.get(CONFIG_KEY, { type: 'json' })) || {};
+  //
+  // ACQUIRING AND READING THE STORE IS INSIDE THE BOUNDARY (2026-09-05 audit
+  // F22). @netlify/blobs is imported here and `placesStore()` can throw - a
+  // Blobs incident, a misconfigured deploy, the package missing from the
+  // bundle - and so can the read. Both sat outside every try in this
+  // function, so either one escaped as an uncontrolled platform 500 with no
+  // body, and the traveller's UI (which switches ratings off cleanly on a
+  // 503) saw a gateway page instead. `store_unavailable` is its own code
+  // rather than being folded into `not_configured`: a key that is absent and
+  // a store that cannot be reached call for different answers.
+  let placesStore, blobCache, CONFIG_KEY, USAGE_KEY, store, cfg;
+  try {
+    ({ placesStore, blobCache, CONFIG_KEY, USAGE_KEY } = await import('./lib/tp-places-store.mjs'));
+    store = placesStore();
+    cfg = (await store.get(CONFIG_KEY, { type: 'json' })) || {};
+  } catch (err) {
+    console.error('tp-places config store unavailable', String(err && err.message));
+    return json({ error: 'store_unavailable' }, 503);
+  }
   // Which credential, and from where, is decided by resolvePlacesKey below:
   // the blob's placesKeyV2 (production), or an explicitly opted-in local key.
   const placesKey = resolvePlacesKey(cfg, process.env);

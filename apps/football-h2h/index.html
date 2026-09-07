@@ -262,6 +262,20 @@
                 </h1>
             </header>
 
+            <!-- FIRST RUN (2026-09-05 audit F17). A phone opening this app for
+                 the first time met seven stat cards reading zero, and the only
+                 pointer to the primary action was a line at the very bottom of
+                 the history table saying to use a sidebar the visitor had not
+                 opened. The action now sits above the empty statistics that
+                 describe it. Shown only while there are no games; hidden the
+                 moment the first one is saved, so a returning user never sees
+                 it (renderGamesTableWithData owns the toggle). -->
+            <section class="first-run" id="first-run" hidden aria-labelledby="first-run-title">
+                <h2 class="first-run-title" id="first-run-title">Log your first match</h2>
+                <p class="first-run-body">Two players, two scores, one date. Everything below - wins, streaks, penalty records, per-player stats - is worked out from the games you add.</p>
+                <button type="button" class="first-run-cta" id="first-run-cta">&#9917; Add your first game</button>
+            </section>
+
 
 
 

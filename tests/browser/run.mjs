@@ -125,9 +125,14 @@ const EXPECTED_CHECKS = {
   'tests/browser/suites/apps.mjs': 105,
   // 72 from master's B7/B8 keyboard + touch-target blocks, plus the two
   // seeded MapTap Rivals state scans added in this branch.
-  'tests/browser/suites/a11y.mjs': 79,
+  // 79 before 2026-09-07; +11 for the chart-accessibility block (audit F16),
+  // which reads the accessibility tree rather than scanning markup.
+  'tests/browser/suites/a11y.mjs': 90,
   'tests/browser/suites/visual.mjs': 103,
-  'tests/browser/suites/perf.mjs': 51,
+  // 51 before 2026-09-07; +7 for the startup layout-shift budget (audit F07),
+  // one per app root. The byte/request/DOM budgets all passed while three
+  // apps moved their controls hundreds of pixels during startup.
+  'tests/browser/suites/perf.mjs': 58,
   'tests/browser/suites/pwa-gym.mjs': 14,
   // The enforced CSP, verified by a browser refusing things rather than by
   // reading the header as a string (audit F14): 1 header check, 4 blocking

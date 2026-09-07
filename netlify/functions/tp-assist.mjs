@@ -117,6 +117,10 @@ const MAX_MESSAGES = 40;
 const MAX_CONTENT = 4000;
 const MAX_TRIP_JSON = 30000;
 
+// Filled in when the store module loads; module scope so the try/catch above
+// can hand it out without widening the block that must stay narrow.
+const USAGE_KEY_REF = { value: 'usage' };
+
 export default async function handler(req) {
   // (1) Origin/Referer guard first: only our own site and local dev.
   if (!originAllowed(req)) return json({ error: 'origin_rejected' }, 403);
@@ -136,9 +140,28 @@ export default async function handler(req) {
   if (!clamped.ok) return json({ error: 'bad_request' }, 400);
 
   // (4) Shared key from the config blob; absent -> not configured.
-  const { assistStore, CONFIG_KEY, USAGE_KEY } = await import('./lib/tp-assist-store.mjs');
-  const store = assistStore();
-  const cfg = (await store.get(CONFIG_KEY, { type: 'json' })) || {};
+  //
+  // ACQUIRING AND READING THE STORE IS INSIDE THE BOUNDARY (2026-09-05 audit
+  // F22). @netlify/blobs is imported here and `assistStore()` can throw - a
+  // Blobs incident, a misconfigured deploy, the package missing from the
+  // bundle - and so can the read. Both were outside every try in this
+  // function, so either one escaped as an uncontrolled platform 500 with no
+  // body, and the traveller's UI (which knows what to do with each of our
+  // documented JSON errors) saw a gateway page instead. The FPL handler had
+  // this boundary; this one did not. `store_unavailable` is its own code
+  // rather than being folded into `not_configured`, because a key that is
+  // absent and a store that cannot be reached call for different answers.
+  let store, cfg;
+  try {
+    const mod = await import('./lib/tp-assist-store.mjs');
+    store = mod.assistStore();
+    cfg = (await store.get(mod.CONFIG_KEY, { type: 'json' })) || {};
+    USAGE_KEY_REF.value = mod.USAGE_KEY;
+  } catch (err) {
+    console.error('tp-assist config store unavailable', String(err && err.message));
+    return json({ error: 'store_unavailable' }, 503);
+  }
+  const USAGE_KEY = USAGE_KEY_REF.value;
   // LOCAL DEVELOPMENT AFFORDANCE, not the production path: `netlify dev` serves
   // functions against a LOCAL blob store, which is empty, so Tier 3 would 503
   // on localhost even when the deployed site is configured. Deployed functions

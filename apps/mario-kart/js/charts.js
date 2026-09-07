@@ -68,7 +68,7 @@ function createTrendCharts(raceData = null) {
 
     if (trendChart) trendChart.destroy();
 
-    trendChart = new Chart(ctx, {
+    const trendConfig = {
         type: 'line',
         data: { labels, datasets },
         options: {
@@ -164,8 +164,31 @@ function createTrendCharts(raceData = null) {
                 }
             }
         }
-    });
+    };
+    // Chart.js is a CDN script. If it did not arrive the canvas stays blank
+    // and the accessible table below is the ONLY place these positions exist,
+    // so the description is attached either way - it reads the config object,
+    // never the chart.
+    if (window.Chart) trendChart = new Chart(ctx, trendConfig);
 
+    // The accessible half of the chart (2026-09-05 audit F16). Every finishing
+    // position in this view exists ONLY as a plotted point: the heading says
+    // "Performance Trends" and the summary line says how many races, and a
+    // keyboard or screen-reader user could reach no number at all. Built from
+    // the same config object the chart above was, so a date-filter change
+    // updates both or neither.
+    //
+    // The day-of-week doughnut further down is deliberately NOT described this
+    // way: it already renders a real table of the same figures beside it, and
+    // a second copy would be noise.
+    try {
+        if (window.ChartA11y) {
+            window.ChartA11y.attach(canvas, trendConfig, {
+                title: 'Finishing position per race',
+                axis: 'Race',
+            });
+        }
+    } catch (e) { /* an accessible extra must never break the chart */ }
 }
 
 function createHeatmapView(raceData = null) {
