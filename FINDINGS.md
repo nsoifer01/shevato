@@ -53,6 +53,65 @@ on trust rather than checked:
 Check the state, do not assume it. The API commands are in the README's
 Deployment section.
 
+## "Page with redirect in a sitemap" named a sitemap nobody was serving
+
+Search Console mailed both properties on 2026-09-06 with a new reason for
+pages *in a sitemap*: `Page with redirect`. Every URL the site actually
+serves in a sitemap was fetched and none of them redirects - 2,172 of 2,172
+returned 200, matching the `submitted: 2172` the API reports for
+`https://shevato.com/sitemap.xml`. So the redirecting URL was not in a
+sitemap this repo produces.
+
+It was in the stale `https://www.shevato.com/sitemap.xml` registration
+(submitted 2026-08-05, 34,494 pre-curation URLs, re-downloaded 2026-09-05
+14:19 UTC). URL Inspection settles it without guessing, because
+`indexStatusResult.referringUrls` names where Google found a URL:
+
+```
+/apps/brain-arena/  ->  Page with redirect
+  referringUrls: [ "https://www.shevato.com/sitemap.xml" ]
+```
+
+`/apps/brain-arena/` is the pre-rebrand Arena path that `netlify.toml` 301s.
+**When a coverage verdict does not match what the live site serves, inspect
+the URL and read `referringUrls` before touching anything.** The verdict is a
+statement about a fetch Google made, possibly months ago, from a source that
+may no longer exist; `sitemap: []` on such a URL means "not in a sitemap I
+list for this property", not "no sitemap sent me here".
+
+Sitemap registrations are **per property**, and that stale one was on two of
+the three: the `sc-domain:shevato.com` domain property and the
+`https://www.shevato.com/` URL-prefix property. Deleting it from the domain
+property alone would have left Google re-downloading it through the other, so
+list every property before concluding a sitemap is gone. Both were deleted on
+2026-09-06 (HTTP 204 each), leaving `https://shevato.com/sitemap.xml` as the
+only registration anywhere and the `www` property with none, which is correct:
+every URL on that host 301s to the apex.
+
+Two more verdicts worth knowing, from the same sweep: a coverage state can be
+stale in the good direction too (`/apps/maptap-rivals/` was `Page with
+redirect` in the 2026-09-05 baseline and was `Crawled - currently not indexed`
+a day later, with no change to that page), and four sitemap URLs still report
+`NOT in sitemap` on the canonical property while the sitemap that lists them
+downloads with zero errors, so the association lags the download.
+
+## The apex is a redirect, so JSON-LD must not name it
+
+`netlify.toml` 301s `/` onto `/home`. A JSON-LD `url` or `item` of
+`https://shevato.com/` is therefore a redirect hop wearing structured-data
+clothes, and it ships on every page carrying the block. The ~35k generated
+pages were already correct (`render-show-page.js` and
+`render-exercise-page.cjs` both emit `${SITE}/home` for the Home breadcrumb);
+ten hand-written pages plus `assets/seo/organization.jsonld` and
+`assets/seo/website.jsonld` named the apex until 2026-09-06.
+
+`@id` is the deliberate exception: `https://shevato.com/#organization` and
+`#website` are node identifiers for the sitewide graph, never fetched, and
+they are what every other page's `isPartOf` / `about` points at. Rewriting
+them would break the graph. `tests/static/canonical-urls.test.mjs` checks
+`url` and `item` only, by walking the parsed JSON rather than scraping
+strings, for exactly that reason.
+
 ## robots.txt Disallow deletes content from the index, it does not hide files
 
 Google's rendering service obeys `robots.txt` for SUBRESOURCE fetches. A
