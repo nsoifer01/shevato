@@ -89,6 +89,103 @@ if (!setup.ok) {
             // scanners do not flag this obviously-fake legacy fixture.
             { code: 'WPASS', hostUid: 'host1', status: 'lobby', isPrivate: true, password: LEGACY_FIXTURE_PW }, OWNER), 200);
         assert.equal(await createDoc('leaderboardAdmins/admin1', { note: 'seeded' }, OWNER), 200);
+        // A room in the shape every client has created since 2026-09-07:
+        // scopedReads on the room doc, a public lobby carrying only the join
+        // metadata, and one member. This is what the outsider tests below
+        // attack; PUBAA/GATED/WPASS keep modelling rooms that predate it.
+        assert.equal(await createDoc('triviaRooms/SCOPD',
+            { code: 'SCOPD', hostUid: 'host1', status: 'playing', isPrivate: true,
+              scopedReads: true, questions: [{ q: 'capital of France?', correctIndex: 2 }] }, OWNER), 200);
+        assert.equal(await createDoc('triviaRooms/SCOPD/public/lobby',
+            { isPrivate: true, gameType: 'trivia' }, OWNER), 200);
+        assert.equal(await createDoc('triviaRooms/SCOPD/private/gate',
+            { hash: 'scoped-hash-value' }, OWNER), 200);
+        assert.equal(await createDoc('triviaRooms/SCOPD/players/host1',
+            { uid: 'host1', displayName: 'Host', score: 0, gateHash: 'scoped-hash-value' }, OWNER), 200);
+        assert.equal(await createDoc('triviaRooms/SCOPD/chat/m0',
+            { uid: 'host1', text: 'private conversation' }, OWNER), 200);
+    });
+
+    /* ---------------- F01: the private-room boundary ---------------- */
+
+    test('F01: an outsider holding the code learns nothing about a scoped room', async () => {
+        // Every one of these returned 200 before 2026-09-07: the room doc
+        // (questions and correctIndex included), the roster (with each
+        // member's replayable gateHash) and the whole chat log were readable
+        // by any signed-in stranger who obtained a five-character code.
+        assert.equal(await getDoc('triviaRooms/SCOPD', ALICE), 403,
+            'room state, including the unrevealed answers, is members-only');
+        assert.equal(await getDoc('triviaRooms/SCOPD', GUEST), 403);
+        assert.equal(await getDoc('triviaRooms/SCOPD/players/host1', ALICE), 403,
+            "another member's player doc is not readable by an outsider");
+        assert.equal(await listDocs('triviaRooms/SCOPD/players', ALICE), 403,
+            'the roster cannot be listed by an outsider');
+        assert.equal(await getDoc('triviaRooms/SCOPD/chat/m0', ALICE), 403);
+        assert.equal(await listDocs('triviaRooms/SCOPD/chat', ALICE), 403);
+    });
+
+    test('F01: the join metadata an outsider DOES need stays readable', async () => {
+        // The lobby doc is the whole public surface of a scoped room: does
+        // it exist, does it want a password, which game is it.
+        assert.equal(await getDoc('triviaRooms/SCOPD/public/lobby', ALICE), 200);
+        assert.equal(await getDoc('triviaRooms/SCOPD/public/lobby', GUEST), 200);
+        assert.equal(await getDoc('triviaRooms/SCOPD/public/lobby', null), 403,
+            'still sign-in only');
+        // And a room that does not exist must answer "not found" rather than
+        // erroring on resource.data - reserveUniqueRoomCode depends on it.
+        assert.equal(await getDoc('triviaRooms/NOSUCH', ALICE), 404);
+    });
+
+    test('F01: the lobby doc is immutable and cannot be forged by a stranger', async () => {
+        assert.equal(await createDoc('triviaRooms/SCOPD/public/lobby',
+            { isPrivate: false, gameType: 'trivia' }, ALICE), 403,
+            'a stranger cannot replace the lobby to claim the room is open');
+        assert.equal(await updateDoc('triviaRooms/SCOPD/public/lobby',
+            { isPrivate: false }, HOST), 403, 'not even the host may edit it');
+        assert.equal(await createDoc('triviaRooms/PUBAA/public/lobby',
+            { isPrivate: false, gameType: 'trivia', secret: 'x' }, HOST), 403,
+            'only the two join-metadata fields may be written');
+        assert.equal(await deleteDoc('triviaRooms/SCOPD/public/lobby', ALICE), 403,
+            'a stranger cannot delete the lobby to unlock the room');
+    });
+
+    test('F01: joining a scoped room makes the caller a member, and only then', async () => {
+        assert.equal(await createDoc('triviaRooms/SCOPD/players/alice',
+            { uid: 'alice', score: 0 }, ALICE), 403,
+            'the gate still applies: no hash, no join');
+        assert.equal(await createDoc('triviaRooms/SCOPD/players/alice',
+            { uid: 'alice', score: 0, gateHash: 'wrong' }, ALICE), 403);
+        assert.equal(await createDoc('triviaRooms/SCOPD/players/alice',
+            { uid: 'alice', score: 0, gateHash: 'scoped-hash-value' }, ALICE), 200);
+        // Now a member: everything above opens up.
+        assert.equal(await getDoc('triviaRooms/SCOPD', ALICE), 200);
+        assert.equal(await listDocs('triviaRooms/SCOPD/players', ALICE), 200);
+        assert.equal(await listDocs('triviaRooms/SCOPD/chat', ALICE), 200);
+        assert.equal(await deleteDoc('triviaRooms/SCOPD/players/alice', ALICE), 200);
+        assert.equal(await getDoc('triviaRooms/SCOPD', ALICE), 403, 'and closes again on leaving');
+    });
+
+    test('F01: the membership probe still works on a doc that is not there', async () => {
+        // Every rejoin path starts by asking "do I already have a player doc
+        // in this room?". That read has to answer on a nonexistent document
+        // rather than erroring on resource.data and denying.
+        assert.equal(await getDoc('triviaRooms/SCOPD/players/alice', ALICE), 404);
+        assert.equal(await getDoc('triviaRooms/SCOPD/players/bob', ALICE), 403,
+            "but not somebody else's");
+    });
+
+    test('F01: an outsider cannot post chat into a room they never joined', async () => {
+        assert.equal(await createDoc('triviaRooms/SCOPD/chat/intrude',
+            { uid: 'alice', text: 'hello from outside' }, ALICE), 403);
+        assert.equal(await createDoc('triviaRooms/PUBAA/chat/intrude2',
+            { uid: 'bob', text: 'hello from outside' }, BOB), 403,
+            'membership is required in every room, scoped or not');
+    });
+
+    test('F01: a player doc cannot be created in a room that does not exist', async () => {
+        assert.equal(await createDoc('triviaRooms/ZZZZZ/players/alice',
+            { uid: 'alice', score: 0 }, ALICE), 403,
+            'an orphan subcollection under a random code is not a room');
     });
 
     /* ---------------- room docs ---------------- */
@@ -515,21 +612,38 @@ if (!setup.ok) {
         assert.equal(await deleteDoc('triviaRooms/PUBAA/players/bob', BOB), 200);
     });
 
-    test('gateHash replay boundary is real and documented: a member\'s hash is readable and reusable', async () => {
-        // Deliberate pin of the accepted design boundary (see
-        // js/room-gate.js): player docs are readable to any signed-in
-        // user, so the proof-of-password can be replayed for room ENTRY.
-        // What the design protects is the PASSWORD, which never appears
-        // in any readable document. If this test ever starts failing
-        // because player reads tightened, revisit the boundary note.
+    test('F01: the admission proof is no longer readable, so it cannot be replayed', async () => {
+        // This test used to assert the OPPOSITE, under the name "gateHash
+        // replay boundary is real and documented". Player docs were readable
+        // by any signed-in user, so the proof-of-password sat in a broadly
+        // readable record and an outsider with the code could copy a
+        // member's hash and walk in. A green suite was pinning the hole.
+        //
+        // A scoped room now answers that read with a denial, so there is
+        // nothing to copy. The client additionally clears the field off its
+        // own player doc immediately after the create, so the proof is not
+        // durably stored even for the members who can read it.
+        assert.equal(await getDoc('triviaRooms/SCOPD/players/host1', ALICE), 403,
+            'the hash cannot be harvested');
+        assert.equal(await createDoc('triviaRooms/SCOPD/players/alice',
+            { uid: 'alice', gateHash: 'guessed-hash', score: 0 }, ALICE), 403,
+            'and a guessed one does not admit');
+        // Legacy (unscoped) rooms keep their old behaviour on purpose: they
+        // are ephemeral, and an old client cannot write the scopedReads flag.
         assert.equal(await getDoc('triviaRooms/GATED/players/bob', ALICE), 200);
-        assert.equal(await createDoc('triviaRooms/GATED/players/alice',
-            { uid: 'alice', gateHash: 'good-hash-value', score: 0 }, ALICE), 200);
     });
 
     /* ---------------- chat ---------------- */
 
     test('chat create: own uid, 1..280 chars; append-only while the room lives', async () => {
+        // Chat is members-only now (F01), so the authors join first. That is
+        // what the app does too: the chat panel only exists inside a room.
+        // 409 = an earlier test already joined them; either way they are
+        // members, which is what this test needs. A 403 would not be.
+        assert.ok([200, 409].includes(await createDoc('triviaRooms/PUBAA/players/alice',
+            { uid: 'alice', displayName: 'Alice', score: 0 }, ALICE)));
+        assert.ok([200, 409].includes(await createDoc('triviaRooms/PUBAA/players/guest1',
+            { uid: 'guest1', displayName: 'Guest', score: 0 }, GUEST)));
         assert.equal(await createDoc('triviaRooms/PUBAA/chat/m1',
             { uid: 'alice', text: 'hello' }, ALICE), 200);
         assert.equal(await createDoc('triviaRooms/PUBAA/chat/m2',
@@ -595,17 +709,84 @@ if (!setup.ok) {
 
     /* ---------------- H2H + daily board (guest exclusion) ---------------- */
 
-    test('triviaH2H: registered members of the pair only', async () => {
+    test('triviaH2H: registered members of the pair only, under the canonical key', async () => {
         assert.equal(await createDoc('triviaH2H/alice__bob',
-            { uidA: 'alice', uidB: 'bob', aWins: 1, bWins: 0 }, ALICE), 200);
+            { uidA: 'alice', uidB: 'bob', winsA: 1, winsB: 0, ties: 0, gamesPlayed: 1 }, ALICE), 200);
         assert.equal(await createDoc('triviaH2H/bob__carol',
-            { uidA: 'bob', uidB: 'carol', aWins: 0, bWins: 0 }, ALICE), 403,
+            { uidA: 'bob', uidB: 'carol', winsA: 0, winsB: 0, ties: 0, gamesPlayed: 0 }, ALICE), 403,
             'caller must be one of the two uids');
         assert.equal(await createDoc('triviaH2H/guest1__zed',
             { uidA: 'guest1', uidB: 'zed' }, GUEST), 403,
             'guests never create H2H rows');
         assert.equal(await getDoc('triviaH2H/alice__bob', GUEST), 200,
             'any signed-in user can read pair records');
+        // The key IS the participants. A pair written under any other name
+        // is a second, conflicting record of the same rivalry.
+        assert.equal(await createDoc('triviaH2H/anything',
+            { uidA: 'alice', uidB: 'bob', gamesPlayed: 0 }, ALICE), 403,
+            'a forged document id is refused');
+        assert.equal(await createDoc('triviaH2H/bob__alice',
+            { uidA: 'bob', uidB: 'alice', gamesPlayed: 0 }, ALICE), 403,
+            'the uids must be in canonical order');
+    });
+
+    test('F02: an unrelated user cannot seize an existing H2H pair', async () => {
+        // The reproduced exploit: the old rule checked only the uids in the
+        // SUBMITTED document, so mallory opened victim-a__victim-b, named
+        // herself as uidA and posted 9,999 wins over a stranger. Ownership
+        // of the stored record was never consulted.
+        assert.equal(await createDoc('triviaH2H/victim-a__victim-b',
+            { uidA: 'victim-a', uidB: 'victim-b', winsA: 2, winsB: 1, ties: 0, gamesPlayed: 3 }, OWNER), 200);
+        const MALLORY = authToken('mallory');
+        assert.equal(await updateDoc('triviaH2H/victim-a__victim-b',
+            { uidA: 'mallory', uidB: 'victim-b', winsA: 9999, winsB: 0, ties: 0, gamesPlayed: 9999 }, MALLORY), 403,
+            'participants cannot be replaced');
+        assert.equal(await updateDoc('triviaH2H/victim-a__victim-b',
+            { uidA: 'victim-a', uidB: 'victim-b', winsA: 9999, winsB: 0, ties: 0, gamesPlayed: 9999 }, MALLORY), 403,
+            'and a non-participant cannot write the pair at all');
+        // Even a real participant may not rewrite the identities.
+        const VICTIM_A = authToken('victim-a');
+        assert.equal(await updateDoc('triviaH2H/victim-a__victim-b',
+            { uidA: 'victim-a', uidB: 'mallory', winsA: 3, winsB: 1, ties: 0, gamesPlayed: 4 }, VICTIM_A), 403);
+        assert.equal(await updateDoc('triviaH2H/victim-a__victim-b',
+            { uidA: 'victim-a', uidB: 'victim-b', winsA: 3, winsB: 1, ties: 0, gamesPlayed: 4 }, VICTIM_A), 200,
+            'the legitimate one-game update still lands');
+    });
+
+    test('F02: a persistent record can be a claim, but not a fabrication', async () => {
+        const VICTIM_A = authToken('victim-a');
+        assert.equal(await updateDoc('triviaH2H/victim-a__victim-b',
+            { uidA: 'victim-a', uidB: 'victim-b', winsA: 999999999, winsB: 1, ties: 0, gamesPlayed: 999999999 }, VICTIM_A), 403,
+            'one game per write');
+        assert.equal(await updateDoc('triviaH2H/victim-a__victim-b',
+            { uidA: 'victim-a', uidB: 'victim-b', winsA: 0, winsB: 1, ties: 0, gamesPlayed: 4 }, VICTIM_A), 403,
+            'counters never go backwards');
+        assert.equal(await updateDoc('triviaH2H/victim-a__victim-b',
+            { uidA: 'victim-a', uidB: 'victim-b', winsA: 4, winsB: 1, ties: 0, gamesPlayed: 4 }, VICTIM_A), 403,
+            'wins + losses + ties can never exceed games played');
+    });
+
+    test('F02: leaderboard rows are bounded (the audit wrote 999,999,999)', async () => {
+        assert.equal(await createDoc('triviaLeaderboard/bob',
+            { uid: 'bob', displayName: 'Bob', xp: 999999999, gamesPlayed: 999999999, wins: 999999999 }, BOB), 403);
+        assert.equal(await createDoc('triviaLeaderboard/bob',
+            { uid: 'bob', displayName: 'Bob', xp: 1800, gamesPlayed: 1, wins: 1 }, BOB), 200);
+        assert.equal(await updateDoc('triviaLeaderboard/bob',
+            { uid: 'bob', displayName: 'Bob', xp: 999999999, gamesPlayed: 2, wins: 2 }, BOB), 403,
+            'a single write cannot add a lifetime of points');
+        assert.equal(await updateDoc('triviaLeaderboard/bob',
+            { uid: 'bob', displayName: 'Bob', xp: 3600, gamesPlayed: 2, wins: 2 }, BOB), 200,
+            'the honest next game still lands');
+        assert.equal(await updateDoc('triviaLeaderboard/bob',
+            { uid: 'bob', displayName: 'Bob', xp: 100, gamesPlayed: 2, wins: 2 }, BOB), 403,
+            'counters never go backwards');
+        assert.equal(await updateDoc('triviaLeaderboard/bob',
+            { uid: 'bob', displayName: 'Bob', xp: 3600, gamesPlayed: 2, wins: 9 }, BOB), 403,
+            'more wins than games is not a possible record');
+        // The display-name-only merge write that propagateDisplayName makes
+        // must keep working.
+        assert.equal(await updateDoc('triviaLeaderboard/bob',
+            { uid: 'bob', displayName: 'Bobby', xp: 3600, gamesPlayed: 2, wins: 2 }, BOB), 200);
     });
 
     test('globeDropDailyLeaderboard: own registered score only', async () => {
@@ -617,6 +798,12 @@ if (!setup.ok) {
         assert.equal(await createDoc('globeDropDailyLeaderboard/2026-08-15/scores/bob',
             { uid: 'bob', score: 1 }, ALICE), 403);
         assert.equal(await getDoc('globeDropDailyLeaderboard/2026-08-15/scores/alice', BOB), 200);
+        assert.equal(await createDoc('globeDropDailyLeaderboard/2026-08-15/scores/bob',
+            { uid: 'bob', score: 999999999 }, BOB), 403,
+            'a daily score is bounded by what the game can produce');
+        assert.equal(await createDoc('globeDropDailyLeaderboard/2026-08-15/scores/bob',
+            { uid: 'bob', score: 480, displayName: 'x'.repeat(200) }, BOB), 403,
+            'and the display name by what the UI can render');
     });
 
     /* ------- no-regression pins for the untouched shared sections ------- */
@@ -642,28 +829,90 @@ if (!setup.ok) {
         assert.equal(await getDoc('maptapRivalsHandles/nikita', BOB), 200);
     });
 
-    test('no-regression: maptap network profile readable only by self or linked members', async () => {
+    test('F03: a stranger can no longer self-grant a read of a private profile', async () => {
+        // The reproduced exploit, step by step. It used to end in 200.
         assert.equal(await createDoc('maptapRivalsNetwork/alice',
             { handle: 'nikita', rivals: [] }, ALICE), 200);
         assert.equal(await getDoc('maptapRivalsNetwork/alice', ALICE), 200);
         assert.equal(await getDoc('maptapRivalsNetwork/alice', BOB), 403,
             'unlinked stranger cannot harvest a rival list');
+        // Creating the link is now an INVITATION, and it is all bob can do.
         assert.equal(await createDoc('maptapRivalsLinks/alice__bob',
-            { uids: ['alice', 'bob'] }, BOB), 200);
+            { uids: ['alice', 'bob'] }, BOB), 403,
+            'a link with no acceptor is not a valid document any more');
+        assert.equal(await createDoc('maptapRivalsLinks/alice__bob',
+            { uids: ['alice', 'bob'], acceptedBy: ['bob'] }, BOB), 200,
+            'bob may invite alice');
+        assert.equal(await getDoc('maptapRivalsNetwork/alice', BOB), 403,
+            'and a pending invitation grants NOTHING');
+        // Nor can he accept on her behalf.
+        assert.equal(await updateDoc('maptapRivalsLinks/alice__bob',
+            { uids: ['alice', 'bob'], acceptedBy: ['bob', 'alice'] }, BOB), 403,
+            'the inviter cannot accept for the invitee');
+        assert.equal(await getDoc('maptapRivalsNetwork/alice', BOB), 403);
+        // Only alice's own acceptance opens the door.
+        assert.equal(await updateDoc('maptapRivalsLinks/alice__bob',
+            { uids: ['alice', 'bob'], acceptedBy: ['bob', 'alice'] }, ALICE), 200);
         assert.equal(await getDoc('maptapRivalsNetwork/alice', BOB), 200,
-            'a pair link grants profile read');
+            'a mutually accepted link grants profile read');
     });
 
-    test('no-regression: maptap pair links - nonexistent-doc probe allowed, membership enforced', async () => {
+    test('F03: an accepted link is still immutable in every other respect', async () => {
+        assert.equal(await updateDoc('maptapRivalsLinks/alice__bob',
+            { uids: ['alice', 'mallory'], acceptedBy: ['bob', 'alice'] }, ALICE), 403,
+            'participants cannot be rewritten');
+        assert.equal(await updateDoc('maptapRivalsLinks/alice__bob',
+            { uids: ['alice', 'bob'], acceptedBy: ['bob', 'alice'], names: { alice: 'x' } }, BOB), 403,
+            'no other field may ride along on an acceptance');
+        assert.equal(await updateDoc('maptapRivalsLinks/alice__bob',
+            { uids: ['alice', 'bob'], acceptedBy: ['bob', 'alice', 'mallory'] }, ALICE), 403,
+            'acceptedBy can only ever hold the two participants');
+    });
+
+    test('F03: a forged pair key is refused, and the probe still works', async () => {
         assert.equal(await getDoc('maptapRivalsLinks/xxx__yyy', ALICE), 404,
             'the pre-create existence probe must not be denied (resource == null split)');
         assert.equal(await getDoc('maptapRivalsLinks/alice__bob', ALICE), 200);
         assert.equal(await createDoc('maptapRivalsLinks/bob__carol',
-            { uids: ['bob', 'carol'] }, ALICE), 403, 'only a member can create a pair');
-        assert.equal(await updateDoc('maptapRivalsLinks/alice__bob',
-            { uids: ['alice', 'mallory'] }, ALICE), 403, 'pair docs are immutable');
+            { uids: ['bob', 'carol'], acceptedBy: ['bob'] }, ALICE), 403,
+            'only a member can create a pair');
+        assert.equal(await createDoc('maptapRivalsLinks/zzz',
+            { uids: ['alice', 'zed'], acceptedBy: ['alice'] }, ALICE), 403,
+            'the document id must be the canonical pair key');
+        assert.equal(await createDoc('maptapRivalsLinks/zed__alice',
+            { uids: ['zed', 'alice'], acceptedBy: ['alice'] }, ALICE), 403,
+            'and the uids must be in canonical order');
         assert.equal(await deleteDoc('maptapRivalsLinks/alice__bob', BOB), 200,
             'either member can tear the connection down');
+        assert.equal(await getDoc('maptapRivalsNetwork/alice', BOB), 403,
+            'and the private read goes with it');
+    });
+
+    test('F03: a link written before consent existed keeps working', async () => {
+        // Migration safety: breaking every existing connection to close a
+        // hole that is already closed for new links would cost real people
+        // their rival network. A legacy link (no acceptedBy) reads as
+        // accepted; what stops the exploit is that it can no longer be
+        // CREATED.
+        assert.equal(await createDoc('maptapRivalsLinks/alice__carol',
+            { uids: ['alice', 'carol'], createdBy: 'carol' }, OWNER), 200);
+        const CAROL = authToken('carol');
+        assert.equal(await getDoc('maptapRivalsNetwork/alice', CAROL), 200);
+    });
+
+    test('F03: a declined connection cannot be re-granted by the other side alone', async () => {
+        const DAVE = authToken('dave');
+        assert.equal(await createDoc('maptapRivalsLinks/alice__dave',
+            { uids: ['alice', 'dave'], acceptedBy: ['dave'] }, DAVE), 200);
+        assert.equal(await deleteDoc('maptapRivalsLinks/alice__dave', ALICE), 200, 'alice declines');
+        assert.equal(await createDoc('maptapRivalsLinks/alice__dave',
+            { uids: ['alice', 'dave'], acceptedBy: ['dave', 'alice'] }, DAVE), 403,
+            'dave cannot re-create it pre-accepted');
+        assert.equal(await createDoc('maptapRivalsLinks/alice__dave',
+            { uids: ['alice', 'dave'], acceptedBy: ['dave'] }, DAVE), 200,
+            'he can only ask again');
+        assert.equal(await getDoc('maptapRivalsNetwork/alice', DAVE), 403,
+            'which still grants nothing until she accepts');
     });
 
     test('no-regression: everything unmatched stays deny-by-default', async () => {

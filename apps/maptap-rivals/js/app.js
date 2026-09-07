@@ -5861,7 +5861,7 @@
       persistMyProfile();
       state.profileEditMode = false;
     } catch (err) {
-      state.profileError = err.message || 'Could not verify profile';
+      state.profileError = err.message || 'Could not look up that profile';
     } finally {
       state.profileVerifying = false;
       renderProfileCard();
@@ -5982,7 +5982,7 @@
           }
           verifyMyProfile();
         },
-      }, state.profileVerifying ? 'Verifying…' : 'Verify'));
+      }, state.profileVerifying ? 'Looking up…' : 'Look up profile'));
       if (hasProfile) {
         actions.appendChild(el('button', {
           type: 'button', class: 'btn btn-ghost',
@@ -6084,7 +6084,13 @@
     if (hasProfile && !editing) {
       const p = state.myProfile;
       const verifiedLine = el('div', { class: 'profile-status-line' }, [
-        el('span', { class: 'tag ok' }, '✓ Verified'),
+        // NOT "Verified" (2026-09-07 audit F03). Looking a handle up on
+        // maptap.gg proves the account EXISTS; it proves nothing about who
+        // is holding this browser. Establishing ownership would need a
+        // server that can challenge maptap.gg, and this app has none - so
+        // the label says what actually happened instead of implying a check
+        // that never ran.
+        el('span', { class: 'tag ok' }, '✓ Linked'),
         el('span', {}, 'Profile: '),
         el('a', {
           class: 'username',
@@ -6126,17 +6132,17 @@
       // Sub-line: when last verified
       if (p.verifiedAt) {
         body.appendChild(el('div', { class: 'profile-meta-line' },
-          `Last verified ${shortDate(p.verifiedAt) || 'unknown'}${p.mostRecentDate ? ` · most recent MapTap game ${shortDate(p.mostRecentDate)}` : ''}`));
+          `Last checked ${shortDate(p.verifiedAt) || 'unknown'}${p.mostRecentDate ? ` · most recent MapTap game ${shortDate(p.mostRecentDate)}` : ''}`));
       }
     } else if (!editing && hasUsername) {
       body.appendChild(el('div', { class: 'profile-status-line' }, [
-        el('span', { class: 'tag warn' }, '⚠ Not verified yet'),
+        el('span', { class: 'tag warn' }, '⚠ Not linked yet'),
         el('span', { style: 'color:var(--muted)' }, `Username "${state.myMapTap}" hasn't been checked against maptap.gg.`),
       ]));
     } else if (editing && !hasUsername) {
       body.appendChild(el('div', { class: 'profile-hint' }, [
         el('strong', {}, 'Why this matters: '),
-        'your username is the key the app uses to pull your daily MapTap games so it can pair them against each rival. Once verified, click ',
+        'your username is the key the app uses to pull your daily MapTap games so it can pair them against each rival. It is looked up on maptap.gg to confirm the account exists - that is not a check of who owns it, and nothing here treats it as one. Once it resolves, click ',
         el('strong', {}, 'Sync all rivals'),
         ' to update every rivalry in one shot.',
       ]));
@@ -6241,6 +6247,17 @@
 
   // Boundary validation for a link doc (from Firestore or from a hand-seeded
   // cache): a link is only usable when it names exactly two uids.
+  //
+  // ACCEPTANCE (2026-09-07 audit F03). A link used to be a connection the
+  // moment it existed, and either side could create it alone - so a stranger
+  // could grant themselves a read of somebody's published rival list simply
+  // by writing the document that authorised it. A link now records who has
+  // accepted it, and only a mutually accepted one is a connection.
+  //
+  // `acceptedBy` absent means a link written before consent existed. Those
+  // are honoured (breaking every existing connection would cost real people
+  // their network for a hole that is already closed for new links), which is
+  // the same call firestore.rules makes.
   function sanitizeLink(raw, id) {
     if (!raw || typeof raw !== 'object') return null;
     const uids = (Array.isArray(raw.uids) ? raw.uids : [])
@@ -6250,7 +6267,26 @@
       ? raw.pairKey
       : (id || pairKey(uids[0], uids[1]));
     if (!key) return null;
-    return { pairKey: key, uids, handles: netStringMap(raw.handles), names: netStringMap(raw.names) };
+    const legacy = raw.acceptedBy === undefined || raw.acceptedBy === null;
+    const acceptedBy = legacy
+      ? null
+      : (Array.isArray(raw.acceptedBy) ? raw.acceptedBy : [])
+        .filter(u => typeof u === 'string' && uids.includes(u));
+    return {
+      pairKey: key,
+      uids,
+      acceptedBy,
+      accepted: legacy || acceptedBy.length >= 2,
+      handles: netStringMap(raw.handles),
+      names: netStringMap(raw.names),
+    };
+  }
+
+  /** Has this account accepted the link? A legacy link counts as accepted. */
+  function linkAcceptedByMe(link, myUid) {
+    if (!link) return false;
+    if (!link.acceptedBy) return true;
+    return link.acceptedBy.includes(myUid);
   }
 
   function normalizeNetworkCache(raw) {
@@ -6294,9 +6330,56 @@
   function networkLinkState() {
     const c = state.network;
     if (!c.joined || !c.uid) return { toAdd: [], linkedRivalIds: new Map() };
-    return mergeIncomingLinks(state.rivals, c.links, c.uid, c.directory, {
+    // PENDING LINKS ARE NOT CONNECTIONS. Passing them through here would let
+    // a stranger's unaccepted invitation materialise a rival row in someone
+    // else's app, which is the spam half of the same hole.
+    return mergeIncomingLinks(state.rivals, c.links.filter(l => l.accepted), c.uid, c.directory, {
       skipPairKeys: c.materialized,
     });
+  }
+
+  /**
+   * Invitations waiting on THIS account: links where the other side has
+   * accepted and we have not. `tryLinkRival` clears these automatically for
+   * anyone already in the rival list (adding someone as a rival IS the
+   * consent); what is left are requests from people the user has not named,
+   * and those are shown for an explicit answer.
+   */
+  function pendingIncomingLinks() {
+    const c = state.network;
+    if (!c.joined || !c.uid) return [];
+    return c.links.filter(l => !l.accepted && !linkAcceptedByMe(l, c.uid));
+  }
+
+  /** Peer uid on a link, or '' when the shape is wrong. */
+  function linkPeerUid(link, myUid) {
+    return (link && link.uids.find(u => u !== myUid)) || '';
+  }
+
+  /** Accept a pending invitation: the one update firestore.rules permits. */
+  async function acceptLink(pk) {
+    const c = state.network;
+    const link = c.links.find(l => l.pairKey === pk);
+    if (!link || !c.uid || linkAcceptedByMe(link, c.uid)) return;
+    try {
+      const { db, fs } = await firebaseBits();
+      await fs.updateDoc(fs.doc(db, NET_LINKS, pk), {
+        acceptedBy: [...(link.acceptedBy || []), c.uid],
+        acceptedAt: fs.serverTimestamp(),
+      });
+      await refreshNetwork();
+    } catch (err) {
+      setNetworkStatus('err', networkErrorText(err));
+      renderNetworkCard();
+    }
+  }
+
+  /** Decline: the same delete either side already uses to disconnect. */
+  async function declineLink(pk) {
+    state.network.links = state.network.links.filter(l => l.pairKey !== pk);
+    persistNetwork();
+    renderNetworkSurfaces();
+    await deleteLinkDoc(pk);
   }
 
   function networkErrorText(err) {
@@ -6417,6 +6500,31 @@
           try { await fs.deleteDoc(fs.doc(db, NET_HANDLES, key)); } catch (_) { failed = true; }
         }
         try { await fs.deleteDoc(fs.doc(db, NET_PROFILES, c.uid)); } catch (_) { failed = true; }
+        // AND THE PAIR LINKS (2026-09-07 audit F18). Leaving used to delete
+        // the handle claim and the published profile and leave every pair
+        // document behind: an invisible connection that no surface listed,
+        // that the peer's client still counted, and that would silently
+        // reconnect the moment the user rejoined. The links are read from
+        // Firestore rather than from the local cache so a device that has
+        // been offline still sweeps the ones it never saw.
+        let links = c.links.slice();
+        try {
+          const snap = await fs.getDocs(fs.query(
+            fs.collection(db, NET_LINKS),
+            fs.where('uids', 'array-contains', c.uid)
+          ));
+          links = [];
+          snap.forEach(d => { links.push({ pairKey: d.id }); });
+        } catch (_) {
+          // Fall back to the cache: a partial sweep beats none, and the
+          // retry below covers what it misses.
+        }
+        let linksLeft = 0;
+        for (const l of links) {
+          try { await fs.deleteDoc(fs.doc(db, NET_LINKS, l.pairKey)); }
+          catch (_) { linksLeft++; }
+        }
+        if (linksLeft) failed = true;
         setNetworkStatus(failed ? 'warn' : 'ok', leaveNetworkMessage(true, failed));
       } else {
         // Signed out (or on another account): the published docs cannot be
@@ -6443,9 +6551,9 @@
       return 'Cleared the network data on this device only. Sign in with the account you joined on and leave again to remove your published profile and handle claim.';
     }
     if (failed) {
-      return 'Left the network on this device, but removing your published profile failed (permission or connection). Sign in and leave again to retry.';
+      return 'Left the network on this device, but removing some of your published data failed (permission or connection). Sign in and leave again to retry - leaving is safe to repeat.';
     }
-    return 'You left the rival network: your published profile and handle claim are removed. Your rivals and games are untouched.';
+    return 'You left the rival network: your published profile, handle claim and connections are removed. Your rivals and games are untouched.';
   }
 
   // Look the rival's handle up in the claim directory and, when it belongs to
@@ -6468,13 +6576,30 @@
       const ref = fs.doc(db, NET_LINKS, pk);
       const existing = await fs.getDoc(ref);
       if (!existing.exists()) {
+        // An INVITATION. It grants the other side nothing until they accept;
+        // firestore.rules refuses a create that pre-names both acceptors.
         await fs.setDoc(ref, {
           uids: [c.uid, peerUid].sort(),
+          acceptedBy: [c.uid],
           handles: { [c.uid]: myNetworkHandle(), [peerUid]: claim.data().nickname || key },
           names: { [c.uid]: state.me },
           createdBy: c.uid,
           createdAt: fs.serverTimestamp(),
         });
+      } else {
+        // They invited us first. Reaching this line means the user has just
+        // added THIS person as a rival by their MapTap handle - naming
+        // somebody is the consent, so the invitation is accepted here rather
+        // than queued for a second confirmation of the same decision.
+        // Invitations from people the user has NOT named stay pending and
+        // are answered in the network card.
+        const link = sanitizeLink(existing.data(), existing.id);
+        if (link && !linkAcceptedByMe(link, c.uid)) {
+          await fs.updateDoc(ref, {
+            acceptedBy: [...(link.acceptedBy || []), c.uid],
+            acceptedAt: fs.serverTimestamp(),
+          });
+        }
       }
       await refreshNetwork();
     } catch (_) {
@@ -6670,7 +6795,7 @@
         title: !registered
           ? 'Sign in to join the rival network'
           : !verified
-            ? 'Verify your MapTap profile first'
+            ? 'Look up your MapTap profile first'
             : 'Publish your handle so your rivals can connect with you',
         onclick: () => {
           if (!registered) {
@@ -6681,7 +6806,7 @@
             return;
           }
           if (!verified) {
-            setNetworkStatus('info', 'Verify your MapTap profile (the card above) before joining.');
+            setNetworkStatus('info', 'Look up your MapTap profile (the card above) before joining.');
             renderNetworkCard();
             return;
           }
@@ -6701,10 +6826,43 @@
         el('span', {}, 'Published as '),
         el('span', { class: 'network-handle' }, c.handle || handle || 'your handle'),
       ]));
+      const pending = pendingIncomingLinks();
       body.appendChild(el('div', { class: 'network-meta' },
         `${linked.size} connected rival${linked.size === 1 ? '' : 's'}`
         + ` · ${c.links.length} pair link${c.links.length === 1 ? '' : 's'}`
+        + (pending.length ? ` · ${pending.length} awaiting your answer` : '')
         + (c.updatedAt ? ` · checked ${new Date(c.updatedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : '')));
+      // CONNECTION REQUESTS. A request grants nothing on its own: until it
+      // is accepted here the other side cannot read this account's published
+      // rival list. Adding somebody as a rival by their handle accepts their
+      // request automatically (naming them is the consent), so what reaches
+      // this list is people the user has not named.
+      if (pending.length) {
+        const box = el('div', { class: 'network-requests', role: 'group', 'aria-label': 'Connection requests' });
+        box.appendChild(el('div', { class: 'network-requests-title' },
+          `Connection request${pending.length === 1 ? '' : 's'}`));
+        pending.forEach(l => {
+          const peerUid = linkPeerUid(l, c.uid);
+          const who = (l.names && l.names[peerUid])
+            || (l.handles && l.handles[peerUid])
+            || 'A MapTap member';
+          box.appendChild(el('div', { class: 'network-request' }, [
+            el('span', { class: 'network-request-who' },
+              `${who} wants to connect. They can read your published rival list only if you accept.`),
+            el('button', {
+              type: 'button',
+              class: 'btn btn-primary network-btn',
+              onclick: () => netFire(acceptLink(l.pairKey)),
+            }, 'Accept'),
+            el('button', {
+              type: 'button',
+              class: 'btn btn-ghost network-btn',
+              onclick: () => netFire(declineLink(l.pairKey)),
+            }, 'Decline'),
+          ]));
+        });
+        body.appendChild(box);
+      }
       if (!registered) {
         body.appendChild(el('div', { class: 'network-hint' },
           'Signed out on this device. The list below is your last synced state; sign back in to check for new connections.'));
@@ -6716,13 +6874,13 @@
       ]));
     } else if (!verified) {
       body.appendChild(el('div', { class: 'network-hint' }, [
-        el('strong', {}, 'Verify your MapTap profile first. '),
-        'Your handle is your name on the network, so it has to be checked against maptap.gg. Use the Verify button in the profile card above.',
+        el('strong', {}, 'Look up your MapTap profile first. '),
+        'Your handle is your name on the network, so it is checked against maptap.gg to confirm the account exists. Use the "Look up profile" button in the profile card above. First claim wins: nobody can take a handle you have already claimed, and deleting your claim releases it.',
       ]));
     } else {
       body.appendChild(el('div', { class: 'network-hint' }, [
         el('strong', {}, 'Joining publishes '),
-        `your handle (${handle}), your display name, your icon, and the handles of the rivals you track. Only rivals you are connected to can read that list, and it is what lets them discover each other. Scores, games and notes are never published. Leaving deletes all of it.`,
+        `your handle (${handle}), your display name, your icon, and the handles of the rivals you track. Only rivals whose connection you have ACCEPTED can read that list, and it is what lets them discover each other. Anyone else asking to connect appears here as a request first. Scores, games and notes are never published. Leaving deletes all of it, connections included.`,
       ]));
     }
 
@@ -8130,6 +8288,8 @@
       continentSubText,
       pasteDateHintText,
       leaveNetworkMessage,
+      sanitizeLink,
+      linkAcceptedByMe,
       streakDrama,
       syncAllSummary,
       rivalNameClash,

@@ -591,6 +591,36 @@ body.maptap-rivals-app textarea:focus {
 }
 .network-hint strong { color: var(--text); font-weight: 600; }
 
+/* Connection requests (2026-09-07 audit F03). A pair link is an invitation
+   until it is accepted here; before that the other side can read nothing. */
+.network-requests {
+  margin-top: 0.55rem;
+  padding: 0.55rem 0.8rem;
+  background: rgba(255, 255, 255, 0.015);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.network-requests-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.45rem;
+}
+.network-request {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.network-request + .network-request { border-top: 1px solid var(--border); }
+.network-request-who { flex: 1 1 14rem; min-width: 0; color: var(--text); }
+
 /* Incoming-connection banner. One row per auto-added rival, dismissible. */
 .network-notices {
   display: flex;
