@@ -81,6 +81,18 @@ const AREAS = [
 // minus a small working margin. Raising a floor is always fine; lowering one
 // needs a written justification in TESTING-AUDIT.md. The floors are on the
 // line-weighted LINE percentage of covered source files in that area.
+//
+// site-shared gained a floor on 2026-09-07 (audit F21): assets/js became
+// measurable when chart-a11y.js arrived with unit tests, and an area with
+// coverage and no floor is an area that can quietly lose it.
+//
+// mario-kart still has NO floor, and that is not an oversight: not one of its
+// source files is loaded by the unit estate (its tests build vm contexts,
+// which V8 coverage does not attribute to the file), so there is no number to
+// put a floor under. A floor over an empty set would read as coverage. What
+// the audit actually asked for - that the gap be visible rather than absent -
+// is the unmeasured-file inventory at the bottom of the report, which names
+// every one of them.
 const FLOORS = JSON.parse(await readFile(path.join(HERE, 'floors.json'), 'utf8'));
 
 function runCoverage() {
