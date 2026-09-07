@@ -17,6 +17,11 @@ export function createHandler({ storeFactory = getStore, fetcher = fetch, env = 
     const local = runtimeEnv.CONTEXT !== 'production';
     const origin = req.headers.get('origin');
     let originOK = origin === 'https://shevato.com';
+    // Same-deploy previews can exercise the free tool, while paid adapters
+    // remain disabled by the runtime-context configuration gate.
+    if (['deploy-preview', 'branch-deploy'].includes(context.deploy?.context)) {
+      try { const url = new URL(req.url); originOK ||= url.protocol === 'https:' && url.hostname.endsWith('.netlify.app') && origin === url.origin; } catch { /* invalid URL */ }
+    }
     if (local && env.QUOTESCOUT_ALLOW_LOCAL_PROVIDERS === '1') { try { const u = new URL(origin); originOK ||= ['localhost','127.0.0.1'].includes(u.hostname) && ['http:','https:'].includes(u.protocol); } catch { /* invalid */ } }
     if (req.method !== 'GET' && req.method !== 'POST') return json({ message: 'Method not allowed.' }, 405);
     if (req.method === 'POST' && !originOK) return json({ message: 'Open QuoteScout on Shevato to compare.' }, 403);

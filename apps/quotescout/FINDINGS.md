@@ -14,3 +14,5 @@
 
 - Use Netlify runtime `context.deploy.context` to distinguish production and previews; build-time `CONTEXT` is not a reliable runtime source. A regression test prevents a stale environment value from enabling paid calls in a preview.
 - Duplicate detection must include the actual carrier/issuer and health plan identity. Different carriers can return the same service label and amount.
+
+- Root publishing includes source directories, so forced 404 routes protect QuoteScout fixture paths. This is independent of the normal application import boundary and does not change other apps’ runtime assets.

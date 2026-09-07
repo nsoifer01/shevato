@@ -13,3 +13,11 @@ test('best value shipping transparently trades price for transit', () => { const
 test('health best value uses worst-case covered care, not expected cost', () => { const g=rankQuotes([q('a',100,{vertical:'health-insurance',outOfPocket:10000}),q('b',200,{vertical:'health-insurance',outOfPocket:1000})],'best-value')[0];assert.equal(g.quotes[0].id,'b');assert.match(g.reason,/not expected/); });
 test('lowest deductible puts missing values last', () => { const g=rankQuotes([q('a',1,{deductible:null}),q('b',2,{deductible:500})],'lowest-deductible')[0]; assert.equal(g.quotes[0].id,'b'); });
 test('money does not invent missing or fractional cents', () => { assert.equal(money(null),'Not reported');assert.equal(money(1.1),'Not reported');assert.equal(money(1234),'$12.34'); });
+test('production routing refuses fixture files even when present in publish root', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const config = await readFile(new URL('../../../netlify.toml', import.meta.url),'utf8');
+  for (const route of ['/apps/quotescout/tests/*','/apps/quotescout/e2e/*','/netlify/functions/tests/*']) {
+    const block = config.split('[[redirects]]').find(b => b.includes(`from = "${route}"`));
+    assert.ok(block,route);assert.match(block,/status = 404/);assert.match(block,/force = true/);
+  }
+});

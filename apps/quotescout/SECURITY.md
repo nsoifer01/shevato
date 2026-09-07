@@ -20,3 +20,5 @@ Trust boundaries: browser → Netlify request handler → server-only Blobs conf
 Origin checks are a browser misuse barrier, not authentication. IP must come from Netlify context, not a caller-supplied forwarding header. IP counters are daily-hashed and hourly-scoped; random session IDs do not bypass IP/global quota. Quote contents are never written into Blobs. NHTSA enrichment retains validated vehicle specifications under a hashed VIN key; it does not retain the VIN-bearing raw response.
 
 Ordinary CI uses deterministic fixtures. Public API/sandbox checks are separate. Test prices live only in test/e2e directories. UI uses no innerHTML for provider data and has associated labels, error announcements and expiry handling. No API call purchases, binds, enrolls or contacts a sales agent.
+
+Netlify forced 404 rules deny public HTTP access to QuoteScout test/E2E files and function-test sources even if root-directory publishing includes them. They are not imported by the app or provider bundle. Free VIN decoding accepts only the same Netlify deploy origin in previews; runtime configuration still disables paid adapters there.
