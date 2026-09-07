@@ -3207,17 +3207,20 @@ async function openModal(m, opts = {}) {
   els.modalEpisodes.replaceChildren(epFrag);
 
   els.modalImdb.href = `https://www.imdb.com/title/${m.seriesId}/episodes/?season=${m.season}`;
-
+  // The pill says "IMDb"; what it links to (this season, not the show) lives in
+  // the accessible name and the tooltip. Both still CONTAIN the visible word,
+  // so the accessible name matches the label a speech user would say.
+  setOutboundLabel(els.modalImdb, `Season ${m.season} on IMDb`);
 
   // Prefer the season-level dereferrer when we have a season tvdbId; otherwise
   // fall back to the series page (still useful, just not deep-linked).
   if (m.seasonTvdbId) {
     els.modalTvdb.href = `https://thetvdb.com/dereferrer/season/${m.seasonTvdbId}`;
-    els.modalTvdb.textContent = 'View season on TVDB →';
+    setOutboundLabel(els.modalTvdb, `Season ${m.season} on TVDB`);
     els.modalTvdb.hidden = false;
   } else if (m.tvdbId) {
     els.modalTvdb.href = `https://thetvdb.com/dereferrer/series/${m.tvdbId}`;
-    els.modalTvdb.textContent = 'View series on TVDB →';
+    setOutboundLabel(els.modalTvdb, 'This series on TVDB');
     els.modalTvdb.hidden = false;
   } else {
     els.modalTvdb.removeAttribute('href');
@@ -5955,6 +5958,16 @@ function flashButtonLabel(buttonEl, label) {
   }, 1800);
 }
 
+// An outbound pill shows the site name and nothing else, so what it actually
+// points at (this season vs the whole series) has to reach assistive tech and
+// a hovering mouse some other way. Every name passed here contains the pill's
+// own visible word, which is what WCAG's "label in name" asks for.
+function setOutboundLabel(el, name) {
+  if (!el) return;
+  el.setAttribute('aria-label', name);
+  el.title = name;
+}
+
 function shareText(text, buttonEl) {
   const flashLabel = (label) => flashButtonLabel(buttonEl, label);
   const manualFallback = () => {
@@ -6254,18 +6267,45 @@ function downloadBlob(blob, filename) {
   return 'downloaded';
 }
 
-// Native share sheet where files are supported (mobile), plain download
-// everywhere else. A cancelled share sheet is a deliberate no-op, not a
-// reason to drop a file in the user's downloads folder.
-function deliverChartImage(blob, filename, shareTitle) {
+// Put the PNG on the clipboard. Resolves to 'copied', or to null for every
+// reason it could not happen, so the caller falls through instead of throwing:
+// the API needs a secure context, a live user gesture and a focused document,
+// and Safari rejects a ClipboardItem built from an already-resolved blob.
+// Nothing here is worth an error message when a share sheet or a download will
+// do the job.
+function copyImageToClipboard(blob) {
+  if (!navigator.clipboard || typeof navigator.clipboard.write !== 'function'
+      || typeof ClipboardItem !== 'function') {
+    return Promise.resolve(null);
+  }
+  let item;
+  try { item = new ClipboardItem({ 'image/png': blob }); }
+  catch { return Promise.resolve(null); }
+  return navigator.clipboard.write([item]).then(() => 'copied').catch(() => null);
+}
+
+// Clipboard first: the chart is something you paste into a message, and its
+// neighbour "Share card" already copies. A file in the downloads folder, or a
+// share sheet asking which app to hand it to, is a detour around that. The
+// share sheet stays as the fallback for where an image clipboard write is not
+// available (iOS Safari), and a download is the last resort. A CANCELLED share
+// sheet is a deliberate no-op, not a reason to drop a file in someone's
+// downloads folder.
+async function deliverChartImage(blob, filename, shareTitle) {
+  const copied = await copyImageToClipboard(blob);
+  if (copied) return copied;
   const file = typeof File === 'function' ? new File([blob], filename, { type: 'image/png' }) : null;
   if (file && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
     return navigator.share({ files: [file], title: shareTitle })
       .then(() => 'shared')
       .catch((err) => (err && err.name === 'AbortError' ? 'cancelled' : downloadBlob(blob, filename)));
   }
-  return Promise.resolve(downloadBlob(blob, filename));
+  return downloadBlob(blob, filename);
 }
+
+// Confirmation wording per delivery route, so the button never claims a
+// download that went to the clipboard.
+const CHART_IMAGE_FLASH = { copied: 'Copied!', shared: 'Shared!', downloaded: 'Downloaded!' };
 
 async function shareChartImage(buttonEl, opts) {
   if (buttonEl) buttonEl.disabled = true;
@@ -6273,7 +6313,7 @@ async function shareChartImage(buttonEl, opts) {
     const blob = await buildChartCardBlob(opts);
     const how = await deliverChartImage(blob, opts.filename, opts.title);
     if (how !== 'cancelled') {
-      flashButtonLabel(buttonEl, how === 'shared' ? 'Shared!' : 'Downloaded!');
+      flashButtonLabel(buttonEl, CHART_IMAGE_FLASH[how] || 'Done!');
       track('trackAction', 'share_chart_image', {
         surface: opts.surface,
         method: how,
@@ -6835,6 +6875,8 @@ if (typeof window !== 'undefined') {
     clampScrollY,
     viewKeyFromHash,
     ScrollMemory,
+    deliverChartImage,
+    CHART_IMAGE_FLASH,
     buildSeasonShareText,
     parseCompareParam,
     Watched,

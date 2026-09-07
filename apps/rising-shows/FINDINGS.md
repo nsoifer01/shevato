@@ -57,6 +57,60 @@ buttons:
 `.modal-imdb` are all gone from the CSS; `modal-actions-top` had already been
 dead since 2026-08-23.
 
+### Three tiers, not one row of equals (same round)
+
+Six same-sized buttons on one row say all six are equally worth doing. The row
+is now read top to bottom as primary, actions, references:
+
+- **The primary action holds its own line.** Not by stretching it:
+  `flex-basis: 100%` on the button makes it a full-width bar. The line break is
+  a separate zero-height full-width flex item (`.action-row-break`), which ends
+  the line without touching the button's own width.
+- **IMDb and TVDB are pills, not buttons** (`.outbound-tag`): same geometry as
+  the provider chips so the modal keeps one vocabulary for "small labelled
+  thing you can click", but neutral rather than cyan, because cyan already
+  means "where to watch this". A `::after` ↗ marks that they leave the site and
+  stays out of the accessible name. Measured 7.54:1 against the panel, 28 px
+  tall on desktop and 36 px on a phone.
+- Desktop is 2 lines (compare / everything else) and a phone is 3. As full
+  buttons IMDb and TVDB cost a whole extra line.
+
+A pill shows only the site name, so **the accessible name carries what the href
+actually points at** - "Season 1 on IMDb", "This series on TVDB" - set by
+`setOutboundLabel`, which writes both `aria-label` and `title`. Every name
+contains the pill's visible word, which is what WCAG's label-in-name asks for:
+a speech user saying "IMDb" has to be able to hit it. The season modal used to
+put that distinction in the visible text ("View season on TVDB →"), which is
+why the JS writes it rather than the markup.
+
+## Share chart image copies, it does not download (2026-09-07)
+
+`deliverChartImage` tried the native share sheet first and fell back to a file
+download. On a desktop that means a PNG in the downloads folder, or a Windows
+share sheet asking which app to hand it to, when what people want is to paste
+the chart into a message. Its neighbour "Share card" has always copied. So the
+order is now clipboard, then share sheet, then download.
+
+`copyImageToClipboard` resolves to `null` rather than throwing for every reason
+the write can fail, because all of them are ordinary and all of them have a
+working fallback: no secure context, no user gesture, an unfocused document
+(`NotAllowedError`), no `ClipboardItem` constructor, or Safari refusing an item
+built from an already-resolved blob. Only a build failure reaches the user as
+"Image failed".
+
+The confirmation is a lookup (`CHART_IMAGE_FLASH`), not a two-way branch. The
+old label was `how === 'shared' ? 'Shared!' : 'Downloaded!'`, which would have
+told a clipboard copy it had been downloaded.
+
+**A trap worth remembering, found writing the tests for this.** The test helper
+was `try { return fn(...) } finally { restore() }` with an async `fn`. That
+returns the promise immediately, so `finally` restored every stub BEFORE the
+awaited body ran, and the delivery chain hit Node's real `URL.createObjectURL`
+with a stub blob. `await fn(...)` inside the try is the fix. A stub-restoring
+helper around async code has to await, or it un-stubs mid-test.
+
+## A saved scroll offset belongs to ONE view (2026-09-07)
+
 ## A saved scroll offset belongs to ONE view (2026-09-07)
 
 `ScrollMemory` exists because the grid renders only after the index is fetched,

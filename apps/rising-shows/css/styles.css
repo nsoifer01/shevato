@@ -3128,6 +3128,56 @@ body:has(.modal:not([hidden])) .back-to-top {
   gap: 0.5rem;
   margin-top: 0.35rem;
 }
+/* Forces the wrap point. A flex item that is full-width and zero-height ends
+   the line it is on, which is how the primary action keeps a row to itself
+   without being stretched across it (flex-basis:100% on the button itself
+   would make it a full-width bar). */
+.action-row-break {
+  flex: 0 0 100%;
+  height: 0;
+  margin: -0.25rem 0;
+}
+
+/* Outbound link pills (IMDb, TVDB). Same pill geometry as the provider chips
+   so the modal has one vocabulary for "a small labelled thing you can click",
+   but neutral rather than cyan: cyan means "where to watch this". They sit at
+   the end of the utility line and read as references, not as actions - which
+   is what they are, and what five identical ghost buttons hid. */
+.outbound-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 28px;
+  padding: 0.1rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--muted) !important;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.12s, border-color 0.12s, color 0.12s;
+}
+/* The "leaves the site" mark, kept out of the accessible name. */
+.outbound-tag::after {
+  content: '↗';
+  font-size: 0.7em;
+  opacity: 0.8;
+}
+.outbound-tag:hover,
+.outbound-tag:focus-visible {
+  background: var(--accent-soft);
+  border-color: var(--accent-strong);
+  color: var(--accent) !important;
+  text-decoration: none;
+}
+.outbound-tag:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 /* Cast strip — horizontal-scrolling row of head-and-shoulders cards
    showing the top-billed cast. Wrapper is [hidden] by default and
@@ -3657,6 +3707,13 @@ body.advanced-drawer-open {
   .modal-primary-actions .btn {
     min-height: 44px;
     flex: 1 1 auto;
+  }
+  /* The pills grow to a comfortable tap target too, but stay pills: they share
+     a line rather than each taking one. */
+  .outbound-tag {
+    min-height: 36px;
+    padding: 0.1rem 0.85rem;
+    font-size: 0.78rem;
   }
 }
 
