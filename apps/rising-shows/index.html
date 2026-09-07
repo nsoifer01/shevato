@@ -421,9 +421,21 @@
           <p class="modal-subtitle" id="modalSubtitle"></p>
           <div class="modal-shapes" id="modalShapes"></div>
           <p class="modal-stats" id="modalStats"></p>
+          <!-- One action row, beside the season's identity. The utilities used
+               to sit under the episode list, which on a 20-episode season put
+               them ~2,000 px down a scrolling panel: nobody scrolls past the
+               content they came for to find a share link. -->
           <div class="modal-primary-actions">
             <button type="button" class="btn" id="modalViewShow">📺 View show</button>
             <button type="button" class="btn watch-btn" id="modalWatchBtn"></button>
+            <button type="button" class="btn btn-ghost" id="modalShareCard">Share card</button>
+            <span class="action-row-break" aria-hidden="true"></span>
+            <!-- Outbound links are pills, not buttons: they leave the site, and
+                 four same-sized buttons made the row read as four equal
+                 choices. openModal writes the accessible name, which says
+                 season or series where the href does. -->
+            <a class="outbound-tag outbound-tag-imdb" id="modalImdb" target="_blank" rel="noopener">IMDb</a>
+            <a class="outbound-tag outbound-tag-tvdb" id="modalTvdb" target="_blank" rel="noopener" hidden>TVDB</a>
           </div>
         </div>
       </div>
@@ -440,11 +452,6 @@
       </svg>
       <p class="modal-curve-annotation" id="modalCurveAnnotation" hidden></p>
       <ol class="modal-episodes" id="modalEpisodes"></ol>
-      <div class="modal-actions modal-actions-bottom">
-        <button type="button" class="btn btn-ghost" id="modalShareCard">Share card</button>
-        <a class="btn btn-ghost modal-imdb" id="modalImdb" target="_blank" rel="noopener">Season on IMDb →</a>
-        <a class="btn btn-ghost" id="modalTvdb" target="_blank" rel="noopener" hidden>Series on TVDB →</a>
-      </div>
     </article>
   </div>
 
@@ -470,10 +477,34 @@
           <div class="watch-row" id="showModalWatch" hidden>
             <span class="watch-row-label">Watch on</span>
             <div class="provider-badges" id="showModalProviders"></div>
-            <span class="watch-row-note">opens a search on each service</span>
+            <!-- Wording depends on how many chips rendered; renderShowModalWatchRow
+                 writes it. The markup keeps the plural as the no-JS default. -->
+            <span class="watch-row-note" id="showModalWatchNote">opens a search on each service</span>
           </div>
+          <!-- One action row, beside the show's identity. The utilities used to
+               sit after "More shows like this", ~1,900 px down a scrolling
+               panel on desktop and at the very bottom of a 2,500 px sheet on a
+               phone: a permalink nobody can reach is not a permalink. -->
           <div class="modal-primary-actions">
             <button type="button" class="btn compare-btn" id="showModalCompare">+ Add to compare</button>
+            <button type="button" class="btn btn-ghost" id="showModalShareCard">Share card</button>
+            <button type="button" class="btn btn-ghost" id="showModalShareChart" hidden>Share chart image</button>
+            <!-- The arrow is its own element so it can be spaced and nudged;
+                 as a glyph in the label it read as an appended character.
+                 aria-hidden keeps the accessible name "Permalink". -->
+            <!-- Zero-height full-width flex item: ends the line. Line one is
+                 what the modal DOES, line two is where it GOES - permalink
+                 first, then the outbound references. The four buttons do not
+                 fit one line here (they need 591 px of a 532 px column at
+                 1280), and splitting them by verb beats shrinking them. -->
+            <span class="action-row-break" aria-hidden="true"></span>
+            <a class="btn btn-ghost" id="showModalPermalink">Permalink <span class="btn-arrow" aria-hidden="true">→</span></a>
+            <!-- Outbound links are compact chips, not buttons: they leave the
+                 site and are the least-used thing here, so they read as
+                 references under the action row rather than a fifth and sixth
+                 equal choice. -->
+            <a class="outbound-tag outbound-tag-imdb" id="showModalImdb" target="_blank" rel="noopener" aria-label="This show on IMDb">IMDb</a>
+            <a class="outbound-tag outbound-tag-tvdb" id="showModalTvdb" target="_blank" rel="noopener" aria-label="This show on TVDB" hidden>TVDB</a>
           </div>
         </div>
       </div>
@@ -503,16 +534,6 @@
         <h3 class="modal-section">More shows like this</h3>
         <div class="show-related-grid"></div>
       </section>
-      <!-- Utilities last. These used to sit in two rows above the overview,
-           which put seven buttons between the title and the first thing a
-           reader wants (what the show is, and how its ratings moved). -->
-      <div class="modal-actions modal-actions-bottom">
-        <button type="button" class="btn btn-ghost" id="showModalShareCard">Share card</button>
-        <button type="button" class="btn btn-ghost" id="showModalShareChart" hidden>Share chart image</button>
-        <a class="btn btn-ghost" id="showModalPermalink">Permalink →</a>
-        <a class="btn btn-ghost" id="showModalImdb" target="_blank" rel="noopener">IMDb →</a>
-        <a class="btn btn-ghost" id="showModalTvdb" target="_blank" rel="noopener" hidden>TVDB →</a>
-      </div>
     </article>
   </div>
 

@@ -152,6 +152,7 @@ test('vm harness: app.js exports every helper these tests drive', () => {
     'ScrollMemory', 'buildSeasonShareText', 'clampScrollY', 'computeShowRelated',
     'computeStdDev', 'languagesCompatible', 'parseCompareParam',
     'validateDataset', 'seasonEpisodeCount', 'shapeConfidence', 'viewKeyFromHash',
+    'deliverChartImage', 'CHART_IMAGE_FLASH', 'watchRowNote',
   ];
   const missing = expected.filter((name) => helpers[name] == null);
   assert.deepEqual(missing, [], `js/app.js stopped exporting: ${missing.join(', ')}`);
@@ -418,6 +419,148 @@ test('ScrollMemory: restore reports that a real anchor took the position', () =>
     assert.equal(helpers.ScrollMemory.restore(), true);
     assert.deepEqual(scrolledTo, []);
   });
+});
+
+// ---------------------------------------------------------------------------
+// Share chart image: where the PNG goes
+//
+// The clipboard is the point of the button - its neighbour "Share card"
+// copies, and a chart you can paste into a message beats one in a downloads
+// folder. Everything else is a fallback, so what matters is the ORDER and that
+// no fallback fires while the one above it is working.
+// ---------------------------------------------------------------------------
+
+// Drives the real deliverChartImage against a stubbed navigator / File /
+// ClipboardItem, restoring the sandbox afterwards.
+//
+// `async` and `await fn(...)` on purpose: with a plain `try { return fn() }
+// finally`, an async fn returns its promise immediately, the finally restores
+// every stub, and the rest of the delivery chain then runs against the real
+// globals - which is exactly how this helper failed the first time, reaching
+// Node's URL.createObjectURL with a stub blob.
+async function withDelivery({ clipboard = null, canShareFiles = false, share = null, hasClipboardItem = true }, fn) {
+  const saved = {
+    navigator: ctx.navigator,
+    File: ctx.File,
+    ClipboardItem: ctx.ClipboardItem,
+    document: ctx.document.body.appendChild,
+    URL: ctx.URL,
+  };
+  const downloads = [];
+  ctx.File = function File(parts, name, opts) { return { name, type: opts && opts.type }; };
+  ctx.ClipboardItem = hasClipboardItem ? function ClipboardItem(map) { return { map }; } : undefined;
+  ctx.navigator = {
+    clipboard: clipboard ? { write: clipboard } : null,
+    share: share || undefined,
+    canShare: canShareFiles ? () => true : undefined,
+  };
+  // downloadBlob builds an <a> and clicks it; count the clicks rather than
+  // stubbing the whole DOM path.
+  ctx.URL = { createObjectURL: () => 'blob:stub', revokeObjectURL() {} };
+  const origCreate = ctx.document.createElement;
+  ctx.document.createElement = (tag) => {
+    if (tag !== 'a') return origCreate(tag);
+    const a = { click: () => downloads.push(a.download), remove() {}, setAttribute() {} };
+    return a;
+  };
+  try {
+    return await fn({ downloads });
+  } finally {
+    ctx.navigator = saved.navigator;
+    ctx.File = saved.File;
+    ctx.ClipboardItem = saved.ClipboardItem;
+    ctx.URL = saved.URL;
+    ctx.document.createElement = origCreate;
+  }
+}
+
+test('share chart image: the clipboard is tried first and nothing else runs', async () => {
+  let shareCalls = 0;
+  await withDelivery({
+    clipboard: () => Promise.resolve(),
+    canShareFiles: true,
+    share: () => { shareCalls++; return Promise.resolve(); },
+  }, async ({ downloads }) => {
+    const how = await helpers.deliverChartImage({}, 'chart.png', 'A chart');
+    assert.equal(how, 'copied');
+    assert.equal(shareCalls, 0, 'the share sheet must not open when the copy worked');
+    assert.deepEqual(downloads, [], 'nothing may land in the downloads folder');
+  });
+});
+
+test('share chart image: a refused clipboard falls through to the share sheet', async () => {
+  // NotAllowedError (unfocused document, no gesture) is the common one.
+  await withDelivery({
+    clipboard: () => Promise.reject(new Error('NotAllowedError')),
+    canShareFiles: true,
+    share: () => Promise.resolve(),
+  }, async ({ downloads }) => {
+    assert.equal(await helpers.deliverChartImage({}, 'chart.png', 'A chart'), 'shared');
+    assert.deepEqual(downloads, []);
+  });
+});
+
+test('share chart image: no clipboard API and no share sheet still downloads', async () => {
+  await withDelivery({ clipboard: null, canShareFiles: false }, async ({ downloads }) => {
+    assert.equal(await helpers.deliverChartImage({}, 'chart.png', 'A chart'), 'downloaded');
+    assert.deepEqual(downloads, ['chart.png']);
+  });
+});
+
+test('share chart image: a browser without ClipboardItem does not throw', async () => {
+  // navigator.clipboard.write exists in older builds without the constructor.
+  await withDelivery({
+    clipboard: () => Promise.resolve(),
+    hasClipboardItem: false,
+    canShareFiles: false,
+  }, async ({ downloads }) => {
+    assert.equal(await helpers.deliverChartImage({}, 'chart.png', 'A chart'), 'downloaded');
+    assert.deepEqual(downloads, ['chart.png']);
+  });
+});
+
+test('share chart image: a cancelled share sheet leaves no file behind', async () => {
+  const abort = new Error('cancelled');
+  abort.name = 'AbortError';
+  await withDelivery({
+    clipboard: () => Promise.reject(new Error('nope')),
+    canShareFiles: true,
+    share: () => Promise.reject(abort),
+  }, async ({ downloads }) => {
+    assert.equal(await helpers.deliverChartImage({}, 'chart.png', 'A chart'), 'cancelled');
+    assert.deepEqual(downloads, []);
+  });
+});
+
+test('share chart image: every delivery route has its own confirmation', () => {
+  // 'Downloaded!' on a clipboard copy is a lie the button used to be able to
+  // tell, because the label was a two-way branch on `how === "shared"`.
+  assert.equal(helpers.CHART_IMAGE_FLASH.copied, 'Copied!');
+  assert.equal(helpers.CHART_IMAGE_FLASH.shared, 'Shared!');
+  assert.equal(helpers.CHART_IMAGE_FLASH.downloaded, 'Downloaded!');
+});
+
+// ---------------------------------------------------------------------------
+// The streaming row's note agrees with the number of chips
+// ---------------------------------------------------------------------------
+
+test('watchRowNote: one provider gets the singular', () => {
+  // Most shows stream on exactly one service, so this is the COMMON case, not
+  // the edge one: "each service" beside a single chip is wrong English about a
+  // set of one.
+  assert.equal(helpers.watchRowNote(1), 'opens a search on that service');
+});
+
+test('watchRowNote: two or more keep the plural', () => {
+  assert.equal(helpers.watchRowNote(2), 'opens a search on each service');
+  assert.equal(helpers.watchRowNote(5), 'opens a search on each service');
+});
+
+test('watchRowNote: only the quantifier differs between the two forms', () => {
+  // The note's job is to say a chip runs a SEARCH rather than deep-linking the
+  // title, and that promise has to read identically either way.
+  const [one, many] = [helpers.watchRowNote(1), helpers.watchRowNote(3)];
+  assert.equal(one.replace('that', ' '), many.replace('each', ' '));
 });
 
 // ---------------------------------------------------------------------------
