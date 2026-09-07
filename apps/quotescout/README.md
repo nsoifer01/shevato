@@ -1,4 +1,4 @@
-# QuoteScout
+# Quote Scout
 
 Compare prices without the spam. A static Shevato frontend with a server-side comparison engine in Netlify Functions. It never creates synthetic production prices, collects leads, sells personal information, buys labels, binds insurance or enrolls health plans.
 
@@ -41,7 +41,7 @@ A normalized quote has an adapter ID, source ID, display provider, vertical, cur
 
 States: `VERIFIED QUOTE`, `ESTIMATE`, `UNAVAILABLE`, `ERROR`, `EXPIRED`. Current adapters produce **ESTIMATE only**. The platform accepts `VERIFIED QUOTE` only from an adapter with `live-quote` provenance and a source reference; a future adapter must prove what its source guarantees. NHTSA output is vehicle data, never a quote. Missing prices do not become zero; unsupported currencies and test-mode shipping rates are excluded. An unavailable provider is a separate outcome, never an item in the price ranking. Provider errors have safe codes including `AUTH`, `RATE_LIMIT`, `TIMEOUT`, `MALFORMED`, `UNSUPPORTED`, `INVALID_INPUT`, `UNAVAILABLE`, `ADDITIONAL`.
 
-Shipping uses EasyPost’s actual `rate`, not its retail/list rate. It is labeled an estimate because a ZIP-only, API-account-specific rate is not a purchasable offer to a QuoteScout visitor. There is no misleading carrier checkout link.
+Shipping uses EasyPost’s actual `rate`, not its retail/list rate. It is labeled an estimate because a ZIP-only, API-account-specific rate is not a purchasable offer to a Quote Scout visitor. There is no misleading carrier checkout link.
 
 CMS uses the unsubsidized monthly premium. Annual premium is monthly × 12, **not estimated annual health spending**. Unknown or ambiguous individual in-network deductible/MOOP values remain unknown. Deductibles may exclude drug coverage and this is disclosed. Networks and formularies must be checked directly. CMS may paginate plan searches; when `total` exceeds returned plans, the UI explicitly limits its claim to the returned subset. There is no best-in-market claim.
 
@@ -80,11 +80,11 @@ Same-deploy Netlify preview origins can use the free vehicle tool without enabli
 - Daily-hashed IP identities are kept only within hourly counters, bounded at 1,000 identities. This is abuse protection, not anonymous user analytics. Aggregate monthly counters bound calls, **not a contractual dollar cap**; enforce account billing limits too.
 - Netlify function edge rate limit: 40 requests/minute/IP, where supported by the hosting plan. Blob quotas remain authoritative across instances. Circuit breakers/deduplication/concurrency are process-local; distributed budgets remain effective across cold starts.
 
-Responses use `private, no-store` and CDN no-store headers. No service worker caches QuoteScout requests.
+Responses use `private, no-store` and CDN no-store headers. No service worker caches Quote Scout requests.
 
 ## Privacy, security and observability
 
-Read [SECURITY.md](SECURITY.md) and the QuoteScout section in `/privacy`. Browser form values stay in memory until submitted. No contact gate, no account dependency, no quote history sync. Fixed HTTPS upstreams and redirect rejection prevent user-controlled SSRF. Only the fixed HealthCare.gov plan-review URL is currently accepted for outbound quote actions; referrers are suppressed. No affiliate links exist.
+Read [SECURITY.md](SECURITY.md) and the Quote Scout section in `/privacy`. Browser form values stay in memory until submitted. No contact gate, no account dependency, no quote history sync. Fixed HTTPS upstreams and redirect rejection prevent user-controlled SSRF. Only the fixed HealthCare.gov plan-review URL is currently accepted for outbound quote actions; referrers are suppressed. No affiliate links exist.
 
 Structured provider logs contain correlation UUID, vertical/provider IDs, safe outcome, latency, quote yield, verified/estimated counts, cache hit and question counts. Validation logs contain UUID and status only. Derive latency/success/timeout/cache/yield metrics from these events. The usage blob measures API call volume, not unreported provider fees. Standard Shevato analytics records app opens and outbound link clicks by domain through the existing helper, without input fields, prices or source quote IDs. No separate health/vehicle telemetry is added.
 
@@ -105,7 +105,7 @@ npm run build:site
 
 Use `netlify dev` for real function routing, with local configuration and explicitly enabled provider calls. Use an isolated checkout/copy for `build:site` because it generates pages and inlines shared HTML. No separate TypeScript checker exists; source parsing, ESLint and runtime contract tests are the applicable checks.
 
-Tests use `node:test` and CDP. Deterministic upstream responses live exclusively under `tests/` and `e2e/`; no production switch can expose them. Forced 404 routes also block direct HTTP access to the QuoteScout test/E2E directories and function test sources under the root publish directory. The E2E suite covers minimal input, validation, vehicle decoding, Top 3/all results, sorting, refresh, additional county questions, errors, mobile overflow, contrast and axe checks. Browser screenshots live in ignored `.reports/`. Regenerate the committed empty-form preview deliberately with `QUOTESCOUT_UPDATE_PREVIEW=1 npm run test:browser -- --only=quotescout`; ordinary tests never rewrite that asset.
+Tests use `node:test` and CDP. Deterministic upstream responses live exclusively under `tests/` and `e2e/`; no production switch can expose them. Forced 404 routes also block direct HTTP access to the Quote Scout test/E2E directories and function test sources under the root publish directory. The E2E suite covers minimal input, validation, vehicle decoding, Top 3/all results, sorting, refresh, additional county questions, errors, mobile overflow, contrast and axe checks. Browser screenshots live in ignored `.reports/`. Regenerate the committed empty-form preview deliberately with `QUOTESCOUT_UPDATE_PREVIEW=1 npm run test:browser -- --only=quotescout`; ordinary tests never rewrite that asset.
 
 To check a real public source separately: `QUOTESCOUT_PUBLIC_API_TEST=1 node --test apps/quotescout/tests/sandbox.test.mjs`. It uses the documented sample VIN, never a user VIN. CMS/paid provider smoke tests require explicitly supplied local credentials and are not ordinary CI dependencies. Test-mode EasyPost prices must remain rejected in production even when a sandbox succeeds. See PROVIDERS.md for vendor access limitations.
 

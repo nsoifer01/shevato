@@ -282,7 +282,7 @@
   for = "/*.webmanifest"
   [headers.values]
     Content-Type = "application/manifest+json"
-# QuoteScout fixtures are test-only and must never be served as production data.
+# Quote Scout fixtures are test-only and must never be served as production data.
 # Force is intentional: these source files exist in the root publish directory.
 [[redirects]]
   from = "/apps/quotescout/tests/*"

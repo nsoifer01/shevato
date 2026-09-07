@@ -87,7 +87,7 @@ async function newPage(browser) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   await context.route('**/*', (route) => {
     // This harness is static-only. Explicitly stand in for an unavailable
-    // QuoteScout backend; the app's own E2E suite tests provider responses.
+    // Quote Scout backend; the app's own E2E suite tests provider responses.
     if (route.request().url() === BASE + '/.netlify/functions/quotescout' && route.request().method() === 'GET') {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ verticals: [], vehicleData: false }) });
     }

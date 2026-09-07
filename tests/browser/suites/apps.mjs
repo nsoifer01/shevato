@@ -770,7 +770,7 @@ export async function run({ base, cdpPort }) {
     } catch (e) { t(`${name}: mobile suite ran`, false, String(e.message).slice(0, 140)); }
   }
 
-  // QuoteScout: a static server has no function backend. Its honest offline
+  // Quote Scout: a static server has no function backend. Its honest offline
   // state must be useful; provider happy paths live in quotescout/e2e/flow.mjs.
   {
     let s;

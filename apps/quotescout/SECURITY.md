@@ -1,4 +1,4 @@
-# QuoteScout threat model
+# Quote Scout threat model
 
 Trust boundaries: browser → Netlify request handler → server-only Blobs configuration and budgets → fixed upstream APIs. Third-party responses are untrusted. Browser entry fields are PII-adjacent even when no contact fields exist.
 
@@ -21,4 +21,4 @@ Origin checks are a browser misuse barrier, not authentication. IP must come fro
 
 Ordinary CI uses deterministic fixtures. Public API/sandbox checks are separate. Test prices live only in test/e2e directories. UI uses no innerHTML for provider data and has associated labels, error announcements and expiry handling. No API call purchases, binds, enrolls or contacts a sales agent.
 
-Netlify forced 404 rules deny public HTTP access to QuoteScout test/E2E files and function-test sources even if root-directory publishing includes them. They are not imported by the app or provider bundle. Free VIN decoding accepts only the same Netlify deploy origin in previews; runtime configuration still disables paid adapters there.
+Netlify forced 404 rules deny public HTTP access to Quote Scout test/E2E files and function-test sources even if root-directory publishing includes them. They are not imported by the app or provider bundle. Free VIN decoding accepts only the same Netlify deploy origin in previews; runtime configuration still disables paid adapters there.

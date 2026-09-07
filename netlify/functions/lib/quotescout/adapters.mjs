@@ -22,7 +22,7 @@ export function normalizeEasyPost(data, input, now) {
       const amount = required(cents(r.rate)), carrier = required(text(r.carrier)), service = required(text(r.service));
       const q = base('easypost', 'package-shipping', `${carrier}:${service}:${index}`, amount, now, 5 * 60000,
         { ...input, weightUnit: 'oz', dimensionUnit: 'in', carrier, service },
-        'Account-specific carrier rate estimate. QuoteScout does not sell labels. This price may not be available on the carrier website; final address, measurements, surcharges and account terms can change it.');
+        'Account-specific carrier rate estimate. Quote Scout does not sell labels. This price may not be available on the carrier website; final address, measurements, surcharges and account terms can change it.');
       const guarantee = r.delivery_date_guaranteed === true;
       return [{ ...q, name: service, providerName: carrier, interval: 'shipment',
         comparisonKey: `package:${guarantee ? 'guaranteed' : 'estimated'}:insurance-unknown`, comparisonLabel: `${guarantee ? 'Guaranteed delivery date' : 'Estimated delivery'} · Insurance not confirmed`,
@@ -50,7 +50,7 @@ export function normalizeCMS(data, input, place, now) {
       const outOfPocket = individualCost(p.moops, ['Maximum Out of Pocket for Medical and Drug EHB Benefits (Total)']);
       const q = base('cms', 'health-insurance', id, amount, now, 15 * 60000,
         { age: input.age, tobacco: input.tobacco, year: input.year, place, people: 1, subsidies: false, metal, planType: type },
-        'CMS premium estimate for one adult, before tax credits. Eligibility, enrollment date, tobacco rating and final application can change the premium. QuoteScout does not enroll or broker insurance.');
+        'CMS premium estimate for one adult, before tax credits. Eligibility, enrollment date, tobacco rating and final application can change the premium. Quote Scout does not enroll or broker insurance.');
       q.provenance.transformations.push('Monthly premium × 12 for annual premium');
       const rating = p.quality_rating?.available && Number.isInteger(p.quality_rating.global_rating) && p.quality_rating.global_rating > 0 && p.quality_rating.global_rating <= 5 ? `${p.quality_rating.global_rating}/5 (${p.quality_rating.year || 'year not reported'})` : 'Not rated';
       return [{ ...q, name, providerName: issuer, interval: 'month', annual: amount * 12, deductible, outOfPocket,

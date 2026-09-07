@@ -24,7 +24,7 @@ export function createHandler({ storeFactory = getStore, fetcher = fetch, env = 
     }
     if (local && env.QUOTESCOUT_ALLOW_LOCAL_PROVIDERS === '1') { try { const u = new URL(origin); originOK ||= ['localhost','127.0.0.1'].includes(u.hostname) && ['http:','https:'].includes(u.protocol); } catch { /* invalid */ } }
     if (req.method !== 'GET' && req.method !== 'POST') return json({ message: 'Method not allowed.' }, 405);
-    if (req.method === 'POST' && !originOK) return json({ message: 'Open QuoteScout on Shevato to compare.' }, 403);
+    if (req.method === 'POST' && !originOK) return json({ message: 'Open Quote Scout on Shevato to compare.' }, 403);
     let store, config;
     try { store = await storeFactory(); config = validateConfig(await store.get('config', { type: 'json' }) || {}, runtimeEnv); }
     catch { config = validateConfig({}, runtimeEnv); }
@@ -37,7 +37,7 @@ export function createHandler({ storeFactory = getStore, fetcher = fetch, env = 
     } catch (e) { log({ event: 'quotescout_validation', requestId, status: 'INVALID_INPUT' }); return json({ message: ERRORS[e.code] || ERRORS.INVALID_INPUT, field: e.field || '', requestId }, 400); }
     // A random per-tab capability scopes private memory caches. Never persisted or logged.
     const session = req.headers.get('x-quotescout-session') || '';
-    if (!/^[a-f0-9]{64}$/.test(session)) return json({ message: 'Reload QuoteScout and try again.' }, 400);
+    if (!/^[a-f0-9]{64}$/.test(session)) return json({ message: 'Reload Quote Scout and try again.' }, 400);
     if (!store) return json({ message: 'Comparisons are temporarily unavailable. Please try again later.', requestId }, 503);
     const ip = context.ip;
     if (!ip && env.QUOTESCOUT_ALLOW_LOCAL_PROVIDERS !== '1') return json({ message: 'Comparisons are temporarily unavailable.', requestId }, 503);

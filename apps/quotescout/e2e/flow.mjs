@@ -4,7 +4,7 @@ import { newPage, closePage, goto, evaluate, evalAsync, setValue, setViewport, c
 import { VERTICALS } from '../js/model.js';
 import { normalizeEasyPost } from '../../../netlify/functions/lib/quotescout/adapters.mjs';
 export async function run({base,cdpPort}) {
-  const R=[],t=(name,pass,detail='')=>R.push({name:`QuoteScout ${name}`,pass:!!pass,detail});
+  const R=[],t=(name,pass,detail='')=>R.push({name:`Quote Scout ${name}`,pass:!!pass,detail});
   const s=await newPage(cdpPort);const requests=[];let scenario='quotes';
   const capabilities={vehicleData:true,verticals:VERTICALS.map(v=>({...v,capability:['package-shipping','health-insurance'].includes(v.id)?'Beta':'Requires provider integration'}))};
   const input={originZip:'90210',destinationZip:'10001',weight:16,length:10,width:5,height:3};
