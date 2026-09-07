@@ -201,6 +201,7 @@ coverage.
 | Gym Tracker | FULL | FULL | FULL | FULL | FULL | FULL | Views via source extraction; SW at unit + browser layers |
 | MapTap Rivals | part | FULL | FULL | FULL | FULL | part | stats/network deep; app.js IIFE reachable only via browser |
 | Mario Kart | FULL | FULL | FULL | FULL | FULL | part | Achievements engine still uncovered (large, low risk) |
+| Quote Scout | FULL | FULL | FULL | FULL | FULL | part | Strict API schemas, provenance/ranking, quotas/cache isolation, streaming and progressive questions; paid-provider contract tests require access |
 | Rising Shows | FULL | FULL | FULL | FULL | FULL | FULL | Producers + consumers tied; finder E2E data-gated |
 | Trip Planner | FULL | FULL | FULL | FULL | FULL | FULL | Reference estate |
 | sync-system | FULL | part | n/a | n/a | n/a | FULL | Behavioral harness on the real engine; RTDB path out of scope |
@@ -757,3 +758,5 @@ are recorded here so the next session does not have to re-measure.
 **Also not adopted:** Prettier, any style preset, or `eslint:recommended`
 wholesale. The `eslint-disable` comments already in the codebase refer to the
 unenabled hygiene rules, which is why `reportUnusedDisableDirectives` is off.
+
+Quote Scout: node:test covers validation, pricing provenance, ranking, private cache isolation, quota CAS, provider failure modes and API guards. Browser coverage exercises progressive questions, streamed results, refresh, Top 3, mobile and accessibility. External API sandbox checks are opt-in and excluded from normal CI. See `apps/quotescout/README.md`.

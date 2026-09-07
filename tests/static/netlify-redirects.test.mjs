@@ -77,6 +77,9 @@ const EXPECTED = [
   ['/apps/brain-arena/*', '/apps/arena/:splat'],
   ['/apps/rising-seasons/*', '/apps/rising-shows/:splat'],
   ['/tools/trip-planner*', '/apps/trip-planner/'],
+  ['/apps/quotescout/tests/*', '/404.html', 404],
+  ['/apps/quotescout/e2e/*', '/404.html', 404],
+  ['/netlify/functions/tests/*', '/404.html', 404],
 ];
 
 // Redirect targets that only exist after `npm run build:site` runs on deploy
@@ -94,12 +97,12 @@ test('netlify.toml parses into the expected number of redirect rules', () => {
   }
 });
 
-for (const [from, to] of EXPECTED) {
-  test(`redirect ${from} -> ${to} is a forced 301`, () => {
+for (const [from, to, status = 301] of EXPECTED) {
+  test(`redirect ${from} -> ${to} is a forced ${status}`, () => {
     const rule = RULES.find((r) => r.from === from);
     assert.ok(rule, `no [[redirects]] block with from = "${from}"`);
     assert.equal(rule.to, to, `from = "${from}" must redirect to "${to}"`);
-    assert.equal(rule.status, 301, `from = "${from}" must be a permanent 301`);
+    assert.equal(rule.status, status, `from = "${from}" must use status ${status}`);
     assert.equal(rule.force, true, `from = "${from}" needs force = true or the physical file wins`);
   });
 }

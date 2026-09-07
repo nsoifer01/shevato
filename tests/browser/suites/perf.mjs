@@ -85,6 +85,7 @@ const BUDGETS = {
   // note): ~45% headroom over the measured 35,978,695. Growth comes from the
   // daily-refreshed data-index.json; an eager-extras regression adds ~67 MB
   // and always trips this.
+  'quotescout': { path: '/apps/quotescout/', bytes: 1_000_000, reqs: 40, dom: 650 },
   'rising-shows':  { path: '/apps/rising-shows/',   bytes: 52_000_000, reqs: 54,  dom: 1_800 },
   'trip-planner':  { path: '/apps/trip-planner/',   bytes: 3_200_000, reqs: 48,  dom: 1_300 },
 };

@@ -216,13 +216,14 @@ const NETLIFY_TOML = read('netlify.toml');
 const REDIRECTS = NETLIFY_TOML.split(/^(?=\[)/m)
   .filter((section) => section.startsWith('[[redirects]]'))
   .map((section) => ({
+    status: Number((section.match(/^\s*status\s*=\s*(\d+)/m) || [])[1]),
     from: (section.match(/^\s*from\s*=\s*"([^"]+)"/m) || [])[1],
     to: (section.match(/^\s*to\s*=\s*"([^"]+)"/m) || [])[1],
   }));
 
 test('netlify.toml redirect targets never end in .html', () => {
   assert.ok(REDIRECTS.length >= 10, 'redirect parse found too few rules');
-  const bad = REDIRECTS.filter((r) => !r.to || /\.html$/i.test(r.to)).map((r) => `${r.from} -> ${r.to}`);
+  const bad = REDIRECTS.filter((r) => r.status >= 300 && r.status < 400).filter((r) => !r.to || /\.html$/i.test(r.to)).map((r) => `${r.from} -> ${r.to}`);
   assert.deepEqual(bad, [], 'a redirect landing on .html creates a second hop onto the clean URL');
 });
 
