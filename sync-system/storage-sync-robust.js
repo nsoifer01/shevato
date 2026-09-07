@@ -33,6 +33,9 @@ import {
   estimatePayloadBytes,
   sameKeySet,
   decideRemoteChange,
+  pickConflictWinner,
+  recordIndex,
+  mergeRecordCollections,
   requeueFailedWrites,
   isPermanentWriteError,
   splitIntoChunks,
@@ -95,6 +98,15 @@ const CHUNK_COLLECTION = 'chunks';
 // first account's data into its own cloud document. Not part of any
 // namespace's key set, so it never syncs itself.
 const SYNC_OWNER_KEY = 'shevato:sync-owner';
+// Where the three-way merge base and the conflict copies live. All three are
+// plain keys outside every namespace's key set, so none of them is ever
+// itself synced and notifyLocalChange ignores them.
+const SYNC_BASE_KEY_PREFIX = 'shevato:sync-base:';
+const CONFLICT_KEY_PREFIX = 'shevato:sync-conflict:';
+const CONFLICT_INDEX_KEY = 'shevato:sync-conflicts';
+// A device that conflicts repeatedly must not fill its own storage with
+// evidence of it.
+const MAX_CONFLICT_COPIES = 20;
 // Room for the `{ data: { ... }, meta: { lastUpdated } }` envelope each
 // commit carries around the entries planFlushBatches packs.
 const FLUSH_ENVELOPE_BYTES = 256;
@@ -106,10 +118,34 @@ const FLUSH_ENVELOPE_BYTES = 256;
  * forbids in a document id (`/` above all), so the readable part is
  * sanitised and disambiguated with the key's hash, so two different keys can
  * never collapse onto the same run of part documents.
+ *
+ * VERSIONED (2026-09-07 audit F04). Without `version` in the id, successive
+ * versions of the same key wrote to the SAME part documents. Parts landed
+ * before the manifest, so a reader holding the old manifest read the new
+ * parts under it, and the assembled value was a mixture of two versions
+ * that JSON.parse was perfectly happy to accept. A version token makes each
+ * committed snapshot immutable: a new version writes new documents, the old
+ * ones stay readable under the old manifest, and the old ones are collected
+ * only after the new manifest is durable.
+ *
+ * `version` omitted reproduces the pre-2026-09-07 id, which is what old
+ * manifests point at and what the first upgraded write has to sweep.
  */
-function chunkDocId(key, seq) {
+function chunkDocId(key, seq, version) {
   const readable = String(key).replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 64);
-  return `${readable}-${hashValue(key)}__${seq}`;
+  const stem = `${readable}-${hashValue(key)}`;
+  return version ? `${stem}__v${version}__${seq}` : `${stem}__${seq}`;
+}
+
+/**
+ * The token that names one committed snapshot of a key.
+ *
+ * Revision alone is not enough: two devices can reach the same rev with
+ * different content, and their part documents must not collide. Revision
+ * plus the content hash cannot.
+ */
+function chunkVersionToken(rev, hash) {
+  return `${Number(rev) || 0}-${String(hash || 'null').replace(/[^A-Za-z0-9_-]/g, '')}`;
 }
 
 /**
@@ -137,6 +173,22 @@ class StorageSyncManager {
     // `chunkFetches` de-duplicates in-flight reassemblies, because
     // Firestore re-emits the whole document on every listener re-attach.
     this.chunkCounts = new Map(); // `${namespace}\u0000${key}` -> part count
+    // The snapshot whose part documents are currently referenced by the
+    // manifest we last wrote or last read: `${ns}\u0000${key}` ->
+    // { version, parts }. `version` null means the legacy unversioned run.
+    // This is what a new write collects AFTER its own manifest is durable,
+    // and never before.
+    this.committedChunks = new Map();
+    // ---- F05 conflict machinery -----------------------------------------
+    // The state the two sides last AGREED on, per key: an id -> content-hash
+    // index of the records in it (see recordIndex). It is what tells an
+    // addition apart from a deletion when both devices have moved, and it is
+    // an index rather than a copy of the value because a second copy of an
+    // 800 KB game log is a real cost on a 5 MB storage budget.
+    this.syncBases = new Map();   // `${ns}\u0000${key}` -> id->hash index | null
+    // Conflict copies written this session, newest last, so a page can offer
+    // recovery without re-reading storage.
+    this.conflictRecords = [];
     this.chunkFetches = new Set(); // `${key}:${hash}:${rev}`
     
     // Check if immediate sync override is already installed
@@ -647,16 +699,32 @@ class StorageSyncManager {
    * which the user sees as flicker on hover when the cursor is over a
    * card whose DOM gets rebuilt mid-interaction.
    */
-  applyRemoteChange(key, remoteInfo) {
+  applyRemoteChange(key, remoteInfo, options = {}) {
     const localRev = this.localRevisions.get(key);
     const remoteTimestamp = getTimestamp(remoteInfo.updatedAt);
     const lastRemoteUpdate = this.lastRemoteUpdates.get(key) || 0;
     const verdict = decideRemoteChange(localRev, remoteInfo, lastRemoteUpdate);
 
-    if (verdict === 'skip-stale' || verdict === 'skip-older') return;
+    if (verdict === 'skip-stale') return;
+    if (verdict === 'skip-older') {
+      // The cloud is BEHIND this device, which normally means a peer flushed
+      // an older logical version over ours. Ignoring it silently is how the
+      // two ends stay permanently different, so republish: our value carries
+      // a higher rev and the peer, being clean, will take it.
+      this.lastRemoteUpdates.set(key, remoteTimestamp);
+      this.republishLocalValue(key);
+      return;
+    }
     if (verdict === 'skip-deduped') {
       this.lastRemoteUpdates.set(key, remoteTimestamp);
+      // Our own write coming back: this is the moment the two sides agree.
+      this.rememberSyncBaseForKey(key, remoteInfo.value);
       return;
+    }
+    if (verdict === 'conflict') {
+      const resolved = this.resolveConflict(key, localRev, remoteInfo);
+      if (!resolved) return;                 // local kept; a copy was preserved
+      remoteInfo = resolved;                 // apply the merged/winning value
     }
 
     // Echo-prevention lock. Held only across the synchronous body below
@@ -680,10 +748,19 @@ class StorageSyncManager {
       }
 
       this.localRevisions.set(key, {
-        rev: remoteInfo.rev || 0,
+        // LAMPORT, not "theirs". Advancing to max(local, remote) is what
+        // makes rev a causal order every device agrees on, which is what
+        // replaced the wall-clock comparison in decideRemoteChange. Taking
+        // the remote rev outright let a device that was ahead fall back and
+        // then re-collide at a revision it had already used.
+        rev: Math.max((localRev && localRev.rev) || 0, remoteInfo.rev || 0),
         updatedAt: remoteTimestamp,
-        hash: hashValue(remoteInfo.value)
+        hash: hashValue(remoteInfo.value),
+        // Applied straight from the cloud, or already re-queued by the
+        // conflict resolver, which sets this itself.
+        dirty: !!options.stillDirty
       });
+      this.rememberSyncBaseForKey(key, remoteInfo.value);
 
       this.lastRemoteUpdates.set(key, remoteTimestamp);
 
@@ -693,6 +770,211 @@ class StorageSyncManager {
     } finally {
       this.syncLocks.delete(key);
     }
+  }
+
+  /* ---------------------------------------------------------------------
+   * F05: conflicts, and what happens to the side that does not win.
+   * ------------------------------------------------------------------- */
+
+  /** Which namespace owns a key, so the base index can be filed per app. */
+  namespaceOfKey(key) {
+    for (const [namespace, state] of this.syncStates) {
+      if (state && state.keys && state.keys.has(key)) return namespace;
+    }
+    return null;
+  }
+
+  /**
+   * Record the state the two sides now agree on, as an id -> content-hash
+   * index. Persisted (outside every namespace's key set, so it never syncs
+   * itself) because the three-way merge has to survive a reload: without a
+   * base, "this record is missing from their copy" cannot be told apart from
+   * "they deleted it", and a two-way union resurrects every deletion.
+   */
+  rememberSyncBase(namespace, key, value) {
+    if (!namespace) return;
+    const index = value === null || value === undefined ? null : recordIndex(value);
+    this.syncBases.set(this.chunkCountKey(namespace, key), index);
+    try {
+      const setItem = this.originalMethods?.setItem || localStorage.setItem.bind(localStorage);
+      const getItem = this.originalMethods?.getItem || localStorage.getItem.bind(localStorage);
+      const storeKey = SYNC_BASE_KEY_PREFIX + namespace;
+      let all = {};
+      try { all = JSON.parse(getItem(storeKey) || '{}') || {}; } catch (_) { all = {}; }
+      if (index) all[key] = index; else delete all[key];
+      setItem(storeKey, JSON.stringify(all));
+    } catch (_) {
+      // Storage full or blocked. The in-memory base still works for this
+      // session; after a reload the merge degrades to a conflict copy, which
+      // is the safe direction.
+    }
+  }
+
+  rememberSyncBaseForKey(key, value) {
+    this.rememberSyncBase(this.namespaceOfKey(key), key, value);
+  }
+
+  /** The agreed base for a key, from memory or from the last session. */
+  syncBaseFor(key) {
+    const namespace = this.namespaceOfKey(key);
+    if (!namespace) return null;
+    const mapKey = this.chunkCountKey(namespace, key);
+    if (this.syncBases.has(mapKey)) return this.syncBases.get(mapKey);
+    try {
+      const getItem = this.originalMethods?.getItem || localStorage.getItem.bind(localStorage);
+      const all = JSON.parse(getItem(SYNC_BASE_KEY_PREFIX + namespace) || '{}') || {};
+      const index = all && typeof all[key] === 'object' ? all[key] : null;
+      this.syncBases.set(mapKey, index);
+      return index;
+    } catch (_) { return null; }
+  }
+
+  /** This device's current value for a key, parsed. */
+  readLocalValue(key) {
+    try {
+      const getItem = this.originalMethods?.getItem || localStorage.getItem.bind(localStorage);
+      const raw = getItem(key);
+      if (raw === null || raw === undefined) return null;
+      return parseValue(raw);
+    } catch (_) { return null; }
+  }
+
+  /**
+   * Resolve a conflict: both this device and the cloud have changed a key
+   * since they last agreed.
+   *
+   * Order of preference:
+   *   1. MERGE, when the value is a collection of identified records. A
+   *      three-way merge against the agreed base keeps both devices'
+   *      additions, honours both devices' deletions, and only falls back to
+   *      a per-record winner for records both sides edited. This is the case
+   *      that matters: gymTrackerSessions, footballH2HGames,
+   *      maptapRivalsGames and marioKartRaces are all one localStorage value
+   *      holding many independent records, so before this an evening logged
+   *      on a phone and an evening logged on a laptop competed for the whole
+   *      collection and one of them lost.
+   *   2. Otherwise a deterministic winner, with the LOSER PRESERVED as a
+   *      recoverable copy and the page told, rather than silently dropped.
+   *
+   * @returns {object|null} the remoteInfo to apply, or null when the local
+   *          value stands (in which case it is re-queued so the cloud
+   *          converges on it).
+   */
+  resolveConflict(key, localRev, remoteInfo) {
+    const localValue = this.readLocalValue(key);
+    const remoteValue = remoteInfo.deleted ? null : remoteInfo.value;
+    const nextRev = Math.max((localRev && localRev.rev) || 0, remoteInfo.rev || 0) + 1;
+
+    const merge = (remoteValue === null || localValue === null)
+      ? null
+      : mergeRecordCollections(this.syncBaseFor(key), localValue, remoteValue);
+
+    if (merge) {
+      // A merge loses nothing structurally, so a conflict copy is only kept
+      // when individual records genuinely disagreed.
+      if (merge.conflicts.length) {
+        this.preserveConflictCopy(key, localValue, 'record-conflict', merge.conflicts);
+      }
+      this.publishResolved(key, merge.merged, nextRev);
+      this.notifyConflict(key, {
+        resolution: 'merged',
+        recordCount: merge.merged.length,
+        conflictedRecordIds: merge.conflicts,
+      });
+      return {
+        rev: nextRev,
+        updatedAt: remoteInfo.updatedAt,
+        hash: hashValue(merge.merged),
+        value: merge.merged,
+      };
+    }
+
+    const winner = pickConflictWinner(localRev, remoteInfo);
+    if (winner === 'remote') {
+      this.preserveConflictCopy(key, localValue, 'local-superseded', []);
+      this.notifyConflict(key, { resolution: 'remote-wins' });
+      return remoteInfo;
+    }
+    // Local stands. Preserve THEIR version and republish ours so the cloud
+    // stops holding a value nobody is looking at.
+    this.preserveConflictCopy(key, remoteValue, 'remote-superseded', []);
+    this.publishResolved(key, localValue, nextRev);
+    this.notifyConflict(key, { resolution: 'local-wins' });
+    return null;
+  }
+
+  /**
+   * Write the losing side of a conflict where it can be recovered.
+   *
+   * Deliberately a plain localStorage key outside every namespace's key set:
+   * it must never sync (a conflict copy is device-local evidence, not shared
+   * state) and must never be mistaken for the live value. Capped, oldest
+   * first, so a device that conflicts repeatedly cannot fill its own storage.
+   */
+  preserveConflictCopy(key, value, reason, recordIds) {
+    if (value === null || value === undefined) return;
+    const entry = {
+      key,
+      reason,
+      recordIds: Array.isArray(recordIds) ? recordIds.slice(0, 50) : [],
+      at: new Date().toISOString(),
+      value,
+    };
+    try {
+      const setItem = this.originalMethods?.setItem || localStorage.setItem.bind(localStorage);
+      const getItem = this.originalMethods?.getItem || localStorage.getItem.bind(localStorage);
+      const removeItem = this.originalMethods?.removeItem || localStorage.removeItem.bind(localStorage);
+      let index = [];
+      try { index = JSON.parse(getItem(CONFLICT_INDEX_KEY) || '[]') || []; } catch (_) { index = []; }
+      const id = `${CONFLICT_KEY_PREFIX}${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      setItem(id, JSON.stringify(entry));
+      index.push({ id, key, reason, at: entry.at });
+      while (index.length > MAX_CONFLICT_COPIES) {
+        const dropped = index.shift();
+        try { removeItem(dropped.id); } catch (_) { /* already gone */ }
+      }
+      setItem(CONFLICT_INDEX_KEY, JSON.stringify(index));
+      this.conflictRecords.push({ id, key, reason, at: entry.at });
+    } catch (_) {
+      // A conflict copy we cannot store must not stop the resolution: the
+      // merge or the winner still applies, and the page is still told.
+    }
+  }
+
+  /** Queue a resolved value for upload without going through setItem. */
+  publishResolved(key, value, rev) {
+    const namespace = this.namespaceOfKey(key);
+    const state = namespace ? this.syncStates.get(namespace) : null;
+    if (!state) return;
+    const queue = this.writeQueues.get(namespace);
+    if (!queue) return;
+    const hash = hashValue(value);
+    queue.set(key, { value, rev, updatedAt: Date.now(), deleted: false, hash });
+    this.localRevisions.set(key, { rev, updatedAt: Date.now(), hash, dirty: true });
+    if (state.writeTimer) clearTimeout(state.writeTimer);
+    state.writeTimer = setTimeout(() => this.flushWrites(state), DEBOUNCE_MS);
+  }
+
+  /**
+   * Re-send this device's current value because the cloud is holding an
+   * older logical version of it. Without this, `skip-older` left the two
+   * ends permanently different with nothing to repair them.
+   */
+  republishLocalValue(key) {
+    const value = this.readLocalValue(key);
+    if (value === null) return;
+    const localRev = this.localRevisions.get(key);
+    this.publishResolved(key, value, ((localRev && localRev.rev) || 0) + 1);
+  }
+
+  /** Tell the page a conflict happened, so it can offer recovery. */
+  notifyConflict(key, detail) {
+    if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+    try {
+      window.dispatchEvent(new CustomEvent('syncConflict', {
+        detail: { key, ...detail, copies: this.conflictRecords.slice(-5) }
+      }));
+    } catch (_) { /* never let a notification break a sync */ }
   }
 
   /**
@@ -741,10 +1023,17 @@ class StorageSyncManager {
       hash: currentHash
     });
 
-    this.localRevisions.set(key, { 
-      rev: newRev, 
+    this.localRevisions.set(key, {
+      rev: newRev,
       updatedAt: now,
-      hash: currentHash
+      hash: currentHash,
+      // DIRTY until the cloud accepts it. This, not a clock comparison, is
+      // what decideRemoteChange uses to tell "the cloud moved and we did
+      // not" (take theirs) from "we both moved" (a conflict). Comparing a
+      // device's Date.now() against a Firestore server timestamp made the
+      // answer depend on how well the two clocks happened to agree, and a
+      // device one hour fast rejected every legitimate update for an hour.
+      dirty: true
     });
 
     // Clear existing timer
@@ -781,6 +1070,15 @@ class StorageSyncManager {
 
       state.retryCount = 0;
       state.lastSyncTime = Date.now();
+
+      // The cloud has accepted these values, so this device no longer holds
+      // anything the cloud has not seen: the keys are clean, and what was
+      // written is now the state both sides agree on.
+      for (const [key, info] of writes) {
+        const rev = this.localRevisions.get(key);
+        if (rev && rev.rev === info.rev) this.localRevisions.set(key, { ...rev, dirty: false });
+        this.rememberSyncBase(state.namespace, key, info.deleted ? null : info.value);
+      }
 
       // Broadcast to peer tabs that this namespace just changed. Their
       // onSnapshot listeners will eventually fire too, but a same-origin
@@ -881,7 +1179,8 @@ class StorageSyncManager {
 
     const entries = [];       // { key, entry, bytes } for the inline document
     const chunkWrites = [];   // part documents to write before the manifest
-    const staleChunks = [];   // part documents to delete after it
+    const staleChunks = [];   // part documents of the SUPERSEDED snapshot
+    const newlyCommitted = [];// countKey -> { version, parts } once published
 
     for (const [key, info] of writes) {
       if (info.deleted) {
@@ -903,7 +1202,7 @@ class StorageSyncManager {
           updatedAt: serverTimestamp(),
           hash: hashValue(null)
         }));
-        staleChunks.push(...this.staleChunkRefs(state, key, 0));
+        staleChunks.push(...this.supersededChunkRefs(state, key));
         continue;
       }
 
@@ -916,15 +1215,18 @@ class StorageSyncManager {
         // A value that shrank back under the threshold leaves its old parts
         // behind; they are unreferenced the moment this manifest-free entry
         // lands, so they are swept below.
-        staleChunks.push(...this.staleChunkRefs(state, key, 0));
+        staleChunks.push(...this.supersededChunkRefs(state, key));
         continue;
       }
 
+      // Immutable snapshot: a fresh version token means fresh part documents,
+      // so nothing another reader may currently be assembling is overwritten.
+      const version = chunkVersionToken(info.rev, info.hash);
       const parts = splitIntoChunks(serialised, CHUNK_CHARS);
       parts.forEach((part, seq) => {
         chunkWrites.push({
-          ref: doc(db, `${docPath}/${CHUNK_COLLECTION}/${chunkDocId(key, seq)}`),
-          body: { key, seq, part }
+          ref: doc(db, `${docPath}/${CHUNK_COLLECTION}/${chunkDocId(key, seq, version)}`),
+          body: { key, seq, part, version }
         });
       });
       const entry = {
@@ -932,11 +1234,18 @@ class StorageSyncManager {
         parts: parts.length,
         rev: info.rev,
         updatedAt: serverTimestamp(),
-        hash: info.hash
+        hash: info.hash,
+        // What the reader checks the reassembled value against. `chars` is
+        // the serialised length, so a short read is caught before JSON.parse
+        // gets a chance to accept a truncation that happens to still parse.
+        chunkVersion: version,
+        chars: serialised.length
       };
       entries.push(measureEntry(key, entry));
-      staleChunks.push(...this.staleChunkRefs(state, key, parts.length));
+      // The PREVIOUS snapshot, collected below - after this manifest lands.
+      staleChunks.push(...this.supersededChunkRefs(state, key));
       this.chunkCounts.set(this.chunkCountKey(state.namespace, key), parts.length);
+      newlyCommitted.push([this.chunkCountKey(state.namespace, key), { version, parts: parts.length }]);
     }
 
     // Parts first, manifest second. A peer whose listener fires between the
@@ -966,9 +1275,19 @@ class StorageSyncManager {
       }, { merge: true });
     }
 
-    // Only garbage once nothing references them. Best-effort: an orphan
-    // part document is never read (the manifest says how many parts there
-    // are) and is overwritten by the next write that needs that sequence.
+    // ONLY NOW. Every part above is written before the manifest, and the
+    // previous snapshot's parts are deleted only after it - so at no instant
+    // is there a published manifest whose parts are absent or belong to a
+    // different version. A reader caught in the middle reads the previous
+    // committed snapshot, whole.
+    //
+    // Best-effort deletion: an orphan part document is never read (the
+    // manifest names its version) and costs a little storage until the next
+    // sweep. Losing the pointer to it is worse than leaving it, so the
+    // bookkeeping below only advances for keys whose manifest landed.
+    for (const [countKey, committed] of newlyCommitted) {
+      this.committedChunks.set(countKey, committed);
+    }
     for (const ref of staleChunks) {
       try { await deleteDoc(ref); } catch (_) { /* swept again next time */ }
     }
@@ -997,22 +1316,38 @@ class StorageSyncManager {
   }
 
   /**
-   * Part documents that a write leaving `keep` parts behind makes garbage.
+   * Every part document of the snapshot this write supersedes.
    *
-   * `chunkCounts` holds the highest part count we have seen for the key, so
-   * shrinking a value (or moving it back inline, `keep === 0`) yields the
-   * tail that is no longer referenced.
+   * The old `staleChunkRefs(state, key, keep)` only ever returned the TAIL a
+   * shrinking value left behind, because the head was overwritten in place -
+   * which is precisely the behaviour F04 removes. A versioned write shares
+   * no document with its predecessor, so the whole predecessor is garbage,
+   * and the caller deletes it only once the new manifest is durable.
+   *
+   * The legacy (unversioned) run is handled by the `version === null` branch:
+   * the first write after the upgrade collects the parts the pre-upgrade
+   * engine left at the old ids, so a device does not accumulate two copies.
    */
-  staleChunkRefs(state, key, keep) {
+  supersededChunkRefs(state, key) {
     const countKey = this.chunkCountKey(state.namespace, key);
-    const known = this.chunkCounts.get(countKey) || 0;
-    if (known <= keep) return [];
+    const committed = this.committedChunks.get(countKey);
     const base = `users/${state.userId}/apps/${state.namespace}/${CHUNK_COLLECTION}`;
     const refs = [];
-    for (let seq = keep; seq < known; seq++) {
-      refs.push(doc(db, `${base}/${chunkDocId(key, seq)}`));
+    if (committed) {
+      for (let seq = 0; seq < committed.parts; seq++) {
+        refs.push(doc(db, `${base}/${chunkDocId(key, seq, committed.version)}`));
+      }
+      this.committedChunks.delete(countKey);
+    } else {
+      // Nothing recorded: either the key was never chunked here, or this is
+      // the first write since the upgrade and the predecessor is a legacy
+      // unversioned run whose length chunkCounts remembers.
+      const known = this.chunkCounts.get(countKey) || 0;
+      for (let seq = 0; seq < known; seq++) {
+        refs.push(doc(db, `${base}/${chunkDocId(key, seq)}`));
+      }
     }
-    this.chunkCounts.set(countKey, keep);
+    this.chunkCounts.set(countKey, 0);
     return refs;
   }
 
@@ -1031,6 +1366,10 @@ class StorageSyncManager {
     const parts = Number(manifest?.parts) || 0;
     const countKey = this.chunkCountKey(state.namespace, key);
     this.chunkCounts.set(countKey, Math.max(this.chunkCounts.get(countKey) || 0, parts));
+    // Remember which snapshot the cloud currently points at, so a later
+    // write from THIS device collects that one rather than guessing.
+    const manifestVersion = typeof manifest?.chunkVersion === 'string' ? manifest.chunkVersion : null;
+    this.committedChunks.set(countKey, { version: manifestVersion, parts });
 
     const verdict = decideRemoteChange(
       this.localRevisions.get(key),
@@ -1050,21 +1389,49 @@ class StorageSyncManager {
 
     try {
       const base = `users/${state.userId}/apps/${state.namespace}/${CHUNK_COLLECTION}`;
+      // A manifest with no chunkVersion was written by the pre-2026-09-07
+      // engine and points at the unversioned ids. Reading it must keep
+      // working: an upgraded device may well find its own cloud document
+      // still in the old shape.
       const snapshots = await Promise.all(
-        Array.from({ length: parts }, (_, seq) => getDoc(doc(db, `${base}/${chunkDocId(key, seq)}`)))
+        Array.from({ length: parts },
+          (_, seq) => getDoc(doc(db, `${base}/${chunkDocId(key, seq, manifestVersion)}`)))
       );
       if (state.stopped) return;
 
       let joined = '';
       for (let seq = 0; seq < snapshots.length; seq++) {
         const snapshot = snapshots[seq];
-        const part = (snapshot && typeof snapshot.exists === 'function' && snapshot.exists())
-          ? snapshot.data()?.part
+        const data = (snapshot && typeof snapshot.exists === 'function' && snapshot.exists())
+          ? snapshot.data()
           : null;
+        const part = data ? data.part : null;
         if (typeof part !== 'string') {
           throw new Error(`part ${seq} of ${parts} is missing`);
         }
+        // A versioned part carries the version it belongs to. Checking it
+        // costs nothing and turns "these documents happened to be at these
+        // ids" into "these documents are this snapshot".
+        if (manifestVersion && data.version !== undefined && data.version !== manifestVersion) {
+          throw new Error(`part ${seq} belongs to version ${data.version}, not ${manifestVersion}`);
+        }
         joined += part;
+      }
+
+      // INTEGRITY, BEFORE ANYTHING IS APPLIED. Valid JSON was never proof
+      // that the parts belonged together: the old engine overwrote parts in
+      // place, so a reader could assemble the head of one version and the
+      // tail of another into a document that parsed perfectly and was wrong.
+      // The manifest carries the length and the content hash of the value it
+      // describes, and both are checked here. A mismatch is not applied and
+      // not recorded, so the next snapshot retries against whatever the
+      // cloud settled on.
+      if (Number.isFinite(manifest.chars) && joined.length !== manifest.chars) {
+        throw new Error(`assembled ${joined.length} chars, manifest says ${manifest.chars}`);
+      }
+      const value = JSON.parse(joined);
+      if (typeof manifest.hash === 'string' && hashValue(value) !== manifest.hash) {
+        throw new Error(`assembled content does not match the manifest digest ${manifest.hash}`);
       }
 
       // Deliberately the same entry point an inline value uses: conflict
@@ -1074,7 +1441,7 @@ class StorageSyncManager {
         rev: manifest.rev,
         updatedAt: manifest.updatedAt,
         hash: manifest.hash,
-        value: JSON.parse(joined)
+        value
       });
     } catch (error) {
       // Leave lastRemoteUpdates untouched so the next snapshot retries.

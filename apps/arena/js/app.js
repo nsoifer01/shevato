@@ -513,6 +513,31 @@ async function tryLoadPendingPostMatch() {
     setView('play');
     showJoinError('Loading recap…');
     try {
+        // STILL IN THE ROOM? Then this is not a recap, it is the room.
+        //
+        // The end screen rewrites the URL to ?postMatch=<code> so a refresh
+        // and a share both land back on it - and a refresh is exactly what
+        // happens on the end screen (a pull-to-refresh on a phone, reopening
+        // the link the app put in the address bar). Coming back through the
+        // recap path attached NO room listener, so a player who was still a
+        // member stopped hearing about the room entirely: the rematch someone
+        // else proposed never reached them, and the restart that followed
+        // left them staring at a frozen podium. The read-only recap is for
+        // people who were NOT in the room; a member re-enters it live.
+        try {
+            const mine = await getDoc(doc(db, 'triviaRooms', code, 'players', state.user.uid));
+            if (mine.exists()) {
+                clearJoinError();
+                state.postMatchCode = null;
+                try {
+                    await updateDoc(doc(db, 'triviaRooms', code, 'players', state.user.uid),
+                        { lastSeen: serverTimestamp(), disconnectedAt: deleteField() });
+                } catch (_) { /* presence is best-effort */ }
+                enterRoom(code);
+                return;
+            }
+        } catch (_) { /* not readable: fall through to the recap path */ }
+
         let snap;
         try {
             snap = await getDoc(doc(db, 'triviaRooms', code));
