@@ -76,13 +76,13 @@ What the local variant changes, all from existing tokens:
   pins `box-shadow: none !important`, so any shadow would need a second
   `!important`; a 7% white top edge gets the same "lit from above" read for
   free, and is what keeps a flat fill from looking like a disabled input.
-- **The primary is dialled back.** It was a 700-weight label inside a
-  32%-opacity gold border, which beside the calmer secondaries read as a
-  warning strip. 600 weight, a 22% border and `--accent-warm` for the label:
-  measured 9.98:1 against its own composited background, still unmistakably
-  first. (Measure gold-on-translucent-gold by COMPOSITING the button's
-  background over the panel first; comparing the label to the raw
-  `rgba(245,197,24,0.12)` reports a meaningless 1.13:1.)
+- **The primary is dialled back, and no longer gold.** It was a 700-weight
+  label inside a 32%-opacity gold border, which beside the calmer secondaries
+  read as a warning strip. It is now 600 weight in indigo. See the palette note
+  below for why indigo; measured 7.8:1 against its own composited background.
+  (Measure any translucent fill by COMPOSITING the button's background over the
+  panel first. Comparing the label to the raw `rgba(...)` reports a meaningless
+  1.5:1, and the same mistake reported 1.13:1 for the gold version.)
 - **One focus language.** Buttons and chips both take
   `box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 1px var(--accent)` rather
   than a ring on one and a glow on the other.
@@ -90,6 +90,43 @@ What the local variant changes, all from existing tokens:
   outbound links that way, so inventing the pattern here would be the one
   flashy note in a restrained group. Where the link goes lives in the
   accessible name and the tooltip.
+
+### Every hue in this app already means something (2026-09-07)
+
+The chips carry their source's brand colour: IMDb gold, TVDB green. That forced
+the primary action OFF gold, because `--accent` is literally IMDb's yellow (the
+palette says so in a comment) and one colour cannot mean both "the action to
+take here" and "IMDb".
+
+Picking its replacement is not a taste question in this app, because the
+palette is nearly fully assigned. Auditing every colour in `styles.css` first:
+
+| hue | already means |
+|---|---|
+| `--accent` #f5c518 gold | IMDb (and, until now, the primary action) |
+| `--good` #34d39e green | added / watched state, and now the TVDB chip |
+| `rgba(56,189,248)` cyan | provider chips: where to watch |
+| `#c084fc` purple | a SPECIAL EPISODE, in the season modal - the very modal that carries this row |
+| `--warn` #fb923c orange | staleness |
+| `--danger` #f87171 red | destructive / negative gap |
+
+Indigo was the only unassigned hue, so it is now "the action", declared as
+`--act-*` custom properties on `.modal-primary-actions` rather than as global
+tokens: it means "primary action in this group", not something site-wide.
+
+Two things fall out of that audit and are worth keeping:
+
+- **The chips drive their own states through `--tag-*` custom properties.** The
+  base `.outbound-tag` rules are written once and read the variant's colour, so
+  hover, press and the focus ring all follow the chip's own hue. That is what
+  avoids a gold focus ring landing on a green chip while keeping ONE focus
+  language. An unrecognised source falls back to neutral.
+- **TVDB uses its own `#6cd491`, not `--good` `#34d39e`.** `--good` is the
+  colour the compare button turns when a show is already added, and the watch
+  button turns when a season is marked watched; painting a stateless link in
+  the state colour would say "this is done". The residual cost is that an
+  added-state compare button and the TVDB chip are both green in the same row.
+  That was accepted knowingly on 2026-09-07, not overlooked.
 
 ### Three tiers, not one row of equals (same round)
 
@@ -102,10 +139,9 @@ is now read top to bottom as primary, actions, references:
   the line without touching the button's own width.
 - **IMDb and TVDB are pills, not buttons** (`.outbound-tag`): same geometry as
   the provider chips so the modal keeps one vocabulary for "small labelled
-  thing you can click", but neutral rather than cyan, because cyan already
-  means "where to watch this". A `::after` ↗ marks that they leave the site and
-  stays out of the accessible name. Measured 7.54:1 against the panel, 28 px
-  tall on desktop and 36 px on a phone.
+  thing you can click", each in its source's brand colour (see the palette note
+  below). Measured 8.83:1 and 7.92:1 composited, 30 px tall on desktop and
+  36 px on a phone.
 - **The lines split by verb.** Line one is what the modal DOES (compare, share
   card, share chart image); line two is where it GOES (permalink, then the two
   outbound chips). The four buttons do not fit one line in this column - they

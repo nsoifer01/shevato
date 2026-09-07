@@ -3127,6 +3127,22 @@ body:has(.modal:not([hidden])) .back-to-top {
   align-items: center;
   gap: 0.5rem;
   margin-top: 0.35rem;
+
+  /* The primary action's hue, local to this group.
+   *
+   * It used to be the app accent, gold. Gold now belongs to the IMDb chip two
+   * lines below, and one colour cannot mean both "the action to take here" and
+   * "IMDb". Every other palette colour in this app is already spoken for:
+   * --good green is the added/watched state AND the TVDB chip, the provider
+   * chips are cyan, #c084fc is a special episode (in the season modal, which
+   * carries this very row), --warn is orange and --danger is red. Indigo is
+   * the one unassigned hue, so it becomes "the action". */
+  --act-ink: #a9b8ff;
+  --act-fill: rgba(122, 145, 255, 0.14);
+  --act-fill-hover: rgba(122, 145, 255, 0.2);
+  --act-line: rgba(122, 145, 255, 0.34);
+  --act-line-hover: rgba(122, 145, 255, 0.48);
+  --act-lift: rgba(169, 184, 255, 0.42);
 }
 /* Forces the wrap point. A flex item that is full-width and zero-height ends
    the line it is on, which is how the outbound chips get a line of their own
@@ -3155,15 +3171,26 @@ body:has(.modal:not([hidden])) .back-to-top {
  * in a restrained group. Where the link goes is in the accessible name and the
  * tooltip instead (see setOutboundLabel). */
 .outbound-tag {
+  /* Each chip carries its source's colour, so every state below is written
+   * once and follows whichever hue the variant sets. An untagged chip falls
+   * back to neutral, which is what a third source would get until someone
+   * gives it a colour. */
+  --tag-ink: var(--muted);
+  --tag-fill: var(--surface-2);
+  --tag-fill-hover: var(--surface-3);
+  --tag-line: var(--border);
+  --tag-lift: rgba(255, 255, 255, 0.06);
+  --tag-ring: rgba(255, 255, 255, 0.1);
+
   display: inline-flex;
   align-items: center;
   min-height: 30px;
   padding: 0 0.7rem;
   border-radius: 999px;
-  border: 1px solid var(--border);
-  border-top-color: rgba(255, 255, 255, 0.06);
-  background: var(--surface-2);
-  color: var(--muted) !important;
+  border: 1px solid var(--tag-line);
+  border-top-color: var(--tag-lift);
+  background: var(--tag-fill);
+  color: var(--tag-ink) !important;
   font-size: 0.74rem;
   font-weight: 600;
   letter-spacing: 0.03em;
@@ -3174,23 +3201,45 @@ body:has(.modal:not([hidden])) .back-to-top {
               color 0.16s var(--ease), transform 0.1s var(--ease);
 }
 .outbound-tag:hover {
-  background: var(--surface-3);
-  border-color: rgba(245, 197, 24, 0.3);
-  border-top-color: rgba(255, 210, 74, 0.4);
-  color: var(--accent-warm) !important;
+  background: var(--tag-fill-hover);
+  border-color: var(--tag-lift);
   text-decoration: none;
 }
 .outbound-tag:active {
   transform: translateY(1px);
-  background: var(--surface-2);
+  background: var(--tag-fill);
 }
-/* The same focus treatment the buttons use, so keyboard focus looks like one
- * language across all six controls rather than a ring here and a glow there. */
+/* Focus is the buttons' ring in the chip's own colour: one focus LANGUAGE
+ * across all six controls, without a gold ring landing on a green chip. */
 .outbound-tag:focus-visible {
   outline: none;
-  color: var(--accent-warm) !important;
-  border-color: rgba(245, 197, 24, 0.3);
-  box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 1px var(--accent);
+  border-color: var(--tag-lift);
+  box-shadow: 0 0 0 3px var(--tag-ring), 0 0 0 1px var(--tag-ink);
+}
+
+/* IMDb keeps the app's own gold, which IS IMDb's brand yellow (--accent is
+ * commented as such in the palette). It no longer collides with the primary
+ * action, because the primary action is no longer gold. */
+.outbound-tag-imdb {
+  --tag-ink: var(--accent);
+  --tag-fill: var(--accent-soft);
+  --tag-fill-hover: rgba(245, 197, 24, 0.2);
+  --tag-line: rgba(245, 197, 24, 0.34);
+  --tag-lift: rgba(245, 197, 24, 0.5);
+  --tag-ring: var(--accent-soft);
+}
+/* TVDB's brand green. Deliberately its own #6cd491 rather than --good
+ * (#34d39e): --good is the "added / watched" state that the primary button
+ * turns when you act on it, and a link with no state at all should not be
+ * painted in the state colour. Keeping the two greens distinguishable is the
+ * point of not reusing the token here. */
+.outbound-tag-tvdb {
+  --tag-ink: #6cd491;
+  --tag-fill: rgba(108, 212, 145, 0.12);
+  --tag-fill-hover: rgba(108, 212, 145, 0.19);
+  --tag-line: rgba(108, 212, 145, 0.34);
+  --tag-lift: rgba(108, 212, 145, 0.5);
+  --tag-ring: rgba(108, 212, 145, 0.14);
 }
 
 /* Cast strip — horizontal-scrolling row of head-and-shoulders cards
@@ -3491,32 +3540,30 @@ a.cast-card-inner:focus-visible {
   border-top-color: var(--border);
 }
 
-/* Primary action (compare on the show modal, watch on the season modal). Same
- * gold language as before, dialled back: this was a 700-weight label inside a
- * 32%-opacity gold border, which next to the calmer secondaries read as a
- * warning strip rather than a first choice. 600 weight, a softer border, the
- * warm gold for the label, and the same lit top edge the secondaries get, so
- * it is unmistakably first without being a bright CTA. */
+/* Primary action (compare on the show modal, watch on the season modal). Held
+ * by hue rather than by weight: a tinted fill, a soft border, the same lit top
+ * edge the secondaries get, and a 600-weight label. It reads first because it
+ * is the only coloured control in the group, not because it is loud. */
 .modal-primary-actions .watch-btn,
 .modal-primary-actions .compare-btn {
-  background: var(--accent-soft);
-  border: 1px solid rgba(245, 197, 24, 0.22);
-  border-top-color: rgba(255, 210, 74, 0.34);
-  color: var(--accent-warm) !important;
+  background: var(--act-fill);
+  border: 1px solid var(--act-line);
+  border-top-color: var(--act-lift);
+  color: var(--act-ink) !important;
   font-weight: 600;
   letter-spacing: 0.01em;
 }
 .modal-primary-actions .watch-btn:hover,
 .modal-primary-actions .compare-btn:hover {
-  background: rgba(245, 197, 24, 0.17);
-  border-color: rgba(245, 197, 24, 0.34);
-  border-top-color: rgba(255, 210, 74, 0.45);
-  color: var(--accent-warm) !important;
+  background: var(--act-fill-hover);
+  border-color: var(--act-line-hover);
+  border-top-color: var(--act-lift);
+  color: var(--act-ink) !important;
 }
 .modal-primary-actions .watch-btn:active,
 .modal-primary-actions .compare-btn:active {
-  background: var(--accent-soft);
-  border-top-color: rgba(245, 197, 24, 0.22);
+  background: var(--act-fill);
+  border-top-color: var(--act-line);
 }
 /* "Already added" state — green to signal the success-of-state, same
  * pattern the watch button uses when a season is marked watched. */

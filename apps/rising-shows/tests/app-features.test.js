@@ -152,7 +152,7 @@ test('vm harness: app.js exports every helper these tests drive', () => {
     'ScrollMemory', 'buildSeasonShareText', 'clampScrollY', 'computeShowRelated',
     'computeStdDev', 'languagesCompatible', 'parseCompareParam',
     'validateDataset', 'seasonEpisodeCount', 'shapeConfidence', 'viewKeyFromHash',
-    'deliverChartImage', 'CHART_IMAGE_FLASH',
+    'deliverChartImage', 'CHART_IMAGE_FLASH', 'watchRowNote',
   ];
   const missing = expected.filter((name) => helpers[name] == null);
   assert.deepEqual(missing, [], `js/app.js stopped exporting: ${missing.join(', ')}`);
@@ -538,6 +538,29 @@ test('share chart image: every delivery route has its own confirmation', () => {
   assert.equal(helpers.CHART_IMAGE_FLASH.copied, 'Copied!');
   assert.equal(helpers.CHART_IMAGE_FLASH.shared, 'Shared!');
   assert.equal(helpers.CHART_IMAGE_FLASH.downloaded, 'Downloaded!');
+});
+
+// ---------------------------------------------------------------------------
+// The streaming row's note agrees with the number of chips
+// ---------------------------------------------------------------------------
+
+test('watchRowNote: one provider gets the singular', () => {
+  // Most shows stream on exactly one service, so this is the COMMON case, not
+  // the edge one: "each service" beside a single chip is wrong English about a
+  // set of one.
+  assert.equal(helpers.watchRowNote(1), 'opens a search on that service');
+});
+
+test('watchRowNote: two or more keep the plural', () => {
+  assert.equal(helpers.watchRowNote(2), 'opens a search on each service');
+  assert.equal(helpers.watchRowNote(5), 'opens a search on each service');
+});
+
+test('watchRowNote: only the quantifier differs between the two forms', () => {
+  // The note's job is to say a chip runs a SEARCH rather than deep-linking the
+  // title, and that promise has to read identically either way.
+  const [one, many] = [helpers.watchRowNote(1), helpers.watchRowNote(3)];
+  assert.equal(one.replace('that', ' '), many.replace('each', ' '));
 });
 
 // ---------------------------------------------------------------------------

@@ -434,8 +434,8 @@
                  four same-sized buttons made the row read as four equal
                  choices. openModal writes the accessible name, which says
                  season or series where the href does. -->
-            <a class="outbound-tag" id="modalImdb" target="_blank" rel="noopener">IMDb</a>
-            <a class="outbound-tag" id="modalTvdb" target="_blank" rel="noopener" hidden>TVDB</a>
+            <a class="outbound-tag outbound-tag-imdb" id="modalImdb" target="_blank" rel="noopener">IMDb</a>
+            <a class="outbound-tag outbound-tag-tvdb" id="modalTvdb" target="_blank" rel="noopener" hidden>TVDB</a>
           </div>
         </div>
       </div>
@@ -477,7 +477,9 @@
           <div class="watch-row" id="showModalWatch" hidden>
             <span class="watch-row-label">Watch on</span>
             <div class="provider-badges" id="showModalProviders"></div>
-            <span class="watch-row-note">opens a search on each service</span>
+            <!-- Wording depends on how many chips rendered; renderShowModalWatchRow
+                 writes it. The markup keeps the plural as the no-JS default. -->
+            <span class="watch-row-note" id="showModalWatchNote">opens a search on each service</span>
           </div>
           <!-- One action row, beside the show's identity. The utilities used to
                sit after "More shows like this", ~1,900 px down a scrolling
@@ -501,8 +503,8 @@
                  site and are the least-used thing here, so they read as
                  references under the action row rather than a fifth and sixth
                  equal choice. -->
-            <a class="outbound-tag" id="showModalImdb" target="_blank" rel="noopener" aria-label="This show on IMDb">IMDb</a>
-            <a class="outbound-tag" id="showModalTvdb" target="_blank" rel="noopener" aria-label="This show on TVDB" hidden>TVDB</a>
+            <a class="outbound-tag outbound-tag-imdb" id="showModalImdb" target="_blank" rel="noopener" aria-label="This show on IMDb">IMDb</a>
+            <a class="outbound-tag outbound-tag-tvdb" id="showModalTvdb" target="_blank" rel="noopener" aria-label="This show on TVDB" hidden>TVDB</a>
           </div>
         </div>
       </div>

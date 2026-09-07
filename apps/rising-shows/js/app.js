@@ -404,6 +404,7 @@ const els = {
   shortcutLegend: document.getElementById('shortcutLegend'),
   modalCurveAnnotation: document.getElementById('modalCurveAnnotation'),
   showModalWatch: document.getElementById('showModalWatch'),
+  showModalWatchNote: document.getElementById('showModalWatchNote'),
   showModalDetailError: document.getElementById('showModalDetailError'),
   showModalOverlayHint: document.getElementById('showModalOverlayHint'),
   compareModalXMode: document.getElementById('compareModalXMode'),
@@ -6754,6 +6755,17 @@ const PROVIDER_URLS = {
   'Crunchyroll':        (q) => `https://www.crunchyroll.com/search?q=${q}`,
 };
 
+// What the streaming row's note says. Its job is to warn that a chip runs a
+// SEARCH rather than deep-linking the title, and most shows stream on exactly
+// one service, where "each service" is wrong English about a set of one. Only
+// the quantifier changes, so a reader who sees both forms across shows sees
+// one sentence rather than two.
+function watchRowNote(count) {
+  return count === 1
+    ? 'opens a search on that service'
+    : 'opens a search on each service';
+}
+
 // The show modal's streaming row: the provider chips ARE the links, one
 // search per mainstream service the show streams on. Until 2026-08 this
 // rendered a separate "Watch on X" button per provider BESIDE a row of
@@ -6773,6 +6785,7 @@ function renderShowModalWatchRow(meta) {
     return;
   }
   if (row) row.hidden = false;
+  if (els.showModalWatchNote) els.showModalWatchNote.textContent = watchRowNote(providers.length);
   for (const p of providers) {
     const url = PROVIDER_URLS[p];
     if (url) {
@@ -6877,6 +6890,7 @@ if (typeof window !== 'undefined') {
     ScrollMemory,
     deliverChartImage,
     CHART_IMAGE_FLASH,
+    watchRowNote,
     buildSeasonShareText,
     parseCompareParam,
     Watched,
