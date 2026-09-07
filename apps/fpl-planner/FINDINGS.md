@@ -1162,14 +1162,22 @@ with chips ON: +0 on all 72 trajectories, both instruments.
   not modals: they keep the page scrollable but carry
   `overscroll-behavior: contain` so their boundary never chains a fling into
   the page.
-- **The app has two marks, on purpose** (owner-supplied art, 2026-08-12):
-  the shield-and-ball at `images/fpl-planner-icon.png` is the favicon (chosen
-  because it stays legible at 16px) and the tactics-board at
-  `images/fpl-planner-logo.png` is the logo on apps.html (the owner's pick;
-  it mushes at tab size). Both were cropped from larger uploads to their
-  rounded tiles with transparent corners and palette-quantized (11 KB / 3 KB);
-  the originals are deleted, so edits mean re-cropping new art, not tweaking
-  a source file.
+- **The favicon is owner-supplied art; the apps-hub card is not** (art
+  supplied 2026-08-12, card revised 2026-09-07). The shield-and-ball at
+  `images/fpl-planner-icon.png` is the favicon, chosen because it stays
+  legible at 16px. The tactics-board at `images/fpl-planner-logo.png` was the
+  apps.html card mark until 2026-09-07, when the owner asked for the card to
+  match the other seven: a 5rem image tile read as bigger and heavier next to
+  seven thin blue glyphs. Every card now uses a Font Awesome glyph in
+  `brand-color-primary`; FPL Planner's is `fa-calendar-check-o`, matching the
+  card's own CTA ("Plan My Gameweek"). The per-card `.app-logo` CSS override
+  in apps.html went with the image. Note `fa-clipboard` was tried first and
+  rejected on sight: in FA 4.7 it is aliased to `fa-paste` and renders as two
+  overlapping pages, which reads as copy/paste, not planning. The PNG is kept
+  but unreferenced. Both images were cropped from larger uploads to rounded
+  tiles with transparent corners and palette-quantized (11 KB / 3 KB); the
+  originals are deleted, so reviving the logo means re-cropping new art, not
+  tweaking a source file.
 - **Emphasized sentences are multiple inline nodes, and flex containers wedge
   them apart.** `parts.js emphasize()` splits an engine sentence into text
   fragments and `<strong>` spans; any list item styled `display: flex` with
