@@ -23,7 +23,7 @@ run Chromium at deploy time, so the output cannot be built on the server).
 
 ## Coverage
 
-The eight app pages, `privacy`, and the marketing pages `about`, `work`,
+The app pages, `privacy`, and the marketing pages `about`, `work`,
 `contact`, and `apps` each have their own card (one `cards.json` entry per
 slug). Three pages intentionally do not use a generated card:
 

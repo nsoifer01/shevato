@@ -90,7 +90,6 @@ const BUDGETS = {
   // and a revert to the season-level index adds ~17 MB, so either trips this.
   // It was 52,000,000 while the season file was the boot payload; leaving it
   // there would have let the whole F08 saving be given back unnoticed.
-  'quotescout': { path: '/apps/quotescout/', bytes: 1_000_000, reqs: 40, dom: 650 },
   'rising-shows':  { path: '/apps/rising-shows/',   bytes: 26_000_000, reqs: 54,  dom: 1_800 },
   'trip-planner':  { path: '/apps/trip-planner/',   bytes: 3_200_000, reqs: 48,  dom: 1_300 },
 };
@@ -689,7 +688,7 @@ export async function run({ base, cdpPort }) {
   // covers the apps that were bad and not the ones that were fine tests the
   // fix rather than the property.
   for (const app of ['arena', 'football-h2h', 'fpl-planner', 'gym-tracker',
-    'maptap-rivals', 'mario-kart', 'quotescout', 'rising-shows', 'trip-planner']) {
+    'maptap-rivals', 'mario-kart', 'rising-shows', 'trip-planner']) {
     try {
       const m = await measureStartupShift(cdpPort, base, app);
       t(`perf ${app}: startup layout shift within budget (390x844, throttled)`,

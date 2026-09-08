@@ -60,8 +60,11 @@ test('CLAUDE.md\'s app-documentation inventory matches the filesystem', () => {
   assert.ok(sentence, 'CLAUDE.md still carries the inventory note');
 
   if (withBoth.length === apps.length) {
-    assert.match(sentence, /all (eight|\d+) apps have both files/i,
-      `all ${apps.length} apps have both files, and the note must say so`);
+    // Count-independent on purpose: the number of apps changes whenever one is
+    // added or retired, and this assertion used to REQUIRE the number, which is
+    // what kept "all eight apps" alive across two app-count changes.
+    assert.match(sentence, /every app has both files/i,
+      'every app has both files, and the note must say so without a count');
     assert.equal(/has a README only/.test(sentence), false,
       'no app is README-only any more');
   } else {
@@ -210,4 +213,35 @@ test('the MapTap README says rules deploys are manual, because they are', () => 
   assert.equal(Object.values(pkg.scripts).some(deploysRules), false,
     'same for an npm script');
   assert.equal(deploysRules(read('netlify.toml')), false, 'same for the Netlify build');
+});
+
+// The site's app set changes. Descriptive copy that hard-codes how many apps
+// exist ("all eight apps", "all 8 app roots", "six of the eight app pages") is
+// stale the next time one is added or retired, and it was wrong twice before
+// this guard existed. Counts OF SPECIFIC NAMED APPS are facts about those apps
+// and are left alone, which is why a nearby list of app slugs excuses a match.
+test('no document describes the app suite by a fixed number', () => {
+  const FILES = [
+    'README.md', 'CLAUDE.md', 'TESTING-AUDIT.md', 'FINDINGS.md',
+    'tests/browser/README.md', 'assets/og/README.md',
+    'home.html', 'apps.html', 'work.html', 'privacy.html', 'robots.txt',
+  ];
+  const slugs = JSON.parse(read('assets/apps-manifest.json')).apps.map((a) => a.slug);
+  const WORDS = 'one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\\d+';
+  // Only phrasings that present the number as the WHOLE set.
+  const WHOLE_SET = new RegExp(
+    `\\b(?:all|across|of the|the|has|have|with|offers?)\\s+(?:the\\s+)?(?:${WORDS})\\s+(?:free\\s+)?app(?:s|\\s+(?:pages?|roots?))\\b`,
+    'gi');
+  const offenders = [];
+  for (const rel of FILES) {
+    const text = read(rel);
+    for (const m of text.matchAll(WHOLE_SET)) {
+      const near = text.slice(Math.max(0, m.index - 250), m.index + 250);
+      if (slugs.filter((slug) => near.includes(slug)).length >= 2) continue;
+      const line = text.slice(text.lastIndexOf('\n', m.index) + 1, text.indexOf('\n', m.index));
+      offenders.push(`${rel}: "${m[0].trim()}"  in: ${line.trim().slice(0, 90)}`);
+    }
+  }
+  assert.deepEqual(offenders, [],
+    `these size the app suite with a fixed number, which goes stale when an app is added or retired. Say "apps", "every app" or "the apps" instead:\n  ${offenders.join('\n  ')}`);
 });

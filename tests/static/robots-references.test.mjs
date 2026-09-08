@@ -11,10 +11,10 @@
 // pages, and robots.txt carried `Disallow: /partials/`. Measured on
 // production with those paths blocked at the network layer, every page
 // rendered with `document.getElementById('header') === null`: no header nav
-// (15 links), no footer nav (6 links), six of the eight app pages left with
-// ZERO internal outbound links, and /privacy with zero inbound ones. The
-// same rule blocked `/sync-system/` (the first <script> in the head of all
-// nine app pages) and `/firebase-config.js` (a module on every page).
+// (15 links), no footer nav (6 links), most app pages left with ZERO
+// internal outbound links, and /privacy with zero inbound ones. The same
+// rule blocked `/sync-system/` (the first <script> in the head of every app
+// page) and `/firebase-config.js` (a module on every page).
 //
 // Nothing caught it: internal-links.test.mjs asserts the targets EXIST,
 // canonical-urls.test.mjs asserts they are the right FORM, and neither asks

@@ -203,7 +203,7 @@ test('no test, e2e or markdown file is published, anywhere', () => {
 
 test('no package manifest is published, at any depth', () => {
   // The root ones never could be - the root is an explicit allow list - but an
-  // app can carry its own (apps/quotescout does), and that one sits inside a
+  // app can carry its own, and that one sits inside a
   // published tree. It shipped until the deny rule reached any depth. A
   // manifest names dependencies, scripts and internal paths, and no page
   // fetches one.

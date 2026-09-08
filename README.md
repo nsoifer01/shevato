@@ -35,7 +35,6 @@ shevato/
 │   ├── gym-tracker/                  # Gym workout tracker (PWA, manifest + service worker)
 │   ├── maptap-rivals/                # Daily MapTap.gg head-to-head tracker
 │   ├── mario-kart/                   # Mario Kart race tracker (8 Deluxe + World)
-│   ├── quotescout/                   # Real CMS marketplace and Medicare plan prices, NHTSA vehicle decoding
 │   ├── rising-shows/                 # TV shows ranked by rating-trend shape + Plex/Kometa integration
 │   └── trip-planner/                 # Day-by-day trip itinerary builder with route map
 │
@@ -80,7 +79,7 @@ data flow, how to run and test it) and `apps/<app>/FINDINGS.md` is its
 accumulated engineering knowledge (discoveries, root causes, regression risks,
 open questions), maintained as a living document. `CLAUDE.md` requires every
 session working on an app to read both first and keep both current as part of
-finishing the work. All eight apps carry both today. Site-level knowledge
+finishing the work. Every app carries both today. Site-level knowledge
 (marketing pages, partials, shared assets, `sync-system/`, Netlify config,
 `firestore.rules`, `privacy.html` drift) lives in the root `FINDINGS.md`.
 FPL modelling and planner experiments are recorded
@@ -96,7 +95,6 @@ in `apps/fpl-planner/experiments/registry.md` with explicit verdicts.
 | Gym Tracker | `apps/gym-tracker/` | Health | Installable PWA, offline support, programs + measurements |
 | MapTap Rivals | `apps/maptap-rivals/` | Game tracker | Daily MapTap.gg H2H against named friends; rivalry seasons + calendar heatmap |
 | Mario Kart Tracker | `apps/mario-kart/` | Game stats | Race log, charts, achievements. Supports MK8 Deluxe + Mario Kart World |
-| Quote Scout | `apps/quotescout/` | Utilities | Real health, dental and Medicare plan prices from official CMS datasets, with no credential and no third-party call, plus NHTSA vehicle data. See app README for coverage |
 | Rising Shows | `apps/rising-shows/` | TV / multimedia | Whole TV shows ranked by the shape of their rating trend across thousands of shows; Plex + Kometa integration under `apps/rising-shows/kometa/` |
 | Trip Planner | `apps/trip-planner/` | Travel | Day-by-day itineraries: flights, stays, costs, night coverage, collision and gap warnings, route map, A-to-B travel options. Optional Firestore sync via site sign-in |
 
@@ -351,9 +349,8 @@ Fixing the product bug is a separate change from the test that documents it.
 - Browser failure screenshots: `.screenshots/e2e-trip-planner/` (gitignored);
   green runs write nothing.
 - The browser runner prints per-suite pass/skip counts and pins expected
-  check counts for all six harness-owned suites (site, apps, a11y, visual,
-  perf, pwa-gym; see EXPECTED_CHECKS in run.mjs), so a crashed block cannot
-  silently shrink the denominator.
+  check counts for every harness-owned suite (see EXPECTED_CHECKS in
+  run.mjs), so a crashed block cannot silently shrink the denominator.
 - CI (`.github/workflows/`): `tests` (unit + static + syntax, every push to
   master and every PR), `browser tests` (PRs + master pushes + manual
   dispatch), `cross-browser smoke` (weekly + manual dispatch), `arena
