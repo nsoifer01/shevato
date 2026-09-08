@@ -17,18 +17,21 @@
 // Raising a budget must be a conscious decision in the same change that
 // grows the page.
 //
-// rising-shows: boot data transfer is INTENTIONAL and bounded since the
-// 2026-08-15 lazy-extras redesign. The app fetches exactly one dataset file
-// at boot (data-index.json, 32.75 MB raw over this no-gzip server, ~4.3 MB
-// brotli in production); the ~67 MB show-modal-extras.json monolith is never
-// fetched (its content rides inside the per-show data/detail/ files, loaded
-// on modal open). Dataset bytes are therefore COUNTED in that page's budget:
-// the budget is code + the deliberate boot data, and a regression that
-// reintroduces an eager extras fetch (~+67 MB) trips it immediately.
+// rising-shows: boot data transfer is INTENTIONAL and bounded. The app
+// fetches exactly one dataset file at boot, and since the 2026-09-05 audit's
+// F08 split that file is SHOW-level (shows-index.json, 15.9 MB raw over this
+// no-gzip server, 3.4 MB brotli in production) rather than the season-level
+// data-index.json it used to be (32.8 MB raw, 5.9 MB brotli). The ~67 MB
+// show-modal-extras.json monolith is never fetched, and neither is the season
+// file: season records ride in the per-show data/detail/ files, loaded on
+// modal open. Dataset bytes are therefore COUNTED in that page's budget: the
+// budget is code + the deliberate boot data, and a regression that
+// reintroduces an eager extras fetch (~+67 MB) or reverts to the season index
+// (~+17 MB) trips it immediately.
 //
 // That budget only means something when the dataset is on disk. It is
 // gitignored and lives on a GitHub release, so on a clean clone and in CI the
-// page measures ~1.6 MB and the 52 MB budget passes without testing anything.
+// page measures ~1.6 MB and the budget passes without testing anything.
 // Those three rising-shows budget rows are therefore reported as SKIPPED when
 // data-index.json is absent, rather than counted as passes: a vacuous green is
 // worse than an explicit "not measured".
@@ -45,7 +48,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
-const RS_INDEX = path.join(REPO, 'apps', 'rising-shows', 'data-index.json');
+const RS_INDEX = path.join(REPO, 'apps', 'rising-shows', 'shows-index.json');
 
 // Same production-protection list as suites/apps.mjs and suites/a11y.mjs.
 // Budgets count SAME-ORIGIN resources only, so failing these off-origin
@@ -56,10 +59,10 @@ const FIREBASE_HOSTS = /firestore\.googleapis\.com|firebaseio\.com|identitytoolk
 // identical across 3 runs). bytes = same-origin encodedBodySize incl. the
 // document; reqs = same-origin requests incl. the document; dom = total
 // element count. rising-shows measured with the dataset present, after the
-// lazy-extras redesign: ~35.98 MB (data-index.json 34,341,226 bytes + ~1.63
-// MB of code; zero bytes of show-modal-extras.json or data/detail/ at boot);
-// its DOM (1,175) and request count (35) are dataset-present ceilings, and a
-// clean clone only measures lower (~1.63 MB).
+// F08 show-level split: ~18.3 MB (shows-index.json 16,617,013 bytes + ~1.63
+// MB of code; zero bytes of data-index.json, show-modal-extras.json or
+// data/detail/ at boot); its DOM (1,175) and request count (35) are
+// dataset-present ceilings, and a clean clone only measures lower (~1.63 MB).
 //
 //                page          measured bytes   reqs   dom
 //                home               1,041,969     24    313
@@ -70,7 +73,7 @@ const FIREBASE_HOSTS = /firestore\.googleapis\.com|firebaseio\.com|identitytoolk
 //                gym-tracker        2,277,390     75  1,516
 //                maptap-rivals      1,527,770     31    580
 //                mario-kart         1,766,099     76    994
-//                rising-shows      35,978,695     35  1,175   (incl. dataset)
+//                rising-shows      18,254,000     35  1,175   (incl. dataset)
 //                trip-planner       2,139,101     32    865
 const BUDGETS = {
   'home':          { path: '/home.html',            bytes: 1_550_000, reqs: 36,  dom: 470 },
@@ -82,11 +85,13 @@ const BUDGETS = {
   'maptap-rivals': { path: '/apps/maptap-rivals/',  bytes: 2_300_000, reqs: 47,  dom: 870 },
   'mario-kart':    { path: '/apps/mario-kart/',     bytes: 2_650_000, reqs: 114, dom: 1_500 },
   // rising-shows budget = code + the deliberate boot dataset (see header
-  // note): ~45% headroom over the measured 35,978,695. Growth comes from the
-  // daily-refreshed data-index.json; an eager-extras regression adds ~67 MB
-  // and always trips this.
+  // note): ~42% headroom over the measured ~18,254,000. Growth comes from the
+  // daily-refreshed shows-index.json; an eager-extras regression adds ~67 MB
+  // and a revert to the season-level index adds ~17 MB, so either trips this.
+  // It was 52,000,000 while the season file was the boot payload; leaving it
+  // there would have let the whole F08 saving be given back unnoticed.
   'quotescout': { path: '/apps/quotescout/', bytes: 1_000_000, reqs: 40, dom: 650 },
-  'rising-shows':  { path: '/apps/rising-shows/',   bytes: 52_000_000, reqs: 54,  dom: 1_800 },
+  'rising-shows':  { path: '/apps/rising-shows/',   bytes: 26_000_000, reqs: 54,  dom: 1_800 },
   'trip-planner':  { path: '/apps/trip-planner/',   bytes: 3_200_000, reqs: 48,  dom: 1_300 },
 };
 
@@ -118,12 +123,18 @@ const HOME_JS_BUDGET = 310_000;
 // threshold. So the contract is asserted structurally, by watching which
 // dataset URLs the app actually requests:
 //
-//   1. at boot the app fetches data-index.json, and NEVER data.json, and
-//      NEVER data/show-modal-extras.json;
+//   1. at boot the app fetches shows-index.json, and NEVER data-index.json,
+//      NEVER data.json, and NEVER data/show-modal-extras.json;
 //   2. opening one show fetches exactly one data/detail/<id>.json;
 //   3. reopening the same show fetches nothing (ensureDetail memoises);
 //   4. the legacy fallback (an index with no `extrasInDetail` flag) still
-//      fires on modal open, and does NOT fire when the flag is present.
+//      fires on modal open, and does NOT fire when the flag is present;
+//   5. a show whose partition 404s, or whose cached partition predates the
+//      split, still opens with its true season rows plus a retry - the season
+//      table is in the partition now, so a silent empty one is the failure
+//      this has to catch;
+//   6. a query typed while the index is still downloading survives into the
+//      grid, and a season permalink fetches exactly that one partition.
 //
 // HOW THE DATASET PROBLEM IS SOLVED
 // A tiny fixture (3 series, 2 seasons each, ~3 KB index + ~3 KB of detail) is
@@ -154,7 +165,7 @@ const HOME_JS_BUDGET = 310_000;
 
 // Dataset URLs the app may request, as one capture group so the recorder can
 // classify a request by name.
-const RS_DATA_URL = /\/apps\/rising-shows\/(data-index\.json|data\.json|data\/detail\/[^/?]+\.json|data\/show-modal-extras\.json)(?:\?|$)/;
+const RS_DATA_URL = /\/apps\/rising-shows\/(shows-index\.json|data-index\.json|data\.json|data\/kometa-index\.json|data\/detail\/[^/?]+\.json|data\/show-modal-extras\.json)(?:\?|$)/;
 
 function buildRisingShowsFixture() {
   const series = (id, title, tmdbId, tvdbId, seasons) => seasons.map((eps, i) => {
@@ -208,16 +219,24 @@ function buildRisingShowsFixture() {
     mkdirSync(path.join(dir, 'scripts'), { recursive: true });
     writeFileSync(path.join(dir, 'data.json'), JSON.stringify(data));
     writeFileSync(path.join(dir, 'data', 'show-modal-extras.json'), JSON.stringify(extras));
-    copyFileSync(path.join(REPO, 'apps', 'rising-shows', 'scripts', 'split-data.js'),
-      path.join(dir, 'scripts', 'split-data.js'));
+    // split-data.js requires the three dual-exposed libs (it folds the show
+    // index with the same buildShowAgg / detectShapes / normalizeProviders the
+    // browser uses), so the temp scripts/ dir needs them beside it. Copying the
+    // REAL files is the point: a fixture built by a stubbed splitter would not
+    // be the artifact the deploy produces.
+    for (const f of ['split-data.js', 'finder-lib.js', 'match.js', 'providers-lib.js']) {
+      copyFileSync(path.join(REPO, 'apps', 'rising-shows', 'scripts', f), path.join(dir, 'scripts', f));
+    }
     execFileSync(process.execPath, [path.join(dir, 'scripts', 'split-data.js')], { stdio: 'pipe' });
 
     const index = readFileSync(path.join(dir, 'data-index.json'), 'utf8');
+    const shows = readFileSync(path.join(dir, 'shows-index.json'), 'utf8');
+    const kometa = readFileSync(path.join(dir, 'data', 'kometa-index.json'), 'utf8');
     const detail = {};
     for (const f of readdirSync(path.join(dir, 'data', 'detail'))) {
       detail[f.replace(/\.json$/, '')] = readFileSync(path.join(dir, 'data', 'detail', f), 'utf8');
     }
-    return { index, detail, extras: JSON.stringify(extras) };
+    return { index, shows, kometa, detail, extras: JSON.stringify(extras) };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -232,16 +251,24 @@ async function measureRisingShowsContract(base, cdpPort) {
   const out = {
     flagInFixture: false, cards: 0,
     boot: null, open: null, reopen: null, legacyBoot: null, legacyOpen: null,
+    degraded: null, retried: null, corrupt: null, presplit: null, earlyTyping: null,
+    seasonLink: null, seasonModal: null,
     error: null,
   };
   let s;
   try {
     const fx = buildRisingShowsFixture();
-    out.flagInFixture = JSON.parse(fx.index).extrasInDetail === true;
-    const legacyIndex = (() => { const o = JSON.parse(fx.index); delete o.extrasInDetail; return JSON.stringify(o); })();
+    out.flagInFixture = JSON.parse(fx.shows).extrasInDetail === true;
+    const legacyIndex = (() => { const o = JSON.parse(fx.shows); delete o.extrasInDetail; return JSON.stringify(o); })();
 
     let log = [];
     let legacy = false;
+    // Per-show detail responses can be swapped for the failure cases below:
+    // 'ok' serves the fixture, 'missing' 404s, 'truncated' serves a body that
+    // is not JSON, and 'presplit' serves a detail file written before the F08
+    // split (episodes but no season records), which is what a stale CDN or
+    // service-worker entry would hand a new page.
+    let detailMode = 'ok';
     s = await newPage(cdpPort);
     await setViewport(s, 1280, 900);
     await s.send('Network.setCacheDisabled', { cacheDisabled: true });
@@ -250,12 +277,21 @@ async function measureRisingShowsContract(base, cdpPort) {
       const m = url.match(RS_DATA_URL);
       if (!m) return null;
       log.push(m[1]);
-      if (m[1] === 'data-index.json') return { status: 200, body: legacy ? legacyIndex : fx.index };
+      if (m[1] === 'shows-index.json') return { status: 200, body: legacy ? legacyIndex : fx.shows };
       if (m[1] === 'data/show-modal-extras.json') return { status: 200, body: fx.extras };
-      // data.json must never be requested by the app; serving a 404 keeps a
-      // regression visible in the log instead of accidentally working.
-      if (m[1] === 'data.json') return { status: 404, body: '{}' };
+      if (m[1] === 'data/kometa-index.json') return { status: 200, body: fx.kometa };
+      // Neither the season index nor the raw dataset may be requested by the
+      // Finder; serving a 404 keeps a regression visible in the log instead of
+      // accidentally working.
+      if (m[1] === 'data.json' || m[1] === 'data-index.json') return { status: 404, body: '{}' };
       const id = m[1].slice('data/detail/'.length, -'.json'.length);
+      if (detailMode === 'missing') return { status: 404, body: '{}' };
+      if (detailMode === 'truncated') return { status: 200, body: '{"seasons":{"1":{"epi' };
+      if (detailMode === 'presplit') {
+        const d = JSON.parse(fx.detail[id] || '{"seasons":{}}');
+        delete d.records;
+        return { status: 200, body: JSON.stringify(d) };
+      }
       return fx.detail[id] ? { status: 200, body: fx.detail[id] } : { status: 404, body: '{}' };
     });
 
@@ -282,6 +318,98 @@ async function measureRisingShowsContract(base, cdpPort) {
     log = [];
     await clickSel(s, CARD, { settle: 1500 });
     out.legacyOpen = log.slice();
+    legacy = false;
+
+    // --- a show whose season partition cannot be fetched -------------------
+    // The season records live in the detail file now, so a 404 there is the
+    // case that used to be impossible (the boot index carried them). The modal
+    // must still open, still state the true season and episode counts from the
+    // boot index, and say that the detail is missing with a way to retry -
+    // never silently show an empty season list or "0 eps".
+    detailMode = 'missing';
+    await goto(s, base + '/apps/rising-shows/', { settle: 2500 });
+    await clickSel(s, CARD, { settle: 1500 });
+    out.degraded = await evaluate(s, `(() => {
+      const modal = document.getElementById('showModal');
+      const rows = modal.querySelectorAll('.show-season-row, #showModalSeasons li');
+      const err = modal.querySelector('.modal-detail-error');
+      return JSON.stringify({
+        open: !modal.hidden,
+        title: (document.getElementById('showModalTitle')||{}).textContent || '',
+        rows: rows.length,
+        notice: !!err,
+        retry: !!modal.querySelector('.modal-detail-retry'),
+        zeroEps: /\b0 eps\b/.test(modal.textContent || ''),
+      });
+    })()`);
+
+    // Retrying once the network recovers must repair the same modal in place.
+    detailMode = 'ok';
+    await clickSel(s, '#showModal .modal-detail-retry', { settle: 1500 });
+    out.retried = await evaluate(s, `(() => {
+      const modal = document.getElementById('showModal');
+      return JSON.stringify({
+        notice: !!modal.querySelector('.modal-detail-error'),
+        rows: modal.querySelectorAll('.show-season-row, #showModalSeasons li').length,
+      });
+    })()`);
+
+    // --- a partition that arrives corrupt (truncated body, dropped
+    // connection mid-response). Different branch from the 404: res.ok is true
+    // and res.json() rejects, so it lands in ensureDetail's catch rather than
+    // its !detail check, and both have to evict and degrade the same way.
+    detailMode = 'truncated';
+    await goto(s, base + '/apps/rising-shows/', { settle: 2500 });
+    await clickSel(s, CARD, { settle: 1500 });
+    out.corrupt = await evaluate(s, `(() => {
+      const modal = document.getElementById('showModal');
+      return JSON.stringify({
+        open: !modal.hidden,
+        rows: modal.querySelectorAll('.show-season-row, #showModalSeasons li').length,
+        notice: !!modal.querySelector('.modal-detail-error'),
+        zeroEps: /\\b0 eps\\b/.test(modal.textContent || ''),
+      });
+    })()`);
+
+    // --- a detail file written before the split (stale cache / rollback) ---
+    detailMode = 'presplit';
+    await goto(s, base + '/apps/rising-shows/', { settle: 2500 });
+    await clickSel(s, CARD, { settle: 1500 });
+    out.presplit = await evaluate(s, `(() => {
+      const modal = document.getElementById('showModal');
+      return JSON.stringify({
+        open: !modal.hidden,
+        rows: modal.querySelectorAll('.show-season-row, #showModalSeasons li').length,
+        zeroEps: /\b0 eps\b/.test(modal.textContent || ''),
+      });
+    })()`);
+    detailMode = 'ok';
+
+    // --- typing before the grid exists -------------------------------------
+    // The search box is in the document from the first byte; a query typed
+    // while the index is still downloading has to survive into the rendered
+    // grid rather than being wiped when the cards arrive.
+    await goto(s, base + '/apps/rising-shows/', { settle: 2500 });
+    out.earlyTyping = await evalAsync(s, `(async () => {
+      const box = document.getElementById('finderSearch');
+      box.value = 'Beta';
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 900));
+      const cards = [...document.querySelectorAll('${CARD}')];
+      const titles = cards.map((el) => (el.querySelector('.card-title') || {}).textContent || '')
+        .map((t) => t.trim());
+      return JSON.stringify({ value: box.value, count: cards.length, titles: titles.slice(0, 5) });
+    })()`);
+
+    // --- a season permalink, which needs that one show's partition ---------
+    log = [];
+    await goto(s, base + '/apps/rising-shows/#season=tt9000002:2', { settle: 2500 });
+    out.seasonLink = log.slice();
+    out.seasonModal = await evaluate(s, `(() => {
+      const m = document.getElementById('detailModal');
+      if (!m) return JSON.stringify({ open: false, text: 'detailModal missing' });
+      return JSON.stringify({ open: !m.hidden, text: (m.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 120) });
+    })()`);
   } catch (e) {
     out.error = String(e && e.message || e).slice(0, 140);
   } finally {
@@ -495,8 +623,10 @@ export async function run({ base, cdpPort }) {
   // an empty page.
   t('perf rising-shows contract: the app renders the fixture index',
     c.cards === 3 && c.modalTitle === 'Fixture Alpha', `${c.cards} cards, modal "${c.modalTitle}"`);
-  t('perf rising-shows contract: boot fetches data-index.json exactly once',
-    has(c.boot, 'data-index.json') === 1, details(c.boot));
+  t('perf rising-shows contract: boot fetches shows-index.json exactly once',
+    has(c.boot, 'shows-index.json') === 1, details(c.boot));
+  t('perf rising-shows contract: boot never fetches the season-level data-index.json',
+    Array.isArray(c.boot) && has(c.boot, 'data-index.json') === 0, details(c.boot));
   t('perf rising-shows contract: boot never fetches data.json',
     Array.isArray(c.boot) && has(c.boot, 'data.json') === 0, details(c.boot));
   t('perf rising-shows contract: boot never fetches the show-modal-extras monolith',
@@ -511,7 +641,48 @@ export async function run({ base, cdpPort }) {
     has(c.legacyOpen, 'data/show-modal-extras.json') === 1, details(c.legacyOpen));
   t('perf rising-shows contract: the legacy fallback fires on modal open, never at boot',
     Array.isArray(c.legacyBoot) && has(c.legacyBoot, 'data/show-modal-extras.json') === 0
-      && has(c.legacyBoot, 'data-index.json') === 1, details(c.legacyBoot));
+      && has(c.legacyBoot, 'shows-index.json') === 1, details(c.legacyBoot));
+
+  // ------------------------------------------------- partition failures ---
+  // Since the F08 split a show's SEASON records arrive with its detail file,
+  // so a failed detail fetch is no longer only "no episode curves" - it is the
+  // season table itself. The modal has to stay truthful: real counts from the
+  // boot index, an explicit notice, and a retry that repairs it.
+  const j = (v) => { try { return JSON.parse(v); } catch { return null; } };
+  const deg = j(c.degraded);
+  t('perf rising-shows: a show whose partition 404s still opens, with its real season rows',
+    !!deg && deg.open && deg.rows >= 1 && deg.title === 'Fixture Alpha',
+    deg ? `open=${deg.open} rows=${deg.rows} title="${deg.title}"` : `not measured: ${c.error || 'unknown'}`);
+  t('perf rising-shows: a failed partition says so and offers a retry, and never prints "0 eps"',
+    !!deg && deg.notice && deg.retry && !deg.zeroEps,
+    deg ? `notice=${deg.notice} retry=${deg.retry} zeroEps=${deg.zeroEps}` : `not measured: ${c.error || 'unknown'}`);
+  const ret = j(c.retried);
+  t('perf rising-shows: retrying a recovered partition clears the notice in place',
+    !!ret && ret.notice === false && ret.rows >= 1,
+    ret ? `notice=${ret.notice} rows=${ret.rows}` : `not measured: ${c.error || 'unknown'}`);
+  const cor = j(c.corrupt);
+  t('perf rising-shows: a corrupt partition body degrades like a missing one',
+    !!cor && cor.open && cor.rows >= 1 && cor.notice && !cor.zeroEps,
+    cor ? `open=${cor.open} rows=${cor.rows} notice=${cor.notice} zeroEps=${cor.zeroEps}` : `not measured: ${c.error || 'unknown'}`);
+  const pre = j(c.presplit);
+  t('perf rising-shows: a pre-split detail file (stale cache, rollback) degrades truthfully',
+    !!pre && pre.open && pre.rows >= 1 && !pre.zeroEps,
+    pre ? `open=${pre.open} rows=${pre.rows} zeroEps=${pre.zeroEps}` : `not measured: ${c.error || 'unknown'}`);
+
+  // ------------------------------------------------ loading behaviour -----
+  const typed = j(c.earlyTyping);
+  t('perf rising-shows: a query typed during load survives into the rendered grid',
+    !!typed && typed.value === 'Beta' && typed.count === 1 && /Beta/.test(typed.titles.join(' ')),
+    typed ? `value="${typed.value}" count=${typed.count} titles=${typed.titles.join('|')}` : `not measured: ${c.error || 'unknown'}`);
+  t('perf rising-shows: a season permalink fetches exactly that one show\'s partition',
+    Array.isArray(c.seasonLink)
+      && c.seasonLink.filter((u) => u.startsWith('data/detail/')).length === 1
+      && c.seasonLink.includes('data/detail/tt9000002.json'),
+    details(c.seasonLink));
+  const sm = j(c.seasonModal);
+  t('perf rising-shows: and opens that season, not the grid',
+    !!sm && sm.open,
+    sm ? `open=${sm.open} text="${sm.text.slice(0, 60)}"` : `not measured: ${c.error || 'unknown'}`);
 
   // --------------------------------------------------- startup stability ---
   // Every app root, not only the three the audit measured: a budget that

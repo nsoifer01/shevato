@@ -460,13 +460,20 @@ test('the fold behaves the way the search depends on', () => {
   assert.equal(normalizeSearch('Pokémon: Indigo League'), 'pokemon indigo league');
 });
 
-test('the boot loop that folded every season record is gone', () => {
-  // The regression this guards: re-adding a per-season fold would silently
-  // put ~47 ms of desktop (and ~200 ms of phone) main-thread work back into
-  // the critical path, and nothing else in the estate would notice.
+test('the browser never holds the season-level catalogue at boot', () => {
+  // The regression this guards: re-introducing a whole-catalogue season scan
+  // would silently put the 33 MB parse and the ~250 ms buildShowAgg fold back
+  // into the critical path, and nothing else in the estate would notice.
   const app = fs.readFileSync(path.join(__dirname, '..', 'js', 'app.js'), 'utf8');
-  assert.equal(/for \(const m of dataset\.matches\) \{\s*m\.titleSearch =/.test(app), false,
-    'titleSearch must be derived per SERIES in buildSeriesIndex, not per season at boot');
-  assert.match(app, /titleSearch: normalizeSearch\(m\.title\)/,
-    'and derived where it is used');
+  assert.equal(/dataset\.matches/.test(app.replace(/^\s*\/\/.*$/gm, '')), false,
+    'no code path may read a whole-catalogue season list; season records come '
+    + 'per show from seasonsFor() after ensureDetail');
+  assert.match(app, /await fetch\('shows-index\.json'\)/,
+    'boot fetches the show-level index');
+  assert.equal(/fetch\('data-index\.json'\)/.test(app), false,
+    'and never the season-level one');
+  assert.equal(/RisingShowsFinder\.buildShowAgg\(/.test(app), false,
+    'the fold is a build step now, not a boot step');
+  assert.match(app, /titleSearch: normalizeSearch\(show\.title\)/,
+    'the title fold still happens once per show, where it is used');
 });
