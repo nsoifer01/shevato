@@ -496,6 +496,33 @@
         };
     }
 
+    /**
+     * May THIS client fire the Globe Drop "everyone pressed Ready" advance?
+     *
+     * The host may, the moment it sees the last vote. Any other member may
+     * once the votes have stood for ADVANCE_FALLBACK_SLACK_MS.
+     *
+     * The member path is not a nicety. The gate that calls this runs on
+     * requestAnimationFrame, and browsers PAUSE rAF in a background tab, so a
+     * host-only rule means a host who tabs away mid-reveal swallows the skip:
+     * every player presses Ready and the room still sits out the full reveal
+     * window, because the one client allowed to act has stopped looping. That
+     * is the same failure the timed advance already guards against, and the
+     * advance itself is a transaction keyed on the current question id, so a
+     * returning host and a member both firing is harmless.
+     *
+     * Pure: takes ms timestamps so callers can sub in server time.
+     * @param {boolean} isHost
+     * @param {number|null} allReadySinceMs when all live players were first seen Ready
+     * @param {number} nowMs
+     * @returns {boolean}
+     */
+    function readySkipAdvanceAllowed(isHost, allReadySinceMs, nowMs) {
+        if (isHost) return true;
+        if (!allReadySinceMs) return false;
+        return (nowMs - allReadySinceMs) >= Config.ADVANCE_FALLBACK_SLACK_MS;
+    }
+
     return {
         generateRoomCode,
         normalizeRoomCode,
@@ -503,6 +530,7 @@
         isEmailDerivedName,
         displayNamePrompt,
         questionPhase,
+        readySkipAdvanceAllowed,
         timeLeftMs,
         pickNextHost,
         aggregateAnswerStats,

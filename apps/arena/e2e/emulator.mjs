@@ -1211,13 +1211,28 @@ export async function run({ base, cdpPort, base2 = null }) {
       t('emulator (globe): start enters the first location', g0.status === 'playing' && g0.idx === 0, JSON.stringify(g0));
       // Round 1: nobody pins; asking expires; both click Ready during the
       // reveal -> the host advances early (well before the 10 s reveal ends).
-      await sleep(3500);
+      //
+      // Warm B's renderer BEFORE the reveal clock starts. B is the
+      // mobile-emulated client and it has been in the background since the
+      // room was created, so the browser has paused its rAF loop - and the
+      // Ready button is painted, and enabled, by that loop. Its first frame
+      // after bringToFront therefore has to redraw a WebGL globe under
+      // software GL before the button can go live: measured at ~0.5 s warm
+      // and up to 9 s cold on CI, which is most of the 10 s reveal window.
+      // Spending the asking window on that warm-up pays the cost off the
+      // clock instead of out of the budget the assertion below measures.
+      await front(B);
+      await sleep(2200);
+      await front(A);
+      await sleep(1300);
       const readyBtnLive = "(()=>{const b=document.getElementById('globe-drop-ready-btn');return !!b && !b.disabled && b.getBoundingClientRect().height>0})()";
       // The Ready bar is painted by the rAF render loop, which the browser
       // pauses in a BACKGROUND tab, so B's button only becomes clickable while
       // B is the active target. Front B to vote, then hand the foreground back
-      // to A. (Progression itself no longer depends on the foreground - that is
-      // what the hidden-host checks prove - but a UI affordance still does.)
+      // to A. Neither progression NOR the skip depends on the foreground any
+      // more - the hidden-host checks prove the first and
+      // RoomState.readySkipAdvanceAllowed the second - but a UI affordance
+      // still does, so the votes still have to be cast from the front.
       const readyA = await waitForExpr(A, readyBtnLive, { timeout: 9000 });
       const tReady = Date.now();
       if (readyA) await clickSel(A, '#globe-drop-ready-btn', { settle: 200 });
@@ -1225,16 +1240,32 @@ export async function run({ base, cdpPort, base2 = null }) {
       const readyB = await waitForExpr(B, readyBtnLive, { timeout: 9000 });
       if (readyB) await clickSel(B, '#globe-drop-ready-btn', { settle: 200 });
       await front(A);
+      // Both votes have to be ON the player docs before an early advance can
+      // be attributed to them. Checked separately so a lost vote reports
+      // itself as a lost vote, instead of surfacing as the timing assertion
+      // below failing for a reason it cannot describe.
+      const readAllFlags = async () => Promise.all(
+        (await ownerList(`triviaRooms/${code6}/players`)).map(async (u) => {
+          const d = fieldsOf(await ownerGetDocRaw(`triviaRooms/${code6}/players/${u}`, PAGE_PROJECT));
+          return { u, q: d.readyAfterQId || '' };
+        }));
+      const allVoted = (fl) => fl.length > 0 && fl.every((f) => f.q && f.q === fl[0].q);
+      let voteFlags = [];
+      for (let i = 0; i < 8; i++) {
+        voteFlags = await readAllFlags();
+        if (allVoted(voteFlags)) break;
+        await sleep(150);
+      }
+      t('emulator (globe): both Ready votes reach the player docs', allVoted(voteFlags),
+        `readyA=${readyA} readyB=${readyB} voted at +${Date.now() - tReady}ms`
+        + ` flags=${voteFlags.map((f) => `${f.u.slice(0, 5)}:${f.q || '-'}`).join(',')}`);
       // "Early" means BEFORE the round's own deadline on the server clock
       // (questionStartedAt + asking + reveal). Timing it from a harness
       // wall-clock instead measures CDP latency, not the product.
       const naturalEnd = (g0.startedMs || 0) + (g0.questionTimeMs || 3000) + 10000;
       const g1 = await waitRoom(code6, (st) => st.idx === 1, 14000);
       const advancedAt = Date.now();
-      const readyFlags = await Promise.all((await ownerList(`triviaRooms/${code6}/players`)).map(async (u) => {
-        const d = fieldsOf(await ownerGetDocRaw(`triviaRooms/${code6}/players/${u}`, PAGE_PROJECT));
-        return `${u.slice(0, 5)}:${d.readyAfterQId || '-'}`;
-      }));
+      const readyFlags = voteFlags.map((f) => `${f.u.slice(0, 5)}:${f.q || '-'}`);
       t('emulator (globe): every live player Ready during the reveal advances the round early',
         readyA && readyB && g1.idx === 1 && advancedAt < naturalEnd - 1500,
         `readyA=${readyA} readyB=${readyB} idx=${g1.idx} advanced ${Math.round((naturalEnd - advancedAt) / 100) / 10}s`

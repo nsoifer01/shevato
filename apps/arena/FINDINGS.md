@@ -637,3 +637,33 @@ a frozen podium.
 `tryLoadPendingPostMatch` now probes membership first and re-enters the room
 live; the read-only recap is for people who were not in it. The suite is
 95/95 with the fix.
+
+- **The Globe Drop Ready-to-skip was host-only, so a backgrounded host
+  swallowed it.** `progressRoomClock`'s all-ready branch read
+  `isGlobe && isHost && phase === 'reveal' && live.every(readyAfterQId ===
+  currentQId)`. That gate runs on requestAnimationFrame, and browsers PAUSE
+  rAF in a background tab, so a host who tabbed away mid-reveal stopped the
+  only client permitted to act on the votes: every player pressed Ready and
+  the room still sat out the full `GLOBE_DROP_REVEAL_TIME_MS` window. The
+  timed advance in the branch directly below already guarded against exactly
+  this ("a hidden or gone host cannot stall the room") by letting any member
+  fire after `ADVANCE_FALLBACK_SLACK_MS`; the skip now does the same, via the
+  pure `RoomState.readySkipAdvanceAllowed(isHost, allReadySinceMs, nowMs)`.
+  Racing is safe because `advanceQuestionOrFinish` is a transaction whose
+  precondition is the current question id, so only the first write lands.
+  Covered by four cases in `apps/arena/tests/room-state.test.js`, two of
+  which fail against the host-only rule.
+- **The emulator e2e's Ready-skip check was racing a cold WebGL repaint.**
+  `S6` backgrounds the host to let the second client press Ready, because the
+  Ready button is painted - and enabled - by the same rAF loop. The second
+  client is the mobile-emulated one drawing a globe under software GL, and it
+  had been backgrounded since the room was created, so its first frame after
+  `Page.bringToFront` was a cold repaint: ~0.5s warm, up to 9s cold on CI.
+  Nine seconds is most of a ten-second reveal window, so the votes landed
+  after the natural deadline and the round advanced on the timer instead -
+  reported as "advanced -0.9s before the natural deadline", which reads like a
+  timing bug in the product and is not one. The scenario now spends the asking
+  window warming that client instead of sleeping, and asserts separately that
+  both votes reached the player docs, so a lost vote reports itself as a lost
+  vote. Do not "fix" a recurrence by widening the 1500ms margin: the margin is
+  the assertion, and the cost belongs off the clock.
