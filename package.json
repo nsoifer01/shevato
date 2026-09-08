@@ -7,7 +7,7 @@
   "type": "commonjs",
   "scripts": {
     "pretest": "node scripts/require-node.mjs",
-    "test": "node --test \"apps/gym-tracker/tests/**/*.test.*\" \"apps/football-h2h/tests/**/*.test.*\" \"apps/fpl-planner/tests/**/*.test.*\" \"apps/rising-shows/tests/**/*.test.*\" \"apps/mario-kart/tests/**/*.test.*\" \"apps/arena/tests/**/*.test.*\" \"apps/maptap-rivals/tests/**/*.test.*\" \"apps/trip-planner/tests/**/*.test.*\" \"apps/quotescout/tests/**/*.test.*\" \"netlify/functions/tests/**/*.test.*\" \"sync-system/tests/**/*.test.*\" \"assets/js/tests/**/*.test.*\" \"tests/static/**/*.test.*\"",
+    "test": "node --test \"apps/gym-tracker/tests/**/*.test.*\" \"apps/football-h2h/tests/**/*.test.*\" \"apps/fpl-planner/tests/**/*.test.*\" \"apps/rising-shows/tests/**/*.test.*\" \"apps/mario-kart/tests/**/*.test.*\" \"apps/arena/tests/**/*.test.*\" \"apps/maptap-rivals/tests/**/*.test.*\" \"apps/trip-planner/tests/**/*.test.*\" \"netlify/functions/tests/**/*.test.*\" \"sync-system/tests/**/*.test.*\" \"assets/js/tests/**/*.test.*\" \"tests/static/**/*.test.*\"",
     "lint": "eslint .",
     "test:browser": "node --experimental-websocket tests/browser/run.mjs",
     "test:browser:parallel": "node --experimental-websocket tests/browser/run-parallel.mjs",
@@ -44,9 +44,7 @@
     "enrich:rising-shows": "node apps/rising-shows/scripts/enrich-tmdb.js",
     "enrich:rising-shows:providers": "node apps/rising-shows/scripts/enrich-providers.js",
     "export:rising-shows": "node apps/rising-shows/scripts/export-integrations.js",
-    "watch-next": "node apps/rising-shows/scripts/watch-next.js",
-    "test:quotescout": "node --test \"apps/quotescout/tests/**/*.test.*\" \"netlify/functions/tests/quotescout*.test.mjs\"",
-    "build:quotescout:data": "node --max-old-space-size=4096 scripts/build-quotescout-data.mjs"
+    "watch-next": "node apps/rising-shows/scripts/watch-next.js"
   },
   "dependencies": {
     "@netlify/blobs": "^10.7.13"

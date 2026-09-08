@@ -2,7 +2,7 @@
 //
 // Runs through tests/browser/run.mjs like the trip-planner and fpl-planner
 // suites (raw CDP, coordinate clicks, no framework). Every check needs the
-// gitignored dataset (data-index.json + data/detail/*); without it the whole
+// gitignored dataset (shows-index.json + data/detail/*); without it the whole
 // suite records actionable skips, the same way suites/apps.mjs does.
 //
 // Covered here and nowhere else:
@@ -83,7 +83,7 @@ export async function run({ base, cdpPort }) {
     return waitForExpr(s, READY, { timeout: 30000 });
   };
 
-  const haveData = await exists(path.join(REPO, 'apps', 'rising-shows', 'data-index.json'))
+  const haveData = await exists(path.join(REPO, 'apps', 'rising-shows', 'shows-index.json'))
     && await exists(path.join(REPO, 'apps', 'rising-shows', 'data', 'detail', `${SHOW}.json`));
   if (!haveData) {
     const reason = 'no show data - run `npm run fetch:rising-shows-data` then `npm run build:rising-shows:split`';
@@ -303,13 +303,19 @@ export async function run({ base, cdpPort }) {
   /* --------------------------------------------- 6. malformed index (D4) */
   for (const [label, body, want] of [
     ['an empty array', '[]', /Unexpected data shape/],
-    ['null-title records', '{"matches":[{"seriesId":"tt1","title":null,"season":1}]}', /Show data is empty/],
+    ['null-title records', '{"shows":[{"seriesId":"tt1","title":null,"seasonAvgs":[]}]}', /Show data is empty/],
+    // Since the F08 split the boot payload is show-level. Serving the
+    // SEASON-level file at its URL - a half-finished deploy, a stale CDN
+    // entry, a rollback that moved one artifact and not the other - has to
+    // land on the error panel, not on an empty grid that looks like a
+    // catalogue with nothing in it.
+    ['the season-level index', '{"matches":[{"seriesId":"tt1","title":"x","season":1}]}', /Unexpected data shape/],
   ]) {
     const s = await fresh();
     try {
       await s.send('Network.enable');
       await s.send('Network.setCacheDisabled', { cacheDisabled: true });
-      await interceptNetwork(s, (url) => (/data-index\.json/.test(url) ? { status: 200, body } : null));
+      await interceptNetwork(s, (url) => (/shows-index\.json/.test(url) ? { status: 200, body } : null));
       await setViewport(s, 1280, 900);
       await goto(s, `${base}${APP}`, { settle: 300 });
       const panel = await waitForExpr(s, `/Couldn't load show data/.test(document.getElementById('finderResults').textContent)`, { timeout: 10000 });

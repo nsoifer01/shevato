@@ -53,12 +53,17 @@ apps/rising-shows/sitemap-shows.xml
 apps/rising-shows/data.json
 apps/rising-shows/data/show-modal-extras.json
 
-# Derived from data.json by scripts/split-data.js at build time. data-index.json
-# is the slim payload the browser actually fetches (per-episode arrays and
-# per-season overviews stripped out); data/detail/ holds one small file per
-# series carrying exactly those stripped fields, fetched when a modal opens.
-# Build artifacts, so never committed - and detail/ alone is ~34,600 files.
+# Derived from data.json by scripts/split-data.js at build time.
+# shows-index.json is the payload the browser fetches at boot (one record per
+# show, already aggregated); data-index.json is the season-level file the build
+# and the dataset artifact keep; data/kometa-index.json is the season slice the
+# Kometa builder page reads; data/detail/ holds one small file per series with
+# that show's season records and per-episode data, fetched when a modal opens.
+# Build artifacts, so never committed - together they are ~60 MB per refresh,
+# and detail/ alone is ~34,600 files.
+apps/rising-shows/shows-index.json
 apps/rising-shows/data-index.json
+apps/rising-shows/data/kometa-index.json
 apps/rising-shows/data/detail/
 
 # Gym Tracker static SEO pages — derived from exercises-db.json at
@@ -74,10 +79,6 @@ apps/gym-tracker/sitemap-exercises.xml
 # reviewed by the owner, deleted at round close). Never committed.
 .screenshots/
 
-# Quote Scout dataset build cache: ~300 MB of CMS source files downloaded by
-# scripts/build-quotescout-data.mjs. The derived shards under
-# netlify/functions/lib/quotescout/data/ ARE committed; these inputs are not.
-.quotescout-build-cache/
 
 # Owner-uploaded reference screenshots (Lightshot drops for design review).
 # Local-only working material, never published to the repo.

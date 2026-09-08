@@ -201,7 +201,6 @@ coverage.
 | Gym Tracker | FULL | FULL | FULL | FULL | FULL | FULL | Views via source extraction; SW at unit + browser layers |
 | MapTap Rivals | part | FULL | FULL | FULL | FULL | part | stats/network deep; app.js IIFE reachable only via browser |
 | Mario Kart | FULL | FULL | FULL | FULL | FULL | part | Achievements engine still uncovered (large, low risk) |
-| Quote Scout | FULL | FULL | FULL | FULL | FULL | part | Strict API schemas, provenance/ranking, quotas/cache isolation, streaming and progressive questions; paid-provider contract tests require access |
 | Rising Shows | FULL | FULL | FULL | FULL | FULL | FULL | Producers + consumers tied; finder E2E data-gated |
 | Trip Planner | FULL | FULL | FULL | FULL | FULL | FULL | Reference estate |
 | sync-system | FULL | part | n/a | n/a | n/a | FULL | Behavioral harness on the real engine; RTDB path out of scope |
@@ -293,7 +292,7 @@ hit is a genuine regression.
 
 Deterministic budgets in `tests/browser/suites/perf.mjs` (41 checks):
 first-party transfer bytes, same-origin request count, and DOM node count
-for home, apps, and all eight app roots, plus a home-page JS-weight guard.
+for home, apps, and every app root, plus a home-page JS-weight guard.
 Budgets are set at roughly 45-50% headroom over the measured 2026-08-15
 baseline (measured values recorded beside each budget in the suite; e.g.
 home 1.04 MB / 24 requests / 313 nodes against budgets of 1.55 MB / 36 /
@@ -310,7 +309,7 @@ static-site regression class that matters.
 ## Accessibility
 
 `tests/browser/suites/a11y.mjs`, 33 checks: axe-core 4.10.3 (WCAG 2.0/2.1
-A + AA) over all 8 site pages, all 8 app roots (Arena with Firebase
+A + AA) over every site page, every app root (Arena with Firebase
 intercepted, no production writes), and two deep app states (gym program
 modal open, trip-planner Days view with the example trip), plus 15
 behavioral keyboard checks driven by real key events (home tab order +
@@ -503,7 +502,7 @@ Severity: H high, M medium, L low.
 ### Performance observation (documented only, deliberately not asserted)
 
 30. **[RESOLVED] Rising Shows eagerly fetches ~102 MB of dataset at boot** when the
-    release data is present (data-index.json 34.3 MB + show-modal-extras
+    release data is present (shows-index.json 16.6 MB, data-index.json 32.8 MB + show-modal-extras
     67.5 MB, uncompressed sizes over a local no-gzip server; production
     serves compressed). Worth an owner look; the perf budgets deliberately
     exclude it.
@@ -652,7 +651,7 @@ gym timers/format, #395 the CPU-time budget conversion, plus the closeout
 PR carrying this document update. Original #385 scope:
 `tests/browser/` (cdp.mjs, run.mjs, all suites, vendor/axe.min.js, README),
 `tests/static/` (new), `tests/coverage/` (new), `tests/cross-browser/` (new),
-`apps/*/tests/` (all eight apps), `apps/{trip-planner,fpl-planner}/e2e/`,
+`apps/*/tests/` (every app), `apps/{trip-planner,fpl-planner}/e2e/`,
 `sync-system/tests/`, `netlify/functions/tests/`, `.github/workflows/`
 (browser-tests trigger, cross-browser new), `package.json` (scripts + the
 Playwright dev dependency), `package-lock.json` (new), `.gitignore`
@@ -759,4 +758,3 @@ are recorded here so the next session does not have to re-measure.
 wholesale. The `eslint-disable` comments already in the codebase refer to the
 unenabled hygiene rules, which is why `reportUnusedDisableDirectives` is off.
 
-Quote Scout: node:test covers validation, pricing provenance, ranking, private cache isolation, quota CAS, provider failure modes and API guards. Browser coverage exercises progressive questions, streamed results, refresh, Top 3, mobile and accessibility. External API sandbox checks are opt-in and excluded from normal CI. See `apps/quotescout/README.md`.

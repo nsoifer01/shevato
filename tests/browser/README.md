@@ -1,6 +1,6 @@
 # Browser regression suite
 
-End-to-end checks that drive the real site and all eight apps in headless
+End-to-end checks that drive the real site and every app in headless
 Chrome. Complements `npm test`, which covers pure logic in Node and never opens
 a browser.
 
@@ -73,9 +73,9 @@ Three runner-level guarantees:
 `{ name, pass, detail, skipped }` checks. The runner spreads it into its own
 results, so returning a summary object instead throws
 `Spread syntax requires ...iterable` OUT of the suite loop and abandons the
-whole run at that point. That is not hypothetical: two of the seven per-app
-audit suites added on 2026-08-22 returned a summary object, so every one of
-them was skipped in `npm run test:browser` while passing when their owners ran
+whole run at that point. That is not hypothetical: two of the per-app audit
+suites added on 2026-08-22 returned a summary object, so every one of them
+was skipped in `npm run test:browser` while passing when their owners ran
 them standalone, and the estate looked green with 539 checks missing. The
 runner now fails such a suite loudly and continues, but the contract is the
 array.
@@ -142,7 +142,7 @@ never mistaken for a full one.
    quarantine.
 
 The rising-shows dataset is the current case: `data.json` and
-`data-index.json` are gitignored and pulled from a GitHub release, so a clean
+`shows-index.json` are gitignored and pulled from / derived from a GitHub release, so a clean
 clone has no shows and every finder assertion would fail for a reason that is
 not a bug. Those six checks skip with the fix in the message. To run them:
 

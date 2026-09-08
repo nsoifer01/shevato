@@ -4676,7 +4676,14 @@ async function markReadyForNext() {
             readyAfterQId: loc.id
         });
     } catch (err) {
+        // A Ready that does not save is invisible without this. The button
+        // stays enabled (meReady is still false), so the room simply waits out
+        // the full reveal while the player believes they have voted, and the
+        // only trace is a console line nobody is watching. The other two
+        // writes a player depends on mid-round already say so when they fail
+        // (submitGuess, submitAnswer); this one is no different.
         console.warn('markReadyForNext failed:', err);
+        showToast('That did not save - tap Ready again.', { icon: '⚠️', key: 'ready-failed' });
     }
 }
 

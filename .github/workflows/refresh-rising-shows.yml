@@ -32,6 +32,12 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
+  # Release the maintainer-approval hold GitHub places on the workflow runs of
+  # a bot-authored pull request. Without it the four required checks sit at
+  # `action_required` forever and nothing can merge. Narrow on purpose: this
+  # job approves runs for the one commit it just pushed, and nothing else.
+  # scripts/bot-pr-autopilot.mjs carries the measurement that proves it.
+  actions: write
 
 jobs:
   refresh:
@@ -42,18 +48,27 @@ jobs:
     # end-to-end. Incremental subsequent runs are typically well under
     # 15 min, so this ceiling only matters on the cold pass after a
     # schema bump.
-    timeout-minutes: 240
+    #
+    # 360 rather than 240 because the job now waits for its own pull request
+    # as well as building: up to 45 minutes reconciling a stuck predecessor
+    # (rare) plus a 75-minute watch on the new one. On a cold pass the old
+    # ceiling would have been reached by the build alone and the watch would
+    # have been cut off mid-flight, leaving a pull request with auto-merge
+    # armed and a red job saying nothing useful about why.
+    timeout-minutes: 360
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          # BOT_PAT when it exists, GITHUB_TOKEN otherwise, so this workflow
-          # behaves identically before and after the secret is added. The
-          # credential matters because of what it does at the END of the job:
-          # GitHub deliberately does not start workflow runs from
-          # GITHUB_TOKEN-driven events, so a bot PR opened with it gets no CI.
-          # Events from a PAT do start runs. See the "Open and merge PR" step.
-          token: ${{ secrets.BOT_PAT || secrets.GITHUB_TOKEN }}
+          # GITHUB_TOKEN, and no personal access token anywhere in this
+          # workflow. The comment that used to sit here said a PAT was
+          # unavoidable because "GitHub does not start workflow runs from
+          # GITHUB_TOKEN-driven events". That is the documented rule for most
+          # GITHUB_TOKEN events and it is not what happens here: the runs are
+          # created against the bot branch and then HELD for maintainer
+          # approval, which this job releases itself. Measured, with run ids,
+          # in scripts/bot-pr-autopilot.mjs.
+          token: ${{ secrets.GITHUB_TOKEN }}
           persist-credentials: true
 
       - name: Setup Node
@@ -63,6 +78,38 @@ jobs:
           # end-of-life window pinned to a version the rest of the estate had
           # already left, and nothing said so.
           node-version-file: '.nvmrc'
+
+      # AT MOST ONE OPEN REFRESH PULL REQUEST, EVER.
+      #
+      # Two of them cannot both merge: they both rewrite changelog.json and the
+      # exports, so the second is guaranteed a conflict, and yesterday's stuck
+      # branch is how a queue of unmergeable duplicates starts. It is also how
+      # a changelog entry gets lost, because tomorrow's build appends to
+      # master's changelog.json and diffs against the RELEASE baseline that
+      # yesterday already advanced.
+      #
+      # So before this run spends an hour on IMDb and TMDB, it finishes the
+      # last one: releases the approval hold on its checks, arms auto-merge and
+      # waits. If that pull request cannot merge (a red check, a conflict), the
+      # step fails HERE, cheaply, before anything is uploaded or committed, and
+      # says which pull request to look at. Nothing is left half done.
+      #
+      # On an ordinary day this is one API call and no wait.
+      - name: Finish any refresh pull request still open
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/bot-pr-autopilot.mjs reconcile --timeout-min 45
+
+      # Whatever the reconcile merged is now the tip, and this checkout is
+      # behind it. Pick it up before building, so the changelog this run
+      # appends to is the one that includes yesterday's entry.
+      - name: Re-sync to master
+        run: |
+          set -e
+          git fetch --quiet origin master
+          git reset --hard --quiet origin/master
+          git log --oneline -1
 
       # The previous dataset is the diff baseline for change detection and
       # the changelog entry. It lives on the rolling release, not in git.
@@ -225,7 +272,7 @@ jobs:
       # Gate on THIS app's own suites, not the whole repo.
       #
       # This step used to run `npm test`, so a failing test in any of the
-      # other seven apps blocked the data refresh. That is exactly what
+      # any other app blocked the data refresh. That is exactly what
       # happened on 2026-08-23 and again on 08-28 through 08-31: an
       # fpl-planner test failed, this step stopped the job before the release
       # upload, and the live site served 2026-08-27 data until 09-01 with
@@ -359,97 +406,62 @@ jobs:
             gh release delete-asset rising-shows-data "show-modal-extras-${stamp}.json.gz" -y || true
           done < /tmp/rs-prune-data
 
-      # master is protected by a "PR before Merge" ruleset, so direct pushes
-      # are rejected. We push to a short-lived branch, open a PR, and merge
-      # it immediately: the ruleset requires 0 approvals and no status
-      # checks, and tests already ran above on this exact tree.
+      # master is protected by a "PR before Merge" ruleset AND by classic
+      # branch protection that requires the lint, test, browser and rules
+      # checks, strictly (the branch must also be up to date). So a direct push
+      # is rejected, and so is an immediate merge: `gh pr merge` cannot merge a
+      # pull request whose required checks have not reported. That is why the
+      # old "open it and merge it in the same breath" path stopped working on
+      # 2026-09-07 and left #515 open. This step opens the pull request; the
+      # next one hands it to scripts/bot-pr-autopilot.mjs, which releases the
+      # approval hold on its runs and arms GitHub's own auto-merge. Branch
+      # protection then decides, exactly as it does for a human pull request.
       #
-      # Only the small derived files are committed now. Whenever the content
-      # changed, changelog.json changes too (the new entry carries the new
-      # builtAt) and exports/README.md changes at minimum through its own
-      # builtAt line, so this merge still fires on every real refresh and
-      # remains the Netlify deploy trigger: the deploy's build:site step
-      # downloads the assets uploaded above. That holds even when the baseline
-      # download failed and the changelog step was skipped, because the exports
-      # regeneration above still moves exports/README.md.
+      # WHAT IS COMMITTED, and why data-release.json belongs in the list.
+      # The big pair lives on the release, not in git, but the PIN does live in
+      # git: data-release.json names the immutable release id and carries the
+      # SHA-256 of both files, and fetch-data.js resolves it at deploy time.
+      # The upload step above has written it since 2026-09-07 and this commit
+      # never added it, so no checkout has ever had one, every build took
+      # fetch-data.js's compatibility fallback, and every deploy resolved the
+      # ROLLING asset names again. That is the exact hole 2026-09-05 audit F13
+      # set out to close: without the pin in the commit, a deploy triggered
+      # while this pull request is open serves data whose review has not
+      # happened. With it, a build resolves the dataset its own commit names,
+      # so a refresh that fails CI cannot reach the site at all. (The very
+      # first refresh after this change is still unpinned on master's side, for
+      # the same reason: the hole closes for good once one of these merges.)
       #
-      # The `git diff --quiet` check below is no longer the gate (builtAt in
-      # exports/README.md meant it was never quiet); it stays as a cheap
-      # belt-and-braces guard against opening an empty PR.
+      # Whenever the content changed, changelog.json changes too (the new entry
+      # carries the new builtAt) and exports/README.md changes at minimum
+      # through its own builtAt line, so this merge still fires on every real
+      # refresh and remains the Netlify deploy trigger. That holds even when
+      # the baseline download failed and the changelog step was skipped,
+      # because the exports regeneration above still moves exports/README.md.
       #
-      # NOTE ON CI FOR THIS PR, and why the checking happens above instead.
+      # The porcelain check below is not the gate (builtAt in
+      # exports/README.md means it is never clean); it stays as a cheap
+      # belt-and-braces guard against opening an empty pull request.
       #
-      # This push and merge use GITHUB_TOKEN, and GitHub deliberately does not
-      # start workflow runs from GITHUB_TOKEN-driven events. So no run ever
-      # executes against a bot/refresh-* branch, and browser-tests.yml's "push
-      # to master" trigger does not fire for the bot merge either (verified:
-      # 2026-08-22 merge 987e590 and 2026-08-21 merge 5c45851 have no
-      # push-event run; every push run on master belongs to a human commit).
-      # How that PRESENTS changed on 2026-09-01: the queued runs used to sit at
-      # action_required, and now they complete as `failure` with zero jobs and
-      # the banner "This run likely failed because of a workflow file issue".
-      # There is no workflow file issue. It is the same token restriction
-      # rendered differently (the run object exists, event=pull_request,
-      # head_branch=bot/refresh-*, conclusion=action_required, zero jobs), and
-      # it leaves two red marks on the repo every morning.
-      #
-      # It cannot be filtered away from inside the workflows either, and the
-      # near-miss is worth recording so nobody spends the afternoon on it:
-      # `on.pull_request.branches-ignore` matches the PR's BASE branch, which
-      # is master here, not its head. Excluding `bot/**` there looks right,
-      # reads right in review, and does nothing.
-      #
-      # So the checking is done ABOVE, in this job, where it can actually run:
-      # the app's own suites, the site-wide static invariants, and
-      # validate-dataset.js against the real 66,000-record file, which is the
-      # one check nothing else in the repo can perform (the dataset is
-      # gitignored, so a runner never has it).
-      #
-      # THE PAT PATH IS WIRED AND WAITING FOR ITS SECRET. This step and the
-      # checkout both read `secrets.BOT_PAT || secrets.GITHUB_TOKEN`, so the
-      # day the secret exists the bot PR starts getting real runs and this step
-      # starts WAITING for them; until then nothing changes. One owner action
-      # is still required and cannot be automated, because GitHub has no API
-      # for creating a personal access token at all (web UI only):
-      #
-      #   1. github.com/settings/personal-access-tokens/new
-      #      Resource owner: nsoifer01. Repository access: only
-      #      nsoifer01/shevato. Repository permissions: Contents = Read and
-      #      write, Pull requests = Read and write. Nothing else. Expiry is a
-      #      judgement call: a shorter one is safer and the refresh starts
-      #      failing loudly when it lapses, which is the correct failure.
-      #   2. gh secret set BOT_PAT --repo nsoifer01/shevato
-      #      (or Settings > Secrets and variables > Actions > New secret)
-      #
-      # Two things to know before doing it. The runs WILL still skip every
-      # data-dependent rising-shows check, because the runner has no dataset:
-      # what they add is coverage of the rest of the estate against the files
-      # the bot commits, which is the changelog and the exports. The data
-      # itself is covered by the validate-dataset step above, and that is
-      # deliberately where it belongs. And a failing check now leaves the PR
-      # OPEN: the data is already on the release under an IMMUTABLE name, and
-      # apps/rising-shows/data-release.json - the pin that decides which
-      # release a build resolves - is in this pull request. So until it merges
-      # every deploy still fetches the PREVIOUS approved pair, which is what
-      # makes the sentence below true. It was not true before 2026-09-07: the
-      # rolling asset names meant any deploy triggered meanwhile picked up
-      # data whose review had not happened (2026-09-05 audit F13).
-      #
-      # The site keeps serving the previous build until someone
-      # looks. That is the intended failure mode.
-      - name: Open and merge PR if derived files changed
+      # The merge of origin/master after the commit is not cosmetic. Branch
+      # protection is STRICT, so a pull request that is behind cannot merge
+      # until it is updated, and every update costs another full round of
+      # checks. This job checks out at 06:00 and opens its pull request hours
+      # later, so being behind is the normal case, not the exception.
+      - name: Open the refresh pull request
+        id: open_pr
         if: steps.change.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ secrets.BOT_PAT || secrets.GITHUB_TOKEN }}
-          # Empty until the owner adds the secret. Everything that changes
-          # behaviour keys off this one flag, so the before and after are easy
-          # to reason about.
-          HAVE_PAT: ${{ secrets.BOT_PAT != '' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
-          if git diff --quiet \
+          # --porcelain rather than `git diff`, because data-release.json is
+          # UNTRACKED until the first of these commits lands and `git diff`
+          # cannot see an untracked file at all.
+          if [ -z "$(git status --porcelain -- \
               apps/rising-shows/changelog.json \
-              apps/rising-shows/exports/; then
+              apps/rising-shows/data-release.json \
+              apps/rising-shows/exports/)" ]; then
             echo "No derived-file changes; nothing to commit."
             exit 0
           fi
@@ -460,55 +472,50 @@ jobs:
           git checkout -b "$BRANCH"
           git add \
             apps/rising-shows/changelog.json \
+            apps/rising-shows/data-release.json \
             apps/rising-shows/exports/
           git commit -m "chore(rising-shows): refresh data $DATE"
+
+          git fetch --quiet origin master
+          git merge --no-edit origin/master
+
           git push --set-upstream origin "$BRANCH"
-          gh pr create \
+
+          # tail -n1: gh writes the URL last, and anything it decides to add
+          # before it would otherwise end up in the step output as the number.
+          PR=$(gh pr create \
             --base master \
             --head "$BRANCH" \
             --title "chore(rising-shows): refresh data $DATE" \
-            --body "Automated refresh of IMDb + TMDB data. Data assets updated on the rising-shows-data release."
+            --body "Automated refresh of IMDb + TMDB data. The dataset itself lives on the \`rising-shows-data\` release; \`apps/rising-shows/data-release.json\` in this pull request pins the immutable copy a build resolves, so nothing reaches the site until this merges." | tail -n1)
+          echo "Opened $PR"
+          echo "number=${PR##*/}" >> "$GITHUB_OUTPUT"
 
-          if [ "$HAVE_PAT" != "true" ]; then
-            # No PAT: no run will ever start against this PR, so there is
-            # nothing to wait for and waiting would hang the job until its
-            # timeout. Merge immediately, exactly as before. The refresh's own
-            # in-job checks (the app suites, the static invariants and
-            # validate-dataset.js against the real data) are the guard.
-            echo "BOT_PAT is not set: merging without PR checks (see the note above)."
-            gh pr merge "$BRANCH" --merge --delete-branch
-            exit 0
-          fi
-
-          # With a PAT the runs DO start, so wait for them. A PAT that only
-          # made the checks appear would report after the merge had already
-          # happened, which is a red mark on history rather than a gate.
-          #
-          # Checks take a moment to be registered against a new PR, so poll for
-          # them to appear before judging them; "none yet" is not "none".
-          echo "BOT_PAT is set: waiting for this PR's checks before merging."
-          for i in $(seq 1 20); do
-            if [ -n "$(gh pr checks "$BRANCH" --json name --jq '.[].name' 2>/dev/null)" ]; then
-              break
-            fi
-            echo "  no checks registered yet (${i}/20), waiting 15s"
-            sleep 15
-          done
-
-          if [ -z "$(gh pr checks "$BRANCH" --json name --jq '.[].name' 2>/dev/null)" ]; then
-            echo "::error::BOT_PAT is set but no checks appeared on $BRANCH after 5 minutes."
-            echo "The PR is left OPEN with the data already on the release; nothing deploys until it is merged."
-            exit 1
-          fi
-
-          # --watch blocks until every check settles and exits non-zero if any
-          # of them failed.
-          if ! gh pr checks "$BRANCH" --watch --interval 30; then
-            echo "::error::CI failed on $BRANCH, so it was NOT merged."
-            echo "The refreshed data is already on the rising-shows-data release, but nothing deploys"
-            echo "until this PR merges, so the site keeps serving the previous build. Fix and merge by hand."
-            exit 1
-          fi
-
-          echo "Checks passed; merging."
-          gh pr merge "$BRANCH" --merge --delete-branch
+      # Release the approval hold GitHub puts on a bot-authored pull request's
+      # runs, arm auto-merge, and watch until GitHub merges it.
+      #
+      # This step replaced "merge immediately, without any pull-request
+      # checks". It cannot merge anything past a red check: it arms GitHub's
+      # own auto-merge, and branch protection is what decides. A failure leaves
+      # the pull request OPEN, with the data on the release under an immutable
+      # name that only this pull request's data-release.json points at, so the
+      # site keeps serving the previous build until someone looks. That is the
+      # intended failure mode.
+      #
+      # delete_branch_on_merge is on for this repository, so GitHub deletes
+      # bot/refresh-rising-shows-* on merge and nothing here has to clean up.
+      #
+      # 75 minutes is the watch window. The four required checks cost about 15
+      # minutes together on a change like this one (lint ~1, test ~2, browser
+      # ~12 across four shards, rules ~1 because its Scope step finds no
+      # emulator inputs), and the window has to hold a second round in case
+      # master moves and the branch has to be updated.
+      - name: Drive the pull request through CI and auto-merge
+        if: steps.open_pr.outputs.number != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          # Through the environment rather than interpolated into the command,
+          # the same rule bot-pr-autopilot.yml follows for its dispatch inputs.
+          PR: ${{ steps.open_pr.outputs.number }}
+        run: node scripts/bot-pr-autopilot.mjs run --pr "$PR" --timeout-min 75

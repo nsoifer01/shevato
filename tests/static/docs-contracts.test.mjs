@@ -49,8 +49,20 @@ test('the README describes the gym cache headers netlify.toml actually sends', (
 });
 
 test('CLAUDE.md\'s app-documentation inventory matches the filesystem', () => {
+  // A DIRECTORY under apps/ is not automatically an app. Retiring one deletes
+  // its tracked files but cannot delete the directory itself when gitignored
+  // content is still sitting in it (a `.reports/` from the session that built
+  // it), so the husk survives in a working tree and vanishes on a fresh clone.
+  // That made this contract fail locally, for a removed app, while CI - which
+  // never has the husk - stayed green: the worst shape a test can have. An app
+  // is a directory that carries an app: a page, or documentation for one.
+  // Same rule as sync-system/tests/app-naming-consistency.test.mjs: a husk
+  // holds nothing but dot-entries, and a real app always has a page.
   const apps = readdirSync(join(REPO_ROOT, 'apps'), { withFileTypes: true })
-    .filter((e) => e.isDirectory()).map((e) => e.name);
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .filter((a) => readdirSync(join(REPO_ROOT, 'apps', a)).some((f) => !f.startsWith('.')));
+  assert.ok(apps.length >= 5, `apps/ should hold real apps, found ${apps.length}`);
   const withBoth = apps.filter((a) =>
     existsSync(join(REPO_ROOT, 'apps', a, 'README.md'))
     && existsSync(join(REPO_ROOT, 'apps', a, 'FINDINGS.md')));
@@ -60,8 +72,11 @@ test('CLAUDE.md\'s app-documentation inventory matches the filesystem', () => {
   assert.ok(sentence, 'CLAUDE.md still carries the inventory note');
 
   if (withBoth.length === apps.length) {
-    assert.match(sentence, /all (eight|\d+) apps have both files/i,
-      `all ${apps.length} apps have both files, and the note must say so`);
+    // Count-independent on purpose: the number of apps changes whenever one is
+    // added or retired, and this assertion used to REQUIRE the number, which is
+    // what kept "all eight apps" alive across two app-count changes.
+    assert.match(sentence, /every app has both files/i,
+      'every app has both files, and the note must say so without a count');
     assert.equal(/has a README only/.test(sentence), false,
       'no app is README-only any more');
   } else {
@@ -122,4 +137,131 @@ test('the CSP the README names is the one netlify.toml sends', () => {
     assert.equal(/CSP-Report-Only\)/.test(deployPara), false,
       'an enforcing CSP ships now, so the README must not describe report-only as the whole story');
   }
+});
+
+test('the Rising Shows docs name the file the app actually boots on', () => {
+  // The 2026-09-08 F08 split moved the boot payload from the season-level
+  // data-index.json to the show-level shows-index.json. Three files have to
+  // agree about that, and the app is the one that decides: a doc naming the
+  // old file sends the next reader to measure, cache or debug the wrong one.
+  const app = read('apps/rising-shows/js/app.js');
+  const boot = /await fetch\('([^']+)'\)/.exec(app);
+  assert.ok(boot, 'app.js must fetch its boot payload with a literal URL');
+  const bootFile = boot[1];
+  assert.equal(bootFile, 'shows-index.json',
+    'if this changed on purpose, the assertions below and the docs must move with it');
+
+  // The splitter has to write it.
+  const split = read('apps/rising-shows/scripts/split-data.js');
+  assert.match(split, new RegExp(`SHOWS_OUT: path\\.join\\(appDir, '${bootFile}'\\)`),
+    'split-data.js must write the file app.js boots on');
+  assert.match(split, /fs\.writeFileSync\(SHOWS_OUT, JSON\.stringify\(showsIndex\)\)/,
+    'and must actually write it');
+
+  // The app must NOT fetch the season-level file: that is the whole saving.
+  assert.equal(/fetch\('data-index\.json'\)/.test(app), false,
+    'the browser must never fetch the season-level index at boot');
+
+  // The README's payload table has to name it as the boot fetch.
+  const readme = read('apps/rising-shows/README.md');
+  const row = readme.split('\n').find((l) => l.includes(`\`${bootFile}\``) && l.includes('|'));
+  assert.ok(row, `README payload table must have a row for ${bootFile}`);
+  assert.match(row, /boot|on load/i, `the ${bootFile} row must say it is the boot fetch`);
+
+  // And the Kometa builder reads its own slice, not the season index.
+  const kometa = read('apps/rising-shows/js/kometa.js');
+  const kFetch = /await fetch\('([^']+)'\)/.exec(kometa);
+  assert.ok(kFetch, 'kometa.js must fetch its dataset with a literal URL');
+  assert.equal(kFetch[1], '../data/kometa-index.json');
+  assert.match(split, /KOMETA_OUT: path\.join\(appDir, 'data', 'kometa-index\.json'\)/,
+    'split-data.js must write the file the Kometa builder reads');
+});
+
+test('the Arena README does not still ask for a TTL policy that is enabled', () => {
+  // The TTL policy on triviaRooms.expiresAt went ACTIVE on 2026-09-08. A doc
+  // that still says "this needs one setting outside the repo" sends the next
+  // reader to enable something already enabled, and hides that the 336 rooms
+  // predating the field are NOT covered by it.
+  const readme = read('apps/arena/README.md');
+  assert.equal(/\*\*This needs one setting outside the repo\.\*\*/.test(readme), false,
+    'the TTL policy is enabled; the README must not still ask for it');
+  assert.match(readme, /TTL policy is enabled/,
+    'the README must state the policy is live');
+  assert.match(readme, /deletes the room DOCUMENT only, not its subcollections/i,
+    'and must say what the policy does NOT cover, or the next reader assumes it does');
+  // The one-off backlog clear is a fact about production that only this file
+  // records. A reader who finds "every room is covered" needs to see WHY that
+  // is true of rooms older than the field, or they will assume TTL did it.
+  assert.match(readme.replace(/\s+/g, ' '),
+    /Every room in the collection now carries `expiresAt` and is covered/,
+    'the README must state the current coverage');
+  assert.match(readme, /backlog it could not reach was cleared by hand/i,
+    'and must not leave the reader to think the policy reached backwards');
+
+  // The client still has to write the field the policy reads, and the rules
+  // still have to bound it, or the policy is pointed at nothing.
+  const app = read('apps/arena/js/app.js');
+  assert.match(app, /expiresAt: new Date\(Date\.now\(\) \+ ROOM_TTL_MS\)/,
+    'room creation must still stamp expiresAt');
+  const rules = read('firestore.rules');
+  assert.match(rules, /request\.resource\.data\.expiresAt is timestamp/,
+    'the rules must still require expiresAt to be a timestamp');
+  assert.match(rules, /expiresAt < request\.time \+ duration\.value\(48, 'h'\)/,
+    'and must still bound it, so a client cannot mint a room that outlives the policy');
+});
+
+test('the MapTap README says rules deploys are manual, because they are', () => {
+  // Between 2026-08-04 and 2026-09-08 production served a ruleset two rounds
+  // of fixes behind the repo, because merging a PR looks exactly like
+  // deploying from inside the repo. Nothing in CI or the Netlify build
+  // deploys firestore.rules, and the doc has to keep saying so.
+  const readme = read('apps/maptap-rivals/README.md');
+  assert.match(readme, /not deployed by CI, or by a Netlify build, or by merging a PR/i,
+    'the manual-deploy warning must stay');
+  assert.match(readme, /firebase-tools@[\d.]+ deploy --only firestore:rules/,
+    'and must give the exact command');
+
+  // Derived, not asserted from prose: no workflow and no build command
+  // deploys rules, which is what makes the warning true.
+  const workflows = readdirSync(join(REPO_ROOT, '.github', 'workflows'))
+    .filter((f) => f.endsWith('.yml'))
+    .map((f) => read(`.github/workflows/${f}`));
+  const pkg = JSON.parse(read('package.json'));
+  const deploysRules = (text) => /firestore:rules/.test(text);
+  assert.equal(workflows.some(deploysRules), false,
+    'if a workflow starts deploying rules, this warning is wrong and must be rewritten');
+  assert.equal(Object.values(pkg.scripts).some(deploysRules), false,
+    'same for an npm script');
+  assert.equal(deploysRules(read('netlify.toml')), false, 'same for the Netlify build');
+});
+
+// The site's app set changes. Descriptive copy that hard-codes how many apps
+// exist ("all eight apps", "all 8 app roots", "six of the eight app pages") is
+// stale the next time one is added or retired, and it was wrong twice before
+// this guard existed. Counts OF SPECIFIC NAMED APPS are facts about those apps
+// and are left alone, which is why a nearby list of app slugs excuses a match.
+test('no document describes the app suite by a fixed number', () => {
+  const FILES = [
+    'README.md', 'CLAUDE.md', 'TESTING-AUDIT.md', 'FINDINGS.md',
+    'tests/browser/README.md', 'assets/og/README.md',
+    'home.html', 'apps.html', 'work.html', 'privacy.html', 'robots.txt',
+  ];
+  const slugs = JSON.parse(read('assets/apps-manifest.json')).apps.map((a) => a.slug);
+  const WORDS = 'one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\\d+';
+  // Only phrasings that present the number as the WHOLE set.
+  const WHOLE_SET = new RegExp(
+    `\\b(?:all|across|of the|the|has|have|with|offers?)\\s+(?:the\\s+)?(?:${WORDS})\\s+(?:free\\s+)?app(?:s|\\s+(?:pages?|roots?))\\b`,
+    'gi');
+  const offenders = [];
+  for (const rel of FILES) {
+    const text = read(rel);
+    for (const m of text.matchAll(WHOLE_SET)) {
+      const near = text.slice(Math.max(0, m.index - 250), m.index + 250);
+      if (slugs.filter((slug) => near.includes(slug)).length >= 2) continue;
+      const line = text.slice(text.lastIndexOf('\n', m.index) + 1, text.indexOf('\n', m.index));
+      offenders.push(`${rel}: "${m[0].trim()}"  in: ${line.trim().slice(0, 90)}`);
+    }
+  }
+  assert.deepEqual(offenders, [],
+    `these size the app suite with a fixed number, which goes stale when an app is added or retired. Say "apps", "every app" or "the apps" instead:\n  ${offenders.join('\n  ')}`);
 });

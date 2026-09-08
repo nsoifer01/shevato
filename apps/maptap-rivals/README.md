@@ -75,10 +75,23 @@ Tests marked `{ todo: 'KNOWN DEFECT: ...' }` assert the behavior the app *should
 
 ## Deploying the network rules
 
-The rival network needs three Firestore collections (`maptapRivalsHandles`, `maptapRivalsNetwork`, `maptapRivalsLinks`) whose security rules live in the repo-root `firestore.rules`. They are not deployed automatically. Until someone runs:
+The rival network needs three Firestore collections (`maptapRivalsHandles`, `maptapRivalsNetwork`, `maptapRivalsLinks`) whose security rules live in the repo-root `firestore.rules`.
+
+**Rules are not deployed by CI, or by a Netlify build, or by merging a PR.** Editing `firestore.rules` changes nothing in production until someone runs:
 
 ```sh
-firebase deploy --only firestore:rules
+npx -y firebase-tools@15.27.0 deploy --only firestore:rules --project shevato-site
 ```
 
-every join and connection attempt fails with a permission error. That is handled gracefully (a status line at most, local rivals and games untouched, nothing crashes), but the feature does not work for anyone until the rules are live.
+That gap is not hypothetical. Between 2026-08-04 and 2026-09-08 the repo's ruleset moved twice - the 2026-08-23 Arena hardening and the 2026-09-05 audit's F01/F02/F03 fixes - while production kept serving the 2026-08-04 ruleset, because a merged PR looks exactly like a deploy from inside the repo. Both landed in production on 2026-09-08.
+
+To check what production is actually running, rather than what the file says:
+
+```sh
+TOKEN=$(gcloud auth print-access-token)
+curl -s -H "Authorization: Bearer $TOKEN" -H "x-goog-user-project: shevato-site" \
+  https://firebaserules.googleapis.com/v1/projects/shevato-site/releases
+# then GET the rulesetName it names and diff its source against firestore.rules
+```
+
+Until the rules are live every join and connection attempt fails with a permission error. That is handled gracefully (a status line at most, local rivals and games untouched, nothing crashes), but the feature does not work for anyone.

@@ -7,148 +7,11 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 // ---------------------------------------------------------------------------
-// Load app.js into a vm context that stubs the browser globals it touches
-// at parse + init time. We stop execution before load() does anything real
-// by making fetch() reject immediately.
+// app.js is loaded into a stubbed vm context by tests/app-harness.js, shared
+// with the parity suite so there is exactly one sandbox to keep faithful.
 // ---------------------------------------------------------------------------
 
-const APP_JS = fs.readFileSync(path.join(__dirname, '..', 'js', 'app.js'), 'utf8');
-
-function makeContext(extra = {}) {
-  const noopEl = () => {
-    const el = {
-      querySelector() { return noopEl(); },
-      querySelectorAll() { return []; },
-      getAttribute() { return null; },
-      setAttribute() {},
-      removeAttribute() {},
-      addEventListener() {},
-      removeEventListener() {},
-      replaceChildren() {},
-      appendChild() {},
-      insertBefore() {},
-      insertAdjacentElement() {},
-      closest() { return null; },
-      cloneNode() { return noopEl(); },
-      classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
-      style: {},
-      dataset: {},
-      hidden: true,
-      textContent: '',
-      value: '',
-      disabled: false,
-      children: [],
-      firstChild: null,
-      childElementCount: 0,
-      // Template element content stub
-      get content() {
-        return {
-          firstElementChild: { cloneNode() { return noopEl(); } },
-        };
-      },
-    };
-    return el;
-  };
-
-  // Web Storage stand-in. Values are stringified on the way in, exactly as the
-  // real thing does, so `getItem` returning "640" rather than 640 is faithful.
-  const makeStorage = () => {
-    const m = new Map();
-    return {
-      getItem: (k) => (m.has(k) ? m.get(k) : null),
-      setItem: (k, v) => m.set(k, String(v)),
-      removeItem: (k) => m.delete(k),
-      clear: () => m.clear(),
-    };
-  };
-
-  const sandbox = {
-    // Core JS globals
-    console,
-    Date, Math, JSON, Array, Object, Number, String, Boolean,
-    Symbol, Map, Set, Promise, Error, URL, URLSearchParams,
-    setTimeout, clearTimeout, setInterval, clearInterval,
-    requestAnimationFrame: (fn) => setTimeout(fn, 0),
-    parseInt, parseFloat, isFinite, isNaN,
-    encodeURIComponent, decodeURIComponent,
-
-    // Browser globals that app.js accesses at top level
-    window: {},
-    addEventListener() {},
-    removeEventListener() {},
-    scrollTo() {},
-    scrollY: 0,
-    innerWidth: 1024,
-    // Scroll restoration measures the reachable offset as
-    // documentElement.scrollHeight - innerHeight, so both have to exist.
-    innerHeight: 768,
-    document: {
-      getElementById: () => noopEl(),
-      querySelector: () => noopEl(),
-      querySelectorAll: () => [],
-      createElement: () => noopEl(),
-      createElementNS: () => noopEl(),
-      createTextNode: (t) => ({ textContent: t }),
-      createDocumentFragment: () => {
-        const frag = { childNodes: [], children: [], childElementCount: 0 };
-        frag.appendChild = () => {};
-        frag.replaceChildren = () => {};
-        return frag;
-      },
-      body: {
-        appendChild() {}, children: [], classList: { contains: () => false, add() {}, remove() {}, toggle() {} }, style: {},
-      },
-      documentElement: { style: {}, scrollHeight: 0, scrollTop: 0 },
-      activeElement: null,
-      addEventListener() {},
-      removeEventListener() {},
-    },
-    localStorage: makeStorage(),
-    // Per-tab storage: where the saved scroll offset lives.
-    sessionStorage: makeStorage(),
-    location: { hash: '', href: 'http://localhost/', origin: 'http://localhost' },
-    history: { replaceState() {} },
-    navigator: { clipboard: null, share: undefined, canShare: undefined },
-    CSS: { escape: (s) => s },
-    IntersectionObserver: class { observe() {} disconnect() {} },
-    matchMedia: () => ({ matches: false, addEventListener() {} }),
-    // Never-settling fetch so load()'s async chain never throws an unhandled rejection.
-    fetch: () => new Promise(() => {}),
-    // index.html loads scripts/finder-lib.js BEFORE js/app.js, and app.js
-    // takes its search folding from it (2026-09-05 audit F08 moved the
-    // implementation there so the build could stamp `titleSearch` into the
-    // index with the same function the finder searches with). Without this
-    // the sandbox exercises app.js's degraded fallback instead of the page.
-    RisingShowsFinder: require('../scripts/finder-lib.js'),
-    ...extra,
-  };
-  // window self-reference
-  sandbox.window = sandbox;
-  return vm.createContext(sandbox);
-}
-
-let ctx;
-ctx = makeContext();
-let loadError = null;
-try {
-  vm.runInContext(APP_JS, ctx, { filename: 'app.js' });
-} catch (e) {
-  // Synchronous errors from load() (skeleton/DOM stubs) are expected AFTER the
-  // export block runs. One thrown earlier - a missing browser global, a parse
-  // error - leaves _rsTestExports undefined, and every assertion below would
-  // then read a property of `{}` and pass on undefined. Fail loudly instead.
-  loadError = e;
-}
-
-const helpers = ctx._rsTestExports || {};
-
-assert.ok(
-  Object.keys(helpers).length > 0,
-  'app.js did not expose window._rsTestExports, so nothing in this file is actually under test. '
-  + (loadError
-    ? `app.js threw while loading: ${loadError.stack}`
-    : 'app.js loaded without throwing; check the export block at the bottom of js/app.js.'),
-);
+const { helpers, ctx } = require('./app-harness.js');
 
 // The vm harness can only reach helpers app.js explicitly exports. If one is
 // dropped from that block, say so by name rather than failing later with
@@ -159,6 +22,10 @@ test('vm harness: app.js exports every helper these tests drive', () => {
     'computeStdDev', 'languagesCompatible', 'parseCompareParam',
     'validateDataset', 'seasonEpisodeCount', 'shapeConfidence', 'viewKeyFromHash',
     'deliverChartImage', 'CHART_IMAGE_FLASH', 'watchRowNote',
+    // The parity suite bands candidates with this; a drift here is what made
+    // its "reference" implementation disagree with the app.
+    'RELATED_VOTES_BAND',
+    'weightedAvgEpisode', 'isAnimated', 'isUnscripted',
   ];
   const missing = expected.filter((name) => helpers[name] == null);
   assert.deepEqual(missing, [], `js/app.js stopped exporting: ${missing.join(', ')}`);
@@ -566,7 +433,7 @@ test('watchRowNote: only the quantifier differs between the two forms', () => {
   // The note's job is to say a chip runs a SEARCH rather than deep-linking the
   // title, and that promise has to read identically either way.
   const [one, many] = [helpers.watchRowNote(1), helpers.watchRowNote(3)];
-  assert.equal(one.replace('that', ' '), many.replace('each', ' '));
+  assert.equal(one.replace('that', '\u0000'), many.replace('each', '\u0000'));
 });
 
 // ---------------------------------------------------------------------------
@@ -597,9 +464,19 @@ test('computeStdDev: perfectly flat season returns 0', () => {
 // computeShowRelated
 // ---------------------------------------------------------------------------
 
+// SHOW records, not season records. computeShowRelated reads the boot index's
+// per-show rows since the F08 split; the arguments still read like a season
+// (avgRating, seriesRating, seriesVotes) because those are the quantities the
+// scenarios below are about, and they map one-for-one onto the show fields.
 const mkShowMatch = (seriesId, season, avgRating, seriesRating, genres = [], seriesVotes = 10000) => ({
-  seriesId, season, avgRating, seriesRating, genres, seriesVotes,
-  shapes: ['rising'], minVotes: 1000, episodes: [],
+  seriesId,
+  seasonsCount: season,
+  avgEpisode: avgRating,
+  showRating: seriesRating,
+  genres,
+  votes: seriesVotes,
+  shapes: ['rising'],
+  meanSeasonVotes: 1000,
 });
 
 test('computeShowRelated: excludes self', () => {
@@ -614,7 +491,7 @@ test('computeShowRelated: excludes self', () => {
 test('computeShowRelated: excludes shows without seriesRating', () => {
   const matches = [
     mkShowMatch('tt001', 1, 8.5, 8.0, ['Drama']),
-    { seriesId: 'tt002', season: 1, avgRating: 8.5, genres: ['Drama'], shapes: [], episodes: [], minVotes: 1000 },
+    { seriesId: 'tt002', seasonsCount: 1, avgEpisode: 8.5, genres: ['Drama'], shapes: [], meanSeasonVotes: 1000 },
     mkShowMatch('tt003', 1, 8.5, 8.0, ['Drama']),
   ];
   const result = helpers.computeShowRelated('tt001', matches);
@@ -636,7 +513,7 @@ test('computeShowRelated: excludes shows with no shared genre', () => {
 
 test('computeShowRelated: returns empty when current show has no seriesRating', () => {
   const matches = [
-    { seriesId: 'tt001', season: 1, avgRating: 8.5, genres: ['Drama'], shapes: [], episodes: [], minVotes: 1000 },
+    { seriesId: 'tt001', seasonsCount: 1, avgEpisode: 8.5, genres: ['Drama'], shapes: [], meanSeasonVotes: 1000 },
     mkShowMatch('tt002', 1, 8.5, 8.0, ['Drama']),
   ];
   const result = helpers.computeShowRelated('tt001', matches);
@@ -655,13 +532,13 @@ test('computeShowRelated: requires the same language', () => {
 });
 
 test('computeShowRelated: mean votes/episode must be within 10x either way', () => {
-  // Current show: mean minVotes = 1000 (mkShowMatch default) -> window 100..10000.
+  // Current show: meanSeasonVotes = 1000 (mkShowMatch default) -> window 100..10000.
   const matches = [
     mkShowMatch('tt001', 1, 8.5, 8.0, ['Drama']),
-    { ...mkShowMatch('tt002', 1, 8.5, 8.0, ['Drama']), minVotes: 99 },     // below window
-    { ...mkShowMatch('tt003', 1, 8.5, 8.0, ['Drama']), minVotes: 100 },    // at lo edge
-    { ...mkShowMatch('tt004', 1, 8.5, 8.0, ['Drama']), minVotes: 10000 },  // at hi edge
-    { ...mkShowMatch('tt005', 1, 8.5, 8.0, ['Drama']), minVotes: 10001 },  // above window
+    { ...mkShowMatch('tt002', 1, 8.5, 8.0, ['Drama']), meanSeasonVotes: 99 },     // below window
+    { ...mkShowMatch('tt003', 1, 8.5, 8.0, ['Drama']), meanSeasonVotes: 100 },    // at lo edge
+    { ...mkShowMatch('tt004', 1, 8.5, 8.0, ['Drama']), meanSeasonVotes: 10000 },  // at hi edge
+    { ...mkShowMatch('tt005', 1, 8.5, 8.0, ['Drama']), meanSeasonVotes: 10001 },  // above window
   ];
   const result = helpers.computeShowRelated('tt001', matches);
   assert.equal(result.map((r) => r.seriesId).sort().join(','), 'tt003,tt004');
@@ -694,9 +571,9 @@ test('computeShowRelated: orders by deviation similarity (asc devDiff)', () => {
 test('computeShowRelated: tiebreak on shared genre count (desc)', () => {
   // current: d=0.5 (avg=8.5, seriesRating=8.0), genres=['Drama','Crime']
   // both candidates same devDiff
-  const current = { seriesId: 'tt001', season: 1, avgRating: 8.5, seriesRating: 8.0, genres: ['Drama', 'Crime'], shapes: [], episodes: [], minVotes: 1000, seriesVotes: 10000 };
-  const cand1 = { seriesId: 'tt002', season: 1, avgRating: 8.5, seriesRating: 8.0, genres: ['Drama'], shapes: [], episodes: [], minVotes: 1000, seriesVotes: 9000 };        // 1 shared genre
-  const cand2 = { seriesId: 'tt003', season: 1, avgRating: 8.5, seriesRating: 8.0, genres: ['Drama', 'Crime'], shapes: [], episodes: [], minVotes: 1000, seriesVotes: 8000 }; // 2 shared genres
+  const current = { seriesId: 'tt001', seasonsCount: 1, avgEpisode: 8.5, showRating: 8.0, genres: ['Drama', 'Crime'], shapes: [], meanSeasonVotes: 1000, votes: 10000 };
+  const cand1 = { seriesId: 'tt002', seasonsCount: 1, avgEpisode: 8.5, showRating: 8.0, genres: ['Drama'], shapes: [], meanSeasonVotes: 1000, votes: 9000 };        // 1 shared genre
+  const cand2 = { seriesId: 'tt003', seasonsCount: 1, avgEpisode: 8.5, showRating: 8.0, genres: ['Drama', 'Crime'], shapes: [], meanSeasonVotes: 1000, votes: 8000 }; // 2 shared genres
   const result = helpers.computeShowRelated('tt001', [current, cand1, cand2]);
   assert.equal(result[0].seriesId, 'tt003', 'more shared genres ranks first on tie');
 });
@@ -937,26 +814,31 @@ test('Compare: load truncates an oversized stored list to the cap, clear empties
 // matches loop, a null title in normalizeSearch) and leave the skeleton cards
 // up with no Retry. validateDataset runs inside the catch and turns them into
 // the existing error panel, dropping repairable records instead of dying.
-test('validateDataset: non-object and missing-matches shapes are an error, not a crash', () => {
+test('validateDataset: non-object and missing-shows shapes are an error, not a crash', () => {
   assert.match(helpers.validateDataset([]), /Unexpected data shape/);
   assert.match(helpers.validateDataset(null), /Unexpected data shape/);
   assert.match(helpers.validateDataset({ builtAt: 'x' }), /Unexpected data shape/);
-  assert.match(helpers.validateDataset({ matches: 'nope' }), /Unexpected data shape/);
+  assert.match(helpers.validateDataset({ shows: 'nope' }), /Unexpected data shape/);
+  // The SEASON-level file is not a substitute for the boot index. Serving
+  // data-index.json at shows-index.json's URL (a half-finished deploy, a stale
+  // CDN entry) must land on the error panel rather than render an empty grid.
+  assert.match(helpers.validateDataset({ matches: [{ seriesId: 'tt1', title: 'x', season: 1 }] }),
+    /Unexpected data shape/);
 });
 
 test('validateDataset: malformed records are dropped, an empty result is an error', () => {
-  const good = { seriesId: 'tt1', title: 'Good', season: 1 };
-  const d = { matches: [good, { seriesId: 'tt2', title: null, season: 1 }, null, { title: 'No id', season: 2 }, { seriesId: 'tt3', title: 'NaN season', season: 'x' }] };
+  const good = { seriesId: 'tt1', title: 'Good', seasonAvgs: [{ season: 1, year: 2020, avg: 8 }] };
+  const d = { shows: [good, { seriesId: 'tt2', title: null, seasonAvgs: [] }, null, { title: 'No id', seasonAvgs: [] }, { seriesId: 'tt3', title: 'No seasonAvgs' }] };
   const origWarn = console.warn;
   const warned = [];
   console.warn = (msg) => warned.push(String(msg));
   try {
     assert.equal(helpers.validateDataset(d), null);
   } finally { console.warn = origWarn; }
-  assert.deepEqual(d.matches, [good], 'only the usable record survives');
+  assert.deepEqual(d.shows, [good], 'only the usable record survives');
   assert.match(warned.join(' '), /dropped 4 malformed/);
-  assert.match(helpers.validateDataset({ matches: [{ title: null }] }), /Show data is empty/);
-  assert.equal(helpers.validateDataset({ matches: [good] }), null);
+  assert.match(helpers.validateDataset({ shows: [{ title: null }] }), /Show data is empty/);
+  assert.equal(helpers.validateDataset({ shows: [good] }), null);
 });
 
 // D7: a failed detail fetch leaves `episodes` empty; the row must fall back
@@ -1062,17 +944,14 @@ test('normalizeSearch: still strips punctuation and a leading article, now folde
 // show recommended a children's cartoon and a Korean romance recommended anime.
 const mkRelated = (seriesId, opts) => ({
   seriesId,
-  season: 1,
-  avgRating: opts.avg ?? 8,
-  ratedCount: 10,
-  ratingSum: (opts.avg ?? 8) * 10,
-  seriesRating: opts.seriesRating ?? 8,
-  seriesVotes: opts.votes ?? 10000,
-  minVotes: opts.minVotes ?? 1000,
+  seasonsCount: 1,
+  avgEpisode: opts.avg ?? 8,
+  showRating: opts.seriesRating ?? 8,
+  votes: opts.votes ?? 10000,
+  meanSeasonVotes: opts.minVotes ?? 1000,
   genres: opts.genres,
   language: opts.language ?? 'en',
   shapes: [],
-  episodes: [],
 });
 
 test('computeShowRelated: animation and live action are not interchangeable', () => {

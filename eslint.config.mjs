@@ -184,7 +184,6 @@ export default [
   // classic scripts, and these three root/sync files use import/export.
   {
     files: [
-      'apps/quotescout/js/**/*.js',
       'apps/fpl-planner/js/**/*.js',
       'apps/gym-tracker/js/**/*.js',
       'apps/arena/js/**/*.js',

@@ -12,11 +12,23 @@ import { fileURLToPath } from 'node:url';
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const APPS_DIR = join(REPO_ROOT, 'apps');
 
+// A directory under apps/ is not automatically an app.
+//
+// Retiring one deletes its tracked files, but git cannot delete the directory
+// itself while gitignored content is still in it - a `.reports/` from the
+// session that built the app is enough. The husk then survives in every
+// working tree that has those reports and vanishes on a fresh clone, so these
+// checks went red locally for an app that no longer exists while CI stayed
+// green. That is the worst shape a test can have: it teaches the person
+// running it to ignore the suite.
+//
+// A husk holds nothing but dot-entries. A real app always has a page.
 function listDirs(dir) {
     return readdirSync(dir).filter((name) => {
         if (name.startsWith('.')) return false;
         const full = join(dir, name);
-        return statSync(full).isDirectory();
+        if (!statSync(full).isDirectory()) return false;
+        return readdirSync(full).some((entry) => !entry.startsWith('.'));
     });
 }
 
@@ -359,7 +371,7 @@ test('the homepage prose names apps in A-Z order', () => {
 });
 
 // Social/OG copy on the hub is what WhatsApp/LinkedIn previews show; it
-// drifted to "five apps" while the page listed eight (found 2026-08-22). The
+// drifted to naming fewer apps than the page listed (found 2026-08-22). The
 // og and twitter descriptions must name every manifest app.
 test('apps.html og:description and twitter:description name every manifest app', () => {
     const html = readRepoFile('apps.html');

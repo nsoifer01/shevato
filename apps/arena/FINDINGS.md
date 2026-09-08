@@ -497,6 +497,194 @@ Two consequences worth keeping:
   counted, and every later check is gated on that. Any new check of this shape
   needs the same guard.
 
+## The Globe Drop e2e failed on CI and passed everywhere else (2026-09-08)
+
+`arena-rules.yml` went red on 2026-09-08 and stayed red: five failures in six
+runs, always in `S6: Globe Drop clock`, and identically on `master` with content
+that had passed on the branch an hour earlier. Locally it was 95/95 every time.
+
+**Reproduced with `taskset -c 0,1`** - two cores, which is what a GitHub runner
+has against this workstation's ten. That turns a story about "CI is flaky" into
+a failing test you can watch:
+
+```
+FAIL emulator (globe): every live player Ready during the reveal advances the
+round early  [readyA=true readyB=true idx=1 advanced -1.7s before the natural
+deadline (voted at +10657ms) flags=74yBN:albania,FYd6q:albania]
+```
+
+Both players DID vote (both flags carry the location), but the pair of votes
+took **10,657 ms** against a **10,000 ms** reveal window, so the round had
+already advanced on its own timer and there was nothing early about it.
+
+**The cost is a cold globe, paid inside the deadline.** B is a background tab
+from room creation onward, so its first paint is a full `ensureGlobe()`: build
+the globe.gl scene, decode and upload the Earth texture (2 K on a 390-wide
+viewport), run the 1.2 s camera fly-in - and the Ready bar is painted by the
+same rAF loop, which a background tab does not run. The test fronted B for the
+first time *during the reveal*, so all of that landed inside the 10 s window,
+on top of two `Page.bringToFront` round-trips and A's own vote.
+
+**The check now reports a breakdown instead of one number.** It used to quote a
+single elapsed figure spanning the votes, the wait for the advance AND three
+owner reads, so "voted at +10657ms" could mean a late vote or a slow advance
+and there was no way to tell. Every step is now printed as an offset from the
+round's own deadline. That is what turned this from "CI is flaky" into two
+separate, measurable faults.
+
+**Fault 1: a cold globe, paid inside the deadline.** Fixed by fronting B during
+the 3 s asking phase and waiting for its canvas and for `is-loading` to clear
+before handing the foreground back. On two cores the two votes moved from
+landing 0.7 s AFTER the deadline to landing 7.5 s BEFORE it.
+
+**Fault 2: the test raced its own vote.** With the timing fixed the check still
+failed, and the breakdown said why: both buttons were clicked well inside the
+window, but the second player's `readyAfterQId` was still absent
+(`flags=gQY1b:djibouti,txhnT:-`). Not a lost write - a race. The vote is a
+Firestore write issued from a tab the test backgrounds one line later, and the
+early advance is gated on the HOST's rAF loop seeing `live.every(p =>
+p.readyAfterQId === currentQId)`. Background B before its write propagates and
+the host never sees a full house, so the round ends on its own timer and the
+check reports "not early" for something that was never about earliness.
+
+The test now waits for both flags to actually land before returning the
+foreground, and the conflated assertion is split in two: *both players' votes
+register* and *that makes the round advance early* are different claims, and
+folding them together told you neither when it went red. `readyB` had only ever
+meant "the button was clickable".
+
+`readyAfterQId` is only ever set, never cleared, which is what made the
+diagnosis possible: a `-` in the flags is proof the write never arrived, not
+evidence that something reset it.
+
+**Result on two cores, nothing else on the box: 97/97, exit 0** - from 95/96
+with the Globe Drop section red. The two extra checks are the globe warm-up and
+the split vote-registration assertion.
+
+One process note that cost a run: the FINDINGS rule above ("run this estate
+with nothing else heavy on the box") is real. A diagnostic run taken while
+`npm test` was on the other eight cores came back 90/96 with five unrelated
+idempotency failures, none of which reproduced on an idle machine.
+
+**The second symptom was the driver, not the app.** The other CI signature was
+`S6 ... ran to completion [timeout: Runtime.evaluate]`, an entire section lost.
+`waitForExpr` in `tests/browser/cdp.mjs` documents "false on timeout - callers
+assert on the result, so a wait that never comes fails the check rather than
+throwing the suite over", and that held for a condition that never came true
+but NOT for the transport: a `Runtime.evaluate` that hit the driver's own 45 s
+send timeout rejected straight through it. `clickSel` had been hardened against
+exactly this ("a CDP Input call can time out when the renderer is busy") and the
+Runtime path never was. A send timeout is now treated as a slow poll and
+polling continues to the caller's deadline; a real page error (closed target,
+detached session) still throws, because waiting longer cannot fix that. Safe
+only here: every expression `waitForExpr` takes is a predicate.
+`tests/static/cdp-harness.test.mjs` covers it, and two of its six checks fail
+against the pre-fix driver.
+
+## Two red checks, one root cause: the test raced an async write (2026-09-08)
+
+`arena-rules` stayed red after #513 and #514, in two different places on two
+different runs. Both were the harness racing a write it had not waited for, and
+both were reported as product failures.
+
+**The Ready vote.** "both players' Ready votes register during the reveal"
+failed with one `readyAfterQId` marker absent. The order was: click A's Ready,
+`front(B)` on the very next line, click B's Ready, then poll for BOTH markers.
+Fronting B is what backgrounds A, so A's vote was a Firestore write issued
+~200 ms before its own renderer became the lowest-priority process on the box.
+On two cores shared with three Chrome instances, the emulators and Node, an
+in-flight write from a starved renderer sits unacknowledged for seconds. The
+timeline said it outright once each step was reported against the round's own
+deadline: `voteA -7.5s`, `frontB -7.5s`, marker still missing 4.5 s later. Each
+vote now lands while its own tab is still in the foreground. Nothing asserted
+got weaker, and the backgrounded case is still covered - by the D3 hidden-host
+checks, where it belongs, instead of smuggled into a check about whether a vote
+registers.
+
+**The idempotency precondition.** Five checks went red with
+`games=1 sessionMatchCount=null` while the next line of the SAME report read
+`sessionMatchCount null -> 1 -> 1`. The tally was late, not missing. Ending a
+game produces two independent idempotent writes - profile and leaderboard
+counters guarded by `lastCountedGame`, and the room's session tally guarded by
+`sessionCountedGame`, written by `maybeWriteH2HPairs` in its own transaction.
+Nothing orders them and nothing should; each carries its own guard and each is
+safe to replay. The precondition read once and demanded both. It now gives them
+a bounded window, and still fails if they never land, which is the only reason
+it exists.
+
+The general rule: **when a check reads state written by a client, wait for that
+state, do not read once and blame the product.** Both failures cost days of
+"flaky CI" because the message named a product symptom ("the player's vote was
+lost", "the game was not counted") for a condition the run had no evidence of.
+Two things make the next one cheap to read: every step is reported as an offset
+from the round's own deadline rather than a wall clock, and both clients are
+labelled A/B in the flag report - it comes back in `ownerList` order, which is
+not vote order, so "one of the two is missing" never said which. A per-client
+click counter goes with the labels, because "the button was clickable" and "the
+click reached the handler" had been indistinguishable, and that ambiguity is
+what made this read as a product bug twice.
+
+## A failed Ready vote looked exactly like no vote at all (2026-09-08)
+
+Found while reading `markReadyForNext` during the Globe Drop e2e investigation
+above; it is a product defect, not a harness one, and the e2e never touched it.
+
+The Globe Drop reveal ends early when every live player has tapped Ready: each
+client writes `readyAfterQId: <location id>` on its own player doc and the
+host's loop advances once `live.every(p => p.readyAfterQId === currentQId)`.
+That write can fail - it is a Firestore `updateDoc` from a phone that may be on
+a dead network, and the rules require `request.auth.uid == playerUid`, so a
+session that has lapsed is denied. The catch block only called `console.warn`.
+
+Nothing about the failure is visible from the game. The marker was never
+written, so `meReady` stays false and the snapshot leaves the button ENABLED
+and un-ticked: identical to a player who has not voted yet. The room then sits
+out the full `Config.GLOBE_DROP_REVEAL_TIME_MS` (10 s) while the player who
+did tap believes they are waiting on everybody else. The one trace was a
+console line, in a tab nobody has open.
+
+It now raises the same toast the other two mid-round writes already raised on
+failure - `submitGuess` ("Guess did not save") and `submitAnswer` ("Your answer
+did not save") - so the rule was already established and this was the one write
+of that class not following it. `apps/arena/tests/mid-round-write-failures.test.js`
+pins all three by reading the catch blocks out of source (the `escapeHtml`
+idiom: `app.js` touches the DOM at import time, so it cannot be required). Only
+the `markReadyForNext` check fails against the pre-fix source, which is the
+point - the other two were already correct.
+
+The toast is keyed (`ready-failed`), so a retry storm collapses to one message
+per second rather than papering the screen.
+
+## The room backlog TTL could not reach (2026-09-08)
+
+Enabling the TTL policy on `triviaRooms.expiresAt` covers rooms that HAVE the
+field. Every room created before 2026-09-08 did not: TTL needs a timestamp in
+the past, and a document without the field is never a candidate. The census the
+morning the policy went ACTIVE:
+
+| | |
+|---|---|
+| rooms | 341 (oldest 112 days, median 28) |
+| carrying the pre-gate cleartext `password` | 319 |
+| orphaned player/chat/gate documents beneath them | 269 |
+| carrying `expiresAt` | 0 |
+
+The 319 mattered. Rooms created before `scopedReads` are readable by any
+signed-in user who has the five-character code, so each of those was still
+handing out its own cleartext password and its questions with `correctIndex`,
+for no remaining purpose.
+
+Cleared once, by hand, using the app's OWN room lifetime (`ROOM_TTL_MS`, 24 h)
+rather than an invented cut-off: the 336 rooms past it were deleted with their
+subcollections, and the 5 still inside it were given the `expiresAt` the current
+client would have written, so the policy finishes them on schedule. All 341
+documents were backed up first. Verified after: 5 rooms remain, every one
+carries `expiresAt`, none carries `password`, and there are no orphaned
+subcollection documents.
+
+It cannot recur: the rules have required `expiresAt` on create since the same
+day, so a room without one can no longer be written.
+
 ## Member writes are bounded by VALUE now, not only by key
 
 The 2026-08-23 allow-list (above) fixed WHICH fields a member may touch and
@@ -667,3 +855,93 @@ live; the read-only recap is for people who were not in it. The suite is
   both votes reached the player docs, so a lost vote reports itself as a lost
   vote. Do not "fix" a recurrence by widening the 1500ms margin: the margin is
   the assertion, and the cost belongs off the clock.
+
+## A path-filtered workflow can never be a required check (2026-09-08)
+
+On 2026-09-08 two PRs (#509, #511) merged with the `rules` check RED, and a
+third (#505) sat red behind them. Nothing was force-merged and no gate was
+bypassed. Branch protection required exactly `lint`, `test` and `browser`;
+`rules` was not in the list, so a red `rules` never blocked anything.
+
+The obvious fix, adding `rules` to the required contexts, would have broken
+every unrelated pull request in the repo. **A workflow filtered by
+`on.<event>.paths` does not report a neutral or skipped check when a change
+misses the filter. It reports nothing at all**, and a required context that
+never reports leaves the PR parked on "Expected - Waiting for status to be
+reported" with no way to satisfy it. That is why `test`, `lint` and
+`browser-tests` carry no path filters and `arena-rules` did: the three that run
+unconditionally are exactly the three that could be required, and the one that
+was filtered is the one that could not. The correlation was not a coincidence,
+and it was not noticed until it cost two red merges.
+
+The fix moves the filter off the trigger and into the job. `arena-rules.yml`
+now starts on every pull request and every push to master, and a first "Scope"
+step diffs the change (three-dot for a PR, two-dot for a push) and sets an
+output that gates the six expensive steps. A change with no emulator inputs
+takes about half a minute and reports success; a change with them runs the full
+suites as before. Bounded CI is preserved, and the check now always reports,
+which is what makes it requireable.
+
+Two things that were wrong in the old trigger and are fixed in the new list:
+
+- **`tests/browser/cdp.mjs` was missing.** `apps/arena/e2e/emulator.mjs`
+  imports the CDP driver from `../../../tests/browser/cdp.mjs`, so the driver
+  the entire multiplayer suite runs on could be rewritten without this job ever
+  running. It was, on 2026-09-08, in the very round that fixed this suite.
+- **`sync-system/**` was too coarse.** It swept in `sync-system/tests/`, which
+  is node tests and their stubs that neither the app nor either emulator suite
+  loads. PR #511 deleted an unrelated app, touched one app-count line in that
+  directory, and ran the whole 10-minute emulator suite on the strength of it,
+  then went red on a flake that had nothing to do with the change.
+
+The new failure mode this creates is worse than the old one, so it is tested:
+the decision now lives in a shell regex, and if that regex drifts, the job
+reports GREEN while running no emulator at all. An authorization boundary that
+reports success without being checked is worse than one nobody claims to check.
+`tests/static/ci-arena-scope.test.mjs` extracts the real Scope script out of the
+YAML and drives it against canned file lists with a stubbed git, asserts the
+fail-safe cases (unknown event, missing commit, failed diff) all RUN rather than
+skip, and derives the cross-tree-import case from the e2e's own `import`
+statements, so adding a shared dependency without widening the trigger fails the
+suite.
+
+## Actions runs `run:` blocks as `bash -e`, and grep exits 1 on no match (2026-09-08)
+
+The Scope step above shipped with a bug that took every non-Arena pull request
+in the repo down for about twenty minutes, and it is worth keeping because the
+shape of the mistake is more general than the line that caused it.
+
+The decision line was:
+
+```sh
+HITS=$(printf '%s\n' "$CHANGED" | grep -Ev "$NOT_INPUTS" | grep -E "$INPUTS")
+```
+
+`grep` exits 1 when it matches nothing. Matching nothing IS the skip decision,
+so on exactly the cheap path the assignment returned 1. That is fatal, because
+**a workflow `run:` block with no `shell:` key runs as `/usr/bin/bash -e {0}`**:
+`-e` is already on before the script's own `set -uo pipefail` adds pipefail on
+top. The step died before printing a line, the required `rules` check went red,
+and every PR touching no emulator inputs became unmergeable. A gate that was
+built so a skip could report success instead failed closed on the skip. `|| true`
+on that assignment is the fix, and it is load-bearing.
+
+The reason the test estate did not catch it is the part worth internalising.
+`ci-arena-scope.test.mjs` extracted the real script from the YAML and drove it
+with `execFileSync('bash', [scriptPath])` - no `-e`. It therefore tested the
+right *logic* in the wrong *shell*, and reported 24 green checks on a script
+that could not survive contact with Actions. The four skip cases fail correctly
+the moment the runner is `bash -e`, which is what they use now.
+
+Two rules follow:
+
+- **Extracting a script to test it means extracting its interpreter too.** If
+  the harness does not reproduce the flags the real runner uses, a green suite
+  says nothing about the real runner. Same class as running an e2e against a
+  stub of the thing under test.
+- **A live run that only exercises one branch has verified one branch.** The
+  first `rules` run on the PR that introduced this was cited as proof the step
+  worked. It only ever proved `run=1`: the PR touched the workflow, so it could
+  not take the skip path, and that gap was known and noted at the time and
+  shipped anyway. The skip path's first real execution was on a bot PR against
+  production, which is where it failed.

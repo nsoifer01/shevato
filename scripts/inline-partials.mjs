@@ -5,7 +5,7 @@
 // through `jQuery.load('/partials/header.html')` in assets/js/main.js, and
 // robots.txt disallowed /partials/. Google's rendering service does not
 // fetch robots-blocked subresources, so every page it rendered had no
-// header and no footer: no nav, and six of the eight app pages left with
+// header and no footer: no nav, and most app pages left with
 // zero internal outbound links. Unblocking the path in robots.txt fixes the
 // symptom; this script removes the class of problem, by putting the markup
 // in the HTML before it ever leaves the server.

@@ -125,13 +125,13 @@ Until 2026-09-04 `robots.txt` disallowed four things the pages themselves load:
 | Path | Loaded by | Cost |
 | --- | --- | --- |
 | `/partials/` | `assets/js/main.js` on all 17 pages | the entire header and footer navigation |
-| `/sync-system/` | first `<script>` in the head of all 9 app pages | sync boot (app still rendered) |
+| `/sync-system/` | first `<script>` in the head of every app page | sync boot (app still rendered) |
 | `/firebase-config.js` | a module on every page | auth boot |
 | `/apps/*/scripts/` | Rising Shows loads 4 of them with `<script src>` | the shape matcher, finder, providers and Kometa logic |
 
 Measured by rendering production in headless Chrome with exactly those paths
 blocked at the network layer: `document.getElementById('header')` was `null`
-on every page, six of the eight app pages had **zero** internal outbound links,
+on every page, most app pages had **zero** internal outbound links,
 and `/privacy` had zero inbound ones.
 
 Two things follow. First, `tests/static/robots-references.test.mjs` now fails
@@ -191,7 +191,7 @@ could not be reproduced locally and still needs measuring on production.
 
 ## App pages need prose, and it is not optional for search
 
-Six of the eight app pages rendered almost nothing but interface labels to a
+Most app pages rendered almost nothing but interface labels to a
 crawler - Football H2H came to 264 words, of which roughly ten were sentences.
 A page cannot rank for "head to head football score tracker" when neither that
 phrase nor any description of the tool exists on it. Each app page now carries
@@ -566,7 +566,7 @@ elsewhere.
 
 `assets/css/main.css` starts with `@import` for the Google Font CSS and
 `firebase-auth.css` (57 KB), which serialises round trips before first paint.
-The imports stay because all eight app pages load `main.css` too and their
+The imports stay because every app page loads `main.css` too and their
 `<head>`s are app-owned; instead every root page carries
 `<link rel="preload" ... as="style">` for both, so the fetches start with the
 HTML parse. Removing the `@import`s means editing every app page's head in the
@@ -577,7 +577,7 @@ same change.
 - The apps hub OG/Twitter descriptions are pinned to the manifest by
   `sync-system/tests/app-naming-consistency.test.mjs` ("apps.html
   og:description and twitter:description name every manifest app"); they had
-  drifted to five apps while the page listed eight.
+  drifted to naming fewer apps than the page listed.
 - `assets/js/pagination.js` `getPaginatedItems` now clamps `currentPage` to
   the total page count (pagination.js:63-64), which is what produced empty
   pages and "Showing 201-6 of 6" in football-h2h and mario-kart.

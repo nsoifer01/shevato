@@ -6,10 +6,10 @@ Rank whole TV shows by the **shape** of their IMDb episode ratings, not the aver
 
 1. A Node script (`scripts/build-data.js`) streams three gzipped TSV dumps from IMDb, joins episodes with their ratings, runs each season through eleven shape detectors (plus two series-level shapes applied across a show's seasons in a post-pass), and writes `data.json` with every season that passes the vote/episode floor (tagged with every shape it fits - seasons matching no shape are still included with `shapes: []`).
 2. Three optional enrichment scripts pull TMDB metadata: `scripts/enrich-tmdb.js` for posters, overviews, and language; `scripts/enrich-providers.js` for US streaming providers (Netflix / Max / Prime / …); `scripts/fetch-season-overviews.js` for per-season plot summaries. The first two cache to `data/tmdb-cache.json` so they survive rebuilds and run daily in the refresh workflow; the third is a one-off that writes a tracked side-file, `data/season-overviews.json`, and is in no workflow. `build-data.js` applies the daily cache FIRST and uses the side-file only to fill gaps (never with its empty/null entries), so a stale snapshot can no longer override fresher text - it used to be the other way round, which pinned 12,149 seasons to July 2026 wording.
-3. `index.html` loads `data-index.json` in the browser (see "Payload split" below) and renders the **Show Finder**: one row per show (total rated episodes, episode-weighted average episode rating, the gap vs the show's IMDb rating, votes, total runtime) with show-shape chips, mood presets, search, grid + list views, tri-state genres, decade/year, language, sort, pagination (24 per page), and an active-filter bar. It draws a season-average sparkline per show - single-season shows draw their episode trajectory in a distinct orange. Watched tracking persists to localStorage, and all filter/view state lives in the URL hash so any view is shareable. No extra data or backend: it derives everything client-side from the fields already in `data.json`.
+3. `index.html` loads `shows-index.json` in the browser (see "Payload split" below) and renders the **Show Finder**: one row per show (total rated episodes, episode-weighted average episode rating, the gap vs the show's IMDb rating, votes, total runtime) with show-shape chips, mood presets, search, grid + list views, tri-state genres, decade/year, language, sort, pagination (24 per page), and an active-filter bar. It draws a season-average sparkline per show - single-season shows draw their episode trajectory in a distinct orange. Watched tracking persists to localStorage, and all filter/view state lives in the URL hash so any view is shareable. No extra data or backend: it derives everything client-side from the fields already in `data.json`.
 4. The show-shape chips classify each show by the shape of its per-season averages (the same eleven detectors `match.js` runs per episode, now loaded in the browser too, so there is one source of truth), so a "rising" show is one whose seasons kept getting better; a show needs 2+ seasons to carry a cross-season shape. The two categorical season tags (Saved best for last, Shape drift) also surface as chips: a show carries one whenever any of its seasons does, so those chips work for single-season shows too. Open any show to see a detail modal with its season-by-season trajectory. See the feature table below.
 
-`data.json` and `data/show-modal-extras.json` are not tracked in git (they are ~150 MB per refresh and were bloating history). They live as gzipped assets on the rolling [`rising-shows-data` GitHub release](https://github.com/nsoifer01/shevato/releases/tag/rising-shows-data), refreshed daily by GitHub Actions and downloaded at build time by `scripts/fetch-data.js` (locally: `npm run fetch:rising-shows-data`). See [`DATA_README.md`](DATA_README.md) for the auto-refresh details.
+`data.json` and `data/show-modal-extras.json` are not tracked in git (they are ~150 MB per refresh and were bloating history). They live as gzipped assets on the [`rising-shows-data` GitHub release](https://github.com/nsoifer01/shevato/releases/tag/rising-shows-data), refreshed daily by GitHub Actions and downloaded at build time by `scripts/fetch-data.js` (locally: `npm run fetch:rising-shows-data`). Each refresh publishes them under an immutable, release-stamped name as well as the rolling one, and commits `data-release.json` - the pin naming that release plus the SHA-256 of both files - in the same pull request as the derived files, so a build resolves the exact dataset its own commit approved and a rollback of the code rolls back the data with it. That daily pull request merges itself: `scripts/bot-pr-autopilot.mjs` releases the approval hold GitHub puts on a bot pull request's workflow runs and arms GitHub auto-merge, so the same four required checks gate it as gate a human pull request, and a red one leaves it open with nothing deployed. See [`DATA_README.md`](DATA_README.md) for the auto-refresh details and `FINDINGS.md` for why the hold exists.
 
 ### Payload split (what the browser actually downloads)
 
@@ -27,11 +27,30 @@ build time (wired into `build:site` after the page builders, and after
 
 | File | What it is | Fetched |
 |---|---|---|
-| `data-index.json` | `data.json` minus `episodes`/`overview`, ~4.3 MB brotli | on load, the only thing first paint waits for, and the ONLY dataset fetch at boot |
-| `data/detail/<seriesId>.json` | the stripped fields PLUS that show's slice of the modal extras: cast, per-season overviews (`ov`), per-episode ids/runtimes/titles (`eps`). Breaking Bad: ~10 KB | when a modal opens, memoised |
+| `shows-index.json` | **the boot payload.** One record per SHOW, already aggregated by `buildShowAgg`: 34,615 rows, 16.6 MB raw / 3.4 MB brotli | on load, the only thing first paint waits for, and the ONLY dataset fetch at boot |
+| `data/detail/<seriesId>.json` | that show's SEASON records (`records`), plus the stripped `episodes`/`overview` and its slice of the modal extras: cast, per-season overviews (`ov`), per-episode ids/runtimes/titles (`eps`). Breaking Bad: ~11 KB | when a modal opens, memoised |
+| `data-index.json` | the SEASON-level file: `data.json` minus `episodes`/`overview`, 32.8 MB raw / 5.9 MB brotli. The dataset artifact, and the input the show index is checked against | never by the browser |
+| `data/kometa-index.json` | the eight per-season fields the Kometa collection builder reads (`seriesId`, `title`, `season`, `shapes`, `confidence`, `tmdbId`, `tvdbId`, `seasonTvdbId`), 1.8 MB brotli | by `/kometa/` only |
 | `data/show-modal-extras.json` | the extras monolith (~67 MB raw). Input to the split and to `build-show-pages.js`; the app itself no longer fetches it on current deploys | legacy fallback only: on first modal open, never at boot, and only when the index lacks the `extrasInDetail` flag (artifacts split before the merge existed) |
 
-`data-index.json` carries `extrasInDetail: true` whenever the splitter found
+**Why the boot payload is show-level** (2026-09-05 audit F08, closed
+2026-09-08). The Finder renders shows, not seasons, but it used to download the
+season file - 66,380 records for 34,615 shows, so every series fact repeated
+once per season - and its first act was to fold it back down with
+`buildShowAgg`, on the main thread, before a card could paint. That fold is
+identical for every visitor, so it runs once per deploy instead. Season records
+still exist; they arrive with the detail file of the show that needs them.
+Measured at Netlify's own compression: 5.88 -> 3.43 MB over the wire, 34.4 ->
+16.6 MB raw, `JSON.parse` 168 -> 88 ms, and ~250 ms of boot aggregation gone.
+`tests/shows-index-parity.test.js` holds the shipped index to the pre-split
+fold field-for-field over the whole catalogue.
+
+Because the season table now rides in the detail file, a partition that cannot
+be fetched costs more than the episode curves did: `seasonAvgs` therefore
+carries `episodeCount`, so such a show still opens with its true season and
+episode counts, an explicit notice and a Retry.
+
+`shows-index.json` carries `extrasInDetail: true` whenever the splitter found
 the extras file and merged it into the detail files; the app takes that flag
 as its contract never to fetch the monolith. Before 2026-08-15 the app
 fetched the whole extras file "in the background" right after the grid
@@ -339,7 +358,7 @@ and while the floor is doing something the active-filter bar carries a
 ## Viewing locally
 
 Serve the directory rather than opening `file://`. Two independent reasons now:
-the page loads `data-index.json` via `fetch`, and `js/app.js` is a `type="module"`
+the page loads `shows-index.json` via `fetch`, and `js/app.js` is a `type="module"`
 script, which the browser refuses to execute from a `file://` origin. The
 module failure is the quieter of the two, since the page still renders its
 shell and simply never becomes interactive.
@@ -379,6 +398,8 @@ dataset is checked now".
 | `tests/finder-lib.test.js` | `buildShowAgg` (both the full-record and the split-record input shapes), hash parsing, the filter predicates, and the sort comparator |
 | `tests/build-data.test.js` | the IMDb pipeline end to end: rating aggregation, the vote/episode floors, unrated episodes, `\N` season and episode numbers, `seasonYear` / `avgRuntime`, the genre and language tallies, provider normalisation, and the modal side-file split |
 | `tests/split-data.test.js` | the payload split: that the emitted `data-index.json` aggregates identically to the unsplit `data.json` through the real `buildShowAgg`, that index + detail rehydrates losslessly, and the `aboveImdb` rules |
+| `tests/shows-index-parity.test.js` | that `shows-index.json` equals the pre-split boot fold field-for-field, over a synthetic catalogue (always) and the real one (when the release data is present): the aggregate, the season averages, the sparkline ratings, and the four answers that used to be scanned out of season records at boot (above-IMDb, provider chip, adult flag, best/worst season). Then the observable answers: the whole Finder pipeline (`filterAndSortRows`) over 78 filter / sort / search states including 40 seeded-random combinations, `computeShowRelated` over a 400-show spread, and the suggestion index over the whole catalogue |
+| `tests/app-harness.js` | not a suite: loads `js/app.js` into a stubbed vm context and exports its test helpers, shared by `app-features.test.js` and the parity suite |
 | `tests/build-changelog.test.js` | `diffDatasets` / `appendEntry`, plus the CLI's missing-baseline guard |
 | `tests/integrations-lib.test.js` | Kometa collection + overlay YAML, MDBList id lists, and the compare-export naming |
 | `tests/render-show-page.test.js`, `render-shape-hub.test.js`, `render-curve.test.js`, `render-sitemap.test.js`, `slugify.test.js` | the static page builders, their JSON-LD, and slug/permalink stability |

@@ -178,59 +178,59 @@ const isUnscripted = (genres) => (genres || []).some((g) => UNSCRIPTED_GENRES.in
 // viewer means.
 const RELATED_VOTES_BAND = 20;
 
-function computeShowRelated(seriesId, matches, shapesBySeries) {
+function computeShowRelated(seriesId, shows, shapesBySeries) {
   const shapesFor = (sid) => (shapesBySeries && shapesBySeries.get(sid)) || [];
   const currentShapes = shapesFor(seriesId);
-  const bySeriesId = new Map();
-  for (const m of matches) {
-    if (!bySeriesId.has(m.seriesId)) bySeriesId.set(m.seriesId, []);
-    bySeriesId.get(m.seriesId).push(m);
-  }
-  const currentSeasons = bySeriesId.get(seriesId);
-  if (!currentSeasons || currentSeasons.length === 0) return [];
-  const currentMeta = currentSeasons[0];
-  if (typeof currentMeta.seriesRating !== 'number') return [];
-  const meanVotes = (seasons) =>
-    seasons.reduce((s, m) => s + (m.minVotes || 0), 0) / seasons.length;
-  // Episode-weighted, like every other surface (see weightedAvgEpisode).
-  const currentAvg = weightedAvgEpisode(currentSeasons);
+  // Show records, not season records (2026-09-05 audit F08). Every value this
+  // used to fold out of a show's seasons is now a field on the show:
+  //   seasons[0].seriesRating  -> showRating
+  //   seasons[0].seriesVotes   -> votes
+  //   meanVotes(seasons)       -> meanSeasonVotes
+  //   weightedAvgEpisode(...)  -> avgEpisode  (identical integer-tenths math)
+  // which is what lets "more shows like this" run without holding the season
+  // records of all 34,615 shows in memory. The ranking is unchanged.
+  const current = shows.find((x) => x.seriesId === seriesId)
+    || (showAggBySeries && showAggBySeries.get(seriesId));
+  if (!current) return [];
+  if (typeof current.showRating !== 'number') return [];
+  const currentAvg = typeof current.avgEpisode === 'number' ? current.avgEpisode : null;
   if (currentAvg === null) return [];
-  const currentDev = currentAvg - currentMeta.seriesRating;
-  const currentGenres = currentMeta.genres || [];
-  const currentLang = currentMeta.language || '';
-  const voteAnchor = meanVotes(currentSeasons);
+  const currentDev = currentAvg - current.showRating;
+  const currentGenres = current.genres || [];
+  const currentLang = current.language || '';
+  const voteAnchor = current.meanSeasonVotes || 0;
   const currentAnimated = isAnimated(currentGenres);
   const currentUnscripted = isUnscripted(currentGenres);
-  const currentSeriesVotes = typeof currentMeta.seriesVotes === 'number' ? currentMeta.seriesVotes : 0;
+  const currentSeriesVotes = typeof current.votes === 'number' ? current.votes : 0;
 
   const results = [];
-  for (const [sid, seasons] of bySeriesId) {
+  for (const cand of shows) {
+    const sid = cand.seriesId;
     if (sid === seriesId) continue;
-    const meta = seasons[0];
-    if (typeof meta.seriesRating !== 'number') continue;
-    if (!languagesCompatible(currentLang, meta.language)) continue;
-    const xGenres = meta.genres || [];
+    if (typeof cand.showRating !== 'number') continue;
+    if (!languagesCompatible(currentLang, cand.language)) continue;
+    const xGenres = cand.genres || [];
     // Format gates: animation with animation, unscripted with unscripted.
     if (isAnimated(xGenres) !== currentAnimated) continue;
     if (isUnscripted(xGenres) !== currentUnscripted) continue;
     if (voteAnchor > 0) {
-      const xv = meanVotes(seasons);
+      const xv = cand.meanSeasonVotes || 0;
       if (xv < voteAnchor / 10 || xv > voteAnchor * 10) continue;
     }
     if (currentSeriesVotes > 0) {
-      const sv = typeof meta.seriesVotes === 'number' ? meta.seriesVotes : 0;
+      const sv = typeof cand.votes === 'number' ? cand.votes : 0;
       if (sv < currentSeriesVotes / RELATED_VOTES_BAND || sv > currentSeriesVotes * RELATED_VOTES_BAND) continue;
     }
     const sharedGenreCount = currentGenres.filter((g) => xGenres.includes(g)).length;
     if (sharedGenreCount === 0) continue;
-    const avg = weightedAvgEpisode(seasons);
+    const avg = typeof cand.avgEpisode === 'number' ? cand.avgEpisode : null;
     if (avg === null) continue;
-    const dev = avg - meta.seriesRating;
+    const dev = avg - cand.showRating;
     const devDiff = Math.abs(currentDev - dev);
-    const voteProxy = typeof meta.seriesVotes === 'number' ? meta.seriesVotes : (meta.minVotes || 0);
+    const voteProxy = typeof cand.votes === 'number' ? cand.votes : (cand.meanSeasonVotes || 0);
     const candShapes = shapesFor(sid);
     const sharedShapes = currentShapes.filter((sh) => candShapes.includes(sh));
-    results.push({ meta, avg, devDiff, sharedGenreCount, voteProxy, sharedShapes });
+    results.push({ cand, avg, devDiff, sharedGenreCount, voteProxy, sharedShapes });
   }
   // Genre overlap leads, THEN a shared trajectory shape, then the gap, then
   // popularity. Shape used to lead outright, which is how a panel show ended up
@@ -248,8 +248,17 @@ function computeShowRelated(seriesId, matches, shapesBySeries) {
     if (a.devDiff !== b.devDiff) return a.devDiff - b.devDiff;
     return b.voteProxy - a.voteProxy;
   });
-  return results.slice(0, 10)
-    .map((r) => ({ ...r.meta, _avg: r.avg, _sharedShape: r.sharedShapes[0] || null }));
+  // `seriesRating` in the output: the row template reads that name, and it was
+  // the season record's field for the show's own IMDb score.
+  return results.slice(0, 10).map((r) => ({
+    seriesId: r.cand.seriesId,
+    title: r.cand.title,
+    year: r.cand.year,
+    poster: r.cand.poster,
+    seriesRating: r.cand.showRating,
+    _avg: r.avg,
+    _sharedShape: r.sharedShapes[0] || null,
+  }));
 }
 
 const SHAPE_LABELS = {
@@ -995,24 +1004,30 @@ function clearLoadingStatus() {
   els.finderSearch.removeAttribute('aria-busy');
 }
 
-// Schema guard for the index. Anything that would throw later in load()
+// Schema guard for the boot index. Anything that would throw later in load()
 // (404/500/truncated JSON are already caught by the fetch try/catch) used
-// to leave the skeleton cards up forever: `[]` crashed the matches loop and
+// to leave the skeleton cards up forever: `[]` crashed the render loop and
 // a null title crashed normalizeSearch, both outside the catch. Returns the
 // message for the error panel, or null when the dataset is usable. Records
 // missing the fields the grid needs are dropped (and counted in the console)
 // rather than failing the whole load; an index with nothing left is an error.
+//
+// The guard checks `shows`, not `matches`: since the F08 split the browser
+// boots on shows-index.json (one record per show, already folded) and never
+// on the season-level file. A deploy that served the old season index here
+// would fail this check and show the error panel, which is the correct
+// outcome - the two files are not interchangeable.
 function validateDataset(d) {
-  if (!d || typeof d !== 'object' || !Array.isArray(d.matches)) {
-    return 'Unexpected data shape (no matches list)';
+  if (!d || typeof d !== 'object' || !Array.isArray(d.shows)) {
+    return 'Unexpected data shape (no shows list)';
   }
-  const ok = d.matches.filter((m) => m && typeof m === 'object'
-    && typeof m.seriesId === 'string' && typeof m.title === 'string'
-    && Number.isFinite(m.season));
-  const dropped = d.matches.length - ok.length;
+  const ok = d.shows.filter((s) => s && typeof s === 'object'
+    && typeof s.seriesId === 'string' && typeof s.title === 'string'
+    && Array.isArray(s.seasonAvgs));
+  const dropped = d.shows.length - ok.length;
   if (dropped > 0) {
-    console.warn(`[rising-shows] dropped ${dropped} malformed season record(s) from the index`);
-    d.matches = ok;
+    console.warn(`[rising-shows] dropped ${dropped} malformed show record(s) from the index`);
+    d.shows = ok;
   }
   if (ok.length === 0) return 'Show data is empty';
   return null;
@@ -1022,8 +1037,21 @@ async function load() {
   showSkeletons(8);
   setLoadingStatus(0, 0);
   try {
-    // data-index.json carries everything needed to filter, sort, and render
+    // shows-index.json carries everything needed to filter, sort, and render
     // the grid, so it is the ONLY data fetch at boot - critical path or not.
+    //
+    // IT IS A SHOW-LEVEL FILE (2026-09-05 audit F08). Until 2026-09-08 the
+    // browser booted on data-index.json, which is SEASON-level: 66,648
+    // records for 34,692 shows, so every series fact (title, poster, genres,
+    // providers, the IMDb series rating and vote count) arrived once per
+    // season, and the first thing the app did with it was fold it back down
+    // to one record per show - `buildShowAgg` over 66k records on the main
+    // thread, before a card could paint. That fold is identical for every
+    // visitor, so split-data.js now does it once per deploy. The season
+    // records did not disappear; they moved to data/detail/<seriesId>.json,
+    // which the modal already fetched, and arrive with the feature that
+    // needs them. Measured: 5.88 -> 3.43 MB over the wire, 34.4 -> 16.6 MB
+    // raw, and the boot fold gone entirely.
     //
     // show-modal-extras.json (cast, per-season plot overviews, per-episode
     // IMDb ids / runtimes / titles) used to be fetched eagerly: first awaited
@@ -1041,14 +1069,11 @@ async function load() {
     // single visit and reload, which on a file this size is hostile to anyone
     // on a metered connection. Normal HTTP caching applies now; the daily data
     // refresh changes the file, and the CDN revalidates on its own.
-    // data-index.json, not data.json: scripts/split-data.js strips the
-    // per-episode arrays and per-season plot overviews (64% of the file, and
-    // neither is read by the grid, the filters or the sort) into per-show
-    // detail files fetched when a modal opens. 12 MB over the wire becomes
-    // ~4 MB, which on a 10 Mbps connection is ~9.6s of blank page down to
-    // ~3.3s. data.json is still built and deployed unchanged because the
-    // static SEO pages render per-episode tables from it.
-    const dataRes = await fetch('data-index.json');
+    // data.json is still built and deployed unchanged because the static SEO
+    // pages render per-episode tables from it, and data-index.json is still
+    // published as the season-level dataset artifact - neither is fetched
+    // here.
+    const dataRes = await fetch('shows-index.json');
     if (!dataRes.ok) throw new Error(`HTTP ${dataRes.status}`);
     dataset = await readJsonWithProgress(dataRes, setLoadingStatus);
     // Validate the shape INSIDE the try. A 404, a network error and a
@@ -1057,7 +1082,7 @@ async function load() {
     // a proxy serving something else) sailed past and threw further down in
     // the render path, outside any catch, leaving the skeleton cards up
     // forever with no message. validateDataset also drops individual
-    // malformed season records and errors when nothing usable is left.
+    // malformed show records and errors when nothing usable is left.
     const bad = validateDataset(dataset);
     if (bad) throw new Error(bad);
   } catch (err) {
@@ -1115,7 +1140,11 @@ async function load() {
   bindAdvancedDrawer();
   bindShapeTagTouchTooltips();
   bindShortcutLegend();
-  showAgg = buildShowAggFromDataset();
+  // Already folded. buildShowAgg used to run here over every season record -
+  // ~250 ms of main thread before the first card - and split-data.js now runs
+  // the identical fold once per deploy (see buildShowsIndex, and the
+  // full-catalogue parity test that holds the two to the same output).
+  showAgg = dataset.shows;
   indexShowAgg();
   renderFinderShapes();
   renderFinderMoods();
@@ -1131,7 +1160,11 @@ async function load() {
   applyFinderViewClasses();
   renderFinder();
   bindScrollMemory();
-  if (!consumePendingDeepLinks()) {
+  // Awaited: consumePendingDeepLinks is async since the F08 split (a season or
+  // show permalink needs that one show's detail file), and an un-awaited call
+  // returns a Promise, which is always truthy - the scroll restore below would
+  // never have run again.
+  if (!await consumePendingDeepLinks()) {
     // Place the visitor now that the grid (which defines the page height) is
     // in the DOM: back where they left off, or on the results a filtered link
     // asked for. A modal deep-link opens at the top instead, so this only runs
@@ -1184,7 +1217,10 @@ function loadExtrasOnce() {
       // file arrives. Detail and extras now load independently and in either
       // order, so whichever lands second does the joining.
       extrasData = extras;
-      for (const m of dataset.matches) {
+      // Only the shows whose season records are actually in memory. The rest
+      // are joined by ensureDetail when their detail file lands, which reads
+      // extrasData for exactly this purpose.
+      for (const records of seasonsBySeries.values()) for (const m of records) {
         const e = extras[m.seriesId];
         if (!e) continue;
         if (e.cast) m.cast = e.cast;
@@ -1254,22 +1290,62 @@ function applyExtrasToEpisodes(m, sRec) {
  * instead of drawing empty charts and "0 episodes".
  */
 const detailCache = new Map();
+
+// Season records, per show, populated by ensureDetail.
+//
+// This Map is what `dataset.matches` used to be, minus the pretence that the
+// browser holds all of it. Before the F08 split the app booted with all
+// ~66,000 season records in memory and every per-show lookup was a linear
+// filter over the lot. Now a show's records arrive with its detail file and
+// are keyed by series, so the lookup is O(1) and the memory is bounded by
+// what the visitor actually opened.
+//
+// Anything that wants season records goes through seasonsFor(), and gets an
+// empty list for a show whose detail has not loaded (or failed). Callers must
+// await ensureDetail first; the ones that render check for empty and say so
+// rather than drawing a blank season table.
+const seasonsBySeries = new Map();
+function seasonsFor(seriesId) {
+  return seasonsBySeries.get(seriesId) || [];
+}
+
+// The season rows a show has when its detail file could NOT be fetched.
+//
+// The boot index carries {season, year, avg, episodeCount} per season, which
+// is every number the season table prints except the per-episode curve. So a
+// failed detail fetch degrades to "the counts and averages are right, the
+// curves are missing, here is a Retry" rather than to an empty modal or to
+// "0 eps" for a season we can count (2026-08-22 audit D7). Marked
+// `partial: true` so the render paths can tell the difference.
+function fallbackSeasonsFromShow(seriesId) {
+  const show = showAggBySeries && showAggBySeries.get(seriesId);
+  if (!show || !Array.isArray(show.seasonAvgs)) return [];
+  return show.seasonAvgs.map((a) => ({
+    partial: true,
+    seriesId,
+    title: show.title,
+    year: show.year,
+    season: a.season,
+    seasonYear: a.year,
+    avgRating: a.avg,
+    episodeCount: Number.isFinite(a.episodeCount) ? a.episodeCount : 0,
+    genres: show.genres || [],
+    language: show.language,
+    poster: show.poster,
+    seriesRating: show.showRating,
+    seriesVotes: show.votes,
+    // Explicitly empty rather than absent: the modal's watch row, shape pills
+    // and episode list all read these, and an absent array and an empty one
+    // are the same to them only by accident.
+    providers: [],
+    shapes: [],
+    episodes: [],
+  }));
+}
+
 function ensureDetail(seriesId) {
   if (!seriesId) return Promise.resolve(false);
   if (detailCache.has(seriesId)) return detailCache.get(seriesId);
-  // An unsplit dataset already carries episodes; nothing to fetch. The
-  // non-empty check matters: after a FAILED fetch the render paths coerce
-  // `m.episodes = []` so they can draw a degraded modal, and treating that
-  // empty array as "loaded" made this guard cache a resolved-null and defeat
-  // the retry the failure eviction just paid for. A genuinely loaded season
-  // always has at least one rated episode, so empty means "not loaded".
-  const anyLoaded = dataset.matches.some((m) => m.seriesId === seriesId
-    && Array.isArray(m.episodes) && m.episodes.length > 0);
-  if (anyLoaded) {
-    const done = Promise.resolve(true);
-    detailCache.set(seriesId, done);
-    return done;
-  }
   const p = fetch(`data/detail/${encodeURIComponent(seriesId)}.json`)
     .then((res) => (res && res.ok ? res.json() : null))
     .then((detail) => {
@@ -1278,12 +1354,18 @@ function ensureDetail(seriesId) {
       // pinned "no episodes" for the rest of the session. Evicting means the
       // next modal open simply retries; a repeat failure costs one request
       // per open, which is bounded and beats permanently degraded detail.
-      if (!detail || !detail.seasons) {
+      //
+      // `records` is checked as well as `seasons`: a detail file written
+      // before the F08 split has the episodes but not the season records, and
+      // treating it as loaded would leave every season table empty with no
+      // notice. An old cached file therefore reads as a miss, retries once,
+      // and falls back to the boot index's own season rows.
+      if (!detail || !detail.seasons || !Array.isArray(detail.records)) {
         detailCache.delete(seriesId);
         return false;
       }
-      for (const m of dataset.matches) {
-        if (m.seriesId !== seriesId) continue;
+      const records = detail.records.slice().sort((a, b) => a.season - b.season);
+      for (const m of records) {
         // Series-level cast rides in the detail file since split-data.js
         // started merging the modal extras into it.
         if (detail.cast && !m.cast) m.cast = detail.cast;
@@ -1302,6 +1384,7 @@ function ensureDetail(seriesId) {
         const exSeason = ex && ex.seasons && ex.seasons[String(m.season)];
         applyExtrasToEpisodes(m, exSeason);
       }
+      seasonsBySeries.set(seriesId, records);
       return true;
     })
     .catch(() => {
@@ -1311,6 +1394,17 @@ function ensureDetail(seriesId) {
     });
   detailCache.set(seriesId, p);
   return p;
+}
+
+// ensureDetail, then the season records to render with: the real ones when
+// the fetch worked, the boot index's partial rows when it did not. Every
+// season-rendering surface goes through this so none of them can forget the
+// fallback.
+async function seasonsAfterDetail(seriesId) {
+  const ok = await ensureDetail(seriesId);
+  const rows = seasonsFor(seriesId);
+  if (rows.length) return { ok, seasons: rows };
+  return { ok, seasons: fallbackSeasonsFromShow(seriesId) };
 }
 
 // Renders (or clears) the "episode data could not be loaded" notice shown in
@@ -1357,35 +1451,11 @@ function buildAboveImdbMap() {
   // the reason they could not simply be dropped from the payload.
   //
   // The answer is identical for every visitor, so split-data.js computes it
-  // once at build time and ships `aboveImdb` as a list of the series that
-  // qualify. Absent from the list means false, which halves its size.
+  // once at build time and stamps `aboveImdb: true` on the shows that qualify.
+  // Absent means false, which is why the flag is emitted only when set.
   aboveImdbBySeries = new Map();
-  if (Array.isArray(dataset.aboveImdb)) {
-    for (const seriesId of dataset.aboveImdb) aboveImdbBySeries.set(seriesId, true);
-    return;
-  }
-  // Fallback for an unsplit dataset (a local data.json served directly, or a
-  // deploy where split-data.js has not run): compute it the original way.
-  const grouped = new Map();
-  for (const m of dataset.matches) {
-    if (typeof m.seriesRating !== 'number' || !Array.isArray(m.episodes)) continue;
-    let entry = grouped.get(m.seriesId);
-    if (!entry) {
-      entry = { sumRating: 0, totalEps: 0, seriesRating: m.seriesRating };
-      grouped.set(m.seriesId, entry);
-    }
-    for (const e of m.episodes) {
-      // Rated-only, like every sibling fold: one unrated episode used to
-      // NaN-poison a whole-series sum here (`NaN > x` is false, so the show
-      // silently lost its badge). See FINDINGS.md.
-      if (typeof e.rating !== 'number' || !Number.isFinite(e.rating)) continue;
-      entry.sumRating += e.rating;
-      entry.totalEps++;
-    }
-  }
-  for (const [seriesId, info] of grouped) {
-    if (info.totalEps === 0) continue;
-    aboveImdbBySeries.set(seriesId, (info.sumRating / info.totalEps) > info.seriesRating);
+  for (const show of dataset.shows) {
+    if (show.aboveImdb) aboveImdbBySeries.set(show.seriesId, true);
   }
 }
 
@@ -1472,71 +1542,45 @@ function seasonVoteTotal(m) {
 }
 
 function buildBestSeasonMap() {
-  // For each series with 2+ qualifying seasons, identify the highest- and
-  // lowest-avg one. Single-season series get no badge — there's no "best" or
-  // "worst" without a contest.
-  const byId = new Map();
-  for (const m of dataset.matches) {
-    let entry = byId.get(m.seriesId);
-    if (!entry) {
-      entry = {
-        count: 0,
-        bestSeason: m.season, bestAvg: m.avgRating,
-        worstSeason: m.season, worstAvg: m.avgRating,
-      };
-      byId.set(m.seriesId, entry);
-    }
-    entry.count++;
-    if (m.avgRating > entry.bestAvg) {
-      entry.bestAvg = m.avgRating;
-      entry.bestSeason = m.season;
-    }
-    if (m.avgRating < entry.worstAvg) {
-      entry.worstAvg = m.avgRating;
-      entry.worstSeason = m.season;
-    }
-  }
+  // Best- and worst-season badges. Single-season series get none - there is no
+  // "best" without a contest - and neither does a show whose seasons all tie.
+  //
+  // This used to walk every season record to find the highest and lowest
+  // average. Both answers are the same for every visitor, so split-data.js
+  // decides them once (with the identical comparison, including how it treats
+  // a season carrying no average) and stamps bestSeason/worstSeason onto the
+  // show. See buildShowsIndex.
   bestSeasonBySeries = new Map();
   worstSeasonBySeries = new Map();
-  for (const [seriesId, info] of byId) {
-    if (info.count < 2) continue;
-    bestSeasonBySeries.set(seriesId, info.bestSeason);
-    // Skip when best === worst (all seasons tied on avg) — single badge is
-    // meaningless in that case.
-    if (info.bestSeason !== info.worstSeason) {
-      worstSeasonBySeries.set(seriesId, info.worstSeason);
-    }
+  for (const show of dataset.shows) {
+    if (Number.isFinite(show.bestSeason)) bestSeasonBySeries.set(show.seriesId, show.bestSeason);
+    if (Number.isFinite(show.worstSeason)) worstSeasonBySeries.set(show.seriesId, show.worstSeason);
   }
 }
 
 function buildSeriesIndex() {
-  const map = new Map();
-  for (const m of dataset.matches) {
-    let entry = map.get(m.seriesId);
-    if (!entry) {
-      entry = {
-        seriesId: m.seriesId,
-        title: m.title,
-        // Folded HERE, once per series (see the note in load()). The whole
-        // point of the move is that this runs 34,615 times rather than
-        // 66,380: every season of a show folds the identical title.
-        titleSearch: normalizeSearch(m.title),
-        year: m.year || null,
-        poster: m.poster || null,
-        // Series-level IMDb vote count — used to rank suggestion buckets
-        // so a popular show ("House") leads a long tail of obscure
-        // titles that just happen to contain the query.
-        seriesVotes: m.seriesVotes || 0,
-      };
-      map.set(m.seriesId, entry);
-    } else {
-      if (!entry.poster && m.poster) entry.poster = m.poster;
-      if (!entry.year && m.year) entry.year = m.year;
-      if (m.seriesVotes && m.seriesVotes > entry.seriesVotes) entry.seriesVotes = m.seriesVotes;
-    }
-    if (Array.isArray(m.genres) && m.genres.includes('Adult')) adultSeriesIds.add(m.seriesId);
+  // The suggestion list's own index: one entry per show, sorted by title.
+  //
+  // It used to be folded out of the season records, which meant normalising
+  // the same title once for every season of the same show. The boot payload is
+  // already one record per show, so the fold happens exactly as many times as
+  // there are shows.
+  seriesIndex = dataset.shows.map((show) => ({
+    seriesId: show.seriesId,
+    title: show.title,
+    titleSearch: normalizeSearch(show.title),
+    year: show.year || null,
+    poster: show.poster || null,
+    // Series-level IMDb vote count - used to rank suggestion buckets so a
+    // popular show ("House") leads a long tail of obscure titles that just
+    // happen to contain the query.
+    seriesVotes: show.votes || 0,
+  })).sort((a, b) => a.title.localeCompare(b.title));
+
+  adultSeriesIds = new Set();
+  for (const show of dataset.shows) {
+    if (show.adult) adultSeriesIds.add(show.seriesId);
   }
-  seriesIndex = [...map.values()].sort((a, b) => a.title.localeCompare(b.title));
 }
 
 // --- URL state ---
@@ -1570,20 +1614,30 @@ function applyStateFromURL() {
 // permalink pasted into an already-loaded tab, or Back/Forward between two
 // modal hashes). Returns true when it opened something, so the caller knows
 // not to restore the saved scroll offset over the top of it.
-function consumePendingDeepLinks() {
-  const compareOpened = applyPendingCompareIds();
+// Async since the F08 split: a season permalink names ONE show, and that
+// show's season records arrive with its detail file rather than with the boot
+// index. The await is for that single small fetch, not for the catalogue.
+async function consumePendingDeepLinks() {
+  const compareOpened = await applyPendingCompareIds();
   if (pendingModalKey) {
     const [sid, snStr] = pendingModalKey.split(':');
     const sn = parseInt(snStr, 10);
-    const m = dataset.matches.find((x) => x.seriesId === sid && x.season === sn);
     pendingModalKey = null;
-    if (m) { openModal(m); return true; }
+    if (showAggBySeries.has(sid)) {
+      const { seasons } = await seasonsAfterDetail(sid);
+      const m = seasons.find((x) => x.season === sn);
+      // A known show whose named season is gone (renumbered, dropped) still
+      // opens the show, which is what the season link was pointing into.
+      if (m) { await openModal(m); return true; }
+      await openShowModal(sid);
+      return true;
+    }
     return compareOpened;
   }
   if (pendingShowKey) {
     const id = pendingShowKey;
     pendingShowKey = null;
-    if (dataset.matches.some((x) => x.seriesId === id)) { openShowModal(id); return true; }
+    if (showAggBySeries.has(id)) { await openShowModal(id); return true; }
     return compareOpened;
   }
   return compareOpened;
@@ -1592,7 +1646,7 @@ function consumePendingDeepLinks() {
 // Parse a `compare=` hash param into an ordered, de-duplicated list of series
 // ids, capped at COMPARE_LIMIT so a hand-edited link can't grow the set past
 // what Compare.add allows. Existence is not checked here: applyPendingCompareIds
-// drops unknown ids once dataset.matches is available.
+// drops unknown ids once the show index is available.
 function parseCompareParam(raw) {
   if (typeof raw !== 'string') return [];
   const out = [];
@@ -1615,12 +1669,11 @@ function buildCompareShareUrl() {
 
 // Open the compare modal on a shared `compare=` set. Unknown ids are dropped
 // silently so a stale link still opens on whatever is left.
-function applyPendingCompareIds() {
+async function applyPendingCompareIds() {
   const ids = pendingCompareIds;
   pendingCompareIds = null;
   if (!ids || !ids.length) return false;
-  const known = new Set(dataset.matches.map((m) => m.seriesId));
-  const valid = ids.filter((id) => known.has(id));
+  const valid = ids.filter((id) => showAggBySeries.has(id));
   if (!valid.length) return false;
   // A link someone else sent must not overwrite this visitor's own stored
   // compare set, and that has to hold for their EDITS too, not just for the
@@ -1631,7 +1684,7 @@ function applyPendingCompareIds() {
   Compare.imported = differs;
   Compare.personalIds = differs ? personal : [];
   syncCompareFab();
-  openCompareModal();
+  await openCompareModal();
   return true;
 }
 
@@ -2783,12 +2836,14 @@ function drawCompareChart(svg, seriesEntries, W, H) {
   if (host) host.appendChild(overlay);
 }
 
+// Reads the season records already in memory. Every caller runs with the
+// compare modal open, and openCompareModal awaits ensureCompareDetails first,
+// so the records for all (at most COMPARE_LIMIT) shows are loaded by the time
+// this runs.
 function buildCompareEntries() {
   const out = [];
   for (const id of Compare.ids) {
-    const seasons = dataset.matches
-      .filter((m) => m.seriesId === id)
-      .sort((a, b) => a.season - b.season);
+    const seasons = seasonsFor(id);
     if (!seasons.length) continue;
     // External ids ride on every season record post-enrichment, but a series
     // can have them on some seasons only, so take the first one that carries
@@ -2884,10 +2939,29 @@ function syncCompareXModeButton(entries) {
 
 let compareModalState = { lastFocus: null };
 
-function openCompareModal() {
+// The compare set is at most COMPARE_LIMIT shows, and each one's season
+// records ride in its own detail file. Fetched together before the first
+// render so the chart is drawn once, complete, rather than growing a line at a
+// time. Already-open shows are memoised, so re-opening costs nothing.
+function ensureCompareDetails() {
+  return Promise.all(Compare.ids.map((id) => ensureDetail(id).then((ok) => {
+    // A show whose detail could not be fetched still gets its rows from the
+    // boot index, so it appears in the comparison with its season averages
+    // (which is all the compare chart plots) instead of vanishing from it.
+    if (!ok && !seasonsBySeries.has(id)) {
+      const rows = fallbackSeasonsFromShow(id);
+      if (rows.length) seasonsBySeries.set(id, rows);
+    }
+  })));
+}
+
+async function openCompareModal() {
   if (!els.compareModal.hidden) return;
   if (Compare.size() === 0) return;
   compareModalState.lastFocus = document.activeElement;
+  await ensureCompareDetails();
+  // Closed again while the details were in flight.
+  if (!els.compareModal.hidden || Compare.size() === 0) return;
   renderCompareModal();
   els.compareModal.hidden = false;
   els.compareModal.setAttribute('aria-hidden', 'false');
@@ -3283,17 +3357,20 @@ function closeModal(opts = {}) {
 // async for the same reason as openModal: the season sparklines and the
 // overlay chart are drawn from per-episode data that is fetched on demand.
 async function openShowModal(seriesId, opts = {}) {
-  const seasons = dataset.matches
-    .filter((m) => m.seriesId === seriesId)
-    .sort((a, b) => a.season - b.season);
-  if (seasons.length === 0) return;
+  // A show the index does not know cannot be opened; bail before anything is
+  // fetched or tracked.
+  if (!showAggBySeries.has(seriesId)) return;
 
   // Legacy-extras fallback; a no-op on a current deploy, where the detail
   // fetch below already carries the cast strip and episode extras.
   loadExtrasOnce();
-  // Awaited before any rendering so every season row has its episodes. One
-  // fetch covers the whole series, and it is memoised, so reopening is free.
-  const detailOk = await ensureDetail(seriesId);
+  // Awaited before any rendering so every season row has its records AND its
+  // episodes. One fetch covers the whole series, and it is memoised, so
+  // reopening is free. When it fails, seasonsAfterDetail hands back the boot
+  // index's own season rows - right counts and averages, no curves - and
+  // detailOk false puts the retry notice up.
+  const { ok: detailOk, seasons } = await seasonsAfterDetail(seriesId);
+  if (seasons.length === 0) return;
   for (const m of seasons) if (!Array.isArray(m.episodes)) m.episodes = [];
 
   // Reported after the early return, so a failed lookup is not counted as a
@@ -3692,7 +3769,7 @@ function renderShowRelated(seriesId) {
   const container = document.getElementById('showModalRelated');
   if (!container) return;
   if (!dataset) { container.hidden = true; return; }
-  const related = computeShowRelated(seriesId, dataset.matches, showShapesBySeries);
+  const related = computeShowRelated(seriesId, showAgg, showShapesBySeries);
   if (related.length < 1) { container.hidden = true; return; }
   container.hidden = false;
 
@@ -3848,21 +3925,12 @@ function formatCompactVotes(n) {
   return String(n);
 }
 
-// Group season-matches by seriesId into one row per show. Computed once after
-// data.json loads (memoized in showAgg) so live filtering never re-aggregates.
-// The aggregation itself lives in finder-lib.js - shared with the Node export
-// pipeline (scripts/export-integrations.js) so Finder presets exported to
-// Kometa are built from exactly the rows this view shows. `detectShapes` comes
-// from match.js, loaded before this script; guard so a missing global never
-// breaks the finder.
-// Named buildShowAggFromDataset, not buildShowAgg: a bare `buildShowAgg` here
-// would overwrite finder-lib.js's exported function of that name on the shared
-// global (both are classic scripts and this one is deferred second), leaving a
-// zero-argument wrapper standing where a two-argument function is expected.
-// Nothing in finder-lib calls it by the bare name today, so that shadow was
-// harmless, but it is the same collision that made integrations-lib.js throw
-// "Identifier 'CATEGORICAL_SHAPES' has already been declared" and skip its
-// whole file. Distinct names keep the global free of look-alikes.
+// One row per show, aggregated by finder-lib's buildShowAgg. That fold now
+// happens at BUILD time (scripts/split-data.js) and the browser receives its
+// result, so nothing re-aggregates here; the same function still runs in the
+// Node export pipeline (scripts/export-integrations.js), which is what keeps
+// Finder presets exported to Kometa built from exactly the rows this view
+// shows.
 // Side indexes over the aggregated rows. Precomputed once per load:
 // - showShapesBySeries feeds the show modal's shape pills and the related-show
 //   shared-shape tier, both of which work from raw season matches.
@@ -3879,21 +3947,13 @@ function indexShowAgg() {
     showAggBySeries.set(s.seriesId, s);
   }
   // First mainstream streaming service per show, for the single provider chip
-  // on cards and rows. Providers ride on season records, so this is one pass
-  // over the matches rather than a per-render scan.
+  // on cards and rows. Providers ride on SEASON records, so this used to be a
+  // pass over all ~66,000 of them; split-data.js now normalises the first one
+  // per show at build time and ships it as `provider`.
   providerBySeries = new Map();
-  for (const m of dataset.matches) {
-    if (providerBySeries.has(m.seriesId)) continue;
-    const first = displayProviders(m.providers)[0];
-    if (first) providerBySeries.set(m.seriesId, first);
+  for (const s of showAgg) {
+    if (s.provider) providerBySeries.set(s.seriesId, s.provider);
   }
-}
-
-function buildShowAggFromDataset() {
-  return RisingShowsFinder.buildShowAgg(
-    dataset.matches,
-    typeof detectShapes === 'function' ? detectShapes : null,
-  );
 }
 
 // Genre tri-state chips mirror the Seasons quick-genre row: click once to
@@ -5678,16 +5738,17 @@ function renderChangelogFreshness(entry) {
 // missing (e.g. it was added then dropped before the user opened the
 // popover), we fall back to opening the show modal so they still see
 // something useful.
-function jumpToSeason(item) {
-  if (!dataset?.matches) return;
-  const m = dataset.matches.find((x) => x.seriesId === item.seriesId && x.season === item.season);
+async function jumpToSeason(item) {
+  if (!showAggBySeries || !showAggBySeries.has(item.seriesId)) return;
   closeChangelogModal();
-  // fromChangelog flag — when set, closing the opened modal returns
+  const { seasons } = await seasonsAfterDetail(item.seriesId);
+  const m = seasons.find((x) => x.season === item.season);
+  // fromChangelog flag - when set, closing the opened modal returns
   // the user to the "What's new" list they were browsing.
   if (m) {
-    openModal(m, { fromChangelog: true });
-  } else if (dataset.matches.some((x) => x.seriesId === item.seriesId)) {
-    openShowModal(item.seriesId, { fromChangelog: true });
+    await openModal(m, { fromChangelog: true });
+  } else {
+    await openShowModal(item.seriesId, { fromChangelog: true });
   }
 }
 
@@ -5942,9 +6003,7 @@ function shareSeasonCard(m) {
 // Show-level variant — title, year range, season/episode counts,
 // IMDb + avg-episode line, link to the show's static page.
 function shareShowCard(seriesId) {
-  const seasons = dataset.matches
-    .filter((s) => s.seriesId === seriesId)
-    .sort((a, b) => a.season - b.season);
+  const seasons = seasonsFor(seriesId);
   if (!seasons.length) return;
   shareText(buildShowShareText(seasons), els.showModalShareCard);
 }
@@ -6337,9 +6396,7 @@ async function shareChartImage(buttonEl, opts) {
 }
 
 function shareShowChartImage(seriesId) {
-  const seasons = dataset.matches
-    .filter((s) => s.seriesId === seriesId)
-    .sort((a, b) => a.season - b.season);
+  const seasons = seasonsFor(seriesId);
   if (seasons.length < 2) return;
   const meta = seasons[0];
   const years = seasons.map((s) => s.seasonYear || s.year).filter(Boolean);
@@ -6919,6 +6976,10 @@ if (typeof window !== 'undefined') {
     pickHighlights,
     seasonVoteTotal,
     chipScrollDelta,
+    // Exported so the parity suite bands candidates with the SAME number the
+    // app does. It used to be transcribed into the test, where it drifted to
+    // 40 and made the comparison disagree with itself.
+    RELATED_VOTES_BAND,
     // Site-wide audit round: boot-time dataset validation, the episode-count
     // fallback the season rows use, and the shape-pill confidence step.
     validateDataset,

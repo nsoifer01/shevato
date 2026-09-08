@@ -344,7 +344,7 @@ won't take the raw `watch-next` JSON shape as-is.)
 | Kometa collection has 0 items | Library uses IMDb-only agent, no TMDB IDs to match against | Set TMDB agent on the library, run Plex refresh, re-run Kometa |
 | `watch-next` returns 0 for every shape | Plex agent isn't writing `Guid` entries, so we can't join by IMDb/TMDB/TVDB | Verify Plex → Manage Library → Edit → Advanced → Use Plex Movie/Series agent |
 | Overlays don't appear | TV library missing `builder_level: season` support in your Kometa version | Update Kometa; the YAML uses standard `builder_level: season` directives |
-| Browser builder shows "Loading…" forever | `data-index.json` (34 MB raw, about 4.3 MB brotli) still downloading on a slow connection | Wait for the initial fetch. Arriving from the Show Finder is faster: it fetches the same file at boot, so the builder revalidates a warm cache entry. The builder switched off the 81.6 MB `data.json` in 2026-08 |
+| Browser builder shows "Loading…" forever | `data/kometa-index.json` (10.4 MB raw, about 1.8 MB brotli) still downloading on a slow connection | Wait for the initial fetch. Since 2026-09-08 the builder reads its own slice - the eight per-season fields it uses - rather than the whole season index: it used to fetch `data-index.json` (5.9 MB brotli), which was only reasonable while the Show Finder fetched the same file at boot and warmed the cache. The Finder now boots on a show-level file, so the shared entry is gone and the builder has its own. It switched off the 81.6 MB `data.json` in 2026-08 |
 
 ---
 

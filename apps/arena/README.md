@@ -192,19 +192,45 @@ Progression is not the host's private business:
   leftover players, chat and gate become orphans any signed-in client may
   sweep, which is the same path the last-leaver teardown already uses.
 
-  **This needs one setting outside the repo.** Enable the TTL policy once, on
-  the `triviaRooms` collection group, field `expiresAt`:
+  **The TTL policy is enabled.** It was turned on for the `triviaRooms`
+  collection group, field `expiresAt`, on 2026-09-08 and Firestore reports
+  `ttlConfig.state: ACTIVE`:
 
   ```
   gcloud firestore fields ttls update expiresAt \
     --collection-group=triviaRooms --enable-ttl --project=shevato-site
+  # check it:  gcloud firestore fields ttls list --project=shevato-site
   ```
 
-  (or Firestore console -> the database -> Time-to-live -> Create policy).
-  Until it is enabled the field is written and inert, and cleanup behaves
-  exactly as it did before. Firestore TTL deletes the document only, not its
-  subcollections - which is precisely why the orphan-sweep rules above are the
-  other half of the design.
+  **The backlog it could not reach was cleared by hand, once.** TTL deletes a
+  document when its TTL field holds a timestamp in the past, so a document with
+  no such field is never a candidate - and every room created before 2026-09-08
+  had no field. On 2026-09-08 that backlog was 341 rooms (oldest 112 days,
+  median 28), 319 of them still carrying the pre-gate cleartext `password` that
+  any signed-in user with the five-character code could read, plus 269 orphaned
+  player/chat/gate documents underneath them. Applying the app's own room
+  lifetime (`ROOM_TTL_MS`, 24 h): the 336 rooms past it were deleted with their
+  subcollections, and the 5 still inside it were given the `expiresAt` the
+  current client would have written, so the policy finishes them. **Every room
+  in the collection now carries `expiresAt` and is covered.** A full backup of
+  all 341 documents was taken first.
+
+  Nothing needs doing again: the rules have required `expiresAt` on create
+  since the same day, so a room without one cannot be written.
+
+  One thing the policy still does NOT do:
+
+  - **It deletes the room DOCUMENT only, not its subcollections** - which is
+    precisely why the orphan-sweep rules above are the other half of the
+    design. Once the room doc is gone, `roomGone()` opens the leftover players,
+    chat and gate to any signed-in client to sweep, which is the same path the
+    last-leaver teardown already uses. A room nobody ever revisits leaves those
+    behind, which is what the 269 documents above were.
+
+  Enabling the policy and Firestore actually deleting anything are separate
+  events: the config went ACTIVE immediately, and deletion runs on Google's own
+  schedule (documented as typically within 24 h of expiry) with no completion
+  signal to observe.
 
 - **Deleting your account takes your Arena records with it.** The global XP
   leaderboard row and every Globe Drop daily score are deleted; head-to-head
@@ -236,5 +262,18 @@ npm run test:arena:emulator  # two-client multiplayer e2e (emulator + headless C
 ```
 
 - **Unit** (`node --test apps/arena/tests/`): trivia scoring and streaks, Globe Drop distance/multiplier/difficulty scoring, room-code generation and alphabet validation, daily-challenge determinism, Wikidata/Trivia normalization, chat sanitization/moderation, and the room-gate hash derivation (pinned against independently computed SHA-256 vectors).
-- **Rules** (`apps/arena/tests-rules/`): runs the real `firestore.rules` inside the Firestore emulator via plain REST - player-doc ownership, the hashed password gate, chat caps and append-only, guest exclusions, admin deletes, plus no-regression pins for the shared non-arena sections. Deliberately NOT part of `npm test`: it needs Java plus a one-time firebase-tools/emulator download (pinned version, cached afterwards), which the dependency-free push/PR CI does not have. Skips cleanly when the environment is missing; CI runs it weekly with `ARENA_RULES_REQUIRE=1` (`.github/workflows/arena-rules.yml`). Rules are loaded through the emulator's `PUT :securityRules` endpoint with a deny-all negative control, because `emulators:start/exec` does not reliably compile updated rules.
+- **Rules** (`apps/arena/tests-rules/`): runs the real `firestore.rules` inside the Firestore emulator via plain REST - player-doc ownership, the hashed password gate, chat caps and append-only, guest exclusions, admin deletes, plus no-regression pins for the shared non-arena sections. Deliberately NOT part of `npm test`: it needs Java plus a one-time firebase-tools/emulator download (pinned version, cached afterwards), which the dependency-free push/PR CI does not have. Skips cleanly when the environment is missing; CI runs it with `ARENA_RULES_REQUIRE=1`, which turns that skip into a hard failure (`.github/workflows/arena-rules.yml`). Rules are loaded through the emulator's `PUT :securityRules` endpoint with a deny-all negative control, because `emulators:start/exec` does not reliably compile updated rules.
 - **Multiplayer e2e** (`apps/arena/e2e/`): three real app instances (three origins = three Firebase users) against the Firestore + Auth + RTDB emulators, connected through the opt-in emulator seam in the shared `firebase-config.js` (loopback hostname AND `localStorage['shevato:firebase-emulators'] = '1'` - inert in production by construction, see `sync-system/firebase-emulator-flag.mjs`). Covers the full room lifecycle: create, join by code, start, lockstep question propagation, simultaneous answers with early reveal, score propagation, rematch, host handoff, the password gate end-to-end, and invalid-code rejection. It also pins the 2026-08-22 audit's regressions: a first-time guest creating a room with no sync-modal seed, the gate-deletion exploit attempted from a third client's own SDK, a ghost player past the grace, a hidden host tab (trivia and Globe Drop), an answer clicked while offline, the chat rate limit at the call site, a coordinate double-click on Start, a stale rematch prompt, the end screen after the winner leaves, chat/gate/player cleanup after the last leaver, a registered user's leaderboard row matching their profile, and seeded axe scans of the in-room states and modals at 1280 and 360. Production Firebase hosts are intercept-failed on every page as a second line of defense.
+
+**When CI runs the two emulator suites.** `.github/workflows/arena-rules.yml`
+starts on every pull request, every push to master, and weekly, but a "Scope"
+step decides inside the job whether the suites actually run: they run when the
+change touches `firestore.rules`, `firebase.json`, `database.rules.json`,
+`apps/arena/`, `sync-system/` (except `sync-system/tests/`), the
+`tests/browser/cdp.mjs` driver the e2e imports, `package.json`, `.nvmrc` or the
+workflow itself, and are skipped otherwise. The job reports either way, which
+is what lets `rules` be a required status check: a workflow filtered by
+`on.<event>.paths` reports nothing at all when a change misses the filter, and
+a required check that never reports can never be satisfied. `tests/static/ci-arena-scope.test.mjs`
+drives that Scope script directly and fails if the input list drifts from what
+the suites actually depend on.

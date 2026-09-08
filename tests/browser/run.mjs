@@ -75,7 +75,6 @@ const SUITES = [
   'apps/gym-tracker/e2e/audit-2026-08.mjs',
   'apps/maptap-rivals/e2e/audit-2026-08.mjs',
   'apps/mario-kart/e2e/audit-2026-08.mjs',
-  'apps/quotescout/e2e/flow.mjs',
   'apps/rising-shows/e2e/audit-2026-08.mjs',
   'apps/trip-planner/e2e/audit-2026-08.mjs',
   'apps/maptap-rivals/e2e/quality.mjs',
@@ -120,21 +119,27 @@ const EXPECTED_CHECKS = {
   // the direction that has to unwind the RTL layout. +1.
   // 172 before 2026-09-05; +1 for the mobile menu open/close JS-error check
   // added with the `wasOpen` fix.
-  'tests/browser/suites/site.mjs': 174,
+  'tests/browser/suites/site.mjs': 173,
   // 103 from master, plus the two Rising Shows highlight-badge checks added
   // in this branch.
-  'tests/browser/suites/apps.mjs': 108,
+  'tests/browser/suites/apps.mjs': 105,
   // 72 from master's B7/B8 keyboard + touch-target blocks, plus the two
   // seeded MapTap Rivals state scans added in this branch.
-  // 79 on master before 2026-09-07 and 82 with Quote Scout's three root
-  // scans; +11 for the chart-accessibility block (audit F16), which reads the
-  // accessibility tree rather than scanning markup.
-  'tests/browser/suites/a11y.mjs': 93,
-  'tests/browser/suites/visual.mjs': 111,
-  // 55 with Quote Scout's budget rows; +9 for the startup layout-shift budget
-  // (audit F07), one per app root. The byte/request/DOM budgets all passed
+  // 79 on master before 2026-09-07; +11 for the chart-accessibility block
+  // (audit F16), which reads the accessibility tree rather than scanning
+  // markup. These suites walk the app list, so retiring an app lowers the
+  // pin; re-measure rather than reason about it.
+  'tests/browser/suites/a11y.mjs': 90,
+  'tests/browser/suites/visual.mjs': 103,
+  // +9 for the startup layout-shift budget (audit F07), one per app root. The byte/request/DOM budgets all passed
   // while three apps moved their controls hundreds of pixels during startup.
-  'tests/browser/suites/perf.mjs': 64,
+  // +9 for the F08 boot split: the boot-fetch check
+  // became two (fetches shows-index.json / never fetches data-index.json), and
+  // seven cover what a missing or stale season partition now costs - a 404'd
+  // partition, its retry, a corrupt body, a pre-split cached one, typing
+  // during load, and a season permalink fetching exactly one partition and
+  // opening it.
+  'tests/browser/suites/perf.mjs': 68,
   'tests/browser/suites/pwa-gym.mjs': 14,
   // The enforced CSP, verified by a browser refusing things rather than by
   // reading the header as a string (audit F14): 1 header check, 4 blocking
@@ -227,8 +232,10 @@ const SUITE_SECONDS = {
   'apps/fpl-planner/e2e/lifecycle.mjs': 92,
   'apps/trip-planner/e2e/audit-2026-08.mjs': 91,
   'apps/fpl-planner/e2e/audit-2026-08.mjs': 76,
-  // 76 without the rising-shows dataset, 77 with its three budget rows.
-  'tests/browser/suites/perf.mjs': 77,
+  // 76 without the rising-shows dataset, 77 with its three budget rows; 313
+  // measured 2026-09-08 once the throttled CLS budgets and the F08 partition
+  // cases were added (each is its own page load).
+  'tests/browser/suites/perf.mjs': 313,
   'apps/fpl-planner/e2e/scenario.mjs': 69,
   'apps/trip-planner/e2e/assistant.mjs': 63,
   // Measured on 2026-09-05, the round that added it.

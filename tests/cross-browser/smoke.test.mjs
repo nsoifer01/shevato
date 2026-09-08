@@ -36,7 +36,7 @@ const BASE = `http://127.0.0.1:${PORT}`;
 
 const SITE_PAGES = ['home', 'work', 'apps', 'about', 'contact', 'privacy', '404', 'moadon-alef'];
 const APPS = ['arena', 'football-h2h', 'fpl-planner', 'gym-tracker',
-  'maptap-rivals', 'mario-kart', 'quotescout', 'rising-shows', 'trip-planner'];
+  'maptap-rivals', 'mario-kart', 'rising-shows', 'trip-planner'];
 // moadon-alef deliberately carries no site header.
 const NO_HEADER = new Set(['moadon-alef']);
 
@@ -107,11 +107,6 @@ async function withBrowser(t, engineName, fn) {
 async function newPage(browser) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   await context.route('**/*', (route) => {
-    // This harness is static-only. Explicitly stand in for an unavailable
-    // Quote Scout backend; the app's own E2E suite tests provider responses.
-    if (route.request().url() === BASE + '/.netlify/functions/quotescout' && route.request().method() === 'GET') {
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ verticals: [], vehicleData: false }) });
-    }
     if (EXTERNAL.test(route.request().url())) return route.abort();
     return route.continue();
   });
@@ -161,10 +156,10 @@ for (const engine of ['firefox', 'webkit']) {
       for (const app of APPS) {
         // Rising Shows boots from a gitignored dataset (fetched on CI by
         // cross-browser.yml, absent in a fresh clone). Without it the app
-        // requests data-index.json and gets a 404, which is a missing
+        // requests shows-index.json and gets a 404, which is a missing
         // precondition, not a boot failure: skip with a reason, the way the
         // CDP harness does, instead of turning the whole smoke red.
-        if (app === 'rising-shows' && !existsSync(path.join(REPO, 'apps', 'rising-shows', 'data-index.json'))) {
+        if (app === 'rising-shows' && !existsSync(path.join(REPO, 'apps', 'rising-shows', 'shows-index.json'))) {
           t.diagnostic('skip rising-shows: no show data (run `npm run fetch:rising-shows-data && npm run build:rising-shows:split`)');
           continue;
         }
@@ -188,7 +183,9 @@ for (const engine of ['firefox', 'webkit']) {
           return n;
         };
         const all = await visibleCards();
-        assert.ok(all >= 8, `expected >= 8 app cards, saw ${all}`);
+        // Derived from the app list this suite drives, never a literal: the
+        // number of apps changes whenever one is added or retired.
+        assert.ok(all >= APPS.length, `expected >= ${APPS.length} app cards, saw ${all}`);
         await search.fill('gym');
         await page.waitForTimeout(600);
         const narrowed = await visibleCards();

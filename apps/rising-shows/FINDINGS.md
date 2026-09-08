@@ -269,8 +269,11 @@ allowlists them by slug, since the pages are generated at deploy and gitignored.
 
 ## Data loading architecture (2026-08-15 lazy-extras redesign)
 
-**The app fetches exactly one dataset file at boot: `data-index.json`.**
-Nothing else. The old flow ALSO fetched `data/show-modal-extras.json`
+**The app fetches exactly one dataset file at boot.** Nothing else. (That
+file was `data-index.json` when this was written; since the 2026-09-08 F08
+split it is `shows-index.json` - see "The browser stopped downloading the
+season catalogue" below. Everything about the extras redesign here still
+holds.) The old flow ALSO fetched `data/show-modal-extras.json`
 (67.5 MB raw, ~21.5 MB wire) "in the background" right after the grid
 rendered, which meant ~102 MB raw pushed at every visitor whether or not
 they ever opened a modal (TESTING-AUDIT.md defect 30). Measured over a
@@ -310,13 +313,17 @@ flag, plain detail files) - pinned by tests.
 **Perf budget now counts the dataset.** `tests/browser/suites/perf.mjs`
 used to exclude rising-shows dataset URLs from the byte budget as a
 workaround; boot data is now intentional and bounded, so the budget is
-code + index (52 MB against 35.98 MB measured, ~45% headroom) and an
-eager-extras regression (+67 MB) trips it. Clean clone (no dataset)
-measures ~1.6 MB and passes.
+code + index and an eager-extras regression (+67 MB) trips it. Clean clone
+(no dataset) measures ~1.6 MB and passes. The budget was 52 MB against the
+35.98 MB season index; after the F08 split it is 26 MB against ~18.25 MB, so
+a revert to the season index (+17 MB) also trips it - leaving the old ceiling
+would have let the whole saving be handed back unnoticed.
 
-**Index slimming was considered and rejected** (2026-08-15): no field of
-`data-index.json` dominates (largest is `poster` at 8%), and nearly all
-27 per-match fields feed the grid/filters/sort. Stripping the few
+**Index slimming was considered and rejected** (2026-08-15; SUPERSEDED
+2026-09-08 - the answer was not to slim the season file but to stop sending
+it, see the F08 entry below): no field of `data-index.json` dominates
+(largest is `poster` at 8%), and nearly all 27 per-match fields feed the
+grid/filters/sort. Stripping the few
 marginal ones (`confidence`, `driftNote`, `firstRating`/`lastRating`)
 would save under 4 MB raw (much less compressed) against real breakage
 risk in buildShowAgg's dual-shape contract. The 34 MB raw index is
@@ -807,7 +814,7 @@ aggregators and FAST tiers.
 ## The daily refresh was gated on the WHOLE repo's tests
 
 `refresh-rising-shows.yml` ran `npm test` before uploading the release asset,
-so a failing test in ANY of the other seven apps stopped the data refresh. That
+so a failing test in ANY other app stopped the data refresh. That
 is what happened on 2026-08-23 and again on 08-28 through 08-31: an fpl-planner
 test failed, the job stopped before the upload, and the live site served
 2026-08-27 data until 09-01 with nothing on the page saying so (the staleness
@@ -826,9 +833,12 @@ Two facts had to meet before this was worth writing down. First, every test
 under `tests/` builds its own small fixture and asserts against that, which is
 correct for testing build logic and means the 66,000-record file the site
 actually serves was validated by nothing. Second, nothing downstream covered
-it either: the bot PR's `tests` and `browser tests` runs never execute, and
-even when they did they would skip every data-dependent check, because the
-dataset is gitignored and a runner never has it.
+it either: the bot PR's `tests` and `browser tests` runs skip every
+data-dependent check, because the dataset is gitignored and a runner never has
+it. (Those runs execute now, since 2026-09-08 - see "The daily refresh could
+not merge itself" below - which changes nothing about this: what they cover is
+the rest of the estate against the changelog and the exports the bot commits,
+never the dataset.)
 
 So the refresh job is the only place the real data exists, and
 `scripts/validate-dataset.js` now runs there, gating the RELEASE UPLOAD rather
@@ -860,47 +870,118 @@ shape check. `tests/validate-dataset.test.js` covers the validator itself, on
 the principle that a checker nobody checks is worse than no checker because it
 reads like coverage.
 
-## Why the bot PR shows two red marks every morning, and what it is not
+## The daily refresh could not merge itself, and the reason on file was wrong (2026-09-08)
 
-The refresh opens and merges its PR with `GITHUB_TOKEN`, and GitHub does not
-start workflow runs from `GITHUB_TOKEN` events. The run object still exists:
-`event=pull_request`, `head_branch=bot/refresh-*`, zero jobs, and since
-2026-09-01 it completes as `failure` with the banner "This run likely failed
-because of a workflow file issue" (before that it sat at `action_required`).
+The refresh opened PR #515 at 10:37 and it sat there. GitHub showed "4
+workflows awaiting approval" and the four required checks - `lint`, `test`,
+`browser`, `rules` - never reported.
 
-There is no workflow file issue. Do not go looking for one.
+**Two separate faults, and the older entry here named neither correctly.**
 
-It also cannot be filtered away from inside the workflows, and the near-miss is
-worth recording: `on.pull_request.branches-ignore` matches the PR's BASE
+**1. The merge stopped being possible on 2026-09-07.** `master` gained classic
+branch protection requiring those four contexts, strictly. The workflow's
+"open a PR and merge it in the same breath" path predates that: it called
+`gh pr merge` about three seconds after `gh pr create`, and GitHub refuses to
+merge a pull request whose required checks have not reported. #486 (09-06)
+merged seven seconds after it opened; #501 (09-07) took eight hours and a human;
+#515 did not merge at all. Whatever token was used, that path could not work
+again.
+
+**2. The runs were HELD, not suppressed.** The entry that used to sit here said
+GitHub "does not start workflow runs from `GITHUB_TOKEN` events", so a bot PR
+could never have CI and a PAT was the only way out. That is the documented rule
+for most `GITHUB_TOKEN`-created events and it is not what this repository does.
+Measured on #515:
+
+```
+34216452343 tests           event=pull_request  status=completed  conclusion=action_required
+34216452437 lint            event=pull_request  status=completed  conclusion=action_required
+34216452444 arena emulator  event=pull_request  status=completed  conclusion=action_required
+34216452547 browser tests   event=pull_request  status=completed  conclusion=action_required
+```
+
+The runs exist, against the bot branch, with `head_sha` equal to the pull
+request head. `action_required` is the maintainer-approval hold, which is
+exactly what the "awaiting approval" banner reports, and it is releasable:
+
+```
+POST /repos/nsoifer01/shevato/actions/runs/34216452343/approve
+```
+
+released `tests`, which ran as attempt 2 and concluded **success**. So the hold
+was the whole problem and an API call was the whole fix.
+
+Where the hold comes from: the repository's Actions setting
+`fork-pr-contributor-approval.approval_policy` is `first_time_contributors`.
+`github-actions[bot]` never accrues contributor status here, because these
+commits are authored as `shevato-bot <actions@users.noreply.github.com>`, an
+identity linked to no GitHub account. So every bot pull request is held as a
+first-time contributor's, every day, forever. Loosening that setting would
+loosen it for real outside contributors on a public repository, which is not a
+trade worth making for this.
+
+**No PAT. No GitHub App. No new secret.** `GITHUB_TOKEN` with `actions: write`
+can call `/approve`, verified by running it from a workflow rather than
+reasoning about it: a probe job with that one permission released all three
+remaining held runs on #515 (`browser tests`, `lint`, `arena emulator`) and
+they ran. The `secrets.BOT_PAT || secrets.GITHUB_TOKEN` scaffolding that was
+waiting for a token that never needed to exist is gone.
+
+**What replaced the old merge step.** `scripts/bot-pr-autopilot.mjs`, run by
+the refresh job and dispatchable by hand through
+`.github/workflows/bot-pr-autopilot.yml`. It releases the hold on the runs for
+the pull request's own head commit, arms GitHub's **auto-merge**, and watches.
+Branch protection decides the merge; nothing here bypasses a check, and a red
+check leaves the pull request open. It re-releases on every tick because the
+hold is re-applied to every new head commit, which a strict base branch
+produces whenever the branch has to be updated. `delete_branch_on_merge` is on,
+so GitHub removes `bot/refresh-rising-shows-*` itself.
+
+**One open refresh pull request at a time, enforced.** Two of them cannot both
+merge: both rewrite `changelog.json` and the exports, so the second is
+guaranteed a conflict, and the loser's changelog entry is lost because the next
+build appends to `master`'s changelog while diffing against a release baseline
+that has already moved. So the refresh reconciles before it builds: it drives
+any open bot pull request to a conclusion first, and if one cannot merge it
+fails there, in the first minute, before an IMDb download or a release upload.
+
+**The near-miss worth keeping.** This cannot be filtered away from inside the
+workflows: `on.pull_request.branches-ignore` matches the pull request's BASE
 branch, which is `master` here, not its head. Excluding `bot/**` there looks
 right, reads right in review, and does nothing.
 
-**The PAT path is wired and waiting for its secret.** The checkout and the
-merge step both read `secrets.BOT_PAT || secrets.GITHUB_TOKEN`, so behaviour is
-identical until the secret exists and changes the day it does. One owner action
-remains and cannot be automated: GitHub has no API for creating a personal
-access token, web UI only. Create a fine-grained token on nsoifer01/shevato
-with Contents and Pull requests both Read and write, nothing else, then
-`gh secret set BOT_PAT`.
+**A third fault sat behind these two, and #515 found it first.** Once the hold
+was released, `rules` went red: #514's Scope step ran `grep` under Actions'
+`bash -e`, and a `grep` that matches nothing exits 1, which is exactly the skip
+decision. Every change with no emulator inputs got a red required check. The
+refresh's pull request was the first one to take that path, because the two
+that merged in the window between #514 and it both happened to touch an input.
+Fixed in #516; recorded in `apps/arena/FINDINGS.md`. Worth remembering here
+because it is the shape this automation will keep hitting: the bot's pull
+request is the repo's most reliable prober of the paths humans rarely walk.
 
-Two things are worth knowing before adding it.
+## The release pin was generated and then never committed (2026-09-08)
 
-**A PAT alone would not have been a gate.** The merge used to happen about
-three seconds after the PR was created, so runs starting at last would have
-reported *after* the merge: a red mark on history rather than something that
-stops a bad commit. The step now WAITS (`gh pr checks --watch`) whenever the
-PAT is present, and merges only on success. With no PAT it merges immediately
-as before, because waiting for runs that can never start would hang the job
-until its 240-minute timeout.
+The 2026-09-05 F13 work built the whole immutable-release mechanism: each
+refresh uploads `data-<releaseId>.json.gz` alongside the rolling name, writes
+`apps/rising-shows/data-release.json` naming that release with the SHA-256 of
+both files, and `fetch-data.js` resolves the pin from the build's own commit and
+refuses a file whose digest does not match.
 
-**What those runs would and would not cover.** They still skip every
-data-dependent rising-shows check, because the runner has no dataset. What they
-add is the rest of the estate against the files the bot actually commits, the
-changelog and the exports. The data itself is covered by the validate-dataset
-step, which is the right place for it. On failure the PR is left OPEN: the data
-is already on the release, but nothing deploys until a merge, so the site keeps
-serving the previous build until someone looks. That is the intended failure
-mode, not an oversight.
+`apps/rising-shows/data-release.json` was not in the refresh commit's `git add`
+list. It is not tracked, it has never been on `master`, and `git diff` cannot
+even see it because it is untracked, so the guard in front of the commit could
+not notice either. Every build therefore took `fetch-data.js`'s documented
+compatibility fallback to the ROLLING asset names, and the property the whole
+exercise was for - a deploy resolves the dataset its own commit approved - was
+false the entire time. The sentence "nothing deploys until this PR merges" was
+back to being true of the derived files and false of the data.
+
+It is in the `git add` list now, and `tests/static/bot-pr-autopilot.test.mjs`
+fails if it leaves again. The hole closes for good the first time one of these
+pull requests merges: until `master` carries a pin, a build has nothing to
+resolve and still falls back.
+
 
 
 - **The apps-hub preview needs the gitignored data present to build.**
@@ -933,16 +1014,136 @@ brotli (3.17 -> 3.44 MB) on a file every visitor downloads, which on a phone
 connection is a wash at best. The numbers are here so the next person does not
 have to re-derive them before deciding.
 
-**What remains, and why it is not a small change.** The audit's F08 asks for a
-compact SHOW-level search record so the browser stops downloading 66,380 season
-records (32.8 MB raw, ~3.2 MB brotli) and stops aggregating them at boot
-(`buildShowAgg`, a further 128 ms). The aggregate itself is easy - it is
-already a shared pure function and would produce byte-identical rows if run at
-build time. What is not easy is that `dataset.matches` is read directly in ten
-other places in `js/app.js`: modal opening, per-season lookups, the detail
-join, the best/worst-season badges, the series index, the compare and watched
-paths. Shipping the aggregate ALONGSIDE the season index would add 22 MB rather
-than remove any, so the payload only falls once every one of those readers has
-a different source. That is a multi-day refactor with a full-catalogue parity
-obligation, not a session-sized change, and doing half of it would make the app
-slower.
+## The browser stopped downloading the season catalogue (2026-09-08, F08 closed)
+
+The rest of F08 - the part the entry above called a multi-day refactor - is
+done. The browser no longer fetches a season-level file at all.
+
+**The shape of it.** `scripts/split-data.js` now writes `shows-index.json`: one
+record per show, already through `buildShowAgg`. The season records did not
+disappear, they moved into `data/detail/<seriesId>.json`, which the modal
+already fetched, so a show's seasons arrive with the modal that wants them.
+`data-index.json` is unchanged and still published; nothing in the browser
+fetches it.
+
+**Measured, same methodology as the audit** (Netlify compresses with brotli
+q3 - calibrated by reproducing the live 5,912,963-byte response exactly, and
+q11 flatters the numbers by 40%):
+
+| | season index (before) | show index (after) |
+|---|---|---|
+| encoded transfer | 5.88 MB | 3.43 MB |
+| raw | 34.44 MB | 16.62 MB |
+| JSON.parse (node) | 168 ms | 88 ms |
+| boot `buildShowAgg` | ~250 ms | gone (build-time) |
+| records | 66,380 seasons | 34,615 shows |
+
+And in a real browser, with only `js/app.js` swapped between the two runs so
+nothing else can account for the difference (headless Chrome, 390x844, cache
+disabled, served over a local server compressing at the same brotli q3):
+
+| | before | after |
+|---|---:|---:|
+| boot download, desktop | 5.88 MB / 198 ms | 3.45 MB / 136 ms |
+| longest main-thread task, desktop | 488 ms | 317 ms |
+| time to first card, desktop | 952 ms | 933 ms |
+| boot download, Fast-3G + 4x CPU | 29,849 ms | 17,671 ms |
+| **time to first card, Fast-3G + 4x CPU** | **36,503 ms** | **23,992 ms** |
+| longest main-thread task, Fast-3G + 4x CPU | 2,005 ms | 1,665 ms |
+
+The desktop time-to-first-card is unchanged, and that is the honest result: on
+localhost the download is instant either way, so all that is left is CPU, and
+saving ~250 ms of fold inside a ~950 ms boot is inside the run-to-run noise.
+The number that matters is the throttled one - **12.5 seconds sooner to the
+first useful result on a mid-range phone** - because that is the visitor the
+audit was about. A modal open still costs exactly one ~12 KB partition.
+
+Two traps in measuring this, both of which produced confident wrong numbers
+first:
+- the repo's python static server sends everything UNCOMPRESSED, so a throttled
+  run measures 34 MB against 16 MB rather than 5.9 against 3.4, and the
+  before/after gap comes out nearly twice as large as it really is;
+- a static server that caches file bodies by path serves the FIRST `app.js` it
+  read for the whole session, so the "before" run silently re-measures the
+  "after" code. Both runs reported the same file and nearly identical timings,
+  which is what gave it away.
+
+**The ten readers, and where each one went.** Whole-catalogue scans became
+show-index reads: `buildSeriesIndex`, `buildBestSeasonMap` (badges precomputed),
+`buildAboveImdbMap` (a flag), `indexShowAgg`'s provider chip (a field),
+`applyPendingCompareIds`, `validateDataset`, `computeShowRelated`. Per-show
+lookups became `seasonsFor(id)` after `ensureDetail`: the show modal, Compare,
+the two share cards, the season permalink, the changelog jump. `dataset.matches`
+no longer exists in `js/app.js`, and a test asserts that, because a single
+surviving whole-catalogue scan over a now-partial list is a silent wrong answer
+rather than an error.
+
+**What was measured and rejected.**
+- Short keys (`t`/`y`/`p` for `title`/`year`/`poster`): 0.06 MB of brotli and
+  1 ms of parse, for an unreadable build artifact.
+- `seasonAvgs` as `[season, year, avg]` triples: 0.07 MB encoded, and the
+  sparkline reads the object fields directly.
+- Moving `poster` out of the boot payload: 0.83 MB encoded, but posters render
+  with the card, so this trades transfer for cards that fill in afterwards.
+  Not taken without a reason to change what first paint looks like.
+- `tmdbId`/`tvdbId` were DROPPED from the show record (0.43 MB encoded): every
+  reader of them turned out to take `seasons[0]`, a season record.
+
+**The trap that cost the most time.** `meanSeasonVotes` was rounded to an
+integer at first. `computeShowRelated` bands candidates at `anchor / 10` and
+`anchor * 10`, so half a vote of rounding moves the band edge and changes which
+shows are recommended - it re-banded 19% of the catalogue and the parity test
+caught it on real data. The exact quotient ships; a double round-trips through
+JSON exactly.
+
+**Failure behaviour changed, deliberately.** The season table is in the
+partition now, so a detail fetch that 404s no longer costs only the episode
+curves. `seasonAvgs` therefore carries `episodeCount` (~0.15 MB encoded) so a
+show whose partition is unreachable still opens with true season numbers, an
+explicit notice and a Retry - the 2026-08-22 D7 guarantee, kept. A detail file
+written BEFORE this split (a stale CDN or service-worker entry, a rollback) has
+no `records` key and is treated as a miss for the same reason.
+
+**What it costs, stated rather than skipped.** The season records now exist
+twice on the CDN: in `data-index.json`, which nothing in the browser fetches,
+and in the detail files, which is where they are actually read. The detail
+directory grew 192 -> 216 MB (+17%), so the mean detail file is 9.2 KB instead
+of 7.7 KB and a modal open costs about 1.5 KB more. That is the trade: ~1.5 KB
+on the opens a visitor chooses, against 2.8 MB removed from every boot whether
+they open anything or not.
+
+`data-index.json` is kept for two reasons, neither of them "a consumer we did
+not want to migrate": it is the season-level dataset artifact, and it is the
+input the full-catalogue parity test checks the show index against. It is not a
+documented public download and nothing links it. Un-publishing it would save 34
+MB of CDN storage and zero user-facing bytes, which is an owner decision about
+a URL that has been live for a while rather than part of this change.
+
+**The Kometa builder got its own slice.** That page reads eight per-season
+fields and used to read them out of `data-index.json`, which was defensible
+only while the Finder fetched the same file and warmed the cache. It now reads
+`data/kometa-index.json`: 1.83 MB encoded instead of 5.88 MB.
+
+**One latent difference, measured to be a no-op today.** The old
+`buildSeriesIndex` back-filled the suggestion list's `poster`, `year` and
+`seriesVotes` from LATER seasons when the first season lacked them
+(`if (!entry.poster && m.poster) ...`, and `max` for votes). `buildShowAgg`
+takes all three from the first season it sees and always did, so the GRID never
+had that back-fill - the two surfaces disagreed in that edge case, and the
+suggestion list now agrees with the card. On the current catalogue the
+difference is empty: the full-catalogue suggestion-index parity test compares
+every show's poster, year and votes against the back-filling implementation and
+they match for all 34,615. It is written down because the next dataset could
+contain a show where they do not, and then the answer is to give buildShowAgg
+the back-fill (which moves the card too), not to re-introduce a second rule.
+
+**Parity is asserted over the whole catalogue**, in
+`tests/shows-index-parity.test.js`: every one of the 34,615 shipped show
+records is compared field-for-field against what the pre-split boot fold
+produces from the same season file, plus the suggestion index over the whole
+catalogue and `computeShowRelated` over a 400-show spread (identical results,
+identical order). A 0.01 change to one show's `gap` fails it. The pre-split
+`computeShowRelated` is transcribed into that file as the reference, and it
+reads `RELATED_VOTES_BAND` from `app.js` rather than carrying a copy - the copy
+had already drifted to 40 against the app's 20 and made the "reference"
+disagree with the app it was meant to reference.

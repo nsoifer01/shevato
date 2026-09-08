@@ -84,7 +84,7 @@ export const DENY = [
   /\.bak$/,
   /\.map$/,
   // Package manifests, at ANY depth. The root ones are excluded by the
-  // root-file allow list, but an app can carry its own (apps/quotescout does)
+  // root-file allow list, but an app can carry its own
   // and that one sits inside a published tree - it shipped until this line
   // existed. A manifest names dependencies, scripts and internal paths, and
   // no page fetches one.

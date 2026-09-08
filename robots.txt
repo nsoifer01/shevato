@@ -13,7 +13,7 @@
 # until 2026-09-04, and assets/js/main.js fetches /partials/header.html and
 # /partials/footer.html on every page: the site's entire header and footer
 # navigation was therefore absent from every page Google rendered, leaving
-# six of the eight app pages with zero internal outbound links and /privacy
+# most app pages with zero internal outbound links and /privacy
 # with zero inbound ones. tests/static/robots-references.test.mjs now fails
 # if any path referenced by a page is matched by a Disallow rule below.
 

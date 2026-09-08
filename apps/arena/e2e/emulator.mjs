@@ -1080,7 +1080,22 @@ export async function run({ base, cdpPort, base2 = null }) {
           marker: prof.lastCountedGame ? prof.lastCountedGame.stringValue : null,
         };
       };
-      const before5 = await countersNow();
+      // The end of a game produces TWO independent idempotent writes: the
+      // profile/leaderboard counters (guarded by `lastCountedGame`) and the
+      // room's own session tally (guarded by `sessionCountedGame`, written by
+      // maybeWriteH2HPairs in its own transaction). Nothing orders them, so a
+      // single read can catch the profile counted and the room's tally still
+      // absent - which is exactly what a loaded runner produced:
+      // `games=1 sessionMatchCount=null`, then `null -> 1 -> 1` once the
+      // second transaction landed a moment later. Give both a bounded chance
+      // to arrive. This cannot paper over a game that was never counted: if
+      // they never both land the precondition below still fails, which is the
+      // whole point of it.
+      let before5 = await countersNow();
+      for (const t0 = Date.now(); Date.now() - t0 < 10000 && !(before5.games === 1 && before5.session != null);) {
+        await sleep(250);
+        before5 = await countersNow();
+      }
       // PRECONDITION. Everything below compares a number against itself, so it
       // would pass just as happily if the game had never been counted at all:
       // 0 -> 0 -> 0 is "unchanged" too. That is not a hypothetical - a
@@ -1209,6 +1224,27 @@ export async function run({ base, cdpPort, base2 = null }) {
         g0 = await waitRoom(code6, (st) => st.status === 'playing', 12000);
       }
       t('emulator (globe): start enters the first location', g0.status === 'playing' && g0.idx === 0, JSON.stringify(g0));
+      // Warm B's globe BEFORE the reveal window opens.
+      //
+      // B has been a background tab since the room was created, so its FIRST
+      // paint is a cold ensureGlobe(): build the globe.gl scene, decode and
+      // upload the Earth texture, run the 1.2 s camera fly-in. Doing all of
+      // that inside the 10 s reveal is what used to push the second Ready vote
+      // past the deadline - measured at +10,657 ms against a 10,000 ms window
+      // on two cores, which is what a CI runner has. The asking phase has no
+      // deadline, so the cold start happens here instead and the reveal window
+      // only has to pay for a click.
+      //
+      // This changes WHEN the globe initialises, not what the checks below
+      // assert: both players still vote through the real Ready button, and the
+      // early advance is still measured against the server clock.
+      await front(B);
+      const bGlobeWarm = await waitForExpr(B,
+        "(()=>{const el=document.getElementById('globe-drop-map');"
+        + "return !!el && !!el.querySelector('canvas') && !el.classList.contains('is-loading')})()",
+        { timeout: 20000 });
+      t('emulator (globe): the second player\'s globe initialises before the reveal', bGlobeWarm);
+      await front(A);
       // Round 1: nobody pins; asking expires; both click Ready during the
       // reveal -> the host advances early (well before the 10 s reveal ends).
       //
@@ -1230,46 +1266,95 @@ export async function run({ base, cdpPort, base2 = null }) {
       // pauses in a BACKGROUND tab, so B's button only becomes clickable while
       // B is the active target. Front B to vote, then hand the foreground back
       // to A. Neither progression NOR the skip depends on the foreground any
-      // more - the hidden-host checks prove the first and
+      // more - the hidden-host checks prove the first, and
       // RoomState.readySkipAdvanceAllowed the second - but a UI affordance
       // still does, so the votes still have to be cast from the front.
-      const readyA = await waitForExpr(A, readyBtnLive, { timeout: 9000 });
-      const tReady = Date.now();
-      if (readyA) await clickSel(A, '#globe-drop-ready-btn', { settle: 200 });
-      await front(B);
-      const readyB = await waitForExpr(B, readyBtnLive, { timeout: 9000 });
-      if (readyB) await clickSel(B, '#globe-drop-ready-btn', { settle: 200 });
-      await front(A);
-      // Both votes have to be ON the player docs before an early advance can
-      // be attributed to them. Checked separately so a lost vote reports
-      // itself as a lost vote, instead of surfacing as the timing assertion
-      // below failing for a reason it cannot describe.
-      const readAllFlags = async () => Promise.all(
-        (await ownerList(`triviaRooms/${code6}/players`)).map(async (u) => {
-          const d = fieldsOf(await ownerGetDocRaw(`triviaRooms/${code6}/players/${u}`, PAGE_PROJECT));
-          return { u, q: d.readyAfterQId || '' };
-        }));
-      const allVoted = (fl) => fl.length > 0 && fl.every((f) => f.q && f.q === fl[0].q);
-      let voteFlags = [];
-      for (let i = 0; i < 8; i++) {
-        voteFlags = await readAllFlags();
-        if (allVoted(voteFlags)) break;
-        await sleep(150);
-      }
-      t('emulator (globe): both Ready votes reach the player docs', allVoted(voteFlags),
-        `readyA=${readyA} readyB=${readyB} voted at +${Date.now() - tReady}ms`
-        + ` flags=${voteFlags.map((f) => `${f.u.slice(0, 5)}:${f.q || '-'}`).join(',')}`);
       // "Early" means BEFORE the round's own deadline on the server clock
       // (questionStartedAt + asking + reveal). Timing it from a harness
       // wall-clock instead measures CDP latency, not the product.
       const naturalEnd = (g0.startedMs || 0) + (g0.questionTimeMs || 3000) + 10000;
+      // Every step reported as an offset from that deadline, because the whole
+      // question is whether the two votes fit inside the window. The old
+      // message quoted one number that spanned the votes AND the wait for the
+      // advance AND three owner reads, so a late vote and a slow advance were
+      // indistinguishable - which is how this stayed "flaky CI" instead of a
+      // measurement. Negative is before the deadline, positive is after it.
+      const at = () => Math.round((Date.now() - naturalEnd) / 100) / 10;
+      // Both clients are labelled A/B in every flag report below. The list
+      // comes back in ownerList order, which is not vote order, so the old
+      // unlabelled "one of the two is missing" could not say WHICH client lost
+      // its write - the single most useful fact when this goes red.
+      const armClicks = (s) => evaluate(s, `(()=>{window.__rc=0;const b=document.getElementById('globe-drop-ready-btn');if(!b)return false;b.addEventListener('click',()=>{window.__rc++;});return true})()`);
+      const clicksOn = (s) => evaluate(s, 'window.__rc');
+      const uidA = await evaluate(A, 'window.firebaseAuth.getCurrentUser().uid');
+      let uidB = null;
+      const readyFlagsOf = async () => {
+        const uids = await ownerList(`triviaRooms/${code6}/players`);
+        return Promise.all(uids.map(async (u) => {
+          const d = fieldsOf(await ownerGetDocRaw(`triviaRooms/${code6}/players/${u}`, PAGE_PROJECT));
+          const who = u === uidA ? 'A' : (uidB && u === uidB) ? 'B' : u.slice(0, 5);
+          return `${who}:${d.readyAfterQId || '-'}`;
+        }));
+      };
+      // Waits for ONE client's marker, so a lost vote names its owner.
+      const waitFlag = async (who, budgetMs) => {
+        for (const t0 = Date.now(); Date.now() - t0 < budgetMs;) {
+          const mine = (await readyFlagsOf()).find((x) => x.startsWith(`${who}:`));
+          if (mine && !mine.endsWith(':-')) return true;
+          await sleep(200);
+        }
+        return false;
+      };
+
+      const readyA = await waitForExpr(A, readyBtnLive, { timeout: 9000 });
+      const tBtnA = at();
+      await armClicks(A);
+      if (readyA) await clickSel(A, '#globe-drop-ready-btn', { settle: 200 });
+      const tVoteA = at();
+      // Let A's write land while A is STILL the foreground tab. Fronting B is
+      // what backgrounds A, and a backgrounded renderer is the lowest-priority
+      // process on the box; on a loaded two-core runner an in-flight Firestore
+      // write from one can sit unacknowledged for seconds. The old order
+      // clicked A, backgrounded it on the next line, and only then polled for
+      // both markers - so a starved renderer was reported as "the player's
+      // vote was lost", which is a claim about the product that the run had no
+      // evidence for. What is under test is that a Ready vote registers, not
+      // that it registers from a starved background tab; the D3 hidden-host
+      // checks below cover the backgrounded case deliberately and separately.
+      const landedA = await waitFlag('A', 3000);
+      const tLandedA = at();
+
+      await front(B);
+      uidB = await evaluate(B, 'window.firebaseAuth.getCurrentUser().uid');
+      const tFrontB = at();
+      const readyB = await waitForExpr(B, readyBtnLive, { timeout: 9000 });
+      const tBtnB = at();
+      await armClicks(B);
+      if (readyB) await clickSel(B, '#globe-drop-ready-btn', { settle: 200 });
+      const tVoteB = at();
+      // Same for B, which is the foreground tab from here to the advance.
+      // `readyB` only ever said the button was CLICKABLE, never that the click
+      // counted, so the marker itself is what gets waited on.
+      const landedB = await waitFlag('B', 3000);
+      const tLandedB = at();
+      const votesLanded = landedA && landedB;
+      await front(A);
       const g1 = await waitRoom(code6, (st) => st.idx === 1, 14000);
       const advancedAt = Date.now();
-      const readyFlags = voteFlags.map((f) => `${f.u.slice(0, 5)}:${f.q || '-'}`);
+      const readyFlags = await readyFlagsOf();
+      // Split into two checks. "Both players registered Ready" and "that made
+      // the round advance early" are different claims, and folding them into
+      // one told you neither when it went red.
+      t('emulator (globe): both players\' Ready votes register during the reveal',
+        readyA && readyB && votesLanded,
+        `readyA=${readyA} readyB=${readyB} landedA=${landedA} landedB=${landedB}`
+        + ` | s vs deadline: btnA ${tBtnA} voteA ${tVoteA} landedA ${tLandedA}`
+        + ` frontB ${tFrontB} btnB ${tBtnB} voteB ${tVoteB} landedB ${tLandedB}`
+        + ` | clicks A=${await clicksOn(A)} B=${await clicksOn(B)}`
+        + ` | flags=${readyFlags.join(',')}`);
       t('emulator (globe): every live player Ready during the reveal advances the round early',
-        readyA && readyB && g1.idx === 1 && advancedAt < naturalEnd - 1500,
-        `readyA=${readyA} readyB=${readyB} idx=${g1.idx} advanced ${Math.round((naturalEnd - advancedAt) / 100) / 10}s`
-        + ` before the natural deadline (voted at +${Date.now() - tReady}ms) flags=${readyFlags.join(',')}`);
+        votesLanded && g1.idx === 1 && advancedAt < naturalEnd - 1500,
+        `idx=${g1.idx} advanced ${at()}s vs the deadline | flags=${readyFlags.join(',')}`);
       // Round 2 with the host tab hidden: the timed advance must still come
       // (3 s asking + 10 s reveal) from the interval clock / member fallback.
       await front(B);
