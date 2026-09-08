@@ -70,22 +70,21 @@
 
   async function loadDataset() {
     // The page lives at /apps/rising-shows/kometa/ but the dataset is at
-    // /apps/rising-shows/data-index.json, so go up one directory.
+    // /apps/rising-shows/data/, so go up one directory.
     //
-    // data-index.json, NOT data.json. The builder reads eight per-season
-    // fields (seriesId, title, tmdbId, tvdbId, seasonTvdbId, season, shapes,
-    // confidence) and the index carries every one of them: split-data.js only
-    // strips `episodes` and `overview`, which nothing here touches. data.json
-    // is 81.6 MB raw and served with max-age=0, so every visit re-downloaded
-    // it; the index is 34.4 MB raw (~4.3 MB brotli) and, crucially, is the
-    // exact file the Show Finder already fetched, so a visitor coming from
-    // there revalidates one cache entry and transfers ~nothing.
+    // kometa-index.json carries the EIGHT per-season fields this builder reads
+    // (seriesId, title, season, shapes, confidence, tmdbId, tvdbId,
+    // seasonTvdbId) and nothing else. It used to read data-index.json, which
+    // carries all twenty-seven, and that was defensible only while the Show
+    // Finder fetched the same file at boot and warmed the cache for it. Since
+    // the F08 split the Finder boots on a show-level file, so this page would
+    // have been left paying 5.9 MB alone for eight fields; its own slice is
+    // 1.8 MB. (data.json, at 81.6 MB raw and max-age=0, has not been in the
+    // picture since 2026-08.)
     //
-    // No `cache:` override: the Finder fetches this URL with the default cache
-    // mode, and matching it is what makes the shared entry revalidate normally
-    // rather than pinning the builder to a possibly stale copy of a dataset
-    // that is rebuilt daily.
-    const resp = await fetch('../data-index.json');
+    // No `cache:` override: normal HTTP caching applies, and the file is
+    // rebuilt with the rest of the dataset on the daily refresh.
+    const resp = await fetch('../data/kometa-index.json');
     if (!resp.ok) {
       const err = new Error(`HTTP ${resp.status}`);
       if (resp.status === 404) err.missingDataset = true;
@@ -93,7 +92,7 @@
     }
     const data = await resp.json();
     if (!data || !Array.isArray(data.matches)) {
-      throw new Error('data-index.json is missing its matches list');
+      throw new Error('kometa-index.json is missing its matches list');
     }
     state.matches = data.matches;
     state.builtAt = data.builtAt;

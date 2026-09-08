@@ -269,8 +269,11 @@ allowlists them by slug, since the pages are generated at deploy and gitignored.
 
 ## Data loading architecture (2026-08-15 lazy-extras redesign)
 
-**The app fetches exactly one dataset file at boot: `data-index.json`.**
-Nothing else. The old flow ALSO fetched `data/show-modal-extras.json`
+**The app fetches exactly one dataset file at boot.** Nothing else. (That
+file was `data-index.json` when this was written; since the 2026-09-08 F08
+split it is `shows-index.json` - see "The browser stopped downloading the
+season catalogue" below. Everything about the extras redesign here still
+holds.) The old flow ALSO fetched `data/show-modal-extras.json`
 (67.5 MB raw, ~21.5 MB wire) "in the background" right after the grid
 rendered, which meant ~102 MB raw pushed at every visitor whether or not
 they ever opened a modal (TESTING-AUDIT.md defect 30). Measured over a
@@ -310,13 +313,17 @@ flag, plain detail files) - pinned by tests.
 **Perf budget now counts the dataset.** `tests/browser/suites/perf.mjs`
 used to exclude rising-shows dataset URLs from the byte budget as a
 workaround; boot data is now intentional and bounded, so the budget is
-code + index (52 MB against 35.98 MB measured, ~45% headroom) and an
-eager-extras regression (+67 MB) trips it. Clean clone (no dataset)
-measures ~1.6 MB and passes.
+code + index and an eager-extras regression (+67 MB) trips it. Clean clone
+(no dataset) measures ~1.6 MB and passes. The budget was 52 MB against the
+35.98 MB season index; after the F08 split it is 26 MB against ~18.25 MB, so
+a revert to the season index (+17 MB) also trips it - leaving the old ceiling
+would have let the whole saving be handed back unnoticed.
 
-**Index slimming was considered and rejected** (2026-08-15): no field of
-`data-index.json` dominates (largest is `poster` at 8%), and nearly all
-27 per-match fields feed the grid/filters/sort. Stripping the few
+**Index slimming was considered and rejected** (2026-08-15; SUPERSEDED
+2026-09-08 - the answer was not to slim the season file but to stop sending
+it, see the F08 entry below): no field of `data-index.json` dominates
+(largest is `poster` at 8%), and nearly all 27 per-match fields feed the
+grid/filters/sort. Stripping the few
 marginal ones (`confidence`, `driftNote`, `firstRating`/`lastRating`)
 would save under 4 MB raw (much less compressed) against real breakage
 risk in buildShowAgg's dual-shape contract. The 34 MB raw index is
@@ -923,16 +930,136 @@ brotli (3.17 -> 3.44 MB) on a file every visitor downloads, which on a phone
 connection is a wash at best. The numbers are here so the next person does not
 have to re-derive them before deciding.
 
-**What remains, and why it is not a small change.** The audit's F08 asks for a
-compact SHOW-level search record so the browser stops downloading 66,380 season
-records (32.8 MB raw, ~3.2 MB brotli) and stops aggregating them at boot
-(`buildShowAgg`, a further 128 ms). The aggregate itself is easy - it is
-already a shared pure function and would produce byte-identical rows if run at
-build time. What is not easy is that `dataset.matches` is read directly in ten
-other places in `js/app.js`: modal opening, per-season lookups, the detail
-join, the best/worst-season badges, the series index, the compare and watched
-paths. Shipping the aggregate ALONGSIDE the season index would add 22 MB rather
-than remove any, so the payload only falls once every one of those readers has
-a different source. That is a multi-day refactor with a full-catalogue parity
-obligation, not a session-sized change, and doing half of it would make the app
-slower.
+## The browser stopped downloading the season catalogue (2026-09-08, F08 closed)
+
+The rest of F08 - the part the entry above called a multi-day refactor - is
+done. The browser no longer fetches a season-level file at all.
+
+**The shape of it.** `scripts/split-data.js` now writes `shows-index.json`: one
+record per show, already through `buildShowAgg`. The season records did not
+disappear, they moved into `data/detail/<seriesId>.json`, which the modal
+already fetched, so a show's seasons arrive with the modal that wants them.
+`data-index.json` is unchanged and still published; nothing in the browser
+fetches it.
+
+**Measured, same methodology as the audit** (Netlify compresses with brotli
+q3 - calibrated by reproducing the live 5,912,963-byte response exactly, and
+q11 flatters the numbers by 40%):
+
+| | season index (before) | show index (after) |
+|---|---|---|
+| encoded transfer | 5.88 MB | 3.43 MB |
+| raw | 34.44 MB | 16.62 MB |
+| JSON.parse (node) | 168 ms | 88 ms |
+| boot `buildShowAgg` | ~250 ms | gone (build-time) |
+| records | 66,380 seasons | 34,615 shows |
+
+And in a real browser, with only `js/app.js` swapped between the two runs so
+nothing else can account for the difference (headless Chrome, 390x844, cache
+disabled, served over a local server compressing at the same brotli q3):
+
+| | before | after |
+|---|---:|---:|
+| boot download, desktop | 5.88 MB / 198 ms | 3.45 MB / 136 ms |
+| longest main-thread task, desktop | 488 ms | 317 ms |
+| time to first card, desktop | 952 ms | 933 ms |
+| boot download, Fast-3G + 4x CPU | 29,849 ms | 17,671 ms |
+| **time to first card, Fast-3G + 4x CPU** | **36,503 ms** | **23,992 ms** |
+| longest main-thread task, Fast-3G + 4x CPU | 2,005 ms | 1,665 ms |
+
+The desktop time-to-first-card is unchanged, and that is the honest result: on
+localhost the download is instant either way, so all that is left is CPU, and
+saving ~250 ms of fold inside a ~950 ms boot is inside the run-to-run noise.
+The number that matters is the throttled one - **12.5 seconds sooner to the
+first useful result on a mid-range phone** - because that is the visitor the
+audit was about. A modal open still costs exactly one ~12 KB partition.
+
+Two traps in measuring this, both of which produced confident wrong numbers
+first:
+- the repo's python static server sends everything UNCOMPRESSED, so a throttled
+  run measures 34 MB against 16 MB rather than 5.9 against 3.4, and the
+  before/after gap comes out nearly twice as large as it really is;
+- a static server that caches file bodies by path serves the FIRST `app.js` it
+  read for the whole session, so the "before" run silently re-measures the
+  "after" code. Both runs reported the same file and nearly identical timings,
+  which is what gave it away.
+
+**The ten readers, and where each one went.** Whole-catalogue scans became
+show-index reads: `buildSeriesIndex`, `buildBestSeasonMap` (badges precomputed),
+`buildAboveImdbMap` (a flag), `indexShowAgg`'s provider chip (a field),
+`applyPendingCompareIds`, `validateDataset`, `computeShowRelated`. Per-show
+lookups became `seasonsFor(id)` after `ensureDetail`: the show modal, Compare,
+the two share cards, the season permalink, the changelog jump. `dataset.matches`
+no longer exists in `js/app.js`, and a test asserts that, because a single
+surviving whole-catalogue scan over a now-partial list is a silent wrong answer
+rather than an error.
+
+**What was measured and rejected.**
+- Short keys (`t`/`y`/`p` for `title`/`year`/`poster`): 0.06 MB of brotli and
+  1 ms of parse, for an unreadable build artifact.
+- `seasonAvgs` as `[season, year, avg]` triples: 0.07 MB encoded, and the
+  sparkline reads the object fields directly.
+- Moving `poster` out of the boot payload: 0.83 MB encoded, but posters render
+  with the card, so this trades transfer for cards that fill in afterwards.
+  Not taken without a reason to change what first paint looks like.
+- `tmdbId`/`tvdbId` were DROPPED from the show record (0.43 MB encoded): every
+  reader of them turned out to take `seasons[0]`, a season record.
+
+**The trap that cost the most time.** `meanSeasonVotes` was rounded to an
+integer at first. `computeShowRelated` bands candidates at `anchor / 10` and
+`anchor * 10`, so half a vote of rounding moves the band edge and changes which
+shows are recommended - it re-banded 19% of the catalogue and the parity test
+caught it on real data. The exact quotient ships; a double round-trips through
+JSON exactly.
+
+**Failure behaviour changed, deliberately.** The season table is in the
+partition now, so a detail fetch that 404s no longer costs only the episode
+curves. `seasonAvgs` therefore carries `episodeCount` (~0.15 MB encoded) so a
+show whose partition is unreachable still opens with true season numbers, an
+explicit notice and a Retry - the 2026-08-22 D7 guarantee, kept. A detail file
+written BEFORE this split (a stale CDN or service-worker entry, a rollback) has
+no `records` key and is treated as a miss for the same reason.
+
+**What it costs, stated rather than skipped.** The season records now exist
+twice on the CDN: in `data-index.json`, which nothing in the browser fetches,
+and in the detail files, which is where they are actually read. The detail
+directory grew 192 -> 216 MB (+17%), so the mean detail file is 9.2 KB instead
+of 7.7 KB and a modal open costs about 1.5 KB more. That is the trade: ~1.5 KB
+on the opens a visitor chooses, against 2.8 MB removed from every boot whether
+they open anything or not.
+
+`data-index.json` is kept for two reasons, neither of them "a consumer we did
+not want to migrate": it is the season-level dataset artifact, and it is the
+input the full-catalogue parity test checks the show index against. It is not a
+documented public download and nothing links it. Un-publishing it would save 34
+MB of CDN storage and zero user-facing bytes, which is an owner decision about
+a URL that has been live for a while rather than part of this change.
+
+**The Kometa builder got its own slice.** That page reads eight per-season
+fields and used to read them out of `data-index.json`, which was defensible
+only while the Finder fetched the same file and warmed the cache. It now reads
+`data/kometa-index.json`: 1.83 MB encoded instead of 5.88 MB.
+
+**One latent difference, measured to be a no-op today.** The old
+`buildSeriesIndex` back-filled the suggestion list's `poster`, `year` and
+`seriesVotes` from LATER seasons when the first season lacked them
+(`if (!entry.poster && m.poster) ...`, and `max` for votes). `buildShowAgg`
+takes all three from the first season it sees and always did, so the GRID never
+had that back-fill - the two surfaces disagreed in that edge case, and the
+suggestion list now agrees with the card. On the current catalogue the
+difference is empty: the full-catalogue suggestion-index parity test compares
+every show's poster, year and votes against the back-filling implementation and
+they match for all 34,615. It is written down because the next dataset could
+contain a show where they do not, and then the answer is to give buildShowAgg
+the back-fill (which moves the card too), not to re-introduce a second rule.
+
+**Parity is asserted over the whole catalogue**, in
+`tests/shows-index-parity.test.js`: every one of the 34,615 shipped show
+records is compared field-for-field against what the pre-split boot fold
+produces from the same season file, plus the suggestion index over the whole
+catalogue and `computeShowRelated` over a 400-show spread (identical results,
+identical order). A 0.01 change to one show's `gap` fails it. The pre-split
+`computeShowRelated` is transcribed into that file as the reference, and it
+reads `RELATED_VOTES_BAND` from `app.js` rather than carrying a copy - the copy
+had already drifted to 40 against the app's 20 and made the "reference"
+disagree with the app it was meant to reference.

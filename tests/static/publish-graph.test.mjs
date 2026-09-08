@@ -140,6 +140,32 @@ test('the four dual-exposed Rising Shows scripts are published, and nothing else
   assert.deepEqual(leaked, [], 'build tooling must not ship: ' + leaked.join(', '));
 });
 
+test('the Rising Shows data artifacts the browser fetches are published', () => {
+  // These are gitignored BUILD outputs, so they only exist after
+  // `npm run build:site` (or scripts/split-data.js) has run. When they are
+  // absent there is nothing to assert; when they are present, every one of
+  // them is fetched by a page and a deny rule that swallowed one would take
+  // the app down in production while every other test stayed green.
+  const fetched = [
+    'apps/rising-shows/shows-index.json',      // the Finder's boot payload
+    'apps/rising-shows/data/kometa-index.json', // the Kometa builder page
+  ];
+  let checked = 0;
+  for (const f of fetched) {
+    if (!existsSync(join(REPO_ROOT, f))) continue;
+    checked++;
+    assert.ok(published.has(f), `${f} is fetched by a page and must ship`);
+  }
+  // detail/ is 34,600 files; assert the directory made it rather than each one.
+  const detailDir = 'apps/rising-shows/data/detail';
+  if (existsSync(join(REPO_ROOT, detailDir))) {
+    const some = [...published].filter((f) => f.startsWith(`${detailDir}/`));
+    assert.ok(some.length > 0, 'per-show detail files are fetched on modal open and must ship');
+  }
+  assert.ok(checked === 0 || checked === fetched.length,
+    'either the build has not run, or every fetched artifact is present');
+});
+
 test('internal artifacts are NOT published', () => {
   // Each of these returned 200 in production before the publish directory,
   // or would have on the next commit that added one like it.

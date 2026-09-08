@@ -161,10 +161,10 @@ for (const engine of ['firefox', 'webkit']) {
       for (const app of APPS) {
         // Rising Shows boots from a gitignored dataset (fetched on CI by
         // cross-browser.yml, absent in a fresh clone). Without it the app
-        // requests data-index.json and gets a 404, which is a missing
+        // requests shows-index.json and gets a 404, which is a missing
         // precondition, not a boot failure: skip with a reason, the way the
         // CDP harness does, instead of turning the whole smoke red.
-        if (app === 'rising-shows' && !existsSync(path.join(REPO, 'apps', 'rising-shows', 'data-index.json'))) {
+        if (app === 'rising-shows' && !existsSync(path.join(REPO, 'apps', 'rising-shows', 'shows-index.json'))) {
           t.diagnostic('skip rising-shows: no show data (run `npm run fetch:rising-shows-data && npm run build:rising-shows:split`)');
           continue;
         }

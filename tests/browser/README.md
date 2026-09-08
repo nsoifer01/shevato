@@ -142,7 +142,7 @@ never mistaken for a full one.
    quarantine.
 
 The rising-shows dataset is the current case: `data.json` and
-`data-index.json` are gitignored and pulled from a GitHub release, so a clean
+`shows-index.json` are gitignored and pulled from / derived from a GitHub release, so a clean
 clone has no shows and every finder assertion would fail for a reason that is
 not a bug. Those six checks skip with the fix in the message. To run them:
 

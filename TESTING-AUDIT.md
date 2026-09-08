@@ -503,7 +503,7 @@ Severity: H high, M medium, L low.
 ### Performance observation (documented only, deliberately not asserted)
 
 30. **[RESOLVED] Rising Shows eagerly fetches ~102 MB of dataset at boot** when the
-    release data is present (data-index.json 34.3 MB + show-modal-extras
+    release data is present (shows-index.json 16.6 MB, data-index.json 32.8 MB + show-modal-extras
     67.5 MB, uncompressed sizes over a local no-gzip server; production
     serves compressed). Worth an owner look; the perf budgets deliberately
     exclude it.

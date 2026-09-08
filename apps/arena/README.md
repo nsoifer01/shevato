@@ -192,19 +192,34 @@ Progression is not the host's private business:
   leftover players, chat and gate become orphans any signed-in client may
   sweep, which is the same path the last-leaver teardown already uses.
 
-  **This needs one setting outside the repo.** Enable the TTL policy once, on
-  the `triviaRooms` collection group, field `expiresAt`:
+  **The TTL policy is enabled.** It was turned on for the `triviaRooms`
+  collection group, field `expiresAt`, on 2026-09-08 and Firestore reports
+  `ttlConfig.state: ACTIVE`:
 
   ```
   gcloud firestore fields ttls update expiresAt \
     --collection-group=triviaRooms --enable-ttl --project=shevato-site
+  # check it:  gcloud firestore fields ttls list --project=shevato-site
   ```
 
-  (or Firestore console -> the database -> Time-to-live -> Create policy).
-  Until it is enabled the field is written and inert, and cleanup behaves
-  exactly as it did before. Firestore TTL deletes the document only, not its
-  subcollections - which is precisely why the orphan-sweep rules above are the
-  other half of the design.
+  Two things this does NOT do, both deliberate:
+
+  - **It does not reach the 336 rooms that predate `expiresAt`.** TTL deletes a
+    document when its TTL field holds a timestamp in the past; a document with
+    no such field is never a candidate. Those rooms (oldest 112 days, newest 21
+    days at the time of the census, none created since the current client
+    shipped) stay until something sweeps them. They are inert: unscoped by the
+    rules, and reachable only by their five-character code.
+  - **It deletes the room DOCUMENT only, not its subcollections** - which is
+    precisely why the orphan-sweep rules above are the other half of the
+    design. Once the room doc is gone, `roomGone()` opens the leftover players,
+    chat and gate to any signed-in client to sweep, which is the same path the
+    last-leaver teardown already uses.
+
+  Enabling the policy and Firestore actually deleting anything are separate
+  events: the config went ACTIVE immediately, and deletion runs on Google's own
+  schedule (documented as typically within 24 h of expiry) with no completion
+  signal to observe.
 
 - **Deleting your account takes your Arena records with it.** The global XP
   leaderboard row and every Globe Drop daily score are deleted; head-to-head
