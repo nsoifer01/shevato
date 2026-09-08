@@ -738,3 +738,52 @@ a frozen podium.
 `tryLoadPendingPostMatch` now probes membership first and re-enters the room
 live; the read-only recap is for people who were not in it. The suite is
 95/95 with the fix.
+
+## A path-filtered workflow can never be a required check (2026-09-08)
+
+On 2026-09-08 two PRs (#509, #511) merged with the `rules` check RED, and a
+third (#505) sat red behind them. Nothing was force-merged and no gate was
+bypassed. Branch protection required exactly `lint`, `test` and `browser`;
+`rules` was not in the list, so a red `rules` never blocked anything.
+
+The obvious fix, adding `rules` to the required contexts, would have broken
+every unrelated pull request in the repo. **A workflow filtered by
+`on.<event>.paths` does not report a neutral or skipped check when a change
+misses the filter. It reports nothing at all**, and a required context that
+never reports leaves the PR parked on "Expected - Waiting for status to be
+reported" with no way to satisfy it. That is why `test`, `lint` and
+`browser-tests` carry no path filters and `arena-rules` did: the three that run
+unconditionally are exactly the three that could be required, and the one that
+was filtered is the one that could not. The correlation was not a coincidence,
+and it was not noticed until it cost two red merges.
+
+The fix moves the filter off the trigger and into the job. `arena-rules.yml`
+now starts on every pull request and every push to master, and a first "Scope"
+step diffs the change (three-dot for a PR, two-dot for a push) and sets an
+output that gates the six expensive steps. A change with no emulator inputs
+takes about half a minute and reports success; a change with them runs the full
+suites as before. Bounded CI is preserved, and the check now always reports,
+which is what makes it requireable.
+
+Two things that were wrong in the old trigger and are fixed in the new list:
+
+- **`tests/browser/cdp.mjs` was missing.** `apps/arena/e2e/emulator.mjs`
+  imports the CDP driver from `../../../tests/browser/cdp.mjs`, so the driver
+  the entire multiplayer suite runs on could be rewritten without this job ever
+  running. It was, on 2026-09-08, in the very round that fixed this suite.
+- **`sync-system/**` was too coarse.** It swept in `sync-system/tests/`, which
+  is node tests and their stubs that neither the app nor either emulator suite
+  loads. PR #511 deleted an unrelated app, touched one app-count line in that
+  directory, and ran the whole 10-minute emulator suite on the strength of it,
+  then went red on a flake that had nothing to do with the change.
+
+The new failure mode this creates is worse than the old one, so it is tested:
+the decision now lives in a shell regex, and if that regex drifts, the job
+reports GREEN while running no emulator at all. An authorization boundary that
+reports success without being checked is worse than one nobody claims to check.
+`tests/static/ci-arena-scope.test.mjs` extracts the real Scope script out of the
+YAML and drives it against canned file lists with a stubbed git, asserts the
+fail-safe cases (unknown event, missing commit, failed diff) all RUN rather than
+skip, and derives the cross-tree-import case from the e2e's own `import`
+statements, so adding a shared dependency without widening the trigger fails the
+suite.
