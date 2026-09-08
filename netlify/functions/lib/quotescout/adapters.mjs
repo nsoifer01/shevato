@@ -159,10 +159,14 @@ export function medicareQuotes(input, { drug = false, provider, now = Date.now()
       deductible: plan.ded ?? null,
       outOfPocket: drug ? null : plan.moop ?? null,
       rating: plan.star ?? null,
-      // A $0 Advantage premium is the most misleading number in this app if the
-      // Part B premium is only mentioned behind a disclosure, so it goes on the
-      // face of the card next to the price.
-      note: 'Plus the Part B premium you pay Medicare separately.',
+      // A $0 premium is the most misleading number in this app if what it
+      // excludes is only mentioned behind a disclosure, so it goes on the face
+      // of the card next to the price. What it excludes differs: an Advantage
+      // plan is medical cover on top of a Part B premium you still owe, while a
+      // standalone Part D plan buys drug cover and nothing else at all.
+      note: drug
+        ? 'Drug cover only, and on top of the Part B premium you pay Medicare.'
+        : 'Plus the Part B premium you pay Medicare separately.',
       status: 'AUTHORITATIVE PUBLIC RATE',
       retrievedAt: new Date(now).toISOString(),
       expiresAt: new Date(now + ttl).toISOString(),

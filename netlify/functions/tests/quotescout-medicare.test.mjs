@@ -62,14 +62,20 @@ test('every Medicare price is a published rate that names its source and year', 
   }
 });
 
-test('a zero-dollar premium still says the Part B premium is separate', () => {
-  const quotes = ask().quotes;
-  const free = quotes.filter(q => q.amount === 0);
-  assert.ok(free.length, 'zero-premium Advantage plans are common and are the whole risk here');
-  for (const q of quotes) {
+test('a zero-dollar premium says what it leaves out, and says the right thing', () => {
+  const advantage = ask().quotes, drug = askDrug().quotes;
+  assert.ok(advantage.some(q => q.amount === 0), 'zero-premium Advantage plans are common and are the whole risk here');
+  assert.ok(drug.some(q => q.amount === 0), 'so are zero-premium drug plans');
+  for (const q of [...advantage, ...drug]) {
+    assert.ok(q.note, 'the caveat belongs on the card face, not only in the disclosure');
     assert.match(q.details['Part B premium'], /separate/i);
     assert.match(q.provenance.warning, /Part B premium is separate/);
   }
+  // An Advantage plan is medical cover you buy on top of Part B. A standalone
+  // drug plan buys drug cover and nothing else, which is the more useful
+  // warning next to a $0 price.
+  for (const q of advantage) assert.match(q.note, /^Plus the Part B premium/);
+  for (const q of drug) assert.match(q.note, /^Drug cover only/);
 });
 
 test('special-needs plans are excluded, because they are not open to everyone', () => {
