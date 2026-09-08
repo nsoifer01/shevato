@@ -581,6 +581,49 @@ only here: every expression `waitForExpr` takes is a predicate.
 `tests/static/cdp-harness.test.mjs` covers it, and two of its six checks fail
 against the pre-fix driver.
 
+## Two red checks, one root cause: the test raced an async write (2026-09-08)
+
+`arena-rules` stayed red after #513 and #514, in two different places on two
+different runs. Both were the harness racing a write it had not waited for, and
+both were reported as product failures.
+
+**The Ready vote.** "both players' Ready votes register during the reveal"
+failed with one `readyAfterQId` marker absent. The order was: click A's Ready,
+`front(B)` on the very next line, click B's Ready, then poll for BOTH markers.
+Fronting B is what backgrounds A, so A's vote was a Firestore write issued
+~200 ms before its own renderer became the lowest-priority process on the box.
+On two cores shared with three Chrome instances, the emulators and Node, an
+in-flight write from a starved renderer sits unacknowledged for seconds. The
+timeline said it outright once each step was reported against the round's own
+deadline: `voteA -7.5s`, `frontB -7.5s`, marker still missing 4.5 s later. Each
+vote now lands while its own tab is still in the foreground. Nothing asserted
+got weaker, and the backgrounded case is still covered - by the D3 hidden-host
+checks, where it belongs, instead of smuggled into a check about whether a vote
+registers.
+
+**The idempotency precondition.** Five checks went red with
+`games=1 sessionMatchCount=null` while the next line of the SAME report read
+`sessionMatchCount null -> 1 -> 1`. The tally was late, not missing. Ending a
+game produces two independent idempotent writes - profile and leaderboard
+counters guarded by `lastCountedGame`, and the room's session tally guarded by
+`sessionCountedGame`, written by `maybeWriteH2HPairs` in its own transaction.
+Nothing orders them and nothing should; each carries its own guard and each is
+safe to replay. The precondition read once and demanded both. It now gives them
+a bounded window, and still fails if they never land, which is the only reason
+it exists.
+
+The general rule: **when a check reads state written by a client, wait for that
+state, do not read once and blame the product.** Both failures cost days of
+"flaky CI" because the message named a product symptom ("the player's vote was
+lost", "the game was not counted") for a condition the run had no evidence of.
+Two things make the next one cheap to read: every step is reported as an offset
+from the round's own deadline rather than a wall clock, and both clients are
+labelled A/B in the flag report - it comes back in `ownerList` order, which is
+not vote order, so "one of the two is missing" never said which. A per-client
+click counter goes with the labels, because "the button was clickable" and "the
+click reached the handler" had been indistinguishable, and that ambiguity is
+what made this read as a product bug twice.
+
 ## A failed Ready vote looked exactly like no vote at all (2026-09-08)
 
 Found while reading `markReadyForNext` during the Globe Drop e2e investigation
