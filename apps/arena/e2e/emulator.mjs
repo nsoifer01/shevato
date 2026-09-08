@@ -1261,7 +1261,29 @@ export async function run({ base, cdpPort, base2 = null }) {
       await sleep(2200);
       await front(A);
       await sleep(1300);
-      const readyBtnLive = "(()=>{const b=document.getElementById('globe-drop-ready-btn');return !!b && !b.disabled && b.getBoundingClientRect().height>0})()";
+      // Live means CLICKABLE, which is not the same as "exists and is not
+      // disabled". The Ready bar sits below the globe canvas in a scrolling
+      // column, so on the mobile-emulated client the button is routinely
+      // rendered ~430px ABOVE the viewport - off screen, with an empty
+      // elementsFromPoint stack - while still reporting height 40 and
+      // disabled false. clickSel scrolls it into view and reads its rect in
+      // the SAME evaluate, then dispatches the click a round-trip later, so
+      // mid-scroll (or mid reveal-animation, which moves the bar a few px on
+      // its own) the coordinate it clicks can be stale: the click lands on
+      // the canvas and the vote is silently lost. That is the flake the
+      // armClicks/waitFlag instrumentation below was built to REPORT; this is
+      // the cure. Scroll here and refuse to report live until the button is
+      // fully in the viewport AND is what a click at its own centre would
+      // actually hit; waitForExpr polls, so this settles rather than races.
+      const readyBtnLive = `(()=>{
+        const b = document.getElementById('globe-drop-ready-btn');
+        if (!b || b.disabled) return false;
+        const r = b.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0) return false;
+        if (r.top < 0 || r.bottom > innerHeight) { b.scrollIntoView({ block: 'center' }); return false; }
+        const hit = document.elementsFromPoint(r.left + r.width / 2, r.top + r.height / 2)[0];
+        return !!hit && (hit === b || b.contains(hit));
+      })()`;
       // The Ready bar is painted by the rAF render loop, which the browser
       // pauses in a BACKGROUND tab, so B's button only becomes clickable while
       // B is the active target. Front B to vote, then hand the foreground back

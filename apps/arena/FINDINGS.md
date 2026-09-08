@@ -841,6 +841,23 @@ live; the read-only recap is for people who were not in it. The suite is
   precondition is the current question id, so only the first write lands.
   Covered by four cases in `apps/arena/tests/room-state.test.js`, two of
   which fail against the host-only rule.
+- **And the Ready button was reported "live" while it was off screen, so the
+  vote was clicked into the globe canvas.** The gate was
+  `!b.disabled && getBoundingClientRect().height > 0`, which is true of a
+  button rendered ~430 px ABOVE the viewport - and on the mobile-emulated
+  client, in a scrolling column under the globe, that is where it routinely
+  is. `clickSel` does call `scrollIntoView`, but it reads the rect in the SAME
+  evaluate and dispatches the CDP click a round-trip later, so mid-scroll (or
+  mid reveal-animation, which moves the bar a few px by itself) the coordinate
+  is already stale: the click lands on the canvas, nothing is voted, and the
+  round advances on the timer instead. That is what the `armClicks` /
+  `clicksOn` / `waitFlag` instrumentation was built to REPORT, and this is the
+  cure. `readyBtnLive` now scrolls, then refuses to report live until the
+  button is fully inside the viewport AND `elementsFromPoint` at its own
+  centre actually hits it. `waitForExpr` polls, so it settles rather than
+  races. Diagnosed by probing `elementsFromPoint` at the click coordinate
+  before and after each click, which is the only way to see this: every
+  property the old gate read was correct.
 - **The emulator e2e's Ready-skip check was racing a cold WebGL repaint.**
   `S6` backgrounds the host to let the second client press Ready, because the
   Ready button is painted - and enabled - by the same rAF loop. The second
