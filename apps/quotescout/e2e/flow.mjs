@@ -2,11 +2,18 @@
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { newPage, closePage, goto, evaluate, evalAsync, setValue, setViewport, clickSel, waitForExpr, interceptNetwork, screenshot, cleanErrors } from '../../../tests/browser/cdp.mjs';
 import { VERTICALS } from '../js/model.js';
-import { normalizeEasyPost } from '../../../netlify/functions/lib/quotescout/adapters.mjs';
+import { normalizeEasyPost, marketplaceQuotes } from '../../../netlify/functions/lib/quotescout/adapters.mjs';
+import { getMeta } from '../../../netlify/functions/lib/quotescout/marketplace.mjs';
 export async function run({base,cdpPort}) {
   const R=[],t=(name,pass,detail='')=>R.push({name:`Quote Scout ${name}`,pass:!!pass,detail});
   const s=await newPage(cdpPort);const requests=[];let scenario='quotes';
-  const capabilities={vehicleData:true,verticals:VERTICALS.map(v=>({...v,capability:['package-shipping','health-insurance'].includes(v.id)?'Beta':'Requires provider integration'}))};
+  const meta=getMeta();
+  const capabilities={vehicleData:true,planYear:meta.planYear,states:meta.states,dataPublishedAt:meta.pufImportDate,
+    verticals:VERTICALS.map(v=>({...v,capability:v.id==='health-insurance'?'Public data':v.id==='package-shipping'?'Beta':'Requires provider integration',sources:[]}))};
+  // Real adapter output for a real ZIP, generated here so the browser exercises
+  // the production normalizer rather than a hand-written price.
+  const marketplaceTTL=6*3600000;
+  const published=()=>marketplaceQuotes({zip:'78701',age:40,tobacco:false,year:meta.planYear},{now:Date.now(),ttl:marketplaceTTL});
   const input={originZip:'90210',destinationZip:'10001',weight:16,length:10,width:5,height:3};
   const quotes=()=>normalizeEasyPost({rates:[4,1,3,2].map(n=>({mode:'production',rate:String(n+10),currency:'USD',carrier:`TEST carrier ${n}`,service:`TEST service ${n}`,delivery_days:n}))},input,Date.now()).quotes;
   const wire=events=>({contentType:'application/x-ndjson',body:events.map(e=>JSON.stringify(e)).join('\n')+'\n'});
@@ -18,8 +25,12 @@ export async function run({base,cdpPort}) {
     if(scenario==='error')return {status:429,body:{message:'The comparison limit has been reached. Please try again later.'}};
     const start={type:'start',providers:[{id:'fixture',enabled:true}]},done={type:'done',checked:1};
     if(body.vertical==='vehicle-data')return wire([start,{type:'provider',provider:'vpic',name:'NHTSA vPIC',status:'OK',quotes:[],vehicle:{year:'2003',make:'HONDA',model:'Accord',source:'NHTSA vPIC (TEST FIXTURE)',warning:'TEST DATA'}},done]);
-    if(body.vertical==='health-insurance'&&!body.input.county)return wire([start,{type:'provider',provider:'cms',name:'CMS Marketplace',status:'ADDITIONAL',quotes:[],questions:[{field:'county',label:'Which county?',options:[{value:'37057',label:'TEST Davidson'},{value:'37081',label:'TEST Guilford'}]}]},done]);
-    if(body.vertical==='health-insurance')return wire([start,{type:'provider',provider:'cms',name:'CMS Marketplace',status:'UNSUPPORTED',quotes:[],message:'No plans for this location.'},done]);
+    if(body.vertical==='health-insurance'&&scenario==='marketplace'){
+      const result=published();
+      return wire([start,{type:'provider',provider:'cms-puf',name:'CMS Marketplace plan data',enabled:true,status:'OK',quotes:result.quotes,warning:result.warning,cached:false},{...done,returned:result.quotes.length,unavailable:0,additional:0}]);
+    }
+    if(body.vertical==='health-insurance'&&!body.input.county)return wire([start,{type:'provider',provider:'cms',name:'CMS Marketplace',enabled:true,status:'ADDITIONAL',quotes:[],questions:[{field:'county',label:'Which county?',options:[{value:'37057',label:'TEST Davidson'},{value:'37081',label:'TEST Guilford'}]}]},done]);
+    if(body.vertical==='health-insurance')return wire([start,{type:'provider',provider:'cms',name:'CMS Marketplace',enabled:true,status:'UNSUPPORTED',quotes:[],message:'No plans for this location.'},done]);
     return wire([start,{type:'provider',provider:'easypost',name:'EasyPost',status:'OK',quotes:quotes(),cached:requests.length>2,warning:'One carrier did not return a rate.'},done]);
   });
   try {
@@ -41,7 +52,7 @@ export async function run({base,cdpPort}) {
     await clickSel(s,'#qs-submit');await waitForExpr(s,"document.querySelectorAll('.qs-result').length===3");
     t('Top 3 rather than all rates',await evaluate(s,"document.querySelectorAll('.qs-result').length===3"));
     t('lowest rate first',await evaluate(s,"document.querySelector('.qs-result').textContent.includes('$11.00')"));
-    t('estimate and purchase limits',await evaluate(s,"document.querySelector('.qs-result').textContent.includes('ESTIMATE') && document.querySelector('.qs-result').textContent.includes('does not sell labels')"));
+    t('estimate and purchase limits',await evaluate(s,"document.querySelector('.qs-badge').textContent==='Estimate' && document.querySelector('.qs-result').textContent.includes('does not sell labels')"));
     t('partial carrier failure stays visible',await evaluate(s,"document.getElementById('qs-results').textContent.includes('One carrier')"));
     await evaluate(s,"Array.from(document.querySelectorAll('#qs-results button')).find(b=>b.textContent.includes('See all')).click()");t('all results expand',await evaluate(s,"document.querySelectorAll('.qs-result').length===4"));
     await setValue(s,'#qs-mode','best-value');t('ranking explains tradeoff',await evaluate(s,"document.getElementById('qs-results').textContent.includes('$1 for each')"));
@@ -54,12 +65,30 @@ export async function run({base,cdpPort}) {
     await setViewport(s,390,844);await evaluate(s,'window.scrollTo(0,0)');await screenshot(s,new URL('../.reports/mobile.png',import.meta.url).pathname);
     t('mobile no horizontal overflow',await evaluate(s,'document.documentElement.scrollWidth<=390'));
     t('button colors resist shared CSS',await evaluate(s,"getComputedStyle(document.getElementById('qs-submit')).color==='rgb(16, 35, 53)'"));
-    await setValue(s,'#qs-category','health-insurance');for(const [k,v]of Object.entries({zip:'27360',age:'27',tobacco:'false',year:String(new Date().getUTCFullYear())}))await setValue(s,`#qs-${k}`,v);
+    await setValue(s,'#qs-category','health-insurance');for(const [k,v]of Object.entries({zip:'27360',age:'27',tobacco:'false'}))await setValue(s,`#qs-${k}`,v);
+    t('coverage year is supplied, not asked for',await evaluate(s,"[...document.querySelectorAll('#qs-fields input,#qs-fields select')].map(f=>f.name).join()==='zip,age,tobacco'"));
     t('county not initially requested',await evaluate(s,"!document.querySelector('[name=county]')"));
     await clickSel(s,'#qs-submit');await waitForExpr(s,"!!document.querySelector('[name=county]')");t('provider question appears progressively',true);
     await setValue(s,'[name=county]','37057');await clickSel(s,'.qs-question button');await waitForExpr(s,"document.getElementById('qs-results').textContent.includes('No plans')");
     t('additional answer only targets requesting provider',requests.at(-1).provider==='cms'&&requests.at(-1).input.county==='37057');
+    t('the plan year still reaches the backend',requests.at(-1).input.year===meta.planYear);
     t('empty results explain no guessed prices',await evaluate(s,"document.getElementById('qs-results').textContent.includes('guessed prices')"));
+    // The published-rate path, driven by the real adapter over a real ZIP.
+    scenario='marketplace';
+    await setViewport(s,1280,900);
+    await clickSel(s,'#qs-modify');
+    await setValue(s,'#qs-category','health-insurance');
+    for(const [k,v]of Object.entries({zip:'78701',age:'40',tobacco:'false'}))await setValue(s,`#qs-${k}`,v);
+    await clickSel(s,'#qs-submit');await waitForExpr(s,"document.querySelectorAll('.qs-result').length>0");
+    t('published rates render as real prices',await evaluate(s,"[...document.querySelectorAll('.qs-result .qs-price')].every(p=>/^\\$[0-9,]+\\.[0-9]{2} \\/ month$/.test(p.textContent))"));
+    t('published rate is labelled as published, not verified',await evaluate(s,"[...document.querySelectorAll('.qs-badge')].every(b=>b.textContent==='Published rate')"));
+    t('freshness is the dataset vintage, not a retrieval time',await evaluate(s,`document.querySelector('.qs-result .qs-muted').textContent.startsWith('Plan year ${meta.planYear} rate, published by CMS on ') && !document.getElementById('qs-results').textContent.includes('seconds ago')`));
+    t('deductible and out-of-pocket are shown',await evaluate(s,"document.querySelector('.qs-result').textContent.includes('Max out-of-pocket')"));
+    t('age-restricted catastrophic plans are excluded and said so',await evaluate(s,"document.getElementById('qs-results').textContent.includes('catastrophic plan') && !document.getElementById('qs-results').textContent.includes('Catastrophic ·')"));
+    t('no source we never had is reported as a failure',await evaluate(s,"!document.getElementById('qs-results').textContent.includes('cannot return options right now')"));
+    t('the source is named on the card',await evaluate(s,"document.querySelector('.qs-result details').textContent.includes('Public Use Files')"));
+    t('an outbound handoff only points at HealthCare.gov',await evaluate(s,"[...document.querySelectorAll('.qs-result a')].every(a=>a.href==='https://www.healthcare.gov/see-plans/'&&a.rel.includes('noreferrer'))"));
+
     scenario='error';await clickSel(s,'#qs-refresh');await waitForExpr(s,"document.getElementById('qs-error').textContent.includes('limit')");t('rate limit actionable',true);
     t('no persistent quote data',await evaluate(s,"!Object.keys(localStorage).some(k=>/quotescout/.test(k))"));
     t('no uncaught JS errors',cleanErrors(s).length===0,JSON.stringify(cleanErrors(s)));

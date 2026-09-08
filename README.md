@@ -35,7 +35,7 @@ shevato/
 │   ├── gym-tracker/                  # Gym workout tracker (PWA, manifest + service worker)
 │   ├── maptap-rivals/                # Daily MapTap.gg head-to-head tracker
 │   ├── mario-kart/                   # Mario Kart race tracker (8 Deluxe + World)
-│   ├── quotescout/                   # Source-backed comparisons and NHTSA vehicle decoding
+│   ├── quotescout/                   # Real CMS marketplace plan prices and NHTSA vehicle decoding
 │   ├── rising-shows/                 # TV shows ranked by rating-trend shape + Plex/Kometa integration
 │   └── trip-planner/                 # Day-by-day trip itinerary builder with route map
 │
@@ -96,7 +96,7 @@ in `apps/fpl-planner/experiments/registry.md` with explicit verdicts.
 | Gym Tracker | `apps/gym-tracker/` | Health | Installable PWA, offline support, programs + measurements |
 | MapTap Rivals | `apps/maptap-rivals/` | Game tracker | Daily MapTap.gg H2H against named friends; rivalry seasons + calendar heatmap |
 | Mario Kart Tracker | `apps/mario-kart/` | Game stats | Race log, charts, achievements. Supports MK8 Deluxe + Mario Kart World |
-| Quote Scout | `apps/quotescout/` | Utilities | Provider-based price comparisons, explicit estimates and NHTSA vehicle data. See app README for current availability |
+| Quote Scout | `apps/quotescout/` | Utilities | Real health and dental plan prices from the CMS marketplace public use files (30 states, no credential), plus NHTSA vehicle data. See app README for current availability |
 | Rising Shows | `apps/rising-shows/` | TV / multimedia | Whole TV shows ranked by the shape of their rating trend across thousands of shows; Plex + Kometa integration under `apps/rising-shows/kometa/` |
 | Trip Planner | `apps/trip-planner/` | Travel | Day-by-day itineraries: flights, stays, costs, night coverage, collision and gap warnings, route map, A-to-B travel options. Optional Firestore sync via site sign-in |
 
