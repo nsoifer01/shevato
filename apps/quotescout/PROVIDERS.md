@@ -2,27 +2,41 @@
 
 Reviewed 7 September 2026 against the official sources below. Public documentation being reachable is evidence of a documented product, not proof that an authenticated endpoint or a Shevato partnership is operational. No partner has been contacted or represented as contracted by this implementation. Undisclosed pricing, limits and terms remain **unknown**, not "free" or "unlimited". No scraping is implemented.
 
-## Capability matrix
+## What ships
 
-Runtime status is what the deployed function actually does today, not what an integration could do once someone signs something.
+Everything Quote Scout offers is a public dataset that needs no key, no account and no agreement, and travels inside the function. There is nothing to activate.
 
-| Source | Vertical | Real pricing | Public | Credentials | Commercial agreement | Geography | Runtime status |
-| --- | --- | :--: | :--: | --- | --- | --- | --- |
-| CMS Exchange PUFs (bundled dataset) | Health, dental | **Yes, filed premiums** | Yes | None | None | 30 HealthCare.gov states | **Production functional** |
-| NHTSA vPIC | Vehicle data | No (specifications) | Yes | None | None | North America plus decodable imports | Production functional, metered |
-| CMS Marketplace API | Health | Yes | Documented | Issued key, rotates every 60 days | None | FFM states | Credentials required; adapter implemented and tested |
-| EasyPost Rates | Package shipping | Yes, account-specific | Documented | Production key plus explicit carrier accounts | Platform agreement required | US domestic in this adapter | Commercial agreement required; adapter implemented and tested |
-| Shippo | Package shipping | Yes | Documented | Token | Platform terms to be checked | Varies by carrier | Research only, viable alternative |
-| Ship.Cars | Vehicle shipping | Yes | Partner docs | OAuth2 partner access | Broker authorization required | US | Research only |
-| PCMI Connect | Vehicle service contracts | Yes | Partner portal | Administrator credentials | Administrator/dealer agreement | Jurisdiction-dependent | Research only |
-| Insurify or equivalent | Auto, home | Yes | Marketing only | Scoped partner credentials | Executed agreement, licensing | US, partner-dependent | Research only |
-| FCC Broadband Labels | Internet | Price on labels, not queryable | Documents | n/a | n/a | US | Not viable as an availability or price API |
-| Retail energy | Electricity | Varies | Per state | n/a | Data-use rights | Deregulated markets only | Not viable without utility-level eligibility |
-| CMS Medicare landscape files | Medicare Advantage, Part D | Yes, published premiums | Yes, historically | None | None | US by county | **Researched, not implemented.** See below |
+| Source | Vertical | Real pricing | Credentials | Geography | Runtime status |
+| --- | --- | :--: | --- | --- | --- |
+| CMS Exchange Public Use Files | Health, dental | Yes, filed premiums | None | 30 HealthCare.gov states | **Production functional** |
+| CMS Medicare Advantage and Part D landscape file | Medicare Advantage, Part D | Yes, published premiums | None | All 50 states, DC, territories | **Production functional** |
+| NHTSA vPIC | Vehicle data | No, specifications only | None | North America plus decodable imports | Production functional, metered |
 
-### Medicare, researched and not implemented
+## What was removed, and why
 
-Medicare Advantage and Part D landscape files carry real premiums by contract, plan, state and county, are published every autumn and have historically been free bulk downloads. They would be the natural way to serve people over 64, whom the marketplace dataset cannot price. They are not implemented here because the current download page could not be resolved to a stable URL on 7 September 2026: the CMS enrollment-data pages no longer link the landscape files, the archive that is linked covers CY2006-CY2025, and `www.medicare.gov`'s plan-compare API answers 403 to automated requests, which this project will not circumvent. This is a lead with a concrete next step, not a blocked vertical: find the current landscape-file URL, confirm the licence, and the existing dataset pipeline generalises to it.
+These verticals were shipped as disabled cards with an explanation. A category that can only ever say "unavailable" is a dead button, so they were deleted along with their adapters rather than left as furniture. Each entry is what it would actually take.
+
+| Vertical | Blocker | What would change it |
+| --- | --- | --- |
+| Auto insurance | **Licensing, not paperwork.** Quoting, soliciting and selling insurance requires a state producer licence plus a carrier appointment or an aggregator contract. Shevato holds neither | A licensed partner who owns the regulated quoting and binding, and state-specific legal review |
+| Home insurance | Same licensing boundary, plus property enrichment that has no free public source | As above |
+| Package shipping | EasyPost and Shippo both need a paid account, and their developer terms do not by themselves permit a white-label comparison platform | A production key, an approved platform agreement and explicit carrier account IDs |
+| Vehicle shipping | Ship.Cars and equivalents are OAuth2 partner APIs behind broker authorization | Partner access and a documented quote/purchase contract |
+| Vehicle service contracts | Administrator rating APIs sit behind a dealer or administrator agreement, with jurisdiction rules | An administrator integration and jurisdiction review |
+| Internet | FCC broadband data gives availability, not price. Address-level serviceability and pricing have no public source | Licensed serviceability plus provider price, fee and introductory-term data |
+| Electricity | Retail choice depends on the local utility, not the state, and there is no national purchasable-plan feed | Utility-level eligibility and current tariff data with documented formulas |
+
+### Why the public-data route works for health and Medicare but not for auto
+
+Checked on 7 September 2026, because it is the obvious next question and the answer is structural rather than incidental.
+
+ACA and Medicare premiums are a function of a small, legally fixed, public set of inputs. The ACA forbids rating on health status, sex or occupation, leaving plan, rating area, age and tobacco; Medicare premiums do not vary by person at all. That is exactly why CMS can publish the whole rate table, and why a ZIP and an age yield *your* premium to the cent.
+
+Auto insurance is the opposite. Carriers file rating algorithms over driving record, claims history, credit-based insurance score in most states, annual mileage, garaging address, vehicle symbol, prior coverage and telematics. No public table can yield your number, because your number is computed from data only the carrier holds.
+
+What states publish instead is a survey. [California's Auto Premium Survey](https://www.insurance.ca.gov/01-consumers/105-type/9-compare-prem/) is the best of them, and CDI says on the page: "The results of these surveys are not premium quotes." Its 2026 profile exhibit is a grid of hypothetical drivers (no violations, one ticket, one at-fault accident, crossed with 2, 4, 7, 13 and 25 years of driving, at basic or standard full coverage). Useful for shortlisting carriers in one state; not a price for a named person, and not something to display beside a VIN field. Rejected on 7 September 2026 on the owner's decision, in favour of leaving the vertical off entirely.
+
+## Source-by-source research
 
 | Candidate / category | Evidence and price semantics | Access, geography, sandbox and limitations | Implementation decision |
 | --- | --- | --- | --- |
@@ -49,7 +63,7 @@ CMS plan information access does not confer broker/enrollment authority. HealthC
 
 ## Production credential checklist
 
-Nothing on this list is required for the health or dental comparisons that are live today; those need no credential at all.
+**Nothing on this list is required by anything Quote Scout ships.** Every live vertical needs no credential. This is kept as the standard a future integration would have to meet before it could be enabled.
 
 - CMS API: issued key, rotation owner, observed account limits, verified current coverage year and county behavior. No public example key in production.
 - EasyPost: approved platform agreement, production key, explicit carrier account IDs and permission to rate for these visitors; confirm per-call billing, minimal input acceptance, and account-specific availability. No test-mode rates.

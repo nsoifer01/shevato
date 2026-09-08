@@ -1,4 +1,4 @@
-import { VERTICALS, MODE_LABELS, STATUS_LABELS, STATUS_MEANING, rankQuotes, money, isFresh, freshness } from './model.js';
+import { VERTICALS, MODE_LABELS, STATUS_LABELS, STATUS_MEANING, CONTINUE_URLS, rankQuotes, money, isFresh, freshness } from './model.js';
 const $ = id => document.getElementById(id);
 const root = $('quotescout');
 const endpoint = '/.netlify/functions/quotescout';
@@ -6,6 +6,7 @@ const session = [...crypto.getRandomValues(new Uint8Array(32))].map(v => v.toStr
 let capabilities = [], current = 'vehicle-data', providers = [], quotes = [], inputSnapshot, controller, generation = 0, showingAll = false, selectedGroup = '', loading = false;
 let service = {};
 const MARKETPLACE = ['health-insurance', 'dental-insurance'];
+const MEDICARE = ['medicare-advantage', 'medicare-drug'];
 const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 const el = (tag, text, className) => { const n = document.createElement(tag); if (text !== undefined) n.textContent = text; if (className) n.className = className; return n; };
 function field(name, label, options = {}) {
@@ -23,16 +24,16 @@ function choose(id) {
   const v = VERTICALS.find(v => v.id === id); $('qs-form-title').textContent = v?.name || 'Decode your vehicle';
   $('qs-submit').textContent = id === 'vehicle-data' ? 'Decode VIN' : 'Compare options';
   const marketplaceNote = `One adult, ages 18-64, for plan year ${service.planYear || ''}. These are the full premiums insurers filed with the government, before any premium tax credit. Available in the ${(service.states || []).length} states whose marketplace runs on HealthCare.gov.`;
-  $('qs-form-note').textContent = id === 'vehicle-data' ? 'Manufacturer-reported vehicle details from NHTSA. No quote or vehicle-history claims.' : id === 'package-shipping' ? 'US domestic packages. Account-specific estimates, not labels for purchase. Carriers may require a full address before providing a rate.' : MARKETPLACE.includes(id) ? marketplaceNote : '';
-  $('qs-transmission').textContent = id === 'vehicle-data' ? 'On submit: your VIN goes to the Shevato backend and NHTSA vPIC.' : id === 'package-shipping' ? 'On submit: ZIPs and package measurements go to the Shevato backend, EasyPost and the configured carriers needed to rate your shipment.' : MARKETPLACE.includes(id) ? 'On submit: your ZIP, age, tobacco status and coverage year go to the Shevato backend only. The published rates are held on our server, so nothing about your search is sent to an insurer or any other company.' : '';
+  const medicareNote = `Plans sold where you live, for ${service.medicare?.year || service.planYear || ''}. Premiums are what CMS published, and they do not change with your age or health. The Part B premium you pay Medicare is separate and is not included.`;
+  $('qs-form-note').textContent = id === 'vehicle-data' ? 'Manufacturer-reported vehicle details from NHTSA. No quote or vehicle-history claims.' : MARKETPLACE.includes(id) ? marketplaceNote : MEDICARE.includes(id) ? medicareNote : '';
+  $('qs-transmission').textContent = id === 'vehicle-data' ? 'On submit: your VIN goes to the Shevato backend and NHTSA vPIC.' : 'On submit: only the fields above go to the Shevato backend. The published rates are held on our server, so nothing about your search is sent to an insurer, a plan or any other company.';
   $('qs-mode').replaceChildren(); for (const mode of v?.modes || ['cheapest']) { const o = el('option', MODE_LABELS[mode]); o.value = mode; $('qs-mode').append(o); }
   $('qs-mode').value = 'cheapest';
   if (id === 'vehicle-data') field('vin', 'VIN', { maxLength: 17, pattern: '[A-HJ-NPR-Za-hj-npr-z0-9]{17}', help: '17 characters, usually on the dashboard or vehicle registration.' });
-  if (id === 'package-shipping') {
-    field('originZip', 'From ZIP', { inputMode: 'numeric', pattern: '[0-9]{5}', maxLength: 5, autocomplete: 'section-origin postal-code' });
-    field('destinationZip', 'To ZIP', { inputMode: 'numeric', pattern: '[0-9]{5}', maxLength: 5, autocomplete: 'section-destination postal-code' });
-    field('weight', 'Weight (ounces)', { type: 'number', min: .01, max: 1120, step: .01, help: 'Include packaging. 16 ounces = 1 pound.' });
-    for (const k of ['length','width','height']) field(k, `${k[0].toUpperCase()+k.slice(1)} (inches)`, { type: 'number', min: .01, max: 108, step: .01 });
+  if (MEDICARE.includes(id)) {
+    // Medicare premiums do not vary with age, sex or tobacco, so a ZIP is
+    // genuinely all we need; county is asked only if the ZIP straddles two.
+    field('zip', 'ZIP code', { inputMode: 'numeric', pattern: '[0-9]{5}', maxLength: 5, autocomplete: 'postal-code', help: 'Plans are sold county by county, so we may ask which county if your ZIP covers more than one.' });
   }
   if (MARKETPLACE.includes(id)) {
     field('zip', 'ZIP code', { inputMode: 'numeric', pattern: '[0-9]{5}', maxLength: 5, autocomplete: 'postal-code', help: 'Premiums are set by county, so we may ask which county if your ZIP covers more than one.' });
@@ -53,13 +54,19 @@ function showCapabilities(data) {
   for (const v of capabilities.filter(v => AVAILABLE.includes(v.capability))) { const o = el('option', `${v.name} · ${v.capability}`); o.value = v.id; select.append(o); }
   if (data.vehicleData) { const o = el('option', 'Vehicle details · NHTSA data'); o.value = 'vehicle-data'; select.append(o); }
   const unavailable = $('qs-unavailable'); unavailable.replaceChildren();
-  for (const v of capabilities.filter(v => !AVAILABLE.includes(v.capability))) { const row = el('p'); row.append(el('strong', `${v.name}: `), document.createTextNode(v.reason)); unavailable.append(row); }
+  const dark = capabilities.filter(v => !AVAILABLE.includes(v.capability));
+  for (const v of dark) { const row = el('p'); row.append(el('strong', `${v.name}: `), document.createTextNode(v.reason || 'Not connected.')); unavailable.append(row); }
+  // Nothing to disclose when every listed category works. An empty "these do
+  // not work" panel is worse than no panel.
+  $('qs-unavailable-panel').hidden = !dark.length;
   // State the coverage limit up front rather than after someone types a ZIP we
   // cannot answer for.
   const states = data.states || [];
-  $('qs-coverage').textContent = states.length
-    ? `Health and dental plan prices are the rates insurers filed for plan year ${data.planYear}, published by CMS on ${new Date(`${data.dataPublishedAt}T00:00:00Z`).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })}. They cover the ${states.length} states that use HealthCare.gov: ${states.join(', ')}. States running their own marketplace are not included.`
-    : '';
+  const on = iso => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
+  const lines = [];
+  if (states.length) lines.push(`Health and dental prices are the rates insurers filed for plan year ${data.planYear}, published by CMS on ${on(data.dataPublishedAt)}. They cover the ${states.length} states that use HealthCare.gov: ${states.join(', ')}. States running their own marketplace are not included.`);
+  if (data.medicare?.states?.length) lines.push(`Medicare prices are from the CMS ${data.medicare.year} landscape file, published on ${on(data.medicare.publishedAt)}, covering all ${data.medicare.states.length} states and territories. Special-needs plans are left out because they are restricted to people who qualify.`);
+  $('qs-coverage').replaceChildren(...lines.map(text => el('span', text)));
   if (select.options.length) { choose(select.value); $('qs-service-error').hidden = true; }
   else { $('qs-form').hidden = true; $('qs-service-error').hidden = false; }
   select.disabled = !select.options.length;
@@ -178,16 +185,17 @@ function resultCard(q) {
   const badge = el('span', STATUS_LABELS[status] || status, 'qs-badge');
   badge.dataset.status = status;
   card.append(badge, el('h4', q.providerName), el('p', q.name), el('p', `${money(q.amount, q.currency)} / ${q.interval}`, 'qs-price'));
+  if (q.note) card.append(el('p', q.note, 'qs-note'));
   if (q.annual !== undefined) card.append(el('p', `${money(q.annual, q.currency)} a year at this rate`));
-  if (q.deliveryDays != null) card.append(el('p', `${q.deliveryDays} estimated transit day(s)`));
   if (q.deductible !== undefined || q.outOfPocket !== undefined) card.append(el('p', `Deductible: ${money(q.deductible)} · Max out-of-pocket: ${money(q.outOfPocket)}`));
+  if (q.rating !== undefined) card.append(el('p', q.rating == null ? 'Not rated by CMS' : `CMS star rating: ${q.rating} out of 5`));
   const cached = providers.find(p => p.provider === q.provider)?.cached;
   card.append(el('p', `${freshness(q)}${cached ? ' Served from this session\u2019s cache.' : ''}`, 'qs-muted'));
   const details = el('details'), summary = el('summary', 'Details and price source'), dl = el('dl');
   for (const [key, value] of Object.entries(q.details || {})) dl.append(el('dt', key), el('dd', value));
   details.append(summary, el('p', STATUS_MEANING[status] || ''), dl, el('p', q.provenance.source), el('p', q.provenance.warning), el('p', `Normalization: ${q.provenance.transformations.join('; ')}.`));
   card.append(details);
-  if (q.continueUrl === 'https://www.healthcare.gov/see-plans/') { const a = el('a', q.continueLabel); a.href = q.continueUrl; a.rel = 'noopener noreferrer'; a.referrerPolicy = 'no-referrer'; card.append(a); }
+  if (CONTINUE_URLS.includes(q.continueUrl)) { const a = el('a', q.continueLabel); a.href = q.continueUrl; a.rel = 'noopener noreferrer'; a.referrerPolicy = 'no-referrer'; card.append(a); }
   return card;
 }
 $('qs-category').addEventListener('change', e => choose(e.target.value));

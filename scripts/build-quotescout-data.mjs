@@ -34,6 +34,9 @@ const CACHE = path.join(ROOT, '.quotescout-build-cache');
 const PUF = year => `https://download.cms.gov/marketplace-puf/${year}/`;
 const GRA = state => `https://www.cms.gov/cciio/programs-and-initiatives/health-insurance-market-reforms/${state.toLowerCase()}-gra`;
 const ZCTA = 'https://www2.census.gov/geo/docs/maps-data/data/rel2020/zcta520/tab20_zcta520_county20_natl.txt';
+// The CY landscape file is published once a year alongside the plan year. Its
+// name carries the publication month, so it is passed rather than derived.
+const MEDICARE = (year, stamp) => `https://www.cms.gov/files/zip/cy${year}-landscape-${stamp}.zip`;
 const UA = 'shevato-quotescout-dataset-build (+https://shevato.com/apps/quotescout/)';
 
 const arg = name => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : undefined; };
@@ -53,6 +56,9 @@ async function download(url, name) {
   fs.writeFileSync(cached, body);
   return body;
 }
+
+// Set by unzipSingle to the archived CSV's own modification date.
+export let lastEntryDate = '';
 
 // Minimal ZIP reader. The PUF archives hold exactly one deflated CSV, but the
 // local header's sizes are unreliable when the writer used a data descriptor,
@@ -77,6 +83,10 @@ export function unzipSingle(buffer) {
       if (buffer.readUInt32LE(local) !== 0x04034b50) throw new Error('corrupt local header');
       const start = local + 30 + buffer.readUInt16LE(local + 26) + buffer.readUInt16LE(local + 28);
       const data = buffer.subarray(start, start + compressed);
+      // The DOS date on the entry is the only publication date CMS puts on the
+      // landscape file, and a real date beats one invented from the file name.
+      const dos = buffer.readUInt16LE(offset + 14);
+      lastEntryDate = `${1980 + (dos >> 9)}-${String((dos >> 5) & 0xf).padStart(2, '0')}-${String(dos & 0x1f).padStart(2, '0')}`;
       return method === 0 ? data : zlib.inflateRawSync(data, { maxOutputLength: 1024 * 1024 * 1024 });
     }
     offset += 46 + nameLen + extraLen + commentLen;
@@ -137,7 +147,10 @@ function htmlRows(html) {
 // the Census writes "Brown County" and "St. Louis city". Both sides are reduced
 // to the same key so the join is exact rather than fuzzy.
 function countyKey(name) {
-  return name.toLowerCase()
+  // CMS writes "Dona Ana" and "Anasco"; the Census writes "Doña Ana" and
+  // "Añasco". Folding the diacritics is what makes Puerto Rico and New Mexico
+  // join at all.
+  return name.normalize('NFD').replace(/\p{Mn}+/gu, '').toLowerCase()
     .replace(/\b(county|parish|borough|census area|city and borough|municipality|municipio)\b/g, ' ')
     .replace(/\bst\.?\b/g, 'saint').replace(/\bste\.?\b/g, 'sainte')
     .replace(/[^a-z0-9]+/g, '');
@@ -191,6 +204,92 @@ function encodeAges(cents) {
   const parts = [cents[0].toString(36)];
   for (let i = 1; i < AGES; i++) parts.push((cents[i] - cents[i - 1]).toString(36));
   return parts.join('.');
+}
+
+
+// ------------------------------------------------------------------ medicare
+
+// Medicare premiums, unlike marketplace premiums, do not vary with age or
+// tobacco: a plan costs what it costs in the county it is sold in. So the whole
+// dataset is a county index plus a plan list, and the shopper only types a ZIP.
+async function buildMedicare(countyNames, year, stamp) {
+  const buffer = await download(MEDICARE(year, stamp), `${year}-medicare-${stamp}.zip`);
+  const csv = unzipSingle(buffer);
+  const publishedAt = lastEntryDate;
+  log(`medicare landscape: ${(csv.length / 1048576).toFixed(0)} MB, published ${publishedAt}`);
+
+  const byState = new Map();
+  const counties = new Map();          // "ST|countykey" -> fips
+  for (const [fips, name] of countyNames) {
+    const state = fipsState(fips);
+    if (state) counties.set(`${state}|${countyKey(name)}`, fips);
+  }
+
+  const idx = {};
+  let rows = 0, unmatched = new Set();
+  const planKey = plan => JSON.stringify(plan);
+  eachRow(csv, header => { header.forEach((name, i) => { idx[name] = i; }); }, line => {
+    const r = splitCSV(line);
+    const at = name => (r[idx[name]] ?? '').trim();
+    // Sanctioned plans cannot be joined, and special-needs plans are restricted
+    // to people who qualify by dual eligibility, institutional status or a
+    // named chronic condition. Neither belongs in a general comparison.
+    if (at('Sanctioned Plan') === 'Yes') return;
+    if (at('Special Needs Plan (SNP) Indicator') === 'Yes') return;
+    const category = at('Contract Category Type');
+    if (!['MA', 'MA-PD', 'PDP'].includes(category)) return;
+    const state = at('State Territory Abbreviation');
+    if (!/^[A-Z]{2}$/.test(state)) return;
+
+    const shard = byState.get(state) || byState.set(state, { state, year, region: '', c: {}, p: [], d: [], keys: new Map() }).get(state);
+    const star = /^[0-9.]+$/.test(at('Overall Star Rating')) ? Number(at('Overall Star Rating')) : null;
+
+    if (category === 'PDP') {
+      shard.region = at('PDP Region') || shard.region;
+      const plan = { id: at('ContractPlanSegmentID'), n: at('Plan Name'), i: at('Organization Marketing Name'), prem: money(at('Part D Total Premium')), ded: money(at('Annual Part D Deductible Amount')), star, type: at('Drug Benefit Type') };
+      if (plan.prem === null || !plan.n) return;
+      const key = `d:${planKey(plan)}`;
+      if (!shard.keys.has(key)) { shard.keys.set(key, true); shard.d.push(plan); }
+      rows++;
+      return;
+    }
+
+    const fips = counties.get(`${state}|${countyKey(at('County Name'))}`);
+    if (!fips) { unmatched.add(`${state}:${at('County Name')}`); return; }
+    const plan = {
+      id: at('ContractPlanSegmentID'), n: at('Plan Name'), i: at('Organization Marketing Name'), t: at('Plan Type'),
+      prem: money(at('Monthly Consolidated Premium (Part C + D)')),
+      ded: money(at('Annual Part D Deductible Amount')),
+      moop: money(at('In-Network Maximum Out-of-Pocket (MOOP) Amount')),
+      drug: at('Part D Coverage Indicator') === 'Yes' ? 1 : 0,
+      star,
+    };
+    if (plan.prem === null || !plan.n) return;
+    const key = `p:${planKey(plan)}`;
+    let at_index = shard.keys.get(key);
+    if (at_index === undefined) { at_index = shard.p.length; shard.keys.set(key, at_index); shard.p.push(plan); }
+    (shard.c[fips] ||= []).push(at_index);
+    rows++;
+  });
+
+  if (unmatched.size) throw new Error(`${unmatched.size} Medicare counties have no FIPS: ${[...unmatched].slice(0, 20).join(', ')}`);
+
+  const dir = path.join(OUT, 'medicare');
+  fs.mkdirSync(dir, { recursive: true });
+  const written = [];
+  let plans = 0, drugPlans = 0;
+  for (const [state, shard] of [...byState].sort()) {
+    delete shard.keys;
+    for (const fips of Object.keys(shard.c)) shard.c[fips] = [...new Set(shard.c[fips])].sort((a, b) => a - b);
+    if (!shard.p.length && !shard.d.length) continue;
+    fs.writeFileSync(path.join(dir, `${state}.json.gz`), zlib.gzipSync(JSON.stringify(shard), { level: 9 }));
+    written.push(state);
+    plans += shard.p.length;
+    drugPlans += shard.d.length;
+  }
+  const bytes = fs.readdirSync(dir).reduce((n, f) => n + fs.statSync(path.join(dir, f)).size, 0);
+  log(`medicare: ${written.length} states, ${plans} advantage plans, ${drugPlans} drug plans, ${rows} rows, ${(bytes / 1048576).toFixed(2)} MB`);
+  return { states: written, advantagePlans: plans, drugPlans, publishedAt, source: MEDICARE(year, stamp) };
 }
 
 // ------------------------------------------------------------------ the build
@@ -460,16 +559,17 @@ async function main() {
     log(`  ${state}: ${Object.keys(shard.p).length} plans, ${(fs.statSync(file).size / 1024).toFixed(0)} KB`);
   }
 
-  // ZIP index, restricted to the states we can actually price.
-  const covered = new Set(written);
+  // Nationwide ZIP index. Medicare covers every state and territory, so the
+  // index cannot be narrowed to the marketplace's thirty; the marketplace
+  // adapter checks state coverage itself.
   const zipIndex = {};
   for (const [zip, list] of zipToCounties) {
-    const inCovered = list.filter(c => covered.has(fipsState(c.fips)));
-    if (!inCovered.length) continue;
+    const known = list.filter(c => fipsState(c.fips));
+    if (!known.length) continue;
     // Largest shared land area first: that is the county a ZIP mostly sits in,
     // and it decides which county we suggest when we have to ask.
-    inCovered.sort((a, b) => b.land - a.land);
-    zipIndex[zip] = inCovered.map(c => c.fips);
+    known.sort((a, b) => b.land - a.land);
+    zipIndex[zip] = known.map(c => c.fips);
   }
   fs.writeFileSync(path.join(OUT, 'zips.json.gz'), zlib.gzipSync(JSON.stringify(zipIndex), { level: 9 }));
 
@@ -486,6 +586,8 @@ async function main() {
   for (const zips of Object.values(zipIndex)) for (const fips of zips) names[fips] = countyNames.get(fips);
   fs.writeFileSync(path.join(OUT, 'counties.json.gz'), zlib.gzipSync(JSON.stringify(names), { level: 9 }));
 
+  const medicare = await buildMedicare(countyNames, YEAR, arg('medicare-stamp') || '202608');
+
   const meta = {
     planYear: YEAR,
     pufImportDate: importDate,
@@ -496,8 +598,10 @@ async function main() {
     plans: totalPlans,
     planAreaRates: totalRates,
     ageRange: [AGE_MIN, AGE_MAX],
+    medicare,
     sources: [
       { name: 'CMS Health Insurance Exchange Public Use Files', url: `https://download.cms.gov/marketplace-puf/${YEAR}/`, use: 'plan attributes, service areas, filed premiums' },
+      { name: 'CMS Medicare Advantage and Part D landscape file', url: medicare.source, use: 'Medicare plan premiums, deductibles, out-of-pocket limits and star ratings by county' },
       { name: 'CMS CCIIO state geographic rating areas', url: 'https://www.cms.gov/cciio/programs-and-initiatives/health-insurance-market-reforms/state-gra', use: 'county to rating area' },
       { name: 'US Census Bureau 2020 ZCTA to county relationship file', url: ZCTA, use: 'ZIP to county' },
     ],
