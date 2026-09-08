@@ -497,6 +497,120 @@ Two consequences worth keeping:
   counted, and every later check is gated on that. Any new check of this shape
   needs the same guard.
 
+## The Globe Drop e2e failed on CI and passed everywhere else (2026-09-08)
+
+`arena-rules.yml` went red on 2026-09-08 and stayed red: five failures in six
+runs, always in `S6: Globe Drop clock`, and identically on `master` with content
+that had passed on the branch an hour earlier. Locally it was 95/95 every time.
+
+**Reproduced with `taskset -c 0,1`** - two cores, which is what a GitHub runner
+has against this workstation's ten. That turns a story about "CI is flaky" into
+a failing test you can watch:
+
+```
+FAIL emulator (globe): every live player Ready during the reveal advances the
+round early  [readyA=true readyB=true idx=1 advanced -1.7s before the natural
+deadline (voted at +10657ms) flags=74yBN:albania,FYd6q:albania]
+```
+
+Both players DID vote (both flags carry the location), but the pair of votes
+took **10,657 ms** against a **10,000 ms** reveal window, so the round had
+already advanced on its own timer and there was nothing early about it.
+
+**The cost is a cold globe, paid inside the deadline.** B is a background tab
+from room creation onward, so its first paint is a full `ensureGlobe()`: build
+the globe.gl scene, decode and upload the Earth texture (2 K on a 390-wide
+viewport), run the 1.2 s camera fly-in - and the Ready bar is painted by the
+same rAF loop, which a background tab does not run. The test fronted B for the
+first time *during the reveal*, so all of that landed inside the 10 s window,
+on top of two `Page.bringToFront` round-trips and A's own vote.
+
+**The check now reports a breakdown instead of one number.** It used to quote a
+single elapsed figure spanning the votes, the wait for the advance AND three
+owner reads, so "voted at +10657ms" could mean a late vote or a slow advance
+and there was no way to tell. Every step is now printed as an offset from the
+round's own deadline. That is what turned this from "CI is flaky" into two
+separate, measurable faults.
+
+**Fault 1: a cold globe, paid inside the deadline.** Fixed by fronting B during
+the 3 s asking phase and waiting for its canvas and for `is-loading` to clear
+before handing the foreground back. On two cores the two votes moved from
+landing 0.7 s AFTER the deadline to landing 7.5 s BEFORE it.
+
+**Fault 2: the test raced its own vote.** With the timing fixed the check still
+failed, and the breakdown said why: both buttons were clicked well inside the
+window, but the second player's `readyAfterQId` was still absent
+(`flags=gQY1b:djibouti,txhnT:-`). Not a lost write - a race. The vote is a
+Firestore write issued from a tab the test backgrounds one line later, and the
+early advance is gated on the HOST's rAF loop seeing `live.every(p =>
+p.readyAfterQId === currentQId)`. Background B before its write propagates and
+the host never sees a full house, so the round ends on its own timer and the
+check reports "not early" for something that was never about earliness.
+
+The test now waits for both flags to actually land before returning the
+foreground, and the conflated assertion is split in two: *both players' votes
+register* and *that makes the round advance early* are different claims, and
+folding them together told you neither when it went red. `readyB` had only ever
+meant "the button was clickable".
+
+`readyAfterQId` is only ever set, never cleared, which is what made the
+diagnosis possible: a `-` in the flags is proof the write never arrived, not
+evidence that something reset it.
+
+**Result on two cores, nothing else on the box: 97/97, exit 0** - from 95/96
+with the Globe Drop section red. The two extra checks are the globe warm-up and
+the split vote-registration assertion.
+
+One process note that cost a run: the FINDINGS rule above ("run this estate
+with nothing else heavy on the box") is real. A diagnostic run taken while
+`npm test` was on the other eight cores came back 90/96 with five unrelated
+idempotency failures, none of which reproduced on an idle machine.
+
+**The second symptom was the driver, not the app.** The other CI signature was
+`S6 ... ran to completion [timeout: Runtime.evaluate]`, an entire section lost.
+`waitForExpr` in `tests/browser/cdp.mjs` documents "false on timeout - callers
+assert on the result, so a wait that never comes fails the check rather than
+throwing the suite over", and that held for a condition that never came true
+but NOT for the transport: a `Runtime.evaluate` that hit the driver's own 45 s
+send timeout rejected straight through it. `clickSel` had been hardened against
+exactly this ("a CDP Input call can time out when the renderer is busy") and the
+Runtime path never was. A send timeout is now treated as a slow poll and
+polling continues to the caller's deadline; a real page error (closed target,
+detached session) still throws, because waiting longer cannot fix that. Safe
+only here: every expression `waitForExpr` takes is a predicate.
+`tests/static/cdp-harness.test.mjs` covers it, and two of its six checks fail
+against the pre-fix driver.
+
+## The room backlog TTL could not reach (2026-09-08)
+
+Enabling the TTL policy on `triviaRooms.expiresAt` covers rooms that HAVE the
+field. Every room created before 2026-09-08 did not: TTL needs a timestamp in
+the past, and a document without the field is never a candidate. The census the
+morning the policy went ACTIVE:
+
+| | |
+|---|---|
+| rooms | 341 (oldest 112 days, median 28) |
+| carrying the pre-gate cleartext `password` | 319 |
+| orphaned player/chat/gate documents beneath them | 269 |
+| carrying `expiresAt` | 0 |
+
+The 319 mattered. Rooms created before `scopedReads` are readable by any
+signed-in user who has the five-character code, so each of those was still
+handing out its own cleartext password and its questions with `correctIndex`,
+for no remaining purpose.
+
+Cleared once, by hand, using the app's OWN room lifetime (`ROOM_TTL_MS`, 24 h)
+rather than an invented cut-off: the 336 rooms past it were deleted with their
+subcollections, and the 5 still inside it were given the `expiresAt` the current
+client would have written, so the policy finishes them on schedule. All 341
+documents were backed up first. Verified after: 5 rooms remain, every one
+carries `expiresAt`, none carries `password`, and there are no orphaned
+subcollection documents.
+
+It cannot recur: the rules have required `expiresAt` on create since the same
+day, so a room without one can no longer be written.
+
 ## Member writes are bounded by VALUE now, not only by key
 
 The 2026-08-23 allow-list (above) fixed WHICH fields a member may touch and

@@ -49,8 +49,20 @@ test('the README describes the gym cache headers netlify.toml actually sends', (
 });
 
 test('CLAUDE.md\'s app-documentation inventory matches the filesystem', () => {
+  // A DIRECTORY under apps/ is not automatically an app. Retiring one deletes
+  // its tracked files but cannot delete the directory itself when gitignored
+  // content is still sitting in it (a `.reports/` from the session that built
+  // it), so the husk survives in a working tree and vanishes on a fresh clone.
+  // That made this contract fail locally, for a removed app, while CI - which
+  // never has the husk - stayed green: the worst shape a test can have. An app
+  // is a directory that carries an app: a page, or documentation for one.
+  // Same rule as sync-system/tests/app-naming-consistency.test.mjs: a husk
+  // holds nothing but dot-entries, and a real app always has a page.
   const apps = readdirSync(join(REPO_ROOT, 'apps'), { withFileTypes: true })
-    .filter((e) => e.isDirectory()).map((e) => e.name);
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .filter((a) => readdirSync(join(REPO_ROOT, 'apps', a)).some((f) => !f.startsWith('.')));
+  assert.ok(apps.length >= 5, `apps/ should hold real apps, found ${apps.length}`);
   const withBoth = apps.filter((a) =>
     existsSync(join(REPO_ROOT, 'apps', a, 'README.md'))
     && existsSync(join(REPO_ROOT, 'apps', a, 'FINDINGS.md')));
@@ -175,8 +187,16 @@ test('the Arena README does not still ask for a TTL policy that is enabled', () 
     'the TTL policy is enabled; the README must not still ask for it');
   assert.match(readme, /TTL policy is enabled/,
     'the README must state the policy is live');
-  assert.match(readme, /does not reach the .* rooms that predate/i,
+  assert.match(readme, /deletes the room DOCUMENT only, not its subcollections/i,
     'and must say what the policy does NOT cover, or the next reader assumes it does');
+  // The one-off backlog clear is a fact about production that only this file
+  // records. A reader who finds "every room is covered" needs to see WHY that
+  // is true of rooms older than the field, or they will assume TTL did it.
+  assert.match(readme.replace(/\s+/g, ' '),
+    /Every room in the collection now carries `expiresAt` and is covered/,
+    'the README must state the current coverage');
+  assert.match(readme, /backlog it could not reach was cleared by hand/i,
+    'and must not leave the reader to think the policy reached backwards');
 
   // The client still has to write the field the policy reads, and the rules
   // still have to bound it, or the policy is pointed at nothing.
