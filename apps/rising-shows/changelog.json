@@ -1,6 +1,42 @@
 {
   "updates": [
     {
+      "builtAt": "2026-09-08T20:23:41.741Z",
+      "totals": {
+        "seasons": 66661,
+        "delta": -1
+      },
+      "shapeCounts": {
+        "rebound": 10184,
+        "rising": 2600,
+        "slow-burn": 4413,
+        "big-finale": 12154,
+        "u-shaped": 3094,
+        "rollercoaster": 14152,
+        "mid-peak": 4628,
+        "saved-best-for-last": 1506,
+        "front-loaded": 3504,
+        "declining": 1886,
+        "bad-finale": 4648,
+        "consistent": 2633,
+        "shape-drift": 1576
+      },
+      "shapeDeltas": {
+        "front-loaded": -1
+      },
+      "added": [],
+      "removed": [
+        {
+          "seriesId": "tt0041162",
+          "title": "Batman and Robin",
+          "season": 1,
+          "seasonYear": 1949
+        }
+      ],
+      "ratingSwings": [],
+      "modifiedCounts": {}
+    },
+    {
       "builtAt": "2026-09-08T10:37:02.890Z",
       "totals": {
         "seasons": 66662,
@@ -7556,173 +7592,6 @@
         "overview": 4,
         "episodeCount": 105,
         "poster": 1
-      }
-    },
-    {
-      "builtAt": "2026-08-05T08:54:20.124Z",
-      "totals": {
-        "seasons": 66148,
-        "delta": 6
-      },
-      "shapeCounts": {
-        "mid-peak": 4639,
-        "rebound": 10076,
-        "rising": 2893,
-        "slow-burn": 4378,
-        "big-finale": 12109,
-        "u-shaped": 3094,
-        "rollercoaster": 14063,
-        "saved-best-for-last": 1539,
-        "front-loaded": 3472,
-        "declining": 1874,
-        "bad-finale": 4652,
-        "consistent": 2622,
-        "shape-drift": 1637
-      },
-      "shapeDeltas": {
-        "mid-peak": 6,
-        "rising": 1,
-        "slow-burn": 4,
-        "big-finale": 2,
-        "u-shaped": -3,
-        "rollercoaster": -3,
-        "saved-best-for-last": 1,
-        "front-loaded": 1,
-        "declining": -1,
-        "bad-finale": -4,
-        "consistent": -4,
-        "shape-drift": 3
-      },
-      "added": [
-        {
-          "seriesId": "tt30495330",
-          "title": "The Rapture",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt2168479",
-          "title": "Digimon Xros Wars: The Young Hunters Who Leapt Through Time",
-          "season": 1,
-          "seasonYear": 2011
-        },
-        {
-          "seriesId": "tt6099790",
-          "title": "Stellina",
-          "season": 1,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt13618618",
-          "title": "Zona komforta",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt32247928",
-          "title": "A Dream Within a Dream",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt38354954",
-          "title": "Yani",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt37543285",
-          "title": "Solo Traveling with Tracee Ellis Ross",
-          "season": 2,
-          "from": 2.47,
-          "to": 3.53,
-          "delta": 1.06
-        },
-        {
-          "seriesId": "tt43659859",
-          "title": "The Stable SMP",
-          "season": 1,
-          "from": 9.7,
-          "to": 8.68,
-          "delta": -1.02
-        },
-        {
-          "seriesId": "tt24399798",
-          "title": "9/11: Crime Scene to Courtroom",
-          "season": 1,
-          "from": 9.98,
-          "to": 9,
-          "delta": -0.98
-        },
-        {
-          "seriesId": "tt39382765",
-          "title": "Sabores de Libertad",
-          "season": 1,
-          "from": 9.47,
-          "to": 8.52,
-          "delta": -0.95
-        },
-        {
-          "seriesId": "tt43405601",
-          "title": "Doganin Kanunu",
-          "season": 1,
-          "from": 8.36,
-          "to": 7.56,
-          "delta": -0.8
-        },
-        {
-          "seriesId": "tt43017450",
-          "title": "Yarub",
-          "season": 1,
-          "from": 9.89,
-          "to": 9.15,
-          "delta": -0.74
-        },
-        {
-          "seriesId": "tt41445416",
-          "title": "Dripwarts the School of Drip",
-          "season": 1,
-          "from": 10,
-          "to": 9.33,
-          "delta": -0.67
-        },
-        {
-          "seriesId": "tt42006748",
-          "title": "House of Stassi",
-          "season": 1,
-          "from": 4.31,
-          "to": 4.96,
-          "delta": 0.65
-        },
-        {
-          "seriesId": "tt38754770",
-          "title": "False Memory",
-          "season": 1,
-          "from": 7.57,
-          "to": 8.13,
-          "delta": 0.56
-        },
-        {
-          "seriesId": "tt41962238",
-          "title": "CasaLuxe",
-          "season": 2,
-          "from": 9.9,
-          "to": 9.39,
-          "delta": -0.51
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 22174,
-        "avgRating": 1545,
-        "shapes": 246,
-        "seriesRating": 427,
-        "episodeCount": 79,
-        "providers": 1,
-        "poster": 1,
-        "overview": 1
       }
     }
   ]
