@@ -1,0 +1,82 @@
+name: bot pr autopilot
+
+# The manual entry point to the same code the daily Rising Shows refresh runs
+# for itself (scripts/bot-pr-autopilot.mjs).
+#
+# The refresh drives its own pull request to a merge, so on an ordinary day
+# nobody needs this. It exists for the days that are not ordinary: a refresh
+# job that timed out or was cancelled after opening its pull request, a run
+# whose approval hold was re-applied by a branch update after the job had
+# finished, or simply wanting to push a stuck bot pull request through without
+# reading the API by hand.
+#
+# Dispatch it with a number to drive that one pull request, or with no number
+# to reconcile every open bot/refresh-rising-shows-* pull request.
+#
+# It cannot merge anything a human could not: it releases the approval hold on
+# the checks and arms GitHub's own auto-merge, and branch protection decides
+# the rest.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'Pull request number to drive. Leave blank to reconcile every open bot refresh PR.'
+        required: false
+        type: string
+      timeout_min:
+        description: 'How long to watch before giving up, in minutes.'
+        required: false
+        default: '75'
+        type: string
+
+# Same three, and no more, as the refresh job needs: `actions: write` releases
+# the approval hold on held runs, the other two open and merge the pull
+# request. Nothing here writes to master directly.
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+concurrency:
+  # Shares a group with nothing else on purpose: two of these driving the same
+  # pull request would approve the same runs twice and fight over the branch
+  # update.
+  group: bot-pr-autopilot
+  cancel-in-progress: false
+
+jobs:
+  autopilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Use Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+
+      # Inputs go through the environment, never through ${{ }} interpolation
+      # into the shell body: a dispatch input is attacker-controlled the moment
+      # anyone but the owner gains write access, and an interpolated one is a
+      # shell injection.
+      - name: Drive the pull request
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR: ${{ inputs.pr }}
+          TIMEOUT_MIN: ${{ inputs.timeout_min }}
+        run: |
+          set -e
+          case "$TIMEOUT_MIN" in
+            ''|*[!0-9]*) echo "::error::timeout_min must be a whole number of minutes"; exit 1 ;;
+          esac
+          if [ -z "$PR" ]; then
+            node scripts/bot-pr-autopilot.mjs reconcile --timeout-min "$TIMEOUT_MIN"
+          else
+            case "$PR" in
+              *[!0-9]*) echo "::error::pr must be a pull request number"; exit 1 ;;
+            esac
+            node scripts/bot-pr-autopilot.mjs run --pr "$PR" --timeout-min "$TIMEOUT_MIN"
+          fi

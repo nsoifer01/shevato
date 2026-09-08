@@ -48,7 +48,7 @@ shevato/
 ├── scripts/                          # Site-level build helpers (partial inlining, sitemap lastmod stamping, IndexNow submit)
 ├── sync-system/                      # localStorage <-> Firestore sync used by the apps (+ cross-cutting invariant tests)
 ├── tests/                            # Site-level test estate: static/, browser/, coverage/, cross-browser/
-├── .github/workflows/                # CI: tests, browser tests, cross-browser smoke, arena rules, rising-shows refresh
+├── .github/workflows/                # CI: tests, browser tests, cross-browser smoke, arena rules, rising-shows refresh, bot PR autopilot
 │
 ├── index.html                        # Apex shell, redirects to /home (noindex)
 ├── home.html                         # Main landing page
