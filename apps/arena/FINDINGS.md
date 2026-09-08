@@ -861,3 +861,44 @@ fail-safe cases (unknown event, missing commit, failed diff) all RUN rather than
 skip, and derives the cross-tree-import case from the e2e's own `import`
 statements, so adding a shared dependency without widening the trigger fails the
 suite.
+
+## Actions runs `run:` blocks as `bash -e`, and grep exits 1 on no match (2026-09-08)
+
+The Scope step above shipped with a bug that took every non-Arena pull request
+in the repo down for about twenty minutes, and it is worth keeping because the
+shape of the mistake is more general than the line that caused it.
+
+The decision line was:
+
+```sh
+HITS=$(printf '%s\n' "$CHANGED" | grep -Ev "$NOT_INPUTS" | grep -E "$INPUTS")
+```
+
+`grep` exits 1 when it matches nothing. Matching nothing IS the skip decision,
+so on exactly the cheap path the assignment returned 1. That is fatal, because
+**a workflow `run:` block with no `shell:` key runs as `/usr/bin/bash -e {0}`**:
+`-e` is already on before the script's own `set -uo pipefail` adds pipefail on
+top. The step died before printing a line, the required `rules` check went red,
+and every PR touching no emulator inputs became unmergeable. A gate that was
+built so a skip could report success instead failed closed on the skip. `|| true`
+on that assignment is the fix, and it is load-bearing.
+
+The reason the test estate did not catch it is the part worth internalising.
+`ci-arena-scope.test.mjs` extracted the real script from the YAML and drove it
+with `execFileSync('bash', [scriptPath])` - no `-e`. It therefore tested the
+right *logic* in the wrong *shell*, and reported 24 green checks on a script
+that could not survive contact with Actions. The four skip cases fail correctly
+the moment the runner is `bash -e`, which is what they use now.
+
+Two rules follow:
+
+- **Extracting a script to test it means extracting its interpreter too.** If
+  the harness does not reproduce the flags the real runner uses, a green suite
+  says nothing about the real runner. Same class as running an e2e against a
+  stub of the thing under test.
+- **A live run that only exercises one branch has verified one branch.** The
+  first `rules` run on the PR that introduced this was cited as proof the step
+  worked. It only ever proved `run=1`: the PR touched the workflow, so it could
+  not take the skip path, and that gap was known and noted at the time and
+  shipped anyway. The skip path's first real execution was on a bot PR against
+  production, which is where it failed.
