@@ -841,28 +841,37 @@ live; the read-only recap is for people who were not in it. The suite is
   precondition is the current question id, so only the first write lands.
   Covered by four cases in `apps/arena/tests/room-state.test.js`, two of
   which fail against the host-only rule.
-- **A Ready click could MISS the button, silently, and the timing assertion
-  took the blame.** `clickSel` scrolls the element into view and reads its
-  rect in ONE evaluate, then dispatches the CDP click at those coordinates a
-  round-trip later. The Ready bar sits below the globe in a scrolling column
-  and on the mobile-emulated client it is routinely hundreds of px outside the
-  viewport, so that scroll is real and the rect can be stale by the time the
-  click lands: the click hits the globe canvas, the vote is never cast, and
-  the round advances on the timer. It surfaced as
-  `every live player Ready during the reveal advances the round early` going
-  red, which describes a product timing bug and is not one.
-  `armClicks`/`clicksOn` already count what actually reached the button, so
-  the miss is detectable: `clickReady` clicks, checks the counter, and clicks
-  once more if the first went nowhere. Measured: with it, the companion
-  assertion `both players' Ready votes register during the reveal` passes and
-  both flags land.
-  **A stricter liveness gate was tried first and rejected.** Requiring the
-  button to be fully in the viewport and to hit-test to itself, polled by
-  `waitForExpr`, is correct but costs a poll interval per scroll, and the
-  reveal window is the exact budget the assertion measures: the votes then
-  landed but the advance came 1.7 s AFTER the deadline (run 34277849446).
-  Verifying the click is cheaper than gating on geometry, and it checks the
-  thing that actually matters.
+- **OPEN: `every live player Ready during the reveal advances the round early`
+  is marginal on CI, and two attempted cures both made it worse.** The
+  diagnosis behind them is sound and worth keeping. `clickSel` scrolls the
+  element into view and reads its rect in ONE evaluate, then dispatches the CDP
+  click at those coordinates a round-trip later; the Ready bar sits below the
+  globe in a scrolling column and on the mobile-emulated client it is routinely
+  hundreds of px outside the viewport, so the scroll is real and the rect can
+  be stale. The click then lands on the globe canvas and the vote is never
+  cast. Probing `elementsFromPoint` at the click coordinate before and after
+  each click is the only way to see it: every property a naive liveness gate
+  reads (exists, not disabled, has height) is correct at the time.
+
+  **Both cures were measured on this assertion and both were reverted, on
+  2026-09-08, against PR #505:**
+
+  | Harness | `advanced … vs the deadline` (needs <= -1.5 s) |
+  | --- | --- |
+  | unchanged (master + the B warm-up) | PASS |
+  | liveness gated on viewport + hit-test, polled | +1.7 s |
+  | `clickReady`: click, check `clicksOn`, click again | -1.1 s, then +2.0 s |
+
+  The gate is correct but a polled predicate that scrolls costs a poll interval
+  every time it runs, and the reveal window is the exact budget this assertion
+  measures. `clickReady` costs only one extra evaluate and it did make the
+  votes land - `both players' Ready votes register during the reveal` passed in
+  every run - but the timing still swung across 3.1 s between two runs of the
+  SAME commit. That spread is the real finding: this assertion is marginal on a
+  CI runner, the 1500 ms margin is close to the noise, and a fix aimed at the
+  click cannot be evaluated against it one run at a time. Do not re-try either
+  cure without first making the assertion's own measurement stable, and do not
+  widen the margin, which would delete the check rather than fix it.
 - **The emulator e2e's Ready-skip check was racing a cold WebGL repaint.**
   `S6` backgrounds the host to let the second client press Ready, because the
   Ready button is painted - and enabled - by the same rAF loop. The second

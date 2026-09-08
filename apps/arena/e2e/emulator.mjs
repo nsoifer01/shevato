@@ -1286,28 +1286,6 @@ export async function run({ base, cdpPort, base2 = null }) {
       // its write - the single most useful fact when this goes red.
       const armClicks = (s) => evaluate(s, `(()=>{window.__rc=0;const b=document.getElementById('globe-drop-ready-btn');if(!b)return false;b.addEventListener('click',()=>{window.__rc++;});return true})()`);
       const clicksOn = (s) => evaluate(s, 'window.__rc');
-      // A click on this button can MISS, silently. clickSel scrolls the
-      // element into view and reads its rect in one evaluate, then dispatches
-      // the CDP click at those coordinates a round-trip later; the Ready bar
-      // sits below the globe in a scrolling column, and on the mobile-emulated
-      // client it is routinely hundreds of px outside the viewport, so the
-      // scroll is real and the rect can be stale by the time the click lands.
-      // The click then hits the globe canvas and the vote is never cast -
-      // which used to surface as the timing assertion below failing, because
-      // the round advanced on the timer instead.
-      //
-      // armClicks/clicksOn already count what actually reached the button, so
-      // the miss is detectable: click, check, and click again once if the
-      // first went nowhere. The happy path pays a single extra evaluate, and
-      // nothing here widens the 1500 ms margin or sleeps to hide a race.
-      const clickReady = async (s, who) => {
-        await clickSel(s, '#globe-drop-ready-btn', { settle: 200 });
-        if (await clicksOn(s)) return true;
-        await clickSel(s, '#globe-drop-ready-btn', { settle: 200 });
-        const landed = !!(await clicksOn(s));
-        if (!landed) console.log(`      (${who}'s Ready click missed twice)`);
-        return landed;
-      };
       const uidA = await evaluate(A, 'window.firebaseAuth.getCurrentUser().uid');
       let uidB = null;
       const readyFlagsOf = async () => {
@@ -1331,7 +1309,7 @@ export async function run({ base, cdpPort, base2 = null }) {
       const readyA = await waitForExpr(A, readyBtnLive, { timeout: 9000 });
       const tBtnA = at();
       await armClicks(A);
-      if (readyA) await clickReady(A, 'A');
+      if (readyA) await clickSel(A, '#globe-drop-ready-btn', { settle: 200 });
       const tVoteA = at();
       // Let A's write land while A is STILL the foreground tab. Fronting B is
       // what backgrounds A, and a backgrounded renderer is the lowest-priority
@@ -1352,7 +1330,7 @@ export async function run({ base, cdpPort, base2 = null }) {
       const readyB = await waitForExpr(B, readyBtnLive, { timeout: 9000 });
       const tBtnB = at();
       await armClicks(B);
-      if (readyB) await clickReady(B, 'B');
+      if (readyB) await clickSel(B, '#globe-drop-ready-btn', { settle: 200 });
       const tVoteB = at();
       // Same for B, which is the foreground tab from here to the advance.
       // `readyB` only ever said the button was CLICKABLE, never that the click
