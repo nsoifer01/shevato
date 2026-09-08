@@ -18,7 +18,7 @@ Compare prices without the spam. A static Shevato frontend with a server-side co
 | Internet | Location input contract and comparison dimensions | Requires address-level pricing and availability source |
 | Electricity | Location input contract and comparison dimensions | Requires utility-level eligibility and retail plan source; never infers retail choice from state alone |
 
-The API returns capability states. Only connected tools appear in the form. Disabled categories appear in a disclosure with the reason and collect no personal information. Unsupported vertical schemas are platform extension points, not implemented quote integrations. Insurance coverage presets are not translated into legally sufficient state limits without a licensed partner’s versioned rules; no fabricated state-minimum table is included.
+The API returns capability states. Only connected tools appear in the form, comparisons first and the vehicle decoder last, so the page opens on something that returns a price. Disabled categories appear in a disclosure with the reason and collect no personal information. Unsupported vertical schemas are platform extension points, not implemented quote integrations. Insurance coverage presets are not translated into legally sufficient state limits without a licensed partner’s versioned rules; no fabricated state-minimum table is included.
 
 Eligibility is enforced where the rule is unambiguous and public: catastrophic plans are the cheapest medical plans in the file and are only sold to people under 30 or holding a hardship exemption, so they are withheld from anyone 30 or over and the omission is stated in the results rather than silently applied.
 

@@ -47,8 +47,11 @@ function choose(id) {
 const AVAILABLE = ['Public data', 'Beta'];
 function showCapabilities(data) {
   capabilities = data.verticals || []; service = data; const select = $('qs-category'); select.replaceChildren();
-  if (data.vehicleData) { const o = el('option', 'Vehicle details · NHTSA data'); o.value = 'vehicle-data'; select.append(o); }
+  // Comparisons lead, and the vehicle decoder follows. The first option is the
+  // one the page opens on, and opening a price-comparison app on the one tool
+  // that returns no price buried the whole point behind a dropdown.
   for (const v of capabilities.filter(v => AVAILABLE.includes(v.capability))) { const o = el('option', `${v.name} · ${v.capability}`); o.value = v.id; select.append(o); }
+  if (data.vehicleData) { const o = el('option', 'Vehicle details · NHTSA data'); o.value = 'vehicle-data'; select.append(o); }
   const unavailable = $('qs-unavailable'); unavailable.replaceChildren();
   for (const v of capabilities.filter(v => !AVAILABLE.includes(v.capability))) { const row = el('p'); row.append(el('strong', `${v.name}: `), document.createTextNode(v.reason)); unavailable.append(row); }
   // State the coverage limit up front rather than after someone types a ZIP we
