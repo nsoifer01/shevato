@@ -1020,6 +1020,21 @@ explicit notice and a Retry - the 2026-08-22 D7 guarantee, kept. A detail file
 written BEFORE this split (a stale CDN or service-worker entry, a rollback) has
 no `records` key and is treated as a miss for the same reason.
 
+**What it costs, stated rather than skipped.** The season records now exist
+twice on the CDN: in `data-index.json`, which nothing in the browser fetches,
+and in the detail files, which is where they are actually read. The detail
+directory grew 192 -> 216 MB (+17%), so the mean detail file is 9.2 KB instead
+of 7.7 KB and a modal open costs about 1.5 KB more. That is the trade: ~1.5 KB
+on the opens a visitor chooses, against 2.8 MB removed from every boot whether
+they open anything or not.
+
+`data-index.json` is kept for two reasons, neither of them "a consumer we did
+not want to migrate": it is the season-level dataset artifact, and it is the
+input the full-catalogue parity test checks the show index against. It is not a
+documented public download and nothing links it. Un-publishing it would save 34
+MB of CDN storage and zero user-facing bytes, which is an owner decision about
+a URL that has been live for a while rather than part of this change.
+
 **The Kometa builder got its own slice.** That page reads eight per-season
 fields and used to read them out of `data-index.json`, which was defensible
 only while the Finder fetched the same file and warmed the cache. It now reads
