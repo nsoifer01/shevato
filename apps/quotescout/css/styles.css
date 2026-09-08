@@ -34,6 +34,7 @@ body.quotescout-app { background-color: #12161e; }
 .quotescout .qs-controls > div { flex: 1; min-width: 180px; }
 .quotescout .qs-results-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; margin: 18px 0; }
 .quotescout .qs-result { background: #1b2330; border: 1px solid #586b84; border-radius: 12px; padding: 22px; min-width: 0; overflow-wrap: anywhere; }
+.quotescout .qs-note { color: #f2ddb4; font-size: .88rem; margin-top: -4px; }
 .quotescout .qs-price { font-size: 1.6rem; color: #fff; line-height: 1.3; font-variant-numeric: tabular-nums; }
 .quotescout .qs-badge { display: inline-block; margin-bottom: 10px; font-size: .72rem; font-weight: 600; letter-spacing: .04em; border: 1px solid #a7c7a9; border-radius: 4px; padding: 5px 7px; color: #d2eed3; }
 /* The badge already says which kind of price this is; the tint only reinforces
@@ -42,6 +43,7 @@ body.quotescout-app { background-color: #12161e; }
 .quotescout .qs-badge[data-status="ESTIMATE"] { border-color: #e0c48f; color: #f2ddb4; }
 .quotescout .qs-badge[data-status="EXPIRED"] { border-color: #8d9bb0; color: #c3cedd; }
 .quotescout #qs-coverage { margin: 16px 0 0; }
+.quotescout #qs-coverage span { display: block; margin-top: 10px; }
 /* Focus rings sit 4px outside the control, so the following heading needs room. */
 .quotescout #qs-group { margin-bottom: 22px; }
 .quotescout #qs-coverage:empty { display: none; }

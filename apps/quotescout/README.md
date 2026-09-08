@@ -4,29 +4,25 @@ Compare prices without the spam. A static Shevato frontend with a server-side co
 
 ## Current capabilities
 
-| Vertical | Implemented capability | Public availability |
+| Vertical | What it returns | Coverage |
 | --- | --- | --- |
-| **Health insurance** | **Published CMS Marketplace premiums, deductibles and out-of-pocket maximums for every on-exchange individual medical plan, priced by ZIP, county, age and tobacco status** | **Live, no credential required.** 30 HealthCare.gov states, ages 18–64, one adult, full premium before tax credits; no enrollment |
-| **Dental insurance** | **Published CMS Marketplace premiums for on-exchange individual dental plans** | **Live, no credential required.** Same coverage and limits as health |
-| Package shipping | EasyPost rate-only API adapter; domestic US ZIPs, ounces/inches, production-mode rates only | Beta only with a platform-approved agreement, production key and explicit carrier accounts; estimates, no label checkout |
-| Health insurance (keyed API) | CMS Marketplace API county enrichment and live plan search; supersedes the bundled dataset when a key is present | Beta only with a CMS key; adds quality ratings and mid-year currency |
-| Vehicle data | NHTSA vPIC VIN validation and decoding | Data-only tool when the server quota store is available; no key |
-| Auto insurance | Strict VIN/ZIP/coverage input contract, comparison dimensions and capability state | Requires licensed provider integration; no carrier quotes advertised |
-| Vehicle shipping | VIN, route, date and transport schema; comparison dimensions | Requires provider integration |
-| Vehicle service contracts | VIN/mileage/state schema; comparison dimensions | Requires administrator integration |
-| Home insurance | Location input contract and comparison dimensions | Requires licensed provider integration |
-| Internet | Location input contract and comparison dimensions | Requires address-level pricing and availability source |
-| Electricity | Location input contract and comparison dimensions | Requires utility-level eligibility and retail plan source; never infers retail choice from state alone |
+| **Health insurance** | Published CMS Marketplace premiums, deductibles and out-of-pocket maximums for every on-exchange individual medical plan, priced by ZIP, county, age and tobacco status | 30 HealthCare.gov states, ages 18-64, one adult, full premium before tax credits |
+| **Dental insurance** | Published CMS Marketplace premiums for on-exchange individual dental plans | Same as health |
+| **Medicare Advantage** | Published CMS landscape premiums, Part D deductible, in-network maximum out-of-pocket and CMS star rating for every non-special-needs Advantage plan sold in the county | All 50 states, DC and the territories. Part B premium not included |
+| **Medicare Part D** | Published CMS landscape premiums, deductibles and star ratings for standalone drug plans in the shopper's PDP region | Same as Advantage |
+| Vehicle data | NHTSA vPIC VIN validation and decoding. Specifications, never a price | North America plus decodable imports; metered behind the usage store |
+
+Every one of these works with no credential, no partner and no outbound request: the datasets ship inside the function. Nothing is listed that does not work, so there are no unavailable categories, no reasons to explain and no dead buttons.
 
 The API returns capability states. Only connected tools appear in the form, comparisons first and the vehicle decoder last, so the page opens on something that returns a price. Disabled categories appear in a disclosure with the reason and collect no personal information. Unsupported vertical schemas are platform extension points, not implemented quote integrations. Insurance coverage presets are not translated into legally sufficient state limits without a licensed partner’s versioned rules; no fabricated state-minimum table is included.
 
 Eligibility is enforced where the rule is unambiguous and public: catastrophic plans are the cheapest medical plans in the file and are only sold to people under 30 or holding a hardship exemption, so they are withheld from anyone 30 or over and the omission is stated in the results rather than silently applied.
 
-Health and dental comparisons work with no credentials, no partner and no outbound request: the premiums come from a dataset built from the CMS Exchange Public Use Files and shipped inside the function. The remaining verticals still need commercial or licensed integrations; research and the full capability matrix are in [PROVIDERS.md](PROVIDERS.md).
+Categories that could not be delivered honestly were removed rather than left as disabled cards. Auto and home insurance need an insurance producer licence and a carrier contract; vehicle shipping, service contracts, internet and energy need commercial agreements or address-level data that has no public source; package shipping needs a paid carrier account and a platform agreement. What each would take, and what was researched and rejected, is recorded in [PROVIDERS.md](PROVIDERS.md).
 
-## The marketplace dataset
+## The datasets
 
-`scripts/build-quotescout-data.mjs` builds `netlify/functions/lib/quotescout/data/` from five public, key-free government sources:
+`scripts/build-quotescout-data.mjs` builds `netlify/functions/lib/quotescout/data/` from six public, key-free government sources:
 
 | Source | Supplies |
 | --- | --- |
@@ -35,6 +31,7 @@ Health and dental comparisons work with no credentials, no partner and no outbou
 | CMS Exchange Service Area PUF | Which counties, and which ZIPs of a partial county, each plan is sold in |
 | [CCIIO geographic rating areas](https://www.cms.gov/cciio/programs-and-initiatives/health-insurance-market-reforms/state-gra) | County (or 3-digit ZIP) to rating area, per state |
 | [Census 2020 ZCTA/county relationship file](https://www2.census.gov/geo/docs/maps-data/data/rel2020/zcta520/tab20_zcta520_county20_natl.txt) | ZIP to county, so a shopper types only a ZIP |
+| [CMS Medicare Advantage and Part D landscape file](https://www.cms.gov/medicare/coverage/prescription-drug-coverage) | Medicare premiums, deductibles, out-of-pocket limits and star ratings by county |
 
 Output is one gzipped shard per state plus `zips`, `zip-states`, `counties` and a plain `meta.json`, about 3.8 MB in total and committed. Committing the derived data rather than downloading 300 MB of CSV during every deploy keeps builds fast and deterministic, and means a CMS outage cannot break a deploy or a comparison. `netlify.toml` ships the directory with the function through `included_files`; shards are gunzipped lazily, at most four states held at once. The runtime looks for the dataset in several places and keeps the one holding `meta.json`, because esbuild inlines `marketplace.mjs` into the function root and `import.meta.url` then points somewhere the data is not.
 
@@ -42,7 +39,9 @@ Premiums are stored as integer cents, delta-encoded in base 36 across ages 18-64
 
 Regenerate for a new plan year with `npm run build:quotescout:data -- --year 2027`. Downloads are cached in `.quotescout-build-cache/` (gitignored). The build fails rather than emitting a partial dataset if a county cannot be resolved to a rating area, if the Rate PUF columns change, or if a CCIIO table stops parsing. The CCIIO tables contain long-standing transcription errors (`Kosclusko`, `Dubols`, `Chautaugua`, `Vermillion`, `Trail`, `Deleware`); the builder folds confusable characters and then allows a single-letter edit, requiring a unique match either way.
 
-**Coverage is exactly what the PUF covers.** The Exchange PUFs carry the states whose marketplace runs on HealthCare.gov, currently 30. States with their own exchange (California, New York and others) are absent, and the app says so by name rather than returning an empty result. `meta.json` is the single source of truth for the state list, plan year and publication date, and the landing copy is generated from it.
+The Medicare shards are separate and tiny (about 120 KB for the whole country) because Medicare premiums do not vary with age, sex or tobacco: a plan costs what it costs in the county it is sold in. Special-needs plans are dropped at build time, since they are restricted to people who qualify by dual eligibility, institutional status or a named chronic condition. County names come from CMS as plain text, so `countyKey` folds diacritics as well as suffixes, which is what makes Puerto Rico's municipios and New Mexico's Dona Ana join at all.
+
+**Marketplace coverage is exactly what the PUF covers, and Medicare's is not.** The Exchange PUFs carry the states whose marketplace runs on HealthCare.gov, currently 30. States with their own exchange (California, New York and others) are absent, and the app says so by name rather than returning an empty result. `meta.json` is the single source of truth for both state lists, the plan year and both publication dates, and the landing copy is generated from it. Medicare covers all 50 states, DC and the territories, so the ZIP index is nationwide and the marketplace adapter checks state coverage itself.
 
 ## Architecture
 

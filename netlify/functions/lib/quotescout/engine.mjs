@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { deadline, ERRORS } from './http.mjs';
 import { ScoutError } from './validation.mjs';
-import { PRICED } from '../../../../apps/quotescout/js/model.js';
+import { PRICED, CONTINUE_URLS } from '../../../../apps/quotescout/js/model.js';
 export const hash = value => createHash('sha256').update(value).digest('hex');
 export class BoundedCache {
   constructor(max = 250, now = Date.now) { this.entries = new Map(); this.max = max; this.now = now; }
@@ -82,7 +82,7 @@ function verify(q, adapter, request, now) {
   // to, because that pair is the whole of its freshness claim.
   if (q.status === 'AUTHORITATIVE PUBLIC RATE' && (q.provenance.kind !== 'published-rate' || !q.provenance.sourceId || !Number.isInteger(q.provenance.planYear) || !/^\d{4}-\d{2}-\d{2}$/.test(q.provenance.dataPublishedAt || ''))) throw new ScoutError('MALFORMED');
   if (q.provenance.kind === 'published-rate' && q.status !== 'AUTHORITATIVE PUBLIC RATE') throw new ScoutError('MALFORMED');
-  if (q.continueUrl && q.continueUrl !== 'https://www.healthcare.gov/see-plans/') throw new ScoutError('MALFORMED');
+  if (q.continueUrl && !CONTINUE_URLS.includes(q.continueUrl)) throw new ScoutError('MALFORMED');
   // Complete request is retained only inside this user's short-lived memory cache.
   return { ...q, provenance: { ...q.provenance, requestParameters: request.input } };
 }

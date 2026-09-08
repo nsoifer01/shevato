@@ -1,52 +1,285 @@
+// Platform behaviour: validation, orchestration, caching, quotas and the HTTP
+// surface. The dataset-specific assertions live in quotescout-marketplace and
+// quotescout-medicare; this file holds the engine to its contract using a
+// synthetic quote, so it stays honest even as adapters come and go.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { vin, validateRequest, ScoutError } from '../lib/quotescout/validation.mjs';
-import { createAdapters, normalizeCMS, normalizeEasyPost, cents } from '../lib/quotescout/adapters.mjs';
+import { createAdapters } from '../lib/quotescout/adapters.mjs';
 import { createEngine, BoundedCache } from '../lib/quotescout/engine.mjs';
 import { upstream, readJSON, deadline } from '../lib/quotescout/http.mjs';
 import { reserveQuota, validateConfig } from '../lib/quotescout/store.mjs';
 import { createHandler } from '../quotescout.mjs';
-const VIN='1HGCM82633A004352', now=Date.now();
-const input={originZip:'90210',destinationZip:'10001',weight:16,length:10,width:5,height:3};
-const request={vertical:'package-shipping',input};
-const rate={mode:'production',rate:'12.34',currency:'USD',carrier:'Test carrier',service:'Test service',delivery_days:3};
-const quote=()=>normalizeEasyPost({rates:[rate]},input,now).quotes[0];
-const adapter=(id='easypost', fn=async()=>({quotes:[quote()]}))=>({id,name:id,vertical:'package-shipping',enabled:true,ttl:300000,quote:fn});
-const response=data=>new Response(JSON.stringify(data),{headers:{'Content-Type':'application/json'}});
-function memoryStore(config={}) { let revision=0;const map=new Map([['config',config]]);return {map,async get(k){return structuredClone(map.get(k));},async getWithMetadata(k){return map.has(k)?{data:structuredClone(map.get(k)),etag:String(revision)}:null;},async setJSON(k,v,condition){if(condition.onlyIfMatch && condition.onlyIfMatch!==String(revision) || condition.onlyIfNew && map.has(k))return {modified:false};map.set(k,structuredClone(v));revision++;return {modified:true};}}; }
-test('VIN normalization and check digit',()=>{assert.equal(vin(' 1hgcm82633a004352 '),VIN);for(const v of ['',VIN.slice(1),VIN.replace('H','I'),VIN.replace('3A','4A'),'<script>alert(1)</script>'])assert.throws(()=>vin(v));});
-test('strict requests reject redundant and malicious inputs',()=>{assert.deepEqual(validateRequest(request).input,input);for(const bad of [{...request,input:{...input,email:'a@b.c'}},{...request,input:{...input,originZip:'9021x'}},{...request,input:{...input,weight:-1}},{...request,input:{...input,weight:Infinity}},{...request,input:{...input,length:109}},{...request,input:{...input,length:100,width:30,height:30}},{...request,provider:'https://localhost'},{...request,refresh:'yes'},{...request,input:null},{...request,vertical:'invalid'}])assert.throws(()=>validateRequest(bad));});
-test('VIN and deferred vertical schemas never trust normalized vehicle data',()=>{assert.equal(validateRequest({vertical:'vehicle-data',input:{vin:VIN}}).input.vin,VIN);assert.throws(()=>validateRequest({vertical:'auto-insurance',input:{vin:VIN,zip:'90210',coverage:'full',make:'Ford'}}));assert.equal(validateRequest({vertical:'auto-insurance',input:{vin:VIN,zip:'90210',coverage:'full'}}).input.coverage,'full');assert.equal(validateRequest({vertical:'vehicle-warranty',input:{vin:VIN,mileage:0,state:'CA'}}).input.mileage,0);assert.equal(validateRequest({vertical:'home-insurance',input:{zip:'90210'}}).input.zip,'90210');});
-test('dates, age, ZIP, county and tobacco boundary validation',()=>{const health={vertical:'health-insurance',input:{zip:'27360',age:18,tobacco:false,year:new Date().getUTCFullYear()}};assert.equal(validateRequest(health).input.age,18);for(const more of [{age:65},{age:17},{age:22.3},{tobacco:'false'},{county:'bad'},{year:2020}])assert.throws(()=>validateRequest({...health,input:{...health.input,...more}}));assert.throws(()=>validateRequest({vertical:'vehicle-shipping',input:{vin:VIN,originZip:'90210',destinationZip:'10001',date:'2026-02-31',transport:'open'}}));});
-test('money parsing rejects misleading and nonfinite prices',()=>{for(const v of [null,undefined,'',true,-1,'-1','NaN','Infinity','1e3','12.345',' 1'])assert.equal(cents(v),null);assert.equal(cents('0.00'),0);assert.equal(cents('12.34'),1234);});
-test('shipping never emits test rates or silently swaps currency',()=>{const result=normalizeEasyPost({rates:[rate,{...rate,mode:'test'},{...rate,currency:'EUR'},{...rate,rate:'free'}]},input,now);assert.equal(result.quotes.length,1);assert.equal(result.rejected,3);assert.equal(result.quotes[0].status,'ESTIMATE');assert.equal(result.quotes[0].continueUrl,undefined);assert.equal(result.quotes[0].provenance.checkoutExact,false);assert.throws(()=>normalizeEasyPost({},input,now));});
-const healthInput={zip:'27360',age:27,tobacco:false,year:2026};
-const plan={id:'TEST-PLAN',name:'Test plan',issuer:{name:'Test issuer'},premium:200,metal_level:'Silver',type:'HMO',deductibles:[{amount:1000,family_cost:'Individual',network_tier:'In-Network',type:'Medical EHB Deductible'}],moops:[{amount:9000,family_cost:'Individual',network_tier:'In-Network',type:'Maximum Out of Pocket for Medical and Drug EHB Benefits (Total)'}]};
-test('CMS annualizes only premiums and distinguishes uncertain product data',()=>{const r=normalizeCMS({plans:[plan],total:100},healthInput,{},now);const q=r.quotes[0];assert.equal(q.amount,20000);assert.equal(q.annual,240000);assert.equal(q.deductible,100000);assert.equal(q.outOfPocket,900000);assert.equal(q.status,'ESTIMATE');assert.match(r.warning,/not a complete/);assert.equal(q.provenance.checkoutExact,false);});
-test('CMS excludes malformed and ineligible plans, ambiguous deductible is unknown',()=>{const result=normalizeCMS({plans:[{...plan,is_ineligible:true},{...plan,premium:null},{...plan,deductibles:[...plan.deductibles,...plan.deductibles]}]},healthInput,{},now);assert.equal(result.quotes.length,1);assert.equal(result.rejected,1);assert.equal(result.quotes[0].deductible,null);assert.throws(()=>normalizeCMS({},healthInput,{},now));});
-for(const code of ['TIMEOUT','RATE_LIMIT','AUTH','MALFORMED','INVALID_INPUT','UNSUPPORTED','UNAVAILABLE'])test(`provider ${code} cannot discard successful peers`,async()=>{const engine=createEngine({adapters:[adapter(),adapter('bad',async()=>{throw new ScoutError(code);})]});const r=await engine(request,'a');assert.equal(r.summary.returned,1);assert.equal(r.providers.find(p=>p.provider==='bad').status,code);});
-test('bounded concurrency surfaces fast results without waiting for slow provider',async()=>{const order=[];let active=0,max=0;const adapters=Array.from({length:5},(_,i)=>adapter(String(i),async()=>{active++;max=Math.max(max,active);await new Promise(r=>setTimeout(r,i===0?30:1));active--;return {quotes:[]};}));await createEngine({adapters,concurrency:2})(request,'a',e=>{if(e.type==='provider')order.push(e.provider);});assert.equal(max,2);assert.equal(order[0],'1');});
-test('timeout bounds an adapter that ignores cancellation',async()=>{const r=await createEngine({adapters:[adapter('slow',()=>new Promise(()=>{}))],timeout:5})(request,'a');assert.equal(r.providers[0].status,'TIMEOUT');});
-test('no provider and duplicate registration/results are explicit',async()=>{assert.equal((await createEngine({adapters:[]})(request,'a')).summary.returned,0);let calls=0;const a=adapter('easypost',async()=>{calls++;return {quotes:[quote(),quote()]};});const r=await createEngine({adapters:[a,a]})(request,'a');assert.equal(calls,1);assert.equal(r.summary.returned,1);});
-test('additional questions return independently of prices',async()=>{const r=await createEngine({adapters:[adapter('cms',async()=>({quotes:[],questions:[{field:'county',label:'County',options:[{value:'12345',label:'Test county'}]}]}))]})(request,'a');assert.equal(r.providers[0].status,'ADDITIONAL');assert.equal(r.summary.additional,1);});
-test('cache is scoped by user and full inputs, refresh and expiry preserve retrieval time',async()=>{let count=0,time=now;const engine=createEngine({adapters:[adapter('easypost',async()=>{count++;return {quotes:[quote()]};})],now:()=>time});const a=await engine(request,'a');const b=await engine(request,'a');assert.equal(b.providers[0].cached,true);assert.equal(a.providers[0].quotes[0].retrievedAt,b.providers[0].quotes[0].retrievedAt);await engine(request,'b');await engine({...request,input:{...input,weight:17}},'a');await engine({...request,refresh:true},'a');assert.equal(count,4);time+=300001;const expired=await engine(request,'a');assert.equal(count,5);assert.equal(expired.providers[0].quotes[0].status,'EXPIRED');});
-test('simultaneous identical requests deduplicate only within session',async()=>{let count=0;const engine=createEngine({adapters:[adapter('easypost',async()=>{count++;await new Promise(r=>setTimeout(r,10));return {quotes:[quote()]};})]});await Promise.all([engine(request,'a'),engine(request,'a'),engine(request,'b')]);assert.equal(count,2);});
-test('circuit breaks after repeated transient failures',async()=>{let count=0;const engine=createEngine({adapters:[adapter('easypost',async()=>{count++;throw new ScoutError('UNAVAILABLE');})]});for(let i=0;i<5;i++)await engine(request,String(i));assert.equal(count,3);});
-test('bounded memory cache evicts and expires',()=>{let time=0;const cache=new BoundedCache(1,()=>time);cache.set('a',{v:1},10);cache.set('b',{v:2},10);assert.equal(cache.get('a'),null);const b=cache.get('b');b.v=9;assert.equal(cache.get('b').v,2);time=10;assert.equal(cache.get('b'),null);});
-test('verification rejects invented provenance, secrets in redirects and NaN prices',async()=>{for(const patch of [{amount:NaN},{provenance:{}},{continueUrl:'https://evil.example/'},{provider:'other'},{status:'VERIFIED QUOTE'}]){const r=await createEngine({adapters:[adapter('easypost',async()=>({quotes:[{...quote(),...patch}]}))]})(request,'a');assert.equal(r.providers[0].status,'MALFORMED');}});
-test('genuine adapter provenance can represent a verified quote',async()=>{const q=quote();q.status='VERIFIED QUOTE';q.provenance.kind='live-quote';const r=await createEngine({adapters:[adapter('easypost',async()=>({quotes:[q]}))]})(request,'a');assert.equal(r.providers[0].quotes[0].status,'VERIFIED QUOTE');});
-test('upstream maps HTTP states, retries only safe GET and blocks redirects',async()=>{for(const [status,code] of [[429,'RATE_LIMIT'],[401,'AUTH'],[403,'AUTH'],[404,'UNSUPPORTED'],[400,'INVALID_INPUT'],[500,'UNAVAILABLE']])await assert.rejects(upstream('https://example.test',{fetcher:async()=>new Response('',{status})}),e=>e.code===code);let calls=0;await upstream('https://example.test',{fetcher:async(url,opts)=>{assert.equal(opts.redirect,'error');return ++calls===1?new Response('',{status:503}):response({ok:true});}});assert.equal(calls,2);await assert.rejects(upstream('https://example.test',{reserve:async()=>false}),e=>e.code==='RATE_LIMIT');});
-test('response and request byte bounds reject large/malformed bodies',async()=>{await assert.rejects(readJSON(new Response('x'.repeat(20)),10));await assert.rejects(readJSON(new Response('{bad')));await assert.rejects(deadline(()=>new Promise(()=>{}),2));});
-test('CMS progressively requests and validates county membership server-side',async()=>{let posts=0;const cms=createAdapters({cmsKey:'secret-test-key'},async(url,opts)=>{if(opts.method==='POST'){posts++;const body=JSON.parse(opts.body);assert.equal(body.place.countyfips,'37057');assert.equal(body.household.people[0].aptc_eligible,false);assert.equal(body.aptc_override,0);return response({plans:[plan]});}return response({counties:[{fips:'37057',state:'NC',name:'Davidson'},{fips:'37081',state:'NC',name:'Guilford'}]});}).find(a=>a.id==='cms');const ctx={enrich:(_k,_t,f)=>f()};assert.equal((await cms.quote(healthInput,ctx)).questions.length,1);assert.equal(posts,0);await assert.rejects(cms.quote({...healthInput,county:'99999'},ctx));assert.equal((await cms.quote({...healthInput,county:'37057'},ctx)).quotes.length,1);});
-test('VIN adapter only returns successful authoritative decode',async()=>{const ctx={enrich:(_k,_t,f)=>f()};const a=createAdapters({},async()=>response({Results:[{ErrorCode:'0',Make:'HONDA',Model:'Accord',ModelYear:'2003'}]})).find(a=>a.id==='vpic');assert.equal((await a.quote({vin:VIN},ctx)).vehicle.make,'HONDA');const bad=createAdapters({},async()=>response({Results:[{ErrorCode:'7',Make:'HONDA',Model:'Accord',ModelYear:'2003'}]})).find(a=>a.id==='vpic');await assert.rejects(bad.quote({vin:VIN},ctx));});
-test('configuration has no implicit paid provider enablement or credential leakage',()=>{assert.equal(validateConfig({easypostKey:'secret-test-key'},{CONTEXT:'production'}).easypostKey,undefined);assert.equal(validateConfig({cmsKey:'secret-test-key'},{CONTEXT:'deploy-preview'}).cmsKey,undefined);assert.equal(validateConfig({cmsKey:'secret-test-key'},{CONTEXT:'production'}).cmsKey,'secret-test-key');});
-test('quota CAS admits at most remaining capacity under races and fails closed',async()=>{const store=memoryStore();const results=await Promise.all(Array.from({length:40},()=>reserveQuota(store,'same','cms',now)));assert.ok(results.filter(Boolean).length<=30);const usage=await store.get('usage');assert.ok(!JSON.stringify(usage).includes('same'));assert.ok(usage.monthly<=30);await assert.rejects(reserveQuota({...store,setJSON:async()=>undefined},'other','cms',now));});
-function httpRequest(body=request,headers={},method='POST') {return new Request('https://shevato.com/.netlify/functions/quotescout',{method,headers:{Origin:'https://shevato.com','Content-Type':'application/json','X-QuoteScout-Session':'a'.repeat(64),...headers},...(method==='POST'?{body:JSON.stringify(body)}:{})});}
-test('API guards, no-store, unsupported configuration and log redaction',async()=>{const logs=[],store=memoryStore();const handler=createHandler({storeFactory:async()=>store,env:{CONTEXT:'production'},log:e=>logs.push(e)});const get=await handler(httpRequest(undefined,{},'GET'));assert.match(get.headers.get('cache-control'),/no-store/);assert.equal((await get.json()).verticals.find(v=>v.id==='package-shipping').capability,'Requires provider integration');assert.equal((await handler(httpRequest(request,{Origin:'https://evil.example'}))).status,403);assert.equal((await handler(httpRequest({...request,input:{vin:VIN}}))).status,400);assert.equal((await handler(httpRequest(request,{'X-QuoteScout-Session':'bad'}))).status,400);assert.equal((await handler(httpRequest(request,{'Content-Type':'text/plain'}))).status,415);const paid=createHandler({storeFactory:async()=>memoryStore({cmsKey:'secret-test-key'}),env:{CONTEXT:'production'},log:()=>{}});assert.equal((await paid(httpRequest({vertical:'health-insurance',input:{zip:'27360',age:27,tobacco:false,year:new Date().getUTCFullYear()}}))).status,503,'a request that can reach a paid API needs an identity to meter');const r=await handler(httpRequest(),{ip:'192.0.2.1'});assert.equal(r.status,200);assert.match(await r.text(),/UNAVAILABLE/);assert.ok(!JSON.stringify(logs).includes(VIN));assert.ok(!JSON.stringify(logs).includes('192.0.2.1'));});
-test('API produces actual normalized provider results with secrets confined to requests',async()=>{const store=memoryStore({cmsKey:'secret-test-key'}),logs=[];const handler=createHandler({storeFactory:async()=>store,env:{CONTEXT:'production'},log:e=>logs.push(e),fetcher:async(url)=>url.includes('counties/')?response({counties:[{fips:'37057',state:'NC',name:'Davidson'}]}):response({plans:[plan]})});const r=await handler(httpRequest({vertical:'health-insurance',input:{...healthInput,year:new Date().getUTCFullYear()}}),{ip:'192.0.2.2'});const body=await r.text();assert.match(body,/ESTIMATE/);assert.doesNotMatch(body,/secret-test-key/);assert.ok(logs.some(e=>e.event==='quotescout_provider'));assert.ok(!JSON.stringify(logs).includes('27360'));});
-test('API store outage cannot spend money and degrades GET availability',async()=>{let calls=0;const handler=createHandler({storeFactory:async()=>{throw new Error('secret');},fetcher:async()=>{calls++;},log:()=>{}});const shipping=await handler(httpRequest(),{ip:'192.0.2.1'});assert.equal(shipping.status,200);assert.match(await shipping.text(),/UNAVAILABLE/);const data=await (await handler(httpRequest(undefined,{},'GET'))).json();assert.equal(data.vehicleData,false);assert.equal(data.verticals.find(v=>v.id==='package-shipping').capability,'Requires provider integration');assert.equal(calls,0,'no upstream call may happen while the usage store is down');});
-test('different carriers with the same service/price are not deduplicated',async()=>{const one=quote(),two={...one,id:'easypost:other',providerName:'Other carrier'};const r=await createEngine({adapters:[adapter('easypost',async()=>({quotes:[one,two]}))]})(request,'a');assert.equal(r.summary.returned,2);});
-test('an adapter throwing a non-Error cannot crash successful peers',async()=>{const r=await createEngine({adapters:[adapter(),adapter('bad',async()=>{throw null;})]})(request,'a');assert.equal(r.summary.returned,1);assert.equal(r.providers.find(p=>p.provider==='bad').status,'UNAVAILABLE');});
-test('runtime deploy context activates production and overrides stale build environment',async()=>{const handler=createHandler({storeFactory:async()=>memoryStore({cmsKey:'secret-test-key'}),env:{},log:()=>{}});const live=await (await handler(httpRequest(undefined,{},'GET'),{deploy:{context:'production'}})).json();assert.ok(live.verticals.find(v=>v.id==='health-insurance').sources.some(s=>s.id==='cms'),'production runtime context enables the keyed CMS API');const preview=await (await createHandler({storeFactory:async()=>memoryStore({cmsKey:'secret-test-key'}),env:{CONTEXT:'production'},log:()=>{}})(httpRequest(undefined,{},'GET'),{deploy:{context:'deploy-preview'}})).json();const previewHealth=preview.verticals.find(v=>v.id==='health-insurance');assert.ok(!previewHealth.sources.some(s=>s.id==='cms'));assert.deepEqual(previewHealth.sources.map(s=>s.id),['cms-puf']);});
-test('VIN enrichment caches validated fields only and recovers after a malformed response',async()=>{let calls=0;const enrichment=new BoundedCache();const adapters=createAdapters({},async()=>{calls++;return response({Results:[calls===1?{ErrorCode:'7'}:{ErrorCode:'0',VIN,Make:'HONDA',Model:'Accord',ModelYear:'2003'}]});});const engine=createEngine({adapters,enrichment});const r={vertical:'vehicle-data',input:{vin:VIN}};assert.equal((await engine(r,'a')).providers[0].status,'UNSUPPORTED');assert.equal((await engine(r,'a')).providers[0].vehicle.make,'HONDA');assert.equal(calls,2);assert.ok(!JSON.stringify([...enrichment.entries.values()].map(e=>e.data)).includes(VIN));});
-test('same-deploy preview can use free VIN data without enabling paid providers',async()=>{const handler=createHandler({storeFactory:async()=>memoryStore({cmsKey:'secret-test-key'}),env:{},log:()=>{},fetcher:async()=>response({Results:[{ErrorCode:'0',Make:'HONDA',Model:'Accord',ModelYear:'2003'}]})});const req=new Request('https://deploy-preview-504--shevato-site.netlify.app/.netlify/functions/quotescout',{method:'POST',headers:{Origin:'https://deploy-preview-504--shevato-site.netlify.app','Content-Type':'application/json','X-QuoteScout-Session':'c'.repeat(64)},body:JSON.stringify({vertical:'vehicle-data',input:{vin:VIN}})});const r=await handler(req,{ip:'192.0.2.9',deploy:{context:'deploy-preview'}});assert.equal(r.status,200);assert.match(await r.text(),/HONDA/);});
+
+const VIN = '1HGCM82633A004352', now = Date.now(), TTL = 300000;
+// Travis County TX: a single-county ZIP, so the happy path never depends on
+// the additional-question branch.
+const health = { zip: '78701', age: 27, tobacco: false, year: new Date().getUTCFullYear() };
+const request = { vertical: 'health-insurance', input: health };
+
+// A valid quote owing nothing to any particular adapter.
+const quote = (extra = {}) => ({
+  id: 'test:plan-1', provider: 'test', providerName: 'Test issuer', name: 'Test plan',
+  vertical: 'health-insurance', amount: 20000, currency: 'USD', interval: 'month', annual: 240000,
+  status: 'AUTHORITATIVE PUBLIC RATE',
+  retrievedAt: new Date(now).toISOString(), expiresAt: new Date(now + TTL).toISOString(),
+  comparisonKey: 'health:Silver:HMO', comparisonLabel: 'Silver · HMO',
+  provenance: { source: 'Test dataset', sourceId: 'plan-1', kind: 'published-rate', planYear: 2026, dataPublishedAt: '2025-10-15', transformations: ['none'], product: { test: true }, checkoutExact: false, warning: 'Test warning.' },
+  ...extra,
+});
+const adapter = (id = 'test', fn = async () => ({ quotes: [quote()] })) => ({ id, name: id, vertical: 'health-insurance', enabled: true, ttl: TTL, quote: fn });
+const response = data => new Response(JSON.stringify(data), { headers: { 'Content-Type': 'application/json' } });
+function memoryStore(config = {}) {
+  let revision = 0; const map = new Map([['config', config]]);
+  return { map,
+    async get(k) { return structuredClone(map.get(k)); },
+    async getWithMetadata(k) { return map.has(k) ? { data: structuredClone(map.get(k)), etag: String(revision) } : null; },
+    async setJSON(k, v, condition) { if ((condition.onlyIfMatch && condition.onlyIfMatch !== String(revision)) || (condition.onlyIfNew && map.has(k))) return { modified: false }; map.set(k, structuredClone(v)); revision++; return { modified: true }; } };
+}
+
+test('VIN normalization and check digit', () => {
+  assert.equal(vin(' 1hgcm82633a004352 '), VIN);
+  for (const v of ['', VIN.slice(1), VIN.replace('H', 'I'), VIN.replace('3A', '4A'), '<script>alert(1)</script>']) assert.throws(() => vin(v));
+});
+
+test('strict requests reject redundant, unknown and malicious inputs', () => {
+  assert.deepEqual(validateRequest(request).input, health);
+  for (const bad of [
+    { ...request, input: { ...health, email: 'a@b.c' } },
+    { ...request, input: { ...health, zip: '7870x' } },
+    { ...request, provider: 'https://localhost' },
+    { ...request, provider: 'easypost' },
+    { ...request, refresh: 'yes' },
+    { ...request, input: null },
+    { ...request, vertical: 'invalid' },
+    // Removed verticals must not linger as an accepted schema.
+    { vertical: 'auto-insurance', input: { zip: '27360' } },
+    { vertical: 'package-shipping', input: { originZip: '90210', destinationZip: '10001', weight: 16, length: 10, width: 5, height: 3 } },
+  ]) assert.throws(() => validateRequest(bad), `${JSON.stringify(bad).slice(0, 60)} should be rejected`);
+});
+
+test('age, ZIP, county and tobacco boundary validation', () => {
+  assert.equal(validateRequest({ ...request, input: { ...health, age: 18 } }).input.age, 18);
+  for (const more of [{ age: 65 }, { age: 17 }, { age: 22.3 }, { tobacco: 'false' }, { county: 'bad' }, { year: 2020 }]) {
+    assert.throws(() => validateRequest({ ...request, input: { ...health, ...more } }));
+  }
+  assert.equal(validateRequest({ vertical: 'vehicle-data', input: { vin: VIN } }).input.vin, VIN);
+  // Medicare asks for a ZIP and nothing else; anything more is a mistake.
+  assert.deepEqual(validateRequest({ vertical: 'medicare-advantage', input: { zip: '78701' } }).input, { zip: '78701' });
+  assert.equal(validateRequest({ vertical: 'medicare-drug', input: { zip: '78701', county: '48453' } }).input.county, '48453');
+  for (const bad of [{ zip: '78701', age: 70 }, { zip: '787011' }, { zip: '78701', tobacco: false }]) {
+    assert.throws(() => validateRequest({ vertical: 'medicare-advantage', input: bad }));
+  }
+});
+
+for (const code of ['TIMEOUT', 'RATE_LIMIT', 'AUTH', 'MALFORMED', 'INVALID_INPUT', 'UNSUPPORTED', 'UNAVAILABLE']) {
+  test(`provider ${code} cannot discard successful peers`, async () => {
+    const engine = createEngine({ adapters: [adapter(), adapter('bad', async () => { throw new ScoutError(code); })] });
+    const r = await engine(request, 'a');
+    assert.equal(r.summary.returned, 1);
+    assert.equal(r.providers.find(p => p.provider === 'bad').status, code);
+  });
+}
+
+test('bounded concurrency surfaces fast results without waiting for a slow provider', async () => {
+  const order = []; let active = 0, max = 0;
+  const adapters = Array.from({ length: 5 }, (_, i) => adapter(String(i), async () => { active++; max = Math.max(max, active); await new Promise(r => setTimeout(r, i === 0 ? 30 : 1)); active--; return { quotes: [] }; }));
+  await createEngine({ adapters, concurrency: 2 })(request, 'a', e => { if (e.type === 'provider') order.push(e.provider); });
+  assert.equal(max, 2);
+  assert.equal(order[0], '1');
+});
+
+test('timeout bounds an adapter that ignores cancellation', async () => {
+  const r = await createEngine({ adapters: [adapter('slow', () => new Promise(() => {}))], timeout: 5 })(request, 'a');
+  assert.equal(r.providers[0].status, 'TIMEOUT');
+});
+
+test('no provider, and duplicate registration or results, are explicit', async () => {
+  assert.equal((await createEngine({ adapters: [] })(request, 'a')).summary.returned, 0);
+  let calls = 0;
+  const a = adapter('test', async () => { calls++; return { quotes: [quote(), quote()] }; });
+  const r = await createEngine({ adapters: [a, a] })(request, 'a');
+  assert.equal(calls, 1);
+  assert.equal(r.summary.returned, 1);
+});
+
+test('additional questions return independently of prices', async () => {
+  const r = await createEngine({ adapters: [adapter('test', async () => ({ quotes: [], questions: [{ field: 'county', label: 'County', options: [{ value: '12345', label: 'Test county' }] }] }))] })(request, 'a');
+  assert.equal(r.providers[0].status, 'ADDITIONAL');
+  assert.equal(r.summary.additional, 1);
+});
+
+test('cache is scoped by user and full inputs; refresh and expiry preserve retrieval time', async () => {
+  let count = 0, time = now;
+  const engine = createEngine({ adapters: [adapter('test', async () => { count++; return { quotes: [quote()] }; })], now: () => time, cache: new BoundedCache(50, () => time), enrichment: new BoundedCache(50, () => time) });
+  const a = await engine(request, 'a');
+  const b = await engine(request, 'a');
+  assert.equal(b.providers[0].cached, true);
+  assert.equal(a.providers[0].quotes[0].retrievedAt, b.providers[0].quotes[0].retrievedAt);
+  await engine(request, 'b');
+  await engine({ ...request, input: { ...health, age: 28 } }, 'a');
+  await engine({ ...request, refresh: true }, 'a');
+  assert.equal(count, 4);
+  time += TTL + 1;
+  const expired = await engine(request, 'a');
+  assert.equal(count, 5);
+  assert.equal(expired.providers[0].quotes[0].status, 'EXPIRED');
+});
+
+test('simultaneous identical requests deduplicate only within a session', async () => {
+  let count = 0;
+  const engine = createEngine({ adapters: [adapter('test', async () => { count++; await new Promise(r => setTimeout(r, 10)); return { quotes: [quote()] }; })] });
+  await Promise.all([engine(request, 'a'), engine(request, 'a'), engine(request, 'b')]);
+  assert.equal(count, 2);
+});
+
+test('circuit breaks after repeated transient failures', async () => {
+  let count = 0;
+  const engine = createEngine({ adapters: [adapter('test', async () => { count++; throw new ScoutError('UNAVAILABLE'); })] });
+  for (let i = 0; i < 5; i++) await engine(request, String(i));
+  assert.equal(count, 3);
+});
+
+test('bounded memory cache evicts, expires and hands back copies', () => {
+  let time = 0;
+  const cache = new BoundedCache(1, () => time);
+  cache.set('a', { v: 1 }, 10); cache.set('b', { v: 2 }, 10);
+  assert.equal(cache.get('a'), null);
+  const b = cache.get('b'); b.v = 9;
+  assert.equal(cache.get('b').v, 2);
+  time = 10;
+  assert.equal(cache.get('b'), null);
+});
+
+test('verification rejects invented provenance, foreign redirects and NaN prices', async () => {
+  for (const patch of [
+    { amount: NaN }, { provenance: {} }, { continueUrl: 'https://evil.example/' },
+    { provider: 'other' }, { status: 'VERIFIED QUOTE' },
+    { provenance: { ...quote().provenance, planYear: 'soon' } },
+    { expiresAt: new Date(now + TTL * 5).toISOString() },
+  ]) {
+    const r = await createEngine({ adapters: [adapter('test', async () => ({ quotes: [{ ...quote(), ...patch }] }))] })(request, 'a');
+    assert.equal(r.providers[0].status, 'MALFORMED', JSON.stringify(patch).slice(0, 60));
+  }
+});
+
+test('both official handoffs are accepted, and nothing else is', async () => {
+  for (const url of ['https://www.healthcare.gov/see-plans/', 'https://www.medicare.gov/plan-compare/']) {
+    const r = await createEngine({ adapters: [adapter('test', async () => ({ quotes: [quote({ continueUrl: url })] }))] })(request, 'a');
+    assert.equal(r.providers[0].status, 'OK', url);
+  }
+  for (const url of ['https://www.medicare.gov/', 'http://www.medicare.gov/plan-compare/', 'https://medicare.gov.evil.example/plan-compare/']) {
+    const r = await createEngine({ adapters: [adapter('test', async () => ({ quotes: [quote({ continueUrl: url })] }))] })(request, 'a');
+    assert.equal(r.providers[0].status, 'MALFORMED', url);
+  }
+});
+
+test('a genuine adapter can still represent a verified live quote', async () => {
+  const q = quote({ status: 'VERIFIED QUOTE', provenance: { ...quote().provenance, kind: 'live-quote' } });
+  const r = await createEngine({ adapters: [adapter('test', async () => ({ quotes: [q] }))] })(request, 'a');
+  assert.equal(r.providers[0].quotes[0].status, 'VERIFIED QUOTE');
+});
+
+test('upstream maps HTTP states, retries only safe GET and blocks redirects', async () => {
+  for (const [status, code] of [[429, 'RATE_LIMIT'], [401, 'AUTH'], [403, 'AUTH'], [404, 'UNSUPPORTED'], [400, 'INVALID_INPUT'], [500, 'UNAVAILABLE']]) {
+    await assert.rejects(upstream('https://example.test', { fetcher: async () => new Response('', { status }) }), e => e.code === code);
+  }
+  let calls = 0;
+  await upstream('https://example.test', { fetcher: async (url, opts) => { assert.equal(opts.redirect, 'error'); return ++calls === 1 ? new Response('', { status: 503 }) : response({ ok: true }); } });
+  assert.equal(calls, 2);
+  await assert.rejects(upstream('https://example.test', { reserve: async () => false }), e => e.code === 'RATE_LIMIT');
+});
+
+test('response and request byte bounds reject large or malformed bodies', async () => {
+  await assert.rejects(readJSON(new Response('x'.repeat(20)), 10));
+  await assert.rejects(readJSON(new Response('{bad')));
+  await assert.rejects(deadline(() => new Promise(() => {}), 2));
+});
+
+test('the VIN adapter only returns a successful authoritative decode', async () => {
+  const ctx = { enrich: (_k, _t, f) => f() };
+  const ok = createAdapters({}, async () => response({ Results: [{ ErrorCode: '0', Make: 'HONDA', Model: 'Accord', ModelYear: '2003' }] })).find(a => a.id === 'vpic');
+  assert.equal((await ok.quote({ vin: VIN }, ctx)).vehicle.make, 'HONDA');
+  const bad = createAdapters({}, async () => response({ Results: [{ ErrorCode: '7', Make: 'HONDA', Model: 'Accord', ModelYear: '2003' }] })).find(a => a.id === 'vpic');
+  await assert.rejects(bad.quote({ vin: VIN }, ctx));
+});
+
+test('no adapter carries a credential, and configuration admits none', () => {
+  assert.deepEqual(validateConfig(), {});
+  const adapters = createAdapters({}, async () => { throw new Error('no network expected'); });
+  assert.deepEqual(adapters.map(a => a.id).sort(), ['cms-puf', 'cms-puf-dental', 'medicare-advantage', 'medicare-drug', 'vpic']);
+  assert.ok(adapters.every(a => a.enabled), 'every shipped adapter works without configuration');
+  // Only the one that calls out is metered; the datasets travel with the code.
+  assert.deepEqual(adapters.filter(a => a.external).map(a => a.id), ['vpic']);
+});
+
+test('quota CAS admits at most remaining capacity under races and fails closed', async () => {
+  const store = memoryStore();
+  const results = await Promise.all(Array.from({ length: 40 }, () => reserveQuota(store, 'same', 'vpic', now)));
+  assert.ok(results.filter(Boolean).length <= 30);
+  const usage = await store.get('usage');
+  assert.ok(!JSON.stringify(usage).includes('same'), 'identities are hashed, never stored raw');
+  assert.ok(usage.monthly <= 30);
+  await assert.rejects(reserveQuota({ ...store, setJSON: async () => undefined }, 'other', 'vpic', now));
+});
+
+const httpRequest = (body = request, headers = {}, method = 'POST') => new Request('https://shevato.com/.netlify/functions/quotescout', {
+  method,
+  headers: { Origin: 'https://shevato.com', 'Content-Type': 'application/json', 'X-QuoteScout-Session': 'a'.repeat(64), ...headers },
+  ...(method === 'POST' ? { body: JSON.stringify(body) } : {}),
+});
+
+test('API guards, no-store headers and log redaction', async () => {
+  const logs = [], store = memoryStore();
+  const handler = createHandler({ storeFactory: async () => store, env: { CONTEXT: 'production' }, log: e => logs.push(e) });
+  const get = await handler(httpRequest(undefined, {}, 'GET'));
+  assert.match(get.headers.get('cache-control'), /no-store/);
+  const data = await get.json();
+  assert.ok(data.verticals.every(v => v.capability === 'Public data'), 'every listed category is live');
+  assert.equal((await handler(httpRequest(request, { Origin: 'https://evil.example' }))).status, 403);
+  assert.equal((await handler(httpRequest({ ...request, input: { vin: VIN } }))).status, 400);
+  assert.equal((await handler(httpRequest(request, { 'X-QuoteScout-Session': 'bad' }))).status, 400);
+  assert.equal((await handler(httpRequest(request, { 'Content-Type': 'text/plain' }))).status, 415);
+  assert.equal((await handler(httpRequest(undefined, {}, 'DELETE'))).status, 405);
+  const r = await handler(httpRequest(), { ip: '192.0.2.1' });
+  assert.equal(r.status, 200);
+  const body = await r.text();
+  assert.match(body, /AUTHORITATIVE PUBLIC RATE/);
+  assert.ok(!JSON.stringify(logs).includes(VIN));
+  assert.ok(!JSON.stringify(logs).includes('192.0.2.1'));
+  assert.ok(!JSON.stringify(logs).includes('78701'), 'the ZIP never reaches the logs');
+});
+
+test('a store outage cannot spend money and degrades only what calls out', async () => {
+  let calls = 0;
+  const handler = createHandler({ storeFactory: async () => { throw new Error('secret'); }, fetcher: async () => { calls++; }, log: () => {} });
+  const data = await (await handler(httpRequest(undefined, {}, 'GET'))).json();
+  assert.equal(data.vehicleData, false, 'vPIC calls out, so it is withheld without a meter');
+  assert.ok(data.verticals.every(v => v.capability === 'Public data'), 'the bundled datasets keep working');
+  const r = await handler(httpRequest(), { ip: '192.0.2.1' });
+  assert.equal(r.status, 200);
+  assert.match(await r.text(), /AUTHORITATIVE PUBLIC RATE/);
+  assert.equal(calls, 0, 'no upstream call may happen while the usage store is down');
+  assert.ok(!JSON.stringify(await (await handler(httpRequest(undefined, {}, 'GET'))).json()).includes('secret'));
+});
+
+test('VIN enrichment caches validated fields only and recovers after a malformed response', async () => {
+  let calls = 0;
+  const enrichment = new BoundedCache();
+  const adapters = createAdapters({}, async () => { calls++; return response({ Results: [calls === 1 ? { ErrorCode: '7' } : { ErrorCode: '0', VIN, Make: 'HONDA', Model: 'Accord', ModelYear: '2003' }] }); });
+  const engine = createEngine({ adapters, enrichment });
+  const r = { vertical: 'vehicle-data', input: { vin: VIN } };
+  assert.equal((await engine(r, 'a')).providers[0].status, 'UNSUPPORTED');
+  assert.equal((await engine(r, 'a')).providers[0].vehicle.make, 'HONDA');
+  assert.equal(calls, 2);
+  assert.ok(!JSON.stringify([...enrichment.entries.values()].map(e => e.data)).includes(VIN));
+});
+
+test('a same-deploy preview can use the free tools without a production origin', async () => {
+  const handler = createHandler({ storeFactory: async () => memoryStore(), env: {}, log: () => {}, fetcher: async () => response({ Results: [{ ErrorCode: '0', Make: 'HONDA', Model: 'Accord', ModelYear: '2003' }] }) });
+  const origin = 'https://deploy-preview-999--shevato.netlify.app';
+  const req = new Request(`${origin}/.netlify/functions/quotescout`, { method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json', 'X-QuoteScout-Session': 'c'.repeat(64) }, body: JSON.stringify({ vertical: 'vehicle-data', input: { vin: VIN } }) });
+  const r = await handler(req, { ip: '192.0.2.9', deploy: { context: 'deploy-preview' } });
+  assert.equal(r.status, 200);
+  assert.match(await r.text(), /HONDA/);
+});
