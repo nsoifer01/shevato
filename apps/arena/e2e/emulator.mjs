@@ -1080,7 +1080,22 @@ export async function run({ base, cdpPort, base2 = null }) {
           marker: prof.lastCountedGame ? prof.lastCountedGame.stringValue : null,
         };
       };
-      const before5 = await countersNow();
+      // The end of a game produces TWO independent idempotent writes: the
+      // profile/leaderboard counters (guarded by `lastCountedGame`) and the
+      // room's own session tally (guarded by `sessionCountedGame`, written by
+      // maybeWriteH2HPairs in its own transaction). Nothing orders them, so a
+      // single read can catch the profile counted and the room's tally still
+      // absent - which is exactly what a loaded runner produced:
+      // `games=1 sessionMatchCount=null`, then `null -> 1 -> 1` once the
+      // second transaction landed a moment later. Give both a bounded chance
+      // to arrive. This cannot paper over a game that was never counted: if
+      // they never both land the precondition below still fails, which is the
+      // whole point of it.
+      let before5 = await countersNow();
+      for (const t0 = Date.now(); Date.now() - t0 < 10000 && !(before5.games === 1 && before5.session != null);) {
+        await sleep(250);
+        before5 = await countersNow();
+      }
       // PRECONDITION. Everything below compares a number against itself, so it
       // would pass just as happily if the game had never been counted at all:
       // 0 -> 0 -> 0 is "unchanged" too. That is not a hypothetical - a
