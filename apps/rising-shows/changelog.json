@@ -1,6 +1,219 @@
 {
   "updates": [
     {
+      "builtAt": "2026-09-08T10:37:02.890Z",
+      "totals": {
+        "seasons": 66662,
+        "delta": 14
+      },
+      "shapeCounts": {
+        "rebound": 10184,
+        "rising": 2600,
+        "slow-burn": 4413,
+        "big-finale": 12154,
+        "u-shaped": 3094,
+        "rollercoaster": 14152,
+        "mid-peak": 4628,
+        "saved-best-for-last": 1506,
+        "front-loaded": 3505,
+        "declining": 1886,
+        "bad-finale": 4648,
+        "consistent": 2633,
+        "shape-drift": 1576
+      },
+      "shapeDeltas": {
+        "rebound": 4,
+        "rising": 3,
+        "slow-burn": -2,
+        "big-finale": 9,
+        "u-shaped": 9,
+        "rollercoaster": 12,
+        "mid-peak": 6,
+        "front-loaded": 1,
+        "declining": 2,
+        "bad-finale": -6,
+        "consistent": -6
+      },
+      "added": [
+        {
+          "seriesId": "tt11846996",
+          "title": "Vigil",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt27350543",
+          "title": "Rock Musical Bleach",
+          "season": 1,
+          "seasonYear": 2005
+        },
+        {
+          "seriesId": "tt1291441",
+          "title": "Ka-Pow!",
+          "season": 1,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt1281973",
+          "title": "Bigg Boss",
+          "season": 6,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt1281973",
+          "title": "Bigg Boss",
+          "season": 5,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt9425082",
+          "title": "Body Cam",
+          "season": 11,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt26224444",
+          "title": "Slave Market",
+          "season": 2,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt30825705",
+          "title": "Jorik",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt44302417",
+          "title": "Ash",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt5189210",
+          "title": "Landscape Artist of the Year",
+          "season": 9,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt5189210",
+          "title": "Landscape Artist of the Year",
+          "season": 10,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt40104578",
+          "title": "Candy Caries",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4741312",
+          "title": "Flint. Redemption",
+          "season": 1,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt5140444",
+          "title": "Grand Tours of the Scottish Islands",
+          "season": 1,
+          "seasonYear": 2013
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt1281973",
+          "title": "Bigg Boss",
+          "season": 10,
+          "from": 6.93,
+          "to": 5.64,
+          "delta": -1.29
+        },
+        {
+          "seriesId": "tt1281973",
+          "title": "Bigg Boss",
+          "season": 4,
+          "from": 6.03,
+          "to": 4.79,
+          "delta": -1.24
+        },
+        {
+          "seriesId": "tt39013436",
+          "title": "Arafta",
+          "season": 2,
+          "from": 9.91,
+          "to": 8.69,
+          "delta": -1.22
+        },
+        {
+          "seriesId": "tt0442722",
+          "title": "The Doodlebops",
+          "season": 1,
+          "from": 9.02,
+          "to": 8.27,
+          "delta": -0.75
+        },
+        {
+          "seriesId": "tt15087662",
+          "title": "Bigg Boss OTT",
+          "season": 1,
+          "from": 5.07,
+          "to": 4.34,
+          "delta": -0.73
+        },
+        {
+          "seriesId": "tt1281973",
+          "title": "Bigg Boss",
+          "season": 8,
+          "from": 7.11,
+          "to": 6.48,
+          "delta": -0.63
+        },
+        {
+          "seriesId": "tt0103481",
+          "title": "Love & War",
+          "season": 3,
+          "from": 7.15,
+          "to": 7.76,
+          "delta": 0.61
+        },
+        {
+          "seriesId": "tt33305575",
+          "title": "Treasure island",
+          "season": 1,
+          "from": 7.4,
+          "to": 6.8,
+          "delta": -0.6
+        },
+        {
+          "seriesId": "tt8948264",
+          "title": "Vdud",
+          "season": 13,
+          "from": 7.98,
+          "to": 7.4,
+          "delta": -0.58
+        },
+        {
+          "seriesId": "tt41564444",
+          "title": "Reborn",
+          "season": 1,
+          "from": 7.01,
+          "to": 6.5,
+          "delta": -0.51
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20341,
+        "avgRating": 1150,
+        "shapes": 214,
+        "episodeCount": 100,
+        "seriesRating": 322,
+        "poster": 18,
+        "overview": 15
+      }
+    },
+    {
       "builtAt": "2026-09-07T11:24:02.374Z",
       "totals": {
         "seasons": 66648,
@@ -7510,208 +7723,6 @@
         "providers": 1,
         "poster": 1,
         "overview": 1
-      }
-    },
-    {
-      "builtAt": "2026-08-04T08:50:27.040Z",
-      "totals": {
-        "seasons": 66142,
-        "delta": 12
-      },
-      "shapeCounts": {
-        "mid-peak": 4633,
-        "rebound": 10076,
-        "rising": 2892,
-        "slow-burn": 4374,
-        "big-finale": 12107,
-        "u-shaped": 3097,
-        "rollercoaster": 14066,
-        "saved-best-for-last": 1538,
-        "front-loaded": 3471,
-        "declining": 1875,
-        "bad-finale": 4656,
-        "consistent": 2626,
-        "shape-drift": 1634
-      },
-      "shapeDeltas": {
-        "rebound": -6,
-        "rising": -7,
-        "slow-burn": -3,
-        "big-finale": 7,
-        "u-shaped": 5,
-        "rollercoaster": 11,
-        "saved-best-for-last": -1,
-        "front-loaded": 7,
-        "declining": 4,
-        "bad-finale": 5,
-        "consistent": 6,
-        "shape-drift": -3
-      },
-      "added": [
-        {
-          "seriesId": "tt38754770",
-          "title": "False Memory",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1495163",
-          "title": "Operation Repo",
-          "season": 2,
-          "seasonYear": 2008
-        },
-        {
-          "seriesId": "tt0162798",
-          "title": "The Cedar Tree",
-          "season": 4,
-          "seasonYear": 1978
-        },
-        {
-          "seriesId": "tt2223298",
-          "title": "Salvage Hunters",
-          "season": 5,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt2033616",
-          "title": "Fake or Fortune",
-          "season": 14,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt8119462",
-          "title": "Brazzers House",
-          "season": 3,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt35853665",
-          "title": "Vefa Sultan",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41278494",
-          "title": "Let's Go Kaikigumi",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0168348",
-          "title": "Un medico in famiglia",
-          "season": 2,
-          "seasonYear": 2000
-        },
-        {
-          "seriesId": "tt2131864",
-          "title": "Junior Bake Off",
-          "season": 10,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt33710320",
-          "title": "USAshveloebi",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt6210390",
-          "title": "This Is Not Happening",
-          "season": 4,
-          "seasonYear": 2018
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt14980730",
-          "title": "Mahrem",
-          "season": 1,
-          "from": 5.73,
-          "to": 7.6,
-          "delta": 1.87
-        },
-        {
-          "seriesId": "tt42006748",
-          "title": "House of Stassi",
-          "season": 1,
-          "from": 5.43,
-          "to": 4.31,
-          "delta": -1.12
-        },
-        {
-          "seriesId": "tt5679558",
-          "title": "The Flower in Prison",
-          "season": 1,
-          "from": 9.01,
-          "to": 8.18,
-          "delta": -0.83
-        },
-        {
-          "seriesId": "tt1331923",
-          "title": "Review with Myles Barlow",
-          "season": 2,
-          "from": 6.82,
-          "to": 6.25,
-          "delta": -0.57
-        },
-        {
-          "seriesId": "tt43440117",
-          "title": "Love in Sync",
-          "season": 1,
-          "from": 7.98,
-          "to": 7.43,
-          "delta": -0.55
-        },
-        {
-          "seriesId": "tt0318959",
-          "title": "Crank Yankers",
-          "season": 2,
-          "from": 5.89,
-          "to": 6.42,
-          "delta": 0.53
-        },
-        {
-          "seriesId": "tt0318959",
-          "title": "Crank Yankers",
-          "season": 1,
-          "from": 6.36,
-          "to": 6.84,
-          "delta": 0.48
-        },
-        {
-          "seriesId": "tt0329829",
-          "title": "Fireman Sam",
-          "season": 3,
-          "from": 8.83,
-          "to": 8.38,
-          "delta": -0.45
-        },
-        {
-          "seriesId": "tt27814427",
-          "title": "Skibidi Toilet",
-          "season": 14,
-          "from": 6.33,
-          "to": 5.93,
-          "delta": -0.4
-        },
-        {
-          "seriesId": "tt1331923",
-          "title": "Review with Myles Barlow",
-          "season": 1,
-          "from": 6.68,
-          "to": 6.28,
-          "delta": -0.4
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 23465,
-        "avgRating": 1248,
-        "shapes": 215,
-        "episodeCount": 84,
-        "seriesRating": 394,
-        "poster": 3,
-        "overview": 2
       }
     }
   ]
