@@ -5,16 +5,29 @@ name: arena emulator
 # multiplayer e2e (apps/arena/e2e/emulator.mjs). Isolated from the push/PR workflows on purpose,
 # following cross-browser.yml's pattern: this job needs Java plus a
 # firebase-tools/emulator download, and the fast CI stays dependency-free.
-# TWO TRIGGERS, for two different kinds of drift.
+#
+# THE JOB ALWAYS RUNS; THE SUITES ARE WHAT IS CONDITIONAL.
+#
+# That distinction is the entire point of the "Scope" step below, and it was
+# paid for on 2026-09-08, when PRs #509 and #511 merged with this check RED.
+# Nothing was overridden and no gate was bypassed: `rules` was simply not in
+# branch protection's required contexts. It could not be, either. A workflow
+# filtered by `on.<event>.paths` reports NOTHING on a change that misses the
+# filter, and a required check that never reports leaves every unrelated PR
+# parked on "Expected - Waiting for status to be reported" with no way out.
+# The three contexts that ARE required (test, lint, browser) all run
+# unconditionally on every pull request, which is precisely why they could be.
+#
+# So the filter moved off the trigger and into the job, where a skip still
+# produces a green check run. The property the path filter was protecting -
+# a documentation edit runs no emulator - is unchanged. It is now reported
+# rather than silent, and that is what makes this job requireable.
 #
 # CHANGE-TRIGGERED (2026-09-05 audit F21). "firestore.rules changes are rare
 # and always land with a local pass" was the old justification for weekly-only,
 # and it is not a gate: it is a description of a habit. An authorization
 # boundary is exactly the thing that must be checked by a machine before it
-# lands, and the paths below are the ones whose change can move that boundary -
-# the ruleset itself, the Arena app that writes through it, and this workflow.
-# A documentation edit still runs nothing, which is the other half of the
-# requirement: bounded CI.
+# lands.
 #
 # WEEKLY, unchanged: emulator/tooling drift (a firebase-tools or jar release
 # changing behaviour) arrives on the tools' schedule, not with our commits, so
@@ -25,22 +38,8 @@ name: arena emulator
 # never fake a green run.
 on:
   pull_request:
-    paths:
-      - 'firestore.rules'
-      - 'firebase.json'
-      - 'database.rules.json'
-      - 'apps/arena/**'
-      - 'sync-system/**'
-      - '.github/workflows/arena-rules.yml'
   push:
     branches: [master]
-    paths:
-      - 'firestore.rules'
-      - 'firebase.json'
-      - 'database.rules.json'
-      - 'apps/arena/**'
-      - 'sync-system/**'
-      - '.github/workflows/arena-rules.yml'
   schedule:
     - cron: '0 7 * * 2'
   workflow_dispatch:
@@ -52,13 +51,95 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
+        with:
+          # The Scope step diffs a pull request against its merge base and a
+          # push against its predecessor. Neither commit exists in the default
+          # single-commit checkout.
+          fetch-depth: 0
+
+      # Which files can move this job's OUTCOME. Everything else skips the
+      # suites and still reports success, so this stays cheap enough to run on
+      # every pull request while remaining a real gate on the ones that matter.
+      #
+      # Fail-safe is RUN, never skip: an unknown event, a missing commit or a
+      # failed diff all fall through to the full suites. The worst case of a
+      # wrong guess here is ten wasted minutes; the worst case in the other
+      # direction is an unchecked authorization boundary reported green.
+      - name: Scope - decide whether this change can move the emulator outcome
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+        run: |
+          set -uo pipefail
+
+          run_everything() {
+            echo "run=1" >> "$GITHUB_OUTPUT"
+            echo "Running both suites: $1"
+            exit 0
+          }
+
+          case "$EVENT" in
+            # A pull request is its three-dot diff, the same set GitHub shows
+            # in Files changed. Two-dot would count master's own commits as
+            # this branch's changes.
+            pull_request) BEFORE="$PR_BASE";     AFTER="$PR_HEAD";   RANGE='...' ;;
+            # A push to master is linear, so its predecessor is the base.
+            push)         BEFORE="$PUSH_BEFORE"; AFTER="$PUSH_AFTER"; RANGE='..' ;;
+            *)            run_everything "$EVENT has no diff to scope by" ;;
+          esac
+
+          case "$BEFORE" in
+            ''|0000000000000000000000000000000000000000)
+              run_everything "no comparison point for this $EVENT" ;;
+          esac
+          git cat-file -e "${BEFORE}^{commit}" 2>/dev/null || run_everything "base $BEFORE is unreachable"
+          git cat-file -e "${AFTER}^{commit}"  2>/dev/null || run_everything "head $AFTER is unreachable"
+
+          CHANGED=$(git diff --name-only "${BEFORE}${RANGE}${AFTER}") \
+            || run_everything "git diff ${BEFORE}${RANGE}${AFTER} failed"
+
+          # The inputs, and why each one is an input:
+          #   firestore.rules        the authorization boundary under test
+          #   firebase.json          emulator ports and the ruleset wiring
+          #   database.rules.json    the RTDB half of that boundary
+          #   apps/arena/**          the app that writes through it, plus both suites
+          #   sync-system/**         the layer the app writes through
+          #   tests/browser/cdp.mjs  the driver the multiplayer e2e imports
+          #   package.json/.nvmrc    the scripts this job runs, and the node it runs them on
+          #   this workflow          its own steps
+          INPUTS='^(firestore\.rules|firebase\.json|database\.rules\.json|package\.json|\.nvmrc|apps/arena/|sync-system/|tests/browser/cdp\.mjs|\.github/workflows/arena-rules\.yml)'
+          # sync-system/tests/** is the one carve-out: those files are node
+          # tests and their stubs, already covered by the `test` workflow, and
+          # nothing in the app or in either emulator suite loads them. Left in,
+          # they cost real time for nothing - PR #511 deleted an unrelated app,
+          # touched one app-count line under sync-system/tests/, and ran the
+          # whole 10-minute emulator suite on the strength of it.
+          NOT_INPUTS='^sync-system/tests/'
+
+          HITS=$(printf '%s\n' "$CHANGED" | grep -Ev "$NOT_INPUTS" | grep -E "$INPUTS")
+          if [ -n "$HITS" ]; then
+            echo "run=1" >> "$GITHUB_OUTPUT"
+            echo "Emulator inputs changed:"
+            printf '%s\n' "$HITS" | sed 's/^/  /'
+          else
+            echo "run=0" >> "$GITHUB_OUTPUT"
+            echo "No emulator inputs in this change - reporting success without running the suites."
+            echo "Changed files:"
+            printf '%s\n' "$CHANGED" | sed 's/^/  /'
+          fi
 
       - name: Use Node.js
+        if: steps.scope.outputs.run == '1'
         uses: actions/setup-node@v6
         with:
           node-version-file: '.nvmrc'
 
       - name: Use Java 21
+        if: steps.scope.outputs.run == '1'
         uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
@@ -69,6 +150,7 @@ jobs:
       # (see FIREBASE_TOOLS_VERSION in emulator-harness.mjs); bumping the pin
       # naturally invalidates the cache.
       - name: Cache firebase-tools and the emulator jar
+        if: steps.scope.outputs.run == '1'
         uses: actions/cache@v4
         with:
           path: |
@@ -77,6 +159,7 @@ jobs:
           key: arena-rules-firebase-tools-15.27.0
 
       - name: Run the rules suite against the emulator
+        if: steps.scope.outputs.run == '1'
         env:
           ARENA_RULES_REQUIRE: '1'
         run: npm run test:arena:rules
@@ -98,6 +181,7 @@ jobs:
       # Chrome comes from the runner image; resolve it rather than assume a
       # name, the same way browser-tests.yml does.
       - name: Resolve browser
+        if: steps.scope.outputs.run == '1'
         run: |
           set -e
           for c in google-chrome google-chrome-stable chromium chromium-browser; do
@@ -111,6 +195,7 @@ jobs:
           exit 1
 
       - name: Run the multiplayer e2e against the emulators
+        if: steps.scope.outputs.run == '1'
         env:
           ARENA_RULES_REQUIRE: '1'
         run: npm run test:arena:emulator
