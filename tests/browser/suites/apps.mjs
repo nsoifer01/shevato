@@ -770,19 +770,5 @@ export async function run({ base, cdpPort }) {
     } catch (e) { t(`${name}: mobile suite ran`, false, String(e.message).slice(0, 140)); }
   }
 
-  // Quote Scout: a static server has no function backend. Its honest offline
-  // state must be useful; provider happy paths live in quotescout/e2e/flow.mjs.
-  {
-    let s;
-    try {
-      s = await fresh('/apps/quotescout/', { ready: "!document.getElementById('qs-service-error').hidden" });
-      t('quotescout: missing backend is explained', await textPresent(s, 'temporarily unavailable'));
-      t('quotescout: missing backend never exposes fake prices', await evaluate(s, "document.querySelectorAll('.qs-result').length === 0 && document.getElementById('qs-form').hidden"));
-      t('quotescout: no uncaught errors in unavailable state', cleanErrors(s).length === 0, JSON.stringify(cleanErrors(s)));
-    } catch (e) {
-      for (const name of ['missing backend is explained','missing backend never exposes fake prices','no uncaught errors in unavailable state']) t(`quotescout: ${name}`, false, String(e));
-    } finally { if (s) await closePage(cdpPort, s); }
-  }
-
   return R;
 }

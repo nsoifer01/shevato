@@ -1455,7 +1455,7 @@ body > [data-include-inlined="footer"] {
    Lives here, alongside the shared header/footer styling, for the same
    reason: every app loads main.css and none of them load site.css.
 
-   Why the apps need it at all. Measured on production, six of the eight app
+   Why the apps need it at all. Measured on production, most app
    pages rendered almost nothing but button labels to a crawler - Football H2H
    came to 264 words, of which roughly ten were sentences. A page cannot rank
    for "head to head football score tracker" when that phrase, and any

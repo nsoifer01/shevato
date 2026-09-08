@@ -77,8 +77,7 @@ const EXPECTED = [
   ['/apps/brain-arena/*', '/apps/arena/:splat'],
   ['/apps/rising-seasons/*', '/apps/rising-shows/:splat'],
   ['/tools/trip-planner*', '/apps/trip-planner/'],
-  ['/apps/quotescout/tests/*', '/404.html', 404],
-  ['/apps/quotescout/e2e/*', '/404.html', 404],
+  ['/apps/quotescout/*', '/apps', 301],
   ['/netlify/functions/tests/*', '/404.html', 404],
 ];
 

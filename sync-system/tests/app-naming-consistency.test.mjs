@@ -359,7 +359,7 @@ test('the homepage prose names apps in A-Z order', () => {
 });
 
 // Social/OG copy on the hub is what WhatsApp/LinkedIn previews show; it
-// drifted to "five apps" while the page listed eight (found 2026-08-22). The
+// drifted to naming fewer apps than the page listed (found 2026-08-22). The
 // og and twitter descriptions must name every manifest app.
 test('apps.html og:description and twitter:description name every manifest app', () => {
     const html = readRepoFile('apps.html');
