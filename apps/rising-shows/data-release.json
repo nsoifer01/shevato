@@ -1,0 +1,14 @@
+{
+  "releaseId": "20260908-202414-50fa335",
+  "builtAt": "2026-09-08T20:24:16.882Z",
+  "assets": {
+    "data.json.gz": {
+      "sha256": "33e6dc188753aaab3ece3f50e91d83e75544e70970f9d822669610a005c8e59c",
+      "bytes": 18127981
+    },
+    "show-modal-extras.json.gz": {
+      "sha256": "ce354b1eacb64412a518598e6d50a8213f094fa602e650ecd71813186a4b7757",
+      "bytes": 22408878
+    }
+  }
+}
