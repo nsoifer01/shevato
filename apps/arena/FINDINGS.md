@@ -536,3 +536,16 @@ streak x ~3.0 difficulty = 1,350 a round over at most 10, so 100k is about a
 7x margin over anything reachable. A tighter cap would start refusing real
 games the first time the scoring constants move.
 
+
+- **A Globe Drop round cannot be screenshotted headlessly.** The lobby has a
+  "Play solo" button, so a round starts fine without Firebase or a second
+  player, and the click itself works. But once the round is up and the WebGL
+  globe is rendering, CDP stops answering: `Runtime.evaluate` times out first
+  and `Page.captureScreenshot` never returns, past the browser harness's 45s
+  ceiling, under both swiftshader and ANGLE. Trivia is not a way round it -
+  it has no solo mode and pulls questions from an external API. So Arena is
+  the one app whose apps-hub preview is not built by
+  `assets/app-previews/build-previews.mjs`: its only capturable state is the
+  lobby, which is a settings form, and the committed hand capture of a real
+  round is the better thumbnail. Anything that needs to see the game surface
+  in CI has the same problem and should assert on the DOM instead.

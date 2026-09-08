@@ -11,10 +11,14 @@
 //   the rest       seeded localStorage (assets/app-previews/seeds.mjs), whose
 //                  shapes are lifted from each app's own unit-test fixtures
 //
-// Arena is the one app not built here. It is a real-time multiplayer hub, so
-// its interesting state needs a room with people in it rather than a dataset,
-// and its committed capture (a Globe Drop round mid-question) is already the
-// strongest thumbnail on the page. It stays hand-captured.
+// Arena is the one app not built here, and not for want of trying. It has a
+// "Play solo" button, so a Globe Drop round CAN be started headlessly - but
+// the round renders a WebGL globe, and once it is up Page.captureScreenshot
+// never returns (it exceeds the harness's 45s ceiling). Trivia, the app's
+// other game, has no solo mode and pulls its questions from an external API.
+// So Arena's only capturable state is its lobby, which is a settings form,
+// and its committed capture of a real round stays the better thumbnail. It
+// remains hand-captured, and is the only preview the hub still has to crop.
 //
 // Two rules the whole file exists to enforce:
 //
@@ -22,9 +26,15 @@
 //   so if an app's markup moves the capture fails loudly instead of silently
 //   shipping a crop of the wrong thing.
 //
-//   Never upscale. Output is 720x405 (16:9) and the capture scale is derived
-//   from the clip width, so a capture is always a pure downscale. A clip
-//   narrower than 720 CSS px would be an upscale, and is rejected.
+//   Never upscale, but do crop TIGHT. Every app is rendered at 2x device
+//   pixels, which is what makes a tight crop possible: at 1x a clip had to be
+//   at least 720 CSS px wide to fill a 720px file, which forced every
+//   thumbnail to be a whole wide panel holding a dozen small elements - the
+//   "too zoomed out" look. At 2x the floor halves to 360 CSS px, so a clip
+//   can hold three or four big elements and still resolve a downsample. The
+//   output stays 720x405 regardless, because a preview is painted at most
+//   337px wide on the hub and the extra detail is better spent on sharpness
+//   than on bytes.
 
 import { spawn } from 'node:child_process';
 import { mkdtemp, writeFile } from 'node:fs/promises';
@@ -32,7 +42,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  waitForBrowser, newPage, goto, evaluate, evalAsync, setViewport, closePage, clickText, seedAndReload,
+  waitForBrowser, newPage, goto, evaluate, evalAsync, closePage, clickText, clickAt, seedAndReload,
 } from '../../tests/browser/cdp.mjs';
 import { SEEDS } from './seeds.mjs';
 
@@ -44,6 +54,23 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const OUT_W = 720;
 const OUT_H = 405;
 const AR = 16 / 9;
+// Every app is rendered at 2x device pixels. This is what makes a TIGHT crop
+// possible: at 1x a clip had to be at least 720 CSS px wide or the output
+// would be an upscale, which forced every thumbnail to be a whole wide panel
+// with a dozen small elements in it - the "too zoomed out" look. At 2x the
+// floor halves to 360 CSS px, so a clip can hold three or four big elements
+// and still resolve a downscale.
+const DSF = 2;
+const MIN_CLIP_W = OUT_W / DSF;
+
+// setViewport in the shared harness pins deviceScaleFactor to 1, which is
+// right for tests and wrong here.
+async function setViewportAt2x(s, width, height) {
+  await s.send('Emulation.setDeviceMetricsOverride', {
+    width, height, deviceScaleFactor: DSF, mobile: false,
+    screenWidth: width, screenHeight: height,
+  });
+}
 
 // Resolves the region of interest in the page and returns its rect. Kept as an
 // expression per app so the choice of subject is visible here rather than
@@ -54,6 +81,12 @@ const rectOf = (sel) => `(() => {
   const r = e.getBoundingClientRect();
   return JSON.stringify({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) });
 })()`;
+
+// Grows a measured rect outward by `n` CSS px. Section labels frequently
+// overhang their own container by a few pixels, and a clip taken at exactly
+// the container's bounds shears the first letter off them ("TOTAL WINS" came
+// out as "OTAL WINS").
+const bleed = (r, n) => ({ x: r.x - n, y: r.y - n, w: r.w + n * 2, h: r.h + n * 2, rows: r.rows });
 
 // A 16:9 window whose TOP is the subject's top: the subject leads the frame
 // and whatever follows it fills the rest. Used where the subject is taller
@@ -72,7 +105,7 @@ const APPS = [
   {
     slug: 'football-h2h',
     url: '/apps/football-h2h/',
-    viewport: [1200, 1600],
+    viewport: [760, 1800],
     settle: 4000,
     seed: 'football-h2h',
     // The H2H stats block: total wins for both players, the current streak,
@@ -80,12 +113,12 @@ const APPS = [
     // and it measures 812x462 - within a hair of 16:9 already, so the frame
     // barely has to crop it at all.
     measure: rectOf('#h2h-stats'),
-    clip: fromTop,
+    clip: (r) => fromTop(bleed(r, 14)),
   },
   {
     slug: 'fpl-planner',
     url: '/apps/fpl-planner/?demo=1',
-    viewport: [1000, 1400],
+    viewport: [820, 1800],
     settle: 6000,
     prep: async (s) => {
       // Demo-mode scaffolding that explains how to leave sample mode. Leaving
@@ -105,7 +138,7 @@ const APPS = [
   {
     slug: 'gym-tracker',
     url: '/apps/gym-tracker/',
-    viewport: [1200, 1600],
+    viewport: [900, 1700],
     settle: 4500,
     seed: 'gym-tracker',
     prep: async (s) => { await clickText(s, 'Insights', { sel: 'a,button,li', settle: 1800 }); },
@@ -127,7 +160,7 @@ const APPS = [
   {
     slug: 'maptap-rivals',
     url: '/apps/maptap-rivals/',
-    viewport: [1100, 1700],
+    viewport: [820, 1900],
     settle: 4000,
     seed: 'maptap-rivals',
     prep: async (s) => { await clickText(s, 'Matrix', { settle: 1800 }); },
@@ -138,13 +171,21 @@ const APPS = [
     // wraps to 2 + 1 the only way to reach 16:9 is to drag in the collapsed
     // "paste daily scores" bar above it, or to slice the third card. The
     // matrix is one self-contained titled panel that already fills the frame.
-    measure: rectOf('.view-matrix'),
-    clip: fromTop,
+    measure: `(() => {
+      const v = document.querySelector('.view-matrix');
+      if (!v) return 'MISSING';
+      // The table, not the whole view: anchoring the view and clipping from
+      // its top sheared the bottom row off the matrix.
+      const t = v.querySelector('table') || v;
+      const r = t.getBoundingClientRect();
+      return JSON.stringify({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) });
+    })()`,
+    clip: (r) => centred(bleed(r, 12)),
   },
   {
     slug: 'mario-kart',
     url: '/apps/mario-kart/',
-    viewport: [1200, 1800],
+    viewport: [820, 2000],
     settle: 4500,
     seed: 'mario-kart',
     prep: async (s) => { await clickText(s, 'Stats', { sel: 'button,a,.toggle-btn', settle: 1800 }); },
@@ -164,7 +205,7 @@ const APPS = [
   {
     slug: 'rising-shows',
     url: '/apps/rising-shows/',
-    viewport: [1200, 1600],
+    viewport: [820, 1800],
     settle: 7000,
     // The first row of result cards: poster, title, shape tag and the rating
     // trend sparkline that is the entire point of the app. The clip is the
@@ -191,7 +232,7 @@ const APPS = [
   {
     slug: 'trip-planner',
     url: '/apps/trip-planner/',
-    viewport: [1000, 1400],
+    viewport: [820, 1800],
     settle: 4000,
     prep: async (s) => {
       await clickText(s, 'Load an example trip', { settle: 3000 });
@@ -218,13 +259,26 @@ const APPS = [
         rows: rows.map((q) => ({ y: Math.round(q.y), bottom: Math.round(q.bottom) })) });
     })()`,
     clip: (r, viewport) => {
-      const target = Math.round(r.w / AR);
+      // Pick the row boundary that gives the TALLEST clip whose 16:9 width
+      // still fits the viewport. Clamping the width to the viewport after
+      // snapping was the earlier bug: it recomputed the height from the
+      // clamped width and landed back in the middle of a row. Choosing the
+      // boundary by what fits keeps the clip aligned to whole rows, and the
+      // 2x raster means a shorter clip is still a downscale.
       const top = r.rows[0].y;
-      const bottom = (r.rows.find((row) => row.bottom - top >= target) || r.rows[r.rows.length - 1]).bottom;
-      const height = bottom - top;
-      const width = Math.min(Math.round(height * AR), viewport[0]);
-      const x = Math.max(0, Math.min(Math.round(r.x + r.w / 2 - width / 2), viewport[0] - width));
-      return { x, y: top, width, height: Math.round(width / AR) };
+      let best = null;
+      for (const row of r.rows) {
+        const height = row.bottom - top;
+        const width = Math.round(height * AR);
+        if (width > viewport[0]) break;
+        if (width >= MIN_CLIP_W) best = { height, width };
+      }
+      if (!best) {
+        const width = Math.min(Math.round(r.w), viewport[0]);
+        best = { width, height: Math.round(width / AR) };
+      }
+      const x = Math.max(0, Math.min(Math.round(r.x + r.w / 2 - best.width / 2), viewport[0] - best.width));
+      return { x, y: top, width: best.width, height: Math.round(best.width / AR) };
     },
   },
 ];
@@ -252,7 +306,7 @@ async function main() {
     await waitForBrowser(CDP_PORT);
     const s = await newPage(CDP_PORT);
     for (const app of wanted) {
-      await setViewport(s, app.viewport[0], app.viewport[1], false);
+      await setViewportAt2x(s, app.viewport[0], app.viewport[1]);
       const url = `${BASE}${app.url}`;
       if (app.seed) await seedAndReload(s, url, SEEDS[app.seed], { settle: app.settle });
       else await goto(s, url, { settle: app.settle });
@@ -267,13 +321,19 @@ async function main() {
       const rect = JSON.parse(raw);
       const clip = app.clip(rect, app.viewport);
 
-      if (clip.width < OUT_W) {
-        console.error(`${app.slug}: FAILED - clip is ${clip.width}px wide, narrower than the ${OUT_W}px output, which would upscale it`);
+      if (clip.width < MIN_CLIP_W) {
+        console.error(`${app.slug}: FAILED - clip is ${clip.width} CSS px wide; below ${MIN_CLIP_W} the ${DSF}x raster cannot fill ${OUT_W}px without upscaling`);
         failed++;
         continue;
       }
 
-      const scale = OUT_W / clip.width;
+      // Output is OUT_W wide regardless of DSF. Page.captureScreenshot maps
+      // clip.width CSS px to clip.width * DSF raster px and THEN applies
+      // scale, so dividing by DSF here is what makes the 2x raster a
+      // downsample into a 720px file rather than a 1440px one. The extra
+      // detail is spent on sharpness, not on bytes: a preview is painted at
+      // most 337px wide, so 720 is already better than 2x.
+      const scale = OUT_W / (clip.width * DSF);
       const shot = await s.send('Page.captureScreenshot', {
         format: 'webp',
         quality: 92,

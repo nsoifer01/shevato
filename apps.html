@@ -388,7 +388,14 @@
        and zoom clears those because its waste is at the SIDES - the one place
        zoom is safe, since it scales both axes at once. */
     .highlights .app-preview[src$="arena.webp"] {
-      --preview-zoom: 1.12;
+      /* Measured off the source, not guessed. The capture is 720x450 with the
+         app's own dark page margin down BOTH edges (40px each), the question
+         banner at y 18-126 and the globe below it. Zooming 1.125 crops exactly
+         those two margins (720 / 640), and anchoring near the top keeps the
+         banner - the one element that says what the app is - in frame, with
+         the globe running off the bottom edge as it does in the app. */
+      --preview-zoom: 1.13;
+      --preview-focus: 50% 12%;
     }
     /* Only the stage's OWN padding needs breakpoints - the negative margin
        tracks the card on its own. 2rem inside a card this narrow crowds the
@@ -467,7 +474,7 @@
         </section>
         <section data-category="game" data-keywords="football h2h head to head league soccer matches penalties two players">
           <div class="content">
-            <div class="app-preview-stage"><a class="app-preview-link" href="apps/football-h2h/" aria-label="Open Football H2H League" tabindex="-1"><img class="app-preview" src="images/app-previews/football-h2h.webp" width="720" height="405" loading="lazy" decoding="async" alt="Football H2H League head-to-head stats with total wins level at six each, a current winning streak banner, and the 90 minute and penalty win splits" /></a></div>
+            <div class="app-preview-stage"><a class="app-preview-link" href="apps/football-h2h/" aria-label="Open Football H2H League" tabindex="-1"><img class="app-preview" src="images/app-previews/football-h2h.webp" width="720" height="405" loading="lazy" decoding="async" alt="Football H2H League head-to-head stats with total wins level at six each, a current winning streak banner, and the 90 minute win split" /></a></div>
             <header>
               <a href="apps/football-h2h/" class="icon fa-futbol-o brand-color-primary" aria-label="Open Football H2H League"></a>
               <h3>Football H2H League</h3>
@@ -532,7 +539,7 @@
         </section>
         <section data-category="tv" data-keywords="rising shows tv series imdb ratings trend episodes finder plex kometa">
           <div class="content">
-            <div class="app-preview-stage"><a class="app-preview-link" href="apps/rising-shows/" aria-label="Open Rising Shows" tabindex="-1"><img class="app-preview" src="images/app-previews/rising-shows.webp" width="720" height="405" loading="lazy" decoding="async" alt="Rising Shows result cards for Breaking Bad, Game of Thrones, Stranger Things and The Walking Dead, each with its rating trend sparkline" /></a></div>
+            <div class="app-preview-stage"><a class="app-preview-link" href="apps/rising-shows/" aria-label="Open Rising Shows" tabindex="-1"><img class="app-preview" src="images/app-previews/rising-shows.webp" width="720" height="405" loading="lazy" decoding="async" alt="Rising Shows result cards for Breaking Bad, Game of Thrones and Stranger Things, each with its seasons, genres and rating trend shape tag" /></a></div>
             <header>
               <a href="apps/rising-shows/" class="icon fa-line-chart brand-color-primary" aria-label="Open Rising Shows"></a>
               <h3>Rising Shows</h3>
@@ -545,7 +552,7 @@
         </section>
         <section data-category="travel" data-keywords="trip planner travel itinerary flights hotels map costs visa weather">
           <div class="content">
-            <div class="app-preview-stage"><a class="app-preview-link" href="apps/trip-planner/" aria-label="Open Trip Planner" tabindex="-1"><img class="app-preview" src="images/app-previews/trip-planner.webp" width="720" height="405" loading="lazy" decoding="async" alt="Trip Planner itinerary timeline of a Croatia trip, each flight, ferry and hotel row showing its dates, a booked status pill and its cost" /></a></div>
+            <div class="app-preview-stage"><a class="app-preview-link" href="apps/trip-planner/" aria-label="Open Trip Planner" tabindex="-1"><img class="app-preview" src="images/app-previews/trip-planner.webp" width="720" height="405" loading="lazy" decoding="async" alt="Trip Planner itinerary rows for a Croatia trip: a Vienna to Split flight and a four night hotel stay, each with its dates, a booked status pill and its cost" /></a></div>
             <header>
               <a href="apps/trip-planner/" class="icon fa-map brand-color-primary" aria-label="Open Trip Planner"></a>
               <h3>Trip Planner</h3>
