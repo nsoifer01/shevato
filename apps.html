@@ -388,14 +388,19 @@
        and zoom clears those because its waste is at the SIDES - the one place
        zoom is safe, since it scales both axes at once. */
     .highlights .app-preview[src$="arena.webp"] {
-      /* Measured off the source, not guessed. The capture is 720x450 with the
-         app's own dark page margin down BOTH edges (40px each), the question
-         banner at y 18-126 and the globe below it. Zooming 1.125 crops exactly
-         those two margins (720 / 640), and anchoring near the top keeps the
-         banner - the one element that says what the app is - in frame, with
-         the globe running off the bottom edge as it does in the app. */
-      --preview-zoom: 1.13;
-      --preview-focus: 50% 12%;
+      /* Measured off the source, not guessed. The capture is 720x450: dark
+         page margin down both edges, the question banner at y 18-126, the
+         countdown ring and globe below it from y 155.
+
+         1.28 is the tightest zoom the banner survives. At this zoom 562px of
+         the 720 are shown, so 158px is cropped horizontally; pushing the
+         window to 34% puts 54px of that on the left, and the question text
+         starts at x 68 - any further and it shears the "W" off "WHERE". The
+         vertical anchor lands the window at y 19, just above the banner, so
+         the frame is banner then countdown then globe with the globe taking
+         the larger half and the dark margins gone. */
+      --preview-zoom: 1.28;
+      --preview-focus: 34% 14%;
     }
     /* Only the stage's OWN padding needs breakpoints - the negative margin
        tracks the card on its own. 2rem inside a card this narrow crowds the
@@ -500,7 +505,7 @@
         </section>
         <section data-category="fitness" data-keywords="gym tracker workouts fitness strength programs exercises pwa offline">
           <div class="content">
-            <div class="app-preview-stage"><a class="app-preview-link" href="apps/gym-tracker/" aria-label="Open Gym Tracker" tabindex="-1"><img class="app-preview" src="images/app-previews/gym-tracker.webp" width="720" height="405" loading="lazy" decoding="async" alt="Gym Tracker insights showing a volume by muscle group bar chart led by chest and back, above a year long workout heatmap" /></a></div>
+            <div class="app-preview-stage"><a class="app-preview-link" href="apps/gym-tracker/" aria-label="Open Gym Tracker" tabindex="-1"><img class="app-preview" src="images/app-previews/gym-tracker.webp" width="720" height="405" loading="lazy" decoding="async" alt="Gym Tracker weekly dashboard: this week's workouts, volume, time and streak tiles above the recent workouts list, led by a Push Day of 6,020kg over 3 exercises" /></a></div>
             <header>
               <a href="apps/gym-tracker/" class="icon fa-heartbeat brand-color-primary" aria-label="Open Gym Tracker"></a>
               <h3>Gym Tracker</h3>
@@ -513,7 +518,7 @@
         </section>
         <section data-category="game" data-keywords="maptap rivals geography daily puzzle scores streaks friends">
           <div class="content">
-            <div class="app-preview-stage"><a class="app-preview-link" href="apps/maptap-rivals/" aria-label="Open MapTap Rivals" tabindex="-1"><img class="app-preview" src="images/app-previews/maptap-rivals.webp" width="720" height="405" loading="lazy" decoding="async" alt="MapTap Rivals confusion matrix, a colour coded grid of head-to-head win-loss records and win rates between every player" /></a></div>
+            <div class="app-preview-stage"><a class="app-preview-link" href="apps/maptap-rivals/" aria-label="Open MapTap Rivals" tabindex="-1"><img class="app-preview" src="images/app-previews/maptap-rivals.webp" width="720" height="405" loading="lazy" decoding="async" alt="MapTap Rivals rivalry cards for Dan and Marcus, each with its win, loss and tie counts, recent form strip and current streak badge" /></a></div>
             <header>
               <a href="apps/maptap-rivals/" class="icon fa-crosshairs brand-color-primary" aria-label="Open MapTap Rivals"></a>
               <h3>MapTap Rivals</h3>
@@ -526,7 +531,7 @@
         </section>
         <section data-category="game" data-keywords="mario kart 8 deluxe mk8 mk8d world races tracker players standings achievements">
           <div class="content">
-            <div class="app-preview-stage"><a class="app-preview-link" href="apps/mario-kart/" aria-label="Open Mario Kart Tracker" tabindex="-1"><img class="app-preview" src="images/app-previews/mario-kart.webp" width="720" height="405" loading="lazy" decoding="async" alt="Mario Kart Tracker stats comparing three players on average finish position, first place finishes, podium rate and best podium streak" /></a></div>
+            <div class="app-preview-stage"><a class="app-preview-link" href="apps/mario-kart/" aria-label="Open Mario Kart Tracker" tabindex="-1"><img class="app-preview" src="images/app-previews/mario-kart.webp" width="720" height="405" loading="lazy" decoding="async" alt="Mario Kart Tracker performance trends chart plotting each of three players' finishing position across fourteen races" /></a></div>
             <header>
               <a href="apps/mario-kart/" class="icon fa-gamepad brand-color-primary" aria-label="Open Mario Kart Tracker"></a>
               <h3>Mario Kart Tracker</h3>
@@ -552,7 +557,7 @@
         </section>
         <section data-category="travel" data-keywords="trip planner travel itinerary flights hotels map costs visa weather">
           <div class="content">
-            <div class="app-preview-stage"><a class="app-preview-link" href="apps/trip-planner/" aria-label="Open Trip Planner" tabindex="-1"><img class="app-preview" src="images/app-previews/trip-planner.webp" width="720" height="405" loading="lazy" decoding="async" alt="Trip Planner itinerary rows for a Croatia trip: a Vienna to Split flight and a four night hotel stay, each with its dates, a booked status pill and its cost" /></a></div>
+            <div class="app-preview-stage"><a class="app-preview-link" href="apps/trip-planner/" aria-label="Open Trip Planner" tabindex="-1"><img class="app-preview" src="images/app-previews/trip-planner.webp" width="720" height="405" loading="lazy" decoding="async" alt="Trip Planner itinerary for a Croatia trip: a Vienna to Split flight, a four night hotel in Split, the catamaran to Hvar and a five night hotel there, each booked and priced" /></a></div>
             <header>
               <a href="apps/trip-planner/" class="icon fa-map brand-color-primary" aria-label="Open Trip Planner"></a>
               <h3>Trip Planner</h3>

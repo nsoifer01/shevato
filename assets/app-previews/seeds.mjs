@@ -321,7 +321,7 @@ export const SEEDS = {
       "gymTrackerSettings": {
           "weightUnit": "kg",
           "theme": "dark",
-          "firstDayOfWeek": 1,
+          "firstDayOfWeek": 0,
           "barWeight": 20,
           "timeFormat": "24"
       },
@@ -405,9 +405,9 @@ export const SEEDS = {
               "id": 7144,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2025-10-09",
-              "startTime": "2025-10-09T18:00:00.000Z",
-              "endTime": "2025-10-09T19:07:00.000Z",
+              "date": "2025-10-10",
+              "startTime": "2025-10-10T18:00:00.000Z",
+              "endTime": "2025-10-10T19:07:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -456,9 +456,9 @@ export const SEEDS = {
               "id": 7143,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2025-10-11",
-              "startTime": "2025-10-11T18:00:00.000Z",
-              "endTime": "2025-10-11T19:06:00.000Z",
+              "date": "2025-10-12",
+              "startTime": "2025-10-12T18:00:00.000Z",
+              "endTime": "2025-10-12T19:06:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -598,9 +598,9 @@ export const SEEDS = {
               "id": 7141,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2025-10-16",
-              "startTime": "2025-10-16T18:00:00.000Z",
-              "endTime": "2025-10-16T19:07:00.000Z",
+              "date": "2025-10-17",
+              "startTime": "2025-10-17T18:00:00.000Z",
+              "endTime": "2025-10-17T19:07:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -649,9 +649,9 @@ export const SEEDS = {
               "id": 7140,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2025-10-18",
-              "startTime": "2025-10-18T18:00:00.000Z",
-              "endTime": "2025-10-18T19:02:00.000Z",
+              "date": "2025-10-19",
+              "startTime": "2025-10-19T18:00:00.000Z",
+              "endTime": "2025-10-19T19:02:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -791,9 +791,9 @@ export const SEEDS = {
               "id": 7138,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2025-10-23",
-              "startTime": "2025-10-23T18:00:00.000Z",
-              "endTime": "2025-10-23T19:05:00.000Z",
+              "date": "2025-10-24",
+              "startTime": "2025-10-24T18:00:00.000Z",
+              "endTime": "2025-10-24T19:05:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -842,9 +842,9 @@ export const SEEDS = {
               "id": 7137,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2025-10-25",
-              "startTime": "2025-10-25T18:00:00.000Z",
-              "endTime": "2025-10-25T18:51:00.000Z",
+              "date": "2025-10-26",
+              "startTime": "2025-10-26T18:00:00.000Z",
+              "endTime": "2025-10-26T18:51:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -984,9 +984,9 @@ export const SEEDS = {
               "id": 7135,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2025-10-30",
-              "startTime": "2025-10-30T18:00:00.000Z",
-              "endTime": "2025-10-30T18:52:00.000Z",
+              "date": "2025-10-31",
+              "startTime": "2025-10-31T18:00:00.000Z",
+              "endTime": "2025-10-31T18:52:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -1035,9 +1035,9 @@ export const SEEDS = {
               "id": 7134,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2025-11-01",
-              "startTime": "2025-11-01T18:00:00.000Z",
-              "endTime": "2025-11-01T18:57:00.000Z",
+              "date": "2025-11-02",
+              "startTime": "2025-11-02T18:00:00.000Z",
+              "endTime": "2025-11-02T18:57:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -1177,9 +1177,9 @@ export const SEEDS = {
               "id": 7132,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2025-11-06",
-              "startTime": "2025-11-06T18:00:00.000Z",
-              "endTime": "2025-11-06T19:04:00.000Z",
+              "date": "2025-11-07",
+              "startTime": "2025-11-07T18:00:00.000Z",
+              "endTime": "2025-11-07T19:04:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -1228,9 +1228,9 @@ export const SEEDS = {
               "id": 7131,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2025-11-08",
-              "startTime": "2025-11-08T18:00:00.000Z",
-              "endTime": "2025-11-08T19:07:00.000Z",
+              "date": "2025-11-09",
+              "startTime": "2025-11-09T18:00:00.000Z",
+              "endTime": "2025-11-09T19:07:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -1370,9 +1370,9 @@ export const SEEDS = {
               "id": 7129,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2025-11-13",
-              "startTime": "2025-11-13T18:00:00.000Z",
-              "endTime": "2025-11-13T19:06:00.000Z",
+              "date": "2025-11-14",
+              "startTime": "2025-11-14T18:00:00.000Z",
+              "endTime": "2025-11-14T19:06:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -1421,9 +1421,9 @@ export const SEEDS = {
               "id": 7128,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2025-11-15",
-              "startTime": "2025-11-15T18:00:00.000Z",
-              "endTime": "2025-11-15T18:52:00.000Z",
+              "date": "2025-11-16",
+              "startTime": "2025-11-16T18:00:00.000Z",
+              "endTime": "2025-11-16T18:52:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -1563,9 +1563,9 @@ export const SEEDS = {
               "id": 7126,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2025-11-20",
-              "startTime": "2025-11-20T18:00:00.000Z",
-              "endTime": "2025-11-20T19:09:00.000Z",
+              "date": "2025-11-21",
+              "startTime": "2025-11-21T18:00:00.000Z",
+              "endTime": "2025-11-21T19:09:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -1614,9 +1614,9 @@ export const SEEDS = {
               "id": 7125,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2025-11-22",
-              "startTime": "2025-11-22T18:00:00.000Z",
-              "endTime": "2025-11-22T19:08:00.000Z",
+              "date": "2025-11-23",
+              "startTime": "2025-11-23T18:00:00.000Z",
+              "endTime": "2025-11-23T19:08:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -1756,9 +1756,9 @@ export const SEEDS = {
               "id": 7123,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2025-11-27",
-              "startTime": "2025-11-27T18:00:00.000Z",
-              "endTime": "2025-11-27T19:09:00.000Z",
+              "date": "2025-11-28",
+              "startTime": "2025-11-28T18:00:00.000Z",
+              "endTime": "2025-11-28T19:09:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -1807,9 +1807,9 @@ export const SEEDS = {
               "id": 7122,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2025-11-29",
-              "startTime": "2025-11-29T18:00:00.000Z",
-              "endTime": "2025-11-29T18:50:00.000Z",
+              "date": "2025-11-30",
+              "startTime": "2025-11-30T18:00:00.000Z",
+              "endTime": "2025-11-30T18:50:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -1949,9 +1949,9 @@ export const SEEDS = {
               "id": 7120,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2025-12-04",
-              "startTime": "2025-12-04T18:00:00.000Z",
-              "endTime": "2025-12-04T19:05:00.000Z",
+              "date": "2025-12-05",
+              "startTime": "2025-12-05T18:00:00.000Z",
+              "endTime": "2025-12-05T19:05:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -2000,9 +2000,9 @@ export const SEEDS = {
               "id": 7119,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2025-12-06",
-              "startTime": "2025-12-06T18:00:00.000Z",
-              "endTime": "2025-12-06T19:10:00.000Z",
+              "date": "2025-12-07",
+              "startTime": "2025-12-07T18:00:00.000Z",
+              "endTime": "2025-12-07T19:10:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -2142,9 +2142,9 @@ export const SEEDS = {
               "id": 7117,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2025-12-11",
-              "startTime": "2025-12-11T18:00:00.000Z",
-              "endTime": "2025-12-11T18:52:00.000Z",
+              "date": "2025-12-12",
+              "startTime": "2025-12-12T18:00:00.000Z",
+              "endTime": "2025-12-12T18:52:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -2193,9 +2193,9 @@ export const SEEDS = {
               "id": 7116,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2025-12-13",
-              "startTime": "2025-12-13T18:00:00.000Z",
-              "endTime": "2025-12-13T18:55:00.000Z",
+              "date": "2025-12-14",
+              "startTime": "2025-12-14T18:00:00.000Z",
+              "endTime": "2025-12-14T18:55:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -2335,9 +2335,9 @@ export const SEEDS = {
               "id": 7114,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2025-12-18",
-              "startTime": "2025-12-18T18:00:00.000Z",
-              "endTime": "2025-12-18T19:00:00.000Z",
+              "date": "2025-12-19",
+              "startTime": "2025-12-19T18:00:00.000Z",
+              "endTime": "2025-12-19T19:00:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -2386,9 +2386,9 @@ export const SEEDS = {
               "id": 7113,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2025-12-20",
-              "startTime": "2025-12-20T18:00:00.000Z",
-              "endTime": "2025-12-20T19:12:00.000Z",
+              "date": "2025-12-21",
+              "startTime": "2025-12-21T18:00:00.000Z",
+              "endTime": "2025-12-21T19:12:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -2528,9 +2528,9 @@ export const SEEDS = {
               "id": 7111,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2025-12-25",
-              "startTime": "2025-12-25T18:00:00.000Z",
-              "endTime": "2025-12-25T18:49:00.000Z",
+              "date": "2025-12-26",
+              "startTime": "2025-12-26T18:00:00.000Z",
+              "endTime": "2025-12-26T18:49:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -2579,9 +2579,9 @@ export const SEEDS = {
               "id": 7110,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2025-12-27",
-              "startTime": "2025-12-27T18:00:00.000Z",
-              "endTime": "2025-12-27T19:12:00.000Z",
+              "date": "2025-12-28",
+              "startTime": "2025-12-28T18:00:00.000Z",
+              "endTime": "2025-12-28T19:12:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -2721,9 +2721,9 @@ export const SEEDS = {
               "id": 7108,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-01-01",
-              "startTime": "2026-01-01T18:00:00.000Z",
-              "endTime": "2026-01-01T19:01:00.000Z",
+              "date": "2026-01-02",
+              "startTime": "2026-01-02T18:00:00.000Z",
+              "endTime": "2026-01-02T19:01:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -2772,9 +2772,9 @@ export const SEEDS = {
               "id": 7107,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-01-03",
-              "startTime": "2026-01-03T18:00:00.000Z",
-              "endTime": "2026-01-03T19:02:00.000Z",
+              "date": "2026-01-04",
+              "startTime": "2026-01-04T18:00:00.000Z",
+              "endTime": "2026-01-04T19:02:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -2914,9 +2914,9 @@ export const SEEDS = {
               "id": 7105,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-01-08",
-              "startTime": "2026-01-08T18:00:00.000Z",
-              "endTime": "2026-01-08T19:12:00.000Z",
+              "date": "2026-01-09",
+              "startTime": "2026-01-09T18:00:00.000Z",
+              "endTime": "2026-01-09T19:12:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -2965,9 +2965,9 @@ export const SEEDS = {
               "id": 7104,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-01-10",
-              "startTime": "2026-01-10T18:00:00.000Z",
-              "endTime": "2026-01-10T18:48:00.000Z",
+              "date": "2026-01-11",
+              "startTime": "2026-01-11T18:00:00.000Z",
+              "endTime": "2026-01-11T18:48:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -3107,9 +3107,9 @@ export const SEEDS = {
               "id": 7102,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-01-15",
-              "startTime": "2026-01-15T18:00:00.000Z",
-              "endTime": "2026-01-15T19:04:00.000Z",
+              "date": "2026-01-16",
+              "startTime": "2026-01-16T18:00:00.000Z",
+              "endTime": "2026-01-16T19:04:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -3158,9 +3158,9 @@ export const SEEDS = {
               "id": 7101,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-01-17",
-              "startTime": "2026-01-17T18:00:00.000Z",
-              "endTime": "2026-01-17T18:53:00.000Z",
+              "date": "2026-01-18",
+              "startTime": "2026-01-18T18:00:00.000Z",
+              "endTime": "2026-01-18T18:53:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -3300,9 +3300,9 @@ export const SEEDS = {
               "id": 7099,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-01-22",
-              "startTime": "2026-01-22T18:00:00.000Z",
-              "endTime": "2026-01-22T18:55:00.000Z",
+              "date": "2026-01-23",
+              "startTime": "2026-01-23T18:00:00.000Z",
+              "endTime": "2026-01-23T18:55:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -3351,9 +3351,9 @@ export const SEEDS = {
               "id": 7098,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-01-24",
-              "startTime": "2026-01-24T18:00:00.000Z",
-              "endTime": "2026-01-24T19:07:00.000Z",
+              "date": "2026-01-25",
+              "startTime": "2026-01-25T18:00:00.000Z",
+              "endTime": "2026-01-25T19:07:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -3493,9 +3493,9 @@ export const SEEDS = {
               "id": 7096,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-01-29",
-              "startTime": "2026-01-29T18:00:00.000Z",
-              "endTime": "2026-01-29T19:12:00.000Z",
+              "date": "2026-01-30",
+              "startTime": "2026-01-30T18:00:00.000Z",
+              "endTime": "2026-01-30T19:12:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -3544,9 +3544,9 @@ export const SEEDS = {
               "id": 7095,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-01-31",
-              "startTime": "2026-01-31T18:00:00.000Z",
-              "endTime": "2026-01-31T18:50:00.000Z",
+              "date": "2026-02-01",
+              "startTime": "2026-02-01T18:00:00.000Z",
+              "endTime": "2026-02-01T18:50:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -3686,9 +3686,9 @@ export const SEEDS = {
               "id": 7093,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-02-05",
-              "startTime": "2026-02-05T18:00:00.000Z",
-              "endTime": "2026-02-05T19:11:00.000Z",
+              "date": "2026-02-06",
+              "startTime": "2026-02-06T18:00:00.000Z",
+              "endTime": "2026-02-06T19:11:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -3737,9 +3737,9 @@ export const SEEDS = {
               "id": 7092,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-02-07",
-              "startTime": "2026-02-07T18:00:00.000Z",
-              "endTime": "2026-02-07T18:50:00.000Z",
+              "date": "2026-02-08",
+              "startTime": "2026-02-08T18:00:00.000Z",
+              "endTime": "2026-02-08T18:50:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -3879,9 +3879,9 @@ export const SEEDS = {
               "id": 7090,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-02-12",
-              "startTime": "2026-02-12T18:00:00.000Z",
-              "endTime": "2026-02-12T19:07:00.000Z",
+              "date": "2026-02-13",
+              "startTime": "2026-02-13T18:00:00.000Z",
+              "endTime": "2026-02-13T19:07:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -3930,9 +3930,9 @@ export const SEEDS = {
               "id": 7089,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-02-14",
-              "startTime": "2026-02-14T18:00:00.000Z",
-              "endTime": "2026-02-14T19:08:00.000Z",
+              "date": "2026-02-15",
+              "startTime": "2026-02-15T18:00:00.000Z",
+              "endTime": "2026-02-15T19:08:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -4072,9 +4072,9 @@ export const SEEDS = {
               "id": 7087,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-02-19",
-              "startTime": "2026-02-19T18:00:00.000Z",
-              "endTime": "2026-02-19T18:51:00.000Z",
+              "date": "2026-02-20",
+              "startTime": "2026-02-20T18:00:00.000Z",
+              "endTime": "2026-02-20T18:51:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -4123,9 +4123,9 @@ export const SEEDS = {
               "id": 7086,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-02-21",
-              "startTime": "2026-02-21T18:00:00.000Z",
-              "endTime": "2026-02-21T18:59:00.000Z",
+              "date": "2026-02-22",
+              "startTime": "2026-02-22T18:00:00.000Z",
+              "endTime": "2026-02-22T18:59:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -4265,9 +4265,9 @@ export const SEEDS = {
               "id": 7084,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-02-26",
-              "startTime": "2026-02-26T18:00:00.000Z",
-              "endTime": "2026-02-26T18:49:00.000Z",
+              "date": "2026-02-27",
+              "startTime": "2026-02-27T18:00:00.000Z",
+              "endTime": "2026-02-27T18:49:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -4316,9 +4316,9 @@ export const SEEDS = {
               "id": 7083,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-02-28",
-              "startTime": "2026-02-28T18:00:00.000Z",
-              "endTime": "2026-02-28T19:04:00.000Z",
+              "date": "2026-03-01",
+              "startTime": "2026-03-01T18:00:00.000Z",
+              "endTime": "2026-03-01T19:04:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -4458,9 +4458,9 @@ export const SEEDS = {
               "id": 7081,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-03-05",
-              "startTime": "2026-03-05T18:00:00.000Z",
-              "endTime": "2026-03-05T18:48:00.000Z",
+              "date": "2026-03-06",
+              "startTime": "2026-03-06T18:00:00.000Z",
+              "endTime": "2026-03-06T18:48:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -4509,9 +4509,9 @@ export const SEEDS = {
               "id": 7080,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-03-07",
-              "startTime": "2026-03-07T18:00:00.000Z",
-              "endTime": "2026-03-07T18:57:00.000Z",
+              "date": "2026-03-08",
+              "startTime": "2026-03-08T18:00:00.000Z",
+              "endTime": "2026-03-08T18:57:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -4651,9 +4651,9 @@ export const SEEDS = {
               "id": 7078,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-03-12",
-              "startTime": "2026-03-12T18:00:00.000Z",
-              "endTime": "2026-03-12T19:00:00.000Z",
+              "date": "2026-03-13",
+              "startTime": "2026-03-13T18:00:00.000Z",
+              "endTime": "2026-03-13T19:00:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -4702,9 +4702,9 @@ export const SEEDS = {
               "id": 7077,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-03-14",
-              "startTime": "2026-03-14T18:00:00.000Z",
-              "endTime": "2026-03-14T19:06:00.000Z",
+              "date": "2026-03-15",
+              "startTime": "2026-03-15T18:00:00.000Z",
+              "endTime": "2026-03-15T19:06:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -4844,9 +4844,9 @@ export const SEEDS = {
               "id": 7075,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-03-19",
-              "startTime": "2026-03-19T18:00:00.000Z",
-              "endTime": "2026-03-19T18:51:00.000Z",
+              "date": "2026-03-20",
+              "startTime": "2026-03-20T18:00:00.000Z",
+              "endTime": "2026-03-20T18:51:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -4895,9 +4895,9 @@ export const SEEDS = {
               "id": 7074,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-03-21",
-              "startTime": "2026-03-21T18:00:00.000Z",
-              "endTime": "2026-03-21T19:10:00.000Z",
+              "date": "2026-03-22",
+              "startTime": "2026-03-22T18:00:00.000Z",
+              "endTime": "2026-03-22T19:10:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -5037,9 +5037,9 @@ export const SEEDS = {
               "id": 7072,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-03-26",
-              "startTime": "2026-03-26T18:00:00.000Z",
-              "endTime": "2026-03-26T18:51:00.000Z",
+              "date": "2026-03-27",
+              "startTime": "2026-03-27T18:00:00.000Z",
+              "endTime": "2026-03-27T18:51:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -5088,9 +5088,9 @@ export const SEEDS = {
               "id": 7071,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-03-28",
-              "startTime": "2026-03-28T18:00:00.000Z",
-              "endTime": "2026-03-28T19:00:00.000Z",
+              "date": "2026-03-29",
+              "startTime": "2026-03-29T18:00:00.000Z",
+              "endTime": "2026-03-29T19:00:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -5230,9 +5230,9 @@ export const SEEDS = {
               "id": 7069,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-04-02",
-              "startTime": "2026-04-02T18:00:00.000Z",
-              "endTime": "2026-04-02T18:58:00.000Z",
+              "date": "2026-04-03",
+              "startTime": "2026-04-03T18:00:00.000Z",
+              "endTime": "2026-04-03T18:58:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -5281,9 +5281,9 @@ export const SEEDS = {
               "id": 7068,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-04-04",
-              "startTime": "2026-04-04T18:00:00.000Z",
-              "endTime": "2026-04-04T19:00:00.000Z",
+              "date": "2026-04-05",
+              "startTime": "2026-04-05T18:00:00.000Z",
+              "endTime": "2026-04-05T19:00:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -5423,9 +5423,9 @@ export const SEEDS = {
               "id": 7066,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-04-09",
-              "startTime": "2026-04-09T18:00:00.000Z",
-              "endTime": "2026-04-09T19:12:00.000Z",
+              "date": "2026-04-10",
+              "startTime": "2026-04-10T18:00:00.000Z",
+              "endTime": "2026-04-10T19:12:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -5474,9 +5474,9 @@ export const SEEDS = {
               "id": 7065,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-04-11",
-              "startTime": "2026-04-11T18:00:00.000Z",
-              "endTime": "2026-04-11T19:09:00.000Z",
+              "date": "2026-04-12",
+              "startTime": "2026-04-12T18:00:00.000Z",
+              "endTime": "2026-04-12T19:09:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -5616,9 +5616,9 @@ export const SEEDS = {
               "id": 7063,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-04-16",
-              "startTime": "2026-04-16T18:00:00.000Z",
-              "endTime": "2026-04-16T19:04:00.000Z",
+              "date": "2026-04-17",
+              "startTime": "2026-04-17T18:00:00.000Z",
+              "endTime": "2026-04-17T19:04:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -5667,9 +5667,9 @@ export const SEEDS = {
               "id": 7062,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-04-18",
-              "startTime": "2026-04-18T18:00:00.000Z",
-              "endTime": "2026-04-18T18:54:00.000Z",
+              "date": "2026-04-19",
+              "startTime": "2026-04-19T18:00:00.000Z",
+              "endTime": "2026-04-19T18:54:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -5809,9 +5809,9 @@ export const SEEDS = {
               "id": 7060,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-04-23",
-              "startTime": "2026-04-23T18:00:00.000Z",
-              "endTime": "2026-04-23T18:58:00.000Z",
+              "date": "2026-04-24",
+              "startTime": "2026-04-24T18:00:00.000Z",
+              "endTime": "2026-04-24T18:58:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -5860,9 +5860,9 @@ export const SEEDS = {
               "id": 7059,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-04-25",
-              "startTime": "2026-04-25T18:00:00.000Z",
-              "endTime": "2026-04-25T19:06:00.000Z",
+              "date": "2026-04-26",
+              "startTime": "2026-04-26T18:00:00.000Z",
+              "endTime": "2026-04-26T19:06:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -6002,9 +6002,9 @@ export const SEEDS = {
               "id": 7057,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-04-30",
-              "startTime": "2026-04-30T18:00:00.000Z",
-              "endTime": "2026-04-30T19:04:00.000Z",
+              "date": "2026-05-01",
+              "startTime": "2026-05-01T18:00:00.000Z",
+              "endTime": "2026-05-01T19:04:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -6053,9 +6053,9 @@ export const SEEDS = {
               "id": 7056,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-05-02",
-              "startTime": "2026-05-02T18:00:00.000Z",
-              "endTime": "2026-05-02T18:55:00.000Z",
+              "date": "2026-05-03",
+              "startTime": "2026-05-03T18:00:00.000Z",
+              "endTime": "2026-05-03T18:55:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -6195,9 +6195,9 @@ export const SEEDS = {
               "id": 7054,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-05-07",
-              "startTime": "2026-05-07T18:00:00.000Z",
-              "endTime": "2026-05-07T19:03:00.000Z",
+              "date": "2026-05-08",
+              "startTime": "2026-05-08T18:00:00.000Z",
+              "endTime": "2026-05-08T19:03:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -6246,9 +6246,9 @@ export const SEEDS = {
               "id": 7053,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-05-09",
-              "startTime": "2026-05-09T18:00:00.000Z",
-              "endTime": "2026-05-09T18:56:00.000Z",
+              "date": "2026-05-10",
+              "startTime": "2026-05-10T18:00:00.000Z",
+              "endTime": "2026-05-10T18:56:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -6388,9 +6388,9 @@ export const SEEDS = {
               "id": 7051,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-05-14",
-              "startTime": "2026-05-14T18:00:00.000Z",
-              "endTime": "2026-05-14T19:04:00.000Z",
+              "date": "2026-05-15",
+              "startTime": "2026-05-15T18:00:00.000Z",
+              "endTime": "2026-05-15T19:04:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -6439,9 +6439,9 @@ export const SEEDS = {
               "id": 7050,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-05-16",
-              "startTime": "2026-05-16T18:00:00.000Z",
-              "endTime": "2026-05-16T18:56:00.000Z",
+              "date": "2026-05-17",
+              "startTime": "2026-05-17T18:00:00.000Z",
+              "endTime": "2026-05-17T18:56:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -6581,9 +6581,9 @@ export const SEEDS = {
               "id": 7048,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-05-21",
-              "startTime": "2026-05-21T18:00:00.000Z",
-              "endTime": "2026-05-21T19:12:00.000Z",
+              "date": "2026-05-22",
+              "startTime": "2026-05-22T18:00:00.000Z",
+              "endTime": "2026-05-22T19:12:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -6632,9 +6632,9 @@ export const SEEDS = {
               "id": 7047,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-05-23",
-              "startTime": "2026-05-23T18:00:00.000Z",
-              "endTime": "2026-05-23T18:52:00.000Z",
+              "date": "2026-05-24",
+              "startTime": "2026-05-24T18:00:00.000Z",
+              "endTime": "2026-05-24T18:52:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -6774,9 +6774,9 @@ export const SEEDS = {
               "id": 7045,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-05-28",
-              "startTime": "2026-05-28T18:00:00.000Z",
-              "endTime": "2026-05-28T18:59:00.000Z",
+              "date": "2026-05-29",
+              "startTime": "2026-05-29T18:00:00.000Z",
+              "endTime": "2026-05-29T18:59:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -6825,9 +6825,9 @@ export const SEEDS = {
               "id": 7044,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-05-30",
-              "startTime": "2026-05-30T18:00:00.000Z",
-              "endTime": "2026-05-30T19:00:00.000Z",
+              "date": "2026-05-31",
+              "startTime": "2026-05-31T18:00:00.000Z",
+              "endTime": "2026-05-31T19:00:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -6967,9 +6967,9 @@ export const SEEDS = {
               "id": 7042,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-06-04",
-              "startTime": "2026-06-04T18:00:00.000Z",
-              "endTime": "2026-06-04T18:50:00.000Z",
+              "date": "2026-06-05",
+              "startTime": "2026-06-05T18:00:00.000Z",
+              "endTime": "2026-06-05T18:50:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -7018,9 +7018,9 @@ export const SEEDS = {
               "id": 7041,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-06-06",
-              "startTime": "2026-06-06T18:00:00.000Z",
-              "endTime": "2026-06-06T19:10:00.000Z",
+              "date": "2026-06-07",
+              "startTime": "2026-06-07T18:00:00.000Z",
+              "endTime": "2026-06-07T19:10:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -7160,9 +7160,9 @@ export const SEEDS = {
               "id": 7039,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-06-11",
-              "startTime": "2026-06-11T18:00:00.000Z",
-              "endTime": "2026-06-11T19:02:00.000Z",
+              "date": "2026-06-12",
+              "startTime": "2026-06-12T18:00:00.000Z",
+              "endTime": "2026-06-12T19:02:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -7211,9 +7211,9 @@ export const SEEDS = {
               "id": 7038,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-06-13",
-              "startTime": "2026-06-13T18:00:00.000Z",
-              "endTime": "2026-06-13T18:54:00.000Z",
+              "date": "2026-06-14",
+              "startTime": "2026-06-14T18:00:00.000Z",
+              "endTime": "2026-06-14T18:54:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -7353,9 +7353,9 @@ export const SEEDS = {
               "id": 7036,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-06-18",
-              "startTime": "2026-06-18T18:00:00.000Z",
-              "endTime": "2026-06-18T19:03:00.000Z",
+              "date": "2026-06-19",
+              "startTime": "2026-06-19T18:00:00.000Z",
+              "endTime": "2026-06-19T19:03:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -7404,9 +7404,9 @@ export const SEEDS = {
               "id": 7035,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-06-20",
-              "startTime": "2026-06-20T18:00:00.000Z",
-              "endTime": "2026-06-20T19:02:00.000Z",
+              "date": "2026-06-21",
+              "startTime": "2026-06-21T18:00:00.000Z",
+              "endTime": "2026-06-21T19:02:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -7546,9 +7546,9 @@ export const SEEDS = {
               "id": 7033,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-06-25",
-              "startTime": "2026-06-25T18:00:00.000Z",
-              "endTime": "2026-06-25T19:09:00.000Z",
+              "date": "2026-06-26",
+              "startTime": "2026-06-26T18:00:00.000Z",
+              "endTime": "2026-06-26T19:09:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -7597,9 +7597,9 @@ export const SEEDS = {
               "id": 7032,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-06-27",
-              "startTime": "2026-06-27T18:00:00.000Z",
-              "endTime": "2026-06-27T18:53:00.000Z",
+              "date": "2026-06-28",
+              "startTime": "2026-06-28T18:00:00.000Z",
+              "endTime": "2026-06-28T18:53:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -7739,9 +7739,9 @@ export const SEEDS = {
               "id": 7030,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-07-02",
-              "startTime": "2026-07-02T18:00:00.000Z",
-              "endTime": "2026-07-02T18:48:00.000Z",
+              "date": "2026-07-03",
+              "startTime": "2026-07-03T18:00:00.000Z",
+              "endTime": "2026-07-03T18:48:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -7790,9 +7790,9 @@ export const SEEDS = {
               "id": 7029,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-07-04",
-              "startTime": "2026-07-04T18:00:00.000Z",
-              "endTime": "2026-07-04T19:02:00.000Z",
+              "date": "2026-07-05",
+              "startTime": "2026-07-05T18:00:00.000Z",
+              "endTime": "2026-07-05T19:02:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -7932,9 +7932,9 @@ export const SEEDS = {
               "id": 7027,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-07-09",
-              "startTime": "2026-07-09T18:00:00.000Z",
-              "endTime": "2026-07-09T19:01:00.000Z",
+              "date": "2026-07-10",
+              "startTime": "2026-07-10T18:00:00.000Z",
+              "endTime": "2026-07-10T19:01:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -7983,9 +7983,9 @@ export const SEEDS = {
               "id": 7026,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-07-11",
-              "startTime": "2026-07-11T18:00:00.000Z",
-              "endTime": "2026-07-11T19:11:00.000Z",
+              "date": "2026-07-12",
+              "startTime": "2026-07-12T18:00:00.000Z",
+              "endTime": "2026-07-12T19:11:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -8125,9 +8125,9 @@ export const SEEDS = {
               "id": 7024,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-07-16",
-              "startTime": "2026-07-16T18:00:00.000Z",
-              "endTime": "2026-07-16T18:48:00.000Z",
+              "date": "2026-07-17",
+              "startTime": "2026-07-17T18:00:00.000Z",
+              "endTime": "2026-07-17T18:48:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -8176,9 +8176,9 @@ export const SEEDS = {
               "id": 7023,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-07-18",
-              "startTime": "2026-07-18T18:00:00.000Z",
-              "endTime": "2026-07-18T19:02:00.000Z",
+              "date": "2026-07-19",
+              "startTime": "2026-07-19T18:00:00.000Z",
+              "endTime": "2026-07-19T19:02:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -8318,9 +8318,9 @@ export const SEEDS = {
               "id": 7021,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-07-23",
-              "startTime": "2026-07-23T18:00:00.000Z",
-              "endTime": "2026-07-23T18:56:00.000Z",
+              "date": "2026-07-24",
+              "startTime": "2026-07-24T18:00:00.000Z",
+              "endTime": "2026-07-24T18:56:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -8369,9 +8369,9 @@ export const SEEDS = {
               "id": 7020,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-07-25",
-              "startTime": "2026-07-25T18:00:00.000Z",
-              "endTime": "2026-07-25T18:52:00.000Z",
+              "date": "2026-07-26",
+              "startTime": "2026-07-26T18:00:00.000Z",
+              "endTime": "2026-07-26T18:52:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -8511,9 +8511,9 @@ export const SEEDS = {
               "id": 7018,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-07-30",
-              "startTime": "2026-07-30T18:00:00.000Z",
-              "endTime": "2026-07-30T19:07:00.000Z",
+              "date": "2026-07-31",
+              "startTime": "2026-07-31T18:00:00.000Z",
+              "endTime": "2026-07-31T19:07:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -8562,9 +8562,9 @@ export const SEEDS = {
               "id": 7017,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-08-01",
-              "startTime": "2026-08-01T18:00:00.000Z",
-              "endTime": "2026-08-01T19:11:00.000Z",
+              "date": "2026-08-02",
+              "startTime": "2026-08-02T18:00:00.000Z",
+              "endTime": "2026-08-02T19:11:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -8704,9 +8704,9 @@ export const SEEDS = {
               "id": 7015,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-08-06",
-              "startTime": "2026-08-06T18:00:00.000Z",
-              "endTime": "2026-08-06T19:06:00.000Z",
+              "date": "2026-08-07",
+              "startTime": "2026-08-07T18:00:00.000Z",
+              "endTime": "2026-08-07T19:06:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -8755,9 +8755,9 @@ export const SEEDS = {
               "id": 7014,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-08-08",
-              "startTime": "2026-08-08T18:00:00.000Z",
-              "endTime": "2026-08-08T18:58:00.000Z",
+              "date": "2026-08-09",
+              "startTime": "2026-08-09T18:00:00.000Z",
+              "endTime": "2026-08-09T18:58:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -8897,9 +8897,9 @@ export const SEEDS = {
               "id": 7012,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-08-13",
-              "startTime": "2026-08-13T18:00:00.000Z",
-              "endTime": "2026-08-13T18:54:00.000Z",
+              "date": "2026-08-14",
+              "startTime": "2026-08-14T18:00:00.000Z",
+              "endTime": "2026-08-14T18:54:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -8948,9 +8948,9 @@ export const SEEDS = {
               "id": 7011,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-08-15",
-              "startTime": "2026-08-15T18:00:00.000Z",
-              "endTime": "2026-08-15T19:11:00.000Z",
+              "date": "2026-08-16",
+              "startTime": "2026-08-16T18:00:00.000Z",
+              "endTime": "2026-08-16T19:11:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -9090,9 +9090,9 @@ export const SEEDS = {
               "id": 7009,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-08-20",
-              "startTime": "2026-08-20T18:00:00.000Z",
-              "endTime": "2026-08-20T18:58:00.000Z",
+              "date": "2026-08-21",
+              "startTime": "2026-08-21T18:00:00.000Z",
+              "endTime": "2026-08-21T18:58:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -9141,9 +9141,9 @@ export const SEEDS = {
               "id": 7008,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-08-22",
-              "startTime": "2026-08-22T18:00:00.000Z",
-              "endTime": "2026-08-22T19:10:00.000Z",
+              "date": "2026-08-23",
+              "startTime": "2026-08-23T18:00:00.000Z",
+              "endTime": "2026-08-23T19:10:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -9283,9 +9283,9 @@ export const SEEDS = {
               "id": 7006,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-08-27",
-              "startTime": "2026-08-27T18:00:00.000Z",
-              "endTime": "2026-08-27T19:12:00.000Z",
+              "date": "2026-08-28",
+              "startTime": "2026-08-28T18:00:00.000Z",
+              "endTime": "2026-08-28T19:12:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -9334,9 +9334,9 @@ export const SEEDS = {
               "id": 7005,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-08-29",
-              "startTime": "2026-08-29T18:00:00.000Z",
-              "endTime": "2026-08-29T19:08:00.000Z",
+              "date": "2026-08-30",
+              "startTime": "2026-08-30T18:00:00.000Z",
+              "endTime": "2026-08-30T19:08:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -9476,9 +9476,9 @@ export const SEEDS = {
               "id": 7003,
               "programId": 8001,
               "workoutDayName": "Leg Day",
-              "date": "2026-09-03",
-              "startTime": "2026-09-03T18:00:00.000Z",
-              "endTime": "2026-09-03T19:04:00.000Z",
+              "date": "2026-09-04",
+              "startTime": "2026-09-04T18:00:00.000Z",
+              "endTime": "2026-09-04T19:04:00.000Z",
               "completed": true,
               "exercises": [
                   {
@@ -9527,9 +9527,9 @@ export const SEEDS = {
               "id": 7002,
               "programId": 8001,
               "workoutDayName": "Pull Day",
-              "date": "2026-09-05",
-              "startTime": "2026-09-05T18:00:00.000Z",
-              "endTime": "2026-09-05T19:07:00.000Z",
+              "date": "2026-09-06",
+              "startTime": "2026-09-06T18:00:00.000Z",
+              "endTime": "2026-09-06T19:07:00.000Z",
               "completed": true,
               "exercises": [
                   {

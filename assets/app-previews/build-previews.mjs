@@ -112,13 +112,32 @@ const APPS = [
     // 90-minute wins and penalty wins. It is the whole product in one panel,
     // and it measures 812x462 - within a hair of 16:9 already, so the frame
     // barely has to crop it at all.
-    measure: rectOf('#h2h-stats'),
+    // Deliberately NOT the whole stats panel. The crop runs from the top of
+    // the section to the top of the PENALTY WINS label, which is total wins,
+    // the streak banner and the 90-minute split and nothing else - three
+    // things large enough to read at card size, rather than every statistic
+    // the app keeps shrunk to the point of being decoration.
+    measure: `(() => {
+      const sec = document.querySelector('#h2h-stats');
+      if (!sec) return 'MISSING';
+      const stop = [...sec.querySelectorAll('*')].find((e) => (e.textContent || '').trim().startsWith('PENALTY WINS') && e.children.length === 0);
+      const r = sec.getBoundingClientRect();
+      const bottom = stop ? stop.getBoundingClientRect().top : r.bottom;
+      return JSON.stringify({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(bottom - r.top) });
+    })()`,
+    // The kept region is already about 1.8:1, so its own width is the frame.
+    // Deriving the width from the height instead made the clip wider than the
+    // viewport, and captureBeyondViewport happily filled the overhang with
+    // the page above - the app header and tab bar ended up in the thumbnail.
     clip: (r) => fromTop(bleed(r, 14)),
   },
   {
     slug: 'fpl-planner',
     url: '/apps/fpl-planner/?demo=1',
-    viewport: [820, 1800],
+    // Narrower than the others on purpose: the hero card reflows to the
+    // column width, so at 700 the same recommendation fills roughly 17% more
+    // of the frame than it did at 820. Same screen, tighter crop.
+    viewport: [700, 1800],
     settle: 6000,
     prep: async (s) => {
       // Demo-mode scaffolding that explains how to leave sample mode. Leaving
@@ -138,68 +157,81 @@ const APPS = [
   {
     slug: 'gym-tracker',
     url: '/apps/gym-tracker/',
-    viewport: [900, 1700],
+    // Wide enough that a 16:9 window over the summary card reaches past the
+    // Recent Workouts heading into the workout cards. At 900 the card is only
+    // 576px, so the frame stopped at the heading and its lower half was an
+    // empty dark band.
+    viewport: [1100, 1700],
     settle: 4500,
     seed: 'gym-tracker',
-    prep: async (s) => { await clickText(s, 'Insights', { sel: 'a,button,li', settle: 1800 }); },
-    // Insights, not the Dashboard. The dashboard's "This Week" tiles are the
-    // better-looking panel but they are computed against the real clock, so on
-    // a Monday they can only ever report the one day the week is old, and the
-    // Recent Workouts list underneath is three sparse dark rows. Insights
-    // instead shows volume by muscle group as a bar chart over a full year of
-    // training - big labels, real numbers, and a shape that reads at 290px.
-    measure: `(() => {
-      const h = [...document.querySelectorAll('h1,h2,h3')].find((e) => (e.textContent || '').trim().startsWith('Volume by muscle group'));
-      if (!h) return 'MISSING';
-      const sec = h.closest('section') || h.parentElement;
-      const r = sec.getBoundingClientRect();
-      return JSON.stringify({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) });
-    })()`,
-    clip: fromTop,
+    // The dashboard: the "This Week" tiles over the start of Recent Workouts.
+    // This is the screen that says "workout tracker" at a glance, where the
+    // Insights charts said "analytics report". The clip runs from the top of
+    // the This Week card to the bottom of the first workout card, so the
+    // summary takes the upper half and one recognisable workout the lower.
+    // .week-summary-card is the "This Week" panel itself. Locating it by
+    // heading text and climbing does not work: the first element whose text
+    // starts with "This Week" is the h2 inside the card header, its nearest
+    // wrapper is narrower than the card, and climbing until something is wide
+    // enough overshoots to the page container - which anchored the crop on
+    // "Dashboard / Your Programs" instead.
+    measure: rectOf('.week-summary-card'),
+    // The card's width is the frame, so the summary tiles lead and 16:9
+    // carries the crop down through the Recent Workouts heading into the
+    // first workout cards. The bleed is because the Recent Workouts header
+    // below the card is aligned to a wider container, so a clip at exactly
+    // the card's bounds leaves its text flush against both edges.
+    clip: (r) => fromTop(bleed(r, 14)),
   },
   {
     slug: 'maptap-rivals',
     url: '/apps/maptap-rivals/',
-    viewport: [820, 1900],
-    settle: 4000,
+    // 640 is chosen by geometry, not taste. The rival cards are ~1.5:1 each,
+    // so a row of two is ~3:1 - wider than the frame at any width. The
+    // narrower the viewport, the taller each card and the less vertical
+    // padding the 16:9 window needs: at 860 a two-card row needs ~197px of
+    // filler above it and drags in the collapsed paste bar, at 640 it needs
+    // ~58px, which the "Rivalries" heading fills exactly.
+    viewport: [640, 2200],
+    settle: 4500,
     seed: 'maptap-rivals',
-    prep: async (s) => { await clickText(s, 'Matrix', { settle: 1800 }); },
-    // The confusion matrix: every player against every other, each cell a
-    // record and a win rate, colour-coded. Chosen over the dashboard's rivalry
-    // cards, which are the obvious pick but cannot be framed cleanly - the
-    // card grid is 3.8:1 at desktop width, and at the narrower width where it
-    // wraps to 2 + 1 the only way to reach 16:9 is to drag in the collapsed
-    // "paste daily scores" bar above it, or to slice the third card. The
-    // matrix is one self-contained titled panel that already fills the frame.
+    // The rivalry cards: names, win-loss-tie split, form strip and streak
+    // badge. This is what "tracking rivalries with friends" looks like. The
+    // confusion matrix was tried here and is the wrong subject for a
+    // thumbnail - dense, technical and unreadable at 290px.
     measure: `(() => {
-      const v = document.querySelector('.view-matrix');
-      if (!v) return 'MISSING';
-      // The table, not the whole view: anchoring the view and clipping from
-      // its top sheared the bottom row off the matrix.
-      const t = v.querySelector('table') || v;
-      const r = t.getBoundingClientRect();
-      return JSON.stringify({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) });
+      const g = document.querySelector('#rival-grid');
+      if (!g) return 'MISSING';
+      const cards = [...g.querySelectorAll('.rival-card')];
+      if (!cards.length) return 'MISSING';
+      const top = cards[0].getBoundingClientRect().top;
+      const rowOne = cards.filter((c) => Math.abs(c.getBoundingClientRect().top - top) < 8);
+      const bottom = Math.max(...rowOne.map((c) => c.getBoundingClientRect().bottom));
+      const r = g.getBoundingClientRect();
+      return JSON.stringify({ x: Math.round(r.x), y: Math.round(top), w: Math.round(r.width), h: Math.round(bottom - top) });
     })()`,
-    clip: (r) => centred(bleed(r, 12)),
+    // Bottom-aligned to the card row so no card is ever sliced; the extra
+    // height is taken from above, where the section heading sits.
+    clip: (r) => {
+      const height = Math.round(r.w / AR);
+      return { x: r.x, y: r.y + r.h - height, width: r.w, height };
+    },
   },
   {
     slug: 'mario-kart',
     url: '/apps/mario-kart/',
-    viewport: [820, 2000],
+    // Wide enough that a 16:9 window over #trends still reaches the bottom of
+    // the chart rather than clipping its x-axis.
+    viewport: [1200, 2000],
     settle: 4500,
     seed: 'mario-kart',
-    prep: async (s) => { await clickText(s, 'Stats', { sel: 'button,a,.toggle-btn', settle: 1800 }); },
-    // The Stats tab: four titled panels, each with one big number per player -
-    // average finish, first places, podium rate, best streak. Two other
-    // screens were tried and rejected. Trends is the app's showiest, but it
-    // plots 14 races x 3 players as overlapping lines that collapse into
-    // spaghetti at 290px. Race History is honest but renders as a field of
-    // small colour dots at thumbnail size. These panels are the only screen
-    // whose largest elements are still legible once the card shrinks.
-    // .stats-container is the grid of all four panels. Note the panel titles
-    // are div.stat-title, not headings, so a heading-based lookup finds
-    // nothing here - the tab has to be addressed by its container.
-    measure: rectOf('.stats-container'),
+    prep: async (s) => { await clickText(s, 'Trends', { sel: 'button,a,.toggle-btn', settle: 2500 }); },
+    // The Performance Trends chart: each player's finishing position plotted
+    // across the seeded races. Chosen over the Stats panels so the page is not
+    // three stat-tile thumbnails in a row - this one reads as a line chart at
+    // a glance, which is variety the gallery needs. #trends holds the heading
+    // and the axis labels as well as the canvas.
+    measure: rectOf('#trends'),
     clip: fromTop,
   },
   {
@@ -232,7 +264,10 @@ const APPS = [
   {
     slug: 'trip-planner',
     url: '/apps/trip-planner/',
-    viewport: [820, 1800],
+    // Wider than the others so the row-snapping below can reach the third and
+    // fourth itinerary rows: at 820 the tallest boundary that fits 16:9 was
+    // only two rows, which read as sparse and hid the transport-vs-stay mix.
+    viewport: [1000, 1800],
     settle: 4000,
     prep: async (s) => {
       await clickText(s, 'Load an example trip', { settle: 3000 });
