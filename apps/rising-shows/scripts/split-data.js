@@ -71,12 +71,25 @@ const Match = require('./match.js');
 const Providers = require('./providers-lib.js');
 
 const APP_DIR = path.join(__dirname, '..');
-const SRC = path.join(APP_DIR, 'data.json');
-const EXTRAS_SRC = path.join(APP_DIR, 'data', 'show-modal-extras.json');
-const INDEX_OUT = path.join(APP_DIR, 'data-index.json');
-const SHOWS_OUT = path.join(APP_DIR, 'shows-index.json');
-const KOMETA_OUT = path.join(APP_DIR, 'data', 'kometa-index.json');
-const DETAIL_DIR = path.join(APP_DIR, 'data', 'detail');
+
+// Every path main() touches, derived from an app directory.
+//
+// main() takes that directory as an argument (defaulting to this script's own
+// app) so a test can run the REAL build against a temp tree in-process. It used
+// to resolve everything from __dirname, so the only way to exercise it was to
+// copy the whole scripts/ directory somewhere and spawn a child - which works,
+// and which no coverage run can see: main() was 190 uncovered lines of the
+// thing that actually produces the deploy artifacts.
+function paths(appDir) {
+  return {
+    SRC: path.join(appDir, 'data.json'),
+    EXTRAS_SRC: path.join(appDir, 'data', 'show-modal-extras.json'),
+    INDEX_OUT: path.join(appDir, 'data-index.json'),
+    SHOWS_OUT: path.join(appDir, 'shows-index.json'),
+    KOMETA_OUT: path.join(appDir, 'data', 'kometa-index.json'),
+    DETAIL_DIR: path.join(appDir, 'data', 'detail'),
+  };
+}
 
 /**
  * The BOOT payload: one record per SHOW, not one per season.
@@ -222,7 +235,8 @@ function buildKometaIndex(slimMatches) {
   });
 }
 
-function main() {
+function main(appDir = APP_DIR) {
+  const { SRC, EXTRAS_SRC, INDEX_OUT, SHOWS_OUT, KOMETA_OUT, DETAIL_DIR } = paths(appDir);
   if (!fs.existsSync(SRC)) {
     console.error('[split-data] data.json not found; run fetch-data.js first');
     process.exit(1);

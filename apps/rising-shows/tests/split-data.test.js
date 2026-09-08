@@ -19,7 +19,6 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
 const { test, after } = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -46,7 +45,13 @@ function runSplit(data, extras) {
     fs.writeFileSync(path.join(appDir, 'data', 'show-modal-extras.json'), JSON.stringify(extras));
   }
 
-  execFileSync(process.execPath, [path.join(appDir, 'scripts', 'split-data.js')], { encoding: 'utf8' });
+  // In-process, against the REPO's split-data.js pointed at this temp app dir.
+  // It used to spawn a child (the script resolved its paths from __dirname, so
+  // a child was the only way to redirect it), and a child process is invisible
+  // to coverage: main() is the function that produces every deploy artifact and
+  // not one line of it was ever measured. `scripts/` is still copied above,
+  // because tests/script-args.test.js runs the copy as a CLI.
+  require(path.join(SCRIPTS_DIR, 'split-data.js')).main(appDir);
 
   const index = JSON.parse(fs.readFileSync(path.join(appDir, 'data-index.json'), 'utf8'));
   const detailDir = path.join(appDir, 'data', 'detail');
@@ -316,7 +321,7 @@ test('split-data: the merge changes nothing else in the index', () => {
 test('split-data: re-running with extras present is idempotent too', () => {
   const first = fs.readFileSync(path.join(EXTRAS_SPLIT.appDir, 'data-index.json'), 'utf8');
   const firstDetail = fs.readFileSync(path.join(EXTRAS_SPLIT.detailDir, 'tt0000010.json'), 'utf8');
-  execFileSync(process.execPath, [path.join(EXTRAS_SPLIT.appDir, 'scripts', 'split-data.js')], { encoding: 'utf8' });
+  require(path.join(SCRIPTS_DIR, 'split-data.js')).main(EXTRAS_SPLIT.appDir);
   const second = JSON.parse(fs.readFileSync(path.join(EXTRAS_SPLIT.appDir, 'data-index.json'), 'utf8'));
   const firstParsed = JSON.parse(first);
   delete firstParsed.splitAt;
@@ -360,7 +365,7 @@ test('split-data: re-running over the same tree is idempotent', () => {
   // build:site runs the splitter after the page builders on every deploy; a
   // second pass must not fold the already-folded aggregates again.
   const first = fs.readFileSync(path.join(SPLIT.appDir, 'data-index.json'), 'utf8');
-  execFileSync(process.execPath, [path.join(SPLIT.appDir, 'scripts', 'split-data.js')], { encoding: 'utf8' });
+  require(path.join(SCRIPTS_DIR, 'split-data.js')).main(SPLIT.appDir);
   const second = JSON.parse(fs.readFileSync(path.join(SPLIT.appDir, 'data-index.json'), 'utf8'));
   const firstParsed = JSON.parse(first);
   delete firstParsed.splitAt;

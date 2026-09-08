@@ -138,8 +138,10 @@ test('the Rising Shows docs name the file the app actually boots on', () => {
 
   // The splitter has to write it.
   const split = read('apps/rising-shows/scripts/split-data.js');
-  assert.match(split, new RegExp(`SHOWS_OUT = path\\.join\\(APP_DIR, '${bootFile}'\\)`),
+  assert.match(split, new RegExp(`SHOWS_OUT: path\\.join\\(appDir, '${bootFile}'\\)`),
     'split-data.js must write the file app.js boots on');
+  assert.match(split, /fs\.writeFileSync\(SHOWS_OUT, JSON\.stringify\(showsIndex\)\)/,
+    'and must actually write it');
 
   // The app must NOT fetch the season-level file: that is the whole saving.
   assert.equal(/fetch\('data-index\.json'\)/.test(app), false,
@@ -156,7 +158,7 @@ test('the Rising Shows docs name the file the app actually boots on', () => {
   const kFetch = /await fetch\('([^']+)'\)/.exec(kometa);
   assert.ok(kFetch, 'kometa.js must fetch its dataset with a literal URL');
   assert.equal(kFetch[1], '../data/kometa-index.json');
-  assert.match(split, /KOMETA_OUT = path\.join\(APP_DIR, 'data', 'kometa-index\.json'\)/,
+  assert.match(split, /KOMETA_OUT: path\.join\(appDir, 'data', 'kometa-index\.json'\)/,
     'split-data.js must write the file the Kometa builder reads');
 });
 
