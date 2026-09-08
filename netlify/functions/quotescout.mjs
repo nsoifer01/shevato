@@ -5,6 +5,7 @@ import { createAdapters } from './lib/quotescout/adapters.mjs';
 import { createEngine, BoundedCache, hash } from './lib/quotescout/engine.mjs';
 import { getStore, validateConfig, reserveQuota } from './lib/quotescout/store.mjs';
 import { readJSON, ERRORS } from './lib/quotescout/http.mjs';
+import { getMeta as marketplaceMeta } from './lib/quotescout/marketplace.mjs';
 const cache = new BoundedCache(), enrichment = new BoundedCache(500);
 const HEADERS = { 'Cache-Control': 'private, no-store, max-age=0', 'Netlify-CDN-Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Vary': 'Origin', 'Content-Type': 'application/json' };
 const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: HEADERS });
@@ -29,7 +30,35 @@ export function createHandler({ storeFactory = getStore, fetcher = fetch, env = 
     try { store = await storeFactory(); config = validateConfig(await store.get('config', { type: 'json' }) || {}, runtimeEnv); }
     catch { config = validateConfig({}, runtimeEnv); }
     const adapters = createAdapters(config, fetcher);
-    if (req.method === 'GET') return json({ verticals: VERTICALS.map(v => ({ ...v, capability: store && adapters.some(a => a.vertical === v.id && a.enabled) ? 'Beta' : 'Requires provider integration' })), vehicleData: !!store });
+    // Adapters that call an upstream API cost money or third-party quota, so
+    // they only run when the usage store is available to meter them. Marking
+    // them disabled rather than dropping them keeps the honest per-provider
+    // "unavailable" line in the results. The marketplace dataset ships inside
+    // this function and calls nothing, so it stays available without Blobs.
+    const runtime = adapters.map(a => (a.external && !store ? { ...a, enabled: false } : { ...a }));
+    // The keyed CMS API and the bundled CMS dataset describe the very same
+    // plans. Running both would list every plan twice under two different
+    // provenance labels, so when a key is present and usable the live API wins
+    // and the bundled data steps aside. Deciding it here, on what is actually
+    // usable, means a store outage falls back to the dataset rather than
+    // leaving the vertical with nothing.
+    if (runtime.some(a => a.id === 'cms' && a.enabled)) {
+      for (const a of runtime) if (a.id === 'cms-puf') a.enabled = false;
+    }
+    const usable = a => a.enabled;
+    if (req.method === 'GET') {
+      const verticals = VERTICALS.map(v => {
+        const live = runtime.filter(a => a.vertical === v.id && usable(a));
+        return {
+          ...v,
+          capability: live.length ? (live.some(a => a.capability === 'Public data') ? 'Public data' : 'Beta') : 'Requires provider integration',
+          // The same identities the streaming start event already reports, so
+          // the page can name its sources before anyone submits anything.
+          sources: live.map(a => ({ id: a.id, name: a.name, capability: a.capability })),
+        };
+      });
+      return json({ verticals, vehicleData: runtime.some(a => a.vertical === 'vehicle-data' && usable(a)), planYear: marketplaceMeta().planYear, states: marketplaceMeta().states, dataPublishedAt: marketplaceMeta().pufImportDate });
+    }
     const requestId = randomUUID(); let request;
     try {
       if (!(req.headers.get('content-type') || '').startsWith('application/json')) return json({ message: 'Send JSON.' }, 415);
@@ -38,23 +67,35 @@ export function createHandler({ storeFactory = getStore, fetcher = fetch, env = 
     // A random per-tab capability scopes private memory caches. Never persisted or logged.
     const session = req.headers.get('x-quotescout-session') || '';
     if (!/^[a-f0-9]{64}$/.test(session)) return json({ message: 'Reload Quote Scout and try again.' }, 400);
-    if (!store) return json({ message: 'Comparisons are temporarily unavailable. Please try again later.', requestId }, 503);
+    // Only a request that can actually reach a paid or third-party API needs
+    // metering; a comparison served entirely from the bundled dataset does not.
+    const metered = runtime.some(a => a.vertical === request.vertical && a.enabled && a.external);
     const ip = context.ip;
-    if (!ip && env.QUOTESCOUT_ALLOW_LOCAL_PROVIDERS !== '1') return json({ message: 'Comparisons are temporarily unavailable.', requestId }, 503);
+    // Without an identity we cannot meter anyone, so a request that can reach a
+    // paid API is refused outright. A comparison served from the bundled
+    // dataset spends nobody's money and is still bounded by the platform rate
+    // limit declared at the bottom of this file.
+    if (metered && !ip && env.QUOTESCOUT_ALLOW_LOCAL_PROVIDERS !== '1') return json({ message: 'Comparisons are temporarily unavailable.', requestId }, 503);
     const identity = ip || 'local';
-    try { if (!await reserveQuota(store, identity, 'request')) return json({ message: ERRORS.RATE_LIMIT, requestId }, 429); }
-    catch { return json({ message: 'Comparisons are temporarily unavailable.', requestId }, 503); }
+    if (store) {
+      // Every comparison counts against the ceiling when we can record it; only
+      // one that could spend money fails closed when the store is unreachable.
+      try { if (!await reserveQuota(store, identity, 'request')) return json({ message: ERRORS.RATE_LIMIT, requestId }, 429); }
+      catch { if (metered) return json({ message: 'Comparisons are temporarily unavailable.', requestId }, 503); }
+    }
     const stream = new ReadableStream({
       start(controller) {
         const encoder = new TextEncoder(); let closed = false;
         const emit = e => { if (!closed) { try { controller.enqueue(encoder.encode(JSON.stringify(e) + '\n')); } catch { closed = true; } } };
-        const configKey = hash(JSON.stringify(config));
+        // Store availability changes which adapters an engine holds, so it is
+        // part of the engine's identity alongside the provider configuration.
+        const configKey = hash(JSON.stringify(config) + (store ? ':metered' : ':unmetered'));
         if (!engines.has(configKey)) {
           if (engines.size >= 2) engines.delete(engines.keys().next().value);
-          engines.set(configKey, createEngine({ adapters, cache, enrichment, emitMetric: log }));
+          engines.set(configKey, createEngine({ adapters: runtime, cache, enrichment, emitMetric: log }));
         }
         const engine = engines.get(configKey);
-        engine(request, hash(session + configKey), emit, provider => reserveQuota(store, identity, provider).catch(() => false)).catch(() => emit({ type: 'error', message: 'Comparison could not finish. Please retry.' })).finally(() => { if (!closed) { try { controller.close(); } catch { /* disconnected */ } } });
+        engine(request, hash(session + configKey), emit, provider => (store ? reserveQuota(store, identity, provider).catch(() => false) : Promise.resolve(true))).catch(() => emit({ type: 'error', message: 'Comparison could not finish. Please retry.' })).finally(() => { if (!closed) { try { controller.close(); } catch { /* disconnected */ } } });
       },
     });
     return new Response(stream, { headers: { ...HEADERS, 'Content-Type': 'application/x-ndjson; charset=utf-8' } });

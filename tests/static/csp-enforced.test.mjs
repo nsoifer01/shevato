@@ -44,7 +44,10 @@ function directives(policy) {
 
 /** Every committed .html file, excluding build output and worktrees. */
 function htmlFiles() {
-  const skip = /(^|\/)(node_modules|\.git|\.claude|shows|exercises|coverage|\.screenshots)(\/|$)/;
+  // .quotescout-build-cache holds CMS source pages downloaded by
+  // scripts/build-quotescout-data.mjs. It is gitignored input to a build, not
+  // anything this site serves.
+  const skip = /(^|\/)(node_modules|\.git|\.claude|shows|exercises|coverage|\.screenshots|\.quotescout-build-cache)(\/|$)/;
   const found = [];
   (function walk(dir) {
     for (const entry of readdirSync(dir)) {

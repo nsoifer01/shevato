@@ -1,0 +1,62 @@
+{
+  "planYear": 2026,
+  "pufImportDate": "2025-10-15",
+  "generatedAt": "2026-09-07",
+  "states": [
+    "AK",
+    "AL",
+    "AR",
+    "AZ",
+    "DE",
+    "FL",
+    "HI",
+    "IA",
+    "IN",
+    "KS",
+    "LA",
+    "MI",
+    "MO",
+    "MS",
+    "MT",
+    "NC",
+    "ND",
+    "NE",
+    "NH",
+    "OH",
+    "OK",
+    "OR",
+    "SC",
+    "SD",
+    "TN",
+    "TX",
+    "UT",
+    "WI",
+    "WV",
+    "WY"
+  ],
+  "zips": 18801,
+  "zipsNationwide": 33791,
+  "plans": 4688,
+  "planAreaRates": 34393,
+  "ageRange": [
+    18,
+    64
+  ],
+  "sources": [
+    {
+      "name": "CMS Health Insurance Exchange Public Use Files",
+      "url": "https://download.cms.gov/marketplace-puf/2026/",
+      "use": "plan attributes, service areas, filed premiums"
+    },
+    {
+      "name": "CMS CCIIO state geographic rating areas",
+      "url": "https://www.cms.gov/cciio/programs-and-initiatives/health-insurance-market-reforms/state-gra",
+      "use": "county to rating area"
+    },
+    {
+      "name": "US Census Bureau 2020 ZCTA to county relationship file",
+      "url": "https://www2.census.gov/geo/docs/maps-data/data/rel2020/zcta520/tab20_zcta520_county20_natl.txt",
+      "use": "ZIP to county"
+    }
+  ]
+}
