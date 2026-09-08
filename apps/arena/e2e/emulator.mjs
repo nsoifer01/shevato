@@ -1209,6 +1209,27 @@ export async function run({ base, cdpPort, base2 = null }) {
         g0 = await waitRoom(code6, (st) => st.status === 'playing', 12000);
       }
       t('emulator (globe): start enters the first location', g0.status === 'playing' && g0.idx === 0, JSON.stringify(g0));
+      // Warm B's globe BEFORE the reveal window opens.
+      //
+      // B has been a background tab since the room was created, so its FIRST
+      // paint is a cold ensureGlobe(): build the globe.gl scene, decode and
+      // upload the Earth texture, run the 1.2 s camera fly-in. Doing all of
+      // that inside the 10 s reveal is what used to push the second Ready vote
+      // past the deadline - measured at +10,657 ms against a 10,000 ms window
+      // on two cores, which is what a CI runner has. The asking phase has no
+      // deadline, so the cold start happens here instead and the reveal window
+      // only has to pay for a click.
+      //
+      // This changes WHEN the globe initialises, not what the checks below
+      // assert: both players still vote through the real Ready button, and the
+      // early advance is still measured against the server clock.
+      await front(B);
+      const bGlobeWarm = await waitForExpr(B,
+        "(()=>{const el=document.getElementById('globe-drop-map');"
+        + "return !!el && !!el.querySelector('canvas') && !el.classList.contains('is-loading')})()",
+        { timeout: 20000 });
+      t('emulator (globe): the second player\'s globe initialises before the reveal', bGlobeWarm);
+      await front(A);
       // Round 1: nobody pins; asking expires; both click Ready during the
       // reveal -> the host advances early (well before the 10 s reveal ends).
       await sleep(3500);
@@ -1218,27 +1239,62 @@ export async function run({ base, cdpPort, base2 = null }) {
       // B is the active target. Front B to vote, then hand the foreground back
       // to A. (Progression itself no longer depends on the foreground - that is
       // what the hidden-host checks prove - but a UI affordance still does.)
-      const readyA = await waitForExpr(A, readyBtnLive, { timeout: 9000 });
-      const tReady = Date.now();
-      if (readyA) await clickSel(A, '#globe-drop-ready-btn', { settle: 200 });
-      await front(B);
-      const readyB = await waitForExpr(B, readyBtnLive, { timeout: 9000 });
-      if (readyB) await clickSel(B, '#globe-drop-ready-btn', { settle: 200 });
-      await front(A);
       // "Early" means BEFORE the round's own deadline on the server clock
       // (questionStartedAt + asking + reveal). Timing it from a harness
       // wall-clock instead measures CDP latency, not the product.
       const naturalEnd = (g0.startedMs || 0) + (g0.questionTimeMs || 3000) + 10000;
+      // Every step reported as an offset from that deadline, because the whole
+      // question is whether the two votes fit inside the window. The old
+      // message quoted one number that spanned the votes AND the wait for the
+      // advance AND three owner reads, so a late vote and a slow advance were
+      // indistinguishable - which is how this stayed "flaky CI" instead of a
+      // measurement. Negative is before the deadline, positive is after it.
+      const at = () => Math.round((Date.now() - naturalEnd) / 100) / 10;
+      const readyA = await waitForExpr(A, readyBtnLive, { timeout: 9000 });
+      const tBtnA = at();
+      if (readyA) await clickSel(A, '#globe-drop-ready-btn', { settle: 200 });
+      const tVoteA = at();
+      await front(B);
+      const tFrontB = at();
+      const readyB = await waitForExpr(B, readyBtnLive, { timeout: 9000 });
+      const tBtnB = at();
+      if (readyB) await clickSel(B, '#globe-drop-ready-btn', { settle: 200 });
+      const tVoteB = at();
+      // A vote is a Firestore write from a tab we are about to background, and
+      // `readyB` only says the button was CLICKABLE - not that the click
+      // counted. Wait for both flags to actually land before handing the
+      // foreground back, so a lost write is reported as a lost write instead
+      // of showing up later as "the advance was not early".
+      const readyFlagsOf = async () => {
+        const uids = await ownerList(`triviaRooms/${code6}/players`);
+        return Promise.all(uids.map(async (u) => {
+          const d = fieldsOf(await ownerGetDocRaw(`triviaRooms/${code6}/players/${u}`, PAGE_PROJECT));
+          return `${u.slice(0, 5)}:${d.readyAfterQId || '-'}`;
+        }));
+      };
+      let votesLanded = false;
+      for (const startWait = Date.now(); Date.now() - startWait < 4000;) {
+        const f = await readyFlagsOf();
+        if (f.length >= 2 && f.every((x) => !x.endsWith(':-'))) { votesLanded = true; break; }
+        await sleep(250);
+      }
+      const tLanded = at();
+      await front(A);
       const g1 = await waitRoom(code6, (st) => st.idx === 1, 14000);
       const advancedAt = Date.now();
-      const readyFlags = await Promise.all((await ownerList(`triviaRooms/${code6}/players`)).map(async (u) => {
-        const d = fieldsOf(await ownerGetDocRaw(`triviaRooms/${code6}/players/${u}`, PAGE_PROJECT));
-        return `${u.slice(0, 5)}:${d.readyAfterQId || '-'}`;
-      }));
+      const readyFlags = await readyFlagsOf();
+      // Split into two checks. "Both players registered Ready" and "that made
+      // the round advance early" are different claims, and folding them into
+      // one told you neither when it went red.
+      t('emulator (globe): both players\' Ready votes register during the reveal',
+        readyA && readyB && votesLanded,
+        `readyA=${readyA} readyB=${readyB} landed=${votesLanded}`
+        + ` | s vs deadline: btnA ${tBtnA} voteA ${tVoteA} frontB ${tFrontB}`
+        + ` btnB ${tBtnB} voteB ${tVoteB} landed ${tLanded}`
+        + ` | flags=${readyFlags.join(',')}`);
       t('emulator (globe): every live player Ready during the reveal advances the round early',
-        readyA && readyB && g1.idx === 1 && advancedAt < naturalEnd - 1500,
-        `readyA=${readyA} readyB=${readyB} idx=${g1.idx} advanced ${Math.round((naturalEnd - advancedAt) / 100) / 10}s`
-        + ` before the natural deadline (voted at +${Date.now() - tReady}ms) flags=${readyFlags.join(',')}`);
+        votesLanded && g1.idx === 1 && advancedAt < naturalEnd - 1500,
+        `idx=${g1.idx} advanced ${at()}s vs the deadline | flags=${readyFlags.join(',')}`);
       // Round 2 with the host tab hidden: the timed advance must still come
       // (3 s asking + 10 s reveal) from the interval clock / member fallback.
       await front(B);

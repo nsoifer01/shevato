@@ -228,12 +228,39 @@ export async function evalAsync(s, expression) {
 // true as soon as the expression is truthy, false on timeout - callers assert
 // on the result, so a wait that never comes fails the check rather than
 // throwing the suite over.
+//
+// That contract used to have a hole. It held for a condition that never became
+// true, but NOT for the transport: when the renderer is busy enough that
+// `Runtime.evaluate` itself hits the driver's 45 s send timeout, the rejection
+// propagated straight out of here and aborted whatever section was running -
+// the exact "throwing the suite over" this helper exists to prevent. A whole
+// Globe Drop block died that way on CI, reporting only "ran to completion
+// false", while the same code passed locally.
+//
+// A send timeout is a SLOW POLL, not a verdict, so it is swallowed and polling
+// continues until the CALLER's deadline, which then returns false and lets the
+// caller's own assertion speak. Only send timeouts are absorbed: a real page
+// error (a closed target, a detached session) still throws, because that is not
+// something waiting longer can fix.
+//
+// Safe to retry precisely here and nowhere else: every expression this helper
+// takes is a PREDICATE, evaluated for its truthiness. `evaluate()` keeps
+// throwing, because its callers pass side-effecting expressions too.
+const isSendTimeout = (e) => /^timeout: /.test(String((e && e.message) || ''));
+
 export async function waitForExpr(s, expression, { timeout = 8000, poll = 150 } = {}) {
   const start = Date.now();
   waitStats.polls += 1;
   try {
     for (;;) {
-      const v = await evaluate(s, expression);
+      let v = null;
+      try {
+        v = await evaluate(s, expression);
+      } catch (e) {
+        if (!isSendTimeout(e)) throw e;
+        // Fall through to the deadline check: the poll cost us its own wait
+        // already, so there is nothing left to sleep off.
+      }
       if (v && !v.__evalError) return true;
       if (Date.now() - start > timeout) return false;
       await rawSleep(poll);

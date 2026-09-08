@@ -202,19 +202,30 @@ Progression is not the host's private business:
   # check it:  gcloud firestore fields ttls list --project=shevato-site
   ```
 
-  Two things this does NOT do, both deliberate:
+  **The backlog it could not reach was cleared by hand, once.** TTL deletes a
+  document when its TTL field holds a timestamp in the past, so a document with
+  no such field is never a candidate - and every room created before 2026-09-08
+  had no field. On 2026-09-08 that backlog was 341 rooms (oldest 112 days,
+  median 28), 319 of them still carrying the pre-gate cleartext `password` that
+  any signed-in user with the five-character code could read, plus 269 orphaned
+  player/chat/gate documents underneath them. Applying the app's own room
+  lifetime (`ROOM_TTL_MS`, 24 h): the 336 rooms past it were deleted with their
+  subcollections, and the 5 still inside it were given the `expiresAt` the
+  current client would have written, so the policy finishes them. **Every room
+  in the collection now carries `expiresAt` and is covered.** A full backup of
+  all 341 documents was taken first.
 
-  - **It does not reach the 336 rooms that predate `expiresAt`.** TTL deletes a
-    document when its TTL field holds a timestamp in the past; a document with
-    no such field is never a candidate. Those rooms (oldest 112 days, newest 21
-    days at the time of the census, none created since the current client
-    shipped) stay until something sweeps them. They are inert: unscoped by the
-    rules, and reachable only by their five-character code.
+  Nothing needs doing again: the rules have required `expiresAt` on create
+  since the same day, so a room without one cannot be written.
+
+  One thing the policy still does NOT do:
+
   - **It deletes the room DOCUMENT only, not its subcollections** - which is
     precisely why the orphan-sweep rules above are the other half of the
     design. Once the room doc is gone, `roomGone()` opens the leftover players,
     chat and gate to any signed-in client to sweep, which is the same path the
-    last-leaver teardown already uses.
+    last-leaver teardown already uses. A room nobody ever revisits leaves those
+    behind, which is what the 269 documents above were.
 
   Enabling the policy and Firestore actually deleting anything are separate
   events: the config went ACTIVE immediately, and deletion runs on Google's own
