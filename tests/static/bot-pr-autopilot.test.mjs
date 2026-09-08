@@ -19,7 +19,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   createApi, isParked, isOurCheck, failedChecks, releaseParkedRuns, armAutoMerge,
-  drivePullRequest, reconcileOpenBotPullRequests, listOpenBotPullRequests, main,
+  drivePullRequest, reconcileOpenBotPullRequests, listOpenBotPullRequests, main, deleteHeadBranch,
   MERGE_METHOD, BOT_BRANCH_PREFIX,
 } from '../../scripts/bot-pr-autopilot.mjs';
 
@@ -212,6 +212,52 @@ test('the hold is released again after auto-merge updates a behind branch', asyn
   });
   assert.equal(result.outcome, 'merged');
   assert.deepEqual(approved, [11, 22], 'the new head commit gets its own release');
+});
+
+test('the merged branch is deleted, because GitHub does not delete this one', async () => {
+  // "Automatically delete head branches" is ON and it fired for #517, whose
+  // auto-merge a human armed. It did not fire for #518, armed by
+  // github-actions[bot]: the branch was still on the remote minutes after the
+  // merge. Left alone, the refresh strands one timestamped branch a day.
+  const { api, calls } = stubApi(({ path }) => {
+    if (path === `/repos/${REPO}/pulls/515`) {
+      return pull({ merged: true, merge_commit_sha: 'm1', head: { sha: 'sha1', ref: 'bot/refresh-rising-shows-x' } });
+    }
+    return {};
+  });
+  const result = await drivePullRequest(api, 515, { log: () => {} });
+  assert.equal(result.outcome, 'merged');
+  const del = calls.find((c) => c.method === 'DELETE');
+  assert.equal(del.path, `/repos/${REPO}/git/refs/heads/bot/refresh-rising-shows-x`);
+});
+
+test('a branch that is already gone is not an error', async () => {
+  const { api } = stubApi(({ method }) => (method === 'DELETE'
+    ? { status: 422, body: { message: 'Reference does not exist' } }
+    : {}));
+  assert.equal(await deleteHeadBranch(api, pull({ head: { sha: 's', ref: 'bot/x' } })), 'absent');
+});
+
+test('the branch is deleted on the already-mergeable path too', async () => {
+  // armAutoMerge merges directly when GitHub says the pull request is clean,
+  // and that path returns before the watch loop ever sees merged=true.
+  let merged = false;
+  const { api, calls } = stubApi(({ method, path }) => {
+    if (path === `/repos/${REPO}/pulls/515`) {
+      return pull({ merged, head: { sha: 'sha1', ref: 'bot/refresh-rising-shows-y' } });
+    }
+    if (path.includes('/actions/runs')) return { workflow_runs: [] };
+    if (path.includes('/check-runs')) return { check_runs: [] };
+    if (path === '/graphql') return { data: null, errors: [{ message: 'Pull request is in clean status' }] };
+    if (method === 'PUT' && path.endsWith('/merge')) { merged = true; return {}; }
+    return {};
+  });
+  const result = await drivePullRequest(api, 515, { log: () => {} });
+  assert.equal(result.outcome, 'merged');
+  assert.deepEqual(
+    calls.filter((c) => c.method === 'DELETE').map((c) => c.path),
+    [`/repos/${REPO}/git/refs/heads/bot/refresh-rising-shows-y`],
+  );
 });
 
 test('a base branch that keeps moving cannot spin the watcher forever', async () => {

@@ -934,8 +934,16 @@ the pull request's own head commit, arms GitHub's **auto-merge**, and watches.
 Branch protection decides the merge; nothing here bypasses a check, and a red
 check leaves the pull request open. It re-releases on every tick because the
 hold is re-applied to every new head commit, which a strict base branch
-produces whenever the branch has to be updated. `delete_branch_on_merge` is on,
-so GitHub removes `bot/refresh-rising-shows-*` itself.
+produces whenever the branch has to be updated.
+
+**It deletes the merged branch too, because GitHub does not.** "Automatically
+delete head branches" is ON for this repository, and it fires for a human:
+#517's branch was gone the moment auto-merge merged it. It did NOT fire for
+#518, whose auto-merge was armed by `github-actions[bot]` - that branch was
+still on the remote minutes after the merge. Both measured on 2026-09-08.
+Relying on the setting would have stranded one timestamped
+`bot/refresh-rising-shows-*` branch every day, which is precisely the
+accumulation the timestamped names make expensive.
 
 **One open refresh pull request at a time, enforced.** Two of them cannot both
 merge: both rewrite `changelog.json` and the exports, so the second is
