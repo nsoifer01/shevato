@@ -3,6 +3,189 @@
 A living document: best current understanding, not a diary. See the
 repo-root `CLAUDE.md` for the convention.
 
+## The modal action row, moved down and then back up (2026-09-07)
+
+The show and season modals now carry **one** action row, in the heading beside
+the poster: the primary action (compare / mark as watched) then the ghost
+utilities (share card, share chart image, permalink, IMDb, TVDB).
+
+They were there originally. On 2026-08-23 (commit 231a8f1, PR #435) they moved
+to a `modal-actions-bottom` row after the content, on the reasoning recorded in
+the markup at the time: the utilities "used to sit in two rows above the
+overview, which put seven buttons between the title and the first thing a
+reader wants". That was part of a measured above-the-fold pass, and the
+diagnosis was right about the old layout - **two full-width rows** with a
+divider, between the title and the overview.
+
+What it got wrong was the remedy. Measured on the show modal (Breaking Bad,
+the panel is the scroll container):
+
+| | desktop 1280x900 | mobile 390x844 |
+|---|---|---|
+| panel scroll height | 1,992 px | 2,484 px |
+| visible at a time | 869 px | 828 px |
+| utility row top | 1,929 px | 2,220 px |
+
+So the fix for "these are in the way" was to put them past the cast, the
+seasons overlay, the full season list and "More shows like this". A permalink
+you reach by scrolling 1,900 px is not a permalink, and the owner asked for
+them back on 2026-09-07.
+
+The row works in the heading because it is now **one wrapped row of compact
+buttons**, not two full-width rows with a divider. After: every button is in
+the viewport on both sizes (desktop 216/264 px, mobile 321/372/424 px), and the
+panel got SHORTER (1,948 / 2,294 px) because the separate row and its divider
+are gone. The cost is the overview starting lower - 275 -> 322 px on desktop,
+374 -> 480 px on mobile - and it is still on the first screen at both sizes.
+
+Two things had to come with the move, or the row reads as six identical
+buttons:
+
+- **The accent rules were dead.** `.modal-actions .watch-btn/.compare-btn` gave
+  the primary action its accent surface, but the 2026-08-23 change left the
+  primary button in `.modal-primary-actions` and deleted the `.modal-actions`
+  wrapper around it. The selectors never matched again, and the compare button
+  had been rendering as a plain `.btn` (measured `rgb(18,21,29)`, not
+  `--accent-soft`) for two weeks. They are re-scoped to
+  `.modal-primary-actions`, so `+ Add to compare` leads the row again.
+- **Mobile stacking had to go.** The old `.modal-actions` mobile rule made each
+  button a full-width 44 px bar. Six of those is 264 px of an 844 px screen,
+  which is the problem this move set out to solve. The buttons now wrap two per
+  line with `min-height: 44px`, so the tap target survives without the bars.
+
+`.modal-actions`, `.modal-actions-top`, `.modal-actions-bottom` and
+`.modal-imdb` are all gone from the CSS; `modal-actions-top` had already been
+dead since 2026-08-23.
+
+### The group is a LOCAL variant, and why (same round)
+
+Every rule for this group is scoped to `.modal-primary-actions` / `.outbound-tag`.
+The shared `.btn` and `.btn-ghost` primitives dress the toolbar, the pager, the
+close button and the provider chips, and the modal action area is the one place
+on the site where a primary action, three secondary ones and two outbound
+references sit shoulder to shoulder and have to read as three ranks. Restyling
+the primitives to fix this one group would have moved every button on the site.
+
+What the local variant changes, all from existing tokens:
+
+- **Secondary buttons are filled, not outlined.** `.btn-ghost` is transparent
+  with a `--border-strong` outline, which on the modal panel is literally a
+  rectangle drawn on the card. Filling with `--surface-2` and dropping to a
+  hairline `--border` inverts it: they become objects sitting on the card.
+- **The resting-state depth is a lighter TOP border**, not a shadow. `.btn`
+  pins `box-shadow: none !important`, so any shadow would need a second
+  `!important`; a 7% white top edge gets the same "lit from above" read for
+  free, and is what keeps a flat fill from looking like a disabled input.
+- **The primary is dialled back, and no longer gold.** It was a 700-weight
+  label inside a 32%-opacity gold border, which beside the calmer secondaries
+  read as a warning strip. It is now 600 weight in indigo. See the palette note
+  below for why indigo; measured 7.8:1 against its own composited background.
+  (Measure any translucent fill by COMPOSITING the button's background over the
+  panel first. Comparing the label to the raw `rgba(...)` reports a meaningless
+  1.5:1, and the same mistake reported 1.13:1 for the gold version.)
+- **One focus language.** Buttons and chips both take
+  `box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 1px var(--accent)` rather
+  than a ring on one and a glow on the other.
+- **No external-link glyph on the chips.** Nothing else in the app marks
+  outbound links that way, so inventing the pattern here would be the one
+  flashy note in a restrained group. Where the link goes lives in the
+  accessible name and the tooltip.
+
+### Every hue in this app already means something (2026-09-07)
+
+The chips carry their source's brand colour: IMDb gold, TVDB green. That forced
+the primary action OFF gold, because `--accent` is literally IMDb's yellow (the
+palette says so in a comment) and one colour cannot mean both "the action to
+take here" and "IMDb".
+
+Picking its replacement is not a taste question in this app, because the
+palette is nearly fully assigned. Auditing every colour in `styles.css` first:
+
+| hue | already means |
+|---|---|
+| `--accent` #f5c518 gold | IMDb (and, until now, the primary action) |
+| `--good` #34d39e green | added / watched state, and now the TVDB chip |
+| `rgba(56,189,248)` cyan | provider chips: where to watch |
+| `#c084fc` purple | a SPECIAL EPISODE, in the season modal - the very modal that carries this row |
+| `--warn` #fb923c orange | staleness |
+| `--danger` #f87171 red | destructive / negative gap |
+
+Indigo was the only unassigned hue, so it is now "the action", declared as
+`--act-*` custom properties on `.modal-primary-actions` rather than as global
+tokens: it means "primary action in this group", not something site-wide.
+
+Two things fall out of that audit and are worth keeping:
+
+- **The chips drive their own states through `--tag-*` custom properties.** The
+  base `.outbound-tag` rules are written once and read the variant's colour, so
+  hover, press and the focus ring all follow the chip's own hue. That is what
+  avoids a gold focus ring landing on a green chip while keeping ONE focus
+  language. An unrecognised source falls back to neutral.
+- **TVDB uses its own `#6cd491`, not `--good` `#34d39e`.** `--good` is the
+  colour the compare button turns when a show is already added, and the watch
+  button turns when a season is marked watched; painting a stateless link in
+  the state colour would say "this is done". The residual cost is that an
+  added-state compare button and the TVDB chip are both green in the same row.
+  That was accepted knowingly on 2026-09-07, not overlooked.
+
+### Three tiers, not one row of equals (same round)
+
+Six same-sized buttons on one row say all six are equally worth doing. The row
+is now read top to bottom as primary, actions, references:
+
+- **The primary action holds its own line.** Not by stretching it:
+  `flex-basis: 100%` on the button makes it a full-width bar. The line break is
+  a separate zero-height full-width flex item (`.action-row-break`), which ends
+  the line without touching the button's own width.
+- **IMDb and TVDB are pills, not buttons** (`.outbound-tag`): same geometry as
+  the provider chips so the modal keeps one vocabulary for "small labelled
+  thing you can click", each in its source's brand colour (see the palette note
+  below). Measured 8.83:1 and 7.92:1 composited, 30 px tall on desktop and
+  36 px on a phone.
+- **The lines split by verb.** Line one is what the modal DOES (compare, share
+  card, share chart image); line two is where it GOES (permalink, then the two
+  outbound chips). The four buttons do not fit one line in this column - they
+  need 591 px of a 532 px heading column at 1280 - and the only ways to force
+  it are shrinking the group ~11% below the site's control scale, or moving the
+  row out of the heading to span the panel. Splitting by verb costs neither,
+  and the owner picked it over both on 2026-09-07.
+
+A pill shows only the site name, so **the accessible name carries what the href
+actually points at** - "Season 1 on IMDb", "This series on TVDB" - set by
+`setOutboundLabel`, which writes both `aria-label` and `title`. Every name
+contains the pill's visible word, which is what WCAG's label-in-name asks for:
+a speech user saying "IMDb" has to be able to hit it. The season modal used to
+put that distinction in the visible text ("View season on TVDB →"), which is
+why the JS writes it rather than the markup.
+
+## Share chart image copies, it does not download (2026-09-07)
+
+`deliverChartImage` tried the native share sheet first and fell back to a file
+download. On a desktop that means a PNG in the downloads folder, or a Windows
+share sheet asking which app to hand it to, when what people want is to paste
+the chart into a message. Its neighbour "Share card" has always copied. So the
+order is now clipboard, then share sheet, then download.
+
+`copyImageToClipboard` resolves to `null` rather than throwing for every reason
+the write can fail, because all of them are ordinary and all of them have a
+working fallback: no secure context, no user gesture, an unfocused document
+(`NotAllowedError`), no `ClipboardItem` constructor, or Safari refusing an item
+built from an already-resolved blob. Only a build failure reaches the user as
+"Image failed".
+
+The confirmation is a lookup (`CHART_IMAGE_FLASH`), not a two-way branch. The
+old label was `how === 'shared' ? 'Shared!' : 'Downloaded!'`, which would have
+told a clipboard copy it had been downloaded.
+
+**A trap worth remembering, found writing the tests for this.** The test helper
+was `try { return fn(...) } finally { restore() }` with an async `fn`. That
+returns the promise immediately, so `finally` restored every stub BEFORE the
+awaited body ran, and the delivery chain hit Node's real `URL.createObjectURL`
+with a stub blob. `await fn(...)` inside the try is the fix. A stub-restoring
+helper around async code has to await, or it un-stubs mid-test.
+
+## A saved scroll offset belongs to ONE view (2026-09-07)
+
 ## A saved scroll offset belongs to ONE view (2026-09-07)
 
 `ScrollMemory` exists because the grid renders only after the index is fetched,
@@ -729,3 +912,37 @@ mode, not an oversight.
   separately. In a fresh worktree they are absent, the results grid renders
   empty and the capture fails with the anchor missing; copy them in from a
   checkout that has them before rebuilding this one.
+## The boot fold was doing the same work twice (2026-09-05 F08)
+
+`load()` ran `normalizeSearch` over every one of ~66,380 SEASON records to
+derive `titleSearch` - a measured 110 ms of a ~420 ms main-thread boot task on
+a desktop, so roughly half a second of a mid-range phone's startup. The only
+consumer of the result is `buildSeriesIndex`, which keys by SERIES: nearly half
+of that work was folding the same title again for another season of the same
+show. It now happens once per series, where the answer is used. Measured: 110 ms
+to 63 ms, with no change to the payload and none to search behaviour.
+
+The folding functions moved from `js/app.js` into `scripts/finder-lib.js` while
+doing it. Not copied - a second implementation would be a second search
+behaviour waiting to diverge, and this file is the one place the runtime finder
+and the build are meant to agree.
+
+**Stamping the folded title into the index at build time was measured and
+rejected.** It saved 107 ms of CPU and cost 0.27 MB of production-quality
+brotli (3.17 -> 3.44 MB) on a file every visitor downloads, which on a phone
+connection is a wash at best. The numbers are here so the next person does not
+have to re-derive them before deciding.
+
+**What remains, and why it is not a small change.** The audit's F08 asks for a
+compact SHOW-level search record so the browser stops downloading 66,380 season
+records (32.8 MB raw, ~3.2 MB brotli) and stops aggregating them at boot
+(`buildShowAgg`, a further 128 ms). The aggregate itself is easy - it is
+already a shared pure function and would produce byte-identical rows if run at
+build time. What is not easy is that `dataset.matches` is read directly in ten
+other places in `js/app.js`: modal opening, per-season lookups, the detail
+join, the best/worst-season badges, the series index, the compare and watched
+paths. Shipping the aggregate ALONGSIDE the season index would add 22 MB rather
+than remove any, so the payload only falls once every one of those readers has
+a different source. That is a multi-day refactor with a full-catalogue parity
+obligation, not a session-sized change, and doing half of it would make the app
+slower.

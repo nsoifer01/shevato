@@ -166,6 +166,7 @@ function main() {
     if (seasonCount.get(m.seriesId) === 1 && eps.length) {
       rest.epRatings = eps.filter((e) => typeof e.rating === 'number').map((e) => e.rating);
     }
+
     return rest;
   });
   slim.aboveImdb = aboveImdb;

@@ -128,6 +128,11 @@
   <link rel="dns-prefetch" href="https://www.google-analytics.com">
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-GEQGY35JJN"></script>
   <script defer src="/assets/js/analytics.js"></script>
+  <!-- The accessible half of every canvas chart (2026-09-05 audit F16):
+       a name, a trend summary and an expandable data table, all built
+       from the SAME series object handed to Chart.js. Not deferred: the
+       chart code calls it synchronously as each chart is created. -->
+  <script src="/assets/js/chart-a11y.js"></script>
 </head>
 <body class="mario-kart-app mario-kart-tracker">
 <a class="skip-link" href="#main-content">Skip to main content</a>
@@ -470,7 +475,18 @@
         </div>
         
         
-        <div class="input-section" role="form" aria-labelledby="add-race-heading">
+        <!-- display:none from the FIRST BYTE (2026-09-05 audit F07). main.js
+             hides this the moment it boots ("we do not show it in any view" -
+             it is a parking place for the .input-group the sidebar and the
+             achievements view move around), and nothing ever shows it again.
+             Until then it laid out 960px of form in the page and everything
+             below - the date filter, the stats panel, the race history - was
+             painted there and then jumped 903px up when it vanished. On a
+             390px phone that was the largest single contributor to a 0.636
+             session-window CLS, against Google's 0.1 "good" threshold.
+             An inline style rather than a class, because that is exactly what
+             main.js sets: same mechanism, just not four seconds late. -->
+        <div class="input-section" role="form" aria-labelledby="add-race-heading" style="display:none">
             
 
             <div class="action-buttons">
@@ -530,7 +546,14 @@
             </div>
         </div>
 
-        <div class="date-filter-section">
+        <!-- display:none from the FIRST BYTE (2026-09-05 audit F07). sidebar.js
+             MOVES this whole block into the sidebar shortly after load, so its
+             384px in the main column is space it never keeps - and everything
+             below it, the stats panel and the race history, was painted there
+             and then jumped up when it left. sidebar.js clears this style the
+             moment the block is in its real home (and clears it anyway if the
+             move cannot happen), so the filter is never lost. -->
+        <div class="date-filter-section" style="display:none">
             <h3>📅 Date Filter</h3>
             <div class="date-filter-controls">
                 <button class="filter-btn active" onclick="setDateFilter('all')">All Time</button>
@@ -549,9 +572,12 @@
 
 
 
-        <div id="stats-display" role="tabpanel" aria-live="polite">
-            <!-- Stats will be dynamically inserted here -->
-        </div>
+        <!-- Stats are inserted here by main.js. The element is left GENUINELY
+             empty - no whitespace, no comment inside - so `#stats-display:empty`
+             matches and can reserve the space the panel will fill (audit F07).
+             A comment or a newline inside defeats `:empty` in every browser
+             that ships it. -->
+        <div id="stats-display" role="tabpanel" aria-live="polite"></div>
 
         <div class="race-history" role="region" aria-labelledby="history-heading">
             <h2 id="history-heading">🔎 Race History</h2>

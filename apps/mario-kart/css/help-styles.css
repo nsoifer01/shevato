@@ -554,3 +554,28 @@
         break-inside: avoid;
     }
 }
+
+/* Progressive disclosure for the in-view guide (2026-09-05 audit F17).
+   The whole help panel is copied into the main view on first run, which on a
+   phone produced a ~7,970-pixel page whose first screen was reference
+   material rather than the thing the app does. Everything after the opening
+   section becomes a native <details>: a heading you can scan, keyboard
+   operable and find-in-page friendly without any script of ours.
+
+   The help PANEL itself is untouched - a returning user opens that
+   deliberately and reads it in full - so these rules only ever apply inside
+   .help-view-container, which is the copy in the main view. */
+.help-view-container .help-section-collapsed > summary.help-section-summary {
+  cursor: pointer;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  padding: 0.55rem 0;
+  outline-offset: 2px;
+}
+.help-view-container .help-section-collapsed > summary.help-section-summary:hover {
+  color: #ffffff;
+}
+.help-view-container .help-section-collapsed[open] > summary.help-section-summary {
+  margin-bottom: 0.4rem;
+}

@@ -549,3 +549,91 @@ games the first time the scoring constants move.
   lobby, which is a settings form, and the committed hand capture of a real
   round is the better thumbnail. Anything that needs to see the game surface
   in CI has the same problem and should assert on the DOM instead.
+## The private-room boundary, and the audit that found it open (2026-09-05 F01/F02)
+
+`firestore.rules` allowed `read` on `triviaRooms/{code}`, its `players` and its
+`chat` for any `request.auth != null`. So a signed-in stranger who obtained a
+five-character room code could:
+
+- read the room doc, questions and `correctIndex` included;
+- read the whole roster - including each member's `gateHash`, which is a
+  replayable proof of the room password;
+- read every chat message, and POST chat without ever joining (the create rule
+  checked the author's uid and the text length, never membership).
+
+The suite was green throughout, and one of its tests was named "gateHash replay
+boundary is real and documented": a green estate was PINNING the hole. That test
+now asserts the opposite.
+
+**The shape of the fix.** A room carries `scopedReads: true` and keeps its
+contents to its members. The one thing an outsider legitimately needs - does
+this room exist, does it want a password, which game is it - moved to an
+immutable `public/lobby` document. The join flow therefore reads the lobby,
+joins, and only then inspects the room: the capacity guard and the
+finished/spectator checks moved BELOW the join, where membership makes them
+readable. They were racy above it anyway (two joiners could both pass a capacity
+check neither had reserved a seat in).
+
+**Why old rooms stay open.** A room lives for one sitting, an old client cannot
+write the flag, and locking those rooms out would have broken games in progress
+during the deploy. The boundary is complete within one room's lifetime.
+
+**Rollout works in either order**, which matters because rules deploy separately
+from the site:
+
+- new client + old rules: the lobby write is refused, the room has no lobby
+  doc, the old rules still allow the room read, and `readRoomJoinInfo` falls
+  back to it;
+- old client + new rules: no lobby doc means no `scopedReads`, so the room is
+  open exactly as before;
+- new client + new rules: the lobby exists and the room is members-only.
+
+**H2H (F02).** The pair rule checked the uids in the SUBMITTED document, so an
+unrelated registered user could open `victim-a__victim-b`, rewrite `uidA` to
+themselves and post 9,999 wins. The document id is now required to be the two
+participants in canonical order, the participants are frozen on update, and the
+caller is checked against the STORED record. Persistent rows are also bounded to
+one game per write with counters that only rise - the audit wrote 999,999,999
+and the rules took it.
+
+**What is NOT fixed, and why.** Scores are still computed on the client. Making
+them authoritative needs a server this project deliberately does not run, so the
+product no longer claims otherwise: the rules bound what a claim can look like,
+and the leaderboard is described as self-reported.
+
+## Cleanup no longer depends on somebody's browser (2026-09-05 F18)
+
+A room whose every client force-quit used to sit there forever - the "not
+covered" case this file recorded for months. Rooms now carry `expiresAt`
+(creation + 24 h), which a Firestore TTL policy on `triviaRooms.expiresAt`
+reaps. Firestore deletes the DOC only, which is exactly what the orphan-sweep
+rules need: once `roomGone()` is true, any signed-in client may delete the
+leftover players, chat and gate. Enabling the policy is one `gcloud` command,
+written out in README.md; until it is run the field is inert and behaviour is
+unchanged.
+
+Account deletion also reaches the three Arena records that live outside
+`users/{uid}`. The leaderboard row and the daily scores are deleted; the
+head-to-head records are anonymised, because a pair record is the other
+player's history too and deleting it would take their games. Each side of a
+pair can rewrite only its own display name, so nobody can anonymise you.
+
+## The frozen recap (D13, diagnosed 2026-09-07)
+
+`npm run test:arena:emulator` failed one check for weeks: "a rematch prompt
+closes on the other clients as soon as someone declines", reporting
+`promptShown=false`. The audit could not finish diagnosing it and correctly
+refused to call it either a product bug or a test bug.
+
+It was a product bug, and a bigger one than the test name suggests. The end
+screen rewrites the URL to `?postMatch=<code>` so a refresh and a share both
+land back on the recap - and a refresh is exactly what happens on an end screen
+(a pull-to-refresh, reopening the link the app itself put in the address bar).
+Coming back through that path attached NO room listener, so a player who was
+still a member stopped hearing about the room entirely: the rematch someone
+proposed never reached them, and the restart that followed left them staring at
+a frozen podium.
+
+`tryLoadPendingPostMatch` now probes membership first and re-enters the room
+live; the read-only recap is for people who were not in it. The suite is
+95/95 with the fix.

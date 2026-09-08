@@ -35,7 +35,7 @@ const FIREBASE_HOSTS = /firestore\.googleapis\.com|firebaseio\.com|identitytoolk
 // header (site.mjs documents the decision), so it is excluded from the
 // shared-chrome geometry checks but still swept for overflow.
 const CHROME_ROOT_PAGES = ROOT_PAGES.filter((p) => p !== 'moadon-alef');
-const APPS = ['arena', 'football-h2h', 'fpl-planner', 'gym-tracker', 'maptap-rivals', 'mario-kart', 'rising-shows', 'trip-planner'];
+const APPS = ['arena', 'football-h2h', 'fpl-planner', 'gym-tracker', 'maptap-rivals', 'mario-kart', 'quotescout', 'rising-shows', 'trip-planner'];
 
 // rising-shows boots a large dataset (when fetched); give it longer to settle
 // so late renders cannot shift geometry mid-measurement.
@@ -52,6 +52,7 @@ const TEXT_PROBE = {
   'gym-tracker': '.app-container',
   'maptap-rivals': 'main.page',
   'mario-kart': 'body',
+  'quotescout': '.quotescout',
   'rising-shows': 'main.page',
   'trip-planner': '.trip-planner-app',
 };
@@ -69,6 +70,7 @@ const PIN_SELECTORS = {
   'gym-tracker': ['.nav-links .nav-link', '.btn-primary'],
   'maptap-rivals': ['#add-rival-btn', '.view-tab'],
   'mario-kart': ['#sidebar-add-race-btn', '.toggle-btn'],
+  'quotescout': ['#qs-retry', '#qs-submit'],
   'rising-shows': ['#finderSurprise', '.shape-chip'],
   'trip-planner': ['#addBtn', '#viewTimeline'],
 };

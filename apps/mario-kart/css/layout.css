@@ -553,3 +553,18 @@ body.theme .help-footer p {
         grid-template-columns: repeat(4, 1fr);
     }
 }
+
+/* RESERVED SPACE for the stats panel (2026-09-05 audit F07).
+   #stats-display is empty in the markup and filled by main.js after the app
+   boots, so the race history and everything under it were painted directly
+   below the date filter and then pushed down by ~1,170px. On a 390px phone
+   that was the remaining 0.180 of a 0.636 session-window CLS, against
+   Google's 0.1 "good" threshold.
+
+   One viewport, and no more: every rendered view is taller than this, so it
+   costs nothing once filled and cannot leave a band of empty space. `svh`
+   rather than `vh`, because a phone's dynamic toolbars make `vh` the LARGEST
+   viewport and would over-reserve. `:empty` makes it self-cancelling - the
+   reservation lasts exactly as long as there is nothing in the box, and no
+   code has to remember to remove it. */
+#stats-display:empty { min-height: 100svh; }

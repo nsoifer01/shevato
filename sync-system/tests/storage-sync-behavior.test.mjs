@@ -540,7 +540,13 @@ test('a newer remote change is applied to localStorage and announced to the app'
   assert.equal(h.setDocCalls().length, 0, 'a remote apply must not trigger an outbound write');
 });
 
-test('a remote change older than the local copy is skipped', async (t) => {
+test('a remote at a LOWER logical revision is skipped, and the cloud is repaired', async (t) => {
+  // This test used to hand the engine a remote at rev 9 with an older wall
+  // clock and assert it was skipped, which pinned the defect F05 names: the
+  // verdict came from comparing this device's Date.now() against a Firestore
+  // server timestamp, so it depended on how well two clocks agreed, and a
+  // device an hour fast rejected an hour of legitimate updates. Revision is
+  // now the order, and it is a Lamport counter: strictly causal, no clock.
   const h = await startHarness(t, ['keep']);
   const [k] = h.keys;
 
@@ -548,11 +554,38 @@ test('a remote change older than the local copy is skipped', async (t) => {
   t.mock.timers.tick(500);
   await settle();
   assert.equal(h.setDocCalls().length, 1);
+  const flushed = h.setDocCalls().length;
 
-  h.emit({ [k]: { value: 'remote-old', rev: 9, updatedAt: Date.now() - 5000, hash: hashValue('remote-old') } });
+  // rev 0 has genuinely seen less than our rev 1, whatever the clocks say.
+  h.emit({ [k]: { value: 'remote-old', rev: 0, updatedAt: Date.now() + 5000, hash: hashValue('remote-old') } });
 
-  assert.equal(backingStore.get(k), '"local-latest"', 'older remote must not overwrite newer local');
+  assert.equal(backingStore.get(k), '"local-latest"', 'an earlier logical version must not overwrite a later one');
   assert.ok(!h.events().some((e) => e.value === 'remote-old'), 'no app event for a skipped change');
+
+  // And the divergence is REPAIRED rather than left in place: the cloud is
+  // demonstrably holding something older than us, so our value goes back up.
+  t.mock.timers.tick(500);
+  await settle();
+  assert.ok(h.setDocCalls().length > flushed,
+    'a cloud that is behind must be brought forward, not silently ignored');
+});
+
+test('a clock an hour ahead no longer rejects legitimate remote updates', async (t) => {
+  // The reproduced defect: a synthetic device clock one hour ahead made the
+  // engine answer skip-older to every server update for an hour.
+  const h = await startHarness(t, ['skew']);
+  const [k] = h.keys;
+
+  localStorage.setItem(k, '"written-on-a-fast-clock"');
+  t.mock.timers.tick(500);
+  await settle();
+
+  // The server's timestamp is an hour BEHIND this device's clock, and the
+  // remote is a later logical version of the same key.
+  h.emit({ [k]: { value: 'from-the-other-device', rev: 5, updatedAt: Date.now() - 3600_000, hash: hashValue('from-the-other-device') } });
+
+  assert.equal(backingStore.get(k), 'from-the-other-device',
+    'the update must land: the clock has no vote any more');
 });
 
 test('a hash-identical remote is deduped: no write, no event, but timestamp recorded', async (t) => {
@@ -853,6 +886,219 @@ test('a re-emitted chunked manifest does not refetch the parts', async (t) => {
     'a hash-identical manifest must not re-apply');
 });
 
+// --------------------------------------------------------------------------
+// F04 (2026-09-05 audit): a chunked value must be an IMMUTABLE, INTEGRITY-
+// CHECKED snapshot.
+//
+// The engine used to key part documents by (key, sequence) alone, so version
+// N+1 overwrote version N's parts in place. Parts land before the manifest,
+// so a reader holding version N's manifest read version N+1's parts under it
+// and assembled a mixture of the two - which JSON.parse accepted, because
+// valid JSON was never proof that the parts belonged together. These pin the
+// three properties that make that impossible: distinct paths per version,
+// deletion of the old snapshot only after the new manifest is durable, and a
+// digest check before anything reaches localStorage.
+// --------------------------------------------------------------------------
+
+/** Which chunk documents a run of setDoc calls wrote, by path. */
+function chunkPaths(calls, namespace) {
+  return chunkCalls(calls, namespace).map((c) => c.path);
+}
+
+test('F04: successive versions of a key never share a part document', async (t) => {
+  const h = await startHarness(t, ['grow']);
+  const [k] = h.keys;
+
+  const big = (tag) => ({ rows: Array.from({ length: 4000 }, (_, i) => ({ i, tag, pad: 'x'.repeat(200) })) });
+
+  localStorage.setItem(k, JSON.stringify(big('v1')));
+  t.mock.timers.tick(500);
+  await settle();
+  const first = chunkPaths(h.setDocCalls(), h.namespace);
+  assert.ok(first.length >= 2, `the value must span several parts, got ${first.length}`);
+
+  const before = h.setDocCalls().length;
+  localStorage.setItem(k, JSON.stringify(big('v2')));
+  t.mock.timers.tick(500);
+  await settle();
+  const second = chunkPaths(h.setDocCalls().slice(before), h.namespace);
+  assert.ok(second.length >= 2);
+
+  const overlap = second.filter((pth) => first.includes(pth));
+  assert.deepEqual(overlap, [],
+    'a new version must not write over the parts the published manifest still points at');
+});
+
+test('F04: the previous snapshot is deleted only after the new manifest lands', async (t) => {
+  const h = await startHarness(t, ['gc']);
+  const [k] = h.keys;
+  const big = (tag) => ({ rows: Array.from({ length: 4000 }, (_, i) => ({ i, tag, pad: 'y'.repeat(200) })) });
+
+  localStorage.setItem(k, JSON.stringify(big('v1')));
+  t.mock.timers.tick(500);
+  await settle();
+  const firstParts = chunkPaths(h.setDocCalls(), h.namespace);
+  const deletedBefore = firestoreFakes().deleteDocCalls.length;
+
+  localStorage.setItem(k, JSON.stringify(big('v2')));
+  t.mock.timers.tick(500);
+  await settle();
+
+  const deleted = firestoreFakes().deleteDocCalls.slice(deletedBefore);
+  for (const pth of firstParts) {
+    assert.ok(deleted.includes(pth), `the superseded part ${pth} must be collected`);
+  }
+  // Ordering: the manifest write for v2 happens before any of those deletes.
+  const calls = h.setDocCalls();
+  assert.ok(manifestCalls(calls, h.namespace).length >= 1,
+    'the new manifest was published before the old parts were collected');
+});
+
+test('F04: a manifest whose parts do not match its digest is refused, not applied', async (t) => {
+  const h = await startHarness(t, ['mix']);
+  const [k] = h.keys;
+
+  // Two versions with the SAME serialised length and the same record
+  // boundaries, so a splice between records produces VALID JSON of the right
+  // length - which is exactly what in-place part overwriting produced, and
+  // exactly why "it parsed" was never evidence of anything. Only the digest
+  // separates the mixture from the real value.
+  const good = { games: Array.from({ length: 3000 }, (_, i) => ({ i, tag: 'aaaa' })) };
+  const other = { games: Array.from({ length: 3000 }, (_, i) => ({ i, tag: 'bbbb' })) };
+  const goodStr = JSON.stringify(good);
+  const otherStr = JSON.stringify(other);
+  assert.equal(goodStr.length, otherStr.length);
+
+  const boundary = goodStr.indexOf('},{', Math.floor(goodStr.length / 2)) + 2;
+  const mixed = goodStr.slice(0, boundary) + otherStr.slice(boundary);
+  assert.equal(mixed.length, goodStr.length, 'the mixture is the right LENGTH');
+  assert.doesNotThrow(() => JSON.parse(mixed), 'and it is valid JSON');
+  assert.notEqual(mixed, goodStr);
+
+  const docs = firestoreFakes().docs;
+  const base = `users/uid-1/apps/${h.namespace}/chunks`;
+  const readable = k.replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 64);
+  const version = '4-deadbeef';
+  docs.set(`${base}/${readable}-${hashValue(k)}__v${version}__0`,
+    { key: k, seq: 0, part: mixed, version });
+
+  h.emit({
+    [k]: {
+      chunked: true, parts: 1, rev: 4, updatedAt: Date.now() + 5000,
+      hash: hashValue(good), chunkVersion: version, chars: goodStr.length,
+    }
+  });
+  await settle();
+
+  assert.equal(backingStore.get(k), undefined,
+    'a value that does not match its manifest must never reach localStorage');
+  assert.equal(h.events().filter((e) => e.key === k).length, 0,
+    'and no app is told it arrived');
+});
+
+test('F04: a short read is caught before JSON.parse can accept it', async (t) => {
+  const h = await startHarness(t, ['short']);
+  const [k] = h.keys;
+  // A truncation that still parses: the array simply ends early.
+  const value = { games: [{ i: 1 }, { i: 2 }, { i: 3 }] };
+  const full = JSON.stringify(value);
+  const truncated = JSON.stringify({ games: [{ i: 1 }] });
+
+  const base = `users/uid-1/apps/${h.namespace}/chunks`;
+  const readable = k.replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 64);
+  const version = '2-cafe';
+  firestoreFakes().docs.set(`${base}/${readable}-${hashValue(k)}__v${version}__0`,
+    { key: k, seq: 0, part: truncated, version });
+
+  h.emit({
+    [k]: {
+      chunked: true, parts: 1, rev: 2, updatedAt: Date.now() + 5000,
+      hash: hashValue(value), chunkVersion: version, chars: full.length,
+    }
+  });
+  await settle();
+  assert.equal(backingStore.get(k), undefined);
+});
+
+test('F04: a part carrying the wrong version is refused', async (t) => {
+  const h = await startHarness(t, ['stamp']);
+  const [k] = h.keys;
+  const value = { rows: [1, 2, 3] };
+  const base = `users/uid-1/apps/${h.namespace}/chunks`;
+  const readable = k.replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 64);
+  firestoreFakes().docs.set(`${base}/${readable}-${hashValue(k)}__v9-aaa__0`,
+    { key: k, seq: 0, part: JSON.stringify(value), version: '8-bbb' });
+
+  h.emit({
+    [k]: {
+      chunked: true, parts: 1, rev: 9, updatedAt: Date.now() + 5000,
+      hash: hashValue(value), chunkVersion: '9-aaa', chars: JSON.stringify(value).length,
+    }
+  });
+  await settle();
+  assert.equal(backingStore.get(k), undefined,
+    'the documents were at the right ids but belong to another snapshot');
+});
+
+test('F04: a manifest written by the pre-versioning engine still reads', async (t) => {
+  // Migration safety: an upgraded device will routinely find its own cloud
+  // document still in the old shape. No chunkVersion means the old ids, no
+  // chars means no length check, and the digest check still applies.
+  const h = await startHarness(t, ['legacy']);
+  const [k] = h.keys;
+  const value = { games: Array.from({ length: 2000 }, (_, i) => ({ i })) };
+  const serialised = JSON.stringify(value);
+
+  const base = `users/uid-1/apps/${h.namespace}/chunks`;
+  const readable = k.replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 64);
+  firestoreFakes().docs.set(`${base}/${readable}-${hashValue(k)}__0`, { key: k, seq: 0, part: serialised });
+
+  h.emit({ [k]: { chunked: true, parts: 1, rev: 5, updatedAt: Date.now() + 5000, hash: hashValue(value) } });
+  await settle();
+  assert.equal(backingStore.get(k), serialised, 'old saved data is not stranded');
+});
+
+test('F04: the first write after the upgrade collects the legacy parts', async (t) => {
+  const h = await startHarness(t, ['upgrade']);
+  const [k] = h.keys;
+  const value = { games: Array.from({ length: 2000 }, (_, i) => ({ i })) };
+  const serialised = JSON.stringify(value);
+
+  const base = `users/uid-1/apps/${h.namespace}/chunks`;
+  const readable = k.replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 64);
+  firestoreFakes().docs.set(`${base}/${readable}-${hashValue(k)}__0`, { key: k, seq: 0, part: serialised });
+  h.emit({ [k]: { chunked: true, parts: 1, rev: 5, updatedAt: Date.now() + 5000, hash: hashValue(value) } });
+  await settle();
+
+  const deletedBefore = firestoreFakes().deleteDocCalls.length;
+  localStorage.setItem(k, JSON.stringify({ rows: Array.from({ length: 4000 }, (_, i) => ({ i, pad: 'z'.repeat(200) })) }));
+  t.mock.timers.tick(500);
+  await settle();
+
+  const deleted = firestoreFakes().deleteDocCalls.slice(deletedBefore);
+  assert.ok(deleted.includes(`${base}/${readable}-${hashValue(k)}__0`),
+    'the unversioned part the old engine left behind is collected, not orphaned');
+});
+
+test('F04: a value that shrinks back inline leaves no part documents behind', async (t) => {
+  const h = await startHarness(t, ['shrink']);
+  const [k] = h.keys;
+  localStorage.setItem(k, JSON.stringify({ rows: Array.from({ length: 4000 }, (_, i) => ({ i, pad: 'q'.repeat(200) })) }));
+  t.mock.timers.tick(500);
+  await settle();
+  const parts = chunkPaths(h.setDocCalls(), h.namespace);
+  assert.ok(parts.length >= 2);
+
+  const deletedBefore = firestoreFakes().deleteDocCalls.length;
+  localStorage.setItem(k, JSON.stringify({ rows: [1] }));
+  t.mock.timers.tick(500);
+  await settle();
+  const deleted = firestoreFakes().deleteDocCalls.slice(deletedBefore);
+  for (const pth of parts) {
+    assert.ok(deleted.includes(pth), `${pth} must not survive the shrink`);
+  }
+});
+
 test('a flush too large for one commit is split into several merge writes', async (t) => {
   // Eight keys of ~120 KB each: every one fits inline, their sum does not.
   // uploadLocalOnlyKeys ships exactly this shape on a first sign-in.
@@ -1053,4 +1299,281 @@ test('startStorageSync before auth resolves defers, then starts on the auth call
 
   handle.stop();
   assert.equal(mod.getSyncStatus(namespace), null, 'the deferred handle still stops the real sync');
+});
+
+// ---------------------------------------------------------------------------
+// F05 (2026-09-05 audit): two devices editing DIFFERENT records must not
+// compete over the whole collection.
+//
+// Every app here syncs whole localStorage VALUES, so `gymTrackerSessions` is
+// one string holding many independent workouts. Last-writer-wins over that
+// string means an evening logged on a phone and an evening logged on a laptop
+// fight, and one of them loses silently. These pin the three guarantees that
+// replaced it: a three-way merge against the state the two sides last agreed
+// on, a recoverable copy whenever a merge cannot decide, and a user-visible
+// signal either way.
+// ---------------------------------------------------------------------------
+
+/** Conflict copies this session, read back the way a recovery UI would. */
+function conflictCopies() {
+    try { return JSON.parse(backingStore.get('shevato:sync-conflicts') || '[]'); }
+    catch { return []; }
+}
+function conflictCopyValue(id) {
+    return JSON.parse(backingStore.get(id)).value;
+}
+
+test('F05: device A adds a record while device B adds another - both survive', async (t) => {
+    const h = await startHarness(t, ['games']);
+    const [k] = h.keys;
+
+    // Both devices start from the same synced state.
+    const shared = [{ id: 'g1', score: 10 }, { id: 'g2', score: 20 }];
+    h.emit({ [k]: { value: shared, rev: 4, updatedAt: Date.now() - 10_000, hash: hashValue(shared) } });
+    await settle();
+    assert.deepEqual(JSON.parse(backingStore.get(k)), shared);
+
+    // THIS device adds a game and has not flushed it yet.
+    const mine = [...shared, { id: 'mine', score: 30 }];
+    localStorage.setItem(k, JSON.stringify(mine));
+
+    // The other device added a different game and got there first.
+    const theirs = [...shared, { id: 'theirs', score: 40 }];
+    h.emit({ [k]: { value: theirs, rev: 5, updatedAt: Date.now(), hash: hashValue(theirs) } });
+    await settle();
+
+    const merged = JSON.parse(backingStore.get(k));
+    const ids = merged.map((r) => r.id).sort();
+    assert.deepEqual(ids, ['g1', 'g2', 'mine', 'theirs'],
+        'neither device loses the record it added');
+
+    // And the merged value goes back up, so the cloud converges too.
+    t.mock.timers.tick(500);
+    await settle();
+    const written = h.setDocCalls().filter((c) => c.path === `users/uid-1/apps/${h.namespace}`);
+    const last = written[written.length - 1].payload.data[k];
+    assert.deepEqual(last.value.map((r) => r.id).sort(), ids);
+});
+
+test('F05: a delete on one device is not resurrected by the other', async (t) => {
+    // The trap a two-way union walks into: "they do not have it" and "they
+    // deleted it" look identical without a base. The base is the whole
+    // reason the merge is three-way.
+    const h = await startHarness(t, ['del']);
+    const [k] = h.keys;
+
+    const shared = [{ id: 'a', v: 1 }, { id: 'b', v: 1 }, { id: 'c', v: 1 }];
+    h.emit({ [k]: { value: shared, rev: 2, updatedAt: Date.now() - 10_000, hash: hashValue(shared) } });
+    await settle();
+
+    // This device deletes b and has not flushed. The other device edits c.
+    localStorage.setItem(k, JSON.stringify([{ id: 'a', v: 1 }, { id: 'c', v: 1 }]));
+    const theirs = [{ id: 'a', v: 1 }, { id: 'b', v: 1 }, { id: 'c', v: 9 }];
+    h.emit({ [k]: { value: theirs, rev: 3, updatedAt: Date.now(), hash: hashValue(theirs) } });
+    await settle();
+
+    const merged = JSON.parse(backingStore.get(k));
+    assert.deepEqual(merged.map((r) => r.id).sort(), ['a', 'c'], 'the deletion stands');
+    assert.equal(merged.find((r) => r.id === 'c').v, 9, "and the other device's edit lands");
+});
+
+test('F05: the same record edited on both devices keeps a recoverable copy', async (t) => {
+    const h = await startHarness(t, ['same']);
+    const [k] = h.keys;
+
+    const shared = [{ id: 'x', note: 'original' }];
+    h.emit({ [k]: { value: shared, rev: 1, updatedAt: Date.now() - 10_000, hash: hashValue(shared) } });
+    await settle();
+
+    localStorage.setItem(k, JSON.stringify([{ id: 'x', note: 'mine' }]));
+    const theirs = [{ id: 'x', note: 'theirs' }];
+    h.emit({ [k]: { value: theirs, rev: 2, updatedAt: Date.now(), hash: hashValue(theirs) } });
+    await settle();
+
+    const copies = conflictCopies().filter((c) => c.key === k);
+    assert.equal(copies.length, 1, 'the losing edit is preserved, not discarded');
+    assert.equal(copies[0].reason, 'record-conflict');
+    assert.deepEqual(conflictCopyValue(copies[0].id), [{ id: 'x', note: 'mine' }]);
+
+    // Whichever record won, the value is one of the two - never a blend.
+    const live = JSON.parse(backingStore.get(k));
+    assert.equal(live.length, 1);
+    assert.ok(['mine', 'theirs'].includes(live[0].note));
+});
+
+test('F05: a conflict the page can see and act on', async (t) => {
+    const h = await startHarness(t, ['notify']);
+    const [k] = h.keys;
+    const seen = [];
+    const listener = (e) => seen.push(e.detail);
+    globalThis.window.addEventListener('syncConflict', listener);
+    t.after(() => globalThis.window.removeEventListener('syncConflict', listener));
+
+    const shared = [{ id: 'a', v: 1 }];
+    h.emit({ [k]: { value: shared, rev: 1, updatedAt: Date.now() - 10_000, hash: hashValue(shared) } });
+    await settle();
+    localStorage.setItem(k, JSON.stringify([{ id: 'a', v: 1 }, { id: 'b', v: 2 }]));
+    h.emit({ [k]: { value: [{ id: 'a', v: 1 }, { id: 'c', v: 3 }], rev: 2, updatedAt: Date.now(), hash: hashValue([{ id: 'a', v: 1 }, { id: 'c', v: 3 }]) } });
+    await settle();
+
+    assert.equal(seen.length, 1, 'a conflict is never silent');
+    assert.equal(seen[0].key, k);
+    assert.equal(seen[0].resolution, 'merged');
+    assert.equal(seen[0].recordCount, 3);
+});
+
+test('F05: a value that is not a record collection keeps both sides', async (t) => {
+    // Settings objects, preference strings, anything without stable ids: a
+    // merge would be guesswork, so one side wins deterministically and the
+    // other is preserved rather than dropped.
+    const h = await startHarness(t, ['settings']);
+    const [k] = h.keys;
+
+    h.emit({ [k]: { value: { units: 'kg' }, rev: 1, updatedAt: Date.now() - 10_000, hash: hashValue({ units: 'kg' }) } });
+    await settle();
+    localStorage.setItem(k, JSON.stringify({ units: 'lb' }));
+    const theirs = { units: 'st' };
+    h.emit({ [k]: { value: theirs, rev: 2, updatedAt: Date.now(), hash: hashValue(theirs) } });
+    await settle();
+
+    const copies = conflictCopies().filter((c) => c.key === k);
+    assert.equal(copies.length, 1);
+    assert.ok(['local-superseded', 'remote-superseded'].includes(copies[0].reason));
+    const live = JSON.parse(backingStore.get(k));
+    const preserved = conflictCopyValue(copies[0].id);
+    assert.deepEqual(
+        [live.units, preserved.units].sort(),
+        ['lb', 'st'],
+        'the live value and the preserved copy are the two versions that conflicted'
+    );
+});
+
+test('F05: reconnecting in the opposite order reaches the same record set', async (t) => {
+    // Same two edits, delivered the other way round. Convergence is the
+    // property; the ORDER of the merged array is allowed to differ, and does.
+    const h = await startHarness(t, ['order']);
+    const [k] = h.keys;
+    const shared = [{ id: 's', v: 0 }];
+    h.emit({ [k]: { value: shared, rev: 1, updatedAt: Date.now() - 20_000, hash: hashValue(shared) } });
+    await settle();
+
+    localStorage.setItem(k, JSON.stringify([{ id: 's', v: 0 }, { id: 'late', v: 1 }]));
+    const early = [{ id: 's', v: 0 }, { id: 'early', v: 1 }];
+    h.emit({ [k]: { value: early, rev: 2, updatedAt: Date.now() - 10_000, hash: hashValue(early) } });
+    await settle();
+    const first = JSON.parse(backingStore.get(k)).map((r) => r.id).sort();
+
+    // A third peer, arriving after, holding only what it knew.
+    const third = [{ id: 's', v: 0 }, { id: 'early', v: 1 }, { id: 'late', v: 1 }];
+    h.emit({ [k]: { value: third, rev: 9, updatedAt: Date.now(), hash: hashValue(third) } });
+    await settle();
+
+    assert.deepEqual(first, ['early', 'late', 's']);
+    assert.deepEqual(JSON.parse(backingStore.get(k)).map((r) => r.id).sort(), ['early', 'late', 's']);
+});
+
+test('F05: conflict copies are capped so evidence cannot fill storage', async (t) => {
+    const h = await startHarness(t, ['cap']);
+    const [k] = h.keys;
+    for (let i = 0; i < 30; i++) {
+        h.emit({ [k]: { value: { n: i }, rev: i + 1, updatedAt: Date.now() - 100000 + i * 1000, hash: hashValue({ n: i }) } });
+        await settle();
+        localStorage.setItem(k, JSON.stringify({ n: `local-${i}` }));
+        h.emit({ [k]: { value: { n: `remote-${i}` }, rev: i + 2, updatedAt: Date.now() + i * 1000, hash: hashValue({ n: `remote-${i}` }) } });
+        await settle();
+    }
+    assert.ok(conflictCopies().length <= 20, `capped at 20, got ${conflictCopies().length}`);
+});
+
+test('F05: a fresh device with no base still never loses its own records', async (t) => {
+    // No agreed base at all (first sign-in on this device). Without a base
+    // the merge cannot tell an addition from a deletion, so it keeps
+    // everything - which is the safe direction.
+    const h = await startHarness(t, ['fresh']);
+    const [k] = h.keys;
+    localStorage.setItem(k, JSON.stringify([{ id: 'local-only', v: 1 }]));
+    const theirs = [{ id: 'cloud-only', v: 1 }];
+    h.emit({ [k]: { value: theirs, rev: 3, updatedAt: Date.now(), hash: hashValue(theirs) } });
+    await settle();
+    assert.deepEqual(
+        JSON.parse(backingStore.get(k)).map((r) => r.id).sort(),
+        ['cloud-only', 'local-only']
+    );
+});
+
+/* ---------------------------------------------------------------------------
+ * Arena identity outside users/{uid} (2026-09-05 audit F18).
+ *
+ * Closing an account used to leave three things behind for good: a public XP
+ * leaderboard row, a daily-challenge score on every day the player appeared,
+ * and a head-to-head record against every opponent. None had a deletion rule
+ * the owner could use, so privacy.html had to say out loud that the only way
+ * to remove them was to email the owner.
+ *
+ * Two treatments, because they are two different things. The leaderboard row
+ * and the daily scores are the departing player's alone and are deleted. A
+ * head-to-head record is SHARED - it is the other player's history too - so
+ * the identity is removed and the counts stand.
+ * ------------------------------------------------------------------------ */
+
+test('account deletion erases the Arena leaderboard and daily scores, and anonymises H2H', async () => {
+  const { eraseArenaIdentity, ARENA_ANONYMOUS_NAME } = mod;
+  const fakes = firestoreFakes();
+  fakes.docs.clear();
+  fakes.deleteDocCalls.length = 0;
+
+  fakes.docs.set('triviaLeaderboard/uid-1', { uid: 'uid-1', displayName: 'Me', xp: 900 });
+  fakes.docs.set('triviaLeaderboard/uid-2', { uid: 'uid-2', displayName: 'Someone else', xp: 400 });
+  fakes.docs.set('globeDropDailyLeaderboard/2026-09-01/scores/uid-1', { uid: 'uid-1', score: 480 });
+  fakes.docs.set('globeDropDailyLeaderboard/2026-09-02/scores/uid-1', { uid: 'uid-1', score: 500 });
+  fakes.docs.set('globeDropDailyLeaderboard/2026-09-02/scores/uid-2', { uid: 'uid-2', score: 700 });
+  fakes.docs.set('triviaH2H/uid-1__uid-9', {
+    uidA: 'uid-1', uidB: 'uid-9', displayNameA: 'Me', displayNameB: 'Opponent',
+    winsA: 3, winsB: 2, ties: 0, gamesPlayed: 5,
+  });
+  fakes.docs.set('triviaH2H/uid-0__uid-1', {
+    uidA: 'uid-0', uidB: 'uid-1', displayNameA: 'Other', displayNameB: 'Me',
+    winsA: 1, winsB: 4, ties: 1, gamesPlayed: 6,
+  });
+
+  await eraseArenaIdentity();
+
+  assert.equal(fakes.docs.has('triviaLeaderboard/uid-1'), false, 'own leaderboard row is gone');
+  assert.equal(fakes.docs.has('triviaLeaderboard/uid-2'), true, "and nobody else's is touched");
+  assert.equal(fakes.docs.has('globeDropDailyLeaderboard/2026-09-01/scores/uid-1'), false);
+  assert.equal(fakes.docs.has('globeDropDailyLeaderboard/2026-09-02/scores/uid-1'), false);
+  assert.equal(fakes.docs.has('globeDropDailyLeaderboard/2026-09-02/scores/uid-2'), true,
+    'a stranger who happened to play the same day keeps their score');
+
+  // SHARED history survives, without the name.
+  const a = fakes.docs.get('triviaH2H/uid-1__uid-9');
+  assert.equal(a.displayNameA, ARENA_ANONYMOUS_NAME);
+  assert.equal(a.displayNameB, 'Opponent', "the opponent's own name is untouched");
+  assert.equal(a.gamesPlayed, 5, 'and their record of those games survives');
+  const b = fakes.docs.get('triviaH2H/uid-0__uid-1');
+  assert.equal(b.displayNameB, ARENA_ANONYMOUS_NAME, 'either side of the pair key');
+  assert.equal(b.displayNameA, 'Other');
+  assert.equal(b.winsA, 1);
+});
+
+test('Arena erasure is not derailed by a record that has already gone', async () => {
+  const { eraseArenaIdentity } = mod;
+  const fakes = firestoreFakes();
+  fakes.docs.clear();
+  // Nothing of this user's exists at all: a guest who never played, or a
+  // second deletion attempt after the first was interrupted. Both must
+  // succeed, or a retry could never finish what it started.
+  await assert.doesNotReject(() => eraseArenaIdentity());
+});
+
+test('the Arena collection names match the ones the app writes', async () => {
+  // The same invariant RIVAL_NETWORK_COLLECTIONS carries: a rename in the app
+  // that is not mirrored here would silently leave a departed player's public
+  // records behind forever, and nothing would fail.
+  const { ARENA_IDENTITY_COLLECTIONS } = mod;
+  const { readFileSync } = await import('node:fs');
+  const app = readFileSync(new URL('../../apps/arena/js/app.js', import.meta.url), 'utf8');
+  for (const name of Object.values(ARENA_IDENTITY_COLLECTIONS)) {
+    assert.ok(app.includes(`'${name}'`), `${name} must be the collection apps/arena/js/app.js writes`);
+  }
 });

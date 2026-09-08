@@ -127,6 +127,27 @@
         }
     }
 
+    // A sync conflict is the one sync event a user has to be TOLD about.
+    //
+    // Two devices editing the same collection used to resolve silently, and
+    // the losing side simply stopped existing. The engine now merges what it
+    // can and keeps a recoverable copy of whatever it cannot, but neither is
+    // any use if nobody knows it happened - so the banner says so, and stays
+    // up (no auto-fade) until it is dismissed.
+    function showConflictBanner(detail) {
+        if (!bannerEl) return;
+        clearTimeout(recoveryTimer);
+        recoveryTimer = null;
+        const merged = detail && detail.resolution === 'merged';
+        const conflicted = merged && detail.conflictedRecordIds && detail.conflictedRecordIds.length;
+        showBanner('conflict', merged
+            ? (conflicted
+                ? 'Changes from another device were merged; ' + conflicted
+                  + ' item' + (conflicted === 1 ? '' : 's') + ' differed and a copy of yours was kept'
+                : 'Changes from another device were merged in')
+            : 'Another device had changed this too. A copy of the other version was kept on this device.');
+    }
+
     function render() {
         const next = readCurrent();
         const prev = lastRender;
@@ -175,6 +196,9 @@
         // when it lands, re-place the banner under it (main.js dispatches this
         // from every include callback).
         document.addEventListener('shevato:include-loaded', placeBanner);
+        window.addEventListener('syncConflict', function (e) {
+            try { showConflictBanner(e && e.detail); } catch (err) { /* never break a page */ }
+        });
     }
 
     if (document.readyState === 'loading') {

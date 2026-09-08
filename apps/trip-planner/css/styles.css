@@ -130,7 +130,23 @@
   }
   /* main.css turns <body> into a flex container; without an explicit width
      a flex item sizes to min-content and overflows small screens */
-  .tp-wrap { width: 100%; min-width: 0; max-width: 1180px; margin: 0 auto; padding: 20px 22px 80px; }
+  /* min-height RESERVES the space the board will fill (2026-09-05 audit F07).
+     The planner's content arrives after its scripts do, and everything below
+     it - the crawlable about section, the site footer - was painted high on
+     the page and then pushed down by ~550px as the timeline rendered. On a
+     390px phone that measured 0.253 session-window CLS against Google's 0.1
+     "good" threshold, and it moves controls under a thumb that is already
+     reaching for them.
+
+     One viewport, and no more: the rendered app is taller than this on every
+     real trip, so it costs nothing once loaded and cannot leave a band of
+     empty space. `svh` rather than `vh` because a phone's dynamic toolbars
+     make `vh` the LARGEST viewport, which would over-reserve. */
+  .tp-wrap {
+    width: 100%; min-width: 0; max-width: 1180px; margin: 0 auto;
+    padding: 20px 22px 80px;
+    min-height: 100svh;
+  }
 
   /* ---------- header ---------- */
   .tp-head {
@@ -801,6 +817,17 @@
      of restyling parts. Colours are theme variables (or color-mix of them)
      only: never a literal.
      ===================================================================== */
+  /* Every overlay also carries the `hidden` ATTRIBUTE in index.html
+     (2026-09-05 audit F07). This rule hides them once the stylesheet applies;
+     the attribute hides them from the UA stylesheet, which is in force from
+     the first byte of markup. Without it the twelve dialogs laid out IN FLOW
+     until this file arrived - 8,173px of them - and the whole page below
+     collapsed when it did, which is the layout shift the audit measured on a
+     phone (0.253 session-window CLS, against a 0.1 "good" threshold).
+
+     `.overlay.open` outranks the attribute (0,2,0 against the UA's 0,1,0), so
+     opening a dialog needs no change: adding the class is still the whole
+     contract, and nothing has to remember to clear an attribute. */
   .overlay {
     position: fixed; inset: 0; background: rgba(5, 8, 14, 0.62); z-index: 90;
     display: none; align-items: flex-start; justify-content: center; padding: 6vh 16px 16px;

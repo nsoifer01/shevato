@@ -151,6 +151,19 @@
           <p id="fpl-onboard-hint" class="fpl-onboard-hint">Open the Fantasy Premier League site, go to Points, and read the number in the address bar after <code>/entry/</code>. That is your Team ID. Nothing else is needed: squad, budget, free transfers and chips are all read for you.</p>
         </form>
 
+        <!-- The sample plan, offered BEFORE anyone has to go and find a Team ID
+             (2026-09-05 audit F17). ?demo=1 has always worked and has always
+             been clearly labelled everywhere it is in use; it was only reachable
+             from an ERROR path, so the one visitor guaranteed not to see it was
+             the one who had not started yet. A plain link, not a button: it is a
+             navigation, and it must survive with JavaScript still loading. -->
+        <p class="fpl-onboard-demo">
+          Do not have a Team ID handy?
+          <a class="fpl-demo-link" href="?demo=1">See the planner on a sample squad</a>
+          - a full plan built from a fixed example dataset. Every screen says
+          "Sample data" while it is on, and it writes nothing to your planner.
+        </p>
+
         <div class="fpl-landing-prose">
           <section class="fpl-prose-block">
             <h2>One answer, not a wall of statistics</h2>

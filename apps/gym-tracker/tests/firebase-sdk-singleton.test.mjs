@@ -44,7 +44,10 @@ const skipDirs = new Set(GENERATED_DIRS.map((d) => join(REPO_ROOT, d)));
 
 function collectFiles(dir, ext, acc = []) {
     for (const entry of readdirSync(dir)) {
-        if (entry === 'node_modules' || entry.startsWith('.')) continue;
+        // `dist` is the publish directory (scripts/build-publish-dir.mjs):
+        // a hard-linked COPY of much of this tree, so walking it would find
+        // every file twice and defeat the generated-tree exclusion below.
+        if (entry === 'node_modules' || entry === 'dist' || entry.startsWith('.')) continue;
         const full = join(dir, entry);
         const stat = statSync(full);
         if (stat.isDirectory()) {

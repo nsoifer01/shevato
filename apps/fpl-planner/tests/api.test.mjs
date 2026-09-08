@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createFplApi, NotFoundError, CACHE_PREFIX, labelFor } from '../js/data/api.js';
+import {
+  createFplApi, NotFoundError, RequestTimeoutError, CACHE_PREFIX, labelFor,
+  ATTEMPT_TIMEOUT_MS, TOTAL_DEADLINE_MS,
+} from '../js/data/api.js';
 import { assembleSampleBundle } from '../js/data/sample.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -485,4 +488,165 @@ test('a transient 5xx is retried once, and a 404 is not', async () => {
   const api2 = createFplApi({ fetchImpl: missing, storage: fakeStorage(), now: () => NOW });
   await assert.rejects(() => api2.getEntry(999));
   assert.equal(notFound, 1, 'an unknown team is a real answer and is never retried');
+});
+
+// --------------------------------------------------- request deadlines ------
+//
+// The defect these pin: retry and stale-fallback both live in a `catch`, so
+// they only run once a request FAILS. A connection that never settles rejects
+// nothing, so the planner waited forever - and because fetchPath dedupes by
+// path, a second refresh (including a forced one) joined the same stuck
+// promise rather than starting a live request. A synthetic never-resolving
+// fetch received no abort signal at all.
+//
+// The budgets are injected in milliseconds here so a real timeout is exercised
+// (the timers, the abort, the fallback) without a fifteen-second test.
+
+const FAST = { attemptTimeoutMs: 20, totalDeadlineMs: 60 };
+
+/** A fetch that never settles, and records the signals it was handed. */
+function hangingFetch() {
+  const signals = [];
+  const fn = (url, init) => {
+    signals.push(init && init.signal);
+    return new Promise((_resolve, reject) => {
+      if (init && init.signal) {
+        init.signal.addEventListener('abort', () => {
+          const err = new Error('aborted');
+          err.name = 'AbortError';
+          reject(err);
+        });
+      }
+    });
+  };
+  fn.signals = signals;
+  return fn;
+}
+
+test('a never-resolving request is given an abort signal and times out', async () => {
+  const fetchImpl = hangingFetch();
+  const api = createFplApi({ fetchImpl, storage: fakeStorage(), now: () => Date.now(), ...FAST });
+  await assert.rejects(api.getFixtures(), (err) => err instanceof RequestTimeoutError);
+  assert.ok(fetchImpl.signals.length >= 1, 'the request was actually attempted');
+  assert.ok(fetchImpl.signals[0], 'every attempt carries an abort signal');
+  assert.equal(fetchImpl.signals[0].aborted, true, 'the socket is not left open');
+});
+
+test('a stuck request still serves the stale cached copy', async () => {
+  const storage = fakeStorage();
+  const good = recorder(() => proxyResponse([{ id: 1 }], { fetchedAt: '2026-08-10T11:00:00Z' }));
+  await createFplApi({ fetchImpl: good, storage, now: () => NOW }).getFixtures();
+
+  // The network now hangs and the cached copy has aged past its TTL.
+  const api = createFplApi({
+    fetchImpl: hangingFetch(), storage, now: () => NOW + 3600_000, ...FAST,
+  });
+  const res = await api.getFixtures();
+  assert.deepEqual(res.data, [{ id: 1 }]);
+  assert.equal(res.stale, true, 'a plan built on old numbers must say so');
+});
+
+test('an empty cache plus a stuck network is a recoverable error state', async () => {
+  const api = createFplApi({ fetchImpl: hangingFetch(), storage: fakeStorage(), now: () => NOW, ...FAST });
+  await api.getFixtures().catch(() => null);
+  const entry = api.getDataStatus().sources.find((s) => s.path === 'fixtures');
+  assert.ok(entry, 'the failure is visible to the UI');
+  assert.equal(entry.ok, false);
+  assert.match(String(entry.error), /timed out/i);
+
+  // Recoverable: the in-flight slot was released, so a later call really goes
+  // to the network instead of joining the abandoned promise.
+  const healthy = recorder(() => proxyResponse([{ id: 7 }]));
+  const api2 = createFplApi({ fetchImpl: healthy, storage: fakeStorage(), now: () => NOW, ...FAST });
+  assert.deepEqual((await api2.getFixtures()).data, [{ id: 7 }]);
+});
+
+test('a forced refresh after an abandoned request issues a live request', async () => {
+  const storage = fakeStorage();
+  const calls = [];
+  let hang = true;
+  const fetchImpl = (url, init) => {
+    calls.push(url);
+    if (hang) {
+      return new Promise((_r, reject) => {
+        init.signal.addEventListener('abort', () => {
+          const e = new Error('aborted'); e.name = 'AbortError'; reject(e);
+        });
+      });
+    }
+    return Promise.resolve(proxyResponse([{ id: 2 }]));
+  };
+  const api = createFplApi({ fetchImpl, storage, now: () => NOW, ...FAST });
+  await api.getFixtures().catch(() => null);
+  const afterStuck = calls.length;
+  hang = false;
+  const res = await api.getFixtures({ force: true });
+  assert.deepEqual(res.data, [{ id: 2 }]);
+  assert.ok(calls.length > afterStuck, 'the forced refresh did not join the dead promise');
+});
+
+test('a stalled response body counts against the same deadline', async () => {
+  // Headers arrive, the body never does. Without a deadline the read hangs
+  // exactly as a hanging connection does.
+  const fetchImpl = (url, init) => Promise.resolve(new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"a":'));
+        init.signal.addEventListener('abort', () => controller.error(new Error('aborted')));
+      },
+    }),
+    { status: 200, headers: { 'Content-Type': 'application/json', 'x-fpl-cache': 'miss', 'x-fpl-fetched-at': '2026-08-10T12:00:00Z', 'x-fpl-stale': 'false', 'x-fpl-age-seconds': '0' } }
+  ));
+  const api = createFplApi({ fetchImpl, storage: fakeStorage(), now: () => NOW, ...FAST });
+  await assert.rejects(api.getFixtures(), (err) => err instanceof Error);
+});
+
+test('a timeout is retried once inside the total budget', async () => {
+  let attempt = 0;
+  const fetchImpl = (url, init) => {
+    attempt++;
+    if (attempt === 1) {
+      return new Promise((_r, reject) => {
+        init.signal.addEventListener('abort', () => {
+          const e = new Error('aborted'); e.name = 'AbortError'; reject(e);
+        });
+      });
+    }
+    return Promise.resolve(proxyResponse([{ id: 9 }]));
+  };
+  const api = createFplApi({
+    fetchImpl, storage: fakeStorage(), now: () => Date.now(),
+    attemptTimeoutMs: 20, totalDeadlineMs: 5000,
+  });
+  assert.deepEqual((await api.getFixtures()).data, [{ id: 9 }]);
+  assert.equal(attempt, 2, 'exactly one retry, not a retry storm');
+});
+
+test('healthy single-flight dedupe survives the deadline work', async () => {
+  let resolveIt;
+  const calls = [];
+  const fetchImpl = (url) => {
+    calls.push(url);
+    return new Promise((r) => { resolveIt = () => r(proxyResponse([{ id: 3 }])); });
+  };
+  const api = createFplApi({ fetchImpl, storage: fakeStorage(), now: () => NOW });
+  const a = api.getFixtures();
+  const b = api.getFixtures();
+  resolveIt();
+  const [ra, rb] = await Promise.all([a, b]);
+  assert.equal(calls.length, 1, 'two consumers, one underlying request');
+  assert.deepEqual(ra.data, rb.data);
+});
+
+test('the production deadlines are bounded and ordered sensibly', () => {
+  assert.ok(ATTEMPT_TIMEOUT_MS > 0);
+  assert.ok(TOTAL_DEADLINE_MS > ATTEMPT_TIMEOUT_MS,
+    'the total budget must leave room for a retry after one attempt times out');
+  // Under the browser's own fetch timeout and over the function's 9s upstream
+  // budget plus a cold start, so a slow-but-working request is never killed.
+  assert.ok(ATTEMPT_TIMEOUT_MS >= 10000 && ATTEMPT_TIMEOUT_MS <= 30000);
+  assert.deepEqual(
+    createFplApi({ fetchImpl: () => {}, storage: fakeStorage() }).deadlines(),
+    { attemptTimeoutMs: ATTEMPT_TIMEOUT_MS, totalDeadlineMs: TOTAL_DEADLINE_MS }
+  );
 });

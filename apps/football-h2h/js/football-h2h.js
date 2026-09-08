@@ -1397,11 +1397,34 @@ function updateUIWithFilteredData(filteredGames) {
     updateStatisticsWithData(filteredGames);
 }
 
+/**
+ * Show or hide the first-run call to action (2026-09-05 audit F17).
+ *
+ * The empty state used to be seven zero-valued stat cards and, far below
+ * them, a sentence pointing at a sidebar the visitor had not opened. The
+ * primary action now sits ABOVE the statistics it produces, and only while
+ * there is nothing to show: one game and it is gone, so a returning user
+ * never meets it again.
+ *
+ * A read failure is deliberately NOT a first run: telling somebody whose
+ * saved games could not be read to "log your first match" would be wrong
+ * about what happened and would invite them to write over it.
+ */
+function updateFirstRunCta(hasGames) {
+    const cta = document.getElementById('first-run');
+    if (!cta) return;
+    cta.hidden = hasGames || gamesLoadError;
+}
+
 // Function to render games table with specific data
 function renderGamesTableWithData(gamesData) {
     const tbody = document.getElementById('gamesTableBody');
     const noGamesDiv = document.getElementById('noGames');
-    
+
+    // Driven by the WHOLE game list, not the filtered slice: a date filter
+    // that happens to match nothing is not a first run.
+    updateFirstRunCta(games.length > 0);
+
     if (!tbody) return;
     
     if (gamesData.length === 0) {
@@ -1416,7 +1439,7 @@ function renderGamesTableWithData(gamesData) {
             } else if (games.length > 0) {
                 p.textContent = `No games match the current date filter (0 of ${games.length} ${games.length === 1 ? 'game' : 'games'}). Choose "All Time" in the sidebar to see every game.`;
             } else {
-                p.textContent = 'No games recorded yet. Click "Add Game" from sidebar to start tracking!';
+                p.textContent = 'No games recorded yet. Use "Add your first game" at the top of the page, or "Add Game" in the sidebar.';
             }
         }
         // Remove pagination if no data

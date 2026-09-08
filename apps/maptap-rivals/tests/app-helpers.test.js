@@ -1156,3 +1156,53 @@ test('splitGameCities: iOS-shaped days (NaN coordinates) still normalise to one 
     assert.deepEqual(g.cities.map(c => c.lat), [null, null, null, null, null]);
   }
 });
+
+/* ---------------------------------------------------------------------------
+ * Rival-network consent (2026-09-05 audit F03).
+ *
+ * A pair link used to be a connection the moment it existed, and either side
+ * could write it alone - so "only connected rivals can read your profile"
+ * was a condition a stranger satisfied by themselves. A link now records who
+ * accepted it, and only a mutually accepted one is a connection. These pin
+ * the client half; firestore.rules is pinned in apps/arena/tests-rules/.
+ * ------------------------------------------------------------------------ */
+
+test('sanitizeLink: a one-sided link is not accepted', () => {
+  const c = loadApp({});
+  const f = c._testExports.sanitizeLink;
+  const l = f({ uids: ['a', 'b'], acceptedBy: ['b'] }, 'a__b');
+  assert.deepEqual(l.acceptedBy, ['b']);
+  assert.equal(l.accepted, false, 'an invitation is not a connection');
+});
+
+test('sanitizeLink: both sides accepted is a connection', () => {
+  const c = loadApp({});
+  const l = c._testExports.sanitizeLink({ uids: ['a', 'b'], acceptedBy: ['b', 'a'] }, 'a__b');
+  assert.equal(l.accepted, true);
+});
+
+test('sanitizeLink: a link written before consent existed still counts', () => {
+  // Migration safety. Breaking every existing connection to close a hole
+  // that is already closed for new links would cost real people their
+  // network; the create rule is what stops a new unilateral link.
+  const c = loadApp({});
+  const l = c._testExports.sanitizeLink({ uids: ['a', 'b'] }, 'a__b');
+  assert.equal(l.acceptedBy, null);
+  assert.equal(l.accepted, true);
+});
+
+test('sanitizeLink: acceptedBy can only ever name the two participants', () => {
+  const c = loadApp({});
+  const l = c._testExports.sanitizeLink({ uids: ['a', 'b'], acceptedBy: ['a', 'mallory', 7] }, 'a__b');
+  assert.deepEqual(l.acceptedBy, ['a']);
+  assert.equal(l.accepted, false);
+});
+
+test('linkAcceptedByMe: legacy yes, pending only for the acceptor', () => {
+  const c = loadApp({});
+  const { sanitizeLink, linkAcceptedByMe } = c._testExports;
+  assert.equal(linkAcceptedByMe(sanitizeLink({ uids: ['a', 'b'] }, 'a__b'), 'a'), true);
+  const pending = sanitizeLink({ uids: ['a', 'b'], acceptedBy: ['b'] }, 'a__b');
+  assert.equal(linkAcceptedByMe(pending, 'b'), true);
+  assert.equal(linkAcceptedByMe(pending, 'a'), false);
+});

@@ -27,3 +27,4 @@ export function getGlobalSyncStatus() { return {}; }
 export function eraseCloudData(namespace) { return record('eraseCloudData', namespace); }
 export function eraseAccountProfile() { return record('eraseAccountProfile'); }
 export function eraseRivalNetworkIdentity() { return record('eraseRivalNetworkIdentity'); }
+export function eraseArenaIdentity() { return record('eraseArenaIdentity'); }

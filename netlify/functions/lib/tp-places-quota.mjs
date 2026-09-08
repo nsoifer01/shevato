@@ -36,9 +36,21 @@
 // travellers were being cut off by a limiter sized when ratings appeared on
 // assistant cards alone. Raising a per-client cap cannot raise spend -
 // clientId is client-minted, so those caps were only ever advisory smoothing.
+//
+// perNetwork* (2026-09-05 audit F12) is the dimension the caller does NOT
+// choose: a day-scoped digest of the address the request arrived from
+// (lib/tp-client-identity.mjs). clientId is minted by the caller, so rotating
+// it used to reach the whole globalDay pool from one source. Setting the
+// network caps EQUAL to the per-client caps means rotation buys exactly
+// nothing, while a single honest visitor is no worse off than before - and
+// with globalDay at 150 a shared network was never getting more than this
+// anyway. The owner tier is exempt: it is authenticated by a secret, which is
+// real identity rather than an inference from an address.
 export const DEFAULT_LIMITS = {
   perClientHour: 60,
   perClientDay: 120,
+  perNetworkHour: 60,
+  perNetworkDay: 120,
   globalDay: 150,
   globalMonth: 850,
 };
@@ -135,6 +147,8 @@ function pruneUsage(usage, hb, db, mb) {
     monthBucket: mb,
     clientHour: (u.hourBucket === hb && u.clientHour && typeof u.clientHour === 'object') ? bareMap(u.clientHour) : Object.create(null),
     clientDay: (u.dayBucket === db && u.clientDay && typeof u.clientDay === 'object') ? bareMap(u.clientDay) : Object.create(null),
+    networkHour: (u.hourBucket === hb && u.networkHour && typeof u.networkHour === 'object') ? bareMap(u.networkHour) : Object.create(null),
+    networkDay: (u.dayBucket === db && u.networkDay && typeof u.networkDay === 'object') ? bareMap(u.networkDay) : Object.create(null),
     globalDay: (u.dayBucket === db && typeof u.globalDay === 'number') ? u.globalDay : 0,
     globalMonth: (u.monthBucket === mb && typeof u.globalMonth === 'number') ? u.globalMonth : 0,
     ownerDay: (u.dayBucket === db && typeof u.ownerDay === 'number') ? u.ownerDay : 0,
@@ -155,8 +169,10 @@ function pruneUsage(usage, hb, db, mb) {
 export function resetAtFor(scope, now) {
   const t = Number(now) || 0;
   switch (scope) {
-    case 'client_hour': return (hourBucket(t) + 1) * HOUR_MS;
+    case 'client_hour':
+    case 'network_hour': return (hourBucket(t) + 1) * HOUR_MS;
     case 'client_day':
+    case 'network_day':
     case 'global_day':
     case 'owner_day': return (dayBucket(t) + 1) * DAY_MS;
     case 'global_month':
@@ -216,7 +232,7 @@ function poolKeys(tier) {
 // rating and three stay quiet is a much better outcome than eight blank cards,
 // and the caller reserves exactly `granted` before spending. allowed is false
 // only when granted would be 0, so the caller can answer 429.
-export function checkQuota(usage, clientId, now, cost = 1, limits = DEFAULT_LIMITS, tier = 'public') {
+export function checkQuota(usage, clientId, now, cost = 1, limits = DEFAULT_LIMITS, tier = 'public', networkId = '') {
   const hb = hourBucket(now);
   const db = dayBucket(now);
   const mb = monthBucket(now);
@@ -224,10 +240,18 @@ export function checkQuota(usage, clientId, now, cost = 1, limits = DEFAULT_LIMI
   const id = String(clientId);
   const want = Math.max(0, Math.floor(cost));
   const pool = poolKeys(tier);
+  // Public tier only: the owner tier presents a secret, which is identity
+  // rather than an inference from an address. '' means the platform gave no
+  // address, and the dimension is skipped - fail open.
+  const net = tier === 'owner' ? '' : String(networkId || '');
 
   const room = [
     ['client_hour', limits.perClientHour - (u.clientHour[id] || 0)],
     ['client_day', limits.perClientDay - (u.clientDay[id] || 0)],
+    ...(net ? [
+      ['network_hour', (limits.perNetworkHour ?? Infinity) - (u.networkHour[net] || 0)],
+      ['network_day', (limits.perNetworkDay ?? Infinity) - (u.networkDay[net] || 0)],
+    ] : []),
     [pool.dayScope, limits.globalDay - u[pool.day]],
     [pool.monthScope, limits.globalMonth - u[pool.month]],
     // Checked for BOTH tiers, and it is the row that actually stands between
@@ -246,6 +270,10 @@ export function checkQuota(usage, clientId, now, cost = 1, limits = DEFAULT_LIMI
 
   u.clientHour[id] = (u.clientHour[id] || 0) + granted;
   u.clientDay[id] = (u.clientDay[id] || 0) + granted;
+  if (net) {
+    u.networkHour[net] = (u.networkHour[net] || 0) + granted;
+    u.networkDay[net] = (u.networkDay[net] || 0) + granted;
+  }
   u[pool.day] += granted;
   u[pool.month] += granted;
   u.billedMonth += granted;
@@ -257,12 +285,20 @@ export function checkQuota(usage, clientId, now, cost = 1, limits = DEFAULT_LIMI
 // call so parallel batches cannot overrun a cap; without a release, a traveller
 // scrolling a cached itinerary would burn a quota that costs nothing to serve.
 // Never drops below zero, so a double release cannot mint free calls.
-export function releaseQuota(usage, clientId, now, amount, tier = 'public') {
+export function releaseQuota(usage, clientId, now, amount, tier = 'public', networkId = '') {
   const u = pruneUsage(usage, hourBucket(now), dayBucket(now), monthBucket(now));
   const id = String(clientId);
   const n = Math.max(0, Math.floor(amount));
   if (!n) return u;
   const pool = poolKeys(tier);
+  // A reservation that was never spent must come back off EVERY counter it
+  // moved, or a traveller scrolling a cached itinerary would burn a network
+  // allowance that cost nothing to serve.
+  const net = tier === 'owner' ? '' : String(networkId || '');
+  if (net) {
+    u.networkHour[net] = Math.max(0, (u.networkHour[net] || 0) - n);
+    u.networkDay[net] = Math.max(0, (u.networkDay[net] || 0) - n);
+  }
   u.clientHour[id] = Math.max(0, (u.clientHour[id] || 0) - n);
   u.clientDay[id] = Math.max(0, (u.clientDay[id] || 0) - n);
   u[pool.day] = Math.max(0, u[pool.day] - n);

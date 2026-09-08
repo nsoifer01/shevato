@@ -53,6 +53,16 @@
   var APP_NAME = detectApp();
 
   /**
+   * Which build is running, so an error rate can be attributed to a release
+   * instead of to "the site". `scripts/stamp-release.mjs` replaces the token
+   * below with the deploy's short commit ref during `npm run build:site`; an
+   * unstamped checkout reports "dev", which is the honest answer locally.
+   */
+  var RELEASE_ID = '__SHEVATO_RELEASE__';
+  if (/^__/.test(RELEASE_ID)) RELEASE_ID = 'dev';
+  window.SHEVATO_RELEASE = RELEASE_ID;
+
+  /**
    * Section within an app, so Rising Shows' generated show pages can be told
    * apart from the app itself without parsing paths in the GA4 UI.
    * `/apps/rising-shows/shows/foo/` → "shows"; `/apps/rising-shows/` → "app";
@@ -88,6 +98,66 @@
   var EMAIL_RE = /[^\s@]+@[^\s@]+\.[^\s@]+/;
 
   /**
+   * Query parameters we deliberately keep in the URL reported to GA4.
+   *
+   * Everything else is dropped. This is an ALLOWLIST on purpose: `page_path`
+   * alone only cleans the `dp` dimension GA4 reports, while gtag keeps
+   * sending the raw `window.location.href` as `dl` (document location) and
+   * the raw referrer as `dr`. So a visit to
+   * `/apps/trip-planner/?anything=private` reported a clean path AND shipped
+   * the full query string in the same request - the code's query-free intent
+   * was true of one field and false of the wire. Setting page_location /
+   * page_referrer explicitly at config time is what actually decides what
+   * leaves the browser, for the automatic page_view and every later event.
+   *
+   * Campaign attribution is the reason this is not simply "drop everything":
+   * GA4 reads utm_* / click ids out of page_location, so removing them would
+   * silently break acquisition reporting.
+   */
+  var KEEP_QUERY_PARAM = /^(utm_(source|medium|campaign|term|content|id)|gclid|gbraid|wbraid|dclid|srsltid|msclkid|fbclid|ref)$/i;
+
+  /** The canonical path GA4 should file this document under. */
+  function canonicalPath() {
+    return String(window.location.pathname).replace(/\.html$/i, '');
+  }
+
+  /**
+   * `location.href` with the fragment removed and every query parameter
+   * outside KEEP_QUERY_PARAM stripped. Values are clamped so an allowlisted
+   * parameter cannot smuggle a payload either.
+   */
+  function safePageLocation() {
+    try {
+      var url = new URL(window.location.href);
+      var kept = [];
+      url.searchParams.forEach(function (value, key) {
+        if (!KEEP_QUERY_PARAM.test(key)) return;
+        kept.push(encodeURIComponent(key) + '=' + encodeURIComponent(String(value).slice(0, 100)));
+      });
+      return url.origin + canonicalPath() + (kept.length ? '?' + kept.join('&') : '');
+    } catch (err) {
+      return 'https://shevato.com' + canonicalPath();
+    }
+  }
+
+  /**
+   * The referrer with its query string and fragment removed. An origin+path
+   * referrer is what referral reporting needs; the query on somebody else's
+   * URL is not ours to forward, and a same-origin referrer would otherwise
+   * carry our own page's private query/hash into the next page's payload.
+   */
+  function safePageReferrer() {
+    var raw = '';
+    try { raw = String(document.referrer || ''); } catch (err) { return ''; }
+    if (!raw) return '';
+    try {
+      var url = new URL(raw);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return '';
+      return url.origin + url.pathname;
+    } catch (err) { return ''; }
+  }
+
+  /**
    * Heuristic for generated identifiers (Firebase uids, session tokens), which
    * must never be sent even if a caller passes one by mistake.
    *
@@ -102,6 +172,20 @@
     return /^[A-Za-z0-9]{20,}$/.test(value)
       && /[a-z]/.test(value)
       && /[A-Z]/.test(value);
+  }
+
+  /**
+   * An error code is a short, lowercase, enumerable identifier written in our
+   * own source: `quota_exceeded`, `parse-failed`, `sw_install`. Anything else
+   * - a sentence, a URL, a quoted document, anything with a space or over 40
+   * characters - is not a code, and is reported as `unclassified` rather than
+   * forwarded. Fails closed by construction: the caller cannot widen it.
+   */
+  function normaliseErrorCode(value) {
+    if (typeof value !== 'string') return 'unclassified';
+    var trimmed = value.trim().toLowerCase();
+    if (!/^[a-z][a-z0-9_.-]{0,39}$/.test(trimmed)) return 'unclassified';
+    return trimmed;
   }
 
   /**
@@ -140,6 +224,7 @@
       var payload = scrub(params);
       payload.app_name = APP_NAME;
       payload.app_section = detectAppSection();
+      payload.release_id = RELEASE_ID;
       window.gtag('event', eventName, payload);
     } catch (err) {
       /* analytics must never surface to the user */
@@ -161,7 +246,15 @@
     // `.html` URL is reached some way we did not foresee, GA4 still files it
     // under the one canonical row. Trailing slashes are left alone so the
     // existing directory-style URLs keep their reporting continuity.
-    page_path: pageConfig.pagePath || String(window.location.pathname).replace(/\.html$/i, '')
+    page_path: pageConfig.pagePath || canonicalPath(),
+
+    // The two fields gtag would otherwise fill in from the raw URL. Setting
+    // them here, BEFORE gtag('config'), is what makes the sanitisation true
+    // of the request that actually leaves the browser rather than only of the
+    // `dp` dimension. Both are inherited by every subsequent event on this
+    // measurement id, so app_open / app_view / app_error are covered too.
+    page_location: safePageLocation(),
+    page_referrer: safePageReferrer()
   };
   if (pageConfig.pageTitle) configParams.page_title = pageConfig.pageTitle;
 
@@ -316,15 +409,25 @@
     },
 
     /**
-     * Something failed. The message is truncated and scrubbed; stack traces are
-     * never sent. Capped per page load so an error loop cannot flood GA4.
+     * Something failed. Capped per page load so an error loop cannot flood GA4.
+     *
+     * The second argument is a STABLE CODE, not a message. It used to be free
+     * text (`err.message`), protected only by the email/opaque-id heuristics -
+     * and an exception message is exactly where user content ends up: a failed
+     * JSON parse quotes the document, a storage error names the key, a fetch
+     * failure carries the URL that was being fetched. `normaliseErrorCode`
+     * refuses anything that is not already a short enumerable identifier, so
+     * a caller that passes an exception message reports `unclassified`
+     * instead of leaking it. Scope + code + release_id is what an owner
+     * actually triages on; the text was never usable at 100 characters.
      */
-    trackError: function (scope, message, params) {
+    trackError: function (scope, code, params) {
       if (errorsSent >= MAX_ERRORS_PER_PAGE) return;
       errorsSent++;
       var payload = params ? Object.assign({}, params) : {};
-      payload.error_scope = typeof scope === 'string' ? scope : 'unknown';
-      payload.error_message = typeof message === 'string' ? message.slice(0, 100) : '';
+      payload.error_scope = normaliseErrorCode(scope) === 'unclassified'
+        ? 'unknown' : normaliseErrorCode(scope);
+      payload.error_code = normaliseErrorCode(code);
       sendSafely('app_error', payload);
     }
   };

@@ -222,6 +222,19 @@ body.maptap-rivals-app textarea:focus {
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 1.25rem 3rem;
+  /* min-height RESERVES the space the dashboard will fill (2026-09-05 audit
+     F07). The rival cards, the predictions and the network card all render
+     after the app's scripts arrive, and everything below them - the settings
+     strip, the crawlable about section, the site footer - was painted high on
+     the page and then pushed down by ~500px. On a 390px phone that measured
+     0.297 session-window CLS (Google's "good" threshold is 0.1), and it moves
+     controls under a thumb already reaching for them.
+
+     One viewport, and no more: the rendered dashboard is taller than this
+     with any data at all, so it costs nothing once loaded and cannot leave a
+     band of empty space. `svh` rather than `vh`, because a phone's dynamic
+     toolbars make `vh` the LARGEST viewport and would over-reserve. */
+  min-height: 100svh;
 }
 
 .hero {
@@ -327,6 +340,32 @@ body.maptap-rivals-app textarea:focus {
   background: var(--surface);
   border-color: var(--border);
 }
+
+/* RESERVED SPACE for the two cards the app fills after boot (2026-09-05 audit
+   F07). Both bodies are empty in the markup and rendered from JS, so the
+   profile card grew from 70px to 346px and pushed everything under it -
+   today's predictions, the paste panel, the rival grid, the settings strip,
+   the about section and the footer - down the page after it had already been
+   painted. On a 390px phone that measured 0.297 session-window CLS against
+   Google's 0.1 "good" threshold.
+
+   15.5rem is the MEASURED height of the settled first-run profile body at
+   390px (227px plus its own padding), so the filled card lands on its
+   reservation instead of
+   over- or under-shooting it. In rem rather than px so it tracks the reader's
+   text size, which is what actually decides that height. min-height, not
+   height: a taller state (a longer handle, a wrapped status line) still
+   grows, and it grows from the reserved floor rather than from nothing.
+
+   `:empty` is what makes this self-cancelling - the reservation exists for
+   exactly as long as there is nothing in the box, and no code has to remember
+   to remove it. */
+.profile-card-body:empty { min-height: 15.5rem; }
+/* The network card's first-run body is one status line: measured at 28px on a
+   390px viewport. A reservation has to be its MEASURED height, not a guess -
+   over-reserving is a gap that collapses, which is a shift in the other
+   direction and just as real. */
+.network-card-body:empty { min-height: 1.75rem; }
 
 .profile-card-head {
   display: flex;
@@ -590,6 +629,36 @@ body.maptap-rivals-app textarea:focus {
   line-height: 1.5;
 }
 .network-hint strong { color: var(--text); font-weight: 600; }
+
+/* Connection requests (2026-09-07 audit F03). A pair link is an invitation
+   until it is accepted here; before that the other side can read nothing. */
+.network-requests {
+  margin-top: 0.55rem;
+  padding: 0.55rem 0.8rem;
+  background: rgba(255, 255, 255, 0.015);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.network-requests-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.45rem;
+}
+.network-request {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.network-request + .network-request { border-top: 1px solid var(--border); }
+.network-request-who { flex: 1 1 14rem; min-width: 0; color: var(--text); }
 
 /* Incoming-connection banner. One row per auto-added rival, dismissible. */
 .network-notices {

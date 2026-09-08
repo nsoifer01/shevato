@@ -36,7 +36,7 @@ const BASE = `http://127.0.0.1:${PORT}`;
 
 const SITE_PAGES = ['home', 'work', 'apps', 'about', 'contact', 'privacy', '404', 'moadon-alef'];
 const APPS = ['arena', 'football-h2h', 'fpl-planner', 'gym-tracker',
-  'maptap-rivals', 'mario-kart', 'rising-shows', 'trip-planner'];
+  'maptap-rivals', 'mario-kart', 'quotescout', 'rising-shows', 'trip-planner'];
 // moadon-alef deliberately carries no site header.
 const NO_HEADER = new Set(['moadon-alef']);
 
@@ -69,6 +69,20 @@ async function loadPlaywright() {
   }
 }
 
+// Where a browser that cannot start is a FAILURE rather than a skip.
+//
+// The skip below is right on a developer machine: WebKit needs host libraries
+// that a WSL checkout does not have, and refusing to run the Firefox checks
+// because of that would help nobody. It is wrong in CI, and the 2026-09-05
+// audit found exactly that - the run reported "4 passed, 4 skipped" and every
+// WebKit check was among the skipped ones, so the workflow whose entire
+// purpose is engine coverage was green having tested one engine. A skip that
+// is invisible is indistinguishable from a pass.
+//
+// CROSS_BROWSER_REQUIRE=1 (set by .github/workflows/cross-browser.yml) turns
+// the skip into a failure. Same mechanism as ARENA_RULES_REQUIRE.
+const REQUIRE_ENGINES = process.env.CROSS_BROWSER_REQUIRE === '1';
+
 // One browser per engine for the whole file; contexts per page keep state clean.
 async function withBrowser(t, engineName, fn) {
   const pw = await loadPlaywright();
@@ -76,7 +90,14 @@ async function withBrowser(t, engineName, fn) {
   try {
     browser = await pw[engineName].launch({ headless: true });
   } catch (e) {
-    t.skip(`${engineName} cannot launch here: ${String(e.message).split('\n')[0]} `
+    const why = String(e.message).split('\n')[0];
+    if (REQUIRE_ENGINES) {
+      throw new Error(
+        `${engineName} is REQUIRED in this environment and could not launch: ${why}\n`
+        + 'Install it with: npx playwright install --with-deps ' + engineName
+      );
+    }
+    t.skip(`${engineName} cannot launch here: ${why} `
       + '(on CI: npx playwright install --with-deps)');
     return;
   }
@@ -86,6 +107,11 @@ async function withBrowser(t, engineName, fn) {
 async function newPage(browser) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   await context.route('**/*', (route) => {
+    // This harness is static-only. Explicitly stand in for an unavailable
+    // Quote Scout backend; the app's own E2E suite tests provider responses.
+    if (route.request().url() === BASE + '/.netlify/functions/quotescout' && route.request().method() === 'GET') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ verticals: [], vehicleData: false }) });
+    }
     if (EXTERNAL.test(route.request().url())) return route.abort();
     return route.continue();
   });

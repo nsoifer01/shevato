@@ -19,6 +19,7 @@
 import { checkQuota } from './lib/tp-assist-quota.mjs';
 import { updateUsage } from './lib/blob-cas.mjs';
 import { originAllowed, json, upstreamSignal } from './lib/tp-http.mjs';
+import { networkIdFor } from './lib/tp-client-identity.mjs';
 // SINGLE SOURCE OF TRUTH for the assistant contract. This used to be a
 // hand-copied SYSTEM_PREAMBLE, which meant Tier 3 silently kept the old shape
 // every time the client contract changed. trip-logic.js is a classic script
@@ -116,6 +117,10 @@ const MAX_MESSAGES = 40;
 const MAX_CONTENT = 4000;
 const MAX_TRIP_JSON = 30000;
 
+// Filled in when the store module loads; module scope so the try/catch above
+// can hand it out without widening the block that must stay narrow.
+const USAGE_KEY_REF = { value: 'usage' };
+
 export default async function handler(req) {
   // (1) Origin/Referer guard first: only our own site and local dev.
   if (!originAllowed(req)) return json({ error: 'origin_rejected' }, 403);
@@ -135,9 +140,28 @@ export default async function handler(req) {
   if (!clamped.ok) return json({ error: 'bad_request' }, 400);
 
   // (4) Shared key from the config blob; absent -> not configured.
-  const { assistStore, CONFIG_KEY, USAGE_KEY } = await import('./lib/tp-assist-store.mjs');
-  const store = assistStore();
-  const cfg = (await store.get(CONFIG_KEY, { type: 'json' })) || {};
+  //
+  // ACQUIRING AND READING THE STORE IS INSIDE THE BOUNDARY (2026-09-05 audit
+  // F22). @netlify/blobs is imported here and `assistStore()` can throw - a
+  // Blobs incident, a misconfigured deploy, the package missing from the
+  // bundle - and so can the read. Both were outside every try in this
+  // function, so either one escaped as an uncontrolled platform 500 with no
+  // body, and the traveller's UI (which knows what to do with each of our
+  // documented JSON errors) saw a gateway page instead. The FPL handler had
+  // this boundary; this one did not. `store_unavailable` is its own code
+  // rather than being folded into `not_configured`, because a key that is
+  // absent and a store that cannot be reached call for different answers.
+  let store, cfg;
+  try {
+    const mod = await import('./lib/tp-assist-store.mjs');
+    store = mod.assistStore();
+    cfg = (await store.get(mod.CONFIG_KEY, { type: 'json' })) || {};
+    USAGE_KEY_REF.value = mod.USAGE_KEY;
+  } catch (err) {
+    console.error('tp-assist config store unavailable', String(err && err.message));
+    return json({ error: 'store_unavailable' }, 503);
+  }
+  const USAGE_KEY = USAGE_KEY_REF.value;
   // LOCAL DEVELOPMENT AFFORDANCE, not the production path: `netlify dev` serves
   // functions against a LOCAL blob store, which is empty, so Tier 3 would 503
   // on localhost even when the deployed site is configured. Deployed functions
@@ -155,8 +179,13 @@ export default async function handler(req) {
   // closed, because many writers fighting over this one blob is exactly the
   // load the quota exists to stop.
   const now = Date.now();
+  // The caller mints clientId, so it bounds a cooperative browser and nothing
+  // else. networkId is derived from the address the platform reports and is a
+  // day-scoped digest, so rotating client ids no longer multiplies one
+  // source's share of the daily allowance (audit F12).
+  const networkId = networkIdFor(req, now);
   const reserved = await updateUsage(store, USAGE_KEY, usage => {
-    const q = checkQuota(usage, clamped.clientId, now);
+    const q = checkQuota(usage, clamped.clientId, now, undefined, networkId);
     return { write: q.allowed ? q.usage : null, result: q };
   });
   if (!reserved.ok) return json({ error: 'quota_exceeded', scope: 'contention' }, 429);

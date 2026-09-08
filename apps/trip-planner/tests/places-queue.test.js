@@ -411,3 +411,16 @@ test('status reports the scope the server named, which is what the UI explains',
   assert.equal(st.paused, true);
   assert.equal(st.off, false, 'a quota pause is not the same as an unconfigured endpoint');
 });
+
+// F12 (2026-09-05 audit): the server gained a NETWORK dimension alongside the
+// per-browser caps, because clientId is minted by the caller and rotating it
+// walked through the whole shared allowance. The client has to understand the
+// two new scopes, or a rejection it does not recognise falls to the default
+// 15-minute guess and the traveller is told the wrong thing about why.
+test('network_* rejections park on the same bucket edges as client_*', () => {
+  const t = Date.parse('2026-09-07T13:37:11Z');
+  assert.equal(L.placesRetryDelay('network_hour', t), L.placesRetryDelay('client_hour', t));
+  assert.equal(L.placesRetryDelay('network_day', t), L.placesRetryDelay('client_day', t));
+  assert.notEqual(L.placesRetryDelay('network_hour', t), L.placesRetryDelay('', t),
+    'and are NOT falling through to the default guess');
+});

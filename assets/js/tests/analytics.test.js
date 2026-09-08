@@ -22,6 +22,9 @@ const SRC = fs.readFileSync(path.join(__dirname, '..', 'analytics.js'), 'utf8');
  * Loads analytics.js into a fresh context.
  * @param {object} opts
  * @param {string} opts.pathname   window.location.pathname to simulate
+ * @param {string} [opts.href]      full window.location.href (query + hash)
+ * @param {string} [opts.hash]      window.location.hash
+ * @param {string} [opts.referrer]  document.referrer
  * @param {object} [opts.pageConfig] value for window.SHEVATO_ANALYTICS_CONFIG
  * @param {boolean} [opts.breakGtag] make gtag throw, to prove callers survive
  * @returns {{api: object, calls: Array, listeners: object}}
@@ -48,15 +51,21 @@ function load(opts) {
     isFinite,
     URL,
     RegExp,
+    encodeURIComponent,
     document: {
       addEventListener(type, fn) { listeners[type] = fn; },
       querySelector: el,
-      referrer: '',
+      referrer: opts.referrer || '',
     },
   };
 
   sandbox.window = {
-    location: { pathname: opts.pathname, hash: '', href: 'https://shevato.com' + opts.pathname, hostname: 'shevato.com' },
+    location: {
+      pathname: opts.pathname,
+      hash: opts.hash || '',
+      href: opts.href || ('https://shevato.com' + opts.pathname),
+      hostname: 'shevato.com',
+    },
     addEventListener(type, fn) { listeners[type] = fn; },
     SHEVATO_ANALYTICS_CONFIG: opts.pageConfig,
     gtag(...args) {
@@ -260,12 +269,96 @@ test('trackOutbound reports the domain only, and ignores same-origin links', () 
   assert.equal(events(calls).length, before, 'same-origin link must not be outbound');
 });
 
-test('trackError truncates the message and caps volume per page', () => {
+test('trackError reports a stable code and caps volume per page', () => {
   const { api, calls } = load({ pathname: '/apps/trip-planner/' });
-  for (let i = 0; i < 20; i++) api.trackError('scope', 'boom '.repeat(60));
+  for (let i = 0; i < 20; i++) api.trackError('sync', 'quota_exceeded');
   const errs = events(calls).filter((c) => c[1] === 'app_error');
   assert.equal(errs.length, 5, 'error events must be capped');
-  assert.equal(errs[0][2].error_message.length, 100);
+  assert.equal(errs[0][2].error_scope, 'sync');
+  assert.equal(errs[0][2].error_code, 'quota_exceeded');
+});
+
+test('trackError refuses free text: an exception message never reaches GA', () => {
+  // An exception message is where user content ends up - a failed parse
+  // quotes the document, a storage error names the key. Anything that is not
+  // already a short enumerable identifier is reported as `unclassified`.
+  const { api, calls } = load({ pathname: '/apps/trip-planner/' });
+  api.trackError('trip', 'Unexpected token < in JSON at position 4 while saving "Paris with Dana"');
+  const p = events(calls).pop()[2];
+  assert.equal(p.error_code, 'unclassified');
+  assert.equal(JSON.stringify(p).includes('Paris'), false);
+  assert.equal('error_message' in p, false, 'the free-text field is gone entirely');
+});
+
+test('trackError normalises casing and rejects a URL as a code', () => {
+  const { api, calls } = load({ pathname: '/home' });
+  api.trackError('SYNC', 'Quota_Exceeded');
+  assert.equal(events(calls).pop()[2].error_code, 'quota_exceeded');
+  api.trackError('sync', 'https://shevato.com/apps/trip-planner/?trip=honeymoon');
+  const p = events(calls).pop()[2];
+  assert.equal(p.error_code, 'unclassified');
+  assert.equal(JSON.stringify(p).includes('honeymoon'), false);
+});
+
+test('page_location is sanitised: the query string never leaves the browser', () => {
+  // The bug this pins: page_path cleaned the reported `dp` dimension while
+  // gtag kept sending the raw href as `dl`, so a private query parameter went
+  // out on the page_view and on every event after it.
+  const { calls } = load({
+    pathname: '/apps/trip-planner/',
+    href: 'https://shevato.com/apps/trip-planner/?audit_private=synthetic-confirmation#trip=secret',
+  });
+  const cfg = configs(calls)[0][2];
+  assert.equal(cfg.page_location, 'https://shevato.com/apps/trip-planner/');
+  assert.equal(JSON.stringify(cfg).includes('synthetic-confirmation'), false);
+  assert.equal(JSON.stringify(cfg).includes('secret'), false);
+});
+
+test('campaign parameters survive so attribution still works', () => {
+  const { calls } = load({
+    pathname: '/home',
+    href: 'https://shevato.com/home?utm_source=news&utm_medium=email&gclid=abc123&private=zzz',
+  });
+  const loc = configs(calls)[0][2].page_location;
+  assert.ok(loc.includes('utm_source=news'), loc);
+  assert.ok(loc.includes('utm_medium=email'), loc);
+  assert.ok(loc.includes('gclid=abc123'), loc);
+  assert.equal(loc.includes('private'), false, 'non-campaign params are dropped');
+  assert.equal(loc.includes('zzz'), false);
+});
+
+test('page_location drops .html the same way page_path does', () => {
+  const { calls } = load({ pathname: '/apps.html', href: 'https://shevato.com/apps.html' });
+  assert.equal(configs(calls)[0][2].page_location, 'https://shevato.com/apps');
+});
+
+test('page_referrer keeps origin and path but never the query or hash', () => {
+  const { calls } = load({
+    pathname: '/apps/gym-tracker/',
+    referrer: 'https://shevato.com/apps/trip-planner/?trip=honeymoon#day-3',
+  });
+  const cfg = configs(calls)[0][2];
+  assert.equal(cfg.page_referrer, 'https://shevato.com/apps/trip-planner/');
+  assert.equal(JSON.stringify(cfg).includes('honeymoon'), false);
+  assert.equal(JSON.stringify(cfg).includes('day-3'), false);
+});
+
+test('a missing or non-http referrer reports empty rather than guessing', () => {
+  assert.equal(configs(load({ pathname: '/home' }).calls)[0][2].page_referrer, '');
+  assert.equal(
+    configs(load({ pathname: '/home', referrer: 'android-app://com.example' }).calls)[0][2].page_referrer,
+    ''
+  );
+});
+
+test('every event carries a release id so errors attribute to a build', () => {
+  const { api, calls } = load({ pathname: '/apps/gym-tracker/' });
+  api.trackAction('workout_completed');
+  const p = events(calls).pop()[2];
+  assert.equal(typeof p.release_id, 'string');
+  assert.ok(p.release_id.length > 0);
+  // An unstamped checkout says so rather than shipping the raw token.
+  assert.equal(p.release_id.startsWith('__'), false);
 });
 
 test('a throwing gtag never propagates to the caller', () => {

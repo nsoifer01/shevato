@@ -16,7 +16,7 @@
 // x-fpl-stale (true|false), x-fpl-age-seconds (int).
 
 import { originAllowed, json, upstreamSignal } from './lib/tp-http.mjs';
-import { canonicalPath, serveFpl, fplStore, USER_AGENT } from './lib/fpl-cache.mjs';
+import { canonicalPath, serveFpl, fplStore, ttlSeconds, USER_AGENT } from './lib/fpl-cache.mjs';
 
 // The Blob store pulls in @netlify/blobs (installed only in the Netlify build,
 // gitignored locally). fplStore() imports it lazily, and is called only after
@@ -49,6 +49,7 @@ export default async function handler(req) {
   let result;
   try {
     result = await serveFpl({ path, store, fetchUpstream: fetchFpl, now: Date.now() });
+    result.path = path;
   } catch (err) {
     // Nothing below is allowed to escape as an unhandled 500 either: the client
     // reads a 503 as "temporarily unavailable" and keeps its own cached copy,
@@ -61,6 +62,7 @@ export default async function handler(req) {
       fetchedAt: new Date().toISOString(),
       stale: false,
       ageSeconds: 0,
+      path,
     };
   }
 
@@ -68,12 +70,36 @@ export default async function handler(req) {
     status: result.status,
     headers: {
       'Content-Type': 'application/json',
+      // EDGE CACHE. The response body for a given path is identical for every
+      // visitor, so letting Netlify's CDN answer repeats keeps a burst off the
+      // function entirely - the layer in front of the blob lease rather than
+      // instead of it. The window is the REMAINING life of the copy we just
+      // served, so the edge never holds something past the freshness the
+      // headers above claim, and a stale answer is never cached at all.
+      //
+      // Cache-Control stays no-store: the BROWSER has its own cache with its
+      // own TTL policy (apps/fpl-planner/js/data/api.js) and a second one in
+      // front of it would make "how old is this?" unanswerable. Netlify reads
+      // Netlify-CDN-Cache-Control for the edge and does not forward it.
+      'Netlify-CDN-Cache-Control': edgeCachePolicy(result),
+      'Cache-Control': 'no-store',
       'x-fpl-cache': result.cache,
       'x-fpl-fetched-at': result.fetchedAt,
       'x-fpl-stale': String(result.stale),
       'x-fpl-age-seconds': String(result.ageSeconds),
     },
   });
+}
+
+// How long the edge may repeat this exact answer. Only a fresh 200 is
+// cacheable: an error, and a stale copy served while somebody refreshes, must
+// each be re-asked rather than pinned in front of the function.
+export function edgeCachePolicy(result) {
+  if (result.status !== 200 || result.stale) return 'no-store';
+  const remaining = Math.max(0, ttlSeconds(result.path, { now: Date.now(), nextDeadline: null })
+    - (Number(result.ageSeconds) || 0));
+  if (remaining < 5) return 'no-store';
+  return `public, max-age=${Math.floor(remaining)}`;
 }
 
 // A store shaped like the Blobs one that remembers nothing. Used only when the

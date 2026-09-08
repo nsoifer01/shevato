@@ -35,6 +35,7 @@ shevato/
 │   ├── gym-tracker/                  # Gym workout tracker (PWA, manifest + service worker)
 │   ├── maptap-rivals/                # Daily MapTap.gg head-to-head tracker
 │   ├── mario-kart/                   # Mario Kart race tracker (8 Deluxe + World)
+│   ├── quotescout/                   # Real CMS marketplace plan prices and NHTSA vehicle decoding
 │   ├── rising-shows/                 # TV shows ranked by rating-trend shape + Plex/Kometa integration
 │   └── trip-planner/                 # Day-by-day trip itinerary builder with route map
 │
@@ -95,6 +96,7 @@ in `apps/fpl-planner/experiments/registry.md` with explicit verdicts.
 | Gym Tracker | `apps/gym-tracker/` | Health | Installable PWA, offline support, programs + measurements |
 | MapTap Rivals | `apps/maptap-rivals/` | Game tracker | Daily MapTap.gg H2H against named friends; rivalry seasons + calendar heatmap |
 | Mario Kart Tracker | `apps/mario-kart/` | Game stats | Race log, charts, achievements. Supports MK8 Deluxe + Mario Kart World |
+| Quote Scout | `apps/quotescout/` | Utilities | Real health and dental plan prices from the CMS marketplace public use files (30 states, no credential), plus NHTSA vehicle data. See app README for current availability |
 | Rising Shows | `apps/rising-shows/` | TV / multimedia | Whole TV shows ranked by the shape of their rating trend across thousands of shows; Plex + Kometa integration under `apps/rising-shows/kometa/` |
 | Trip Planner | `apps/trip-planner/` | Travel | Day-by-day itineraries: flights, stays, costs, night coverage, collision and gap warnings, route map, A-to-B travel options. Optional Firestore sync via site sign-in |
 
@@ -415,7 +417,7 @@ In-app navigation deliberately reports `app_view`, never a synthetic
 
 ## Deployment
 
-The site is deployed to Netlify. `netlify.toml` defines security headers (HSTS, X-Frame-Options, Permissions-Policy, CSP-Report-Only), short revalidating cache headers for the gym-tracker assets (300 s for js/css, 3600 s for data, all `must-revalidate`), a `Content-Type` rule for `*.webmanifest`, and the redirect inventory (canonical extensionless URLs, renamed apps, directory-index duplicates including the generated `shows/` and `exercises/` hub indexes). Any other static host works identically, just keep the directory layout intact.
+The site is deployed to Netlify from an explicit publish directory: `build:site`'s last step (`scripts/build-publish-dir.mjs`) hard-links the allow-listed public graph into `dist/`, which is what `netlify.toml` sets as `publish`. Internal files - the markdown docs, the test estate, the Netlify function sources - are not in it and return 404 rather than being merely un-crawled; `tests/static/publish-graph.test.mjs` asserts both directions. `netlify.toml` also defines security headers (HSTS, X-Frame-Options, Permissions-Policy, an enforced CSP baseline plus the report-only full policy), NO-CACHE headers for the gym-tracker assets (`max-age=0, must-revalidate` on js, css and data). Those are deliberately not positive lifetimes: Chrome serves a fresh-enough subresource straight from its memory cache WITHOUT firing the service worker's fetch event, so a max-age window hides the request from the worker and the page keeps running an old module against new HTML for the whole window (2026-08-22 audit D5). This paragraph described positive lifetimes until 2026-09-07 - the shape that bug was fixed by removing, a `Content-Type` rule for `*.webmanifest`, and the redirect inventory (canonical extensionless URLs, renamed apps, directory-index duplicates including the generated `shows/` and `exercises/` hub indexes). Any other static host works identically, just keep the directory layout intact.
 
 Partials at deploy: `scripts/inline-partials.mjs` (inside `build:site`) replaces each `<div data-include="header">` placeholder with the real markup from `partials/`, renaming the attribute to `data-include-inlined` so `main.js` activates it without re-fetching. Netlify builds in a throwaway clone, so this rewrites tracked HTML there and nowhere else - but running `npm run build:site` in YOUR clone will stamp your working copy too. It is idempotent, so nothing doubles; just `git checkout` the stamped pages rather than committing them. Anything that SELECTS the attribute in CSS or JS must match both names (see `tests/static/inline-partials.test.mjs`).
 

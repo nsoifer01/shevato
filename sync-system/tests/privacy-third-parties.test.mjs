@@ -23,7 +23,7 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const PRIVACY = readFileSync(join(REPO_ROOT, 'privacy.html'), 'utf8');
 
 const SCAN_ROOTS = ['apps', 'assets', 'sync-system', 'netlify', 'partials'];
-const SKIP_DIR = /(^|\/)(node_modules|vendor|tests|tests-rules|e2e|scripts|coverage|\.screenshots|data|generated)(\/|$)/;
+const SKIP_DIR = /(^|\/)(node_modules|dist|vendor|tests|tests-rules|e2e|scripts|coverage|\.screenshots|data|generated)(\/|$)/;
 
 function sourceFiles(dir, out = []) {
   for (const name of readdirSync(dir)) {

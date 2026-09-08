@@ -74,6 +74,11 @@ apps/gym-tracker/sitemap-exercises.xml
 # reviewed by the owner, deleted at round close). Never committed.
 .screenshots/
 
+# Quote Scout dataset build cache: ~300 MB of CMS source files downloaded by
+# scripts/build-quotescout-data.mjs. The derived shards under
+# netlify/functions/lib/quotescout/data/ ARE committed; these inputs are not.
+.quotescout-build-cache/
+
 # Owner-uploaded reference screenshots (Lightshot drops for design review).
 # Local-only working material, never published to the repo.
 .lightshot-screenshots/
@@ -98,3 +103,4 @@ apps/*/.reports/
 
 # Local headless-Chrome profiles used by manual verification runs.
 .chrome-profiles/
+dist/

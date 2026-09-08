@@ -14,6 +14,7 @@ import {
   getSyncStatus,
   getGlobalSyncStatus,
   eraseCloudData,
+  eraseArenaIdentity,
   eraseAccountProfile,
   eraseRivalNetworkIdentity
 } from './storage-sync-robust.js';
@@ -488,6 +489,11 @@ export async function deleteAccount({ confirmation, password, user } = {}) {
   }));
   targets.push({ target: 'account profile', run: eraseAccountProfile });
   targets.push({ target: 'rival network entry', run: eraseRivalNetworkIdentity });
+  // Arena's records outside users/{uid} (2026-09-05 audit F18): the public XP
+  // leaderboard row and the daily-challenge scores are deleted, the shared
+  // head-to-head records are anonymised. Before this, all three survived a
+  // full account deletion and privacy.html had to say so.
+  targets.push({ target: 'Arena leaderboard and scores', run: eraseArenaIdentity });
 
   for (const { target, run } of targets) {
     try {
