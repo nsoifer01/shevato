@@ -243,3 +243,11 @@ toasts had no live region. This was the only app in the repo with zero
 title id; toasts are `role=status`/`aria-live=polite`, or `alert`/`assertive`
 for errors; `#iconSelectorModal` carries the same attributes and its close
 button has a label.
+
+- **The apps-hub preview is generated, not art: do not hand-edit it.**
+  `images/app-previews/football-h2h.webp` comes from
+  `assets/app-previews/build-previews.mjs`, which seeds two players and
+  twelve games and clips `#h2h-stats` - total wins, current streak, and the
+  90-minute and penalty splits. That section measures 812x462 at a 1200px
+  viewport, which is within a hair of the hub's 16:9 frame, so the capture is
+  very close to the section's own bounds and needs no invented crop.

@@ -144,14 +144,18 @@ fails, fix the ordering rather than the test.
 10. `assets/og/cards.json` entry + `node assets/og/build-og-cards.mjs <slug>`
    (commit the generated `images/og/<slug>.png`).
 11. `images/app-previews/<slug>.webp` (720x405, 16:9) - rendered from SAMPLE
-    data only, never a real user's content. If the app has a one-click sample
-    state, add it to `assets/app-previews/build-previews.mjs` and run
+    data only, never a real user's content. Do NOT capture this by hand. Add
+    the app to `assets/app-previews/build-previews.mjs` (and a dataset to
+    `assets/app-previews/seeds.mjs` if it needs seeded storage, copying the
+    shapes from the app's own unit-test fixtures) and run
     `node --experimental-websocket assets/app-previews/build-previews.mjs
-    <slug>` rather than capturing by hand: the script anchors the crop to a
-    named element, so the framing matches the rest of the hub and a layout
-    change makes the capture fail loudly instead of drifting. Apps whose
-    interesting state needs hand-seeded storage stay hand-captured; the hub
-    frames whatever it is given (see the preview block in `apps.html`).
+    <slug>`. The script drives the app, clicks through to the screen worth
+    showing, and anchors the crop to a NAMED ELEMENT, so the framing matches
+    the rest of the hub and a layout change fails the capture loudly instead
+    of letting it drift. It refuses to write a clip narrower than 720px,
+    because that would upscale. Seven of the eight previews are built this
+    way; Arena is the exception, because its interesting state is a room with
+    people in it rather than a dataset.
 12. Root `README.md` - repo tree line + Apps table row above.
 13. `package.json` - aggregate `test` script list + `test:<slug>`.
 14. `sync-system/app-sync-init.js` - namespace + URL routing (only if the app

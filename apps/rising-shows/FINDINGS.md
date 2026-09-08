@@ -719,3 +719,13 @@ is already on the release, but nothing deploys until a merge, so the site keeps
 serving the previous build until someone looks. That is the intended failure
 mode, not an oversight.
 
+
+- **The apps-hub preview needs the gitignored data present to build.**
+  `images/app-previews/rising-shows.webp` comes from
+  `assets/app-previews/build-previews.mjs`, which clips the first row of
+  `.finder-card` results - posters, shape tags and the rating-trend
+  sparklines. Unlike the other seven it seeds nothing, because the shows come
+  from `data-index.json` and `data/`, which are gitignored and fetched
+  separately. In a fresh worktree they are absent, the results grid renders
+  empty and the capture fails with the anchor missing; copy them in from a
+  checkout that has them before rebuilding this one.

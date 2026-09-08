@@ -230,16 +230,17 @@
       box-shadow: 0 0 0 2px rgba(32, 68, 201, 0.22);
     }
     /* --- Preview thumbnails ---------------------------------------------
-       Every card opens with a screenshot, and the eight sources are not
-       interchangeable: six are hand-captured 16:10 stills of app states that
-       need seeded storage, two are generated 16:9 crops
-       (assets/app-previews/build-previews.mjs). One frame normalises them.
-       The frame owns all the geometry - ratio, radius, hairline, backdrop -
-       and each image declares only WHERE its window sits in the source, via
-       --preview-focus. Nothing is ever scaled up: the widest a preview is
-       ever painted is 337 px against a 720 px file.
+       Seven of the eight are generated 16:9 crops built by
+       assets/app-previews/build-previews.mjs, which drives each app to the
+       screen worth showing and clips a named element. Arena is the eighth and
+       is hand captured at 16:10, because its interesting state is a live
+       multiplayer room rather than a dataset. The frame owns all the geometry
+       - ratio, radius, hairline, backdrop - so the odd one out still sits in
+       the same box as the rest, and --preview-focus / --preview-zoom exist
+       only for it. Nothing is ever scaled up: the widest a preview is ever
+       painted is 337 px against a 720 px file.
 
-       The mat and the link are both blocks with a definite width so the lazy
+       The stage and the link are both blocks with a definite width so the lazy
        image inside has something to resolve its percentage width against.
        Inside the shrink-to-fit flex card an unloaded image (intrinsic width
        0) used to measure 3x2 px and every card below the fold grew 125-190 px
@@ -374,40 +375,19 @@
       transform-origin: var(--preview-focus, 50% 50%);
       border-radius: inherit;
     }
-    /* Where each still's window sits, and how tight it is. Only the captures
-       that need one are listed; the rest take the centred, unzoomed default.
-       fpl-planner and trip-planner are generated at 16:9 from the live app,
-       so their window is the whole file and the default lands on it exactly.
+    /* Seven of the eight previews are generated at 16:9 by
+       assets/app-previews/build-previews.mjs, each already framed on the one
+       screen that identifies its app, so their window IS the whole file and
+       the centred, unzoomed default lands on it exactly. They need no entry
+       here, and adding one would crop a deliberate composition.
 
-       Zoom is used sparingly and never to trim a bottom edge. It scales both
-       axes, so buying 12% off the bottom also costs 12% off each side, and
-       these captures carry their headings at the top left: zooming to clear
-       gym-tracker's tab bar sliced "This Week" to "his Week", maptap's
-       "Rivalries" to "ries" and rising-shows' "Breaking Bad" to "aking Bad".
-       A sliced heading looks more broken than the artefact it removed, so
-       those three pan only, and zoom is left to the two captures whose waste
-       is at the SIDES, where cropping costs nothing:
-         arena        the globe panel is letterboxed by dark side margins
-         mario-kart   the chart is inset in its panel, padded on both sides
-
-       Pan-only cases, all trimming the discarded 10% off the bottom:
-         football-h2h   bottom edge slices the penalty-wins row mid-tile
-         gym-tracker    bottom edge is the PWA tab bar, not app content
-         maptap-rivals  bottom right is empty background under the third
-                        rival, whose card is also cut
-         rising-shows   bottom edge holds the back-to-top button and two
-                        half-cut posters */
-    .highlights .app-preview[src$="football-h2h.webp"],
-    .highlights .app-preview[src$="gym-tracker.webp"],
-    .highlights .app-preview[src$="maptap-rivals.webp"],
-    .highlights .app-preview[src$="rising-shows.webp"] {
-      --preview-focus: 50% 0%;
-    }
+       Arena is the exception and the only reason the focal system still
+       exists. It is a real-time multiplayer hub, so its interesting state is
+       a room with people in it rather than a dataset, and it stays hand
+       captured at 16:10. Its globe panel is letterboxed by dark side margins,
+       and zoom clears those because its waste is at the SIDES - the one place
+       zoom is safe, since it scales both axes at once. */
     .highlights .app-preview[src$="arena.webp"] {
-      --preview-zoom: 1.12;
-    }
-    .highlights .app-preview[src$="mario-kart.webp"] {
-      --preview-focus: 50% 28%;
       --preview-zoom: 1.12;
     }
     /* Only the stage's OWN padding needs breakpoints - the negative margin
@@ -487,7 +467,7 @@
         </section>
         <section data-category="game" data-keywords="football h2h head to head league soccer matches penalties two players">
           <div class="content">
-            <div class="app-preview-stage"><a class="app-preview-link" href="apps/football-h2h/" aria-label="Open Football H2H League" tabindex="-1"><img class="app-preview" src="images/app-previews/football-h2h.webp" width="720" height="450" loading="lazy" decoding="async" alt="Football H2H League stats with total wins for two players, a current winning streak banner, and 90 minute win tallies" /></a></div>
+            <div class="app-preview-stage"><a class="app-preview-link" href="apps/football-h2h/" aria-label="Open Football H2H League" tabindex="-1"><img class="app-preview" src="images/app-previews/football-h2h.webp" width="720" height="405" loading="lazy" decoding="async" alt="Football H2H League head-to-head stats with total wins level at six each, a current winning streak banner, and the 90 minute and penalty win splits" /></a></div>
             <header>
               <a href="apps/football-h2h/" class="icon fa-futbol-o brand-color-primary" aria-label="Open Football H2H League"></a>
               <h3>Football H2H League</h3>
@@ -513,7 +493,7 @@
         </section>
         <section data-category="fitness" data-keywords="gym tracker workouts fitness strength programs exercises pwa offline">
           <div class="content">
-            <div class="app-preview-stage"><a class="app-preview-link" href="apps/gym-tracker/" aria-label="Open Gym Tracker" tabindex="-1"><img class="app-preview" src="images/app-previews/gym-tracker.webp" width="720" height="450" loading="lazy" decoding="async" alt="Gym Tracker weekly dashboard showing workouts, total volume, training time, and streak tiles above a recent workout card" /></a></div>
+            <div class="app-preview-stage"><a class="app-preview-link" href="apps/gym-tracker/" aria-label="Open Gym Tracker" tabindex="-1"><img class="app-preview" src="images/app-previews/gym-tracker.webp" width="720" height="405" loading="lazy" decoding="async" alt="Gym Tracker insights showing a volume by muscle group bar chart led by chest and back, above a year long workout heatmap" /></a></div>
             <header>
               <a href="apps/gym-tracker/" class="icon fa-heartbeat brand-color-primary" aria-label="Open Gym Tracker"></a>
               <h3>Gym Tracker</h3>
@@ -526,7 +506,7 @@
         </section>
         <section data-category="game" data-keywords="maptap rivals geography daily puzzle scores streaks friends">
           <div class="content">
-            <div class="app-preview-stage"><a class="app-preview-link" href="apps/maptap-rivals/" aria-label="Open MapTap Rivals" tabindex="-1"><img class="app-preview" src="images/app-previews/maptap-rivals.webp" width="720" height="450" loading="lazy" decoding="async" alt="MapTap Rivals rivalries dashboard with head-to-head cards showing wins, losses, win rate, and recent form for each rival" /></a></div>
+            <div class="app-preview-stage"><a class="app-preview-link" href="apps/maptap-rivals/" aria-label="Open MapTap Rivals" tabindex="-1"><img class="app-preview" src="images/app-previews/maptap-rivals.webp" width="720" height="405" loading="lazy" decoding="async" alt="MapTap Rivals confusion matrix, a colour coded grid of head-to-head win-loss records and win rates between every player" /></a></div>
             <header>
               <a href="apps/maptap-rivals/" class="icon fa-crosshairs brand-color-primary" aria-label="Open MapTap Rivals"></a>
               <h3>MapTap Rivals</h3>
@@ -539,7 +519,7 @@
         </section>
         <section data-category="game" data-keywords="mario kart 8 deluxe mk8 mk8d world races tracker players standings achievements">
           <div class="content">
-            <div class="app-preview-stage"><a class="app-preview-link" href="apps/mario-kart/" aria-label="Open Mario Kart Tracker" tabindex="-1"><img class="app-preview" src="images/app-previews/mario-kart.webp" width="720" height="450" loading="lazy" decoding="async" alt="Mario Kart 8 Deluxe Tracker performance trends chart plotting each player's finishing position across 14 races" /></a></div>
+            <div class="app-preview-stage"><a class="app-preview-link" href="apps/mario-kart/" aria-label="Open Mario Kart Tracker" tabindex="-1"><img class="app-preview" src="images/app-previews/mario-kart.webp" width="720" height="405" loading="lazy" decoding="async" alt="Mario Kart Tracker stats comparing three players on average finish position, first place finishes, podium rate and best podium streak" /></a></div>
             <header>
               <a href="apps/mario-kart/" class="icon fa-gamepad brand-color-primary" aria-label="Open Mario Kart Tracker"></a>
               <h3>Mario Kart Tracker</h3>
@@ -552,7 +532,7 @@
         </section>
         <section data-category="tv" data-keywords="rising shows tv series imdb ratings trend episodes finder plex kometa">
           <div class="content">
-            <div class="app-preview-stage"><a class="app-preview-link" href="apps/rising-shows/" aria-label="Open Rising Shows" tabindex="-1"><img class="app-preview" src="images/app-previews/rising-shows.webp" width="720" height="450" loading="lazy" decoding="async" alt="Rising Shows result cards for Breaking Bad and Game of Thrones with rating trend sparklines, IMDb ratings, and per-show stats" /></a></div>
+            <div class="app-preview-stage"><a class="app-preview-link" href="apps/rising-shows/" aria-label="Open Rising Shows" tabindex="-1"><img class="app-preview" src="images/app-previews/rising-shows.webp" width="720" height="405" loading="lazy" decoding="async" alt="Rising Shows result cards for Breaking Bad, Game of Thrones, Stranger Things and The Walking Dead, each with its rating trend sparkline" /></a></div>
             <header>
               <a href="apps/rising-shows/" class="icon fa-line-chart brand-color-primary" aria-label="Open Rising Shows"></a>
               <h3>Rising Shows</h3>

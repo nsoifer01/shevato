@@ -227,3 +227,19 @@ Removing the black pin made the counts nearly invisible. Reverted. Measure the
 COMPOSITED backdrop (walk the ancestors and blend, including translucent
 layers), never the element's own `backgroundColor`, which here is
 `rgba(255,255,255,0.1)` and tells you nothing.
+
+- **The apps-hub preview is generated, not art: do not hand-edit it.**
+  `images/app-previews/mario-kart.webp` comes from
+  `assets/app-previews/build-previews.mjs`, which seeds 14 races across three
+  players and clips the **Stats** tab: four titled panels, each with one big
+  number per player. Two other screens were tried and rejected on the
+  rendered thumbnail, and the reasons generalise to any small rendering of
+  this app. Trends is the showiest screen but plots 14 races x 3 players as
+  overlapping lines that collapse into unreadable spaghetti at 290px. Race
+  History is honest and reads well full size, but its position pills shrink
+  into a field of anonymous coloured dots. The Stats panels are the only
+  screen whose largest elements survive the shrink.
+- **The stat panel titles are `div.stat-title`, not headings.** A capture or
+  test that locates a panel by looking for an `h2`/`h3` whose text is
+  "Average Finish Position" finds nothing and reports the element missing.
+  The grid of all four panels is `.stats-container`.
