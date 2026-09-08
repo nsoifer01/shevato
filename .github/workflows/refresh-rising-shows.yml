@@ -502,8 +502,13 @@ jobs:
       # site keeps serving the previous build until someone looks. That is the
       # intended failure mode.
       #
-      # delete_branch_on_merge is on for this repository, so GitHub deletes
-      # bot/refresh-rising-shows-* on merge and nothing here has to clean up.
+      # It also deletes the branch, because GitHub does not. "Automatically
+      # delete head branches" is ON for this repository and it fires for a
+      # human - #517's branch was gone the moment auto-merge merged it - but
+      # NOT for an auto-merge armed by github-actions[bot]: #518's branch was
+      # still on the remote minutes later. Both measured on 2026-09-08. Left to
+      # GitHub, this would strand one timestamped bot/refresh-rising-shows-*
+      # branch every day.
       #
       # 75 minutes is the watch window. The four required checks cost about 15
       # minutes together on a change like this one (lint ~1, test ~2, browser
