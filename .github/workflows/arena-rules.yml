@@ -120,7 +120,15 @@ jobs:
           # whole 10-minute emulator suite on the strength of it.
           NOT_INPUTS='^sync-system/tests/'
 
-          HITS=$(printf '%s\n' "$CHANGED" | grep -Ev "$NOT_INPUTS" | grep -E "$INPUTS")
+          # `|| true` is load-bearing, and its absence took the whole repo down
+          # on 2026-09-08. Actions runs this block as `bash -e {0}`, so -e is
+          # already on before `set -uo pipefail` adds pipefail on top. grep
+          # exits 1 when it matches NOTHING, which is precisely the skip case,
+          # so the assignment failed and -e killed the step: every pull request
+          # with no emulator inputs got a RED required check and could not
+          # merge. Fails closed, on the one path that is supposed to be the
+          # cheap one.
+          HITS=$(printf '%s\n' "$CHANGED" | grep -Ev "$NOT_INPUTS" | grep -E "$INPUTS" || true)
           if [ -n "$HITS" ]; then
             echo "run=1" >> "$GITHUB_OUTPUT"
             echo "Emulator inputs changed:"
