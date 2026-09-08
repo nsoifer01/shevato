@@ -1250,35 +1250,64 @@ export async function run({ base, cdpPort, base2 = null }) {
       // indistinguishable - which is how this stayed "flaky CI" instead of a
       // measurement. Negative is before the deadline, positive is after it.
       const at = () => Math.round((Date.now() - naturalEnd) / 100) / 10;
-      const readyA = await waitForExpr(A, readyBtnLive, { timeout: 9000 });
-      const tBtnA = at();
-      if (readyA) await clickSel(A, '#globe-drop-ready-btn', { settle: 200 });
-      const tVoteA = at();
-      await front(B);
-      const tFrontB = at();
-      const readyB = await waitForExpr(B, readyBtnLive, { timeout: 9000 });
-      const tBtnB = at();
-      if (readyB) await clickSel(B, '#globe-drop-ready-btn', { settle: 200 });
-      const tVoteB = at();
-      // A vote is a Firestore write from a tab we are about to background, and
-      // `readyB` only says the button was CLICKABLE - not that the click
-      // counted. Wait for both flags to actually land before handing the
-      // foreground back, so a lost write is reported as a lost write instead
-      // of showing up later as "the advance was not early".
+      // Both clients are labelled A/B in every flag report below. The list
+      // comes back in ownerList order, which is not vote order, so the old
+      // unlabelled "one of the two is missing" could not say WHICH client lost
+      // its write - the single most useful fact when this goes red.
+      const armClicks = (s) => evaluate(s, `(()=>{window.__rc=0;const b=document.getElementById('globe-drop-ready-btn');if(!b)return false;b.addEventListener('click',()=>{window.__rc++;});return true})()`);
+      const clicksOn = (s) => evaluate(s, 'window.__rc');
+      const uidA = await evaluate(A, 'window.firebaseAuth.getCurrentUser().uid');
+      let uidB = null;
       const readyFlagsOf = async () => {
         const uids = await ownerList(`triviaRooms/${code6}/players`);
         return Promise.all(uids.map(async (u) => {
           const d = fieldsOf(await ownerGetDocRaw(`triviaRooms/${code6}/players/${u}`, PAGE_PROJECT));
-          return `${u.slice(0, 5)}:${d.readyAfterQId || '-'}`;
+          const who = u === uidA ? 'A' : (uidB && u === uidB) ? 'B' : u.slice(0, 5);
+          return `${who}:${d.readyAfterQId || '-'}`;
         }));
       };
-      let votesLanded = false;
-      for (const startWait = Date.now(); Date.now() - startWait < 4000;) {
-        const f = await readyFlagsOf();
-        if (f.length >= 2 && f.every((x) => !x.endsWith(':-'))) { votesLanded = true; break; }
-        await sleep(250);
-      }
-      const tLanded = at();
+      // Waits for ONE client's marker, so a lost vote names its owner.
+      const waitFlag = async (who, budgetMs) => {
+        for (const t0 = Date.now(); Date.now() - t0 < budgetMs;) {
+          const mine = (await readyFlagsOf()).find((x) => x.startsWith(`${who}:`));
+          if (mine && !mine.endsWith(':-')) return true;
+          await sleep(200);
+        }
+        return false;
+      };
+
+      const readyA = await waitForExpr(A, readyBtnLive, { timeout: 9000 });
+      const tBtnA = at();
+      await armClicks(A);
+      if (readyA) await clickSel(A, '#globe-drop-ready-btn', { settle: 200 });
+      const tVoteA = at();
+      // Let A's write land while A is STILL the foreground tab. Fronting B is
+      // what backgrounds A, and a backgrounded renderer is the lowest-priority
+      // process on the box; on a loaded two-core runner an in-flight Firestore
+      // write from one can sit unacknowledged for seconds. The old order
+      // clicked A, backgrounded it on the next line, and only then polled for
+      // both markers - so a starved renderer was reported as "the player's
+      // vote was lost", which is a claim about the product that the run had no
+      // evidence for. What is under test is that a Ready vote registers, not
+      // that it registers from a starved background tab; the D3 hidden-host
+      // checks below cover the backgrounded case deliberately and separately.
+      const landedA = await waitFlag('A', 3000);
+      const tLandedA = at();
+
+      await front(B);
+      uidB = await evaluate(B, 'window.firebaseAuth.getCurrentUser().uid');
+      const tFrontB = at();
+      const readyB = await waitForExpr(B, readyBtnLive, { timeout: 9000 });
+      const tBtnB = at();
+      await armClicks(B);
+      if (readyB) await clickSel(B, '#globe-drop-ready-btn', { settle: 200 });
+      const tVoteB = at();
+      // Same for B, which is the foreground tab from here to the advance.
+      // `readyB` only ever said the button was CLICKABLE, never that the click
+      // counted, so the marker itself is what gets waited on.
+      const landedB = await waitFlag('B', 3000);
+      const tLandedB = at();
+      const votesLanded = landedA && landedB;
       await front(A);
       const g1 = await waitRoom(code6, (st) => st.idx === 1, 14000);
       const advancedAt = Date.now();
@@ -1288,9 +1317,10 @@ export async function run({ base, cdpPort, base2 = null }) {
       // one told you neither when it went red.
       t('emulator (globe): both players\' Ready votes register during the reveal',
         readyA && readyB && votesLanded,
-        `readyA=${readyA} readyB=${readyB} landed=${votesLanded}`
-        + ` | s vs deadline: btnA ${tBtnA} voteA ${tVoteA} frontB ${tFrontB}`
-        + ` btnB ${tBtnB} voteB ${tVoteB} landed ${tLanded}`
+        `readyA=${readyA} readyB=${readyB} landedA=${landedA} landedB=${landedB}`
+        + ` | s vs deadline: btnA ${tBtnA} voteA ${tVoteA} landedA ${tLandedA}`
+        + ` frontB ${tFrontB} btnB ${tBtnB} voteB ${tVoteB} landedB ${tLandedB}`
+        + ` | clicks A=${await clicksOn(A)} B=${await clicksOn(B)}`
         + ` | flags=${readyFlags.join(',')}`);
       t('emulator (globe): every live player Ready during the reveal advances the round early',
         votesLanded && g1.idx === 1 && advancedAt < naturalEnd - 1500,
