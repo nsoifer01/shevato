@@ -123,3 +123,89 @@ test('the CSP the README names is the one netlify.toml sends', () => {
       'an enforcing CSP ships now, so the README must not describe report-only as the whole story');
   }
 });
+
+test('the Rising Shows docs name the file the app actually boots on', () => {
+  // The 2026-09-08 F08 split moved the boot payload from the season-level
+  // data-index.json to the show-level shows-index.json. Three files have to
+  // agree about that, and the app is the one that decides: a doc naming the
+  // old file sends the next reader to measure, cache or debug the wrong one.
+  const app = read('apps/rising-shows/js/app.js');
+  const boot = /await fetch\('([^']+)'\)/.exec(app);
+  assert.ok(boot, 'app.js must fetch its boot payload with a literal URL');
+  const bootFile = boot[1];
+  assert.equal(bootFile, 'shows-index.json',
+    'if this changed on purpose, the assertions below and the docs must move with it');
+
+  // The splitter has to write it.
+  const split = read('apps/rising-shows/scripts/split-data.js');
+  assert.match(split, new RegExp(`SHOWS_OUT = path\\.join\\(APP_DIR, '${bootFile}'\\)`),
+    'split-data.js must write the file app.js boots on');
+
+  // The app must NOT fetch the season-level file: that is the whole saving.
+  assert.equal(/fetch\('data-index\.json'\)/.test(app), false,
+    'the browser must never fetch the season-level index at boot');
+
+  // The README's payload table has to name it as the boot fetch.
+  const readme = read('apps/rising-shows/README.md');
+  const row = readme.split('\n').find((l) => l.includes(`\`${bootFile}\``) && l.includes('|'));
+  assert.ok(row, `README payload table must have a row for ${bootFile}`);
+  assert.match(row, /boot|on load/i, `the ${bootFile} row must say it is the boot fetch`);
+
+  // And the Kometa builder reads its own slice, not the season index.
+  const kometa = read('apps/rising-shows/js/kometa.js');
+  const kFetch = /await fetch\('([^']+)'\)/.exec(kometa);
+  assert.ok(kFetch, 'kometa.js must fetch its dataset with a literal URL');
+  assert.equal(kFetch[1], '../data/kometa-index.json');
+  assert.match(split, /KOMETA_OUT = path\.join\(APP_DIR, 'data', 'kometa-index\.json'\)/,
+    'split-data.js must write the file the Kometa builder reads');
+});
+
+test('the Arena README does not still ask for a TTL policy that is enabled', () => {
+  // The TTL policy on triviaRooms.expiresAt went ACTIVE on 2026-09-08. A doc
+  // that still says "this needs one setting outside the repo" sends the next
+  // reader to enable something already enabled, and hides that the 336 rooms
+  // predating the field are NOT covered by it.
+  const readme = read('apps/arena/README.md');
+  assert.equal(/\*\*This needs one setting outside the repo\.\*\*/.test(readme), false,
+    'the TTL policy is enabled; the README must not still ask for it');
+  assert.match(readme, /TTL policy is enabled/,
+    'the README must state the policy is live');
+  assert.match(readme, /does not reach the .* rooms that predate/i,
+    'and must say what the policy does NOT cover, or the next reader assumes it does');
+
+  // The client still has to write the field the policy reads, and the rules
+  // still have to bound it, or the policy is pointed at nothing.
+  const app = read('apps/arena/js/app.js');
+  assert.match(app, /expiresAt: new Date\(Date\.now\(\) \+ ROOM_TTL_MS\)/,
+    'room creation must still stamp expiresAt');
+  const rules = read('firestore.rules');
+  assert.match(rules, /request\.resource\.data\.expiresAt is timestamp/,
+    'the rules must still require expiresAt to be a timestamp');
+  assert.match(rules, /expiresAt < request\.time \+ duration\.value\(48, 'h'\)/,
+    'and must still bound it, so a client cannot mint a room that outlives the policy');
+});
+
+test('the MapTap README says rules deploys are manual, because they are', () => {
+  // Between 2026-08-04 and 2026-09-08 production served a ruleset two rounds
+  // of fixes behind the repo, because merging a PR looks exactly like
+  // deploying from inside the repo. Nothing in CI or the Netlify build
+  // deploys firestore.rules, and the doc has to keep saying so.
+  const readme = read('apps/maptap-rivals/README.md');
+  assert.match(readme, /not deployed by CI, or by a Netlify build, or by merging a PR/i,
+    'the manual-deploy warning must stay');
+  assert.match(readme, /firebase-tools@[\d.]+ deploy --only firestore:rules/,
+    'and must give the exact command');
+
+  // Derived, not asserted from prose: no workflow and no build command
+  // deploys rules, which is what makes the warning true.
+  const workflows = readdirSync(join(REPO_ROOT, '.github', 'workflows'))
+    .filter((f) => f.endsWith('.yml'))
+    .map((f) => read(`.github/workflows/${f}`));
+  const pkg = JSON.parse(read('package.json'));
+  const deploysRules = (text) => /firestore:rules/.test(text);
+  assert.equal(workflows.some(deploysRules), false,
+    'if a workflow starts deploying rules, this warning is wrong and must be rewritten');
+  assert.equal(Object.values(pkg.scripts).some(deploysRules), false,
+    'same for an npm script');
+  assert.equal(deploysRules(read('netlify.toml')), false, 'same for the Netlify build');
+});
