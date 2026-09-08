@@ -88,7 +88,12 @@ function runScope({ event, before = 'a'.repeat(40), after = 'b'.repeat(40), file
   const scriptPath = join(dir, 'scope.sh');
   writeFileSync(scriptPath, SCRIPT);
 
-  const log = execFileSync('bash', [scriptPath], {
+  // `-e`, because Actions runs a `run:` block as `bash -e {0}` and this test
+  // did not. That single missing flag is why the suite passed while the real
+  // step failed: under -e a `grep` that matches nothing aborts the script, and
+  // matching nothing IS the skip decision. Running it any other way tests a
+  // shell the workflow never uses.
+  const log = execFileSync('bash', ['-e', scriptPath], {
     encoding: 'utf8',
     env: {
       ...process.env,
