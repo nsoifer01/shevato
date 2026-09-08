@@ -392,10 +392,18 @@ export async function main(argv, env = process.env, log = console.log) {
     if (!Number.isInteger(number) || number <= 0) throw new Error('--pr <number> is required');
     const result = await drivePullRequest(api, number, { log, timeoutMs, pollMs });
     if (result.outcome === 'merged') return 0;
-    log(`::error::pull request #${number} did not merge (${result.outcome}). `
-      + 'The refreshed data is already on the rising-shows-data release under an immutable name, and '
-      + 'apps/rising-shows/data-release.json pins it from inside this pull request, so nothing deploys '
-      + 'and the site keeps serving the previous build until this is resolved.');
+
+    // The consequence sentence is only true of a refresh pull request, and
+    // this command drives any pull request: bot-pr-autopilot.yml exists so a
+    // human can point it at one. Printed unconditionally it told an owner
+    // driving an unrelated pull request that a Rising Shows deploy was
+    // blocked, which is a false alarm about a different part of the site.
+    log(`::error::pull request #${number} did not merge (${result.outcome}).`);
+    if (result.pr?.head?.ref?.startsWith(BOT_BRANCH_PREFIX)) {
+      log('The refreshed data is already on the rising-shows-data release under an immutable name, and '
+        + 'apps/rising-shows/data-release.json pins it from inside this pull request, so nothing deploys '
+        + 'and the site keeps serving the previous build until this is resolved.');
+    }
     return 1;
   }
 

@@ -336,6 +336,42 @@ test('reconcile is a no-op, and cheap, on the ordinary day with nothing open', a
   assert.equal(calls.length, 1);
 });
 
+test('the refresh consequence is only claimed for a refresh pull request', async () => {
+  // `run --pr N` drives ANY pull request - bot-pr-autopilot.yml exists so a
+  // human can point it at one - so the "nothing deploys, the site serves the
+  // previous build" sentence must not be printed for somebody else's branch.
+  const env = { GITHUB_TOKEN: 't', GITHUB_REPOSITORY: REPO };
+  const original = globalThis.fetch;
+  const runFor = async (ref) => {
+    const lines = [];
+    globalThis.fetch = async (url) => {
+      const path = String(url).replace('https://api.github.com', '');
+      const answer = (() => {
+        if (path === `/repos/${REPO}/pulls/505`) return pull({ number: 505, head: { sha: 's', ref } });
+        if (path.includes('/actions/runs')) return { workflow_runs: [] };
+        if (path.includes('/check-runs')) return { check_runs: [check({ name: 'rules', conclusion: 'failure' })] };
+        return {};
+      })();
+      return { ok: true, status: 200, text: async () => JSON.stringify(answer) };
+    };
+    const code = await main(['run', '--pr', '505'], env, (l) => lines.push(l));
+    return { code, log: lines.join('\n') };
+  };
+  try {
+    const human = await runFor('worktree-fpl-planner-logo-match');
+    assert.equal(human.code, 1);
+    assert.match(human.log, /did not merge \(failed\)/);
+    assert.equal(/rising-shows-data release/.test(human.log), false,
+      'a human pull request must not be told a Rising Shows deploy is blocked');
+
+    const bot = await runFor(`${BOT_BRANCH_PREFIX}20260908-103736`);
+    assert.equal(bot.code, 1);
+    assert.match(bot.log, /rising-shows-data release/);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
 test('the CLI exit code is what the workflow step actually gates on', async () => {
   const env = { GITHUB_TOKEN: 't', GITHUB_REPOSITORY: REPO };
   const openPrs = [{ number: 515, head: { ref: `${BOT_BRANCH_PREFIX}20260908-103736` } }];
