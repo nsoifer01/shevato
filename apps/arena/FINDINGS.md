@@ -581,6 +581,80 @@ only here: every expression `waitForExpr` takes is a predicate.
 `tests/static/cdp-harness.test.mjs` covers it, and two of its six checks fail
 against the pre-fix driver.
 
+## Two red checks, one root cause: the test raced an async write (2026-09-08)
+
+`arena-rules` stayed red after #513 and #514, in two different places on two
+different runs. Both were the harness racing a write it had not waited for, and
+both were reported as product failures.
+
+**The Ready vote.** "both players' Ready votes register during the reveal"
+failed with one `readyAfterQId` marker absent. The order was: click A's Ready,
+`front(B)` on the very next line, click B's Ready, then poll for BOTH markers.
+Fronting B is what backgrounds A, so A's vote was a Firestore write issued
+~200 ms before its own renderer became the lowest-priority process on the box.
+On two cores shared with three Chrome instances, the emulators and Node, an
+in-flight write from a starved renderer sits unacknowledged for seconds. The
+timeline said it outright once each step was reported against the round's own
+deadline: `voteA -7.5s`, `frontB -7.5s`, marker still missing 4.5 s later. Each
+vote now lands while its own tab is still in the foreground. Nothing asserted
+got weaker, and the backgrounded case is still covered - by the D3 hidden-host
+checks, where it belongs, instead of smuggled into a check about whether a vote
+registers.
+
+**The idempotency precondition.** Five checks went red with
+`games=1 sessionMatchCount=null` while the next line of the SAME report read
+`sessionMatchCount null -> 1 -> 1`. The tally was late, not missing. Ending a
+game produces two independent idempotent writes - profile and leaderboard
+counters guarded by `lastCountedGame`, and the room's session tally guarded by
+`sessionCountedGame`, written by `maybeWriteH2HPairs` in its own transaction.
+Nothing orders them and nothing should; each carries its own guard and each is
+safe to replay. The precondition read once and demanded both. It now gives them
+a bounded window, and still fails if they never land, which is the only reason
+it exists.
+
+The general rule: **when a check reads state written by a client, wait for that
+state, do not read once and blame the product.** Both failures cost days of
+"flaky CI" because the message named a product symptom ("the player's vote was
+lost", "the game was not counted") for a condition the run had no evidence of.
+Two things make the next one cheap to read: every step is reported as an offset
+from the round's own deadline rather than a wall clock, and both clients are
+labelled A/B in the flag report - it comes back in `ownerList` order, which is
+not vote order, so "one of the two is missing" never said which. A per-client
+click counter goes with the labels, because "the button was clickable" and "the
+click reached the handler" had been indistinguishable, and that ambiguity is
+what made this read as a product bug twice.
+
+## A failed Ready vote looked exactly like no vote at all (2026-09-08)
+
+Found while reading `markReadyForNext` during the Globe Drop e2e investigation
+above; it is a product defect, not a harness one, and the e2e never touched it.
+
+The Globe Drop reveal ends early when every live player has tapped Ready: each
+client writes `readyAfterQId: <location id>` on its own player doc and the
+host's loop advances once `live.every(p => p.readyAfterQId === currentQId)`.
+That write can fail - it is a Firestore `updateDoc` from a phone that may be on
+a dead network, and the rules require `request.auth.uid == playerUid`, so a
+session that has lapsed is denied. The catch block only called `console.warn`.
+
+Nothing about the failure is visible from the game. The marker was never
+written, so `meReady` stays false and the snapshot leaves the button ENABLED
+and un-ticked: identical to a player who has not voted yet. The room then sits
+out the full `Config.GLOBE_DROP_REVEAL_TIME_MS` (10 s) while the player who
+did tap believes they are waiting on everybody else. The one trace was a
+console line, in a tab nobody has open.
+
+It now raises the same toast the other two mid-round writes already raised on
+failure - `submitGuess` ("Guess did not save") and `submitAnswer` ("Your answer
+did not save") - so the rule was already established and this was the one write
+of that class not following it. `apps/arena/tests/mid-round-write-failures.test.js`
+pins all three by reading the catch blocks out of source (the `escapeHtml`
+idiom: `app.js` touches the DOM at import time, so it cannot be required). Only
+the `markReadyForNext` check fails against the pre-fix source, which is the
+point - the other two were already correct.
+
+The toast is keyed (`ready-failed`), so a retry storm collapses to one message
+per second rather than papering the screen.
+
 ## The room backlog TTL could not reach (2026-09-08)
 
 Enabling the TTL policy on `triviaRooms.expiresAt` covers rooms that HAVE the
