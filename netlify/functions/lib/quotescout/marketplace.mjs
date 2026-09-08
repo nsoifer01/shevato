@@ -8,11 +8,36 @@
 import fs from 'node:fs';
 import zlib from 'node:zlib';
 
-const DIR = new URL('./data/', import.meta.url);
 const AGE_MIN = 18, AGE_MAX = 64;
 
+// Where the dataset lives depends on how this module got here.
+//
+// Netlify bundles the function with esbuild, which inlines this file into
+// netlify/functions/quotescout.mjs, so `import.meta.url` no longer points at
+// this directory. `included_files` copies the data in at its repo-relative
+// path under the task root instead. Unbundled (tests, local runs) the sibling
+// directory is right. Try each and keep the one that actually holds the data,
+// rather than guessing from an environment variable that may not be set.
+export function dataCandidates(meta = import.meta.url, cwd = process.cwd(), taskRoot = process.env.LAMBDA_TASK_ROOT) {
+  const rel = 'netlify/functions/lib/quotescout/data/';
+  return [
+    new URL('./data/', meta).href,
+    new URL('./lib/quotescout/data/', meta).href,
+    ...[taskRoot, cwd].filter(Boolean).map(root => new URL(rel, `file://${root.endsWith('/') ? root : `${root}/`}`).href),
+  ];
+}
+
+let dir = null;
+function dataDir() {
+  if (dir) return dir;
+  for (const candidate of dataCandidates()) {
+    if (fs.existsSync(new URL('meta.json', candidate))) return (dir = candidate);
+  }
+  throw new Error(`Quote Scout dataset not found. Looked in: ${dataCandidates().join(', ')}`);
+}
+
 const read = name => {
-  const file = new URL(name, DIR);
+  const file = new URL(name, dataDir());
   return name.endsWith('.gz') ? JSON.parse(zlib.gunzipSync(fs.readFileSync(file))) : JSON.parse(fs.readFileSync(file, 'utf8'));
 };
 

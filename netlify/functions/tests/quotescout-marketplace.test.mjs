@@ -4,7 +4,7 @@
 // data, and nothing may quietly become an estimate or a fresher-looking quote.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { getMeta, resolveZip, stateOfZip, stateOfFips, plansFor, benchmarkSilver } from '../lib/quotescout/marketplace.mjs';
+import { getMeta, resolveZip, stateOfZip, stateOfFips, plansFor, benchmarkSilver, dataCandidates } from '../lib/quotescout/marketplace.mjs';
 import { marketplaceQuotes, createAdapters } from '../lib/quotescout/adapters.mjs';
 import { createEngine, BoundedCache } from '../lib/quotescout/engine.mjs';
 import { validateRequest } from '../lib/quotescout/validation.mjs';
@@ -30,6 +30,32 @@ test('the shipped dataset describes itself completely and consistently', () => {
   assert.deepEqual(meta.ageRange, [18, 64]);
   assert.ok(meta.plans > 1000 && meta.zips > 5000);
   assert.ok(meta.sources.length >= 3 && meta.sources.every(s => s.url.startsWith('https://') && s.name && s.use));
+});
+
+test('the dataset is findable after esbuild inlines this module into the function', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const repoRoot = path.resolve(fileURLToPath(new URL('../../..', import.meta.url)));
+  const relative = 'netlify/functions/lib/quotescout/data/';
+
+  // Netlify bundles lib/ into netlify/functions/quotescout.mjs, so the
+  // sibling ./data/ this module sees at rest does not exist at runtime. This
+  // shipped as a 502 on a deploy preview while every local test passed,
+  // because tests import the module unbundled.
+  const bundled = dataCandidates(`file://${repoRoot}/netlify/functions/quotescout.mjs`, repoRoot, repoRoot);
+  const wrong = `file://${repoRoot}/netlify/functions/data/`;
+  assert.equal(bundled[0], wrong, 'the naive sibling path is still tried first, and is still wrong when bundled');
+  const good = bundled.find(c => fs.existsSync(new URL('meta.json', c)));
+  assert.ok(good, `no candidate held the dataset: ${bundled.join(', ')}`);
+  assert.equal(good, `file://${repoRoot}/${relative}`);
+
+  // included_files is the other half: without it nothing is copied into the
+  // bundle and every candidate misses.
+  const toml = fs.readFileSync(path.join(repoRoot, 'netlify.toml'), 'utf8');
+  const block = toml.split('[functions.').find(b => b.startsWith('"quotescout"]'));
+  assert.ok(block, 'netlify.toml must configure the quotescout function');
+  assert.match(block, /included_files\s*=\s*\[[^\]]*netlify\/functions\/lib\/quotescout\/data/);
 });
 
 test('the shipped shards are internally consistent and free of anything renderable', async () => {
