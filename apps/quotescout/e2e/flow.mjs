@@ -35,9 +35,14 @@ export async function run({base,cdpPort}) {
   });
   try {
     await setViewport(s,1280,900);await goto(s,base+'/apps/quotescout/',{settle:800});await waitForExpr(s,"!document.getElementById('qs-form').hidden");
-    t('minimum VIN form',await evaluate(s,"document.querySelectorAll('#qs-fields input').length===1"));
+    // The page must open on something that returns a price. Opening on the VIN
+    // decoder put the product's whole purpose behind a dropdown nobody touched.
+    t('opens on a real comparison, not the vehicle decoder',await evaluate(s,"document.getElementById('qs-category').value==='health-insurance'"));
+    t('the vehicle decoder is still offered, last',await evaluate(s,"[...document.getElementById('qs-category').options].at(-1).value==='vehicle-data'"));
     t('no email or phone gate',await evaluate(s,"!document.querySelector('#quotescout input[type=email],#quotescout input[type=tel]')"));
     t('unsupported categories are disclosed',await evaluate(s,"document.getElementById('qs-unavailable').textContent.includes('licensed insurance partner')"));
+    await setValue(s,'#qs-category','vehicle-data');await evaluate(s,"document.getElementById('qs-category').dispatchEvent(new Event('change'))");
+    t('minimum VIN form',await evaluate(s,"document.querySelectorAll('#qs-fields input').length===1"));
     await setValue(s,'#qs-vin','bad');await clickSel(s,'#qs-submit');t('invalid input does not call API',requests.length===0);
     await setValue(s,'#qs-vin','1HGCM82633A004352');await clickSel(s,'#qs-submit');await waitForExpr(s,"document.getElementById('qs-results').textContent.includes('HONDA')");t('vehicle decode renders',true);
     await mkdir(new URL('../.reports/',import.meta.url),{recursive:true});
