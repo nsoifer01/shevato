@@ -35,9 +35,24 @@ The workflow `.github/workflows/refresh-rising-shows.yml` runs daily at
    release assets), gzips `data.json` + `data/show-modal-extras.json`
    and uploads them to the `rising-shows-data` release with
    `gh release upload --clobber`.
-6. Commits the small derived files (`changelog.json`, `exports/`) via
-   an auto-merged bot PR. That merge is what triggers the Netlify
-   deploy, whose build downloads the fresh assets.
+6. Commits the small derived files (`changelog.json`, `exports/`) and
+   `data-release.json` - the PIN naming the immutable release copy and the
+   SHA-256 of both assets - on a `bot/refresh-rising-shows-*` branch, and
+   opens a pull request.
+7. Drives that pull request to a merge without anyone clicking anything
+   (`scripts/bot-pr-autopilot.mjs`): it releases the maintainer-approval
+   hold GitHub puts on a bot pull request's workflow runs, arms GitHub's
+   auto-merge, and watches. The four required checks (`lint`, `test`,
+   `browser`, `rules`) gate the merge exactly as they do for a human pull
+   request; a red one leaves the pull request OPEN and nothing deploys.
+   GitHub deletes the branch on merge. That merge is what triggers the
+   Netlify deploy, whose build resolves the pin and downloads the exact
+   assets this pull request approved.
+
+Step 7 runs BEFORE the download on the next day too: a refresh first
+finishes any pull request still open from the last one, and refuses to
+start a second while one is stuck. Two of them would both rewrite
+`changelog.json` and the exports, so the second could only conflict.
 
 If TMDB is unavailable (token missing or rate-limited), the workflow
 still produces a valid `data.json`: the UI falls back to a gradient
@@ -52,8 +67,13 @@ poster placeholder.
 Add it under **Settings → Secrets and variables → Actions → New repository secret**.
 
 The workflow also uses the built-in `GITHUB_TOKEN`, which is provided
-automatically. No PAT is needed for the auto-push because the workflow
-only pushes to its own repository.
+automatically. **No PAT and no GitHub App are needed**, for the push, the
+pull request, or the merge. The one non-obvious permission is
+`actions: write`, declared by the workflow: it is what lets the job
+release the approval hold on its own pull request's runs. The only
+repository setting this depends on is **Settings > General > Allow
+auto-merge**, which is already on; `bot-pr-autopilot.mjs` says so by name
+if it is ever turned off.
 
 ## Running the refresh manually
 
