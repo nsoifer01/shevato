@@ -246,7 +246,7 @@ button has a label.
 
 - **The apps-hub preview is generated, not art: do not hand-edit it.**
   `images/app-previews/football-h2h.webp` comes from
-  `assets/app-previews/build-previews.mjs`, which seeds two players and
+  `tests/app-previews/build-previews.mjs`, which seeds two players and
   twelve games and clips `#h2h-stats` - total wins, current streak, and the
   90-minute and penalty splits. That section measures 812x462 at a 1200px
   viewport, which is within a hair of the hub's 16:9 frame, so the capture is

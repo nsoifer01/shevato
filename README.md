@@ -147,10 +147,10 @@ fails, fix the ordering rather than the test.
    (commit the generated `images/og/<slug>.png`).
 11. `images/app-previews/<slug>.webp` (720x405, 16:9) - rendered from SAMPLE
     data only, never a real user's content. Do NOT capture this by hand. Add
-    the app to `assets/app-previews/build-previews.mjs` (and a dataset to
-    `assets/app-previews/seeds.mjs` if it needs seeded storage, copying the
+    the app to `tests/app-previews/build-previews.mjs` (and a dataset to
+    `tests/app-previews/seeds.mjs` if it needs seeded storage, copying the
     shapes from the app's own unit-test fixtures) and run
-    `node --experimental-websocket assets/app-previews/build-previews.mjs
+    `node --experimental-websocket tests/app-previews/build-previews.mjs
     <slug>`. The script drives the app, clicks through to the screen worth
     showing, and anchors the crop to a NAMED ELEMENT, so the framing matches
     the rest of the hub and a layout change fails the capture loudly instead

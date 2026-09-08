@@ -3740,7 +3740,7 @@ on the wire, and the claim above is true as of that bump.
 
 - **The apps-hub preview is generated, not art: do not hand-edit it.**
   `images/app-previews/trip-planner.webp` comes from
-  `assets/app-previews/build-previews.mjs`, which loads the app, clicks "Load
+  `tests/app-previews/build-previews.mjs`, which loads the app, clicks "Load
   an example trip" in the Timeline empty state, hides the resulting toast, and
   clips a 16:9 window over `#board`. The clip snaps to whole itinerary rows:
   it starts at the top of the first row and ends at the first row boundary AT

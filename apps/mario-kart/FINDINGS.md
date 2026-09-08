@@ -230,7 +230,7 @@ layers), never the element's own `backgroundColor`, which here is
 
 - **The apps-hub preview is generated, not art: do not hand-edit it.**
   `images/app-previews/mario-kart.webp` comes from
-  `assets/app-previews/build-previews.mjs`, which seeds 14 races across three
+  `tests/app-previews/build-previews.mjs`, which seeds 14 races across three
   players and clips the **Stats** tab: four titled panels, each with one big
   number per player. Two other screens were tried and rejected on the
   rendered thumbnail, and the reasons generalise to any small rendering of

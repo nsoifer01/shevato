@@ -545,7 +545,7 @@ games the first time the scoring constants move.
   ceiling, under both swiftshader and ANGLE. Trivia is not a way round it -
   it has no solo mode and pulls questions from an external API. So Arena is
   the one app whose apps-hub preview is not built by
-  `assets/app-previews/build-previews.mjs`: its only capturable state is the
+  `tests/app-previews/build-previews.mjs`: its only capturable state is the
   lobby, which is a settings form, and the committed hand capture of a real
   round is the better thumbnail. Anything that needs to see the game surface
   in CI has the same problem and should assert on the DOM instead.

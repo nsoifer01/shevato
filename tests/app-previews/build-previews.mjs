@@ -1,9 +1,15 @@
 // Regenerates apps-hub preview thumbnails from the live app, using each app's
-// own sanctioned sample state. Never a real user's content: the previews on
+// own sanctioned sample state. It lives under tests/ rather than assets/ or
+// scripts/ because it is a dev-only tool that imports the browser harness's
+// CDP client, and tests/ is the only tree the deploy does not publish - a
+// published module may only import published modules (tests/static/
+// publish-graph.test.mjs).
+//
+// Never a real user's content: the previews on
 // the hub are marketing thumbnails, and the repo rule is that they render from
 // SAMPLE data only (root README, "Adding a new app", step 11).
 //
-//   node --experimental-websocket assets/app-previews/build-previews.mjs [slug...]
+//   node --experimental-websocket tests/app-previews/build-previews.mjs [slug...]
 //
 // Where the sample state comes from, per app:
 //   fpl-planner    ?demo=1 loads the bundled sample squad
@@ -43,7 +49,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   waitForBrowser, newPage, goto, evaluate, evalAsync, closePage, clickText, clickAt, seedAndReload,
-} from '../../tests/browser/cdp.mjs';
+} from '../browser/cdp.mjs';
 import { SEEDS } from './seeds.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');

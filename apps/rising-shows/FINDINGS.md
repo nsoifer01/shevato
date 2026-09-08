@@ -905,7 +905,7 @@ mode, not an oversight.
 
 - **The apps-hub preview needs the gitignored data present to build.**
   `images/app-previews/rising-shows.webp` comes from
-  `assets/app-previews/build-previews.mjs`, which clips the first row of
+  `tests/app-previews/build-previews.mjs`, which clips the first row of
   `.finder-card` results - posters, shape tags and the rating-trend
   sparklines. Unlike the other seven it seeds nothing, because the shows come
   from `data-index.json` and `data/`, which are gitignored and fetched

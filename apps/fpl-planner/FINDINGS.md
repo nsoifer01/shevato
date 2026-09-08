@@ -1181,7 +1181,7 @@ with chips ON: +0 on all 72 trajectories, both instruments.
   tweaking a source file.
 - **The apps-hub preview is generated, not art: do not hand-edit it.**
   `images/app-previews/fpl-planner.webp` comes from
-  `assets/app-previews/build-previews.mjs`, which loads `?demo=1`, hides the
+  `tests/app-previews/build-previews.mjs`, which loads `?demo=1`, hides the
   `.fpl-sample-banner` (demo-mode scaffolding, not product), and clips a 16:9
   window centred on `.fpl-hero`. The banner has to go or the top third of the
   thumbnail is a disclaimer; the DATA is still the sample dataset either way,

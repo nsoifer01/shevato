@@ -1219,7 +1219,7 @@ on both sides with `(?!\d)`.
   follow.
 - **The apps-hub preview is generated, not art: do not hand-edit it.**
   `images/app-previews/maptap-rivals.webp` comes from
-  `assets/app-previews/build-previews.mjs`, which seeds three rivals and
+  `tests/app-previews/build-previews.mjs`, which seeds three rivals and
   twelve games and clips the **Matrix** tab. The dashboard's rivalry cards are
   the obvious subject and were tried first, but they cannot be framed: the
   card grid is 3.8:1 at desktop width, and at the narrower width where it

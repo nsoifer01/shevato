@@ -1282,7 +1282,7 @@ undercounted west of UTC. Both now use the local-date helpers. Pinned in
   sessions and run the capture on a Monday and the tiles still report one
   workout and `0m`, because the week is one day old; dating sessions forward
   to fill it would put them in the future. The apps-hub preview
-  (`assets/app-previews/build-previews.mjs`) therefore clips the **Insights**
+  (`tests/app-previews/build-previews.mjs`) therefore clips the **Insights**
   view instead: volume by muscle group is a bar chart over the whole seeded
   year, so it reads the same on any day of the week. The seed is 144 sessions
   across 48 weeks, which is also what makes the year heatmap underneath look
